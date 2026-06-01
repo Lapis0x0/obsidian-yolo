@@ -1,19 +1,19 @@
 import {
-  getBuiltinLiteSkillByIdOrName,
+  getBuiltinLiteSkillByName,
   listBuiltinLiteSkills,
 } from './builtinSkills'
 
 describe('builtin skills', () => {
   it('renders skill creator content with the configured skills directory', () => {
-    const builtin = getBuiltinLiteSkillByIdOrName({
-      id: 'skill-creator',
+    const builtin = getBuiltinLiteSkillByName({
+      name: 'skill-creator',
       skillsDir: '99-Assets/YOLO/skills',
     })
 
     expect(builtin).not.toBeNull()
     expect(builtin?.content).toContain('99-Assets/YOLO/skills')
     expect(builtin?.content).not.toContain(
-      'fs_create_file { path: "YOLO/skills/<skill-id>.md"',
+      'fs_write { path: "YOLO/skills/<skill-name>.md"',
     )
   })
 
@@ -22,7 +22,7 @@ describe('builtin skills', () => {
       skillsDir: '99-Assets/YOLO/skills',
     })
     const outputFormat = skills.find(
-      (skill) => skill.id === 'obsidian-output-format',
+      (skill) => skill.name === 'obsidian-output-format',
     )
 
     expect(outputFormat).not.toBeUndefined()

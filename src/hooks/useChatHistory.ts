@@ -11,6 +11,7 @@ import {
 } from '../constants'
 import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
+import { usePlugin } from '../contexts/plugin-context'
 import { useSettings } from '../contexts/settings-context'
 import { executeSingleTurn } from '../core/ai/single-turn'
 import {
@@ -142,6 +143,7 @@ type UseChatHistory = {
 
 export function useChatHistory(): UseChatHistory {
   const app = useApp()
+  const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
   const { language } = useLanguage()
   const chatManager = useChatManager()
@@ -382,10 +384,11 @@ export function useChatHistory(): UseChatHistory {
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await chatManager.deleteChat(id)
+      plugin.getAgentService().evictSystemPromptSnapshot(id)
       emitChatHistoryUpdated()
       await fetchChatList()
     },
-    [chatManager, emitChatHistoryUpdated, fetchChatList],
+    [chatManager, plugin, emitChatHistoryUpdated, fetchChatList],
   )
 
   const getChatMessagesById = useCallback(
@@ -771,6 +774,7 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         selectedSkills: message.selectedSkills ?? [],
         selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
+        timeContext: message.timeContext,
       }
     case 'assistant':
       return {
@@ -812,6 +816,7 @@ const deserializeChatMessage = (
         selectedSkills: message.selectedSkills ?? [],
         selectedModelIds: message.selectedModelIds ?? [],
         reasoningLevel: message.reasoningLevel,
+        timeContext: message.timeContext,
       }
     }
     case 'assistant':

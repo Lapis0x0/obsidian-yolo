@@ -49,6 +49,7 @@ import {
 import {
   type TextEditOperation,
   type TextEditPlan,
+  buildReplaceMatchErrorHint,
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
 } from '../edits/textEditEngine'
@@ -106,7 +107,6 @@ const DEFAULT_READ_START_LINE = 1
 const DEFAULT_READ_MAX_LINES = 50
 const MAX_READ_MAX_LINES = 2000
 const MAX_READ_LINE_INDEX = 1_000_000
-const MAX_BATCH_WRITE_ITEMS = 50
 const MAX_RAG_SNIPPET_CHARS = 500
 const RAG_FETCH_LIMIT_MAX = 300
 
@@ -116,10 +116,9 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   'fs_read',
   'context_compact',
   'fs_edit',
-  'fs_create_file',
-  'fs_delete_file',
+  'fs_write',
+  'fs_delete',
   'fs_create_dir',
-  'fs_delete_dir',
   'fs_move',
   'memory_add',
   'memory_update',
@@ -172,23 +171,20 @@ type FsReadOperation =
       maxLines: number
       modality?: FsReadModality
     }
-type FsFileOpAction =
-  | 'create_file'
-  | 'delete_file'
-  | 'create_dir'
-  | 'delete_dir'
-  | 'move'
+type FsFileOpAction = 'write' | 'delete' | 'create_dir' | 'move'
+
+type LocalToolCallResultMetadata = {
+  editSummary?: ToolEditSummary
+  appliedAt?: number
+  truncated?: { totalBytes: number; omittedBytes: number }
+}
 
 type LocalToolCallResult =
   | {
       status: ToolCallResponseStatus.Success
       text: string
       contentParts?: ContentPart[]
-      metadata?: {
-        editSummary?: ToolEditSummary
-        appliedAt?: number
-        truncated?: { totalBytes: number; omittedBytes: number }
-      }
+      metadata?: LocalToolCallResultMetadata
     }
   | {
       status: ToolCallResponseStatus.Rejected
@@ -214,6 +210,8 @@ type FsResultItem = {
   action: FsFileOpAction
   target: string
   message: string
+  /** For fs_delete: whether the deleted target was a file or a folder. */
+  targetKind?: 'file' | 'folder'
 }
 
 type FsEditReviewResult =
@@ -229,10 +227,9 @@ type FsEditReviewResult =
     }
 
 const LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION = {
-  fs_create_file: 'create_file',
-  fs_delete_file: 'delete_file',
+  fs_write: 'write',
+  fs_delete: 'delete',
   fs_create_dir: 'create_dir',
-  fs_delete_dir: 'delete_dir',
   fs_move: 'move',
 } as const
 
@@ -641,7 +638,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_edit',
       description:
-        'Apply one or more text edit operations within a single existing file, atomically against one snapshot. Prefer this tool when modifying content in an existing file. Supports replace, replace_lines, insert_after, and append. To perform multiple edits on the same file, prefer bundling them via the "operations" array in a single fs_edit call rather than emitting multiple parallel fs_edit calls — bundled edits share one review, one write, and are applied against a single snapshot so earlier edits cannot invalidate later ones.',
+        'Apply a single targeted text edit within an existing file. Prefer this tool when modifying content in an existing file. Two ways to locate the edit, choose exactly one: for an exact-text edit, provide oldText (the text to find, which must match the file exactly once) and newText; for a line-range edit, provide startLine and endLine (1-based inclusive) and newText. Do not provide both oldText and startLine/endLine. To make several edits in the same file, emit multiple fs_edit calls — the system automatically merges edits targeting the same file into one atomic review and write, so earlier edits cannot invalidate later ones.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -649,64 +646,33 @@ export function getLocalFileTools(options?: {
             type: 'string',
             description: 'Vault-relative file path.',
           },
-          operations: {
-            type: 'array',
+          oldText: {
+            type: 'string',
             description:
-              'Preferred for multiple edits to the same file: an array of text edit operations applied atomically against a single snapshot. Each item uses the same shape as "operation". If multiple replace_lines ops are present their line ranges must not overlap; they are automatically applied in descending order so earlier edits do not shift later line numbers.',
-            minItems: 1,
-            items: { type: 'object' },
+              'Exact-text mode: the existing text to find and replace. Must match the file exactly once. Do not combine with startLine/endLine.',
           },
-          operation: {
-            type: 'object',
+          newText: {
+            type: 'string',
+            description: 'Replacement text. Required in both modes.',
+          },
+          startLine: {
+            type: 'integer',
             description:
-              'A single text edit operation to apply. Supports replace, replace_lines, insert_after, and append. For multiple edits to the same file, prefer the "operations" array instead.',
-            properties: {
-              type: {
-                type: 'string',
-                enum: ['replace', 'replace_lines', 'insert_after', 'append'],
-              },
-              oldText: {
-                type: 'string',
-                description: 'Required for replace.',
-              },
-              newText: {
-                type: 'string',
-                description: 'Required for replace and replace_lines.',
-              },
-              startLine: {
-                type: 'integer',
-                description:
-                  'Required for replace_lines. 1-based inclusive start line.',
-              },
-              endLine: {
-                type: 'integer',
-                description:
-                  'Required for replace_lines. 1-based inclusive end line.',
-              },
-              anchor: {
-                type: 'string',
-                description: 'Required for insert_after.',
-              },
-              content: {
-                type: 'string',
-                description: 'Required for insert_after and append.',
-              },
-              expectedOccurrences: {
-                type: 'integer',
-                description:
-                  'Optional positive integer match count for replace and insert_after. Defaults to 1.',
-              },
-            },
-            required: ['type'],
+              'Line-range mode: 1-based inclusive start line. Provide together with endLine; do not combine with oldText.',
+          },
+          endLine: {
+            type: 'integer',
+            description:
+              'Line-range mode: 1-based inclusive end line. Provide together with startLine; do not combine with oldText.',
           },
         },
-        required: ['path'],
+        required: ['path', 'newText'],
       },
     },
     {
-      name: 'fs_create_file',
+      name: 'fs_write',
       description:
-        'Create file(s) in the vault. Use path/content for a single file or items[] for batch creation.',
+        'Create a file, or overwrite an existing file with new full content. Missing parent folders are created automatically. Use fs_edit instead when you only need to change part of an existing file.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -718,69 +684,34 @@ export function getLocalFileTools(options?: {
             type: 'string',
             description: 'Full file content.',
           },
-          items: {
-            type: 'array',
-            minItems: 1,
-            items: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'Vault-relative file path.',
-                },
-                content: {
-                  type: 'string',
-                  description: 'Full file content.',
-                },
-              },
-              required: ['path', 'content'],
-            },
-          },
-          dryRun: {
-            type: 'boolean',
-            description:
-              'If true, validate and preview result without applying changes.',
-          },
         },
+        required: ['path', 'content'],
       },
     },
     {
-      name: 'fs_delete_file',
+      name: 'fs_delete',
       description:
-        'Delete file(s) in the vault. Use path for a single file or items[] for batch deletion.',
+        'Delete a file or folder in the vault. The target kind is detected automatically. For a non-empty folder set recursive=true. Deleted items go to the trash; folder deletions cannot be undone from the chat (recover them via the system/Obsidian trash).',
       inputSchema: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description: 'Vault-relative file path.',
+            description: 'Vault-relative file or folder path.',
           },
-          items: {
-            type: 'array',
-            minItems: 1,
-            items: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'Vault-relative file path.',
-                },
-              },
-              required: ['path'],
-            },
-          },
-          dryRun: {
+          recursive: {
             type: 'boolean',
             description:
-              'If true, validate and preview result without applying changes.',
+              'Folders only. Default false; when false a non-empty folder cannot be deleted. Ignored for files.',
           },
         },
+        required: ['path'],
       },
     },
     {
       name: 'fs_create_dir',
       description:
-        'Create folder(s) in the vault. Use path for a single folder or items[] for batch creation.',
+        'Create an empty folder in the vault. Missing parent folders are created automatically.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -788,75 +719,13 @@ export function getLocalFileTools(options?: {
             type: 'string',
             description: 'Vault-relative folder path.',
           },
-          items: {
-            type: 'array',
-            minItems: 1,
-            items: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'Vault-relative folder path.',
-                },
-              },
-              required: ['path'],
-            },
-          },
-          dryRun: {
-            type: 'boolean',
-            description:
-              'If true, validate and preview result without applying changes.',
-          },
         },
-      },
-    },
-    {
-      name: 'fs_delete_dir',
-      description:
-        'Delete folder(s) in the vault. Use path for a single folder or items[] for batch deletion.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative folder path.',
-          },
-          recursive: {
-            type: 'boolean',
-            description:
-              'Default false; when false non-empty folders cannot be deleted.',
-          },
-          items: {
-            type: 'array',
-            minItems: 1,
-            items: {
-              type: 'object',
-              properties: {
-                path: {
-                  type: 'string',
-                  description: 'Vault-relative folder path.',
-                },
-                recursive: {
-                  type: 'boolean',
-                  description:
-                    'Default false; when false non-empty folders cannot be deleted.',
-                },
-              },
-              required: ['path'],
-            },
-          },
-          dryRun: {
-            type: 'boolean',
-            description:
-              'If true, validate and preview result without applying changes.',
-          },
-        },
+        required: ['path'],
       },
     },
     {
       name: 'fs_move',
-      description:
-        'Move or rename file/folder path(s) in the vault. Use oldPath/newPath for a single move or items[] for batch moves.',
+      description: 'Move or rename a file/folder path in the vault.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -868,30 +737,8 @@ export function getLocalFileTools(options?: {
             type: 'string',
             description: 'Vault-relative destination path.',
           },
-          items: {
-            type: 'array',
-            minItems: 1,
-            items: {
-              type: 'object',
-              properties: {
-                oldPath: {
-                  type: 'string',
-                  description: 'Vault-relative source path.',
-                },
-                newPath: {
-                  type: 'string',
-                  description: 'Vault-relative destination path.',
-                },
-              },
-              required: ['oldPath', 'newPath'],
-            },
-          },
-          dryRun: {
-            type: 'boolean',
-            description:
-              'If true, validate and preview result without applying changes.',
-          },
         },
+        required: ['oldPath', 'newPath'],
       },
     },
     {
@@ -996,19 +843,17 @@ export function getLocalFileTools(options?: {
     {
       name: 'open_skill',
       description:
-        'Load a lite skill from the configured skills directory by id or name and return full markdown content.',
+        'Load a lite skill from the configured skills directory by name and return full markdown content.',
       inputSchema: {
         type: 'object',
         properties: {
-          id: {
-            type: 'string',
-            description: 'Skill id from frontmatter.',
-          },
           name: {
             type: 'string',
-            description: 'Skill name from frontmatter.',
+            description:
+              'Skill name (the kebab-case identifier from frontmatter).',
           },
         },
+        required: ['name'],
       },
     },
     {
@@ -1351,24 +1196,6 @@ const getRecordArrayArg = (
     }
     return item as Record<string, unknown>
   })
-}
-
-const getFsFileOpItems = ({
-  args,
-  itemFactory,
-}: {
-  args: Record<string, unknown>
-  itemFactory: () => Record<string, unknown>
-}): Record<string, unknown>[] => {
-  if (args.items !== undefined) {
-    const items = getRecordArrayArg(args, 'items')
-    if (items.length === 0) {
-      throw new Error('items must contain at least one entry.')
-    }
-    return items
-  }
-
-  return [itemFactory()]
 }
 
 const assertContentSize = (content: string): void => {
@@ -1884,67 +1711,58 @@ const asPositiveInteger = (value: unknown): number | undefined => {
   return value
 }
 
-const parseTextEditOperation = (
-  operation: Record<string, unknown>,
+// Single source of truth for translating the flat model-facing fs_edit
+// arguments into an internal typed TextEditOperation. The edit mode is
+// inferred implicitly from which fields are present:
+//   - oldText present (and no startLine/endLine) -> exact replace
+//   - startLine + endLine present (and no oldText) -> line-range replace
+// Providing both groups, neither group, or malformed fields is rejected.
+const parseFlatFsEditArgs = (
+  args: Record<string, unknown>,
 ): TextEditOperation => {
-  const type = asOptionalString(operation.type).trim().toLowerCase()
+  const hasOldText = args.oldText !== undefined && args.oldText !== null
+  const hasStartLine = args.startLine !== undefined && args.startLine !== null
+  const hasEndLine = args.endLine !== undefined && args.endLine !== null
+  const hasLineRange = hasStartLine || hasEndLine
 
-  if (type === 'replace') {
-    const oldText = getTextArg(operation, 'oldText')
+  if (hasOldText && hasLineRange) {
+    throw new Error(
+      'Provide either oldText (exact replace) or startLine+endLine (line range), not both.',
+    )
+  }
+  if (!hasOldText && !hasLineRange) {
+    throw new Error(
+      'Provide either oldText (exact replace) or startLine+endLine (line range).',
+    )
+  }
+
+  if (hasOldText) {
+    const oldText = getTextArg(args, 'oldText')
     if (oldText.length === 0) {
-      throw new Error(`operation.oldText must not be empty.`)
+      throw new Error('oldText must not be empty.')
     }
-
     return {
       type: 'replace',
       oldText,
-      newText: getTextArg(operation, 'newText'),
-      expectedOccurrences: asPositiveInteger(operation.expectedOccurrences),
+      newText: getTextArg(args, 'newText'),
     }
   }
 
-  if (type === 'replace_lines') {
-    const startLine = asPositiveInteger(operation.startLine)
-    if (!startLine) {
-      throw new Error('operation.startLine must be a positive integer.')
-    }
-    const endLine = asPositiveInteger(operation.endLine)
-    if (!endLine) {
-      throw new Error('operation.endLine must be a positive integer.')
-    }
-
-    return {
-      type: 'replace_lines',
-      startLine,
-      endLine,
-      newText: getTextArg(operation, 'newText'),
-    }
+  const startLine = asPositiveInteger(args.startLine)
+  if (!startLine) {
+    throw new Error('startLine must be a positive integer.')
+  }
+  const endLine = asPositiveInteger(args.endLine)
+  if (!endLine) {
+    throw new Error('endLine must be a positive integer.')
   }
 
-  if (type === 'insert_after') {
-    const anchor = getTextArg(operation, 'anchor')
-    if (anchor.length === 0) {
-      throw new Error(`operation.anchor must not be empty.`)
-    }
-
-    return {
-      type: 'insert_after',
-      anchor,
-      content: getTextArg(operation, 'content'),
-      expectedOccurrences: asPositiveInteger(operation.expectedOccurrences),
-    }
+  return {
+    type: 'replace_lines',
+    startLine,
+    endLine,
+    newText: getTextArg(args, 'newText'),
   }
-
-  if (type === 'append') {
-    return {
-      type: 'append',
-      content: getTextArg(operation, 'content'),
-    }
-  }
-
-  throw new Error(
-    `operation.type must be one of: replace, replace_lines, insert_after, append.`,
-  )
 }
 
 const coerceOperationObject = (operation: unknown): Record<string, unknown> => {
@@ -1975,21 +1793,21 @@ const coerceOperationObject = (operation: unknown): Record<string, unknown> => {
 }
 
 const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
+  // Gateway-merged path: each element is one entry's flat args object.
   const operationsValue = args.operations
   if (Array.isArray(operationsValue)) {
     if (operationsValue.length === 0) {
       throw new Error('operations array must contain at least one operation.')
     }
     const operations = operationsValue.map((entry) =>
-      parseTextEditOperation(coerceOperationObject(entry)),
+      parseFlatFsEditArgs(coerceOperationObject(entry)),
     )
     return { operations }
   }
 
-  const operation = coerceOperationObject(args.operation)
-
+  // Model-facing path: the flat args themselves describe a single edit.
   return {
-    operations: [parseTextEditOperation(operation)],
+    operations: [parseFlatFsEditArgs(args)],
   }
 }
 
@@ -2370,12 +2188,103 @@ export function parseLocalFsActionFromToolArgs({
   return null
 }
 
+/**
+ * Build an editSummary (+ chat-undo snapshot + review snapshot) for a
+ * file content change (create/overwrite/delete) and accumulate it into a
+ * single-file result. Returns the metadata for the tool response.
+ */
+const buildFileChangeSummary = async ({
+  app,
+  settings,
+  path,
+  beforeContent,
+  afterContent,
+  beforeExists,
+  afterExists,
+  conversationId,
+  roundId,
+  toolCallId,
+  appliedAt,
+}: {
+  app: App
+  settings?: YoloSettings
+  path: string
+  beforeContent: string
+  afterContent: string
+  beforeExists: boolean
+  afterExists: boolean
+  conversationId?: string
+  roundId?: string
+  toolCallId?: string
+  appliedAt: number
+}): Promise<LocalToolCallResultMetadata | undefined> => {
+  let editSummary = createToolEditSummary({
+    path,
+    beforeContent,
+    afterContent,
+    beforeExists,
+    afterExists,
+    reviewRoundId: roundId,
+  })
+
+  if (toolCallId && editSummary) {
+    editUndoSnapshotStore.set({
+      toolCallId,
+      path,
+      beforeContent,
+      afterContent,
+      beforeExists,
+      afterExists,
+      appliedAt,
+    })
+  }
+
+  if (conversationId && roundId && editSummary) {
+    const snapshot = await upsertEditReviewSnapshot({
+      app,
+      conversationId,
+      roundId,
+      filePath: path,
+      beforeContent,
+      afterContent,
+      beforeExists,
+      afterExists,
+      settings,
+    })
+    editSummary = {
+      ...editSummary,
+      files: editSummary.files.map((file) => ({
+        ...file,
+        addedLines: snapshot.addedLines,
+        removedLines: snapshot.removedLines,
+        reviewRoundId: roundId,
+      })),
+      totalAddedLines: snapshot.addedLines,
+      totalRemovedLines: snapshot.removedLines,
+    }
+  }
+
+  if (!editSummary) {
+    return undefined
+  }
+
+  return {
+    editSummary: {
+      files: editSummary.files,
+      totalFiles: editSummary.files.length,
+      totalAddedLines: editSummary.totalAddedLines,
+      totalRemovedLines: editSummary.totalRemovedLines,
+      undoStatus: deriveToolEditUndoStatus(editSummary.files),
+    },
+    appliedAt,
+  }
+}
+
 const executeFsFileOps = async ({
   app,
   settings,
   action,
-  items,
-  dryRun,
+  item,
   signal,
   tool,
   conversationId,
@@ -2385,309 +2294,246 @@ const executeFsFileOps = async ({
   app: App
   settings?: YoloSettings
   action: FsFileOpAction
-  items: Record<string, unknown>[]
-  dryRun: boolean
+  item: Record<string, unknown>
   signal?: AbortSignal
   tool: string
   conversationId?: string
   roundId?: string
   toolCallId?: string
 }): Promise<LocalToolCallResult> => {
-  if (items.length === 0) {
-    throw new Error('items cannot be empty.')
-  }
-  if (items.length > MAX_BATCH_WRITE_ITEMS) {
-    throw new Error(
-      `items supports up to ${MAX_BATCH_WRITE_ITEMS} operations per call.`,
-    )
+  if (signal?.aborted) {
+    return { status: ToolCallResponseStatus.Aborted }
   }
 
-  const results: FsResultItem[] = []
-  let summaryFiles: ToolEditSummary['files'] = []
-  let totalAddedLines = 0
-  let totalRemovedLines = 0
   const appliedAt = Date.now()
 
-  for (const item of items) {
-    if (signal?.aborted) {
-      return { status: ToolCallResponseStatus.Aborted }
+  try {
+    if (action === 'write') {
+      const path = validateVaultPath(getTextArg(item, 'path'))
+      const content = getTextArg(item, 'content')
+      assertContentSize(content)
+
+      const existing = app.vault.getAbstractFileByPath(path)
+
+      if (existing instanceof TFolder) {
+        throw new Error(`Path is a folder, cannot overwrite as a file: ${path}`)
+      }
+
+      let result: FsResultItem
+      let metadata: LocalToolCallResultMetadata | undefined
+
+      if (existing instanceof TFile) {
+        // Overwrite. Guard against pulling an oversized old file into the
+        // diff/undo snapshot: when the existing content exceeds the size
+        // limit we still overwrite, but skip the snapshot/editSummary so we
+        // don't blow up memory with a giant before-content.
+        const overSized = existing.stat.size > MAX_FILE_SIZE_BYTES
+        const beforeContent = overSized ? '' : await app.vault.read(existing)
+        await app.vault.modify(existing, content)
+        if (!overSized) {
+          metadata = await buildFileChangeSummary({
+            app,
+            settings,
+            path,
+            beforeContent,
+            afterContent: content,
+            beforeExists: true,
+            afterExists: true,
+            conversationId,
+            roundId,
+            toolCallId,
+            appliedAt,
+          })
+        }
+        result = {
+          ok: true,
+          action,
+          target: path,
+          message: overSized
+            ? 'Overwrote file (existing content too large for undo snapshot).'
+            : 'Overwrote file.',
+        }
+      } else {
+        await ensureParentFolderExists(app, path)
+        await app.vault.create(path, content)
+        metadata = await buildFileChangeSummary({
+          app,
+          settings,
+          path,
+          beforeContent: '',
+          afterContent: content,
+          beforeExists: false,
+          afterExists: true,
+          conversationId,
+          roundId,
+          toolCallId,
+          appliedAt,
+        })
+        result = {
+          ok: true,
+          action,
+          target: path,
+          message: 'Created file.',
+        }
+      }
+
+      return {
+        status: ToolCallResponseStatus.Success,
+        text: formatJsonResult({ tool, action, results: [result] }),
+        metadata,
+      }
     }
 
-    try {
-      if (action === 'create_file') {
-        const path = validateVaultPath(getTextArg(item, 'path'))
-        const content = getTextArg(item, 'content')
-        assertContentSize(content)
-
-        const existing = app.vault.getAbstractFileByPath(path)
-        if (existing) {
-          throw new Error(`Path already exists: ${path}`)
-        }
-        await ensureParentFolderExists(app, path)
-
-        if (!dryRun) {
-          await app.vault.create(path, content)
-        }
-
-        if (!dryRun) {
-          let editSummary = createToolEditSummary({
-            path,
-            beforeContent: '',
-            afterContent: content,
-            beforeExists: false,
-            afterExists: true,
-            reviewRoundId: roundId,
-          })
-
-          if (toolCallId && editSummary) {
-            editUndoSnapshotStore.set({
-              toolCallId,
-              path,
-              beforeContent: '',
-              afterContent: content,
-              beforeExists: false,
-              afterExists: true,
-              appliedAt,
-            })
-          }
-
-          if (conversationId && roundId && editSummary) {
-            const snapshot = await upsertEditReviewSnapshot({
-              app,
-              conversationId,
-              roundId,
-              filePath: path,
-              beforeContent: '',
-              afterContent: content,
-              beforeExists: false,
-              afterExists: true,
-              settings,
-            })
-            editSummary = {
-              ...editSummary,
-              files: editSummary.files.map((file) => ({
-                ...file,
-                addedLines: snapshot.addedLines,
-                removedLines: snapshot.removedLines,
-                reviewRoundId: roundId,
-              })),
-              totalAddedLines: snapshot.addedLines,
-              totalRemovedLines: snapshot.removedLines,
-            }
-          }
-
-          if (editSummary) {
-            summaryFiles = [...summaryFiles, ...editSummary.files]
-            totalAddedLines += editSummary.totalAddedLines
-            totalRemovedLines += editSummary.totalRemovedLines
-          }
-        }
-
-        results.push({
-          ok: true,
-          action,
-          target: path,
-          message: dryRun ? 'Would create file.' : 'Created file.',
-        })
-        continue
+    if (action === 'delete') {
+      const path = validateVaultPath(getTextArg(item, 'path'))
+      const recursive = getOptionalBooleanArg(item, 'recursive') ?? false
+      const existing = app.vault.getAbstractFileByPath(path)
+      if (!existing) {
+        throw new Error(`Path not found: ${path}`)
       }
 
-      if (action === 'delete_file') {
-        const path = validateVaultPath(getTextArg(item, 'path'))
-        const existing = app.vault.getAbstractFileByPath(path)
-        if (!existing || !(existing instanceof TFile)) {
-          throw new Error(`File not found: ${path}`)
-        }
+      if (existing instanceof TFile) {
         const content = await app.vault.read(existing)
-
-        if (!dryRun) {
-          await app.fileManager.trashFile(existing)
-        }
-
-        if (!dryRun) {
-          let editSummary = createToolEditSummary({
-            path,
-            beforeContent: content,
-            afterContent: '',
-            beforeExists: true,
-            afterExists: false,
-            reviewRoundId: roundId,
-          })
-
-          if (toolCallId && editSummary) {
-            editUndoSnapshotStore.set({
-              toolCallId,
-              path,
-              beforeContent: content,
-              afterContent: '',
-              beforeExists: true,
-              afterExists: false,
-              appliedAt,
-            })
-          }
-
-          if (conversationId && roundId && editSummary) {
-            const snapshot = await upsertEditReviewSnapshot({
-              app,
-              conversationId,
-              roundId,
-              filePath: path,
-              beforeContent: content,
-              afterContent: '',
-              beforeExists: true,
-              afterExists: false,
-              settings,
-            })
-            editSummary = {
-              ...editSummary,
-              files: editSummary.files.map((file) => ({
-                ...file,
-                addedLines: snapshot.addedLines,
-                removedLines: snapshot.removedLines,
-                reviewRoundId: roundId,
-              })),
-              totalAddedLines: snapshot.addedLines,
-              totalRemovedLines: snapshot.removedLines,
-            }
-          }
-
-          if (editSummary) {
-            summaryFiles = [...summaryFiles, ...editSummary.files]
-            totalAddedLines += editSummary.totalAddedLines
-            totalRemovedLines += editSummary.totalRemovedLines
-          }
-        }
-
-        results.push({
-          ok: true,
-          action,
-          target: path,
-          message: dryRun ? 'Would delete file.' : 'Deleted file.',
+        await app.fileManager.trashFile(existing)
+        const metadata = await buildFileChangeSummary({
+          app,
+          settings,
+          path,
+          beforeContent: content,
+          afterContent: '',
+          beforeExists: true,
+          afterExists: false,
+          conversationId,
+          roundId,
+          toolCallId,
+          appliedAt,
         })
-        continue
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool,
+            action,
+            results: [
+              {
+                ok: true,
+                action,
+                target: path,
+                message: 'Deleted file.',
+                targetKind: 'file',
+              } satisfies FsResultItem,
+            ],
+          }),
+          metadata,
+        }
       }
 
-      if (action === 'create_dir') {
-        const path = validateVaultPath(getTextArg(item, 'path'))
-        const existing = app.vault.getAbstractFileByPath(path)
-        if (existing) {
-          throw new Error(`Path already exists: ${path}`)
-        }
-        await ensureParentFolderExists(app, path)
-
-        if (!dryRun) {
-          await app.vault.createFolder(path)
-        }
-
-        results.push({
-          ok: true,
-          action,
-          target: path,
-          message: dryRun ? 'Would create folder.' : 'Created folder.',
-        })
-        continue
-      }
-
-      if (action === 'delete_dir') {
-        const path = validateVaultPath(getTextArg(item, 'path'))
-        const recursive = getOptionalBooleanArg(item, 'recursive') ?? false
-        const existing = app.vault.getAbstractFileByPath(path)
-        if (!existing || !(existing instanceof TFolder)) {
-          throw new Error(`Folder not found: ${path}`)
-        }
+      if (existing instanceof TFolder) {
         if (!recursive && existing.children.length > 0) {
           throw new Error(
             `Folder is not empty: ${path}. Set recursive=true to delete non-empty folders.`,
           )
         }
-
-        if (!dryRun) {
-          await app.fileManager.trashFile(existing)
+        // Folder deletions only move to trash — no editSummary / chat-undo
+        // snapshot. Recovery relies on the system/Obsidian trash.
+        await app.fileManager.trashFile(existing)
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool,
+            action,
+            results: [
+              {
+                ok: true,
+                action,
+                target: path,
+                message: 'Deleted folder.',
+                targetKind: 'folder',
+              } satisfies FsResultItem,
+            ],
+          }),
         }
-
-        results.push({
-          ok: true,
-          action,
-          target: path,
-          message: dryRun ? 'Would delete folder.' : 'Deleted folder.',
-        })
-        continue
       }
 
-      if (action === 'move') {
-        const oldPath = validateVaultPath(getTextArg(item, 'oldPath'))
-        const newPath = validateVaultPath(getTextArg(item, 'newPath'))
-
-        if (oldPath === newPath) {
-          throw new Error('oldPath and newPath must be different.')
-        }
-
-        const source = app.vault.getAbstractFileByPath(oldPath)
-        if (!source) {
-          throw new Error(`Source path not found: ${oldPath}`)
-        }
-
-        const targetExists = app.vault.getAbstractFileByPath(newPath)
-        if (targetExists) {
-          throw new Error(`Target path already exists: ${newPath}`)
-        }
-        await ensureParentFolderExists(app, newPath)
-
-        if (
-          source instanceof TFolder &&
-          (newPath === source.path || newPath.startsWith(`${source.path}/`))
-        ) {
-          throw new Error('Cannot move a folder into itself or its subfolder.')
-        }
-
-        if (!dryRun) {
-          await app.fileManager.renameFile(source, newPath)
-        }
-
-        results.push({
-          ok: true,
-          action,
-          target: `${oldPath} -> ${newPath}`,
-          message: dryRun ? 'Would move path.' : 'Moved path.',
-        })
-        continue
-      }
-
-      throw new Error(`Unsupported fs action: ${action}`)
-    } catch (error) {
-      results.push({
-        ok: false,
-        action,
-        target:
-          action === 'move'
-            ? `${asOptionalString(item.oldPath)} -> ${asOptionalString(item.newPath)}`
-            : asOptionalString(item.path),
-        message: asErrorMessage(error),
-      })
+      throw new Error(`Unsupported delete target: ${path}`)
     }
-  }
 
-  return {
-    status: ToolCallResponseStatus.Success,
-    text: formatJsonResult({
-      tool,
-      action,
-      dryRun,
-      results,
-    }),
-    metadata:
-      dryRun || summaryFiles.length === 0
-        ? undefined
-        : {
-            editSummary: {
-              files: summaryFiles,
-              totalFiles: summaryFiles.length,
-              totalAddedLines,
-              totalRemovedLines,
-              undoStatus: deriveToolEditUndoStatus(summaryFiles),
-            },
-            appliedAt,
-          },
+    if (action === 'create_dir') {
+      const path = validateVaultPath(getTextArg(item, 'path'))
+      const existing = app.vault.getAbstractFileByPath(path)
+      if (existing) {
+        throw new Error(`Path already exists: ${path}`)
+      }
+      await ensureParentFolderExists(app, path)
+      await app.vault.createFolder(path)
+
+      return {
+        status: ToolCallResponseStatus.Success,
+        text: formatJsonResult({
+          tool,
+          action,
+          results: [
+            {
+              ok: true,
+              action,
+              target: path,
+              message: 'Created folder.',
+            } satisfies FsResultItem,
+          ],
+        }),
+      }
+    }
+
+    if (action === 'move') {
+      const oldPath = validateVaultPath(getTextArg(item, 'oldPath'))
+      const newPath = validateVaultPath(getTextArg(item, 'newPath'))
+
+      if (oldPath === newPath) {
+        throw new Error('oldPath and newPath must be different.')
+      }
+
+      const source = app.vault.getAbstractFileByPath(oldPath)
+      if (!source) {
+        throw new Error(`Source path not found: ${oldPath}`)
+      }
+
+      const targetExists = app.vault.getAbstractFileByPath(newPath)
+      if (targetExists) {
+        throw new Error(`Target path already exists: ${newPath}`)
+      }
+      await ensureParentFolderExists(app, newPath)
+
+      if (
+        source instanceof TFolder &&
+        (newPath === source.path || newPath.startsWith(`${source.path}/`))
+      ) {
+        throw new Error('Cannot move a folder into itself or its subfolder.')
+      }
+
+      await app.fileManager.renameFile(source, newPath)
+
+      return {
+        status: ToolCallResponseStatus.Success,
+        text: formatJsonResult({
+          tool,
+          action,
+          results: [
+            {
+              ok: true,
+              action,
+              target: `${oldPath} -> ${newPath}`,
+              message: 'Moved path.',
+            } satisfies FsResultItem,
+          ],
+        }),
+      }
+    }
+
+    throw new Error(`Unsupported fs action: ${action}`)
+  } catch (error) {
+    return {
+      status: ToolCallResponseStatus.Error,
+      error: asErrorMessage(error),
+    }
   }
 }
 
@@ -2729,10 +2575,10 @@ export async function callLocalFileTool({
   }
 
   try {
-    // Final defense: reject any fs_* call whose path args (including batch
-    // items[]) fall outside the agent's workspace scope. The gateway performs
-    // the same check up front for UI Rejected status, but we re-validate here
-    // so manual-approval / direct-call code paths cannot bypass the constraint.
+    // Final defense: reject any fs_* call whose path args fall outside the
+    // agent's workspace scope. The gateway performs the same check up front
+    // for UI Rejected status, but we re-validate here so manual-approval /
+    // direct-call code paths cannot bypass the constraint.
     if (workspaceScope?.enabled) {
       const offendingPath = findPathOutsideScope(toolName, args, workspaceScope)
       if (offendingPath !== null) {
@@ -3509,6 +3355,19 @@ export async function callLocalFileTool({
         })
 
         if (materialized.errors.length > 0) {
+          const replaceFailure = materialized.failures?.find(
+            (failure) =>
+              failure.operation.type === 'replace' &&
+              failure.kind === 'no_match',
+          )
+          if (replaceFailure && replaceFailure.operation.type === 'replace') {
+            throw new Error(
+              `${path}: ${buildReplaceMatchErrorHint({
+                content,
+                oldText: replaceFailure.operation.oldText,
+              })}`,
+            )
+          }
           throw new Error(`${path}: ${materialized.errors[0]}`)
         }
 
@@ -3601,7 +3460,6 @@ export async function callLocalFileTool({
               type: result.operation.type,
               changed: result.changed,
               actualOccurrences: result.actualOccurrences,
-              expectedOccurrences: result.expectedOccurrences,
               matchMode: result.matchMode,
             })),
             changed: content !== appliedContent,
@@ -3614,41 +3472,35 @@ export async function callLocalFileTool({
         }
       }
 
-      case 'fs_create_file': {
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+      case 'fs_write': {
         return executeFsFileOps({
           app,
           settings,
-          action: 'create_file',
-          items: getFsFileOpItems({
-            args,
-            itemFactory: () => ({
-              path: getTextArg(args, 'path'),
-              content: getTextArg(args, 'content'),
-            }),
-          }),
-          dryRun,
+          action: 'write',
+          item: {
+            path: getTextArg(args, 'path'),
+            content: getTextArg(args, 'content'),
+          },
           signal,
-          tool: 'fs_create_file',
+          tool: 'fs_write',
           conversationId,
           roundId,
           toolCallId,
         })
       }
 
-      case 'fs_delete_file': {
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
+      case 'fs_delete': {
+        const recursive = getOptionalBooleanArg(args, 'recursive')
         return executeFsFileOps({
           app,
           settings,
-          action: 'delete_file',
-          items: getFsFileOpItems({
-            args,
-            itemFactory: () => ({ path: getTextArg(args, 'path') }),
-          }),
-          dryRun,
+          action: 'delete',
+          item: {
+            path: getTextArg(args, 'path'),
+            ...(recursive === undefined ? {} : { recursive }),
+          },
           signal,
-          tool: 'fs_delete_file',
+          tool: 'fs_delete',
           conversationId,
           roundId,
           toolCallId,
@@ -3656,52 +3508,23 @@ export async function callLocalFileTool({
       }
 
       case 'fs_create_dir': {
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
         return executeFsFileOps({
           app,
           action: 'create_dir',
-          items: getFsFileOpItems({
-            args,
-            itemFactory: () => ({ path: getTextArg(args, 'path') }),
-          }),
-          dryRun,
+          item: { path: getTextArg(args, 'path') },
           signal,
           tool: 'fs_create_dir',
         })
       }
 
-      case 'fs_delete_dir': {
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
-        const recursive = getOptionalBooleanArg(args, 'recursive')
-        return executeFsFileOps({
-          app,
-          action: 'delete_dir',
-          items: getFsFileOpItems({
-            args,
-            itemFactory: () => ({
-              path: getTextArg(args, 'path'),
-              ...(recursive === undefined ? {} : { recursive }),
-            }),
-          }),
-          dryRun,
-          signal,
-          tool: 'fs_delete_dir',
-        })
-      }
-
       case 'fs_move': {
-        const dryRun = getOptionalBooleanArg(args, 'dryRun') ?? false
         return executeFsFileOps({
           app,
           action: 'move',
-          items: getFsFileOpItems({
-            args,
-            itemFactory: () => ({
-              oldPath: getTextArg(args, 'oldPath'),
-              newPath: getTextArg(args, 'newPath'),
-            }),
-          }),
-          dryRun,
+          item: {
+            oldPath: getTextArg(args, 'oldPath'),
+            newPath: getTextArg(args, 'newPath'),
+          },
           signal,
           tool: 'fs_move',
         })
@@ -3922,16 +3745,15 @@ export async function callLocalFileTool({
       }
 
       case 'open_skill': {
-        const id = getOptionalTextArg(args, 'id')?.trim()
         const name = getOptionalTextArg(args, 'name')?.trim()
 
-        if (!id && !name) {
-          throw new Error('Either id or name is required.')
+        if (!name) {
+          throw new Error('name is required.')
         }
 
-        const skill = await getLiteSkillDocument({ app, id, name, settings })
+        const skill = await getLiteSkillDocument({ app, name, settings })
         if (!skill) {
-          throw new Error(`Skill not found. id=${id ?? ''} name=${name ?? ''}`)
+          throw new Error(`Skill not found. name=${name}`)
         }
 
         return {

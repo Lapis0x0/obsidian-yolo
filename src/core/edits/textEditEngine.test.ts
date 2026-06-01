@@ -1,4 +1,5 @@
 import {
+  buildReplaceMatchErrorHint,
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
 } from './textEditEngine'
@@ -197,7 +198,7 @@ describe('materializeTextEditPlan', () => {
     })
 
     expect(result.appliedCount).toBe(0)
-    expect(result.errors[0]).toContain('expectedOccurrences mismatch')
+    expect(result.errors[0]).toContain('must match exactly once')
   })
 
   it('applies fuzzy replacement when a unique paragraph candidate exceeds threshold', () => {
@@ -260,6 +261,91 @@ describe('materializeTextEditPlan', () => {
 
     expect(result.appliedCount).toBe(0)
     expect(result.errors[0]).toContain('fuzzyCandidatesAboveThreshold=2')
+  })
+
+  it('records structured failures for replace operations that do not match', () => {
+    const result = materializeTextEditPlan({
+      content: 'alpha\nbeta',
+      plan: {
+        operations: [
+          {
+            type: 'replace',
+            oldText: 'totally absent',
+            newText: 'x',
+          },
+        ],
+      },
+    })
+
+    expect(result.appliedCount).toBe(0)
+    expect(result.failures).toEqual([
+      {
+        operationIndex: 0,
+        operation: {
+          type: 'replace',
+          oldText: 'totally absent',
+          newText: 'x',
+        },
+        kind: 'no_match',
+      },
+    ])
+  })
+
+  it('marks count mismatches distinctly from no-match failures', () => {
+    const result = materializeTextEditPlan({
+      content: 'repeat\nrepeat',
+      plan: {
+        operations: [
+          {
+            type: 'replace',
+            oldText: 'repeat',
+            newText: 'done',
+          },
+        ],
+      },
+    })
+
+    expect(result.failures?.[0]?.kind).toBe('count_mismatch')
+  })
+
+  it('omits failures when every operation succeeds', () => {
+    const result = materializeTextEditPlan({
+      content: 'Hello world',
+      plan: {
+        operations: [
+          {
+            type: 'replace',
+            oldText: 'world',
+            newText: 'there',
+          },
+        ],
+      },
+    })
+
+    expect(result.failures).toBeUndefined()
+  })
+})
+
+describe('buildReplaceMatchErrorHint', () => {
+  it('reports the first matching line when only the full block fails', () => {
+    const hint = buildReplaceMatchErrorHint({
+      content: ['alpha', '\tbeta', 'gamma'].join('\n'),
+      oldText: ['alpha', '  beta'].join('\n'),
+    })
+
+    expect(hint).toContain('first line exists at line 1')
+    expect(hint).toContain('fs_read')
+    expect(hint).not.toContain('lineEndingNormalized')
+  })
+
+  it('reports a generic not-found hint when no line matches', () => {
+    const hint = buildReplaceMatchErrorHint({
+      content: ['alpha', 'beta'].join('\n'),
+      oldText: 'totally absent text',
+    })
+
+    expect(hint).toContain('Could not find the text to replace')
+    expect(hint).toContain('fs_read')
   })
 })
 

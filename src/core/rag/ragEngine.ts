@@ -1,7 +1,10 @@
 import { App } from 'obsidian'
 
 import { QueryProgressState } from '../../components/chat-view/QueryProgress'
-import { VectorManager } from '../../database/modules/vector/VectorManager'
+import {
+  ReconcileResult,
+  VectorManager,
+} from '../../database/modules/vector/VectorManager'
 import { SelectEmbedding } from '../../database/schema'
 import { YoloSettings } from '../../settings/schema/setting.types'
 import { EmbeddingModelClient } from '../../types/embedding'
@@ -76,12 +79,15 @@ export class RAGEngine {
       signal?: AbortSignal
     },
     onQueryProgressChange?: (queryProgress: QueryProgressState) => void,
-  ): Promise<void> {
-    const run = async () => {
+  ): Promise<ReconcileResult> {
+    const run = async (): Promise<ReconcileResult> => {
       if (!this.embeddingModel) {
         throw new Error('Embedding model is not set')
       }
-      await this.vectorManager?.reconcile(
+      if (!this.vectorManager) {
+        throw new Error('Vector manager is not set')
+      }
+      return await this.vectorManager.reconcile(
         this.embeddingModel,
         {
           chunkSize: this.settings.ragOptions.chunkSize,
@@ -110,7 +116,7 @@ export class RAGEngine {
       () => undefined,
       () => undefined,
     )
-    await queuedRun
+    return await queuedRun
   }
 
   async processQuery({

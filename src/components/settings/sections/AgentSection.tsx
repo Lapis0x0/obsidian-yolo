@@ -21,7 +21,10 @@ import {
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
-import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
+import {
+  humanizeSkillName,
+  listLiteSkillEntries,
+} from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { Assistant } from '../../../types/assistant.types'
 import { McpServerState, McpServerStatus } from '../../../types/mcp.types'
@@ -37,6 +40,7 @@ import { AssistantsModal } from '../modals/AssistantsModal'
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
 import { AgentFocusSyncSection } from './AgentFocusSyncSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
+import { AgentTimeContextSection } from './AgentTimeContextSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
@@ -291,7 +295,7 @@ export function AgentSection({ app }: AgentSectionProps) {
     [disabledSkillIds],
   )
   const globallyEnabledSkillEntries = useMemo(
-    () => allSkillEntries.filter((skill) => !disabledSkillSet.has(skill.id)),
+    () => allSkillEntries.filter((skill) => !disabledSkillSet.has(skill.name)),
     [allSkillEntries, disabledSkillSet],
   )
 
@@ -413,11 +417,11 @@ export function AgentSection({ app }: AgentSectionProps) {
             <div className="yolo-agent-cap-tags">
               {visibleSkillEntries.map((skill) => (
                 <span
-                  key={skill.id}
+                  key={skill.name}
                   className="yolo-agent-chip"
                   title={skill.name}
                 >
-                  {skill.name}
+                  {humanizeSkillName(skill.name)}
                 </span>
               ))}
               {hiddenSkillEntriesCount > 0 && (
@@ -572,8 +576,8 @@ export function AgentSection({ app }: AgentSectionProps) {
                     allSkillEntries.filter((skill) =>
                       isSkillEnabledForAssistant({
                         assistant,
-                        skillId: skill.id,
-                        disabledSkillIds,
+                        skillName: skill.name,
+                        disabledSkillNames: disabledSkillIds,
                       }),
                     ).length
                   } skills`}
@@ -610,6 +614,7 @@ export function AgentSection({ app }: AgentSectionProps) {
           </div>
         </div>
         <AgentFocusSyncSection />
+        <AgentTimeContextSection />
         <div className="yolo-agent-sub-card">
           <div className="yolo-agent-sub-card-head">
             {t('settings.agent.imageReadingBlockTitle')}

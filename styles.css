@@ -3425,6 +3425,63 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   }
 }
 
+/* Durable "X files could not be indexed" notice shown under the maintenance
+ * status after a completed run with permanent failures. Non-modal, expandable. */
+
+.yolo-rag-permanent-failures {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yolo-rag-permanent-failures-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-warning);
+  font-size: var(--font-ui-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.yolo-rag-permanent-failures-summary:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-rag-permanent-failures-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yolo-rag-permanent-failures-caret {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.yolo-rag-permanent-failures-list {
+  margin: 0;
+  padding: 6px 8px 6px 24px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-rag-permanent-failures-list li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Template Section Styles */
 
 .yolo-templates-container {
@@ -4797,9 +4854,10 @@ button.yolo-assistant-selector-footer-btn:hover {
   margin-bottom: var(--size-4-2);
 }
 
-/* Focus-sync card — pure white background like the Models block cards. */
+/* Agent capability card (focus sync, time awareness, …) — pure white
+   background like the Models block cards. */
 
-.yolo-focus-sync-card.setting-item {
+.yolo-agent-capability-card.setting-item {
   background: var(--background-primary) !important;
   border: 1px solid var(--background-modifier-border) !important;
 }
@@ -8859,109 +8917,397 @@ button.yolo-agent-chip--more:hover {
   pointer-events: none;
 }
 
-.yolo-update-banner {
-  pointer-events: auto;
-  width: min(560px, calc(100% - var(--size-4-4)));
-  margin: 0 auto var(--size-4-3);
-  padding: var(--size-4-3);
-  border-radius: var(--radius-l);
-  background: color-mix(
-    in srgb,
-    var(--interactive-accent) 8%,
-    var(--background-secondary)
-  );
-  border: 1px solid
-    color-mix(in srgb, var(--interactive-accent) 22%, transparent);
-  box-shadow: 0 8px 24px
-    color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent);
-  text-align: left;
+/* Update toast — anchored to the bottom-left of the Obsidian window, mounted in
+   its own React root (see src/components/UpdateToast.tsx). The host div is
+   position:fixed; the card grows upward as it expands because only `bottom` is
+   pinned. Visual spec follows the "Cursor minimal card" design (Direction 1). */
+
+.yolo-update-toast-root {
+  position: fixed;
+  left: var(--size-4-4);
+  bottom: var(--size-4-10);
+  z-index: var(--layer-notice);
 }
 
-.yolo-update-banner-row {
+.yolo-update-toast {
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - var(--size-4-4) - var(--size-4-4)));
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 6px;
+  border-radius: var(--radius-l);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  text-align: left;
+  /* Rise + fade in from the bottom-left corner; calm ease-out, no bounce. */
+  transform-origin: bottom left;
+  animation: yolo-update-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Exit: sink down + fade, faster than entrance. The component keeps the card
+   mounted for the duration before it actually dismisses (see UpdateToast). */
+
+.yolo-update-toast--exiting {
+  animation: yolo-update-toast-out 160ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes yolo-update-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes yolo-update-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-update-toast,
+  .yolo-update-toast--exiting {
+    animation: none;
+  }
+}
+
+/* Cursor-style elevation: hairline border + layered neutral shadow, tuned per
+   theme so the card clearly floats above either backdrop. */
+
+.theme-light .yolo-update-toast {
+  box-shadow:
+    0 1px 2px rgba(20, 18, 40, 0.05),
+    0 14px 38px rgba(28, 24, 55, 0.16);
+}
+
+.theme-dark .yolo-update-toast {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+/* ── header ── */
+
+.yolo-update-toast-header {
   display: flex;
   align-items: flex-start;
-  gap: var(--size-4-2);
+  gap: 10px;
 }
 
-.yolo-update-banner-icon {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
-}
-
-.yolo-update-banner-body {
+.yolo-update-toast-heading {
   flex: 1;
   min-width: 0;
 }
 
-.yolo-update-banner-title {
-  font-size: var(--font-ui-medium);
+.yolo-update-toast-titlerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+}
+
+/* Title may wrap to a second line rather than truncate — keeps long locales
+   (e.g. English/Italian) fully readable while short ones stay on one line. */
+
+.yolo-update-toast-title {
+  min-width: 0;
+  font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
-  margin-bottom: var(--size-2-1);
 }
 
-.yolo-update-banner-meta {
+.yolo-update-toast-version {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.yolo-update-toast-subtitle {
+  margin-top: 2px;
   font-size: var(--font-ui-smaller);
+  line-height: 1.4;
   color: var(--text-muted);
-  margin-bottom: var(--size-2-2);
-}
-
-.yolo-update-banner-notes {
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-  line-height: 1.45;
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.yolo-update-banner-dismiss {
+.yolo-update-toast-lang {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--background-modifier-hover);
+}
+
+.yolo-update-toast-lang-option {
+  padding: 3px 9px;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  cursor: var(--cursor);
+}
+
+.yolo-update-toast-lang-option.is-active {
+  background: var(--background-primary) !important;
+  color: var(--text-normal);
+}
+
+.theme-light .yolo-update-toast-lang-option.is-active {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.yolo-update-toast-icon-button {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border-radius: var(--radius-s);
+  border-radius: 6px;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   outline: none;
   appearance: none;
-  color: var(--text-muted);
+  color: var(--text-faint);
   cursor: var(--cursor);
 }
 
-.yolo-update-banner-dismiss:hover {
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
+.yolo-update-toast-icon-button:hover {
+  background: var(--background-modifier-hover) !important;
   color: var(--text-normal);
 }
 
-.yolo-update-banner-dismiss:focus,
-.yolo-update-banner-dismiss:focus-visible,
-.yolo-update-banner-dismiss:active {
+/* ── divider + collapsible body ── */
+
+.yolo-update-toast-divider {
+  height: 1px;
+  margin: 12px 0 11px;
+  background: var(--background-modifier-border);
+}
+
+.yolo-update-toast-body {
+  position: relative;
+  max-height: 84px;
+  overflow: hidden;
+  transition: max-height 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.yolo-update-toast-body.is-expanded {
+  max-height: 340px;
+  /* Full-bleed to the card's right edge (cancel the 14px card padding) so the
+     thin overlay scrollbar hugs the edge like the model-select menu; the
+     matching padding-right keeps text off the edge and aligned with the header. */
+  margin-right: -14px;
+  padding-right: 14px;
+  overflow-y: auto;
+  /* Native auto-hide overlay scrollbar — transparent at rest, a faint thumb on
+     hover/focus. Do NOT transition scrollbar-color (Chromium can't interpolate
+     it and flashes the default thumb). Mirrors .yolo-model-select-list. */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-update-toast-body.is-expanded:hover,
+.yolo-update-toast-body.is-expanded:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
+}
+
+.yolo-update-toast-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--background-primary)
+  );
+}
+
+.yolo-update-toast-section {
+  margin-bottom: 14px;
+}
+
+.yolo-update-toast-section:last-child {
+  margin-bottom: 2px;
+}
+
+.yolo-update-toast-section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  font-size: 11.5px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.1px;
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+
+.yolo-update-toast-dot--teal {
+  background: oklch(0.58 0.12 195);
+}
+
+.yolo-update-toast-dot--rose {
+  background: oklch(0.58 0.12 15);
+}
+
+.yolo-update-toast-dot--amber {
+  background: oklch(0.58 0.12 75);
+}
+
+.theme-dark .yolo-update-toast-dot--teal {
+  background: oklch(0.7 0.12 195);
+}
+
+.theme-dark .yolo-update-toast-dot--rose {
+  background: oklch(0.7 0.12 15);
+}
+
+.theme-dark .yolo-update-toast-dot--amber {
+  background: oklch(0.7 0.12 75);
+}
+
+.yolo-update-toast-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.yolo-update-toast-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.yolo-update-toast-bullet {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.yolo-update-toast-item-text {
+  min-width: 0;
+}
+
+.yolo-update-toast-item-title {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-item-ref {
+  margin-left: 5px;
+  font-family: var(--font-monospace);
+  font-size: 0.84em;
+  font-weight: var(--font-medium);
+  color: var(--interactive-accent);
+}
+
+.yolo-update-toast-code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--background-modifier-hover);
+  color: var(--interactive-accent);
+  font-family: var(--font-monospace);
+  font-size: 0.86em;
+  white-space: nowrap;
+}
+
+/* ── persistent bottom bar: expand/collapse toggle (left) + go-update (right) ── */
+
+.yolo-update-toast-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 7px 0 6px;
+}
+
+.yolo-update-toast-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: var(--font-semibold);
+  cursor: var(--cursor);
 }
 
-.yolo-update-banner-actions {
-  margin-top: var(--size-4-2);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--size-4-2);
+.yolo-update-toast-expand:hover {
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-cta {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: none !important;
+  border-radius: var(--radius-s);
+  box-shadow: none !important;
+  /* !important: Obsidian's `.theme-* button` rules out-specify a single class
+     and would otherwise override the fill/text at rest, leaving a bare label
+     that only fills on hover. */
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  cursor: var(--cursor);
+  transition: background 0.12s ease;
+}
+
+.yolo-update-toast-cta:hover {
+  background: var(--interactive-accent-hover) !important;
+}
+
+.yolo-update-toast-expand-chevron {
+  transition: transform 0.25s ease;
+}
+
+.yolo-update-toast-expand-chevron.is-up {
+  transform: rotate(180deg);
 }
 
 /* Installation incomplete — same layout as update banner, red / error emphasis */
@@ -12352,18 +12698,107 @@ button.yolo-llm-debug-modal-button:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 0.2em;
+  box-sizing: border-box;
+  line-height: inherit;
+  /* Make the chip's selection box coincide exactly with the line box, so the
+     selected pill is as tall as — and flush with — adjacent native text
+     selection. 1lh sizes it to the computed line-height (font-independent, no
+     guessed leading); vertical-align: bottom pins the box to the line box edges
+     instead of letting baseline alignment leave it short. */
+  min-block-size: 1lh;
+  vertical-align: bottom;
 }
 
 .yolo-lexical-content-editable-root .yolo-skill-mention::before {
   content: '';
-  width: 0.9em;
-  height: 0.9em;
+  width: 1.1em;
+  height: 1.1em;
   flex-shrink: 0;
   background-color: currentColor;
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z'/%3E%3Cpath d='M5 3v4'/%3E%3Cpath d='M3 5h4'/%3E%3Cpath d='M19 17v2'/%3E%3Cpath d='M18 18h2'/%3E%3C/svg%3E");
   mask-repeat: no-repeat;
   mask-position: center;
   mask-size: contain;
+}
+
+/* Typed inline mentions (file/folder/...) render a leading type icon instead
+   of an "@" prefix, mirroring the skill mention treatment above. Icons are
+   lucide SVGs from getMentionableIcon, drawn via mask so they inherit the tag
+   color. */
+
+.yolo-lexical-content-editable-root .mention[class*='yolo-mention--'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  box-sizing: border-box;
+  line-height: inherit;
+  /* See .yolo-skill-mention: 1lh + vertical-align: bottom make the chip's box
+     coincide with the line box, so its selection band is flush with adjacent
+     native text selection. */
+  min-block-size: 1lh;
+  vertical-align: bottom;
+}
+
+/* When a mention sits inside the active selection, highlight the whole pill
+   (icon + text) as one unit. The icon is a ::before background that native
+   text selection can't tint, so MentionSelectionHighlightPlugin flags the pill
+   and we carry the selection look on the pill background instead — suppressing
+   the per-glyph native highlight so it reads as a single selected chip. */
+
+.yolo-lexical-content-editable-root .mention.yolo-mention-selected {
+  background-color: var(--text-selection);
+  border-radius: 0;
+}
+
+.yolo-lexical-content-editable-root .mention.yolo-mention-selected::selection,
+.yolo-lexical-content-editable-root .mention.yolo-mention-selected ::selection {
+  background-color: transparent;
+}
+
+.yolo-lexical-content-editable-root .mention[class*='yolo-mention--']::before {
+  content: '';
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--file::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E");
+}
+
+/* block = an excerpt/selection quoted out of a file (TextSelect), distinct
+   from a whole file (FileIcon) and from assistant-quote (Quote). */
+
+.yolo-lexical-content-editable-root .yolo-mention--block::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3a2 2 0 0 0-2 2'/%3E%3Cpath d='M19 3a2 2 0 0 1 2 2'/%3E%3Cpath d='M21 19a2 2 0 0 1-2 2'/%3E%3Cpath d='M5 21a2 2 0 0 1-2-2'/%3E%3Cpath d='M9 3h1'/%3E%3Cpath d='M9 21h1'/%3E%3Cpath d='M14 3h1'/%3E%3Cpath d='M14 21h1'/%3E%3Cpath d='M3 9v1'/%3E%3Cpath d='M21 9v1'/%3E%3Cpath d='M3 14v1'/%3E%3Cpath d='M21 14v1'/%3E%3Cline x1='7' x2='15' y1='8' y2='8'/%3E%3Cline x1='7' x2='17' y1='12' y2='12'/%3E%3Cline x1='7' x2='13' y1='16' y2='16'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--folder::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3Cpath d='M2 10h20'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--pdf::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--image::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--url::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--model::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='16' height='16' x='4' y='4' rx='2'/%3E%3Crect width='6' height='6' x='9' y='9' rx='1'/%3E%3Cpath d='M15 2v2'/%3E%3Cpath d='M15 20v2'/%3E%3Cpath d='M2 15h2'/%3E%3Cpath d='M2 9h2'/%3E%3Cpath d='M20 15h2'/%3E%3Cpath d='M20 9h2'/%3E%3Cpath d='M9 2v2'/%3E%3Cpath d='M9 20v2'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--assistant-quote::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3Cpath d='M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3C/svg%3E");
 }
 
 .yolo-lexical-content-editable-paragraph {

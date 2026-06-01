@@ -1423,109 +1423,390 @@
   pointer-events: none;
 }
 
-.yolo-update-banner {
-  pointer-events: auto;
-  width: min(560px, calc(100% - var(--size-4-4)));
-  margin: 0 auto var(--size-4-3);
-  padding: var(--size-4-3);
-  border-radius: var(--radius-l);
-  background: color-mix(
-    in srgb,
-    var(--interactive-accent) 8%,
-    var(--background-secondary)
-  );
-  border: 1px solid
-    color-mix(in srgb, var(--interactive-accent) 22%, transparent);
-  box-shadow: 0 8px 24px
-    color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent);
-  text-align: left;
+/* Update toast — anchored to the bottom-left of the Obsidian window, mounted in
+   its own React root (see src/components/UpdateToast.tsx). The host div is
+   position:fixed; the card grows upward as it expands because only `bottom` is
+   pinned. Visual spec follows the "Cursor minimal card" design (Direction 1). */
+.yolo-update-toast-root {
+  position: fixed;
+  left: var(--size-4-4);
+  bottom: var(--size-4-10);
+  z-index: var(--layer-notice);
 }
 
-.yolo-update-banner-row {
+.yolo-update-toast {
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - var(--size-4-4) - var(--size-4-4)));
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 6px;
+  border-radius: var(--radius-l);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  text-align: left;
+  /* Rise + fade in from the bottom-left corner; calm ease-out, no bounce. */
+  transform-origin: bottom left;
+  animation: yolo-update-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Exit: sink down + fade, faster than entrance. The component keeps the card
+   mounted for the duration before it actually dismisses (see UpdateToast). */
+.yolo-update-toast--exiting {
+  animation: yolo-update-toast-out 160ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes yolo-update-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes yolo-update-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-update-toast,
+  .yolo-update-toast--exiting {
+    animation: none;
+  }
+}
+
+/* Cursor-style elevation: hairline border + layered neutral shadow, tuned per
+   theme so the card clearly floats above either backdrop. */
+.theme-light .yolo-update-toast {
+  box-shadow:
+    0 1px 2px rgba(20, 18, 40, 0.05),
+    0 14px 38px rgba(28, 24, 55, 0.16);
+}
+
+.theme-dark .yolo-update-toast {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+/* ── header ── */
+.yolo-update-toast-header {
   display: flex;
   align-items: flex-start;
-  gap: var(--size-4-2);
+  gap: 10px;
 }
 
-.yolo-update-banner-icon {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
-}
-
-.yolo-update-banner-body {
+.yolo-update-toast-heading {
   flex: 1;
   min-width: 0;
 }
 
-.yolo-update-banner-title {
-  font-size: var(--font-ui-medium);
+.yolo-update-toast-titlerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+}
+
+/* Title may wrap to a second line rather than truncate — keeps long locales
+   (e.g. English/Italian) fully readable while short ones stay on one line. */
+.yolo-update-toast-title {
+  min-width: 0;
+  font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
   color: var(--text-normal);
-  margin-bottom: var(--size-2-1);
 }
 
-.yolo-update-banner-meta {
+.yolo-update-toast-version {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.yolo-update-toast-subtitle {
+  margin-top: 2px;
   font-size: var(--font-ui-smaller);
+  line-height: 1.4;
   color: var(--text-muted);
-  margin-bottom: var(--size-2-2);
-}
-
-.yolo-update-banner-notes {
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-  line-height: 1.45;
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.yolo-update-banner-dismiss {
+.yolo-update-toast-lang {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--background-modifier-hover);
+}
+
+.yolo-update-toast-lang-option {
+  padding: 3px 9px;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  cursor: var(--cursor);
+}
+
+.yolo-update-toast-lang-option.is-active {
+  background: var(--background-primary) !important;
+  color: var(--text-normal);
+}
+
+.theme-light .yolo-update-toast-lang-option.is-active {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.yolo-update-toast-icon-button {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border-radius: var(--radius-s);
+  border-radius: 6px;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   outline: none;
   appearance: none;
-  color: var(--text-muted);
+  color: var(--text-faint);
   cursor: var(--cursor);
 }
 
-.yolo-update-banner-dismiss:hover {
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
+.yolo-update-toast-icon-button:hover {
+  background: var(--background-modifier-hover) !important;
   color: var(--text-normal);
 }
 
-.yolo-update-banner-dismiss:focus,
-.yolo-update-banner-dismiss:focus-visible,
-.yolo-update-banner-dismiss:active {
+/* ── divider + collapsible body ── */
+.yolo-update-toast-divider {
+  height: 1px;
+  margin: 12px 0 11px;
+  background: var(--background-modifier-border);
+}
+
+.yolo-update-toast-body {
+  position: relative;
+  max-height: 84px;
+  overflow: hidden;
+  transition: max-height 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.yolo-update-toast-body.is-expanded {
+  max-height: 340px;
+  /* Full-bleed to the card's right edge (cancel the 14px card padding) so the
+     thin overlay scrollbar hugs the edge like the model-select menu; the
+     matching padding-right keeps text off the edge and aligned with the header. */
+  margin-right: -14px;
+  padding-right: 14px;
+  overflow-y: auto;
+  /* Native auto-hide overlay scrollbar — transparent at rest, a faint thumb on
+     hover/focus. Do NOT transition scrollbar-color (Chromium can't interpolate
+     it and flashes the default thumb). Mirrors .yolo-model-select-list. */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-update-toast-body.is-expanded:hover,
+.yolo-update-toast-body.is-expanded:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
+}
+
+.yolo-update-toast-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--background-primary)
+  );
+}
+
+.yolo-update-toast-section {
+  margin-bottom: 14px;
+}
+
+.yolo-update-toast-section:last-child {
+  margin-bottom: 2px;
+}
+
+.yolo-update-toast-section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  font-size: 11.5px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.1px;
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+
+.yolo-update-toast-dot--teal {
+  background: oklch(0.58 0.12 195);
+}
+
+.yolo-update-toast-dot--rose {
+  background: oklch(0.58 0.12 15);
+}
+
+.yolo-update-toast-dot--amber {
+  background: oklch(0.58 0.12 75);
+}
+
+.theme-dark .yolo-update-toast-dot--teal {
+  background: oklch(0.7 0.12 195);
+}
+
+.theme-dark .yolo-update-toast-dot--rose {
+  background: oklch(0.7 0.12 15);
+}
+
+.theme-dark .yolo-update-toast-dot--amber {
+  background: oklch(0.7 0.12 75);
+}
+
+.yolo-update-toast-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.yolo-update-toast-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.yolo-update-toast-bullet {
+  flex-shrink: 0;
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.yolo-update-toast-item-text {
+  min-width: 0;
+}
+
+.yolo-update-toast-item-title {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-item-ref {
+  margin-left: 5px;
+  font-family: var(--font-monospace);
+  font-size: 0.84em;
+  font-weight: var(--font-medium);
+  color: var(--interactive-accent);
+}
+
+.yolo-update-toast-code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--background-modifier-hover);
+  color: var(--interactive-accent);
+  font-family: var(--font-monospace);
+  font-size: 0.86em;
+  white-space: nowrap;
+}
+
+/* ── persistent bottom bar: expand/collapse toggle (left) + go-update (right) ── */
+.yolo-update-toast-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 7px 0 6px;
+}
+
+.yolo-update-toast-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: var(--font-semibold);
+  cursor: var(--cursor);
 }
 
-.yolo-update-banner-actions {
-  margin-top: var(--size-4-2);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--size-4-2);
+.yolo-update-toast-expand:hover {
+  color: var(--text-normal);
+}
+
+.yolo-update-toast-cta {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: none !important;
+  border-radius: var(--radius-s);
+  box-shadow: none !important;
+  /* !important: Obsidian's `.theme-* button` rules out-specify a single class
+     and would otherwise override the fill/text at rest, leaving a bare label
+     that only fills on hover. */
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  cursor: var(--cursor);
+  transition: background 0.12s ease;
+}
+
+.yolo-update-toast-cta:hover {
+  background: var(--interactive-accent-hover) !important;
+}
+
+.yolo-update-toast-expand-chevron {
+  transition: transform 0.25s ease;
+}
+
+.yolo-update-toast-expand-chevron.is-up {
+  transform: rotate(180deg);
 }
 
 /* Installation incomplete — same layout as update banner, red / error emphasis */

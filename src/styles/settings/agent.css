@@ -34,8 +34,9 @@
   margin-bottom: var(--size-4-2);
 }
 
-/* Focus-sync card — pure white background like the Models block cards. */
-.yolo-focus-sync-card.setting-item {
+/* Agent capability card (focus sync, time awareness, …) — pure white
+   background like the Models block cards. */
+.yolo-agent-capability-card.setting-item {
   background: var(--background-primary) !important;
   border: 1px solid var(--background-modifier-border) !important;
 }

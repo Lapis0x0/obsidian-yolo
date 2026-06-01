@@ -93,19 +93,25 @@ type FsReadOperationSummary =
     }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
+  fs_write: 'Write file',
+  fs_delete: 'Delete',
+  fs_create_dir: 'Create folder',
+  fs_move: 'Move path',
+  // Legacy tool names kept for displaying historical conversations.
   fs_create_file: 'Create file',
   fs_delete_file: 'Delete file',
-  fs_create_dir: 'Create folder',
   fs_delete_dir: 'Delete folder',
-  fs_move: 'Move path',
 }
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
+  write: 'Write file',
+  delete: 'Delete',
+  create_dir: 'Create folder',
+  move: 'Move path',
+  // Legacy actions kept for displaying historical conversations.
   create_file: 'Create file',
   delete_file: 'Delete file',
-  create_dir: 'Create folder',
   delete_dir: 'Delete folder',
-  move: 'Move path',
 }
 
 export const getToolLabels = (t?: TranslateFn): ToolLabels => {
@@ -150,6 +156,23 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
           translateBuiltinToolLabel(name, translate),
         ]),
       ),
+      fs_write: translate(
+        'chat.toolCall.writeAction.write',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_write,
+      ),
+      fs_delete: translate(
+        'chat.toolCall.writeAction.delete',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete,
+      ),
+      fs_create_dir: translate(
+        'chat.toolCall.writeAction.create_dir',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_dir,
+      ),
+      fs_move: translate(
+        'chat.toolCall.writeAction.move',
+        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
+      ),
+      // Legacy tool names — keep rendering historical conversations.
       fs_create_file: translate(
         'chat.toolCall.writeAction.create_file',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_file,
@@ -158,20 +181,29 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.delete_file',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_file,
       ),
-      fs_create_dir: translate(
-        'chat.toolCall.writeAction.create_dir',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_dir,
-      ),
       fs_delete_dir: translate(
         'chat.toolCall.writeAction.delete_dir',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_dir,
       ),
-      fs_move: translate(
-        'chat.toolCall.writeAction.move',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
-      ),
     },
     writeActionLabels: {
+      write: translate(
+        'chat.toolCall.writeAction.write',
+        DEFAULT_WRITE_ACTION_LABELS.write,
+      ),
+      delete: translate(
+        'chat.toolCall.writeAction.delete',
+        DEFAULT_WRITE_ACTION_LABELS.delete,
+      ),
+      create_dir: translate(
+        'chat.toolCall.writeAction.create_dir',
+        DEFAULT_WRITE_ACTION_LABELS.create_dir,
+      ),
+      move: translate(
+        'chat.toolCall.writeAction.move',
+        DEFAULT_WRITE_ACTION_LABELS.move,
+      ),
+      // Legacy actions — keep rendering historical conversations.
       create_file: translate(
         'chat.toolCall.writeAction.create_file',
         DEFAULT_WRITE_ACTION_LABELS.create_file,
@@ -180,17 +212,9 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.delete_file',
         DEFAULT_WRITE_ACTION_LABELS.delete_file,
       ),
-      create_dir: translate(
-        'chat.toolCall.writeAction.create_dir',
-        DEFAULT_WRITE_ACTION_LABELS.create_dir,
-      ),
       delete_dir: translate(
         'chat.toolCall.writeAction.delete_dir',
         DEFAULT_WRITE_ACTION_LABELS.delete_dir,
-      ),
-      move: translate(
-        'chat.toolCall.writeAction.move',
-        DEFAULT_WRITE_ACTION_LABELS.move,
       ),
     },
     readFull: translate('chat.toolCall.readMode.full', 'Full'),
@@ -313,77 +337,8 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
   return value as Record<string, unknown>
 }
 
-const asRecordArray = (value: unknown): Record<string, unknown>[] | null => {
-  if (!Array.isArray(value)) {
-    return null
-  }
-  if (value.some((item) => !asRecord(item))) {
-    return null
-  }
-  return value as Record<string, unknown>[]
-}
-
 const asInteger = (value: unknown): number | undefined => {
   return Number.isInteger(value) ? (value as number) : undefined
-}
-
-const getParentPath = (path: string): string => {
-  const normalizedPath = path.trim().replace(/\/+$/, '')
-  if (!normalizedPath || !normalizedPath.includes('/')) {
-    return '/'
-  }
-
-  const lastSlashIndex = normalizedPath.lastIndexOf('/')
-  return lastSlashIndex <= 0 ? '/' : normalizedPath.slice(0, lastSlashIndex)
-}
-
-const getSharedParentPath = (paths: string[]): string | undefined => {
-  if (paths.length === 0) {
-    return undefined
-  }
-
-  const parentPath = getParentPath(paths[0])
-  if (paths.every((path) => getParentPath(path) === parentPath)) {
-    return parentPath
-  }
-
-  return undefined
-}
-
-const formatBatchPathSummary = ({
-  actionLabel,
-  noun,
-  paths,
-}: {
-  actionLabel: string
-  noun: string
-  paths: string[]
-}): string => {
-  const sharedParentPath = getSharedParentPath(paths)
-  if (sharedParentPath) {
-    return `${actionLabel} ${sharedParentPath} 下 ${paths.length} 个${noun}`
-  }
-
-  return `${actionLabel} ${paths.length} 个${noun}`
-}
-
-const formatBatchMoveSummary = (
-  items: Record<string, unknown>[],
-): string | undefined => {
-  const newPaths = items
-    .map((item) => (typeof item.newPath === 'string' ? item.newPath : ''))
-    .filter((path) => path.length > 0)
-
-  if (newPaths.length !== items.length) {
-    return undefined
-  }
-
-  const targetParentPath = getSharedParentPath(newPaths)
-  if (targetParentPath) {
-    return `移动 ${items.length} 项到 ${targetParentPath}`
-  }
-
-  return `移动 ${items.length} 项`
 }
 
 const getFsReadOperationSummary = ({
@@ -579,8 +534,6 @@ const getLocalToolSummaryText = ({
   rawArguments?: ToolCallRequest['arguments']
   labels: ToolLabels
 }): string | undefined => {
-  const batchItems = asRecordArray(argumentsObject?.items)
-
   if (toolName === 'fs_list') {
     const targetPath =
       typeof argumentsObject?.path === 'string' &&
@@ -687,53 +640,20 @@ const getLocalToolSummaryText = ({
   }
 
   if (
+    toolName === 'fs_write' ||
+    toolName === 'fs_delete' ||
+    toolName === 'fs_create_dir' ||
+    // Legacy tool names from historical conversations.
     toolName === 'fs_create_file' ||
     toolName === 'fs_delete_file' ||
-    toolName === 'fs_create_dir' ||
     toolName === 'fs_delete_dir'
   ) {
-    if (batchItems && batchItems.length > 0) {
-      const pathKey =
-        toolName === 'fs_create_file' || toolName === 'fs_delete_file'
-          ? '文件'
-          : '文件夹'
-      const actionLabel =
-        toolName === 'fs_create_file' || toolName === 'fs_create_dir'
-          ? '在'
-          : '删除'
-      const paths = batchItems
-        .map((item) => (typeof item.path === 'string' ? item.path : ''))
-        .filter((path) => path.length > 0)
-
-      if (paths.length === batchItems.length) {
-        if (actionLabel === '在') {
-          const sharedParentPath = getSharedParentPath(paths)
-          if (sharedParentPath) {
-            return `在 ${sharedParentPath} 下创建 ${paths.length} 个${pathKey}`
-          }
-          return `创建 ${paths.length} 个${pathKey}`
-        }
-
-        return formatBatchPathSummary({
-          actionLabel,
-          noun: pathKey,
-          paths,
-        })
-      }
-
-      return undefined
-    }
-
     const path =
       typeof argumentsObject?.path === 'string' ? argumentsObject.path : ''
     return path || undefined
   }
 
   if (toolName === 'fs_move') {
-    if (batchItems && batchItems.length > 0) {
-      return formatBatchMoveSummary(batchItems)
-    }
-
     const oldPath =
       typeof argumentsObject?.oldPath === 'string'
         ? argumentsObject.oldPath

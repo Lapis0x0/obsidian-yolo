@@ -142,7 +142,7 @@ export class MentionNode extends TextNode {
       serializedNode.mentionName,
       serializedNode.mentionable,
     )
-    node.setTextContent(`@${getDisplayMentionName(serializedNode.mentionName)}`)
+    node.setTextContent(getDisplayMentionName(serializedNode.mentionName))
     node.setFormat(serializedNode.format)
     node.setDetail(serializedNode.detail)
     node.setMode(serializedNode.mode)
@@ -155,7 +155,7 @@ export class MentionNode extends TextNode {
     mentionable: SerializedMentionable,
     key?: NodeKey,
   ) {
-    super(`@${getDisplayMentionName(mentionName)}`, key)
+    super(getDisplayMentionName(mentionName), key)
     this.__mentionName = mentionName
     this.__mentionable = compactInlineMentionable(mentionable)
   }
@@ -172,7 +172,7 @@ export class MentionNode extends TextNode {
 
   createDOM(config: EditorConfig): HTMLElement {
     const dom = super.createDOM(config)
-    dom.className = MENTION_NODE_TYPE
+    dom.className = `${MENTION_NODE_TYPE} yolo-mention--${this.__mentionable.type}`
     dom.setAttribute('contenteditable', 'false')
     return dom
   }

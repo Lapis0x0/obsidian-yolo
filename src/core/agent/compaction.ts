@@ -1,16 +1,15 @@
-import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import {
   type ChatAssistantMessage,
   type ChatConversationCompaction,
   type ChatConversationCompactionState,
   type ChatMessage,
   type ChatToolMessage,
-  type ChatUserMessage,
   getLatestChatConversationCompaction,
 } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
-import type { RequestMessage } from '../../types/llm/request'
+import type { RequestMessage, RequestTool } from '../../types/llm/request'
 import type { LLMProvider } from '../../types/provider.types'
+import type { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { executeSingleTurn } from '../ai/single-turn'
@@ -21,24 +20,6 @@ import {
   extractLoadedDeferredToolNames,
   extractLoadedDeferredToolSchemas,
 } from './tool-disclosure'
-
-const COMPACTION_SYSTEM_PROMPT = `You are summarizing a conversation so it can continue in a fresh context window.
-
-Produce a compact but high-signal summary that preserves:
-- the user's current goal
-- important constraints and preferences
-- decisions already made
-- files, paths, or entities that matter
-- work completed so far
-- unresolved issues and the next best step
-
-Rules:
-- Keep the summary factual and concise.
-- Do not include greetings, filler, or repeated details.
-- Preserve exact file paths, ids, and tool outcomes when they matter.
-- Mention failures or uncertainties explicitly.
-- Write in the same language the conversation is currently using.
-- Output plain Markdown only.`
 
 export const CONTEXT_COMPACT_TOOL_NAME = 'context_compact'
 
@@ -208,12 +189,14 @@ const parseCompactOperationResult = (
   tool: string
   toolCallId: string | null
   operation: string
+  instruction: string | null
 } | null => {
   try {
     const parsed = JSON.parse(text) as {
       tool?: unknown
       toolCallId?: unknown
       operation?: unknown
+      instruction?: unknown
     }
     return typeof parsed.tool === 'string' &&
       parsed.tool === CONTEXT_COMPACT_TOOL_NAME
@@ -223,11 +206,35 @@ const parseCompactOperationResult = (
             typeof parsed.toolCallId === 'string' ? parsed.toolCallId : null,
           operation:
             typeof parsed.operation === 'string' ? parsed.operation : '',
+          instruction:
+            typeof parsed.instruction === 'string' &&
+            parsed.instruction.trim().length > 0
+              ? parsed.instruction.trim()
+              : null,
         }
       : null
   } catch {
     return null
   }
+}
+
+/**
+ * Extract the optional `instruction` focus hint from a compaction tool result.
+ * Returns null when the tool call is not a successful `compact_restart`.
+ */
+export const findCompactInstruction = (
+  toolMessage: ChatToolMessage,
+): string | null => {
+  for (const toolCall of toolMessage.toolCalls) {
+    if (toolCall.response.status !== ToolCallResponseStatus.Success) {
+      continue
+    }
+    const parsed = parseCompactOperationResult(toolCall.response.data.text)
+    if (parsed?.operation === 'compact_restart') {
+      return parsed.instruction
+    }
+  }
+  return null
 }
 
 export const findCompactTrigger = (
@@ -401,127 +408,151 @@ export const buildManualCompactionState = async ({
   }
 }
 
-export const getCompactionSummarySourceMessages = (
-  messages: ChatMessage[],
-  options?: {
-    retainLatestToolBoundary?: boolean
-  },
-): ChatMessage[] => {
-  if (options?.retainLatestToolBoundary === false) {
-    return messages
+/**
+ * Build the structured compaction instruction appended after the cache-warm
+ * prefix. The model is told to pause the task and emit a fixed-section summary
+ * wrapped in `<summary>`. Only model-facing instructions live here.
+ */
+const buildCompactionInstructionMessage = (
+  focusInstruction: string | null,
+): RequestMessage => {
+  const focusBlock = focusInstruction
+    ? `\n<focus_instruction>${focusInstruction}</focus_instruction>\n`
+    : ''
+  return {
+    role: 'user',
+    content: `CRITICAL: You are now in COMPACTION MODE. The task above is paused.
+- Do NOT continue the task. Do NOT call any tools — tool calls are rejected.
+- Respond with PLAIN TEXT ONLY: a <summary> block with the fixed sections below.
+- Write in the same language the conversation is currently using.
+- Summarize only the CONVERSATION facts needed to resume. Ignore the system
+  prompt, tool schemas, and tool-disclosure boilerplate — do not summarize them.
+
+Produce a high-signal summary that loses nothing needed to resume. Sections:
+
+1. 当前目标 (Current Goal) — 用户最新的显式意图，逐字引用关键句。
+2. 已做决策与理由 (Decisions & Rationale) — 拍板了什么、为什么。
+3. 尝试与失败记录 (Trial & Error Log) — 每个试过的方案 + 失败/放弃的具体原因。不得省略。
+4. 所有 user 消息 (All User Messages) — 按时间逐字列出全部非 tool-result 的 user 消息，原文保留，尤其中途的更正、偏好覆盖、意图变化。
+5. 关键实体 (Key Entities) — 文件路径、版本号、ID、关键工具结果，精确。
+6. 已完成工作 (Work Completed)
+7. 未解决项 (Unresolved) — 悬而未决、待确认、已知风险。
+8. 下一步 (Next Step) — 与最近显式请求直接对齐；附最近对话的逐字引用以防漂移。
+${focusBlock}
+Output format: <summary> ... </summary>`,
   }
+}
 
-  const trigger = findCompactTrigger(messages)
-  if (!trigger) {
-    return messages
+const SUMMARY_TAG_RE = /<summary>([\s\S]*?)<\/summary>/i
+
+/**
+ * Extract the `<summary>...</summary>` body. When the model omits the tags,
+ * fall back to the trimmed full text — this is parse robustness, not a degraded
+ * business path.
+ */
+const parseSummaryFromResponse = (content: string): string => {
+  const match = SUMMARY_TAG_RE.exec(content)
+  if (match && match[1]) {
+    return match[1].trim()
   }
-
-  return messages.slice(0, trigger.retainedStartIndex)
+  return content.trim()
 }
 
-const stringifyUserMessage = (message: ChatUserMessage): string => {
-  const text = message.promptContent
-    ? typeof message.promptContent === 'string'
-      ? message.promptContent
-      : message.promptContent
-          .map((part) => (part.type === 'text' ? part.text : '[image]'))
-          .join('\n')
-    : message.content
-      ? editorStateToPlainText(message.content)
-      : ''
-
-  return text.trim().length > 0 ? text.trim() : '[empty user message]'
-}
-
-const stringifyAssistantMessage = (message: ChatAssistantMessage): string => {
-  const parts: string[] = []
-  if (message.content.trim().length > 0) {
-    parts.push(message.content.trim())
-  }
-  if ((message.toolCallRequests?.length ?? 0) > 0) {
-    parts.push(
-      `Tool calls:\n${message.toolCallRequests
-        ?.map((toolCall) => `- ${toolCall.name} (${toolCall.id})`)
-        .join('\n')}`,
-    )
-  }
-  return parts.join('\n\n').trim() || '[empty assistant message]'
-}
-
-const stringifyToolMessage = (message: ChatToolMessage): string => {
-  return message.toolCalls
-    .map((toolCall) => {
-      const outcome =
-        toolCall.response.status === ToolCallResponseStatus.Success
-          ? toolCall.response.data.text
-          : toolCall.response.status === ToolCallResponseStatus.Error
-            ? `Error: ${toolCall.response.error}`
-            : toolCall.response.status
-      return `Tool ${toolCall.request.name} (${toolCall.request.id})\n${outcome}`
-    })
-    .join('\n\n')
-}
-
-const buildCompactionTranscript = (messages: ChatMessage[]): string => {
-  return messages
-    .map((message) => {
-      switch (message.role) {
-        case 'user':
-          return `## User\n${stringifyUserMessage(message)}`
-        case 'assistant':
-          return `## Assistant\n${stringifyAssistantMessage(message)}`
-        case 'tool':
-          return `## Tool\n${stringifyToolMessage(message)}`
-        default:
-          return ''
-      }
-    })
-    .join('\n\n')
-}
-
+/**
+ * Generate a compaction summary by letting the MAIN model self-summarize on top
+ * of its cache-warm prefix.
+ *
+ * - `requestMessages` is the provider-ready prefix the main line just sent
+ *   (path 1) or a freshly rebuilt prefix (paths 2/3). It is forwarded
+ *   byte-for-byte so the out-of-band request hits the same provider cache.
+ * - `turnMessages` are the in-flight assistant+tool messages of the triggering
+ *   turn (path 1 only); empty for paths 2/3.
+ * - `focusInstruction` is the `context_compact` tool's `instruction` hint.
+ *
+ * Uses `purpose: 'standard'` (NOT auxiliary — that strips provider features and
+ * breaks prefix parity) and forwards the same `tools` with `tool_choice: 'none'`
+ * so the tools block stays in the cache prefix while tool calls are forbidden.
+ */
 export const createConversationCompactionSummary = async ({
   providerClient,
   model,
-  messages,
-  retainLatestToolBoundary,
+  requestMessages,
+  turnMessages = [],
+  focusInstruction = null,
+  tools,
+  reasoningLevel,
   debugTraceId,
 }: {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
-  messages: ChatMessage[]
-  retainLatestToolBoundary?: boolean
+  requestMessages: RequestMessage[]
+  turnMessages?: RequestMessage[]
+  focusInstruction?: string | null
+  tools?: RequestTool[]
+  reasoningLevel?: ReasoningLevel
   debugTraceId?: string
 }): Promise<string> => {
-  const source = getCompactionSummarySourceMessages(messages, {
-    retainLatestToolBoundary,
-  })
-  const transcript = buildCompactionTranscript(source)
+  const messages: RequestMessage[] = [
+    ...requestMessages,
+    ...turnMessages,
+    buildCompactionInstructionMessage(focusInstruction),
+  ]
 
   console.debug('[YOLO][Compact] starting summary generation', {
     modelId: model.id,
-    messageCount: source.length,
-    transcriptLength: transcript.length,
+    prefixMessageCount: requestMessages.length,
+    turnMessageCount: turnMessages.length,
+    hasFocusInstruction: focusInstruction !== null,
   })
 
-  const response = await executeSingleTurn({
-    providerClient,
-    model,
-    request: {
-      model: model.model,
-      messages: [
-        { role: 'system', content: COMPACTION_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `<conversation_transcript>\n${transcript}\n</conversation_transcript>`,
-        },
-      ],
-    },
-    stream: false,
-    purpose: 'auxiliary',
-    debugTraceId,
-  })
+  const runCompaction = async (): Promise<string> => {
+    const response = await executeSingleTurn({
+      providerClient,
+      model,
+      request: {
+        model: model.model,
+        messages,
+        ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
+      },
+      tools,
+      // Keep the tools block in the cache prefix but forbid calls. Only sent
+      // when tools exist — some providers reject tool_choice without tools.
+      tool_choice: tools && tools.length > 0 ? 'none' : undefined,
+      stream: false,
+      purpose: 'standard',
+      debugTraceId,
+    })
 
-  const summary = response.content.trim()
+    // Several providers (Gemini, OpenAI-compatible via extra_body, Bedrock) do
+    // not honor tool_choice:'none'. Rather than depend on it, accept any
+    // non-empty summary text and ignore stray tool calls; only empty fails.
+    const summary = parseSummaryFromResponse(response.content)
+    if (summary.length === 0) {
+      throw new Error('[YOLO][Compact] model returned an empty summary')
+    }
+    return summary
+  }
+
+  let summary: string
+  try {
+    summary = await runCompaction()
+  } catch (firstError) {
+    console.warn(
+      '[YOLO][Compact] summary generation failed; retrying once',
+      firstError,
+    )
+    try {
+      summary = await runCompaction()
+    } catch (secondError) {
+      const firstMsg =
+        firstError instanceof Error ? firstError.message : String(firstError)
+      const secondMsg =
+        secondError instanceof Error ? secondError.message : String(secondError)
+      throw new Error(
+        `[YOLO][Compact] summary generation failed after retry. first: ${firstMsg}; second: ${secondMsg}`,
+      )
+    }
+  }
 
   console.debug('[YOLO][Compact] summary generation completed', {
     modelId: model.id,

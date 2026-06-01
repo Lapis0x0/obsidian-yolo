@@ -423,6 +423,8 @@ export type TranslationKeys = {
       agentCapabilitiesBlockTitle?: string
       focusSyncTitle?: string
       focusSyncDesc?: string
+      timeContextTitle?: string
+      timeContextDesc?: string
       imageReadingBlockTitle?: string
       imageReadingEnabled?: string
       imageReadingEnabledDesc?: string
@@ -828,6 +830,7 @@ export type TranslationKeys = {
       desc?: string
       enableRag: string
       enableRagDesc: string
+      partialFailureSummary?: string
       indexPdf?: string
       indexPdfDesc?: string
       embeddingModel: string
@@ -1910,11 +1913,14 @@ export type TranslationKeys = {
         open_skill?: string
       }
       writeAction?: {
+        write?: string
+        delete?: string
+        create_dir?: string
+        move?: string
+        // Legacy keys kept for rendering historical conversations.
         create_file?: string
         delete_file?: string
-        create_dir?: string
         delete_dir?: string
-        move?: string
       }
       readMode?: {
         full?: string
@@ -1995,6 +2001,8 @@ export type TranslationKeys = {
     rebuildingIndex: string
     rebuildComplete: string
     rebuildFailed: string
+    /** Manual index finished but some files could not be indexed. {{count}} interpolated client-side. */
+    indexedWithSkipped?: string
     continueComplete?: string
     continueFailed?: string
     openYoloNewChatFailed: string
@@ -2242,9 +2250,16 @@ export type TranslationKeys = {
   // Plugin update banner (GitHub release check)
   update: {
     newVersionAvailable: string
+    toastTitle: string
     currentVersion: string
     viewDetails: string
+    goUpdate: string
     dismiss: string
+    collapse: string
+    showFullChangelog: string
+    languageEnglish: string
+    languageChinese: string
+    muteThisVersion: string
     installationIncompleteTitle: string
     installationIncompleteMeta: string
     installationIncompleteNotes: string

@@ -14,6 +14,7 @@ import {
 
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
+import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
@@ -65,6 +66,7 @@ import {
   RagIndexRunSnapshot,
   RagIndexService,
 } from './core/rag/ragIndexService'
+import { migrateVaultSkillFrontmatter } from './core/skills/liteSkills'
 import { hasConfiguredTtsConfig } from './core/tts/configStatus'
 import {
   type UpdateCheckResult,
@@ -75,7 +77,10 @@ import { PGLiteAbortedException } from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
 import { pruneImageCache } from './database/json/chat/imageCacheStore'
 import { prunePdfTextCache } from './database/json/chat/pdfTextCacheStore'
-import type { VectorManager } from './database/modules/vector/VectorManager'
+import type {
+  ReconcileResult,
+  VectorManager,
+} from './database/modules/vector/VectorManager'
 import { PGliteRuntimeManager } from './database/runtime/PGliteRuntimeManager'
 import { PGLITE_RUNTIME_VERSION } from './database/runtime/pgliteRuntimeMetadata'
 import {
@@ -160,8 +165,8 @@ export default class YoloPlugin extends Plugin {
   private currentSettingsMeta: YoloDataMeta | null = null
   updateCheckResult: UpdateCheckResult | null = null
   private hasCheckedForUpdate = false
-  private updateBannerDismissed = false
   private updateCheckListeners: (() => void)[] = []
+  private updateToastCleanup: (() => void) | null = null
   installationIncompleteDetail: {
     bakedVersion: string
     manifestVersion: string
@@ -683,13 +688,17 @@ export default class YoloPlugin extends Plugin {
       this.ragAutoUpdateService = new RagAutoUpdateService({
         getSettings: () => this.settings,
         setSettings: (settings) => this.setSettings(settings),
-        runIndex: (request) =>
-          this.getRagIndexService().runIndex({
+        runIndex: async (request) => {
+          // Background auto-update never surfaces partial failures (product
+          // decision: settings page shows them durably via the snapshot). The
+          // reconcile result is intentionally discarded here.
+          await this.getRagIndexService().runIndex({
             mode: 'sync',
             scope: request,
             trigger: 'auto',
             retryPolicy: 'transient',
-          }),
+          })
+        },
         markRetryScheduled: (input) =>
           this.getRagIndexService().markRetryScheduled({
             mode: 'sync',
@@ -2413,6 +2422,17 @@ export default class YoloPlugin extends Plugin {
     void pruneImageCache(this.app, 30, this.settings)
     void prunePdfTextCache(this.app, 30, this.settings)
     await this.getRagIndexService().initialize()
+    // One-time, idempotent migration of vault skill files from legacy
+    // `id + name` frontmatter to the converged `name`-only form. Kicked off as
+    // soon as the vault index is ready. Note: Obsidian's metadataCache updates
+    // asynchronously after each modify, so on the very first post-upgrade
+    // startup a skill list/open may briefly observe pre-migration frontmatter
+    // until the cache re-parses — self-healing and one-time. A full
+    // cache-event barrier is intentionally avoided as over-engineering for this
+    // sub-second transient; the migration is idempotent so it always converges.
+    this.app.workspace.onLayoutReady(() => {
+      void migrateVaultSkillFrontmatter(this.app, this.settings)
+    })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
       const snapshot = this.getRagIndexSnapshot()
@@ -2481,6 +2501,10 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.setupBackgroundActivityStatusBar()
+    this.updateToastCleanup = mountUpdateToast(this)
+    // The toast is anchored to the window (not a chat view), so trigger the
+    // check at load time rather than waiting for a chat view to open.
+    this.checkForUpdateOnce()
     this.getAgentNotificationCoordinator().start()
     this.register(() => {
       this.agentNotificationCoordinator?.stop()
@@ -2721,6 +2745,9 @@ export default class YoloPlugin extends Plugin {
     this.registerDomEvent(window, 'blur', () => {
       this.getRagAutoUpdateService().onWindowBlur()
     })
+    this.registerDomEvent(window, 'online', () => {
+      this.getRagAutoUpdateService().onOnline()
+    })
 
     this.addCommand({
       id: 'rebuild-vault-index',
@@ -2728,7 +2755,7 @@ export default class YoloPlugin extends Plugin {
       callback: async () => {
         const notice = new Notice(this.t('notices.rebuildingIndex'), 0)
         try {
-          await this.getRagIndexService().runIndex({
+          const result = await this.getRagIndexService().runIndex({
             mode: 'rebuild',
             scope: { kind: 'all' },
             trigger: 'manual',
@@ -2743,7 +2770,15 @@ export default class YoloPlugin extends Plugin {
               )
             },
           })
-          notice.setMessage(this.t('notices.rebuildComplete'))
+          const skipped = result.permanentFailedPaths.length
+          notice.setMessage(
+            skipped > 0
+              ? this.t(
+                  'notices.indexedWithSkipped',
+                  '索引完成，{{count}} 个文件无法索引',
+                ).replace('{{count}}', String(skipped))
+              : this.t('notices.rebuildComplete'),
+          )
         } catch (error) {
           if (error instanceof RagIndexBusyError) {
             notice.setMessage(
@@ -2767,7 +2802,7 @@ export default class YoloPlugin extends Plugin {
       callback: async () => {
         const notice = new Notice(this.t('notices.updatingIndex'), 0)
         try {
-          await this.getRagIndexService().runIndex({
+          const result = await this.getRagIndexService().runIndex({
             mode: 'sync',
             scope: { kind: 'all' },
             trigger: 'manual',
@@ -2782,7 +2817,15 @@ export default class YoloPlugin extends Plugin {
               )
             },
           })
-          notice.setMessage(this.t('notices.indexUpdated'))
+          const skipped = result.permanentFailedPaths.length
+          notice.setMessage(
+            skipped > 0
+              ? this.t(
+                  'notices.indexedWithSkipped',
+                  '索引完成，{{count}} 个文件无法索引',
+                ).replace('{{count}}', String(skipped))
+              : this.t('notices.indexUpdated'),
+          )
         } catch (error) {
           if (error instanceof RagIndexBusyError) {
             notice.setMessage(
@@ -2872,6 +2915,8 @@ export default class YoloPlugin extends Plugin {
   }
 
   onunload() {
+    this.updateToastCleanup?.()
+    this.updateToastCleanup = null
     this.closeSmartSpace()
 
     // Selection chat cleanup
@@ -3387,10 +3432,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
-  isUpdateBannerDismissed(): boolean {
-    return this.updateBannerDismissed
-  }
-
   addUpdateCheckListener(listener: () => void): () => void {
     this.updateCheckListeners.push(listener)
     return () => {
@@ -3406,9 +3447,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
-  dismissUpdateBanner(): void {
-    this.updateBannerDismissed = true
-    this.notifyUpdateCheckListeners()
+  isUpdateVersionMuted(version: string): boolean {
+    return this.settings.mutedUpdateVersion === version
+  }
+
+  async muteUpdateVersion(version: string): Promise<void> {
+    await this.setSettings({ ...this.settings, mutedUpdateVersion: version })
+    // setSettings can no-op (e.g. external settings conflict). Only hide the
+    // toast when the mute actually persisted, so the user can retry otherwise.
+    if (this.isUpdateVersionMuted(version)) {
+      this.updateCheckResult = null
+      this.notifyUpdateCheckListeners()
+    }
   }
 
   checkForUpdateOnce(): void {
@@ -3418,7 +3468,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.hasCheckedForUpdate = true
     void (async () => {
       const fetched = await checkForUpdate(this.manifest.version)
-      if (fetched?.hasUpdate) {
+      if (
+        fetched?.hasUpdate &&
+        !this.isUpdateVersionMuted(fetched.latestVersion)
+      ) {
         this.updateCheckResult = fetched
         this.notifyUpdateCheckListeners()
       }
@@ -3547,8 +3600,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     onProgress?: (
       progress: import('./components/chat-view/QueryProgress').IndexProgress,
     ) => void
-  }): Promise<void> {
-    await this.getRagIndexService().runIndex(options)
+  }): Promise<ReconcileResult> {
+    return await this.getRagIndexService().runIndex(options)
   }
 
   /** Re-issue the previously failed run. Falls back to a full sync reconcile. */

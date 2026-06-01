@@ -6,6 +6,10 @@ jest.mock('../../database/json/chat/promptSnapshotStore', () => ({
 
 jest.mock('../../core/memory/memoryManager', () => ({
   getMemoryPromptContext: jest.fn(async () => ''),
+  resolveMemoryFilePaths: jest.fn(() => ({
+    global: 'YOLO/memory/global.md',
+    assistant: null,
+  })),
 }))
 
 jest.mock('../llm/image', () => ({
@@ -13,6 +17,8 @@ jest.mock('../llm/image', () => ({
   tFileToImageDataUrl: jest.fn(async () => 'data:image/png;base64,fake'),
 }))
 
+import { SystemPromptSnapshotStore } from '../../core/agent/systemPromptSnapshotStore'
+import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
@@ -476,6 +482,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -587,6 +594,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'assistant',
@@ -669,6 +677,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -731,6 +740,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -804,6 +814,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     const builder = new RequestContextBuilder(app as never, settings)
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -939,6 +950,7 @@ describe('RequestContextBuilder generateRequestMessages', () => {
     }
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: historyMessages,
       hasTools: false,
       hasMemoryTools: false,
@@ -1013,6 +1025,7 @@ describe('RequestContextBuilder project instructions injection', () => {
   ): Promise<string> {
     const builder = new RequestContextBuilder(app as never, settings)
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -1169,6 +1182,7 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
     const currentFile = createMockFile('notes/focus.md')
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -1211,6 +1225,7 @@ describe('RequestContextBuilder generateRequestMessages currentFile merging', ()
     const currentFile = createMockFile('notes/focus.md')
 
     const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -1439,6 +1454,7 @@ describe('parseToolMessage document hoisting', () => {
   ) => {
     const builder = new RequestContextBuilder(mockApp as never, mockSettings)
     return builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
       messages: [
         {
           role: 'user',
@@ -1590,5 +1606,200 @@ describe('parseToolMessage document hoisting', () => {
     expect(headerPart?.type === 'text' && headerPart.text).toContain(
       'Attachments from tool call',
     )
+  })
+})
+
+describe('RequestContextBuilder system prompt freezing', () => {
+  const baseSettings = {
+    systemPrompt: '',
+    currentAssistantId: undefined,
+    assistants: [],
+    yolo: { baseDir: 'YOLO' },
+    chatOptions: {
+      includeCurrentFileContent: false,
+      mentionContextMode: 'light',
+    },
+    skills: {},
+  } as unknown as YoloSettings
+
+  const model = {
+    provider: 'openai',
+    model: 'gpt-test',
+    name: 'gpt-test',
+  } as never
+
+  const userMessages: ChatUserMessage[] = [
+    {
+      role: 'user',
+      id: 'u1',
+      content: null,
+      promptContent: 'hello',
+      mentionables: [],
+    },
+  ]
+
+  const memMock = jest.mocked(getMemoryPromptContext)
+
+  const makeApp = () =>
+    createMockApp({ files: [], fileContents: new Map() }) as never
+
+  const getSystemContent = (messages: RequestMessage[]): string => {
+    const system = messages.find((message) => message.role === 'system')
+    if (!system || typeof system.content !== 'string') {
+      throw new Error('Expected a string system message')
+    }
+    return system.content
+  }
+
+  afterAll(() => {
+    memMock.mockResolvedValue({ global: null, assistant: null })
+  })
+
+  it('freezes memory in the system prompt for the conversation lifetime (create mode)', async () => {
+    const store = new SystemPromptSnapshotStore()
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+      systemPromptSnapshotStore: store,
+    })
+
+    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    memMock.mockClear()
+
+    const first = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(first)).toContain('MEM_V1')
+
+    // Memory is rewritten mid-conversation (e.g. a memory_add tool call).
+    memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+
+    const second = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    // Frozen: still V1, and memory was not re-read for the second iteration.
+    expect(getSystemContent(second)).toContain('MEM_V1')
+    expect(getSystemContent(second)).not.toContain('MEM_V2')
+    expect(memMock).toHaveBeenCalledTimes(1)
+
+    // A fresh conversation picks up the latest memory.
+    const other = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-2',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(other)).toContain('MEM_V2')
+  })
+
+  it('refreshes the snapshot when a prompt-relevant setting changes', async () => {
+    const store = new SystemPromptSnapshotStore()
+    memMock.mockResolvedValue({ global: 'MEM', assistant: null })
+
+    const builderA = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+      systemPromptSnapshotStore: store,
+    })
+    const a = await builderA.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(a)).not.toContain('CUSTOM_SP')
+
+    // settings.systemPrompt changes -> fingerprint changes -> snapshot refreshes
+    // even within the same conversationId (a new RCB instance, shared store).
+    const builderB = new RequestContextBuilder(
+      makeApp(),
+      { ...baseSettings, systemPrompt: 'CUSTOM_SP' } as unknown as YoloSettings,
+      { includeSkills: false, systemPromptSnapshotStore: store },
+    )
+    const b = await builderB.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(b)).toContain('CUSTOM_SP')
+  })
+
+  it('does NOT refresh the snapshot for a setting that never reaches the system prompt', async () => {
+    const store = new SystemPromptSnapshotStore()
+    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+
+    const builderA = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+      systemPromptSnapshotStore: store,
+    })
+    const a = await builderA.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(a)).toContain('MEM_V1')
+
+    // Memory changes AND an unrelated, non-system setting (chatOptions) changes.
+    // The fingerprint must be unchanged, so the frozen V1 snapshot is kept.
+    memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+    const builderB = new RequestContextBuilder(
+      makeApp(),
+      {
+        ...baseSettings,
+        chatOptions: {
+          includeCurrentFileContent: true,
+          mentionContextMode: 'full',
+        },
+      } as unknown as YoloSettings,
+      { includeSkills: false, systemPromptSnapshotStore: store },
+    )
+    const b = await builderB.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(b)).toContain('MEM_V1')
+    expect(getSystemContent(b)).not.toContain('MEM_V2')
+  })
+
+  it('reuse mode never freezes ahead of the real request', async () => {
+    const store = new SystemPromptSnapshotStore()
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+      systemPromptSnapshotStore: store,
+    })
+
+    memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    const estimate = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'reuse',
+    })
+    expect(getSystemContent(estimate)).toContain('MEM_V1')
+
+    // The estimate must not have frozen V1: the real request sees current memory.
+    memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+    const real = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-1',
+      hasMemoryTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(real)).toContain('MEM_V2')
   })
 })

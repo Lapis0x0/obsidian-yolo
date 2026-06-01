@@ -7,7 +7,6 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
 import { SharedConversationSurface } from './SharedConversationSurface'
-import { UpdateBanner } from './UpdateBanner'
 
 type ChatConversationPaneProps = {
   chatMode: ChatMode
@@ -66,7 +65,6 @@ export function ChatConversationPane({
   return (
     <>
       <InstallationIncompleteBanner />
-      <UpdateBanner />
       <SharedConversationSurface
         items={chatTimelineItems}
         conversationId={currentConversationId}

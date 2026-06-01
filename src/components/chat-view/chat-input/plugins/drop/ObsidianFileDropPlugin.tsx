@@ -11,7 +11,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   DROP_COMMAND,
 } from 'lexical'
-import { TFile } from 'obsidian'
+import { App, TFile, TFolder } from 'obsidian'
 import { useEffect } from 'react'
 
 import { useApp } from '../../../../../contexts/app-context'
@@ -72,6 +72,42 @@ function extractCandidateUrls(dataTransfer: DataTransfer): string[] {
   return []
 }
 
+// Obsidian's internal drag state. Folders carry no openable URI in the drop
+// event's dataTransfer, so this is the only reliable source for a dragged
+// folder. Not part of the public API — typed narrowly and accessed defensively.
+type ObsidianDraggable = {
+  type?: string
+  file?: unknown
+  files?: unknown[]
+}
+
+function getDraggedFolders(app: App): TFolder[] {
+  const draggable = (
+    app as unknown as { dragManager?: { draggable?: ObsidianDraggable } }
+  ).dragManager?.draggable
+  if (!draggable) {
+    return []
+  }
+
+  const candidates: unknown[] = []
+  if (draggable.file) {
+    candidates.push(draggable.file)
+  }
+  if (Array.isArray(draggable.files)) {
+    candidates.push(...draggable.files)
+  }
+
+  const folders: TFolder[] = []
+  const seenPaths = new Set<string>()
+  for (const candidate of candidates) {
+    if (candidate instanceof TFolder && !seenPaths.has(candidate.path)) {
+      seenPaths.add(candidate.path)
+      folders.push(candidate)
+    }
+  }
+  return folders
+}
+
 export default function ObsidianFileDropPlugin(): null {
   const [editor] = useLexicalComposerContext()
   const app = useApp()
@@ -90,8 +126,12 @@ export default function ObsidianFileDropPlugin(): null {
           return false
         }
 
+        // Folders carry no openable URI in dataTransfer, so resolve them from
+        // Obsidian's internal drag state instead of the uri-list candidates.
+        const resolvedFolders = getDraggedFolders(app)
+
         const candidates = extractCandidateUrls(dataTransfer)
-        if (candidates.length === 0) {
+        if (candidates.length === 0 && resolvedFolders.length === 0) {
           return false
         }
 
@@ -131,7 +171,7 @@ export default function ObsidianFileDropPlugin(): null {
           }
         }
 
-        if (resolvedFiles.length === 0) {
+        if (resolvedFiles.length === 0 && resolvedFolders.length === 0) {
           return false
         }
 
@@ -191,9 +231,16 @@ export default function ObsidianFileDropPlugin(): null {
             return
           }
 
+          const droppedMentionables: Mentionable[] = [
+            ...resolvedFiles.map(
+              (file): Mentionable => ({ type: 'file', file }),
+            ),
+            ...resolvedFolders.map(
+              (folder): Mentionable => ({ type: 'folder', folder }),
+            ),
+          ]
           const nodesToInsert = []
-          for (const file of resolvedFiles) {
-            const mentionable: Mentionable = { type: 'file', file }
+          for (const mentionable of droppedMentionables) {
             nodesToInsert.push(
               $createMentionNode(
                 getMentionableName(mentionable),

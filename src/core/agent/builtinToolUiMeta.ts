@@ -54,7 +54,7 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descKey: 'settings.agent.builtinFsEditDesc',
     labelFallback: 'Text Editing',
     descFallback:
-      'Apply exactly one text edit operation within a single existing file, including replace, replace_lines, insert_after, and append.',
+      'Apply exactly one text edit within a single existing file, by exact text (oldText) or by line range (startLine/endLine).',
   },
   [FILE_OPS_GROUP_TOOL_NAME]: {
     labelKey: 'settings.agent.builtinFsFileOpsLabel',
@@ -92,7 +92,7 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelKey: 'settings.agent.builtinOpenSkillLabel',
     descKey: 'settings.agent.builtinOpenSkillDesc',
     labelFallback: 'Open Skill',
-    descFallback: 'Load a skill markdown file by id or name.',
+    descFallback: 'Load a skill markdown file by name.',
   },
   [WEB_OPS_GROUP_TOOL_NAME]: {
     labelKey: 'settings.agent.builtinWebOpsLabel',

@@ -93,6 +93,7 @@ describe('RAGEngine', () => {
               resolve()
             })
           })
+          return { permanentFailedPaths: [], chunkifyFailedPaths: [] }
         },
       ),
     }

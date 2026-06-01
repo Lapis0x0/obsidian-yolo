@@ -103,18 +103,104 @@
   display: inline-flex;
   align-items: center;
   gap: 0.2em;
+  box-sizing: border-box;
+  line-height: inherit;
+  /* Make the chip's selection box coincide exactly with the line box, so the
+     selected pill is as tall as — and flush with — adjacent native text
+     selection. 1lh sizes it to the computed line-height (font-independent, no
+     guessed leading); vertical-align: bottom pins the box to the line box edges
+     instead of letting baseline alignment leave it short. */
+  min-block-size: 1lh;
+  vertical-align: bottom;
 }
 
 .yolo-lexical-content-editable-root .yolo-skill-mention::before {
   content: '';
-  width: 0.9em;
-  height: 0.9em;
+  width: 1.1em;
+  height: 1.1em;
   flex-shrink: 0;
   background-color: currentColor;
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z'/%3E%3Cpath d='M5 3v4'/%3E%3Cpath d='M3 5h4'/%3E%3Cpath d='M19 17v2'/%3E%3Cpath d='M18 18h2'/%3E%3C/svg%3E");
   mask-repeat: no-repeat;
   mask-position: center;
   mask-size: contain;
+}
+
+/* Typed inline mentions (file/folder/...) render a leading type icon instead
+   of an "@" prefix, mirroring the skill mention treatment above. Icons are
+   lucide SVGs from getMentionableIcon, drawn via mask so they inherit the tag
+   color. */
+.yolo-lexical-content-editable-root .mention[class*='yolo-mention--'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  box-sizing: border-box;
+  line-height: inherit;
+  /* See .yolo-skill-mention: 1lh + vertical-align: bottom make the chip's box
+     coincide with the line box, so its selection band is flush with adjacent
+     native text selection. */
+  min-block-size: 1lh;
+  vertical-align: bottom;
+}
+
+/* When a mention sits inside the active selection, highlight the whole pill
+   (icon + text) as one unit. The icon is a ::before background that native
+   text selection can't tint, so MentionSelectionHighlightPlugin flags the pill
+   and we carry the selection look on the pill background instead — suppressing
+   the per-glyph native highlight so it reads as a single selected chip. */
+.yolo-lexical-content-editable-root .mention.yolo-mention-selected {
+  background-color: var(--text-selection);
+  border-radius: 0;
+}
+
+.yolo-lexical-content-editable-root .mention.yolo-mention-selected::selection,
+.yolo-lexical-content-editable-root .mention.yolo-mention-selected ::selection {
+  background-color: transparent;
+}
+
+.yolo-lexical-content-editable-root .mention[class*='yolo-mention--']::before {
+  content: '';
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--file::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E");
+}
+
+/* block = an excerpt/selection quoted out of a file (TextSelect), distinct
+   from a whole file (FileIcon) and from assistant-quote (Quote). */
+.yolo-lexical-content-editable-root .yolo-mention--block::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3a2 2 0 0 0-2 2'/%3E%3Cpath d='M19 3a2 2 0 0 1 2 2'/%3E%3Cpath d='M21 19a2 2 0 0 1-2 2'/%3E%3Cpath d='M5 21a2 2 0 0 1-2-2'/%3E%3Cpath d='M9 3h1'/%3E%3Cpath d='M9 21h1'/%3E%3Cpath d='M14 3h1'/%3E%3Cpath d='M14 21h1'/%3E%3Cpath d='M3 9v1'/%3E%3Cpath d='M21 9v1'/%3E%3Cpath d='M3 14v1'/%3E%3Cpath d='M21 14v1'/%3E%3Cline x1='7' x2='15' y1='8' y2='8'/%3E%3Cline x1='7' x2='17' y1='12' y2='12'/%3E%3Cline x1='7' x2='13' y1='16' y2='16'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--folder::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3Cpath d='M2 10h20'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--pdf::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--image::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--url::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--model::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='16' height='16' x='4' y='4' rx='2'/%3E%3Crect width='6' height='6' x='9' y='9' rx='1'/%3E%3Cpath d='M15 2v2'/%3E%3Cpath d='M15 20v2'/%3E%3Cpath d='M2 15h2'/%3E%3Cpath d='M2 9h2'/%3E%3Cpath d='M20 15h2'/%3E%3Cpath d='M20 9h2'/%3E%3Cpath d='M9 2v2'/%3E%3Cpath d='M9 20v2'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--assistant-quote::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3Cpath d='M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z'/%3E%3C/svg%3E");
 }
 
 .yolo-lexical-content-editable-paragraph {

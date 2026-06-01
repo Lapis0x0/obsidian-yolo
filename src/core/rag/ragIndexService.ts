@@ -1,6 +1,7 @@
 import { App } from 'obsidian'
 
 import { IndexProgress } from '../../components/chat-view/QueryProgress'
+import { ReconcileResult } from '../../database/modules/vector/VectorManager'
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 
 import { RAGEngine } from './ragEngine'
@@ -61,6 +62,12 @@ export type RagIndexRunSnapshot = {
   failureKind?: RagIndexFailureKind
   failureMessage?: string
   failureHttpStatus?: number
+  /**
+   * Files that could not be indexed permanently on the last completed run (kept
+   * partial results, not retried). Persisted so the settings page can surface a
+   * durable "X files couldn't be indexed" notice. Cleared on a clean completion.
+   */
+  permanentFailedPaths?: string[]
 }
 
 type RagIndexServiceDeps = {
@@ -244,7 +251,7 @@ export class RagIndexService {
     )
   }
 
-  async runIndex(options: RagIndexRunOptions): Promise<void> {
+  async runIndex(options: RagIndexRunOptions): Promise<ReconcileResult> {
     await this.initialize()
     if (this.currentAbortController) {
       throw new RagIndexBusyError()
@@ -279,7 +286,7 @@ export class RagIndexService {
 
     try {
       const ragEngine = await this.getRagEngine()
-      await ragEngine.updateVaultIndex(
+      const result = await ragEngine.updateVaultIndex(
         {
           scope: options.scope,
           truncate: options.mode === 'rebuild',
@@ -318,8 +325,16 @@ export class RagIndexService {
         failureHttpStatus: undefined,
         retryAt: undefined,
         waitingForRateLimit: false,
+        // Permanent failures need user intervention → persist so the settings
+        // page can surface them durably. Clear on a clean completion. Chunkify
+        // failures self-heal on the next reconcile, so they're not persisted.
+        permanentFailedPaths:
+          result.permanentFailedPaths.length > 0
+            ? result.permanentFailedPaths
+            : undefined,
       }
       await this.persistSnapshot()
+      return result
     } catch (error) {
       const failure = describeRagIndexError(error)
       const failureKind = failure.kind

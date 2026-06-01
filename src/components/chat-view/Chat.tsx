@@ -90,6 +90,7 @@ import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { readTFileContent } from '../../utils/obsidian'
+import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 
@@ -566,8 +567,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [conversationAssistantId, settings],
   )
   const requestContextBuilder = useMemo(() => {
-    return new RequestContextBuilder(app, effectiveSettings)
-  }, [app, effectiveSettings])
+    return new RequestContextBuilder(app, effectiveSettings, {
+      systemPromptSnapshotStore: agentService.getSystemPromptSnapshotStore(),
+    })
+  }, [app, effectiveSettings, agentService])
 
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
@@ -1561,6 +1564,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           selectedSkills: latest.selectedSkills,
           selectedModelIds: latest.selectedModelIds,
           reasoningLevel: latest.reasoningLevel ?? prev.reasoningLevel,
+          // 该消息从未真正发送出去 → 清掉入队时打的旧时间,下次提交会重新打戳。
+          timeContext: undefined,
         }))
         if (messages.length > 1) {
           new Notice(
@@ -4751,18 +4756,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 messageReasoningLevel
               const nextMessageModelMap = new Map(messageModelMap)
               nextMessageModelMap.set(messageOrGroup.id, modelForThisMessage)
-              const editedUserMessage: ChatUserMessage = {
-                role: 'user',
-                content,
-                promptContent: null,
-                id: messageOrGroup.id,
-                reasoningLevel: reasoningForThisMessage,
-                mentionables: messageOrGroup.mentionables,
-                selectedSkills: messageOrGroup.selectedSkills ?? [],
-                selectedModelIds: extractSelectedModelIds(
-                  messageOrGroup.mentionables,
-                ),
-              }
+              // 历史编辑后重新提交是一个新的用户回合 → 打上新的当前时间。
+              const editedUserMessage: ChatUserMessage =
+                stampUserMessageTimeContext(
+                  {
+                    role: 'user',
+                    content,
+                    promptContent: null,
+                    id: messageOrGroup.id,
+                    reasoningLevel: reasoningForThisMessage,
+                    mentionables: messageOrGroup.mentionables,
+                    selectedSkills: messageOrGroup.selectedSkills ?? [],
+                    selectedModelIds: extractSelectedModelIds(
+                      messageOrGroup.mentionables,
+                    ),
+                  },
+                  settings,
+                )
               const inputChatMessages = [
                 ...groupedChatMessages
                   .slice(0, groupedMessageIndex)
@@ -5087,7 +5097,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     ) {
                       return
                     }
-                    const messageForSubmit = buildInputMessageForSubmit(content)
+                    // 新用户回合进入对话:在此固定当前时间。同时覆盖随后两条出口
+                    // ——入队(running 分支)与普通提交——保证两者用的都是入队/提交
+                    // 那一刻的时间,而非 drain 时刻。
+                    const messageForSubmit = stampUserMessageTimeContext(
+                      buildInputMessageForSubmit(content),
+                      settings,
+                    )
 
                     // ask_user_question parks the agent in a paused state that
                     // may outlive the run itself (run can finalize while the

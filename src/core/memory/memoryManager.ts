@@ -614,6 +614,32 @@ export async function getMemoryPromptContext({
   }
 }
 
+/**
+ * Resolve the exact memory file paths that {@link getMemoryPromptContext} would
+ * read for the given assistant, mirroring its decision (assistant memory is
+ * only read when the assistant has instructions). Used by the system-prompt
+ * snapshot fingerprint: the assistant memory path depends on sibling
+ * same-named assistants (duplicate index), so adding/renaming a sibling can
+ * change which file the current assistant reads — that must invalidate the
+ * frozen snapshot even though the current assistant's own fields are unchanged.
+ */
+export const resolveMemoryFilePaths = ({
+  settings,
+  assistantId,
+}: {
+  settings?: MemorySettingsLike
+  assistantId?: string
+}): { global: string; assistant: string | null } => {
+  const assistant = getAssistantById(settings, assistantId)
+  return {
+    global: getGlobalMemoryPath(settings),
+    assistant:
+      assistant && hasAssistantInstructions(assistant)
+        ? getAssistantMemoryPath({ settings, assistant })
+        : null,
+  }
+}
+
 export async function memoryAdd({
   app,
   settings,

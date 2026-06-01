@@ -76,7 +76,11 @@ export const assistantSchema = z.object({
   toolPreferences: z
     .record(z.string(), assistantToolPreferenceSchema)
     .optional(),
+  // Legacy: per-assistant enabled skill list, keyed by canonical skill name.
   enabledSkills: z.array(z.string()).optional(),
+  // Per-assistant skill preferences, keyed by canonical skill *name*
+  // (frontmatter `name`, trim-only, case-sensitive). Field/key names kept for
+  // backwards compatibility; keys are skill names, not a separate id.
   skillPreferences: z
     .record(z.string(), assistantSkillPreferenceSchema)
     .optional(),

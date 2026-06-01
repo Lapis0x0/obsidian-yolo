@@ -312,6 +312,8 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
           for (const meta of list) {
             await manager.deleteChat(meta.id)
           }
+          // Drop all frozen system prompts so no snapshot outlives its conversation.
+          plugin.getAgentService().clearSystemPromptSnapshots()
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           // Notify UI hooks (useChatHistory) to refresh chat list immediately

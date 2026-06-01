@@ -27,7 +27,7 @@ export function AgentFocusSyncSection() {
     <ObsidianSetting
       name={t('settings.agent.focusSyncTitle')}
       desc={t('settings.agent.focusSyncDesc')}
-      className="yolo-settings-card yolo-focus-sync-card"
+      className="yolo-settings-card yolo-agent-capability-card"
     >
       <ObsidianToggle
         value={settings.chatOptions.includeCurrentFileContent}

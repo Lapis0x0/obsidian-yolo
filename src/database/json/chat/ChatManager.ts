@@ -174,16 +174,45 @@ export class ChatManager extends AbstractJsonRepository<
   }
 
   public async listChats(): Promise<ChatConversationMetadata[]> {
-    const index = await this.readIndex()
-    if (index) {
-      const normalized = this.normalizeIndex(index)
-      await this.writeIndexIfChanged(index, normalized)
-      return this.sortByUpdatedAt(normalized)
-    }
+    // The conversation files on disk are the source of truth; chat_index.json
+    // is only a metadata cache that lets us skip reading every file on each
+    // list. Reconcile against the directory so a missing / empty / stale index
+    // can never hide conversations that actually exist on disk (e.g. after a
+    // manual folder copy or an interrupted sync).
+    const onDisk = await this.listMetadata()
+    const cachedList = this.normalizeIndex((await this.readIndex()) ?? [])
+    const cachedById = new Map(cachedList.map((entry) => [entry.id, entry]))
 
-    const built = await this.buildIndexFromFiles()
-    await this.writeIndex(built)
-    return this.sortByUpdatedAt(built)
+    // normalizeIndex dedups by id (a conversation may briefly have both a
+    // stable and a legacy filename), matching the previous rebuild behavior.
+    const reconciled = this.normalizeIndex(
+      await Promise.all(
+        onDisk.map(async (meta) => {
+          // Trust the cache only for non-degenerate entries. A real chat never
+          // has an empty title (createChat/updateChat reject it), so an empty
+          // title marks a placeholder previously written for an unreadable
+          // file — fall through and re-read it so it can self-heal.
+          const cached = cachedById.get(meta.id)
+          if (cached && cached.title) return cached
+          const conversation = await this.readSafe(meta.fileName)
+          return this.toMetadata(conversation ?? meta)
+        }),
+      ),
+    )
+
+    await this.writeIndexIfChanged(cachedList, reconciled)
+    return this.sortByUpdatedAt(reconciled)
+  }
+
+  private async readSafe(fileName: string): Promise<ChatConversation | null> {
+    try {
+      return await this.read(fileName)
+    } catch (error) {
+      // A single corrupt / half-written conversation file must not reject the
+      // whole list; surface a filename-derived placeholder instead.
+      console.error('[YOLO] Failed to read chat file', fileName, error)
+      return null
+    }
   }
 
   private async readIndex(): Promise<ChatConversationMetadata[] | null> {
@@ -208,46 +237,38 @@ export class ChatManager extends AbstractJsonRepository<
   }
 
   private async writeIndexIfChanged(
-    original: ChatConversationMetadata[],
-    normalized: ChatConversationMetadata[],
+    previous: ChatConversationMetadata[],
+    next: ChatConversationMetadata[],
   ): Promise<void> {
-    if (original.length !== normalized.length) {
-      await this.writeIndex(normalized)
-      return
-    }
-    const originalJson = JSON.stringify(original)
-    const normalizedJson = JSON.stringify(normalized)
-    if (originalJson !== normalizedJson) {
-      await this.writeIndex(normalized)
+    // Compare by content (id-sorted) so that a pure ordering difference between
+    // the cached index and the disk-derived list does not trigger a rewrite.
+    const previousJson = JSON.stringify(this.sortById(previous))
+    const nextJson = JSON.stringify(this.sortById(next))
+    if (previousJson !== nextJson) {
+      await this.writeIndex(next)
     }
   }
 
-  private async buildIndexFromFiles(): Promise<ChatConversationMetadata[]> {
-    const metadata = await this.listMetadata()
-    const entries = await Promise.all(
-      metadata.map(async (meta) => {
-        const conversation = await this.read(meta.fileName)
-        if (!conversation) {
-          return {
-            id: meta.id,
-            title: meta.title,
-            updatedAt: meta.updatedAt,
-            schemaVersion: meta.schemaVersion,
-            isPinned: false,
-            pinnedAt: undefined,
-          }
-        }
-        return {
-          id: conversation.id,
-          title: conversation.title,
-          updatedAt: conversation.updatedAt,
-          schemaVersion: conversation.schemaVersion,
-          isPinned: conversation.isPinned ?? false,
-          pinnedAt: conversation.pinnedAt,
-        }
-      }),
-    )
-    return this.normalizeIndex(entries)
+  private sortById(
+    list: ChatConversationMetadata[],
+  ): ChatConversationMetadata[] {
+    return [...list].sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  private toMetadata(
+    source: Pick<
+      ChatConversation,
+      'id' | 'title' | 'updatedAt' | 'schemaVersion'
+    > & { isPinned?: boolean; pinnedAt?: number },
+  ): ChatConversationMetadata {
+    return {
+      id: source.id,
+      title: source.title,
+      updatedAt: source.updatedAt,
+      schemaVersion: source.schemaVersion,
+      isPinned: source.isPinned ?? false,
+      pinnedAt: source.pinnedAt,
+    }
   }
 
   private normalizeIndex(
@@ -255,7 +276,9 @@ export class ChatManager extends AbstractJsonRepository<
   ): ChatConversationMetadata[] {
     const map = new Map<string, ChatConversationMetadata>()
     list.forEach((item) => {
-      if (!item?.id) return
+      // Drop garbage entries (e.g. a hand-corrupted index with a non-string
+      // id) at the source so downstream id handling stays safe.
+      if (!item || typeof item.id !== 'string' || item.id.length === 0) return
       const existing = map.get(item.id)
       if (!existing) {
         map.set(item.id, item)

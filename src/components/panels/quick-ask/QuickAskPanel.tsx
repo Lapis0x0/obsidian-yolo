@@ -72,6 +72,7 @@ import { groupAssistantAndToolMessages } from '../../../utils/chat/message-group
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { readTFileContent } from '../../../utils/obsidian'
+import { stampUserMessageTimeContext } from '../../../utils/prompt/timeContext'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
@@ -628,9 +629,12 @@ export function QuickAskPanel({
       },
       {
         includeSkills: executionMode === 'agent' || executionMode === 'chat',
+        systemPromptSnapshotStore: plugin
+          .getAgentService()
+          .getSystemPromptSnapshotStore(),
       },
     )
-  }, [app, executionMode, selectedAssistant, settings])
+  }, [app, executionMode, selectedAssistant, settings, plugin])
 
   const editorSnapshotInjection =
     useMemo<EditorSnapshotInjection | null>(() => {
@@ -999,13 +1003,17 @@ export function QuickAskPanel({
         }
       })
 
-      const userMessage: ChatUserMessage = {
-        role: 'user',
-        content: editorState,
-        promptContent: null,
-        id: options?.userMessageId ?? uuidv4(),
-        mentionables: mentionablesOverride ?? mentionables,
-      }
+      // 新用户回合进入对话:在此固定当前时间(与侧边栏 Chat 同一机制)。
+      const userMessage: ChatUserMessage = stampUserMessageTimeContext(
+        {
+          role: 'user',
+          content: editorState,
+          promptContent: null,
+          id: options?.userMessageId ?? uuidv4(),
+          mentionables: mentionablesOverride ?? mentionables,
+        },
+        settings,
+      )
 
       // Clear mentionables after creating the message
       setMentionables([])
@@ -1085,17 +1093,16 @@ export function QuickAskPanel({
             getEnabledAssistantToolNames(selectedAssistant),
         })
         const effectiveModel = model
-        const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+        const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries = selectedAssistant
           ? listLiteSkillEntries(app, { settings }).filter((skill) =>
               isSkillEnabledForAssistant({
                 assistant: selectedAssistant,
-                skillId: skill.id,
-                disabledSkillIds,
+                skillName: skill.name,
+                disabledSkillNames,
               }),
             )
           : []
-        const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
         const agentService = plugin.getAgentService()
@@ -1122,7 +1129,6 @@ export function QuickAskPanel({
             allowedToolNames: chatModeRuntime.allowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
-            allowedSkillIds,
             allowedSkillNames,
             contextualInjections: editorSnapshotInjection
               ? [editorSnapshotInjection]
@@ -1744,7 +1750,14 @@ export function QuickAskPanel({
 
   // Clear conversation
   const clearConversation = useCallback(() => {
+    // Abort any in-flight run first: clearing starts a new topic under the same
+    // conversationId, and a still-running loop would otherwise re-create the
+    // snapshot we are about to evict on its next iteration.
+    abortStream()
     setChatMessages([])
+    // New topic under the same conversationId, so drop the frozen system prompt
+    // to re-snapshot against the current memory / config on the next message.
+    plugin.getAgentService().evictSystemPromptSnapshot(conversationId)
     new Notice(t('quickAsk.cleared', 'Conversation cleared'))
     // Re-enable follow mode after clearing.
     forceScrollToBottom()
@@ -1752,7 +1765,7 @@ export function QuickAskPanel({
     setTimeout(() => {
       contentEditableRef.current?.focus()
     }, 0)
-  }, [forceScrollToBottom, t])
+  }, [abortStream, conversationId, plugin, forceScrollToBottom, t])
 
   // Open in sidebar
   const hasMessages = chatMessages.length > 0

@@ -17,7 +17,6 @@ import {
   readMultipleTFiles,
   readTFileContent,
 } from '../../../utils/obsidian'
-import { resolvePromptVariables } from '../../../utils/prompt/promptVariables'
 
 type WriteAssistDeps = {
   app: App
@@ -394,9 +393,7 @@ export class WriteAssistController {
         ? `Instruction:\n${userInstruction}\n\n`
         : ''
 
-      const systemPrompt = resolvePromptVariables(
-        settings.systemPrompt ?? '',
-      ).trim()
+      const systemPrompt = (settings.systemPrompt ?? '').trim()
 
       const activeFileForTitle = this.deps.app.workspace.getActiveFile()
       const fileTitle = activeFileForTitle?.basename?.trim() ?? ''

@@ -30,6 +30,7 @@ export class RagAutoUpdateService {
   private static readonly WINDOW_BLUR_GRACE_MS = 15 * 1000
   private static readonly SUCCESS_COOLDOWN_MS = 2 * 60 * 1000
   private static readonly FAILURE_RETRY_DELAY_MS = 5 * 60 * 1000
+  private static readonly RETRY_BACKOFF_CAP_MS = 30 * 60 * 1000
 
   private readonly getSettings: () => YoloSettings
   private readonly setSettings: (settings: YoloSettings) => Promise<void>
@@ -49,6 +50,9 @@ export class RagAutoUpdateService {
   private lastRelevantEditAt: number | null = null
   private lastRunFinishedAt: number | null = null
   private lastRunError: string | null = null
+  private consecutiveTransientFailures = 0
+  /** True while a transient-failure retry timer is pending (for onOnline). */
+  private hasPendingTransientRetry = false
 
   constructor(deps: RagAutoUpdateServiceDeps) {
     this.getSettings = deps.getSettings
@@ -67,6 +71,8 @@ export class RagAutoUpdateService {
     this.hasPendingChangesDuringRun = false
     this.hasRecoveredRetry = false
     this.requiresFullScan = false
+    this.consecutiveTransientFailures = 0
+    this.hasPendingTransientRetry = false
   }
 
   restoreRetryScheduled(retryAt?: number, minDelayMs = 0): void {
@@ -74,6 +80,9 @@ export class RagAutoUpdateService {
     if (!this.isAutoUpdateEnabled(settings)) return
 
     this.hasRecoveredRetry = true
+    // A restored retry is a pending transient retry, so let onOnline() bring it
+    // forward when connectivity returns.
+    this.hasPendingTransientRetry = true
     const delayMs = Math.max(
       retryAt === undefined ? 0 : retryAt - Date.now(),
       minDelayMs,
@@ -130,6 +139,20 @@ export class RagAutoUpdateService {
       return
     }
 
+    this.scheduleAutoUpdate(0)
+  }
+
+  /**
+   * Accelerator (not a gate): when connectivity is restored, bring forward a
+   * retry that is currently waiting out its transient-failure backoff. Does
+   * nothing for ordinary edit-debounce timers. The SUCCESS_COOLDOWN check in
+   * runAutoUpdate still applies, so a retry within 2 min of the failed run is
+   * deferred until the cooldown elapses (acceptable).
+   */
+  onOnline() {
+    if (!this.hasPendingTransientRetry || this.isAutoUpdating) {
+      return
+    }
     this.scheduleAutoUpdate(0)
   }
 
@@ -231,6 +254,9 @@ export class RagAutoUpdateService {
     }
 
     this.isAutoUpdating = true
+    // The run is now consuming any pending transient retry; clear the flag so a
+    // later onOnline during an ordinary debounce timer doesn't fast-forward it.
+    this.hasPendingTransientRetry = false
     const pendingSnapshot = new Set(this.pendingDirtyPaths)
     const requiresFullScanSnapshot = this.requiresFullScan
     const recoveredRetrySnapshot = this.hasRecoveredRetry
@@ -258,6 +284,7 @@ export class RagAutoUpdateService {
       })
       this.lastRunFinishedAt = Date.now()
       this.lastRunError = null
+      this.consecutiveTransientFailures = 0
     } catch (e) {
       console.error('Auto update index failed:', e)
       this.lastRunFinishedAt = Date.now()
@@ -267,21 +294,47 @@ export class RagAutoUpdateService {
       }
       this.requiresFullScan = this.requiresFullScan || requiresFullScanSnapshot
       const failureKind = classifyRagIndexError(e)
+      // Was this run a vault-wide ('all') reconcile? If so, the retry MUST stay
+      // 'all' — degrading to paths-only would drop files that the full scan
+      // (incl. transient rollbacks from VectorManager) touched but that aren't
+      // in pendingSnapshot, stranding their 0-row state until the next edit.
+      const wasAllScope = requiresFullScanSnapshot || recoveredRetrySnapshot
 
       if (failureKind === 'transient') {
-        const retryAt = Date.now() + RagAutoUpdateService.FAILURE_RETRY_DELAY_MS
-        this.hasRecoveredRetry =
-          recoveredRetrySnapshot &&
-          pendingSnapshot.size === 0 &&
-          !requiresFullScanSnapshot
+        this.consecutiveTransientFailures += 1
+        const delay = Math.min(
+          RagAutoUpdateService.FAILURE_RETRY_DELAY_MS *
+            2 ** (this.consecutiveTransientFailures - 1),
+          RagAutoUpdateService.RETRY_BACKOFF_CAP_MS,
+        )
+        const retryAt = Date.now() + delay
+        if (wasAllScope) {
+          // Keep next run vault-wide. Reuse requiresFullScan when the original
+          // 'all' came from a folder rename/delete; otherwise carry the
+          // recovered-retry flag forward.
+          if (requiresFullScanSnapshot) {
+            this.requiresFullScan = true
+          } else {
+            this.hasRecoveredRetry = true
+          }
+        } else {
+          // 'paths' scope: pendingSnapshot was already restored above.
+          this.hasRecoveredRetry = false
+        }
         await this.markRetryScheduled({
           retryAt,
           failureMessage: this.lastRunError,
         })
-        this.scheduleAutoUpdate(RagAutoUpdateService.FAILURE_RETRY_DELAY_MS)
+        this.scheduleAutoUpdate(delay)
         hasScheduledTransientRetry = true
+        this.hasPendingTransientRetry = true
       } else if (failureKind === 'aborted') {
+        this.consecutiveTransientFailures = 0
         shouldRescheduleDirtyWork = true
+      } else {
+        // permanent / unknown terminal state: do not retry; reset backoff so a
+        // later unrelated transient failure starts fresh.
+        this.consecutiveTransientFailures = 0
       }
     } finally {
       this.isAutoUpdating = false

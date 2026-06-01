@@ -5,23 +5,28 @@ export type ResolvedAssistantSkillPolicy = {
   loadMode: AssistantSkillLoadMode
 }
 
-export function getDisabledSkillIdSet(
-  disabledSkillIds?: string[],
+/**
+ * @param disabledSkillNames Globally disabled skill names (canonical skill
+ *   names, trim-only, case-sensitive). The persisted field is still called
+ *   `disabledSkillIds` for backwards compatibility — its elements are skill
+ *   names.
+ */
+export function getDisabledSkillNameSet(
+  disabledSkillNames?: string[],
 ): Set<string> {
-  return new Set((disabledSkillIds ?? []).map((id) => id.trim()))
+  return new Set((disabledSkillNames ?? []).map((name) => name.trim()))
 }
 
 export function resolveAssistantSkillPolicy({
   assistant,
-  skillId,
+  skillName,
   defaultLoadMode,
 }: {
   assistant: Assistant | null | undefined
-  skillId: string
+  skillName: string
   defaultLoadMode?: AssistantSkillLoadMode
 }): ResolvedAssistantSkillPolicy {
-  const preference = assistant?.skillPreferences?.[skillId]
-  void skillId
+  const preference = assistant?.skillPreferences?.[skillName]
   const enabled = preference?.enabled ?? true
   const loadMode: AssistantSkillLoadMode =
     preference?.loadMode === 'always'
@@ -38,23 +43,23 @@ export function resolveAssistantSkillPolicy({
 
 export function isSkillEnabledForAssistant({
   assistant,
-  skillId,
-  disabledSkillIds,
+  skillName,
+  disabledSkillNames,
   defaultLoadMode,
 }: {
   assistant: Assistant | null | undefined
-  skillId: string
-  disabledSkillIds?: string[]
+  skillName: string
+  disabledSkillNames?: string[]
   defaultLoadMode?: AssistantSkillLoadMode
 }): boolean {
-  const disabledSet = getDisabledSkillIdSet(disabledSkillIds)
-  if (disabledSet.has(skillId)) {
+  const disabledSet = getDisabledSkillNameSet(disabledSkillNames)
+  if (disabledSet.has(skillName)) {
     return false
   }
 
   return resolveAssistantSkillPolicy({
     assistant,
-    skillId,
+    skillName,
     defaultLoadMode,
   }).enabled
 }

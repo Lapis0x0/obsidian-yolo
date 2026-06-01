@@ -148,8 +148,7 @@ export const zh: TranslationKeys = {
       primaryRequestTimeoutDesc:
         '流式主请求等待多久后判定为超时。无论是否启用自动恢复，此超时都会生效；若已启用自动恢复，超时后会自动改用非流式再尝试一次。默认 60 秒。',
       globalSystemPrompt: '全局系统提示词',
-      globalSystemPromptDesc:
-        '该提示将追加到每次聊天的最前面。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}、星期 {{current_weekday}}。',
+      globalSystemPromptDesc: '该提示将追加到每次聊天的最前面。',
       continuationSystemPrompt: '默认续写系统提示词',
       continuationSystemPromptDesc:
         '用于续写功能的系统消息。留空将使用内置默认值。',
@@ -259,8 +258,7 @@ export const zh: TranslationKeys = {
       descriptionDesc: '简要描述此助手的用途',
       descriptionPlaceholder: '输入描述',
       systemPrompt: '系统提示词',
-      systemPromptDesc:
-        '该提示将添加到每次聊天的开头。支持 {{current_date}}、{{current_hour}}、{{current_minute}} 和 {{current_weekday}}。',
+      systemPromptDesc: '该提示将添加到每次聊天的开头。',
       systemPromptPlaceholder: '输入系统提示词，用于定义助手的行为与能力',
       namePlaceholder: '输入助手名称',
       defaultAssistantName: '新建助手',
@@ -409,7 +407,7 @@ export const zh: TranslationKeys = {
       fsEditReviewToggleDesc:
         '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
       builtinFsFileOpsLabel: '文件操作集',
-      builtinFsFileOpsDesc: '创建、删除、移动文件与文件夹',
+      builtinFsFileOpsDesc: '写入、删除、移动文件与文件夹',
       builtinMemoryOpsLabel: '记忆工具集',
       builtinMemoryOpsDesc: '新增、更新、删除记忆',
       builtinMemoryAddLabel: '新增记忆',
@@ -465,8 +463,7 @@ export const zh: TranslationKeys = {
       editorIconDesc: '为该 Agent 选择图标',
       editorChooseIcon: '选择图标',
       editorSystemPrompt: 'System prompt',
-      editorSystemPromptDesc:
-        '该 Agent 的主行为指令。支持变量：日期 {{current_date}}、日期+当前小时 {{current_hour}}、日期+当前时分 {{current_minute}}、星期 {{current_weekday}}。',
+      editorSystemPromptDesc: '该 Agent 的主行为指令。',
       editorSystemPromptExpand: '放大编辑',
       editorSystemPromptCollapse: '关闭放大视图',
       editorEnableProjectInstructions: '读取项目指令文件',
@@ -515,6 +512,8 @@ export const zh: TranslationKeys = {
       agentCapabilitiesBlockTitle: 'Agent 能力',
       focusSyncTitle: '焦点同步',
       focusSyncDesc: '启用后，AI 可以感知到你正在阅读的内容和位置。',
+      timeContextTitle: '当前时间感知',
+      timeContextDesc: '让模型知道每条消息发送时的当前时间。',
       imageReadingBlockTitle: '图片读取',
       imageReadingEnabled: '图片读取',
       imageReadingEnabledDesc:
@@ -859,6 +858,7 @@ export const zh: TranslationKeys = {
       desc: '管理知识库索引，当 Agent 使用「搜索」工具并选择混合 & RAG 模式时，会自动调用 RAG 能力。',
       enableRag: '启用知识库索引',
       enableRagDesc: '开启后会为所选范围内的文档建立索引。',
+      partialFailureSummary: '完成 · {{count}} 个文件无法索引',
       embeddingModel: '嵌入模型',
       embeddingModelDesc: '选择你想用于嵌入的模型',
       chunkSize: '分块大小',
@@ -2134,11 +2134,14 @@ export const zh: TranslationKeys = {
         open_skill: '加载技能',
       },
       writeAction: {
+        write: '写入文件',
+        delete: '删除',
+        create_dir: '创建文件夹',
+        move: '移动路径',
+        // 旧键，保留用于显示历史会话。
         create_file: '创建文件',
         delete_file: '删除文件',
-        create_dir: '创建文件夹',
         delete_dir: '删除文件夹',
-        move: '移动路径',
       },
       readMode: {
         full: '全文',
@@ -2213,6 +2216,7 @@ export const zh: TranslationKeys = {
     rebuildingIndex: '正在重建库索引...',
     rebuildComplete: '重建库索引完成',
     rebuildFailed: '重建库索引失败',
+    indexedWithSkipped: '索引完成 · {{count}} 个文件无法索引',
     continueComplete: '继续索引完成',
     continueFailed: '继续索引失败',
     openYoloNewChatFailed: '打开 YOLO 聊天窗口失败，请先用命令面板尝试',
@@ -2470,9 +2474,16 @@ export const zh: TranslationKeys = {
 
   update: {
     newVersionAvailable: '新版本 {version} 已发布',
+    toastTitle: 'YOLO 有新版本',
     currentVersion: '当前版本',
-    viewDetails: '前往检查更新',
+    viewDetails: '前往更新',
+    goUpdate: '更新',
     dismiss: '关闭',
+    collapse: '收起',
+    showFullChangelog: '展开完整更新日志',
+    languageEnglish: 'EN',
+    languageChinese: '中文',
+    muteThisVersion: '当前版本不提示',
     installationIncompleteTitle: '插件安装不完整',
     installationIncompleteMeta:
       '主程序 {bakedVersion} · manifest {manifestVersion}',

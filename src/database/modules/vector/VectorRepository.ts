@@ -113,6 +113,26 @@ export class VectorRepository {
     await this.db.delete(embeddingTable).where(inArray(embeddingTable.id, ids))
   }
 
+  /**
+   * Delete all rows for the given paths under one model namespace. Used by the
+   * reconciler to roll back files that hit transient embedding failures so the
+   * next reconcile re-embeds them from scratch (no silent gaps).
+   */
+  async deleteVectorsByPaths(modelId: string, paths: string[]): Promise<void> {
+    if (!this.db) {
+      throw new DatabaseNotInitializedException()
+    }
+    if (paths.length === 0) return
+    await this.db
+      .delete(embeddingTable)
+      .where(
+        and(
+          eq(embeddingTable.model, modelId),
+          inArray(embeddingTable.path, paths),
+        ),
+      )
+  }
+
   async bumpMtimeByIds(
     updates: Array<{ id: number; mtime: number }>,
   ): Promise<void> {

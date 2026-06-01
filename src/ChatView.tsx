@@ -109,7 +109,6 @@ export class ChatView extends ItemView {
     })
     this.hostObserver.observe(this.containerEl, { childList: true })
 
-    void this.plugin.checkForUpdateOnce()
     this.plugin.refreshInstallationIncompleteBanner()
   }
 

@@ -13,7 +13,10 @@ export type PromptSnapshotRef = {
 }
 
 export type ChatSelectedSkill = {
-  id: string
+  /**
+   * Canonical skill name (the frontmatter `name`, trim-only, case-sensitive).
+   * Also the identity used to dedupe and to re-resolve the skill on continue.
+   */
   name: string
   description: string
   path: string
@@ -80,6 +83,12 @@ export type ChatUserMessage = {
   selectedSkills?: ChatSelectedSkill[]
   selectedModelIds?: string[]
   reasoningLevel?: string
+  /**
+   * 该消息「作为新用户回合进入对话」那一刻固定下来的当前时间串(如
+   * `2026-05-30 14:53 (Friday, UTC+8)`)。请求组装时以纯函数前缀注入,
+   * 固定后永不改写,故不破坏前缀缓存。旧对话无此字段 → 不注入。
+   */
+  timeContext?: string
 }
 export type ChatAssistantMessage = {
   role: 'assistant'
@@ -179,6 +188,7 @@ export type SerializedChatUserMessage = {
   selectedSkills?: ChatSelectedSkill[]
   selectedModelIds?: string[]
   reasoningLevel?: string
+  timeContext?: string
 }
 export type SerializedChatAssistantMessage = {
   role: 'assistant'

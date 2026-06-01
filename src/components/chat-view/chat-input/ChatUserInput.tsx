@@ -227,7 +227,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const containerRef = useRef<HTMLDivElement>(null)
     const [isEditorReady, setIsEditorReady] = useState(false)
     const suppressedDestroyedMentionableKeysRef = useRef<Set<string>>(new Set())
-    const suppressedDestroyedSkillIdsRef = useRef<Set<string>>(new Set())
+    const suppressedDestroyedSkillNamesRef = useRef<Set<string>>(new Set())
     const [inputText, setInputText] = useState('')
     const [resizedHeight, setResizedHeight] = useState<number | null>(
       rememberedInputHeight,
@@ -282,12 +282,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         return []
       }
 
-      const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+      const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
       return listLiteSkillEntries(app, { settings }).filter((skill) =>
         isSkillEnabledForAssistant({
           assistant: currentAssistant,
-          skillId: skill.id,
-          disabledSkillIds,
+          skillName: skill.name,
+          disabledSkillNames,
           defaultLoadMode: skill.mode,
         }),
       )
@@ -553,34 +553,34 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         return
       }
 
-      const destroyedSkillIds: string[] = []
+      const destroyedSkillNames: string[] = []
       const addedSkills: ChatSelectedSkill[] = []
 
       mutations.forEach((mutation) => {
         const skill = mutation.node.getSkill()
         if (mutation.mutation === 'destroyed') {
-          if (suppressedDestroyedSkillIdsRef.current.has(skill.id)) {
-            suppressedDestroyedSkillIdsRef.current.delete(skill.id)
+          if (suppressedDestroyedSkillNamesRef.current.has(skill.name)) {
+            suppressedDestroyedSkillNamesRef.current.delete(skill.name)
             return
           }
 
           const nodeWithSameSkill = editorRef.current?.read(() =>
             $nodesOfType(SkillNode).find(
-              (node) => node.getSkill().id === skill.id,
+              (node) => node.getSkill().name === skill.name,
             ),
           )
 
           if (!nodeWithSameSkill) {
-            destroyedSkillIds.push(skill.id)
+            destroyedSkillNames.push(skill.name)
           }
           return
         }
 
         if (
           effectiveSelectedSkills.some(
-            (selectedSkill) => selectedSkill.id === skill.id,
+            (selectedSkill) => selectedSkill.name === skill.name,
           ) ||
-          addedSkills.some((selectedSkill) => selectedSkill.id === skill.id)
+          addedSkills.some((selectedSkill) => selectedSkill.name === skill.name)
         ) {
           return
         }
@@ -588,13 +588,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         addedSkills.push(skill)
       })
 
-      if (destroyedSkillIds.length === 0 && addedSkills.length === 0) {
+      if (destroyedSkillNames.length === 0 && addedSkills.length === 0) {
         return
       }
 
       setSelectedSkills(
         effectiveSelectedSkills
-          .filter((skill) => !destroyedSkillIds.includes(skill.id))
+          .filter((skill) => !destroyedSkillNames.includes(skill.name))
           .concat(addedSkills),
       )
     }
@@ -732,8 +732,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
       const skillsToMirror =
         mentionDisplayMode === 'inline' ? effectiveSelectedSkills : []
-      const skillsById = new Map(
-        skillsToMirror.map((skill) => [skill.id, skill] as const),
+      const skillsByName = new Map(
+        skillsToMirror.map((skill) => [skill.name, skill] as const),
       )
 
       const shouldMoveCursor =
@@ -743,9 +743,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       editor.update(() => {
         $nodesOfType(SkillNode).forEach((node) => {
           const skill = node.getSkill()
-          if (skillsById.has(skill.id)) return
+          if (skillsByName.has(skill.name)) return
 
-          suppressedDestroyedSkillIdsRef.current.add(skill.id)
+          suppressedDestroyedSkillNamesRef.current.add(skill.name)
           const prevSibling = node.getPreviousSibling()
           if (
             prevSibling &&
@@ -768,8 +768,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
         if (skillsToMirror.length === 0) return
 
-        const existingIds = new Set(
-          $nodesOfType(SkillNode).map((node) => node.getSkill().id),
+        const existingNames = new Set(
+          $nodesOfType(SkillNode).map((node) => node.getSkill().name),
         )
         const root = $getRoot()
         let paragraphNode = root.getFirstChild()
@@ -783,7 +783,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
         let didInsert = false
         skillsToMirror.forEach((skill) => {
-          if (existingIds.has(skill.id)) return
+          if (existingNames.has(skill.name)) return
 
           const skillNode = $createSkillNode(skill.name, skill)
           const spacer = $createTextNode(' ')
@@ -1053,18 +1053,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
 
     const handleSelectSkill = useCallback(
-      (skill: {
-        id: string
-        name: string
-        description: string
-        path: string
-      }) => {
+      (skill: { name: string; description: string; path: string }) => {
         if (!setSelectedSkills) {
           return
         }
 
         const nextSkill: ChatSelectedSkill = {
-          id: skill.id,
           name: skill.name,
           description: skill.description,
           path: skill.path,
@@ -1072,7 +1066,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
         if (
           effectiveSelectedSkills.some(
-            (selectedSkill) => selectedSkill.id === nextSkill.id,
+            (selectedSkill) => selectedSkill.name === nextSkill.name,
           )
         ) {
           return
@@ -1084,12 +1078,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
 
     const handleDeleteSelectedSkill = useCallback(
-      (skillId: string) => {
+      (skillName: string) => {
         if (!setSelectedSkills) {
           return
         }
         setSelectedSkills(
-          effectiveSelectedSkills.filter((skill) => skill.id !== skillId),
+          effectiveSelectedSkills.filter((skill) => skill.name !== skillName),
         )
       },
       [effectiveSelectedSkills, setSelectedSkills],
@@ -1293,9 +1287,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             <div className="yolo-chat-user-input-files">
               {effectiveSelectedSkills.map((skill) => (
                 <ChatSkillBadge
-                  key={skill.id}
+                  key={skill.name}
                   skill={skill}
-                  onDelete={() => handleDeleteSelectedSkill(skill.id)}
+                  onDelete={() => handleDeleteSelectedSkill(skill.name)}
                 />
               ))}
             </div>
@@ -1439,8 +1433,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               models={enabledChatModels}
               selectedModelIds={selectedModelIds}
               skills={availableSkills}
-              selectedSkillIds={effectiveSelectedSkills.map(
-                (skill) => skill.id,
+              selectedSkillNames={effectiveSelectedSkills.map(
+                (skill) => skill.name,
               )}
               onSelectSkill={handleSelectSkill}
               onRunSlashCommand={onRunSlashCommand}

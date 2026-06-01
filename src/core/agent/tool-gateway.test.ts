@@ -286,11 +286,8 @@ describe('AgentToolGateway', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               path: 'note.md',
-              operation: {
-                type: 'replace',
-                oldText: 'foo',
-                newText: 'FOO',
-              },
+              oldText: 'foo',
+              newText: 'FOO',
             },
           }),
         },
@@ -300,11 +297,8 @@ describe('AgentToolGateway', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               path: 'note.md',
-              operation: {
-                type: 'replace',
-                oldText: 'bar',
-                newText: 'BAR',
-              },
+              oldText: 'bar',
+              newText: 'BAR',
             },
           }),
         },
@@ -314,10 +308,8 @@ describe('AgentToolGateway', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               path: 'other.md',
-              operation: {
-                type: 'append',
-                content: 'tail',
-              },
+              oldText: 'tail',
+              newText: 'TAIL',
             },
           }),
         },
@@ -340,8 +332,8 @@ describe('AgentToolGateway', () => {
     expect(noteCall![0].args).toEqual({
       path: 'note.md',
       operations: [
-        { type: 'replace', oldText: 'foo', newText: 'FOO' },
-        { type: 'replace', oldText: 'bar', newText: 'BAR' },
+        { path: 'note.md', oldText: 'foo', newText: 'FOO' },
+        { path: 'note.md', oldText: 'bar', newText: 'BAR' },
       ],
     })
 

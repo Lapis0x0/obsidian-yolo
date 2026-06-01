@@ -51,10 +51,11 @@ import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
   LiteSkillEntry,
   getLiteSkillDocument,
+  humanizeSkillName,
   listLiteSkillEntries,
 } from '../../../core/skills/liteSkills'
 import {
-  getDisabledSkillIdSet,
+  getDisabledSkillNameSet,
   resolveAssistantSkillPolicy,
 } from '../../../core/skills/skillPolicy'
 import { YoloSettings } from '../../../settings/schema/setting.types'
@@ -68,6 +69,7 @@ import {
   AssistantWorkspaceScope,
 } from '../../../types/assistant.types'
 import { McpTool } from '../../../types/mcp.types'
+import { stableStringify } from '../../../utils/json/stableStringify'
 import {
   estimateJsonTokens,
   estimateTextTokens,
@@ -145,26 +147,6 @@ function fnv1aHash(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-// Stable JSON serialization with sorted object keys, so cache keys stay
-// consistent across re-renders that recreate equivalent objects.
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value) ?? 'null'
-  }
-  if (Array.isArray(value)) {
-    return '[' + value.map(stableStringify).join(',') + ']'
-  }
-  const record = value as Record<string, unknown>
-  const keys = Object.keys(record).sort()
-  return (
-    '{' +
-    keys
-      .map((key) => JSON.stringify(key) + ':' + stableStringify(record[key]))
-      .join(',') +
-    '}'
-  )
-}
-
 function buildToolTokenPayload(tool: McpTool): Record<string, unknown> {
   return {
     name: tool.name,
@@ -209,7 +191,7 @@ function estimateToolDefaultContextTokens(tool: McpTool): Promise<number> {
 }
 
 function buildSkillMetadataPrompt(skill: LiteSkillEntry): string {
-  return `- id: ${skill.id} | name: ${skill.name} | description: ${skill.description}`
+  return `- name: ${skill.name} | description: ${skill.description}`
 }
 
 function buildAlwaysOnSkillPrompt({
@@ -219,7 +201,7 @@ function buildAlwaysOnSkillPrompt({
   entry: LiteSkillEntry
   content: string
 }): string {
-  return `<skill id="${entry.id}" name="${entry.name}" path="${entry.path}">
+  return `<skill name="${entry.name}" path="${entry.path}">
 ${content}
 </skill>`
 }
@@ -249,7 +231,7 @@ async function estimateSkillDefaultContextTokens({
 
   const document = await getLiteSkillDocument({
     app,
-    id: skill.id,
+    name: skill.name,
     settings,
   })
   if (!document) {
@@ -624,7 +606,7 @@ export function AgentsSectionContent({
     })
   }
 
-  const setSkillEnabled = (skillId: string, enabled: boolean) => {
+  const setSkillEnabled = (skillName: string, enabled: boolean) => {
     if (!draftAgent) {
       return
     }
@@ -634,13 +616,13 @@ export function AgentsSectionContent({
     }
 
     if (enabled) {
-      current.add(skillId)
+      current.add(skillName)
     } else {
-      current.delete(skillId)
+      current.delete(skillName)
     }
 
-    nextPreferences[skillId] = {
-      ...(nextPreferences[skillId] ?? {}),
+    nextPreferences[skillName] = {
+      ...(nextPreferences[skillName] ?? {}),
       enabled,
     }
 
@@ -652,7 +634,7 @@ export function AgentsSectionContent({
   }
 
   const setSkillLoadMode = (
-    skillId: string,
+    skillName: string,
     loadMode: AssistantSkillLoadMode,
   ) => {
     if (!draftAgent) {
@@ -661,11 +643,11 @@ export function AgentsSectionContent({
 
     const nextPreferences = {
       ...(draftAgent.skillPreferences ?? {}),
-      [skillId]: {
-        ...(draftAgent.skillPreferences?.[skillId] ?? {}),
+      [skillName]: {
+        ...(draftAgent.skillPreferences?.[skillName] ?? {}),
         enabled:
-          draftAgent.skillPreferences?.[skillId]?.enabled ??
-          draftAgent.enabledSkills?.includes(skillId) ??
+          draftAgent.skillPreferences?.[skillName]?.enabled ??
+          draftAgent.enabledSkills?.includes(skillName) ??
           true,
         loadMode,
       },
@@ -997,17 +979,17 @@ export function AgentsSectionContent({
     [settings.skills?.disabledSkillIds],
   )
   const skillsDir = getYoloSkillsDir(settings)
-  const disabledSkillIdSet = useMemo(
-    () => getDisabledSkillIdSet(disabledSkillIds),
+  const disabledSkillNameSet = useMemo(
+    () => getDisabledSkillNameSet(disabledSkillIds),
     [disabledSkillIds],
   )
 
   const skillRows = useMemo(() => {
     return skillEntries.map((skill) => {
-      const globallyDisabled = disabledSkillIdSet.has(skill.id)
+      const globallyDisabled = disabledSkillNameSet.has(skill.name)
       const policy = resolveAssistantSkillPolicy({
         assistant: draftAgent,
-        skillId: skill.id,
+        skillName: skill.name,
         defaultLoadMode: skill.mode,
       })
       const enabled = policy.enabled && !globallyDisabled
@@ -1018,7 +1000,7 @@ export function AgentsSectionContent({
         loadMode: policy.loadMode,
       }
     })
-  }, [disabledSkillIdSet, draftAgent, skillEntries])
+  }, [disabledSkillNameSet, draftAgent, skillEntries])
 
   // Same agent-scoped pattern as estimatedToolContextTokens above.
   const [estimatedSkillContextTokens, setEstimatedSkillContextTokens] =
@@ -1074,7 +1056,7 @@ export function AgentsSectionContent({
             app,
             settings,
             skill,
-          }).then((count) => [skill.id, count] as const),
+          }).then((count) => [skill.name, count] as const),
         ),
       )
 
@@ -1727,13 +1709,13 @@ export function AgentsSectionContent({
                     {skillRows.map((skill) => {
                       const disabledByGlobal = skill.globallyDisabled
                       return (
-                        <div key={skill.id} className="yolo-agent-tool-row">
+                        <div key={skill.name} className="yolo-agent-tool-row">
                           <div className="yolo-agent-tool-main">
                             <div className="yolo-agent-tool-name">
-                              <span>{skill.name}</span>
+                              <span>{humanizeSkillName(skill.name)}</span>
                               {skill.enabled &&
                                 estimatedSkillContextTokens.perSkill.has(
-                                  skill.id,
+                                  skill.name,
                                 ) && (
                                   <span className="yolo-agent-skill-tokens">
                                     {t(
@@ -1743,7 +1725,7 @@ export function AgentsSectionContent({
                                       '{count}',
                                       formatTokenCount(
                                         estimatedSkillContextTokens.perSkill.get(
-                                          skill.id,
+                                          skill.name,
                                         ) ?? 0,
                                       ),
                                     )}
@@ -1755,7 +1737,7 @@ export function AgentsSectionContent({
                             </div>
                             <div className="yolo-agent-skill-meta">
                               <span className="yolo-agent-chip">
-                                id: {skill.id}
+                                name: {skill.name}
                               </span>
                               <span className="yolo-agent-chip">
                                 {skill.path}
@@ -1777,7 +1759,7 @@ export function AgentsSectionContent({
                                 if (disabledByGlobal) {
                                   return
                                 }
-                                setSkillEnabled(skill.id, value)
+                                setSkillEnabled(skill.name, value)
                               }}
                             />
                             <select
@@ -1785,7 +1767,7 @@ export function AgentsSectionContent({
                               disabled={!skill.enabled || disabledByGlobal}
                               onChange={(event) =>
                                 setSkillLoadMode(
-                                  skill.id,
+                                  skill.name,
                                   event.target.value as AssistantSkillLoadMode,
                                 )
                               }

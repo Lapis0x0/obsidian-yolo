@@ -11,6 +11,26 @@ export type RagIndexFailureKind =
   | 'aborted'
   | 'unknown'
 
+/**
+ * Raised by `embedAndInsertBatches` when one or more files had transient
+ * embedding failures and were rolled back to 0 rows. It is always classified
+ * as `transient` so the run-level retry path (exponential backoff) is
+ * activated — without relying on message-string matching.
+ */
+export class RagIndexIncompleteError extends Error {
+  /** Paths that were rolled back (0 rows) and must be re-embedded next run. */
+  readonly rolledBackPaths: string[]
+
+  constructor(rolledBackPaths: string[], message?: string) {
+    super(
+      message ??
+        `Indexing incomplete: ${rolledBackPaths.length} file(s) hit transient embedding failures and were rolled back for retry.`,
+    )
+    this.name = 'RagIndexIncompleteError'
+    this.rolledBackPaths = rolledBackPaths
+  }
+}
+
 const TRANSIENT_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504])
 const TRANSIENT_ERROR_CODES = new Set([
   'ECONNABORTED',
@@ -38,6 +58,10 @@ export const isAbortLikeError = (error: unknown): boolean => {
 }
 
 export const classifyRagIndexError = (error: unknown): RagIndexFailureKind => {
+  if (error instanceof RagIndexIncompleteError) {
+    return 'transient'
+  }
+
   if (isAbortLikeError(error)) {
     return 'aborted'
   }

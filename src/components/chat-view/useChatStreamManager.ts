@@ -17,6 +17,7 @@ import type {
   AgentConversationState,
 } from '../../core/agent/service'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
+import { selectAllowedTools } from '../../core/agent/tool-selection'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -36,7 +37,11 @@ import {
   ChatToolMessage,
 } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
-import { ReasoningLevel } from '../../types/reasoning'
+import {
+  ReasoningLevel,
+  normalizeStoredReasoningLevel,
+  resolveRequestReasoningLevel,
+} from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
@@ -423,52 +428,6 @@ export function useChatStreamManager({
     [plugin],
   )
 
-  const resolveCompactionClient = useCallback(() => {
-    const effectiveAssistantId =
-      assistantIdOverride ?? settings.currentAssistantId
-    const selectedAssistant = effectiveAssistantId
-      ? (settings.assistants || []).find(
-          (assistant) => assistant.id === effectiveAssistantId,
-        ) || null
-      : null
-
-    const requestedModelId =
-      modelId || selectedAssistant?.modelId || settings.chatModelId
-    const compactionModelId = settings.chatTitleModelId || requestedModelId
-
-    let resolvedClient: ReturnType<typeof getChatModelClient>
-    try {
-      resolvedClient = getChatModelClient({
-        settings,
-        modelId: requestedModelId,
-        onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-      })
-    } catch (error) {
-      if (
-        error instanceof LLMModelNotFoundException &&
-        settings.chatModels.length > 0
-      ) {
-        resolvedClient = getChatModelClient({
-          settings,
-          modelId: settings.chatModels[0].id,
-          onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-        })
-      } else {
-        throw error
-      }
-    }
-
-    try {
-      return getChatModelClient({
-        settings,
-        modelId: compactionModelId,
-        onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-      })
-    } catch {
-      return resolvedClient
-    }
-  }, [assistantIdOverride, handleAutoPromoteTransportMode, modelId, settings])
-
   const compactConversation = useCallback(
     async (messages: ChatMessage[]) => {
       if (messages.length === 0) {
@@ -508,17 +467,16 @@ export function useChatStreamManager({
       }
 
       const effectiveModel = resolvedClient.model
-      const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+      const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = selectedAssistant
         ? listLiteSkillEntries(app, { settings }).filter((skill) =>
             isSkillEnabledForAssistant({
               assistant: selectedAssistant,
-              skillId: skill.id,
-              disabledSkillIds,
+              skillName: skill.name,
+              disabledSkillNames,
             }),
           )
         : []
-      const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
       const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
       const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
@@ -530,50 +488,99 @@ export function useChatStreamManager({
       const effectiveIncludeBuiltinTools =
         chatModeRuntime.loopConfig.includeBuiltinTools
       const effectiveAllowedToolNames = chatModeRuntime.allowedToolNames
-      const resolvedCompactionClient = resolveCompactionClient()
+      const manualProvider = settings.providers.find(
+        (provider) => provider.id === effectiveModel.providerId,
+      )
+      const manualApiType = manualProvider?.apiType ?? null
+      const manualContextualInjections = buildChatContextualInjections({
+        includeCurrentFileContent:
+          settings.chatOptions.includeCurrentFileContent,
+        currentFile: currentFileOverride,
+        currentFileViewState,
+      })
+      const manualCompaction = baseCompactionStateRef.current
+      // Paths 2/3 mirror the main line: reasoning comes from the last user
+      // message's stored level (same source as resolveReasoningLevelForMessages
+      // in Chat.tsx). This keeps the compaction request's thinking config
+      // aligned with the prior turn so the cache-warm prefix still matches.
+      const lastUserMessage = [...messages]
+        .reverse()
+        .find((message) => message.role === 'user')
+      const manualReasoning = resolveRequestReasoningLevel(
+        effectiveModel,
+        lastUserMessage?.role === 'user'
+          ? (normalizeStoredReasoningLevel(lastUserMessage.reasoningLevel) ??
+              undefined)
+          : undefined,
+      )
+
+      // Path 2/3: rebuild a cache-warm prefix + tools that match what the main
+      // line just sent, so the out-of-band summarize request can hit the
+      // provider's prefix cache (same model, same serialized prefix, same tools).
+      const mcpManager = await getMcpManager()
+      const availableTools = effectiveEnableTools
+        ? await mcpManager.listAvailableTools({
+            includeBuiltinTools: effectiveIncludeBuiltinTools,
+            chatModelModalities: effectiveModel.modalities,
+          })
+        : []
+      const { hasTools, hasMemoryTools, requestTools } = selectAllowedTools({
+        availableTools,
+        allowedToolNames: effectiveAllowedToolNames,
+        allowedSkillNames,
+        toolPreferences: chatModeRuntime.toolPreferences,
+        apiType: manualApiType,
+        enableToolDisclosure: settings.mcp.enableToolDisclosure,
+        jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+      })
+      const compactionPrefix =
+        await requestContextBuilder.generateRequestMessages({
+          messages,
+          hasTools,
+          hasMemoryTools,
+          model: effectiveModel,
+          conversationId: currentConversationId,
+          compaction: manualCompaction,
+          contextualInjections: manualContextualInjections,
+          // Reuse the frozen snapshot; never create one outside the real request.
+          systemPromptSnapshotMode: 'reuse',
+        })
+
       const summary = await createConversationCompactionSummary({
-        providerClient: resolvedCompactionClient.providerClient,
-        model: resolvedCompactionClient.model,
-        messages,
-        retainLatestToolBoundary: false,
+        providerClient: resolvedClient.providerClient,
+        model: effectiveModel,
+        requestMessages: compactionPrefix,
+        tools: requestTools,
+        reasoningLevel: manualReasoning,
       })
 
       const nextCompaction = await buildManualCompactionState({
         messages,
         summary,
-        summaryModelId: resolvedCompactionClient.model.id,
+        summaryModelId: effectiveModel.id,
       })
 
       if (!nextCompaction) {
         return null
       }
 
-      const manualEstimateProvider = settings.providers.find(
-        (provider) => provider.id === effectiveModel.providerId,
-      )
       try {
         nextCompaction.estimatedNextContextTokens =
           await estimateContinuationRequestContextTokens({
             requestContextBuilder,
-            mcpManager: await getMcpManager(),
+            mcpManager,
             model: effectiveModel,
             messages,
             conversationId: currentConversationId,
             compaction: nextCompaction,
             enableTools: effectiveEnableTools,
             includeBuiltinTools: effectiveIncludeBuiltinTools,
-            apiType: manualEstimateProvider?.apiType ?? null,
+            apiType: manualApiType,
             allowedToolNames: effectiveAllowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
-            allowedSkillIds,
             allowedSkillNames,
-            contextualInjections: buildChatContextualInjections({
-              includeCurrentFileContent:
-                settings.chatOptions.includeCurrentFileContent,
-              currentFile: currentFileOverride,
-              currentFileViewState,
-            }),
+            contextualInjections: manualContextualInjections,
           })
       } catch (error) {
         console.warn(
@@ -607,7 +614,6 @@ export function useChatStreamManager({
       handleAutoPromoteTransportMode,
       modelId,
       requestContextBuilder,
-      resolveCompactionClient,
       settings,
     ],
   )
@@ -692,7 +698,6 @@ export function useChatStreamManager({
         const currentProvider = settings.providers.find(
           (provider) => provider.id === resolvedClient.model.providerId,
         )
-        const resolvedCompactionClient = resolveCompactionClient()
         const shouldStreamResponse = shouldUseStreamingForProvider({
           requestedStream: conversationOverrides?.stream ?? true,
           provider: currentProvider,
@@ -702,17 +707,16 @@ export function useChatStreamManager({
         const modelTopP = resolvedClient.model.topP
         const modelMaxTokens = resolvedClient.model.maxOutputTokens
         const effectiveModel = resolvedClient.model
-        const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+        const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries = selectedAssistant
           ? listLiteSkillEntries(app, { settings }).filter((skill) =>
               isSkillEnabledForAssistant({
                 assistant: selectedAssistant,
-                skillId: skill.id,
-                disabledSkillIds,
+                skillName: skill.name,
+                disabledSkillNames,
               }),
             )
           : []
-        const allowedSkillIds = enabledSkillEntries.map((skill) => skill.id)
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
 
         const chatModeRuntime = resolveChatModeRuntime({
@@ -742,8 +746,6 @@ export function useChatStreamManager({
           requestContextBuilder,
           mcpManager,
           compaction: effectiveCompactionForRequest,
-          compactionProviderClient: resolvedCompactionClient.providerClient,
-          compactionModel: resolvedCompactionClient.model,
           apiType: currentProvider?.apiType ?? null,
           reasoningLevel,
           allowedToolNames: chatModeRuntime.allowedToolNames,
@@ -751,7 +753,6 @@ export function useChatStreamManager({
           toolPreferences: chatModeRuntime.toolPreferences,
           workspaceScope:
             resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
-          allowedSkillIds,
           allowedSkillNames,
           requestParams,
           contextualInjections: buildChatContextualInjections({
@@ -970,13 +971,13 @@ export function useChatStreamManager({
       }
 
       const effectiveModel = resolvedClient.model
-      const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
+      const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = selectedAssistant
         ? listLiteSkillEntries(app, { settings }).filter((skill) =>
             isSkillEnabledForAssistant({
               assistant: selectedAssistant,
-              skillId: skill.id,
-              disabledSkillIds,
+              skillName: skill.name,
+              disabledSkillNames,
             }),
           )
         : []
@@ -1004,7 +1005,6 @@ export function useChatStreamManager({
         allowedToolNames: chatModeRuntime.allowedToolNames,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         toolPreferences: chatModeRuntime.toolPreferences,
-        allowedSkillIds: enabledSkillEntries.map((s) => s.id),
         allowedSkillNames: enabledSkillEntries.map((s) => s.name),
         contextualInjections: buildChatContextualInjections({
           includeCurrentFileContent:

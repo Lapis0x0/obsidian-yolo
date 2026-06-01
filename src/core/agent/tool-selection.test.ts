@@ -39,7 +39,7 @@ describe('selectAllowedTools', () => {
 
     const result = selectAllowedTools({
       availableTools,
-      allowedSkillIds: ['skill-1'],
+      allowedSkillNames: ['skill-1'],
     })
 
     expect(result.filteredTools).toHaveLength(1)

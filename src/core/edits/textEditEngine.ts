@@ -11,14 +11,12 @@ export type ReplaceTextOperation = {
   type: 'replace'
   oldText: string
   newText: string
-  expectedOccurrences?: number
 }
 
 export type InsertAfterTextOperation = {
   type: 'insert_after'
   anchor: string
   content: string
-  expectedOccurrences?: number
 }
 
 export type ReplaceLinesTextOperation = {
@@ -46,7 +44,6 @@ export type TextEditPlan = {
 export type AppliedTextEditOperation = {
   operation: TextEditOperation
   actualOccurrences: number
-  expectedOccurrences: number | null
   matchMode: TextEditMatchMode
   changed: boolean
   matchedRange?: {
@@ -59,19 +56,27 @@ export type AppliedTextEditOperation = {
   }
 }
 
+export type TextEditFailureKind = 'no_match' | 'count_mismatch' | 'other'
+
+export type TextEditFailure = {
+  operationIndex: number
+  operation: TextEditOperation
+  kind: TextEditFailureKind
+}
+
 export type MaterializedTextEditPlan = {
   newContent: string
   appliedCount: number
   totalOperations: number
   errors: string[]
   operationResults: AppliedTextEditOperation[]
+  failures?: TextEditFailure[]
 }
 
 type ReplacementAttempt = {
   ok: true
   nextContent: string
   actualOccurrences: number
-  expectedOccurrences: number
   matchMode: Exclude<TextEditMatchMode, 'append'>
   changed: boolean
   matchedRange: {
@@ -87,6 +92,7 @@ type ReplacementAttempt = {
 type ReplacementFailure = {
   ok: false
   error: string
+  kind: TextEditFailureKind
 }
 
 type ReplacementResult = ReplacementAttempt | ReplacementFailure
@@ -115,13 +121,6 @@ const FUZZY_REPLACE_SIMILARITY_THRESHOLD = 0.95
 const FUZZY_REPLACE_MIN_NORMALIZED_LENGTH = 30
 const FUZZY_REPLACE_LENGTH_RATIO_MIN = 0.7
 const FUZZY_REPLACE_LENGTH_RATIO_MAX = 1.4
-
-const normalizeExpectedOccurrences = (value: number | undefined): number => {
-  if (!value || !Number.isFinite(value)) {
-    return 1
-  }
-  return Math.max(1, Math.floor(value))
-}
 
 const getLineStartOffsets = (content: string): number[] => {
   const offsets = [0]
@@ -570,22 +569,45 @@ const getFirstRegexMatchRange = (
   }
 }
 
+const buildMatchFailure = ({
+  occurrences,
+  detail,
+}: {
+  occurrences: number
+  detail: string
+}): ReplacementFailure => {
+  if (occurrences > 1) {
+    return {
+      ok: false,
+      error:
+        `oldText matched ${occurrences} times but must match exactly once. ` +
+        `Add more surrounding context to oldText so it uniquely identifies ` +
+        `the target. ${detail}`,
+      kind: 'count_mismatch',
+    }
+  }
+  return {
+    ok: false,
+    error:
+      `oldText did not match exactly once (found ${occurrences}). ` + detail,
+    kind: 'no_match',
+  }
+}
+
 const applyReplaceLikeOperation = ({
   content,
   oldText,
   newText,
-  expectedOccurrences,
 }: {
   content: string
   oldText: string
   newText: string
-  expectedOccurrences?: number
 }): ReplacementResult => {
-  const normalizedExpected = normalizeExpectedOccurrences(expectedOccurrences)
   if (oldText.length === 0) {
     return {
       ok: false,
       error: 'oldText must not be empty.',
+      kind: 'other',
     }
   }
 
@@ -599,14 +621,13 @@ const applyReplaceLikeOperation = ({
     normalizeLineEndingsAndTrimLineEnd(oldText),
   )
 
-  if (exactOccurrences === normalizedExpected) {
+  if (exactOccurrences === 1) {
     const firstIndex = content.indexOf(oldText)
     const nextContent = content.split(oldText).join(newText)
     return {
       ok: true,
       nextContent,
       actualOccurrences: exactOccurrences,
-      expectedOccurrences: normalizedExpected,
       matchMode: 'exact',
       changed: nextContent !== content,
       matchedRange: {
@@ -622,7 +643,7 @@ const applyReplaceLikeOperation = ({
 
   const looseRegex = createLooseEditRegex(oldText)
   const looseOccurrences = countRegexMatches(content, looseRegex)
-  if (looseOccurrences === normalizedExpected) {
+  if (looseOccurrences === 1) {
     const matchedRange = getFirstRegexMatchRange(
       content,
       createLooseEditRegex(oldText),
@@ -631,6 +652,7 @@ const applyReplaceLikeOperation = ({
       return {
         ok: false,
         error: 'matched range could not be resolved.',
+        kind: 'other',
       }
     }
     const nextContent = content.replace(createLooseEditRegex(oldText), () => {
@@ -640,7 +662,6 @@ const applyReplaceLikeOperation = ({
       ok: true,
       nextContent,
       actualOccurrences: looseOccurrences,
-      expectedOccurrences: normalizedExpected,
       matchMode: 'lineEndingAndTrimLineEnd',
       changed: nextContent !== content,
       matchedRange,
@@ -661,14 +682,13 @@ const applyReplaceLikeOperation = ({
       content,
       recoveredOldText,
     )
-    if (recoveredExactOccurrences === normalizedExpected) {
+    if (recoveredExactOccurrences === 1) {
       const firstIndex = content.indexOf(recoveredOldText)
       const nextContent = content.split(recoveredOldText).join(recoveredNewText)
       return {
         ok: true,
         nextContent,
         actualOccurrences: recoveredExactOccurrences,
-        expectedOccurrences: normalizedExpected,
         matchMode: 'escapedControlRecovery',
         changed: nextContent !== content,
         matchedRange: {
@@ -687,12 +707,13 @@ const applyReplaceLikeOperation = ({
       content,
       recoveredLooseRegex,
     )
-    if (recoveredLooseOccurrences === normalizedExpected) {
+    if (recoveredLooseOccurrences === 1) {
       const matchedRange = getFirstRegexMatchRange(content, recoveredLooseRegex)
       if (!matchedRange) {
         return {
           ok: false,
           error: 'matched range could not be resolved after escape recovery.',
+          kind: 'other',
         }
       }
       const nextContent = content.replace(recoveredLooseRegex, () => {
@@ -702,7 +723,6 @@ const applyReplaceLikeOperation = ({
         ok: true,
         nextContent,
         actualOccurrences: recoveredLooseOccurrences,
-        expectedOccurrences: normalizedExpected,
         matchMode: 'escapedControlRecoveryLineEndingAndTrimLineEnd',
         changed: nextContent !== content,
         matchedRange,
@@ -713,65 +733,57 @@ const applyReplaceLikeOperation = ({
       }
     }
 
-    return {
-      ok: false,
-      error:
-        `expectedOccurrences mismatch: expected ${normalizedExpected}, found ${exactOccurrences}. ` +
+    return buildMatchFailure({
+      occurrences: exactOccurrences,
+      detail:
         `hints: lineEndingNormalized=${lineEndingOccurrences}, ` +
         `trimLineEndNormalized=${trimLineEndOccurrences}, ` +
         `recoveredExact=${recoveredExactOccurrences}, ` +
         `recoveredLineEndingAndTrimLineEnd=${recoveredLooseOccurrences}`,
+    })
+  }
+
+  const fuzzyMatch = findFuzzyUniqueParagraphMatch({ content, oldText })
+  if (fuzzyMatch && fuzzyMatch.aboveThresholdCount === 1) {
+    const { candidate } = fuzzyMatch
+    const nextContent =
+      content.slice(0, candidate.start) + newText + content.slice(candidate.end)
+    return {
+      ok: true,
+      nextContent,
+      actualOccurrences: 1,
+      matchMode: 'fuzzyUniqueParagraph',
+      changed: nextContent !== content,
+      matchedRange: {
+        start: candidate.start,
+        end: candidate.end,
+      },
+      newRange: {
+        start: candidate.start,
+        end: candidate.start + newText.length,
+      },
     }
   }
 
-  if (normalizedExpected === 1) {
-    const fuzzyMatch = findFuzzyUniqueParagraphMatch({ content, oldText })
-    if (fuzzyMatch && fuzzyMatch.aboveThresholdCount === 1) {
-      const { candidate } = fuzzyMatch
-      const nextContent =
-        content.slice(0, candidate.start) +
-        newText +
-        content.slice(candidate.end)
-      return {
-        ok: true,
-        nextContent,
-        actualOccurrences: 1,
-        expectedOccurrences: normalizedExpected,
-        matchMode: 'fuzzyUniqueParagraph',
-        changed: nextContent !== content,
-        matchedRange: {
-          start: candidate.start,
-          end: candidate.end,
-        },
-        newRange: {
-          start: candidate.start,
-          end: candidate.start + newText.length,
-        },
-      }
-    }
-
-    if (fuzzyMatch && fuzzyMatch.aboveThresholdCount > 1) {
-      return {
-        ok: false,
-        error:
-          `expectedOccurrences mismatch: expected ${normalizedExpected}, found ${exactOccurrences}. ` +
-          `hints: lineEndingNormalized=${lineEndingOccurrences}, ` +
-          `trimLineEndNormalized=${trimLineEndOccurrences}, ` +
-          `fuzzyThreshold=${FUZZY_REPLACE_SIMILARITY_THRESHOLD.toFixed(2)}, ` +
-          `fuzzyTopScore=${fuzzyMatch.candidate.similarity.toFixed(3)}, ` +
-          `fuzzySecondScore=${fuzzyMatch.secondBestSimilarity.toFixed(3)}, ` +
-          `fuzzyCandidatesAboveThreshold=${fuzzyMatch.aboveThresholdCount}`,
-      }
-    }
+  if (fuzzyMatch && fuzzyMatch.aboveThresholdCount > 1) {
+    return buildMatchFailure({
+      occurrences: exactOccurrences,
+      detail:
+        `hints: lineEndingNormalized=${lineEndingOccurrences}, ` +
+        `trimLineEndNormalized=${trimLineEndOccurrences}, ` +
+        `fuzzyThreshold=${FUZZY_REPLACE_SIMILARITY_THRESHOLD.toFixed(2)}, ` +
+        `fuzzyTopScore=${fuzzyMatch.candidate.similarity.toFixed(3)}, ` +
+        `fuzzySecondScore=${fuzzyMatch.secondBestSimilarity.toFixed(3)}, ` +
+        `fuzzyCandidatesAboveThreshold=${fuzzyMatch.aboveThresholdCount}`,
+    })
   }
 
-  return {
-    ok: false,
-    error:
-      `expectedOccurrences mismatch: expected ${normalizedExpected}, found ${exactOccurrences}. ` +
+  return buildMatchFailure({
+    occurrences: exactOccurrences,
+    detail:
       `hints: lineEndingNormalized=${lineEndingOccurrences}, ` +
       `trimLineEndNormalized=${trimLineEndOccurrences}`,
-  }
+  })
 }
 
 const reorderOperationsForLineSafety = (
@@ -825,6 +837,50 @@ const reorderOperationsForLineSafety = (
   return { operations: [...lineOpsDesc, ...otherOps] }
 }
 
+export const buildReplaceMatchErrorHint = ({
+  content,
+  oldText,
+}: {
+  content: string
+  oldText: string
+}): string => {
+  const oldLines = oldText.split('\n')
+  const firstLinePattern = oldLines[0]?.trim() ?? ''
+
+  if (firstLinePattern.length > 0) {
+    const contentLines = content.split('\n')
+    const matchedLineIndex = contentLines.findIndex(
+      (line) => line.trim() === firstLinePattern,
+    )
+
+    if (matchedLineIndex !== -1) {
+      const lineNumber = matchedLineIndex + 1
+      const startIndex = Math.max(0, matchedLineIndex - 2)
+      const endIndex = Math.min(
+        contentLines.length - 1,
+        matchedLineIndex + oldLines.length + 2,
+      )
+      const contextDisplay = contentLines
+        .slice(startIndex, endIndex + 1)
+        .slice(0, 5)
+        .map((line) => `  ${line}`)
+        .join('\n')
+      return (
+        `Could not match oldText for replace. Its first line exists at line ${lineNumber}, ` +
+        `but the full text does not match — usually a whitespace or tab-vs-space difference.\n\n` +
+        `Context around line ${lineNumber}:\n${contextDisplay}\n\n` +
+        `TIP: Use fs_read to see the actual content, then retry. No need to explain, just call the tools.`
+      )
+    }
+  }
+
+  return (
+    `Could not find the text to replace. Make sure oldText matches the file exactly, ` +
+    `including all whitespace. ` +
+    `TIP: Use fs_read to view the actual content first, then retry. No need to explain, just call the tools.`
+  )
+}
+
 export const materializeTextEditPlan = ({
   content,
   plan,
@@ -834,6 +890,7 @@ export const materializeTextEditPlan = ({
 }): MaterializedTextEditPlan => {
   let nextContent = content
   const errors: string[] = []
+  const failures: TextEditFailure[] = []
   let appliedCount = 0
   const operationResults: AppliedTextEditOperation[] = []
 
@@ -863,6 +920,11 @@ export const materializeTextEditPlan = ({
 
       if (!result.ok) {
         errors.push(`Operation ${index + 1}: ${result.error}`)
+        failures.push({
+          operationIndex: plan.operations.indexOf(operation),
+          operation,
+          kind: 'other',
+        })
         continue
       }
 
@@ -871,7 +933,6 @@ export const materializeTextEditPlan = ({
       operationResults.push({
         operation,
         actualOccurrences: 1,
-        expectedOccurrences: null,
         matchMode: result.matchMode,
         changed: result.changed,
         matchedRange: result.matchedRange,
@@ -886,7 +947,6 @@ export const materializeTextEditPlan = ({
         operationResults.push({
           operation,
           actualOccurrences: 1,
-          expectedOccurrences: null,
           matchMode: 'append',
           changed: false,
           matchedRange: undefined,
@@ -905,7 +965,6 @@ export const materializeTextEditPlan = ({
       operationResults.push({
         operation,
         actualOccurrences: 1,
-        expectedOccurrences: null,
         matchMode: 'append',
         changed: true,
         matchedRange: undefined,
@@ -923,7 +982,6 @@ export const materializeTextEditPlan = ({
             type: 'replace',
             oldText: operation.anchor,
             newText: `${operation.anchor}\n${operation.content}`,
-            expectedOccurrences: operation.expectedOccurrences,
           }
         : operation
 
@@ -931,11 +989,15 @@ export const materializeTextEditPlan = ({
       content: nextContent,
       oldText: replaceOperation.oldText,
       newText: replaceOperation.newText,
-      expectedOccurrences: replaceOperation.expectedOccurrences,
     })
 
     if (!result.ok) {
       errors.push(`Operation ${index + 1}: ${result.error}`)
+      failures.push({
+        operationIndex: plan.operations.indexOf(operation),
+        operation,
+        kind: result.kind,
+      })
       continue
     }
 
@@ -944,7 +1006,6 @@ export const materializeTextEditPlan = ({
     operationResults.push({
       operation,
       actualOccurrences: result.actualOccurrences,
-      expectedOccurrences: result.expectedOccurrences,
       matchMode: result.matchMode,
       changed: result.changed,
       matchedRange: result.matchedRange,
@@ -964,5 +1025,6 @@ export const materializeTextEditPlan = ({
     totalOperations: plan.operations.length,
     errors,
     operationResults,
+    failures: failures.length > 0 ? failures : undefined,
   }
 }

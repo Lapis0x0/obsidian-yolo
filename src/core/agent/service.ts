@@ -23,6 +23,7 @@ import { CitationRegistry } from './citationRegistry'
 import type { AsyncTaskRecord } from './external-cli/async-task-registry'
 import type { ExternalCliEvent } from './external-cli/streamBus'
 import { NativeAgentRuntime } from './native-runtime'
+import { SystemPromptSnapshotStore } from './systemPromptSnapshotStore'
 import {
   AgentRunContext,
   AgentRuntimeLoopConfig,
@@ -577,8 +578,36 @@ export class AgentService {
   private continuationScheduledByKey = new Set<string>()
   private abortedQueuedMessagesSubscribers =
     new Set<AbortedQueuedMessagesSubscriber>()
+  /**
+   * Per-conversation frozen system prompt. Lives on this singleton so it
+   * survives `RequestContextBuilder` rebuilds caused by unrelated settings
+   * churn (reasoning level, chat mode, etc.).
+   */
+  private readonly systemPromptSnapshotStore = new SystemPromptSnapshotStore()
 
   constructor(private readonly options: AgentServiceOptions = {}) {}
+
+  /** Shared system-prompt snapshot store, injected into RCB at construction. */
+  getSystemPromptSnapshotStore(): SystemPromptSnapshotStore {
+    return this.systemPromptSnapshotStore
+  }
+
+  /**
+   * Drop the frozen system prompt for a conversation. Call when the
+   * conversation is deleted or restarted as a new topic so the next request
+   * re-snapshots against the current memory / configuration.
+   */
+  evictSystemPromptSnapshot(conversationId: string): void {
+    this.systemPromptSnapshotStore.evict(conversationId)
+  }
+
+  /**
+   * Drop every frozen system prompt. Call when all conversations are wiped
+   * (e.g. "clear chat history" in settings) so no stale snapshot survives.
+   */
+  clearSystemPromptSnapshots(): void {
+    this.systemPromptSnapshotStore.clear()
+  }
 
   /**
    * Enqueue a user message to be injected mid-run at the next safe LLM

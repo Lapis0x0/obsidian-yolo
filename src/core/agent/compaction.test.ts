@@ -1,76 +1,265 @@
 import type { ChatMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
+import type { RequestMessage, RequestTool } from '../../types/llm/request'
+import type { LLMProvider } from '../../types/provider.types'
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
+import { executeSingleTurn } from '../ai/single-turn'
+import type { BaseLLMProvider } from '../llm/base'
 
 import {
   buildManualCompactionState,
-  getCompactionSummarySourceMessages,
+  createConversationCompactionSummary,
   getLatestAssistantContextUsage,
   shouldTriggerAutoContextCompaction,
 } from './compaction'
 
-describe('compaction summary source selection', () => {
-  it('keeps the full visible history for manual compaction summaries', () => {
-    const emptyArgs = createCompleteToolCallArguments({ value: {} })
-    const messages: ChatMessage[] = [
-      {
-        role: 'user' as const,
-        id: 'user-1',
-        content: null,
-        promptContent: 'old prompt',
-        mentionables: [],
+jest.mock('../ai/single-turn', () => ({
+  executeSingleTurn: jest.fn(),
+}))
+
+const mockedExecuteSingleTurn = executeSingleTurn as jest.MockedFunction<
+  typeof executeSingleTurn
+>
+
+const fakeProviderClient = {} as BaseLLMProvider<LLMProvider>
+const fakeModel = {
+  providerId: 'provider',
+  id: 'model-id',
+  model: 'model-name',
+} as ChatModel
+
+const stubSingleTurnResult = (content: string, toolCalls = []) =>
+  ({
+    content,
+    toolCalls,
+  }) as Awaited<ReturnType<typeof executeSingleTurn>>
+
+describe('createConversationCompactionSummary', () => {
+  beforeEach(() => {
+    mockedExecuteSingleTurn.mockReset()
+  })
+
+  const prefix: RequestMessage[] = [
+    { role: 'system', content: 'SYSTEM PROMPT' },
+    { role: 'user', content: 'first user message' },
+    { role: 'assistant', content: 'assistant reply' },
+  ]
+  const tools: RequestTool[] = [
+    {
+      type: 'function',
+      function: {
+        name: 'fs_read',
+        parameters: { type: 'object', properties: {} },
       },
-      {
-        role: 'assistant' as const,
-        id: 'assistant-tools',
-        content: 'checking files',
-        toolCallRequests: [
-          {
-            id: 'compact-1',
-            name: 'yolo_local__context_compact',
-            arguments: emptyArgs,
-          },
-        ],
-      },
-      {
-        role: 'tool' as const,
-        id: 'tool-compact',
-        toolCalls: [
-          {
-            request: {
-              id: 'compact-1',
-              name: 'yolo_local__context_compact',
-              arguments: emptyArgs,
-            },
-            response: {
-              status: ToolCallResponseStatus.Success,
-              data: {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  tool: 'context_compact',
-                  toolCallId: 'compact-1',
-                  operation: 'compact_restart',
-                }),
-              },
-            },
-          },
-        ],
-      },
-      {
-        role: 'assistant' as const,
-        id: 'assistant-after',
-        content: 'recent answer after compact',
-      },
+    },
+  ]
+
+  it('reuses the prefix verbatim, appends the instruction, and forwards tools with tool_choice none', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>SUMMARY BODY</summary>'),
+    )
+
+    const summary = await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+      tools,
+    })
+
+    expect(summary).toBe('SUMMARY BODY')
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
+    const call = mockedExecuteSingleTurn.mock.calls[0][0]
+    // Prefix is reused byte-for-byte at the head of the request.
+    expect(call.request.messages.slice(0, prefix.length)).toEqual(prefix)
+    // Tools forwarded, tool calls forbidden, standard purpose, non-streaming.
+    expect(call.tools).toBe(tools)
+    expect(call.tool_choice).toBe('none')
+    expect(call.purpose).toBe('standard')
+    expect(call.stream).toBe(false)
+    // Tail message is the compaction instruction.
+    const tail = call.request.messages.at(-1)
+    expect(tail?.role).toBe('user')
+    expect(typeof tail?.content === 'string' && tail.content).toContain(
+      'COMPACTION MODE',
+    )
+  })
+
+  it('appends turn messages between the prefix and the instruction', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>S</summary>'),
+    )
+    const turnMessages: RequestMessage[] = [
+      { role: 'assistant', content: 'calling compact' },
     ]
 
-    expect(
-      getCompactionSummarySourceMessages(messages, {
-        retainLatestToolBoundary: false,
+    await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+      turnMessages,
+    })
+
+    const call = mockedExecuteSingleTurn.mock.calls[0][0]
+    expect(call.request.messages).toHaveLength(
+      prefix.length + turnMessages.length + 1,
+    )
+    expect(call.request.messages[prefix.length]).toEqual(turnMessages[0])
+  })
+
+  it('injects focusInstruction into the instruction message', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>S</summary>'),
+    )
+
+    await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+      focusInstruction: 'keep the API contract details',
+    })
+
+    const tail =
+      mockedExecuteSingleTurn.mock.calls[0][0].request.messages.at(-1)
+    const content = typeof tail?.content === 'string' ? tail.content : ''
+    expect(content).toContain(
+      '<focus_instruction>keep the API contract details</focus_instruction>',
+    )
+  })
+
+  it('omits the focus_instruction block when none is provided', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>S</summary>'),
+    )
+
+    await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+    })
+
+    const tail =
+      mockedExecuteSingleTurn.mock.calls[0][0].request.messages.at(-1)
+    const content = typeof tail?.content === 'string' ? tail.content : ''
+    expect(content).not.toContain('<focus_instruction>')
+  })
+
+  it('parses a bare summary without tags as a fallback', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('  plain summary text  '),
+    )
+
+    const summary = await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+    })
+
+    expect(summary).toBe('plain summary text')
+  })
+
+  it('retries once when the first response is empty, then succeeds', async () => {
+    mockedExecuteSingleTurn
+      .mockResolvedValueOnce(stubSingleTurnResult('<summary>   </summary>'))
+      .mockResolvedValueOnce(
+        stubSingleTurnResult('<summary>recovered</summary>'),
+      )
+
+    const summary = await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+    })
+
+    expect(summary).toBe('recovered')
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries on an empty summary even when stray tool calls are present', async () => {
+    // An empty summary triggers the retry; the stray tool call is incidental.
+    mockedExecuteSingleTurn
+      .mockResolvedValueOnce(
+        stubSingleTurnResult('', [{ name: 'fs_read' }] as never),
+      )
+      .mockResolvedValueOnce(stubSingleTurnResult('<summary>ok</summary>'))
+
+    const summary = await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+    })
+
+    expect(summary).toBe('ok')
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(2)
+  })
+
+  it('accepts a non-empty summary even when stray tool calls are returned', async () => {
+    // Providers that ignore tool_choice:'none' (Gemini, etc.) may still emit a
+    // tool call; as long as summary text exists we accept it without retrying.
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>kept</summary>', [
+        { name: 'fs_read' },
+      ] as never),
+    )
+
+    const summary = await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+    })
+
+    expect(summary).toBe('kept')
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it('forwards the reasoning level into the request', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>S</summary>'),
+    )
+
+    await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+      reasoningLevel: 'high',
+    })
+
+    const call = mockedExecuteSingleTurn.mock.calls[0][0]
+    expect((call.request as { reasoningLevel?: unknown }).reasoningLevel).toBe(
+      'high',
+    )
+  })
+
+  it('omits tool_choice when no tools are provided', async () => {
+    mockedExecuteSingleTurn.mockResolvedValueOnce(
+      stubSingleTurnResult('<summary>S</summary>'),
+    )
+
+    await createConversationCompactionSummary({
+      providerClient: fakeProviderClient,
+      model: fakeModel,
+      requestMessages: prefix,
+    })
+
+    const call = mockedExecuteSingleTurn.mock.calls[0][0]
+    expect(call.tool_choice).toBeUndefined()
+  })
+
+  it('throws when both attempts yield an empty summary', async () => {
+    mockedExecuteSingleTurn
+      .mockResolvedValueOnce(stubSingleTurnResult(''))
+      .mockResolvedValueOnce(stubSingleTurnResult(''))
+
+    await expect(
+      createConversationCompactionSummary({
+        providerClient: fakeProviderClient,
+        model: fakeModel,
+        requestMessages: prefix,
       }),
-    ).toEqual(messages)
+    ).rejects.toThrow('empty summary')
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(2)
   })
 })
 

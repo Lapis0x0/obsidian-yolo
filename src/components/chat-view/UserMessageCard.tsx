@@ -87,7 +87,7 @@ function UserMessageCard({
           snapshot.selectedSkills.length > 0) && (
           <div className="yolo-chat-user-input-files yolo-user-message-card__badges">
             {snapshot.selectedSkills.map((skill) => (
-              <ReadOnlySkillBadge key={skill.id} skill={skill} />
+              <ReadOnlySkillBadge key={skill.name} skill={skill} />
             ))}
             {snapshot.mentionables.map((mentionable) => (
               <ReadOnlyBadge

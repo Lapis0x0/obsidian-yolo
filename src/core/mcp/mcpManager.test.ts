@@ -100,11 +100,8 @@ describe('McpManager mobile built-in tool behavior', () => {
       id: 'tool-call-1',
       args: {
         path: 'note.md',
-        operation: {
-          type: 'replace',
-          oldText: 'hello world',
-          newText: 'updated',
-        },
+        oldText: 'hello world',
+        newText: 'updated',
       },
       requireReview: true,
     })

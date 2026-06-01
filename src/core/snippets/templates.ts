@@ -61,5 +61,5 @@ The prompt text to insert.
 
 ## Workflow
 
-Read \`YOLO/snippets.md\` and append a new \`## trigger\` block. Create the file with \`fs_create_file\` if missing.
+Read \`YOLO/snippets.md\` and append a new \`## trigger\` block. Create the file with \`fs_write\` if missing.
 `

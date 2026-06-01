@@ -152,6 +152,7 @@ describe('RagIndexService', () => {
         await new Promise<void>((resolve) => {
           resolveRun = resolve
         })
+        return { permanentFailedPaths: [], chunkifyFailedPaths: [] }
       },
     )
     const service = new RagIndexService({
@@ -203,7 +204,10 @@ describe('RagIndexService', () => {
     const updateVaultIndex = jest
       .fn()
       .mockRejectedValueOnce(new Error('network timeout'))
-      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        permanentFailedPaths: [],
+        chunkifyFailedPaths: [],
+      })
     const service = new RagIndexService({
       app: {
         loadLocalStorage: jest.fn().mockReturnValue(null),
@@ -276,7 +280,9 @@ describe('RagIndexService', () => {
 
   it('restores scheduled manual retries', async () => {
     jest.useFakeTimers()
-    const updateVaultIndex = jest.fn().mockResolvedValue(undefined)
+    const updateVaultIndex = jest
+      .fn()
+      .mockResolvedValue({ permanentFailedPaths: [], chunkifyFailedPaths: [] })
     const service = new RagIndexService({
       app: {
         loadLocalStorage: jest.fn().mockReturnValue(
@@ -305,5 +311,81 @@ describe('RagIndexService', () => {
     expect(service.getSnapshot()).toMatchObject({
       status: 'completed',
     })
+  })
+
+  it('persists permanentFailedPaths on a completed run and returns the result', async () => {
+    const updateVaultIndex = jest.fn().mockResolvedValue({
+      permanentFailedPaths: ['bad.md', 'broken.md'],
+      chunkifyFailedPaths: ['transient.md'],
+    })
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    const result = await service.runIndex({
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'transient',
+    })
+
+    // runIndex returns the reconcile result for the manual-path Notice.
+    expect(result).toEqual({
+      permanentFailedPaths: ['bad.md', 'broken.md'],
+      chunkifyFailedPaths: ['transient.md'],
+    })
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'completed',
+      // Permanent failures persist; chunkify failures (self-healing) do not.
+      permanentFailedPaths: ['bad.md', 'broken.md'],
+    })
+  })
+
+  it('clears permanentFailedPaths on a clean completion', async () => {
+    const updateVaultIndex = jest
+      .fn()
+      .mockResolvedValueOnce({
+        permanentFailedPaths: ['bad.md'],
+        chunkifyFailedPaths: [],
+      })
+      .mockResolvedValueOnce({
+        permanentFailedPaths: [],
+        chunkifyFailedPaths: [],
+      })
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    await service.runIndex({
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'transient',
+    })
+    expect(service.getSnapshot().permanentFailedPaths).toEqual(['bad.md'])
+
+    await service.runIndex({
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'transient',
+    })
+    expect(service.getSnapshot().permanentFailedPaths).toBeUndefined()
   })
 })

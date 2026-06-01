@@ -16,12 +16,11 @@ Store your skill files here.
 - Supported formats:
   - Legacy: \`YOLO/skills/*.md\` (exclude \`Skills.md\`)
   - Claude-style: \`YOLO/skills/**/SKILL.md\`
-- Required frontmatter: \`name\` (required), \`id\` (optional, defaults to \`name\`), \`description\` (optional)
+- Required frontmatter: \`name\` (required, kebab-case unique identifier), \`description\` (optional); \`mode\` (\`lazy\` | \`always\`, optional)
 `
 
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---
-id: obsidian-output-format
-name: Obsidian Output Format
+name: obsidian-output-format
 description: Use <yolo_block> only for markdown file edit plans. Output the compact edit DSL only.
 mode: always
 ---
@@ -66,8 +65,7 @@ Allowed operation types:
 `
 
 export const YOLO_SKILL_CREATOR_TEMPLATE = `---
-id: skill-creator
-name: Skill Creator
+name: skill-creator
 description: Guide for creating effective YOLO skills. Use when users want to create a new skill, update an existing skill, or improve skill quality within their Obsidian vault. Covers skill design principles, anatomy, and the full creation workflow.
 ---
 
@@ -108,7 +106,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a single targeted content change in an existing file, and \`fs_create_file\` / \`fs_delete_file\` / \`fs_create_dir\` / \`fs_delete_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a single targeted content change in an existing file, and \`fs_write\` / \`fs_delete\` / \`fs_create_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
 
 ## Anatomy of a Skill
 
@@ -126,16 +124,14 @@ Each skill \`.md\` file consists of two parts:
 
 ### Frontmatter (YAML, required)
 
-Contains \`id\`, \`name\`, and \`description\` fields:
+Contains \`name\` and \`description\` fields:
 
-- \`id\`: Stable kebab-case identifier (e.g., \`meeting-notes\`). Must be unique across the vault.
-- \`name\`: Human-readable title (e.g., \`Meeting Notes\`).
+- \`name\`: Stable kebab-case identifier (e.g., \`meeting-notes\`). Must be unique across the vault. This is both the skill's identity and its label.
 - \`description\`: The primary triggering mechanism. The agent reads this to decide when to activate the skill. Include both what the skill does and specific triggers/contexts for when to use it.
 
 ~~~yaml
 ---
-id: meeting-notes
-name: Meeting Notes
+name: meeting-notes
 description: Create structured meeting notes from raw transcripts or bullet points. Use when users paste meeting content, ask to summarize a meeting, or request action item extraction from conversation logs.
 ---
 ~~~
@@ -173,7 +169,7 @@ The skill exists for the agent to do the job at hand. Every line should earn its
 
 Skills use a two-level loading system to manage context efficiently:
 
-1. Metadata (id + name + description): Always in context (~50-100 words)
+1. Metadata (name + description): Always in context (~50-100 words)
 2. Skill body: Loaded only when the skill triggers
 
 This means the body can be more detailed without constantly consuming context. But keep it focused. Aim for under 300 lines. If a skill grows beyond that, consider whether it is trying to do too much and should be split into multiple skills.
@@ -199,12 +195,11 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 | \`fs_list\` | Inspect folder contents and vault structure |
 | \`fs_search\` | Find files by keyword or pattern |
 | \`fs_read\` | Read full files or targeted line ranges |
-| \`fs_edit\` | Apply exactly one targeted text edit to an existing file (\`replace\`, \`replace_lines\`, \`insert_after\`, \`append\`) |
-| \`fs_create_file\` | Create a file with provided content (supports \`dryRun\`) |
-| \`fs_delete_file\` | Delete a file path (supports \`dryRun\`) |
-| \`fs_create_dir\` | Create a directory path (supports \`dryRun\`) |
-| \`fs_delete_dir\` | Delete a directory path (supports \`recursive\` and \`dryRun\`) |
-| \`fs_move\` | Move or rename a file/folder path (supports \`dryRun\`) |
+| \`fs_edit\` | Apply exactly one targeted text edit to an existing file (by exact \`oldText\`, or by \`startLine\`/\`endLine\` range) |
+| \`fs_write\` | Create a file or overwrite it with full content |
+| \`fs_delete\` | Delete a file or folder path (supports \`recursive\` for folders) |
+| \`fs_create_dir\` | Create a directory path |
+| \`fs_move\` | Move or rename a file/folder path |
 
 Skills should be designed around these capabilities. There is no script execution environment, no shell access, and no external API calls. All skill workflows must be achievable through file operations and the agent's reasoning.
 
@@ -263,8 +258,7 @@ Analyze each concrete example by considering:
 Write the frontmatter first, then the body.
 
 Frontmatter checklist:
-- \`id\` is kebab-case and unique
-- \`name\` is readable
+- \`name\` is kebab-case, unique, and matches the filename
 - \`description\` clearly states what the skill does and when to trigger it
 
 Body guidelines:
@@ -273,13 +267,10 @@ Body guidelines:
 - Include a concrete example if the expected behavior is non-obvious
 - Keep verification steps explicit
 
-### Step 5: Write to Vault Safely
-
-Always preview before committing:
+### Step 5: Write to Vault
 
 ~~~
-fs_create_file { path: "YOLO/skills/<skill-id>.md", content: "...", dryRun: true } -> preview
-fs_create_file { path: "YOLO/skills/<skill-id>.md", content: "..." } -> commit
+fs_write { path: "YOLO/skills/<skill-name>.md", content: "..." }
 ~~~
 
 For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted changes rather than rewriting the entire file.
@@ -304,10 +295,10 @@ Iteration workflow:
 
 Before finalizing any skill, verify:
 
-- [ ] Frontmatter includes \`id\`, \`name\`, and \`description\`
+- [ ] Frontmatter includes \`name\` and \`description\`
 - [ ] Description states clear trigger conditions (not buried in body)
-- [ ] \`id\` is kebab-case and matches the filename
-- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_create_file\`, \`fs_delete_file\`, \`fs_create_dir\`, \`fs_delete_dir\`, \`fs_move\`)
+- [ ] \`name\` is kebab-case and matches the filename
+- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_write\`, \`fs_delete\`, \`fs_create_dir\`, \`fs_move\`)
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters
 - [ ] Body is under 300 lines

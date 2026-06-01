@@ -175,7 +175,7 @@ export const en: TranslationKeys = {
         'How long to wait before the streaming primary request is treated as timed out. This timeout always applies; if automatic recovery is enabled, a non-streaming fallback is attempted afterward. Default: 60 seconds.',
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
-        'This prompt is added to the beginning of every chat conversation. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}, weekday {{current_weekday}}.',
+        'This prompt is added to the beginning of every chat conversation.',
       continuationSystemPrompt: 'Default continuation system prompt',
       continuationSystemPromptDesc:
         'Used as the system message when generating continuation text; leave empty to fall back to the built-in default.',
@@ -293,7 +293,7 @@ export const en: TranslationKeys = {
       description: 'Description',
       systemPrompt: 'System prompt',
       systemPromptDesc:
-        'This prompt will be added to the beginning of every chat. Supports {{current_date}}, {{current_hour}}, {{current_minute}}, and {{current_weekday}}.',
+        'This prompt will be added to the beginning of every chat.',
       systemPromptPlaceholder:
         "Enter system prompt to define assistant's behavior and capabilities",
       namePlaceholder: 'Enter assistant name',
@@ -450,7 +450,7 @@ export const en: TranslationKeys = {
       fsEditReviewToggleDesc:
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
       builtinFsFileOpsLabel: 'File Operation Toolset',
-      builtinFsFileOpsDesc: 'Create, delete, and move files and folders',
+      builtinFsFileOpsDesc: 'Write, delete, and move files and folders',
       builtinMemoryOpsLabel: 'Memory Toolset',
       builtinMemoryOpsDesc: 'Add, update, and delete memory',
       builtinMemoryAddLabel: 'Add Memory',
@@ -510,8 +510,7 @@ export const en: TranslationKeys = {
       editorIconDesc: 'Pick an icon for this agent',
       editorChooseIcon: 'Choose icon',
       editorSystemPrompt: 'System prompt',
-      editorSystemPromptDesc:
-        'Primary behavior instruction for this agent. Supported variables: date {{current_date}}, date + current hour {{current_hour}}, date + current hour and minute {{current_minute}}, weekday {{current_weekday}}.',
+      editorSystemPromptDesc: 'Primary behavior instruction for this agent.',
       editorSystemPromptExpand: 'Expand editor',
       editorSystemPromptCollapse: 'Close expanded editor',
       editorEnableProjectInstructions: 'Load project instruction files',
@@ -562,6 +561,9 @@ export const en: TranslationKeys = {
       focusSyncTitle: 'Focus sync',
       focusSyncDesc:
         'When enabled, the AI can sense which file you are reading and where you are in it.',
+      timeContextTitle: 'Current time awareness',
+      timeContextDesc:
+        'Lets the model know the current time when each message is sent.',
       imageReadingBlockTitle: 'Image reading',
       imageReadingEnabled: 'Image reading',
       imageReadingEnabledDesc:
@@ -921,6 +923,7 @@ export const en: TranslationKeys = {
       desc: 'Manage knowledge base indexing. RAG is invoked automatically when the Agent uses the Search tool in Hybrid or RAG mode.',
       enableRag: 'Enable knowledge base indexing',
       enableRagDesc: 'Build indexes for documents within the selected scope.',
+      partialFailureSummary: 'Done · {{count}} file(s) could not be indexed',
       embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
@@ -2302,11 +2305,14 @@ export const en: TranslationKeys = {
         open_skill: 'Open skill',
       },
       writeAction: {
+        write: 'Write file',
+        delete: 'Delete',
+        create_dir: 'Create folder',
+        move: 'Move path',
+        // Legacy keys kept for rendering historical conversations.
         create_file: 'Create file',
         delete_file: 'Delete file',
-        create_dir: 'Create folder',
         delete_dir: 'Delete folder',
-        move: 'Move path',
       },
       readMode: {
         full: 'Full',
@@ -2384,6 +2390,8 @@ export const en: TranslationKeys = {
     rebuildingIndex: 'Rebuilding vault index…',
     rebuildComplete: 'Rebuilding vault index complete.',
     rebuildFailed: 'Rebuilding vault index failed.',
+    indexedWithSkipped:
+      'Index complete · {{count}} file(s) could not be indexed.',
     continueComplete: 'Resumed index completed.',
     continueFailed: 'Resumed index failed.',
     openYoloNewChatFailed:
@@ -2660,9 +2668,16 @@ export const en: TranslationKeys = {
 
   update: {
     newVersionAvailable: 'New version {version} is available',
+    toastTitle: 'YOLO · New version',
     currentVersion: 'Current',
     viewDetails: 'Check for updates',
+    goUpdate: 'Update',
     dismiss: 'Dismiss',
+    collapse: 'Collapse',
+    showFullChangelog: 'Show full changelog',
+    languageEnglish: 'EN',
+    languageChinese: '中文',
+    muteThisVersion: "Don't notify for this version",
     installationIncompleteTitle: 'Plugin installation incomplete',
     installationIncompleteMeta:
       'main.js {bakedVersion} · manifest {manifestVersion}',

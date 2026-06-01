@@ -44,8 +44,6 @@ export type AgentRuntimeRunInput = {
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   compaction?: ChatConversationCompactionLike | null
-  compactionProviderClient?: BaseLLMProvider<LLMProvider>
-  compactionModel?: ChatModel
   abortSignal?: AbortSignal
   reasoningLevel?: ReasoningLevel
   requestParams?: {
@@ -71,7 +69,6 @@ export type AgentRuntimeRunInput = {
     include: string[]
     exclude: string[]
   }
-  allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   contextualInjections?: ContextualInjection[]
   geminiTools?: {

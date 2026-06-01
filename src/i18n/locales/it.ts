@@ -172,7 +172,7 @@ export const it: TranslationKeys = {
         'Quanto attendere prima che la richiesta primaria in streaming venga considerata in timeout. Questo timeout si applica sempre; se il recupero automatico e attivo, dopo il timeout verra tentato un fallback non streaming. Predefinito: 60 secondi.',
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
-        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.",
+        "Questo prompt viene aggiunto all'inizio di ogni conversazione chat.",
       continuationSystemPrompt:
         'Prompt di sistema di continuazione predefinito',
       continuationSystemPromptDesc:
@@ -297,8 +297,7 @@ export const it: TranslationKeys = {
       descriptionDesc: "Breve descrizione dello scopo dell'assistente",
       descriptionPlaceholder: 'Ad esempio, Aiuta con domande di programmazione',
       systemPrompt: 'Prompt di sistema',
-      systemPromptDesc:
-        "Questo prompt viene aggiunto all'inizio di ogni chat. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.",
+      systemPromptDesc: "Questo prompt viene aggiunto all'inizio di ogni chat.",
       systemPromptPlaceholder: 'Ad esempio, Sei un esperto programmatore...',
       defaultAssistantName: 'Nuovo assistente',
       actions: 'Azioni',
@@ -441,7 +440,7 @@ export const it: TranslationKeys = {
       fsEditReviewToggleDesc:
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
       builtinFsFileOpsLabel: 'Set operazioni file',
-      builtinFsFileOpsDesc: 'Crea, elimina e sposta file e cartelle',
+      builtinFsFileOpsDesc: 'Scrivi, elimina e sposta file e cartelle',
       builtinMemoryOpsLabel: 'Set strumenti memoria',
       builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
       builtinMemoryAddLabel: 'Aggiungi memoria',
@@ -504,7 +503,7 @@ export const it: TranslationKeys = {
       editorChooseIcon: 'Scegli icona',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
-        'Istruzione comportamentale principale per questo agent. Variabili supportate: data {{current_date}}, data + ora corrente {{current_hour}}, data + ora e minuti correnti {{current_minute}}, giorno della settimana {{current_weekday}}.',
+        'Istruzione comportamentale principale per questo agent.',
       editorSystemPromptExpand: 'Espandi editor',
       editorSystemPromptCollapse: 'Chiudi editor espanso',
       editorEnableProjectInstructions: 'Carica file di istruzioni del progetto',
@@ -541,6 +540,9 @@ export const it: TranslationKeys = {
       focusSyncTitle: 'Sincronizzazione del focus',
       focusSyncDesc:
         "Se abilitato, l'AI percepisce quale file stai leggendo e dove ti trovi.",
+      timeContextTitle: 'Consapevolezza dell ora corrente',
+      timeContextDesc:
+        'Indica al modello l ora corrente all invio di ogni messaggio.',
       imageReadingBlockTitle: 'Lettura immagini',
       imageReadingEnabled: 'Lettura immagini',
       imageReadingEnabledDesc:
@@ -986,6 +988,7 @@ export const it: TranslationKeys = {
       enableRag: 'Abilita RAG',
       enableRagDesc:
         "Crea l'indice per i documenti inclusi nell'ambito selezionato.",
+      partialFailureSummary: 'Completato · {{count}} file non indicizzabili',
       embeddingModel: 'Modello embedding',
       embeddingModelDesc:
         'Modello usato per generare embeddings per la ricerca semantica.',
@@ -1792,11 +1795,14 @@ export const it: TranslationKeys = {
         open_skill: 'Apri skill',
       },
       writeAction: {
+        write: 'Scrivi file',
+        delete: 'Elimina',
+        create_dir: 'Crea cartella',
+        move: 'Sposta percorso',
+        // Chiavi legacy mantenute per le conversazioni storiche.
         create_file: 'Crea file',
         delete_file: 'Elimina file',
-        create_dir: 'Crea cartella',
         delete_dir: 'Elimina cartella',
-        move: 'Sposta percorso',
       },
       readMode: {
         full: 'Intero testo',
@@ -1874,6 +1880,7 @@ export const it: TranslationKeys = {
     rebuildingIndex: 'Ricostruzione indice vault in corso…',
     rebuildComplete: 'Ricostruzione indice vault completata.',
     rebuildFailed: 'Ricostruzione indice vault fallita.',
+    indexedWithSkipped: 'Indice completato · {{count}} file non indicizzabili.',
     continueComplete: 'Indicizzazione ripresa completata.',
     continueFailed: 'Indicizzazione ripresa fallita.',
     openYoloNewChatFailed:
@@ -2050,9 +2057,16 @@ export const it: TranslationKeys = {
 
   update: {
     newVersionAvailable: 'Nuova versione {version} disponibile',
+    toastTitle: 'YOLO · Nuova versione',
     currentVersion: 'Attuale',
     viewDetails: 'Controlla aggiornamenti',
+    goUpdate: 'Aggiorna',
     dismiss: 'Chiudi',
+    collapse: 'Comprimi',
+    showFullChangelog: 'Mostra changelog completo',
+    languageEnglish: 'EN',
+    languageChinese: '中文',
+    muteThisVersion: 'Non notificare per questa versione',
     installationIncompleteTitle: 'Installazione del plugin incompleta',
     installationIncompleteMeta:
       'main.js {bakedVersion} · manifest {manifestVersion}',

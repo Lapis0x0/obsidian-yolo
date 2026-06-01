@@ -100,17 +100,14 @@ export const isMemoryToolAvailable = (toolName: string): boolean => {
 const isToolAllowed = ({
   toolName,
   allowedToolNames,
-  allowedSkillIds,
   allowedSkillNames,
 }: {
   toolName: string
   allowedToolNames?: ReadonlySet<string>
-  allowedSkillIds?: ReadonlySet<string>
   allowedSkillNames?: ReadonlySet<string>
 }): boolean => {
   if (isOpenSkillToolName(toolName)) {
-    const hasAllowedSkills =
-      (allowedSkillIds?.size ?? 0) > 0 || (allowedSkillNames?.size ?? 0) > 0
+    const hasAllowedSkills = (allowedSkillNames?.size ?? 0) > 0
     if (!hasAllowedSkills) {
       return false
     }
@@ -174,7 +171,6 @@ export function applyDynamicToolDescriptions(
 export const selectAllowedTools = ({
   availableTools,
   allowedToolNames,
-  allowedSkillIds,
   allowedSkillNames,
   toolPreferences,
   apiType,
@@ -183,7 +179,6 @@ export const selectAllowedTools = ({
 }: {
   availableTools: McpTool[]
   allowedToolNames?: string[]
-  allowedSkillIds?: string[]
   allowedSkillNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
   apiType?: LLMProviderApiType | null
@@ -196,11 +191,9 @@ export const selectAllowedTools = ({
   requestTools: RequestTool[] | undefined
 } => {
   const normalizedAllowedToolNames = expandAllowedToolNames(allowedToolNames)
-  const normalizedAllowedSkillIds = allowedSkillIds
-    ? new Set(allowedSkillIds.map((id) => id.toLowerCase()))
-    : undefined
+  // Canonical skill names: trim only, case-sensitive (A1).
   const normalizedAllowedSkillNames = allowedSkillNames
-    ? new Set(allowedSkillNames.map((name) => name.toLowerCase()))
+    ? new Set(allowedSkillNames.map((name) => name.trim()))
     : undefined
 
   const baseFiltered = applyDynamicToolDescriptions(
@@ -208,7 +201,6 @@ export const selectAllowedTools = ({
       isToolAllowed({
         toolName: tool.name,
         allowedToolNames: normalizedAllowedToolNames,
-        allowedSkillIds: normalizedAllowedSkillIds,
         allowedSkillNames: normalizedAllowedSkillNames,
       }),
     ),

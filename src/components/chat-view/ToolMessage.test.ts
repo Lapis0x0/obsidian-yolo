@@ -37,17 +37,15 @@ describe('ToolMessage headline helpers', () => {
     },
     unknownStatus: 'Unknown',
     displayNames: {
-      fs_create_file: 'Create file',
-      fs_delete_file: 'Delete file',
+      fs_write: 'Write file',
+      fs_delete: 'Delete',
       fs_create_dir: 'Create folder',
-      fs_delete_dir: 'Delete folder',
       fs_move: 'Move path',
     },
     writeActionLabels: {
-      create_file: 'Create file',
-      delete_file: 'Delete file',
+      write: 'Write file',
+      delete: 'Delete',
       create_dir: 'Create folder',
-      delete_dir: 'Delete folder',
       move: 'Move path',
     },
     readFull: '全文',
@@ -268,11 +266,11 @@ describe('ToolMessage headline helpers', () => {
     ).toBe('docs/plan.md')
   })
 
-  it('uses file path as summary for create-file headlines', () => {
+  it('uses file path as summary for write headlines', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
-          name: 'yolo_local__fs_create_file',
+          name: 'yolo_local__fs_write',
           arguments: createCompleteToolCallArguments({
             value: {
               path: 'docs/new-note.md',
@@ -283,8 +281,27 @@ describe('ToolMessage headline helpers', () => {
         labels,
       }),
     ).toEqual({
-      displayName: 'Create file',
+      displayName: 'Write file',
       summaryText: 'docs/new-note.md',
+    })
+  })
+
+  it('uses file path as summary for delete headlines', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_delete',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'docs/old-note.md',
+            },
+          }),
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Delete',
+      summaryText: 'docs/old-note.md',
     })
   })
 
@@ -327,74 +344,6 @@ describe('ToolMessage headline helpers', () => {
     })
   })
 
-  it('summarizes batch create-file headlines by shared parent directory', () => {
-    expect(
-      getHeadlineDisplayInfo({
-        request: {
-          name: 'yolo_local__fs_create_file',
-          arguments: createCompleteToolCallArguments({
-            value: {
-              items: [
-                { path: 'docs/a.md', content: 'A' },
-                { path: 'docs/b.md', content: 'B' },
-              ],
-            },
-          }),
-        },
-        labels,
-      }),
-    ).toEqual({
-      displayName: 'Create file',
-      summaryText: '在 docs 下创建 2 个文件',
-    })
-  })
-
-  it('summarizes batch move headlines by target directory', () => {
-    expect(
-      getHeadlineDisplayInfo({
-        request: {
-          name: 'yolo_local__fs_move',
-          arguments: createCompleteToolCallArguments({
-            value: {
-              items: [
-                { oldPath: 'docs/a.md', newPath: 'docs/a-1.md' },
-                { oldPath: 'docs/b.md', newPath: 'docs/b-1.md' },
-                { oldPath: 'docs/c.md', newPath: 'docs/c-1.md' },
-              ],
-            },
-          }),
-        },
-        labels,
-      }),
-    ).toEqual({
-      displayName: 'Move path',
-      summaryText: '移动 3 项到 docs',
-    })
-  })
-
-  it('summarizes batch delete-file headlines by shared parent directory', () => {
-    expect(
-      getHeadlineDisplayInfo({
-        request: {
-          name: 'yolo_local__fs_delete_file',
-          arguments: createCompleteToolCallArguments({
-            value: {
-              items: [
-                { path: 'docs/a.md' },
-                { path: 'docs/b.md' },
-                { path: 'docs/c.md' },
-              ],
-            },
-          }),
-        },
-        labels,
-      }),
-    ).toEqual({
-      displayName: 'Delete file',
-      summaryText: '删除 docs 下 3 个文件',
-    })
-  })
-
   it('uses content (not legacy activeForm) for in_progress todo_write summary', () => {
     // Old persisted tool calls may still carry an `activeForm` field. The
     // chip summary must take it from `content` and ignore the legacy field.
@@ -426,27 +375,5 @@ describe('ToolMessage headline helpers', () => {
         labels,
       }).summaryText,
     ).toBe('完成第二步')
-  })
-
-  it('falls back to generic batch summary when create-file paths are distributed', () => {
-    expect(
-      getHeadlineDisplayInfo({
-        request: {
-          name: 'yolo_local__fs_create_file',
-          arguments: createCompleteToolCallArguments({
-            value: {
-              items: [
-                { path: 'docs/a.md', content: 'A' },
-                { path: 'notes/b.md', content: 'B' },
-              ],
-            },
-          }),
-        },
-        labels,
-      }),
-    ).toEqual({
-      displayName: 'Create file',
-      summaryText: '创建 2 个文件',
-    })
   })
 })

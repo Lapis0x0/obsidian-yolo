@@ -21,7 +21,10 @@ import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../../../contexts/language-context'
-import { LiteSkillEntry } from '../../../../../core/skills/liteSkills'
+import {
+  LiteSkillEntry,
+  humanizeSkillName,
+} from '../../../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../../../core/snippets/snippetsManager'
 import { MenuOption } from '../shared/LexicalMenu'
 import {
@@ -93,8 +96,8 @@ class SkillTypeaheadOption extends MenuOption {
         name = payload.label
         break
       case 'skill':
-        key = `slash:skill:${payload.skill.id}`
-        name = payload.skill.name
+        key = `slash:skill:${payload.skill.name}`
+        name = humanizeSkillName(payload.skill.name)
         subtitle = payload.skill.description
         break
       case 'snippet':
@@ -219,7 +222,7 @@ function SkillTypeaheadMenuItem({
 export default function SkillSlashPlugin({
   skills,
   snippets = [],
-  selectedSkillIds = [],
+  selectedSkillNames = [],
   mentionDisplayMode = 'inline',
   onMenuOpenChange,
   menuContainerRef,
@@ -230,7 +233,7 @@ export default function SkillSlashPlugin({
 }: {
   skills: LiteSkillEntry[]
   snippets?: SnippetEntry[]
-  selectedSkillIds?: string[]
+  selectedSkillNames?: string[]
   mentionDisplayMode?: 'inline' | 'badge'
   onMenuOpenChange?: (isOpen: boolean) => void
   menuContainerRef?: RefObject<HTMLElement>
@@ -265,9 +268,9 @@ export default function SkillSlashPlugin({
     [queryString],
   )
 
-  const selectedSkillIdSet = useMemo(
-    () => new Set(selectedSkillIds),
-    [selectedSkillIds],
+  const selectedSkillNameSet = useMemo(
+    () => new Set(selectedSkillNames),
+    [selectedSkillNames],
   )
 
   const compactCommand = useMemo<SlashCommand>(
@@ -297,7 +300,6 @@ export default function SkillSlashPlugin({
         if (!q) return true
         return (
           skill.name.toLowerCase().includes(q) ||
-          skill.id.toLowerCase().includes(q) ||
           skill.description.toLowerCase().includes(q) ||
           skill.path.toLowerCase().includes(q)
         )
@@ -334,7 +336,7 @@ export default function SkillSlashPlugin({
           new SkillTypeaheadOption({
             kind: 'skill',
             skill,
-            isSelected: selectedSkillIdSet.has(skill.id),
+            isSelected: selectedSkillNameSet.has(skill.name),
           }),
       )
       return [
@@ -396,7 +398,6 @@ export default function SkillSlashPlugin({
       skills.forEach((skill) => {
         const score = Math.max(
           scoreText(skill.name),
-          skill.id.toLowerCase().includes(q) ? 30 : 0,
           skill.description.toLowerCase().includes(q) ? 10 : 0,
           skill.path.toLowerCase().includes(q) ? 5 : 0,
         )
@@ -405,7 +406,7 @@ export default function SkillSlashPlugin({
           option: new SkillTypeaheadOption({
             kind: 'skill',
             skill,
-            isSelected: selectedSkillIdSet.has(skill.id),
+            isSelected: selectedSkillNameSet.has(skill.name),
           }),
           score,
           categoryRank: 0,
@@ -482,7 +483,7 @@ export default function SkillSlashPlugin({
     menuScope,
     normalizedQuery,
     queryString,
-    selectedSkillIdSet,
+    selectedSkillNameSet,
     skillEntryLabel,
     snippetEntryLabel,
     skills,
@@ -573,7 +574,6 @@ export default function SkillSlashPlugin({
 
       if (nodeToReplace) {
         const skillNode = $createSkillNode(payload.skill.name, {
-          id: payload.skill.id,
           name: payload.skill.name,
           description: payload.skill.description,
           path: payload.skill.path,

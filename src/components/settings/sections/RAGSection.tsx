@@ -135,6 +135,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     String(settings.ragOptions.embeddingConcurrency ?? 10),
   )
   const [showAdvancedRagSettings, setShowAdvancedRagSettings] = useState(false)
+  const [permanentFailuresExpanded, setPermanentFailuresExpanded] =
+    useState(false)
   const syncInputsRef = useRef<{
     enabled: boolean
     embeddingModelId: string
@@ -472,6 +474,21 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     ? `${ringPercent}%`
     : null
 
+  // Files that completed but could not be indexed permanently. Surfaced as a
+  // durable, expandable line under the maintenance status (no modal, no Notice
+  // for the background path) until the next clean completion clears the field.
+  const permanentFailedPaths = useMemo(
+    () =>
+      !isIndexing && indexRunSnapshot.status === 'completed'
+        ? (indexRunSnapshot.permanentFailedPaths ?? [])
+        : [],
+    [
+      isIndexing,
+      indexRunSnapshot.status,
+      indexRunSnapshot.permanentFailedPaths,
+    ],
+  )
+
   const includeFolders = useMemo(
     () => includePatternsToFolderPaths(settings.ragOptions.includePatterns),
     [settings.ragOptions.includePatterns],
@@ -599,7 +616,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const runIndexJob = useCallback(
     async ({ mode, successNotice, failureNotice }: IndexJob) => {
       try {
-        await plugin.runRagIndex({
+        const result = await plugin.runRagIndex({
           mode,
           scope: { kind: 'all' },
           trigger: 'manual',
@@ -614,7 +631,18 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             lastAutoUpdateAt: Date.now(),
           },
         })
-        if (successNotice) {
+        const skippedCount = result.permanentFailedPaths.length
+        if (skippedCount > 0) {
+          // Partial success: some files could never be embedded and were kept
+          // with whatever indexed (they will not be retried). Surface it once
+          // here instead of the plain success notice.
+          new Notice(
+            t(
+              'notices.indexedWithSkipped',
+              '索引完成，{{count}} 个文件无法索引',
+            ).replace('{{count}}', String(skippedCount)),
+          )
+        } else if (successNotice) {
           new Notice(successNotice)
         }
       } catch (error) {
@@ -1103,6 +1131,40 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   )}
                 </div>
               </ObsidianSetting>
+              {permanentFailedPaths.length > 0 && (
+                <div className="yolo-rag-permanent-failures">
+                  <button
+                    type="button"
+                    className="yolo-rag-permanent-failures-summary"
+                    onClick={() =>
+                      setPermanentFailuresExpanded((prev) => !prev)
+                    }
+                    aria-expanded={permanentFailuresExpanded}
+                  >
+                    <span className="yolo-rag-permanent-failures-text">
+                      {t(
+                        'settings.rag.partialFailureSummary',
+                        '完成 · {{count}} 个文件无法索引',
+                      ).replace(
+                        '{{count}}',
+                        String(permanentFailedPaths.length),
+                      )}
+                    </span>
+                    <span className="yolo-rag-permanent-failures-caret">
+                      {permanentFailuresExpanded ? '▾' : '▸'}
+                    </span>
+                  </button>
+                  {permanentFailuresExpanded && (
+                    <ul className="yolo-rag-permanent-failures-list">
+                      {permanentFailedPaths.map((path) => (
+                        <li key={path} title={path}>
+                          {path}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </>
           )}
         </RAGCard>
