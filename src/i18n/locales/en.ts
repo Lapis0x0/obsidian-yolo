@@ -1941,7 +1941,9 @@ export const en: TranslationKeys = {
     audioFileErrorLongAudioNotImplemented:
       'Long-audio provider adapters are not implemented yet.',
     audioFileErrorUnsupportedLocalFile:
-      'The selected ASR provider cannot transcribe local files.',
+      'The selected ASR configuration does not support audio file transcription. Choose a file-upload or WebSocket ASR provider.',
+    audioFileErrorProviderLimitExceeded:
+      "This audio file exceeds the selected ASR provider's upload limits.",
     audioFileErrorUnsupportedChunking:
       'The selected ASR provider cannot split this audio file.',
     audioFileErrorDecodeRequiredForChunking:

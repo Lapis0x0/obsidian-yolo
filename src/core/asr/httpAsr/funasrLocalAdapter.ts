@@ -27,6 +27,19 @@ type ParsedFunAsrSegment = AsrSegment & {
   speakerLabel?: string
 }
 
+type FunAsrSegmentSource =
+  | 'segments'
+  | 'sentence_info'
+  | 'sentenceInfo'
+  | 'sentences'
+
+type RawFunAsrSegments = {
+  source: FunAsrSegmentSource
+  items: unknown[]
+}
+
+type PlainStartEndUnit = 'seconds' | 'milliseconds'
+
 export const DEFAULT_FUNASR_TRANSCRIPTION_PATH = '/audio/transcriptions'
 const DEFAULT_FUNASR_MODEL = 'paraformer'
 
@@ -163,14 +176,10 @@ function unwrapFunAsrRoot(payload: unknown): unknown {
 function extractFunAsrSegments(payload: unknown): ParsedFunAsrSegment[] {
   if (!payload || typeof payload !== 'object') return []
   const record = payload as Record<string, unknown>
-  const rawSegments =
-    firstArray(record.segments) ??
-    firstArray(record.sentence_info) ??
-    firstArray(record.sentenceInfo) ??
-    firstArray(record.sentences) ??
-    []
+  const rawSegments = findRawFunAsrSegments(record)
+  const plainStartEndUnit = inferPlainStartEndUnit(rawSegments)
 
-  return rawSegments.flatMap((entry) => {
+  return (rawSegments?.items ?? []).flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return []
     const item = entry as Record<string, unknown>
     const text = extractText(item).trim()
@@ -178,13 +187,16 @@ function extractFunAsrSegments(payload: unknown): ParsedFunAsrSegment[] {
     const speakerId = extractSpeakerId(item)
     return [
       {
-        startMs: extractTimeMs(item, [
-          'startMs',
-          'beginMs',
-          'begin_time',
-          'start',
-        ]),
-        endMs: extractTimeMs(item, ['endMs', 'end_time', 'end']),
+        startMs: extractTimeMs(
+          item,
+          ['startMs', 'beginMs', 'begin_time', 'start'],
+          plainStartEndUnit,
+        ),
+        endMs: extractTimeMs(
+          item,
+          ['endMs', 'end_time', 'end'],
+          plainStartEndUnit,
+        ),
         text,
         ...(speakerId
           ? {
@@ -197,8 +209,48 @@ function extractFunAsrSegments(payload: unknown): ParsedFunAsrSegment[] {
   })
 }
 
-function firstArray(value: unknown): unknown[] | null {
-  return Array.isArray(value) ? value : null
+function findRawFunAsrSegments(
+  record: Record<string, unknown>,
+): RawFunAsrSegments | null {
+  for (const source of [
+    'segments',
+    'sentence_info',
+    'sentenceInfo',
+    'sentences',
+  ] as const) {
+    const value = record[source]
+    if (Array.isArray(value)) return { source, items: value }
+  }
+  return null
+}
+
+function inferPlainStartEndUnit(
+  rawSegments: RawFunAsrSegments | null,
+): PlainStartEndUnit | null {
+  if (!rawSegments) return null
+
+  if (rawSegments.source === 'segments') {
+    return 'seconds'
+  }
+
+  for (const entry of rawSegments.items) {
+    if (!entry || typeof entry !== 'object') continue
+    const record = entry as Record<string, unknown>
+    for (const key of ['start', 'end']) {
+      const value = record[key]
+      if (
+        typeof value === 'number' &&
+        Number.isFinite(value) &&
+        !Number.isInteger(value)
+      ) {
+        return 'seconds'
+      }
+    }
+  }
+
+  // FunASR's native sentence_info-style payloads conventionally report
+  // integer start/end offsets in milliseconds.
+  return 'milliseconds'
 }
 
 function extractText(value: unknown): string {
@@ -226,23 +278,20 @@ function extractSpeakerId(record: Record<string, unknown>): string | undefined {
 function extractTimeMs(
   record: Record<string, unknown>,
   keys: string[],
+  plainStartEndUnit: PlainStartEndUnit | null,
 ): number {
-  const looksFunAsrSegment =
-    'spk' in record || 'speaker_id' in record || 'sentence' in record
   for (const key of keys) {
     const value = record[key]
     if (typeof value === 'number' && Number.isFinite(value)) {
-      // OpenAI-compatible `segments[]` usually use seconds, while FunASR
-      // `sentence_info` commonly uses millisecond offsets. Prefer ms for
-      // FunASR-shaped keys and for large raw offsets; otherwise treat as sec.
-      if (
-        looksFunAsrSegment ||
-        /ms$/i.test(key) ||
-        /_time$/i.test(key) ||
-        value >= 1000
-      ) {
+      if (/_?ms$/i.test(key) || /_time$/i.test(key)) {
         return Math.round(value)
       }
+      if (key === 'start' || key === 'end') {
+        if (plainStartEndUnit === 'milliseconds') return Math.round(value)
+        if (plainStartEndUnit === 'seconds') return Math.round(value * 1000)
+      }
+      if (!Number.isInteger(value)) return Math.round(value * 1000)
+      if (value >= 1000) return Math.round(value)
       return Math.round(value * 1000)
     }
   }

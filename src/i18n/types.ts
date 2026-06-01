@@ -1604,6 +1604,7 @@ export type TranslationKeys = {
     audioFileErrorNoProvider?: string
     audioFileErrorLongAudioNotImplemented?: string
     audioFileErrorUnsupportedLocalFile?: string
+    audioFileErrorProviderLimitExceeded?: string
     audioFileErrorUnsupportedChunking?: string
     audioFileErrorDecodeRequiredForChunking?: string
     audioFileErrorLocalDecodeTooLarge?: string

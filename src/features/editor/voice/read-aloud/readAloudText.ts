@@ -136,6 +136,8 @@ const splitByPreferredBoundaries = (
 const findPreferredSplitIndex = (text: string, maxChars: number): number => {
   const limit = Math.min(text.length, maxChars)
   const boundaries = collectBoundaries(text, limit)
+  // Two passes avoid creating a very short segment from an early full stop, but
+  // still allow a shorter natural pause before falling back to phrase/space cuts.
   const preferredMin = Math.min(
     Math.max(80, Math.floor(maxChars * 0.45)),
     limit - 1,

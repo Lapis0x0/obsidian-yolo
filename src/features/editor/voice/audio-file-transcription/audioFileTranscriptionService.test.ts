@@ -271,6 +271,28 @@ describe('inspectAndPlanAudioFileTranscription', () => {
     ).rejects.toThrow('Long-audio ASR provider adapters are not implemented')
   })
 
+  it('reports provider upload limits separately from local-file support', async () => {
+    const longConfig: AsrConfig = {
+      ...baseConfig,
+      id: 'long',
+      asrCategory: 'http-long-audio',
+      asrProvider: 'tencent-flash',
+      model: '',
+    }
+
+    await expect(
+      inspectAndPlanAudioFileTranscription({
+        source: source({ size: 101 * 1024 * 1024 }),
+        options: options({
+          asrConfigs: [longConfig],
+          activeAudioFileAsrConfigId: 'long',
+        }),
+      }),
+    ).rejects.toThrow(
+      "This audio file exceeds the selected ASR provider's upload limits.",
+    )
+  })
+
   it('plans WebSocket auto streaming for large files without materializing them', async () => {
     const getFile = jest.fn(async () => {
       throw new Error('should not materialize')

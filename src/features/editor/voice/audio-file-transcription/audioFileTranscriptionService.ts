@@ -79,6 +79,7 @@ export type AudioFileTranscriptionMessages = {
   noProvider: string
   longAudioNotImplemented: string
   unsupportedLocalFile: string
+  providerLimitExceeded: string
   unsupportedChunking: string
   decodeRequiredForChunking: string
   localDecodeTooLarge: string
@@ -100,7 +101,9 @@ const DEFAULT_MESSAGES: AudioFileTranscriptionMessages = {
   longAudioNotImplemented:
     'Long-audio ASR provider adapters are not implemented yet.',
   unsupportedLocalFile:
-    'The selected ASR provider cannot transcribe local files.',
+    'The selected ASR configuration does not support audio file transcription. Choose a file-upload or WebSocket ASR provider.',
+  providerLimitExceeded:
+    "This audio file exceeds the selected ASR provider's upload limits.",
   unsupportedChunking:
     'The selected ASR provider cannot split this audio file.',
   decodeRequiredForChunking:
@@ -148,14 +151,14 @@ export async function inspectAndPlanAudioFileTranscription(input: {
       capability.maxRequestBytes !== null &&
       inspection.fileSizeBytes > capability.maxRequestBytes
     ) {
-      throw new Error(messages.unsupportedLocalFile)
+      throw new Error(messages.providerLimitExceeded)
     }
     if (
       capability.maxDurationMs !== null &&
       inspection.durationMs !== null &&
       inspection.durationMs > capability.maxDurationMs
     ) {
-      throw new Error(messages.unsupportedLocalFile)
+      throw new Error(messages.providerLimitExceeded)
     }
     return {
       mode: 'long-audio-upload',

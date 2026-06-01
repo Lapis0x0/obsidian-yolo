@@ -1789,7 +1789,10 @@ export const zh: TranslationKeys = {
     audioFileErrorNoProvider:
       '还没有配置 ASR 提供商。请先到 模型 → 语音识别 添加。',
     audioFileErrorLongAudioNotImplemented: '长音频提供商适配器还没有实现。',
-    audioFileErrorUnsupportedLocalFile: '当前 ASR 提供商不能转写本地音频文件。',
+    audioFileErrorUnsupportedLocalFile:
+      '当前 ASR 配置不支持音频文件转写。请选择支持文件上传或 WebSocket 流式转写的配置。',
+    audioFileErrorProviderLimitExceeded:
+      '这个音频文件超出所选 ASR 提供商的上传限制。',
     audioFileErrorUnsupportedChunking:
       '当前 ASR 提供商不能分段转写这个音频文件。',
     audioFileErrorDecodeRequiredForChunking:

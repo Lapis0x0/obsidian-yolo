@@ -310,7 +310,11 @@ export class AudioFileTranscriptionController {
       ),
       unsupportedLocalFile: this.deps.t(
         'voiceInput.audioFileErrorUnsupportedLocalFile',
-        'The selected ASR provider cannot transcribe local files.',
+        'The selected ASR configuration does not support audio file transcription. Choose a file-upload or WebSocket ASR provider.',
+      ),
+      providerLimitExceeded: this.deps.t(
+        'voiceInput.audioFileErrorProviderLimitExceeded',
+        "This audio file exceeds the selected ASR provider's upload limits.",
       ),
       unsupportedChunking: this.deps.t(
         'voiceInput.audioFileErrorUnsupportedChunking',
