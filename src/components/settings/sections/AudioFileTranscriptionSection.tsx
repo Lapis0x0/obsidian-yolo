@@ -242,27 +242,22 @@ export function AudioFileTranscriptionSection() {
         </div>
 
         <div className="yolo-settings-block-content">
-          {!asrReady && (
-            <div
-              className="yolo-settings-card"
-              style={{ borderColor: 'var(--text-warning)' }}
-            >
-              {t(
-                'settings.audioFileTranscription.asrRequiredHint',
-                'Configure an ASR provider under the Models tab → Voice recognition first.',
-              )}
-            </div>
-          )}
-
           <ObsidianSetting
             name={t(
               'settings.audioFileTranscription.enable',
               'Enable audio file transcription',
             )}
-            desc={t(
-              'settings.audioFileTranscription.enableDesc',
-              'Adds an audio-file mode to the floating voice island. File transcription only runs ASR and does not use context-aware polishing.',
-            )}
+            desc={
+              asrReady
+                ? t(
+                    'settings.audioFileTranscription.enableDesc',
+                    'Adds an audio-file mode to the floating voice island. File transcription only runs ASR and does not use context-aware polishing.',
+                  )
+                : t(
+                    'settings.audioFileTranscription.enableDescUnavailable',
+                    'Add an ASR provider before enabling audio file transcription.',
+                  )
+            }
             className="yolo-settings-card"
           >
             <ObsidianToggle

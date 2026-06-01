@@ -263,228 +263,248 @@ export function VoiceReadAloudSection() {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.readAloud.ttsProvider', 'TTS provider')}
-            desc={t(
-              'settings.readAloud.ttsProviderDesc',
-              'Used for floating island read aloud and command palette actions.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={activeTtsConfigId}
-              options={providerOptions}
-              disabled={!ttsReady}
-              onChange={(value) =>
-                updateVoice({ activeTtsConfigId: value }, 'activeTtsConfigId')
-              }
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.readAloud.markdownMode', 'Markdown mode')}
-            desc={t(
-              'settings.readAloud.markdownModeDesc',
-              'Readable skips frontmatter/code and reads links by label; raw keeps markdown syntax.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={voice.readAloudMarkdownMode}
-              options={Object.fromEntries(
-                READ_ALOUD_MARKDOWN_MODES.map((mode) => [
-                  mode,
-                  t(
-                    `settings.readAloud.markdownModeOption.${mode}`,
-                    MARKDOWN_MODE_LABEL[mode],
-                  ),
-                ]),
-              )}
-              onChange={(value) =>
-                updateVoice(
-                  { readAloudMarkdownMode: value as ReadAloudMarkdownMode },
-                  'readAloudMarkdownMode',
-                )
-              }
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.readAloud.autoSave', 'Auto-save generated audio')}
-            desc={t(
-              'settings.readAloud.autoSaveDesc',
-              'Saves generated audio to the folder below and enables drag-out.',
-            )}
-            className="yolo-settings-card"
-          >
-            <ObsidianToggle
-              value={
-                !!voice.readAloudGeneratedAudioAutoSaveEnabled &&
-                !!generatedAudioSaveDir.trim()
-              }
-              disabled={!generatedAudioSaveDir.trim()}
-              onChange={(value) =>
-                updateVoice(
-                  { readAloudGeneratedAudioAutoSaveEnabled: value },
-                  'readAloudGeneratedAudioAutoSaveEnabled',
-                )
-              }
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.readAloud.saveDir', 'Generated audio folder')}
-            desc={t(
-              'settings.readAloud.saveDirDesc',
-              'Vault-relative folder. Absolute paths are not accepted.',
-            )}
-            className="yolo-settings-card"
-          >
-            <ObsidianTextInput
-              value={generatedAudioSaveDir}
-              onChange={(value) =>
-                updateVoice(
-                  { readAloudGeneratedAudioSaveDir: value },
-                  'readAloudGeneratedAudioSaveDir',
-                )
-              }
-              placeholder={DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR}
-            />
-          </ObsidianSetting>
-
-          <div
-            className={`yolo-settings-advanced-toggle yolo-clickable${
-              advancedOpen ? ' is-expanded' : ''
-            }`}
-            onClick={() => setAdvancedOpen((prev) => !prev)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                setAdvancedOpen((prev) => !prev)
-              }
-            }}
-          >
-            <span className="yolo-settings-advanced-toggle-icon">▶</span>
-            {t('settings.readAloud.advancedToggle', 'Advanced options')}
-          </div>
-
-          {advancedOpen && (
+          {voice.voiceReadAloudEnabled && ttsReady && (
             <>
               <ObsidianSetting
-                name={t('settings.readAloud.speaker', 'Speaker')}
-                desc={
-                  speakerMessage ||
-                  t(
-                    'settings.readAloud.speakerDesc',
-                    'Choose where read aloud and TTS tests are played.',
-                  )
-                }
+                name={t('settings.readAloud.ttsProvider', 'TTS provider')}
+                desc={t(
+                  'settings.readAloud.ttsProviderDesc',
+                  'Used for floating island read aloud and command palette actions.',
+                )}
                 className="yolo-models-select-card"
               >
-                <div className="yolo-tts-speaker-controls">
-                  <ObsidianDropdown
-                    value={voice.ttsOutputDeviceId ?? ''}
-                    options={outputDeviceOptions}
-                    onChange={(value) => {
-                      setSpeakerMessage('')
-                      updateVoice(
-                        { ttsOutputDeviceId: value },
-                        'ttsOutputDeviceId',
-                      )
-                    }}
-                  />
-                  <ObsidianButton
-                    text={
-                      speakerTestRunning
-                        ? t('settings.readAloud.speakerTesting', 'Testing...')
-                        : t('settings.readAloud.speakerTest', 'Test speaker')
-                    }
-                    disabled={speakerTestRunning}
-                    onClick={runSpeakerTest}
-                  />
-                </div>
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t(
-                  'settings.readAloud.chunkTargetChars',
-                  'Characters per segment limit',
-                )}
-                desc={t(
-                  'settings.readAloud.chunkTargetCharsDesc',
-                  'Long text is split by this limit before conversion. Provider limits may make chunks smaller. Range: 200-6000.',
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianTextInput
-                  value={numberInputs.readAloudChunkTargetChars}
-                  onChange={(value) => {
-                    setNumberInputs((state) => ({
-                      ...state,
-                      readAloudChunkTargetChars: value,
-                    }))
-                    const parsed = parseInteger(value)
-                    if (parsed !== null && parsed >= 200 && parsed <= 6000) {
-                      updateVoice(
-                        { readAloudChunkTargetChars: parsed },
-                        'readAloudChunkTargetChars',
-                      )
-                    }
-                  }}
-                  placeholder="500"
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t(
-                  'settings.readAloud.preloadSegments',
-                  'Preload segments',
-                )}
-                desc={t(
-                  'settings.readAloud.preloadSegmentsDesc',
-                  'How many upcoming text segments to synthesize ahead of playback. Range: 0-3.',
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianTextInput
-                  value={numberInputs.readAloudPreloadSegments}
-                  onChange={(value) => {
-                    setNumberInputs((state) => ({
-                      ...state,
-                      readAloudPreloadSegments: value,
-                    }))
-                    const parsed = parseInteger(value)
-                    if (parsed !== null && parsed >= 0 && parsed <= 3) {
-                      updateVoice(
-                        { readAloudPreloadSegments: parsed },
-                        'readAloudPreloadSegments',
-                      )
-                    }
-                  }}
-                  placeholder="1"
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.readAloud.cacheEnabled', 'Memory cache')}
-                desc={t(
-                  'settings.readAloud.cacheEnabledDesc',
-                  'Reuse generated audio within this Obsidian session when text and TTS settings match.',
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianToggle
-                  value={!!voice.readAloudCacheEnabled}
+                <ObsidianDropdown
+                  value={activeTtsConfigId}
+                  options={providerOptions}
+                  disabled={!ttsReady}
                   onChange={(value) =>
                     updateVoice(
-                      { readAloudCacheEnabled: value },
-                      'readAloudCacheEnabled',
+                      { activeTtsConfigId: value },
+                      'activeTtsConfigId',
                     )
                   }
                 />
               </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.readAloud.markdownMode', 'Markdown mode')}
+                desc={t(
+                  'settings.readAloud.markdownModeDesc',
+                  'Readable skips frontmatter/code and reads links by label; raw keeps markdown syntax.',
+                )}
+                className="yolo-models-select-card"
+              >
+                <ObsidianDropdown
+                  value={voice.readAloudMarkdownMode}
+                  options={Object.fromEntries(
+                    READ_ALOUD_MARKDOWN_MODES.map((mode) => [
+                      mode,
+                      t(
+                        `settings.readAloud.markdownModeOption.${mode}`,
+                        MARKDOWN_MODE_LABEL[mode],
+                      ),
+                    ]),
+                  )}
+                  onChange={(value) =>
+                    updateVoice(
+                      { readAloudMarkdownMode: value as ReadAloudMarkdownMode },
+                      'readAloudMarkdownMode',
+                    )
+                  }
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t(
+                  'settings.readAloud.autoSave',
+                  'Auto-save generated audio',
+                )}
+                desc={t(
+                  'settings.readAloud.autoSaveDesc',
+                  'Saves generated audio to the folder below and enables drag-out.',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianToggle
+                  value={
+                    !!voice.readAloudGeneratedAudioAutoSaveEnabled &&
+                    !!generatedAudioSaveDir.trim()
+                  }
+                  disabled={!generatedAudioSaveDir.trim()}
+                  onChange={(value) =>
+                    updateVoice(
+                      { readAloudGeneratedAudioAutoSaveEnabled: value },
+                      'readAloudGeneratedAudioAutoSaveEnabled',
+                    )
+                  }
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.readAloud.saveDir', 'Generated audio folder')}
+                desc={t(
+                  'settings.readAloud.saveDirDesc',
+                  'Vault-relative folder. Absolute paths are not accepted.',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={generatedAudioSaveDir}
+                  onChange={(value) =>
+                    updateVoice(
+                      { readAloudGeneratedAudioSaveDir: value },
+                      'readAloudGeneratedAudioSaveDir',
+                    )
+                  }
+                  placeholder={DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR}
+                />
+              </ObsidianSetting>
+
+              <div
+                className={`yolo-settings-advanced-toggle yolo-clickable${
+                  advancedOpen ? ' is-expanded' : ''
+                }`}
+                onClick={() => setAdvancedOpen((prev) => !prev)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setAdvancedOpen((prev) => !prev)
+                  }
+                }}
+              >
+                <span className="yolo-settings-advanced-toggle-icon">▶</span>
+                {t('settings.readAloud.advancedToggle', 'Advanced options')}
+              </div>
+
+              {advancedOpen && (
+                <>
+                  <ObsidianSetting
+                    name={t('settings.readAloud.speaker', 'Speaker')}
+                    desc={
+                      speakerMessage ||
+                      t(
+                        'settings.readAloud.speakerDesc',
+                        'Choose where read aloud and TTS tests are played.',
+                      )
+                    }
+                    className="yolo-models-select-card"
+                  >
+                    <div className="yolo-tts-speaker-controls">
+                      <ObsidianDropdown
+                        value={voice.ttsOutputDeviceId ?? ''}
+                        options={outputDeviceOptions}
+                        onChange={(value) => {
+                          setSpeakerMessage('')
+                          updateVoice(
+                            { ttsOutputDeviceId: value },
+                            'ttsOutputDeviceId',
+                          )
+                        }}
+                      />
+                      <ObsidianButton
+                        text={
+                          speakerTestRunning
+                            ? t(
+                                'settings.readAloud.speakerTesting',
+                                'Testing...',
+                              )
+                            : t(
+                                'settings.readAloud.speakerTest',
+                                'Test speaker',
+                              )
+                        }
+                        disabled={speakerTestRunning}
+                        onClick={runSpeakerTest}
+                      />
+                    </div>
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.readAloud.chunkTargetChars',
+                      'Characters per segment limit',
+                    )}
+                    desc={t(
+                      'settings.readAloud.chunkTargetCharsDesc',
+                      'Long text is split up to this limit, preferring natural pauses; actual segments may be shorter. Range: 200-6000.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.readAloudChunkTargetChars}
+                      onChange={(value) => {
+                        setNumberInputs((state) => ({
+                          ...state,
+                          readAloudChunkTargetChars: value,
+                        }))
+                        const parsed = parseInteger(value)
+                        if (
+                          parsed !== null &&
+                          parsed >= 200 &&
+                          parsed <= 6000
+                        ) {
+                          updateVoice(
+                            { readAloudChunkTargetChars: parsed },
+                            'readAloudChunkTargetChars',
+                          )
+                        }
+                      }}
+                      placeholder="500"
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.readAloud.preloadSegments',
+                      'Preload segments',
+                    )}
+                    desc={t(
+                      'settings.readAloud.preloadSegmentsDesc',
+                      'How many upcoming text segments to synthesize ahead of playback. Range: 0-3.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.readAloudPreloadSegments}
+                      onChange={(value) => {
+                        setNumberInputs((state) => ({
+                          ...state,
+                          readAloudPreloadSegments: value,
+                        }))
+                        const parsed = parseInteger(value)
+                        if (parsed !== null && parsed >= 0 && parsed <= 3) {
+                          updateVoice(
+                            { readAloudPreloadSegments: parsed },
+                            'readAloudPreloadSegments',
+                          )
+                        }
+                      }}
+                      placeholder="1"
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t('settings.readAloud.cacheEnabled', 'Memory cache')}
+                    desc={t(
+                      'settings.readAloud.cacheEnabledDesc',
+                      'Reuse generated audio within this Obsidian session when text and TTS settings match.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianToggle
+                      value={!!voice.readAloudCacheEnabled}
+                      onChange={(value) =>
+                        updateVoice(
+                          { readAloudCacheEnabled: value },
+                          'readAloudCacheEnabled',
+                        )
+                      }
+                    />
+                  </ObsidianSetting>
+                </>
+              )}
             </>
           )}
         </div>

@@ -1599,11 +1599,11 @@ export const en: TranslationKeys = {
         'Transcribe dropped or selected audio files through ASR and insert the transcript into the editor.',
       voiceRequiredHint:
         'Enable voice input above to show the floating island used for choosing or dropping audio files.',
-      asrRequiredHint:
-        'Configure an ASR provider under the Models tab → Voice recognition first.',
       enable: 'Enable audio file transcription',
       enableDesc:
         'Adds an audio-file mode to the floating voice island. File transcription only runs ASR and does not use context-aware polishing.',
+      enableDescUnavailable:
+        'Add an ASR provider before enabling audio file transcription.',
       asrProvider: 'Audio file ASR provider',
       asrProviderDesc:
         'Defaults to the voice input ASR provider, but can be set separately for longer local audio files.',
@@ -1649,11 +1649,10 @@ export const en: TranslationKeys = {
       title: 'Context-aware voice input',
       description:
         'Hold or click the mic to dictate at the cursor. The polish LLM uses the current file title, surrounding text, and selection.',
-      asrRequiredHint:
-        'Configure an ASR provider under Models → Voice recognition first. The toggle stays disabled until an ASR is set up.',
       enable: 'Enable voice input',
       enableDesc:
         'Use the command palette, an Obsidian hotkey, or the floating mic to trigger it.',
+      enableDescUnavailable: 'Add an ASR provider before enabling voice input.',
       asrProvider: 'ASR provider',
       asrProviderDesc:
         'Pick which of your configured ASR endpoints (Models → Voice recognition) handles this voice input session.',
@@ -1854,7 +1853,7 @@ export const en: TranslationKeys = {
       advancedToggle: 'Advanced options',
       chunkTargetChars: 'Characters per segment limit',
       chunkTargetCharsDesc:
-        'Long text is split by this limit before conversion. Provider limits may make chunks smaller. Range: 200-6000.',
+        'Long text is split up to this limit, preferring natural pauses; actual segments may be shorter. Range: 200-6000.',
       preloadSegments: 'Preload segments',
       preloadSegmentsDesc:
         'How many upcoming text segments to synthesize while the current one is playing. Higher values reduce pauses but may spend more provider quota if you stop early. Range: 0-3.',

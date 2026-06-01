@@ -62,66 +62,148 @@ export function splitReadAloudText(
     .filter(Boolean)
   const chunks: string[] = []
   let current = ''
+  let currentParagraphIndex = -1
 
-  for (const paragraph of paragraphs) {
+  paragraphs.forEach((paragraph, paragraphIndex) => {
     const pieces =
       paragraph.length > maxChars
-        ? splitLongParagraph(paragraph, maxChars)
+        ? splitByPreferredBoundaries(paragraph, maxChars)
         : [paragraph]
-    for (const piece of pieces) {
+    pieces.forEach((piece) => {
       if (!current) {
         current = piece
-        continue
+        currentParagraphIndex = paragraphIndex
+        return
       }
-      if (current.length + piece.length + 2 <= maxChars) {
-        current += `\n\n${piece}`
-        continue
+      const separator =
+        currentParagraphIndex === paragraphIndex
+          ? getInlineJoinSeparator(current, piece)
+          : '\n\n'
+      if (current.length + separator.length + piece.length <= maxChars) {
+        current += `${separator}${piece}`
+        currentParagraphIndex = paragraphIndex
+        return
       }
       chunks.push(current)
       current = piece
-    }
-  }
+      currentParagraphIndex = paragraphIndex
+    })
+  })
   if (current) chunks.push(current)
   return chunks
 }
 
-const splitLongParagraph = (paragraph: string, maxChars: number): string[] => {
-  const sentences = splitSentences(paragraph)
-  if (sentences.length <= 1) {
-    return splitByFixedWindow(paragraph, maxChars)
-  }
-  const chunks: string[] = []
-  let current = ''
-  for (const sentence of sentences) {
-    if (!current) {
-      current = sentence
-      continue
-    }
-    if (current.length + sentence.length + 1 <= maxChars) {
-      current += ` ${sentence}`
-      continue
-    }
-    chunks.push(current)
-    current = sentence
-  }
-  if (current) chunks.push(current)
-  return chunks.flatMap((chunk) =>
-    chunk.length > maxChars ? splitByFixedWindow(chunk, maxChars) : [chunk],
-  )
+type SplitBoundary = {
+  index: number
+  priority: number
 }
 
-const splitSentences = (paragraph: string): string[] =>
-  paragraph
-    .match(/[^。！？.!?]+[。！？.!?]*\s*/g)
-    ?.map((part) => part.trim())
-    .filter(Boolean) ?? []
+const SENTENCE_BOUNDARY_CHARS = new Set(['。', '！', '？', '.', '!', '?'])
+const PHRASE_BOUNDARY_CHARS = new Set(['，', '、', '；', ';', '：', ':', ','])
+const CLOSING_BOUNDARY_CHARS = new Set([
+  '"',
+  "'",
+  ')',
+  ']',
+  '}',
+  '）',
+  '】',
+  '》',
+  '」',
+  '』',
+  '”',
+  '’',
+])
+const ASCII_WORD_CHAR = /^[A-Za-z0-9]$/
+const ASCII_TRAILING_NEEDS_SPACE = /^[A-Za-z0-9,.;:!?)]$/
 
-const splitByFixedWindow = (text: string, maxChars: number): string[] => {
+const splitByPreferredBoundaries = (
+  paragraph: string,
+  maxChars: number,
+): string[] => {
   const chunks: string[] = []
-  for (let i = 0; i < text.length; i += maxChars) {
-    chunks.push(text.slice(i, i + maxChars).trim())
+  let remaining = paragraph.trim()
+  while (remaining.length > maxChars) {
+    const splitIndex = findPreferredSplitIndex(remaining, maxChars)
+    const chunk = remaining.slice(0, splitIndex).trim()
+    if (chunk) chunks.push(chunk)
+    remaining = remaining.slice(splitIndex).trim()
   }
-  return chunks.filter(Boolean)
+  if (remaining) chunks.push(remaining)
+  return chunks
+}
+
+const findPreferredSplitIndex = (text: string, maxChars: number): number => {
+  const limit = Math.min(text.length, maxChars)
+  const boundaries = collectBoundaries(text, limit)
+  const preferredMin = Math.min(
+    Math.max(80, Math.floor(maxChars * 0.45)),
+    limit - 1,
+  )
+  const fallbackMin = Math.min(
+    Math.max(40, Math.floor(maxChars * 0.2)),
+    limit - 1,
+  )
+
+  // Prefer natural speech pauses over a visually even but awkward hard cut.
+  for (const minIndex of [preferredMin, fallbackMin]) {
+    for (const priority of [3, 2, 1]) {
+      const boundary = findLatestBoundary(boundaries, priority, minIndex)
+      if (boundary) return boundary.index
+    }
+  }
+  return limit
+}
+
+const collectBoundaries = (text: string, limit: number): SplitBoundary[] => {
+  const boundaries: SplitBoundary[] = []
+  for (let i = 1; i <= limit; i++) {
+    const char = text[i - 1]
+    if (/\s/.test(char)) {
+      boundaries.push({ index: i, priority: 1 })
+      continue
+    }
+    const trigger = getBoundaryTriggerChar(text, i - 1)
+    if (SENTENCE_BOUNDARY_CHARS.has(trigger)) {
+      boundaries.push({ index: i, priority: 3 })
+      continue
+    }
+    if (PHRASE_BOUNDARY_CHARS.has(trigger)) {
+      boundaries.push({ index: i, priority: 2 })
+    }
+  }
+  return boundaries
+}
+
+const getBoundaryTriggerChar = (text: string, index: number): string => {
+  let cursor = index
+  while (cursor >= 0 && CLOSING_BOUNDARY_CHARS.has(text[cursor])) {
+    cursor--
+  }
+  return text[cursor] ?? ''
+}
+
+const findLatestBoundary = (
+  boundaries: SplitBoundary[],
+  priority: number,
+  minIndex: number,
+): SplitBoundary | null => {
+  for (let i = boundaries.length - 1; i >= 0; i--) {
+    const boundary = boundaries[i]
+    if (boundary.priority === priority && boundary.index >= minIndex) {
+      return boundary
+    }
+  }
+  return null
+}
+
+const getInlineJoinSeparator = (left: string, right: string): string => {
+  const leftLast = left.trimEnd().slice(-1)
+  const rightFirst = right.trimStart().slice(0, 1)
+  if (!leftLast || !rightFirst) return ''
+  if (!ASCII_WORD_CHAR.test(rightFirst)) return ''
+  if (ASCII_TRAILING_NEEDS_SPACE.test(leftLast)) return ' '
+  return CLOSING_BOUNDARY_CHARS.has(leftLast) ? ' ' : ''
 }
 
 const stripWikiFileName = (value: string): string => {

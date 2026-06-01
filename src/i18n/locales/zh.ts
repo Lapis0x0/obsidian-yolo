@@ -1470,10 +1470,10 @@ export const zh: TranslationKeys = {
       description: '通过 ASR 转写拖入或选择的音频文件，并把结果插入编辑器。',
       voiceRequiredHint:
         '先启用上面的语音输入，才会显示用于选择或拖入音频的浮岛。',
-      asrRequiredHint: '请先在 模型 → 语音识别 中配置 ASR 提供商。',
       enable: '启用音频文件转写',
       enableDesc:
         '在语音浮岛中加入音频文件模式。文件转写只运行 ASR，不做上下文打磨。',
+      enableDescUnavailable: '添加语音识别提供商后才能启用音频文件转写。',
       asrProvider: '音频文件 ASR 提供商',
       asrProviderDesc:
         '默认使用语音输入的 ASR，也可以为较长的本地音频文件单独选择。',
@@ -1516,10 +1516,9 @@ export const zh: TranslationKeys = {
       title: '上下文感知语音输入',
       description:
         '点击或长按麦克风在光标处口述。打磨用的 LLM 会结合当前文件标题、光标前后文与选区。',
-      asrRequiredHint:
-        '请先在 模型 → 语音识别 中配置 ASR。未配置前下方开关无法打开。',
       enable: '启用语音输入',
       enableDesc: '通过命令面板、Obsidian 快捷键或浮动麦克风按钮触发。',
+      enableDescUnavailable: '添加语音识别提供商后才能启用语音输入。',
       asrProvider: 'ASR 提供商',
       asrProviderDesc:
         '从 模型 → 语音识别 里配置好的 ASR 端点中选一条用于本次语音输入。',
@@ -1703,7 +1702,7 @@ export const zh: TranslationKeys = {
       advancedToggle: '高级选项',
       chunkTargetChars: '每段字符上限',
       chunkTargetCharsDesc:
-        '过长的文字会按此上限分段转换。提供商限制可能使分段更短。范围：200-6000。',
+        '过长的文字会按此上限分段转换，并优先在自然停顿处切分；实际段长可能更短。范围：200-6000。',
       preloadSegments: '预加载分段',
       preloadSegmentsDesc:
         '播放当前分段时提前合成多少个后续分段。数值越大越不容易卡顿，但提前停止时可能多消耗一些额度。范围：0-3。',

@@ -336,24 +336,19 @@ export function ContextVoiceInputSection() {
         </div>
 
         <div className="yolo-settings-block-content">
-          {!asrReady && (
-            <div
-              className="yolo-settings-card"
-              style={{ borderColor: 'var(--text-warning)' }}
-            >
-              {t(
-                'settings.contextVoiceInput.asrRequiredHint',
-                'Configure an ASR provider under the Models tab → Voice recognition first. The toggle below stays disabled until that profile has a baseURL and model.',
-              )}
-            </div>
-          )}
-
           <ObsidianSetting
             name={t('settings.contextVoiceInput.enable', 'Enable voice input')}
-            desc={t(
-              'settings.contextVoiceInput.enableDesc',
-              'Trigger via the command palette (Start / Stop context-aware voice input), an Obsidian hotkey, or the floating mic.',
-            )}
+            desc={
+              asrReady
+                ? t(
+                    'settings.contextVoiceInput.enableDesc',
+                    'Trigger via the command palette (Start / Stop context-aware voice input), an Obsidian hotkey, or the floating mic.',
+                  )
+                : t(
+                    'settings.contextVoiceInput.enableDescUnavailable',
+                    'Add an ASR provider before enabling voice input.',
+                  )
+            }
             className="yolo-settings-card"
           >
             <ObsidianToggle
@@ -363,511 +358,537 @@ export function ContextVoiceInputSection() {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.contextVoiceInput.asrProvider', 'ASR provider')}
-            desc={t(
-              'settings.contextVoiceInput.asrProviderDesc',
-              'Pick which of your configured ASR endpoints handles this voice input session.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={activeAsrConfigId}
-              options={asrProviderOptions}
-              groupedOptions={groupedAsrProviderOptions}
-              onChange={(value) =>
-                updateVoice({ activeAsrConfigId: value }, 'activeAsrConfigId')
-              }
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t('settings.contextVoiceInput.polishModel', 'Polish model')}
-            desc={t(
-              'settings.contextVoiceInput.polishModelDesc',
-              'Rewrites the raw transcript with the surrounding editor context. Falls back to the default chat model when unset.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={voice.polishModelId}
-              groupedOptions={polishModelOptions}
-              onChange={(value) =>
-                updateVoice({ polishModelId: value }, 'polishModelId')
-              }
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t(
-              'settings.contextVoiceInput.systemPromptMode',
-              'Prompt style',
-            )}
-            desc={t(
-              'settings.contextVoiceInput.systemPromptModeDesc',
-              'Pick a built-in preset or switch to custom to write your own.',
-            )}
-            className="yolo-models-select-card"
-          >
-            <ObsidianDropdown
-              value={voice.systemPromptMode}
-              options={Object.fromEntries(
-                VOICE_POLISH_PROMPT_MODES.map((m) => [
-                  m,
-                  t(
-                    `settings.contextVoiceInput.promptMode.${m}`,
-                    PROMPT_MODE_LABEL_FALLBACK[m],
-                  ),
-                ]),
-              )}
-              onChange={(value) =>
-                updateVoice(
-                  {
-                    systemPromptMode: value as VoicePolishPromptMode,
-                  },
-                  'systemPromptMode',
-                )
-              }
-            />
-          </ObsidianSetting>
-
-          <div className="yolo-settings-card yolo-voice-prompt-card">
-            <div className="yolo-voice-prompt-card__head">
-              <div className="yolo-voice-prompt-card__name">
-                {voice.systemPromptMode === 'custom'
-                  ? t(
-                      'settings.contextVoiceInput.customSystemPrompt',
-                      'Custom system prompt',
-                    )
-                  : t(
-                      'settings.contextVoiceInput.builtinSystemPrompt',
-                      'Built-in system prompt',
-                    )}
-              </div>
-              <div className="yolo-voice-prompt-card__desc">
-                {voice.systemPromptMode === 'custom'
-                  ? t(
-                      'settings.contextVoiceInput.customSystemPromptDesc',
-                      'Must still emit { action, text } JSON.',
-                    )
-                  : t(
-                      'settings.contextVoiceInput.builtinSystemPromptDesc',
-                      'Shown for review. Built-in presets are locked; switch to Custom to edit your own prompt.',
-                    )}
-              </div>
-            </div>
-            <ObsidianTextArea
-              value={selectedPromptBody}
-              disabled={voice.systemPromptMode !== 'custom'}
-              onChange={(value) =>
-                updateVoice({ customSystemPrompt: value }, 'customSystemPrompt')
-              }
-              placeholder='Polish the transcript into { "action": "insert_at_cursor", "text": "..." }'
-              containerClassName="yolo-voice-prompt-textarea"
-              inputClassName="yolo-voice-prompt-textarea-input"
-            />
-          </div>
-
-          <ObsidianSetting
-            name={t(
-              'settings.contextVoiceInput.autoRestartAfterAccept',
-              'Keep listening after Tab accept',
-            )}
-            desc={t(
-              'settings.contextVoiceInput.autoRestartAfterAcceptDesc',
-              'Click-toggle mode only. After Tab accepts a polished draft, automatically start the next recording segment without clicking the mic again.',
-            )}
-            className="yolo-settings-card"
-          >
-            <ObsidianToggle
-              value={!!voice.autoRestartAfterAccept}
-              onChange={(value) =>
-                updateVoice(
-                  { autoRestartAfterAccept: value },
-                  'autoRestartAfterAccept',
-                )
-              }
-            />
-          </ObsidianSetting>
-
-          <div className="yolo-voice-settings-note">
-            {t(
-              'settings.contextVoiceInput.tabCompletionAlwaysPaused',
-              'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
-            )}
-          </div>
-
-          <ObsidianSetting
-            name={t(
-              'settings.contextVoiceInput.beforeWindowChars',
-              'Initial before-cursor window (characters)',
-            )}
-            desc={t(
-              'settings.contextVoiceInput.beforeWindowCharsDesc',
-              'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, the anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
-            )}
-            className="yolo-settings-card"
-          >
-            <ObsidianTextInput
-              value={numberInputs.contextRangeChars}
-              onChange={(value) => {
-                setNumberInputs((s) => ({ ...s, contextRangeChars: value }))
-                const parsed = parseInteger(value)
-                if (parsed !== null && parsed >= 0) {
-                  updateVoice(
-                    { contextRangeChars: parsed },
-                    'contextRangeChars',
-                  )
-                }
-              }}
-              placeholder="2000"
-            />
-          </ObsidianSetting>
-
-          <ObsidianSetting
-            name={t(
-              'settings.contextVoiceInput.afterWindowChars',
-              'After-cursor window (characters)',
-            )}
-            desc={t(
-              'settings.contextVoiceInput.afterWindowCharsDesc',
-              'Characters of editor text AFTER the cursor sent to the polish model. Helps the model avoid repeating text that already follows the cursor. Does not limit how much text voice input can insert.',
-            )}
-            className="yolo-settings-card"
-          >
-            <ObsidianTextInput
-              value={numberInputs.maxAfterContextChars}
-              onChange={(value) => {
-                setNumberInputs((s) => ({ ...s, maxAfterContextChars: value }))
-                const parsed = parseInteger(value)
-                if (parsed !== null && parsed >= 0) {
-                  updateVoice(
-                    { maxAfterContextChars: parsed },
-                    'maxAfterContextChars',
-                  )
-                }
-              }}
-              placeholder="600"
-            />
-          </ObsidianSetting>
-
-          {/* Advanced options collapse — summary cost knobs, temperature, VAD
-              thresholds, and max recording length live here so the primary panel stays short.
-              Reuses the shared `yolo-settings-advanced-toggle` pattern
-              (RAGSection / ContinuationSection / Composer all use it) for
-              visual consistency with the rest of the settings UI. */}
-          <div
-            className={`yolo-settings-advanced-toggle yolo-clickable${
-              advancedOpen ? ' is-expanded' : ''
-            }`}
-            onClick={() => setAdvancedOpen((prev) => !prev)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                setAdvancedOpen((prev) => !prev)
-              }
-            }}
-          >
-            <span className="yolo-settings-advanced-toggle-icon">▶</span>
-            {t('settings.contextVoiceInput.advancedToggle', 'Advanced options')}
-          </div>
-
-          {advancedOpen && (
+          {voice.enabled && asrReady && (
             <>
               <ObsidianSetting
                 name={t(
-                  'settings.contextVoiceInput.documentSummaryEnabled',
-                  'Include document summary + hot words',
+                  'settings.contextVoiceInput.asrProvider',
+                  'ASR provider',
                 )}
                 desc={t(
-                  'settings.contextVoiceInput.documentSummaryEnabledDesc',
-                  'Attach an LLM-generated summary of the current file to each polish request so the model can match terminology and tone over long documents. Increases LLM cost. Summaries stay in memory only and are dropped when Obsidian closes.',
+                  'settings.contextVoiceInput.asrProviderDesc',
+                  'Pick which of your configured ASR endpoints handles this voice input session.',
                 )}
-                className="yolo-settings-card"
+                className="yolo-models-select-card"
               >
-                <ObsidianToggle
-                  value={!!voice.documentSummaryEnabled}
+                <ObsidianDropdown
+                  value={activeAsrConfigId}
+                  options={asrProviderOptions}
+                  groupedOptions={groupedAsrProviderOptions}
                   onChange={(value) =>
                     updateVoice(
-                      { documentSummaryEnabled: value },
-                      'documentSummaryEnabled',
+                      { activeAsrConfigId: value },
+                      'activeAsrConfigId',
                     )
                   }
                 />
               </ObsidianSetting>
 
-              {voice.documentSummaryEnabled && (
-                <ObsidianSetting
-                  name={t(
-                    'settings.contextVoiceInput.documentSummaryRefresh',
-                    'Summary refresh',
-                  )}
-                  desc={t(
-                    'settings.contextVoiceInput.documentSummaryRefreshDesc',
-                    'A full-document summary is generated automatically on first voice input; this controls when it is regenerated.',
-                  )}
-                  className="yolo-models-select-card"
-                >
-                  <ObsidianDropdown
-                    value={voice.documentSummaryRefreshMode}
-                    options={Object.fromEntries(
-                      DOCUMENT_SUMMARY_REFRESH_MODES.map((mode) => [
-                        mode,
-                        t(
-                          `settings.contextVoiceInput.documentSummaryRefresh_${mode}`,
-                          SUMMARY_REFRESH_LABEL_FALLBACK[mode],
-                        ),
-                      ]),
-                    )}
-                    onChange={(value) =>
-                      updateVoice(
-                        {
-                          documentSummaryRefreshMode:
-                            value as DocumentSummaryRefreshMode,
-                        },
-                        'documentSummaryRefreshMode',
-                      )
-                    }
-                  />
-                </ObsidianSetting>
-              )}
-
               <ObsidianSetting
                 name={t(
-                  'settings.contextVoiceInput.polishTemperature',
-                  'Polish call temperature',
+                  'settings.contextVoiceInput.polishModel',
+                  'Polish model',
                 )}
                 desc={t(
-                  'settings.contextVoiceInput.polishTemperatureDesc',
-                  "Default: 0.2. Leave blank to use the selected polish model's configured temperature.",
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianTextInput
-                  value={numberInputs.polishTemperature}
-                  onChange={(value) => {
-                    setNumberInputs((s) => ({
-                      ...s,
-                      polishTemperature: value,
-                    }))
-                    if (value.trim().length === 0) {
-                      updateVoice(
-                        { polishTemperature: null },
-                        'polishTemperature',
-                      )
-                      return
-                    }
-                    const parsed = parseNumber(value)
-                    if (parsed !== null && parsed >= 0 && parsed <= 2) {
-                      updateVoice(
-                        { polishTemperature: parsed },
-                        'polishTemperature',
-                      )
-                    }
-                  }}
-                  placeholder={t(
-                    'settings.contextVoiceInput.polishTemperaturePlaceholder',
-                    'Use model temperature',
-                  )}
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t(
-                  'settings.contextVoiceInput.maxRecordingSeconds',
-                  'Max recording (seconds)',
-                )}
-                desc={t(
-                  'settings.contextVoiceInput.maxRecordingSecondsDesc',
-                  'Auto-stops a forgotten recording so it does not waste ASR calls.',
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianTextInput
-                  value={numberInputs.maxRecordingSeconds}
-                  onChange={(value) => {
-                    setNumberInputs((state) => ({
-                      ...state,
-                      maxRecordingSeconds: value,
-                    }))
-                    const parsed = parseInteger(value)
-                    if (parsed !== null && parsed >= 5 && parsed <= 900) {
-                      updateVoice(
-                        { maxRecordingSeconds: parsed },
-                        'maxRecordingSeconds',
-                      )
-                    }
-                  }}
-                  placeholder="120"
-                />
-              </ObsidianSetting>
-
-              <ObsidianSetting
-                name={t('settings.asr.microphone', 'Microphone')}
-                desc={t(
-                  'settings.asr.microphoneDesc',
-                  'Pick a specific input device. Labels appear after granting microphone permission once — use the unlock button if they show as "Microphone 1/2/...".',
+                  'settings.contextVoiceInput.polishModelDesc',
+                  'Rewrites the raw transcript with the surrounding editor context. Falls back to the default chat model when unset.',
                 )}
                 className="yolo-models-select-card"
               >
                 <ObsidianDropdown
-                  value={voice.microphoneDeviceId ?? ''}
-                  options={micOptions}
-                  onChange={handleMicChange}
+                  value={voice.polishModelId}
+                  groupedOptions={polishModelOptions}
+                  onChange={(value) =>
+                    updateVoice({ polishModelId: value }, 'polishModelId')
+                  }
                 />
               </ObsidianSetting>
 
-              {micEnumerationLabelsBlocked && (
-                <ObsidianSetting
-                  name={t(
-                    'settings.asr.microphoneUnlock',
-                    'Unlock microphone labels',
+              <ObsidianSetting
+                name={t(
+                  'settings.contextVoiceInput.systemPromptMode',
+                  'Prompt style',
+                )}
+                desc={t(
+                  'settings.contextVoiceInput.systemPromptModeDesc',
+                  'Pick a built-in preset or switch to custom to write your own.',
+                )}
+                className="yolo-models-select-card"
+              >
+                <ObsidianDropdown
+                  value={voice.systemPromptMode}
+                  options={Object.fromEntries(
+                    VOICE_POLISH_PROMPT_MODES.map((m) => [
+                      m,
+                      t(
+                        `settings.contextVoiceInput.promptMode.${m}`,
+                        PROMPT_MODE_LABEL_FALLBACK[m],
+                      ),
+                    ]),
                   )}
-                  desc={t(
-                    'settings.asr.microphoneUnlockDesc',
-                    'Grants the mic permission once so the device names become visible. Audio is not recorded.',
-                  )}
-                  className="yolo-models-select-card"
-                >
-                  <ObsidianButton
-                    text={t('settings.asr.microphoneUnlockButton', 'Grant')}
-                    onClick={() => void unlockMicLabels()}
-                  />
-                </ObsidianSetting>
-              )}
+                  onChange={(value) =>
+                    updateVoice(
+                      {
+                        systemPromptMode: value as VoicePolishPromptMode,
+                      },
+                      'systemPromptMode',
+                    )
+                  }
+                />
+              </ObsidianSetting>
 
-              <div className="yolo-voice-decibel-card">
-                <div className="setting-item-info yolo-voice-decibel-card__head">
-                  <div className="setting-item-name">
-                    {t(
-                      'settings.contextVoiceInput.decibelMeter',
-                      'Microphone level meter',
-                    )}
+              <div className="yolo-settings-card yolo-voice-prompt-card">
+                <div className="yolo-voice-prompt-card__head">
+                  <div className="yolo-voice-prompt-card__name">
+                    {voice.systemPromptMode === 'custom'
+                      ? t(
+                          'settings.contextVoiceInput.customSystemPrompt',
+                          'Custom system prompt',
+                        )
+                      : t(
+                          'settings.contextVoiceInput.builtinSystemPrompt',
+                          'Built-in system prompt',
+                        )}
                   </div>
-                  <div className="setting-item-description">
-                    {t(
-                      'settings.contextVoiceInput.decibelMeterDesc',
-                      'Listen locally and show the current microphone level so you can tune the speech and silence thresholds below. Audio is not recorded or sent.',
-                    )}
+                  <div className="yolo-voice-prompt-card__desc">
+                    {voice.systemPromptMode === 'custom'
+                      ? t(
+                          'settings.contextVoiceInput.customSystemPromptDesc',
+                          'Must still emit { action, text } JSON.',
+                        )
+                      : t(
+                          'settings.contextVoiceInput.builtinSystemPromptDesc',
+                          'Shown for review. Built-in presets are locked; switch to Custom to edit your own prompt.',
+                        )}
                   </div>
                 </div>
-                <VoiceDecibelMeter
-                  t={t}
-                  deviceId={voice.microphoneDeviceId ?? ''}
-                  speechStartDecibels={visibleSpeechStartDecibels}
-                  silenceDecibels={visibleSilenceDecibels}
-                  speechRequiredMs={voice.vadSpeechRequiredMs}
-                  silenceHoldMs={voice.vadSilenceHoldMs}
+                <ObsidianTextArea
+                  value={selectedPromptBody}
+                  disabled={voice.systemPromptMode !== 'custom'}
+                  onChange={(value) =>
+                    updateVoice(
+                      { customSystemPrompt: value },
+                      'customSystemPrompt',
+                    )
+                  }
+                  placeholder='Polish the transcript into { "action": "insert_at_cursor", "text": "..." }'
+                  containerClassName="yolo-voice-prompt-textarea"
+                  inputClassName="yolo-voice-prompt-textarea-input"
                 />
               </div>
 
               <ObsidianSetting
                 name={t(
-                  'settings.contextVoiceInput.vadSpeechStartDecibels',
-                  'Speech start threshold (dB)',
+                  'settings.contextVoiceInput.autoRestartAfterAccept',
+                  'Keep listening after Tab accept',
                 )}
                 desc={t(
-                  'settings.contextVoiceInput.vadSpeechStartDecibelsDesc',
-                  'More negative catches quieter speech; less negative ignores more background noise. Default: -40.',
+                  'settings.contextVoiceInput.autoRestartAfterAcceptDesc',
+                  'Click-toggle mode only. After Tab accepts a polished draft, automatically start the next recording segment without clicking the mic again.',
                 )}
                 className="yolo-settings-card"
               >
-                <ObsidianTextInput
-                  value={numberInputs.vadSpeechStartDecibels}
-                  type="number"
-                  inputMode="decimal"
-                  min={DECIBEL_CHART_FLOOR}
-                  max={DECIBEL_CHART_CEILING}
-                  step={1}
-                  onChange={updateSpeechStartDecibelsInput}
-                  placeholder="-40"
+                <ObsidianToggle
+                  value={!!voice.autoRestartAfterAccept}
+                  onChange={(value) =>
+                    updateVoice(
+                      { autoRestartAfterAccept: value },
+                      'autoRestartAfterAccept',
+                    )
+                  }
                 />
               </ObsidianSetting>
 
-              <ObsidianSetting
-                name={t(
-                  'settings.contextVoiceInput.vadSilenceDecibels',
-                  'Silence threshold after speech (dB)',
+              <div className="yolo-voice-settings-note">
+                {t(
+                  'settings.contextVoiceInput.tabCompletionAlwaysPaused',
+                  'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
                 )}
-                desc={t(
-                  'settings.contextVoiceInput.vadSilenceDecibelsDesc',
-                  'After speech has started, audio below this level counts as silence. Default: -36.',
-                )}
-                className="yolo-settings-card"
-              >
-                <ObsidianTextInput
-                  value={numberInputs.vadSilenceDecibels}
-                  type="number"
-                  inputMode="decimal"
-                  min={DECIBEL_CHART_FLOOR}
-                  max={DECIBEL_CHART_CEILING}
-                  step={1}
-                  onChange={updateSilenceDecibelsInput}
-                  placeholder="-36"
-                />
-              </ObsidianSetting>
+              </div>
 
               <ObsidianSetting
                 name={t(
-                  'settings.contextVoiceInput.vadSpeechRequiredMs',
-                  'Speech confirmation duration (ms)',
+                  'settings.contextVoiceInput.beforeWindowChars',
+                  'Initial before-cursor window (characters)',
                 )}
                 desc={t(
-                  'settings.contextVoiceInput.vadSpeechRequiredMsDesc',
-                  'How long audio must stay above the speech threshold before it counts as speech. Default: 200.',
+                  'settings.contextVoiceInput.beforeWindowCharsDesc',
+                  'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, the anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
                 )}
                 className="yolo-settings-card"
               >
                 <ObsidianTextInput
-                  value={numberInputs.vadSpeechRequiredMs}
+                  value={numberInputs.contextRangeChars}
                   onChange={(value) => {
-                    setNumberInputs((state) => ({
-                      ...state,
-                      vadSpeechRequiredMs: value,
-                    }))
+                    setNumberInputs((s) => ({ ...s, contextRangeChars: value }))
                     const parsed = parseInteger(value)
-                    if (parsed !== null && parsed >= 50 && parsed <= 2000) {
+                    if (parsed !== null && parsed >= 0) {
                       updateVoice(
-                        { vadSpeechRequiredMs: parsed },
-                        'vadSpeechRequiredMs',
+                        { contextRangeChars: parsed },
+                        'contextRangeChars',
                       )
                     }
                   }}
-                  placeholder="200"
+                  placeholder="2000"
                 />
               </ObsidianSetting>
 
               <ObsidianSetting
                 name={t(
-                  'settings.contextVoiceInput.vadSilenceHoldMs',
-                  'Silence duration to stop (ms)',
+                  'settings.contextVoiceInput.afterWindowChars',
+                  'After-cursor window (characters)',
                 )}
                 desc={t(
-                  'settings.contextVoiceInput.vadSilenceHoldMsDesc',
-                  'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+                  'settings.contextVoiceInput.afterWindowCharsDesc',
+                  'Characters of editor text AFTER the cursor sent to the polish model. Helps the model avoid repeating text that already follows the cursor. Does not limit how much text voice input can insert.',
                 )}
                 className="yolo-settings-card"
               >
                 <ObsidianTextInput
-                  value={numberInputs.vadSilenceHoldMs}
+                  value={numberInputs.maxAfterContextChars}
                   onChange={(value) => {
-                    setNumberInputs((state) => ({
-                      ...state,
-                      vadSilenceHoldMs: value,
+                    setNumberInputs((s) => ({
+                      ...s,
+                      maxAfterContextChars: value,
                     }))
                     const parsed = parseInteger(value)
-                    if (parsed !== null && parsed >= 300 && parsed <= 5000) {
+                    if (parsed !== null && parsed >= 0) {
                       updateVoice(
-                        { vadSilenceHoldMs: parsed },
-                        'vadSilenceHoldMs',
+                        { maxAfterContextChars: parsed },
+                        'maxAfterContextChars',
                       )
                     }
                   }}
-                  placeholder="1200"
+                  placeholder="600"
                 />
               </ObsidianSetting>
+
+              {/* Advanced options collapse — summary cost knobs, temperature, VAD
+              thresholds, and max recording length live here so the primary panel stays short.
+              Reuses the shared `yolo-settings-advanced-toggle` pattern
+              (RAGSection / ContinuationSection / Composer all use it) for
+              visual consistency with the rest of the settings UI. */}
+              <div
+                className={`yolo-settings-advanced-toggle yolo-clickable${
+                  advancedOpen ? ' is-expanded' : ''
+                }`}
+                onClick={() => setAdvancedOpen((prev) => !prev)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setAdvancedOpen((prev) => !prev)
+                  }
+                }}
+              >
+                <span className="yolo-settings-advanced-toggle-icon">▶</span>
+                {t(
+                  'settings.contextVoiceInput.advancedToggle',
+                  'Advanced options',
+                )}
+              </div>
+
+              {advancedOpen && (
+                <>
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.documentSummaryEnabled',
+                      'Include document summary + hot words',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.documentSummaryEnabledDesc',
+                      'Attach an LLM-generated summary of the current file to each polish request so the model can match terminology and tone over long documents. Increases LLM cost. Summaries stay in memory only and are dropped when Obsidian closes.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianToggle
+                      value={!!voice.documentSummaryEnabled}
+                      onChange={(value) =>
+                        updateVoice(
+                          { documentSummaryEnabled: value },
+                          'documentSummaryEnabled',
+                        )
+                      }
+                    />
+                  </ObsidianSetting>
+
+                  {voice.documentSummaryEnabled && (
+                    <ObsidianSetting
+                      name={t(
+                        'settings.contextVoiceInput.documentSummaryRefresh',
+                        'Summary refresh',
+                      )}
+                      desc={t(
+                        'settings.contextVoiceInput.documentSummaryRefreshDesc',
+                        'A full-document summary is generated automatically on first voice input; this controls when it is regenerated.',
+                      )}
+                      className="yolo-models-select-card"
+                    >
+                      <ObsidianDropdown
+                        value={voice.documentSummaryRefreshMode}
+                        options={Object.fromEntries(
+                          DOCUMENT_SUMMARY_REFRESH_MODES.map((mode) => [
+                            mode,
+                            t(
+                              `settings.contextVoiceInput.documentSummaryRefresh_${mode}`,
+                              SUMMARY_REFRESH_LABEL_FALLBACK[mode],
+                            ),
+                          ]),
+                        )}
+                        onChange={(value) =>
+                          updateVoice(
+                            {
+                              documentSummaryRefreshMode:
+                                value as DocumentSummaryRefreshMode,
+                            },
+                            'documentSummaryRefreshMode',
+                          )
+                        }
+                      />
+                    </ObsidianSetting>
+                  )}
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.polishTemperature',
+                      'Polish call temperature',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.polishTemperatureDesc',
+                      "Default: 0.2. Leave blank to use the selected polish model's configured temperature.",
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.polishTemperature}
+                      onChange={(value) => {
+                        setNumberInputs((s) => ({
+                          ...s,
+                          polishTemperature: value,
+                        }))
+                        if (value.trim().length === 0) {
+                          updateVoice(
+                            { polishTemperature: null },
+                            'polishTemperature',
+                          )
+                          return
+                        }
+                        const parsed = parseNumber(value)
+                        if (parsed !== null && parsed >= 0 && parsed <= 2) {
+                          updateVoice(
+                            { polishTemperature: parsed },
+                            'polishTemperature',
+                          )
+                        }
+                      }}
+                      placeholder={t(
+                        'settings.contextVoiceInput.polishTemperaturePlaceholder',
+                        'Use model temperature',
+                      )}
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.maxRecordingSeconds',
+                      'Max recording (seconds)',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.maxRecordingSecondsDesc',
+                      'Auto-stops a forgotten recording so it does not waste ASR calls.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.maxRecordingSeconds}
+                      onChange={(value) => {
+                        setNumberInputs((state) => ({
+                          ...state,
+                          maxRecordingSeconds: value,
+                        }))
+                        const parsed = parseInteger(value)
+                        if (parsed !== null && parsed >= 5 && parsed <= 900) {
+                          updateVoice(
+                            { maxRecordingSeconds: parsed },
+                            'maxRecordingSeconds',
+                          )
+                        }
+                      }}
+                      placeholder="120"
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t('settings.asr.microphone', 'Microphone')}
+                    desc={t(
+                      'settings.asr.microphoneDesc',
+                      'Pick a specific input device. Labels appear after granting microphone permission once — use the unlock button if they show as "Microphone 1/2/...".',
+                    )}
+                    className="yolo-models-select-card"
+                  >
+                    <ObsidianDropdown
+                      value={voice.microphoneDeviceId ?? ''}
+                      options={micOptions}
+                      onChange={handleMicChange}
+                    />
+                  </ObsidianSetting>
+
+                  {micEnumerationLabelsBlocked && (
+                    <ObsidianSetting
+                      name={t(
+                        'settings.asr.microphoneUnlock',
+                        'Unlock microphone labels',
+                      )}
+                      desc={t(
+                        'settings.asr.microphoneUnlockDesc',
+                        'Grants the mic permission once so the device names become visible. Audio is not recorded.',
+                      )}
+                      className="yolo-models-select-card"
+                    >
+                      <ObsidianButton
+                        text={t('settings.asr.microphoneUnlockButton', 'Grant')}
+                        onClick={() => void unlockMicLabels()}
+                      />
+                    </ObsidianSetting>
+                  )}
+
+                  <div className="yolo-voice-decibel-card">
+                    <div className="setting-item-info yolo-voice-decibel-card__head">
+                      <div className="setting-item-name">
+                        {t(
+                          'settings.contextVoiceInput.decibelMeter',
+                          'Microphone level meter',
+                        )}
+                      </div>
+                      <div className="setting-item-description">
+                        {t(
+                          'settings.contextVoiceInput.decibelMeterDesc',
+                          'Listen locally and show the current microphone level so you can tune the speech and silence thresholds below. Audio is not recorded or sent.',
+                        )}
+                      </div>
+                    </div>
+                    <VoiceDecibelMeter
+                      t={t}
+                      deviceId={voice.microphoneDeviceId ?? ''}
+                      speechStartDecibels={visibleSpeechStartDecibels}
+                      silenceDecibels={visibleSilenceDecibels}
+                      speechRequiredMs={voice.vadSpeechRequiredMs}
+                      silenceHoldMs={voice.vadSilenceHoldMs}
+                    />
+                  </div>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.vadSpeechStartDecibels',
+                      'Speech start threshold (dB)',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.vadSpeechStartDecibelsDesc',
+                      'More negative catches quieter speech; less negative ignores more background noise. Default: -40.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.vadSpeechStartDecibels}
+                      type="number"
+                      inputMode="decimal"
+                      min={DECIBEL_CHART_FLOOR}
+                      max={DECIBEL_CHART_CEILING}
+                      step={1}
+                      onChange={updateSpeechStartDecibelsInput}
+                      placeholder="-40"
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.vadSilenceDecibels',
+                      'Silence threshold after speech (dB)',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.vadSilenceDecibelsDesc',
+                      'After speech has started, audio below this level counts as silence. Default: -36.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.vadSilenceDecibels}
+                      type="number"
+                      inputMode="decimal"
+                      min={DECIBEL_CHART_FLOOR}
+                      max={DECIBEL_CHART_CEILING}
+                      step={1}
+                      onChange={updateSilenceDecibelsInput}
+                      placeholder="-36"
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.vadSpeechRequiredMs',
+                      'Speech confirmation duration (ms)',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.vadSpeechRequiredMsDesc',
+                      'How long audio must stay above the speech threshold before it counts as speech. Default: 200.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.vadSpeechRequiredMs}
+                      onChange={(value) => {
+                        setNumberInputs((state) => ({
+                          ...state,
+                          vadSpeechRequiredMs: value,
+                        }))
+                        const parsed = parseInteger(value)
+                        if (parsed !== null && parsed >= 50 && parsed <= 2000) {
+                          updateVoice(
+                            { vadSpeechRequiredMs: parsed },
+                            'vadSpeechRequiredMs',
+                          )
+                        }
+                      }}
+                      placeholder="200"
+                    />
+                  </ObsidianSetting>
+
+                  <ObsidianSetting
+                    name={t(
+                      'settings.contextVoiceInput.vadSilenceHoldMs',
+                      'Silence duration to stop (ms)',
+                    )}
+                    desc={t(
+                      'settings.contextVoiceInput.vadSilenceHoldMsDesc',
+                      'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+                    )}
+                    className="yolo-settings-card"
+                  >
+                    <ObsidianTextInput
+                      value={numberInputs.vadSilenceHoldMs}
+                      onChange={(value) => {
+                        setNumberInputs((state) => ({
+                          ...state,
+                          vadSilenceHoldMs: value,
+                        }))
+                        const parsed = parseInteger(value)
+                        if (
+                          parsed !== null &&
+                          parsed >= 300 &&
+                          parsed <= 5000
+                        ) {
+                          updateVoice(
+                            { vadSilenceHoldMs: parsed },
+                            'vadSilenceHoldMs',
+                          )
+                        }
+                      }}
+                      placeholder="1200"
+                    />
+                  </ObsidianSetting>
+                </>
+              )}
             </>
           )}
         </div>

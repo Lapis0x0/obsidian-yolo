@@ -56,4 +56,24 @@ describe('read-aloud text preparation', () => {
     expect(chunks.slice(1).every((chunk) => chunk.length <= 240)).toBe(true)
     expect(chunks.join('').replace(/\n/g, '')).toContain('A'.repeat(520))
   })
+
+  it('prefers Chinese phrase boundaries before hard character cuts', () => {
+    const first = '甲'.repeat(120) + '，'
+    const second = '乙'.repeat(120) + '、'
+    const third = '丙'.repeat(120)
+
+    const chunks = splitReadAloudText(`${first}${second}${third}`, 200)
+
+    expect(chunks).toEqual([first, second, third])
+    expect(chunks.every((chunk) => chunk.length <= 200)).toBe(true)
+  })
+
+  it('prefers English sentence boundaries before hard character cuts', () => {
+    const first = `${'Alpha beta '.repeat(12)}done.`
+    const second = `${'Delta epsilon '.repeat(10)}done.`
+
+    const chunks = splitReadAloudText(`${first} ${second}`, 200)
+
+    expect(chunks).toEqual([first, second])
+  })
 })

@@ -1444,9 +1444,9 @@ export type TranslationKeys = {
       title?: string
       description?: string
       voiceRequiredHint?: string
-      asrRequiredHint?: string
       enable?: string
       enableDesc?: string
+      enableDescUnavailable?: string
       asrProvider?: string
       asrProviderDesc?: string
       chunkHeaderMode?: string
@@ -1481,9 +1481,9 @@ export type TranslationKeys = {
     contextVoiceInput?: {
       title?: string
       description?: string
-      asrRequiredHint?: string
       enable?: string
       enableDesc?: string
+      enableDescUnavailable?: string
       asrProvider?: string
       asrProviderDesc?: string
       asrProviderNone?: string

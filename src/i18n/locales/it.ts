@@ -860,7 +860,7 @@ export const it: TranslationKeys = {
       advancedToggle: 'Opzioni avanzate',
       chunkTargetChars: 'Limite caratteri per segmento',
       chunkTargetCharsDesc:
-        'I testi lunghi vengono divisi usando questo limite prima della conversione. I limiti del provider possono ridurre i segmenti. Intervallo: 200-6000.',
+        'I testi lunghi vengono divisi fino a questo limite, preferendo pause naturali; i segmenti effettivi possono essere più brevi. Intervallo: 200-6000.',
       preloadSegments: 'Segmenti precaricati',
       preloadSegmentsDesc:
         'Numero di segmenti successivi da sintetizzare mentre quello corrente e in riproduzione. Valori piu alti riducono le pause ma possono consumare piu quota se interrompi prima. Intervallo: 0-3.',
