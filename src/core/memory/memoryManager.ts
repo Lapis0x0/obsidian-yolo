@@ -640,6 +640,64 @@ export const resolveMemoryFilePaths = ({
   }
 }
 
+const getMemoryFileSignature = ({
+  app,
+  path,
+}: {
+  app: App
+  path: string | null
+}): {
+  path: string | null
+  exists: boolean
+  mtime: number | null
+  size: number | null
+} => {
+  if (!path) {
+    return {
+      path: null,
+      exists: false,
+      mtime: null,
+      size: null,
+    }
+  }
+
+  const existing = app.vault.getAbstractFileByPath(path)
+  if (!(existing instanceof TFile)) {
+    return {
+      path,
+      exists: false,
+      mtime: null,
+      size: null,
+    }
+  }
+
+  return {
+    path,
+    exists: true,
+    mtime: existing.stat.mtime,
+    size: existing.stat.size,
+  }
+}
+
+export const resolveMemoryFileSignatures = ({
+  app,
+  settings,
+  assistantId,
+}: {
+  app: App
+  settings?: MemorySettingsLike
+  assistantId?: string
+}): {
+  global: ReturnType<typeof getMemoryFileSignature>
+  assistant: ReturnType<typeof getMemoryFileSignature>
+} => {
+  const paths = resolveMemoryFilePaths({ settings, assistantId })
+  return {
+    global: getMemoryFileSignature({ app, path: paths.global }),
+    assistant: getMemoryFileSignature({ app, path: paths.assistant }),
+  }
+}
+
 export async function memoryAdd({
   app,
   settings,

@@ -6,9 +6,19 @@ jest.mock('../../database/json/chat/promptSnapshotStore', () => ({
 
 jest.mock('../../core/memory/memoryManager', () => ({
   getMemoryPromptContext: jest.fn(async () => ''),
-  resolveMemoryFilePaths: jest.fn(() => ({
-    global: 'YOLO/memory/global.md',
-    assistant: null,
+  resolveMemoryFileSignatures: jest.fn(() => ({
+    global: {
+      path: 'YOLO/memory/global.md',
+      exists: false,
+      mtime: null,
+      size: null,
+    },
+    assistant: {
+      path: null,
+      exists: false,
+      mtime: null,
+      size: null,
+    },
   })),
 }))
 
@@ -18,7 +28,10 @@ jest.mock('../llm/image', () => ({
 }))
 
 import { SystemPromptSnapshotStore } from '../../core/agent/systemPromptSnapshotStore'
-import { getMemoryPromptContext } from '../../core/memory/memoryManager'
+import {
+  getMemoryPromptContext,
+  resolveMemoryFileSignatures,
+} from '../../core/memory/memoryManager'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
@@ -1777,6 +1790,24 @@ describe('RequestContextBuilder system prompt freezing', () => {
   ]
 
   const memMock = jest.mocked(getMemoryPromptContext)
+  const memorySignaturesMock = jest.mocked(resolveMemoryFileSignatures)
+
+  const mockDefaultMemorySignatures = () => {
+    memorySignaturesMock.mockReturnValue({
+      global: {
+        path: 'YOLO/memory/global.md',
+        exists: false,
+        mtime: null,
+        size: null,
+      },
+      assistant: {
+        path: null,
+        exists: false,
+        mtime: null,
+        size: null,
+      },
+    })
+  }
 
   const makeApp = () =>
     createMockApp({ files: [], fileContents: new Map() }) as never
@@ -1791,9 +1822,14 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
   afterAll(() => {
     memMock.mockResolvedValue({ global: null, assistant: null })
+    mockDefaultMemorySignatures()
   })
 
-  it('freezes memory in the system prompt for the conversation lifetime (create mode)', async () => {
+  beforeEach(() => {
+    mockDefaultMemorySignatures()
+  })
+
+  it('refreshes memory in the system prompt when memory files change mid-conversation', async () => {
     const store = new SystemPromptSnapshotStore()
     const builder = new RequestContextBuilder(makeApp(), baseSettings, {
       includeSkills: false,
@@ -1801,6 +1837,20 @@ describe('RequestContextBuilder system prompt freezing', () => {
     })
 
     memMock.mockResolvedValue({ global: 'MEM_V1', assistant: null })
+    memorySignaturesMock.mockReturnValue({
+      global: {
+        path: 'YOLO/memory/global.md',
+        exists: true,
+        mtime: 100,
+        size: 6,
+      },
+      assistant: {
+        path: null,
+        exists: false,
+        mtime: null,
+        size: null,
+      },
+    })
     memMock.mockClear()
 
     const first = await builder.generateRequestMessages({
@@ -1814,6 +1864,20 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
     // Memory is rewritten mid-conversation (e.g. a memory_add tool call).
     memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
+    memorySignaturesMock.mockReturnValue({
+      global: {
+        path: 'YOLO/memory/global.md',
+        exists: true,
+        mtime: 200,
+        size: 6,
+      },
+      assistant: {
+        path: null,
+        exists: false,
+        mtime: null,
+        size: null,
+      },
+    })
 
     const second = await builder.generateRequestMessages({
       messages: userMessages,
@@ -1822,20 +1886,9 @@ describe('RequestContextBuilder system prompt freezing', () => {
       hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
-    // Frozen: still V1, and memory was not re-read for the second iteration.
-    expect(getSystemContent(second)).toContain('MEM_V1')
-    expect(getSystemContent(second)).not.toContain('MEM_V2')
-    expect(memMock).toHaveBeenCalledTimes(1)
-
-    // A fresh conversation picks up the latest memory.
-    const other = await builder.generateRequestMessages({
-      messages: userMessages,
-      model,
-      conversationId: 'conv-2',
-      hasMemoryTools: true,
-      systemPromptSnapshotMode: 'create',
-    })
-    expect(getSystemContent(other)).toContain('MEM_V2')
+    expect(getSystemContent(second)).toContain('MEM_V2')
+    expect(getSystemContent(second)).not.toContain('MEM_V1')
+    expect(memMock).toHaveBeenCalledTimes(2)
   })
 
   it('refreshes the snapshot when a prompt-relevant setting changes', async () => {

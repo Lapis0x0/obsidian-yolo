@@ -13,7 +13,7 @@ import type {
 } from '../../core/agent/systemPromptSnapshotStore'
 import {
   getMemoryPromptContext,
-  resolveMemoryFilePaths,
+  resolveMemoryFileSignatures,
 } from '../../core/memory/memoryManager'
 import { getProjectInstructionsSection } from '../../core/project-instructions'
 import {
@@ -1566,23 +1566,23 @@ ${entries}
   }
 
   /**
-   * Stable fingerprint of every *configuration-level* input that legitimately
-   * changes the system prompt text. A change here refreshes the frozen
-   * snapshot; everything NOT listed (memory file content, project-instruction
-   * and skill file content, time variables) is intentionally frozen until the
-   * next conversation. Settings that never reach the system prompt (reasoning
-   * level, chat mode, …) are excluded so they don't evict the snapshot.
+   * Stable fingerprint of every input that legitimately changes the system
+   * prompt text. A change here refreshes the frozen snapshot; everything NOT
+   * listed (project-instruction and skill file content, time variables) is
+   * intentionally frozen until the next conversation. Settings that never reach
+   * the system prompt (reasoning level, chat mode, …) are excluded so they
+   * don't evict the snapshot.
    */
   private computeSystemPromptFingerprint(
     hasTools: boolean,
     hasMemoryTools: boolean,
   ): string {
     const assistant = this.getCurrentAssistant()
-    // The exact memory files this request will read. Captures baseDir, the
-    // assistant name, AND the sibling-driven duplicate index — so a same-named
-    // assistant being added/renamed (which changes which file we read) refreshes
-    // the snapshot even though the current assistant's own fields are unchanged.
-    const memoryPaths = resolveMemoryFilePaths({
+    // The exact memory files this request will read plus their current vault
+    // stats. Captures path changes and memory writes so same-conversation turns
+    // see memories added / updated by earlier tool calls.
+    const memoryFiles = resolveMemoryFileSignatures({
+      app: this.app,
       settings: this.settings,
       assistantId: this.settings.currentAssistantId,
     })
@@ -1598,7 +1598,7 @@ ${entries}
         .map((id) => id.trim())
         .sort(),
       currentAssistantId: this.settings.currentAssistantId ?? '',
-      memoryPaths,
+      memoryFiles,
       // Only assistant fields that reach the system prompt — not modelId / icon /
       // updatedAt, which would over-evict on unrelated edits. `enabledSkills` is
       // legacy and not consulted by skill filtering, so it is intentionally out.
