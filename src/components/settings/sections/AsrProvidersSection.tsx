@@ -498,7 +498,7 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
             <div className="yolo-settings-desc yolo-settings-block-desc">
               {t(
                 'settings.asr.descriptionV3',
-                'Voice providers are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active providers under Voice → Voice input and Voice → Audio file transcription.',
+                'Voice recognition endpoints are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active endpoints under Voice → Context-aware voice input and Voice → Audio file transcription.',
               )}
             </div>
           </div>

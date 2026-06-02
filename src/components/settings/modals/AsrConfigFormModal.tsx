@@ -430,7 +430,7 @@ function AsrConfigFormComponent({
   const localizeAsrErrorMessage = useCallback(
     (message: string): string => {
       switch (message) {
-        case 'No ASR provider is configured. Add one under Models → Voice recognition.':
+        case 'No ASR provider is configured. Add one under Models → Voice recognition (ASR).':
           return t(
             'settings.asr.errorNoProvider',
             'No ASR provider is configured.',

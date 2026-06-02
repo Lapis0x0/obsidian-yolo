@@ -302,7 +302,7 @@ export class AudioFileTranscriptionController {
     return {
       noProvider: this.deps.t(
         'voiceInput.audioFileErrorNoProvider',
-        'No ASR provider is configured. Add one under Models → Voice recognition.',
+        'No ASR provider is configured. Add one under Models → Voice recognition (ASR).',
       ),
       longAudioNotImplemented: this.deps.t(
         'voiceInput.audioFileErrorLongAudioNotImplemented',

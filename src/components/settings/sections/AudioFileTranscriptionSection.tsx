@@ -105,7 +105,7 @@ export function AudioFileTranscriptionSection() {
     return {
       '': t(
         'settings.contextVoiceInput.asrProviderNone',
-        '(none — add one under Models → Voice recognition)',
+        '(none — add one under Models → Voice recognition (ASR))',
       ),
     }
   }, [asrConfigs.length, t])

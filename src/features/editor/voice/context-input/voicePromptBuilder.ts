@@ -101,7 +101,7 @@ export function buildVoiceInputMessages(
   //
   // Section layout:
   //   1. target_metadata   — changes only when the file changes
-  //   2. document_summary  — refresh interval (default 1h)
+  //   2. document_summary  — manager-owned smart/session/timed refresh
   //   3. asr_hot_words     — same refresh as document_summary
   //   4. cursor_before     — changes every segment but stable head
   //   5. cursor_after      — changes every segment

@@ -73,7 +73,7 @@ export function getAsrProvider(
   const config = resolveActiveAsrConfig(options)
   if (!config) {
     throw new AsrConfigError(
-      'No ASR provider is configured. Add one under Models → Voice recognition.',
+      'No ASR provider is configured. Add one under Models → Voice recognition (ASR).',
     )
   }
   return buildAsrProviderForConfig(config)

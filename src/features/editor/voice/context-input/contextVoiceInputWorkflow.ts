@@ -238,7 +238,7 @@ export class ContextVoiceInputWorkflow {
 
   private localizeAsrConfigError(message: string): string {
     switch (message) {
-      case 'No ASR provider is configured. Add one under Models → Voice recognition.':
+      case 'No ASR provider is configured. Add one under Models → Voice recognition (ASR).':
         return this.deps.t(
           'voiceInput.configureAsrNotice',
           'Configure an ASR provider before using voice input.',
@@ -496,7 +496,7 @@ export class ContextVoiceInputWorkflow {
       new Notice(
         this.deps.t(
           'voiceInput.selectPolishModelNotice',
-          'Select a polish model in Editor → Voice input settings.',
+          'Select a polish model under Voice → Context-aware voice input.',
         ),
       )
       return
@@ -1379,7 +1379,8 @@ export class ContextVoiceInputWorkflow {
     let documentHotWords: string[] | null = null
     if (options.documentSummaryEnabled && this.summaryManager) {
       try {
-        // The summary manager owns its refresh policy (session / timed TTL).
+        // The summary manager owns its refresh policy (smart drift /
+        // session / timed TTL).
         // Pass the full editor value so any scheduled refresh summarizes the
         // current note, while lookups can still serve a warm cached result.
         const fullContent = session.editor.getValue()

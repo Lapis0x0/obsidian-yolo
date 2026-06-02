@@ -1337,9 +1337,9 @@ export const zh: TranslationKeys = {
     asr: {
       title: '语音识别 (ASR)',
       descriptionV2:
-        '每一行是一个 ASR 端点。标签会标出哪些功能选中了它；具体选择在 编辑器 → 语音输入 和 编辑器 → 音频文件转写 中设置。',
+        '每一行是一个 ASR 端点。标签会标出哪些功能选中了它；具体选择在 语音 → 上下文感知语音输入 和 语音 → 音频文件转写 中设置。',
       descriptionV3:
-        '语音提供商按 HTTP 短音频、HTTP 长音频、WebSocket 分栏管理；具体选择在 编辑器 → 语音输入 和 编辑器 → 音频文件转写 中设置。',
+        '语音识别端点按 HTTP 短音频、HTTP 长音频、WebSocket 分栏管理；具体选择在 语音 → 上下文感知语音输入 和 语音 → 音频文件转写 中设置。',
       sectionTitle: {
         'http-short-audio': 'HTTP 短音频',
         'http-long-audio': 'HTTP 长音频',
@@ -1562,8 +1562,8 @@ export const zh: TranslationKeys = {
       enableDescUnavailable: '添加语音识别提供商后才能启用语音输入。',
       asrProvider: 'ASR 提供商',
       asrProviderDesc:
-        '从 模型 → 语音识别 里配置好的 ASR 端点中选一条用于本次语音输入。',
-      asrProviderNone: '（请先在 模型 → 语音识别 中添加）',
+        '从 模型 → 语音识别 (ASR) 里配置好的 ASR 端点中选一条用于本次语音输入。',
+      asrProviderNone: '（请先在 模型 → 语音识别 (ASR) 中添加）',
       polishModel: '打磨模型',
       polishModelDesc:
         '结合光标周围上下文重写原始转写。未设置时回落到默认聊天模型。',
@@ -1642,7 +1642,7 @@ export const zh: TranslationKeys = {
       addConfigTitle: '添加 TTS 配置',
       editConfigTitle: '编辑 TTS 配置：{name}',
       empty: '尚未配置 TTS 提供商。',
-      none: '（请先在模型页添加 TTS）',
+      none: '（请先在 模型 → 语音生成（TTS） 中添加）',
       colName: '名称',
       colSummary: '格式 · 声音',
       colActions: '操作',
@@ -1730,7 +1730,8 @@ export const zh: TranslationKeys = {
       description: '通过已配置的 TTS 提供商朗读当前选区或笔记。',
       enable: '启用朗读',
       enableDesc: '将朗读添加为浮岛模式，并启用朗读命令。',
-      enableDescUnavailable: '请先在模型页添加 TTS 提供商，再启用朗读。',
+      enableDescUnavailable:
+        '请先在 模型 → 语音生成（TTS） 中添加 TTS 提供商，再启用朗读。',
       ttsProvider: 'TTS 提供商',
       ttsProviderDesc: '用于浮岛朗读和命令面板朗读操作。',
       markdownMode: 'Markdown 模式',
@@ -1828,7 +1829,7 @@ export const zh: TranslationKeys = {
     audioFileFailed: '音频文件转写失败。',
     audioFileFailedWithMessage: '音频文件转写失败：{{message}}',
     audioFileErrorNoProvider:
-      '还没有配置 ASR 提供商。请先到 模型 → 语音识别 添加。',
+      '还没有配置 ASR 提供商。请先到 模型 → 语音识别 (ASR) 添加。',
     audioFileErrorLongAudioNotImplemented: '长音频提供商适配器还没有实现。',
     audioFileErrorUnsupportedLocalFile:
       '当前 ASR 配置不支持音频文件转写。请选择支持文件上传或 WebSocket 流式转写的配置。',
@@ -1858,7 +1859,8 @@ export const zh: TranslationKeys = {
       '当前提供商可能需要 {{seconds}} 秒或更短的 WAV 分段。',
     disabledNotice: '上下文感知语音输入未在设置中启用。',
     configureAsrNotice: '请先配置 ASR 提供商后再使用语音输入。',
-    selectPolishModelNotice: '请先在 编辑器 → 语音输入 中选择打磨模型。',
+    selectPolishModelNotice:
+      '请先在 语音 → 上下文感知语音输入 中选择打磨模型。',
     focusedEditorNotice: '语音输入需要当前聚焦在编辑器中。',
     asrConfigIncompleteNotice: '当前选择的 ASR 提供商配置不完整。',
     asrConfigMissingBaseUrlNotice:

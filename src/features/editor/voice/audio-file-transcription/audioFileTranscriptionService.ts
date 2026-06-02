@@ -97,7 +97,7 @@ export type AudioFileTranscriptionMessages = {
 
 const DEFAULT_MESSAGES: AudioFileTranscriptionMessages = {
   noProvider:
-    'No ASR provider is configured. Add one under Models -> Voice recognition.',
+    'No ASR provider is configured. Add one under Models -> Voice recognition (ASR).',
   longAudioNotImplemented:
     'Long-audio ASR provider adapters are not implemented yet.',
   unsupportedLocalFile:

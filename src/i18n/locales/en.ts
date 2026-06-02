@@ -1445,9 +1445,9 @@ export const en: TranslationKeys = {
     asr: {
       title: 'Voice recognition (ASR)',
       descriptionV2:
-        'Each row is one ASR endpoint. Badges show which features have selected it; choose them under Editor → Voice input and Editor → Audio file transcription.',
+        'Each row is one ASR endpoint. Badges show which features have selected it; choose them under Voice → Context-aware voice input and Voice → Audio file transcription.',
       descriptionV3:
-        'Voice providers are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active providers under Editor → Voice input and Editor → Audio file transcription.',
+        'Voice recognition endpoints are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active endpoints under Voice → Context-aware voice input and Voice → Audio file transcription.',
       sectionTitle: {
         'http-short-audio': 'HTTP short audio',
         'http-long-audio': 'HTTP long audio',
@@ -1700,8 +1700,9 @@ export const en: TranslationKeys = {
       enableDescUnavailable: 'Add an ASR provider before enabling voice input.',
       asrProvider: 'ASR provider',
       asrProviderDesc:
-        'Pick which of your configured ASR endpoints (Models → Voice recognition) handles this voice input session.',
-      asrProviderNone: '(none — add one under Models → Voice recognition)',
+        'Pick which of your configured ASR endpoints (Models → Voice recognition (ASR)) handles this voice input session.',
+      asrProviderNone:
+        '(none — add one under Models → Voice recognition (ASR))',
       polishModel: 'Polish model',
       polishModelDesc:
         'Rewrites the raw transcript with surrounding editor context. Falls back to the default chat model when unset.',
@@ -1979,7 +1980,7 @@ export const en: TranslationKeys = {
     audioFileFailed: 'Audio file transcription failed.',
     audioFileFailedWithMessage: 'Audio file transcription failed: {{message}}',
     audioFileErrorNoProvider:
-      'No ASR provider is configured. Add one under Models → Voice recognition.',
+      'No ASR provider is configured. Add one under Models → Voice recognition (ASR).',
     audioFileErrorLongAudioNotImplemented:
       'Long-audio provider adapters are not implemented yet.',
     audioFileErrorUnsupportedLocalFile:
@@ -2014,7 +2015,7 @@ export const en: TranslationKeys = {
     disabledNotice: 'Context-aware voice input is disabled in settings.',
     configureAsrNotice: 'Configure an ASR provider before using voice input.',
     selectPolishModelNotice:
-      'Select a polish model in Editor → Voice input settings.',
+      'Select a polish model under Voice → Context-aware voice input.',
     focusedEditorNotice: 'Voice input needs a focused editor.',
     asrConfigIncompleteNotice: 'The selected ASR provider is incomplete.',
     asrConfigMissingBaseUrlNotice:

@@ -303,7 +303,7 @@ const tabCompletionTriggerSchema = z
  * pattern: one outer list, no two-layer split, drag to reorder, gear to
  * edit. The pre-list shape (`selectedAsrApiFormat + asrProviderProfiles`,
  * which existed briefly during feature development on this branch) is
- * converted into list entries by the v64→v65 migration.
+ * converted into list entries by the v67→v68 migration.
  */
 export const ASR_API_FORMATS = [
   'openai-compatible-transcription',
@@ -421,7 +421,7 @@ export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = 'YOLO/read_aloud'
  * IMPORTANT: this schema must keep `.catch` defaults on every field so
  * partial / older blobs survive load. The legacy `OpenAiCompatibleTranscriptionProfile`
  * and `OpenAiCompatibleChatAudioAsrProfile` shapes have been removed —
- * the v64→v65 migration converts them into entries of this schema.
+ * the v67→v68 migration converts them into entries of this schema.
  */
 const asrConfigSchema = z
   .object({

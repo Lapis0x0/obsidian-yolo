@@ -57,8 +57,8 @@ type VoiceControllerDeps = {
  * Shared facade for floating-island voice workflows.
  *
  * It owns the externally observed status stream and delegates concrete work
- * to feature workflows. Read-aloud will plug in here later without changing
- * the island / inline-suggestion integration points.
+ * to feature workflows without making the island / inline-suggestion layer
+ * depend on ASR, file transcription, or TTS internals.
  */
 export class VoiceController {
   private readonly contextInputWorkflow: ContextVoiceInputWorkflow
