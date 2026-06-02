@@ -1,5 +1,5 @@
 import { App, Notice, TFile, TFolder } from 'obsidian'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import {
@@ -8,8 +8,9 @@ import {
 } from '../../../contexts/settings-context'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
+  type LiteSkillEntry,
   humanizeSkillName,
-  listLiteSkillEntries,
+  listLiteSkillEntriesAsync,
 } from '../../../core/skills/liteSkills'
 import YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
@@ -77,9 +78,25 @@ function AgentSkillsModalContent({
     [disabledSkillNames],
   )
 
-  const skills = useMemo(() => {
+  const [skills, setSkills] = useState<LiteSkillEntry[]>([])
+  useEffect(() => {
+    let cancelled = false
     void refreshTick
-    return listLiteSkillEntries(app, { settings })
+    void listLiteSkillEntriesAsync(app, { settings })
+      .then((entries) => {
+        if (!cancelled) {
+          setSkills(entries)
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn('[YOLO] Failed to list skills', error)
+        if (!cancelled) {
+          setSkills([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
   }, [app, refreshTick, settings])
 
   const deletableSkills = useMemo(

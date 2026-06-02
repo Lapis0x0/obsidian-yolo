@@ -28,7 +28,7 @@ import { getChatModelClient } from '../../core/llm/manager'
 import type { AutoPromotedTransportMode } from '../../core/llm/requestTransport'
 import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
-import { listLiteSkillEntries } from '../../core/skills/liteSkills'
+import { listLiteSkillEntriesAsync } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import {
   ChatConversationCompaction,
@@ -469,7 +469,7 @@ export function useChatStreamManager({
       const effectiveModel = resolvedClient.model
       const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = selectedAssistant
-        ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+        ? (await listLiteSkillEntriesAsync(app, { settings })).filter((skill) =>
             isSkillEnabledForAssistant({
               assistant: selectedAssistant,
               skillName: skill.name,
@@ -709,12 +709,13 @@ export function useChatStreamManager({
         const effectiveModel = resolvedClient.model
         const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries = selectedAssistant
-          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
-              isSkillEnabledForAssistant({
-                assistant: selectedAssistant,
-                skillName: skill.name,
-                disabledSkillNames,
-              }),
+          ? (await listLiteSkillEntriesAsync(app, { settings })).filter(
+              (skill) =>
+                isSkillEnabledForAssistant({
+                  assistant: selectedAssistant,
+                  skillName: skill.name,
+                  disabledSkillNames,
+                }),
             )
           : []
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
@@ -973,7 +974,7 @@ export function useChatStreamManager({
       const effectiveModel = resolvedClient.model
       const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = selectedAssistant
-        ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+        ? (await listLiteSkillEntriesAsync(app, { settings })).filter((skill) =>
             isSkillEnabledForAssistant({
               assistant: selectedAssistant,
               skillName: skill.name,

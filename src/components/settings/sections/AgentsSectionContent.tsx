@@ -52,7 +52,7 @@ import {
   LiteSkillEntry,
   getLiteSkillDocument,
   humanizeSkillName,
-  listLiteSkillEntries,
+  listLiteSkillEntriesAsync,
 } from '../../../core/skills/liteSkills'
 import {
   getDisabledSkillNameSet,
@@ -969,10 +969,25 @@ export function AgentsSectionContent({
     return result
   }, [draftAgent, estimatedToolContextTokens.perTool, visibleToolGroups])
 
-  const skillEntries = useMemo<LiteSkillEntry[]>(
-    () => listLiteSkillEntries(app, { settings }),
-    [app, settings],
-  )
+  const [skillEntries, setSkillEntries] = useState<LiteSkillEntry[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void listLiteSkillEntriesAsync(app, { settings })
+      .then((entries) => {
+        if (!cancelled) {
+          setSkillEntries(entries)
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn('[YOLO] Failed to list skills', error)
+        if (!cancelled) {
+          setSkillEntries([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [app, settings])
 
   const disabledSkillIds = useMemo(
     () => settings.skills?.disabledSkillIds ?? [],

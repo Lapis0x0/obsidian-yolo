@@ -35,7 +35,7 @@ import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
 import { LLMModelNotFoundException } from '../../../core/llm/exception'
 import { getChatModelClient } from '../../../core/llm/manager'
-import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
+import { listLiteSkillEntriesAsync } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import type {
   QuickAskLaunchMode,
@@ -1095,12 +1095,13 @@ export function QuickAskPanel({
         const effectiveModel = model
         const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries = selectedAssistant
-          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
-              isSkillEnabledForAssistant({
-                assistant: selectedAssistant,
-                skillName: skill.name,
-                disabledSkillNames,
-              }),
+          ? (await listLiteSkillEntriesAsync(app, { settings })).filter(
+              (skill) =>
+                isSkillEnabledForAssistant({
+                  assistant: selectedAssistant,
+                  skillName: skill.name,
+                  disabledSkillNames,
+                }),
             )
           : []
         const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)

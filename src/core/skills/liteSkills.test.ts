@@ -1,7 +1,9 @@
 import { App } from 'obsidian'
 
 import {
+  getLiteSkillDocument,
   humanizeSkillName,
+  listLiteSkillEntriesAsync,
   migrateVaultSkillFrontmatter,
   rewriteSkillFrontmatterIdToName,
 } from './liteSkills'
@@ -184,11 +186,43 @@ const makeFakeApp = (
   const app = {
     vault: {
       getMarkdownFiles: (): FakeFile[] => files.map((f) => f.file),
+      getAbstractFileByPath: (path: string) =>
+        files.find((f) => f.file.path === path)?.file ?? null,
+      cachedRead: (file: FakeFile) => Promise.resolve(reads[file.path]),
       read: (file: FakeFile) => Promise.resolve(reads[file.path]),
       modify: (file: FakeFile, content: string) => {
         reads[file.path] = content
         modifies.push({ path: file.path, content })
         return Promise.resolve()
+      },
+      adapter: {
+        exists: (path: string) =>
+          Promise.resolve(
+            files.some(
+              (f) => f.file.path === path || f.file.path.startsWith(`${path}/`),
+            ),
+          ),
+        list: (path: string) => {
+          const filesInDir: string[] = []
+          const folderSet = new Set<string>()
+          for (const { file } of files) {
+            if (!file.path.startsWith(`${path}/`)) {
+              continue
+            }
+            const relativePath = file.path.slice(path.length + 1)
+            const slashIndex = relativePath.indexOf('/')
+            if (slashIndex === -1) {
+              filesInDir.push(file.path)
+            } else {
+              folderSet.add(`${path}/${relativePath.slice(0, slashIndex)}`)
+            }
+          }
+          return Promise.resolve({
+            files: filesInDir,
+            folders: [...folderSet],
+          })
+        },
+        read: (path: string) => Promise.resolve(reads[path]),
       },
     },
     metadataCache: {
@@ -279,6 +313,64 @@ describe('migrateVaultSkillFrontmatter', () => {
 
     expect(reads['YOLO/skills/good.md']).toContain('name: good')
     expect(reads['YOLO/skills/good.md']).not.toMatch(/^id:/m)
+  })
+})
+
+describe('lite skill adapter discovery', () => {
+  it('lists and opens skills stored under a hidden YOLO base directory', async () => {
+    const hiddenSkill = {
+      file: {
+        path: '.obsidian/yolo/skills/hidden-skill/SKILL.md',
+        name: 'SKILL.md',
+        extension: 'md',
+      },
+      content: [
+        '---',
+        'name: hidden-skill',
+        'description: Works from a hidden folder',
+        'mode: always',
+        '---',
+        '',
+        '# Hidden Skill',
+      ].join('\n'),
+    }
+
+    const { app } = makeFakeApp([hiddenSkill])
+    ;(
+      app.vault as unknown as {
+        getMarkdownFiles: () => FakeFile[]
+        getAbstractFileByPath: (path: string) => FakeFile | null
+      }
+    ).getMarkdownFiles = () => []
+    ;(
+      app.vault as unknown as {
+        getAbstractFileByPath: (path: string) => FakeFile | null
+      }
+    ).getAbstractFileByPath = () => null
+
+    const settings = { yolo: { baseDir: '.obsidian/yolo' } }
+
+    const entries = await listLiteSkillEntriesAsync(app, { settings })
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'hidden-skill',
+          description: 'Works from a hidden folder',
+          mode: 'always',
+          path: '.obsidian/yolo/skills/hidden-skill/SKILL.md',
+        }),
+      ]),
+    )
+
+    const document = await getLiteSkillDocument({
+      app,
+      name: 'hidden-skill',
+      settings,
+    })
+    expect(document?.content).toContain('# Hidden Skill')
+    expect(document?.entry.path).toBe(
+      '.obsidian/yolo/skills/hidden-skill/SKILL.md',
+    )
   })
 })
 

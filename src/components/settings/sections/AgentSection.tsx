@@ -22,8 +22,9 @@ import {
 } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
 import {
+  type LiteSkillEntry,
   humanizeSkillName,
-  listLiteSkillEntries,
+  listLiteSkillEntriesAsync,
 } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { Assistant } from '../../../types/assistant.types'
@@ -285,10 +286,25 @@ export function AgentSection({ app }: AgentSectionProps) {
     return tools
   }, [settings.mcp.builtinToolOptions, t])
 
-  const allSkillEntries = useMemo(
-    () => listLiteSkillEntries(app, { settings }),
-    [app, settings],
-  )
+  const [allSkillEntries, setAllSkillEntries] = useState<LiteSkillEntry[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void listLiteSkillEntriesAsync(app, { settings })
+      .then((entries) => {
+        if (!cancelled) {
+          setAllSkillEntries(entries)
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn('[YOLO] Failed to list skills', error)
+        if (!cancelled) {
+          setAllSkillEntries([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [app, settings])
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
   const disabledSkillSet = useMemo(
     () => new Set(disabledSkillIds),

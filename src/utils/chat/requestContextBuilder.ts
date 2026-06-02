@@ -18,7 +18,7 @@ import {
 import { getProjectInstructionsSection } from '../../core/project-instructions'
 import {
   getLiteSkillDocument,
-  listLiteSkillEntries,
+  listLiteSkillEntriesAsync,
 } from '../../core/skills/liteSkills'
 import {
   isSkillEnabledForAssistant,
@@ -1705,14 +1705,17 @@ ${memoryParts.join('\n\n')}
     if (this.includeSkills) {
       const disabledSkillNames = this.settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = currentAssistant
-        ? listLiteSkillEntries(this.app, { settings: this.settings }).filter(
-            (skill) =>
-              isSkillEnabledForAssistant({
-                assistant: currentAssistant,
-                skillName: skill.name,
-                disabledSkillNames,
-                defaultLoadMode: skill.mode,
-              }),
+        ? (
+            await listLiteSkillEntriesAsync(this.app, {
+              settings: this.settings,
+            })
+          ).filter((skill) =>
+            isSkillEnabledForAssistant({
+              assistant: currentAssistant,
+              skillName: skill.name,
+              disabledSkillNames,
+              defaultLoadMode: skill.mode,
+            }),
           )
         : []
 
