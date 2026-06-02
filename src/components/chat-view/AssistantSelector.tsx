@@ -196,7 +196,6 @@ export function AssistantSelector({
             <button
               type="button"
               className="yolo-assistant-selector-action-btn"
-              title={t('settings.assistants.editAssistant')}
               aria-label={t('settings.assistants.editAssistant')}
               onClick={(event) => {
                 event.stopPropagation()

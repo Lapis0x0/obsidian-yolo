@@ -1145,10 +1145,6 @@ function SmartSpacePanelBody({
                           urlContextButtonRef.current?.focus()
                         }
                       }}
-                      title={t(
-                        'chat.conversationSettings.webSearch',
-                        'Web search',
-                      )}
                       aria-label={t(
                         'chat.conversationSettings.webSearch',
                         'Web search',
@@ -1189,10 +1185,6 @@ function SmartSpacePanelBody({
                           contentEditableRef.current?.focus()
                         }
                       }}
-                      title={t(
-                        'chat.conversationSettings.urlContext',
-                        'URL Context',
-                      )}
                       aria-label={t(
                         'chat.conversationSettings.urlContext',
                         'URL Context',

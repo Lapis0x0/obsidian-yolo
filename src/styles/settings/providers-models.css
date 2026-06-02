@@ -321,8 +321,9 @@
 .yolo-provider-base-url-btn {
   all: unset;
   display: inline-flex;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   min-width: 0;
+  max-inline-size: min(260px, 40%);
   font-size: 12px;
   line-height: 1.2;
   margin: 0;
@@ -362,6 +363,8 @@
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
+  margin-block: 0;
+  padding-block: 0;
 }
 
 .yolo-provider-model-counts {
@@ -381,6 +384,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  margin-inline-start: auto;
   cursor: pointer;
 }
 
@@ -390,6 +394,10 @@
 @container (max-width: 520px) {
   .yolo-provider-header > .yolo-provider-secondary-trigger {
     display: none;
+  }
+
+  .yolo-provider-actions {
+    margin-inline-start: auto;
   }
 }
 
@@ -412,7 +420,6 @@
   display: flex;
   gap: var(--size-4-1);
   flex: 0 0 auto;
-  margin-inline-start: auto;
 }
 
 .yolo-provider-delete-confirm {

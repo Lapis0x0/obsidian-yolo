@@ -1,0 +1,465 @@
+/*
+ * Model connectivity / health-check modal (settings → models).
+ * Layout mirrors the "summary dashboard" design; colours are mapped onto
+ * Obsidian theme variables so it adapts to light/dark and custom themes.
+ * Status hues are theme-scoped variables, brightened under .theme-dark.
+ */
+
+/* ---- entry button (left of "+ add chat model") ---- */
+.yolo-models-subsection-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+/* Buttons keep their borders but drop Obsidian's default box-shadow.
+ * Selectors are container-scoped to (0,2,0) so they beat Obsidian core's
+ * `button:not(.clickable-icon)` rule (0,1,1), which otherwise forces
+ * `--interactive-normal` onto every custom button background. */
+.yolo-models-subsection-actions .yolo-connectivity-test-btn,
+.yolo-connectivity-panel button {
+  box-shadow: none;
+}
+
+.yolo-models-subsection-actions .yolo-connectivity-test-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-2-1) var(--size-4-2);
+  border: none;
+  border-radius: var(--button-radius);
+  cursor: pointer;
+  color: var(--text-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 14%,
+    transparent
+  );
+}
+
+.yolo-models-subsection-actions .yolo-connectivity-test-btn:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 24%,
+    transparent
+  );
+}
+
+/* ---- modal shell ---- */
+.yolo-connectivity-modal {
+  width: min(640px, 92vw);
+  max-width: 640px;
+}
+
+/* Drop Obsidian's native `.modal` padding (--size-4-4 = 16px) so it doesn't
+ * stack on top of the header/body/footer insets — otherwise top/side spacing
+ * doubles (~34px). The full-width dividers then span edge-to-edge like the
+ * design's dashboard card, and each section owns a single 16px content inset
+ * matching the provider-edit modal. */
+.yolo-connectivity-modal.modal {
+  padding: 0;
+}
+
+.yolo-connectivity-modal .modal-content {
+  padding: 0;
+}
+
+.yolo-connectivity-panel {
+  --yolo-health-ok: #2fae69;
+  --yolo-health-ok-fg: #1e8a52;
+  --yolo-health-fail: #e0563b;
+  --yolo-health-fail-fg: #c53b22;
+  --yolo-health-timeout: #e0a234;
+  --yolo-health-timeout-fg: #9a6a12;
+
+  display: flex;
+  flex-direction: column;
+  color: var(--text-normal);
+}
+
+.theme-dark .yolo-connectivity-panel {
+  --yolo-health-ok-fg: #4ade80;
+  --yolo-health-fail-fg: #f87171;
+  --yolo-health-timeout-fg: #fbbf24;
+}
+
+/* ---- header ---- */
+.yolo-connectivity-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-connectivity-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  flex: 0 0 auto;
+  color: var(--text-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 16%,
+    transparent
+  );
+}
+
+.yolo-connectivity-header-text {
+  min-width: 0;
+}
+
+.yolo-connectivity-header-text h3 {
+  margin: 0 0 3px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.yolo-connectivity-header-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- body ---- */
+.yolo-connectivity-body {
+  padding: 8px 16px 16px;
+  overflow-y: auto;
+  max-height: 56vh;
+}
+
+/* ---- summary dashboard ---- */
+.yolo-connectivity-summary {
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 10px 0 6px;
+}
+
+.yolo-connectivity-summary-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.yolo-connectivity-pass {
+  text-align: center;
+  min-width: 60px;
+}
+
+.yolo-connectivity-pass-num {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.yolo-connectivity-pass-num span {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.yolo-connectivity-pass-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.yolo-connectivity-summary-mid {
+  flex: 1;
+  min-width: 0;
+}
+
+.yolo-connectivity-summary-text {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 9px;
+}
+
+.yolo-connectivity-summary-actions {
+  flex: 0 0 auto;
+}
+
+/* ---- buttons ---- */
+.yolo-connectivity-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  padding: 7px 14px;
+  border: none;
+  border-radius: var(--button-radius);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.yolo-connectivity-panel .yolo-connectivity-btn--primary {
+  color: var(--text-on-accent);
+  background-color: var(--interactive-accent);
+}
+
+.yolo-connectivity-btn--primary:hover:not(:disabled) {
+  background-color: var(--interactive-accent-hover);
+}
+
+.yolo-connectivity-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yolo-connectivity-panel .yolo-connectivity-btn--stop {
+  color: var(--yolo-health-fail-fg);
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-health-fail) 16%,
+    transparent
+  );
+}
+
+.yolo-connectivity-btn--stop:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-health-fail) 26%,
+    transparent
+  );
+}
+
+/* ---- segmented progress bar ---- */
+.yolo-health-segbar {
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--background-modifier-border);
+  overflow: hidden;
+  display: flex;
+}
+
+.yolo-health-segbar-seg {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.yolo-health-segbar-seg--ok {
+  background-color: var(--yolo-health-ok);
+}
+
+.yolo-health-segbar-seg--fail {
+  background-color: var(--yolo-health-fail);
+}
+
+.yolo-health-segbar-seg--timeout {
+  background-color: var(--yolo-health-timeout);
+}
+
+.yolo-health-segbar-seg--run {
+  background-color: var(--interactive-accent);
+  opacity: 0.45;
+}
+
+/* ---- group label ---- */
+.yolo-health-grouplabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  margin: 14px 2px 8px;
+}
+
+.yolo-health-grouplabel::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: var(--background-modifier-border);
+}
+
+.yolo-health-grouplabel-ct {
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+/* ---- model row ---- */
+/* Columns: name (eats slack) · metric · status chip · test button.
+ * Metric + chip + button form a right-aligned cluster. The variable-width
+ * metric is absorbed by the 1fr name track, so the chip column lands at a
+ * fixed x every row — chips line up in a clean vertical column for scanning. */
+.yolo-health-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto 64px;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 4px;
+  /* Separator sits between rows only: use border-top and drop it on the first
+   * row of each group (which butts against the group label's divider line), so
+   * the last row of a group has no trailing bottom line. */
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-health-grouplabel + .yolo-health-row {
+  border-top: none;
+}
+
+.yolo-health-row-name {
+  min-width: 0;
+}
+
+.yolo-health-row-display {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-health-row-id {
+  font-family: var(--font-monospace);
+  font-size: 11.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-health-row-metric {
+  text-align: right;
+  min-width: 0;
+}
+
+.yolo-connectivity-panel .yolo-health-row-test {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 7px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.yolo-connectivity-panel .yolo-health-row-test:hover:not(:disabled) {
+  background-color: var(--background-modifier-hover);
+}
+
+.yolo-health-row-test:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- status chip ---- */
+.yolo-health-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px 4px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.yolo-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background-color: var(--text-faint);
+}
+
+.yolo-health-chip--ok {
+  color: var(--yolo-health-ok-fg);
+  background-color: color-mix(in srgb, var(--yolo-health-ok) 16%, transparent);
+}
+
+.yolo-health-chip--fail {
+  color: var(--yolo-health-fail-fg);
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-health-fail) 16%,
+    transparent
+  );
+}
+
+.yolo-health-chip--timeout {
+  color: var(--yolo-health-timeout-fg);
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-health-timeout) 18%,
+    transparent
+  );
+}
+
+.yolo-health-chip--idle {
+  color: var(--text-muted);
+  background-color: var(--background-modifier-border);
+}
+
+.yolo-health-chip--testing {
+  color: var(--text-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 14%,
+    transparent
+  );
+}
+
+/* ---- metric line ---- */
+.yolo-health-metric {
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-health-metric b {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.yolo-health-metric--muted {
+  color: var(--text-faint);
+}
+
+.yolo-health-metric--warn {
+  color: var(--yolo-health-timeout-fg);
+}
+
+.yolo-health-metric--error {
+  color: var(--yolo-health-fail-fg);
+}
+
+/* ---- empty state ---- */
+.yolo-connectivity-empty {
+  padding: 22px 4px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---- spinner ---- */
+.yolo-health-spin {
+  animation: yolo-health-spin 0.7s linear infinite;
+}
+
+@keyframes yolo-health-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

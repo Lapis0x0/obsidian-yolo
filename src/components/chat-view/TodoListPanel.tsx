@@ -104,7 +104,6 @@ export function TodoListPanel({ messages, queuedMessageCount = 0 }: Props) {
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
         aria-label={collapseLabel}
-        title={collapseLabel}
       >
         <ListTodo
           className="yolo-todo-panel__header-icon"

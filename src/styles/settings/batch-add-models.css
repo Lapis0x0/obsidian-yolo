@@ -1,0 +1,294 @@
+/*
+ * Batch "add chat model" mode (settings → models → Add custom model modal).
+ * Visual language deliberately mirrors connectivity-test.css (monospace model
+ * id rows, muted "added" chips, card surface) so the two adjacent model-list
+ * tools read as one family. Classes are kept separate from `yolo-health-*` to
+ * avoid cross-feature coupling — only the values are shared, not the selectors.
+ */
+
+/* ---- own modal header (title + single/batch switch on one row) ----
+ * The native Obsidian modal title bar is hidden (see `.modal-header` rule
+ * below) so the component owns its header and can sit the switcher on the
+ * title's row, like the agent-editor modal. The native close button (X) stays
+ * — it's a sibling of `.modal-header`, not inside it — so the header reserves
+ * room on the right to clear it. */
+.yolo-add-chat-model-modal .modal-header {
+  display: none;
+}
+
+.yolo-chat-model-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* Top inset gives breathing room below the native close button (X) — the
+   * header sits below it, so it no longer needs to clear the X horizontally.
+   * No right inset: the switcher's right edge aligns with the form fields'
+   * right edge (the modal content's right padding). */
+  margin: var(--size-4-6, 24px) 0 18px;
+}
+
+.yolo-chat-model-modal-title {
+  margin: 0;
+  font-size: var(--h3-size, 1.3em);
+  font-weight: var(--font-bold, 700);
+  line-height: 1.2;
+  color: var(--text-normal);
+}
+
+/* ---- single / batch switch ----
+ * Glider segmented control: the active indicator is a bordered box that slides
+ * between segments. Mirrors the agent-editor tab bar's look + motion, but is
+ * pure-CSS (driven by --count / --index) since the two segments are equal
+ * width — no JS measurement / ResizeObserver needed. */
+
+.yolo-model-mode-seg {
+  --yolo-mode-seg-count: 2;
+  --yolo-mode-seg-index: 0;
+  --yolo-mode-seg-pad: 3px;
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  padding: var(--yolo-mode-seg-pad);
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+}
+
+.yolo-model-mode-seg-glider {
+  position: absolute;
+  top: var(--yolo-mode-seg-pad);
+  left: var(--yolo-mode-seg-pad);
+  width: calc(
+    (100% - var(--yolo-mode-seg-pad) * 2) / var(--yolo-mode-seg-count)
+  );
+  height: calc(100% - var(--yolo-mode-seg-pad) * 2);
+  border: 2px solid var(--h1-color, var(--interactive-accent));
+  border-radius: var(--radius-s);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  transform: translateX(calc(var(--yolo-mode-seg-index) * 100%));
+  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Container-scoped (0,2,0) to beat Obsidian core's `button:not(.clickable-icon)`
+ * (0,1,1), which otherwise forces a background + box-shadow onto the segments. */
+.yolo-model-mode-seg .yolo-model-mode-seg-btn {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 64px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.yolo-model-mode-seg .yolo-model-mode-seg-btn:hover {
+  color: var(--text-normal);
+}
+
+.yolo-model-mode-seg .yolo-model-mode-seg-btn.is-active {
+  color: var(--text-normal);
+}
+
+.yolo-model-mode-seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.yolo-model-mode-seg-label {
+  white-space: nowrap;
+}
+
+/* ---- batch picker ---- */
+.yolo-batch-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.yolo-batch-add-search {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-batch-add-search:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+}
+
+/* toolbar + list join into a single card surface */
+.yolo-batch-add-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background-color: var(--background-secondary);
+  margin-bottom: -10px; /* cancel parent gap so toolbar butts onto the list */
+}
+
+/* Toolbar-scoped (0,2,0) to beat Obsidian core's `button:not(.clickable-icon)`
+ * (0,1,1), which otherwise wraps the select-all in default button chrome
+ * (background + border + box-shadow). It should read as a plain checkbox +
+ * label, matching the rows below. */
+.yolo-batch-add-toolbar .yolo-batch-add-selectall {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: var(--font-ui-small);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.yolo-batch-add-toolbar .yolo-batch-add-selectall:hover:not(:disabled) {
+  color: var(--text-normal);
+}
+
+.yolo-batch-add-toolbar .yolo-batch-add-selectall:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yolo-batch-add-count {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.yolo-batch-add-list {
+  max-height: 38vh;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0 0 10px 10px;
+  background-color: var(--background-primary);
+}
+
+/* ---- checkbox box (shared by select-all and rows) ---- */
+.yolo-batch-add-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 1px solid var(--background-modifier-border-hover);
+  border-radius: 4px;
+  color: var(--text-on-accent);
+  background-color: var(--background-primary);
+}
+
+.yolo-batch-add-check.is-checked {
+  border-color: var(--interactive-accent);
+  background-color: var(--interactive-accent);
+}
+
+/* ---- model row ---- */
+.yolo-batch-add-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  cursor: pointer;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-batch-add-row:first-child {
+  border-top: none;
+}
+
+.yolo-batch-add-row:hover:not(.is-added) {
+  background-color: var(--background-modifier-hover);
+}
+
+.yolo-batch-add-row:focus-visible {
+  outline: none;
+  background-color: var(--background-modifier-hover);
+  box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+
+.yolo-batch-add-row.is-checked {
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 8%,
+    transparent
+  );
+}
+
+.yolo-batch-add-row.is-added {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.yolo-batch-add-row-id {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-batch-add-added {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background-color: var(--background-modifier-border);
+}
+
+/* ---- empty / loading / error states ---- */
+.yolo-batch-add-empty {
+  padding: 22px 12px;
+  text-align: center;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.yolo-batch-add-empty--error {
+  color: var(--text-error);
+}
+
+.yolo-batch-add-hint {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  line-height: 1.4;
+}

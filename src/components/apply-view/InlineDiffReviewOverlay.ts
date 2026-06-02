@@ -171,7 +171,6 @@ function createActionButton(
   if (icon === '×') {
     button.classList.add('yolo-apply-action-reject')
   }
-  button.title = label
   button.setAttribute('aria-label', label)
   const iconEl = document.createElement('span')
   iconEl.className = 'yolo-apply-action-icon'

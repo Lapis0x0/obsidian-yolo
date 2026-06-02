@@ -123,7 +123,6 @@ export class PdfToolbarButtonManager {
     btn.setAttribute(TOOLBAR_BUTTON_ATTR, 'true')
     btn.className = 'yolo-pdf-toolbar-btn clickable-icon'
     btn.setAttribute('aria-label', this.plugin.t('pdf.toolbarButtonTooltip'))
-    btn.title = this.plugin.t('pdf.toolbarButtonTooltip')
 
     // Use a simple SVG scissor / crop icon
     // eslint-disable-next-line @microsoft/sdl/no-inner-html -- static SVG markup, no user input

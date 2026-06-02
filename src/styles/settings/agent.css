@@ -1232,6 +1232,10 @@ button.yolo-agent-chip--more:hover {
   display: none;
 }
 
+.yolo-modal--agent-direct-edit {
+  height: min(820px, calc(100vh - 48px));
+}
+
 /* Direct-edit modal owns its own flex layout: body grows, footer pinned at
  * the bottom. Avoid relying on `position: sticky` against the modal scroll
  * container — Obsidian's modal-content is not a stable sticky ancestor and

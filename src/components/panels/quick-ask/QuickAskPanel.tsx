@@ -2521,7 +2521,6 @@ export function QuickAskPanel({
               className="yolo-quick-ask-toolbar-button"
               onClick={clearConversation}
               aria-label={t('quickAsk.clear', 'Clear conversation')}
-              title={t('quickAsk.clear', 'Clear conversation')}
             >
               <RotateCcw size={14} />
             </button>

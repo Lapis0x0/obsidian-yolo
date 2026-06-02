@@ -262,7 +262,6 @@ export function LLMDebugIconButton({
       type="button"
       className={className}
       aria-label={label}
-      title={label}
       tabIndex={tabIndex}
       onClick={(event) => {
         event.preventDefault()

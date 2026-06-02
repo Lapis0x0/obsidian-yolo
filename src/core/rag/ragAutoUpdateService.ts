@@ -203,14 +203,10 @@ export class RagAutoUpdateService {
     settings: YoloSettings,
   ): boolean {
     const lower = path.toLowerCase()
-    if (lower.endsWith('.md')) {
-      // continue
-    } else if (
-      lower.endsWith('.pdf') &&
-      (settings.ragOptions.indexPdf ?? true)
-    ) {
-      // continue
-    } else {
+    const isMd = lower.endsWith('.md')
+    const isPdf =
+      lower.endsWith('.pdf') && (settings.ragOptions.indexPdf ?? true)
+    if (!isMd && !isPdf) {
       return false
     }
     const { includePatterns = [], excludePatterns = [] } =

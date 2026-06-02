@@ -4482,10 +4482,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 'sidebar.chatList.exportConversation',
                 'Export conversation to vault',
               )}
-              title={t(
-                'sidebar.chatList.exportConversation',
-                'Export conversation to vault',
-              )}
             >
               <Download size={18} />
             </button>

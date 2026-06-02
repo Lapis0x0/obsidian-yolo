@@ -364,7 +364,6 @@ export function VoiceDecibelMeter({
             monitoring ? 'warning' : 'cta'
           }`}
           aria-label={buttonLabel}
-          title={buttonLabel}
           onClick={toggle}
         >
           {monitoring ? (

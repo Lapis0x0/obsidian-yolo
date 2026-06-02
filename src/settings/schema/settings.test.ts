@@ -48,6 +48,8 @@ describe('parseYoloSettings', () => {
       chatMode: 'agent',
       agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},
+      chatExportIncludeThinking: false,
+      chatExportIncludeToolCalls: false,
     })
 
     expect(result.notificationOptions).toMatchObject({

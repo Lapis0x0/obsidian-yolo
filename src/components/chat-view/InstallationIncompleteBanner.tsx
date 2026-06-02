@@ -58,7 +58,6 @@ export function InstallationIncompleteBanner(): ReactNode {
             dismiss()
           }}
           aria-label={dismissLabel}
-          title={dismissLabel}
         >
           <X size={16} strokeWidth={2.25} />
         </button>

@@ -51,7 +51,6 @@ function ActionIconButton({
       onClick={disabled ? undefined : onClick}
       className={className}
       aria-label={label}
-      title={label}
       disabled={disabled}
       tabIndex={tabIndex}
     >
@@ -413,7 +412,6 @@ export default function AssistantToolMessageGroupActions({
               isMoreOpen ? ' is-open' : ''
             }`}
             aria-label={t('sidebar.chatList.moreActions', 'More actions')}
-            title={t('sidebar.chatList.moreActions', 'More actions')}
             aria-expanded={isMoreOpen ? 'true' : 'false'}
             disabled={isDisabled || isEditing}
           >

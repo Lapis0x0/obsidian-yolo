@@ -41,11 +41,6 @@ export function CollapsibleToolDescription({ description, name }: Props) {
           ? t('settings.agent.collapseDescription', 'Collapse')
           : t('settings.agent.expandDescription', 'Expand')
       }
-      title={
-        expanded
-          ? t('settings.agent.collapseDescription', 'Collapse')
-          : t('settings.agent.expandDescription', 'Expand')
-      }
     >
       <ChevronDown size={14} />
     </button>

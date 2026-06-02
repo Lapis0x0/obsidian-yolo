@@ -1,0 +1,57 @@
+name: Mention Dispatch
+
+# 当 Lapis0x0 在 issue / PR / review 评论里 @lapis0x0-bot 时,
+# 在 Action 层完成过滤(免费、即时),命中后再 POST 唤醒 Claude routine。
+# routine 只在"授权用户真的 @ 了"时才被叫醒,无关评论一律不触发。
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  dispatch:
+    # 只有 Lapis0x0 本人 @ 才放行:
+    # - 同时挡掉路人触发,以及 bot 自己评论引发的自激循环(bot 不是 Lapis0x0)
+    if: >
+      github.event.sender.login == 'Lapis0x0' &&
+      (contains(github.event.comment.body, '@lapis0x0-bot') ||
+       contains(github.event.review.body, '@lapis0x0-bot'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire Claude routine
+        # 上下文走 env 注入,不直接拼进 run 脚本,避免评论内容造成命令注入
+        env:
+          ROUTINE_URL: ${{ secrets.YOLO_ROUTINE_URL }}
+          ROUTINE_TOKEN: ${{ secrets.YOLO_ROUTINE_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.sender.login }}
+          BODY: ${{ github.event.comment.body || github.event.review.body }}
+          URL: ${{ github.event.comment.html_url || github.event.review.html_url }}
+        run: |
+          # 用 jq 安全构造 JSON,评论里的引号/换行不会撑坏 body
+          PAYLOAD=$(jq -n \
+            --arg repo "$REPO" \
+            --arg number "$NUMBER" \
+            --arg author "$AUTHOR" \
+            --arg body "$BODY" \
+            --arg url "$URL" \
+            '{text: (
+              "你在 GitHub 上被提及,请按你的常驻 instructions 处理这一条(只处理这一条,不要扫全仓库)。\n\n" +
+              "仓库: " + $repo + "\n" +
+              "Issue/PR 编号: #" + $number + "\n" +
+              "链接: " + $url + "\n" +
+              "提及者: " + $author + "\n" +
+              "评论内容:\n" + $body + "\n\n" +
+              "解析 @lapis0x0-bot 后面的命令,完成后在同一条 issue/PR 下回评说明结果。"
+            )}')
+          curl -sS -X POST "$ROUTINE_URL" \
+            -H "Authorization: Bearer $ROUTINE_TOKEN" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"

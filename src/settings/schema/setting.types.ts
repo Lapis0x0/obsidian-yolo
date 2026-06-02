@@ -930,6 +930,10 @@ export const yoloSettingsSchema = z.object({
       imageCompressionQuality: z.number().min(1).max(100).optional(),
       // Fetch external (http/https) image URLs referenced in Markdown
       externalImageFetchEnabled: z.boolean().optional(),
+      // Include assistant reasoning in exported chat markdown
+      chatExportIncludeThinking: z.boolean().optional(),
+      // Include tool call blocks in exported chat markdown
+      chatExportIncludeToolCalls: z.boolean().optional(),
       // Where the ribbon icon should open the Chat view
       ribbonClickAction: z
         .enum(['sidebar', 'tab', 'split', 'window', 'last'])
@@ -959,6 +963,8 @@ export const yoloSettingsSchema = z.object({
       imageCompressionEnabled: true,
       imageCompressionQuality: 85,
       externalImageFetchEnabled: false,
+      chatExportIncludeThinking: false,
+      chatExportIncludeToolCalls: false,
       ribbonClickAction: 'sidebar',
       lastChatPlacement: undefined,
     }),
@@ -974,6 +980,8 @@ export const yoloSettingsSchema = z.object({
       enableSmartSpace: z.boolean().optional(),
       // enable selection chat (Cursor-like text selection actions)
       enableSelectionChat: z.boolean().optional(),
+      // persist selected editor block highlight while chatting in sidebar
+      persistSelectionHighlight: z.boolean().optional(),
       // enable manual context selection for continuation
       manualContextEnabled: z.boolean().optional(),
       // manual context folders picked by user from the vault
@@ -1073,6 +1081,7 @@ export const yoloSettingsSchema = z.object({
           ?.id ?? '',
       enableSmartSpace: true,
       enableSelectionChat: true,
+      persistSelectionHighlight: true,
       manualContextEnabled: false,
       manualContextFolders: [],
       referenceRuleFolders: [],

@@ -27,6 +27,7 @@ import {
   deriveToolEditUndoStatus,
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
+import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
@@ -102,6 +103,9 @@ export { recoverLikelyEscapedBackslashSequences }
 
 const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
+// fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES 是"快照阈值"
+// （超过则跳过 undo/review 快照），本常量是"绝对拒绝上限"（超过才真正拒绝编辑）。
+const MAX_EDIT_FILE_SIZE_BYTES = 16 * 1024 * 1024
 const MAX_BATCH_READ_FILES = 20
 const DEFAULT_READ_START_LINE = 1
 const DEFAULT_READ_MAX_LINES = 50
@@ -110,10 +114,46 @@ const MAX_READ_LINE_INDEX = 1_000_000
 const MAX_RAG_SNIPPET_CHARS = 500
 const RAG_FETCH_LIMIT_MAX = 300
 
+const getContextPrunableToolCallIds = (
+  messages: ChatMessage[] | undefined,
+  currentToolCallId?: string,
+): Set<string> => {
+  const acceptedToolCallIds = new Set<string>()
+
+  for (const message of messages ?? []) {
+    if (message.role !== 'tool') {
+      continue
+    }
+
+    if (
+      currentToolCallId &&
+      message.toolCalls.some(
+        (toolCall) => toolCall.request.id === currentToolCallId,
+      )
+    ) {
+      break
+    }
+
+    for (const toolCall of message.toolCalls) {
+      if (
+        isContextPrunableToolName(toolCall.request.name) &&
+        toolCall.response.status === ToolCallResponseStatus.Success &&
+        toolCall.response.data.type === 'text' &&
+        toolCall.request.id.trim().length > 0
+      ) {
+        acceptedToolCallIds.add(toolCall.request.id)
+      }
+    }
+  }
+
+  return acceptedToolCallIds
+}
+
 export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   'fs_list',
   'fs_search',
   'fs_read',
+  'context_prune_tool_results',
   'context_compact',
   'fs_edit',
   'fs_write',
@@ -171,6 +211,7 @@ type FsReadOperation =
       maxLines: number
       modality?: FsReadModality
     }
+type ContextPruneMode = 'selected' | 'all'
 type FsFileOpAction = 'write' | 'delete' | 'create_dir' | 'move'
 
 type LocalToolCallResultMetadata = {
@@ -615,6 +656,34 @@ export function getLocalFileTools(options?: {
           },
         },
         required: ['paths', 'operation'],
+      },
+    },
+    {
+      name: 'context_prune_tool_results',
+      description:
+        'Exclude historical tool call results from future model-visible context without deleting chat history. Supports pruning selected calls or all prunable calls at once.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          mode: {
+            type: 'string',
+            enum: ['selected', 'all'],
+            description:
+              'Prune mode. Use selected to prune specific toolCallIds, or all to prune all historical prunable tool results.',
+          },
+          toolCallIds: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+            description:
+              'Tool call ids to exclude from future prompt context when mode is selected.',
+          },
+          reason: {
+            type: 'string',
+            description: 'Optional short reason for pruning.',
+          },
+        },
       },
     },
     {
@@ -1691,6 +1760,19 @@ const getSemanticSearchUnavailableReason = ({
     return 'No embedding model configured. Fell back to keyword search.'
   }
   return null
+}
+
+const getContextPruneMode = (
+  args: Record<string, unknown>,
+): ContextPruneMode => {
+  const value = args.mode
+  if (value === undefined) {
+    return 'selected'
+  }
+  if (value !== 'selected' && value !== 'all') {
+    throw new Error('mode must be one of: selected, all.')
+  }
+  return value
 }
 
 const getFsListScope = (args: Record<string, unknown>): FsListScope => {
@@ -3322,6 +3404,47 @@ export async function callLocalFileTool({
         }
       }
 
+      case 'context_prune_tool_results': {
+        const mode = getContextPruneMode(args)
+
+        const prunableToolCallIds = getContextPrunableToolCallIds(
+          conversationMessages,
+          toolCallId,
+        )
+        const toolCallIds =
+          mode === 'all'
+            ? [...prunableToolCallIds]
+            : getStringArrayArg(args, 'toolCallIds')
+                .map((value) => value.trim())
+                .filter(
+                  (value, index, arr) =>
+                    value.length > 0 && arr.indexOf(value) === index,
+                )
+
+        if (mode === 'selected' && toolCallIds.length === 0) {
+          throw new Error('toolCallIds cannot be empty when mode is selected.')
+        }
+
+        const acceptedToolCallIds = toolCallIds.filter((value) =>
+          prunableToolCallIds.has(value),
+        )
+        const ignoredToolCallIds = toolCallIds.filter(
+          (value) => !prunableToolCallIds.has(value),
+        )
+
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'context_prune_tool_results',
+            toolCallId: toolCallId ?? null,
+            operation: mode === 'all' ? 'prune_all' : 'prune_selected',
+            acceptedToolCallIds,
+            ignoredToolCallIds,
+            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
+          }),
+        }
+      }
+
       case 'context_compact': {
         return {
           status: ToolCallResponseStatus.Success,
@@ -3344,7 +3467,7 @@ export async function callLocalFileTool({
         if (!file || !(file instanceof TFile)) {
           throw new Error(`File not found: ${path}`)
         }
-        if (file.stat.size > MAX_FILE_SIZE_BYTES) {
+        if (file.stat.size > MAX_EDIT_FILE_SIZE_BYTES) {
           throw new Error(`File too large (${file.stat.size} bytes).`)
         }
 
@@ -3373,7 +3496,11 @@ export async function callLocalFileTool({
 
         const nextContent = materialized.newContent
 
-        assertContentSize(nextContent)
+        if (nextContent.length > MAX_EDIT_FILE_SIZE_BYTES) {
+          throw new Error(
+            `Content too large (${nextContent.length} chars). Max allowed is ${MAX_EDIT_FILE_SIZE_BYTES}.`,
+          )
+        }
         let appliedContent = nextContent
 
         if (requireReview) {
@@ -3405,49 +3532,29 @@ export async function callLocalFileTool({
           await app.vault.modify(file, nextContent)
         }
 
-        let editSummary = createToolEditSummary({
-          path,
-          beforeContent: content,
-          afterContent: appliedContent,
-          reviewRoundId: roundId,
-        })
         const appliedAt = Date.now()
-        if (toolCallId && editSummary) {
-          editUndoSnapshotStore.set({
-            toolCallId,
-            path,
-            beforeContent: content,
-            afterContent: appliedContent,
-            beforeExists: true,
-            afterExists: true,
-            appliedAt,
-          })
-        }
-
-        if (conversationId && roundId && editSummary) {
-          const snapshot = await upsertEditReviewSnapshot({
-            app,
-            conversationId,
-            roundId,
-            filePath: path,
-            beforeContent: content,
-            afterContent: appliedContent,
-            beforeExists: true,
-            afterExists: true,
-            settings,
-          })
-          editSummary = {
-            ...editSummary,
-            files: editSummary.files.map((file) => ({
-              ...file,
-              addedLines: snapshot.addedLines,
-              removedLines: snapshot.removedLines,
-              reviewRoundId: roundId,
-            })),
-            totalAddedLines: snapshot.addedLines,
-            totalRemovedLines: snapshot.removedLines,
-          }
-        }
+        // MAX_FILE_SIZE_BYTES 作为"快照阈值"：当编辑前或编辑后的内容超过阈值时，
+        // 跳过 undo/review 快照与 diff（避免把超大内容读进快照存储），与 fs_write
+        // 覆盖超大文件时的行为对齐。必须同时看 before(content) 与 after(appliedContent)，
+        // 因为小文件也可能被编辑后膨胀到阈值以上。
+        const overSized =
+          content.length > MAX_FILE_SIZE_BYTES ||
+          appliedContent.length > MAX_FILE_SIZE_BYTES
+        const metadata = overSized
+          ? undefined
+          : await buildFileChangeSummary({
+              app,
+              settings,
+              path,
+              beforeContent: content,
+              afterContent: appliedContent,
+              beforeExists: true,
+              afterExists: true,
+              conversationId,
+              roundId,
+              toolCallId,
+              appliedAt,
+            })
 
         return {
           status: ToolCallResponseStatus.Success,
@@ -3463,12 +3570,13 @@ export async function callLocalFileTool({
               matchMode: result.matchMode,
             })),
             changed: content !== appliedContent,
-            message: requireReview ? 'Applied reviewed edit.' : 'Applied edit.',
+            message: overSized
+              ? 'Applied edit (content too large for undo snapshot).'
+              : requireReview
+                ? 'Applied reviewed edit.'
+                : 'Applied edit.',
           }),
-          metadata: {
-            editSummary,
-            appliedAt,
-          },
+          metadata,
         }
       }
 

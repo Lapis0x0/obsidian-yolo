@@ -581,7 +581,6 @@ export default function ApplyViewRoot({
                 type="button"
                 onClick={goToPreviousDiff}
                 className="yolo-toolbar-icon-btn"
-                title={t('applyView.prevChange', 'Previous change')}
                 aria-label={t('applyView.prevChange', 'Previous change')}
                 disabled={modifiedBlockIndices.length === 0}
               >
@@ -596,7 +595,6 @@ export default function ApplyViewRoot({
                 type="button"
                 onClick={goToNextDiff}
                 className="yolo-toolbar-icon-btn"
-                title={t('applyView.nextChange', 'Next change')}
                 aria-label={t('applyView.nextChange', 'Next change')}
                 disabled={modifiedBlockIndices.length === 0}
               >
@@ -840,7 +838,6 @@ const DiffBlockView = forwardRef<
                                   : onAcceptIncoming
                               }
                               className="yolo-apply-action yolo-apply-action-accept"
-                              title={acceptIncomingLabel}
                               aria-label={acceptIncomingLabel}
                             >
                               <span
@@ -858,7 +855,6 @@ const DiffBlockView = forwardRef<
                                   : onAcceptCurrent
                               }
                               className="yolo-apply-action yolo-apply-action-reject"
-                              title={acceptCurrentLabel}
                               aria-label={acceptCurrentLabel}
                             >
                               <span
@@ -898,7 +894,6 @@ const DiffBlockView = forwardRef<
                               : onAcceptIncoming
                           }
                           className="yolo-apply-action yolo-apply-action-accept"
-                          title={acceptIncomingLabel}
                           aria-label={acceptIncomingLabel}
                         >
                           <span
@@ -916,7 +911,6 @@ const DiffBlockView = forwardRef<
                               : onAcceptCurrent
                           }
                           className="yolo-apply-action yolo-apply-action-reject"
-                          title={acceptCurrentLabel}
                           aria-label={acceptCurrentLabel}
                         >
                           <span

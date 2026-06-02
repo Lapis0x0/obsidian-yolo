@@ -1,4 +1,9 @@
 import {
+  ToolCallResponseStatus,
+  createCompleteToolCallArguments,
+} from '../../types/tool-call.types'
+
+import {
   conversationToMarkdown,
   getChatExportFolderPath,
 } from './exportConversation'
@@ -15,7 +20,7 @@ describe('conversationToMarkdown', () => {
     ).toBe('Config/YOLO/Exports')
   })
 
-  it('renders assistant thinking before the final response content', () => {
+  it('omits assistant thinking by default', () => {
     const markdown = conversationToMarkdown(
       {
         schemaVersion: 1,
@@ -38,12 +43,124 @@ describe('conversationToMarkdown', () => {
       },
     )
 
+    expect(markdown).not.toContain('> [!note]- Thinking')
+    expect(markdown).not.toContain('reasoning trace')
+    expect(markdown).toContain('final answer')
+  })
+
+  it('renders assistant thinking when includeThinking is enabled', () => {
+    const markdown = conversationToMarkdown(
+      {
+        schemaVersion: 1,
+        id: 'conversation-1',
+        title: 'Export test',
+        createdAt: 0,
+        updatedAt: 0,
+        messages: [
+          {
+            role: 'assistant',
+            id: 'assistant-1',
+            content: 'final answer',
+            reasoning: 'reasoning trace',
+          },
+        ],
+      },
+      {
+        snapshotEntries: {},
+        exportedAtIso: '2026-04-09T00:00:00.000Z',
+        includeThinking: true,
+      },
+    )
+
     expect(markdown.indexOf('> [!note]- Thinking')).toBeGreaterThan(
       markdown.indexOf('## Assistant'),
     )
     expect(markdown.indexOf('reasoning trace')).toBeLessThan(
       markdown.indexOf('final answer'),
     )
+  })
+
+  it('omits tool calls by default', () => {
+    const emptyArgs = createCompleteToolCallArguments({
+      value: { path: 'a.md' },
+    })
+    const markdown = conversationToMarkdown(
+      {
+        schemaVersion: 1,
+        id: 'conversation-1',
+        title: 'Export test',
+        createdAt: 0,
+        updatedAt: 0,
+        messages: [
+          {
+            role: 'tool',
+            id: 'tool-1',
+            toolCalls: [
+              {
+                request: {
+                  id: 'call-1',
+                  name: 'fs_read',
+                  arguments: emptyArgs,
+                },
+                response: {
+                  status: ToolCallResponseStatus.Success,
+                  data: { type: 'text', text: 'file contents' },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        snapshotEntries: {},
+        exportedAtIso: '2026-04-09T00:00:00.000Z',
+      },
+    )
+
+    expect(markdown).not.toContain('> [!example]- Tool: fs_read')
+    expect(markdown).not.toContain('file contents')
+  })
+
+  it('renders tool calls when includeToolCalls is enabled', () => {
+    const emptyArgs = createCompleteToolCallArguments({
+      value: { path: 'a.md' },
+    })
+    const markdown = conversationToMarkdown(
+      {
+        schemaVersion: 1,
+        id: 'conversation-1',
+        title: 'Export test',
+        createdAt: 0,
+        updatedAt: 0,
+        messages: [
+          {
+            role: 'tool',
+            id: 'tool-1',
+            toolCalls: [
+              {
+                request: {
+                  id: 'call-1',
+                  name: 'fs_read',
+                  arguments: emptyArgs,
+                },
+                response: {
+                  status: ToolCallResponseStatus.Success,
+                  data: { type: 'text', text: 'file contents' },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        snapshotEntries: {},
+        exportedAtIso: '2026-04-09T00:00:00.000Z',
+        includeToolCalls: true,
+      },
+    )
+
+    expect(markdown).toContain('> [!example]- Tool: fs_read')
+    expect(markdown).toContain('file contents')
   })
 
   it('renders mentioned vault files as a collapsed callout in user messages', () => {

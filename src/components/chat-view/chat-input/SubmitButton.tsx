@@ -42,7 +42,6 @@ export function SubmitButton({
         className="yolo-chat-user-input-submit-button-circle is-stop"
         onClick={() => onAbort?.()}
         aria-label={stopLabel}
-        title={stopLabel}
       >
         <Square size={12} fill="currentColor" strokeWidth={0} />
       </button>
@@ -62,7 +61,6 @@ export function SubmitButton({
         onClick()
       }}
       aria-label={label}
-      title={label}
     >
       <ArrowUp size={16} strokeWidth={2.5} />
     </button>

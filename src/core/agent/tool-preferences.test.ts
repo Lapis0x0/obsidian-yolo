@@ -27,6 +27,9 @@ describe('tool-preferences defaults', () => {
     })
 
     it('returns false for built-in tools in the deny-list', () => {
+      expect(
+        getDefaultEnabledForTool('yolo_local__context_prune_tool_results'),
+      ).toBe(false)
       expect(getDefaultEnabledForTool('yolo_local__context_compact')).toBe(
         false,
       )

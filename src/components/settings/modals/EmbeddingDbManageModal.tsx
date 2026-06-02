@@ -19,6 +19,7 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
+import { describeRagIndexError } from '../../../core/rag/ragIndexErrors'
 import YoloPlugin from '../../../main'
 import { EmbeddingDbStats } from '../../../types/embedding'
 import { IndexProgress } from '../../chat-view/QueryProgress'
@@ -143,7 +144,18 @@ function EmbeddingDbManageModalComponent({
         )
       } catch (error) {
         console.error(error)
-        new Notice('Failed to rebuild index')
+        const failure = describeRagIndexError(error)
+        const detail =
+          failure.message &&
+          failure.message !== 'null' &&
+          failure.message !== 'undefined'
+            ? `${failure.httpStatus ? `HTTP ${failure.httpStatus} · ` : ''}${failure.message}`
+            : ''
+        new Notice(
+          detail
+            ? `Failed to rebuild index: ${detail}`
+            : 'Failed to rebuild index',
+        )
       } finally {
         setIndexProgressMap((prev) => {
           const newMap = new Map(prev)

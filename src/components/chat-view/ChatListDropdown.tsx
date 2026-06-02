@@ -184,11 +184,6 @@ function ChatListItem({
                   ? 'Conversation running'
                   : 'Waiting approval'
               }
-              title={
-                runSummary.isRunning
-                  ? 'Conversation running'
-                  : 'Waiting approval'
-              }
             />
           ) : null}
           {isRetrying && (
@@ -217,7 +212,6 @@ function ChatListItem({
             className="clickable-icon yolo-chat-list-dropdown-item-icon"
             disabled={isUpdatingTitle}
             aria-label={t('common.save', 'Save')}
-            title={t('common.save', 'Save')}
           >
             <Check />
           </button>
@@ -263,7 +257,6 @@ function ChatListItem({
                 }}
                 className="clickable-icon yolo-chat-list-dropdown-item-icon"
                 aria-label={t('common.edit', 'Edit')}
-                title={t('common.edit', 'Edit')}
                 tabIndex={isMoreMenuOpen ? undefined : -1}
               >
                 <Pencil size={16} />
@@ -280,7 +273,6 @@ function ChatListItem({
                   isRetrying ? ' is-pending' : ''
                 }`}
                 aria-label={t('sidebar.chatList.retryTitle', 'Retry title')}
-                title={t('sidebar.chatList.retryTitle', 'Retry title')}
                 aria-busy={isRetrying ? 'true' : undefined}
                 tabIndex={isMoreMenuOpen ? undefined : -1}
               >
@@ -297,10 +289,6 @@ function ChatListItem({
                 }}
                 className="clickable-icon yolo-chat-list-dropdown-item-icon"
                 aria-label={t(
-                  'sidebar.chatList.exportConversation',
-                  'Export conversation to vault',
-                )}
-                title={t(
                   'sidebar.chatList.exportConversation',
                   'Export conversation to vault',
                 )}

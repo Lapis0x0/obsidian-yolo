@@ -313,6 +313,8 @@ export type TranslationKeys = {
       builtinFsSearchDesc?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string
+      builtinContextPruneToolResultsLabel?: string
+      builtinContextPruneToolResultsDesc?: string
       builtinContextCompactLabel?: string
       builtinContextCompactDesc?: string
       builtinToolSearchLabel?: string
@@ -755,9 +757,39 @@ export type TranslationKeys = {
       modelIdPlaceholder: string
       modelName: string
       modelNamePlaceholder: string
+      // model connectivity / health check
+      connectivityTest: {
+        button: string
+        title: string
+        testAll: string
+        retest: string
+        stop: string
+        test: string
+        passed: string
+        statusTesting: string
+        statusOk: string
+        statusFail: string
+        statusTimeout: string
+        statusIdle: string
+        normalCount: string
+        abnormalCount: string
+        notTested: string
+        noResponse: string
+        firstToken: string
+        dims: string
+        noModels: string
+      }
       // auto-fetched models helper labels
       availableModelsAuto?: string
       searchModels?: string
+      // batch add models
+      modeSingle?: string
+      modeBatch?: string
+      batchSelectAll?: string
+      batchSelected?: string
+      batchAlreadyAdded?: string
+      batchAdd?: string
+      batchHint?: string
       fetchModelsFailed?: string
       embeddingModelsFirst?: string
       // reasoning UI
@@ -1182,6 +1214,13 @@ export type TranslationKeys = {
       chatApplyModeDesc?: string
       chatApplyModeReviewRequired?: string
       chatApplyModeDirectApply?: string
+      persistSelectionHighlight?: string
+      persistSelectionHighlightDesc?: string
+      chatExportSubsectionTitle?: string
+      chatExportIncludeThinking?: string
+      chatExportIncludeThinkingDesc?: string
+      chatExportIncludeToolCalls?: string
+      chatExportIncludeToolCallsDesc?: string
       notifications?: string
       notificationsDesc?: string
       notificationsEnabled?: string

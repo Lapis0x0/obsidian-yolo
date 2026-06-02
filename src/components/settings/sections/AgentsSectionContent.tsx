@@ -1286,10 +1286,6 @@ export function AgentsSectionContent({
                     'settings.agent.editorSystemPromptExpand',
                     'Expand editor',
                   )}
-                  title={t(
-                    'settings.agent.editorSystemPromptExpand',
-                    'Expand editor',
-                  )}
                   onClick={() => setIsSystemPromptExpanded(true)}
                 >
                   <Maximize2 size={14} />
@@ -1320,10 +1316,6 @@ export function AgentsSectionContent({
                           type="button"
                           className="clickable-icon yolo-agent-system-prompt-overlay-close"
                           aria-label={t(
-                            'settings.agent.editorSystemPromptCollapse',
-                            'Close editor',
-                          )}
-                          title={t(
                             'settings.agent.editorSystemPromptCollapse',
                             'Close editor',
                           )}

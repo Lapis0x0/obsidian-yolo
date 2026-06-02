@@ -152,7 +152,6 @@ export function FolderSelectionList({
         <div className="yolo-folder-selection-actions">
           <button
             aria-label={t('common.add', '添加')}
-            title={t('common.add', '添加')}
             onClick={() => handleAdd()}
             className="yolo-folder-selection-btn"
           >
@@ -160,7 +159,6 @@ export function FolderSelectionList({
           </button>
           <button
             aria-label={t('common.clear', '清空')}
-            title={t('common.clear', '清空')}
             onClick={() => handleClear()}
             className="yolo-folder-selection-btn"
           >

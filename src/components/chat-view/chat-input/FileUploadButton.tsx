@@ -22,7 +22,6 @@ export function FileUploadButton({
   return (
     <label
       className="yolo-chat-user-input-submit-button yolo-chat-user-input-upload-button"
-      title={label}
       aria-label={label}
     >
       <input

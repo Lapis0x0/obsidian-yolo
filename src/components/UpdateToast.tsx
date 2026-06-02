@@ -75,12 +75,11 @@ function UpdateToast() {
   const headerLang = releaseNotes
     ? resolveDefaultLanguage(releaseNotes, language)
     : 'en'
-  const headerNotes = releaseNotes
-    ? (releaseNotes[headerLang] ?? releaseNotes.en ?? releaseNotes.zh ?? '')
-    : ''
-  const bodyNotes = releaseNotes
-    ? (releaseNotes[lang] ?? releaseNotes.en ?? releaseNotes.zh ?? '')
-    : ''
+  const headerNotes = releaseNotes ? (releaseNotes[headerLang] ?? '') : ''
+  const bodyLang = releaseNotes
+    ? resolveDefaultLanguage(releaseNotes, lang)
+    : 'en'
+  const bodyNotes = releaseNotes ? (releaseNotes[bodyLang] ?? '') : ''
   const subtitle = useMemo(
     () => parseChangelog(headerNotes).subtitle,
     [headerNotes],
@@ -149,7 +148,6 @@ function UpdateToast() {
           className="yolo-update-toast-icon-button"
           onClick={() => setExiting(true)}
           aria-label={muteLabel}
-          title={muteLabel}
         >
           <X size={14} strokeWidth={1.8} />
         </button>

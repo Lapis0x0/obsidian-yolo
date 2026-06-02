@@ -124,11 +124,6 @@ export function ChatConversationPane({
                   ? scrollToBottomWhileStreamingLabel
                   : scrollToBottomLabel
               }
-              title={
-                hasStreamingMessages
-                  ? scrollToBottomWhileStreamingLabel
-                  : scrollToBottomLabel
-              }
             >
               <ArrowDown size={14} strokeWidth={2.25} />
             </button>

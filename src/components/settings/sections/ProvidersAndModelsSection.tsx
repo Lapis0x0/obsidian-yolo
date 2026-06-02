@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
+  Activity,
   ChevronDown,
   ChevronRight,
   Edit,
@@ -38,6 +39,7 @@ import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
 import { AddEmbeddingModelModal } from '../modals/AddEmbeddingModelModal'
+import { ConnectivityTestModal } from '../modals/ConnectivityTestModal'
 import { EditChatModelModal } from '../modals/EditChatModelModal'
 import { EditEmbeddingModelModal } from '../modals/EditEmbeddingModelModal'
 import { EditProviderModal } from '../modals/ProviderFormModal'
@@ -558,7 +560,15 @@ function ProviderSectionItem({
       data-provider-id={provider.id}
       {...attributes}
     >
-      <div className="yolo-provider-header">
+      <div
+        className="yolo-provider-header"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('button')) {
+            return
+          }
+          toggleProvider(provider.id)
+        }}
+      >
         <button
           type="button"
           className="yolo-provider-drag-handle"
@@ -757,16 +767,29 @@ function ChatModelsTable({
     <div className="yolo-models-subsection">
       <div className="yolo-models-subsection-header">
         <span>{t('settings.models.chatModels')}</span>
-        <button
-          type="button"
-          className="yolo-add-model-btn"
-          onClick={() => {
-            const modal = new AddChatModelModal(app, plugin, provider)
-            modal.open()
-          }}
-        >
-          + {t('settings.models.addChatModel')}
-        </button>
+        <div className="yolo-models-subsection-actions">
+          <button
+            type="button"
+            className="yolo-connectivity-test-btn"
+            onClick={() => {
+              const modal = new ConnectivityTestModal(app, plugin, provider)
+              modal.open()
+            }}
+          >
+            <Activity size={13} />
+            {t('settings.models.connectivityTest.button', '连通性测试')}
+          </button>
+          <button
+            type="button"
+            className="yolo-add-model-btn"
+            onClick={() => {
+              const modal = new AddChatModelModal(app, plugin, provider)
+              modal.open()
+            }}
+          >
+            + {t('settings.models.addChatModel')}
+          </button>
+        </div>
       </div>
 
       {models.length > 0 ? (
