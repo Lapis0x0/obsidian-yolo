@@ -70,6 +70,8 @@ type ActiveSession = {
   abortController: AbortController
   decision: VoiceEditorDecision | null
   ghostFromOffset: number | null
+  /** True only while the visible voice ghost is raw ASR waiting for polish. */
+  asrPreviewActive: boolean
   recordingStartedAt: number
   asrTranscript: string | null
   /** Polished text the user has not Tab-accepted yet. Becomes the next
@@ -568,6 +570,7 @@ export class ContextVoiceInputWorkflow {
       abortController,
       decision: null,
       ghostFromOffset: null,
+      asrPreviewActive: false,
       recordingStartedAt,
       asrTranscript: null,
       previousModelOutput: input.previousModelOutput,
@@ -1142,6 +1145,8 @@ export class ContextVoiceInputWorkflow {
         // and the running draft so the next segment starts cleanly.
         session.previousModelOutput = ''
         session.decision = null
+        session.ghostFromOffset = null
+        session.asrPreviewActive = false
         if (session.view) {
           this.deps.setInlineSuggestionGhost(session.view, null)
         }
@@ -1268,6 +1273,30 @@ export class ContextVoiceInputWorkflow {
     const view = editor ? this.deps.getEditorView(editor) : this.session?.view
     if (!view) return false
     return this.tryAcceptFromView(view)
+  }
+
+  private tryConsumeAsrPreviewTab(
+    session: ActiveSession,
+    view: EditorView,
+  ): boolean {
+    if (
+      !session.asrPreviewActive ||
+      session.ghostFromOffset === null ||
+      !session.asrTranscript?.trim()
+    ) {
+      return false
+    }
+
+    const currentView = this.deps.getEditorView(session.editor)
+    if (!currentView || currentView !== view) return false
+    session.view = currentView
+
+    // Raw ASR is a transient preview while the polish call is still pending.
+    // Swallow Tab here so CodeMirror does not insert indentation, fire a doc
+    // change, and invalidate the only visible transcript before LLM output
+    // arrives.
+    if (!this.ensureDecisionAnchorStillCurrent(session)) return true
+    return true
   }
 
   private async polishTranscript({
@@ -1466,6 +1495,7 @@ export class ContextVoiceInputWorkflow {
       text: safeText,
       variant: 'voice-asr',
     })
+    session.asrPreviewActive = true
   }
 
   private showPolishedPreview(
@@ -1493,6 +1523,7 @@ export class ContextVoiceInputWorkflow {
     const safeText = decision.text.replace(/\r/g, '')
 
     session.ghostFromOffset = fromOffset
+    session.asrPreviewActive = false
     this.deps.setInlineSuggestionGhost(view, {
       from: fromOffset,
       text: safeText,
@@ -1514,8 +1545,12 @@ export class ContextVoiceInputWorkflow {
 
   tryAcceptFromView(view: EditorView): boolean {
     const session = this.session
-    const decision = session?.decision
-    if (!session || !decision) return false
+    if (!session) return false
+    if (session.asrPreviewActive) {
+      return this.tryConsumeAsrPreviewTab(session, view)
+    }
+    const decision = session.decision
+    if (!decision) return this.tryConsumeAsrPreviewTab(session, view)
 
     // Accept only if the incoming view IS the editor's current view —
     // not if it's a stale handle from some other editor. We deliberately

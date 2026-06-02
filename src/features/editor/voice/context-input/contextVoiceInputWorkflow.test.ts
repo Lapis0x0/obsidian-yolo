@@ -8,7 +8,11 @@ import { ContextVoiceInputWorkflow } from './contextVoiceInputWorkflow'
 import type { RecordedAudio } from './voiceInputRecorder'
 
 const makeController = (currentView: EditorView | null) => {
-  const editor = {} as Editor
+  const editor = {
+    getCursor: jest.fn(() => ({ line: 0, ch: 0 })),
+    getSelection: jest.fn(() => ''),
+    posToOffset: jest.fn((pos: { line: number; ch: number }) => pos.ch),
+  } as unknown as Editor
   const setInlineSuggestionGhost = jest.fn()
   const setActiveVoiceSuggestion = jest.fn()
   const setVoiceInputInProgress = jest.fn()
@@ -65,6 +69,7 @@ const seedReadySession = (
     abortController: new AbortController(),
     decision: { action: 'insert_at_cursor', text: 'preview' },
     ghostFromOffset: 0,
+    asrPreviewActive: false,
     recordingStartedAt: 1,
     asrTranscript: null,
     previousModelOutput: 'preview',
@@ -81,6 +86,50 @@ const seedReadySession = (
     }
   ).status = {
     state: 'ready',
+    recordingStartedAt: 1,
+    mediaStream: null,
+    canCancel: true,
+  }
+}
+
+const seedAsrPreviewSession = (
+  controller: ContextVoiceInputWorkflow,
+  input: { editor: Editor; cachedView: EditorView },
+) => {
+  ;(
+    controller as unknown as {
+      session: unknown
+    }
+  ).session = {
+    editor: input.editor,
+    view: input.cachedView,
+    startCursorOffset: 0,
+    selectionFromOffset: 0,
+    selectionToOffset: 0,
+    hasSelection: false,
+    selectionText: '',
+    filePath: 'note.md',
+    fileTitle: 'note',
+    abortController: new AbortController(),
+    decision: null,
+    ghostFromOffset: 0,
+    asrPreviewActive: true,
+    recordingStartedAt: 1,
+    asrTranscript: 'raw transcript',
+    previousModelOutput: '',
+    pendingSegments: [],
+    polishWorkerRunning: false,
+    inFlightPolish: null,
+    mergeAbortTimers: [],
+    streamingAsr: null,
+    streamingAsrStartedAt: null,
+  }
+  ;(
+    controller as unknown as {
+      status: unknown
+    }
+  ).status = {
+    state: 'polishing',
     recordingStartedAt: 1,
     mediaStream: null,
     canCancel: true,
@@ -115,6 +164,7 @@ const seedStreamingRecordingSession = (
     abortController: new AbortController(),
     decision: null,
     ghostFromOffset: 0,
+    asrPreviewActive: false,
     recordingStartedAt: 1,
     asrTranscript: null,
     previousModelOutput: '',
@@ -142,6 +192,38 @@ const seedStreamingRecordingSession = (
     canCancel: true,
   }
 }
+
+describe('ContextVoiceInputWorkflow.tryAcceptFromView', () => {
+  it('consumes Tab while raw ASR preview is visible and polish has not landed', () => {
+    const currentView = { id: 'current' } as unknown as EditorView
+    const { controller, editor, setInlineSuggestionGhost } =
+      makeController(currentView)
+    seedAsrPreviewSession(controller, { editor, cachedView: currentView })
+
+    expect(controller.tryAcceptFromView(currentView)).toBe(true)
+    expect(setInlineSuggestionGhost).not.toHaveBeenCalled()
+    expect(controller.getStatus().state).toBe('polishing')
+  })
+
+  it('does not accept a stale polished decision while a newer ASR preview is visible', () => {
+    const currentView = { id: 'current' } as unknown as EditorView
+    const { controller, editor, setInlineSuggestionGhost } =
+      makeController(currentView)
+    seedAsrPreviewSession(controller, { editor, cachedView: currentView })
+    ;(
+      controller as unknown as {
+        session: { decision: { action: 'insert_at_cursor'; text: string } }
+      }
+    ).session.decision = {
+      action: 'insert_at_cursor',
+      text: 'old polished text',
+    }
+
+    expect(controller.tryAcceptFromView(currentView)).toBe(true)
+    expect(setInlineSuggestionGhost).not.toHaveBeenCalled()
+    expect(controller.getStatus().state).toBe('polishing')
+  })
+})
 
 describe('ContextVoiceInputWorkflow.tryRejectFromView', () => {
   it('rejects the preview through the editor current view even if cached view drifted', () => {

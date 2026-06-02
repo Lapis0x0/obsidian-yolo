@@ -240,7 +240,12 @@ export class InlineSuggestionController {
 
   tryAcceptInlineSuggestionFromView(view: EditorView): boolean {
     const suggestion = this.activeInlineSuggestion
-    if (!suggestion) return false
+    if (!suggestion) {
+      // Voice ASR can display a raw ghost before the polished suggestion is
+      // promoted into activeInlineSuggestion. Give the voice workflow first
+      // chance to swallow Tab so the editor does not indent and clear it.
+      return this.getVoiceController()?.tryAcceptFromView(view) ?? false
+    }
 
     if (suggestion.source === 'tab') {
       if (suggestion.view !== view) return false
