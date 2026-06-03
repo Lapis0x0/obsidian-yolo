@@ -113,9 +113,10 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
     applyDeepSeekCapabilities({
       request: formattedRequest,
       model,
-      reasoningLevel:
-        request.reasoningLevel ??
-        resolveRequestReasoningLevel(model, request.reasoningLevel),
+      reasoningLevel: resolveRequestReasoningLevel(
+        model,
+        request.reasoningLevel,
+      ),
     })
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)
@@ -164,9 +165,10 @@ export class DeepSeekStudioProvider extends BaseLLMProvider<LLMProvider> {
     applyDeepSeekCapabilities({
       request: formattedRequest,
       model,
-      reasoningLevel:
-        request.reasoningLevel ??
-        resolveRequestReasoningLevel(model, request.reasoningLevel),
+      reasoningLevel: resolveRequestReasoningLevel(
+        model,
+        request.reasoningLevel,
+      ),
     })
 
     formattedRequest = this.applyCustomModelParameters(model, formattedRequest)

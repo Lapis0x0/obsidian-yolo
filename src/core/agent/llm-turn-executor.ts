@@ -177,16 +177,10 @@ export class AgentLlmTurnExecutor {
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     let requestReasoning: ReasoningLevel | undefined
     try {
-      // Some providers auto-enable thinking even when the local model card
-      // still lacks `reasoningType`. Preserve explicit `off` so adapters can
-      // send disable-thinking knobs; remove this once metadata is reliable.
-      requestReasoning =
-        this.input.reasoningLevel === 'off'
-          ? 'off'
-          : resolveRequestReasoningLevel(
-              this.input.model,
-              this.input.reasoningLevel,
-            )
+      requestReasoning = resolveRequestReasoningLevel(
+        this.input.model,
+        this.input.reasoningLevel,
+      )
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
         model: this.input.model,

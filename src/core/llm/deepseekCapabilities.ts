@@ -23,16 +23,14 @@ export function applyDeepSeekCapabilities(params: {
   const { request, model, reasoningLevel } = params
 
   if (isDeepSeekReasonerModel(model.model)) return
-  if (!reasoningLevel) return
+  if (!modelSupportsReasoning(model) || !reasoningLevel) return
 
-  if (reasoningLevel === 'off') {
-    request.thinking = { type: 'disabled' }
+  if (reasoningLevel === 'auto') {
     return
   }
 
-  if (!modelSupportsReasoning(model)) return
-
-  if (reasoningLevel === 'auto') {
+  if (reasoningLevel === 'off') {
+    request.thinking = { type: 'disabled' }
     return
   }
 
