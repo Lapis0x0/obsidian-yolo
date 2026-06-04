@@ -7,6 +7,7 @@ const NEAR_BOTTOM_THRESHOLD = 24
 const REATTACH_BOTTOM_THRESHOLD = 96
 const FOLLOW_MAX_FRAMES = 6
 const FOLLOW_SETTLE_THRESHOLD_PX = 2
+const UPWARD_SCROLL_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
 
 type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
@@ -21,6 +22,12 @@ type UseAutoScrollProps = {
    * in surfaces like Quick Ask where both fired on every token.
    */
   followFromReactCommitsOnly?: boolean
+}
+
+export function isUpwardKeyboardScrollIntent(
+  event: Pick<KeyboardEvent, 'key'>,
+) {
+  return UPWARD_SCROLL_KEYS.has(event.key)
 }
 
 export function useAutoScroll({
@@ -254,6 +261,12 @@ export function useAutoScroll({
       }
     }
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isUpwardKeyboardScrollIntent(event)) {
+        markUserScrollIntent()
+      }
+    }
+
     const handleTouchStart = (event: TouchEvent) => {
       lastTouchYRef.current = event.touches[0]?.clientY ?? null
     }
@@ -294,6 +307,11 @@ export function useAutoScroll({
     })
     scrollContainerElement.addEventListener('pointerdown', markUserScrollIntent)
     scrollContainerElement.addEventListener('scroll', handleScroll)
+    scrollContainerElement.ownerDocument.addEventListener(
+      'keydown',
+      handleKeyDown,
+      true,
+    )
     return () => {
       scrollContainerElement.removeEventListener('wheel', handleWheel)
       scrollContainerElement.removeEventListener('touchstart', handleTouchStart)
@@ -308,6 +326,11 @@ export function useAutoScroll({
         markUserScrollIntent,
       )
       scrollContainerElement.removeEventListener('scroll', handleScroll)
+      scrollContainerElement.ownerDocument.removeEventListener(
+        'keydown',
+        handleKeyDown,
+        true,
+      )
     }
   }, [
     hasRecentUserScrollIntent,
