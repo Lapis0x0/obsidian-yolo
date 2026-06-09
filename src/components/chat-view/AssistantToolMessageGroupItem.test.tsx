@@ -64,7 +64,6 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ChatAssistantMessage } from '../../types/chat'
-
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 

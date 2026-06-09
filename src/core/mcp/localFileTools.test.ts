@@ -55,7 +55,6 @@ import { extractPdfText } from '../../utils/pdf/extractPdfText'
 import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import { PdfSliceError, slicePdfPages } from '../../utils/pdf/slicePdfPages'
 import type { RAGEngine } from '../rag/ragEngine'
-
 import {
   callLocalFileTool,
   getLocalFileTools,

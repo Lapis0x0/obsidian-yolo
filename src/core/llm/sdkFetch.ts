@@ -4,7 +4,6 @@ import type { RequestTransportMode } from '../../types/provider.types'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { shouldBypassProxy } from '../../utils/net/proxyBypass'
 import { resolveSystemProxy } from '../../utils/net/systemProxyResolver'
-
 import { createLLMDebugFetch } from './debugCapture'
 
 type RequestOptions = import('node:http').RequestOptions

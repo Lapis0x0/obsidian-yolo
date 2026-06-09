@@ -5,7 +5,6 @@ import { useLanguage } from '../../contexts/language-context'
 import type { PromptSectionBucket } from '../../utils/chat/requestContextBuilder'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { YoloPopoverContent } from '../common/popover'
-
 import ContextUsageRing from './ContextUsageRing'
 import {
   type ContextBreakdownInputs,

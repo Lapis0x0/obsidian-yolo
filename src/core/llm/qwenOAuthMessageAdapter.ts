@@ -7,7 +7,6 @@ import {
 
 import { LLMRequest, RequestMessage } from '../../types/llm/request'
 import { filterEmptyAssistantMessages } from '../../utils/chat/tool-boundary'
-
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 function collapsePureTextContent(

@@ -3,7 +3,6 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import DotLoader from '../common/DotLoader'
-
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 import StreamingMarkdown from './StreamingMarkdown'
 

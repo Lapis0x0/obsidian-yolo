@@ -8,7 +8,6 @@ import {
 import { SelectEmbedding } from '../../database/schema'
 import { YoloSettings } from '../../settings/schema/setting.types'
 import { EmbeddingModelClient } from '../../types/embedding'
-
 import { getEmbeddingModelClient } from './embedding'
 import type { ReconcileScope } from './reconciler'
 

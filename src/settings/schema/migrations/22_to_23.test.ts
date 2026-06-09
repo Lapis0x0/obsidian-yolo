@@ -1,5 +1,4 @@
 import { DEFAULT_TAB_COMPLETION_LENGTH_PRESET } from '../setting.types'
-
 import { migrateFrom22To23 } from './22_to_23'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

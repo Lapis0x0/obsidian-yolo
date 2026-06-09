@@ -11,7 +11,6 @@ import {
 } from '../../core/llm/debugCapture'
 import { buildLLMDebugMarkdown } from '../../core/llm/debugMarkdown'
 import type { ChatAssistantMessage } from '../../types/chat'
-
 import { getLLMDebugTraceIdsForMessages } from './llmDebugTraceSelection'
 
 describe('getLLMDebugTraceIdsForMessages', () => {

@@ -1,7 +1,6 @@
 import { Platform } from 'obsidian'
 
 import { RequestTransportMode } from '../../types/provider.types'
-
 import { inheritLLMDebugTraceSignal } from './debugCapture'
 
 export type AutoPromotedTransportMode = Extract<

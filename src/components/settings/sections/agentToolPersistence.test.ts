@@ -1,6 +1,5 @@
 import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { getToolName } from '../../../core/mcp/tool-name-utils'
-
 import {
   normalizeToolPreferencesForPersistence,
   normalizeToolSelectionForPersistence,

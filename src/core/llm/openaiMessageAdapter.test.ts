@@ -1,5 +1,4 @@
 import { LLMRequest } from '../../types/llm/request'
-
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 class TestOpenAIMessageAdapter extends OpenAIMessageAdapter {

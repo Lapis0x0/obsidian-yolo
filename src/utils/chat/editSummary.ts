@@ -15,7 +15,6 @@ import type {
   ToolEditUndoStatus,
 } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { editUndoSnapshotStore } from './editUndoSnapshotStore'
 
 export type GroupEditSummaryEntry = {

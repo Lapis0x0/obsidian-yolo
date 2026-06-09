@@ -10,7 +10,6 @@ import {
   type ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
-
 import {
   type SubagentCardArgs,
   buildSubagentCompletionSummary,

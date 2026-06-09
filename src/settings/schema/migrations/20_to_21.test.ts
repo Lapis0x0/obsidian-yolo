@@ -1,5 +1,4 @@
 import { DEFAULT_TAB_COMPLETION_TRIGGERS } from '../setting.types'
-
 import { migrateFrom20To21 } from './20_to_21'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -1,5 +1,4 @@
 import { getQwenOAuthService } from '../auth/qwenOAuthRuntime'
-
 import { QwenOAuthProvider } from './qwenOAuthProvider'
 
 jest.mock('../auth/qwenOAuthRuntime', () => ({

@@ -1,5 +1,4 @@
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
-
 import { RAGEngine, dedupeRagQueryResults } from './ragEngine'
 
 jest.mock('./embedding', () => ({

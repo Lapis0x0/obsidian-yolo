@@ -18,7 +18,6 @@ import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
 } from '../../types/chat'
-
 import {
   LLMDebugIconButton,
   getLLMDebugTraceIdsForMessages,

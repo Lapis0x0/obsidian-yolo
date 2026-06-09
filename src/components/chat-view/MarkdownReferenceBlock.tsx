@@ -17,7 +17,6 @@ import {
   openPdfFileAtPage,
   readTFileContent,
 } from '../../utils/obsidian'
-
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 
 // Defer react-syntax-highlighter (refractor + prism langs, ~600KB) until a

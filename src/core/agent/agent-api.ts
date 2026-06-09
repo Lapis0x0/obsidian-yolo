@@ -16,7 +16,6 @@ import { getChatModelClient } from '../llm/manager'
 import type { McpManager } from '../mcp/mcpManager'
 import { listLiteSkillEntries } from '../skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../skills/skillPolicy'
-
 import { DEFAULT_ASSISTANT_ID } from './default-assistant'
 import type {
   AgentConversationState,

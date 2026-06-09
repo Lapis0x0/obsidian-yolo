@@ -1,6 +1,5 @@
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import type { AgentConversationState } from '../agent/service'
-
 import { AgentNotificationCoordinator } from './agentNotificationCoordinator'
 import type { NotificationEvent } from './notificationService'
 

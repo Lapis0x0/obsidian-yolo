@@ -1,6 +1,5 @@
 import { getDefaultApiTypeForPresetType } from '../../../types/provider.types'
 import type { LLMProviderPresetType } from '../../../types/provider.types'
-
 import {
   V2_DEFAULT_CHAT_MODELS,
   V2_DEFAULT_EMBEDDING_MODELS,

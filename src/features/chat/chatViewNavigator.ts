@@ -15,7 +15,6 @@ import type {
   MentionableImage,
 } from '../../types/mentionable'
 import { getMentionableBlockData } from '../../utils/obsidian'
-
 import {
   ChatLeafPlacement,
   PendingChatOpenPayload,

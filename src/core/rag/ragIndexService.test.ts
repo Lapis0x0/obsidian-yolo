@@ -1,5 +1,4 @@
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
-
 import { RagIndexBusyError, RagIndexService } from './ragIndexService'
 
 const waitForNextTick = async () =>

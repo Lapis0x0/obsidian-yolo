@@ -35,7 +35,6 @@ import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
-
 import { getToolHeadlineParts, getToolHeadlineText } from './toolHeadline'
 import ToolMessage, {
   type ToolLabels,

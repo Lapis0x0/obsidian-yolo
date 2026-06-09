@@ -4,7 +4,6 @@ import type {
 } from '../../types/chat'
 import { getLatestChatConversationCompaction } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { isLoadToolSchemasToolName } from './tool-selection'
 
 export const LOAD_TOOL_SCHEMAS_RESULT_TOOL = 'load_tool_schemas'

@@ -2,7 +2,6 @@ import {
   ToolCallResponseStatus,
   type ToolEditSummary,
 } from '../../types/tool-call.types'
-
 import type { ToolLabels } from './ToolMessage'
 
 export type ToolDisplayInfo = {

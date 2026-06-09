@@ -4,7 +4,6 @@ import { memo, useRef } from 'react'
 import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
 import { ReasoningLevel } from '../../types/reasoning'
-
 import ChatUserInput, { ChatUserInputRef } from './chat-input/ChatUserInput'
 
 export type EditableUserMessageItemProps = {

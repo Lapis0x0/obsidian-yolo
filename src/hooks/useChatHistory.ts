@@ -42,7 +42,6 @@ import {
   deserializeMentionable,
   serializeMentionable,
 } from '../utils/chat/mentionable'
-
 import { useChatManager } from './useJsonManagers'
 
 const LEGACY_UNTITLED_TITLE_SET = new Set<string>(

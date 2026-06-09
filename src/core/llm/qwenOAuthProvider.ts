@@ -17,7 +17,6 @@ import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
 import { getQwenOAuthService } from '../auth/qwenOAuthRuntime'
-
 import { BaseLLMProvider } from './base'
 import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'

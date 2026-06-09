@@ -8,7 +8,6 @@ import {
 } from '../../database/json/chat/pdfTextCacheStore'
 import { base64ToUint8Array } from '../base64'
 import { createYieldController } from '../common/yield-to-main'
-
 import { loadPdfPages } from './pdfPages'
 
 /** Hard cap for vault PDF indexing (binary size). */

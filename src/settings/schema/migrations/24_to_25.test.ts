@@ -1,5 +1,4 @@
 import { DEFAULT_TAB_COMPLETION_OPTIONS } from '../setting.types'
-
 import { migrateFrom24To25 } from './24_to_25'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

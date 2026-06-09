@@ -1,6 +1,5 @@
 import { migrateModelId } from '../../../utils/model-id-utils'
 import { SettingMigration } from '../setting.types'
-
 import {
   getMigratedChatModels,
   getMigratedEmbeddingModels,

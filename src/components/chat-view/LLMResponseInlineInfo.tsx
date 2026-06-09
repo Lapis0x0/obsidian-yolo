@@ -5,7 +5,6 @@ import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { AssistantToolMessageGroup } from '../../types/chat'
 import { ResponseUsage } from '../../types/llm/response'
-
 import {
   LLMDebugIconButton,
   getLLMDebugTraceIdsForMessages,

@@ -2,7 +2,6 @@ import type { SSEClientTransportOptions } from '@modelcontextprotocol/sdk/client
 import type { StreamableHTTPClientTransportOptions } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
 import type { McpServerParameters } from '../../types/mcp.types'
-
 import { createDesktopMcpFetch } from './desktopMcpFetch'
 
 type McpRemoteTransportParameters = Extract<

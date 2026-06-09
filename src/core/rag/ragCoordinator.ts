@@ -2,7 +2,6 @@ import { App } from 'obsidian'
 
 import { DatabaseManager } from '../../database/DatabaseManager'
 import { YoloSettings } from '../../settings/schema/setting.types'
-
 import { RAGEngine } from './ragEngine'
 
 type RagCoordinatorDeps = {

@@ -9,7 +9,6 @@ import React, {
 
 import { useLanguage } from '../../contexts/language-context'
 import YoloPlugin from '../../main'
-
 import { AgentTab } from './tabs/AgentTab'
 import { EditorTab } from './tabs/EditorTab'
 import { KnowledgeTab } from './tabs/KnowledgeTab'

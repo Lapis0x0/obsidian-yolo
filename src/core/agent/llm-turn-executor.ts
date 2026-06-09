@@ -30,7 +30,6 @@ import {
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
-
 import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import { selectAllowedTools } from './tool-selection'
 

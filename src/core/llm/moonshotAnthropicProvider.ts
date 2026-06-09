@@ -4,7 +4,6 @@ import {
 } from '@anthropic-ai/sdk/resources/messages'
 
 import { RequestMessage } from '../../types/llm/request'
-
 import { AnthropicProvider } from './anthropic'
 
 // Kimi 的 Anthropic 兼容端点不校验 thinking block 的 signature 真实性，

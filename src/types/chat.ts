@@ -1,7 +1,6 @@
 import { SerializedEditorState } from 'lexical'
 
 import { CitationSource } from '../core/agent/citationRegistry'
-
 import { ChatModel } from './chat-model.types'
 import { ContentPart } from './llm/request'
 import { Annotation, ProviderMetadata, ResponseUsage } from './llm/response'

@@ -31,8 +31,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
+import type { JSX as ReactJSX } from 'react/jsx-runtime'
 
 import { PROVIDER_PRESET_INFO } from '../../../../../constants'
 import { useApp } from '../../../../../contexts/app-context'
@@ -57,7 +57,6 @@ import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '../typeahead-menu/LexicalTypeaheadMenuPlugin'
-
 import { $createMentionNode } from './MentionNode'
 
 const PUNCTUATION =

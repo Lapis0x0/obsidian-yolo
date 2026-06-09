@@ -82,7 +82,6 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SimpleSelect } from '../../common/SimpleSelect'
 import { openIconPicker } from '../assistants/AssistantIconPicker'
-
 import {
   normalizeToolPreferencesForPersistence,
   normalizeToolSelectionForPersistence,

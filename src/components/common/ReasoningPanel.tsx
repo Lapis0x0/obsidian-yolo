@@ -7,7 +7,6 @@ import {
   getDefaultReasoningLevel,
   modelSupportsReasoning,
 } from '../../types/reasoning'
-
 import { REASONING_OPTIONS, ReasoningSegmented } from './ReasoningSegmented'
 
 type ReasoningPanelProps = {

@@ -1,5 +1,4 @@
 import { TodoItem } from '../../../core/agent/todos-from-messages'
-
 import { renderTodoListInjection } from './todoListContext'
 
 const pending = (content: string): TodoItem => ({

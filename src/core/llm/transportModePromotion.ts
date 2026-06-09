@@ -2,7 +2,6 @@ import { Notice, getLanguage } from 'obsidian'
 
 import { type Language, createTranslationFunction } from '../../i18n'
 import type { YoloSettings } from '../../settings/schema/setting.types'
-
 import type { AutoPromotedTransportMode } from './requestTransport'
 
 const resolveObsidianLanguage = (): Language => {

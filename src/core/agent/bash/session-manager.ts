@@ -16,7 +16,6 @@ import { v4 as uuidv4 } from 'uuid'
 import type { TaskSource } from '../../../types/chat'
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
 import { liveTaskStreamBus } from '../live-stream/taskStreamBus'
-
 import type { ShellProvider } from './shell-provider'
 import { resolveShellProvider } from './shell-provider'
 import type { BashTaskRecord } from './types'

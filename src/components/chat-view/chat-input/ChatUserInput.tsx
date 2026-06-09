@@ -58,7 +58,6 @@ import ContextUsagePopover from '../ContextUsagePopover'
 import ContextUsageRing from '../ContextUsageRing'
 import { useSnippetEntries } from '../hooks/useSnippetEntries'
 import type { ContextBreakdownInputs } from '../useContextBreakdown'
-
 import ChatSkillBadge from './ChatSkillBadge'
 import { FileUploadButton } from './FileUploadButton'
 import LexicalContentEditable from './LexicalContentEditable'

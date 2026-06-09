@@ -1,5 +1,4 @@
 import { DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT } from '../setting.types'
-
 import { migrateFrom14To15 } from './14_to_15'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

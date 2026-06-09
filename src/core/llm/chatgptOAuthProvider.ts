@@ -24,7 +24,6 @@ import {
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { getChatGPTOAuthService } from '../auth/chatgptOAuthRuntime'
-
 import { BaseLLMProvider } from './base'
 import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 import { LLMProviderNotConfiguredException } from './exception'

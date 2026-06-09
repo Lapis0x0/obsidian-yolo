@@ -5,7 +5,6 @@ import type {
   ChatToolMessage,
 } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { buildMessageTimelineItems } from './timeline'
 
 function makeToolMessage({

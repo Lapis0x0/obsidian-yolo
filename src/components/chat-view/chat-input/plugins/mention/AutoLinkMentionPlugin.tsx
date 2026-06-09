@@ -15,7 +15,6 @@ import {
   getMentionableName,
   serializeMentionable,
 } from '../../../../../utils/chat/mentionable'
-
 import { $createMentionNode } from './MentionNode'
 
 const URL_MATCHER =

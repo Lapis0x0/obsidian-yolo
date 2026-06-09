@@ -14,7 +14,6 @@ import {
   MentionableUrl,
 } from '../../../types/mentionable'
 import { getBlockMentionableCountInfo } from '../../../utils/chat/mentionable'
-
 import { getMentionableIcon } from './utils/get-metionable-icon'
 
 function BadgeBase({

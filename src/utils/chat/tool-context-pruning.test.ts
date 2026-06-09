@@ -3,7 +3,6 @@ import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
-
 import {
   collectContextPrunedToolCallIds,
   filterContextPrunedAssistantToolCalls,

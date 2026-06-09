@@ -20,7 +20,6 @@ import type { SerializedChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 import { getNodeWindow } from '../../utils/dom/window-context'
 import { YoloPopoverContent } from '../common/popover'
-
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
 /** Non-pinned conversations beyond this count collapse into the archive group. */

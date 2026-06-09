@@ -15,7 +15,6 @@ import {
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
 import { runWithLLMDebugTrace } from '../llm/debugCapture'
-
 import { composeAgentInjections } from './agent-injections'
 import {
   buildCompactedConversationState,

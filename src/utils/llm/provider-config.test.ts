@@ -1,6 +1,5 @@
 import { EmbeddingModel } from '../../types/embedding-model.types'
 import { LLMProvider } from '../../types/provider.types'
-
 import { reconcileEmbeddingModelsForProviderUpdate } from './provider-config'
 
 const createEmbeddingModels = (): EmbeddingModel[] => [

@@ -25,7 +25,6 @@ import {
   fuzzySearch,
   fuzzySearchFolders,
 } from '../../../utils/fuzzy-search'
-
 import ObsidianFileDropPlugin from './plugins/drop/ObsidianFileDropPlugin'
 import DragDropPaste from './plugins/image/DragDropPastePlugin'
 import ImagePastePlugin from './plugins/image/ImagePastePlugin'

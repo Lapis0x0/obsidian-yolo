@@ -72,7 +72,6 @@ import {
   extractPdfTextFromBase64,
 } from '../pdf/extractPdfText'
 import { prefixTimeContext } from '../prompt/timeContext'
-
 import {
   type ContextualInjection,
   appendContextualInjectionsToLastUserMessage,

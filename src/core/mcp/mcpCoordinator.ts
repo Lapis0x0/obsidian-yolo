@@ -4,7 +4,6 @@ import { YoloSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { RAGEngine } from '../rag/ragEngine'
-
 import { McpManager } from './mcpManager'
 
 type McpCoordinatorDeps = {

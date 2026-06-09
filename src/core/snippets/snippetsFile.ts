@@ -1,7 +1,6 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import { getYoloSnippetsPath } from '../paths/yoloPaths'
-
 import { DEFAULT_SNIPPETS_TEMPLATE } from './templates'
 
 type YoloSettingsLike = {

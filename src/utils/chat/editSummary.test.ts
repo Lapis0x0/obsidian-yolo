@@ -1,6 +1,5 @@
 import type { AssistantToolMessageGroup } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import {
   collectGroupEditSummary,
   countFileChangeStats,

@@ -1,5 +1,4 @@
 import { SettingMigration } from '../setting.types'
-
 import { DefaultChatModels, getMigratedChatModels } from './migrationUtils'
 
 export const DEFAULT_CHAT_MODELS_V8: DefaultChatModels = [

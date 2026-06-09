@@ -3,7 +3,6 @@ import type { ReactNode, RefObject } from 'react'
 import type { FollowOutput } from 'react-virtuoso'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
-
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
 import { SharedConversationSurface } from './SharedConversationSurface'

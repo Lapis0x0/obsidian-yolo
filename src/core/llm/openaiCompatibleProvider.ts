@@ -17,7 +17,6 @@ import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
-
 import { BaseLLMProvider } from './base'
 import { resolveAdapterForBaseUrl } from './baseUrlDetection'
 import { extractEmbeddingVector } from './embedding-utils'

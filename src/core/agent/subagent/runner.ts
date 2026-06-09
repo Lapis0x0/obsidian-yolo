@@ -12,7 +12,6 @@ import { liveTaskStreamBus } from '../live-stream/taskStreamBus'
 import { NativeAgentRuntime } from '../native-runtime'
 import type { AgentConversationState } from '../service'
 import type { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from '../types'
-
 import {
   SUBAGENT_DEFAULT_SYSTEM_PROMPT,
   SUBAGENT_MAX_AUTO_ITERATIONS,

@@ -1,7 +1,6 @@
 import { requestUrl } from 'obsidian'
 
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
-
 import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'

@@ -1,5 +1,4 @@
 import { ChatModel } from '../../types/chat-model.types'
-
 import {
   applyLightweightRequestPolicy,
   stripHeavyProviderFeatures,

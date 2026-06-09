@@ -4,7 +4,6 @@ import { Editor } from 'obsidian'
 
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type { TabCompletionController } from '../tab-completion/tabCompletionController'
-
 import {
   InlineSuggestionGhostPayload,
   inlineSuggestionGhostEffect,

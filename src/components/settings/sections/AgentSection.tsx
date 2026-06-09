@@ -34,7 +34,6 @@ import { ConfirmModal } from '../../modals/ConfirmModal'
 import { AgentSkillsModal } from '../modals/AgentSkillsModal'
 import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
-
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
 import { AgentFocusSyncSection } from './AgentFocusSyncSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'

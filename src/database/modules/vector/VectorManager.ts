@@ -31,7 +31,6 @@ import {
   extractPdfText,
 } from '../../../utils/pdf/extractPdfText'
 import { InsertEmbedding, SelectEmbedding, VectorMetaData } from '../../schema'
-
 import { VectorRepository } from './VectorRepository'
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500

@@ -4,7 +4,6 @@ import {
   YoutubeTranscript,
   isYoutubeUrl,
 } from '../../utils/chat/youtube-transcript'
-
 import { ensureSuccess, webSearchRequest } from './http'
 import type { WebSearchScrapeResult } from './types'
 

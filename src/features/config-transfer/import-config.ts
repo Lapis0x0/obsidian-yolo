@@ -5,7 +5,6 @@ import {
   yoloSettingsSchema,
 } from '../../settings/schema/setting.types'
 import { normalizeYoloSettingsReferences } from '../../settings/schema/settings'
-
 import { EXCLUDED_KEYS, EXPORTABLE_CONFIG_KEYS } from './config-keys'
 import { computeChecksum } from './export-config'
 import { deepMerge } from './merge-utils'

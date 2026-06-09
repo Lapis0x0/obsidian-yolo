@@ -13,7 +13,6 @@ import {
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
-
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'

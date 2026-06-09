@@ -14,7 +14,6 @@ import {
 } from '../../types/mcp.types'
 import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS, ReasoningLevel } from '../../types/reasoning'
-
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
 const resilientArraySchema = <T extends z.ZodTypeAny>(itemSchema: T) =>

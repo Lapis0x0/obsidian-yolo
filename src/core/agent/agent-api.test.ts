@@ -2,7 +2,6 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
-
 import {
   buildAgentApiPrompt,
   conversationStateToEvents,

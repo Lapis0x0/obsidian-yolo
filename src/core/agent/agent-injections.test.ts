@@ -5,7 +5,6 @@ import {
 } from '../../types/tool-call.types'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
 import { getToolName } from '../mcp/tool-name-utils'
-
 import { composeAgentInjections } from './agent-injections'
 import type { TodoItem } from './todos-from-messages'
 

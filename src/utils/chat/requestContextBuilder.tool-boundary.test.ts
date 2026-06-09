@@ -1,6 +1,5 @@
 import type { RequestMessage } from '../../types/llm/request'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
-
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,

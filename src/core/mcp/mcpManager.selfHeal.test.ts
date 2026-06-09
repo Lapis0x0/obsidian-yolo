@@ -69,7 +69,6 @@ import {
   McpServerStatus,
 } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { McpManager } from './mcpManager'
 
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve))

@@ -18,7 +18,6 @@ import {
 } from '../../types/reasoning'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
-
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
 import {

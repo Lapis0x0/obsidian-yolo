@@ -19,7 +19,6 @@ import {
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { getGeminiOAuthService } from '../auth/geminiOAuthRuntime'
-
 import { BaseLLMProvider } from './base'
 import { LLMProviderNotConfiguredException } from './exception'
 import { GeminiProvider } from './gemini'

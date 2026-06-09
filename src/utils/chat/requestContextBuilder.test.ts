@@ -26,7 +26,6 @@ import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
-
 import {
   RequestContextBuilder,
   extractMarkdownAtxHeadings,

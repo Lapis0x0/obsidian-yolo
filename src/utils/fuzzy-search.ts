@@ -2,7 +2,6 @@ import fuzzysort from 'fuzzysort'
 import { App, TFile, TFolder } from 'obsidian'
 
 import { MentionableFile, MentionableFolder } from '../types/mentionable'
-
 import { IMAGE_FILE_EXTENSIONS } from './llm/image'
 import { calculateFileDistance, getOpenFiles } from './obsidian'
 

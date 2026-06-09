@@ -2,7 +2,6 @@ import { TFile } from 'obsidian'
 
 import type { MentionableBlock } from '../../../../types/mentionable'
 import { editorStateToPlainText } from '../../../chat-view/chat-input/utils/editor-state-to-plain-text'
-
 import { createQuickAskEditorState } from './createQuickAskEditorState'
 
 describe('createQuickAskEditorState', () => {

@@ -1,6 +1,5 @@
 import { ChatMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { AgentService } from './service'
 
 jest.mock('./native-runtime', () => ({

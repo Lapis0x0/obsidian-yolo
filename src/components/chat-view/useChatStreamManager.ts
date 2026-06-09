@@ -48,7 +48,6 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { ErrorModal } from '../modals/ErrorModal'
-
 import { ChatMode } from './chat-input/ChatModeSelect'
 import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 import { resolveChatModeRuntime } from './chat-runtime-profiles'

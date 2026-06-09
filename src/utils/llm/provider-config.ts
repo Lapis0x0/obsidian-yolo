@@ -2,7 +2,6 @@ import { YoloSettings } from '../../settings/schema/setting.types'
 import { ChatModel } from '../../types/chat-model.types'
 import { EmbeddingModel } from '../../types/embedding-model.types'
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
-
 import { isBedrockMantleProvider, isNativeBedrockProvider } from './bedrock'
 
 export function getProviderById(

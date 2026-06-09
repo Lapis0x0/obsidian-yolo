@@ -8,7 +8,6 @@ import {
 } from '../../types/tool-call.types'
 import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
-
 import {
   buildManualCompactionState,
   createConversationCompactionSummary,

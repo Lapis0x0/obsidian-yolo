@@ -6,7 +6,6 @@ import pgliteWorkerScript from 'virtual:pglite-worker-script'
 
 import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import { yieldToMain } from '../utils/common/yield-to-main'
-
 import { PGLiteAbortedException } from './exception'
 import migrations from './migrations.json'
 import { VectorManager } from './modules/vector/VectorManager'

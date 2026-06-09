@@ -8,7 +8,6 @@ import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { UserMessageDisplaySnapshot } from '../../types/chat-timeline'
 import { Mentionable } from '../../types/mentionable'
 import { ReasoningLevel } from '../../types/reasoning'
-
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import EditableUserMessageItem from './EditableUserMessageItem'

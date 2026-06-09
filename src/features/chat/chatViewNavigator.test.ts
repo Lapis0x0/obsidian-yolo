@@ -2,7 +2,6 @@ import { TFile } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
 
 import type YoloPlugin from '../../main'
-
 import { ChatViewNavigator } from './chatViewNavigator'
 
 jest.mock('../../ChatView', () => ({

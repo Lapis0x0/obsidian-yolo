@@ -17,8 +17,8 @@ import {
   useMemo,
   useState,
 } from 'react'
-import type { JSX as ReactJSX } from 'react/jsx-runtime'
 import { createPortal } from 'react-dom'
+import type { JSX as ReactJSX } from 'react/jsx-runtime'
 
 import { useLanguage } from '../../../../../contexts/language-context'
 import {
@@ -31,7 +31,6 @@ import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '../typeahead-menu/LexicalTypeaheadMenuPlugin'
-
 import { $createSkillNode } from './SkillNode'
 
 const SUGGESTION_LIST_LENGTH_LIMIT = 20

@@ -4,7 +4,6 @@ import {
   YoloSettings,
 } from '../../settings/schema/setting.types'
 import { RequestTransportMode } from '../../types/provider.types'
-
 import { inheritLLMDebugTraceSignal } from './debugCapture'
 
 export type ModelRequestPolicy = {

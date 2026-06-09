@@ -1,5 +1,4 @@
 import type { RequestMessage } from '../../../types/llm/request'
-
 import type { EditorSnapshotInjection, EditorSnapshotSelection } from './types'
 
 const SCOPE_RULES = [

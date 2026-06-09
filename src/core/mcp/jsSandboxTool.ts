@@ -4,7 +4,6 @@ import type { JsSandboxSettings } from '../../settings/schema/setting.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
-
 import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 
 export const JS_SANDBOX_TOOL_NAME = 'js_eval'

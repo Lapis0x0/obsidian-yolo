@@ -26,7 +26,6 @@ jest.mock('../../../utils/pdf/extractPdfText', () => ({
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 
 import { sha256HexPrefix16 } from '../../../utils/common/content-hash'
-
 import { VectorManager } from './VectorManager'
 
 type ManagerInternals = {

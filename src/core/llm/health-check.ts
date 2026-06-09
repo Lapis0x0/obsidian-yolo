@@ -2,7 +2,6 @@ import { YoloSettings } from '../../settings/schema/setting.types'
 import { ChatModel } from '../../types/chat-model.types'
 import { EmbeddingModel } from '../../types/embedding-model.types'
 import { getEmbeddingModelClient } from '../rag/embedding'
-
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,

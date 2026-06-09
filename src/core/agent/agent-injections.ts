@@ -1,6 +1,5 @@
 import type { ChatMessage } from '../../types/chat'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
-
 import { deriveTodosFromMessages } from './todos-from-messages'
 
 export function composeAgentInjections(args: {

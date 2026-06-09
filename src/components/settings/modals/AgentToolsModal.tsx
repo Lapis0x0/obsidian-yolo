@@ -32,7 +32,6 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { CollapsibleToolDescription } from '../common/CollapsibleToolDescription'
 import { McpSection } from '../sections/McpSection'
-
 import { JsSandboxConfigModal } from './JsSandboxConfigModal'
 import { TerminalCommandConfigModal } from './TerminalCommandConfigModal'
 import { WebSearchSettingsModal } from './WebSearchSettingsModal'

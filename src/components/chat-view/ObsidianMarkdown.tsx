@@ -5,7 +5,6 @@ import { useApp } from '../../contexts/app-context'
 import { useChatView } from '../../contexts/chat-view-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
-
 import {
   annotateRenderedLatex,
   copySelectedLatex,

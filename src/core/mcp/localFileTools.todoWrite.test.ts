@@ -1,7 +1,6 @@
 import { App } from 'obsidian'
 
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { callLocalFileTool } from './localFileTools'
 
 const stubApp = {} as unknown as App

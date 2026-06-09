@@ -1,5 +1,4 @@
 import { parseYoloSettings } from '../../settings/schema/settings'
-
 import {
   DEFAULT_ASSISTANT_ID,
   ensureDefaultAssistantInSettings,

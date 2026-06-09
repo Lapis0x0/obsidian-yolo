@@ -3,7 +3,6 @@ import type { App } from 'obsidian'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { RequestMessage } from '../../../types/llm/request'
 import { isImageTFile, tFileToImageDataUrl } from '../../llm/image'
-
 import type { CurrentFilePointerInjection } from './types'
 
 export type CurrentFilePointerRenderContext = {

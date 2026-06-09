@@ -86,7 +86,6 @@ import { SharedConversationSurface } from '../../chat-view/SharedConversationSur
 import { useAutoScroll } from '../../chat-view/useAutoScroll'
 import UserMessageItem from '../../chat-view/UserMessageItem'
 import { YoloDropdownContent } from '../../common/popover'
-
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'

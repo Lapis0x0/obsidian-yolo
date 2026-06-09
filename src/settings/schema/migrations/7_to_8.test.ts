@@ -1,5 +1,4 @@
 import { ChatModel } from '../../../types/chat-model.types'
-
 import { DEFAULT_CHAT_MODELS_V8, migrateFrom7To8 } from './7_to_8'
 
 describe('settings 7_to_8 migration', () => {

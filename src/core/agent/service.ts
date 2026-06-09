@@ -23,7 +23,6 @@ import {
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { parseToolName } from '../mcp/tool-name-utils'
-
 import {
   type BackgroundTaskEvent,
   backgroundTaskCompletionBus,

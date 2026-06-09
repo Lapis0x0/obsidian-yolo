@@ -6,7 +6,6 @@ import {
   buildPdfPageImageCacheKey,
 } from '../../database/json/chat/imageCacheStore'
 import type { YoloSettingsLike } from '../../database/json/chat/imageCacheStore'
-
 import { loadPdfjs } from './pdfjsLoader'
 
 /** Fixed render scale (2× = ~144 dpi at 72 dpi baseline). */

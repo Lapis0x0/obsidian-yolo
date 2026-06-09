@@ -2,7 +2,6 @@ import type { ChatAssistantMessage, ChatToolMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ResponseUsage } from '../../types/llm/response'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { collectLLMResponseInfo } from './useLLMResponseInfo'
 
 const model: ChatModel = {

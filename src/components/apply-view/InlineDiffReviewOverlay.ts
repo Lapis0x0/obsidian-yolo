@@ -20,7 +20,6 @@ import { ReviewSession } from '../../features/editor/diff-review/review-session'
 import type YoloPlugin from '../../main'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import { type DiffBlock, type InlineDiffToken } from '../../utils/chat/diff'
-
 import type { ApplyViewActions } from './types'
 
 type InlineDiffReviewOverlayOptions = {

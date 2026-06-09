@@ -1,6 +1,5 @@
 import { YoloSettings } from '../../settings/schema/setting.types'
 import { Assistant } from '../../types/assistant.types'
-
 import {
   buildAssistantToolPreferencesFromEnabledToolNames,
   buildDefaultBuiltinToolPreferences,

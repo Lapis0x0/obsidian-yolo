@@ -1,5 +1,4 @@
 import type { LLMProvider } from '../../types/provider.types'
-
 import { shouldUseStreamingForProvider } from './streamingPolicy'
 
 const createProvider = (overrides: Partial<LLMProvider> = {}): LLMProvider => ({

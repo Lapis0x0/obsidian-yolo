@@ -23,7 +23,6 @@ import {
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
-
 import { BaseLLMProvider } from './base'
 import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 import { extractEmbeddingVector } from './embedding-utils'

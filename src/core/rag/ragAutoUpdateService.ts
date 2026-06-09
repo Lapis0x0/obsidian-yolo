@@ -2,7 +2,6 @@ import { minimatch } from 'minimatch'
 import { TAbstractFile, TFile, TFolder } from 'obsidian'
 
 import { YoloSettings } from '../../settings/schema/setting.types'
-
 import { classifyRagIndexError } from './ragIndexErrors'
 
 /**

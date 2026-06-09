@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
 import { resolveSelectionChatActions } from '../../features/editor/selection-chat/resolveSelectionChatActions'
-
 import type { SelectionInfo } from './SelectionManager'
 
 export type SelectionActionMode = 'ask' | 'rewrite' | 'chat-input' | 'chat-send'

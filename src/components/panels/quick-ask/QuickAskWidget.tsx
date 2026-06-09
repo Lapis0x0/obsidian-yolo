@@ -22,7 +22,6 @@ import {
   clearDynamicStyleClass,
   updateDynamicStyleClass,
 } from '../../../utils/dom/dynamicStyleManager'
-
 import { QuickAskPanel } from './QuickAskPanel'
 
 /**

@@ -1,6 +1,5 @@
 import type { ChatMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { extractLoadedDeferredToolNames } from './tool-disclosure'
 
 describe('tool disclosure state', () => {

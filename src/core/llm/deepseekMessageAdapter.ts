@@ -9,7 +9,6 @@ import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
 } from '../../types/llm/response'
-
 import {
   OpenAIMessageAdapter,
   normalizeOpenAICompatUsage,

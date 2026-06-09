@@ -33,7 +33,6 @@ import {
   getToolCallArgumentsText,
 } from '../../types/tool-call.types'
 import { SplitButton } from '../common/SplitButton'
-
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'

@@ -5,7 +5,6 @@ import {
 
 import { RequestMessage } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
-
 import { AnthropicProvider } from './anthropic'
 
 // DeepSeek 的 Anthropic 兼容端点在 thinking 模式 + tool_use 时，要求上一轮

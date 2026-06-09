@@ -11,7 +11,6 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { formatTokenCount } from '../../../utils/llm/formatTokenCount'
 import AssistantToolMessageGroupItem from '../AssistantToolMessageGroupItem'
-
 import { formatDuration, formatSubagentActivityLine } from './subagentCardUtils'
 
 type SubagentDetailModalProps = {

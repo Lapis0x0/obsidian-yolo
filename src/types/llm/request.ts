@@ -5,7 +5,6 @@ import { ChatCompletionCreateParams, ReasoningEffort } from 'openai/resources'
 
 import { ReasoningLevel } from '../reasoning'
 import { ToolCallRequest } from '../tool-call.types'
-
 import { ProviderMetadata } from './response'
 
 export type LLMRequestBase = {

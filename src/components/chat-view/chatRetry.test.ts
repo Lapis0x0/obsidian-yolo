@@ -5,7 +5,6 @@ import type {
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
-
 import {
   buildRetrySubmissionMessages,
   getDisplayedAssistantToolMessages,

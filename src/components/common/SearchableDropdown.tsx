@@ -2,7 +2,6 @@ import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-
 import { useObsidianSetting } from './ObsidianSetting'
 
 export type SearchableDropdownProps = {

@@ -2,7 +2,6 @@ import {
   YOLO_SNIPPET_CREATOR_TEMPLATE,
   getSnippetsPathAwareTemplate,
 } from '../snippets/templates'
-
 import {
   YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE,
   YOLO_SKILL_CREATOR_TEMPLATE,

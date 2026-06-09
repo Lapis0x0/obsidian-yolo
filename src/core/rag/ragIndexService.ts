@@ -3,7 +3,6 @@ import { App } from 'obsidian'
 import { IndexProgress } from '../../components/chat-view/QueryProgress'
 import { ReconcileResult } from '../../database/modules/vector/VectorManager'
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
-
 import { RAGEngine } from './ragEngine'
 import {
   type RagIndexFailureKind,

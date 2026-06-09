@@ -3,7 +3,6 @@ import React, { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import RollerSelect from '../common/RollerSelect'
-
 import { ChatMode } from './chat-input/ChatModeSelect'
 
 type ViewToggleProps = {

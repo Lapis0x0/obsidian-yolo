@@ -1,5 +1,4 @@
 import { SettingMigration } from '../setting.types'
-
 import { DEFAULT_CHAT_MODELS_V8 } from './7_to_8'
 import { DefaultChatModels, getMigratedChatModels } from './migrationUtils'
 

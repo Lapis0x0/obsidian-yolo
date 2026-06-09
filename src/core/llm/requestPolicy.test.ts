@@ -2,7 +2,6 @@ import {
   DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
   MAX_MODEL_REQUEST_TIMEOUT_MS,
 } from '../../settings/schema/setting.types'
-
 import {
   DEFAULT_MODEL_REQUEST_POLICY,
   ModelRequestTimeoutError,

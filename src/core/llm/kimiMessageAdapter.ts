@@ -1,7 +1,6 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 
 import { RequestMessage } from '../../types/llm/request'
-
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 export class KimiMessageAdapter extends OpenAIMessageAdapter {

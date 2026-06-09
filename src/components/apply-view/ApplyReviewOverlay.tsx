@@ -6,7 +6,6 @@ import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
 import type YoloPlugin from '../../main'
 import type { ApplyViewState } from '../../types/apply-view.types'
-
 import ApplyViewRoot from './ApplyViewRoot'
 import type { ApplyViewActions } from './types'
 

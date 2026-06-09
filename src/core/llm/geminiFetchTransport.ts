@@ -5,7 +5,6 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
-
 import { LLMRateLimitExceededException } from './exception'
 import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 

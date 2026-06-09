@@ -5,7 +5,6 @@ jest.mock('obsidian', () => ({
 }))
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
-
 import { RagAutoUpdateService } from './ragAutoUpdateService'
 
 describe('RagAutoUpdateService', () => {

@@ -16,7 +16,6 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { SelectionChatActionsSettings } from '../SelectionChatActionsSettings'
 import { SmartSpaceQuickActionsSettings } from '../SmartSpaceQuickActionsSettings'
-
 import { SnippetsSection } from './SnippetsSection'
 
 type ContinuationSectionProps = {

@@ -20,7 +20,6 @@ import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { detectReasoningTypeFromModelId } from '../../utils/model-id-utils'
-
 import { BaseLLMProvider } from './base'
 import { extractEmbeddingVector } from './embedding-utils'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'

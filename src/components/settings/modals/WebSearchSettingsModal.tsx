@@ -18,7 +18,6 @@ import {
 import YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
 import { ConfirmModal } from '../../modals/ConfirmModal'
-
 import {
   WebSearchProviderEditModal,
   WebSearchProviderNewModal,

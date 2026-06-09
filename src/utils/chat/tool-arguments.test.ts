@@ -1,5 +1,4 @@
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
-
 import {
   createToolCallArguments,
   extractTopLevelJsonObjects,

@@ -1,5 +1,4 @@
 import type { ChatSubagentResultMessage } from '../../types/chat'
-
 import { serializeSubagentResultToUserMessage } from './subagentResultSerializer'
 
 function makeMessage(

@@ -1,7 +1,6 @@
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
-
 import { FontScaleSlider } from './FontScaleSlider'
 
 type ChatPreferencesSectionProps = {

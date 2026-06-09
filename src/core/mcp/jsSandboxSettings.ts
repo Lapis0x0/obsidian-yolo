@@ -2,7 +2,6 @@ import type {
   JsSandboxSettings,
   YoloSettings,
 } from '../../settings/schema/setting.types'
-
 import {
   JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,

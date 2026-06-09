@@ -1,7 +1,6 @@
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMRequestNonStreaming } from '../../types/llm/request'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
-
 import { GeminiProvider } from './gemini'
 
 const args = (value: Record<string, unknown>, rawText?: string) =>

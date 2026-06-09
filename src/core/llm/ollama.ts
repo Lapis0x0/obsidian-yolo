@@ -16,7 +16,6 @@ import {
 import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
-
 import { BaseLLMProvider } from './base'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'

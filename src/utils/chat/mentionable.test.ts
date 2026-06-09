@@ -9,7 +9,6 @@ import type {
   Mentionable,
   SerializedMentionableBlock,
 } from '../../types/mentionable'
-
 import {
   deserializeMentionable,
   getMentionableKey,

@@ -3,7 +3,6 @@ import React from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import YoloPlugin from '../../../main'
-
 import { ChatModelsSubSection } from './models/ChatModelsSubSection'
 import { EmbeddingModelsSubSection } from './models/EmbeddingModelsSubSection'
 

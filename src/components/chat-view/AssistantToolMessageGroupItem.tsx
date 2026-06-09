@@ -27,7 +27,6 @@ import {
   collectGroupEditSummary,
   countFileChangeStats,
 } from '../../utils/chat/editSummary'
-
 import AssistantEditSummary from './AssistantEditSummary'
 import AssistantErrorCard from './AssistantErrorCard'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'

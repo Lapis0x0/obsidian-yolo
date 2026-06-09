@@ -1,5 +1,4 @@
 import { ChatModel } from '../../types/chat-model.types'
-
 import { BaseLLMProvider } from './base'
 
 // Concrete subclass purely for exercising the protected helper.

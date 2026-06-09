@@ -31,7 +31,6 @@ import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
 import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAskController'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
-
 import {
   type PdfPageContextResult,
   getPdfPageContextText,

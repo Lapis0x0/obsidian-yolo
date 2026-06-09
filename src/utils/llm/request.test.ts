@@ -1,6 +1,5 @@
 import { RequestMessage } from '../../types/llm/request'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
-
 import { formatMessages } from './request'
 
 const emptyArgs = createCompleteToolCallArguments({ value: {} })

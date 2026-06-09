@@ -1,5 +1,4 @@
 import type { DiffBlock } from '../../../utils/chat/diff'
-
 import { generateReviewContent } from './review-model'
 
 const createModifiedBlock = (

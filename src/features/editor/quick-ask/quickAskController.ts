@@ -13,7 +13,6 @@ import type { Mentionable } from '../../../types/mentionable'
 import { getPdfLeafContentEl } from '../selection-chat/getPdfSelectionData'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
-
 import { createCmAnchor, createPdfAnchor } from './quickAsk.anchor'
 import type {
   QuickAskLaunchMode,

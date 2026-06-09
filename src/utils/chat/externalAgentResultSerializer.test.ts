@@ -1,7 +1,6 @@
 // LLM 序列化层快照测试：external_agent_result → user-role text
 
 import type { ChatExternalAgentResultMessage } from '../../types/chat'
-
 import { serializeExternalAgentResultToUserMessage } from './externalAgentResultSerializer'
 
 function makeMessage(

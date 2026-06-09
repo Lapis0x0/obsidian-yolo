@@ -39,7 +39,6 @@ import {
 import { parseImageDataUrl } from '../../utils/llm/image'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
-
 import { BaseLLMProvider } from './base'
 import {
   LLMAPIKeyInvalidException,

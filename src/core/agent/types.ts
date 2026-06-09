@@ -10,7 +10,6 @@ import type { ContextualInjection } from '../../utils/chat/contextual-injections
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import { McpManager } from '../mcp/mcpManager'
-
 import type { CitationRegistry } from './citationRegistry'
 
 export type AgentRunContext = {

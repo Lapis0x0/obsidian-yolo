@@ -25,7 +25,6 @@ import {
   InlineDiffLine,
   InlineDiffToken,
 } from '../../utils/chat/diff'
-
 import type { ApplyViewActions } from './types'
 
 export default function ApplyViewRoot({

@@ -1,5 +1,4 @@
 import { AssistantWorkspaceScope } from '../../types/assistant.types'
-
 import {
   collectToolCallPaths,
   findPathOutsideScope,

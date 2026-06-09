@@ -15,7 +15,6 @@ import { resolveRequestReasoningLevel } from '../../types/reasoning'
 import { resolveProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 import { formatMessages } from '../../utils/llm/request'
-
 import { BaseLLMProvider } from './base'
 import { applyDeepSeekCapabilities } from './deepseekCapabilities'
 import { DeepSeekMessageAdapter } from './deepseekMessageAdapter'

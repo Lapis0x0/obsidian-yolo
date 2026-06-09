@@ -8,7 +8,6 @@
 import { Platform } from 'obsidian'
 
 import type YoloPlugin from '../../main'
-
 import {
   cleanupCapturePdfRegionCommand,
   registerCapturePdfRegionCommand,

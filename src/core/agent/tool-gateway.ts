@@ -34,7 +34,6 @@ import {
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
-
 import {
   DEFAULT_BLOCKED_PREFIXES,
   classifyBashCommandSafety,

@@ -18,7 +18,6 @@ import {
 } from '../../core/edits/textEditPlan'
 import { openMarkdownFile } from '../../utils/obsidian'
 import DotLoader from '../common/DotLoader'
-
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 
 const PLAN_CONTENT_TRANSITION_MS = 260

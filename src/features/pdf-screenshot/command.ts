@@ -17,7 +17,6 @@ import { Notice } from 'obsidian'
 
 import type YoloPlugin from '../../main'
 import type { MentionableImage } from '../../types/mentionable'
-
 import { captureCanvasRegion } from './captureCanvasRegion'
 import { RegionSelector } from './RegionSelector'
 

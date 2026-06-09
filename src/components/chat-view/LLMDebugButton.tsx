@@ -14,7 +14,6 @@ import { buildLLMDebugMarkdown } from '../../core/llm/debugMarkdown'
 import type YoloPlugin from '../../main'
 import type { AssistantToolMessageGroup } from '../../types/chat'
 import { ReactModal } from '../common/ReactModal'
-
 import {
   getLLMDebugTraceIdsForMessages,
   hasLLMDebugCacheForTraceIds,

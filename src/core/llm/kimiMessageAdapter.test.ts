@@ -1,6 +1,5 @@
 import { LLMRequest } from '../../types/llm/request'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
-
 import { KimiMessageAdapter } from './kimiMessageAdapter'
 
 class TestKimiMessageAdapter extends KimiMessageAdapter {

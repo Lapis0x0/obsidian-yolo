@@ -4,7 +4,6 @@ import type { CSSProperties } from 'react'
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
 import { getNodeWindow } from '../../utils/dom/window-context'
-
 import { YoloDropdownContent, YoloPopoverVariant } from './popover'
 
 export type RollerOption = {

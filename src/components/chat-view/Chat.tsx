@@ -97,9 +97,7 @@ import { readTFileContent } from '../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
-
 // removed Prompt Templates feature
-
 import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import type { ChatMode } from './chat-input/ChatModeSelect'

@@ -1,5 +1,4 @@
 import { LLMRequest } from '../../types/llm/request'
-
 import { QwenOAuthMessageAdapter } from './qwenOAuthMessageAdapter'
 
 class TestQwenOAuthMessageAdapter extends QwenOAuthMessageAdapter {

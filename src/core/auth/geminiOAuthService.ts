@@ -1,7 +1,6 @@
 import { requestUrl } from 'obsidian'
 
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
-
 import { GeminiOAuthCredential, GeminiOAuthStore } from './geminiOAuthStore'
 
 const GOOGLE_ISSUER = 'https://accounts.google.com'

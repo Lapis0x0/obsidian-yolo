@@ -9,7 +9,6 @@ import {
   ParsedTagContent,
   parseTagContents,
 } from '../../utils/chat/parse-tag-content'
-
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantSelectionQuoteButton from './AssistantSelectionQuoteButton'
 import MarkdownCodeComponent from './MarkdownCodeComponent'

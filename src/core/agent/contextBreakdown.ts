@@ -17,7 +17,6 @@ import {
 } from '../../utils/llm/contextTokenEstimate'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { McpManager } from '../mcp/mcpManager'
-
 import { selectAllowedTools } from './tool-selection'
 
 /** Token breakdown for a single bucket in the context-usage popover. */

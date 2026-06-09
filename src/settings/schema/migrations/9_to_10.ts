@@ -1,5 +1,4 @@
 import { SettingMigration } from '../setting.types'
-
 import { DefaultProviders, getMigratedProviders } from './migrationUtils'
 
 /**

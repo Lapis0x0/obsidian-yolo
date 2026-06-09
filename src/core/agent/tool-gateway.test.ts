@@ -3,7 +3,6 @@ import {
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
 import { McpManager } from '../mcp/mcpManager'
-
 import { AgentToolGateway } from './tool-gateway'
 
 describe('AgentToolGateway', () => {

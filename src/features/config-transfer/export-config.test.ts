@@ -1,5 +1,4 @@
 import { SETTINGS_SCHEMA_VERSION } from '../../settings/schema/migrations'
-
 import { buildExportData, computeChecksum } from './export-config'
 import {
   clearSensitive,

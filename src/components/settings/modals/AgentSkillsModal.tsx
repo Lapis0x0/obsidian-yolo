@@ -14,7 +14,6 @@ import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { ConfirmModal } from '../../modals/ConfirmModal'
-
 import { ImportSkillModal } from './ImportSkillModal'
 
 type AgentSkillsModalProps = {

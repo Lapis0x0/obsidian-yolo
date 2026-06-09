@@ -1,5 +1,4 @@
 import { ChatModel, ChatModelModality } from '../../types/chat-model.types'
-
 import {
   OPENROUTER_MODEL_CAPABILITIES,
   type OpenRouterChatModelCapability,

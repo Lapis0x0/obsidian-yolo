@@ -1,7 +1,6 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { Mentionable } from '../../../types/mentionable'
-
 import { pdfSelectionHighlightController } from './pdfSelectionHighlightController'
 import { selectionHighlightController } from './selectionHighlightController'
 

@@ -1,5 +1,4 @@
 import type { Assistant } from '../../types/assistant.types'
-
 import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 
 describe('chat-runtime-inputs', () => {

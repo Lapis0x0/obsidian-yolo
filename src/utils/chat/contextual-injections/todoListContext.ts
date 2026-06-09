@@ -1,5 +1,4 @@
 import type { RequestMessage } from '../../../types/llm/request'
-
 import type { TodoListInjection } from './types'
 
 export function renderTodoListInjection(

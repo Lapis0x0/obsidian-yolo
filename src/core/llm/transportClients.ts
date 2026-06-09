@@ -1,5 +1,4 @@
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
-
 import { createBrowserFetch, createDesktopNodeFetch } from './sdkFetch'
 
 export type TransportClientSet<T> = {

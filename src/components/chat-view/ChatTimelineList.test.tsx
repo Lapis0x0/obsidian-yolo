@@ -95,7 +95,6 @@ import {
   hydrateTimelineHeightCache,
   setTimelineStateSnapshot,
 } from '../../utils/chat/timeline-virtualization-cache'
-
 import { ChatTimelineList } from './ChatTimelineList'
 
 function makeUserItem(id: string): ChatTimelineItem {

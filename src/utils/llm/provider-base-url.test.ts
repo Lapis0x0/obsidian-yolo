@@ -2,7 +2,6 @@ import {
   LLMProvider,
   getDefaultApiTypeForPresetType,
 } from '../../types/provider.types'
-
 import {
   resolveProviderBaseUrl,
   resolveProviderDisplayBaseUrl,

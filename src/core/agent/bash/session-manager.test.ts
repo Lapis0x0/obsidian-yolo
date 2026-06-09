@@ -10,7 +10,6 @@ jest.mock('./which', () => ({
 }))
 
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
-
 import { killAllBashSessions, runBash } from './session-manager'
 
 describe('terminal command session-manager', () => {

@@ -3,7 +3,6 @@ jest.mock('obsidian')
 import { App, Platform, TFile } from 'obsidian'
 
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
 import { McpNotAvailableException } from './exception'
 import { McpManager } from './mcpManager'
 

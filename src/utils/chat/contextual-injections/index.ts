@@ -1,5 +1,4 @@
 import type { ContentPart, RequestMessage } from '../../../types/llm/request'
-
 import {
   type CurrentFilePointerRenderContext,
   renderCurrentFilePointerInjection,

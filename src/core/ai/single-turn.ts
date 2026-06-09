@@ -24,7 +24,6 @@ import {
 } from '../llm/debugCapture'
 import { applyLightweightRequestPolicy } from '../llm/lightweight-request-policy'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
-
 import {
   ToolCallAccumulator,
   createCanonicalToolEventsFromDeltas,

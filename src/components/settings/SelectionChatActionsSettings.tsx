@@ -25,7 +25,6 @@ import { ObsidianSetting } from '../common/ObsidianSetting'
 import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ConfirmModal } from '../modals/ConfirmModal'
-
 import { SelectionChatActionsModal } from './modals/SelectionChatActionsModal'
 
 type SelectionChatAction = {

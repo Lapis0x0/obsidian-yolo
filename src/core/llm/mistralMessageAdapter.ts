@@ -2,7 +2,6 @@ import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources'
 import { ChatCompletionCreateParamsStreaming } from 'openai/resources/chat/completions'
 
 import { LLMRequest } from '../../types/llm/request'
-
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 /**

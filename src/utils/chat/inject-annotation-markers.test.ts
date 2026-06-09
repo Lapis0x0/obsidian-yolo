@@ -1,5 +1,4 @@
 import type { Annotation } from '../../types/llm/response'
-
 import { injectAnnotationMarkers } from './inject-annotation-markers'
 
 const url = (end: number, suffix = ''): Annotation => ({

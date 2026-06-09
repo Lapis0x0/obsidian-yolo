@@ -17,7 +17,6 @@ import {
   getDefaultApiTypeForPresetType,
 } from '../../../types/provider.types'
 import { ReactModal } from '../../common/ReactModal'
-
 import { AddProviderModal } from './ProviderFormModal'
 
 type ProviderPickerProps = {

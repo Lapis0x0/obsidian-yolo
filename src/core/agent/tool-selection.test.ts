@@ -1,5 +1,4 @@
 import type { McpTool } from '../../types/mcp.types'
-
 import { selectAllowedTools } from './tool-selection'
 
 describe('selectAllowedTools', () => {
