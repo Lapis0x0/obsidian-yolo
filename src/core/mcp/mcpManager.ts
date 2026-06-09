@@ -34,7 +34,6 @@ import {
   getJsSandboxSettings,
 } from './jsSandboxSettings'
 import { disposeJsSandbox } from './jsSandboxTool'
-// eslint-disable-next-line import/order -- false positive: sibling group is contiguous; rule miscounts the blank line above this group
 import {
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,

@@ -19,26 +19,7 @@ const commonRules = {
   'obsidianmd/ui/sentence-case': 'off',
   'obsidianmd/ui/sentence-case-json': 'off',
   'obsidianmd/ui/sentence-case-locale-module': 'off',
-  'sort-imports': [
-    'error',
-    {
-      ignoreCase: false,
-      ignoreDeclarationSort: true,
-      ignoreMemberSort: false,
-      memberSyntaxSortOrder: ['none', 'all', 'multiple', 'single'],
-      allowSeparatedGroups: true,
-    },
-  ],
-  'import/order': [
-    'error',
-    {
-      'newlines-between': 'always',
-      alphabetize: {
-        order: 'asc',
-        caseInsensitive: true,
-      },
-    },
-  ],
+  // import 排序交由 oxfmt sortImports 处理，避免与 oxfmt 空行策略冲突
 }
 
 const typescriptRuleOverrides = {
