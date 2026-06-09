@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
+      "*": ["./*"],
       "@electric-sql/pglite/worker": [
         "./node_modules/@electric-sql/pglite/dist/worker/index.d.ts"
       ]
