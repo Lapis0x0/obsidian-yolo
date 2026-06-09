@@ -1,3 +1,4 @@
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import { Platform } from 'obsidian'
 
 import { ChatModel } from '../../types/chat-model.types'

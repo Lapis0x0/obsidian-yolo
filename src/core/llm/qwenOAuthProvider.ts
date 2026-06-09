@@ -1,3 +1,4 @@
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import OpenAI from 'openai'
 
 import { ChatModel } from '../../types/chat-model.types'

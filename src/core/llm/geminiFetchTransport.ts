@@ -1,3 +1,4 @@
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import type { GenerateContentResponse as GeminiGenerateContentResponse } from '@google/genai'
 
 import {

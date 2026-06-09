@@ -1,3 +1,4 @@
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
 import { createBrowserFetch, createDesktopNodeFetch } from './sdkFetch'
 

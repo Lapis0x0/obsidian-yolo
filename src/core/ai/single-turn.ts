@@ -508,7 +508,11 @@ export async function executeSingleTurn({
     }
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : String(error ?? 'Unknown error')
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error ?? 'Unknown error')
     const shouldFallback =
       (timedOut && !(signal?.aborted ?? false)) ||
       /protocol error|unexpected EOF|incomplete envelope/i.test(message)

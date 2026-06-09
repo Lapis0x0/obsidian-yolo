@@ -1,3 +1,4 @@
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import { createDesktopMcpFetch } from './desktopMcpFetch'
 import {
   classifyRemoteTransportError,

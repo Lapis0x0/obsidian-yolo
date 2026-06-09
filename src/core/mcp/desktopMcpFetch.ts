@@ -16,6 +16,7 @@
  * Why not Obsidian `requestUrl`: it is buffered (no ReadableStream), which
  * silently breaks SSE consumption in the SDK.
  */
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import { Platform } from 'obsidian'
 
 import { envHasProxy } from '../../utils/net/proxyEnv'

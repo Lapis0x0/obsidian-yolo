@@ -1,3 +1,4 @@
+/* oxlint-disable no-restricted-globals — transport layer uses global fetch intentionally */
 import { getQwenOAuthService } from '../auth/qwenOAuthRuntime'
 import { QwenOAuthProvider } from './qwenOAuthProvider'
 
