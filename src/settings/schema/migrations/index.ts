@@ -63,12 +63,13 @@ import { migrateFrom63To64 } from './63_to_64'
 import { migrateFrom64To65 } from './64_to_65'
 import { migrateFrom65To66 } from './65_to_66'
 import { migrateFrom66To67 } from './66_to_67'
+import { migrateFrom67To68 } from './67_to_68'
 import { migrateFrom6To7 } from './6_to_7'
 import { migrateFrom7To8 } from './7_to_8'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
-export const SETTINGS_SCHEMA_VERSION = 67
+export const SETTINGS_SCHEMA_VERSION = 68
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {
@@ -405,5 +406,10 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 66,
     toVersion: 67,
     migrate: migrateFrom66To67,
+  },
+  {
+    fromVersion: 67,
+    toVersion: 68,
+    migrate: migrateFrom67To68,
   },
 ]

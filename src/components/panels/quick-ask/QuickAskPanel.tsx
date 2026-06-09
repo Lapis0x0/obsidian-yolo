@@ -72,6 +72,7 @@ import { groupAssistantAndToolMessages } from '../../../utils/chat/message-group
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { readTFileContent } from '../../../utils/obsidian'
+import { resolveAssistantTimeContextEnabled } from '../../../core/agent/assistant-capabilities'
 import { stampUserMessageTimeContext } from '../../../utils/prompt/timeContext'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
@@ -1019,7 +1020,7 @@ export function QuickAskPanel({
           id: options?.userMessageId ?? uuidv4(),
           mentionables: mentionablesOverride ?? mentionables,
         },
-        settings,
+        resolveAssistantTimeContextEnabled(selectedAssistant, settings),
       )
 
       // Clear mentionables after creating the message

@@ -94,6 +94,10 @@ import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { readTFileContent } from '../../utils/obsidian'
+import {
+  resolveAssistantIncludeCurrentFileContent,
+  resolveAssistantTimeContextEnabled,
+} from '../../core/agent/assistant-capabilities'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
@@ -1257,7 +1261,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const displayMentionablesForInput = inputMessage.mentionables
 
-  const currentFileOverride = settings.chatOptions.includeCurrentFileContent
+  const currentFileOverride = resolveAssistantIncludeCurrentFileContent(
+    selectedAssistant,
+    settings,
+  )
     ? activeFile
     : null
 
@@ -4825,7 +4832,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       messageOrGroup.mentionables,
                     ),
                   },
-                  settings,
+                  resolveAssistantTimeContextEnabled(
+                    selectedAssistant,
+                    settings,
+                  ),
                 )
               const inputChatMessages = [
                 ...groupedChatMessages
@@ -5156,7 +5166,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     // 那一刻的时间,而非 drain 时刻。
                     const messageForSubmit = stampUserMessageTimeContext(
                       buildInputMessageForSubmit(content),
-                      settings,
+                      resolveAssistantTimeContextEnabled(
+                        selectedAssistant,
+                        settings,
+                      ),
                     )
 
                     // ask_user_question parks the agent in a paused state that

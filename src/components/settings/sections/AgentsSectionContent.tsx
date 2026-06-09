@@ -262,6 +262,8 @@ function createNewAgent(defaultModelId: string): Assistant {
     toolPreferences: buildDefaultBuiltinToolPreferences(),
     enabledSkills: [],
     skillPreferences: {},
+    includeCurrentFileContent: true,
+    timeContextEnabled: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -281,6 +283,8 @@ function toDraftAgent(
     skillPreferences: assistant.skillPreferences ?? {},
     enableTools: assistant.enableTools ?? true,
     includeBuiltinTools: assistant.includeBuiltinTools ?? true,
+    includeCurrentFileContent: assistant.includeCurrentFileContent ?? true,
+    timeContextEnabled: assistant.timeContextEnabled ?? true,
   }
 }
 
@@ -1365,6 +1369,36 @@ export function AgentsSectionContent({
                     setDraftAgent({
                       ...draftAgent,
                       enableProjectInstructions: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
+                name={t('settings.agent.focusSyncTitle')}
+                desc={t('settings.agent.focusSyncDesc')}
+                className="yolo-settings-card yolo-agent-capability-card"
+              >
+                <ObsidianToggle
+                  value={draftAgent.includeCurrentFileContent !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      includeCurrentFileContent: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
+                name={t('settings.agent.timeContextTitle')}
+                desc={t('settings.agent.timeContextDesc')}
+                className="yolo-settings-card yolo-agent-capability-card"
+              >
+                <ObsidianToggle
+                  value={draftAgent.timeContextEnabled !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      timeContextEnabled: value,
                     })
                   }}
                 />

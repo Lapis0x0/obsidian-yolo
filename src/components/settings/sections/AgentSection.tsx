@@ -36,9 +36,7 @@ import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
-import { AgentFocusSyncSection } from './AgentFocusSyncSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
-import { AgentTimeContextSection } from './AgentTimeContextSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
@@ -608,8 +606,6 @@ export function AgentSection({ app }: AgentSectionProps) {
             {t('settings.agent.agentCapabilitiesBlockTitle')}
           </div>
         </div>
-        <AgentFocusSyncSection />
-        <AgentTimeContextSection />
         <div className="yolo-agent-sub-card">
           <div className="yolo-agent-sub-card-head">
             {t('settings.agent.imageReadingBlockTitle')}

@@ -86,6 +86,10 @@ export const assistantSchema = z.object({
     .optional(),
   workspaceScope: assistantWorkspaceScopeSchema.optional(),
   enableProjectInstructions: z.boolean().optional(),
+  // Per-agent focus sync (current file pointer injection in sidebar chat).
+  includeCurrentFileContent: z.boolean().optional(),
+  // Per-agent time awareness (<current_time> prefix on new user messages).
+  timeContextEnabled: z.boolean().optional(),
   createdAt: z.number().optional(),
   updatedAt: z.number().optional(),
 })
