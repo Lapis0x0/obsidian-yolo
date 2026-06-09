@@ -23,6 +23,10 @@ import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
+  resolveAssistantIncludeCurrentFileContent,
+  resolveAssistantTimeContextEnabled,
+} from '../../core/agent/assistant-capabilities'
+import {
   getLatestAssistantContextUsage,
   resolveAutoContextCompactionChatOptions,
   shouldTriggerAutoContextCompaction,
@@ -94,10 +98,6 @@ import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { readTFileContent } from '../../utils/obsidian'
-import {
-  resolveAssistantIncludeCurrentFileContent,
-  resolveAssistantTimeContextEnabled,
-} from '../../core/agent/assistant-capabilities'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
 import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'

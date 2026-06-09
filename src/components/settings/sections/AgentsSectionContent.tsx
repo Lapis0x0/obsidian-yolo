@@ -1354,6 +1354,34 @@ export function AgentsSectionContent({
                   systemPromptOverlayTarget,
                 )}
               <ObsidianSetting
+                name={t('settings.agent.focusSyncTitle')}
+                desc={t('settings.agent.focusSyncDesc')}
+              >
+                <ObsidianToggle
+                  value={draftAgent.includeCurrentFileContent !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      includeCurrentFileContent: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
+                name={t('settings.agent.timeContextTitle')}
+                desc={t('settings.agent.timeContextDesc')}
+              >
+                <ObsidianToggle
+                  value={draftAgent.timeContextEnabled !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      timeContextEnabled: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
                 name={t(
                   'settings.agent.editorEnableProjectInstructions',
                   'Load project instruction files',
@@ -1369,36 +1397,6 @@ export function AgentsSectionContent({
                     setDraftAgent({
                       ...draftAgent,
                       enableProjectInstructions: value,
-                    })
-                  }}
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.agent.focusSyncTitle')}
-                desc={t('settings.agent.focusSyncDesc')}
-                className="yolo-settings-card yolo-agent-capability-card"
-              >
-                <ObsidianToggle
-                  value={draftAgent.includeCurrentFileContent !== false}
-                  onChange={(value) => {
-                    setDraftAgent({
-                      ...draftAgent,
-                      includeCurrentFileContent: value,
-                    })
-                  }}
-                />
-              </ObsidianSetting>
-              <ObsidianSetting
-                name={t('settings.agent.timeContextTitle')}
-                desc={t('settings.agent.timeContextDesc')}
-                className="yolo-settings-card yolo-agent-capability-card"
-              >
-                <ObsidianToggle
-                  value={draftAgent.timeContextEnabled !== false}
-                  onChange={(value) => {
-                    setDraftAgent({
-                      ...draftAgent,
-                      timeContextEnabled: value,
                     })
                   }}
                 />

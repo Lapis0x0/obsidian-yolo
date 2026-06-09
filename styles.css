@@ -4610,14 +4610,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   margin-bottom: var(--size-4-2);
 }
 
-/* Agent capability card (focus sync, time awareness, …) — pure white
-   background like the Models block cards. */
-
-.yolo-agent-capability-card.setting-item {
-  background: var(--background-primary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-}
-
 .yolo-agent-block-head-title-row {
   display: flex;
   align-items: center;
@@ -19728,20 +19720,29 @@ body.yolo-quick-ask-global-interaction * {
    Obsidian sets both .cm-selectionLayer and ::selection on .markdown-source-view. */
 
 .markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection ::selection,
-.markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection *::selection,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  *::selection,
 .cm-editor.yolo-hide-native-selection ::selection,
 .cm-editor.yolo-hide-native-selection *::selection {
   background: transparent !important;
   background-color: transparent !important;
 }
 
-.markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection .cm-selectionLayer,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-selectionLayer,
 .cm-editor.yolo-hide-native-selection .cm-selectionLayer {
   display: none !important;
 }
 
-.markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection .cm-selectionBackground,
-.markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection .cm-line .cm-selection,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-selectionBackground,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-line
+  .cm-selection,
 .markdown-source-view.mod-cm6
   .cm-editor.yolo-hide-native-selection
   .cm-line

@@ -751,10 +751,11 @@ export function useChatStreamManager({
           allowedSkillPaths,
           requestParams,
           contextualInjections: buildChatContextualInjections({
-            includeCurrentFileContent: resolveAssistantIncludeCurrentFileContent(
-              selectedAssistant,
-              settings,
-            ),
+            includeCurrentFileContent:
+              resolveAssistantIncludeCurrentFileContent(
+                selectedAssistant,
+                settings,
+              ),
             currentFile: currentFileOverride,
             currentFileViewState,
           }),

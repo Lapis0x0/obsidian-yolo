@@ -31,9 +31,9 @@ describe('assistant-capabilities', () => {
       chatOptions: { includeCurrentFileContent: false },
     } as YoloSettings
 
-    expect(
-      resolveAssistantIncludeCurrentFileContent(assistant, settings),
-    ).toBe(false)
+    expect(resolveAssistantIncludeCurrentFileContent(assistant, settings)).toBe(
+      false,
+    )
   })
 
   it('prefers per-agent time awareness over the global default', () => {
