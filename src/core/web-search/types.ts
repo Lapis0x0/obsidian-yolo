@@ -40,6 +40,7 @@ export const tavilyOptionsSchema = z.object({
   type: z.literal('tavily'),
   apiKey: z.string().default(''),
   depth: z.enum(['basic', 'advanced']).default('advanced'),
+  useProviderScrapeApi: z.boolean().default(true),
 })
 
 export const jinaOptionsSchema = z.object({
@@ -48,6 +49,7 @@ export const jinaOptionsSchema = z.object({
   apiKey: z.string().default(''),
   searchUrl: z.string().default('https://s.jina.ai/'),
   scrapeUrl: z.string().default('https://r.jina.ai/'),
+  useProviderScrapeApi: z.boolean().default(true),
 })
 
 export const searxngOptionsSchema = z.object({
@@ -167,6 +169,15 @@ export type WebSearchScrapeInput = {
   url: string
 }
 
+export function isProviderScrapeApiEnabled(
+  options: WebSearchProviderOptions,
+): boolean {
+  if (options.type === 'tavily' || options.type === 'jina') {
+    return options.useProviderScrapeApi
+  }
+  return false
+}
+
 export type WebSearchProvider<
   T extends WebSearchProviderOptions = WebSearchProviderOptions,
 > = {
@@ -200,6 +211,7 @@ export function createDefaultProviderOptions(
         type: 'tavily',
         apiKey: '',
         depth: 'advanced',
+        useProviderScrapeApi: true,
       }
     case 'jina':
       return {
@@ -209,6 +221,7 @@ export function createDefaultProviderOptions(
         apiKey: '',
         searchUrl: 'https://s.jina.ai/',
         scrapeUrl: 'https://r.jina.ai/',
+        useProviderScrapeApi: true,
       }
     case 'searxng':
       return {

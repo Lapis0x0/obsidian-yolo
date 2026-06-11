@@ -1,5 +1,3 @@
-import { Platform } from 'obsidian'
-
 import { ChatModel } from './types/chat-model.types'
 import { EmbeddingModel } from './types/embedding-model.types'
 import {
@@ -7,7 +5,7 @@ import {
   LLMProviderApiType,
   LLMProviderPresetType,
   getDefaultApiTypeForPresetType,
-  getDefaultRequestTransportModeForPresetType,
+  getDefaultRequestTransportModeByPlatform,
 } from './types/provider.types'
 
 export const CHAT_VIEW_TYPE = 'yolo-chat-view'
@@ -37,18 +35,17 @@ export const DEFAULT_CHAT_TITLE_PROMPT = {
 } as const
 
 const REQUEST_TRANSPORT_MODE_SETTING = {
-  label: 'Request transport mode',
+  label: 'Network request method',
   key: 'requestTransportMode',
   type: 'select' as const,
   required: false,
   options: {
-    auto: 'Auto',
-    browser: 'Browser fetch',
-    obsidian: 'Obsidian requestUrl',
-    node: 'Desktop Node fetch',
+    browser: 'Browser request',
+    obsidian: 'Obsidian built-in request',
+    node: 'Desktop direct connection',
   },
   description:
-    'Auto: on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl. Obsidian mode buffers streaming responses. Node mode uses desktop-only Node fetch for real streaming.',
+    'Choose how this provider sends network requests on this device. Desktop direct connection is recommended on desktop. On mobile, switch to Obsidian built-in request if browser requests fail.',
 }
 
 // Surfaced dynamically when a provider's apiType is 'anthropic'
@@ -385,17 +382,9 @@ export const PROVIDER_API_INFO: Record<
 export const PROVIDER_TYPES_INFO = PROVIDER_PRESET_INFO
 
 const getDefaultProviderAdditionalSettings = (
-  presetType: LLMProviderPresetType,
+  _presetType: LLMProviderPresetType,
 ): LLMProvider['additionalSettings'] => {
-  const requestTransportMode = getDefaultRequestTransportModeForPresetType(
-    presetType,
-    Platform.isDesktop,
-  )
-  if (!requestTransportMode) {
-    return undefined
-  }
-
-  return { requestTransportMode }
+  return { requestTransportMode: getDefaultRequestTransportModeByPlatform() }
 }
 
 /**
@@ -639,15 +628,17 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
   },
   {
     providerId: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,
-    id: 'deepseek/deepseek-chat',
-    model: 'deepseek-chat',
+    id: 'deepseek/deepseek-v4-flash',
+    model: 'deepseek-v4-flash',
     enable: false,
+    reasoningType: 'openai',
   },
   {
     providerId: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,
-    id: 'deepseek/deepseek-reasoner',
-    model: 'deepseek-reasoner',
+    id: 'deepseek/deepseek-v4-pro',
+    model: 'deepseek-v4-pro',
     enable: false,
+    reasoningType: 'openai',
   },
   {
     providerId: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,

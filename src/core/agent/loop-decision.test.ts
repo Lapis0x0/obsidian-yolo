@@ -43,4 +43,28 @@ describe('loop decisions', () => {
 
     expect(result).toEqual({ type: 'llm_request', nextIteration: 3 })
   })
+
+  it('stops when tool results force repeated failure termination', () => {
+    const result = decideAfterToolResult({
+      forceStopReason: 'repeated_tool_failure',
+      hasPendingTools: false,
+      iteration: 2,
+      maxIterations: 6,
+    })
+
+    expect(result).toEqual({
+      type: 'done',
+      reason: 'repeated_tool_failure',
+    })
+  })
+
+  it('stops on max iterations when tool results do not force stop', () => {
+    const result = decideAfterToolResult({
+      hasPendingTools: false,
+      iteration: 6,
+      maxIterations: 6,
+    })
+
+    expect(result).toEqual({ type: 'done', reason: 'max_iterations' })
+  })
 })

@@ -74,6 +74,7 @@ export type TranslationKeys = {
     chatList?: {
       searchPlaceholder?: string
       empty?: string
+      current?: string
       retryTitle?: string
       archived?: string
       hideArchived?: string
@@ -345,8 +346,10 @@ export type TranslationKeys = {
       builtinWebOpsDesc?: string
       builtinJsEvalLabel?: string
       builtinJsEvalDesc?: string
-      builtinDelegateExternalAgentLabel?: string
-      builtinDelegateExternalAgentDesc?: string
+      builtinTerminalCommandLabel?: string
+      builtinTerminalCommandDesc?: string
+      builtinDelegateSubagentLabel?: string
+      builtinDelegateSubagentDesc?: string
       builtinTodoWriteLabel?: string
       builtinTodoWriteDesc?: string
       builtinAskUserQuestionLabel?: string
@@ -485,6 +488,31 @@ export type TranslationKeys = {
     jsSandbox?: {
       openSettings?: string
     }
+    terminalCommand?: {
+      openSettings?: string
+      blockedPrefixes?: string
+      blockedPrefixesDesc?: string
+      matchingRule?: string
+      addPrefixPlaceholder?: string
+      resetDefaults?: string
+    }
+    subagent?: {
+      openSettings?: string
+      modelPool?: string
+      modelPoolDesc?: string
+      preferredModelRule?: string
+      addModelsTitle?: string
+      addModelsDesc?: string
+      addModelPlaceholder?: string
+      addModel?: string
+      addSelectedModels?: string
+      searchModels?: string
+      setPreferredModel?: string
+      defaultModel?: string
+      setDefaultModel?: string
+      emptyModelPool?: string
+      poolCount?: string
+    }
     webSearch?: {
       modalTitle?: string
       openSettings?: string
@@ -527,6 +555,8 @@ export type TranslationKeys = {
       fieldDepth?: string
       fieldSearchUrl?: string
       fieldScrapeUrl?: string
+      fieldUseProviderScrapeApi?: string
+      fieldUseProviderScrapeApiDesc?: string
       fieldBaseUrl?: string
       fieldLanguage?: string
       fieldEngines?: string
@@ -778,6 +808,10 @@ export type TranslationKeys = {
         firstToken: string
         dims: string
         noModels: string
+        deleteModel: string
+        deleteChatModelBlocked: string
+        deleteEmbeddingModelBlocked: string
+        deleteEmbeddingModelInProgress: string
       }
       // auto-fetched models helper labels
       availableModelsAuto?: string
@@ -1761,6 +1795,13 @@ export type TranslationKeys = {
     newChat: string
     untitledConversation?: string
     continueResponse?: string
+    loadEarlierMessages?: string
+    loadNewerMessages?: string
+    messageNavigator?: {
+      title?: string
+      itemAriaLabel?: string
+      emptyMessage?: string
+    }
     stopGeneration?: string
     queueMessage?: {
       tooltip?: string
@@ -1831,10 +1872,14 @@ export type TranslationKeys = {
       createSnippetsFile?: string
     }
     emptyState?: {
+      askTitle?: string
+      askDescription?: string
       chatTitle?: string
       chatDescription?: string
       agentTitle?: string
       agentDescription?: string
+      agentFullTitle?: string
+      agentFullDescription?: string
     }
     compaction?: {
       pendingTitle?: string
@@ -1991,28 +2036,35 @@ export type TranslationKeys = {
         created?: string
         progress?: string
       }
+      terminalCommand?: {
+        sessionPoll?: string
+        sessionKill?: string
+        sessionInput?: string
+      }
     }
-    // delegate_external_agent tool card
-    externalAgent?: {
+    // shared live task card
+    liveTask?: {
       statusRunning?: string
       statusDone?: string
       statusAborted?: string
       statusError?: string
       progress?: string
       output?: string
+      activity?: string
       abortedBeforeOutput?: string
+      noActivity?: string
       progressTruncated?: string
       truncated?: string
     }
-    // async external agent result card
-    externalAgentResult?: {
+    subagent?: {
+      openDetails?: string
+      planningNextMoves?: string
+      noActivity?: string
       statusCompleted?: string
+      statusAborted?: string
       statusFailed?: string
-      statusCancelled?: string
-      statusTimedOut?: string
-      statusKilledByShutdown?: string
-      showOutput?: string
-      jumpToDelegate?: string
+      toolUseCount?: string
+      tokenCount?: string
     }
     // conversation settings popover
     conversationSettings?: {
@@ -2167,13 +2219,27 @@ export type TranslationKeys = {
 
   // Chat Mode Select
   chatMode?: {
+    ask?: string
+    askDesc?: string
     chat?: string
     chatDesc?: string
     rewrite?: string
     rewriteDesc?: string
     agent?: string
     agentDesc?: string
+    agentFull?: string
+    agentFullDesc?: string
     warning?: {
+      title?: string
+      description?: string
+      permission?: string
+      cost?: string
+      backup?: string
+      checkbox?: string
+      cancel?: string
+      confirm?: string
+    }
+    fullAccessWarning?: {
       title?: string
       description?: string
       permission?: string
@@ -2188,6 +2254,9 @@ export type TranslationKeys = {
   // Reasoning Select
   reasoning?: {
     selectReasoning?: string
+    effort?: string
+    faster?: string
+    smarter?: string
     off?: string
     on?: string
     auto?: string
@@ -2295,11 +2364,17 @@ export type TranslationKeys = {
     viewDetails: string
     goUpdate: string
     dismiss: string
-    collapse: string
-    showFullChangelog: string
     languageEnglish: string
     languageChinese: string
     muteThisVersion: string
+    viewHistory?: string
+    historyTitle?: string
+    historyLoading?: string
+    historyError?: string
+    historyEmpty?: string
+    historyPage?: string
+    historyPrev?: string
+    historyNext?: string
     installationIncompleteTitle: string
     installationIncompleteMeta: string
     installationIncompleteNotes: string

@@ -89,6 +89,7 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  flex-shrink: 0;
   padding: 16px 16px 14px;
   border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -134,6 +135,9 @@
 .yolo-connectivity-body {
   padding: 8px 16px 16px;
   overflow-y: auto;
+  /* Lock list area to the pre-existing scroll cap so deleting models does not
+   * shrink the modal — same footprint as when the list used to fill 56vh. */
+  min-height: 56vh;
   max-height: 56vh;
 }
 
@@ -292,13 +296,13 @@
 }
 
 /* ---- model row ---- */
-/* Columns: name (eats slack) · metric · status chip · test button.
- * Metric + chip + button form a right-aligned cluster. The variable-width
+/* Columns: name (eats slack) · metric · status chip · actions (delete + test).
+ * Metric + chip + actions form a right-aligned cluster. The variable-width
  * metric is absorbed by the 1fr name track, so the chip column lands at a
  * fixed x every row — chips line up in a clean vertical column for scanning. */
 .yolo-health-row {
   display: grid;
-  grid-template-columns: 1fr auto auto 64px;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: 14px;
   padding: 11px 4px;
@@ -336,6 +340,36 @@
 .yolo-health-row-metric {
   text-align: right;
   min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+}
+
+.yolo-health-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 88px;
+}
+
+.yolo-health-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--yolo-health-fail-fg);
+}
+
+.yolo-health-row-delete:hover:not(:disabled) {
+  background-color: color-mix(
+    in srgb,
+    var(--yolo-health-fail) 14%,
+    transparent
+  );
+}
+
+.yolo-health-row-delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .yolo-connectivity-panel .yolo-health-row-test {
@@ -443,6 +477,31 @@
 
 .yolo-health-metric--error {
   color: var(--yolo-health-fail-fg);
+}
+
+.yolo-health-metric--warn,
+.yolo-health-metric--error {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-health-metric--error {
+  cursor: help;
+}
+
+.yolo-health-metric-tooltip {
+  width: max-content;
+  max-width: min(420px, calc(100vw - 48px));
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 /* ---- empty state ---- */

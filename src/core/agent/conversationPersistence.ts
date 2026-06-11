@@ -72,6 +72,8 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         metadata: message.metadata,
       }
     case 'external_agent_result':
+    case 'subagent_result':
+    case 'terminal_command_result':
       return message
   }
 }

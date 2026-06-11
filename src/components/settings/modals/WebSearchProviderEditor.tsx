@@ -149,6 +149,10 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
               onChange={(value) => update('depth', value)}
             />
           </ObsidianSetting>
+          <ProviderScrapeApiToggle
+            value={form.useProviderScrapeApi}
+            onChange={(value) => update('useProviderScrapeApi', value)}
+          />
         </>
       )}
 
@@ -174,6 +178,10 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
               onChange={(value) => update('scrapeUrl', value)}
             />
           </ObsidianSetting>
+          <ProviderScrapeApiToggle
+            value={form.useProviderScrapeApi}
+            onChange={(value) => update('useProviderScrapeApi', value)}
+          />
         </>
       )}
 
@@ -376,6 +384,30 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
         <ObsidianButton text={t('common.cancel', 'Cancel')} onClick={onClose} />
       </ObsidianSetting>
     </div>
+  )
+}
+
+function ProviderScrapeApiToggle({
+  value,
+  onChange,
+}: {
+  value: boolean
+  onChange: (value: boolean) => void
+}) {
+  const { t } = useLanguage()
+  return (
+    <ObsidianSetting
+      name={t(
+        'settings.webSearch.fieldUseProviderScrapeApi',
+        'Use provider scrape API',
+      )}
+      desc={t(
+        'settings.webSearch.fieldUseProviderScrapeApiDesc',
+        'When enabled, web_scrape uses this provider\u2019s extract API. When disabled, web_scrape uses the built-in generic scraper (static HTML, no extra API usage).',
+      )}
+    >
+      <ObsidianToggle value={value} onChange={onChange} />
+    </ObsidianSetting>
   )
 }
 

@@ -21,11 +21,9 @@ import {
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
-import {
-  humanizeSkillName,
-  listLiteSkillEntries,
-} from '../../../core/skills/liteSkills'
+import { humanizeSkillName } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
+import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { Assistant } from '../../../types/assistant.types'
 import { McpServerState, McpServerStatus } from '../../../types/mcp.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
@@ -38,9 +36,7 @@ import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
-import { AgentFocusSyncSection } from './AgentFocusSyncSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
-import { AgentTimeContextSection } from './AgentTimeContextSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
@@ -271,11 +267,11 @@ export function AgentSection({ app }: AgentSectionProps) {
       enabled: webSplitToolEnabled,
     }
 
-    const openSkillIndex = tools.findIndex((tool) => tool.id === 'open_skill')
-    if (openSkillIndex >= 0) {
-      tools.splice(openSkillIndex, 0, fileOpsTool)
-      tools.splice(openSkillIndex + 1, 0, memoryOpsTool)
-      tools.splice(openSkillIndex + 2, 0, webOpsTool)
+    const fsReadIndex = tools.findIndex((tool) => tool.id === 'fs_read')
+    if (fsReadIndex >= 0) {
+      tools.splice(fsReadIndex, 0, fileOpsTool)
+      tools.splice(fsReadIndex + 1, 0, memoryOpsTool)
+      tools.splice(fsReadIndex + 2, 0, webOpsTool)
     } else {
       tools.push(fileOpsTool)
       tools.push(memoryOpsTool)
@@ -285,10 +281,7 @@ export function AgentSection({ app }: AgentSectionProps) {
     return tools
   }, [settings.mcp.builtinToolOptions, t])
 
-  const allSkillEntries = useMemo(
-    () => listLiteSkillEntries(app, { settings }),
-    [app, settings],
-  )
+  const allSkillEntries = useLiteSkillEntries(app, { settings })
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []
   const disabledSkillSet = useMemo(
     () => new Set(disabledSkillIds),
@@ -348,7 +341,7 @@ export function AgentSection({ app }: AgentSectionProps) {
       <div className="yolo-settings-desc yolo-agent-intro">
         {t(
           'settings.agent.desc',
-          'Manage global capabilities and configure your agents.',
+          'Manage global tool availability. Enabled tools become selectable by agents; actual use must still be enabled in each agent.',
         )}
       </div>
 
@@ -613,8 +606,6 @@ export function AgentSection({ app }: AgentSectionProps) {
             {t('settings.agent.agentCapabilitiesBlockTitle')}
           </div>
         </div>
-        <AgentFocusSyncSection />
-        <AgentTimeContextSection />
         <div className="yolo-agent-sub-card">
           <div className="yolo-agent-sub-card-head">
             {t('settings.agent.imageReadingBlockTitle')}

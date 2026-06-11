@@ -22,6 +22,8 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
 
     expect(result.systemPrompt).toBe('')
+    expect(result.softDismissedUpdateVersion).toBe('')
+    expect(result.mutedUpdateVersion).toBe('')
 
     expect(result.ragOptions).toMatchObject({
       enabled: true,
@@ -110,6 +112,103 @@ describe('parseYoloSettings', () => {
     expect(result.chatTitleModelId).toBe('openai/gpt-4.1-mini')
   })
 
+  it('normalizes delegate_subagent model pool to registered chat models', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiType: 'openai-compatible',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-5',
+          model: 'gpt-5',
+          enable: true,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-4.1-mini',
+          model: 'gpt-4.1-mini',
+          enable: true,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/disabled',
+          model: 'disabled',
+          enable: false,
+        },
+      ],
+      chatModelId: 'openai/gpt-5',
+      mcp: {
+        servers: [],
+        enableToolDisclosure: false,
+        builtinToolOptions: {
+          delegate_subagent: {
+            allowedModelIds: [
+              'openai/gpt-4.1-mini',
+              'openai/disabled',
+              'missing/model',
+            ],
+            preferredModelId: 'missing/model',
+          },
+        },
+      },
+    })
+
+    expect(
+      result.mcp.builtinToolOptions.delegate_subagent?.allowedModelIds,
+    ).toEqual(['openai/gpt-4.1-mini', 'openai/disabled'])
+    expect(
+      result.mcp.builtinToolOptions.delegate_subagent?.preferredModelId,
+    ).toBe('openai/gpt-4.1-mini')
+  })
+
+  it('initializes missing delegate_subagent model pool with the default chat model only', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiType: 'openai-compatible',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-5',
+          model: 'gpt-5',
+          enable: true,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-4.1-mini',
+          model: 'gpt-4.1-mini',
+          enable: true,
+        },
+      ],
+      chatModelId: 'openai/gpt-5',
+      mcp: {
+        servers: [],
+        enableToolDisclosure: false,
+        builtinToolOptions: {},
+      },
+    })
+
+    expect(
+      result.mcp.builtinToolOptions.delegate_subagent?.allowedModelIds,
+    ).toEqual(['openai/gpt-5'])
+    expect(
+      result.mcp.builtinToolOptions.delegate_subagent?.preferredModelId,
+    ).toBe('openai/gpt-5')
+  })
+
   it('migrates version 41 settings to include qwen oauth defaults', () => {
     const result = parseYoloSettings({
       version: 41,
@@ -159,6 +258,16 @@ describe('parseYoloSettings', () => {
 
     expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
     expect(result.ragOptions.autoUpdateIntervalHours).toBe(0)
+  })
+
+  it('migrates version 66 settings to include update dismissal state', () => {
+    const result = parseYoloSettings({
+      version: 66,
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.softDismissedUpdateVersion).toBe('')
+    expect(result.mutedUpdateVersion).toBe('')
   })
 
   // Regression: previously the entry with an unrecognized presetType was

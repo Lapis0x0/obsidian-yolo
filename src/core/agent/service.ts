@@ -4,8 +4,9 @@ import type { YoloSettings } from '../../settings/schema/setting.types'
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
-  ChatExternalAgentResultMessage,
   ChatMessage,
+  ChatSubagentResultMessage,
+  ChatTerminalCommandResultMessage,
   ChatUserMessage,
   normalizeChatConversationCompactionState,
 } from '../../types/chat'
@@ -17,12 +18,30 @@ import {
 } from '../../types/tool-call.types'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
+import {
+  TERMINAL_COMMAND_TOOL_NAME,
+  getLocalFileToolServerName,
+} from '../mcp/localFileTools'
+import { parseToolName } from '../mcp/tool-name-utils'
 
+import {
+  type BackgroundTaskEvent,
+  backgroundTaskCompletionBus,
+} from './background-task/completion-bus'
+import {
+  DEFAULT_BLOCKED_PREFIXES,
+  isBlockedByCommandPrefix,
+} from './bash/command-classifier'
+import type { BashTaskRecord } from './bash/types'
 import { DEFAULT_BRANCH_ID } from './branch'
 import { CitationRegistry } from './citationRegistry'
-import type { AsyncTaskRecord } from './external-cli/async-task-registry'
-import type { ExternalCliEvent } from './external-cli/streamBus'
 import { NativeAgentRuntime } from './native-runtime'
+import { PromptSourceWatcher } from './promptSourceWatcher'
+import {
+  type SubagentParentContext,
+  buildSubagentParentContext,
+} from './subagent/parent-context'
+import type { SubagentTaskRecord } from './subagent/types'
 import { SystemPromptSnapshotStore } from './systemPromptSnapshotStore'
 import {
   AgentRunContext,
@@ -61,6 +80,20 @@ export type AgentConversationRunSummary = {
   status: AgentRunStatus
   isRunning: boolean
   /**
+   * True while the main agent activity is still user-visible: live runtime,
+   * foreground tool execution, pending approval, or awaiting user input.
+   * Background terminal/subagent result messages are intentionally excluded.
+   */
+  isActive: boolean
+  /**
+   * True when the global input-box Stop control should be available.
+   */
+  isAbortable: boolean
+  /**
+   * True when a new user message can be queued into the running loop.
+   */
+  isQueueable: boolean
+  /**
    * True when the run is blocked on either a pending tool approval OR an
    * `ask_user_question` awaiting the user's answer. Kept as a single field so
    * existing UI gates (stop-button, queue text, etc.) cover both cases.
@@ -78,11 +111,22 @@ export type AgentConversationRunSummarySubscriber = (
   summaries: Map<string, AgentConversationRunSummary>,
 ) => void
 
+type PendingApprovalRecoveryContext = {
+  lastRunInput: AgentRuntimeRunInput
+  lastLoopConfig: AgentRuntimeLoopConfig
+  lastRunContext: AgentRunContext | null
+}
+
 type ConversationEntry = {
   state: AgentConversationState
   subscribers: Set<AgentConversationStateSubscriber>
   baseMessages: ChatMessage[]
   persistState: boolean
+  /**
+   * Captured when a run finalizes while tool calls still await approval.
+   * Needed because `runEntries` are removed on settle but the UI approves later.
+   */
+  pendingApprovalRecoveryContext?: PendingApprovalRecoveryContext
 }
 
 type AgentRunEntry = {
@@ -118,18 +162,48 @@ export type AgentReplaceConversationMessagesReason =
   | 'hydrate'
   | 'self-heal'
 
-function buildExternalAgentResultMessage(
-  record: AsyncTaskRecord,
-): ChatExternalAgentResultMessage {
+function buildSubagentResultMessage(
+  record: SubagentTaskRecord,
+): ChatSubagentResultMessage {
   const completedAt = record.completedAt ?? Date.now()
+  const result = record.result
   return {
-    role: 'external_agent_result',
+    role: 'subagent_result',
     id: uuidv4(),
     taskId: record.taskId,
     source: record.source,
-    provider: record.provider,
     title: record.title,
-    status: record.status === 'running' ? 'completed' : record.status,
+    status:
+      result?.status ??
+      (record.status === 'running' ? 'completed' : record.status),
+    content: result?.content ?? record.error ?? '',
+    activityLog: result?.activityLog ?? record.activityLog,
+    durationMs: result?.durationMs ?? completedAt - record.createdAt,
+    toolUseCount: result?.toolUseCount ?? 0,
+    usage: result?.usage,
+    prompt: result?.prompt ?? record.prompt,
+    modelName: result?.modelName,
+    transcript: result?.transcript,
+    delegateAssistantMessageId:
+      record.source.type === 'llm_tool_call'
+        ? record.source.assistantMessageId
+        : '',
+    delegateToolCallId:
+      record.source.type === 'llm_tool_call' ? record.source.toolCallId : '',
+  }
+}
+
+function buildTerminalCommandResultMessage(
+  record: BashTaskRecord,
+): ChatTerminalCommandResultMessage {
+  const completedAt = record.completedAt ?? Date.now()
+  return {
+    role: 'terminal_command_result',
+    id: uuidv4(),
+    taskId: record.taskId,
+    source: record.source,
+    title: record.title,
+    status: record.status,
     exitCode: record.exitCode,
     stdout: record.stdoutBuffer,
     stderr: record.stderrBuffer,
@@ -141,6 +215,13 @@ function buildExternalAgentResultMessage(
     delegateToolCallId:
       record.source.type === 'llm_tool_call' ? record.source.toolCallId : '',
   }
+}
+
+const getBackgroundTaskEventTime = (event: BackgroundTaskEvent): number => {
+  if (event.kind === 'terminal_command_waiting') {
+    return event.occurredAt
+  }
+  return event.record.completedAt ?? 0
 }
 
 const reconcileAssistantGenerationState = (
@@ -261,6 +342,33 @@ const abortVisibleMessages = (messages: ChatMessage[]): ChatMessage[] => {
   })
 }
 
+const isBlockedTerminalCommandRequest = (
+  request: ToolCallRequest,
+  blockedCommandPrefixes?: string[],
+): boolean => {
+  try {
+    const parsed = parseToolName(request.name)
+    if (
+      parsed.serverName !== getLocalFileToolServerName() ||
+      parsed.toolName !== TERMINAL_COMMAND_TOOL_NAME
+    ) {
+      return false
+    }
+  } catch {
+    return false
+  }
+
+  const args = getToolCallArgumentsObject(request.arguments)
+  if (typeof args?.command !== 'string') {
+    return false
+  }
+
+  return isBlockedByCommandPrefix(
+    args.command,
+    blockedCommandPrefixes ?? DEFAULT_BLOCKED_PREFIXES,
+  )
+}
+
 const mergeVisibleMessages = (
   previousVisibleMessages: ChatMessage[],
   baseMessages: ChatMessage[],
@@ -313,8 +421,41 @@ const hasAwaitingUserInput = (messages: ChatMessage[]): boolean => {
   )
 }
 
+const hasRunningMainToolCall = (messages: ChatMessage[]): boolean => {
+  return messages.some(
+    (message) =>
+      message.role === 'tool' &&
+      message.toolCalls.some(
+        (toolCall) =>
+          toolCall.response.status === ToolCallResponseStatus.Running,
+      ),
+  )
+}
+
 const hasPendingUserInteraction = (messages: ChatMessage[]): boolean => {
   return hasPendingApproval(messages) || hasAwaitingUserInput(messages)
+}
+
+export const buildAgentConversationRunSummary = (
+  state: AgentConversationState,
+): AgentConversationRunSummary => {
+  const isWaitingUserInput = hasAwaitingUserInput(state.messages)
+  const isWaitingApproval =
+    hasPendingApproval(state.messages) || isWaitingUserInput
+  const hasRunningToolCall = hasRunningMainToolCall(state.messages)
+  const isRuntimeRunning = state.status === 'running'
+  const isActive = isRuntimeRunning || isWaitingApproval || hasRunningToolCall
+
+  return {
+    conversationId: state.conversationId,
+    status: state.status,
+    isRunning: isRuntimeRunning && !isWaitingApproval,
+    isActive,
+    isAbortable: isActive,
+    isQueueable: isRuntimeRunning && !isWaitingApproval,
+    isWaitingApproval,
+    isWaitingUserInput,
+  }
 }
 
 const isTrailingResolvedToolMessage = (
@@ -328,6 +469,36 @@ const isTrailingResolvedToolMessage = (
   return last.toolCalls.every((toolCall) =>
     TOOL_CALL_TERMINAL_STATUSES.includes(toolCall.response.status),
   )
+}
+
+const patchToolCallResponseInMessages = (
+  messages: ChatMessage[],
+  toolCallId: string,
+  response: ToolCallResponse,
+): {
+  toolMessageId: string | null
+  updatedMessages: ChatMessage[]
+  didPatch: boolean
+} => {
+  let toolMessageId: string | null = null
+  let didPatch = false
+  const updatedMessages = messages.map((message) => {
+    if (message.role !== 'tool') {
+      return message
+    }
+    let messageUpdated = false
+    const nextToolCalls = message.toolCalls.map((toolCall) => {
+      if (toolCall.request.id !== toolCallId) {
+        return toolCall
+      }
+      didPatch = true
+      toolMessageId = message.id
+      messageUpdated = true
+      return { ...toolCall, response }
+    })
+    return messageUpdated ? { ...message, toolCalls: nextToolCalls } : message
+  })
+  return { toolMessageId, updatedMessages, didPatch }
 }
 
 const patchAwaitingUserInputInMessages = (
@@ -427,7 +598,9 @@ const buildBranchAggregateMessages = ({
       break
     }
     const currentSourceUserMessageId =
-      currentMessage.role === 'external_agent_result'
+      currentMessage.role === 'external_agent_result' ||
+      currentMessage.role === 'subagent_result' ||
+      currentMessage.role === 'terminal_command_result'
         ? undefined
         : currentMessage.metadata?.sourceUserMessageId
     if (currentSourceUserMessageId !== sourceUserMessageId) {
@@ -493,7 +666,7 @@ const buildBranchAggregateMessages = ({
   ]
 }
 
-export type PendingExternalAgentResultsSubscriber = (
+export type PendingBackgroundTaskResultsSubscriber = (
   conversationId: string,
 ) => void
 
@@ -546,23 +719,29 @@ export type AbortedQueuedMessagesSubscriber = (
   messages: ChatUserMessage[],
 ) => void
 
+type ForegroundToolAborter = () => void
+
 export class AgentService {
   private conversationEntries = new Map<string, ConversationEntry>()
   private runEntriesByKey = new Map<string, AgentRunEntry>()
+  private foregroundToolAbortersByConversation = new Map<
+    string,
+    Map<string, ForegroundToolAborter>
+  >()
   private summarySubscribers = new Set<AgentConversationRunSummarySubscriber>()
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  /** pending external agent results per conversation (queued while streaming) */
-  private pendingExternalAgentResults = new Map<string, AsyncTaskRecord[]>()
+  /** pending background task results per conversation (queued while streaming) */
+  private pendingBackgroundTaskResults = new Map<
+    string,
+    BackgroundTaskEvent[]
+  >()
   private pendingResultsSubscribers =
-    new Set<PendingExternalAgentResultsSubscriber>()
-  private unsubscribeTaskCompleted: (() => void) | null = null
-  // Generation token: incremented on each start/stop so a late-resolving lazy
-  // import can detect that it was superseded and bail out.
-  private listenerStartId = 0
+    new Set<PendingBackgroundTaskResultsSubscriber>()
+  private unsubscribeBackgroundTaskCompleted: (() => void) | null = null
   // Conversations that have notified subscribers about an auto-run trigger but
   // whose run hasn't yet flipped `isRunning` to true. Prevents duplicate
-  // auto-runs when multiple task-completed events arrive in the gap between
+  // auto-runs when multiple background completion events arrive in the gap between
   // `submitChatMutation.mutate` and `agentService.run` actually starting.
   private autoRunScheduled = new Set<string>()
   /**
@@ -584,12 +763,17 @@ export class AgentService {
    * churn (reasoning level, chat mode, etc.).
    */
   private readonly systemPromptSnapshotStore = new SystemPromptSnapshotStore()
+  private readonly promptSourceWatcher = new PromptSourceWatcher()
 
   constructor(private readonly options: AgentServiceOptions = {}) {}
 
   /** Shared system-prompt snapshot store, injected into RCB at construction. */
   getSystemPromptSnapshotStore(): SystemPromptSnapshotStore {
     return this.systemPromptSnapshotStore
+  }
+
+  getPromptSourceWatcher(): PromptSourceWatcher {
+    return this.promptSourceWatcher
   }
 
   /**
@@ -672,9 +856,9 @@ export class AgentService {
     }
   }
 
-  /** Subscribe to be notified when pending external agent results are ready to drain */
-  subscribeToPendingExternalAgentResults(
-    fn: PendingExternalAgentResultsSubscriber,
+  /** Subscribe to be notified when pending background task results are ready to drain */
+  subscribeToPendingBackgroundTaskResults(
+    fn: PendingBackgroundTaskResultsSubscriber,
   ): () => void {
     this.pendingResultsSubscribers.add(fn)
     return () => {
@@ -682,57 +866,40 @@ export class AgentService {
     }
   }
 
-  /**
-   * Start listening for task-completed events from the external CLI stream bus.
-   * Call once after construction (desktop-only, called lazily).
-   */
-  startExternalAgentResultListener(): void {
-    if (this.unsubscribeTaskCompleted) return
-    const myStartId = ++this.listenerStartId
-    // Lazy import to avoid importing desktop-only module on mobile
-    void import('./external-cli/streamBus').then(({ externalCliStreamBus }) => {
-      // Bail out if stop was called (or another start invalidated us) before
-      // the dynamic import resolved.
-      if (myStartId !== this.listenerStartId) return
-      this.unsubscribeTaskCompleted =
-        externalCliStreamBus.subscribeTaskCompleted(
-          (event: Extract<ExternalCliEvent, { type: 'task-completed' }>) => {
-            this.handleTaskCompleted(event.record)
-          },
-        )
-    })
+  startBackgroundTaskResultListener(): void {
+    if (this.unsubscribeBackgroundTaskCompleted) return
+    this.unsubscribeBackgroundTaskCompleted =
+      backgroundTaskCompletionBus.subscribe((event) => {
+        this.handleBackgroundTaskCompleted(event)
+      })
   }
 
-  stopExternalAgentResultListener(): void {
-    // Bump generation to invalidate any in-flight lazy import.
-    this.listenerStartId++
-    this.unsubscribeTaskCompleted?.()
-    this.unsubscribeTaskCompleted = null
+  stopBackgroundTaskResultListener(): void {
+    this.unsubscribeBackgroundTaskCompleted?.()
+    this.unsubscribeBackgroundTaskCompleted = null
   }
 
-  private handleTaskCompleted(record: AsyncTaskRecord): void {
-    const { conversationId } = record
+  private handleBackgroundTaskCompleted(event: BackgroundTaskEvent): void {
+    const { conversationId } = event
     const isRunning = this.isRunning(conversationId)
     const autoRunPending = this.autoRunScheduled.has(conversationId)
 
     if (isRunning || autoRunPending) {
-      // Queue: the next finalize will drain it and emit a single auto-run.
-      const queue = this.pendingExternalAgentResults.get(conversationId) ?? []
-      queue.push(record)
-      this.pendingExternalAgentResults.set(conversationId, queue)
+      const queue = this.pendingBackgroundTaskResults.get(conversationId) ?? []
+      queue.push(event)
+      this.pendingBackgroundTaskResults.set(conversationId, queue)
     } else {
-      // Idle and no auto-run scheduled: append immediately and notify.
       this.autoRunScheduled.add(conversationId)
-      this.appendExternalAgentResultRecord(conversationId, record)
+      this.appendBackgroundTaskResultEvent(conversationId, event)
       this.notifyPendingResultsSubscribers(conversationId)
     }
   }
 
-  private appendExternalAgentResultRecord(
+  private appendBackgroundTaskResultEvent(
     conversationId: string,
-    record: AsyncTaskRecord,
+    event: BackgroundTaskEvent,
   ): void {
-    const msg = buildExternalAgentResultMessage(record)
+    const msg = this.buildBackgroundTaskResultMessage(event)
     const entry = this.getOrCreateConversationEntry(conversationId)
     const nextMessages = [...entry.state.messages, msg]
     entry.baseMessages = nextMessages
@@ -740,25 +907,30 @@ export class AgentService {
     this.notifyConversationSubscribers(conversationId)
   }
 
-  /**
-   * Drain any pending external agent results for the conversation.
-   * Returns the appended messages (empty if nothing was queued).
-   * Call this after a run completes (idle transition).
-   */
-  drainPendingExternalAgentResults(
-    conversationId: string,
-  ): ChatExternalAgentResultMessage[] {
-    const queue = this.pendingExternalAgentResults.get(conversationId)
+  private buildBackgroundTaskResultMessage(
+    event: BackgroundTaskEvent,
+  ): ChatMessage {
+    switch (event.kind) {
+      case 'subagent':
+        return buildSubagentResultMessage(event.record)
+      case 'terminal_command':
+      case 'terminal_command_waiting':
+        return buildTerminalCommandResultMessage(event.record)
+    }
+  }
+
+  drainPendingBackgroundTaskResults(conversationId: string): ChatMessage[] {
+    const queue = this.pendingBackgroundTaskResults.get(conversationId)
     if (!queue || queue.length === 0) return []
 
-    // Sort by completedAt ascending
-    queue.sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0))
-    this.pendingExternalAgentResults.delete(conversationId)
+    queue.sort(
+      (a, b) => getBackgroundTaskEventTime(a) - getBackgroundTaskEventTime(b),
+    )
+    this.pendingBackgroundTaskResults.delete(conversationId)
 
-    const appended: ChatExternalAgentResultMessage[] = []
-    for (const record of queue) {
-      const msg = buildExternalAgentResultMessage(record)
-      appended.push(msg)
+    const appended: ChatMessage[] = []
+    for (const event of queue) {
+      appended.push(this.buildBackgroundTaskResultMessage(event))
     }
 
     const entry = this.getOrCreateConversationEntry(conversationId)
@@ -770,9 +942,9 @@ export class AgentService {
     return appended
   }
 
-  hasPendingExternalAgentResults(conversationId: string): boolean {
+  hasPendingBackgroundTaskResults(conversationId: string): boolean {
     return (
-      (this.pendingExternalAgentResults.get(conversationId)?.length ?? 0) > 0
+      (this.pendingBackgroundTaskResults.get(conversationId)?.length ?? 0) > 0
     )
   }
 
@@ -809,7 +981,7 @@ export class AgentService {
     conversationId: string,
   ): AgentConversationRunSummary {
     const state = this.getOrCreateConversationEntry(conversationId).state
-    return this.buildRunSummary(state)
+    return buildAgentConversationRunSummary(state)
   }
 
   getActiveConversationRunSummaries(): Map<
@@ -818,8 +990,8 @@ export class AgentService {
   > {
     const summaries = new Map<string, AgentConversationRunSummary>()
     for (const [conversationId, entry] of this.conversationEntries.entries()) {
-      const summary = this.buildRunSummary(entry.state)
-      if (summary.isRunning || summary.isWaitingApproval) {
+      const summary = buildAgentConversationRunSummary(entry.state)
+      if (summary.isActive) {
         summaries.set(conversationId, summary)
       }
     }
@@ -861,6 +1033,32 @@ export class AgentService {
     )
   }
 
+  registerForegroundToolAborter({
+    conversationId,
+    toolCallId,
+    abort,
+  }: {
+    conversationId: string
+    toolCallId: string
+    abort: ForegroundToolAborter
+  }): () => void {
+    const aborters =
+      this.foregroundToolAbortersByConversation.get(conversationId) ?? new Map()
+    aborters.set(toolCallId, abort)
+    this.foregroundToolAbortersByConversation.set(conversationId, aborters)
+
+    return () => {
+      const current =
+        this.foregroundToolAbortersByConversation.get(conversationId)
+      if (!current) return
+      if (current.get(toolCallId) !== abort) return
+      current.delete(toolCallId)
+      if (current.size === 0) {
+        this.foregroundToolAbortersByConversation.delete(conversationId)
+      }
+    }
+  }
+
   replaceConversationMessages(
     conversationId: string,
     messages: ChatMessage[],
@@ -891,6 +1089,22 @@ export class AgentService {
     this.notifyConversationSubscribers(conversationId, options?.reason)
   }
 
+  getPendingApprovalSubagentParentContext(
+    conversationId: string,
+  ): SubagentParentContext | undefined {
+    const recovery =
+      this.getOrCreateConversationEntry(
+        conversationId,
+      ).pendingApprovalRecoveryContext
+    if (!recovery) {
+      return undefined
+    }
+    return buildSubagentParentContext(
+      recovery.lastRunInput,
+      recovery.lastLoopConfig,
+    )
+  }
+
   async approveToolCall({
     conversationId,
     toolCallId,
@@ -901,19 +1115,59 @@ export class AgentService {
     allowForConversation?: boolean
   }): Promise<boolean> {
     const located = this.findToolCall(conversationId, toolCallId)
-    if (!located?.runEntry.lastRunInput || !located.runEntry.lastLoopConfig) {
+    if (!located) {
       return false
     }
 
-    const { runEntry, toolMessage, toolCall } = located
-    const lastRunInput = runEntry.lastRunInput
-    const lastLoopConfig = runEntry.lastLoopConfig
-    if (
-      !lastRunInput ||
-      !lastLoopConfig ||
-      toolCall.response.status !== ToolCallResponseStatus.PendingApproval
-    ) {
+    const { toolMessage, toolCall } = located
+    if (toolCall.response.status !== ToolCallResponseStatus.PendingApproval) {
       return false
+    }
+
+    const conversationEntry = this.getOrCreateConversationEntry(conversationId)
+    const recoveryContext = conversationEntry.pendingApprovalRecoveryContext
+    const activeRunInput = located.runEntry?.lastRunInput ?? null
+    const activeLoopConfig = located.runEntry?.lastLoopConfig ?? null
+    const lastRunInput = activeRunInput ?? recoveryContext?.lastRunInput ?? null
+    const lastLoopConfig =
+      activeLoopConfig ?? recoveryContext?.lastLoopConfig ?? null
+    const lastRunContext =
+      located.runEntry?.lastRunContext ??
+      recoveryContext?.lastRunContext ??
+      null
+
+    if (!lastRunInput || !lastLoopConfig) {
+      return false
+    }
+
+    if (
+      isBlockedTerminalCommandRequest(
+        toolCall.request,
+        lastRunInput.blockedCommandPrefixes,
+      )
+    ) {
+      const nextMessages = this.updateToolCallResponse({
+        conversationId,
+        toolCallId,
+        response: {
+          status: ToolCallResponseStatus.Error,
+          error:
+            'Terminal command rejected because it matches a blocked command prefix.',
+        },
+      })
+      if (!nextMessages) {
+        return false
+      }
+
+      if (isTrailingResolvedToolMessage(nextMessages, toolMessage.id)) {
+        await this.run({
+          conversationId,
+          loopConfig: lastLoopConfig,
+          input: this.buildContinuationInput(lastRunInput, nextMessages),
+        })
+      }
+
+      return true
     }
 
     if (allowForConversation) {
@@ -924,16 +1178,22 @@ export class AgentService {
       )
     }
 
-    this.updateToolCallResponse({
+    const messagesBeforeApproval =
+      located.runEntry?.state.messages ?? conversationEntry.state.messages
+
+    const runningMessages = this.updateToolCallResponse({
       conversationId,
       toolCallId,
       response: { status: ToolCallResponseStatus.Running },
       status: 'running',
     })
+    if (!runningMessages) {
+      return false
+    }
 
     const toolArgs = getToolCallArgumentsObject(toolCall.request.arguments)
     const debugTraceId = this.findDebugTraceIdForToolCall(
-      runEntry.state.messages,
+      messagesBeforeApproval,
       toolCall.request.id,
     )
     const result = await captureLLMDebugOperation({
@@ -957,13 +1217,15 @@ export class AgentService {
           args: toolArgs,
           id: toolCall.request.id,
           conversationId,
-          conversationMessages: runEntry.state.messages,
+          conversationMessages: runningMessages,
           roundId: toolMessage.id,
           chatModelId: lastRunInput.model.id,
           workspaceScope: lastRunInput.workspaceScope,
-          // Reuse the same registry the auto-execution path uses so citations
-          // emitted by the approved tool are attached to the assistant message.
-          runContext: runEntry.lastRunContext ?? undefined,
+          runContext: lastRunContext ?? undefined,
+          subagentParentContext: buildSubagentParentContext(
+            lastRunInput,
+            lastLoopConfig,
+          ),
         }),
       getResponseBody: (response) => response,
     })
@@ -977,23 +1239,11 @@ export class AgentService {
       return false
     }
 
-    const latestToolMessage = nextMessages.find(
-      (message) => message.id === toolMessage.id,
-    )
-    if (
-      latestToolMessage?.role === 'tool' &&
-      nextMessages.at(-1)?.id === latestToolMessage.id &&
-      latestToolMessage.toolCalls.every((currentToolCall) =>
-        TOOL_CALL_TERMINAL_STATUSES.includes(currentToolCall.response.status),
-      )
-    ) {
+    if (isTrailingResolvedToolMessage(nextMessages, toolMessage.id)) {
       await this.run({
         conversationId,
         loopConfig: lastLoopConfig,
-        input: {
-          ...lastRunInput,
-          messages: nextMessages,
-        },
+        input: this.buildContinuationInput(lastRunInput, nextMessages),
       })
     }
 
@@ -1055,14 +1305,14 @@ export class AgentService {
       }
 
       const { runEntry } = located
-      if (runEntry.lastRunInput && runEntry.lastLoopConfig) {
+      if (runEntry?.lastRunInput && runEntry.lastLoopConfig) {
         await this.run({
           conversationId,
           loopConfig: runEntry.lastLoopConfig,
-          input: {
-            ...runEntry.lastRunInput,
-            messages: nextMessages,
-          },
+          input: this.buildContinuationInput(
+            runEntry.lastRunInput,
+            nextMessages,
+          ),
         })
         return { kind: 'continued' }
       }
@@ -1186,18 +1436,99 @@ export class AgentService {
     conversationId: string
     toolCallId: string
   }): boolean {
+    const abortedForegroundTool = this.abortRegisteredForegroundToolCall(
+      conversationId,
+      toolCallId,
+    )
     const located = this.findToolCall(conversationId, toolCallId)
     if (!located) {
+      return abortedForegroundTool
+    }
+    located.runEntry?.lastRunInput?.mcpManager.abortToolCall(toolCallId)
+    return (
+      Boolean(
+        this.updateToolCallResponse({
+          conversationId,
+          toolCallId,
+          response: { status: ToolCallResponseStatus.Aborted },
+        }),
+      ) || abortedForegroundTool
+    )
+  }
+
+  private abortRegisteredForegroundToolCall(
+    conversationId: string,
+    toolCallId: string,
+  ): boolean {
+    const aborters =
+      this.foregroundToolAbortersByConversation.get(conversationId)
+    const abort = aborters?.get(toolCallId)
+    if (!abort || !aborters) {
       return false
     }
-    located.runEntry.lastRunInput?.mcpManager.abortToolCall(toolCallId)
-    return Boolean(
-      this.updateToolCallResponse({
+
+    aborters.delete(toolCallId)
+    if (aborters.size === 0) {
+      this.foregroundToolAbortersByConversation.delete(conversationId)
+    }
+
+    try {
+      abort()
+    } catch (error) {
+      console.warn('[YOLO] Failed to abort foreground tool call', {
         conversationId,
         toolCallId,
-        response: { status: ToolCallResponseStatus.Aborted },
-      }),
-    )
+        error,
+      })
+    }
+    return true
+  }
+
+  private abortRegisteredForegroundToolCalls(
+    conversationId: string,
+    messages: ChatMessage[],
+  ): boolean {
+    let aborted = false
+    for (const message of messages) {
+      if (message.role !== 'tool') continue
+      for (const toolCall of message.toolCalls) {
+        if (toolCall.response.status !== ToolCallResponseStatus.Running) {
+          continue
+        }
+        aborted =
+          this.abortRegisteredForegroundToolCall(
+            conversationId,
+            toolCall.request.id,
+          ) || aborted
+      }
+    }
+    return aborted
+  }
+
+  private abortRuntimeToolCalls(runEntry: AgentRunEntry): void {
+    const mcpManager = runEntry.lastRunInput?.mcpManager
+    if (!mcpManager) {
+      return
+    }
+    for (const message of runEntry.state.messages) {
+      if (message.role !== 'tool') continue
+      for (const toolCall of message.toolCalls) {
+        if (toolCall.response.status === ToolCallResponseStatus.Running) {
+          mcpManager.abortToolCall(toolCall.request.id)
+        }
+      }
+    }
+  }
+
+  private buildContinuationInput(
+    input: AgentRuntimeRunInput,
+    messages: ChatMessage[],
+  ): AgentRuntimeRunInput {
+    return {
+      ...input,
+      messages,
+      requestMessages: undefined,
+    }
   }
 
   private attachSourcesToLatestAssistant(
@@ -1495,13 +1826,23 @@ export class AgentService {
   }
 
   abortConversation(conversationId: string): boolean {
-    const runEntries = this.runEntriesForConversation(conversationId)
-    if (runEntries.length === 0) {
-      return false
-    }
+    return this.abortConversationMainActivity(conversationId)
+  }
 
+  abortConversationMainActivity(conversationId: string): boolean {
+    const runEntries = this.runEntriesForConversation(conversationId)
     const droppedQueuedByConversation: ChatUserMessage[] = []
+    let didAbort = false
+
+    const conversationEntry = this.conversationEntries.get(conversationId)
+    didAbort =
+      this.abortRegisteredForegroundToolCalls(
+        conversationId,
+        conversationEntry?.state.messages ?? [],
+      ) || didAbort
+
     runEntries.forEach((runEntry) => {
+      didAbort = true
       const runKey = getRunKey(conversationId, runEntry.branchId)
       const queued = this.pendingUserMessagesByKey.get(runKey)
       if (queued && queued.length > 0) {
@@ -1510,6 +1851,7 @@ export class AgentService {
       this.pendingUserMessagesByKey.delete(runKey)
       this.continuationScheduledByKey.delete(runKey)
 
+      this.abortRuntimeToolCalls(runEntry)
       runEntry.runtime?.abort()
       runEntry.state = {
         ...runEntry.state,
@@ -1518,14 +1860,35 @@ export class AgentService {
         pendingCompactionAnchorMessageId: null,
       }
     })
-    this.recomputeConversationState(conversationId)
+    if (runEntries.length > 0) {
+      this.recomputeConversationState(conversationId)
+    } else if (conversationEntry) {
+      const nextMessages = abortVisibleMessages(
+        conversationEntry.state.messages,
+      )
+      const didPatchMessages = nextMessages.some(
+        (message, index) => message !== conversationEntry.state.messages[index],
+      )
+      if (didPatchMessages) {
+        didAbort = true
+        conversationEntry.baseMessages = nextMessages
+        conversationEntry.state = {
+          ...conversationEntry.state,
+          messages: nextMessages,
+          status: 'aborted',
+          pendingCompactionAnchorMessageId: null,
+        }
+        this.syncPendingApprovalRecoveryContext(conversationId, nextMessages)
+        this.notifyConversationSubscribers(conversationId)
+      }
+    }
 
     if (droppedQueuedByConversation.length > 0) {
       for (const subscriber of this.abortedQueuedMessagesSubscribers) {
         subscriber(conversationId, droppedQueuedByConversation)
       }
     }
-    return true
+    return didAbort
   }
 
   abortAll(): void {
@@ -1676,6 +2039,21 @@ export class AgentService {
     const conversationEntry = this.getOrCreateConversationEntry(conversationId)
     if (runEntries.length > 0) {
       conversationEntry.baseMessages = [...conversationEntry.state.messages]
+      const defaultBranchEntry =
+        runEntries.find((entry) => entry.branchId === DEFAULT_BRANCH_ID) ??
+        runEntries[0]
+      if (
+        defaultBranchEntry &&
+        hasPendingApproval(defaultBranchEntry.state.messages) &&
+        defaultBranchEntry.lastRunInput &&
+        defaultBranchEntry.lastLoopConfig
+      ) {
+        conversationEntry.pendingApprovalRecoveryContext = {
+          lastRunInput: defaultBranchEntry.lastRunInput,
+          lastLoopConfig: defaultBranchEntry.lastLoopConfig,
+          lastRunContext: defaultBranchEntry.lastRunContext,
+        }
+      }
       runEntries.forEach((entry) => {
         this.runEntriesByKey.delete(getRunKey(conversationId, entry.branchId))
       })
@@ -1686,9 +2064,10 @@ export class AgentService {
     // (or drained queue) can schedule the next auto-run.
     this.autoRunScheduled.delete(conversationId)
 
-    // Drain pending external agent results after run completes
-    const drained = this.drainPendingExternalAgentResults(conversationId)
-    if (drained.length > 0) {
+    // Drain pending background task results after run completes
+    const drainedBackground =
+      this.drainPendingBackgroundTaskResults(conversationId)
+    if (drainedBackground.length > 0) {
       this.autoRunScheduled.add(conversationId)
       this.notifyPendingResultsSubscribers(conversationId)
     }
@@ -1721,21 +2100,6 @@ export class AgentService {
         state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
-    }
-  }
-
-  private buildRunSummary(
-    state: AgentConversationState,
-  ): AgentConversationRunSummary {
-    const isWaitingUserInput = hasAwaitingUserInput(state.messages)
-    const isWaitingApproval =
-      hasPendingApproval(state.messages) || isWaitingUserInput
-    return {
-      conversationId: state.conversationId,
-      status: state.status,
-      isRunning: state.status === 'running' && !isWaitingApproval,
-      isWaitingApproval,
-      isWaitingUserInput,
     }
   }
 
@@ -1808,6 +2172,19 @@ export class AgentService {
     this.persistTimers.set(state.conversationId, timer)
   }
 
+  private syncPendingApprovalRecoveryContext(
+    conversationId: string,
+    messages: ChatMessage[],
+  ): void {
+    if (hasPendingApproval(messages)) {
+      return
+    }
+    const entry = this.conversationEntries.get(conversationId)
+    if (entry) {
+      entry.pendingApprovalRecoveryContext = undefined
+    }
+  }
+
   private updateToolCallResponse({
     conversationId,
     toolCallId,
@@ -1824,49 +2201,45 @@ export class AgentService {
       return null
     }
 
-    let updated = false
-    const nextMessages = located.runEntry.state.messages.map((message) => {
-      if (message.role !== 'tool') {
-        return message
-      }
-
-      const nextToolCalls = message.toolCalls.map((toolCall) => {
-        if (toolCall.request.id !== toolCallId) {
-          return toolCall
-        }
-        updated = true
-        return {
-          ...toolCall,
-          response,
-        }
-      })
-
-      return updated
-        ? {
-            ...message,
-            toolCalls: nextToolCalls,
-          }
-        : message
-    })
-
-    if (!updated) {
+    const sourceMessages =
+      located.runEntry?.state.messages ??
+      this.getOrCreateConversationEntry(conversationId).state.messages
+    const { updatedMessages, didPatch } = patchToolCallResponseInMessages(
+      sourceMessages,
+      toolCallId,
+      response,
+    )
+    if (!didPatch) {
       return null
     }
 
-    located.runEntry.state = {
-      ...located.runEntry.state,
-      messages: nextMessages,
-      status: status ?? located.runEntry.state.status,
+    if (located.runEntry) {
+      located.runEntry.state = {
+        ...located.runEntry.state,
+        messages: updatedMessages,
+        status: status ?? located.runEntry.state.status,
+      }
+    } else {
+      const conversationEntry =
+        this.getOrCreateConversationEntry(conversationId)
+      conversationEntry.baseMessages = updatedMessages
+      conversationEntry.state = {
+        ...conversationEntry.state,
+        messages: updatedMessages,
+        status: status ?? conversationEntry.state.status,
+      }
+      this.syncPendingApprovalRecoveryContext(conversationId, updatedMessages)
     }
+
     this.recomputeConversationState(conversationId)
-    return nextMessages
+    return updatedMessages
   }
 
   private findToolCall(
     conversationId: string,
     toolCallId: string,
   ): {
-    runEntry: AgentRunEntry
+    runEntry: AgentRunEntry | null
     toolMessage: Extract<ChatMessage, { role: 'tool' }>
     toolCall: {
       request: ToolCallRequest
@@ -1887,6 +2260,27 @@ export class AgentService {
             toolMessage: message,
             toolCall,
           }
+        }
+      }
+    }
+
+    const conversationEntry = this.conversationEntries.get(conversationId)
+    if (!conversationEntry) {
+      return null
+    }
+
+    for (const message of conversationEntry.state.messages) {
+      if (message.role !== 'tool') {
+        continue
+      }
+      const toolCall = message.toolCalls.find(
+        (candidate) => candidate.request.id === toolCallId,
+      )
+      if (toolCall) {
+        return {
+          runEntry: null,
+          toolMessage: message,
+          toolCall,
         }
       }
     }

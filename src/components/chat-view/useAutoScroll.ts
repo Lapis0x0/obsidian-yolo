@@ -488,6 +488,7 @@ export function useAutoScroll({
     autoScrollToBottom,
     notifyContentFlushed,
     forceScrollToBottom,
+    stopAutoFollow,
     isAutoFollowEnabled: autoFollowState,
     followOutput,
     onAtBottomStateChange: handleAtBottomStateChange,

@@ -648,9 +648,10 @@ export function useChatHistory(): UseChatHistory {
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: titleInput },
                   ],
+                  reasoningLevel: 'off',
                 },
                 stream: false,
-                purpose: 'auxiliary',
+                purpose: 'lightweight',
                 signal: controller.signal,
                 debugTraceId: debugTrace?.id,
               })
@@ -794,6 +795,8 @@ const serializeChatMessage = (message: ChatMessage): SerializedChatMessage => {
         metadata: message.metadata,
       }
     case 'external_agent_result':
+    case 'subagent_result':
+    case 'terminal_command_result':
       return message
   }
 }
@@ -837,6 +840,8 @@ const deserializeChatMessage = (
         metadata: message.metadata,
       }
     case 'external_agent_result':
+    case 'subagent_result':
+    case 'terminal_command_result':
       return message
   }
 }

@@ -1,5 +1,7 @@
 import type { LLMProvider } from '../../types/provider.types'
 
+import { resolveRequestTransportMode } from './requestTransport'
+
 export const shouldUseStreamingForProvider = ({
   requestedStream,
   provider,
@@ -11,5 +13,14 @@ export const shouldUseStreamingForProvider = ({
     return false
   }
 
-  return provider?.additionalSettings?.requestTransportMode !== 'obsidian'
+  if (!provider) {
+    return true
+  }
+
+  return (
+    resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: Boolean(provider.baseUrl?.trim()),
+    }) !== 'obsidian'
+  )
 }

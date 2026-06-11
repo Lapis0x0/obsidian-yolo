@@ -159,8 +159,12 @@ function groupSerializedAssistantAndToolMessages(
     ) => {
       if (message.role === 'user') {
         acc.push(message)
-      } else if (message.role === 'external_agent_result') {
-        // external_agent_result messages are not exported to markdown
+      } else if (
+        message.role === 'external_agent_result' ||
+        message.role === 'subagent_result' ||
+        message.role === 'terminal_command_result'
+      ) {
+        // These side-channel messages are exported through their owning assistant turn.
       } else {
         const lastItem = acc[acc.length - 1]
         if (

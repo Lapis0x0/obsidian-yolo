@@ -1,8 +1,15 @@
 import {
   compareVersions,
+  normalizePluginVersion,
   parseChangelog,
   splitReleaseNotesByLanguage,
 } from './updateChecker'
+
+describe('normalizePluginVersion', () => {
+  it('strips v prefix and trims whitespace', () => {
+    expect(normalizePluginVersion(' v1.5.11.1 ')).toBe('1.5.11.1')
+  })
+})
 
 describe('compareVersions', () => {
   it('returns true when latest is newer (patch)', () => {

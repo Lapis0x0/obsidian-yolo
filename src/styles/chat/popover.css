@@ -251,7 +251,7 @@
 }
 
 .yolo-popover-surface--default .yolo-model-select-list {
-  padding: 4px 0;
+  padding: 0;
   max-height: 540px;
   overflow-y: auto;
   /* Auto-hide is handled by Chromium's native overlay scrollbar (triggered
@@ -275,7 +275,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 4px 10px 4px 12px;
+  padding: 6px 10px 6px 12px;
   margin: 0;
   border-radius: var(--radius-s);
   color: var(--text-normal);
@@ -283,6 +283,21 @@
   line-height: var(--line-height-tight);
   cursor: pointer;
   outline: none;
+}
+
+/* 首/末项高亮贴面板边缘：列表不再纵向留白，圆角交给边缘项。 */
+.yolo-popover-surface--default
+  .yolo-model-select-list
+  > .yolo-popover-item:first-child {
+  border-top-left-radius: var(--radius-m);
+  border-top-right-radius: var(--radius-m);
+}
+
+.yolo-popover-surface--default
+  .yolo-model-select-list
+  > .yolo-popover-item:last-child {
+  border-bottom-left-radius: var(--radius-m);
+  border-bottom-right-radius: var(--radius-m);
 }
 
 .yolo-popover-surface--default
@@ -301,14 +316,43 @@
 .yolo-popover-surface
   .yolo-model-select-list
   > .yolo-popover-item[data-state='checked'] {
+  --yolo-popover-item-checked-inset: color-mix(
+    in srgb,
+    var(--background-modifier-border) 60%,
+    transparent
+  );
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 45%,
     transparent
   );
   font-weight: var(--font-semibold);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--yolo-popover-item-checked-inset);
+}
+
+/* 贴边选中态：去掉与面板边框重叠的顶/底 inset 描边。 */
+.yolo-popover-surface
+  .yolo-model-select-list
+  > .yolo-popover-item:first-child[data-state='checked'] {
+  box-shadow:
+    inset 0 -1px 0 var(--yolo-popover-item-checked-inset),
+    inset 1px 0 0 var(--yolo-popover-item-checked-inset),
+    inset -1px 0 0 var(--yolo-popover-item-checked-inset);
+}
+
+.yolo-popover-surface
+  .yolo-model-select-list
+  > .yolo-popover-item:last-child[data-state='checked'] {
+  box-shadow:
+    inset 0 1px 0 var(--yolo-popover-item-checked-inset),
+    inset 1px 0 0 var(--yolo-popover-item-checked-inset),
+    inset -1px 0 0 var(--yolo-popover-item-checked-inset);
+}
+
+.yolo-popover-surface
+  .yolo-model-select-list
+  > .yolo-popover-item:first-child:last-child[data-state='checked'] {
+  box-shadow: inset 0 0 0 1px var(--yolo-popover-item-checked-inset);
 }
 
 .yolo-popover-item__label {
@@ -526,8 +570,20 @@
   gap: 8px;
 }
 
+.yolo-chat-list-dropdown-item-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
 .yolo-chat-list-dropdown-item-title-text {
   display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -536,6 +592,16 @@
   transition:
     opacity 140ms ease,
     transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.yolo-chat-list-dropdown-item-current-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 3px 7px;
+  border-radius: var(--radius-s);
+  color: var(--color-green);
+  background: color-mix(in srgb, var(--color-green) 15%, transparent);
 }
 
 .yolo-chat-list-dropdown-item-title-skeleton {

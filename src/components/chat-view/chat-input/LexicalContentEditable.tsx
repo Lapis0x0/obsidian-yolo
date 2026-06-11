@@ -42,6 +42,7 @@ import OnEnterPlugin from './plugins/on-enter/OnEnterPlugin'
 import OnMutationPlugin, {
   NodeMutations,
 } from './plugins/on-mutation/OnMutationPlugin'
+import PlainTextPastePlugin from './plugins/paste/PlainTextPastePlugin'
 // templates feature removed
 
 export type LexicalContentEditableProps = {
@@ -68,8 +69,8 @@ export type LexicalContentEditableProps = {
   assistants?: Assistant[]
   currentAssistantId?: string
   onSelectAssistant?: (assistantId: string) => void
-  currentChatMode?: 'chat' | 'agent'
-  onSelectChatMode?: (mode: 'chat' | 'agent') => void
+  currentChatMode?: import('./ChatModeSelect').ChatMode
+  onSelectChatMode?: (mode: import('./ChatModeSelect').ChatMode) => void
   allowAgentModeOption?: boolean
   models?: ChatModel[]
   selectedModelIds?: string[]
@@ -336,6 +337,7 @@ export default function LexicalContentEditable({
       <AutoLinkMentionPlugin />
       <MentionSelectionHighlightPlugin />
       <ImagePastePlugin onCreateImageMentionables={onCreateImageMentionables} />
+      <PlainTextPastePlugin />
       <ObsidianFileDropPlugin />
       <DragDropPaste onCreateImageMentionables={onCreateImageMentionables} />
       {/* templates feature removed */}

@@ -89,6 +89,58 @@ describe('executeSingleTurn', () => {
     consoleWarnSpy.mockRestore()
   })
 
+  it('applies lightweight policy without clearing reasoningType', async () => {
+    const provider = new MockProvider()
+    provider.generateResponseMock.mockResolvedValue({
+      id: 'aux-1',
+      model: TEST_MODEL.model,
+      object: 'chat.completion',
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: { role: 'assistant', content: 'Title' },
+        },
+      ],
+    })
+
+    await executeSingleTurn({
+      providerClient: provider,
+      model: {
+        ...TEST_MODEL,
+        reasoningType: 'gemini',
+        builtinToolProvider: 'openrouter',
+        builtinTools: {
+          openrouter: { webSearch: { enabled: true, engine: 'native' } },
+        },
+        customParameters: [
+          { key: 'tools', value: '[{"type":"openrouter:web_search"}]' },
+        ],
+      },
+      request: {
+        ...TEST_REQUEST,
+        reasoningLevel: 'off',
+      },
+      stream: false,
+      purpose: 'lightweight',
+      geminiTools: { useWebSearch: true, useUrlContext: true },
+    })
+
+    expect(provider.generateResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasoningType: 'gemini',
+        builtinToolProvider: 'none',
+        builtinTools: undefined,
+        customParameters: [],
+      }),
+      expect.objectContaining({
+        reasoningLevel: 'off',
+      }),
+      expect.objectContaining({
+        geminiTools: undefined,
+      }),
+    )
+  })
+
   it('uses streamed write tool calls without forcing non-stream refresh', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(

@@ -5,7 +5,7 @@ import type { UpdateCheckResult } from '../core/update/updateChecker'
 
 export function useUpdateCheck(): {
   result: UpdateCheckResult | null
-  muteVersion: (version: string) => void
+  dismissVersion: (version: string) => void
 } {
   const plugin = usePlugin()
   const [result, setResult] = useState<UpdateCheckResult | null>(
@@ -21,8 +21,8 @@ export function useUpdateCheck(): {
 
   return {
     result,
-    muteVersion: (version: string) => {
-      void plugin.muteUpdateVersion(version)
+    dismissVersion: (version: string) => {
+      void plugin.dismissUpdateVersion(version)
     },
   }
 }

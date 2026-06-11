@@ -1,4 +1,3 @@
-import { Platform } from 'obsidian'
 import OpenAI from 'openai'
 import type {
   ResponseCreateParamsStreaming,
@@ -33,6 +32,7 @@ import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
@@ -88,15 +88,11 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       providerId: provider.id,
       baseUrl: CODEX_BASE_URL,
     })
-    const configuredMode = provider.additionalSettings?.requestTransportMode
-    this.requestTransportMode =
-      configuredMode === 'browser' ||
-      configuredMode === 'obsidian' ||
-      configuredMode === 'node'
-        ? configuredMode
-        : Platform.isDesktop
-          ? 'node'
-          : 'obsidian'
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: false,
+      memoryKey: this.requestTransportMemoryKey,
+    })
 
     const defaultHeaders = toProviderHeadersRecord(provider.customHeaders)
     const createClient = (customFetch: typeof fetch) =>

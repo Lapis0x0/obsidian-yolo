@@ -10,6 +10,7 @@ import {
   BUILTIN_TOOL_UI_META,
   getBuiltinToolUiMeta,
 } from '../../core/agent/builtinToolUiMeta'
+import { subagentTaskRegistry } from '../../core/agent/subagent/task-registry'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
@@ -18,7 +19,12 @@ import {
   parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
-import { ChatMessage, ChatToolMessage } from '../../types/chat'
+import {
+  ChatMessage,
+  ChatSubagentResultMessage,
+  ChatTerminalCommandResultMessage,
+  ChatToolMessage,
+} from '../../types/chat'
 import {
   ToolCallRequest,
   ToolCallResponse,
@@ -30,7 +36,8 @@ import { SplitButton } from '../common/SplitButton'
 
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
-import { ExternalAgentToolCard } from './tool-cards/ExternalAgentToolCard'
+import { LiveTaskCard } from './tool-cards/LiveTaskCard'
+import { SubagentCard } from './tool-cards/SubagentCard'
 import {
   type ToolDisplayInfo,
   getToolHeadlineParts,
@@ -63,6 +70,12 @@ export type ToolLabels = {
   todoWriteAllCompleted: (count: number) => string
   todoWriteCreated: (count: number) => string
   todoWriteProgress: (done: number, total: number) => string
+  terminalCommandSessionPoll: (sessionId: number) => string
+  terminalCommandSessionKill: (sessionId: number) => string
+  terminalCommandSessionInput: (
+    sessionId: number,
+    inputPreview: string,
+  ) => string
 }
 
 const DEFAULT_STATUS_LABELS: Record<ToolCallResponseStatus, string> = {
@@ -261,14 +274,29 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       )
         .replace('{done}', String(done))
         .replace('{total}', String(total)),
+    terminalCommandSessionPoll: (sessionId: number) =>
+      translate(
+        'chat.toolSummary.terminalCommand.sessionPoll',
+        'Session {id} · Poll',
+      ).replace('{id}', String(sessionId)),
+    terminalCommandSessionKill: (sessionId: number) =>
+      translate(
+        'chat.toolSummary.terminalCommand.sessionKill',
+        'Session {id} · Kill',
+      ).replace('{id}', String(sessionId)),
+    terminalCommandSessionInput: (sessionId: number, inputPreview: string) =>
+      translate(
+        'chat.toolSummary.terminalCommand.sessionInput',
+        'Session {id} · Input: {preview}',
+      )
+        .replace('{id}', String(sessionId))
+        .replace('{preview}', inputPreview),
   }
 }
 
-/**
- * 判断工具调用是否为 delegate_external_agent。
- * 完整 tool name 形如 yolo_local__delegate_external_agent。
- */
-const isDelegateExternalAgentRequest = (request: ToolRequestLike): boolean => {
+const isLegacyDelegateExternalAgentRequest = (
+  request: ToolRequestLike,
+): boolean => {
   try {
     const { toolName } = parseToolName(request.name)
     return toolName === 'delegate_external_agent'
@@ -277,22 +305,85 @@ const isDelegateExternalAgentRequest = (request: ToolRequestLike): boolean => {
   }
 }
 
-const extractExternalAgentArgs = (
+const isDelegateSubagentRequest = (request: ToolRequestLike): boolean => {
+  try {
+    const { toolName } = parseToolName(request.name)
+    return toolName === 'delegate_subagent'
+  } catch {
+    return false
+  }
+}
+
+const isTerminalCommandRequest = (request: ToolRequestLike): boolean => {
+  try {
+    const { toolName } = parseToolName(request.name)
+    return toolName === 'terminal_command'
+  } catch {
+    return false
+  }
+}
+
+const extractLegacyExternalAgentArgs = (
   rawArguments?: ToolCallRequest['arguments'],
-):
-  | { provider?: string; model?: string; workingDirectory?: string }
-  | undefined => {
+): { command?: string; workingDirectory?: string } | undefined => {
   const parsed = getToolCallArgumentsObject(rawArguments)
   if (!parsed) return undefined
-  const provider =
-    typeof parsed.provider === 'string' ? parsed.provider : undefined
-  const model = typeof parsed.model === 'string' ? parsed.model : undefined
+  const prompt =
+    typeof parsed.prompt === 'string' ? parsed.prompt.trim() : undefined
   const workingDirectory =
     typeof parsed.workingDirectory === 'string'
       ? parsed.workingDirectory
       : undefined
-  if (!provider && !model && !workingDirectory) return undefined
-  return { provider, model, workingDirectory }
+  if (!prompt && !workingDirectory) return undefined
+  return { command: prompt, workingDirectory }
+}
+
+const extractSubagentArgs = (
+  rawArguments?: ToolCallRequest['arguments'],
+): { title?: string } | undefined => {
+  const parsed = getToolCallArgumentsObject(rawArguments)
+  if (!parsed) return undefined
+  const title =
+    typeof parsed.description === 'string' ? parsed.description : undefined
+  return title ? { title } : undefined
+}
+
+const extractTerminalCommandArgs = (
+  rawArguments?: ToolCallRequest['arguments'],
+): { command?: string; workingDirectory?: string } | undefined => {
+  const parsed = getToolCallArgumentsObject(rawArguments)
+  if (!parsed) return undefined
+  const command =
+    typeof parsed.command === 'string' ? parsed.command : undefined
+  const workingDirectory =
+    typeof parsed.cwd === 'string' ? parsed.cwd : undefined
+  if (!command && !workingDirectory) return undefined
+  return { command, workingDirectory }
+}
+
+const extractSyntheticLiveTaskOutput = (
+  rawArguments?: ToolCallRequest['arguments'],
+): { stdout?: string; stderr?: string } => {
+  const parsed = getToolCallArgumentsObject(rawArguments)
+  if (!parsed) return {}
+  return {
+    stdout: typeof parsed.stdout === 'string' ? parsed.stdout : undefined,
+    stderr: typeof parsed.stderr === 'string' ? parsed.stderr : undefined,
+  }
+}
+
+const extractAcceptedTaskId = (
+  response: ToolCallResponse,
+): string | undefined => {
+  if (response.status !== ToolCallResponseStatus.Success) return undefined
+  try {
+    const parsed = JSON.parse(response.data.text) as unknown
+    if (!parsed || typeof parsed !== 'object') return undefined
+    const taskId = (parsed as Record<string, unknown>).taskId
+    return typeof taskId === 'string' ? taskId : undefined
+  } catch {
+    return undefined
+  }
 }
 
 const translateBuiltinToolLabel = (
@@ -312,6 +403,184 @@ const truncateText = (text: string, maxLength: number): string => {
     return text
   }
   return `${text.slice(0, maxLength - 1)}...`
+}
+
+const SHELL_COMMAND_SUMMARY_MAX_CHARS = 80
+const SHELL_COMMAND_SUMMARY_SIMPLE_MAX_CHARS = 48
+const SHELL_COMMAND_SUMMARY_MAX_NAMES = 5
+const SHELL_COMMAND_LONG_PREFIX = 'Long bash command'
+const SHELL_COMMAND_STREAMING_PREFIX = 'Long bash command with streaming output'
+const SHELL_COMMAND_KEYWORDS = new Set([
+  'case',
+  'do',
+  'done',
+  'elif',
+  'else',
+  'esac',
+  'fi',
+  'for',
+  'function',
+  'if',
+  'in',
+  'select',
+  'then',
+  'until',
+  'while',
+])
+const SHELL_COMMAND_CONTROL_HEADS = new Set([
+  'case',
+  'for',
+  'function',
+  'if',
+  'select',
+  'until',
+  'while',
+])
+const SHELL_COMMAND_WRAPPERS = new Set([
+  'builtin',
+  'command',
+  'env',
+  'exec',
+  'nohup',
+  'sudo',
+  'time',
+])
+
+const summarizeShellCommand = (
+  command: string,
+  options: { streaming: boolean },
+): string | undefined => {
+  const preview = command.trim().replace(/\s+/g, ' ')
+  if (!preview) return undefined
+
+  if (
+    !options.streaming &&
+    preview.length <= SHELL_COMMAND_SUMMARY_SIMPLE_MAX_CHARS
+  ) {
+    return preview
+  }
+
+  const commandNames = extractShellCommandNames(command)
+  if (commandNames.length === 0) {
+    return truncateText(preview, SHELL_COMMAND_SUMMARY_MAX_CHARS)
+  }
+
+  const visibleNames = commandNames.slice(0, SHELL_COMMAND_SUMMARY_MAX_NAMES)
+  const hiddenCount = commandNames.length - visibleNames.length
+  const commandList = `${visibleNames.join(', ')}${
+    hiddenCount > 0 ? ` +${hiddenCount}` : ''
+  }`
+  const prefix = options.streaming
+    ? SHELL_COMMAND_STREAMING_PREFIX
+    : SHELL_COMMAND_LONG_PREFIX
+
+  return `${prefix} ${commandList}`
+}
+
+const extractShellCommandNames = (command: string): string[] => {
+  const names: string[] = []
+  const seen = new Set<string>()
+  const segments = command.replace(/\$\(/g, ';').split(/[;&|(){}\n]+/)
+
+  for (const segment of segments) {
+    const name = extractCommandNameFromShellSegment(segment)
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    names.push(name)
+  }
+
+  return names
+}
+
+const extractCommandNameFromShellSegment = (
+  segment: string,
+): string | undefined => {
+  const words = segment
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.replace(/^['"]+|['",]+$/g, ''))
+    .filter(Boolean)
+
+  if (SHELL_COMMAND_CONTROL_HEADS.has(words[0])) {
+    return undefined
+  }
+
+  for (const word of words) {
+    if (SHELL_COMMAND_KEYWORDS.has(word)) continue
+    if (SHELL_COMMAND_WRAPPERS.has(word)) continue
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) continue
+    if (word.startsWith('-') || word.startsWith('$')) continue
+    if (!/^[A-Za-z0-9_.:/-]+$/.test(word)) continue
+    const basename = word.split('/').pop() ?? word
+    return basename
+  }
+
+  return undefined
+}
+
+const splitTerminalCommandSummary = (
+  summary: string,
+): { prefix: string; commands: string } | null => {
+  for (const prefix of [
+    SHELL_COMMAND_STREAMING_PREFIX,
+    SHELL_COMMAND_LONG_PREFIX,
+  ]) {
+    if (!summary.startsWith(`${prefix} `)) continue
+    return {
+      prefix,
+      commands: summary.slice(prefix.length + 1),
+    }
+  }
+  return null
+}
+
+const mapTerminalCommandResultStatus = (
+  status: ChatTerminalCommandResultMessage['status'],
+): ToolCallResponseStatus => {
+  switch (status) {
+    case 'running':
+      return ToolCallResponseStatus.Running
+    case 'completed':
+      return ToolCallResponseStatus.Success
+    case 'cancelled':
+    case 'killed_by_shutdown':
+      return ToolCallResponseStatus.Aborted
+    case 'failed':
+    case 'timed_out':
+      return ToolCallResponseStatus.Error
+  }
+}
+
+const buildHydratedTerminalCommandResponse = (
+  result: ChatTerminalCommandResultMessage,
+  fallback: ToolCallResponse,
+): ToolCallResponse => {
+  const status = mapTerminalCommandResultStatus(result.status)
+  const combined =
+    result.stderr && result.stdout
+      ? `${result.stderr}\n---\n${result.stdout}`
+      : result.stderr || result.stdout
+
+  if (status === ToolCallResponseStatus.Success) {
+    return {
+      status,
+      data: { type: 'text', text: combined },
+    }
+  }
+  if (status === ToolCallResponseStatus.Aborted) {
+    return {
+      status,
+      data: combined ? { type: 'text', text: combined } : undefined,
+    }
+  }
+  if (status === ToolCallResponseStatus.Error) {
+    const label = result.status === 'timed_out' ? 'Timed out.' : 'Failed.'
+    return {
+      status,
+      error: combined ? `${label}\n${combined}` : label,
+    }
+  }
+  return fallback
 }
 
 const parseToolArguments = (
@@ -462,26 +731,19 @@ export const getHeadlineDisplayInfo = ({
     }
   }
 
-  if (toolName === 'delegate_external_agent') {
+  if (toolName === 'delegate_subagent') {
     return {
       ...displayInfo,
-      summaryText: getDelegateExternalAgentSummary({ request, response }),
+      summaryText: getDelegateSubagentSummary({ request, response }),
     }
   }
 
   return displayInfo
 }
 
-/**
- * delegate_external_agent 折叠态 summary：
- * - Running/Pending：provider | prompt 前 80 字（让用户一眼看到派了啥任务）
- * - Success：provider | stdout 前 80 字（直接看模型最终回答）
- * - Aborted（含已采集输出）：provider | stdout 前 80 字
- * - Error：provider | error 前 80 字（直接看为啥失败）
- */
 const DELEGATE_SUMMARY_MAX_CHARS = 80
 
-const getDelegateExternalAgentSummary = ({
+const getDelegateSubagentSummary = ({
   request,
   response,
 }: {
@@ -489,8 +751,10 @@ const getDelegateExternalAgentSummary = ({
   response?: ToolCallResponse
 }): string | undefined => {
   const argsObject = parseToolArguments(request.arguments)
-  const provider =
-    typeof argsObject?.provider === 'string' ? argsObject.provider : ''
+  const title =
+    typeof argsObject?.description === 'string'
+      ? argsObject.description.trim()
+      : ''
 
   let mainText = ''
   if (response?.status === ToolCallResponseStatus.Success) {
@@ -503,24 +767,23 @@ const getDelegateExternalAgentSummary = ({
   ) {
     mainText = response.data.text?.trim() ?? ''
   }
-  // Running / PendingApproval / Aborted-without-data / 没拿到 mainText 时回退 prompt
+
   if (!mainText) {
     const prompt =
       typeof argsObject?.prompt === 'string' ? argsObject.prompt.trim() : ''
     mainText = prompt
   }
 
-  // 多行折叠成单行，避免 headline 被换行符撑高
   const collapsedMain = mainText
     ? truncateText(mainText.replace(/\s+/g, ' '), DELEGATE_SUMMARY_MAX_CHARS)
     : ''
 
-  if (!provider && !collapsedMain) {
+  if (!title && !collapsedMain) {
     return undefined
   }
-  if (!provider) return collapsedMain
-  if (!collapsedMain) return provider
-  return `${provider} | ${collapsedMain}`
+  if (!title) return collapsedMain
+  if (!collapsedMain) return title
+  return `${title} | ${collapsedMain}`
 }
 
 const getLocalToolSummaryText = ({
@@ -603,6 +866,38 @@ const getLocalToolSummaryText = ({
     const url =
       typeof argumentsObject?.url === 'string' ? argumentsObject.url : ''
     return url ? truncateText(url, 80) : undefined
+  }
+
+  if (toolName === 'terminal_command') {
+    const command =
+      typeof argumentsObject?.command === 'string'
+        ? argumentsObject.command.trim()
+        : ''
+    if (command) {
+      return summarizeShellCommand(command, {
+        streaming: argumentsObject?.background === true,
+      })
+    }
+
+    const sessionId = asInteger(argumentsObject?.session_id)
+    if (typeof sessionId !== 'number') {
+      return undefined
+    }
+
+    if (argumentsObject?.kill === true) {
+      return labels.terminalCommandSessionKill(sessionId)
+    }
+
+    const input =
+      typeof argumentsObject?.input === 'string'
+        ? argumentsObject.input.trim()
+        : ''
+    if (input) {
+      const preview = truncateText(input.replace(/\s+/g, ' '), 60)
+      return labels.terminalCommandSessionInput(sessionId, preview)
+    }
+
+    return labels.terminalCommandSessionPoll(sessionId)
   }
 
   if (toolName === 'js_eval') {
@@ -761,6 +1056,8 @@ const ToolMessage = memo(function ToolMessage({
   conversationId,
   isCompactionPending = false,
   showRunningFooter = true,
+  terminalCommandResultsByToolCallId,
+  subagentResultsByToolCallId,
   onMessageUpdate,
   onRecoverToolCall,
   onRecoverAnswerUserQuestion,
@@ -769,6 +1066,11 @@ const ToolMessage = memo(function ToolMessage({
   conversationId: string
   isCompactionPending?: boolean
   showRunningFooter?: boolean
+  terminalCommandResultsByToolCallId?: ReadonlyMap<
+    string,
+    ChatTerminalCommandResultMessage
+  >
+  subagentResultsByToolCallId?: ReadonlyMap<string, ChatSubagentResultMessage>
   onMessageUpdate: (message: ChatToolMessage) => void
   onRecoverToolCall?: (payload: {
     conversationId: string
@@ -802,6 +1104,12 @@ const ToolMessage = memo(function ToolMessage({
                 isCompactionPending && index === message.toolCalls.length - 1
               }
               showRunningFooter={showRunningFooter}
+              terminalCommandResult={terminalCommandResultsByToolCallId?.get(
+                toolCall.request.id,
+              )}
+              subagentResult={subagentResultsByToolCallId?.get(
+                toolCall.request.id,
+              )}
               onRecoverToolCall={onRecoverToolCall}
               onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
               onResponseUpdate={(response) =>
@@ -829,6 +1137,8 @@ function ToolCallItem({
   toolMessageId,
   showCompactionPendingHint = false,
   showRunningFooter = true,
+  terminalCommandResult,
+  subagentResult,
   onRecoverToolCall,
   onRecoverAnswerUserQuestion,
   onResponseUpdate,
@@ -839,6 +1149,8 @@ function ToolCallItem({
   toolMessageId: string
   showCompactionPendingHint?: boolean
   showRunningFooter?: boolean
+  terminalCommandResult?: ChatTerminalCommandResultMessage
+  subagentResult?: ChatSubagentResultMessage
   onRecoverToolCall?: (payload: {
     conversationId: string
     toolMessageId: string
@@ -930,6 +1242,15 @@ function ToolCallItem({
       }),
     [displayInfo, editSummary, response.status, toolLabels],
   )
+  const terminalSummaryParts =
+    headlineParts.summaryText && isTerminalCommandRequest(request)
+      ? splitTerminalCommandSummary(headlineParts.summaryText)
+      : null
+  const effectiveTerminalResponse =
+    terminalCommandResult && isTerminalCommandRequest(request)
+      ? buildHydratedTerminalCommandResponse(terminalCommandResult, response)
+      : response
+  const effectiveStatus = effectiveTerminalResponse.status
   const parameters = useMemo(() => {
     if (!request.arguments) {
       return toolLabels.noParameters
@@ -955,14 +1276,14 @@ function ToolCallItem({
   const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
     useState(
       showCompactionPendingHint &&
-        response.status === ToolCallResponseStatus.Success,
+        effectiveStatus === ToolCallResponseStatus.Success,
     )
   const [isCompactionPendingHintExiting, setIsCompactionPendingHintExiting] =
     useState(false)
   useEffect(() => {
     if (
       !showRunningFooter ||
-      response.status !== ToolCallResponseStatus.Running
+      effectiveStatus !== ToolCallResponseStatus.Running
     ) {
       setShowRunningActions(false)
       return
@@ -975,24 +1296,29 @@ function ToolCallItem({
     return () => {
       window.clearTimeout(timer)
     }
-  }, [response.status, showRunningFooter])
+  }, [effectiveStatus, showRunningFooter])
 
   const shouldShowPendingFooter =
-    response.status === ToolCallResponseStatus.PendingApproval
+    effectiveStatus === ToolCallResponseStatus.PendingApproval
+  const isCompactLiveTaskRequest = isTerminalCommandRequest(request)
   const shouldShowRunningFooter =
     showRunningFooter &&
-    response.status === ToolCallResponseStatus.Running &&
-    showRunningActions
+    effectiveStatus === ToolCallResponseStatus.Running &&
+    showRunningActions &&
+    !isCompactLiveTaskRequest
   const footerMode: 'pending' | 'running' | null = shouldShowPendingFooter
     ? 'pending'
     : shouldShowRunningFooter
       ? 'running'
       : null
+  const shouldShowParameters =
+    !isCompactLiveTaskRequest ||
+    effectiveStatus === ToolCallResponseStatus.PendingApproval
 
   useEffect(() => {
     const shouldShowCompactionPendingHint =
       showCompactionPendingHint &&
-      response.status === ToolCallResponseStatus.Success
+      effectiveStatus === ToolCallResponseStatus.Success
 
     if (shouldShowCompactionPendingHint) {
       setRenderCompactionPendingHint(true)
@@ -1013,7 +1339,28 @@ function ToolCallItem({
     return () => {
       window.clearTimeout(timer)
     }
-  }, [renderCompactionPendingHint, response.status, showCompactionPendingHint])
+  }, [effectiveStatus, renderCompactionPendingHint, showCompactionPendingHint])
+
+  if (
+    isDelegateSubagentRequest(request) &&
+    effectiveStatus !== ToolCallResponseStatus.PendingApproval
+  ) {
+    return (
+      <SubagentCard
+        toolCallId={request.id}
+        response={response}
+        args={extractSubagentArgs(request.arguments)}
+        subagentResult={subagentResult}
+        initialStdout={extractSyntheticLiveTaskOutput(request.arguments).stdout}
+        initialStderr={extractSyntheticLiveTaskOutput(request.arguments).stderr}
+        onAbort={() => {
+          const taskId = extractAcceptedTaskId(response)
+          if (taskId) subagentTaskRegistry.abort(taskId)
+          void handleAbort()
+        }}
+      />
+    )
+  }
 
   return (
     <div className="yolo-toolcall">
@@ -1027,14 +1374,14 @@ function ToolCallItem({
         <div className="yolo-toolcall-header-icon yolo-toolcall-header-icon--status-inline">
           <AnimatePresence mode="wait">
             <motion.span
-              key={response.status}
+              key={effectiveStatus}
               initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.92 }}
               transition={{ duration: motionDuration }}
               style={{ display: 'flex', alignItems: 'center' }}
             >
-              <StatusIcon status={response.status} />
+              <StatusIcon status={effectiveStatus} />
             </motion.span>
           </AnimatePresence>
         </div>
@@ -1048,7 +1395,7 @@ function ToolCallItem({
                 <span className="yolo-toolcall-header-separator">: </span>
                 <AnimatePresence mode="wait">
                   <motion.span
-                    key={response.status}
+                    key={effectiveStatus}
                     className="yolo-toolcall-header-summary"
                     title={headlineParts.summaryText}
                     initial={{ opacity: 0 }}
@@ -1056,7 +1403,19 @@ function ToolCallItem({
                     exit={{ opacity: 0 }}
                     transition={{ duration: motionDuration }}
                   >
-                    {headlineParts.summaryText}
+                    {terminalSummaryParts ? (
+                      <>
+                        <span className="yolo-toolcall-header-summary-prefix">
+                          {terminalSummaryParts.prefix}
+                        </span>
+                        <span className="yolo-toolcall-header-summary-command">
+                          {' '}
+                          {terminalSummaryParts.commands}
+                        </span>
+                      </>
+                    ) : (
+                      headlineParts.summaryText
+                    )}
                   </motion.span>
                 </AnimatePresence>
               </>
@@ -1089,16 +1448,30 @@ function ToolCallItem({
           id={`yolo-toolcall-content-${request.id}`}
           className="yolo-toolcall-content"
         >
-          <div className="yolo-toolcall-content-section">
-            <div>{toolLabels.parameters}:</div>
-            <ObsidianCodeBlock language="json" content={parameters} />
-          </div>
-          {isDelegateExternalAgentRequest(request) ? (
-            // delegate_external_agent 专属卡片：流式输出 + 状态徽章
-            <ExternalAgentToolCard
+          {shouldShowParameters && (
+            <div className="yolo-toolcall-content-section">
+              <div>{toolLabels.parameters}:</div>
+              <ObsidianCodeBlock language="json" content={parameters} />
+            </div>
+          )}
+          {isTerminalCommandRequest(request) ||
+          isLegacyDelegateExternalAgentRequest(request) ? (
+            <LiveTaskCard
               toolCallId={request.id}
-              response={response}
-              args={extractExternalAgentArgs(request.arguments)}
+              response={effectiveTerminalResponse}
+              args={
+                isLegacyDelegateExternalAgentRequest(request)
+                  ? extractLegacyExternalAgentArgs(request.arguments)
+                  : extractTerminalCommandArgs(request.arguments)
+              }
+              initialStdout={
+                terminalCommandResult?.stdout ??
+                extractSyntheticLiveTaskOutput(request.arguments).stdout
+              }
+              initialStderr={
+                terminalCommandResult?.stderr ??
+                extractSyntheticLiveTaskOutput(request.arguments).stderr
+              }
               onAbort={handleAbort}
             />
           ) : (
@@ -1228,6 +1601,7 @@ function useToolCall(
   }) => Promise<boolean>,
 ) {
   const plugin = usePlugin()
+  const suppressReloadNotice = isDelegateSubagentRequest(request)
   const showReloadNotice = useCallback(() => {
     new Notice(
       '该工具调用来自已结束或已重载的会话，无法继续执行，请重新发起请求。',
@@ -1257,11 +1631,18 @@ function useToolCall(
     })
     if (!approved) {
       const recovered = await tryRecoverToolCall()
-      if (!recovered) {
+      if (!recovered && !suppressReloadNotice) {
         showReloadNotice()
       }
     }
-  }, [conversationId, plugin, request.id, showReloadNotice, tryRecoverToolCall])
+  }, [
+    conversationId,
+    plugin,
+    request.id,
+    showReloadNotice,
+    suppressReloadNotice,
+    tryRecoverToolCall,
+  ])
 
   const handleAllowForConversation = useCallback(async () => {
     const approved = await plugin.getAgentService().approveToolCall({
@@ -1271,11 +1652,18 @@ function useToolCall(
     })
     if (!approved) {
       const recovered = await tryRecoverToolCall(true)
-      if (!recovered) {
+      if (!recovered && !suppressReloadNotice) {
         showReloadNotice()
       }
     }
-  }, [conversationId, plugin, request.id, showReloadNotice, tryRecoverToolCall])
+  }, [
+    conversationId,
+    plugin,
+    request.id,
+    showReloadNotice,
+    suppressReloadNotice,
+    tryRecoverToolCall,
+  ])
 
   const handleReject = useCallback(() => {
     const rejected = plugin.getAgentService().rejectToolCall({

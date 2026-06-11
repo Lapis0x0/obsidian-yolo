@@ -1,5 +1,6 @@
 import {
   DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
+  MAX_MODEL_REQUEST_TIMEOUT_MS,
   YoloSettings,
 } from '../../settings/schema/setting.types'
 import { RequestTransportMode } from '../../types/provider.types'
@@ -25,7 +26,7 @@ export const resolveModelRequestPolicy = (
   settings: Pick<YoloSettings, 'continuationOptions'>,
 ): ModelRequestPolicy => {
   const timeoutMs = Math.min(
-    600000,
+    MAX_MODEL_REQUEST_TIMEOUT_MS,
     Math.max(
       1000,
       settings.continuationOptions?.primaryRequestTimeoutMs ??

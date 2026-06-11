@@ -1,4 +1,7 @@
-import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../settings/schema/setting.types'
+import {
+  DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
+  MAX_MODEL_REQUEST_TIMEOUT_MS,
+} from '../../settings/schema/setting.types'
 
 import {
   DEFAULT_MODEL_REQUEST_POLICY,
@@ -47,7 +50,17 @@ describe('requestPolicy', () => {
         },
       } as never),
     ).toEqual({
-      timeoutMs: 600000,
+      timeoutMs: 999999,
+    })
+
+    expect(
+      resolveModelRequestPolicy({
+        continuationOptions: {
+          primaryRequestTimeoutMs: MAX_MODEL_REQUEST_TIMEOUT_MS + 1000,
+        },
+      } as never),
+    ).toEqual({
+      timeoutMs: MAX_MODEL_REQUEST_TIMEOUT_MS,
     })
   })
 
@@ -58,7 +71,7 @@ describe('requestPolicy', () => {
         requestPolicy: {
           timeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
         },
-        requestTransportMode: 'auto',
+        requestTransportMode: 'node',
       }),
     ).toBe(0)
     expect(

@@ -1,5 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
+  Bot,
   ChevronDown,
   ChevronUp,
   Infinity as InfinityIcon,
@@ -11,10 +12,28 @@ import { useLanguage } from '../../../contexts/language-context'
 import { getNodeWindow } from '../../../utils/dom/window-context'
 import { YoloDropdownContent } from '../../common/popover'
 
-export type ChatMode = 'chat' | 'agent'
+export type ChatMode = 'ask' | 'agent' | 'agent-full'
 
-const isChatMode = (value: string): value is ChatMode =>
-  value === 'chat' || value === 'agent'
+export const CHAT_MODES: readonly ChatMode[] = ['ask', 'agent', 'agent-full']
+
+export const isChatMode = (value: string): value is ChatMode =>
+  value === 'ask' || value === 'agent' || value === 'agent-full'
+
+export const normalizeChatMode = (
+  raw: string | null | undefined,
+  fallback: ChatMode = 'agent',
+): ChatMode => {
+  if (raw === 'chat') {
+    return 'ask'
+  }
+  if (raw && isChatMode(raw)) {
+    return raw
+  }
+  return fallback
+}
+
+export const isAgentChatMode = (mode: ChatMode): boolean =>
+  mode === 'agent' || mode === 'agent-full'
 
 type ModeOption = {
   value: ChatMode
@@ -27,20 +46,28 @@ type ModeOption = {
 
 const MODE_OPTIONS: ModeOption[] = [
   {
-    value: 'chat',
-    labelKey: 'chatMode.chat',
-    labelFallback: 'Chat',
-    descKey: 'chatMode.chatDesc',
-    descFallback: 'Normal conversation mode',
-    icon: <MessageSquare size={14} />,
+    value: 'ask',
+    labelKey: 'chatMode.ask',
+    labelFallback: 'Ask',
+    descKey: 'chatMode.askDesc',
+    descFallback: 'Ask, refine, create',
+    icon: <MessageSquare size={16} />,
   },
   {
     value: 'agent',
     labelKey: 'chatMode.agent',
     labelFallback: 'Agent',
     descKey: 'chatMode.agentDesc',
-    descFallback: 'Enable tool calling capabilities',
-    icon: <InfinityIcon size={14} />,
+    descFallback: 'Tools for complex tasks',
+    icon: <Bot size={16} />,
+  },
+  {
+    value: 'agent-full',
+    labelKey: 'chatMode.agentFull',
+    labelFallback: 'Agent (Full Access)',
+    descKey: 'chatMode.agentFullDesc',
+    descFallback: 'Auto-approve all tool calls',
+    icon: <InfinityIcon size={16} />,
   },
 ]
 
@@ -71,7 +98,7 @@ export const ChatModeSelect = forwardRef<
       side = 'top',
       sideOffset = 4,
       align = 'start',
-      alignOffset = 0,
+      alignOffset = -12,
     },
     ref,
   ) => {
@@ -79,8 +106,9 @@ export const ChatModeSelect = forwardRef<
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
     const itemRefs = useRef<Record<ChatMode, HTMLDivElement | null>>({
-      chat: null,
+      ask: null,
       agent: null,
+      'agent-full': null,
     })
 
     const setTriggerRef = useCallback(
@@ -109,7 +137,7 @@ export const ChatModeSelect = forwardRef<
 
     const focusByDelta = useCallback(
       (delta: number) => {
-        const values: ChatMode[] = ['chat', 'agent']
+        const values = [...CHAT_MODES]
         const currentIndex = values.indexOf(mode)
         const nextIndex = (currentIndex + delta + values.length) % values.length
         const nextValue = values[nextIndex]
@@ -173,15 +201,13 @@ export const ChatModeSelect = forwardRef<
         <DropdownMenu.Trigger
           ref={setTriggerRef}
           className="yolo-chat-input-model-select yolo-chat-mode-select"
+          data-mode={mode}
           onKeyDown={handleTriggerKeyDown}
         >
-          <div className="yolo-chat-mode-select__icon">
-            {currentOption?.icon}
-          </div>
           <div className="yolo-chat-input-model-select__model-name">
             {t(
-              currentOption?.labelKey ?? 'chatMode.chat',
-              currentOption?.labelFallback ?? 'Chat',
+              currentOption?.labelKey ?? 'chatMode.ask',
+              currentOption?.labelFallback ?? 'Ask',
             )}
           </div>
           <div className="yolo-chat-input-model-select__icon">

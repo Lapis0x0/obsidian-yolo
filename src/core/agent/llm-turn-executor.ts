@@ -51,7 +51,7 @@ type AgentLlmTurnExecutorInput = {
   allowedToolNames?: string[]
   enableToolDisclosure?: boolean
   toolPreferences?: Record<string, AssistantToolPreference>
-  allowedSkillNames?: string[]
+  allowedSkillPaths?: string[]
   abortSignal?: AbortSignal
   reasoningLevel?: ReasoningLevel
   requestParams?: {
@@ -63,10 +63,13 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   contextualInjections?: ContextualInjection[]
+  runtimeModePrompt?: string
+  transientRequestMessages?: RequestMessage[]
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  systemPromptOverride?: string
   onAssistantMessage: (message: ChatAssistantMessage) => void
 }
 
@@ -117,13 +120,13 @@ export class AgentLlmTurnExecutor {
     } = selectAllowedTools({
       availableTools,
       allowedToolNames: this.input.allowedToolNames,
-      allowedSkillNames: this.input.allowedSkillNames,
       toolPreferences: this.input.toolPreferences,
       apiType: this.input.apiType,
       enableToolDisclosure: this.input.enableToolDisclosure,
       jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
+      settings: this.input.mcpManager.getSettingsSnapshot(),
     })
-    const requestMessages =
+    const baseRequestMessages =
       await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
         hasTools,
@@ -132,9 +135,16 @@ export class AgentLlmTurnExecutor {
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,
         contextualInjections: this.input.contextualInjections,
+        runtimeModePrompt: this.input.runtimeModePrompt,
+        systemPromptOverride: this.input.systemPromptOverride,
         // Real LLM request: freeze (or reuse) the per-conversation system prompt.
         systemPromptSnapshotMode: 'create',
       })
+    const requestMessages =
+      this.input.transientRequestMessages &&
+      this.input.transientRequestMessages.length > 0
+        ? [...baseRequestMessages, ...this.input.transientRequestMessages]
+        : baseRequestMessages
 
     const responseStart = Date.now()
     const model = this.input.model

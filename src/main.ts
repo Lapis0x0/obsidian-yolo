@@ -4,7 +4,6 @@ import {
   Editor,
   MarkdownView,
   Notice,
-  Platform,
   Plugin,
   TFile,
   TFolder,
@@ -17,6 +16,7 @@ import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdat
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
+import { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
 import { ensureDefaultAssistantInSettings } from './core/agent/default-assistant'
 import { AgentConversationRunSummary, AgentService } from './core/agent/service'
@@ -141,9 +141,18 @@ import type {
   MentionableImage,
 } from './types/mentionable'
 import { MentionableFile, MentionableFolder } from './types/mentionable'
+import { stableStringify } from './utils/json/stableStringify'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
+
+export type {
+  YoloAgentApi,
+  YoloAgentContext,
+  YoloAgentEvent,
+  YoloAgentRunRequest,
+  YoloAgentRunResult,
+} from './core/agent/agent-api'
 
 const STARTUP_GRACE_MS = 30 * 1000
 
@@ -213,6 +222,7 @@ export default class YoloPlugin extends Plugin {
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
   private agentService: AgentService | null = null
+  private agentApiService: YoloAgentApiService | null = null
   private agentNotificationCoordinator: AgentNotificationCoordinator | null =
     null
   private backgroundActivityRegistry: BackgroundActivityRegistry | null = null
@@ -240,6 +250,45 @@ export default class YoloPlugin extends Plugin {
 
   setSmartSpaceDraftState(state: SmartSpaceDraftState) {
     this.smartSpaceDraftState = state
+  }
+
+  private getPromptSourceSettingsFingerprint(
+    settings: YoloSettings | undefined,
+  ): string {
+    if (!settings) {
+      return ''
+    }
+    return stableStringify({
+      systemPrompt: settings.systemPrompt ?? '',
+      baseDir: normalizePath(settings.yolo?.baseDir ?? ''),
+      disabledSkillIds: [...(settings.skills?.disabledSkillIds ?? [])]
+        .map((id) => id.trim())
+        .sort(),
+      assistants: (settings.assistants ?? [])
+        .map((assistant) => ({
+          id: assistant.id,
+          name: assistant.name,
+          systemPrompt: assistant.systemPrompt ?? '',
+          skillPreferences: assistant.skillPreferences ?? null,
+          enableProjectInstructions:
+            assistant.enableProjectInstructions ?? false,
+          workspaceScope: assistant.workspaceScope ?? null,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+    })
+  }
+
+  private markPromptSourceSettingsChange(
+    previousSettings: YoloSettings | undefined,
+    nextSettings: YoloSettings,
+  ): void {
+    if (
+      this.getPromptSourceSettingsFingerprint(previousSettings) ===
+      this.getPromptSourceSettingsFingerprint(nextSettings)
+    ) {
+      return
+    }
+    this.agentService?.getPromptSourceWatcher().markExternalChange()
   }
 
   getChatLeafSessionManager(): ChatLeafSessionManager {
@@ -754,6 +803,7 @@ export default class YoloPlugin extends Plugin {
           listener: (settings: YoloSettings) => void,
         ) => this.addSettingsChangeListener(listener),
         getRagEngine: () => this.getRAGEngine(),
+        promptSourceWatcher: this.getAgentService().getPromptSourceWatcher(),
       })
     }
     return this.mcpCoordinator
@@ -895,10 +945,31 @@ export default class YoloPlugin extends Plugin {
         getSettings: () => this.settings,
         persistConversationMessages,
       })
-      // Start listening for async external agent task-completed events (desktop-only, no-op on mobile)
-      this.agentService.startExternalAgentResultListener()
+      const watcher = this.agentService.getPromptSourceWatcher()
+      const h = watcher.buildVaultHandlers()
+      this.registerEvent(this.app.vault.on('create', h.create))
+      this.registerEvent(this.app.vault.on('modify', h.modify))
+      this.registerEvent(this.app.vault.on('delete', h.delete))
+      this.registerEvent(this.app.vault.on('rename', h.rename))
+      this.agentService.startBackgroundTaskResultListener()
     }
     return this.agentService
+  }
+
+  getAgentApi(): YoloAgentApi {
+    if (!this.agentApiService) {
+      this.agentApiService = new YoloAgentApiService({
+        app: this.app,
+        getSettings: () => this.settings,
+        getAgentService: () => this.getAgentService(),
+        getMcpManager: () => this.getMcpManager(),
+      })
+    }
+    return this.agentApiService
+  }
+
+  get agent(): YoloAgentApi {
+    return this.getAgentApi()
   }
 
   private getAgentNotificationCoordinator(): AgentNotificationCoordinator {
@@ -1540,22 +1611,9 @@ export default class YoloPlugin extends Plugin {
       this.getAgentService().subscribeToRunSummaries((summaries) => {
         this.syncAgentBackgroundActivities(summaries)
       })
-    // 异步派遣的子进程是 desktop-only，懒加载注册表后再订阅。
-    let unsubscribeAsyncTasks: (() => void) | null = null
-    if (Platform.isDesktopApp) {
-      void import('./core/agent/external-cli/async-task-registry').then(
-        ({ asyncTaskRegistry }) => {
-          unsubscribeAsyncTasks = asyncTaskRegistry.subscribe((records) => {
-            this.syncAsyncExternalAgentBackgroundActivities(records)
-          })
-        },
-      )
-    }
-
     this.register(() => {
       unsubscribeActivities()
       unsubscribeAgentSummaries()
-      unsubscribeAsyncTasks?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
       this.backgroundStatusBarLabel = null
@@ -1568,41 +1626,6 @@ export default class YoloPlugin extends Plugin {
       this.backgroundActivityRegistry?.clear()
       this.backgroundActivityRegistry = null
     })
-  }
-
-  private syncAsyncExternalAgentBackgroundActivities(
-    records: import('./core/agent/external-cli/async-task-registry').AsyncTaskRecord[],
-  ): void {
-    const registry = this.getBackgroundActivityRegistry()
-    const nextActivityIds = new Set<string>()
-
-    for (const record of records) {
-      if (record.status !== 'running') continue
-      const id = `external-agent:${record.taskId}`
-      nextActivityIds.add(id)
-      registry.upsert({
-        id,
-        kind: 'agent',
-        title: record.title,
-        detail: record.provider,
-        status: 'running',
-        updatedAt: record.createdAt,
-        ...(record.conversationId
-          ? {
-              action: {
-                type: 'open-agent-conversation',
-                conversationId: record.conversationId,
-              },
-            }
-          : {}),
-      })
-    }
-
-    for (const activityId of this.latestBackgroundActivities.keys()) {
-      if (!activityId.startsWith('external-agent:')) continue
-      if (nextActivityIds.has(activityId)) continue
-      registry.remove(activityId)
-    }
   }
 
   private syncAgentBackgroundActivities(
@@ -2962,16 +2985,15 @@ export default class YoloPlugin extends Plugin {
     this.mcpManager = null
     this.ragAutoUpdateService?.cleanup()
     this.ragAutoUpdateService = null
-    this.agentService?.stopExternalAgentResultListener()
+    this.agentService?.stopBackgroundTaskResultListener()
     this.agentService?.abortAll()
     this.agentService = null
-    // 终止所有活跃的外部 CLI 子进程（desktop-only，mobile 为空操作）
-    void import('./core/agent/external-cli/index').then(
-      ({ killAllActiveExternalCli }) => killAllActiveExternalCli(),
+    this.agentApiService = null
+    void import('./core/agent/bash/index').then(({ killAllBashSessions }) =>
+      killAllBashSessions(),
     )
-    // 终止所有异步派遣任务，标记为 killed_by_shutdown
-    void import('./core/agent/external-cli/async-task-registry').then(
-      ({ asyncTaskRegistry }) => asyncTaskRegistry.abortAll(),
+    void import('./core/agent/subagent/runner').then(
+      ({ abortAllSubagentTasks }) => abortAllSubagentTasks(),
     )
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
@@ -3155,6 +3177,7 @@ export default class YoloPlugin extends Plugin {
 
     this.settings = normalizedSettings
     this.currentSettingsMeta = incomingMeta
+    this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
 
     if (baseDirChanged) {
       // External payload references a different `baseDir`. Don't call
@@ -3403,6 +3426,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     this.settings = normalizedSettings
     await this.persistPluginDirSettings(normalizedSettings)
+    this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
     setLLMDebugCaptureEnabled(
       this.settings.debug?.captureRawRequestDebug ?? false,
     )
@@ -3451,11 +3475,25 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.settings.mutedUpdateVersion === version
   }
 
-  async muteUpdateVersion(version: string): Promise<void> {
-    await this.setSettings({ ...this.settings, mutedUpdateVersion: version })
+  isUpdateVersionSoftDismissed(version: string): boolean {
+    return this.settings.softDismissedUpdateVersion === version
+  }
+
+  async dismissUpdateVersion(version: string): Promise<void> {
+    const shouldMute = this.isUpdateVersionSoftDismissed(version)
+    await this.setSettings({
+      ...this.settings,
+      softDismissedUpdateVersion: version,
+      mutedUpdateVersion: shouldMute
+        ? version
+        : this.settings.mutedUpdateVersion,
+    })
     // setSettings can no-op (e.g. external settings conflict). Only hide the
-    // toast when the mute actually persisted, so the user can retry otherwise.
-    if (this.isUpdateVersionMuted(version)) {
+    // toast when the dismissal state actually persisted, so the user can retry.
+    const persisted = shouldMute
+      ? this.isUpdateVersionMuted(version)
+      : this.isUpdateVersionSoftDismissed(version)
+    if (persisted) {
       this.updateCheckResult = null
       this.notifyUpdateCheckListeners()
     }

@@ -122,6 +122,7 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
 }
 
 export const DEFAULT_MODEL_REQUEST_TIMEOUT_MS = 60000
+export const MAX_MODEL_REQUEST_TIMEOUT_MS = 60 * 60 * 1000
 
 const notificationOptionsSchema = z
   .object({
@@ -303,7 +304,7 @@ const tabCompletionTriggerSchema = z
  * pattern: one outer list, no two-layer split, drag to reorder, gear to
  * edit. The pre-list shape (`selectedAsrApiFormat + asrProviderProfiles`,
  * which existed briefly during feature development on this branch) is
- * converted into list entries by the v67→v68 migration.
+ * converted into list entries by the v69→v70 migration.
  */
 export const ASR_API_FORMATS = [
   'openai-compatible-transcription',
@@ -421,7 +422,7 @@ export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = 'YOLO/read_aloud'
  * IMPORTANT: this schema must keep `.catch` defaults on every field so
  * partial / older blobs survive load. The legacy `OpenAiCompatibleTranscriptionProfile`
  * and `OpenAiCompatibleChatAudioAsrProfile` shapes have been removed —
- * the v67→v68 migration converts them into entries of this schema.
+ * the v69→v70 migration converts them into entries of this schema.
  */
 const asrConfigSchema = z
   .object({
@@ -820,7 +821,10 @@ export const yoloSettingsSchema = z.object({
   // 只影响之后的新消息,历史消息已固定不变。
   timeContextEnabled: z.boolean().catch(true),
 
-  // 更新提示:用户选择「当前版本不提示」时记录被静音的版本号,只有出现更高版本才会再次提示。
+  // 更新提示:同版本第一次关闭后记录软关闭版本,下次启动仍提示一次。
+  softDismissedUpdateVersion: z.string().catch(''),
+
+  // 更新提示:同版本第二次关闭后记录被静音的版本号,只有出现更高版本才会再次提示。
   mutedUpdateVersion: z.string().catch(''),
 
   // RAG Options
@@ -907,15 +911,18 @@ export const yoloSettingsSchema = z.object({
       chatInputHeight: z.number().int().min(80).max(520).optional(),
       chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
-      // Chat mode (chat/agent)
-      chatMode: z.enum(['chat', 'agent']).optional(),
+      // Chat mode (ask/agent/agent-full)
+      chatMode: z.enum(['ask', 'agent', 'agent-full']).optional(),
       // Whether the user has acknowledged the first-time agent mode warning
       agentModeWarningConfirmed: z.boolean().optional(),
+      // Whether the user has acknowledged the first-time full access warning
+      fullAccessWarningConfirmed: z.boolean().optional(),
       // Persist preferred reasoning level per model id in Chat input
       reasoningLevelByModelId: z
         .record(z.string(), z.enum(REASONING_LEVELS))
         .optional(),
-      // Auto context compaction before next user send (based on last assistant usage)
+      // Auto context compaction prompt injected at runtime LLM boundaries
+      // (based on last assistant usage).
       autoContextCompactionEnabled: z.boolean().optional(),
       autoContextCompactionThresholdMode: z
         .enum(['tokens', 'ratio'])
@@ -953,6 +960,7 @@ export const yoloSettingsSchema = z.object({
       chatTitlePrompt: '',
       chatMode: 'agent',
       agentModeWarningConfirmed: false,
+      fullAccessWarningConfirmed: false,
       reasoningLevelByModelId: {},
       autoContextCompactionEnabled: false,
       autoContextCompactionThresholdMode: 'tokens',
@@ -1056,9 +1064,7 @@ export const yoloSettingsSchema = z.object({
       // trigger character for quick ask (default: @)
       quickAskTrigger: z.string().optional(),
       // quick ask mode: support legacy ask/edit values and current chat/agent values
-      quickAskMode: z
-        .enum(['ask', 'edit', 'edit-direct', 'chat', 'agent'])
-        .optional(),
+      quickAskMode: z.enum(['ask', 'edit', 'edit-direct', 'agent']).optional(),
       // auto dock quick ask to editor top right after sending
       quickAskAutoDockToTopRight: z.boolean().optional(),
       // quick ask context chars before cursor
@@ -1072,7 +1078,7 @@ export const yoloSettingsSchema = z.object({
         .number()
         .int()
         .min(1000)
-        .max(600000)
+        .max(MAX_MODEL_REQUEST_TIMEOUT_MS)
         .optional(),
     })
     .catch({
@@ -1104,7 +1110,7 @@ export const yoloSettingsSchema = z.object({
       smartSpaceUseUrlContext: false,
       enableQuickAsk: true,
       quickAskTrigger: '@',
-      quickAskMode: 'chat',
+      quickAskMode: 'ask',
       quickAskAutoDockToTopRight: true,
       quickAskContextBeforeChars: 5000,
       quickAskContextAfterChars: 2000,

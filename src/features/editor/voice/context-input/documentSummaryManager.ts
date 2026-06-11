@@ -297,7 +297,7 @@ Rules:
         primaryRequestTimeoutMs:
           settings.continuationOptions?.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled: false,
-        purpose: 'auxiliary',
+        purpose: 'lightweight',
       })
       return parseSummaryResponse(result.content ?? '')
     } catch (error) {

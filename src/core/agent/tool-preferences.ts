@@ -28,13 +28,11 @@ export const DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE: AssistantToolDisclosureMode
  * UI 侧应隐藏这些工具的 allowForThisChat 按钮。
  */
 export const ALWAYS_ALLOW_DISABLED_TOOL_NAMES: readonly string[] = [
-  'delegate_external_agent',
+  'terminal_command',
 ]
 
 /**
  * local tool 中需要 require_approval 的工具名集合。
- * delegate_external_agent 是高风险工具（执行外部 CLI），必须在此列表中。
- *
  * JS 隔离执行默认 full_access：未开启任何扩展能力时只能读已注入的 $content / $note
  * 等快照、无网络、无 $db、无外部脚本，与其他只读工具风险相当。一旦在 Agent 配置中
  * 打开 allowFetch / allowVaultRead / allowDbQuery / allowExternalScripts，
@@ -43,7 +41,7 @@ export const ALWAYS_ALLOW_DISABLED_TOOL_NAMES: readonly string[] = [
 const REQUIRE_APPROVAL_LOCAL_TOOLS: ReadonlySet<string> = new Set([
   'fs_file_ops',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
-  'delegate_external_agent',
+  'terminal_command',
 ])
 
 const JS_SANDBOX_TOOL_FQN = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${JS_SANDBOX_TOOL_NAME}`
@@ -61,7 +59,9 @@ export const BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES: ReadonlySet<string> =
   new Set([
     'context_prune_tool_results',
     'context_compact',
+    'delegate_subagent',
     JS_SANDBOX_TOOL_NAME,
+    'terminal_command',
   ])
 
 /**

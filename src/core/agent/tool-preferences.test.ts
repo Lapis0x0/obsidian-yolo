@@ -33,6 +33,9 @@ describe('tool-preferences defaults', () => {
       expect(getDefaultEnabledForTool('yolo_local__context_compact')).toBe(
         false,
       )
+      expect(getDefaultEnabledForTool('yolo_local__delegate_subagent')).toBe(
+        false,
+      )
       expect(getDefaultEnabledForTool('yolo_local__js_eval')).toBe(false)
     })
 
@@ -221,6 +224,22 @@ describe('tool-preferences defaults', () => {
         getAssistantToolApprovalMode(withFsRead, 'yolo_local__fs_read', {
           jsSandboxSettings: { allowFetch: true },
         }),
+      ).toBe('full_access')
+    })
+  })
+
+  describe('getAssistantToolApprovalMode defaults', () => {
+    it('allows subagent delegation to use the default full-access approval mode', () => {
+      expect(
+        getAssistantToolApprovalMode(
+          {
+            toolPreferences: {
+              yolo_local__delegate_subagent: { enabled: true },
+            },
+            enabledToolNames: [],
+          },
+          'yolo_local__delegate_subagent',
+        ),
       ).toBe('full_access')
     })
   })

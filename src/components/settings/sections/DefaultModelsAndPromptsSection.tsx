@@ -7,7 +7,10 @@ import {
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../../settings/schema/setting.types'
+import {
+  DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
+  MAX_MODEL_REQUEST_TIMEOUT_MS,
+} from '../../../settings/schema/setting.types'
 import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
@@ -109,6 +112,9 @@ export function DefaultModelsAndPromptsSection({
   const primaryRequestTimeoutMs =
     settings.continuationOptions.primaryRequestTimeoutMs ??
     DEFAULT_MODEL_REQUEST_TIMEOUT_MS
+  const maxPrimaryRequestTimeoutSeconds = Math.floor(
+    MAX_MODEL_REQUEST_TIMEOUT_MS / 1000,
+  )
   const [
     primaryRequestTimeoutSecondsInput,
     setPrimaryRequestTimeoutSecondsInput,
@@ -210,7 +216,10 @@ export function DefaultModelsAndPromptsSection({
                 setPrimaryRequestTimeoutSecondsInput(value)
                 const nextSeconds = parseIntegerInput(value)
                 if (nextSeconds === null) return
-                const clampedSeconds = Math.min(600, Math.max(1, nextSeconds))
+                const clampedSeconds = Math.min(
+                  maxPrimaryRequestTimeoutSeconds,
+                  Math.max(1, nextSeconds),
+                )
                 commitSettingsUpdate(
                   {
                     continuationOptions: {
@@ -228,7 +237,10 @@ export function DefaultModelsAndPromptsSection({
                 const nextSeconds =
                   parsedSeconds === null
                     ? Math.round(primaryRequestTimeoutMs / 1000)
-                    : Math.min(600, Math.max(1, parsedSeconds))
+                    : Math.min(
+                        maxPrimaryRequestTimeoutSeconds,
+                        Math.max(1, parsedSeconds),
+                      )
                 setPrimaryRequestTimeoutSecondsInput(String(nextSeconds))
                 if (nextSeconds * 1000 !== primaryRequestTimeoutMs) {
                   commitSettingsUpdate(

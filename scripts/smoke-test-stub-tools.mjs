@@ -17,6 +17,22 @@ const target = process.argv[2] ?? 'all'
 
 const findProvider = (id) => data.providers.find((p) => p.id === id)
 const norm = (s) => (s ?? '').replace(/\/$/, '')
+const deepSeekAnthropicBaseUrl = (baseUrl) => {
+  const normalized = norm(baseUrl || 'https://api.deepseek.com').replace(
+    /\/v1$/,
+    '',
+  )
+  try {
+    const url = new URL(normalized)
+    const path = url.pathname.replace(/\/$/, '')
+    if (url.hostname === 'api.deepseek.com' && path === '') {
+      return `${normalized}/anthropic`
+    }
+  } catch {
+    return normalized
+  }
+  return normalized
+}
 
 const STUB_OPEN = {
   type: 'object',
@@ -63,8 +79,8 @@ const USER_PROMPT =
 async function testAnthropic() {
   const p = findProvider('DeepSeek')
   if (!p) return { skipped: 'DeepSeek provider missing' }
-  const model = 'deepseek-chat'
-  const url = `${norm(p.baseUrl)}/v1/messages`
+  const model = 'deepseek-v4-flash'
+  const url = `${deepSeekAnthropicBaseUrl(p.baseUrl)}/v1/messages`
   const body = {
     model,
     max_tokens: 512,

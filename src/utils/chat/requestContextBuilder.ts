@@ -1,5 +1,5 @@
 import type { App, TFile, TFolder } from 'obsidian'
-import { Notice, normalizePath } from 'obsidian'
+import { normalizePath } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
@@ -15,7 +15,10 @@ import {
   getMemoryPromptContext,
   resolveMemoryFilePaths,
 } from '../../core/memory/memoryManager'
-import { getProjectInstructionsSection } from '../../core/project-instructions'
+import {
+  getProjectInstructionsSection,
+  resolveProjectInstructionFilePaths,
+} from '../../core/project-instructions'
 import {
   getLiteSkillDocument,
   listLiteSkillEntries,
@@ -24,7 +27,6 @@ import {
   isSkillEnabledForAssistant,
   resolveAssistantSkillPolicy,
 } from '../../core/skills/skillPolicy'
-import { scrapeUrlGeneric } from '../../core/web-search'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type {
@@ -33,6 +35,8 @@ import type {
   ChatExternalAgentResultMessage,
   ChatMessage,
   ChatSelectedSkill,
+  ChatSubagentResultMessage,
+  ChatTerminalCommandResultMessage,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
@@ -40,13 +44,13 @@ import { getLatestChatConversationCompaction } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
 import type { ContentPart, RequestMessage } from '../../types/llm/request'
 import type {
+  Mentionable,
   MentionableAssistantQuote,
   MentionableBlock,
   MentionableFile,
   MentionableFolder,
   MentionableImage,
   MentionablePDF,
-  MentionableUrl,
 } from '../../types/mentionable'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import {
@@ -75,6 +79,8 @@ import {
   appendContextualInjectionsToLastUserMessage,
 } from './contextual-injections'
 import { serializeExternalAgentResultToUserMessage } from './externalAgentResultSerializer'
+import { serializeSubagentResultToUserMessage } from './subagentResultSerializer'
+import { serializeTerminalCommandResultToUserMessage } from './terminalCommandResultSerializer'
 import {
   filterEmptyAssistantMessages,
   filterRequestMessagesByToolBoundary,
@@ -183,6 +189,8 @@ type RequestContextBuilderOptions = {
    * (current behavior), which keeps tests and non-injected callers unaffected.
    */
   systemPromptSnapshotStore?: SystemPromptSnapshotStore
+  getPromptSourceRevision?: () => number
+  promptSourcePathsCallback?: (paths: Set<string>) => void
 }
 
 /**
@@ -479,6 +487,8 @@ export class RequestContextBuilder {
   private settings: YoloSettings
   private includeSkills: boolean
   private systemPromptSnapshotStore?: SystemPromptSnapshotStore
+  private getPromptSourceRevision?: () => number
+  private promptSourcePathsCallback?: (paths: Set<string>) => void
 
   constructor(
     app: App,
@@ -489,6 +499,8 @@ export class RequestContextBuilder {
     this.settings = settings
     this.includeSkills = options?.includeSkills ?? true
     this.systemPromptSnapshotStore = options?.systemPromptSnapshotStore
+    this.getPromptSourceRevision = options?.getPromptSourceRevision
+    this.promptSourcePathsCallback = options?.promptSourcePathsCallback
   }
 
   private getMentionContextMode(): MentionContextMode {
@@ -515,6 +527,8 @@ export class RequestContextBuilder {
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
+    runtimeModePrompt?: string
+    systemPromptOverride?: string
     systemPromptSnapshotMode: SystemPromptSnapshotMode
   }): Promise<RequestMessage[]> {
     const { requestMessages } = await this.assembleRequest(args)
@@ -536,6 +550,8 @@ export class RequestContextBuilder {
     conversationId,
     compaction,
     contextualInjections,
+    runtimeModePrompt,
+    systemPromptOverride,
     systemPromptSnapshotMode,
   }: {
     messages: ChatMessage[]
@@ -545,6 +561,8 @@ export class RequestContextBuilder {
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
+    runtimeModePrompt?: string
+    systemPromptOverride?: string
     systemPromptSnapshotMode: SystemPromptSnapshotMode
   }): Promise<{
     requestMessages: RequestMessage[]
@@ -618,13 +636,26 @@ export class RequestContextBuilder {
       }
     }
 
-    const { systemSections, systemContent } =
-      await this.resolveSystemPromptSnapshot({
-        conversationId,
-        hasTools,
-        hasMemoryTools,
-        mode: systemPromptSnapshotMode,
-      })
+    const override = systemPromptOverride?.trim()
+    const { systemSections, systemContent } = override
+      ? {
+          systemSections: [
+            {
+              bucket: 'system' as const,
+              id: 'system.subagent-override',
+              content: override,
+            },
+          ],
+          systemContent: override,
+        }
+      : await this.resolveSystemPromptSnapshot({
+          conversationId,
+          hasTools,
+          hasMemoryTools,
+          compaction,
+          runtimeModePrompt,
+          mode: systemPromptSnapshotMode,
+        })
     const systemMessage: RequestMessage = {
       role: 'system',
       content: systemContent,
@@ -678,6 +709,7 @@ export class RequestContextBuilder {
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
+    runtimeModePrompt?: string
     requestTools?: unknown[] | undefined
     systemPromptSnapshotMode: SystemPromptSnapshotMode
   }): Promise<PromptSection[]> {
@@ -859,6 +891,18 @@ export class RequestContextBuilder {
             continue
           }
 
+          if (message.role === 'subagent_result') {
+            requestMessages.push(this.parseSubagentResultMessage(message))
+            continue
+          }
+
+          if (message.role === 'terminal_command_result') {
+            requestMessages.push(
+              this.parseTerminalCommandResultMessage(message),
+            )
+            continue
+          }
+
           requestMessages.push(
             ...this.parseToolMessage({ message, prunedToolCallIds }),
           )
@@ -897,6 +941,16 @@ export class RequestContextBuilder {
 
       if (message.role === 'external_agent_result') {
         requestMessages.push(this.parseExternalAgentResultMessage(message))
+        continue
+      }
+
+      if (message.role === 'subagent_result') {
+        requestMessages.push(this.parseSubagentResultMessage(message))
+        continue
+      }
+
+      if (message.role === 'terminal_command_result') {
+        requestMessages.push(this.parseTerminalCommandResultMessage(message))
         continue
       }
 
@@ -1130,6 +1184,18 @@ ${message.annotations
     return serializeExternalAgentResultToUserMessage(message)
   }
 
+  private parseSubagentResultMessage(
+    message: ChatSubagentResultMessage,
+  ): RequestMessage {
+    return serializeSubagentResultToUserMessage(message)
+  }
+
+  private parseTerminalCommandResultMessage(
+    message: ChatTerminalCommandResultMessage,
+  ): RequestMessage {
+    return serializeTerminalCommandResultToUserMessage(message)
+  }
+
   private parseToolMessage({
     message,
     prunedToolCallIds,
@@ -1242,127 +1308,13 @@ ${message.annotations
             ignoreMentionableTypes: ['model'],
           })
         : ''
-
-      onQueryProgressChange?.({
-        type: 'reading-mentionables',
-      })
-
-      const allMentionedFiles = message.mentionables
-        .filter((m): m is MentionableFile => m.type === 'file')
-        .map((m) => this.app.vault.getFileByPath(m.file.path))
-        .filter((file): file is TFile => Boolean(file))
-      const mentionedImageFiles = allMentionedFiles.filter(isImageTFile)
-      const files = allMentionedFiles.filter((f) => !isImageTFile(f))
-      const folders = message.mentionables
-        .filter((m): m is MentionableFolder => m.type === 'folder')
-        .map((m) => this.app.vault.getFolderByPath(m.folder.path))
-        .filter((folder): folder is TFolder => Boolean(folder))
-
-      const filePrompt = await this.buildMentionedFilePrompt({
-        files,
-        folders,
-      })
-
-      const blocks = message.mentionables.filter(
-        (m): m is MentionableBlock => m.type === 'block',
-      )
-      const assistantQuotes = message.mentionables.filter(
-        (m): m is MentionableAssistantQuote => m.type === 'assistant-quote',
-      )
-      const pdfs = message.mentionables.filter(
-        (m): m is MentionablePDF => m.type === 'pdf',
-      )
-      const blockPrompt = blocks
-        .map(({ file, content, startLine, pageNumber }) => {
-          const pageTag =
-            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
-          const header = `${file.path}${pageTag}`
-          if (pageNumber !== undefined) {
-            // PDF block: skip line numbering (startLine/endLine are 0)
-            return `\`\`\`${header}\n${content}\n\`\`\`\n`
-          }
-          const numberedContent = this.addLineNumbersToContent({
-            content,
-            startLine,
-          })
-          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
-        })
-        .join('')
-      const assistantQuotePrompt =
-        this.buildAssistantQuotePrompt(assistantQuotes)
-      const {
-        documentParts: pdfDocumentParts,
-        legacyText: legacyPdfFallbackText,
-      } = this.buildPdfAttachments(pdfs)
-
-      const urls = message.mentionables.filter(
-        (m): m is MentionableUrl => m.type === 'url',
-      )
-
-      const urlPrompt =
-        urls.length > 0
-          ? `## Potentially Relevant Websearch Results
-${(
-  await Promise.all(
-    urls.map(
-      async ({ url }) => `\`\`\`
-Website URL: ${url}
-Website Content:
-${await this.getWebsiteContent(url)}
-\`\`\``,
-    ),
-  )
-).join('\n')}
-`
-          : ''
-
-      const inlineImageDataUrls = message.mentionables
-        .filter((m): m is MentionableImage => m.type === 'image')
-        .map(({ data }) => data)
-      const vaultImageDataUrls = (
-        await Promise.all(
-          mentionedImageFiles.map(async (file) => {
-            try {
-              return await tFileToImageDataUrl(this.app, file, {
-                cache: { enabled: true, settings: this.settings },
-              })
-            } catch (error) {
-              console.warn(
-                '[YOLO] Failed to read mentioned image file',
-                file.path,
-                error,
-              )
-              return null
-            }
-          }),
-        )
-      ).filter((url): url is string => url !== null)
-      const imageDataUrls = [...inlineImageDataUrls, ...vaultImageDataUrls]
-      const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
-        message.selectedSkills,
-      )
-
-      // Reset query progress
-      onQueryProgressChange?.({
-        type: 'idle',
-      })
-
       return {
-        promptContent: [
-          ...imageDataUrls.map(
-            (data): ContentPart => ({
-              type: 'image_url',
-              image_url: {
-                url: data,
-              },
-            }),
-          ),
-          ...pdfDocumentParts,
-          {
-            type: 'text',
-            text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${legacyPdfFallbackText}${urlPrompt}${selectedSkillsPrompt}\n\n${query}\n\n`,
-          },
-        ],
+        promptContent: await this.compileUserPromptParts({
+          query,
+          mentionables: message.mentionables,
+          selectedSkills: message.selectedSkills,
+          onQueryProgressChange,
+        }),
       }
     } catch (error) {
       console.error('Failed to compile user message', error)
@@ -1371,6 +1323,154 @@ ${await this.getWebsiteContent(url)}
       })
       throw error
     }
+  }
+
+  public async compilePlainUserMessagePrompt({
+    prompt,
+    mentionables,
+    selectedSkills,
+    onQueryProgressChange,
+  }: {
+    prompt: string
+    mentionables: Mentionable[]
+    selectedSkills?: ChatSelectedSkill[]
+    onQueryProgressChange?: (queryProgress: QueryProgressState) => void
+  }): Promise<{
+    promptContent: ChatUserMessage['promptContent']
+  }> {
+    try {
+      if (
+        prompt.trim().length === 0 &&
+        mentionables.length === 0 &&
+        (selectedSkills?.length ?? 0) === 0
+      ) {
+        return {
+          promptContent: '',
+        }
+      }
+
+      return {
+        promptContent: await this.compileUserPromptParts({
+          query: prompt,
+          mentionables,
+          selectedSkills,
+          onQueryProgressChange,
+        }),
+      }
+    } catch (error) {
+      console.error('Failed to compile plain user message', error)
+      onQueryProgressChange?.({
+        type: 'idle',
+      })
+      throw error
+    }
+  }
+
+  private async compileUserPromptParts({
+    query,
+    mentionables,
+    selectedSkills,
+    onQueryProgressChange,
+  }: {
+    query: string
+    mentionables: Mentionable[]
+    selectedSkills?: ChatSelectedSkill[]
+    onQueryProgressChange?: (queryProgress: QueryProgressState) => void
+  }): Promise<ChatUserMessage['promptContent']> {
+    onQueryProgressChange?.({
+      type: 'reading-mentionables',
+    })
+
+    const allMentionedFiles = mentionables
+      .filter((m): m is MentionableFile => m.type === 'file')
+      .map((m) => this.app.vault.getFileByPath(m.file.path))
+      .filter((file): file is TFile => Boolean(file))
+    const mentionedImageFiles = allMentionedFiles.filter(isImageTFile)
+    const files = allMentionedFiles.filter((f) => !isImageTFile(f))
+    const folders = mentionables
+      .filter((m): m is MentionableFolder => m.type === 'folder')
+      .map((m) => this.app.vault.getFolderByPath(m.folder.path))
+      .filter((folder): folder is TFolder => Boolean(folder))
+
+    const filePrompt = await this.buildMentionedFilePrompt({
+      files,
+      folders,
+    })
+
+    const blocks = mentionables.filter(
+      (m): m is MentionableBlock => m.type === 'block',
+    )
+    const assistantQuotes = mentionables.filter(
+      (m): m is MentionableAssistantQuote => m.type === 'assistant-quote',
+    )
+    const pdfs = mentionables.filter(
+      (m): m is MentionablePDF => m.type === 'pdf',
+    )
+    const blockPrompt = blocks
+      .map(({ file, content, startLine, pageNumber }) => {
+        const pageTag = pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+        const header = `${file.path}${pageTag}`
+        if (pageNumber !== undefined) {
+          // PDF block: skip line numbering (startLine/endLine are 0)
+          return `\`\`\`${header}\n${content}\n\`\`\`\n`
+        }
+        const numberedContent = this.addLineNumbersToContent({
+          content,
+          startLine,
+        })
+        return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
+      })
+      .join('')
+    const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
+    const {
+      documentParts: pdfDocumentParts,
+      legacyText: legacyPdfFallbackText,
+    } = this.buildPdfAttachments(pdfs)
+
+    const inlineImageDataUrls = mentionables
+      .filter((m): m is MentionableImage => m.type === 'image')
+      .map(({ data }) => data)
+    const vaultImageDataUrls = (
+      await Promise.all(
+        mentionedImageFiles.map(async (file) => {
+          try {
+            return await tFileToImageDataUrl(this.app, file, {
+              cache: { enabled: true, settings: this.settings },
+            })
+          } catch (error) {
+            console.warn(
+              '[YOLO] Failed to read mentioned image file',
+              file.path,
+              error,
+            )
+            return null
+          }
+        }),
+      )
+    ).filter((url): url is string => url !== null)
+    const imageDataUrls = [...inlineImageDataUrls, ...vaultImageDataUrls]
+    const selectedSkillsPrompt =
+      await this.buildSelectedSkillsPrompt(selectedSkills)
+
+    onQueryProgressChange?.({
+      type: 'idle',
+    })
+
+    return [
+      ...imageDataUrls.map(
+        (data): ContentPart => ({
+          type: 'image_url',
+          image_url: {
+            url: data,
+          },
+        }),
+      ),
+      ...pdfDocumentParts,
+      {
+        type: 'text',
+        text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`,
+      },
+    ]
   }
 
   private buildAssistantQuotePrompt(
@@ -1498,17 +1598,22 @@ ${entries}
     conversationId,
     hasTools,
     hasMemoryTools,
+    compaction,
+    runtimeModePrompt,
     mode,
   }: {
     conversationId: string
     hasTools: boolean
     hasMemoryTools: boolean
+    compaction?: ChatConversationCompactionLike | null
+    runtimeModePrompt?: string
     mode: SystemPromptSnapshotMode
   }): Promise<SystemPromptSnapshot> {
     const build = async (): Promise<SystemPromptSnapshot> => {
       const systemSections = await this.buildSystemPromptSections(
         hasTools,
         hasMemoryTools,
+        runtimeModePrompt,
       )
       const systemContent = systemSections
         .map((section) =>
@@ -1527,6 +1632,8 @@ ${entries}
     const fingerprint = this.computeSystemPromptFingerprint(
       hasTools,
       hasMemoryTools,
+      compaction,
+      runtimeModePrompt,
     )
     return store.getOrCreate(conversationId, fingerprint, build, {
       reuseOnly: mode === 'reuse',
@@ -1539,13 +1646,16 @@ ${entries}
    * snapshot; everything NOT listed (memory file content, project-instruction
    * and skill file content, time variables) is intentionally frozen until the
    * next conversation. Settings that never reach the system prompt (reasoning
-   * level, chat mode, …) are excluded so they don't evict the snapshot.
+   * level, …) are excluded so they don't evict the snapshot.
    */
   private computeSystemPromptFingerprint(
     hasTools: boolean,
     hasMemoryTools: boolean,
+    compaction?: ChatConversationCompactionLike | null,
+    runtimeModePrompt?: string,
   ): string {
     const assistant = this.getCurrentAssistant()
+    const latestCompaction = getLatestChatConversationCompaction(compaction)
     // The exact memory files this request will read. Captures baseDir, the
     // assistant name, AND the sibling-driven duplicate index — so a same-named
     // assistant being added/renamed (which changes which file we read) refreshes
@@ -1554,9 +1664,23 @@ ${entries}
       settings: this.settings,
       assistantId: this.settings.currentAssistantId,
     })
+
+    if (this.promptSourcePathsCallback) {
+      const watchedPaths = new Set<string>()
+      if (memoryPaths.global) watchedPaths.add(memoryPaths.global)
+      if (memoryPaths.assistant) watchedPaths.add(memoryPaths.assistant)
+      resolveProjectInstructionFilePaths(
+        this.app,
+        assistant?.enableProjectInstructions === true,
+        assistant?.workspaceScope,
+      ).forEach((p) => watchedPaths.add(p))
+      this.promptSourcePathsCallback(watchedPaths)
+    }
+
     return stableStringify({
       hasTools,
       hasMemoryTools,
+      runtimeModePrompt: runtimeModePrompt?.trim() ?? '',
       includeSkills: this.includeSkills,
       systemPrompt: this.settings.systemPrompt ?? '',
       // Normalize the same way the real path/skill lookups do, so cosmetic-only
@@ -1567,6 +1691,18 @@ ${entries}
         .sort(),
       currentAssistantId: this.settings.currentAssistantId ?? '',
       memoryPaths,
+      promptSourceRevision: this.getPromptSourceRevision?.() ?? 0,
+      // A context compaction restarts the conversation from a compressed
+      // boundary. Refresh the frozen system prompt after that boundary so
+      // memory written before compaction is visible again, without refreshing
+      // on every memory-file write during the same uncompressed context.
+      latestCompaction: latestCompaction
+        ? {
+            anchorMessageId: latestCompaction.anchorMessageId,
+            triggerToolCallId: latestCompaction.triggerToolCallId ?? null,
+            compactedAt: latestCompaction.compactedAt,
+          }
+        : null,
       // Only assistant fields that reach the system prompt — not modelId / icon /
       // updatedAt, which would over-evict on unrelated edits. `enabledSkills` is
       // legacy and not consulted by skill filtering, so it is intentionally out.
@@ -1592,6 +1728,7 @@ ${entries}
   private async buildSystemPromptSections(
     hasTools: boolean,
     hasMemoryTools: boolean,
+    runtimeModePrompt?: string,
   ): Promise<SystemPromptSections> {
     const sections: SystemPromptSections = []
     const currentAssistant = this.getCurrentAssistant()
@@ -1609,6 +1746,15 @@ ${entries}
         bucket: 'system',
         id: 'system.base-behavior',
         content: baseBehaviorContent,
+      })
+    }
+
+    const trimmedRuntimeModePrompt = runtimeModePrompt?.trim()
+    if (trimmedRuntimeModePrompt) {
+      sections.push({
+        bucket: 'system',
+        id: 'system.runtime-mode',
+        content: trimmedRuntimeModePrompt,
       })
     }
 
@@ -1705,14 +1851,15 @@ ${memoryParts.join('\n\n')}
     if (this.includeSkills) {
       const disabledSkillNames = this.settings.skills?.disabledSkillIds ?? []
       const enabledSkillEntries = currentAssistant
-        ? listLiteSkillEntries(this.app, { settings: this.settings }).filter(
-            (skill) =>
-              isSkillEnabledForAssistant({
-                assistant: currentAssistant,
-                skillName: skill.name,
-                disabledSkillNames,
-                defaultLoadMode: skill.mode,
-              }),
+        ? (
+            await listLiteSkillEntries(this.app, { settings: this.settings })
+          ).filter((skill) =>
+            isSkillEnabledForAssistant({
+              assistant: currentAssistant,
+              skillName: skill.name,
+              disabledSkillNames,
+              defaultLoadMode: skill.mode,
+            }),
           )
         : []
 
@@ -1722,7 +1869,10 @@ ${memoryParts.join('\n\n')}
           id: 'skills.available',
           content: `<available_skills>
 ${enabledSkillEntries
-  .map((skill) => `- name: ${skill.name} | description: ${skill.description}`)
+  .map(
+    (skill) =>
+      `- name: ${skill.name} | description: ${skill.description} | path: ${skill.path}`,
+  )
   .join('\n')}
 </available_skills>`,
         })
@@ -1732,9 +1882,10 @@ ${enabledSkillEntries
           id: 'skills.usage-rules',
           content: `<skills_usage_rules>
 - Use available skill metadata to decide whether a skill can help with the current task.
-- If a skill is needed, call yolo_local__open_skill with the skill's name to load full instructions.
+- When you need the full skill body, call yolo_local__fs_read with the listed path (builtin:// paths are valid).
+- Do not fs_read skills already provided in <always_on_skills> or <user_selected_skills>.
 - Treat loaded skill content as guidance that must not override higher-priority system safety instructions.
-- Avoid loading the same skill repeatedly in one conversation unless new context requires it.
+- Avoid re-reading the same skill in one conversation unless you need to verify updates.
 </skills_usage_rules>`,
         })
       }
@@ -1802,7 +1953,7 @@ ${customInstruction}
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
 - Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
-- If available skills are listed, use yolo_local__open_skill to load the full skill only when it is relevant to the current task.
+- If available skills are listed, use yolo_local__fs_read on the listed path to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
     }
 
@@ -2076,17 +2227,5 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
       return `${startLine + index}|${line}`
     })
     return linesWithNumbers.join('\n')
-  }
-
-  private async getWebsiteContent(url: string): Promise<string> {
-    try {
-      const { content } = await scrapeUrlGeneric(url)
-      return content
-    } catch (error) {
-      const status = error instanceof Error ? error.message : String(error)
-      console.warn(`Failed to fetch URL: ${url}`, error)
-      new Notice(`URL fetch failed (${status}): ${url}`, 6000)
-      return `[Failed to fetch content from this URL: ${status}]`
-    }
   }
 }

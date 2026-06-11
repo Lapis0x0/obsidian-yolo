@@ -84,6 +84,7 @@ const createMockMcpManager = (tools: unknown[] = []): McpManager =>
   ({
     listAvailableTools: jest.fn().mockResolvedValue(tools),
     getJsSandboxSettings: jest.fn(() => ({})),
+    getSettingsSnapshot: jest.fn(() => ({})),
   }) as unknown as McpManager
 
 describe('AgentLlmTurnExecutor', () => {

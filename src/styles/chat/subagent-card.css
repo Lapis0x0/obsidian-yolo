@@ -1,0 +1,249 @@
+/* Subagent 工具卡：Cursor 风格紧凑卡片 + 详情弹窗 */
+
+.yolo-subagent-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  margin: var(--size-4-2) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+button.yolo-subagent-card__main {
+  appearance: none;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-2-3);
+  flex: 1;
+  min-width: 0;
+  padding: var(--size-2-1) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  outline: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.yolo-subagent-card__main:hover,
+button.yolo-subagent-card__main:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.yolo-subagent-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--text-muted);
+}
+
+.yolo-subagent-card__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.yolo-subagent-card--running .yolo-subagent-card__icon {
+  color: var(--text-accent);
+}
+
+.yolo-subagent-card--success .yolo-subagent-card__icon {
+  color: var(--color-green);
+}
+
+.yolo-subagent-card--error .yolo-subagent-card__icon {
+  color: var(--color-red);
+}
+
+.yolo-subagent-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-subagent-card__primary {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
+.yolo-subagent-card__title {
+  min-width: 0;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-subagent-card__model {
+  flex-shrink: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-subagent-card__summary {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.yolo-subagent-card__abort-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin-top: var(--size-2-1);
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  outline: 0;
+  border-radius: 999px;
+  background: transparent;
+  background-color: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.yolo-subagent-card__abort-btn:hover,
+button.yolo-subagent-card__abort-btn:focus-visible {
+  background: var(--background-modifier-hover);
+  background-color: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+/* ── 详情弹窗 ── */
+
+.yolo-subagent-detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--layer-popover, 30);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--size-4-6);
+  background: color-mix(in srgb, var(--background-primary) 62%, transparent);
+  backdrop-filter: blur(1px);
+}
+
+.yolo-subagent-detail-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100% - var(--size-4-6) * 2));
+  max-height: min(82%, 900px);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-l);
+  overflow: hidden;
+  user-select: text;
+}
+
+.yolo-subagent-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+  padding: var(--size-4-4) var(--size-4-4) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-subagent-detail-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-subagent-detail-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  line-height: 1.35;
+}
+
+.yolo-subagent-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-top: var(--size-2-2);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-subagent-detail-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+}
+
+.yolo-subagent-detail-close {
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.yolo-subagent-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--size-4-3) var(--size-4-4) var(--size-4-4);
+  user-select: text;
+}
+
+.yolo-subagent-detail-prompt {
+  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.yolo-subagent-detail-activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.yolo-subagent-detail-activity-row {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.yolo-subagent-detail-empty {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.yolo-subagent-detail-body .yolo-assistant-tool-message-group {
+  margin: 0;
+}

@@ -37,7 +37,15 @@ const decideAfterLlmResult = ({ hasToolCalls }) => {
   return { type: 'done', reason: 'completed' }
 }
 
-const decideAfterToolResult = ({ hasPendingTools, iteration, maxIterations }) => {
+const decideAfterToolResult = ({
+  forceStopReason,
+  hasPendingTools,
+  iteration,
+  maxIterations,
+}) => {
+  if (forceStopReason) {
+    return { type: 'done', reason: forceStopReason }
+  }
   if (hasPendingTools) {
     return { type: 'done', reason: 'completed' }
   }
@@ -97,6 +105,7 @@ self.onmessage = (event) => {
           return
         }
         const decision = decideAfterToolResult({
+          forceStopReason: message.forceStopReason,
           hasPendingTools: message.hasPendingTools,
           iteration: state.iteration,
           maxIterations: state.maxIterations,
@@ -206,6 +215,7 @@ class AgentLoopWorkerDriver {
         }
 
         const decision = decideAfterToolResult({
+          forceStopReason: message.forceStopReason,
           hasPendingTools: message.hasPendingTools,
           iteration: this.state.iteration,
           maxIterations: this.state.maxIterations,

@@ -1,5 +1,4 @@
 import type { GenerateContentResponse as GeminiGenerateContentResponse } from '@google/genai'
-import { Platform } from 'obsidian'
 
 import { ChatModel } from '../../types/chat-model.types'
 import {
@@ -34,6 +33,7 @@ import {
 import { ModelRequestPolicy } from './requestPolicy'
 import {
   createRequestTransportMemoryKey,
+  resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
 } from './requestTransport'
@@ -90,15 +90,11 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
       providerId: provider.id,
       baseUrl: CODE_ASSIST_ENDPOINT,
     })
-    const configuredMode = provider.additionalSettings?.requestTransportMode
-    this.requestTransportMode =
-      configuredMode === 'browser' ||
-      configuredMode === 'obsidian' ||
-      configuredMode === 'node'
-        ? configuredMode
-        : Platform.isDesktop
-          ? 'node'
-          : 'obsidian'
+    this.requestTransportMode = resolveRequestTransportMode({
+      additionalSettings: provider.additionalSettings,
+      hasCustomBaseUrl: false,
+      memoryKey: this.requestTransportMemoryKey,
+    })
     this.transportContext = {
       providerLabel: PROVIDER_LABEL,
       requestPolicy: this.requestPolicy,

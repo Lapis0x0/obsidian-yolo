@@ -16,6 +16,7 @@
 @import './chat/message.css';
 @import './chat/popover.css';
 @import './chat/external-agent-card.css';
+@import './chat/subagent-card.css';
 @import './chat/todo-list-panel.css';
 @import './chat/ask-user-question-panel.css';
 

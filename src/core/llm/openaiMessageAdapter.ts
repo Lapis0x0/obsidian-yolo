@@ -109,6 +109,7 @@ const RESERVED_REQUEST_KEYS = new Set([
   'tools',
   'tool_choice',
   'reasoning_effort',
+  'reasoningLevel',
   'web_search_options',
   'messages',
   'max_tokens',

@@ -1,10 +1,11 @@
 import { scrapeUrlGeneric } from './genericScrape'
 import { getWebSearchProvider } from './registry'
-import type {
-  WebSearchProviderOptions,
-  WebSearchResult,
-  WebSearchScrapeResult,
-  WebSearchSettings,
+import {
+  type WebSearchProviderOptions,
+  type WebSearchResult,
+  type WebSearchScrapeResult,
+  type WebSearchSettings,
+  isProviderScrapeApiEnabled,
 } from './types'
 
 const SHORT_ID_LENGTH = 6
@@ -74,7 +75,11 @@ export async function runWebScrape({
   const options = resolveActiveWebSearchProvider(settings)
   if (options) {
     const provider = getWebSearchProvider(options)
-    if (provider.supportsScrape && provider.scrape) {
+    if (
+      provider.supportsScrape &&
+      provider.scrape &&
+      isProviderScrapeApiEnabled(options)
+    ) {
       const result = await provider.scrape(
         { url },
         options,

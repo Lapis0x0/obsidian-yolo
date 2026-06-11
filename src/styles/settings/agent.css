@@ -34,13 +34,6 @@
   margin-bottom: var(--size-4-2);
 }
 
-/* Agent capability card (focus sync, time awareness, …) — pure white
-   background like the Models block cards. */
-.yolo-agent-capability-card.setting-item {
-  background: var(--background-primary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-}
-
 .yolo-agent-block-head-title-row {
   display: flex;
   align-items: center;
@@ -2154,4 +2147,295 @@ button.yolo-agent-chip--more:hover {
 .yolo-js-exec-config-button svg {
   width: 18px;
   height: 18px;
+}
+
+.yolo-terminal-command-modal {
+  width: min(720px, 92vw);
+}
+
+.yolo-terminal-command-modal .modal-content {
+  padding: var(--size-4-3);
+}
+
+.yolo-terminal-command-config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-4);
+}
+
+.yolo-terminal-command-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-terminal-command-section-head {
+  display: block;
+}
+
+.yolo-terminal-command-section-head h3 {
+  margin: 0 0 var(--size-4-1);
+  font-size: var(--font-ui-medium);
+}
+
+.yolo-terminal-command-section-head p,
+.yolo-terminal-command-rule {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
+}
+
+.yolo-terminal-command-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  align-self: flex-start;
+}
+
+.yolo-subagent-config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-4);
+}
+
+.yolo-subagent-config--adding {
+  min-height: 0;
+}
+
+.yolo-subagent-add-section {
+  min-height: 0;
+  max-height: calc(100vh - 180px);
+}
+
+.yolo-subagent-config--adding
+  .yolo-subagent-add-section
+  .yolo-subagent-model-list {
+  flex: 1 1 auto;
+  min-height: 220px;
+  max-height: min(52vh, 560px);
+  overflow-y: auto;
+}
+
+.yolo-subagent-add-section .yolo-subagent-modal-actions {
+  flex: 0 0 auto;
+  padding-top: var(--size-4-2);
+  border-top: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.yolo-subagent-config--pool {
+  min-height: 0;
+}
+
+.yolo-subagent-pool-section {
+  min-height: 0;
+  max-height: calc(100vh - 180px);
+}
+
+.yolo-subagent-config--pool
+  .yolo-subagent-pool-section
+  .yolo-subagent-pool-list {
+  flex: 1 1 auto;
+  max-height: min(52vh, 560px);
+  overflow-y: auto;
+}
+
+.yolo-subagent-intro {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.55;
+  padding: 2px 2px 2px 12px;
+  border-left: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+}
+
+.yolo-subagent-model-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.yolo-subagent-model-search-wrap > svg {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.yolo-subagent-model-search-wrap .yolo-subagent-model-search {
+  padding-left: 34px;
+}
+
+.yolo-subagent-config .yolo-subagent-model-list {
+  max-height: none;
+}
+
+.yolo-subagent-pool-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+}
+
+.yolo-subagent-pool-toolbar .mod-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.yolo-subagent-pool-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 44px;
+  max-height: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background-color: var(--background-primary);
+}
+
+.yolo-subagent-provider-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.yolo-subagent-provider-group + .yolo-subagent-provider-group {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-subagent-provider-heading {
+  padding: 7px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  background-color: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-subagent-pool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: 9px 12px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.yolo-subagent-provider-heading + .yolo-subagent-pool-row {
+  border-top: none;
+}
+
+.yolo-subagent-provider-heading + .yolo-subagent-model-row {
+  border-top: none;
+}
+
+.yolo-subagent-model-row {
+  align-items: center;
+}
+
+.yolo-subagent-model-row-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: var(--line-height-tight);
+}
+
+.yolo-subagent-model-row-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-subagent-model-row-text > span:first-child {
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.yolo-subagent-model-row-text > span:last-child {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-family: var(--font-monospace);
+}
+
+.yolo-subagent-default-btn,
+.yolo-subagent-default-btn:hover,
+.yolo-subagent-default-btn:focus,
+.yolo-subagent-default-btn:focus-visible,
+.yolo-subagent-default-btn:active {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  min-width: 92px;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-subagent-default-btn.is-active {
+  color: var(--interactive-accent);
+}
+
+.yolo-subagent-default-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.yolo-subagent-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
+.yolo-string-list-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.yolo-string-list-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.yolo-string-list-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yolo-string-list-input-add {
+  flex: 0 0 auto;
+}
+
+.yolo-string-list-input-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  min-height: 28px;
+}
+
+.yolo-string-list-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  max-width: 100%;
+  min-height: 26px;
+  padding: 2px 4px 2px 8px;
+  color: var(--text-normal);
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-string-list-chip-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.yolo-string-list-chip-remove {
+  flex: 0 0 auto;
 }

@@ -30,7 +30,7 @@ describe('editorStateToPlainText', () => {
             version: 1,
             textFormat: 0,
             textStyle: '',
-          } as SerializedElementNode<SerializedTextNode>,
+          } as unknown as SerializedElementNode<SerializedTextNode>,
         ],
         direction: 'ltr',
         format: '',
@@ -41,5 +41,45 @@ describe('editorStateToPlainText', () => {
     }
     const plainText = editorStateToPlainText(editorState)
     expect(plainText).toBe('Hello, world!')
+  })
+
+  it('uses full mentionName instead of truncated display text for URL mentions', () => {
+    const fullUrl =
+      'https://www.anthropic.com/engineering/some-long-article-path'
+    const editorState: SerializedEditorState = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                detail: 0,
+                format: 0,
+                mode: 'token',
+                style: '',
+                text: 'https://www.anthropic.com/engin…',
+                type: 'mention',
+                version: 1,
+                mentionName: fullUrl,
+                mentionable: { type: 'url', url: fullUrl },
+              },
+            ],
+            direction: 'ltr',
+            format: '',
+            indent: 0,
+            type: 'paragraph',
+            version: 1,
+            textFormat: 0,
+            textStyle: '',
+          } as unknown as SerializedElementNode<SerializedTextNode>,
+        ],
+        direction: 'ltr',
+        format: '',
+        indent: 0,
+        type: 'root',
+        version: 1,
+      },
+    }
+
+    expect(editorStateToPlainText(editorState)).toBe(fullUrl)
   })
 })

@@ -128,20 +128,18 @@ describe('AgentService.answerUserQuestion (recovery path)', () => {
     expect(summary.isWaitingApproval).toBe(true)
   })
 
-  it('abortConversation is a no-op when no active run owns the awaiting tool call', () => {
+  it('abortConversation aborts awaiting user input even when no active run owns it', () => {
     const service = new AgentService()
     service.replaceConversationMessages('conv', buildMessagesWithAwaiting(), [])
-    // Without an active runEntry there is nothing to abort; the awaiting
-    // state must survive untouched (live-run abort coverage lives in the
-    // integration tests once a real run loop is wired into the unit harness).
-    expect(service.abortConversation('conv')).toBe(false)
+    expect(service.abortConversation('conv')).toBe(true)
     const state = service.getState('conv')
     const toolMessage = state.messages.find((m) => m.role === 'tool')
     if (!toolMessage || toolMessage.role !== 'tool') {
       throw new Error('expected tool message')
     }
     expect(toolMessage.toolCalls[0].response.status).toBe(
-      ToolCallResponseStatus.AwaitingUserInput,
+      ToolCallResponseStatus.Aborted,
     )
+    expect(state.status).toBe('aborted')
   })
 })

@@ -300,18 +300,6 @@
   outline: none;
 }
 
-.yolo-mode-select__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: inherit;
-}
-
-.yolo-mode-select__icon svg {
-  width: 14px;
-  height: 14px;
-}
-
 .yolo-quick-ask-mode-popover {
   min-width: 140px;
   max-width: 200px;
@@ -839,7 +827,7 @@
   align-items: flex-start;
 }
 
-.yolo-quick-ask-user-message--editing .yolo-chat-user-input-controls {
+.yolo-quick-ask-user-message--editing .yolo-chat-user-input-send-row {
   height: auto;
   min-height: 28px;
   gap: var(--size-2-3);
@@ -847,30 +835,37 @@
   cursor: default;
 }
 
-.yolo-quick-ask-user-message--editing .yolo-chat-user-input-controls__left {
+.yolo-quick-ask-user-message--editing .yolo-chat-user-input-toolbar {
+  gap: var(--size-2-3);
+  padding-inline: calc(var(--size-2-3) + 1px);
+}
+
+.yolo-quick-ask-user-message--editing .yolo-chat-user-input-toolbar__left,
+.yolo-quick-ask-user-message--editing .yolo-chat-user-input-toolbar__right {
   gap: var(--size-2-3);
 }
 
 .yolo-quick-ask-user-message--editing
-  .yolo-chat-user-input-controls__left
+  .yolo-chat-user-input-toolbar__right
   .yolo-chat-input-model-select {
   max-width: 170px;
 }
 
 .yolo-quick-ask-user-message--editing
-  .yolo-chat-user-input-controls__left
+  .yolo-chat-user-input-toolbar__right
   .yolo-chat-input-model-select__model-name {
   max-width: 128px;
 }
 
 .yolo-quick-ask-user-message--editing
-  .yolo-chat-user-input-controls
+  .yolo-chat-user-input-toolbar
   .yolo-chat-input-model-select,
 .yolo-quick-ask-user-message--editing
-  .yolo-chat-user-input-controls
+  .yolo-chat-user-input-toolbar
   .yolo-chat-input-model-select
   *,
-.yolo-quick-ask-user-message--editing .yolo-chat-user-input-controls button {
+.yolo-quick-ask-user-message--editing .yolo-chat-user-input-toolbar button,
+.yolo-quick-ask-user-message--editing .yolo-chat-user-input-send-row button {
   cursor: pointer;
 }
 

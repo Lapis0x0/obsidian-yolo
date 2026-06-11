@@ -95,12 +95,6 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelFallback: 'Delete Memory',
     descFallback: 'Delete an existing memory item by id.',
   },
-  open_skill: {
-    labelKey: 'settings.agent.builtinOpenSkillLabel',
-    descKey: 'settings.agent.builtinOpenSkillDesc',
-    labelFallback: 'Open Skill',
-    descFallback: 'Load a skill markdown file by name.',
-  },
   [WEB_OPS_GROUP_TOOL_NAME]: {
     labelKey: 'settings.agent.builtinWebOpsLabel',
     descKey: 'settings.agent.builtinWebOpsDesc',
@@ -128,12 +122,18 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     labelFallback: 'JavaScript Execution',
     descFallback: 'Run JavaScript in an isolated environment.',
   },
-  delegate_external_agent: {
-    labelKey: 'settings.agent.builtinDelegateExternalAgentLabel',
-    descKey: 'settings.agent.builtinDelegateExternalAgentDesc',
-    labelFallback: 'Delegate to External Agent',
+  terminal_command: {
+    labelKey: 'settings.agent.builtinTerminalCommandLabel',
+    descKey: 'settings.agent.builtinTerminalCommandDesc',
+    labelFallback: 'Terminal Commands',
+    descFallback: 'Run commands in the local terminal. Desktop-only.',
+  },
+  delegate_subagent: {
+    labelKey: 'settings.agent.builtinDelegateSubagentLabel',
+    descKey: 'settings.agent.builtinDelegateSubagentDesc',
+    labelFallback: 'Delegate Subagent',
     descFallback:
-      'Spawn a local CLI agent (codex exec or claude -p) as a subprocess, stream its output back into the chat, and feed the result to the LLM. Desktop-only. Requires manual approval every time.',
+      'Dispatch an isolated temporary sub-agent to complete a self-contained task asynchronously.',
   },
   todo_write: {
     labelKey: 'settings.agent.builtinTodoWriteLabel',
@@ -178,9 +178,9 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   ask_user_question: 'context',
   [MEMORY_OPS_GROUP_TOOL_NAME]: 'context',
   [WEB_OPS_GROUP_TOOL_NAME]: 'external',
-  open_skill: 'external',
   js_eval: 'external',
-  delegate_external_agent: 'external',
+  terminal_command: 'external',
+  delegate_subagent: 'external',
 }
 
 export const getBuiltinToolCategory = (
@@ -196,10 +196,10 @@ const BUILTIN_TOOL_DISPLAY_ORDER: Record<BuiltinToolCategory, string[]> = {
   vault: [],
   context: [],
   external: [
-    'open_skill',
     WEB_OPS_GROUP_TOOL_NAME,
     'js_eval',
-    'delegate_external_agent',
+    'terminal_command',
+    'delegate_subagent',
   ],
 }
 

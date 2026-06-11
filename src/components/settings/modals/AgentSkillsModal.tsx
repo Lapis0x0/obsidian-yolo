@@ -1,4 +1,4 @@
-import { App, Notice, TFile, TFolder } from 'obsidian'
+import { App, Notice, TFile, TFolder, normalizePath } from 'obsidian'
 import { useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -7,10 +7,8 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
-import {
-  humanizeSkillName,
-  listLiteSkillEntries,
-} from '../../../core/skills/liteSkills'
+import { humanizeSkillName } from '../../../core/skills/liteSkills'
+import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
@@ -77,10 +75,7 @@ function AgentSkillsModalContent({
     [disabledSkillNames],
   )
 
-  const skills = useMemo(() => {
-    void refreshTick
-    return listLiteSkillEntries(app, { settings })
-  }, [app, refreshTick, settings])
+  const skills = useLiteSkillEntries(app, { settings, refreshTick })
 
   const deletableSkills = useMemo(
     () => skills.filter((s) => !s.path.startsWith('builtin://')),
@@ -141,6 +136,44 @@ function AgentSkillsModalContent({
     setSelectedIds(new Set(deletableSkills.map((s) => s.name)))
   }, [deletableSkills])
 
+  const deleteSkillPath = async (path: string) => {
+    const normalizedPath = normalizePath(path)
+    const file = app.vault.getAbstractFileByPath(normalizedPath)
+    if (file) {
+      if (file instanceof TFile) {
+        const parent = file.parent
+        if (
+          parent &&
+          parent.path !== skillsDir &&
+          parent instanceof TFolder &&
+          file.name === 'SKILL.md'
+        ) {
+          await app.fileManager.trashFile(parent)
+        } else {
+          await app.fileManager.trashFile(file)
+        }
+      } else if (file instanceof TFolder) {
+        await app.fileManager.trashFile(file)
+      }
+      return
+    }
+
+    if (!(await app.vault.adapter.exists(normalizedPath))) {
+      throw new Error('Skill file not found')
+    }
+
+    if (normalizedPath.endsWith('/SKILL.md')) {
+      const parentPath = normalizedPath.slice(
+        0,
+        normalizedPath.lastIndexOf('/'),
+      )
+      await app.vault.adapter.rmdir(parentPath, true)
+      return
+    }
+
+    await app.vault.adapter.remove(normalizedPath)
+  }
+
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return
 
@@ -158,24 +191,7 @@ function AgentSkillsModalContent({
         let successCount = 0
         for (const skill of selectedSkills) {
           try {
-            const file = app.vault.getAbstractFileByPath(skill.path)
-            if (file) {
-              if (file instanceof TFile) {
-                const parent = file.parent
-                if (
-                  parent &&
-                  parent.path !== skillsDir &&
-                  parent instanceof TFolder &&
-                  file.name === 'SKILL.md'
-                ) {
-                  await app.fileManager.trashFile(parent)
-                } else {
-                  await app.fileManager.trashFile(file)
-                }
-              } else if (file instanceof TFolder) {
-                await app.fileManager.trashFile(file)
-              }
-            }
+            await deleteSkillPath(skill.path)
             successCount++
           } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error'

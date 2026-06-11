@@ -153,6 +153,364 @@ describe('AgentToolGateway', () => {
     })
   })
 
+  it('auto executes read-only terminal commands even when terminal_command requires approval', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest
+        .fn()
+        .mockImplementation(({ requireAutoExecution }) => requireAutoExecution),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__terminal_command'],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'git status --short | head -20' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'yolo_local__terminal_command',
+      conversationId: 'conv-1',
+      requestArgs: { command: 'git status --short | head -20' },
+      requireAutoExecution: true,
+    })
+  })
+
+  it('keeps mutating terminal commands pending for approval', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest
+        .fn()
+        .mockImplementation(({ requireAutoExecution }) => requireAutoExecution),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__terminal_command'],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'echo hello > out.txt' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.PendingApproval,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'yolo_local__terminal_command',
+      conversationId: 'conv-1',
+      requestArgs: { command: 'echo hello > out.txt' },
+      requireAutoExecution: false,
+    })
+  })
+
+  it('auto executes require_approval tools when bypassToolApproval is enabled', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      bypassToolApproval: true,
+      allowedToolNames: ['server__tool_a'],
+      toolPreferences: {
+        server__tool_a: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'server__tool_a',
+      conversationId: 'conv-1',
+      requestArgs: {},
+      requireAutoExecution: true,
+    })
+  })
+
+  it('still rejects blocked terminal commands when bypassToolApproval is enabled', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      bypassToolApproval: true,
+      allowedToolNames: ['yolo_local__terminal_command'],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'rm -rf test-dir' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Error,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects blocked terminal command prefixes before approval', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__terminal_command'],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'rm -rf test-dir' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Error,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+  })
+
+  it('allows blocked terminal defaults to be cleared explicitly', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__terminal_command'],
+      blockedCommandPrefixes: [],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'rm -rf test-dir' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+  })
+
+  it('serializes sibling foreground terminal commands on the shared session lane', async () => {
+    let activeCalls = 0
+    let maxActiveCalls = 0
+    const callOrder: string[] = []
+    const callTool = jest.fn().mockImplementation(async ({ id }) => {
+      activeCalls += 1
+      maxActiveCalls = Math.max(maxActiveCalls, activeCalls)
+      callOrder.push(id)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      activeCalls -= 1
+      return {
+        status: ToolCallResponseStatus.Success,
+        data: { type: 'text', text: id },
+      }
+    })
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      callTool,
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__terminal_command'],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'echo one' },
+          }),
+        },
+        {
+          id: 'tool-2',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'echo two' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    const result = await gateway.executeAutoToolCalls({
+      toolMessage: message,
+      conversationId: 'conv-1',
+    })
+
+    expect(callTool).toHaveBeenCalledTimes(2)
+    expect(maxActiveCalls).toBe(1)
+    expect(callOrder).toEqual(['tool-1', 'tool-2'])
+    expect(result.toolCalls.map((call) => call.response.status)).toEqual([
+      ToolCallResponseStatus.Success,
+      ToolCallResponseStatus.Success,
+    ])
+  })
+
+  it('keeps sibling background terminal commands parallel', async () => {
+    let activeCalls = 0
+    let maxActiveCalls = 0
+    const callTool = jest.fn().mockImplementation(async () => {
+      activeCalls += 1
+      maxActiveCalls = Math.max(maxActiveCalls, activeCalls)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      activeCalls -= 1
+      return {
+        status: ToolCallResponseStatus.Success,
+        data: { type: 'text', text: 'ok' },
+      }
+    })
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      callTool,
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__terminal_command'],
+      toolPreferences: {
+        yolo_local__terminal_command: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'sleep 1', background: true },
+          }),
+        },
+        {
+          id: 'tool-2',
+          name: 'yolo_local__terminal_command',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'sleep 1', background: true },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    await gateway.executeAutoToolCalls({
+      toolMessage: message,
+      conversationId: 'conv-1',
+    })
+
+    expect(callTool).toHaveBeenCalledTimes(2)
+    expect(maxActiveCalls).toBe(2)
+  })
+
   it('allows conversation-level approval to bypass per-tool approval', () => {
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),
@@ -179,6 +537,75 @@ describe('AgentToolGateway', () => {
     expect(message.toolCalls[0]?.response.status).toBe(
       ToolCallResponseStatus.Running,
     )
+  })
+
+  it('uses the parent approval conversation for subagent child runs', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      isSubagentChildRun: true,
+      toolApprovalConversationId: 'parent-conv',
+      allowedToolNames: ['server__tool_a'],
+      toolPreferences: {
+        server__tool_a: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
+      ],
+      conversationId: 'subagent-task',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'server__tool_a',
+      conversationId: 'parent-conv',
+      requestArgs: {},
+      requireAutoExecution: false,
+    })
+  })
+
+  it('does not leave approval-required subagent child calls pending', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(false),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      isSubagentChildRun: true,
+      allowedToolNames: ['server__tool_a'],
+      toolPreferences: {
+        server__tool_a: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
+      ],
+      conversationId: 'subagent-task',
+    })
+
+    const response = message.toolCalls[0]?.response
+    expect(response?.status).toBe(ToolCallResponseStatus.Error)
+    if (response?.status === ToolCallResponseStatus.Error) {
+      expect(response.error).toContain('Subagents cannot pause')
+    }
   })
 
   it('runs fs_edit immediately when approval mode requires review', async () => {
@@ -219,16 +646,47 @@ describe('AgentToolGateway', () => {
 
     // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
     const callToolMock = mcpManager.callTool
-    expect(callToolMock).toHaveBeenCalledWith({
-      name: 'yolo_local__fs_edit',
-      args: {},
-      id: 'tool-1',
-      conversationId: 'conv-1',
-      conversationMessages: undefined,
-      roundId: message.id,
-      requireReview: true,
-      signal: undefined,
+    expect(callToolMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'yolo_local__fs_edit',
+        args: {},
+        id: 'tool-1',
+        conversationId: 'conv-1',
+        conversationMessages: undefined,
+        roundId: message.id,
+        requireReview: true,
+        signal: undefined,
+      }),
+    )
+  })
+
+  it('does not open fs_edit review in subagent child runs without automatic permission', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(false),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      isSubagentChildRun: true,
+      allowedToolNames: ['yolo_local__fs_edit'],
+      toolPreferences: {
+        yolo_local__fs_edit: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
     })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'yolo_local__fs_edit', arguments: emptyArgs },
+      ],
+      conversationId: 'subagent-task',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Error,
+    )
   })
 
   it('rejects tool calls when tools are disabled', () => {

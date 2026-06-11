@@ -1,68 +1,28 @@
-import type { CSSProperties, ReactNode, RefObject } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactNode, RefObject } from 'react'
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
-import {
-  type FollowOutput,
-  type IndexLocationWithAlign,
-  type ListRange,
-  Virtuoso,
-  type VirtuosoHandle,
-} from 'react-virtuoso'
+import type { FollowOutput } from 'react-virtuoso'
 
-type TimelineFooterContext = {
-  bottomSpacerHeight: number
-}
-
-function TimelineFooterSpacer({
-  context,
-}: {
-  context?: TimelineFooterContext
-}) {
-  const height = Math.max(0, context?.bottomSpacerHeight ?? 0)
-  if (height === 0) {
-    return null
-  }
-  return (
-    <div
-      aria-hidden
-      className="yolo-chat-timeline-bottom-spacer"
-      style={{ height }}
-    />
-  )
-}
-
-import { useApp } from '../../contexts/app-context'
-import { useSettings } from '../../contexts/settings-context'
-import {
-  flushPersistedTimelineHeightCache,
-  hydratePersistedTimelineHeightCache,
-  schedulePersistedTimelineHeightCacheFlush,
-} from '../../database/json/chat/timelineHeightCacheStore'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
-import {
-  type TimelineCacheScope,
-  buildTimelineSignature,
-  getTimelineHeightCache,
-  getTimelineStateSnapshot,
-  getTimelineStyleSignature,
-  getTimelineWidthBucket,
-  setTimelineStateSnapshot,
-  updateTimelineItemHeight,
-} from '../../utils/chat/timeline-virtualization-cache'
 
-const DEFAULT_OVERSCAN_PX = 1200
-const DEFAULT_VIRTUALIZATION_THRESHOLD = 24
 const DEFAULT_AT_BOTTOM_THRESHOLD = 24
+const MIN_LOAD_MORE_THRESHOLD_PX = 240
+const MAX_LOAD_MORE_THRESHOLD_PX = 720
+const LOAD_MORE_VIEWPORT_RATIO = 0.45
 const DEFAULT_TIMELINE_KEY = 'timeline'
 
 export type ChatTimelineRenderContext = {
   mode: 'full'
+}
+
+type AnchorSnapshot = {
+  messageId: string
+  top: number
 }
 
 type RowProps<TItem extends ChatTimelineItem> = {
@@ -73,68 +33,76 @@ type RowProps<TItem extends ChatTimelineItem> = {
     index: number,
     context?: ChatTimelineRenderContext,
   ) => ReactNode
-  onMeasuredHeight?: (itemId: string, height: number) => void
 }
 
 function TimelineRow<TItem extends ChatTimelineItem>({
   item,
   index,
   renderItem,
-  onMeasuredHeight,
 }: RowProps<TItem>) {
-  const rowRef = useRef<HTMLDivElement | null>(null)
-
-  useLayoutEffect(() => {
-    const rowElement = rowRef.current
-    if (!rowElement || !onMeasuredHeight) {
-      return
-    }
-
-    let animationFrameId: number | null = null
-
-    const publishHeight = () => {
-      const measuredHeight = Math.max(
-        1,
-        Math.ceil(rowElement.getBoundingClientRect().height),
-      )
-      onMeasuredHeight(item.renderKey, measuredHeight)
-    }
-
-    publishHeight()
-
-    if (typeof ResizeObserver === 'undefined') {
-      return
-    }
-
-    const observer = new ResizeObserver(() => {
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId)
-      }
-      animationFrameId = requestAnimationFrame(() => {
-        animationFrameId = null
-        publishHeight()
-      })
-    })
-    observer.observe(rowElement)
-
-    return () => {
-      observer.disconnect()
-      if (animationFrameId !== null) {
-        cancelAnimationFrame(animationFrameId)
-      }
-    }
-  }, [item.renderKey, onMeasuredHeight])
-
   return (
     <div
-      ref={rowRef}
       className={`yolo-chat-timeline-row yolo-chat-timeline-row--${item.kind}`}
       data-timeline-kind={item.kind}
+      data-yolo-user-anchor-id={
+        item.kind === 'user-message' ? item.message.id : undefined
+      }
       style={
         item.spacingBefore ? { paddingTop: item.spacingBefore } : undefined
       }
     >
       {renderItem(item, index, { mode: 'full' })}
+    </div>
+  )
+}
+
+function TimelineBottomSpacer({ height }: { height: number }) {
+  const safeHeight = Math.max(0, height)
+  if (safeHeight === 0) {
+    return null
+  }
+
+  return (
+    <div
+      aria-hidden
+      className="yolo-chat-timeline-bottom-spacer"
+      style={{ height: safeHeight }}
+    />
+  )
+}
+
+function TimelineLoadMoreButton({
+  label,
+  onClick,
+}: {
+  label: string
+  onClick: () => void
+}) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return
+    }
+
+    event.preventDefault()
+    onClick()
+  }
+
+  return (
+    <div className="yolo-chat-history-window-sentinel">
+      <div
+        role="button"
+        tabIndex={0}
+        className="yolo-chat-history-window-sentinel__button"
+        onClick={onClick}
+        onKeyDown={handleKeyDown}
+      >
+        <span>{label}</span>
+        <span className="yolo-chat-history-window-sentinel__dots" aria-hidden>
+          <span>.</span>
+          <span>.</span>
+          <span>.</span>
+        </span>
+      </div>
     </div>
   )
 }
@@ -163,12 +131,18 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   atBottomThreshold?: number
   onAtBottomStateChange?: (atBottom: boolean) => void
   onVirtualizationChange?: (isVirtualized: boolean) => void
+  onActiveUserMessageChange?: (messageId: string | null) => void
+  windowNavigationKey?: number
+  hasEarlierMessages?: boolean
+  hasNewerMessages?: boolean
+  onLoadEarlier?: () => void
+  onLoadNewer?: () => void
+  loadEarlierLabel?: string
+  loadNewerLabel?: string
   /**
    * Additional bottom spacer height (px). Used to keep the last item from
    * being visually obscured by an absolute-positioned overlay (e.g. todo
-   * panel / queued bubbles) anchored above the input box. The spacer is
-   * rendered as the Virtuoso Footer when virtualized, or as a sibling
-   * `<div>` after items when not.
+   * panel / queued bubbles) anchored above the input box.
    */
   bottomSpacerHeight?: number
 }
@@ -180,15 +154,122 @@ function setScrollContainerRef(
   ;(ref as { current: HTMLElement | null }).current = element
 }
 
+const resolveFollowOutput = (
+  followOutput: FollowOutput | undefined,
+  isAtBottom: boolean,
+) => {
+  if (typeof followOutput === 'function') {
+    return followOutput(isAtBottom)
+  }
+  return followOutput
+}
+
+const scrollElementToBottom = (
+  element: HTMLElement,
+  behavior: ScrollBehavior = 'auto',
+) => {
+  const top = Math.max(0, element.scrollHeight - element.clientHeight)
+  if (typeof element.scrollTo === 'function') {
+    element.scrollTo({ top, behavior })
+    return
+  }
+  element.scrollTop = top
+}
+
+const getLoadMoreThreshold = (element: HTMLElement) =>
+  Math.min(
+    MAX_LOAD_MORE_THRESHOLD_PX,
+    Math.max(
+      MIN_LOAD_MORE_THRESHOLD_PX,
+      Math.round(element.clientHeight * LOAD_MORE_VIEWPORT_RATIO),
+    ),
+  )
+
+const getVisibleAnchorSnapshot = (
+  scrollerElement: HTMLElement,
+): AnchorSnapshot | null => {
+  const anchors = Array.from(
+    scrollerElement.querySelectorAll<HTMLElement>('[data-yolo-user-anchor-id]'),
+  )
+  if (anchors.length === 0) {
+    return null
+  }
+
+  const containerTop = scrollerElement.getBoundingClientRect().top
+  let selectedAnchor: HTMLElement | null = null
+  let selectedDistance = Number.POSITIVE_INFINITY
+
+  for (const anchor of anchors) {
+    const anchorTop = anchor.getBoundingClientRect().top
+    const distance = Math.abs(anchorTop - containerTop)
+    if (distance < selectedDistance) {
+      selectedDistance = distance
+      selectedAnchor = anchor
+    }
+  }
+
+  const messageId = selectedAnchor?.dataset.yoloUserAnchorId
+  if (!selectedAnchor || !messageId) {
+    return null
+  }
+
+  return {
+    messageId,
+    top: selectedAnchor.getBoundingClientRect().top,
+  }
+}
+
+const getActiveUserAnchorSnapshot = (
+  scrollerElement: HTMLElement,
+): AnchorSnapshot | null => {
+  const anchors = Array.from(
+    scrollerElement.querySelectorAll<HTMLElement>('[data-yolo-user-anchor-id]'),
+  )
+  if (anchors.length === 0) {
+    return null
+  }
+
+  const containerTop = scrollerElement.getBoundingClientRect().top
+  const activationTop = containerTop + 8
+  let activeAnchor: HTMLElement | null = null
+  let nearestUpcomingAnchor: HTMLElement | null = null
+  let nearestUpcomingDistance = Number.POSITIVE_INFINITY
+
+  for (const anchor of anchors) {
+    const anchorTop = anchor.getBoundingClientRect().top
+    if (anchorTop <= activationTop) {
+      activeAnchor = anchor
+      continue
+    }
+
+    const distance = anchorTop - activationTop
+    if (distance < nearestUpcomingDistance) {
+      nearestUpcomingDistance = distance
+      nearestUpcomingAnchor = anchor
+    }
+  }
+
+  const selectedAnchor = activeAnchor ?? nearestUpcomingAnchor
+  const messageId = selectedAnchor?.dataset.yoloUserAnchorId
+  if (!selectedAnchor || !messageId) {
+    return null
+  }
+
+  return {
+    messageId,
+    top: selectedAnchor.getBoundingClientRect().top,
+  }
+}
+
 export function ChatTimelineList<TItem extends ChatTimelineItem>({
   items,
   conversationId,
   scrollContainerRef,
   onScrollContainerChange,
   renderItem,
-  overscanPx = DEFAULT_OVERSCAN_PX,
-  virtualizationThreshold = DEFAULT_VIRTUALIZATION_THRESHOLD,
-  forceRenderItemIds = [],
+  overscanPx,
+  virtualizationThreshold,
+  forceRenderItemIds,
   onRenderStateChange,
   scrollContainerClassName,
   scrollContainerStyle,
@@ -196,139 +277,79 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   atBottomThreshold = DEFAULT_AT_BOTTOM_THRESHOLD,
   onAtBottomStateChange,
   onVirtualizationChange,
+  onActiveUserMessageChange,
+  windowNavigationKey,
+  hasEarlierMessages = false,
+  hasNewerMessages = false,
+  onLoadEarlier,
+  onLoadNewer,
+  loadEarlierLabel = 'Load earlier messages',
+  loadNewerLabel = 'Load newer messages',
   bottomSpacerHeight = 0,
 }: ChatTimelineListProps<TItem>) {
-  // Reserved for phase-2 pinned rendering semantics.
+  void overscanPx
+  void virtualizationThreshold
   void forceRenderItemIds
-  const app = useApp()
-  const { settings } = useSettings()
-
-  const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(
     null,
   )
   const lastAtBottomStateRef = useRef<boolean | null>(null)
-  const [heightCacheVersion, setHeightCacheVersion] = useState(0)
-  const [hasHydratedPersistedCache, setHasHydratedPersistedCache] =
-    useState(!conversationId)
-  const [cacheScopeState, setCacheScopeState] = useState<{
-    widthBucket: number
-    styleSignature: string
-  }>({
-    widthBucket: getTimelineWidthBucket(0),
-    styleSignature: getTimelineStyleSignature(null),
-  })
-
-  const isVirtualized = items.length > virtualizationThreshold
+  const initialBottomKeyRef = useRef<string | null>(null)
+  const pendingAnchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
+  const loadInFlightRef = useRef(false)
+  const lastActiveUserMessageIdRef = useRef<string | null>(null)
+  const appliedWindowNavigationKeyRef = useRef<number | undefined>(undefined)
+  const suppressFollowWindowNavigationKeyRef = useRef<number | undefined>(
+    undefined,
+  )
+  const suppressLoadMoreUntilRef = useRef(0)
 
   useLayoutEffect(() => {
-    onVirtualizationChange?.(isVirtualized)
-  }, [isVirtualized, onVirtualizationChange])
+    onVirtualizationChange?.(false)
+  }, [onVirtualizationChange])
 
-  const timelineSignature = useMemo(
-    () => buildTimelineSignature(items),
-    [items],
-  )
-
-  const cacheScope = useMemo<TimelineCacheScope | null>(() => {
-    if (!conversationId) {
-      return null
-    }
-
-    return {
-      conversationId,
-      widthBucket: cacheScopeState.widthBucket,
-      styleSignature: cacheScopeState.styleSignature,
-    }
-  }, [
-    cacheScopeState.styleSignature,
-    cacheScopeState.widthBucket,
-    conversationId,
-  ])
-
-  useEffect(() => {
-    setHasHydratedPersistedCache(!conversationId)
-  }, [conversationId])
-
-  useEffect(() => {
-    if (!conversationId) {
+  const captureAnchorBeforeWindowChange = useCallback(() => {
+    if (!scrollerElement) {
       return
     }
 
-    let isCancelled = false
+    pendingAnchorSnapshotRef.current = getVisibleAnchorSnapshot(scrollerElement)
+  }, [scrollerElement])
 
-    void hydratePersistedTimelineHeightCache({
-      app,
-      conversationId,
-      settings,
-    }).then(() => {
-      if (isCancelled) {
-        return
-      }
-      setHeightCacheVersion((currentVersion) => currentVersion + 1)
-      setHasHydratedPersistedCache(true)
-    })
-
-    return () => {
-      isCancelled = true
-    }
-  }, [app, conversationId, settings])
-
-  const cachedHeightByItemId = useMemo(() => {
-    if (!cacheScope) {
-      return null
-    }
-    return getTimelineHeightCache(cacheScope)
-  }, [cacheScope, hasHydratedPersistedCache, heightCacheVersion])
-
-  const restoreStateFrom = useMemo(() => {
-    if (!isVirtualized || !cacheScope) {
-      return undefined
-    }
-    return (
-      getTimelineStateSnapshot({
-        scope: cacheScope,
-        timelineSignature,
-      }) ?? undefined
-    )
-  }, [cacheScope, isVirtualized, timelineSignature])
-
-  const initialTopMostItemIndex = useMemo<
-    IndexLocationWithAlign | undefined
-  >(() => {
-    if (restoreStateFrom || items.length === 0) {
-      return undefined
+  const handleLoadEarlier = useCallback(() => {
+    if (!onLoadEarlier || loadInFlightRef.current) {
+      return
     }
 
-    return {
-      index: 'LAST',
-      align: 'end',
-      behavior: 'auto',
+    loadInFlightRef.current = true
+    captureAnchorBeforeWindowChange()
+    onLoadEarlier()
+  }, [captureAnchorBeforeWindowChange, onLoadEarlier])
+
+  const handleLoadNewer = useCallback(() => {
+    if (!onLoadNewer || loadInFlightRef.current) {
+      return
     }
-  }, [items.length, restoreStateFrom])
 
-  const handleMeasuredRowHeight = useCallback(
-    (itemId: string, measuredHeight: number) => {
-      if (!cacheScope) {
-        return
-      }
+    loadInFlightRef.current = true
+    captureAnchorBeforeWindowChange()
+    onLoadNewer()
+  }, [captureAnchorBeforeWindowChange, onLoadNewer])
 
-      const changed = updateTimelineItemHeight(
-        cacheScope,
-        itemId,
-        measuredHeight,
-      )
-      if (changed) {
-        setHeightCacheVersion((currentVersion) => currentVersion + 1)
-        schedulePersistedTimelineHeightCacheFlush({
-          app,
-          conversationId: cacheScope.conversationId,
-          settings,
-        })
-      }
-    },
-    [app, cacheScope, settings],
-  )
+  const emitActiveUserMessage = useCallback(() => {
+    if (!onActiveUserMessageChange || !scrollerElement) {
+      return
+    }
+
+    const activeMessageId =
+      getActiveUserAnchorSnapshot(scrollerElement)?.messageId ?? null
+    if (lastActiveUserMessageIdRef.current === activeMessageId) {
+      return
+    }
+
+    lastActiveUserMessageIdRef.current = activeMessageId
+    onActiveUserMessageChange(activeMessageId)
+  }, [onActiveUserMessageChange, scrollerElement])
 
   const handleScrollerRef = useCallback(
     (element: HTMLElement | null) => {
@@ -342,50 +363,116 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   )
 
   useLayoutEffect(() => {
-    if (!conversationId || !scrollerElement) {
+    if (!scrollerElement || items.length === 0) {
       return
     }
 
-    const syncScopeState = () => {
-      const nextWidthBucket = getTimelineWidthBucket(
-        scrollerElement.clientWidth,
+    const timelineKey = conversationId ?? DEFAULT_TIMELINE_KEY
+    if (initialBottomKeyRef.current === timelineKey) {
+      return
+    }
+
+    initialBottomKeyRef.current = timelineKey
+    scrollElementToBottom(scrollerElement)
+  }, [conversationId, items.length, scrollerElement])
+
+  useLayoutEffect(() => {
+    loadInFlightRef.current = false
+    const snapshot = pendingAnchorSnapshotRef.current
+    if (!snapshot || !scrollerElement) {
+      emitActiveUserMessage()
+      return
+    }
+
+    pendingAnchorSnapshotRef.current = null
+    const anchor = scrollerElement.querySelector<HTMLElement>(
+      `[data-yolo-user-anchor-id="${snapshot.messageId}"]`,
+    )
+    if (!anchor) {
+      return
+    }
+
+    const afterTop = anchor.getBoundingClientRect().top
+    scrollerElement.scrollTop += afterTop - snapshot.top
+    emitActiveUserMessage()
+  }, [emitActiveUserMessage, items, scrollerElement])
+
+  useLayoutEffect(() => {
+    if (
+      !scrollerElement ||
+      windowNavigationKey === undefined ||
+      appliedWindowNavigationKeyRef.current === windowNavigationKey
+    ) {
+      return
+    }
+
+    appliedWindowNavigationKeyRef.current = windowNavigationKey
+    suppressFollowWindowNavigationKeyRef.current = windowNavigationKey
+    suppressLoadMoreUntilRef.current = Date.now() + 300
+
+    const firstUserAnchor = scrollerElement.querySelector<HTMLElement>(
+      '[data-yolo-user-anchor-id]',
+    )
+    if (firstUserAnchor) {
+      const scrollerTop = scrollerElement.getBoundingClientRect().top
+      const anchorTop = firstUserAnchor.getBoundingClientRect().top
+      scrollerElement.scrollTop = Math.max(
+        0,
+        scrollerElement.scrollTop + anchorTop - scrollerTop,
       )
-      const nextStyleSignature = getTimelineStyleSignature(scrollerElement)
-
-      setCacheScopeState((previousState) => {
-        if (
-          previousState.widthBucket === nextWidthBucket &&
-          previousState.styleSignature === nextStyleSignature
-        ) {
-          return previousState
-        }
-        return {
-          widthBucket: nextWidthBucket,
-          styleSignature: nextStyleSignature,
-        }
-      })
+    } else {
+      scrollerElement.scrollTop = 0
     }
 
-    syncScopeState()
+    emitActiveUserMessage()
+  }, [emitActiveUserMessage, items, scrollerElement, windowNavigationKey])
 
-    if (typeof ResizeObserver === 'undefined') {
+  useLayoutEffect(() => {
+    if (!scrollerElement || !followOutput) {
+      return
+    }
+    if (
+      windowNavigationKey !== undefined &&
+      suppressFollowWindowNavigationKeyRef.current === windowNavigationKey
+    ) {
+      suppressFollowWindowNavigationKeyRef.current = undefined
       return
     }
 
-    const observer = new ResizeObserver(syncScopeState)
-    observer.observe(scrollerElement)
-    return () => {
-      observer.disconnect()
+    const distanceToBottom =
+      scrollerElement.scrollHeight -
+      scrollerElement.scrollTop -
+      scrollerElement.clientHeight
+    const isAtBottom = distanceToBottom <= atBottomThreshold
+    const output = resolveFollowOutput(followOutput, isAtBottom)
+    if (output === false) {
+      return
     }
-  }, [conversationId, scrollerElement])
+
+    scrollElementToBottom(
+      scrollerElement,
+      output === 'smooth' ? 'smooth' : 'auto',
+    )
+  }, [
+    atBottomThreshold,
+    bottomSpacerHeight,
+    followOutput,
+    items,
+    scrollerElement,
+    windowNavigationKey,
+  ])
 
   useEffect(() => {
-    if (isVirtualized || !scrollerElement || !onAtBottomStateChange) {
+    if (!scrollerElement) {
       lastAtBottomStateRef.current = null
       return
     }
 
     const emitAtBottomState = () => {
+      if (!onAtBottomStateChange) {
+        return
+      }
+
       const distanceToBottom =
         scrollerElement.scrollHeight -
         scrollerElement.scrollTop -
@@ -400,178 +487,115 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       onAtBottomStateChange(atBottom)
     }
 
-    emitAtBottomState()
+    const handleScroll = () => {
+      emitAtBottomState()
+      emitActiveUserMessage()
+      if (Date.now() < suppressLoadMoreUntilRef.current) {
+        return
+      }
 
-    scrollerElement.addEventListener('scroll', emitAtBottomState, {
+      const loadMoreThreshold = getLoadMoreThreshold(scrollerElement)
+
+      if (
+        hasEarlierMessages &&
+        onLoadEarlier &&
+        scrollerElement.scrollTop <= loadMoreThreshold
+      ) {
+        handleLoadEarlier()
+        return
+      }
+
+      const distanceToBottom =
+        scrollerElement.scrollHeight -
+        scrollerElement.scrollTop -
+        scrollerElement.clientHeight
+      if (
+        hasNewerMessages &&
+        onLoadNewer &&
+        distanceToBottom <= loadMoreThreshold
+      ) {
+        handleLoadNewer()
+      }
+    }
+
+    emitAtBottomState()
+    emitActiveUserMessage()
+    scrollerElement.addEventListener('scroll', handleScroll, {
       passive: true,
     })
 
     if (typeof ResizeObserver === 'undefined') {
       return () => {
-        scrollerElement.removeEventListener('scroll', emitAtBottomState)
+        scrollerElement.removeEventListener('scroll', handleScroll)
       }
     }
 
     const observer = new ResizeObserver(() => {
       emitAtBottomState()
+      emitActiveUserMessage()
     })
     observer.observe(scrollerElement)
 
     return () => {
       observer.disconnect()
-      scrollerElement.removeEventListener('scroll', emitAtBottomState)
+      scrollerElement.removeEventListener('scroll', handleScroll)
     }
   }, [
     atBottomThreshold,
-    isVirtualized,
+    handleLoadEarlier,
+    handleLoadNewer,
+    hasEarlierMessages,
+    hasNewerMessages,
+    emitActiveUserMessage,
     onAtBottomStateChange,
+    onLoadEarlier,
+    onLoadNewer,
     scrollerElement,
-    timelineSignature,
   ])
 
   useEffect(() => {
-    if (!cacheScope) {
+    if (!onRenderStateChange) {
       return
     }
 
-    return () => {
-      void flushPersistedTimelineHeightCache({
-        app,
-        conversationId: cacheScope.conversationId,
-        settings,
-      })
-
-      if (!isVirtualized) {
-        return
-      }
-
-      const handle = virtuosoRef.current
-      if (!handle) {
-        return
-      }
-
-      handle.getState((snapshot) => {
-        setTimelineStateSnapshot({
-          scope: cacheScope,
-          timelineSignature,
-          snapshot,
-        })
-      })
-    }
-  }, [app, cacheScope, isVirtualized, settings, timelineSignature])
-
-  const heightEstimates = useMemo(
-    () =>
-      items.map((item) => {
-        const estimatedHeight = item.estimatedHeight + (item.spacingBefore ?? 0)
-        const cachedHeight = cachedHeightByItemId?.get(item.renderKey)
-        if (typeof cachedHeight === 'number') {
-          return Math.max(cachedHeight, estimatedHeight)
-        }
-        return estimatedHeight
-      }),
-    [cachedHeightByItemId, items],
-  )
-
-  const handleRangeChanged = useCallback(
-    (range: ListRange) => {
-      const heightByItemId: Record<string, number> = {}
-      if (cachedHeightByItemId) {
-        for (
-          let index = range.startIndex;
-          index <= range.endIndex;
-          index += 1
-        ) {
-          const item = items[index]
-          if (!item) {
-            continue
-          }
-          const cachedHeight = cachedHeightByItemId.get(item.renderKey)
-          if (typeof cachedHeight === 'number') {
-            heightByItemId[item.renderKey] = cachedHeight
-          }
-        }
-      }
-
-      onRenderStateChange?.({
-        visibleStartIndex: range.startIndex,
-        visibleEndIndex: range.endIndex,
-        heightByItemId,
-      })
-    },
-    [cachedHeightByItemId, items, onRenderStateChange],
-  )
+    onRenderStateChange({
+      visibleStartIndex: items.length > 0 ? 0 : -1,
+      visibleEndIndex: items.length - 1,
+      heightByItemId: {},
+    })
+  }, [items.length, onRenderStateChange])
 
   const safeSpacerHeight = Math.max(0, Math.ceil(bottomSpacerHeight))
 
-  const virtuosoContext = useMemo<TimelineFooterContext>(
-    () => ({ bottomSpacerHeight: safeSpacerHeight }),
-    [safeSpacerHeight],
-  )
-
-  if (!isVirtualized) {
-    return (
-      <div
-        ref={(element) => {
-          handleScrollerRef(element)
-        }}
-        className={scrollContainerClassName}
-        style={scrollContainerStyle}
-      >
-        {items.map((item, index) => (
-          <TimelineRow
-            key={item.renderKey}
-            item={item}
-            index={index}
-            renderItem={renderItem}
-            onMeasuredHeight={handleMeasuredRowHeight}
-          />
-        ))}
-        {safeSpacerHeight > 0 ? (
-          <div
-            aria-hidden
-            className="yolo-chat-timeline-bottom-spacer"
-            style={{ height: safeSpacerHeight }}
-          />
-        ) : null}
-      </div>
-    )
-  }
-
   return (
-    <Virtuoso
-      key={conversationId ?? DEFAULT_TIMELINE_KEY}
-      ref={(nextRef) => {
-        virtuosoRef.current = nextRef
+    <div
+      ref={(element) => {
+        handleScrollerRef(element)
       }}
-      data={items}
       className={scrollContainerClassName}
       style={scrollContainerStyle}
-      restoreStateFrom={restoreStateFrom}
-      initialTopMostItemIndex={initialTopMostItemIndex}
-      scrollerRef={(element) => {
-        handleScrollerRef(element instanceof HTMLElement ? element : null)
-      }}
-      computeItemKey={(_index, item) => item.renderKey}
-      rangeChanged={handleRangeChanged}
-      heightEstimates={heightEstimates}
-      followOutput={followOutput}
-      atBottomThreshold={atBottomThreshold}
-      atBottomStateChange={onAtBottomStateChange}
-      increaseViewportBy={{
-        top: overscanPx,
-        bottom: overscanPx,
-      }}
-      context={virtuosoContext}
-      components={{ Footer: TimelineFooterSpacer }}
-      itemContent={(index, item) => (
+    >
+      {hasEarlierMessages && onLoadEarlier ? (
+        <TimelineLoadMoreButton
+          label={loadEarlierLabel}
+          onClick={handleLoadEarlier}
+        />
+      ) : null}
+      {items.map((item, index) => (
         <TimelineRow
+          key={item.renderKey}
           item={item}
           index={index}
           renderItem={renderItem}
-          onMeasuredHeight={handleMeasuredRowHeight}
         />
-      )}
-    />
+      ))}
+      {hasNewerMessages && onLoadNewer ? (
+        <TimelineLoadMoreButton
+          label={loadNewerLabel}
+          onClick={handleLoadNewer}
+        />
+      ) : null}
+      <TimelineBottomSpacer height={safeSpacerHeight} />
+    </div>
   )
 }

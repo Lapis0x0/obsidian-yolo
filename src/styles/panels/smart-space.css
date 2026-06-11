@@ -879,7 +879,7 @@
   max-height: 380px;
   overflow-y: auto;
   scrollbar-width: thin;
-  padding: 8px;
+  padding: 0;
 }
 
 .yolo-popover-surface--smart-space .yolo-model-select-list::-webkit-scrollbar,
@@ -962,7 +962,7 @@
   > .yolo-popover-item {
   position: relative;
   padding: 8px 12px;
-  margin: 2px 0;
+  margin: 0;
   min-width: 0;
   font-size: var(--font-ui-small);
   color: var(--text-normal);
@@ -974,6 +974,20 @@
   text-overflow: ellipsis;
   line-height: 1.4;
   outline: none;
+}
+
+.yolo-popover-surface--smart-space
+  .yolo-model-select-list
+  > .yolo-popover-item:first-child {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.yolo-popover-surface--smart-space
+  .yolo-model-select-list
+  > .yolo-popover-item:last-child {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 .yolo-popover-surface--smart-space

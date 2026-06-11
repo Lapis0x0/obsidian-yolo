@@ -52,6 +52,7 @@ export const ReasoningSelect = forwardRef<
     const { t } = useLanguage()
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
+    const shouldFocusSegmentOnOpenRef = useRef(false)
     const segmentRefs = useRef<
       Record<ReasoningLevel, HTMLButtonElement | null>
     >(
@@ -87,15 +88,17 @@ export const ReasoningSelect = forwardRef<
     }, [safeValue])
 
     useEffect(() => {
-      if (!isOpen) return
+      if (!isOpen || !shouldFocusSegmentOnOpenRef.current) return
       const ownerWindow = getNodeWindow(triggerRef.current)
       const rafId = ownerWindow.requestAnimationFrame(() => {
+        shouldFocusSegmentOnOpenRef.current = false
         focusSelectedSegment()
       })
       return () => ownerWindow.cancelAnimationFrame(rafId)
     }, [isOpen, focusSelectedSegment])
 
     const handleOpenChange = (open: boolean) => {
+      if (!open) shouldFocusSegmentOnOpenRef.current = false
       setIsOpen(open)
       onMenuOpenChange?.(open)
     }
@@ -110,6 +113,7 @@ export const ReasoningSelect = forwardRef<
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         if (!isOpen) {
           event.preventDefault()
+          shouldFocusSegmentOnOpenRef.current = true
           setIsOpen(true)
           return
         }
@@ -122,6 +126,10 @@ export const ReasoningSelect = forwardRef<
         event.preventDefault()
         handleOpenChange(false)
       }
+
+      if (event.key === 'Enter' || event.key === ' ') {
+        shouldFocusSegmentOnOpenRef.current = true
+      }
     }
 
     const currentLabel = t(currentOption.labelKey, currentOption.labelFallback)
@@ -132,6 +140,9 @@ export const ReasoningSelect = forwardRef<
           ref={setTriggerRef}
           className="yolo-chat-input-model-select yolo-reasoning-select"
           onKeyDown={handleTriggerKeyDown}
+          onPointerDown={() => {
+            shouldFocusSegmentOnOpenRef.current = false
+          }}
         >
           <div className="yolo-reasoning-select__icon">
             <Brain size={14} />
@@ -148,9 +159,9 @@ export const ReasoningSelect = forwardRef<
           container={container}
           anchorRef={triggerRef}
           variant="default"
-          minWidth={360}
-          maxWidth={460}
-          maxHeight={400}
+          minWidth={280}
+          maxWidth={280}
+          maxHeight={220}
           className="yolo-reasoning-popover"
           side={side}
           sideOffset={sideOffset}

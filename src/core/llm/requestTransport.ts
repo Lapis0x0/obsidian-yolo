@@ -2,27 +2,18 @@ import { Platform } from 'obsidian'
 
 import { RequestTransportMode } from '../../types/provider.types'
 
-import { inheritLLMDebugTraceSignal } from './debugCapture'
-
-export type AutoPromotedTransportMode = Extract<
-  RequestTransportMode,
-  'browser' | 'node' | 'obsidian'
->
+export type AutoPromotedTransportMode = RequestTransportMode
 
 type RequestTransportSettings = {
-  requestTransportMode?: RequestTransportMode
+  requestTransportMode?:
+    | RequestTransportMode
+    | {
+        desktop?: RequestTransportMode
+        mobile?: Extract<RequestTransportMode, 'browser' | 'obsidian'>
+      }
+    | 'auto'
   useObsidianRequestUrl?: boolean
 }
-
-const AUTO_OBSIDIAN_MEMORY_TTL_MS = 24 * 60 * 60 * 1000
-const AUTO_STREAM_ATTEMPT_FIRST_CHUNK_TIMEOUT_MS = 3000
-
-type RequestTransportMemoryEntry = {
-  preferredMode: AutoPromotedTransportMode
-  expiresAt: number
-}
-
-const requestTransportMemory = new Map<string, RequestTransportMemoryEntry>()
 
 const CORS_RETRY_MESSAGE_PATTERNS = [
   'access-control-allow-origin',
@@ -69,38 +60,6 @@ const collectErrorMessages = (error: unknown, depth = 0): string[] => {
   return []
 }
 
-const getRememberedMode = (memoryKey?: string): RequestTransportMode | null => {
-  if (!memoryKey) {
-    return null
-  }
-
-  const memory = requestTransportMemory.get(memoryKey)
-  if (!memory) {
-    return null
-  }
-
-  if (Date.now() > memory.expiresAt) {
-    requestTransportMemory.delete(memoryKey)
-    return null
-  }
-
-  return memory.preferredMode
-}
-
-const rememberTransportMode = (
-  preferredMode: AutoPromotedTransportMode,
-  memoryKey?: string,
-): void => {
-  if (!memoryKey) {
-    return
-  }
-
-  requestTransportMemory.set(memoryKey, {
-    preferredMode,
-    expiresAt: Date.now() + AUTO_OBSIDIAN_MEMORY_TTL_MS,
-  })
-}
-
 export const createRequestTransportMemoryKey = ({
   providerType,
   providerId,
@@ -117,21 +76,45 @@ export const createRequestTransportMemoryKey = ({
   return `${providerType}::${providerId}::${normalizedBaseUrl}`
 }
 
+const normalizeStoredRequestTransportMode = (
+  mode: RequestTransportSettings['requestTransportMode'],
+): RequestTransportMode | undefined => {
+  if (mode && typeof mode === 'object') {
+    const platformMode = Platform.isDesktop ? mode.desktop : mode.mobile
+    if (
+      platformMode === 'browser' ||
+      platformMode === 'obsidian' ||
+      (Platform.isDesktop && platformMode === 'node')
+    ) {
+      return platformMode
+    }
+    return undefined
+  }
+
+  if (mode === 'browser' || mode === 'obsidian') {
+    return mode
+  }
+
+  if (mode === 'node') {
+    return Platform.isDesktop ? 'node' : 'browser'
+  }
+
+  return undefined
+}
+
 export const resolveRequestTransportMode = ({
   additionalSettings,
-  hasCustomBaseUrl,
-  memoryKey,
+  hasCustomBaseUrl: _hasCustomBaseUrl,
+  memoryKey: _memoryKey,
 }: {
   additionalSettings?: RequestTransportSettings
   hasCustomBaseUrl: boolean
   memoryKey?: string
 }): RequestTransportMode => {
-  const configuredMode = additionalSettings?.requestTransportMode
-  if (
-    configuredMode === 'browser' ||
-    configuredMode === 'obsidian' ||
-    configuredMode === 'node'
-  ) {
+  const configuredMode = normalizeStoredRequestTransportMode(
+    additionalSettings?.requestTransportMode,
+  )
+  if (configuredMode) {
     return configuredMode
   }
 
@@ -139,14 +122,7 @@ export const resolveRequestTransportMode = ({
     return additionalSettings.useObsidianRequestUrl ? 'obsidian' : 'browser'
   }
 
-  const fallbackMode: RequestTransportMode =
-    configuredMode === 'auto' || hasCustomBaseUrl ? 'auto' : 'browser'
-
-  if (fallbackMode !== 'auto') {
-    return fallbackMode
-  }
-
-  return getRememberedMode(memoryKey) ?? fallbackMode
+  return Platform.isDesktop ? 'node' : 'browser'
 }
 
 export const shouldRetryWithObsidianTransport = (error: unknown): boolean => {
@@ -156,91 +132,13 @@ export const shouldRetryWithObsidianTransport = (error: unknown): boolean => {
   )
 }
 
-class RequestTransportAttemptTimeoutError extends Error {
-  constructor(transportMode: 'browser' | 'node') {
-    super(`Timed out waiting for first chunk from ${transportMode} transport.`)
-    this.name = 'RequestTransportAttemptTimeoutError'
-  }
-}
-
-const shouldRetryWithNextTransport = (error: unknown): boolean => {
-  return (
-    error instanceof RequestTransportAttemptTimeoutError ||
-    shouldRetryWithObsidianTransport(error)
-  )
-}
-
-const createLinkedAbortController = (
-  signal?: AbortSignal,
-): {
-  controller: AbortController
-  cleanup: () => void
-} => {
-  const controller = new AbortController()
-  inheritLLMDebugTraceSignal({ source: signal, target: controller.signal })
-
-  if (!signal) {
-    return {
-      controller,
-      cleanup: () => {},
-    }
-  }
-
-  if (signal.aborted) {
-    controller.abort()
-    return {
-      controller,
-      cleanup: () => {},
-    }
-  }
-
-  const handleAbort = () => {
-    controller.abort()
-  }
-
-  signal.addEventListener('abort', handleAbort, { once: true })
-
-  return {
-    controller,
-    cleanup: () => signal.removeEventListener('abort', handleAbort),
-  }
-}
-
-const withTimeout = async <T>({
-  run,
-  timeoutMs,
-  onTimeout,
-}: {
-  run: () => Promise<T>
-  timeoutMs: number
-  onTimeout: () => void
-}): Promise<T> => {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-
-  try {
-    return await Promise.race([
-      run(),
-      new Promise<T>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          onTimeout()
-          reject(new Error('timeout'))
-        }, timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-    }
-  }
-}
-
 export const runWithRequestTransport = async <T>({
   mode,
   runBrowser,
   runObsidian,
   runNode,
-  memoryKey,
-  onAutoPromoteTransportMode,
+  memoryKey: _memoryKey,
+  onAutoPromoteTransportMode: _onAutoPromoteTransportMode,
 }: {
   mode: RequestTransportMode
   runBrowser: () => Promise<T>
@@ -264,239 +162,35 @@ export const runWithRequestTransport = async <T>({
     return runNode()
   }
 
-  // Desktop auto order: node → browser. Mobile (no node): browser → obsidian.
-  // Node is the primary attempt on desktop because it has no CORS surface, honors
-  // custom headers, and routes proxy decisions through proxy-agent for parity with
-  // Chromium. Browser is the fallback (covers rare proxy-agent edge cases).
-  // requestUrl is not used in desktop auto fallback — it is buffered, strips headers,
-  // and often produces misleading errors; users can still select it explicitly.
-  const effectiveRunNode = Platform.isDesktop ? runNode : undefined
-
-  const fallbackAttempts: Array<{
-    mode: AutoPromotedTransportMode
-    run: () => Promise<T>
-  }> = effectiveRunNode
-    ? [{ mode: 'browser', run: runBrowser }]
-    : [{ mode: 'obsidian', run: runObsidian }]
-
-  const runPrimary = effectiveRunNode ?? runBrowser
-
-  try {
-    return await runPrimary()
-  } catch (error) {
-    if (!shouldRetryWithObsidianTransport(error)) {
-      throw error
-    }
-    let lastError: unknown = error
-    for (const attempt of fallbackAttempts) {
-      try {
-        const response = await attempt.run()
-        rememberTransportMode(attempt.mode, memoryKey)
-        onAutoPromoteTransportMode?.(attempt.mode)
-        return response
-      } catch (fallbackError) {
-        lastError = fallbackError
-        if (!shouldRetryWithObsidianTransport(fallbackError)) {
-          throw fallbackError
-        }
-      }
-    }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(
-          typeof lastError === 'string'
-            ? lastError
-            : 'Unknown request transport error',
-        )
-  }
+  throw new Error(`Unsupported request transport mode: ${String(mode)}`)
 }
 
-const createAutoFallbackStream = <T>({
-  createBrowserStream,
-  createNodeStream,
-  createObsidianStream,
-  memoryKey,
-  onAutoPromoteTransportMode,
-  signal,
-  firstChunkTimeoutMs = AUTO_STREAM_ATTEMPT_FIRST_CHUNK_TIMEOUT_MS,
-}: {
-  createBrowserStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-  createNodeStream?: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-  createObsidianStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-  memoryKey?: string
-  onAutoPromoteTransportMode?: (mode: AutoPromotedTransportMode) => void
-  signal?: AbortSignal
-  firstChunkTimeoutMs?: number
-}): AsyncIterable<T> => {
-  const startTimedStreamAttempt = async ({
-    transportMode,
-    createStream,
-  }: {
-    transportMode: 'browser' | 'node'
-    createStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-  }): Promise<AsyncIterable<T>> => {
-    const { controller, cleanup } = createLinkedAbortController(signal)
-
-    try {
-      const stream = await withTimeout({
-        run: () => createStream(controller.signal),
-        timeoutMs: firstChunkTimeoutMs,
-        onTimeout: () => controller.abort(),
-      }).catch((error) => {
-        if (error instanceof Error && error.message === 'timeout') {
-          throw new RequestTransportAttemptTimeoutError(transportMode)
-        }
-        throw error
-      })
-
-      const iterator = stream[Symbol.asyncIterator]()
-      const firstResult = await withTimeout({
-        run: () => iterator.next(),
-        timeoutMs: firstChunkTimeoutMs,
-        onTimeout: () => controller.abort(),
-      }).catch((error) => {
-        if (error instanceof Error && error.message === 'timeout') {
-          throw new RequestTransportAttemptTimeoutError(transportMode)
-        }
-        throw error
-      })
-
-      return {
-        async *[Symbol.asyncIterator]() {
-          try {
-            if (!firstResult.done) {
-              yield firstResult.value
-            }
-            if (firstResult.done) {
-              return
-            }
-            while (true) {
-              const nextResult = await iterator.next()
-              if (nextResult.done) {
-                return
-              }
-              yield nextResult.value
-            }
-          } finally {
-            cleanup()
-          }
-        },
-      }
-    } catch (error) {
-      cleanup()
-      throw error
-    }
-  }
-
-  // Desktop auto order: node → browser. Mobile (no node): browser → obsidian.
-  // The primary attempt is timed; browser/node fallbacks are timed (fast failure
-  // on CORS/proxy). Mobile obsidian fallback is untimed (buffered requestUrl).
-  const primaryAttempt: {
-    mode: 'browser' | 'node'
-    createStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-  } = createNodeStream
-    ? { mode: 'node', createStream: createNodeStream }
-    : { mode: 'browser', createStream: createBrowserStream }
-
-  type FallbackAttempt =
-    | {
-        mode: 'browser' | 'node'
-        createStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-        timed: true
-      }
-    | {
-        mode: 'obsidian'
-        createStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
-        timed: false
-      }
-
-  const fallbackAttempts: FallbackAttempt[] = createNodeStream
-    ? [
-        {
-          mode: 'browser',
-          createStream: createBrowserStream,
-          timed: true,
-        },
-      ]
-    : [
-        {
-          mode: 'obsidian',
-          createStream: (attemptSignal?: AbortSignal) =>
-            createObsidianStream(attemptSignal ?? signal),
-          timed: false,
-        },
-      ]
-
+const createMobileBrowserStreamWithSuggestion = <T>(
+  stream: AsyncIterable<T>,
+): AsyncIterable<T> => {
   return {
     async *[Symbol.asyncIterator]() {
-      let yieldedAnyChunk = false
       try {
-        const primaryStream = await startTimedStreamAttempt({
-          transportMode: primaryAttempt.mode,
-          createStream: primaryAttempt.createStream,
-        })
-        for await (const chunk of primaryStream) {
-          yieldedAnyChunk = true
+        for await (const chunk of stream) {
           yield chunk
         }
-        return
       } catch (error) {
-        if (yieldedAnyChunk || !shouldRetryWithNextTransport(error)) {
-          throw error
-        }
-      }
-
-      let lastError: unknown
-      for (const attempt of fallbackAttempts) {
-        let attemptYieldedChunk = false
-        try {
-          const fallbackStream = attempt.timed
-            ? await startTimedStreamAttempt({
-                transportMode: attempt.mode,
-                createStream: attempt.createStream,
-              })
-            : await attempt.createStream(signal)
-          let remembered = false
-          for await (const chunk of fallbackStream) {
-            if (!remembered) {
-              rememberTransportMode(attempt.mode, memoryKey)
-              onAutoPromoteTransportMode?.(attempt.mode)
-              remembered = true
-            }
-            attemptYieldedChunk = true
-            yield chunk
-          }
-          if (!remembered) {
-            rememberTransportMode(attempt.mode, memoryKey)
-            onAutoPromoteTransportMode?.(attempt.mode)
-          }
-          return
-        } catch (fallbackError) {
-          lastError = fallbackError
-          // Once this attempt has yielded chunks, downstream consumers have
-          // already seen a partial response — switching transports now would
-          // splice two responses together. Bail out with the live error.
-          if (attemptYieldedChunk) {
-            throw fallbackError
-          }
-          if (attempt.timed && shouldRetryWithNextTransport(fallbackError)) {
-            continue
-          }
-          throw fallbackError
-        }
-      }
-
-      if (lastError) {
-        throw lastError instanceof Error
-          ? lastError
-          : new Error(
-              typeof lastError === 'string'
-                ? lastError
-                : 'Unknown request transport error',
-            )
+        throw appendMobileBrowserTransportSuggestion(error)
       }
     },
   }
+}
+
+const appendMobileBrowserTransportSuggestion = (error: unknown): Error => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : 'Unknown request transport error'
+  return new Error(
+    `${message}\n\nBrowser requests on mobile may not support this provider's streaming response. Switch this provider's network request method to Obsidian built-in request and try again.`,
+  )
 }
 
 export const runWithRequestTransportForStream = async <T>({
@@ -504,10 +198,10 @@ export const runWithRequestTransportForStream = async <T>({
   createBrowserStream,
   createObsidianStream,
   createNodeStream,
-  memoryKey,
-  onAutoPromoteTransportMode,
+  memoryKey: _memoryKey,
+  onAutoPromoteTransportMode: _onAutoPromoteTransportMode,
   signal,
-  firstChunkTimeoutMs,
+  firstChunkTimeoutMs: _firstChunkTimeoutMs,
 }: {
   mode: RequestTransportMode
   createBrowserStream: (signal?: AbortSignal) => Promise<AsyncIterable<T>>
@@ -519,7 +213,17 @@ export const runWithRequestTransportForStream = async <T>({
   firstChunkTimeoutMs?: number
 }): Promise<AsyncIterable<T>> => {
   if (mode === 'browser') {
-    return createBrowserStream(signal)
+    try {
+      const stream = await createBrowserStream(signal)
+      return Platform.isDesktop
+        ? stream
+        : createMobileBrowserStreamWithSuggestion(stream)
+    } catch (error) {
+      if (!Platform.isDesktop) {
+        throw appendMobileBrowserTransportSuggestion(error)
+      }
+      throw error
+    }
   }
 
   if (mode === 'obsidian') {
@@ -533,19 +237,9 @@ export const runWithRequestTransportForStream = async <T>({
     return createNodeStream(signal)
   }
 
-  return createAutoFallbackStream({
-    createBrowserStream,
-    createNodeStream: Platform.isDesktop ? createNodeStream : undefined,
-    createObsidianStream,
-    memoryKey,
-    onAutoPromoteTransportMode,
-    signal,
-    firstChunkTimeoutMs,
-  })
+  throw new Error(`Unsupported request transport mode: ${String(mode)}`)
 }
 
-export const clearRequestTransportMemory = (): void => {
-  requestTransportMemory.clear()
-}
+export const clearRequestTransportMemory = (): void => {}
 
 export const clearRequestTransportMemoryForTests = clearRequestTransportMemory

@@ -1,4 +1,4 @@
-﻿import { Extension, Prec } from '@codemirror/state'
+import { Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { Editor } from 'obsidian'
 

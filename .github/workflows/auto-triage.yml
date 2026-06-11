@@ -1,0 +1,151 @@
+name: Auto Triage
+
+# Codex replacement for the old Claude routine:
+# - schedule / workflow_dispatch: scan recent activity
+# - owner mention: handle only the mentioned issue or PR
+# - new external issue / PR: handle only that item as untrusted intake
+
+on:
+  schedule:
+    - cron: '8 5 * * *'
+    - cron: '8 17 * * *'
+  workflow_dispatch:
+  issues:
+    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  triage:
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'issues' ||
+      (
+        github.event_name == 'pull_request_target' &&
+        !startsWith(github.event.pull_request.title, '[auto-triage]') &&
+        !startsWith(github.event.pull_request.head.ref, 'auto-triage/') &&
+        !contains(github.event.pull_request.body || '', 'claude-routine:obsidian-yolo-triage:v1')
+      ) ||
+      (
+        github.event.sender.login == 'Lapis0x0' &&
+        (
+          contains(github.event.comment.body, '@Lapis0x1') ||
+          contains(github.event.review.body, '@Lapis0x1')
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Restore Codex auth
+        env:
+          YOLO_CODEX_AUTH_JSON: ${{ secrets.YOLO_CODEX_AUTH_JSON }}
+          YOLO_CODEX_CONFIG_TOML: ${{ secrets.YOLO_CODEX_CONFIG_TOML }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.codex"
+          printf '%s' "$YOLO_CODEX_AUTH_JSON" > "$HOME/.codex/auth.json"
+          printf '%s' "$YOLO_CODEX_CONFIG_TOML" > "$HOME/.codex/config.toml"
+          chmod 600 "$HOME/.codex/auth.json" "$HOME/.codex/config.toml"
+
+      - name: Install Codex and gh
+        run: |
+          set -euo pipefail
+          npm install -g @openai/codex@0.135.0
+          if ! command -v gh >/dev/null 2>&1; then
+            type -p curl >/dev/null || sudo apt-get update -qq
+            type -p curl >/dev/null || sudo apt-get install -y curl
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg |
+              sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" |
+              sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+            sudo apt-get update -qq
+            sudo apt-get install -y gh
+          fi
+          codex --version
+          gh --version | head -1
+
+      - name: Configure GitHub identity
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "Lapis0x1"
+          git config user.email "Lapis0x1@users.noreply.github.com"
+          gh auth setup-git
+          gh auth status
+
+      - name: Build prompt
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
+          AUTHOR: ${{ github.event.sender.login || '' }}
+          BODY: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body || github.event.pull_request.body || '' }}
+          URL: ${{ github.event.comment.html_url || github.event.review.html_url || github.event.issue.html_url || github.event.pull_request.html_url || '' }}
+        run: |
+          set -euo pipefail
+          cp .github/prompts/obsidian-yolo-auto-triage.md /tmp/auto-triage-prompt.md
+          if [[ "$EVENT_NAME" != "schedule" && "$EVENT_NAME" != "workflow_dispatch" ]]; then
+            TRIGGER_KIND="owner_mention"
+            if [[ "$EVENT_NAME" == "issues" ]]; then
+              TRIGGER_KIND="intake_issue"
+            elif [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+              TRIGGER_KIND="intake_pr"
+            fi
+            {
+              printf '\n\n<routine-fire-payload>\n'
+              jq -n \
+                --arg trigger_kind "$TRIGGER_KIND" \
+                --arg event_name "$EVENT_NAME" \
+                --arg repo "$REPO" \
+                --arg number "$NUMBER" \
+                --arg author "$AUTHOR" \
+                --arg body "$BODY" \
+                --arg url "$URL" \
+                '{
+                  trigger_kind: $trigger_kind,
+                  event_name: $event_name,
+                  repo: $repo,
+                  number: $number,
+                  url: $url,
+                  author: $author,
+                  body: $body
+                }'
+              printf '\n</routine-fire-payload>\n'
+            } >> /tmp/auto-triage-prompt.md
+          fi
+
+      - name: Run Codex triage
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          codex exec \
+            --model gpt-5.5 \
+            --sandbox danger-full-access \
+            --cd "$GITHUB_WORKSPACE" \
+            - < /tmp/auto-triage-prompt.md

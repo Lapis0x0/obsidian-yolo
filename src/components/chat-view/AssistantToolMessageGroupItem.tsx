@@ -17,6 +17,8 @@ import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatMessage,
+  ChatSubagentResultMessage,
+  ChatTerminalCommandResultMessage,
   ChatToolMessage,
 } from '../../types/chat'
 import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
@@ -91,7 +93,9 @@ const getBranchTabState = (
 ): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
   const latestMetadata =
-    latestMessage?.role !== 'external_agent_result'
+    latestMessage?.role !== 'external_agent_result' &&
+    latestMessage?.role !== 'subagent_result' &&
+    latestMessage?.role !== 'terminal_command_result'
       ? latestMessage?.metadata
       : undefined
 
@@ -129,7 +133,9 @@ const getMessageGroupRunState = ({
 }): 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error' => {
   const latestMessage = messages.at(-1)
   const latestMetadata =
-    latestMessage?.role !== 'external_agent_result'
+    latestMessage?.role !== 'external_agent_result' &&
+    latestMessage?.role !== 'subagent_result' &&
+    latestMessage?.role !== 'terminal_command_result'
       ? latestMessage?.metadata
       : undefined
 
@@ -150,6 +156,10 @@ const getMessageGroupRunState = ({
 
   if (conversationRunSummary?.isWaitingApproval) {
     return 'waiting-approval'
+  }
+
+  if (conversationRunSummary?.isActive) {
+    return 'streaming'
   }
 
   switch (conversationRunSummary?.status) {
@@ -191,6 +201,11 @@ export type AssistantToolMessageGroupItemProps = {
     targetFilePath?: string,
   ) => void
   onToolMessageUpdate: (message: ChatToolMessage) => void
+  terminalCommandResultsByToolCallId?: ReadonlyMap<
+    string,
+    ChatTerminalCommandResultMessage
+  >
+  subagentResultsByToolCallId?: ReadonlyMap<string, ChatSubagentResultMessage>
   onRecoverToolCall?: (payload: {
     conversationId: string
     toolMessageId: string
@@ -240,6 +255,8 @@ export default function AssistantToolMessageGroupItem({
   activeApplyRequestKey,
   onApply,
   onToolMessageUpdate,
+  terminalCommandResultsByToolCallId,
+  subagentResultsByToolCallId,
   onRecoverToolCall,
   onRecoverAnswerUserQuestion,
   editingAssistantMessageId,
@@ -282,7 +299,9 @@ export default function AssistantToolMessageGroupItem({
         return
       }
       const branchLabel =
-        message.role !== 'external_agent_result'
+        message.role !== 'external_agent_result' &&
+        message.role !== 'subagent_result' &&
+        message.role !== 'terminal_command_result'
           ? message.metadata?.branchLabel
           : undefined
       const branchConversationId = message.metadata?.branchConversationId
@@ -351,15 +370,13 @@ export default function AssistantToolMessageGroupItem({
   }, [activeBranchKey, branchGroups, hasMultipleBranches, onActiveBranchChange])
 
   const displayedMessages = useMemo(() => {
-    if (!hasMultipleBranches) {
-      return messages
-    }
-    return (
-      branchGroups.find((group) => group.key === resolvedActiveBranchKey)
-        ?.messages ??
-      branchGroups[0]?.messages ??
-      messages
-    )
+    const selectedMessages = !hasMultipleBranches
+      ? messages
+      : (branchGroups.find((group) => group.key === resolvedActiveBranchKey)
+          ?.messages ??
+        branchGroups[0]?.messages ??
+        messages)
+    return selectedMessages
   }, [branchGroups, hasMultipleBranches, messages, resolvedActiveBranchKey])
   const effectiveConversationId = useMemo(() => {
     if (!hasMultipleBranches) {
@@ -693,7 +710,8 @@ export default function AssistantToolMessageGroupItem({
               onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
             />
           </div>
-        ) : (
+        ) : message.role === 'subagent_result' ||
+          message.role === 'terminal_command_result' ? null : (
           <div key={message.id}>
             <ToolMessage
               message={message}
@@ -702,6 +720,10 @@ export default function AssistantToolMessageGroupItem({
                 message.id === pendingCompactionAnchorMessageId
               }
               showRunningFooter={showRunningToolFooter}
+              terminalCommandResultsByToolCallId={
+                terminalCommandResultsByToolCallId
+              }
+              subagentResultsByToolCallId={subagentResultsByToolCallId}
               onMessageUpdate={onToolMessageUpdate}
               onRecoverToolCall={onRecoverToolCall}
               onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}

@@ -471,7 +471,7 @@ export class SelectionChatController {
     }
 
     this.showQuickAskWithOptions(editor, editorView, {
-      initialMode: 'chat',
+      initialMode: 'ask',
       initialMentionables: [mentionable],
       selectionScope: this.createSelectionScope(mentionable, editor),
       initialAssistantId: assistantId,
@@ -851,7 +851,7 @@ export class SelectionChatController {
       initialAssistantId: resolvedAssistantId,
       initialMentionables: [mentionable],
       initialPrompt: prompt || undefined,
-      initialMode: 'chat',
+      initialMode: 'ask',
       autoSend: prompt.length > 0,
     })
   }

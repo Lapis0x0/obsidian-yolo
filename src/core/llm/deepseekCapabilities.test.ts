@@ -45,7 +45,7 @@ describe('applyDeepSeekCapabilities', () => {
     })
   })
 
-  it('skips deepseek-reasoner regardless of level (V3.2 has no toggle)', () => {
+  it('skips legacy deepseek-reasoner regardless of level', () => {
     expect(run(reasonerModel, 'off')).toEqual({})
     expect(run(reasonerModel, 'high')).toEqual({})
   })

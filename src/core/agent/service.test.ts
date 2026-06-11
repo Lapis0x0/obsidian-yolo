@@ -406,6 +406,379 @@ const buildBaseRunInput = (
     messages,
   }) as unknown as AgentRuntimeRunInput
 
+const makeToolMessage = (
+  status:
+    | ToolCallResponseStatus.PendingApproval
+    | ToolCallResponseStatus.Running
+    | ToolCallResponseStatus.AwaitingUserInput,
+  toolCallId = 'tool-call-1',
+): ChatMessage => ({
+  role: 'tool',
+  id: 'tool-1',
+  toolCalls: [
+    {
+      request: { id: toolCallId, name: 'local:fs_read' },
+      response: { status },
+    },
+  ],
+})
+
+const makeRunningTerminalResultMessage = (): ChatMessage => ({
+  role: 'terminal_command_result',
+  id: 'terminal-result-1',
+  taskId: 'term-1',
+  source: {
+    type: 'llm_tool_call',
+    toolCallId: 'terminal-call-1',
+    assistantMessageId: 'assistant-1',
+  },
+  title: 'npm run dev',
+  status: 'running',
+  exitCode: null,
+  stdout: '',
+  stderr: '',
+  durationMs: 1000,
+  delegateAssistantMessageId: 'assistant-1',
+  delegateToolCallId: 'terminal-call-1',
+})
+
+const makeCompletedSubagentResultMessage = (): ChatMessage => ({
+  role: 'subagent_result',
+  id: 'subagent-result-1',
+  taskId: 'sub-1',
+  source: {
+    type: 'llm_tool_call',
+    toolCallId: 'subagent-call-1',
+    assistantMessageId: 'assistant-1',
+  },
+  title: 'Investigate issue',
+  status: 'completed',
+  content: 'done',
+  durationMs: 1000,
+  toolUseCount: 0,
+  delegateAssistantMessageId: 'assistant-1',
+  delegateToolCallId: 'subagent-call-1',
+})
+
+describe('AgentService main activity summary', () => {
+  beforeEach(() => {
+    runtimeInstances.length = 0
+  })
+
+  it('marks a live runtime as active, abortable, and queueable', async () => {
+    const service = new AgentService()
+    const runPromise = service.run({
+      conversationId: 'conv-live',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-live', [makeUserMessage('u1', 'hello')]),
+    })
+
+    expect(service.getConversationRunSummary('conv-live')).toMatchObject({
+      isRunning: true,
+      isActive: true,
+      isAbortable: true,
+      isQueueable: true,
+      isWaitingApproval: false,
+      isWaitingUserInput: false,
+    })
+
+    runtimeInstances[0].resolveRun()
+    await runPromise
+  })
+
+  it('marks pending approval and awaiting user input as active but not queueable', () => {
+    const service = new AgentService()
+
+    service.replaceConversationMessages('conv-pending', [
+      makeUserMessage('u1', 'hi'),
+      makeToolMessage(ToolCallResponseStatus.PendingApproval),
+    ])
+    expect(service.getConversationRunSummary('conv-pending')).toMatchObject({
+      isActive: true,
+      isAbortable: true,
+      isQueueable: false,
+      isWaitingApproval: true,
+      isWaitingUserInput: false,
+    })
+
+    service.replaceConversationMessages('conv-awaiting', [
+      makeUserMessage('u1', 'hi'),
+      makeToolMessage(ToolCallResponseStatus.AwaitingUserInput),
+    ])
+    expect(service.getConversationRunSummary('conv-awaiting')).toMatchObject({
+      isActive: true,
+      isAbortable: true,
+      isQueueable: false,
+      isWaitingApproval: true,
+      isWaitingUserInput: true,
+    })
+  })
+
+  it('marks foreground running tool calls as active without treating background results as active', () => {
+    const service = new AgentService()
+
+    service.replaceConversationMessages('conv-tool', [
+      makeUserMessage('u1', 'hi'),
+      makeToolMessage(ToolCallResponseStatus.Running),
+    ])
+    expect(service.getConversationRunSummary('conv-tool')).toMatchObject({
+      isRunning: false,
+      isActive: true,
+      isAbortable: true,
+      isQueueable: false,
+    })
+
+    service.replaceConversationMessages('conv-background', [
+      makeUserMessage('u1', 'hi'),
+      makeRunningTerminalResultMessage(),
+      makeCompletedSubagentResultMessage(),
+    ])
+    expect(service.getConversationRunSummary('conv-background')).toMatchObject({
+      isRunning: false,
+      isActive: false,
+      isAbortable: false,
+      isQueueable: false,
+    })
+  })
+
+  it('aborts foreground tool calls without an active runtime and leaves background results untouched', () => {
+    const service = new AgentService()
+    service.replaceConversationMessages('conv-stop-tool', [
+      makeUserMessage('u1', 'hi'),
+      makeToolMessage(ToolCallResponseStatus.Running),
+    ])
+
+    expect(service.abortConversationMainActivity('conv-stop-tool')).toBe(true)
+    const stoppedTool = service
+      .getState('conv-stop-tool')
+      .messages.find((message) => message.role === 'tool')
+    expect(stoppedTool).toMatchObject({
+      role: 'tool',
+      toolCalls: [{ response: { status: ToolCallResponseStatus.Aborted } }],
+    })
+
+    service.replaceConversationMessages('conv-stop-background', [
+      makeUserMessage('u1', 'hi'),
+      makeRunningTerminalResultMessage(),
+    ])
+    expect(service.abortConversationMainActivity('conv-stop-background')).toBe(
+      false,
+    )
+    expect(service.getState('conv-stop-background').messages[1]).toMatchObject({
+      role: 'terminal_command_result',
+      status: 'running',
+    })
+  })
+
+  it('calls the registered foreground aborter when stopping main activity', () => {
+    const service = new AgentService()
+    const abort = jest.fn()
+    service.replaceConversationMessages('conv-tracker', [
+      makeUserMessage('u1', 'hi'),
+      makeToolMessage(ToolCallResponseStatus.Running, 'tracked-call'),
+    ])
+    const unregister = service.registerForegroundToolAborter({
+      conversationId: 'conv-tracker',
+      toolCallId: 'tracked-call',
+      abort,
+    })
+
+    expect(service.abortConversationMainActivity('conv-tracker')).toBe(true)
+    expect(abort).toHaveBeenCalledTimes(1)
+    unregister()
+  })
+})
+
+const waitForRuntimeCount = async (count: number): Promise<void> => {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (runtimeInstances.length >= count) {
+      return
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  }
+  throw new Error(`Expected ${count} runtime instances`)
+}
+
+const makeAssistantToolMessages = ({
+  userMessage,
+  responseStatus,
+  toolName = 'server__tool',
+}: {
+  userMessage: ChatUserMessage
+  responseStatus:
+    | ToolCallResponseStatus.PendingApproval
+    | ToolCallResponseStatus.AwaitingUserInput
+  toolName?: string
+}): ChatMessage[] => {
+  const request = {
+    id: 'call-1',
+    name: toolName,
+    arguments: {
+      kind: 'complete' as const,
+      value: {},
+    },
+  }
+  return [
+    userMessage,
+    {
+      role: 'assistant',
+      id: 'assistant-1',
+      content: '',
+      metadata: {
+        generationState: 'completed',
+      },
+      toolCallRequests: [request],
+    },
+    {
+      role: 'tool',
+      id: 'tool-1',
+      toolCalls: [
+        {
+          request,
+          response: {
+            status: responseStatus,
+          },
+        },
+      ],
+    },
+  ]
+}
+
+describe('AgentService continuation input', () => {
+  beforeEach(() => {
+    runtimeInstances.length = 0
+  })
+
+  it('drops stale requestMessages when continuing after approved tool calls', async () => {
+    const service = new AgentService()
+    const userMessage = makeUserMessage('u1', 'dispatch once')
+    const staleRequestMessages = [userMessage]
+    const callTool = jest.fn().mockResolvedValue({
+      status: ToolCallResponseStatus.Success,
+      data: {
+        type: 'text',
+        text: 'accepted',
+      },
+    })
+
+    const runPromise = service.run({
+      conversationId: 'conv-approve-cont',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conv-approve-cont',
+        messages: [userMessage],
+        requestMessages: staleRequestMessages,
+        model: {
+          id: 'model-1',
+        },
+        mcpManager: {
+          callTool,
+        },
+      } as unknown as AgentRuntimeRunInput,
+    })
+    const firstRuntime = runtimeInstances[0]
+    firstRuntime.emitSnapshot(
+      makeAssistantToolMessages({
+        userMessage,
+        responseStatus: ToolCallResponseStatus.PendingApproval,
+      }),
+    )
+
+    const approvePromise = service.approveToolCall({
+      conversationId: 'conv-approve-cont',
+      toolCallId: 'call-1',
+    })
+
+    await waitForRuntimeCount(2)
+    const continuationInput = runtimeInstances[1].getRunInput()
+    expect(continuationInput?.requestMessages).toBeUndefined()
+    expect(continuationInput?.messages).not.toEqual(staleRequestMessages)
+
+    const toolMessage = continuationInput?.messages.find(
+      (message) => message.role === 'tool',
+    )
+    if (!toolMessage || toolMessage.role !== 'tool') {
+      throw new Error('expected continued tool message')
+    }
+    expect(toolMessage.toolCalls[0].response).toMatchObject({
+      status: ToolCallResponseStatus.Success,
+      data: {
+        text: 'accepted',
+      },
+    })
+
+    runtimeInstances[1].resolveRun()
+    expect(await approvePromise).toBe(true)
+    firstRuntime.resolveRun()
+    await runPromise
+  })
+
+  it('drops stale requestMessages when continuing after answered user questions', async () => {
+    const service = new AgentService()
+    const userMessage = makeUserMessage('u1', 'ask then continue')
+    const staleRequestMessages = [userMessage]
+
+    const runPromise = service.run({
+      conversationId: 'conv-answer-cont',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conv-answer-cont',
+        messages: [userMessage],
+        requestMessages: staleRequestMessages,
+      } as unknown as AgentRuntimeRunInput,
+    })
+    const firstRuntime = runtimeInstances[0]
+    firstRuntime.emitSnapshot(
+      makeAssistantToolMessages({
+        userMessage,
+        responseStatus: ToolCallResponseStatus.AwaitingUserInput,
+        toolName: 'yolo_local__ask_user_question',
+      }),
+    )
+
+    const answerPromise = service.answerUserQuestion({
+      conversationId: 'conv-answer-cont',
+      toolCallId: 'call-1',
+      payload: {
+        type: 'user_answers',
+        answers: [],
+      },
+    })
+
+    await waitForRuntimeCount(2)
+    const continuationInput = runtimeInstances[1].getRunInput()
+    expect(continuationInput?.requestMessages).toBeUndefined()
+    expect(continuationInput?.messages).not.toEqual(staleRequestMessages)
+
+    const toolMessage = continuationInput?.messages.find(
+      (message) => message.role === 'tool',
+    )
+    if (!toolMessage || toolMessage.role !== 'tool') {
+      throw new Error('expected continued tool message')
+    }
+    expect(toolMessage.toolCalls[0].response.status).toBe(
+      ToolCallResponseStatus.Success,
+    )
+
+    runtimeInstances[1].resolveRun()
+    expect(await answerPromise).toEqual({ kind: 'continued' })
+    firstRuntime.resolveRun()
+    await runPromise
+  })
+})
+
 describe('AgentService mid-run user message queue', () => {
   beforeEach(() => {
     runtimeInstances.length = 0

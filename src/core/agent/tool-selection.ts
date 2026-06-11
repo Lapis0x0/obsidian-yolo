@@ -1,3 +1,4 @@
+import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { AssistantToolPreference } from '../../types/assistant.types'
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
@@ -14,6 +15,10 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 
+import {
+  formatSubagentModelOption,
+  resolveSubagentModelConfig,
+} from './subagent/model-config'
 import { getAssistantToolDisclosureMode } from './tool-preferences'
 import { buildToolStub } from './tool-stub'
 
@@ -23,18 +28,6 @@ const LOCAL_MEMORY_TOOL_NAMES = new Set([
   'memory_update',
   'memory_delete',
 ])
-
-const isOpenSkillToolName = (toolName: string): boolean => {
-  try {
-    const parsed = parseToolName(toolName)
-    return (
-      parsed.serverName === getLocalFileToolServerName() &&
-      parsed.toolName === 'open_skill'
-    )
-  } catch {
-    return toolName === 'open_skill'
-  }
-}
 
 export const isLoadToolSchemasToolName = (toolName: string): boolean => {
   try {
@@ -100,19 +93,10 @@ export const isMemoryToolAvailable = (toolName: string): boolean => {
 const isToolAllowed = ({
   toolName,
   allowedToolNames,
-  allowedSkillNames,
 }: {
   toolName: string
   allowedToolNames?: ReadonlySet<string>
-  allowedSkillNames?: ReadonlySet<string>
 }): boolean => {
-  if (isOpenSkillToolName(toolName)) {
-    const hasAllowedSkills = (allowedSkillNames?.size ?? 0) > 0
-    if (!hasAllowedSkills) {
-      return false
-    }
-  }
-
   if (!allowedToolNames) {
     return true
   }
@@ -154,36 +138,82 @@ export const buildRequestTools = (
  */
 export function applyDynamicToolDescriptions(
   tools: McpTool[],
-  ctx: { jsSandboxSettings: JsSandboxSettings },
+  ctx: {
+    jsSandboxSettings: JsSandboxSettings
+    settings?: YoloSettings
+  },
 ): McpTool[] {
   const jsSandboxFqn = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${JS_SANDBOX_TOOL_NAME}`
+  const delegateSubagentFqn = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}delegate_subagent`
   return tools.map((tool) => {
-    if (tool.name !== jsSandboxFqn) return tool
-    const live = getJsSandboxTool(ctx.jsSandboxSettings)
-    return {
-      ...tool,
-      description: live.description,
-      inputSchema: live.inputSchema,
+    if (tool.name === jsSandboxFqn) {
+      const live = getJsSandboxTool(ctx.jsSandboxSettings)
+      return {
+        ...tool,
+        description: live.description,
+        inputSchema: live.inputSchema,
+      }
     }
+
+    if (tool.name === delegateSubagentFqn && ctx.settings) {
+      return applySubagentModelSchema(tool, ctx.settings)
+    }
+
+    return tool
   })
+}
+
+function applySubagentModelSchema(
+  tool: McpTool,
+  settings: YoloSettings,
+): McpTool {
+  const config = resolveSubagentModelConfig(settings)
+  const allowedLines = config.allowedModelIds
+    .map((modelId) => `- ${formatSubagentModelOption(settings, modelId)}`)
+    .join('\n')
+  const preferredLine = config.preferredModelId
+    ? formatSubagentModelOption(settings, config.preferredModelId)
+    : 'none'
+  const modelDescription =
+    config.allowedModelIds.length > 0
+      ? `Optional modelId for this sub-agent. Allowed modelIds:\n${allowedLines}\nRecommended default: ${preferredLine}. If the user did not explicitly request a model, omit this field and the host will use the recommended default.`
+      : 'Optional modelId for this sub-agent. No registered chat models are currently configured for sub-agents.'
+
+  return {
+    ...tool,
+    description:
+      `${tool.description}\n\nSub-agent model policy: allowed modelIds are configured by the user. ` +
+      `Recommended default: ${preferredLine}. If the user explicitly asks for a sub-agent model, set modelId to one of the allowed modelIds; otherwise omit modelId.`,
+    inputSchema: {
+      ...tool.inputSchema,
+      properties: {
+        ...(tool.inputSchema.properties ?? {}),
+        modelId: {
+          type: 'string',
+          enum: config.allowedModelIds,
+          description: modelDescription,
+        },
+      },
+    },
+  }
 }
 
 export const selectAllowedTools = ({
   availableTools,
   allowedToolNames,
-  allowedSkillNames,
   toolPreferences,
   apiType,
   enableToolDisclosure = true,
   jsSandboxSettings = {},
+  settings,
 }: {
   availableTools: McpTool[]
   allowedToolNames?: string[]
-  allowedSkillNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
   apiType?: LLMProviderApiType | null
   enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
+  settings?: YoloSettings
 }): {
   filteredTools: McpTool[]
   hasTools: boolean
@@ -191,20 +221,15 @@ export const selectAllowedTools = ({
   requestTools: RequestTool[] | undefined
 } => {
   const normalizedAllowedToolNames = expandAllowedToolNames(allowedToolNames)
-  // Canonical skill names: trim only, case-sensitive (A1).
-  const normalizedAllowedSkillNames = allowedSkillNames
-    ? new Set(allowedSkillNames.map((name) => name.trim()))
-    : undefined
 
   const baseFiltered = applyDynamicToolDescriptions(
     availableTools.filter((tool) =>
       isToolAllowed({
         toolName: tool.name,
         allowedToolNames: normalizedAllowedToolNames,
-        allowedSkillNames: normalizedAllowedSkillNames,
       }),
     ),
-    { jsSandboxSettings },
+    { jsSandboxSettings, settings },
   )
   const assistantLike = {
     toolPreferences,

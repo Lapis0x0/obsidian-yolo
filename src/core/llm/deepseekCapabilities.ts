@@ -12,8 +12,8 @@ type DeepSeekRequestRecord = Record<string, unknown>
  * V4 only accepts `reasoning_effort` of `high` / `max` and toggles thinking via a
  * top-level `thinking: { type }` field; thinking is enabled by default.
  *
- * V3.2 `deepseek-reasoner` predates these parameters and is being deprecated in
- * July; we skip it entirely to preserve current behavior.
+ * Legacy `deepseek-reasoner` encodes thinking in the model alias itself and is
+ * scheduled for retirement on 2026-07-24; skip it to preserve alias semantics.
  */
 export function applyDeepSeekCapabilities(params: {
   request: DeepSeekRequestRecord

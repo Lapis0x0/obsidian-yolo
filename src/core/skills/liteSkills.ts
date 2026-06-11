@@ -1,9 +1,8 @@
-import { App, TFile } from 'obsidian'
+import { App, TFile, normalizePath } from 'obsidian'
 
 import {
   YOLO_SKILLS_INDEX_FILE_NAME,
   getYoloSkillsDir,
-  getYoloSkillsDirPrefix,
   getYoloSnippetsPath,
 } from '../paths/yoloPaths'
 
@@ -32,6 +31,46 @@ export type LiteSkillDocument = {
 }
 
 const CLAUDE_SKILL_FILE_NAME = 'SKILL.md'
+
+type SkillSettings = {
+  yolo?: {
+    baseDir?: string
+  }
+}
+
+/** Hidden config-dir skill roots scanned in addition to `{yolo.baseDir}/skills`. */
+export const HIDDEN_VAULT_SKILL_DIR_SUFFIXES = [
+  'skills',
+  'yolo/skills',
+  'YOLO/skills',
+] as const
+
+/**
+ * Skill directories to scan, in priority order. Duplicate normalized paths are
+ * included once (first occurrence wins).
+ */
+export const getSkillScanDirs = ({
+  settings,
+  configDir,
+}: {
+  settings?: SkillSettings | null
+  configDir: string
+}): string[] => {
+  const dirs: string[] = []
+  const seen = new Set<string>()
+  const add = (dir: string) => {
+    const normalized = normalizePath(dir)
+    if (!seen.has(normalized)) {
+      seen.add(normalized)
+      dirs.push(normalized)
+    }
+  }
+  add(getYoloSkillsDir(settings))
+  for (const suffix of HIDDEN_VAULT_SKILL_DIR_SUFFIXES) {
+    add(`${configDir}/${suffix}`)
+  }
+  return dirs
+}
 
 const normalizeSkillMode = (value: unknown): LiteSkillMode => {
   if (typeof value !== 'string') {
@@ -89,10 +128,10 @@ const parseFrontmatterFromContent = (
 }
 
 const toLiteSkillEntry = ({
-  file,
+  path,
   frontmatter,
 }: {
-  file: TFile
+  path: string
   frontmatter?: Record<string, unknown> | null
 }): LiteSkillEntry | null => {
   const name = asTrimmedString(frontmatter?.name)
@@ -108,37 +147,105 @@ const toLiteSkillEntry = ({
     name,
     description,
     mode,
-    path: file.path,
+    path,
   }
 }
 
-const isLiteSkillFile = ({
-  file,
-  skillsDirPrefix,
+const isLiteSkillPath = ({
+  path,
+  skillsDir,
 }: {
-  file: TFile
-  skillsDirPrefix: string
+  path: string
+  skillsDir: string
 }): boolean => {
-  if (!file.path.startsWith(skillsDirPrefix) || file.extension !== 'md') {
+  const normalizedDir = normalizePath(skillsDir)
+  const prefix = `${normalizedDir}/`
+  if (!path.startsWith(prefix) || !path.endsWith('.md')) {
     return false
   }
 
-  if (file.name === YOLO_SKILLS_INDEX_FILE_NAME) {
+  const fileName = path.slice(path.lastIndexOf('/') + 1)
+  if (fileName === YOLO_SKILLS_INDEX_FILE_NAME) {
     return false
   }
 
-  const relativePath = file.path.slice(skillsDirPrefix.length)
+  const relativePath = path.slice(prefix.length)
   if (!relativePath.includes('/')) {
     return true
   }
 
-  return file.name === CLAUDE_SKILL_FILE_NAME
+  return fileName === CLAUDE_SKILL_FILE_NAME
 }
 
-type SkillSettings = {
-  yolo?: {
-    baseDir?: string
+const listSkillPathsInDir = async (
+  adapter: App['vault']['adapter'],
+  skillsDir: string,
+): Promise<string[]> => {
+  const normalizedDir = normalizePath(skillsDir)
+  if (!(await adapter.exists(normalizedDir))) {
+    return []
   }
+
+  const paths: string[] = []
+  const collect = async (currentDir: string): Promise<void> => {
+    const listing = await adapter.list(currentDir)
+    for (const filePath of listing.files) {
+      const normalizedPath = normalizePath(filePath)
+      if (isLiteSkillPath({ path: normalizedPath, skillsDir: normalizedDir })) {
+        paths.push(normalizedPath)
+      }
+    }
+    for (const folderPath of listing.folders) {
+      await collect(normalizePath(folderPath))
+    }
+  }
+
+  await collect(normalizedDir)
+  return paths.sort((a, b) => a.localeCompare(b))
+}
+
+const readSkillFileContent = async (
+  app: App,
+  path: string,
+  file: TFile | null,
+): Promise<string> => {
+  if (file) {
+    return app.vault.cachedRead(file)
+  }
+  return app.vault.adapter.read(path)
+}
+
+const resolveSkillFrontmatter = async (
+  app: App,
+  path: string,
+  file: TFile | null,
+): Promise<Record<string, unknown> | null> => {
+  const metadataFrontmatter = file
+    ? app.metadataCache.getFileCache(file)?.frontmatter
+    : undefined
+  if (asTrimmedString(metadataFrontmatter?.name)) {
+    return metadataFrontmatter ?? null
+  }
+
+  const content = await readSkillFileContent(app, path, file)
+  const parsedFrontmatter = parseFrontmatterFromContent(content)
+  return {
+    ...(metadataFrontmatter ?? {}),
+    ...(parsedFrontmatter ?? {}),
+  }
+}
+
+const writeSkillFileContent = async (
+  app: App,
+  path: string,
+  file: TFile | null,
+  content: string,
+): Promise<void> => {
+  if (file) {
+    await app.vault.modify(file, content)
+    return
+  }
+  await app.vault.adapter.write(path, content)
 }
 
 type SkillRegistryRecord = {
@@ -149,22 +256,22 @@ type SkillRegistryRecord = {
 
 /**
  * Build the single name -> skill registry that BOTH `list` and `get` consume,
- * so the skill shown in the UI is always the exact same one `open_skill`
- * resolves. Resolution order:
+ * so the skill shown in the UI is always the exact same one lazy-loaded via
+ * `fs_read` on the listed path. Resolution order:
  *   1. builtins seeded first (file = null);
- *   2. vault files, path-sorted: the FIRST vault file claiming a given `name`
- *      wins and overrides any builtin; later vault files with the same `name`
- *      are ignored.
+ *   2. vault skill dirs in `getSkillScanDirs` order; within each dir, paths are
+ *      sorted and the first file claiming a given `name` wins and overrides
+ *      builtins; later dirs or paths with the same `name` are ignored.
  * `name` is the canonical key: trim-only, case-sensitive (different casing =>
  * different skill).
  */
-const buildSkillRegistry = ({
+const buildSkillRegistry = async ({
   app,
   settings,
 }: {
   app: App
   settings?: SkillSettings
-}): Map<string, SkillRegistryRecord> => {
+}): Promise<Map<string, SkillRegistryRecord>> => {
   const registry = new Map<string, SkillRegistryRecord>()
 
   listBuiltinLiteSkills({
@@ -182,37 +289,41 @@ const buildSkillRegistry = ({
     })
   })
 
-  const skillsDirPrefix = getYoloSkillsDirPrefix(settings)
-  const files = app.vault
-    .getMarkdownFiles()
-    .filter((file) => isLiteSkillFile({ file, skillsDirPrefix }))
-    .sort((a, b) => a.path.localeCompare(b.path))
-
   const vaultClaimed = new Set<string>()
-  for (const file of files) {
-    const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter
-    const entry = toLiteSkillEntry({ file, frontmatter: frontmatter ?? null })
-    if (!entry) {
-      continue
+  for (const skillsDir of getSkillScanDirs({
+    settings,
+    configDir: app.vault.configDir,
+  })) {
+    const paths = await listSkillPathsInDir(app.vault.adapter, skillsDir)
+    for (const path of paths) {
+      const file = app.vault.getFileByPath(path)
+      const frontmatter = await resolveSkillFrontmatter(app, path, file)
+      const entry = toLiteSkillEntry({ path, frontmatter })
+      if (!entry) {
+        continue
+      }
+      if (vaultClaimed.has(entry.name)) {
+        continue
+      }
+      registry.set(entry.name, { entry, file })
+      vaultClaimed.add(entry.name)
     }
-    // Among vault files the path-sorted first wins; it also overrides builtins.
-    if (vaultClaimed.has(entry.name)) {
-      continue
-    }
-    registry.set(entry.name, { entry, file })
-    vaultClaimed.add(entry.name)
   }
 
   return registry
 }
 
-export function listLiteSkillEntries(
+export async function listLiteSkillEntries(
   app: App,
   options?: {
     settings?: SkillSettings
   },
-): LiteSkillEntry[] {
-  return [...buildSkillRegistry({ app, settings: options?.settings }).values()]
+): Promise<LiteSkillEntry[]> {
+  return [
+    ...(
+      await buildSkillRegistry({ app, settings: options?.settings })
+    ).values(),
+  ]
     .map((record) => record.entry)
     .sort((a, b) => a.path.localeCompare(b.path))
 }
@@ -233,23 +344,27 @@ export async function getLiteSkillDocument({
 
   // Resolve through the SAME registry as `list`, so a name displayed in the UI
   // opens exactly the file/builtin that was displayed.
-  const record = buildSkillRegistry({ app, settings }).get(target)
+  const record = (await buildSkillRegistry({ app, settings })).get(target)
   if (!record) {
     return null
   }
 
-  if (record.file) {
-    const content = await app.vault.cachedRead(record.file)
-    const metadataFrontmatter = app.metadataCache.getFileCache(
+  if (!record.entry.path.startsWith('builtin://')) {
+    const content = await readSkillFileContent(
+      app,
+      record.entry.path,
       record.file,
-    )?.frontmatter
+    )
+    const metadataFrontmatter = record.file
+      ? app.metadataCache.getFileCache(record.file)?.frontmatter
+      : undefined
     const parsedFrontmatter = parseFrontmatterFromContent(content)
     const mergedFrontmatter = {
       ...(metadataFrontmatter ?? {}),
       ...(parsedFrontmatter ?? {}),
     }
     const entry = toLiteSkillEntry({
-      file: record.file,
+      path: record.entry.path,
       frontmatter: mergedFrontmatter,
     })
     if (!entry) {
@@ -281,6 +396,33 @@ export async function getLiteSkillDocument({
     },
     content: builtin.content,
   }
+}
+
+export async function getLiteSkillDocumentByPath({
+  app,
+  path,
+  settings,
+}: {
+  app: App
+  path: string
+  settings?: SkillSettings
+}): Promise<LiteSkillDocument | null> {
+  const targetPath = path.trim()
+  if (!targetPath) {
+    return null
+  }
+
+  const registry = await buildSkillRegistry({ app, settings })
+  for (const record of registry.values()) {
+    if (record.entry.path === targetPath) {
+      return getLiteSkillDocument({
+        app,
+        name: record.entry.name,
+        settings,
+      })
+    }
+  }
+  return null
 }
 
 /**
@@ -403,7 +545,7 @@ export function rewriteSkillFrontmatterIdToName(
 /**
  * One-time, idempotent migration of vault skill files from the legacy
  * `id + name` frontmatter to the converged `name`-only form. Scans every skill
- * file under `<baseDir>/skills/` and, when a file carries a valid `id`,
+ * file under any configured skill scan directory and, when a file carries a valid `id`,
  * promotes `id` -> `name` and removes the `id` line. Files without a valid `id`
  * are skipped. Per-file failures are logged and skipped without aborting the
  * batch.
@@ -418,30 +560,48 @@ export async function migrateVaultSkillFrontmatter(
     }
   },
 ): Promise<void> {
-  const skillsDirPrefix = getYoloSkillsDirPrefix(settings)
-  const files = app.vault
-    .getMarkdownFiles()
-    .filter((file) => isLiteSkillFile({ file, skillsDirPrefix }))
+  for (const skillsDir of getSkillScanDirs({
+    settings,
+    configDir: app.vault.configDir,
+  })) {
+    const paths = await listSkillPathsInDir(app.vault.adapter, skillsDir)
+    for (const path of paths) {
+      try {
+        const file = app.vault.getFileByPath(path)
+        const metadataFrontmatter = file
+          ? app.metadataCache.getFileCache(file)?.frontmatter
+          : undefined
+        const hasMetadataFrontmatter = metadataFrontmatter !== undefined
+        let parsedId = metadataFrontmatter?.id
+        let content: string | null = null
 
-  for (const file of files) {
-    try {
-      // Authoritative type from the parsed frontmatter: only a non-empty string
-      // id is promoted. Skip cheaply before reading the file otherwise.
-      const parsedId = app.metadataCache.getFileCache(file)?.frontmatter?.id
-      if (typeof parsedId !== 'string' || parsedId.trim().length === 0) {
-        continue
+        if (
+          !hasMetadataFrontmatter &&
+          (typeof parsedId !== 'string' || parsedId.trim().length === 0)
+        ) {
+          content = await readSkillFileContent(app, path, file)
+          const parsedFrontmatter = parseFrontmatterFromContent(content)
+          parsedId = parsedFrontmatter?.id
+        }
+
+        if (typeof parsedId !== 'string' || parsedId.trim().length === 0) {
+          continue
+        }
+
+        if (content === null) {
+          content = await readSkillFileContent(app, path, file)
+        }
+        const rewritten = rewriteSkillFrontmatterIdToName(content, parsedId)
+        if (rewritten === null) {
+          continue
+        }
+        await writeSkillFileContent(app, path, file, rewritten)
+      } catch (error) {
+        console.warn(
+          `[YOLO] Failed to migrate skill frontmatter for ${path}; skipping.`,
+          error,
+        )
       }
-      const content = await app.vault.read(file)
-      const rewritten = rewriteSkillFrontmatterIdToName(content, parsedId)
-      if (rewritten === null) {
-        continue
-      }
-      await app.vault.modify(file, rewritten)
-    } catch (error) {
-      console.warn(
-        `[YOLO] Failed to migrate skill frontmatter for ${file.path}; skipping.`,
-        error,
-      )
     }
   }
 }

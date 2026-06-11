@@ -1,4 +1,3 @@
-import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 
@@ -41,9 +40,9 @@ export const formatTimeContext = (now: Date): string => {
  */
 export const stampUserMessageTimeContext = (
   message: ChatUserMessage,
-  settings: YoloSettings,
+  timeContextEnabled: boolean,
 ): ChatUserMessage => {
-  if (!settings.timeContextEnabled) {
+  if (!timeContextEnabled) {
     return message
   }
   return {

@@ -30,6 +30,8 @@ const KNOWN_MODEL_CAPABILITIES: Record<string, KnownChatModelCapability> = {
   },
   'gemini-2.0-flash': { context: 1048576, modalities: ['text', 'vision'] },
   'gemini-2.0-flash-lite': { context: 1048576, modalities: ['text', 'vision'] },
+  'deepseek-v4-flash': { context: 1048576, modalities: ['text'] },
+  'deepseek-v4-pro': { context: 1048576, modalities: ['text'] },
   'deepseek-reasoner': { context: 65536, modalities: ['text'] },
 }
 

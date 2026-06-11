@@ -185,7 +185,7 @@ export class QuickAskController {
     },
   ) {
     this.showWithOptions(editor, view, {
-      initialMode: 'chat',
+      initialMode: 'ask',
       autoSend: true,
       initialPrompt: options.prompt,
       initialMentionables: options.mentionables,
@@ -249,8 +249,8 @@ export class QuickAskController {
         !this.quickAskWidgetState || this.quickAskWidgetState.view === view
 
       if (isCurrentView) {
-        // Owned-highlight teardown â€” also runs on panel-initiated close paths
-        // (Escape, submit + auto-close, editâ†’review). controller.close() does
+        // Owned-highlight teardown — also runs on panel-initiated close paths
+        // (Escape, submit + auto-close, edit?review). controller.close() does
         // the same thing for externally-triggered closes; both paths must
         // clear the highlight, otherwise the selection stays painted (and the
         // shimmer keeps running) after the panel is gone.
@@ -332,7 +332,7 @@ export class QuickAskController {
   }): void {
     const hostEl = getPdfLeafContentEl(args.leaf)
     if (!hostEl) {
-      // PDF leaf DOM not in expected shape â€” refuse to mount rather than
+      // PDF leaf DOM not in expected shape — refuse to mount rather than
       // falling back to document.body (would float in wrong coordinate space).
       return
     }
@@ -373,7 +373,7 @@ export class QuickAskController {
       sourceFilePath: args.file.path,
       initialPrompt: args.initialPrompt,
       initialMentionables: args.initialMentionables,
-      initialMode: args.initialMode ?? 'chat',
+      initialMode: args.initialMode ?? 'ask',
       initialInput: args.initialInput,
       autoSend: args.autoSend,
       initialAssistantId: args.initialAssistantId,

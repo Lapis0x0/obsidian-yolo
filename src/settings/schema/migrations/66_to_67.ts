@@ -1,15 +1,15 @@
 import type { SettingMigration } from '../setting.types'
 
 /**
- * v66→v67: add `mutedUpdateVersion` for the "don't notify for this version"
- * action in the update toast. Default to an empty string (nothing muted).
+ * v66→v67: add update-toast dismissal state. The first close records a soft
+ * dismissal so the same version can surface once more on next launch; the
+ * second close records a persistent mute for that version.
  */
 export const migrateFrom66To67: SettingMigration['migrate'] = (data) => {
   const next: Record<string, unknown> = { ...data, version: 67 }
 
-  if (next.mutedUpdateVersion === undefined) {
-    next.mutedUpdateVersion = ''
-  }
+  next.softDismissedUpdateVersion ??= ''
+  next.mutedUpdateVersion ??= ''
 
   return next
 }

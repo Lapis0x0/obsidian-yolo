@@ -18,7 +18,13 @@ export const getSourceUserMessageIdForGroup = (
   messages: AssistantToolMessageGroup,
 ): string | null => {
   for (const message of messages) {
-    if (message.role === 'external_agent_result') continue
+    if (
+      message.role === 'external_agent_result' ||
+      message.role === 'subagent_result' ||
+      message.role === 'terminal_command_result'
+    ) {
+      continue
+    }
     const sourceUserMessageId = message.metadata?.sourceUserMessageId
     if (sourceUserMessageId) {
       return sourceUserMessageId
@@ -35,7 +41,9 @@ export const getDisplayedAssistantToolMessages = (
   const isBranchCompleted = (branchMessages: AssistantToolMessageGroup) => {
     const latestMessage = branchMessages.at(-1)
     const latestMetadata =
-      latestMessage?.role !== 'external_agent_result'
+      latestMessage?.role !== 'external_agent_result' &&
+      latestMessage?.role !== 'subagent_result' &&
+      latestMessage?.role !== 'terminal_command_result'
         ? latestMessage?.metadata
         : undefined
     if (latestMetadata?.branchWaitingApproval) {

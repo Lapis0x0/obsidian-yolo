@@ -1440,7 +1440,7 @@ export class ContextVoiceInputWorkflow {
       primaryRequestTimeoutMs:
         settings.continuationOptions?.primaryRequestTimeoutMs,
       streamFallbackRecoveryEnabled: false,
-      purpose: 'auxiliary',
+      purpose: 'lightweight',
     })
 
     const decision = parseVoiceEditorDecision(result.content ?? '', {

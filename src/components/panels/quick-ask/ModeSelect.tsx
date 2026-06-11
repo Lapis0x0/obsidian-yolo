@@ -1,20 +1,15 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-  ChevronDown,
-  ChevronUp,
-  Infinity as InfinityIcon,
-  MessageSquare,
-} from 'lucide-react'
+import { Bot, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { getNodeWindow } from '../../../utils/dom/window-context'
 import { YoloDropdownContent } from '../../common/popover'
 
-export type QuickAskMode = 'chat' | 'agent'
+export type QuickAskMode = 'ask' | 'agent'
 
 const isQuickAskMode = (value: string): value is QuickAskMode =>
-  value === 'chat' || value === 'agent'
+  value === 'ask' || value === 'agent'
 
 type ModeOption = {
   value: QuickAskMode
@@ -27,11 +22,11 @@ type ModeOption = {
 
 const MODE_OPTIONS: ModeOption[] = [
   {
-    value: 'chat',
-    labelKey: 'chatMode.chat',
-    labelFallback: 'Chat',
-    descKey: 'chatMode.chatDesc',
-    descFallback: 'Normal conversation mode',
+    value: 'ask',
+    labelKey: 'chatMode.ask',
+    labelFallback: 'Ask',
+    descKey: 'chatMode.askDesc',
+    descFallback: 'Ask, refine, create',
     icon: <MessageSquare size={14} />,
   },
   {
@@ -40,7 +35,7 @@ const MODE_OPTIONS: ModeOption[] = [
     labelFallback: 'Agent',
     descKey: 'chatMode.agentDesc',
     descFallback: 'Enable tool calling capabilities',
-    icon: <InfinityIcon size={14} />,
+    icon: <Bot size={14} />,
   },
 ]
 
@@ -50,7 +45,6 @@ export const ModeSelect = forwardRef<
     mode: QuickAskMode
     onChange: (mode: QuickAskMode) => void
     triggerLabel?: string
-    triggerIcon?: React.ReactNode
     onMenuOpenChange?: (isOpen: boolean) => void
     onKeyDown?: (
       event: React.KeyboardEvent<HTMLButtonElement>,
@@ -68,7 +62,6 @@ export const ModeSelect = forwardRef<
       mode,
       onChange,
       triggerLabel,
-      triggerIcon,
       onMenuOpenChange,
       onKeyDown,
       container,
@@ -83,7 +76,7 @@ export const ModeSelect = forwardRef<
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
     const itemRefs = useRef<Record<QuickAskMode, HTMLDivElement | null>>({
-      chat: null,
+      ask: null,
       agent: null,
     })
     const setTriggerRef = useCallback(
@@ -112,7 +105,7 @@ export const ModeSelect = forwardRef<
 
     const focusByDelta = useCallback(
       (delta: number) => {
-        const values: QuickAskMode[] = ['chat', 'agent']
+        const values: QuickAskMode[] = ['ask', 'agent']
         const currentIndex = values.indexOf(mode)
         const nextIndex = (currentIndex + delta + values.length) % values.length
         const nextValue = values[nextIndex]
@@ -178,14 +171,11 @@ export const ModeSelect = forwardRef<
           className="yolo-chat-input-model-select yolo-mode-select"
           onKeyDown={handleTriggerKeyDown}
         >
-          <div className="yolo-mode-select__icon">
-            {triggerIcon ?? currentOption?.icon}
-          </div>
           <div className="yolo-chat-input-model-select__model-name">
             {triggerLabel ??
               t(
-                currentOption?.labelKey ?? 'chatMode.chat',
-                currentOption?.labelFallback ?? 'Chat',
+                currentOption?.labelKey ?? 'chatMode.ask',
+                currentOption?.labelFallback ?? 'Ask',
               )}
           </div>
           <div className="yolo-chat-input-model-select__icon">

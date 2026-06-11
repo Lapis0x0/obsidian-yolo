@@ -166,16 +166,64 @@ export type ChatExternalAgentResultMessage = {
   }
 }
 
+export type SubagentResultStatus = 'completed' | 'failed' | 'aborted'
+
+export type ChatSubagentResultMessage = {
+  role: 'subagent_result'
+  id: string
+  taskId: string
+  source: TaskSource
+  title: string
+  status: SubagentResultStatus
+  content: string
+  activityLog?: string
+  durationMs: number
+  toolUseCount: number
+  usage?: ResponseUsage
+  prompt?: string
+  modelName?: string
+  transcript?: ChatMessage[]
+  delegateAssistantMessageId: string
+  delegateToolCallId: string
+  metadata?: {
+    branchId?: string
+    branchConversationId?: string
+  }
+}
+
+export type ChatTerminalCommandResultMessage = {
+  role: 'terminal_command_result'
+  id: string
+  taskId: string
+  source: TaskSource
+  title: string
+  status: 'running' | AsyncTaskStatus
+  exitCode: number | null
+  stdout: string
+  stderr: string
+  durationMs: number
+  delegateAssistantMessageId: string
+  delegateToolCallId: string
+  metadata?: {
+    branchId?: string
+    branchConversationId?: string
+  }
+}
+
 export type ChatMessage =
   | ChatUserMessage
   | ChatAssistantMessage
   | ChatToolMessage
   | ChatExternalAgentResultMessage
+  | ChatSubagentResultMessage
+  | ChatTerminalCommandResultMessage
 
 export type AssistantToolMessageGroup = (
   | ChatAssistantMessage
   | ChatToolMessage
   | ChatExternalAgentResultMessage
+  | ChatSubagentResultMessage
+  | ChatTerminalCommandResultMessage
 )[]
 
 export type SerializedChatUserMessage = {
@@ -234,12 +282,17 @@ export type SerializedChatToolMessage = {
 }
 export type SerializedChatExternalAgentResultMessage =
   ChatExternalAgentResultMessage
+export type SerializedChatSubagentResultMessage = ChatSubagentResultMessage
+export type SerializedChatTerminalCommandResultMessage =
+  ChatTerminalCommandResultMessage
 
 export type SerializedChatMessage =
   | SerializedChatUserMessage
   | SerializedChatAssistantMessage
   | SerializedChatToolMessage
   | SerializedChatExternalAgentResultMessage
+  | SerializedChatSubagentResultMessage
+  | SerializedChatTerminalCommandResultMessage
 
 export type ChatConversation = {
   schemaVersion: number

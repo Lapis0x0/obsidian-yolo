@@ -1,5 +1,6 @@
 import {
   getDefaultRequestTransportModeForPresetType,
+  getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from './provider.types'
 
@@ -84,24 +85,27 @@ describe('llmProviderSchema', () => {
 })
 
 describe('getDefaultRequestTransportModeForPresetType', () => {
-  it('defaults OAuth presets to node on desktop', () => {
+  it('defaults desktop providers to node', () => {
     expect(
       getDefaultRequestTransportModeForPresetType('chatgpt-oauth', true),
     ).toBe('node')
-    expect(
-      getDefaultRequestTransportModeForPresetType('gemini-oauth', true),
-    ).toBe('node')
-    expect(
-      getDefaultRequestTransportModeForPresetType('qwen-oauth', true),
-    ).toBe('node')
+    expect(getDefaultRequestTransportModeForPresetType('openai', true)).toBe(
+      'node',
+    )
   })
 
-  it('does not force node for non-OAuth or mobile presets', () => {
-    expect(
-      getDefaultRequestTransportModeForPresetType('openai', true),
-    ).toBeUndefined()
-    expect(
-      getDefaultRequestTransportModeForPresetType('chatgpt-oauth', false),
-    ).toBeUndefined()
+  it('defaults mobile providers to browser', () => {
+    expect(getDefaultRequestTransportModeForPresetType('openai', false)).toBe(
+      'browser',
+    )
+  })
+})
+
+describe('getSupportedApiTypesForPresetType', () => {
+  it('limits DeepSeek to its official OpenAI-compatible and Anthropic APIs', () => {
+    expect(getSupportedApiTypesForPresetType('deepseek')).toEqual([
+      'openai-compatible',
+      'anthropic',
+    ])
   })
 })

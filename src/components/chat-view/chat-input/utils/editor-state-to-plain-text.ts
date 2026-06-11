@@ -19,11 +19,7 @@ function lexicalNodeToPlainText(
   options?: PlainTextOptions,
 ): string {
   if (!node || typeof node !== 'object') return ''
-  if (
-    node.type === 'mention' &&
-    Array.isArray(options?.ignoreMentionableTypes) &&
-    options.ignoreMentionableTypes.length > 0
-  ) {
+  if (node.type === 'mention') {
     const mentionable =
       'mentionable' in node && typeof node.mentionable === 'object'
         ? node.mentionable
@@ -36,10 +32,20 @@ function lexicalNodeToPlainText(
         : null
     if (
       mentionableType &&
+      Array.isArray(options?.ignoreMentionableTypes) &&
       options.ignoreMentionableTypes.includes(mentionableType)
     ) {
       return ''
     }
+    // MentionNode stores a truncated label in `text` for display; keep the
+    // full `mentionName` when building prompt/export plain text.
+    if ('mentionName' in node && typeof node.mentionName === 'string') {
+      return node.mentionName
+    }
+    if ('text' in node && typeof node.text === 'string') {
+      return node.text
+    }
+    return ''
   }
   if ('children' in node) {
     // Process children recursively and join their results

@@ -41,6 +41,17 @@ jest.mock('../../utils/pdf/slicePdfPages', () => ({
   slicePdfPages: jest.fn(),
 }))
 
+jest.mock('../agent/subagent/runner', () => ({
+  runSubagent: jest.fn().mockResolvedValue({
+    accepted: true,
+    taskId: 'sub_test',
+    title: 'Test',
+    status: 'running',
+    note: 'accepted',
+    modelName: 'mock',
+  }),
+}))
+
 import { App, TFile, TFolder } from 'obsidian'
 import { PDFDocument } from 'pdf-lib'
 
@@ -54,6 +65,7 @@ import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import { extractPdfText } from '../../utils/pdf/extractPdfText'
 import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import { PdfSliceError, slicePdfPages } from '../../utils/pdf/slicePdfPages'
+import { runSubagent } from '../agent/subagent/runner'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import {
@@ -66,6 +78,7 @@ import {
 
 afterEach(() => {
   editUndoSnapshotStore.clear()
+  ;(runSubagent as jest.Mock).mockClear()
 })
 
 describe('recoverLikelyEscapedBackslashSequences', () => {
@@ -670,6 +683,81 @@ describe('local fs tool action helpers', () => {
       totalLines: 3,
     })
     expect(payload.results[0].returnedRange).toBeUndefined()
+  })
+
+  it('reads allowed hidden-directory skills through the skill registry', async () => {
+    // eslint-disable-next-line obsidianmd/hardcoded-config-path -- mock Vault#configDir for adapter paths
+    const configDir = '.obsidian'
+    const hiddenPath = `${configDir}/skills/hidden-open.md`
+    const content = [
+      '---',
+      'name: hidden-open',
+      'description: hidden body',
+      '---',
+      '# Hidden body',
+    ].join('\n')
+    const app = {
+      vault: {
+        configDir,
+        adapter: {
+          exists: jest.fn(
+            async (path: string) => path === `${configDir}/skills`,
+          ),
+          list: jest.fn(async (path: string) =>
+            path === `${configDir}/skills`
+              ? { files: [hiddenPath], folders: [] }
+              : { files: [], folders: [] },
+          ),
+          read: jest.fn(async (path: string) => {
+            if (path !== hiddenPath) {
+              throw new Error(`Unexpected read: ${path}`)
+            }
+            return content
+          }),
+        },
+        getFileByPath: jest.fn().mockReturnValue(null),
+      },
+      metadataCache: {
+        getFileCache: jest.fn().mockReturnValue(undefined),
+      },
+    } as unknown as App
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: {
+        paths: [hiddenPath],
+        operation: {
+          type: 'full',
+        },
+      },
+      allowedSkillPaths: [hiddenPath],
+      settings: {} as YoloSettings,
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+
+    const payload = JSON.parse(result.text) as {
+      results: Array<{
+        ok: boolean
+        path: string
+        content: string
+      }>
+    }
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      path: hiddenPath,
+      content: [
+        '1|---',
+        '2|name: hidden-open',
+        '3|description: hidden body',
+        '4|---',
+        '5|# Hidden body',
+      ].join('\n'),
+    })
   })
 
   describe('fs_read image reading gating by chat model modalities', () => {
@@ -2274,6 +2362,98 @@ describe('local fs tool action helpers', () => {
       })
       expect(result.status).toBe(ToolCallResponseStatus.Success)
     })
+  })
+})
+
+describe('delegate_subagent model selection', () => {
+  const buildSettings = (): YoloSettings =>
+    ({
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiType: 'openai-compatible',
+          apiKey: 'token',
+        },
+      ],
+      chatModelId: 'openai/gpt-5',
+      chatModels: [
+        {
+          id: 'openai/gpt-5',
+          providerId: 'openai',
+          model: 'gpt-5',
+          enable: true,
+        },
+        {
+          id: 'openai/gpt-4.1-mini',
+          providerId: 'openai',
+          model: 'gpt-4.1-mini',
+          enable: true,
+        },
+      ],
+      mcp: {
+        servers: [],
+        enableToolDisclosure: false,
+        builtinToolOptions: {
+          delegate_subagent: {
+            allowedModelIds: ['openai/gpt-5', 'openai/gpt-4.1-mini'],
+            preferredModelId: 'openai/gpt-4.1-mini',
+          },
+        },
+      },
+    }) as unknown as YoloSettings
+
+  const callDelegateSubagent = (args: Record<string, unknown>) =>
+    callLocalFileTool({
+      app: {} as App,
+      settings: buildSettings(),
+      conversationId: 'conv',
+      conversationMessages: [],
+      toolCallId: 'tool-call',
+      toolName: 'delegate_subagent',
+      args: {
+        description: 'Scan',
+        prompt: 'Scan notes',
+        ...args,
+      },
+      subagentParentContext: {} as never,
+    })
+
+  it('uses explicit modelId when it is in the subagent model pool', async () => {
+    const result = await callDelegateSubagent({ modelId: 'openai/gpt-5' })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(runSubagent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        childModel: expect.objectContaining({
+          model: expect.objectContaining({ id: 'openai/gpt-5' }),
+        }),
+      }),
+    )
+  })
+
+  it('uses the preferred subagent model when modelId is omitted', async () => {
+    const result = await callDelegateSubagent({})
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(runSubagent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        childModel: expect.objectContaining({
+          model: expect.objectContaining({ id: 'openai/gpt-4.1-mini' }),
+        }),
+      }),
+    )
+  })
+
+  it('rejects modelId values outside the subagent model pool', async () => {
+    const result = await callDelegateSubagent({ modelId: 'openai/forbidden' })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status !== ToolCallResponseStatus.Error) {
+      throw new Error('Expected delegate_subagent to reject forbidden modelId')
+    }
+    expect(result.error).toContain('not allowed for delegate_subagent')
+    expect(runSubagent).not.toHaveBeenCalled()
   })
 })
 

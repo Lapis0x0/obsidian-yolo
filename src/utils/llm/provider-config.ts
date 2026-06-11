@@ -28,15 +28,27 @@ export function resolveEmbeddingModelProvider(
 
 export function getRequestTransportModeValue(
   additionalSettings: Record<string, unknown> | undefined,
+  isDesktop: boolean,
 ): RequestTransportMode {
   const mode = additionalSettings?.requestTransportMode
-  if (
-    mode === 'auto' ||
-    mode === 'browser' ||
-    mode === 'obsidian' ||
-    mode === 'node'
-  ) {
+  if (mode && typeof mode === 'object') {
+    const byPlatform = mode as Record<string, unknown>
+    const platformMode = isDesktop ? byPlatform.desktop : byPlatform.mobile
+    if (
+      platformMode === 'browser' ||
+      platformMode === 'obsidian' ||
+      (isDesktop && platformMode === 'node')
+    ) {
+      return platformMode
+    }
+  }
+
+  if (mode === 'browser' || mode === 'obsidian') {
     return mode
+  }
+
+  if (mode === 'node') {
+    return isDesktop ? 'node' : 'browser'
   }
 
   if (additionalSettings?.useObsidianRequestUrl === true) {
@@ -47,7 +59,7 @@ export function getRequestTransportModeValue(
     return 'browser'
   }
 
-  return 'auto'
+  return isDesktop ? 'node' : 'browser'
 }
 
 export function providerSupportsEmbedding(provider: LLMProvider): boolean {

@@ -1,3 +1,5 @@
+import { normalizeSubagentModelOptions } from '../../core/agent/subagent/model-config'
+
 import { SETTINGS_SCHEMA_VERSION, SETTING_MIGRATIONS } from './migrations'
 import { YoloSettings, yoloSettingsSchema } from './setting.types'
 
@@ -58,7 +60,7 @@ export function normalizeYoloSettingsReferences(
   })
   const validAssistantIds = new Set(assistants.map((assistant) => assistant.id))
 
-  return {
+  const normalized: YoloSettings = {
     ...settings,
     chatModels,
     embeddingModels,
@@ -105,6 +107,8 @@ export function normalizeYoloSettingsReferences(
         ? settings.quickAskAssistantId
         : undefined,
   }
+
+  return normalizeSubagentModelOptions(normalized)
 }
 
 function migrateSettings(

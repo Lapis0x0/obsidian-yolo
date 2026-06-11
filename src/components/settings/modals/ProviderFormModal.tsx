@@ -13,7 +13,7 @@ import {
   LLMProviderPresetType,
   ProviderHeader,
   getDefaultApiTypeForPresetType,
-  getDefaultRequestTransportModeForPresetType,
+  getDefaultRequestTransportModeByPlatform,
   getSupportedApiTypesForPresetType,
   llmProviderSchema,
 } from '../../../types/provider.types'
@@ -79,17 +79,9 @@ function ProviderFormComponent({
 }: ProviderFormComponentProps & { onClose: () => void }) {
   const { t } = useLanguage()
   const getDefaultAdditionalSettings = (
-    presetType: LLMProvider['presetType'],
+    _presetType: LLMProvider['presetType'],
   ): LLMProvider['additionalSettings'] => {
-    const requestTransportMode = getDefaultRequestTransportModeForPresetType(
-      presetType,
-      Platform.isDesktop,
-    )
-    if (!requestTransportMode) {
-      return undefined
-    }
-
-    return { requestTransportMode }
+    return { requestTransportMode: getDefaultRequestTransportModeByPlatform() }
   }
 
   const [formData, setFormData] = useState<LLMProvider>(
@@ -254,7 +246,6 @@ function ProviderFormComponent({
       formData.apiType === 'amazon-bedrock'
     )
   const requestTransportOptions = {
-    auto: t('settings.providers.requestTransportModeAuto'),
     browser: t('settings.providers.requestTransportModeBrowser'),
     obsidian: t('settings.providers.requestTransportModeObsidian'),
     ...(Platform.isDesktop
@@ -436,19 +427,31 @@ function ProviderFormComponent({
               <ObsidianDropdown
                 value={getRequestTransportModeValue(
                   formData.additionalSettings,
+                  Platform.isDesktop,
                 )}
                 options={requestTransportOptions}
                 onChange={(value: string) =>
-                  setFormData(
-                    (prev) =>
-                      ({
-                        ...prev,
-                        additionalSettings: {
-                          ...(prev.additionalSettings ?? {}),
-                          [setting.key]: value,
+                  setFormData((prev) => {
+                    const previousMode =
+                      prev.additionalSettings?.requestTransportMode
+                    const previousByPlatform =
+                      previousMode &&
+                      typeof previousMode === 'object' &&
+                      !Array.isArray(previousMode)
+                        ? previousMode
+                        : getDefaultRequestTransportModeByPlatform()
+
+                    return {
+                      ...prev,
+                      additionalSettings: {
+                        ...(prev.additionalSettings ?? {}),
+                        [setting.key]: {
+                          ...previousByPlatform,
+                          [Platform.isDesktop ? 'desktop' : 'mobile']: value,
                         },
-                      }) as LLMProvider,
-                  )
+                      },
+                    } as LLMProvider
+                  })
                 }
               />
             ) : (

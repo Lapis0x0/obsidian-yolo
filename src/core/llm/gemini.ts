@@ -7,7 +7,6 @@ import type {
   Tool as GeminiTool,
   ToolConfig as GeminiToolConfig,
 } from '@google/genai'
-import { Platform } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import { ChatModel } from '../../types/chat-model.types'
@@ -177,10 +176,6 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     this.transportContext = {
       providerLabel: PROVIDER_LABEL,
       requestPolicy: this.requestPolicy,
-    }
-    if (!Platform.isDesktop && this.requestTransportMode === 'node') {
-      // Node transport requires Electron's main process; gracefully degrade.
-      this.requestTransportMode = 'obsidian'
     }
   }
 

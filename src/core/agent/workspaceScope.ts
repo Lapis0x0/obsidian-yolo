@@ -1,4 +1,8 @@
+import { normalizePath } from 'obsidian'
+
 import { AssistantWorkspaceScope } from '../../types/assistant.types'
+
+export const BUILTIN_SKILL_PATH_PREFIX = 'builtin://'
 
 const normalize = (raw: string): string =>
   raw.replace(/^\/+/, '').replace(/\/+$/, '')
@@ -84,14 +88,32 @@ export function collectToolCallPaths(
  * Returns the first out-of-scope path (for error messaging), or null if all
  * paths are allowed / scope is disabled / tool has no path args.
  */
+export function normalizeSkillPathForExemption(path: string): string {
+  const trimmed = path.trim()
+  if (trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX)) {
+    return trimmed
+  }
+  return normalizePath(trimmed)
+}
+
+export function buildAllowedSkillPathSet(
+  paths: readonly string[],
+): Set<string> {
+  return new Set(paths.map(normalizeSkillPathForExemption))
+}
+
 export function findPathOutsideScope(
   toolName: string,
   args: Record<string, unknown> | undefined,
   scope: AssistantWorkspaceScope | undefined,
+  options?: { exemptPaths?: ReadonlySet<string> },
 ): string | null {
   if (!scope?.enabled) return null
   const paths = collectToolCallPaths(toolName, args)
   for (const path of paths) {
+    if (options?.exemptPaths?.has(normalizeSkillPathForExemption(path))) {
+      continue
+    }
     if (!isPathAllowedByScope(path, scope)) return path
   }
   return null

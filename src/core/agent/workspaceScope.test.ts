@@ -167,4 +167,36 @@ describe('findPathOutsideScope', () => {
       ),
     ).toBeNull()
   })
+
+  it('exempts listed skill paths from workspace scope', () => {
+    const exemptPaths = new Set(['YOLO/skills/demo/SKILL.md'])
+    expect(
+      findPathOutsideScope(
+        'fs_read',
+        { paths: ['YOLO/skills/demo/SKILL.md'] },
+        scope({ include: ['Notes'] }),
+        { exemptPaths },
+      ),
+    ).toBeNull()
+    expect(
+      findPathOutsideScope(
+        'fs_read',
+        { paths: ['YOLO/skills/other/SKILL.md'] },
+        scope({ include: ['Notes'] }),
+        { exemptPaths },
+      ),
+    ).toBe('YOLO/skills/other/SKILL.md')
+  })
+
+  it('exempts builtin skill paths from workspace scope', () => {
+    const exemptPaths = new Set(['builtin://skills/skill-creator.md'])
+    expect(
+      findPathOutsideScope(
+        'fs_read',
+        { paths: ['builtin://skills/skill-creator.md'] },
+        scope({ include: ['Notes'] }),
+        { exemptPaths },
+      ),
+    ).toBeNull()
+  })
 })

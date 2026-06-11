@@ -196,6 +196,9 @@ export const mcpServerToolOptionsSchema = z.record(
   z.object({
     disabled: z.boolean().optional(),
     allowAutoExecution: z.boolean().optional(),
+    blockedPrefixes: z.array(z.string()).optional(),
+    allowedModelIds: z.array(z.string()).optional(),
+    preferredModelId: z.string().optional(),
   }),
 )
 

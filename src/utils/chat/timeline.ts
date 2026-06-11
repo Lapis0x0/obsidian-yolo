@@ -8,7 +8,6 @@ import type {
   ChatUserMessage,
 } from '../../types/chat'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
-import { getToolCallArgumentsText } from '../../types/tool-call.types'
 
 const USER_MESSAGE_ESTIMATED_HEIGHT = 92
 const ASSISTANT_GROUP_ESTIMATED_HEIGHT = 180
@@ -21,6 +20,8 @@ const USER_TO_ASSISTANT_SPACING = 24
 const USER_MESSAGE_MAX_ESTIMATED_HEIGHT = 420
 const ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT = 2800
 const TOOL_MESSAGE_MAX_ESTIMATED_HEIGHT = 720
+const TOOL_MESSAGE_BASE_ESTIMATED_HEIGHT = 24
+const COLLAPSED_TOOL_CALL_ESTIMATED_HEIGHT = 34
 
 function clampEstimatedHeight(
   value: number,
@@ -119,14 +120,9 @@ function estimateAssistantMessageHeight(message: ChatAssistantMessage): number {
 
 function estimateToolMessageHeight(message: ChatToolMessage): number {
   const toolCallCount = message.toolCalls.length
-  const payloadWeight = message.toolCalls.reduce((sum, toolCall) => {
-    const requestArgsLength =
-      getToolCallArgumentsText(toolCall.request.arguments)?.length ?? 0
-    const responseLength = JSON.stringify(toolCall.response ?? {}).length
-    return sum + requestArgsLength + responseLength
-  }, 0)
-
-  const estimated = 72 + toolCallCount * 64 + Math.ceil(payloadWeight / 180)
+  const estimated =
+    TOOL_MESSAGE_BASE_ESTIMATED_HEIGHT +
+    toolCallCount * COLLAPSED_TOOL_CALL_ESTIMATED_HEIGHT
   return clampEstimatedHeight(estimated, {
     min: 72,
     max: TOOL_MESSAGE_MAX_ESTIMATED_HEIGHT,
@@ -141,8 +137,12 @@ function estimateAssistantGroupHeight(
       return sum + estimateAssistantMessageHeight(message)
     }
 
-    if (message.role === 'external_agent_result') {
-      return sum + 120 // estimated height for external agent result card
+    if (
+      message.role === 'external_agent_result' ||
+      message.role === 'subagent_result' ||
+      message.role === 'terminal_command_result'
+    ) {
+      return sum + 120
     }
 
     return sum + estimateToolMessageHeight(message)
@@ -192,9 +192,22 @@ export const buildMessageTimelineItems = ({
   const assistantGroupBoundaryMessageIdSet = new Set(
     assistantGroupBoundaryMessageIds,
   )
-  const items: ChatTimelineItem[] = groupedChatMessages.map(
+  const renderableGroupedChatMessages = groupedChatMessages.filter(
+    (messageOrGroup) => {
+      if (!Array.isArray(messageOrGroup) || messageOrGroup.length !== 1) {
+        return true
+      }
+
+      const message = messageOrGroup[0]
+      return (
+        message?.role !== 'subagent_result' &&
+        message?.role !== 'terminal_command_result'
+      )
+    },
+  )
+  const items: ChatTimelineItem[] = renderableGroupedChatMessages.map(
     (messageOrGroup, index) => {
-      const previousItem = groupedChatMessages[index - 1]
+      const previousItem = renderableGroupedChatMessages[index - 1]
       const firstMessageId = Array.isArray(messageOrGroup)
         ? (messageOrGroup.at(0)?.id ?? 'assistant-group')
         : messageOrGroup.id

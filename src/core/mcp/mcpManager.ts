@@ -19,6 +19,8 @@ import {
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
 import { WEB_OPS_GROUP_TOOL_NAME } from '../agent/builtinToolUiMeta'
+import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
+import type { SubagentParentContext } from '../agent/subagent/parent-context'
 import type { AgentRunContext } from '../agent/types'
 import type { RAGEngine } from '../rag/ragEngine'
 import {
@@ -79,6 +81,7 @@ export class McpManager {
   private readonly app: App
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
   private readonly getRagEngine?: () => Promise<RAGEngine>
+  private readonly promptSourceWatcher?: PromptSourceWatcher
   private settings: YoloSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
@@ -127,9 +130,9 @@ export class McpManager {
   }
 
   private isLocalToolEnabled(toolName: string): boolean {
-    // Web search tools share a single `web_ops` group switch, but also need a
-    // configured provider to actually run. Keep this branch ahead of the
-    // direct-disabled early return so readiness is always evaluated.
+    // Web tools share a single `web_ops` group switch. `web_search` needs a
+    // configured provider, while `web_scrape` can fall back to the generic
+    // static-HTML scraper when no provider is configured.
     if (
       toolName === WEB_SEARCH_TOOL_NAME ||
       toolName === WEB_SCRAPE_TOOL_NAME
@@ -140,9 +143,12 @@ export class McpManager {
       const splitToolDisabled =
         this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
       if (groupDisabled || splitToolDisabled) return false
-      // web_scrape is always available alongside web_search: providers
-      // without a specialized extract API fall back to a generic scraper.
-      if (!isWebSearchToolReady(this.settings.webSearch)) return false
+      if (
+        toolName === WEB_SEARCH_TOOL_NAME &&
+        !isWebSearchToolReady(this.settings.webSearch)
+      ) {
+        return false
+      }
       return true
     }
     const directDisabled =
@@ -173,6 +179,7 @@ export class McpManager {
     openApplyReview,
     registerSettingsListener,
     getRagEngine,
+    promptSourceWatcher,
   }: {
     app: App
     settings: YoloSettings
@@ -181,10 +188,12 @@ export class McpManager {
       listener: (settings: YoloSettings) => void,
     ) => () => void
     getRagEngine?: () => Promise<RAGEngine>
+    promptSourceWatcher?: PromptSourceWatcher
   }) {
     this.app = app
     this.openApplyReview = openApplyReview
     this.getRagEngine = getRagEngine
+    this.promptSourceWatcher = promptSourceWatcher
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -262,6 +271,10 @@ export class McpManager {
    */
   public getJsSandboxSettings(): JsSandboxSettings {
     return getJsSandboxSettings(this.settings)
+  }
+
+  public getSettingsSnapshot(): YoloSettings {
+    return this.settings
   }
 
   public subscribeServersChange(callback: (servers: McpServerState[]) => void) {
@@ -779,6 +792,8 @@ export class McpManager {
     requireReview = false,
     chatModelId,
     workspaceScope,
+    allowedSkillPaths,
+    subagentParentContext,
     runContext,
   }: {
     name: string
@@ -791,7 +806,9 @@ export class McpManager {
     requireReview?: boolean
     chatModelId?: string
     workspaceScope?: AssistantWorkspaceScope
+    allowedSkillPaths?: readonly string[]
     runContext?: AgentRunContext
+    subagentParentContext?: SubagentParentContext
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -834,7 +851,10 @@ export class McpManager {
           signal: compositeSignal,
           chatModelId,
           workspaceScope,
+          allowedSkillPaths,
           runContext,
+          subagentParentContext,
+          promptSourceWatcher: this.promptSourceWatcher,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {

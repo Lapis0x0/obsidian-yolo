@@ -253,3 +253,30 @@ export async function getProjectInstructionsSection(
   const sections = await collectSections(app, chains)
   return renderSections(sections)
 }
+
+/**
+ * Candidate AGENTS.md / CLAUDE.md paths for the same folder chains used when
+ * building the project-instructions section. Used to watch for external edits
+ * without scanning the entire vault.
+ */
+export function resolveProjectInstructionFilePaths(
+  app: App,
+  enabled: boolean,
+  workspaceScope?: AssistantWorkspaceScope,
+): Set<string> {
+  if (!enabled) return new Set()
+  const chains = deriveFolderChains(app, workspaceScope)
+  const paths = new Set<string>()
+  for (const chain of chains) {
+    for (const folder of chain) {
+      for (const name of PROJECT_INSTRUCTION_FILES) {
+        const filePath =
+          folder.path === '' || folder.path === '/'
+            ? name
+            : `${folder.path}/${name}`
+        paths.add(filePath)
+      }
+    }
+  }
+  return paths
+}

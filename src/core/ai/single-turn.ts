@@ -23,7 +23,7 @@ import {
   logAuxiliaryLLMUsage,
   runWithLLMDebugTrace,
 } from '../llm/debugCapture'
-import { stripProviderFeatures } from '../llm/strip-provider-features'
+import { applyLightweightRequestPolicy } from '../llm/lightweight-request-policy'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
 
 import {
@@ -84,11 +84,11 @@ type SingleTurnExecutionInput = {
   /**
    * `standard` (default): forward the model as-configured, including any
    * hosted tools, reasoning, and custom-parameter injections.
-   * `auxiliary`: strip those features for one-shot helper calls
-   * (title generation, conversation compaction) that should be a plain
-   * "messages in, short reply out" round trip.
+   * `lightweight`: apply the lightweight request policy for one-shot helper
+   * calls (title generation, tab completion, short summaries) that
+   * should not inherit hosted tools or heavyweight model customizations.
    */
-  purpose?: 'standard' | 'auxiliary'
+  purpose?: 'standard' | 'lightweight'
   onStreamDelta?: (delta: {
     contentDelta: string
     reasoningDelta: string
@@ -250,30 +250,33 @@ export async function executeSingleTurn({
 }: SingleTurnExecutionInput): Promise<SingleTurnExecutionResult> {
   const resolvedToolChoice: RequestToolChoice | undefined =
     tool_choice ?? (tools ? 'auto' : undefined)
-  const isAuxiliary = purpose === 'auxiliary'
-  const effectiveModel = isAuxiliary ? stripProviderFeatures(model) : model
-  // Wall-clock for the auxiliary debug logger. Auxiliary single-turn calls
-  // (voice polish, chat title, compaction summary, …) do not surface in the
-  // in-app debug panel because they have no `sourceUserMessageId`. When debug
-  // capture is on we still want their token / cache stats on the console.
-  const auxStartedAt = Date.now()
-  const logAuxIfNeeded = (
+  const isLightweight = purpose === 'lightweight'
+  const baseProviderOptions = { geminiTools }
+  const effectivePolicy = isLightweight
+    ? applyLightweightRequestPolicy({
+        model,
+        options: baseProviderOptions,
+      })
+    : { model, options: baseProviderOptions }
+  const effectiveModel = effectivePolicy.model
+  const effectiveProviderOptions = effectivePolicy.options
+  // Lightweight helper calls are not tied to a visible conversation message,
+  // so debug capture has no panel row for them. Keep token / cache stats
+  // observable in the console when debug capture is enabled.
+  const lightweightStartedAt = Date.now()
+  const logLightweightIfNeeded = (
     usage: ResponseUsage | undefined,
     label: string,
   ): void => {
-    if (!isAuxiliary) return
+    if (!isLightweight) return
     logAuxiliaryLLMUsage({
       purpose: label,
       modelName: model.name ?? model.model,
       providerId: model.providerId,
       usage,
-      durationMs: Date.now() - auxStartedAt,
+      durationMs: Date.now() - lightweightStartedAt,
     })
   }
-  // Auxiliary calls must never carry Gemini-native hosted tools, regardless of
-  // what the caller passes in — the option lives outside the ChatModel object
-  // and would otherwise bypass stripProviderFeatures.
-  const effectiveGeminiTools = isAuxiliary ? undefined : geminiTools
   const withDebugTrace = <T>(run: () => Promise<T>): Promise<T> =>
     runWithLLMDebugTrace(debugTraceId, run)
   const runNonStreaming = async (): Promise<SingleTurnExecutionResult> => {
@@ -299,12 +302,12 @@ export async function executeSingleTurn({
           {
             signal: requestController.signal,
             debugTraceId,
-            geminiTools: effectiveGeminiTools,
+            geminiTools: effectiveProviderOptions.geminiTools,
           },
         ),
       )
 
-      logAuxIfNeeded(response.usage, 'single-turn:non-stream')
+      logLightweightIfNeeded(response.usage, 'single-turn:non-stream')
       return {
         content: response.choices?.[0]?.message?.content ?? '',
         reasoning: response.choices?.[0]?.message?.reasoning ?? undefined,
@@ -387,7 +390,7 @@ export async function executeSingleTurn({
         {
           signal: streamController.signal,
           debugTraceId,
-          geminiTools: effectiveGeminiTools,
+          geminiTools: effectiveProviderOptions.geminiTools,
         },
       )
 
@@ -514,7 +517,7 @@ export async function executeSingleTurn({
       }
     }
 
-    logAuxIfNeeded(usage, 'single-turn:stream')
+    logLightweightIfNeeded(usage, 'single-turn:stream')
     return {
       content,
       reasoning: reasoning || undefined,

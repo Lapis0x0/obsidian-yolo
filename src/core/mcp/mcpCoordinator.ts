@@ -2,6 +2,7 @@ import { App } from 'obsidian'
 
 import { YoloSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import { McpManager } from './mcpManager'
@@ -14,6 +15,7 @@ type McpCoordinatorDeps = {
     listener: (settings: YoloSettings) => void,
   ) => () => void
   getRagEngine?: () => Promise<RAGEngine>
+  promptSourceWatcher?: PromptSourceWatcher
 }
 
 export class McpCoordinator {
@@ -24,6 +26,7 @@ export class McpCoordinator {
     listener: (settings: YoloSettings) => void,
   ) => () => void
   private readonly getRagEngine?: () => Promise<RAGEngine>
+  private readonly promptSourceWatcher?: PromptSourceWatcher
 
   private mcpManager: McpManager | null = null
   private mcpManagerInitPromise: Promise<McpManager> | null = null
@@ -34,6 +37,7 @@ export class McpCoordinator {
     this.openApplyReview = deps.openApplyReview
     this.registerSettingsListener = deps.registerSettingsListener
     this.getRagEngine = deps.getRagEngine
+    this.promptSourceWatcher = deps.promptSourceWatcher
   }
 
   async getMcpManager(): Promise<McpManager> {
@@ -50,6 +54,7 @@ export class McpCoordinator {
             openApplyReview: this.openApplyReview,
             registerSettingsListener: this.registerSettingsListener,
             getRagEngine: this.getRagEngine,
+            promptSourceWatcher: this.promptSourceWatcher,
           })
           await this.mcpManager.initialize()
           return this.mcpManager

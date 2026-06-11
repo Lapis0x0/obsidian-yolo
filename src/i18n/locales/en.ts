@@ -71,6 +71,7 @@ export const en: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
+      current: 'Current',
       retryTitle: 'Retry title',
       archived: 'Archived',
       hideArchived: 'Hide archived',
@@ -312,7 +313,7 @@ export const en: TranslationKeys = {
     },
     agent: {
       title: 'Agent',
-      desc: 'Manage global capabilities and configure your agents.',
+      desc: 'Manage global tool availability. Enabled tools become selectable by agents; actual use must still be enabled in each agent.',
       globalCapabilities: 'Global capabilities',
       mcpServerCount: '{count} custom tool servers (MCP) connected',
       tools: 'Tools',
@@ -475,9 +476,12 @@ export const en: TranslationKeys = {
       builtinWebOpsDesc: 'Web search and page scraping',
       builtinJsEvalLabel: 'JavaScript Execution',
       builtinJsEvalDesc: 'Run JavaScript in an isolated environment.',
-      builtinDelegateExternalAgentLabel: 'Delegate to External Agent',
-      builtinDelegateExternalAgentDesc:
-        'Delegate complex tasks to a CLI agent installed locally (Codex / Claude Code).',
+      builtinTerminalCommandLabel: 'Terminal Commands',
+      builtinTerminalCommandDesc:
+        'Run commands in the local terminal. Desktop-only.',
+      builtinDelegateSubagentLabel: 'Delegate Subagent',
+      builtinDelegateSubagentDesc:
+        'Dispatch an isolated temporary subagent to complete a self-contained task asynchronously.',
       builtinTodoWriteLabel: 'Task List',
       builtinTodoWriteDesc:
         'Let the agent plan and track multi-step task progress autonomously. Agent mode only.',
@@ -583,7 +587,7 @@ export const en: TranslationKeys = {
       autoContextCompactionBlockTitle: 'Context compaction',
       autoContextCompaction: 'Automatic context compaction',
       autoContextCompactionDesc:
-        "When the last assistant reply's prompt token usage crosses the threshold, compact older history before your next message is sent (not during the reply).",
+        'When the context reaches the threshold, remind the Agent to run the context compaction command.',
       autoContextCompactionThresholdMode: 'Compaction threshold mode',
       autoContextCompactionModeTokens: 'Absolute prompt tokens',
       autoContextCompactionModeRatio: 'Fraction of context window',
@@ -636,6 +640,36 @@ export const en: TranslationKeys = {
     jsSandbox: {
       openSettings: 'Configure JavaScript execution',
     },
+    terminalCommand: {
+      openSettings: 'Configure terminal command',
+      blockedPrefixes: 'Blocked command prefixes',
+      blockedPrefixesDesc:
+        'Commands matching these prefixes will be rejected before execution.',
+      matchingRule:
+        'Prefix matching uses the first command token: rm blocks rm -rf /, but not npm run build.',
+      addPrefixPlaceholder: 'Command prefix, e.g. rm',
+      resetDefaults: 'Reset to defaults',
+    },
+    subagent: {
+      openSettings: 'Configure subagent models',
+      modelPool: 'Subagent model pool',
+      modelPoolDesc:
+        'The parent agent can dispatch subagents only with models in this pool.',
+      preferredModelRule:
+        'If the parent agent does not pass modelId explicitly, the preferred model is used.',
+      addModelsTitle: 'Add subagent models',
+      addModelsDesc:
+        'Select registered chat models to add to the subagent model pool.',
+      addModelPlaceholder: 'Select a model',
+      addModel: 'Add model',
+      addSelectedModels: 'Add selected models',
+      searchModels: 'Search models...',
+      setPreferredModel: 'Set as preferred model',
+      defaultModel: 'Default',
+      setDefaultModel: 'Set default',
+      emptyModelPool: 'No subagent models selected.',
+      poolCount: '{count} models',
+    },
     webSearch: {
       modalTitle: 'Web search settings',
       openSettings: 'Configure web search providers',
@@ -683,6 +717,9 @@ export const en: TranslationKeys = {
       fieldDepth: 'Depth',
       fieldSearchUrl: 'Search URL',
       fieldScrapeUrl: 'Scrape URL',
+      fieldUseProviderScrapeApi: 'Use provider scrape API',
+      fieldUseProviderScrapeApiDesc:
+        'When enabled, web_scrape uses this provider\u2019s extract API. When disabled, web_scrape uses the built-in generic scraper (static HTML, no extra API usage).',
       fieldBaseUrl: 'Base URL',
       fieldLanguage: 'Language',
       fieldEngines: 'Engines (comma-separated)',
@@ -769,13 +806,13 @@ export const en: TranslationKeys = {
       useObsidianRequestUrl: 'Use Obsidian requestUrl',
       useObsidianRequestUrlDesc:
         'Use Obsidian requestUrl to bypass cross-origin restrictions. Streaming responses are buffered.',
-      requestTransportMode: 'Request transport mode',
+      requestTransportMode: 'Network request method',
       requestTransportModeDesc:
-        'Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl. Obsidian mode buffers streaming responses; Node mode uses desktop Node fetch for real streaming.',
+        'Choose how this provider sends network requests on this device. Desktop direct connection is recommended on desktop. On mobile, switch to Obsidian built-in request if browser requests have streaming or network issues.',
       requestTransportModeAuto: 'Auto (recommended)',
-      requestTransportModeBrowser: 'Browser fetch only',
-      requestTransportModeObsidian: 'Obsidian requestUrl only',
-      requestTransportModeNode: 'Desktop Node fetch only',
+      requestTransportModeBrowser: 'Browser request',
+      requestTransportModeObsidian: 'Obsidian built-in request',
+      requestTransportModeNode: 'Desktop direct connection (recommended)',
       promptCaching: 'Prompt caching',
       promptCachingDesc:
         'Enable Anthropic ephemeral prompt caching. Reuses system prompt, tools, and conversation history across turns to cut input tokens. Cache writes carry a 25% premium; reads cost ~10% of normal input. Available whenever the provider API type is Anthropic; upstream must actually honor the cache_control field.',
@@ -861,6 +898,12 @@ export const en: TranslationKeys = {
         firstToken: 'First token',
         dims: 'dims',
         noModels: 'No models configured under this provider',
+        deleteModel: 'Delete model',
+        deleteChatModelBlocked:
+          'Cannot delete the model currently selected as chat or title model',
+        deleteEmbeddingModelBlocked:
+          'Cannot delete the currently selected embedding model',
+        deleteEmbeddingModelInProgress: 'Deleting embedding model…',
       },
       availableModelsAuto: 'Available models (auto-fetched)',
       searchModels: 'Search models...',
@@ -2110,6 +2153,13 @@ export const en: TranslationKeys = {
     newChat: 'New chat',
     untitledConversation: 'New chat',
     continueResponse: 'Continue response',
+    loadEarlierMessages: 'Loading earlier messages',
+    loadNewerMessages: 'Loading newer messages',
+    messageNavigator: {
+      title: 'Message navigator',
+      itemAriaLabel: 'Jump to message {index}: {label}',
+      emptyMessage: 'Empty message',
+    },
     stopGeneration: 'Stop generation',
     queueMessage: {
       tooltip: 'Queue this message — it will be sent after the current step',
@@ -2187,11 +2237,17 @@ export const en: TranslationKeys = {
       createSnippetsFile: 'Click to create snippets.md',
     },
     emptyState: {
+      askTitle: 'Think first, then write',
+      askDescription:
+        'Great for questions, polishing, and rewriting with focus on expression.',
       chatTitle: 'Think first, then write',
       chatDescription:
         'Great for questions, polishing, and rewriting with focus on expression.',
       agentTitle: 'Let AI execute',
       agentDescription:
+        'Enable tools to handle search, read/write operations, and multi-step tasks.',
+      agentFullTitle: 'Let AI execute · Full Access',
+      agentFullDescription:
         'Enable tools to handle search, read/write operations, and multi-step tasks.',
     },
     compaction: {
@@ -2388,24 +2444,34 @@ export const en: TranslationKeys = {
         created: 'Planned {count} tasks',
         progress: 'Progress {done}/{total}',
       },
+      terminalCommand: {
+        sessionPoll: 'Session {id} · Poll',
+        sessionKill: 'Session {id} · Kill',
+        sessionInput: 'Session {id} · Input: {preview}',
+      },
     },
-    externalAgent: {
+    liveTask: {
       statusRunning: 'Running',
       statusDone: 'Done',
       statusAborted: 'Aborted',
       statusError: 'Error',
       progress: 'Progress',
       output: 'Output',
+      activity: 'Activity',
       abortedBeforeOutput: 'Aborted before any output was collected.',
+      noActivity: 'No activity yet.',
+      progressTruncated: 'Progress truncated.',
+      truncated: 'Output truncated.',
     },
-    externalAgentResult: {
+    subagent: {
+      openDetails: 'View subagent details',
+      planningNextMoves: 'Planning next moves',
+      noActivity: 'No activity yet.',
       statusCompleted: 'Completed',
+      statusAborted: 'Aborted',
       statusFailed: 'Failed',
-      statusCancelled: 'Cancelled',
-      statusTimedOut: 'Timed out',
-      statusKilledByShutdown: 'Stopped',
-      showOutput: 'Show output',
-      jumpToDelegate: 'Jump to original delegate message',
+      toolUseCount: '{count} tools',
+      tokenCount: '{count} tokens',
     },
     conversationSettings: {
       openAria: 'Conversation settings',
@@ -2569,12 +2635,16 @@ export const en: TranslationKeys = {
   },
 
   chatMode: {
+    ask: 'Ask',
+    askDesc: 'Ask, refine, create',
     chat: 'Chat',
     chatDesc: 'Ask, refine, create',
     rewrite: 'Rewrite',
     rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
+    agentFull: 'Agent (Full Access)',
+    agentFullDesc: 'Auto-approve all tool calls',
     warning: {
       title: 'Please confirm before enabling Agent mode',
       description:
@@ -2589,10 +2659,27 @@ export const en: TranslationKeys = {
       cancel: 'Cancel',
       confirm: 'Continue and Enable Agent',
     },
+    fullAccessWarning: {
+      title: 'Please confirm before enabling full access',
+      description:
+        'Full access auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
+      permission:
+        'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
+      cost: 'Autonomous runs may consume significant model resources and incur higher costs.',
+      backup:
+        'Back up important content in advance to avoid unintended changes.',
+      checkbox:
+        'I understand the risks above and accept responsibility for proceeding',
+      cancel: 'Cancel',
+      confirm: 'Continue with Full Access',
+    },
   },
 
   reasoning: {
     selectReasoning: 'Select reasoning',
+    effort: 'Effort',
+    faster: 'Faster',
+    smarter: 'Smarter',
     off: 'Off',
     on: 'On',
     auto: 'Auto',
@@ -2718,11 +2805,17 @@ export const en: TranslationKeys = {
     viewDetails: 'Check for updates',
     goUpdate: 'Update',
     dismiss: 'Dismiss',
-    collapse: 'Collapse',
-    showFullChangelog: 'Show full changelog',
     languageEnglish: 'EN',
     languageChinese: '中文',
     muteThisVersion: "Don't notify for this version",
+    viewHistory: 'View update history',
+    historyTitle: 'Release history',
+    historyLoading: 'Loading release history...',
+    historyError: 'Failed to load release history. Please try again later.',
+    historyEmpty: 'No release history found.',
+    historyPage: 'Page {{current}}',
+    historyPrev: 'Previous',
+    historyNext: 'Next',
     installationIncompleteTitle: 'Plugin installation incomplete',
     installationIncompleteMeta:
       'main.js {bakedVersion} · manifest {manifestVersion}',

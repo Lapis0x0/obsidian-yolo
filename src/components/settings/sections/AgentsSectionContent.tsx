@@ -52,12 +52,12 @@ import {
   LiteSkillEntry,
   getLiteSkillDocument,
   humanizeSkillName,
-  listLiteSkillEntries,
 } from '../../../core/skills/liteSkills'
 import {
   getDisabledSkillNameSet,
   resolveAssistantSkillPolicy,
 } from '../../../core/skills/skillPolicy'
+import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import {
   AgentPersona,
@@ -262,6 +262,8 @@ function createNewAgent(defaultModelId: string): Assistant {
     toolPreferences: buildDefaultBuiltinToolPreferences(),
     enabledSkills: [],
     skillPreferences: {},
+    includeCurrentFileContent: true,
+    timeContextEnabled: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -281,6 +283,8 @@ function toDraftAgent(
     skillPreferences: assistant.skillPreferences ?? {},
     enableTools: assistant.enableTools ?? true,
     includeBuiltinTools: assistant.includeBuiltinTools ?? true,
+    includeCurrentFileContent: assistant.includeCurrentFileContent ?? true,
+    timeContextEnabled: assistant.timeContextEnabled ?? true,
   }
 }
 
@@ -910,6 +914,7 @@ export function AgentsSectionContent({
     // tool list carries. Same bridge selectAllowedTools uses at request time.
     const resolvedTools = applyDynamicToolDescriptions(eligibleTools, {
       jsSandboxSettings: getJsSandboxSettings(settings),
+      settings,
     })
 
     void Promise.all(
@@ -969,10 +974,7 @@ export function AgentsSectionContent({
     return result
   }, [draftAgent, estimatedToolContextTokens.perTool, visibleToolGroups])
 
-  const skillEntries = useMemo<LiteSkillEntry[]>(
-    () => listLiteSkillEntries(app, { settings }),
-    [app, settings],
-  )
+  const skillEntries = useLiteSkillEntries(app, { settings })
 
   const disabledSkillIds = useMemo(
     () => settings.skills?.disabledSkillIds ?? [],
@@ -1352,6 +1354,34 @@ export function AgentsSectionContent({
                   </div>,
                   systemPromptOverlayTarget,
                 )}
+              <ObsidianSetting
+                name={t('settings.agent.focusSyncTitle')}
+                desc={t('settings.agent.focusSyncDesc')}
+              >
+                <ObsidianToggle
+                  value={draftAgent.includeCurrentFileContent !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      includeCurrentFileContent: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+              <ObsidianSetting
+                name={t('settings.agent.timeContextTitle')}
+                desc={t('settings.agent.timeContextDesc')}
+              >
+                <ObsidianToggle
+                  value={draftAgent.timeContextEnabled !== false}
+                  onChange={(value) => {
+                    setDraftAgent({
+                      ...draftAgent,
+                      timeContextEnabled: value,
+                    })
+                  }}
+                />
+              </ObsidianSetting>
               <ObsidianSetting
                 name={t(
                   'settings.agent.editorEnableProjectInstructions',

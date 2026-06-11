@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { AssistantToolMessageGroup } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { ResponseUsage } from '../../types/llm/response'
+import { sumResponseUsages } from '../../utils/chat/llmUsage'
 import { calculateLLMCost } from '../../utils/llm/price-calculator'
 
 export type LLMRequestEntry = {
@@ -40,53 +41,6 @@ export type LLMResponseInfo = {
   // populated (empty array when no billable calls). Each entry binds its
   // usage/durationMs/model/cost to a single assistant message.
   requests: LLMRequestEntry[]
-}
-
-const addOptionalUsageTokenCount = (
-  target: {
-    cache_read_input_tokens?: number
-    cache_creation_input_tokens?: number
-  },
-  key: 'cache_read_input_tokens' | 'cache_creation_input_tokens',
-  value: number | undefined,
-) => {
-  if (typeof value !== 'number' || value <= 0) {
-    return
-  }
-  target[key] = (target[key] ?? 0) + value
-}
-
-const sumUsages = (usages: ResponseUsage[]): ResponseUsage | null => {
-  if (usages.length === 0) {
-    return null
-  }
-
-  const total: ResponseUsage = {
-    prompt_tokens: 0,
-    completion_tokens: 0,
-    total_tokens: 0,
-  }
-
-  for (const usage of usages) {
-    total.prompt_tokens += usage.prompt_tokens
-    total.completion_tokens += usage.completion_tokens
-    addOptionalUsageTokenCount(
-      total,
-      'cache_read_input_tokens',
-      usage.cache_read_input_tokens,
-    )
-    addOptionalUsageTokenCount(
-      total,
-      'cache_creation_input_tokens',
-      usage.cache_creation_input_tokens,
-    )
-  }
-
-  // Derive total_tokens from the summed components — upstream providers'
-  // total_tokens semantics around cache aren't always consistent.
-  total.total_tokens = total.prompt_tokens + total.completion_tokens
-
-  return total
 }
 
 export function collectLLMResponseInfo(
@@ -140,7 +94,7 @@ export function collectLLMResponseInfo(
 
   const hasMultipleRequests = calls.length >= 2
   const totalUsage = hasMultipleRequests
-    ? sumUsages(calls.map((call) => call.usage))
+    ? sumResponseUsages(calls.map((call) => call.usage))
     : null
 
   let totalDurationMs: number | null = null

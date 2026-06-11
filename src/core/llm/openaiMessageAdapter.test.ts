@@ -105,6 +105,30 @@ describe('OpenAIMessageAdapter', () => {
     ])
   })
 
+  it('does not forward internal reasoningLevel as a vendor extension', () => {
+    const params = adapter.buildParams({
+      model: 'gpt-5.4-mini',
+      stream: true,
+      reasoningLevel: 'off',
+      reasoning: {
+        effort: 'none',
+        exclude: true,
+      },
+      messages: [
+        {
+          role: 'user',
+          content: 'hello',
+        },
+      ],
+    }) as unknown as Record<string, unknown>
+
+    expect(params.reasoning).toEqual({
+      effort: 'none',
+      exclude: true,
+    })
+    expect(params.reasoningLevel).toBeUndefined()
+  })
+
   it('translates document content parts into OpenAI file content (OpenRouter-style PDF passthrough)', () => {
     const params = adapter.buildParams({
       model: 'gemini-2.5-flash',

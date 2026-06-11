@@ -23,13 +23,55 @@
   z-index: 2;
 }
 
-/* Layer-based highlight (replaces Decoration.mark to avoid DOM mutation) */
+/* Suppress native CM + browser selection when our persisted layer paints it.
+   Obsidian sets both .cm-selectionLayer and ::selection on .markdown-source-view.
+   Scope to .cm-selectionLayer only — our markers also use cm-selectionBackground
+   inside .yolo-selection-highlight-layer and must stay visible. */
+.markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection ::selection,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  *::selection,
+.cm-editor.yolo-hide-native-selection ::selection,
+.cm-editor.yolo-hide-native-selection *::selection {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-selectionLayer,
+.cm-editor.yolo-hide-native-selection .cm-selectionLayer {
+  display: none !important;
+}
+
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-selectionLayer
+  .cm-selectionBackground,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-line
+  .cm-selection,
+.markdown-source-view.mod-cm6
+  .cm-editor.yolo-hide-native-selection
+  .cm-line
+  .cm-inline-code
+  .cm-selection,
+.cm-editor.yolo-hide-native-selection
+  .cm-selectionLayer
+  .cm-selectionBackground,
+.cm-editor.yolo-hide-native-selection .cm-line .cm-selection,
+.cm-editor.yolo-hide-native-selection .cm-line .cm-inline-code .cm-selection {
+  background-color: transparent !important;
+}
+
+/* Layer-based highlight (replaces Decoration.mark to avoid DOM mutation).
+   Markers also carry cm-selectionBackground so Obsidian / theme styles apply. */
 .yolo-selection-persisted-layer {
   background: var(
     --text-selection,
     color-mix(in srgb, var(--interactive-accent) 18%, transparent)
   );
-  border-radius: 2px;
   pointer-events: none;
 }
 

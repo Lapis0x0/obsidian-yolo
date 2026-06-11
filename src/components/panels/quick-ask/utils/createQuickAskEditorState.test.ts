@@ -44,6 +44,6 @@ describe('createQuickAskEditorState', () => {
       type: 'mention',
       mentionName: 'test.md (4 字符)',
     })
-    expect(editorStateToPlainText(editorState)).toBe('@test.md (4 字符) 解释')
+    expect(editorStateToPlainText(editorState)).toBe('test.md (4 字符) 解释')
   })
 })

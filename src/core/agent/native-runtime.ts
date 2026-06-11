@@ -18,16 +18,23 @@ import { runWithLLMDebugTrace } from '../llm/debugCapture'
 
 import { composeAgentInjections } from './agent-injections'
 import {
+  buildAutoContextCompactionNoticeMessage,
   buildCompactedConversationState,
   createConversationCompactionSummary,
   findCompactInstruction,
   findCompactToolCallId,
+  getAutoContextCompactionPromptTrigger,
   getLastAssistantPromptTokens,
 } from './compaction'
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
+import {
+  applyRepeatedToolFailureGuard,
+  createRepeatedToolFailureGuardState,
+} from './repeated-tool-failure-guard'
 import { estimateContinuationRequestContextTokens } from './requestContextEstimate'
 import { AgentRuntime } from './runtime'
+import { buildSubagentParentContext } from './subagent/parent-context'
 import { AgentToolGateway } from './tool-gateway'
 import { shouldProceedToToolPhase } from './tool-phase'
 import {
@@ -104,9 +111,16 @@ export class NativeAgentRuntime implements AgentRuntime {
       enableToolDisclosure: input.enableToolDisclosure,
       toolPreferences: input.toolPreferences,
       workspaceScope: input.workspaceScope,
-      allowedSkillNames: input.allowedSkillNames,
+      allowedSkillPaths: input.allowedSkillPaths,
       apiType: input.apiType,
       runContext: input.runContext,
+      subagentParentContext: input.systemPromptOverride
+        ? undefined
+        : buildSubagentParentContext(input, this.loopConfig),
+      isSubagentChildRun: Boolean(input.systemPromptOverride),
+      toolApprovalConversationId: input.toolApprovalConversationId,
+      blockedCommandPrefixes: input.blockedCommandPrefixes,
+      bypassToolApproval: input.bypassToolApproval,
     })
     const worker = createAgentLoopWorker()
     const runId = uuidv4()
@@ -124,6 +138,8 @@ export class NativeAgentRuntime implements AgentRuntime {
     let runSettled = false
     let workerTaskQueue = Promise.resolve()
     let abortListener: (() => void) | null = null
+    let repeatedToolFailureGuardState = createRepeatedToolFailureGuardState()
+    const promptedAutoCompactionAssistantMessageIds = new Set<string>()
 
     const runCompletion = new Promise<void>((resolve, reject) => {
       const handleWorkerMessage = (message: AgentWorkerOutbound): void => {
@@ -150,13 +166,25 @@ export class NativeAgentRuntime implements AgentRuntime {
                   }
                 }
 
+                const conversationMessages = [
+                  ...requestMessages,
+                  ...this.messages,
+                ]
+                const autoContextCompactionNotice =
+                  this.buildAutoContextCompactionNotice({
+                    input,
+                    messages: conversationMessages,
+                    promptedAssistantMessageIds:
+                      promptedAutoCompactionAssistantMessageIds,
+                  })
+
                 const llmTurnExecutor = new AgentLlmTurnExecutor({
                   providerClient: input.providerClient,
                   model: input.model,
                   requestContextBuilder: input.requestContextBuilder,
                   mcpManager: input.mcpManager,
                   conversationId: input.conversationId,
-                  messages: [...requestMessages, ...this.messages],
+                  messages: conversationMessages,
                   branchId: input.branchId,
                   sourceUserMessageId: input.sourceUserMessageId,
                   branchLabel: input.branchLabel,
@@ -167,15 +195,20 @@ export class NativeAgentRuntime implements AgentRuntime {
                   allowedToolNames: input.allowedToolNames,
                   enableToolDisclosure: input.enableToolDisclosure,
                   toolPreferences: input.toolPreferences,
-                  allowedSkillNames: input.allowedSkillNames,
+                  allowedSkillPaths: input.allowedSkillPaths,
                   abortSignal,
                   reasoningLevel: input.reasoningLevel,
                   requestParams: input.requestParams,
                   contextualInjections: composeAgentInjections({
                     baseInjections: input.contextualInjections,
-                    messages: [...requestMessages, ...this.messages],
+                    messages: conversationMessages,
                   }),
+                  runtimeModePrompt: input.runtimeModePrompt,
+                  transientRequestMessages: autoContextCompactionNotice
+                    ? [autoContextCompactionNotice]
+                    : undefined,
                   geminiTools: input.geminiTools,
+                  systemPromptOverride: input.systemPromptOverride,
                   onAssistantMessage: (assistantMessage) => {
                     this.upsertAssistantMessage(assistantMessage)
                     this.notifySubscribers()
@@ -244,15 +277,20 @@ export class NativeAgentRuntime implements AgentRuntime {
                       debugTraceId: currentDebugTraceId,
                     }),
                 )
+                const guardedToolResult = applyRepeatedToolFailureGuard({
+                  state: repeatedToolFailureGuardState,
+                  toolMessage: completedToolMessage,
+                })
+                repeatedToolFailureGuardState = guardedToolResult.state
+                const guardedToolMessage = guardedToolResult.toolMessage
 
-                this.replaceToolMessage(completedToolMessage)
+                this.replaceToolMessage(guardedToolMessage)
                 this.notifySubscribers()
 
                 const compactToolCallId =
-                  findCompactToolCallId(completedToolMessage)
+                  findCompactToolCallId(guardedToolMessage)
                 if (compactToolCallId) {
-                  this.pendingCompactionAnchorMessageId =
-                    completedToolMessage.id
+                  this.pendingCompactionAnchorMessageId = guardedToolMessage.id
                   this.notifySubscribers()
 
                   const conversationMessages = [
@@ -312,11 +350,11 @@ export class NativeAgentRuntime implements AgentRuntime {
                             allowedToolNames: input.allowedToolNames,
                             enableToolDisclosure: input.enableToolDisclosure,
                             toolPreferences: input.toolPreferences,
-                            allowedSkillNames: input.allowedSkillNames,
                             contextualInjections: composeAgentInjections({
                               baseInjections: input.contextualInjections,
                               messages: conversationMessages,
                             }),
+                            runtimeModePrompt: input.runtimeModePrompt,
                           })
                       } catch (error) {
                         console.warn(
@@ -363,6 +401,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     type: 'tool_result',
                     runId,
                     hasPendingTools: false,
+                    forceStopReason: guardedToolResult.forceStopReason,
                   })
                   return
                 }
@@ -371,7 +410,8 @@ export class NativeAgentRuntime implements AgentRuntime {
                   type: 'tool_result',
                   runId,
                   hasPendingTools:
-                    toolGateway.hasPendingToolCalls(completedToolMessage),
+                    toolGateway.hasPendingToolCalls(guardedToolMessage),
+                  forceStopReason: guardedToolResult.forceStopReason,
                 })
                 return
               }
@@ -439,6 +479,37 @@ export class NativeAgentRuntime implements AgentRuntime {
     )
   }
 
+  private buildAutoContextCompactionNotice({
+    input,
+    messages,
+    promptedAssistantMessageIds,
+  }: {
+    input: AgentRuntimeRunInput
+    messages: ChatMessage[]
+    promptedAssistantMessageIds: Set<string>
+  }): RequestMessage | null {
+    if (!this.loopConfig.enableTools || !input.autoContextCompaction) {
+      return null
+    }
+
+    const trigger = getAutoContextCompactionPromptTrigger({
+      messages,
+      chatOptions: input.autoContextCompaction.chatOptions,
+      maxContextTokens: input.autoContextCompaction.maxContextTokens,
+      compactionState: this.compactionState,
+      promptedAssistantMessageIds,
+    })
+    if (!trigger) {
+      return null
+    }
+
+    promptedAssistantMessageIds.add(trigger.assistantMessage.id)
+    return buildAutoContextCompactionNoticeMessage({
+      trigger,
+      chatOptions: input.autoContextCompaction.chatOptions,
+    })
+  }
+
   private async runSingleTurnFastPath(
     input: AgentRuntimeRunInput,
     abortSignal: AbortSignal,
@@ -458,12 +529,14 @@ export class NativeAgentRuntime implements AgentRuntime {
       apiType: input.apiType,
       allowedToolNames: input.allowedToolNames,
       toolPreferences: input.toolPreferences,
-      allowedSkillNames: input.allowedSkillNames,
+      allowedSkillPaths: input.allowedSkillPaths,
       abortSignal,
       reasoningLevel: input.reasoningLevel,
       requestParams: input.requestParams,
       contextualInjections: input.contextualInjections,
+      runtimeModePrompt: input.runtimeModePrompt,
       geminiTools: input.geminiTools,
+      systemPromptOverride: input.systemPromptOverride,
       onAssistantMessage: (assistantMessage) => {
         this.upsertAssistantMessage(assistantMessage)
         this.notifySubscribers()

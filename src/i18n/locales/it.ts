@@ -68,6 +68,7 @@ export const it: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
+      current: 'Attuale',
       retryTitle: 'Riprova titolo',
       archived: 'Archiviate',
       hideArchived: 'Nascondi archiviate',
@@ -314,7 +315,7 @@ export const it: TranslationKeys = {
     },
     agent: {
       title: 'Agent',
-      desc: 'Gestisci le capacità globali e configura i tuoi agenti.',
+      desc: "Gestisci la disponibilità globale degli strumenti. Dopo l'abilitazione, gli strumenti possono essere selezionati dagli agent; l'uso effettivo va comunque abilitato nel singolo agent.",
       globalCapabilities: 'Capacità globali',
       mcpServerCount: '{count} server strumenti personalizzati (MCP) connessi',
       tools: 'Strumenti',
@@ -466,9 +467,12 @@ export const it: TranslationKeys = {
       builtinJsEvalLabel: 'Esecuzione JavaScript',
       builtinJsEvalDesc:
         'Esegue JavaScript in un ambiente isolato per gestire compiti su cui gli LLM sono inaffidabili. Può comportare rischi',
-      builtinDelegateExternalAgentLabel: 'Delega a agente esterno',
-      builtinDelegateExternalAgentDesc:
-        'Delega le attività complesse a un agente CLI installato localmente (Codex / Claude Code).',
+      builtinTerminalCommandLabel: 'Comandi del terminale',
+      builtinTerminalCommandDesc:
+        'Esegue comandi nel terminale locale. Solo desktop.',
+      builtinDelegateSubagentLabel: 'Delega a subagent',
+      builtinDelegateSubagentDesc:
+        'Avvia in modo asincrono un subagent temporaneo e isolato per completare un task autonomo.',
       builtinTodoWriteLabel: 'Lista delle attività',
       builtinTodoWriteDesc:
         "Consente all'agente di pianificare e tracciare autonomamente i progressi su task in più fasi. Solo modalità agente.",
@@ -562,7 +566,7 @@ export const it: TranslationKeys = {
       autoContextCompactionBlockTitle: 'Compattazione contesto',
       autoContextCompaction: 'Compattazione automatica del contesto',
       autoContextCompactionDesc:
-        'Quando l’uso dei token di prompt dell’ultima risposta dell’assistente supera la soglia, comprimi la cronologia precedente prima che il messaggio utente successivo venga inviato (non durante la generazione).',
+        'Quando il contesto raggiunge la soglia, ricorda all’Agent di eseguire il comando di compattazione contesto.',
       autoContextCompactionThresholdMode: 'Modalita soglia',
       autoContextCompactionModeTokens: 'Token di prompt assoluti',
       autoContextCompactionModeRatio: 'Quota della finestra di contesto',
@@ -573,6 +577,16 @@ export const it: TranslationKeys = {
         'Uso finestra di contesto (%)',
       autoContextCompactionThresholdRatioPercentDesc:
         'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
+    },
+    terminalCommand: {
+      openSettings: 'Configura comando terminale',
+      blockedPrefixes: 'Prefissi comando bloccati',
+      blockedPrefixesDesc:
+        "I comandi che corrispondono a questi prefissi verranno rifiutati prima dell'esecuzione.",
+      matchingRule:
+        'La corrispondenza usa il primo token del comando: rm blocca rm -rf /, ma non npm run build.',
+      addPrefixPlaceholder: 'Prefisso comando, es. rm',
+      resetDefaults: 'Ripristina predefiniti',
     },
     webSearch: {
       modalTitle: 'Impostazioni ricerca web',
@@ -623,6 +637,9 @@ export const it: TranslationKeys = {
       fieldDepth: 'Profondità',
       fieldSearchUrl: 'URL ricerca',
       fieldScrapeUrl: 'URL scrape',
+      fieldUseProviderScrapeApi: 'Usa API scrape del provider',
+      fieldUseProviderScrapeApiDesc:
+        'Se attivo, web_scrape usa l\u2019API extract di questo provider. Se disattivo, web_scrape usa lo scraper generico integrato (HTML statico, senza consumo API aggiuntivo).',
       fieldBaseUrl: 'Base URL',
       fieldLanguage: 'Lingua',
       fieldEngines: 'Motori (separati da virgola)',
@@ -690,13 +707,13 @@ export const it: TranslationKeys = {
       useObsidianRequestUrl: 'Usa requestUrl di Obsidian',
       useObsidianRequestUrlDesc:
         'Usa requestUrl di Obsidian per aggirare le restrizioni CORS. Le risposte in streaming verranno bufferizzate.',
-      requestTransportMode: 'Modalita trasporto richieste',
+      requestTransportMode: 'Metodo richiesta di rete',
       requestTransportModeDesc:
-        'Su desktop Auto prova prima il fetch Node, poi il fetch browser in caso di errori CORS/rete; su mobile prova il fetch browser e poi requestUrl di Obsidian. In modalita Obsidian lo streaming viene bufferizzato; la modalita Node usa il fetch Node desktop per uno streaming reale.',
+        'Scegli come questo provider invia le richieste di rete su questo dispositivo. La connessione diretta desktop e consigliata su desktop. Su mobile, passa alla richiesta integrata di Obsidian se le richieste browser hanno problemi di streaming o rete.',
       requestTransportModeAuto: 'Auto (consigliato)',
-      requestTransportModeBrowser: 'Solo fetch browser',
-      requestTransportModeObsidian: 'Solo requestUrl Obsidian',
-      requestTransportModeNode: 'Solo fetch Node desktop',
+      requestTransportModeBrowser: 'Richiesta browser',
+      requestTransportModeObsidian: 'Richiesta integrata Obsidian',
+      requestTransportModeNode: 'Connessione diretta desktop (consigliata)',
       promptCaching: 'Cache del prompt',
       promptCachingDesc:
         "Abilita la cache effimera dei prompt Anthropic. Riutilizza prompt di sistema, strumenti e cronologia tra i turni per ridurre i token di input. Le scritture in cache hanno un sovrapprezzo del 25%; le letture costano circa il 10% del normale. Disponibile quando il tipo API del provider è Anthropic; l'upstream deve supportare il campo cache_control.",
@@ -929,6 +946,12 @@ export const it: TranslationKeys = {
         firstToken: 'Primo token',
         dims: 'dim',
         noModels: 'Nessun modello configurato per questo provider',
+        deleteModel: 'Elimina modello',
+        deleteChatModelBlocked:
+          'Impossibile eliminare il modello selezionato come chat o titolo',
+        deleteEmbeddingModelBlocked:
+          'Impossibile eliminare il modello embedding selezionato',
+        deleteEmbeddingModelInProgress: 'Eliminazione modello embedding…',
       },
       availableModelsAuto: 'Modelli disponibili (recuperati automaticamente)',
       searchModels: 'Cerca modelli...',
@@ -1576,6 +1599,13 @@ export const it: TranslationKeys = {
     newChat: 'Nuova chat',
     untitledConversation: 'Nuova chat',
     continueResponse: 'Continua risposta',
+    loadEarlierMessages: 'Caricamento messaggi precedenti',
+    loadNewerMessages: 'Caricamento messaggi più recenti',
+    messageNavigator: {
+      title: 'Navigatore messaggi',
+      itemAriaLabel: 'Vai al messaggio {index}: {label}',
+      emptyMessage: 'Messaggio vuoto',
+    },
     stopGeneration: 'Ferma generazione',
     queueMessage: {
       tooltip:
@@ -1653,11 +1683,17 @@ export const it: TranslationKeys = {
       createSnippetsFile: 'Clicca per creare snippets.md',
     },
     emptyState: {
+      askTitle: 'Pensa prima, poi scrivi',
+      askDescription:
+        "Ideale per domande, revisione e riscrittura, con focus sull'espressione.",
       chatTitle: 'Pensa prima, poi scrivi',
       chatDescription:
         "Ideale per domande, revisione e riscrittura, con focus sull'espressione.",
       agentTitle: "Lascia eseguire all'AI",
       agentDescription:
+        'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
+      agentFullTitle: "Lascia eseguire all'AI · Full Access",
+      agentFullDescription:
         'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
     },
     compaction: {
@@ -1875,24 +1911,34 @@ export const it: TranslationKeys = {
         created: 'Pianificate {count} attivita',
         progress: 'Avanzamento {done}/{total}',
       },
+      terminalCommand: {
+        sessionPoll: 'Sessione {id} · Poll',
+        sessionKill: 'Sessione {id} · Termina',
+        sessionInput: 'Sessione {id} · Input: {preview}',
+      },
     },
-    externalAgent: {
+    liveTask: {
       statusRunning: 'In esecuzione',
       statusDone: 'Completato',
       statusAborted: 'Interrotto',
       statusError: 'Errore',
       progress: 'Avanzamento',
       output: 'Output',
+      activity: 'Attività',
       abortedBeforeOutput: 'Interrotto prima di produrre output.',
+      noActivity: 'Nessuna attività.',
+      progressTruncated: 'Avanzamento troncato.',
+      truncated: 'Output troncato.',
     },
-    externalAgentResult: {
+    subagent: {
+      openDetails: 'Visualizza dettagli subagent',
+      planningNextMoves: 'Pianificazione prossimi passi',
+      noActivity: 'Nessuna attività.',
       statusCompleted: 'Completato',
+      statusAborted: 'Interrotto',
       statusFailed: 'Fallito',
-      statusCancelled: 'Annullato',
-      statusTimedOut: 'Timeout',
-      statusKilledByShutdown: 'Fermato',
-      showOutput: 'Mostra output',
-      jumpToDelegate: 'Vai al messaggio di delega originale',
+      toolUseCount: '{count} strumenti',
+      tokenCount: '{count} token',
     },
     conversationSettings: {
       openAria: 'Impostazioni conversazione',
@@ -2058,12 +2104,16 @@ export const it: TranslationKeys = {
   },
 
   chatMode: {
+    ask: 'Ask',
+    askDesc: 'Chiedi, rifinisci, crea',
     chat: 'Chat',
     chatDesc: 'Chiedi, rifinisci, crea',
     rewrite: 'Riscrivi',
     rewriteDesc: 'Modifica solo la selezione corrente',
     agent: 'Agent',
     agentDesc: 'Strumenti per task complessi',
+    agentFull: 'Agent (accesso completo)',
+    agentFullDesc: 'Approva automaticamente tutte le chiamate agli strumenti',
     warning: {
       title: 'Conferma prima di abilitare la modalita Agent',
       description:
@@ -2078,10 +2128,27 @@ export const it: TranslationKeys = {
       cancel: 'Annulla',
       confirm: 'Continua e abilita Agent',
     },
+    fullAccessWarning: {
+      title: "Conferma prima di abilitare l'accesso completo",
+      description:
+        "L'accesso completo approva automaticamente tutte le chiamate agli strumenti, incluse modifiche ai file e comandi terminal. Prima di continuare, leggi i seguenti rischi:",
+      permission:
+        'Gli strumenti vengono eseguiti senza approvazione per chiamata. I prefissi di comandi pericolosi restano bloccati.',
+      cost: 'Le esecuzioni autonome possono consumare molte risorse del modello e comportare costi piu elevati.',
+      backup:
+        'Esegui un backup dei contenuti importanti in anticipo per evitare modifiche indesiderate.',
+      checkbox:
+        'Ho compreso i rischi sopra indicati e accetto la responsabilita di procedere',
+      cancel: 'Annulla',
+      confirm: 'Continua con accesso completo',
+    },
   },
 
   reasoning: {
     selectReasoning: 'Seleziona ragionamento',
+    effort: 'Sforzo',
+    faster: 'Più veloce',
+    smarter: 'Più intelligente',
     off: 'Disattivato',
     on: 'Attivato',
     auto: 'Auto',
@@ -2104,11 +2171,18 @@ export const it: TranslationKeys = {
     viewDetails: 'Controlla aggiornamenti',
     goUpdate: 'Aggiorna',
     dismiss: 'Chiudi',
-    collapse: 'Comprimi',
-    showFullChangelog: 'Mostra changelog completo',
     languageEnglish: 'EN',
     languageChinese: '中文',
     muteThisVersion: 'Non notificare per questa versione',
+    viewHistory: 'Visualizza cronologia aggiornamenti',
+    historyTitle: 'Cronologia aggiornamenti',
+    historyLoading: 'Caricamento cronologia aggiornamenti...',
+    historyError:
+      'Impossibile caricare la cronologia aggiornamenti. Riprova più tardi.',
+    historyEmpty: 'Nessuna cronologia aggiornamenti trovata.',
+    historyPage: 'Pagina {{current}}',
+    historyPrev: 'Precedente',
+    historyNext: 'Successiva',
     installationIncompleteTitle: 'Installazione del plugin incompleta',
     installationIncompleteMeta:
       'main.js {bakedVersion} · manifest {manifestVersion}',

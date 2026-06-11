@@ -647,6 +647,7 @@ export async function memoryAdd({
   category,
   scope,
   assistantId,
+  onInternalWrite,
 }: {
   app: App
   settings?: MemorySettingsLike
@@ -654,6 +655,7 @@ export async function memoryAdd({
   category?: unknown
   scope?: unknown
   assistantId?: string
+  onInternalWrite?: (path: string) => void
 }): Promise<{ id: string; scope: MemoryScope; filePath: string }> {
   const normalizedContent = normalizeMemoryContent(content, 'content')
   const normalizedCategory = normalizeMemoryCategory(category)
@@ -667,6 +669,7 @@ export async function memoryAdd({
   return await withMemoryFileLock({
     filePath: path,
     task: async () => {
+      onInternalWrite?.(path)
       const file = await ensureMemoryFile({
         app,
         filePath: path,
@@ -727,6 +730,7 @@ export async function memoryUpdate({
   newContent,
   scope,
   assistantId,
+  onInternalWrite,
 }: {
   app: App
   settings?: MemorySettingsLike
@@ -734,6 +738,7 @@ export async function memoryUpdate({
   newContent: unknown
   scope?: unknown
   assistantId?: string
+  onInternalWrite?: (path: string) => void
 }): Promise<{ id: string; scope: MemoryScope; filePath: string }> {
   const normalizedId = normalizeMemoryContent(id, 'id')
   const normalizedContent = normalizeMemoryContent(newContent, 'new_content')
@@ -747,6 +752,7 @@ export async function memoryUpdate({
   return await withMemoryFileLock({
     filePath: path,
     task: async () => {
+      onInternalWrite?.(path)
       const file = await ensureMemoryFile({
         app,
         filePath: path,
@@ -786,12 +792,14 @@ export async function memoryDelete({
   id,
   scope,
   assistantId,
+  onInternalWrite,
 }: {
   app: App
   settings?: MemorySettingsLike
   id: unknown
   scope?: unknown
   assistantId?: string
+  onInternalWrite?: (path: string) => void
 }): Promise<{ id: string; scope: MemoryScope; filePath: string }> {
   const normalizedId = normalizeMemoryContent(id, 'id')
   const normalizedScope = normalizeMemoryScope(scope)
@@ -804,6 +812,7 @@ export async function memoryDelete({
   return await withMemoryFileLock({
     filePath: path,
     task: async () => {
+      onInternalWrite?.(path)
       const file = await ensureMemoryFile({
         app,
         filePath: path,

@@ -9,21 +9,27 @@ type ToolResultInput = {
   hasPendingTools: boolean
   iteration: number
   maxIterations: number
+  forceStopReason?: 'repeated_tool_failure'
 }
+
+export type LoopDoneReason =
+  | 'completed'
+  | 'max_iterations'
+  | 'repeated_tool_failure'
 
 export type LoopDecision =
   | { type: 'tool_phase' }
   | { type: 'llm_request'; nextIteration: number }
-  | { type: 'done'; reason: 'completed' | 'max_iterations' }
+  | { type: 'done'; reason: LoopDoneReason }
 
 export type LlmLoopDecision =
   | { type: 'tool_phase' }
   | { type: 'llm_request'; nextIteration: number }
-  | { type: 'done'; reason: 'completed' | 'max_iterations' }
+  | { type: 'done'; reason: LoopDoneReason }
 
 export type ToolLoopDecision =
   | { type: 'llm_request'; nextIteration: number }
-  | { type: 'done'; reason: 'completed' | 'max_iterations' }
+  | { type: 'done'; reason: LoopDoneReason }
 
 export const decideAfterLlmResult = ({
   hasToolCalls,
@@ -39,10 +45,15 @@ export const decideAfterLlmResult = ({
 }
 
 export const decideAfterToolResult = ({
+  forceStopReason,
   hasPendingTools,
   iteration,
   maxIterations,
 }: ToolResultInput): ToolLoopDecision => {
+  if (forceStopReason) {
+    return { type: 'done', reason: forceStopReason }
+  }
+
   if (hasPendingTools) {
     return { type: 'done', reason: 'completed' }
   }

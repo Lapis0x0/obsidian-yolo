@@ -10,8 +10,10 @@ import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
 
 import {
+  buildAutoContextCompactionNoticeMessage,
   buildManualCompactionState,
   createConversationCompactionSummary,
+  getAutoContextCompactionPromptTrigger,
   getLatestAssistantContextUsage,
   shouldTriggerAutoContextCompaction,
 } from './compaction'
@@ -512,6 +514,62 @@ describe('shouldTriggerAutoContextCompaction', () => {
         isConversationRunActive: false,
       }),
     ).toBe(false)
+  })
+})
+
+describe('auto context compaction runtime notice', () => {
+  it('returns a prompt trigger and builds a hidden user notice when threshold is reached', () => {
+    const trigger = getAutoContextCompactionPromptTrigger({
+      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 120 })],
+      chatOptions: baseAutoOptions,
+      maxContextTokens: 1000,
+      compactionState: [],
+    })
+
+    expect(trigger?.assistantMessage.id).toBe('a1')
+    if (!trigger) {
+      throw new Error('Expected auto compaction prompt trigger')
+    }
+
+    const notice = buildAutoContextCompactionNoticeMessage({
+      trigger,
+      chatOptions: baseAutoOptions,
+    })
+
+    expect(notice.role).toBe('user')
+    expect(notice.content).toContain('<auto_context_compaction_notice>')
+    expect(notice.content).toContain('120 prompt tokens')
+    expect(notice.content).toContain('context_compact')
+    expect(notice.content).toContain('not a user-authored message')
+  })
+
+  it('does not prompt the same assistant usage twice in one runtime run', () => {
+    const trigger = getAutoContextCompactionPromptTrigger({
+      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 120 })],
+      chatOptions: baseAutoOptions,
+      maxContextTokens: 1000,
+      compactionState: [],
+      promptedAssistantMessageIds: new Set(['a1']),
+    })
+
+    expect(trigger).toBeNull()
+  })
+
+  it('does not prompt after that assistant message already anchored a compaction', () => {
+    const trigger = getAutoContextCompactionPromptTrigger({
+      messages: [userMsg('u1'), assistantMsg('a1', { prompt_tokens: 120 })],
+      chatOptions: baseAutoOptions,
+      maxContextTokens: 1000,
+      compactionState: [
+        {
+          anchorMessageId: 'a1',
+          summary: 's',
+          compactedAt: 1,
+        },
+      ],
+    })
+
+    expect(trigger).toBeNull()
   })
 })
 

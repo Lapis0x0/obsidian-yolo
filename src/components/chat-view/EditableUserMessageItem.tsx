@@ -14,7 +14,6 @@ export type EditableUserMessageItemProps = {
   onInputChange: (content: SerializedEditorState) => void
   onSubmit: (content: SerializedEditorState) => void
   onFocus: () => void
-  onBlur: () => void
   onMentionablesChange: (mentionables: Mentionable[]) => void
   onSelectedSkillsChange?: (skills: ChatSelectedSkill[]) => void
   displayMentionables?: Mentionable[]
@@ -25,8 +24,11 @@ export type EditableUserMessageItemProps = {
   showReasoningSelect?: boolean
   showPlaceholder?: boolean
   currentAssistantId?: string
-  currentChatMode?: 'chat' | 'agent'
-  onSelectChatModeForConversation?: (mode: 'chat' | 'agent') => void
+  currentChatMode?: import('./chat-input/ChatModeSelect').ChatMode
+  onSelectChatModeForConversation?: (
+    mode: import('./chat-input/ChatModeSelect').ChatMode,
+  ) => void
+  onControlPopoverOpenChange?: (isOpen: boolean) => void
   allowAgentModeOption?: boolean
 }
 
@@ -37,7 +39,6 @@ function EditableUserMessageItem({
   onInputChange,
   onSubmit,
   onFocus,
-  onBlur,
   onMentionablesChange,
   onSelectedSkillsChange,
   displayMentionables,
@@ -50,6 +51,7 @@ function EditableUserMessageItem({
   currentAssistantId,
   currentChatMode,
   onSelectChatModeForConversation,
+  onControlPopoverOpenChange,
   allowAgentModeOption,
 }: EditableUserMessageItemProps) {
   const localInputRef = useRef<ChatUserInputRef | null>(null)
@@ -67,7 +69,6 @@ function EditableUserMessageItem({
       onChange={onInputChange}
       onSubmit={onSubmit}
       onFocus={onFocus}
-      onBlur={onBlur}
       mentionables={message.mentionables}
       setMentionables={onMentionablesChange}
       selectedSkills={message.selectedSkills ?? []}
@@ -79,9 +80,11 @@ function EditableUserMessageItem({
       onReasoningChange={onReasoningChange}
       showReasoningSelect={showReasoningSelect}
       showPlaceholder={showPlaceholder}
+      controlLayout="inline"
       currentAssistantId={currentAssistantId}
       currentChatMode={currentChatMode}
       onSelectChatModeForConversation={onSelectChatModeForConversation}
+      onControlPopoverOpenChange={onControlPopoverOpenChange}
       allowAgentModeOption={allowAgentModeOption}
     />
   )

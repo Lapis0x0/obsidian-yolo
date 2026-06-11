@@ -9,7 +9,6 @@ import {
 import {
   ChevronDown,
   ChevronUp,
-  PencilLine,
   RotateCcw,
   Send,
   Square,
@@ -30,6 +29,7 @@ import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useMcp } from '../../../contexts/mcp-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { resolveAssistantTimeContextEnabled } from '../../../core/agent/assistant-capabilities'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
@@ -96,7 +96,7 @@ type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
 function normalizeQuickAskVisibleMode(
   mode?: QuickAskLaunchMode | null,
 ): QuickAskMode {
-  return mode === 'agent' ? 'agent' : 'chat'
+  return mode === 'agent' ? 'agent' : 'ask'
 }
 
 function normalizeQuickAskExecutionMode(
@@ -106,7 +106,7 @@ function normalizeQuickAskExecutionMode(
     return mode
   }
 
-  return 'chat'
+  return 'ask'
 }
 
 function getSelectionMentionable(
@@ -302,12 +302,12 @@ export function QuickAskPanel({
       const resolved = normalizeQuickAskExecutionMode(
         initialMode ?? settings.continuationOptions?.quickAskMode,
       )
-      // PDF path: edit modes are unavailable; fall back to 'chat'
+      // PDF path: edit modes are unavailable; fall back to 'ask'
       if (
         !capabilities.edit &&
         (resolved === 'edit' || resolved === 'edit-direct')
       ) {
-        return 'chat'
+        return 'ask'
       }
       return resolved
     },
@@ -332,17 +332,20 @@ export function QuickAskPanel({
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
+  const suppressNextFocusedUserMessageOutsidePointerRef = useRef<string | null>(
+    null,
+  )
 
   useEffect(() => {
     if (initialMode) {
       setMode(normalizeQuickAskVisibleMode(initialMode))
       const resolved = normalizeQuickAskExecutionMode(initialMode)
-      // PDF path: edit modes are unavailable; fall back to 'chat'
+      // PDF path: edit modes are unavailable; fall back to 'ask'
       if (
         !capabilities.edit &&
         (resolved === 'edit' || resolved === 'edit-direct')
       ) {
-        setExecutionMode('chat')
+        setExecutionMode('ask')
       } else {
         setExecutionMode(resolved)
       }
@@ -400,9 +403,6 @@ export function QuickAskPanel({
   const modeTriggerLabel = isTemporaryRewriteMode
     ? t('chatMode.rewrite', '改写')
     : undefined
-  const modeTriggerIcon = isTemporaryRewriteMode ? (
-    <PencilLine size={14} />
-  ) : undefined
   const buildEditInstruction = useCallback(
     (instruction: string) => {
       const context = selectionEditContextText.trim()
@@ -507,7 +507,7 @@ export function QuickAskPanel({
   const shouldShowInlineRunStatus =
     isStreaming &&
     !!runStatusLabel &&
-    ((executionMode !== 'agent' && executionMode !== 'chat') ||
+    ((executionMode !== 'agent' && executionMode !== 'ask') ||
       (!hasStreamingAssistantPlaceholder && !hasVisibleAssistantOrToolMessages))
 
   const noop = useCallback(() => {}, [])
@@ -628,10 +628,17 @@ export function QuickAskPanel({
         systemPrompt: combinedSystemPrompt,
       },
       {
-        includeSkills: executionMode === 'agent' || executionMode === 'chat',
+        includeSkills: executionMode === 'agent' || executionMode === 'ask',
         systemPromptSnapshotStore: plugin
           .getAgentService()
           .getSystemPromptSnapshotStore(),
+        getPromptSourceRevision: () =>
+          plugin.getAgentService().getPromptSourceWatcher().getRevision(),
+        promptSourcePathsCallback: (paths) =>
+          plugin
+            .getAgentService()
+            .getPromptSourceWatcher()
+            .setWatchedPaths(paths),
       },
     )
   }, [app, executionMode, selectedAssistant, settings, plugin])
@@ -1012,7 +1019,7 @@ export function QuickAskPanel({
           id: options?.userMessageId ?? uuidv4(),
           mentionables: mentionablesOverride ?? mentionables,
         },
-        settings,
+        resolveAssistantTimeContextEnabled(selectedAssistant, settings),
       )
 
       // Clear mentionables after creating the message
@@ -1087,7 +1094,7 @@ export function QuickAskPanel({
 
         const isAgentMode = executionMode === 'agent'
         const chatModeRuntime = resolveChatModeRuntime({
-          mode: isAgentMode ? 'agent' : 'chat',
+          mode: isAgentMode ? 'agent' : 'ask',
           assistant: selectedAssistant,
           assistantEnabledToolNames:
             getEnabledAssistantToolNames(selectedAssistant),
@@ -1095,7 +1102,7 @@ export function QuickAskPanel({
         const effectiveModel = model
         const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
         const enabledSkillEntries = selectedAssistant
-          ? listLiteSkillEntries(app, { settings }).filter((skill) =>
+          ? (await listLiteSkillEntries(app, { settings })).filter((skill) =>
               isSkillEnabledForAssistant({
                 assistant: selectedAssistant,
                 skillName: skill.name,
@@ -1103,7 +1110,7 @@ export function QuickAskPanel({
               }),
             )
           : []
-        const allowedSkillNames = enabledSkillEntries.map((skill) => skill.name)
+        const allowedSkillPaths = enabledSkillEntries.map((skill) => skill.path)
 
         const agentService = plugin.getAgentService()
         unsubscribeRunner = agentService.subscribe(
@@ -1129,7 +1136,8 @@ export function QuickAskPanel({
             allowedToolNames: chatModeRuntime.allowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
-            allowedSkillNames,
+            allowedSkillPaths,
+            runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
             contextualInjections: editorSnapshotInjection
               ? [editorSnapshotInjection]
               : [],
@@ -1218,6 +1226,7 @@ export function QuickAskPanel({
 
   useEffect(() => {
     if (!focusedUserMessageId) {
+      suppressNextFocusedUserMessageOutsidePointerRef.current = null
       return
     }
 
@@ -1235,6 +1244,14 @@ export function QuickAskPanel({
         `[data-user-message-id="${focusedUserMessageId}"]`,
       )
       if (activeMessageElement?.contains(target)) {
+        return
+      }
+
+      if (
+        suppressNextFocusedUserMessageOutsidePointerRef.current ===
+        focusedUserMessageId
+      ) {
+        suppressNextFocusedUserMessageOutsidePointerRef.current = null
         return
       }
 
@@ -2103,8 +2120,12 @@ export function QuickAskPanel({
               chatUserInputRef={(ref) =>
                 registerChatUserInputRef(messageOrGroup.id, ref)
               }
-              onBlur={() => {
-                setFocusedUserMessageId(null)
+              onControlPopoverOpenChange={(isOpen) => {
+                if (!isOpen) {
+                  return
+                }
+                suppressNextFocusedUserMessageOutsidePointerRef.current =
+                  messageOrGroup.id
               }}
               onInputChange={(content) => {
                 setChatMessages((prev) =>
@@ -2478,7 +2499,6 @@ export function QuickAskPanel({
               mode={mode}
               onChange={handleModeChange}
               triggerLabel={modeTriggerLabel}
-              triggerIcon={modeTriggerIcon}
               onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
               side="bottom"
               align="start"

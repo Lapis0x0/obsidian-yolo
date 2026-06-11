@@ -23,15 +23,17 @@ import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
-  getLatestAssistantContextUsage,
-  resolveAutoContextCompactionChatOptions,
-  shouldTriggerAutoContextCompaction,
-} from '../../core/agent/compaction'
+  resolveAssistantIncludeCurrentFileContent,
+  resolveAssistantTimeContextEnabled,
+} from '../../core/agent/assistant-capabilities'
+import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
@@ -47,6 +49,8 @@ import type {
   ChatAssistantMessage,
   ChatConversationCompactionState,
   ChatMessage,
+  ChatSubagentResultMessage,
+  ChatTerminalCommandResultMessage,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
@@ -98,7 +102,11 @@ import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 
 import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
-import type { ChatMode } from './chat-input/ChatModeSelect'
+import {
+  type ChatMode,
+  isAgentChatMode,
+  normalizeChatMode,
+} from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import MentionableBadge from './chat-input/MentionableBadge'
@@ -114,15 +122,57 @@ import {
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
 import { syncRenderedLatexSelection } from './latex-copy'
+import MessageNavigator from './MessageNavigator'
+import type { MessageNavigatorAnchor } from './MessageNavigator'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
 import { TodoListPanel } from './TodoListPanel'
 import { useAutoScroll } from './useAutoScroll'
+import { useChatHistoryWindow } from './useChatHistoryWindow'
 import { useChatStreamManager } from './useChatStreamManager'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
+const MESSAGE_NAVIGATOR_MIN_ANCHORS = 7
+const MESSAGE_NAVIGATOR_LABEL_MAX_LENGTH = 90
+
+const getPromptContentText = (
+  promptContent: ChatUserMessage['promptContent'],
+): string => {
+  if (!promptContent) {
+    return ''
+  }
+  if (typeof promptContent === 'string') {
+    return promptContent
+  }
+  return promptContent
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .join(' ')
+}
+
+const normalizeNavigatorLabel = (text: string, fallback: string): string => {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return fallback
+  }
+  if (normalized.length <= MESSAGE_NAVIGATOR_LABEL_MAX_LENGTH) {
+    return normalized
+  }
+  return `${normalized.slice(0, MESSAGE_NAVIGATOR_LABEL_MAX_LENGTH - 1)}…`
+}
+
+const isDelegateSubagentToolName = (name: string): boolean => {
+  try {
+    const parsed = parseToolName(name)
+    return (
+      parsed.serverName === getLocalFileToolServerName() &&
+      parsed.toolName === 'delegate_subagent'
+    )
+  } catch {
+    return name === 'delegate_subagent'
+  }
+}
 
 const ensureDirectoryPathExists = async (
   app: ReturnType<typeof useApp>,
@@ -569,6 +619,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const requestContextBuilder = useMemo(() => {
     return new RequestContextBuilder(app, effectiveSettings, {
       systemPromptSnapshotStore: agentService.getSystemPromptSnapshotStore(),
+      getPromptSourceRevision: () =>
+        agentService.getPromptSourceWatcher().getRevision(),
+      promptSourcePathsCallback: (paths) =>
+        agentService.getPromptSourceWatcher().setWatchedPaths(paths),
     })
   }, [app, effectiveSettings, agentService])
 
@@ -648,6 +702,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setEnteringCompactionDividerAnchorMessageId,
   ] = useState<string | null>(null)
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
+  const suppressNextHistoricalUserMessageOutsidePointerRef = useRef<
+    string | null
+  >(null)
   const [currentConversationId, setCurrentConversationId] = useState<string>(
     () => seededRuntimeSnapshot?.currentConversationId ?? uuidv4(),
   )
@@ -1095,6 +1152,41 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         assistantGroupBoundaryMessageIds,
       )
     }, [assistantGroupBoundaryMessageIds, chatMessages])
+  const {
+    windowedGroupedChatMessages,
+    hasEarlierMessages,
+    hasNewerMessages,
+    loadEarlier,
+    loadNewer,
+    resetToLatest,
+    jumpToUserMessage,
+    windowNavigationKey,
+  } = useChatHistoryWindow({
+    conversationId: currentConversationId,
+    groupedChatMessages,
+  })
+  const messageNavigatorAnchors = useMemo<MessageNavigatorAnchor[]>(() => {
+    const emptyLabel = t('chat.messageNavigator.emptyMessage', '空消息')
+    let userMessageIndex = 0
+    return groupedChatMessages.flatMap((messageOrGroup) => {
+      if (Array.isArray(messageOrGroup)) {
+        return []
+      }
+
+      userMessageIndex += 1
+      const editorText = messageOrGroup.content
+        ? editorStateToPlainText(messageOrGroup.content)
+        : ''
+      const promptText = getPromptContentText(messageOrGroup.promptContent)
+      return [
+        {
+          id: messageOrGroup.id,
+          index: userMessageIndex,
+          label: normalizeNavigatorLabel(editorText || promptText, emptyLabel),
+        },
+      ]
+    })
+  }, [groupedChatMessages, t])
 
   const displayedChatMessages = useMemo(() => {
     return groupedChatMessages.flatMap((messageOrGroup): ChatMessage[] => {
@@ -1135,14 +1227,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessagesStateRef.current = chatMessages
   }, [chatMessages])
 
-  // Selection-highlight lifecycle.
-  //
-  // The hook owns the "sticky" cycle: highlights for selection-style mentions
-  // survive sending the user message and stay visible while the user keeps
-  // working in the chat panel.  They drop only when the user (a) interacts
-  // with any real editor leaf outside the chat container, or (b) switches /
-  // closes the conversation.  See useChatHighlightSession for the full
-  // contract.
+  // Selection-highlight lifecycle — see useChatHighlightSession for the full
+  // contract.  In-input mentions reconcile immediately on delete; pinned ids
+  // commit to sticky only on send, then drop on the next editor interaction.
   const focusedHistoricalMentionables = useMemo<Mentionable[] | null>(() => {
     if (!focusedMessageId || focusedMessageId === inputMessage.id) return null
     const focused = chatMessages.find(
@@ -1151,12 +1238,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return focused?.role === 'user' ? focused.mentionables : null
   }, [chatMessages, focusedMessageId, inputMessage.id])
 
-  useChatHighlightSession({
-    conversationId: currentConversationId,
-    containerRef,
-    inputMentionables: inputMessage.mentionables,
-    focusedHistoricalMentionables,
-  })
+  const { commitSentPinnedHighlights, releaseHighlightIds } =
+    useChatHighlightSession({
+      conversationId: currentConversationId,
+      containerRef,
+      inputMentionables: inputMessage.mentionables,
+      focusedHistoricalMentionables,
+    })
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -1241,7 +1329,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const displayMentionablesForInput = inputMessage.mentionables
 
-  const currentFileOverride = settings.chatOptions.includeCurrentFileContent
+  const currentFileOverride = resolveAssistantIncludeCurrentFileContent(
+    selectedAssistant,
+    settings,
+  )
     ? activeFile
     : null
 
@@ -1257,6 +1348,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     useState<HTMLDivElement | null>(null)
   const [inputOverlayHeight, setInputOverlayHeight] = useState(0)
   const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
+  const [activeNavigatorMessageId, setActiveNavigatorMessageId] = useState<
+    string | null
+  >(null)
   const latexSelectionSyncFrameRef = useRef<number | null>(null)
   const chatSurfacePreset = getChatSurfacePreset('chat')
   const hasStreamingMessages = useMemo(
@@ -1273,6 +1367,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     autoScrollToBottom,
     notifyContentFlushed,
     forceScrollToBottom,
+    stopAutoFollow,
     isAutoFollowEnabled,
     followOutput,
     onAtBottomStateChange,
@@ -1282,6 +1377,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     isStreaming: hasStreamingMessages,
     contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
   })
+  const handleForceScrollToBottom = useCallback(() => {
+    resetToLatest()
+    requestAnimationFrame(() => {
+      forceScrollToBottom()
+    })
+  }, [forceScrollToBottom, resetToLatest])
+  const handleNavigateToUserMessage = useCallback(
+    (messageId: string) => {
+      setActiveNavigatorMessageId(messageId)
+      stopAutoFollow()
+      jumpToUserMessage(messageId)
+    },
+    [jumpToUserMessage, stopAutoFollow],
+  )
 
   // Measure the overlay above the input box so the timeline can reserve
   // equivalent scrollable space at its bottom — keeps the last assistant
@@ -1381,9 +1490,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [queuedUserMessages, setQueuedUserMessages] = useState<
     ChatUserMessage[]
   >(() => agentService.peekPendingUserMessages(currentConversationId))
-  const isCurrentConversationRunActive =
-    currentConversationRunSummary.isRunning ||
-    currentConversationRunSummary.isWaitingApproval
+  const isCurrentConversationRunActive = currentConversationRunSummary.isActive
   const shouldHidePendingAssistantPlaceholders = useMemo(() => {
     if (!isCurrentConversationRunActive) {
       return false
@@ -1427,7 +1534,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatTimelineItems: ChatTimelineItem[] = useMemo(
     () =>
       buildChatTimelineItems({
-        groupedChatMessages,
+        groupedChatMessages: windowedGroupedChatMessages,
         assistantGroupBoundaryMessageIds,
         compactionDividerAnchorMessageIds,
         latestCompaction: latestCompactionState,
@@ -1447,14 +1554,38 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       assistantGroupBoundaryMessageIds,
       compactionDividerAnchorMessageIds,
       focusedMessageId,
-      groupedChatMessages,
       inputMessage.id,
       latestCompactionState,
       pendingCompactionAnchorMessageId,
       queryProgress,
       showContinueResponseButton,
+      windowedGroupedChatMessages,
     ],
   )
+
+  const terminalCommandResultsByToolCallId = useMemo(() => {
+    const map = new Map<string, ChatTerminalCommandResultMessage>()
+    for (const message of chatMessages) {
+      if (
+        message.role !== 'terminal_command_result' ||
+        !message.delegateToolCallId
+      ) {
+        continue
+      }
+      map.set(message.delegateToolCallId, message)
+    }
+    return map
+  }, [chatMessages])
+  const subagentResultsByToolCallId = useMemo(() => {
+    const map = new Map<string, ChatSubagentResultMessage>()
+    for (const message of chatMessages) {
+      if (message.role !== 'subagent_result' || !message.delegateToolCallId) {
+        continue
+      }
+      map.set(message.delegateToolCallId, message)
+    }
+    return map
+  }, [chatMessages])
   useEffect(() => {
     const chatMessagesElement = chatMessagesRef.current
     if (!chatMessagesElement) {
@@ -1591,7 +1722,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   // Auto-run when external agent results arrive for the current conversation
   useEffect(() => {
-    const unsubscribe = agentService.subscribeToPendingExternalAgentResults(
+    const unsubscribe = agentService.subscribeToPendingBackgroundTaskResults(
       (conversationId) => {
         if (conversationId !== currentConversationId) return
         if (agentService.isRunning(conversationId)) return
@@ -1933,19 +2064,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleManualContextCompaction = useCallback(async () => {
-    if (currentConversationRunSummary.isRunning) {
-      new Notice(
-        t('chat.compaction.runActive', '请等待当前回复完成后再压缩上下文。'),
-      )
-      return
-    }
-
     if (currentConversationRunSummary.isWaitingApproval) {
       new Notice(
         t(
           'chat.compaction.waitingApproval',
           '请先处理当前待确认的工具调用，再压缩上下文。',
         ),
+      )
+      return
+    }
+
+    if (currentConversationRunSummary.isActive) {
+      new Notice(
+        t('chat.compaction.runActive', '请等待当前回复完成后再压缩上下文。'),
       )
       return
     }
@@ -2019,7 +2150,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     conversationOverrides,
     createOrUpdateConversationImmediately,
     currentConversationId,
-    currentConversationRunSummary.isRunning,
+    currentConversationRunSummary.isActive,
     currentConversationRunSummary.isWaitingApproval,
     effectiveCompactionState,
     plugin,
@@ -2043,6 +2174,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   useEffect(() => {
     if (!focusedMessageId || focusedMessageId === inputMessage.id) {
+      suppressNextHistoricalUserMessageOutsidePointerRef.current = null
       return
     }
 
@@ -2060,6 +2192,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         `[data-user-message-id="${focusedMessageId}"]`,
       )
       if (activeMessageElement?.contains(target)) {
+        return
+      }
+
+      if (
+        suppressNextHistoricalUserMessageOutsidePointerRef.current ===
+        focusedMessageId
+      ) {
+        suppressNextHistoricalUserMessageOutsidePointerRef.current = null
         return
       }
 
@@ -2120,11 +2260,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           conversationId,
           loadedAssistantId,
         )
-        const loadedChatModeRaw = conversation.overrides?.chatMode
-        const loadedChatMode: ChatMode =
-          loadedChatModeRaw === 'agent' || loadedChatModeRaw === 'chat'
-            ? loadedChatModeRaw
-            : (settings.chatOptions.chatMode ?? 'agent')
+        const loadedChatMode = normalizeChatMode(
+          conversation.overrides?.chatMode,
+          settings.chatOptions.chatMode ?? 'agent',
+        )
         setChatMode(loadedChatMode)
         if (conversation.overrides) {
           conversationOverridesRef.current.set(
@@ -2500,12 +2639,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationOverridesRef.current.get(currentConversationId) ??
         conversationOverrides ??
         null
-      const rawNextChatMode = nextOverrides?.chatMode
-      const resolvedNextChatMode: ChatMode =
-        rawNextChatMode === 'agent' || rawNextChatMode === 'chat'
-          ? rawNextChatMode
-          : chatMode
-      const nextChatMode = resolvedNextChatMode
+      const nextChatMode = normalizeChatMode(nextOverrides?.chatMode, chatMode)
 
       const resolvedConversationModelId =
         conversationModelIdRef.current.get(currentConversationId) ??
@@ -2711,9 +2845,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       })
       applyMessages(runningMessages)
 
+      const foregroundToolAbortController = new AbortController()
+      let unregisterForegroundToolAborter: (() => void) | null = null
       try {
         const mcpManager = await getMcpManager()
         const args = getToolCallArgumentsObject(request.arguments)
+        unregisterForegroundToolAborter = plugin
+          .getAgentService()
+          .registerForegroundToolAborter({
+            conversationId,
+            toolCallId: request.id,
+            abort: () => {
+              foregroundToolAbortController.abort()
+              mcpManager.abortToolCall(request.id)
+            },
+          })
 
         if (allowForConversation) {
           mcpManager.allowToolForConversation(
@@ -2721,6 +2867,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             conversationId,
             args,
           )
+        }
+
+        if (foregroundToolAbortController.signal.aborted) {
+          return true
         }
 
         const result = await captureLLMDebugOperation({
@@ -2743,6 +2893,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               name: request.name,
               args,
               id: request.id,
+              signal: foregroundToolAbortController.signal,
               conversationId,
               conversationMessages: runningMessages,
               roundId: toolMessageId,
@@ -2753,13 +2904,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               // match the schema used when the call was emitted.
               chatModelId:
                 toolMessage.metadata?.branchModelId ?? conversationModelId,
-              workspaceScope:
-                chatMode === 'agent'
-                  ? selectedAssistant?.workspaceScope
-                  : undefined,
+              workspaceScope: isAgentChatMode(chatMode)
+                ? selectedAssistant?.workspaceScope
+                : undefined,
+              subagentParentContext: isDelegateSubagentToolName(request.name)
+                ? plugin
+                    .getAgentService()
+                    .getPendingApprovalSubagentParentContext(conversationId)
+                : undefined,
             }),
           getResponseBody: (response) => response,
         })
+
+        if (foregroundToolAbortController.signal.aborted) {
+          return true
+        }
 
         const resolvedMessages = updateToolCallResponseInMessages({
           messages: chatMessagesStateRef.current,
@@ -2793,6 +2952,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
         return true
       } catch (error) {
+        if (foregroundToolAbortController.signal.aborted) {
+          return true
+        }
+
         const errorMessage =
           error instanceof Error ? error.message : 'Tool call failed'
         const failedMessages = updateToolCallResponseInMessages({
@@ -2812,6 +2975,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           error,
         })
         return true
+      } finally {
+        unregisterForegroundToolAborter?.()
       }
     },
     [
@@ -2907,39 +3072,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         type: 'idle',
       })
 
-      const previousMessages = inputChatMessages.slice(0, -1)
-      const autoCompactionOptions = resolveAutoContextCompactionChatOptions(
-        settings.chatOptions,
-      )
-      let compactionForSubmit = effectiveCompactionState
-      if (
-        shouldTriggerAutoContextCompaction({
-          previousMessages,
-          chatOptions: autoCompactionOptions,
-          maxContextTokens: effectiveMaxContextTokens,
-          compactionState: effectiveCompactionState,
-          isConversationRunActive:
-            currentConversationRunSummary.isRunning ||
-            currentConversationRunSummary.isWaitingApproval,
-        })
-      ) {
-        setPendingCompactionAnchorMessageId(previousMessages.at(-1)?.id ?? null)
-        try {
-          const nextCompactionState =
-            await compactConversation(previousMessages)
-          setPendingCompactionAnchorMessageId(null)
-          if (nextCompactionState) {
-            compactionForSubmit = [
-              ...effectiveCompactionState,
-              nextCompactionState,
-            ]
-          }
-        } catch (error) {
-          setPendingCompactionAnchorMessageId(null)
-          new Notice(t('chat.compaction.autoFailed'))
-          console.error('Automatic context compaction failed', error)
-        }
-      }
+      const compactionForSubmit = effectiveCompactionState
 
       // Update the chat history to show the new user message
       setChatMessages(inputChatMessages)
@@ -3088,13 +3221,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       reasoningLevel,
       resolveReasoningLevelForMessages,
       serializeMessageModelMap,
-      settings.chatOptions,
-      compactConversation,
       plugin,
-      effectiveMaxContextTokens,
-      currentConversationRunSummary.isRunning,
-      currentConversationRunSummary.isWaitingApproval,
-      t,
     ],
   )
 
@@ -3891,6 +4018,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         serializeMentionable(mentionable),
       )
 
+      if (mentionable.type === 'block' && mentionable.highlightId) {
+        releaseHighlightIds([mentionable.highlightId])
+      }
+
       // 从所有历史消息中删除
       const sourceMessages = chatMessagesStateRef.current
       let didChangeHistory = false
@@ -3997,6 +4128,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMessage.id,
       isUserMessageEffectivelyEmpty,
       persistConversation,
+      releaseHighlightIds,
     ],
   )
 
@@ -4343,6 +4475,66 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const resolvedMode = nextMode
 
       if (
+        resolvedMode === 'agent-full' &&
+        !settings.chatOptions.fullAccessWarningConfirmed
+      ) {
+        new AgentModeWarningModal(app, {
+          title: t(
+            'chatMode.fullAccessWarning.title',
+            'Please confirm before enabling full access',
+          ),
+          description: t(
+            'chatMode.fullAccessWarning.description',
+            'Full access auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
+          ),
+          risks: [
+            t(
+              'chatMode.fullAccessWarning.permission',
+              'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
+            ),
+            t(
+              'chatMode.fullAccessWarning.cost',
+              'Autonomous runs may consume significant model resources and incur higher costs.',
+            ),
+            t(
+              'chatMode.fullAccessWarning.backup',
+              'Back up important content in advance to avoid unintended changes.',
+            ),
+          ],
+          checkboxLabel: t(
+            'chatMode.fullAccessWarning.checkbox',
+            'I understand the risks above and accept responsibility for proceeding',
+          ),
+          cancelText: t('chatMode.fullAccessWarning.cancel', 'Cancel'),
+          confirmText: t(
+            'chatMode.fullAccessWarning.confirm',
+            'Continue with Full Access',
+          ),
+          onConfirm: () => {
+            applyChatModeChange('agent-full')
+            void persistPreferredChatMode('agent-full')
+            void (async () => {
+              try {
+                await setSettings({
+                  ...settings,
+                  chatOptions: {
+                    ...settings.chatOptions,
+                    fullAccessWarningConfirmed: true,
+                  },
+                })
+              } catch (error: unknown) {
+                console.error(
+                  'Failed to persist full access warning confirmation',
+                  error,
+                )
+              }
+            })()
+          },
+        }).open()
+        return
+      }
+
+      if (
         resolvedMode === 'agent' &&
         !settings.chatOptions.agentModeWarningConfirmed
       ) {
@@ -4406,7 +4598,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       void persistPreferredChatMode(resolvedMode)
 
       if (
-        resolvedMode === 'agent' &&
+        isAgentChatMode(resolvedMode) &&
         selectedAssistant?.modelId &&
         conversationModelId === settings.chatModelId
       ) {
@@ -4437,8 +4629,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <ViewToggle
           activeView={activeView}
           onChangeView={onChangeView}
-          chatMode={chatMode}
-          onChangeChatMode={handleChatModeChange}
           showComposer={isSidebarPlacement}
           disabled={false}
         />
@@ -4565,7 +4755,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (current.kind !== 'assistant-group') continue
       if (next.kind !== 'assistant-group') continue
       const nextFirst = next.messages[0]
-      if (nextFirst && nextFirst.role === 'external_agent_result') {
+      if (
+        nextFirst &&
+        (nextFirst.role === 'external_agent_result' ||
+          nextFirst.role === 'subagent_result' ||
+          nextFirst.role === 'terminal_command_result')
+      ) {
         set.add(current.renderKey)
       }
     }
@@ -4659,6 +4854,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             activeApplyRequestKey={activeApplyRequestKey}
             onApply={handleApply}
             onToolMessageUpdate={handleToolMessageUpdate}
+            terminalCommandResultsByToolCallId={
+              terminalCommandResultsByToolCallId
+            }
+            subagentResultsByToolCallId={subagentResultsByToolCallId}
             onRecoverToolCall={handleRecoverPendingToolCall}
             onRecoverAnswerUserQuestion={handleRecoverAnswerUserQuestion}
             editingAssistantMessageId={editingAssistantMessageId}
@@ -4722,11 +4921,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             chatUserInputRef={(ref) =>
               registerChatUserInputRef(messageOrGroup.id, ref)
             }
-            onBlur={() => {
-              if (focusedMessageId === messageOrGroup.id) {
-                finalizeHistoricalUserMessageEdit(messageOrGroup.id)
-                setFocusedMessageId(inputMessage.id)
+            onControlPopoverOpenChange={(isOpen) => {
+              if (!isOpen) {
+                return
               }
+              suppressNextHistoricalUserMessageOutsidePointerRef.current =
+                messageOrGroup.id
             }}
             onInputChange={(content) => {
               updateHistoricalUserMessage(messageOrGroup.id, (message) => ({
@@ -4767,7 +4967,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       messageOrGroup.mentionables,
                     ),
                   },
-                  settings,
+                  resolveAssistantTimeContextEnabled(
+                    selectedAssistant,
+                    settings,
+                  ),
                 )
               const inputChatMessages = [
                 ...groupedChatMessages
@@ -4971,6 +5174,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const getMessageNavigatorItemLabel = useCallback(
+    (index: number, label: string) =>
+      t(
+        'chat.messageNavigator.itemAriaLabel',
+        '跳转到第 {index} 条消息：{label}',
+      )
+        .replace('{index}', String(index))
+        .replace('{label}', label),
+    [t],
+  )
+  const messageNavigatorContent =
+    messageNavigatorAnchors.length >= MESSAGE_NAVIGATOR_MIN_ANCHORS ? (
+      <MessageNavigator
+        anchors={messageNavigatorAnchors}
+        activeMessageId={activeNavigatorMessageId}
+        itemLabel={getMessageNavigatorItemLabel}
+        onSelect={handleNavigateToUserMessage}
+      />
+    ) : undefined
+
   return (
     <div
       ref={containerRef}
@@ -4995,27 +5218,41 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           followOutput={followOutput}
           onAtBottomStateChange={onAtBottomStateChange}
           editingAssistantMessageId={editingAssistantMessageId}
-          onForceScrollToBottom={forceScrollToBottom}
+          hasEarlierMessages={hasEarlierMessages}
+          hasNewerMessages={hasNewerMessages}
+          onLoadEarlier={loadEarlier}
+          onLoadNewer={loadNewer}
+          loadEarlierLabel={t('chat.loadEarlierMessages', '正在加载更早消息')}
+          loadNewerLabel={t('chat.loadNewerMessages', '正在加载更新消息')}
+          onForceScrollToBottom={handleForceScrollToBottom}
           hasStreamingMessages={hasStreamingMessages}
           scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
           scrollToBottomWhileStreamingLabel={t(
             'chat.scrollToBottomWhileStreaming',
             '回到底部继续跟随',
           )}
-          emptyStateChatTitle={t(
-            'chat.emptyState.chatTitle',
-            '先想清楚，再落笔',
-          )}
+          emptyStateAskTitle={t('chat.emptyState.askTitle', '先想清楚，再落笔')}
           emptyStateAgentTitle={t('chat.emptyState.agentTitle', '让 AI 去执行')}
-          emptyStateChatDescription={t(
-            'chat.emptyState.chatDescription',
+          emptyStateAgentFullTitle={t(
+            'chat.emptyState.agentFullTitle',
+            '让 AI 去执行 · Full Access',
+          )}
+          emptyStateAskDescription={t(
+            'chat.emptyState.askDescription',
             '适合提问、润色与改写，专注表达本身',
           )}
           emptyStateAgentDescription={t(
             'chat.emptyState.agentDescription',
             '启用工具链，处理搜索、读写与多步骤任务',
           )}
+          emptyStateAgentFullDescription={t(
+            'chat.emptyState.agentFullDescription',
+            '启用工具链，处理搜索、读写与多步骤任务',
+          )}
           onTimelineVirtualizationChange={setTimelineIsVirtualized}
+          onActiveUserMessageChange={setActiveNavigatorMessageId}
+          windowNavigationKey={windowNavigationKey || undefined}
+          messageNavigatorContent={messageNavigatorContent}
           bottomSpacerHeight={inputOverlayHeight}
           footerContent={
             <>
@@ -5098,7 +5335,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     // 那一刻的时间,而非 drain 时刻。
                     const messageForSubmit = stampUserMessageTimeContext(
                       buildInputMessageForSubmit(content),
-                      settings,
+                      resolveAssistantTimeContextEnabled(
+                        selectedAssistant,
+                        settings,
+                      ),
                     )
 
                     // ask_user_question parks the agent in a paused state that
@@ -5116,13 +5356,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       return
                     }
 
-                    // While a run is active on the default branch, route the
-                    // message through enqueue so the service decides whether
-                    // to queue (mid-run injection), reject (pending approval),
-                    // or fall through (fast-path / idle). Without this, a
-                    // submit during a pending-approval state would abort the
-                    // current run.
-                    if (currentConversationRunSummary.status === 'running') {
+                    if (currentConversationRunSummary.isWaitingApproval) {
+                      new Notice(
+                        t(
+                          'chat.queueMessage.blockedApproval',
+                          '请先批准或拒绝待审批工具，再发送新消息。',
+                        ),
+                      )
+                      return
+                    }
+
+                    // While the live loop is queueable, route the message
+                    // through AgentService so it can be injected at the next
+                    // safe LLM boundary instead of aborting the current run.
+                    if (currentConversationRunSummary.isQueueable) {
                       const enqueueResult = agentService.enqueueUserMessage(
                         currentConversationId,
                         messageForSubmit,
@@ -5133,6 +5380,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                           next.set(inputMessage.id, reasoningLevel)
                           return next
                         })
+                        commitSentPinnedHighlights()
                         setInputMessage(getNewInputMessage(reasoningLevel))
                         return
                       }
@@ -5146,6 +5394,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                         return
                       }
                       // 'idle' → fall through to the normal submit path below.
+                    }
+
+                    if (currentConversationRunSummary.isActive) {
+                      new Notice(
+                        t(
+                          'chat.queueMessage.blockedActiveTool',
+                          '请等待当前工具调用完成后再发送新消息。',
+                        ),
+                      )
+                      return
                     }
 
                     const nextMessageModelMap = new Map(messageModelMap)
@@ -5167,6 +5425,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       next.set(inputMessage.id, reasoningLevel)
                       return next
                     })
+                    commitSentPinnedHighlights()
                     setInputMessage(getNewInputMessage(reasoningLevel))
                   }}
                   onFocus={() => {
@@ -5235,6 +5494,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   }
                   currentChatMode={chatMode}
                   onSelectChatModeForConversation={handleChatModeChange}
+                  chatMode={chatMode}
+                  onChatModeChange={handleChatModeChange}
                   allowAgentModeOption={true}
                   enableResize
                   onRunSlashCommand={(command) => {
@@ -5242,7 +5503,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                       void handleManualContextCompaction()
                     }
                   }}
-                  isGenerating={currentConversationRunSummary.isRunning}
+                  isGenerating={currentConversationRunSummary.isAbortable}
+                  canQueueWhileGenerating={
+                    currentConversationRunSummary.isQueueable
+                  }
                   onAbort={() => abortConversationRun(currentConversationId)}
                   submitDisabled={isInputEmpty}
                   contextUsage={
