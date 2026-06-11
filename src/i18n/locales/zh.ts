@@ -863,10 +863,10 @@ export const zh: TranslationKeys = {
       inputModalityPdf: 'PDF 原生输入',
       inputModalityPdfTooltip:
         '需要底层模型支持 PDF 原生输入（Gemini / Anthropic）',
-      openaiReasoningEffort: '推理强度 (effort)',
+      openaiReasoningEffort: '推理强度（effort）',
       openaiReasoningEffortDesc:
         '选择推理强度：minimal（更快更省，仅 GPT-5）/ low / medium / high',
-      geminiThinkingBudget: '思考预算 (thinkingBudget)',
+      geminiThinkingBudget: '思考预算（thinkingBudget）',
       geminiThinkingBudgetDesc:
         '单位为“思考 tokens”。0=关闭；-1=动态（Gemini 支持）；具体范围因模型而异。',
       geminiThinkingBudgetPlaceholder: '例如：-1（动态，0=关闭）',
@@ -1067,10 +1067,10 @@ export const zh: TranslationKeys = {
       cancelIndex: '取消',
     },
     mcp: {
-      title: '自定义工具 (MCP)',
+      title: '自定义工具（MCP）',
       desc: '配置 MCP 服务器以管理自定义工具能力',
       warning:
-        '使用工具时，工具响应会传递给语言模型(LLM)。如果工具结果包含大量内容，这可能会显著增加LLM使用量和相关成本。启用或使用可能返回长输出的工具时请注意。',
+        '使用工具时，工具响应会传递给语言模型（LLM）。如果工具结果包含大量内容，这可能会显著增加 LLM 使用量和相关成本。启用或使用可能返回长输出的工具时请注意。',
       notSupportedOnMobile: '移动设备不支持自定义工具（MCP）',
       mcpServers: 'MCP 服务器',
       addServer: '添加MCP服务器',
@@ -1371,7 +1371,7 @@ export const zh: TranslationKeys = {
     },
 
     asr: {
-      title: '语音识别 (ASR)',
+      title: '语音识别（ASR）',
       descriptionV2:
         '每一行是一个 ASR 端点。标签会标出哪些功能选中了它；具体选择在 语音 → 上下文感知语音输入 和 语音 → 音频文件转写 中设置。',
       descriptionV3:
@@ -1447,7 +1447,7 @@ export const zh: TranslationKeys = {
       chatCompletionsPathDesc: '默认 /chat/completions。',
       audioContentFormat: '音频内容载体',
       audioContentFormatDesc:
-        'OpenAI / OpenRouter 选 input_audio (base64)；阿里百炼选 input_audio (data URL)；部分 vLLM 镜像选 audio_url。',
+        'OpenAI / OpenRouter 选 input_audio（base64）；阿里百炼选 input_audio（data URL）；部分 vLLM 镜像选 audio_url。',
       webSocketProtocol: 'WS 语音协议',
       webSocketProtocolDesc: '切换后会自动填入该协议常用的 Base URL 和路径。',
       webSocketProvider: 'WebSocket 提供商',
@@ -1579,10 +1579,10 @@ export const zh: TranslationKeys = {
         'WAV 分段；部分提供商要求 30 秒或更短。范围：15-600。',
       maxConcurrentChunks: '最大并发分段数',
       maxConcurrentChunksDesc: '同时上传的 HTTP 分段数量。范围：1-5。',
-      chunkStartStaggerMs: '分段启动间隔 (ms)',
+      chunkStartStaggerMs: '分段启动间隔（ms）',
       chunkStartStaggerMsDesc:
         '错开分段上传开始时间，减少触发速率限制的峰值。范围：1000-3000。',
-      chunkOverlapMs: '分段重叠 (ms)',
+      chunkOverlapMs: '分段重叠（ms）',
       chunkOverlapMsDesc: '在分段边界保留少量重叠，减少漏词。范围：0-1500。',
       chunkDurationLimitNotice: '当前提供商有已知的 WAV 分段请求大小限制。',
       chunkDurationLimitSuggestion: '建议分段时长：',
@@ -1598,8 +1598,8 @@ export const zh: TranslationKeys = {
       enableDescUnavailable: '添加语音识别提供商后才能启用语音输入。',
       asrProvider: 'ASR 提供商',
       asrProviderDesc:
-        '从 模型 → 语音识别 (ASR) 里配置好的 ASR 端点中选一条用于本次语音输入。',
-      asrProviderNone: '（请先在 模型 → 语音识别 (ASR) 中添加）',
+        '从 模型 → 语音识别（ASR） 里配置好的 ASR 端点中选一条用于本次语音输入。',
+      asrProviderNone: '（请先在 模型 → 语音识别（ASR） 中添加）',
       polishModel: '打磨模型',
       polishModelDesc:
         '结合光标周围上下文重写原始转写。未设置时回落到默认聊天模型。',
@@ -1642,16 +1642,16 @@ export const zh: TranslationKeys = {
       decibelMeterUnavailable: '当前环境无法使用麦克风分贝计。',
       decibelMeterPermissionError:
         '无法读取麦克风。请检查权限和麦克风设备选择。',
-      vadSpeechStartDecibels: '开口检测阈值 (dB)',
+      vadSpeechStartDecibels: '开口检测阈值（dB）',
       vadSpeechStartDecibelsDesc:
         '可调范围 -50 到 -5。数值越负越容易捕获小声说话；越接近 -5 越能忽略背景噪声。默认 -40。',
-      vadSilenceDecibels: '说话后静音阈值 (dB)',
+      vadSilenceDecibels: '说话后静音阈值（dB）',
       vadSilenceDecibelsDesc:
         '可调范围 -50 到 -5。确认开始说话后，低于这个音量会计为静音。默认 -36。',
-      vadSpeechRequiredMs: '开口确认时间 (ms)',
+      vadSpeechRequiredMs: '开口确认时间（ms）',
       vadSpeechRequiredMsDesc:
         '声音持续超过开口阈值多久后，才确认已经开始说话。默认 200。',
-      vadSilenceHoldMs: '静音多久后切段 (ms)',
+      vadSilenceHoldMs: '静音多久后切段（ms）',
       vadSilenceHoldMsDesc:
         '点按模式下，说话停顿多久后把当前片段送去 ASR。默认 1200。',
       floatingIslandBottomOffsetVh: '浮岛与底部距离',
@@ -1865,7 +1865,7 @@ export const zh: TranslationKeys = {
     audioFileFailed: '音频文件转写失败。',
     audioFileFailedWithMessage: '音频文件转写失败：{{message}}',
     audioFileErrorNoProvider:
-      '还没有配置 ASR 提供商。请先到 模型 → 语音识别 (ASR) 添加。',
+      '还没有配置 ASR 提供商。请先到 模型 → 语音识别（ASR） 添加。',
     audioFileErrorLongAudioNotImplemented: '长音频提供商适配器还没有实现。',
     audioFileErrorUnsupportedLocalFile:
       '当前 ASR 配置不支持音频文件转写。请选择支持文件上传或 WebSocket 流式转写的配置。',
