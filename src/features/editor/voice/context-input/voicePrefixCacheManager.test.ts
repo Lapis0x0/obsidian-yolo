@@ -369,7 +369,27 @@ describe('VoicePrefixCacheManager', () => {
       ).toBe(false)
     })
 
-    it('forget(folder) cascades to every child path', () => {
+    it('forget(folder) keeps child paths unless cascading is requested', () => {
+      const mgr = new VoicePrefixCacheManager()
+      const doc = genText(17, 5000)
+      mgr.pickBeforeSlice({
+        filePath: '/notes/a.md',
+        fullDocBefore: doc.slice(0, 3000),
+        minPrefixChars: MIN,
+        maxPrefixChars: MAX,
+      })
+      mgr.forget('/notes')
+      expect(
+        mgr.pickBeforeSlice({
+          filePath: '/notes/a.md',
+          fullDocBefore: doc.slice(0, 3500),
+          minPrefixChars: MIN,
+          maxPrefixChars: MAX,
+        }).cacheMissExpected,
+      ).toBe(false)
+    })
+
+    it('forget(folder, includeChildren) cascades to every child path', () => {
       const mgr = new VoicePrefixCacheManager()
       const doc = genText(14, 5000)
       mgr.pickBeforeSlice({
@@ -390,7 +410,7 @@ describe('VoicePrefixCacheManager', () => {
         minPrefixChars: MIN,
         maxPrefixChars: MAX,
       })
-      mgr.forget('/notes')
+      mgr.forget('/notes', { includeChildren: true })
       // Both /notes paths cold
       expect(
         mgr.pickBeforeSlice({

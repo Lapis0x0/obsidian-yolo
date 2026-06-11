@@ -1466,7 +1466,7 @@ function AsrConfigFormComponent({
           name={t('settings.asr.transport', 'Transport')}
           desc={t(
             'settings.providers.requestTransportModeDesc',
-            'Auto on desktop tries Node fetch first, then browser fetch on CORS/network errors; on mobile tries browser fetch then Obsidian requestUrl. Obsidian buffers responses; Node uses the desktop proxy-aware fetch.',
+            'Auto uses the same platform default as chat models: desktop Node fetch, mobile browser fetch. Obsidian buffers responses; Node uses the desktop proxy-aware fetch.',
           )}
         >
           <ObsidianDropdown

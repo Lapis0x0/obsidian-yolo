@@ -205,12 +205,14 @@ export class VoicePrefixCacheManager {
     return { slice, prefixStart: newStart, cacheMissExpected: true }
   }
 
-  /** Forget the cache for a file path, or every cached file under a folder. */
-  forget(filePath: string): void {
+  /** Forget one file path, or every cached file under a folder when asked. */
+  forget(filePath: string, options?: { includeChildren?: boolean }): void {
     if (!filePath) return
+    this.cache.delete(filePath)
+    if (!options?.includeChildren) return
     const childPrefix = `${filePath}/`
     for (const key of this.cache.keys()) {
-      if (key === filePath || key.startsWith(childPrefix)) {
+      if (key.startsWith(childPrefix)) {
         this.cache.delete(key)
       }
     }

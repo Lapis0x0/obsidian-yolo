@@ -199,6 +199,12 @@ export default class YoloPlugin extends Plugin {
   private voicePrefixCacheManager: VoicePrefixCacheManager | null = null
   private voiceModules: VoiceModules | null = null
   private voiceModulesPromise: Promise<VoiceModules> | null = null
+  private voiceAudioDragRevealCache: {
+    dataTransfer: DataTransfer
+    dragKind: AudioFileDragKind | null
+    revealedKind: AudioFileDragKind | null
+    revealedMarkdownView: MarkdownView | null
+  } | null = null
   private diffReviewController: DiffReviewController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
@@ -1182,10 +1188,21 @@ export default class YoloPlugin extends Plugin {
   private handleVoiceAudioDragReveal(event: DragEvent): void {
     if (!this.isAudioFileTranscriptionFeatureReady()) return
     if (this.isGeneratedReadAloudAudioDrag(event.dataTransfer)) return
-    const dragKind = this.getAudioFileDragKind(event)
+    const dragKind = this.getCachedVoiceAudioDragKind(event)
     if (!dragKind) return
     const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
     if (!markdownView) return
+    const cache = this.voiceAudioDragRevealCache
+    if (
+      cache?.revealedMarkdownView === markdownView &&
+      cache.revealedKind === dragKind
+    ) {
+      return
+    }
+    if (cache) {
+      cache.revealedMarkdownView = markdownView
+      cache.revealedKind = dragKind
+    }
     void this.revealVoiceFloatingIslandForAudioDrag(markdownView, dragKind)
   }
 
@@ -1208,7 +1225,29 @@ export default class YoloPlugin extends Plugin {
   }
 
   private clearVoiceAudioDragReveal(): void {
+    this.voiceAudioDragRevealCache = null
     this.voiceFloatingIslandController?.clearAudioDropTargetReveal()
+  }
+
+  private getCachedVoiceAudioDragKind(
+    event: DragEvent,
+  ): AudioFileDragKind | null {
+    const dataTransfer = event.dataTransfer
+    if (!dataTransfer) return null
+    // `dragover` fires many times per second and DataTransfer contents stay
+    // stable for a single drag operation. Cache the classification so dragging
+    // any file across the editor does not repeatedly parse paths or reveal UI.
+    if (this.voiceAudioDragRevealCache?.dataTransfer === dataTransfer) {
+      return this.voiceAudioDragRevealCache.dragKind
+    }
+    const dragKind = this.getAudioFileDragKind(event)
+    this.voiceAudioDragRevealCache = {
+      dataTransfer,
+      dragKind,
+      revealedKind: null,
+      revealedMarkdownView: null,
+    }
+    return dragKind
   }
 
   private async revealVoiceFloatingIslandForAudioDrag(
@@ -2745,7 +2784,9 @@ export default class YoloPlugin extends Plugin {
         // Voice-input caches are keyed by file path. `forget` also clears
         // child paths when `file` is a deleted folder.
         this.documentSummaryManager?.forget(file.path)
-        this.voicePrefixCacheManager?.forget(file.path)
+        this.voicePrefixCacheManager?.forget(file.path, {
+          includeChildren: file instanceof TFolder,
+        })
       }),
     )
     this.registerEvent(
@@ -2761,7 +2802,9 @@ export default class YoloPlugin extends Plugin {
         // since both rename events fire.
         if (oldPath) {
           this.documentSummaryManager?.forget(oldPath)
-          this.voicePrefixCacheManager?.forget(oldPath)
+          this.voicePrefixCacheManager?.forget(oldPath, {
+            includeChildren: file instanceof TFolder,
+          })
         }
       }),
     )

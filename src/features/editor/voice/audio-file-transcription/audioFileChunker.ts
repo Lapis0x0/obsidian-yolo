@@ -58,22 +58,22 @@ export function buildAudioFileChunkSchedule(input: {
   return { chunks, effectiveChunkDurationMs }
 }
 
-export function createAudioFileChunks(
+export async function createAudioFileChunks(
   audioBuffer: AudioBuffer,
   schedule: AudioFileChunkSchedule,
-): AudioFileChunk[] {
-  return schedule.chunks.map((entry) =>
-    createAudioFileChunk(audioBuffer, entry),
+): Promise<AudioFileChunk[]> {
+  return Promise.all(
+    schedule.chunks.map((entry) => createAudioFileChunk(audioBuffer, entry)),
   )
 }
 
-export function createAudioFileChunk(
+export async function createAudioFileChunk(
   audioBuffer: AudioBuffer,
   entry: AudioFileChunkScheduleEntry,
-): AudioFileChunk {
+): Promise<AudioFileChunk> {
   return {
     ...entry,
-    blob: encodeAudioBufferSliceToWav(
+    blob: await encodeAudioBufferSliceToWav(
       audioBuffer,
       entry.actualStartMs,
       entry.actualEndMs,

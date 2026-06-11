@@ -7,6 +7,7 @@ export const DECIBEL_CHART_CEILING = -5
 const DECIBEL_HISTOGRAM_BINS = 100
 const DECIBEL_AXIS_TICKS = [-50, -40, -30, -20, -10, -5] as const
 const DECIBEL_ANALYSER_FFT_SIZE = 4096
+const DECIBEL_READOUT_UPDATE_MS = 100
 
 const clampChartDecibels = (value: number): number =>
   Math.min(DECIBEL_CHART_CEILING, Math.max(DECIBEL_CHART_FLOOR, value))
@@ -137,6 +138,10 @@ export function VoiceDecibelMeter({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const histogramRef = useRef(new Float32Array(DECIBEL_HISTOGRAM_BINS))
   const highlightRef = useRef(new Float32Array(DECIBEL_HISTOGRAM_BINS))
+  const levelDbRef = useRef<number | null>(null)
+  const peakDbRef = useRef<number | null>(null)
+  const lastReadoutUpdateMsRef = useRef(0)
+  const activeVadStateRef = useRef<ActiveVadState>(null)
   const vadSpeechActiveSinceMsRef = useRef(0)
   const vadSilenceSinceMsRef = useRef(0)
   const vadEverHeardSpeechRef = useRef(false)
@@ -146,14 +151,6 @@ export function VoiceDecibelMeter({
     speechRequiredMs,
     silenceHoldMs,
   })
-
-  useEffect(() => {
-    paintDecibelHistogram({
-      canvas: canvasRef.current,
-      histogram: histogramRef.current,
-      highlight: highlightRef.current,
-    })
-  }, [levelDb])
 
   useEffect(() => {
     vadOptionsRef.current = {
@@ -183,6 +180,10 @@ export function VoiceDecibelMeter({
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
     highlightRef.current.fill(0)
+    levelDbRef.current = null
+    peakDbRef.current = null
+    lastReadoutUpdateMsRef.current = 0
+    activeVadStateRef.current = null
     vadSpeechActiveSinceMsRef.current = 0
     vadSilenceSinceMsRef.current = 0
     vadEverHeardSpeechRef.current = false
@@ -248,6 +249,10 @@ export function VoiceDecibelMeter({
       sourceRef.current = source
       histogramRef.current.fill(0)
       highlightRef.current.fill(0)
+      levelDbRef.current = DECIBEL_CHART_FLOOR
+      peakDbRef.current = DECIBEL_CHART_FLOOR
+      lastReadoutUpdateMsRef.current = 0
+      activeVadStateRef.current = 'silence'
       vadSpeechActiveSinceMsRef.current = 0
       vadSilenceSinceMsRef.current = 0
       vadEverHeardSpeechRef.current = false
@@ -255,6 +260,21 @@ export function VoiceDecibelMeter({
       setActiveVadState('silence')
       setLevelDb(DECIBEL_CHART_FLOOR)
       setPeakDb(DECIBEL_CHART_FLOOR)
+
+      const setVadStateIfChanged = (next: ActiveVadState) => {
+        if (activeVadStateRef.current === next) return
+        activeVadStateRef.current = next
+        setActiveVadState(next)
+      }
+
+      const updateReadoutIfDue = (now: number) => {
+        if (now - lastReadoutUpdateMsRef.current < DECIBEL_READOUT_UPDATE_MS) {
+          return
+        }
+        lastReadoutUpdateMsRef.current = now
+        setLevelDb(levelDbRef.current)
+        setPeakDb(peakDbRef.current)
+      }
 
       const draw = () => {
         analyser.getByteTimeDomainData(buffer)
@@ -280,17 +300,17 @@ export function VoiceDecibelMeter({
             ) {
               vadEverHeardSpeechRef.current = true
               vadSilenceSinceMsRef.current = 0
-              setActiveVadState('speech')
+              setVadStateIfChanged('speech')
             } else {
-              setActiveVadState('silence')
+              setVadStateIfChanged('silence')
             }
           } else {
             vadSpeechActiveSinceMsRef.current = 0
-            setActiveVadState('silence')
+            setVadStateIfChanged('silence')
           }
         } else if (nextDb > vadOptions.silenceDecibels) {
           vadSilenceSinceMsRef.current = 0
-          setActiveVadState('speech')
+          setVadStateIfChanged('speech')
         } else {
           vadSpeechActiveSinceMsRef.current = 0
           if (vadSilenceSinceMsRef.current === 0) {
@@ -299,9 +319,9 @@ export function VoiceDecibelMeter({
           if (now - vadSilenceSinceMsRef.current >= vadOptions.silenceHoldMs) {
             vadSilenceSinceMsRef.current = 0
             vadEverHeardSpeechRef.current = false
-            setActiveVadState('silence')
+            setVadStateIfChanged('silence')
           } else {
-            setActiveVadState('speech')
+            setVadStateIfChanged('speech')
           }
         }
 
@@ -316,10 +336,12 @@ export function VoiceDecibelMeter({
           histogram: histogramRef.current,
           highlight: highlightRef.current,
         })
-        setLevelDb(nextDb)
-        setPeakDb((current) =>
-          current === null ? nextDb : Math.max(current, nextDb),
-        )
+        levelDbRef.current = nextDb
+        peakDbRef.current =
+          peakDbRef.current === null
+            ? nextDb
+            : Math.max(peakDbRef.current, nextDb)
+        updateReadoutIfDue(now)
         rafRef.current = window.requestAnimationFrame(draw)
       }
       draw()

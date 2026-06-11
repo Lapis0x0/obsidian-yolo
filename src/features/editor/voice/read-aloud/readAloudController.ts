@@ -821,6 +821,8 @@ export class ReadAloudController {
     }
     this.clearPreloadTimers(session)
     session.audioElement?.pause()
+    const completedStatus =
+      outcome === 'completed' ? this.buildReadAloudStatus(session) : null
     session.audioElement = null
     for (const segment of session.generatedSegments.values()) {
       URL.revokeObjectURL(segment.objectUrl)
@@ -835,7 +837,7 @@ export class ReadAloudController {
           'voiceInput.readAloudCompleted',
           'Read aloud done',
         ),
-        readAloud: this.buildReadAloudStatus(session),
+        readAloud: completedStatus ?? this.buildReadAloudStatus(session),
       })
       this.completionTimeout = window.setTimeout(() => {
         this.completionTimeout = null

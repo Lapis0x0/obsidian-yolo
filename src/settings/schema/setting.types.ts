@@ -356,15 +356,15 @@ export const ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT = 2
  * provider's `requestTransportMode` enum so users do not have to learn a
  * second vocabulary for the same request layer.
  *
- * - `auto`: desktop Node fetch, then browser fetch on retryable
- *   network/CORS errors; mobile browser fetch, then Obsidian requestUrl.
+ * - `auto`: use the same platform default as LLM providers: desktop Node
+ *   fetch, mobile browser fetch.
  * - `obsidian`: Obsidian's `requestUrl`. Bypasses CORS/proxy issues.
  * - `browser`: native `window.fetch`. Honours AbortSignal, useful for
  *   endpoints that the Electron requestUrl shim mishandles (rare, but a few
  *   enterprise gateways strip headers).
  * - `node`: desktop Node fetch, lazy-loaded on desktop only, with the same
- *   proxy-aware fetch path used by LLM providers; mobile falls back to
- *   `obsidian`.
+ *   proxy-aware fetch path used by LLM providers; mobile normalizes to
+ *   browser fetch.
  */
 export const ASR_TRANSPORT_MODES = [
   'auto',

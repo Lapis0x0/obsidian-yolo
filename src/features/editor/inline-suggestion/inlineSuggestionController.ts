@@ -75,13 +75,14 @@ export class InlineSuggestionController {
           // user accepts (Tab) or rejects (Esc). This was the root cause
           // of the hold-to-talk "polish lands but no editor preview" bug:
           // focus changed → clearInlineSuggestion → voice ghost wiped.
-          const voice = this.getVoiceController()
-          if (voice?.isBusy()) {
-            return
-          }
           const tab = this.getTabCompletionController()
           tab.clearTimer()
           tab.cancelRequest()
+          const voice = this.getVoiceController()
+          if (voice?.isBusy()) {
+            this.clearNonVoiceInlineSuggestion()
+            return
+          }
           this.clearInlineSuggestion()
           return
         }
@@ -236,6 +237,20 @@ export class InlineSuggestionController {
       voice.cancelActiveSession('cleared')
     }
     this.activeInlineSuggestion = null
+  }
+
+  private clearNonVoiceInlineSuggestion() {
+    this.getTabCompletionController().clearSuggestion()
+    if (this.continuationInlineSuggestion) {
+      const { view } = this.continuationInlineSuggestion
+      if (view) {
+        this.setInlineSuggestionGhost(view, null)
+      }
+      this.continuationInlineSuggestion = null
+    }
+    if (this.activeInlineSuggestion?.source !== 'voice') {
+      this.activeInlineSuggestion = null
+    }
   }
 
   tryAcceptInlineSuggestionFromView(view: EditorView): boolean {

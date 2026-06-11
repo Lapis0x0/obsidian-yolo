@@ -56,7 +56,7 @@ export const transcodeToWav = async (
   const audioBuffer = await decodeAudioBlob(input.blob)
   assertDecodedAudioNotEmpty(audioBuffer)
 
-  const wavBlob = encodePcm16Wav(audioBuffer, ASR_WAV_SAMPLE_RATE)
+  const wavBlob = await encodePcm16Wav(audioBuffer, ASR_WAV_SAMPLE_RATE)
   return {
     blob: wavBlob,
     mimeType: 'audio/wav',
@@ -71,7 +71,7 @@ export const transcodeToPcm16 = async (
   const audioBuffer = await decodeAudioBlob(input.blob)
   assertDecodedAudioNotEmpty(audioBuffer)
   return {
-    audio: encodePcm16Raw(audioBuffer, targetSampleRate),
+    audio: await encodePcm16Raw(audioBuffer, targetSampleRate),
     sampleRate: targetSampleRate,
     durationMs: Math.round(audioBuffer.duration * 1000),
   }
@@ -89,11 +89,11 @@ export const decodeAudioBlob = async (blob: Blob): Promise<AudioBuffer> => {
   return audioBuffer
 }
 
-export const encodeAudioBufferSliceToWav = (
+export const encodeAudioBufferSliceToWav = async (
   audioBuffer: AudioBuffer,
   startMs: number,
   endMs: number,
-): Blob => {
+): Promise<Blob> => {
   assertDecodedAudioNotEmpty(audioBuffer)
   const sampleRate = audioBuffer.sampleRate
   const fromFrame = clampFrame(
@@ -115,6 +115,8 @@ export const encodeAudioBufferSliceToWav = (
     const source = audioBuffer.getChannelData(ch).subarray(fromFrame, toFrame)
     slice.copyToChannel(source, ch, 0)
   }
+  // Resampling goes through OfflineAudioContext when available, so encoding is
+  // async even though WAV serialization itself is CPU-local and synchronous.
   return encodePcm16Wav(slice, ASR_WAV_SAMPLE_RATE)
 }
 
@@ -159,11 +161,11 @@ const withTimeout = async <T>(
  *   fmt chunk (24 bytes, PCM)
  *   data chunk (8 bytes + samples * 2 * channels)
  */
-const encodePcm16Wav = (
+const encodePcm16Wav = async (
   audioBuffer: AudioBuffer,
   targetSampleRate: number,
-): Blob => {
-  const audio = encodePcm16Raw(audioBuffer, targetSampleRate)
+): Promise<Blob> => {
+  const audio = await encodePcm16Raw(audioBuffer, targetSampleRate)
   const numChannels = 1
   const sampleRate = targetSampleRate
   const dataBytes = audio.byteLength
@@ -194,20 +196,80 @@ const encodePcm16Wav = (
   return new Blob([buffer], { type: 'audio/wav' })
 }
 
-const encodePcm16Raw = (
+const encodePcm16Raw = async (
   audioBuffer: AudioBuffer,
   targetSampleRate: number,
-): ArrayBuffer => {
+): Promise<ArrayBuffer> => {
   const mono = mixToMono(audioBuffer)
-  const ratio = audioBuffer.sampleRate / targetSampleRate
-  const outputLength = Math.max(1, Math.ceil(mono.length / ratio))
+  const resampled = await resampleMono(
+    mono,
+    audioBuffer.sampleRate,
+    targetSampleRate,
+  )
+  const outputLength = resampled.length
   const buffer = new ArrayBuffer(outputLength * BYTES_PER_SAMPLE)
   const view = new DataView(buffer)
   for (let i = 0; i < outputLength; i++) {
-    const sourceIndex = Math.min(mono.length - 1, Math.floor(i * ratio))
-    writePcm16Sample(view, i * BYTES_PER_SAMPLE, mono[sourceIndex])
+    writePcm16Sample(view, i * BYTES_PER_SAMPLE, resampled[i])
   }
   return buffer
+}
+
+const resampleMono = async (
+  mono: Float32Array,
+  sourceSampleRate: number,
+  targetSampleRate: number,
+): Promise<Float32Array> => {
+  if (sourceSampleRate === targetSampleRate) return mono
+  const Ctor =
+    (globalThis as { OfflineAudioContext?: typeof OfflineAudioContext })
+      .OfflineAudioContext ??
+    (
+      globalThis as unknown as {
+        webkitOfflineAudioContext?: typeof OfflineAudioContext
+      }
+    ).webkitOfflineAudioContext
+  if (!Ctor) {
+    return resampleMonoNearestNeighbor(mono, sourceSampleRate, targetSampleRate)
+  }
+
+  try {
+    // Browser/WebView resampling includes the anti-alias filtering that plain
+    // nearest-neighbor downsampling lacks, which matters for 48kHz -> 16kHz ASR.
+    const durationSeconds = mono.length / sourceSampleRate
+    const outputLength = Math.max(
+      1,
+      Math.ceil(durationSeconds * targetSampleRate),
+    )
+    const offline = new Ctor(1, outputLength, targetSampleRate)
+    const sourceBuffer = offline.createBuffer(1, mono.length, sourceSampleRate)
+    sourceBuffer.copyToChannel(mono, 0, 0)
+    const source = offline.createBufferSource()
+    source.buffer = sourceBuffer
+    source.connect(offline.destination)
+    source.start(0)
+    const rendered = await offline.startRendering()
+    return rendered.getChannelData(0).slice()
+  } catch {
+    // Compatibility fallback for old WebViews/Electron builds where
+    // OfflineAudioContext exists but cannot render this buffer.
+    return resampleMonoNearestNeighbor(mono, sourceSampleRate, targetSampleRate)
+  }
+}
+
+const resampleMonoNearestNeighbor = (
+  mono: Float32Array,
+  sourceSampleRate: number,
+  targetSampleRate: number,
+): Float32Array => {
+  const ratio = sourceSampleRate / targetSampleRate
+  const outputLength = Math.max(1, Math.ceil(mono.length / ratio))
+  const output = new Float32Array(outputLength)
+  for (let i = 0; i < outputLength; i++) {
+    const sourceIndex = Math.min(mono.length - 1, Math.floor(i * ratio))
+    output[i] = mono[sourceIndex]
+  }
+  return output
 }
 
 const estimatePcm16RawByteLength = (

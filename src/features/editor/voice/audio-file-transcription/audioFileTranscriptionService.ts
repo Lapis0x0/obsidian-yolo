@@ -558,7 +558,7 @@ async function executeChunkedUpload(input: {
           totalChunks: entries.length,
         })
         await yieldToBrowser(signal)
-        const chunk = createAudioFileChunk(decodedAudio, entry)
+        const chunk = await createAudioFileChunk(decodedAudio, entry)
         const text = await transcribeChunkWithRetry({
           provider,
           chunk,
@@ -819,16 +819,13 @@ async function sendFileThroughStreamingSession(input: {
   }
 }
 
-function resolveWebSocketStreamingRealtimeRateLimit(
+export function resolveWebSocketStreamingRealtimeRateLimit(
   config: AsrConfig,
 ): number | null {
   if (config.format !== 'deepgram-compatible-websocket') {
     return null
   }
-  if (
-    config.webSocketProtocol === 'deepgram-compatible' &&
-    config.asrProvider === 'deepgram'
-  ) {
+  if (config.webSocketProtocol === 'deepgram-compatible') {
     return DEEPGRAM_MAX_STREAMING_REALTIME_RATE
   }
   if (config.webSocketProtocol === 'whisperlivekit-native') {

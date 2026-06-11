@@ -8,6 +8,8 @@
  * denominator at the app layer is "give me audio, get me text".
  */
 
+import type { UploadProgress, UploadProgressCallback } from '../llm/fetchTypes'
+
 export type AsrAudioInput = {
   /** Recorded audio blob. Mime type is required so providers can pick the
    * right multipart filename / `format` field. */
@@ -18,12 +20,8 @@ export type AsrAudioInput = {
   durationMs?: number
 }
 
-export type AsrUploadProgress = {
-  sentBytes: number
-  totalBytes: number
-}
-
-export type AsrUploadProgressCallback = (progress: AsrUploadProgress) => void
+export type AsrUploadProgress = UploadProgress
+export type AsrUploadProgressCallback = UploadProgressCallback
 
 export type AsrOptions = {
   /** BCP47 language hint, or `'auto'` to defer to the provider. */

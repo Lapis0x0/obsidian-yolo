@@ -12,6 +12,7 @@ import {
   calculateStreamingPaceDelayMs,
   formatLongAudioResultForInsertion,
   inspectAndPlanAudioFileTranscription,
+  resolveWebSocketStreamingRealtimeRateLimit,
   trimDuplicateChunkBoundary,
 } from './audioFileTranscriptionService'
 
@@ -221,6 +222,19 @@ describe('calculateStreamingPaceDelayMs', () => {
         realtimeRateLimit: 20,
       }),
     ).toBe(0)
+  })
+})
+
+describe('resolveWebSocketStreamingRealtimeRateLimit', () => {
+  it('paces Deepgram-compatible WebSocket configs by protocol, not provider id', () => {
+    expect(
+      resolveWebSocketStreamingRealtimeRateLimit({
+        ...baseConfig,
+        asrProvider: 'custom-compatible-service',
+        format: 'deepgram-compatible-websocket',
+        webSocketProtocol: 'deepgram-compatible',
+      }),
+    ).toBe(1.25)
   })
 })
 
