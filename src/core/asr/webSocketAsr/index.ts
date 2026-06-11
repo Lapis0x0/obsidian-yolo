@@ -1,6 +1,10 @@
 import type { AsrApiFormat } from '../../../settings/schema/setting.types'
 import { transcodeToPcm16 } from '../audioTranscode'
 import { BaseAsrProvider } from '../base'
+import {
+  resolveAsrFeatureMode,
+  shouldIncludeAsrSpeakerLabels,
+} from '../featureMode'
 import type {
   AsrAudioInput,
   AsrOptions,
@@ -78,7 +82,7 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
         langCandidate && langCandidate !== 'auto' ? langCandidate : undefined,
       smart_format: webSocketPunctuate ? 'true' : undefined,
       punctuate: webSocketPunctuate ? 'true' : 'false',
-      diarize: resolveAutoFeature(
+      diarize: resolveAsrFeatureMode(
         webSocketDiarizeMode,
         options?.purpose ?? 'settings-test',
       )
@@ -144,12 +148,14 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
       langCandidate && langCandidate !== 'auto' ? langCandidate : undefined
     const baseWsUrl = joinUrl(baseURL, path)
     const isDeepgramCompatible = webSocketProtocol === 'deepgram-compatible'
-    const speakerFeatureEnabled = resolveAutoFeature(
+    const speakerFeatureEnabled = resolveAsrFeatureMode(
       webSocketDiarizeMode,
       options.purpose ?? 'context-voice-input',
     )
-    const includeSpeakerLabels =
-      speakerFeatureEnabled && options.purpose === 'audio-file-transcription'
+    const includeSpeakerLabels = shouldIncludeAsrSpeakerLabels(
+      webSocketDiarizeMode,
+      options.purpose,
+    )
     const url = appendQuery(baseWsUrl, {
       model,
       language: languageParam,
@@ -192,13 +198,4 @@ export class WebSocketAsrProvider extends BaseAsrProvider {
     }
     return openDeepgramCompatibleStream(streamArgs)
   }
-}
-
-const resolveAutoFeature = (
-  mode: import('../../../settings/schema/setting.types').AsrWebSocketFeatureMode,
-  purpose: AsrStreamingOptions['purpose'] | undefined,
-): boolean => {
-  if (mode === 'on') return true
-  if (mode === 'off') return false
-  return purpose === 'audio-file-transcription'
 }

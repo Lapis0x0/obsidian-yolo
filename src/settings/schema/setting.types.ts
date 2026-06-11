@@ -7,6 +7,7 @@ import {
 import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
+import { customParameterSchema } from '../../types/custom-parameter.types'
 import { embeddingModelSchema } from '../../types/embedding-model.types'
 import {
   mcpServerConfigSchema,
@@ -346,6 +347,13 @@ export type AsrConfigCategory = (typeof ASR_CONFIG_CATEGORIES)[number]
 export const ASR_WEBSOCKET_FEATURE_MODES = ['auto', 'on', 'off'] as const
 export type AsrWebSocketFeatureMode =
   (typeof ASR_WEBSOCKET_FEATURE_MODES)[number]
+const asrFeatureModeSchema = z
+  .enum(ASR_WEBSOCKET_FEATURE_MODES)
+  .or(
+    z
+      .boolean()
+      .transform((value) => (value ? ('auto' as const) : ('off' as const))),
+  )
 
 export const ASR_WEBSOCKET_FILE_STREAMING_RATE_MIN = 1
 export const ASR_WEBSOCKET_FILE_STREAMING_RATE_MAX = 20
@@ -386,6 +394,7 @@ export const TTS_API_FORMATS = [
   'openai-compatible-speech',
   'mimo-chat-audio-tts',
   'dashscope-cosyvoice',
+  'volcengine-tts-http',
 ] as const
 export type TtsApiFormat = (typeof TTS_API_FORMATS)[number]
 
@@ -441,6 +450,7 @@ const asrConfigSchema = z
     resultPath: z.string().catch(''),
     chatCompletionsPath: z.string().catch(''),
     audioContentFormat: z.string().catch('input_audio'),
+    customParameters: z.array(customParameterSchema).optional(),
     webSocketProtocol: z
       .enum(ASR_WEBSOCKET_PROTOCOLS)
       .or(
@@ -452,7 +462,7 @@ const asrConfigSchema = z
       .catch('deepgram-compatible'),
     /** Deepgram-compatible /listen options. Ignored by other WS protocols. */
     webSocketPunctuate: z.boolean().catch(true),
-    webSocketDiarizeMode: z.enum(ASR_WEBSOCKET_FEATURE_MODES).catch('off'),
+    webSocketDiarizeMode: asrFeatureModeSchema.catch('off'),
     webSocketDictation: z.boolean().catch(false),
     /**
      * Max realtime multiplier when streaming an existing audio file into
@@ -480,7 +490,7 @@ const asrConfigSchema = z
       .catch('node'),
     language: z.string().catch('auto'),
     longAudioPunctuation: z.boolean().catch(true),
-    longAudioDiarization: z.boolean().catch(true),
+    longAudioDiarizeMode: asrFeatureModeSchema.catch('auto'),
     longAudioSpeakerCount: z.number().int().min(0).max(32).catch(0),
     longAudioTimestamps: z.boolean().catch(true),
   })
@@ -500,6 +510,7 @@ const asrConfigSchema = z
     resultPath: '',
     chatCompletionsPath: '',
     audioContentFormat: 'input_audio',
+    customParameters: undefined,
     webSocketProtocol: 'deepgram-compatible' as AsrWebSocketProtocol,
     webSocketPunctuate: true,
     webSocketDiarizeMode: 'off' as AsrWebSocketFeatureMode,
@@ -509,7 +520,7 @@ const asrConfigSchema = z
     transportMode: 'node' as AsrTransportMode,
     language: 'auto',
     longAudioPunctuation: true,
-    longAudioDiarization: true,
+    longAudioDiarizeMode: 'auto' as AsrWebSocketFeatureMode,
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
   })

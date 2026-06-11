@@ -8,10 +8,16 @@ import {
   getAsrProvider,
   resolveActiveAsrConfig,
 } from '../../../../core/asr/manager'
-import type { AsrStreamingSession } from '../../../../core/asr/types'
+import type {
+  AsrAudioInput,
+  AsrStreamingSession,
+} from '../../../../core/asr/types'
 import { getChatModelClient } from '../../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../../core/llm/transportModePromotion'
-import type { YoloSettings } from '../../../../settings/schema/setting.types'
+import type {
+  AsrConfig,
+  YoloSettings,
+} from '../../../../settings/schema/setting.types'
 import type { LLMRequestBase } from '../../../../types/llm/request'
 import { escapeMarkdownSpecialChars } from '../../../../utils/markdown-escape'
 import type { InlineSuggestionGhostPayload } from '../../inline-suggestion/inlineSuggestion'
@@ -1177,17 +1183,16 @@ export class ContextVoiceInputWorkflow {
     try {
       const asrProvider = getAsrProvider(options)
       const activeConfig = resolveActiveAsrConfig(options)
-      const asrResult = await asrProvider.transcribe(
-        {
-          blob: audio.blob,
-          mimeType: audio.mimeType,
-          durationMs: audio.durationMs,
-        },
-        {
-          language: activeConfig?.language,
-          signal: session.abortController.signal,
-        },
-      )
+      const asrInput = await prepareContextVoiceAsrInput(activeConfig, {
+        blob: audio.blob,
+        mimeType: audio.mimeType,
+        durationMs: audio.durationMs,
+      })
+      const asrResult = await asrProvider.transcribe(asrInput, {
+        language: activeConfig?.language,
+        signal: session.abortController.signal,
+        purpose: 'context-voice-input',
+      })
       session.asrDurationMs =
         asrResult.requestDurationMs ?? Date.now() - asrStartedAt
       const transcript = asrResult.text?.trim() ?? ''
@@ -1840,6 +1845,27 @@ export class ContextVoiceInputWorkflow {
       ch: parts[parts.length - 1].length,
     }
   }
+}
+
+const prepareContextVoiceAsrInput = async (
+  config: AsrConfig | null,
+  input: AsrAudioInput,
+): Promise<AsrAudioInput> => {
+  if (config?.asrCategory !== 'http-long-audio') return input
+  if (
+    config.asrProvider !== 'tencent-flash' &&
+    config.asrProvider !== 'volcengine-auc-flash'
+  ) {
+    return input
+  }
+  const mimeType = (input.mimeType || input.blob.type).toLowerCase()
+  if (mimeType.includes('wav')) return input
+
+  // Browser MediaRecorder commonly produces webm/opus, but these cloud
+  // long-audio endpoints reject that container. Match the settings test path:
+  // decode locally and submit a provider-compatible 16 kHz mono WAV.
+  const { transcodeToWav } = await import('../../../../core/asr/audioTranscode')
+  return transcodeToWav(input)
 }
 
 /**

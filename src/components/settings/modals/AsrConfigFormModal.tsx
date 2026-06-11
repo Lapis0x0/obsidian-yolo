@@ -22,6 +22,11 @@ import {
   type AsrWebSocketFeatureMode,
   type AsrWebSocketProtocol,
 } from '../../../settings/schema/setting.types'
+import type { CustomParameter } from '../../../types/custom-parameter.types'
+import {
+  normalizeCustomParameterType,
+  sanitizeCustomParameters,
+} from '../../../utils/custom-parameters'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -38,6 +43,7 @@ type AsrConfigFormProps = {
 
 const TEST_RECORDING_SECONDS = 5
 const STREAMING_TEST_MAX_SECONDS = 24 * 60 * 60
+const CUSTOM_PARAMETER_TYPES = ['text', 'number', 'boolean', 'json'] as const
 
 // Per-format defaults that get *written* into the form (not just shown as
 // placeholder) when the user picks that format. Previous version showed
@@ -175,6 +181,7 @@ type AsrLongAudioProvider =
   | 'funasr-local'
   | 'deepgram-prerecorded'
   | 'tencent-flash'
+  | 'volcengine-auc-flash'
 
 type LongAudioProviderDefaults = Pick<
   FormatDefaults,
@@ -190,7 +197,7 @@ type LongAudioProviderDefaults = Pick<
   resultPath: string
   appId: string
   apiSecret: string
-  longAudioDiarization: boolean
+  longAudioDiarizeMode: AsrWebSocketFeatureMode
   longAudioPunctuation: boolean
   longAudioSpeakerCount: number
   longAudioTimestamps: boolean
@@ -203,6 +210,8 @@ type AsrTestStatus =
   | 'transcribing'
   | 'passed'
   | 'failed'
+
+type CustomParameterDraft = CustomParameter & { uid: string }
 
 type StreamingTestRuntime = {
   recorder: VoiceInputRecorder
@@ -228,7 +237,7 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     appId: '',
     apiSecret: '',
     longAudioPunctuation: false,
-    longAudioDiarization: true,
+    longAudioDiarizeMode: 'auto',
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
   },
@@ -245,7 +254,7 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     appId: '',
     apiSecret: '',
     longAudioPunctuation: true,
-    longAudioDiarization: true,
+    longAudioDiarizeMode: 'auto',
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
   },
@@ -262,7 +271,24 @@ const LONG_AUDIO_PROVIDER_DEFAULTS: Record<
     appId: '',
     apiSecret: '',
     longAudioPunctuation: false,
-    longAudioDiarization: true,
+    longAudioDiarizeMode: 'auto',
+    longAudioSpeakerCount: 0,
+    longAudioTimestamps: true,
+  },
+  'volcengine-auc-flash': {
+    name: 'Volcengine / Doubao Flash',
+    asrProvider: 'volcengine-auc-flash',
+    baseURL: 'https://openspeech.bytedance.com',
+    model: 'volc.bigasr.auc_turbo',
+    transcriptionPath: '/api/v3/auc/bigmodel/recognize/flash',
+    jobPath: '',
+    resultPath: '',
+    audioFormat: 'auto',
+    language: 'auto',
+    appId: '',
+    apiSecret: '',
+    longAudioPunctuation: true,
+    longAudioDiarizeMode: 'auto',
     longAudioSpeakerCount: 0,
     longAudioTimestamps: true,
   },
@@ -376,10 +402,10 @@ function AsrConfigFormComponent({
         initialCategory === 'http-long-audio'
           ? longDef.longAudioPunctuation
           : true,
-      longAudioDiarization:
+      longAudioDiarizeMode:
         initialCategory === 'http-long-audio'
-          ? longDef.longAudioDiarization
-          : true,
+          ? longDef.longAudioDiarizeMode
+          : 'auto',
       longAudioSpeakerCount:
         initialCategory === 'http-long-audio'
           ? longDef.longAudioSpeakerCount
@@ -402,12 +428,32 @@ function AsrConfigFormComponent({
           ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
       ),
     )
+  const customParameterUidRef = useRef(0)
+  const createCustomParameterUid = () => {
+    customParameterUidRef.current += 1
+    return `asr-custom-param-${customParameterUidRef.current}`
+  }
+  const [customParameters, setCustomParameters] = useState<
+    CustomParameterDraft[]
+  >(() =>
+    (Array.isArray(config?.customParameters)
+      ? config.customParameters
+      : []
+    ).map((entry) => ({
+      uid: createCustomParameterUid(),
+      key: entry.key,
+      value: entry.value,
+      type: normalizeCustomParameterType(entry.type),
+    })),
+  )
   const streamingTestRef = useRef<StreamingTestRuntime | null>(null)
 
   const isChatAudio = formData.format === 'openai-compatible-chat-audio-asr'
   const isHttpLongAudio = formData.asrCategory === 'http-long-audio'
   const isTencentFlash =
     isHttpLongAudio && formData.asrProvider === 'tencent-flash'
+  const isVolcengineLongAudio =
+    isHttpLongAudio && formData.asrProvider.startsWith('volcengine-auc-')
   const isDeepgramPreRecorded =
     isHttpLongAudio && formData.asrProvider === 'deepgram-prerecorded'
   const isCloudLongAudio =
@@ -419,9 +465,18 @@ function AsrConfigFormComponent({
     isWebSocketAsr && formData.webSocketProtocol === 'deepgram-compatible'
   const isWhisperLiveKitWs =
     isWebSocketAsr && formData.webSocketProtocol === 'whisperlivekit-native'
-  const providerFormData: AsrConfig = isWebSocketAsr
-    ? { ...formData, transportMode: 'browser' }
-    : formData
+  const sanitizedCustomParameters = sanitizeCustomParameters(customParameters)
+  const providerFormData: AsrConfig = (() => {
+    const next: AsrConfig = isWebSocketAsr
+      ? { ...formData, transportMode: 'browser' }
+      : { ...formData }
+    if (isChatAudio && sanitizedCustomParameters.length > 0) {
+      next.customParameters = sanitizedCustomParameters
+    } else {
+      delete next.customParameters
+    }
+    return next
+  })()
   const tf = useCallback(
     (key: string, fallback: string, values: Record<string, string | number>) =>
       formatTemplate(t(key, fallback), values),
@@ -660,6 +715,9 @@ function AsrConfigFormComponent({
           'AppID, API key, and API secret are required.',
         )
       }
+      if (isVolcengineLongAudio && !formData.apiKey.trim()) {
+        return t('settings.asr.apiKeyRequired', 'API key is required.')
+      }
       return null
     }
     if (!isWebSocketAsr && !formData.model.trim()) {
@@ -675,7 +733,10 @@ function AsrConfigFormComponent({
       ...prev,
       asrCategory: 'http-long-audio',
       asrProvider: defaults.asrProvider,
-      name: defaults.name,
+      name:
+        provider === 'volcengine-auc-flash'
+          ? t('settings.asr.longProviderVolcengineFlash', defaults.name)
+          : defaults.name,
       baseURL: defaults.baseURL,
       // Cloud long-audio credentials are not interchangeable. Clear API key
       // when switching providers so stale keys cannot make validation pass.
@@ -689,7 +750,7 @@ function AsrConfigFormComponent({
       appId: defaults.appId,
       apiSecret: defaults.apiSecret,
       longAudioPunctuation: defaults.longAudioPunctuation,
-      longAudioDiarization: defaults.longAudioDiarization,
+      longAudioDiarizeMode: defaults.longAudioDiarizeMode,
       longAudioSpeakerCount: defaults.longAudioSpeakerCount,
       longAudioTimestamps: defaults.longAudioTimestamps,
       transportMode: 'node',
@@ -772,6 +833,9 @@ function AsrConfigFormComponent({
   const buildTranscriptionPathPlaceholder = (): string => {
     if (isWebSocketAsr) return '/listen'
     if (isTencentFlash) return '/asr/flash/v1'
+    if (formData.asrProvider === 'volcengine-auc-flash') {
+      return '/api/v3/auc/bigmodel/recognize/flash'
+    }
     if (isHttpLongAudio && formData.asrProvider === 'deepgram-prerecorded') {
       return '/v1/listen'
     }
@@ -803,12 +867,10 @@ function AsrConfigFormComponent({
           ...voice,
           asrConfigs: next,
           activeAsrConfigId:
-            providerFormData.asrCategory === 'http-long-audio'
+            voice.activeAsrConfigId &&
+            existing.some((c) => c.id === voice.activeAsrConfigId)
               ? voice.activeAsrConfigId
-              : voice.activeAsrConfigId &&
-                  existing.some((c) => c.id === voice.activeAsrConfigId)
-                ? voice.activeAsrConfigId
-                : formData.id,
+              : formData.id,
         },
       })
       onClose()
@@ -1005,10 +1067,10 @@ function AsrConfigFormComponent({
         mimeType: audio.mimeType,
         durationMs: audio.durationMs,
       }
-      if (isTencentFlash) {
-        // Tencent Flash rejects the MediaRecorder default webm/opus container.
-        // For the 5s settings test, transcode to the same 16 kHz mono WAV
-        // shape users would pick for compatibility.
+      if (isTencentFlash || formData.asrProvider === 'volcengine-auc-flash') {
+        // These cloud long-audio endpoints reject the MediaRecorder default
+        // webm/opus container. For the 5s settings test, transcode to the same
+        // 16 kHz mono WAV shape users would pick for compatibility.
         const { transcodeToWav } = await import(
           '../../../core/asr/audioTranscode'
         )
@@ -1101,6 +1163,10 @@ function AsrConfigFormComponent({
         'Deepgram pre-recorded',
       ),
       'tencent-flash': t('settings.asr.longProviderTencent', 'Tencent Flash'),
+      'volcengine-auc-flash': t(
+        'settings.asr.longProviderVolcengineFlash',
+        'Volcengine / Doubao Flash',
+      ),
     }),
     [t],
   )
@@ -1274,13 +1340,15 @@ function AsrConfigFormComponent({
         name={
           isTencentFlash
             ? t('settings.asr.secretId', 'SecretID')
-            : t('settings.asr.apiKey', 'API key')
+            : isVolcengineLongAudio
+              ? t('settings.asr.volcengineApiKey', 'API key')
+              : t('settings.asr.apiKey', 'API key')
         }
         desc={t(
-          isTencentFlash
+          isTencentFlash || isVolcengineLongAudio
             ? 'settings.asr.apiKeyRequiredDesc'
             : 'settings.asr.apiKeyDesc',
-          isTencentFlash
+          isTencentFlash || isVolcengineLongAudio
             ? 'Required by this cloud provider.'
             : 'Leave empty for local servers without auth.',
         )}
@@ -1327,7 +1395,12 @@ function AsrConfigFormComponent({
                   'settings.asr.chatAudioModelDesc',
                   'A multimodal chat model that accepts audio in messages.',
                 )
-              : t('settings.asr.modelDesc', 'Speech-to-text model id.')
+              : isVolcengineLongAudio
+                ? t(
+                    'settings.asr.volcengineResourceIdDesc',
+                    'Volcengine resource ID, for example volc.bigasr.auc_turbo.',
+                  )
+                : t('settings.asr.modelDesc', 'Speech-to-text model id.')
         }
       >
         <ObsidianTextInput
@@ -1338,7 +1411,9 @@ function AsrConfigFormComponent({
               ? 'nova-3'
               : isChatAudio
                 ? 'gemini-3.1-flash-lite'
-                : 'whisper-1'
+                : isVolcengineLongAudio
+                  ? 'volc.bigasr.auc_turbo'
+                  : 'whisper-1'
           }
         />
       </ObsidianSetting>
@@ -1362,6 +1437,96 @@ function AsrConfigFormComponent({
           />
         </ObsidianSetting>
       )}
+
+      {isChatAudio && (
+        <ObsidianSetting
+          name={t('settings.models.customParameters')}
+          desc={t(
+            'settings.asr.chatAudioCustomParametersDesc',
+            'Attach additional request fields; values accept plain text or JSON, for example { "asr_options": { "language": "zh"  } }.',
+          )}
+        >
+          <ObsidianButton
+            text={t('settings.models.customParametersAdd')}
+            onClick={() =>
+              setCustomParameters((prev) => [
+                ...prev,
+                {
+                  uid: createCustomParameterUid(),
+                  key: '',
+                  value: '',
+                  type: 'text',
+                },
+              ])
+            }
+          />
+        </ObsidianSetting>
+      )}
+
+      {isChatAudio &&
+        customParameters.map((param, index) => (
+          <ObsidianSetting
+            key={param.uid}
+            className="yolo-settings-kv-entry yolo-settings-kv-entry--inline"
+          >
+            <ObsidianTextInput
+              value={param.key}
+              placeholder={t('settings.models.customParametersKeyPlaceholder')}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = { ...next[index], key: value }
+                  return next
+                })
+              }
+            />
+            <ObsidianDropdown
+              value={normalizeCustomParameterType(param.type)}
+              options={Object.fromEntries(
+                CUSTOM_PARAMETER_TYPES.map((type) => [
+                  type,
+                  t(
+                    `settings.models.customParameterType${
+                      type.charAt(0).toUpperCase() + type.slice(1)
+                    }`,
+                    type,
+                  ),
+                ]),
+              )}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = {
+                    ...next[index],
+                    type: normalizeCustomParameterType(value),
+                  }
+                  return next
+                })
+              }
+            />
+            <ObsidianTextInput
+              value={param.value}
+              placeholder={t(
+                'settings.models.customParametersValuePlaceholder',
+              )}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = { ...next[index], value }
+                  return next
+                })
+              }
+            />
+            <ObsidianButton
+              text={t('common.remove')}
+              onClick={() =>
+                setCustomParameters((prev) =>
+                  prev.filter((_, removeIndex) => removeIndex !== index),
+                )
+              }
+            />
+          </ObsidianSetting>
+        ))}
 
       {/* 音频格式同样对 transcription 协议生效 — 例如智谱 GLM 的
           /v1/audio/transcriptions 也只接受 wav/mp3 而非 webm。 */}
@@ -1402,17 +1567,22 @@ function AsrConfigFormComponent({
           name={t('settings.asr.longAudioDiarization', 'Speaker diarization')}
           desc={t(
             'settings.asr.longAudioDiarizationDesc',
-            'Ask the provider to return speaker labels when supported.',
+            'Auto keeps speaker handling off for context voice input and on for audio file transcription.',
           )}
         >
-          <ObsidianToggle
-            value={formData.longAudioDiarization}
-            onChange={(value) => handlePatch({ longAudioDiarization: value })}
+          <ObsidianDropdown
+            value={formData.longAudioDiarizeMode}
+            options={featureModeOptions}
+            onChange={(value) =>
+              handlePatch({
+                longAudioDiarizeMode: value as AsrWebSocketFeatureMode,
+              })
+            }
           />
         </ObsidianSetting>
       )}
 
-      {isCloudLongAudio && (
+      {isCloudLongAudio && !isVolcengineLongAudio && (
         <ObsidianSetting
           name={t('settings.asr.longAudioTimestamps', 'Timestamps')}
           desc={t(
@@ -1479,16 +1649,18 @@ function AsrConfigFormComponent({
         </ObsidianSetting>
       )}
 
-      <ObsidianSetting
-        name={t('settings.asr.language', 'Language')}
-        desc={buildLanguageDesc()}
-      >
-        <ObsidianTextInput
-          value={formData.language}
-          onChange={(value) => handlePatch({ language: value })}
-          placeholder="auto"
-        />
-      </ObsidianSetting>
+      {!isVolcengineLongAudio && (
+        <ObsidianSetting
+          name={t('settings.asr.language', 'Language')}
+          desc={buildLanguageDesc()}
+        >
+          <ObsidianTextInput
+            value={formData.language}
+            onChange={(value) => handlePatch({ language: value })}
+            placeholder="auto"
+          />
+        </ObsidianSetting>
+      )}
 
       {isWebSocketAsr && (
         <ObsidianSetting

@@ -129,6 +129,12 @@ export function AudioFileTranscriptionSection() {
         ),
         websocket: t('settings.asr.sectionTitle.websocket', 'WebSocket'),
       },
+      providerLabels: {
+        'volcengine-auc-flash': t(
+          'settings.asr.longProviderVolcengineFlash',
+          'Volcengine / Doubao Flash',
+        ),
+      },
     })
   }, [asrConfigs, t])
 

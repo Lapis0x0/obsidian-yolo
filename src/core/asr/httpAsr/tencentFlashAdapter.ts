@@ -1,5 +1,12 @@
-import type { AsrTransportMode } from '../../../settings/schema/setting.types'
+import type {
+  AsrTransportMode,
+  AsrWebSocketFeatureMode,
+} from '../../../settings/schema/setting.types'
 import { BaseAsrProvider } from '../base'
+import {
+  resolveAsrFeatureMode,
+  shouldIncludeAsrSpeakerLabels,
+} from '../featureMode'
 import { sendAsrRawRequest } from '../httpTransport'
 import type { AsrAudioInput, AsrOptions, AsrResult, AsrSegment } from '../types'
 
@@ -19,7 +26,7 @@ export type TencentFlashProviderProfile = {
   engineType: string
   transcriptionPath: string
   transportMode: AsrTransportMode
-  diarization: boolean
+  diarizeMode: AsrWebSocketFeatureMode
   timestamps: boolean
 }
 
@@ -50,6 +57,7 @@ export class TencentFlashProvider extends BaseAsrProvider {
       profile: this.profile,
       input,
       body,
+      options,
     })
     const startedAt = Date.now()
     const response = await sendAsrRawRequest({
@@ -71,7 +79,12 @@ export class TencentFlashProvider extends BaseAsrProvider {
       )
     }
 
-    const parsed = parseTencentFlashResponse(response.json)
+    const parsed = parseTencentFlashResponse(response.json, {
+      speakerLabels: shouldIncludeAsrSpeakerLabels(
+        this.profile.diarizeMode,
+        options?.purpose,
+      ),
+    })
     return {
       text: parsed.text,
       segments: parsed.segments.length > 0 ? parsed.segments : undefined,
@@ -84,12 +97,13 @@ export async function buildTencentFlashRequest(input: {
   profile: TencentFlashProviderProfile
   input: AsrAudioInput
   body: ArrayBuffer
+  options?: AsrOptions
 }): Promise<{ url: string; headers: Record<string, string> }> {
   const { profile } = input
   const baseURL = profile.baseURL.trim() || DEFAULT_TENCENT_FLASH_BASE_URL
   const path = buildTencentFlashPath(profile.transcriptionPath, profile.appId)
   const host = new URL(baseURL).host
-  const params = buildTencentFlashParams(profile, input.input)
+  const params = buildTencentFlashParams(profile, input.input, input.options)
   const query = serializeTencentQuery(params)
   const signature = await hmacBase64(
     'SHA-1',
@@ -105,10 +119,14 @@ export async function buildTencentFlashRequest(input: {
   }
 }
 
-export function parseTencentFlashResponse(payload: unknown): {
+export function parseTencentFlashResponse(
+  payload: unknown,
+  options: { speakerLabels?: boolean } = { speakerLabels: true },
+): {
   text: string
   segments: AsrSegment[]
 } {
+  const includeSpeakerLabels = options.speakerLabels ?? true
   const root =
     payload && typeof payload === 'object'
       ? (payload as Record<string, unknown>)
@@ -127,9 +145,10 @@ export function parseTencentFlashResponse(payload: unknown): {
   )
   if (segments.length > 0) {
     return {
-      text: segments.some((segment) => segment.speakerId)
-        ? formatSpeakerAwareTranscript(segments)
-        : segments.map((segment) => segment.text).join('\n'),
+      text:
+        includeSpeakerLabels && segments.some((segment) => segment.speakerId)
+          ? formatSpeakerAwareTranscript(segments)
+          : segments.map((segment) => segment.text).join('\n'),
       segments,
     }
   }
@@ -168,14 +187,23 @@ function buildTencentFlashPath(path: string, appId: string): string {
 function buildTencentFlashParams(
   profile: TencentFlashProviderProfile,
   input: AsrAudioInput,
+  options?: AsrOptions,
 ): Record<string, string> {
+  const includeSpeakerInfo = resolveAsrFeatureMode(
+    profile.diarizeMode,
+    options?.purpose,
+  )
+  const includeAudioFileDetails =
+    options?.purpose === 'audio-file-transcription'
   return {
     engine_type: profile.engineType.trim() || DEFAULT_TENCENT_ENGINE,
     secretid: profile.secretId.trim(),
     timestamp: String(Math.floor(Date.now() / 1000)),
     voice_format: detectTencentVoiceFormat(input),
-    speaker_diarization: profile.diarization ? '1' : '0',
-    word_info: profile.timestamps ? '1' : '0',
+    // Auto mirrors the WebSocket setting: file transcription requests speaker
+    // metadata by default, while context voice input stays plain dictation.
+    speaker_diarization: includeSpeakerInfo ? '1' : '0',
+    word_info: includeAudioFileDetails && profile.timestamps ? '1' : '0',
     filter_dirty: '0',
     filter_modal: '0',
     filter_punc: '0',

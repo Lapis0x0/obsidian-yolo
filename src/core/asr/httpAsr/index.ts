@@ -21,3 +21,12 @@ export {
   parseTencentFlashResponse,
   type TencentFlashProviderProfile,
 } from './tencentFlashAdapter'
+export {
+  DEFAULT_VOLCENGINE_AUC_FLASH_PATH,
+  DEFAULT_VOLCENGINE_AUC_FLASH_RESOURCE,
+  VolcengineAucFlashProvider,
+  buildVolcengineAucHeaders,
+  buildVolcengineAucRequestBody,
+  parseVolcengineAucResponse,
+  type VolcengineAucProviderProfile,
+} from './volcengineAucAdapter'

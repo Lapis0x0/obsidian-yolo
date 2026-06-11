@@ -16,6 +16,8 @@ import type { AsrUploadProgressCallback } from './types'
  */
 export type AsrHttpResponse = {
   status: number
+  /** Provider response headers; some ASR APIs put business status here. */
+  headers: Headers
   /** Parsed JSON when the response was JSON; null otherwise. */
   json: unknown
   /** Raw response text, used to surface error bodies in messages. */
@@ -130,6 +132,7 @@ async function fetchToAsrResponse(
   const text = await response.text()
   return {
     status: response.status,
+    headers: response.headers,
     json: safeJsonParse(text),
     text,
   }

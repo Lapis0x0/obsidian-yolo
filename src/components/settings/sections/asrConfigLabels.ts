@@ -26,6 +26,7 @@ const LONG_PROVIDER_LABEL: Record<string, string> = {
   'funasr-local': 'FunASR local',
   'deepgram-prerecorded': 'Deepgram pre-recorded',
   'tencent-flash': 'Tencent Flash',
+  'volcengine-auc-flash': 'Volcengine / Doubao Flash',
   'speechmatics-batch': 'Speechmatics Batch',
 }
 
@@ -42,10 +43,6 @@ export function getAsrConfigCategory(config: AsrConfig): AsrConfigCategory {
   return config.asrCategory ?? 'http-short-audio'
 }
 
-export function isContextVoiceAsrConfig(config: AsrConfig): boolean {
-  return getAsrConfigCategory(config) !== 'http-long-audio'
-}
-
 export function isHttpShortAudioAsrConfig(config: AsrConfig | null): boolean {
   return config !== null && getAsrConfigCategory(config) === 'http-short-audio'
 }
@@ -57,6 +54,7 @@ export function getAsrConfigCategoryLabel(category: AsrConfigCategory): string {
 export function formatAsrConfigDropdownLabel(
   config: AsrConfig,
   unnamedLabel: string,
+  providerLabels: Partial<Record<string, string>> = {},
 ): string {
   const name = config.name.trim() || unnamedLabel
   const model = config.model.trim()
@@ -65,7 +63,8 @@ export function formatAsrConfigDropdownLabel(
     category === 'websocket'
       ? WS_PROVIDER_LABEL[config.webSocketProtocol]
       : category === 'http-long-audio'
-        ? LONG_PROVIDER_LABEL[config.asrProvider]
+        ? (providerLabels[config.asrProvider] ??
+          LONG_PROVIDER_LABEL[config.asrProvider])
         : ''
   const prefix = provider && !name.includes(provider) ? `${provider} · ` : ''
 
@@ -77,6 +76,7 @@ export function buildGroupedAsrConfigOptions(input: {
   unnamedLabel: string
   includeCategories: AsrConfigCategory[]
   categoryLabels?: Partial<Record<AsrConfigCategory, string>>
+  providerLabels?: Partial<Record<string, string>>
 }): ObsidianDropdownOptionGroup[] {
   const include = new Set(input.includeCategories)
   return CATEGORY_ORDER.filter((category) => include.has(category))
@@ -85,7 +85,11 @@ export function buildGroupedAsrConfigOptions(input: {
         .filter((config) => getAsrConfigCategory(config) === category)
         .map((config) => ({
           value: config.id,
-          label: formatAsrConfigDropdownLabel(config, input.unnamedLabel),
+          label: formatAsrConfigDropdownLabel(
+            config,
+            input.unnamedLabel,
+            input.providerLabels,
+          ),
         }))
       if (options.length === 0) return null
       return {

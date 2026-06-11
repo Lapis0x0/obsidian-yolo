@@ -3,6 +3,10 @@ import { sendTtsHttpRequest } from './httpTransport'
 import { MimoChatAudioTtsProvider } from './mimoChatAudioTts'
 import { OpenAiCompatibleSpeechProvider } from './openAiCompatibleSpeech'
 import type { TtsProviderProfile } from './types'
+import {
+  VolcengineTtsHttpProvider,
+  buildVolcengineTtsRequestBody,
+} from './volcengineTtsHttp'
 
 jest.mock('./httpTransport', () => ({
   sendTtsHttpRequest: jest.fn(),
@@ -252,6 +256,143 @@ describe('TTS provider adapters', () => {
     expect(result).toMatchObject({
       mimeType: 'audio/mpeg',
       format: 'mp3',
+    })
+  })
+
+  it('builds Volcengine v3 TTS requests and decodes chunked JSON audio', async () => {
+    mockedSendTtsHttpRequest.mockResolvedValue({
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      body: bytes('{}'),
+      text: [
+        JSON.stringify({ code: 0, data: 'SGVsbG8sIA==' }),
+        JSON.stringify({ code: 0, data: 'Vm9sY2VuZ2luZQ==' }),
+        JSON.stringify({ code: 20000000, message: 'OK' }),
+      ].join('\n'),
+      json: null,
+    })
+
+    const provider = new VolcengineTtsHttpProvider(
+      makeProfile({
+        baseURL: 'https://openspeech.bytedance.com',
+        model: 'seed-tts-2.0',
+        voice: 'zh_female_vv_uranus_bigtts',
+        requestPath: '/api/v3/tts/unidirectional',
+      }),
+    )
+    const result = await provider.synthesize({
+      text: '欢迎使用文本转语音服务。',
+      voice: 'zh_female_vv_uranus_bigtts',
+      model: 'seed-tts-2.0',
+      format: 'mp3',
+      sampleRate: 24000,
+      speed: 1.2,
+    })
+
+    const call = mockedSendTtsHttpRequest.mock.calls[0]?.[0]
+    expect(call?.url).toBe(
+      'https://openspeech.bytedance.com/api/v3/tts/unidirectional',
+    )
+    expect(call?.headers).toMatchObject({
+      'X-Api-Key': 'test-key',
+      'X-Api-Resource-Id': 'seed-tts-2.0',
+      'X-Api-Request-Id': expect.any(String),
+    })
+    expect(call?.headers).not.toHaveProperty('X-Api-Connect-Id')
+    expect(getJsonBody(call?.body)).toEqual({
+      req_params: {
+        text: '欢迎使用文本转语音服务。',
+        speaker: 'zh_female_vv_uranus_bigtts',
+        audio_params: {
+          format: 'mp3',
+          sample_rate: 24000,
+          speech_rate: 20,
+        },
+      },
+    })
+    expect(new TextDecoder().decode(result.bytes)).toBe('Hello, Volcengine')
+  })
+
+  it('throws Volcengine chunked JSON errors', async () => {
+    mockedSendTtsHttpRequest.mockResolvedValue({
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      body: bytes('{}'),
+      text: JSON.stringify({ code: 3001, message: 'invalid speaker' }),
+      json: null,
+    })
+
+    const provider = new VolcengineTtsHttpProvider(
+      makeProfile({
+        baseURL: 'https://openspeech.bytedance.com',
+        model: 'seed-tts-2.0',
+        voice: 'zh_female_vv_uranus_bigtts',
+      }),
+    )
+    await expect(
+      provider.synthesize({
+        text: '欢迎使用文本转语音服务。',
+        voice: 'zh_female_vv_uranus_bigtts',
+        model: 'seed-tts-2.0',
+        format: 'mp3',
+      }),
+    ).rejects.toThrow('Volcengine TTS request failed: 3001 - invalid speaker')
+  })
+
+  it('builds Volcengine v3 payloads with opus mapping', () => {
+    const body = buildVolcengineTtsRequestBody({
+      request: {
+        text: '你好',
+        voice: 'voice-id',
+        model: 'seed-tts-2.0',
+        format: 'opus',
+        language: 'zh-cn',
+      },
+    })
+
+    expect(body).toMatchObject({
+      req_params: {
+        text: '你好',
+        speaker: 'voice-id',
+        audio_params: {
+          format: 'ogg_opus',
+        },
+      },
+    })
+    expect(
+      JSON.parse(
+        (body.req_params as Record<string, unknown>).additions as string,
+      ),
+    ).toEqual({
+      explicit_language: 'zh-cn',
+    })
+  })
+
+  it('maps Volcengine speed, volume, pitch, and style fields', () => {
+    expect(
+      buildVolcengineTtsRequestBody({
+        request: {
+          text: '你好',
+          voice: 'voice-id',
+          model: 'seed-tts-2.0',
+          format: 'mp3',
+          speed: 1.5,
+          volume: 0.8,
+          pitch: 3.4,
+          styleInstruction: '你可以用特别痛心的语气说话吗?',
+        },
+      }),
+    ).toMatchObject({
+      req_params: {
+        audio_params: {
+          speech_rate: 50,
+          loudness_rate: -20,
+        },
+        post_process: {
+          pitch: 3,
+        },
+        context_texts: ['你可以用特别痛心的语气说话吗?'],
+      },
     })
   })
 })

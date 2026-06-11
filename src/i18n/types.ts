@@ -1428,6 +1428,7 @@ export type TranslationKeys = {
       chatCompletionsPathDesc?: string
       audioContentFormat?: string
       audioContentFormatDesc?: string
+      chatAudioCustomParametersDesc?: string
       webSocketProtocol?: string
       webSocketProtocolDesc?: string
       webSocketProvider?: string
@@ -1447,9 +1448,12 @@ export type TranslationKeys = {
       longProviderFunasr?: string
       longProviderDeepgram?: string
       longProviderTencent?: string
+      longProviderVolcengineFlash?: string
       appId?: string
       appIdDesc?: string
       tencentAppIdDesc?: string
+      volcengineApiKey?: string
+      volcengineResourceIdDesc?: string
       apiKeyRequired?: string
       apiKeyRequiredDesc?: string
       apiSecret?: string

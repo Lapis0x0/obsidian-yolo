@@ -360,7 +360,7 @@ const buildLegacyAsrConfigs = (
       transportMode: 'node',
       language: stringOr(transcription.language, topLevelLanguage),
       longAudioPunctuation: true,
-      longAudioDiarization: true,
+      longAudioDiarizeMode: 'auto',
       longAudioSpeakerCount: 0,
       longAudioTimestamps: true,
     })
@@ -395,7 +395,7 @@ const buildLegacyAsrConfigs = (
       transportMode: 'node',
       language: stringOr(chatAudio.language, topLevelLanguage),
       longAudioPunctuation: true,
-      longAudioDiarization: true,
+      longAudioDiarizeMode: 'auto',
       longAudioSpeakerCount: 0,
       longAudioTimestamps: true,
     })

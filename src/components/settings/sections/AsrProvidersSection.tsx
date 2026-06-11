@@ -61,6 +61,7 @@ const LONG_PROVIDER_LABEL: Record<string, string> = {
   'funasr-local': 'FunASR local',
   'deepgram-prerecorded': 'Deepgram pre-recorded',
   'tencent-flash': 'Tencent Flash',
+  'volcengine-auc-flash': 'Volcengine / Doubao Flash',
   'speechmatics-batch': 'Speechmatics Batch',
 }
 
@@ -76,22 +77,29 @@ const inferCategory = (config: AsrConfig): AsrConfigCategory => {
   return config.asrCategory ?? 'http-short-audio'
 }
 
-const isSelectableAsrConfig = (config: AsrConfig): boolean =>
-  inferCategory(config) !== 'http-long-audio'
+const longProviderLabel = (provider: string, t: Translator): string => {
+  if (provider === 'volcengine-auc-flash') {
+    return t(
+      'settings.asr.longProviderVolcengineFlash',
+      LONG_PROVIDER_LABEL[provider],
+    )
+  }
+  return LONG_PROVIDER_LABEL[provider] ?? provider
+}
 
-const providerLabel = (config: AsrConfig): string => {
+const providerLabel = (config: AsrConfig, t: Translator): string => {
   const category = inferCategory(config)
   if (category === 'websocket') {
     return WS_PROVIDER_LABEL[config.webSocketProtocol] ?? config.asrProvider
   }
   if (category === 'http-long-audio') {
-    return LONG_PROVIDER_LABEL[config.asrProvider] ?? config.asrProvider
+    return longProviderLabel(config.asrProvider, t)
   }
   return FORMAT_LABEL[config.format] ?? config.format
 }
 
-const summariseConfig = (config: AsrConfig): string => {
-  const parts: string[] = [providerLabel(config)]
+const summariseConfig = (config: AsrConfig, t: Translator): string => {
+  const parts: string[] = [providerLabel(config, t)]
   if (config.model) parts.push(config.model)
   if (
     config.audioFormat === 'wav' &&
@@ -230,7 +238,9 @@ function AsrConfigRow({
           </span>
         )}
       </td>
-      <td style={{ color: 'var(--text-muted)' }}>{summariseConfig(config)}</td>
+      <td style={{ color: 'var(--text-muted)' }}>
+        {summariseConfig(config, t)}
+      </td>
       <td onPointerDown={(event) => event.stopPropagation()}>
         <div className="yolo-settings-actions">
           <button
@@ -263,14 +273,11 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
   const { t } = useLanguage()
   const voice = settings.contextVoiceInputOptions
   const configs: AsrConfig[] = voice.asrConfigs ?? []
-  const selectableConfigs = configs.filter(isSelectableAsrConfig)
-  // Long-audio configs are displayed here for the upcoming native adapters,
-  // but they should not become the active short/streaming ASR by accident.
   const activeId =
     voice.activeAsrConfigId &&
-    selectableConfigs.some((c) => c.id === voice.activeAsrConfigId)
+    configs.some((c) => c.id === voice.activeAsrConfigId)
       ? voice.activeAsrConfigId
-      : (selectableConfigs[0]?.id ?? '')
+      : (configs[0]?.id ?? '')
   const activeAudioFileId =
     voice.activeAudioFileAsrConfigId &&
     configs.some((c) => c.id === voice.activeAudioFileAsrConfigId)
@@ -302,13 +309,12 @@ export function AsrProvidersSection({ app, plugin }: AsrProvidersSectionProps) {
         (config) => !visibleIds.has(config.id) && !nextIds.has(config.id),
       )
       const mergedConfigs = [...rehydratedConfigs, ...concurrentConfigs]
-      const selectable = mergedConfigs.filter(isSelectableAsrConfig)
       const preferredActiveId = latestVoice.activeAsrConfigId || activeId
       const nextActiveId =
         preferredActiveId &&
-        selectable.some((config) => config.id === preferredActiveId)
+        mergedConfigs.some((config) => config.id === preferredActiveId)
           ? preferredActiveId
-          : (selectable[0]?.id ?? '')
+          : (mergedConfigs[0]?.id ?? '')
       const preferredAudioFileId =
         latestVoice.activeAudioFileAsrConfigId || activeAudioFileId
       const nextAudioFileId =

@@ -29,7 +29,8 @@ export function isUsableTtsConfig(config: TtsConfig): boolean {
   if (config.voice.trim().length === 0) return false
   if (config.model.trim().length === 0) return false
   if (
-    config.format === 'dashscope-cosyvoice' &&
+    (config.format === 'dashscope-cosyvoice' ||
+      config.format === 'volcengine-tts-http') &&
     config.apiKey.trim().length === 0
   ) {
     return false

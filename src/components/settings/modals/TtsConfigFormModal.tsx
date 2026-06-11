@@ -70,12 +70,23 @@ const FORMAT_DEFAULTS: Record<TtsApiFormat, FormatDefaults> = {
     requestPath: '',
     language: 'zh',
   },
+  'volcengine-tts-http': {
+    name: 'Volcengine TTS',
+    format: 'volcengine-tts-http',
+    baseURL: 'https://openspeech.bytedance.com',
+    model: 'seed-tts-2.0',
+    voice: 'zh_female_vv_uranus_bigtts',
+    outputFormat: 'mp3',
+    requestPath: '/api/v3/tts/unidirectional',
+    language: '',
+  },
 }
 
 const FORMAT_LABEL: Record<TtsApiFormat, string> = {
   'openai-compatible-speech': 'OpenAI-compatible speech',
   'mimo-chat-audio-tts': 'MiMo chat audio TTS',
   'dashscope-cosyvoice': 'DashScope CosyVoice',
+  'volcengine-tts-http': 'Volcengine TTS',
 }
 
 const TRANSPORT_LABEL: Record<TtsTransportMode, string> = {
@@ -89,6 +100,7 @@ const OUTPUT_FORMATS_BY_API_FORMAT: Record<TtsApiFormat, TtsOutputFormat[]> = {
   'openai-compatible-speech': [...TTS_OUTPUT_FORMATS],
   'mimo-chat-audio-tts': ['mp3', 'pcm', 'wav', 'pcm16'],
   'dashscope-cosyvoice': ['mp3', 'wav'],
+  'volcengine-tts-http': ['mp3', 'wav', 'pcm', 'pcm16', 'opus'],
 }
 
 const generateId = (): string =>
@@ -162,6 +174,7 @@ function TtsConfigFormComponent({
   const [formData, setFormData] = useState<TtsConfig>(
     () => config ?? createDefaultConfig(),
   )
+  const isVolcengineTts = formData.format === 'volcengine-tts-http'
   const [testText, setTestText] = useState('你好，谢谢，小笼包，再见。')
   const [testRunning, setTestRunning] = useState(false)
   const [testMessage, setTestMessage] = useState('')
@@ -445,7 +458,7 @@ function TtsConfigFormComponent({
         <ObsidianTextInput
           value={formData.model}
           onChange={(value) => handlePatch({ model: value })}
-          placeholder="gpt-4o-mini-tts"
+          placeholder={isVolcengineTts ? 'seed-tts-2.0' : 'gpt-4o-mini-tts'}
         />
       </ObsidianSetting>
 
@@ -459,7 +472,7 @@ function TtsConfigFormComponent({
         <ObsidianTextInput
           value={formData.voice}
           onChange={(value) => handlePatch({ voice: value })}
-          placeholder="alloy"
+          placeholder={isVolcengineTts ? 'zh_female_vv_uranus_bigtts' : 'alloy'}
         />
       </ObsidianSetting>
 

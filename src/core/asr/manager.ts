@@ -11,6 +11,7 @@ import {
   OpenAiCompatibleChatAudioAsrProvider,
   OpenAiCompatibleTranscriptionProvider,
   TencentFlashProvider,
+  VolcengineAucFlashProvider,
 } from './httpAsr'
 import { WebSocketAsrProvider } from './webSocketAsr'
 
@@ -33,7 +34,7 @@ export class AsrConfigError extends Error {
 export function resolveActiveAsrConfig(
   options: ContextVoiceInputOptions,
 ): AsrConfig | null {
-  const list = options.asrConfigs.filter(isContextVoiceRuntimeAsrConfig)
+  const list = options.asrConfigs
   if (!Array.isArray(list) || list.length === 0) return null
   if (options.activeAsrConfigId) {
     const match = list.find((c) => c.id === options.activeAsrConfigId)
@@ -57,9 +58,6 @@ export function resolveActiveAudioFileAsrConfig(
   }
   return list[0] ?? null
 }
-
-const isContextVoiceRuntimeAsrConfig = (config: AsrConfig): boolean =>
-  config.asrCategory !== 'http-long-audio'
 
 /**
  * Build an ASR provider client from the currently-active config.
@@ -142,6 +140,7 @@ export function buildAsrProviderForConfig(config: AsrConfig): BaseAsrProvider {
         audioFormat: config.audioFormat,
         transportMode: config.transportMode,
         language: config.language,
+        customParameters: config.customParameters,
       })
     }
     case 'deepgram-compatible-websocket': {
@@ -190,7 +189,7 @@ function buildHttpLongAudioProvider(config: AsrConfig): BaseAsrProvider {
         transportMode: config.transportMode,
         language: config.language,
         punctuation: config.longAudioPunctuation,
-        diarization: config.longAudioDiarization,
+        diarizeMode: config.longAudioDiarizeMode,
         timestamps: config.longAudioTimestamps,
       })
     case 'tencent-flash':
@@ -202,8 +201,19 @@ function buildHttpLongAudioProvider(config: AsrConfig): BaseAsrProvider {
         engineType: config.model,
         transcriptionPath: config.transcriptionPath,
         transportMode: config.transportMode,
-        diarization: config.longAudioDiarization,
+        diarizeMode: config.longAudioDiarizeMode,
         timestamps: config.longAudioTimestamps,
+      })
+    case 'volcengine-auc-flash':
+      return new VolcengineAucFlashProvider({
+        baseURL: config.baseURL,
+        apiKey: config.apiKey,
+        appId: config.appId,
+        resourceId: config.model,
+        transcriptionPath: config.transcriptionPath,
+        transportMode: config.transportMode,
+        punctuation: config.longAudioPunctuation,
+        diarizeMode: config.longAudioDiarizeMode,
       })
     default:
       throw new AsrConfigError(

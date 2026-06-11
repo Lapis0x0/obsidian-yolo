@@ -35,7 +35,7 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   transportMode: 'node',
   language: 'auto',
   longAudioPunctuation: true,
-  longAudioDiarization: true,
+  longAudioDiarizeMode: 'auto',
   longAudioSpeakerCount: 0,
   longAudioTimestamps: true,
   ...overrides,
@@ -82,7 +82,7 @@ describe('ASR config status', () => {
     ).toBe(first)
   })
 
-  it('ignores long-audio provider placeholders for runtime ASR readiness', () => {
+  it('marks implemented long-audio providers ready for runtime ASR readiness', () => {
     const longOnly = config({
       id: 'long',
       asrCategory: 'http-long-audio',
@@ -93,10 +93,15 @@ describe('ASR config status', () => {
 
     expect(
       resolveConfiguredAsrConfig(options({ asrConfigs: [longOnly] })),
-    ).toBeNull()
+    ).toBe(longOnly)
     expect(
-      resolveConfiguredAsrConfig(options({ asrConfigs: [longOnly, short] })),
-    ).toBe(short)
+      resolveConfiguredAsrConfig(
+        options({
+          asrConfigs: [short, longOnly],
+          activeAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(longOnly)
   })
 
   it('does not fall back when the active config exists but is incomplete', () => {

@@ -25,10 +25,7 @@ import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 
-import {
-  buildGroupedAsrConfigOptions,
-  isContextVoiceAsrConfig,
-} from './asrConfigLabels'
+import { buildGroupedAsrConfigOptions } from './asrConfigLabels'
 import {
   DECIBEL_CHART_CEILING,
   DECIBEL_CHART_FLOOR,
@@ -193,7 +190,7 @@ export function ContextVoiceInputSection() {
       .filter((group): group is ObsidianDropdownOptionGroup => group !== null)
   }, [enabledChatModels, settings.providers])
 
-  const asrConfigs = (voice.asrConfigs ?? []).filter(isContextVoiceAsrConfig)
+  const asrConfigs = voice.asrConfigs ?? []
   const asrProviderOptions = useMemo<Record<string, string>>(() => {
     if (asrConfigs.length > 0) {
       return {} as Record<string, string>
@@ -213,13 +210,23 @@ export function ContextVoiceInputSection() {
     return buildGroupedAsrConfigOptions({
       configs: asrConfigs,
       unnamedLabel,
-      includeCategories: ['http-short-audio', 'websocket'],
+      includeCategories: ['http-short-audio', 'http-long-audio', 'websocket'],
       categoryLabels: {
         'http-short-audio': t(
           'settings.asr.sectionTitle.http-short-audio',
           'HTTP short audio',
         ),
+        'http-long-audio': t(
+          'settings.asr.sectionTitle.http-long-audio',
+          'HTTP long audio',
+        ),
         websocket: t('settings.asr.sectionTitle.websocket', 'WebSocket'),
+      },
+      providerLabels: {
+        'volcengine-auc-flash': t(
+          'settings.asr.longProviderVolcengineFlash',
+          'Volcengine / Doubao Flash',
+        ),
       },
     })
   }, [asrConfigs, t])

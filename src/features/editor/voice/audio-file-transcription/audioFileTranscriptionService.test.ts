@@ -41,7 +41,7 @@ const baseConfig: AsrConfig = {
   transportMode: 'node',
   language: 'auto',
   longAudioPunctuation: true,
-  longAudioDiarization: true,
+  longAudioDiarizeMode: 'auto',
   longAudioSpeakerCount: 0,
   longAudioTimestamps: true,
 }

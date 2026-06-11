@@ -19,6 +19,7 @@ export const SUPPORTED_HTTP_LONG_AUDIO_ASR_PROVIDERS = [
   'funasr-local',
   'deepgram-prerecorded',
   'tencent-flash',
+  'volcengine-auc-flash',
 ] as const
 
 const OPENAI_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024
@@ -26,6 +27,9 @@ const OPENAI_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024
 // Aliyun reject data-uri items over 20 MiB, so the raw blob cap needs room for
 // base64 expansion plus the data-uri prefix.
 const CHAT_AUDIO_MAX_BYTES = 14 * 1024 * 1024
+// MiMo ASR accepts chat-audio data URIs but caps the base64 payload at 10 MB.
+// Keep raw chunks below that after base64 expansion and the data URI prefix.
+const MIMO_CHAT_AUDIO_MAX_BYTES = 7 * 1024 * 1024
 // Bailian / DashScope multimodal audio has a stricter algorithm-side limit
 // than the generic data-uri gateway limit. Local chunks are always WAV, so use
 // a duration cap here instead of another provider-specific byte constant.
@@ -87,7 +91,9 @@ export function getAudioFileAsrCapability(
       }
     case 'openai-compatible-chat-audio-asr':
       return {
-        maxRequestBytes: CHAT_AUDIO_MAX_BYTES,
+        maxRequestBytes: isMimoChatAudioConfig(config)
+          ? MIMO_CHAT_AUDIO_MAX_BYTES
+          : CHAT_AUDIO_MAX_BYTES,
         maxDurationMs: isAliyunChatAudioConfig(config)
           ? ALIYUN_CHAT_AUDIO_MAX_DURATION_MS
           : null,
@@ -116,6 +122,8 @@ function getHttpLongAudioMaxRequestBytes(config: AsrConfig): number | null {
       return 2 * 1024 * 1024 * 1024
     case 'tencent-flash':
       return 100 * 1024 * 1024
+    case 'volcengine-auc-flash':
+      return 100 * 1024 * 1024
     default:
       return null
   }
@@ -124,6 +132,8 @@ function getHttpLongAudioMaxRequestBytes(config: AsrConfig): number | null {
 function getHttpLongAudioMaxDurationMs(config: AsrConfig): number | null {
   switch (config.asrProvider) {
     case 'tencent-flash':
+      return 2 * 60 * 60 * 1000
+    case 'volcengine-auc-flash':
       return 2 * 60 * 60 * 1000
     default:
       return null
@@ -157,6 +167,9 @@ export function getAudioFileChunkDurationAdvisory(input: {
   if (!limit) return null
 
   const capability = getAudioFileAsrCapability(config)
+  const maxRequestBytes = isMimoChatAudioConfig(config)
+    ? MIMO_CHAT_AUDIO_MAX_BYTES
+    : limit.maxRequestBytes
   const suggestedMaxDurationMs =
     capability.maxDurationMs === null
       ? limit.suggestedMaxDurationMs
@@ -164,7 +177,7 @@ export function getAudioFileChunkDurationAdvisory(input: {
 
   if (input.chunkDurationMs <= suggestedMaxDurationMs) return null
   return {
-    maxRequestBytes: limit.maxRequestBytes,
+    maxRequestBytes,
     suggestedMaxDurationMs,
   }
 }
@@ -178,5 +191,12 @@ function isAliyunChatAudioConfig(config: AsrConfig): boolean {
     baseURL.includes('dashscope-intl.aliyuncs.com') ||
     baseURL.includes('bailian') ||
     baseURL.includes('aliyun')
+  )
+}
+
+function isMimoChatAudioConfig(config: AsrConfig): boolean {
+  return (
+    config.asrProvider === 'xiaomimimo-asr' ||
+    config.baseURL.toLowerCase().includes('xiaomimimo.com')
   )
 }

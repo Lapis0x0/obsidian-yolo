@@ -1,5 +1,12 @@
-import type { AsrTransportMode } from '../../../settings/schema/setting.types'
+import type {
+  AsrTransportMode,
+  AsrWebSocketFeatureMode,
+} from '../../../settings/schema/setting.types'
 import { BaseAsrProvider } from '../base'
+import {
+  resolveAsrFeatureMode,
+  shouldIncludeAsrSpeakerLabels,
+} from '../featureMode'
 import { sendAsrRawRequest } from '../httpTransport'
 import type { AsrAudioInput, AsrOptions, AsrResult, AsrSegment } from '../types'
 
@@ -17,7 +24,7 @@ export type DeepgramPreRecordedProviderProfile = {
   transportMode: AsrTransportMode
   language: string
   punctuation: boolean
-  diarization: boolean
+  diarizeMode: AsrWebSocketFeatureMode
   timestamps: boolean
 }
 
@@ -69,7 +76,12 @@ export class DeepgramPreRecordedProvider extends BaseAsrProvider {
       )
     }
 
-    const parsed = parseDeepgramPreRecordedResponse(response.json)
+    const parsed = parseDeepgramPreRecordedResponse(response.json, {
+      speakerLabels: shouldIncludeAsrSpeakerLabels(
+        this.profile.diarizeMode,
+        options?.purpose,
+      ),
+    })
     return {
       text: parsed.text,
       segments: parsed.segments.length > 0 ? parsed.segments : undefined,
@@ -95,24 +107,40 @@ export function buildDeepgramPreRecordedUrl(
     url.searchParams.set('smart_format', 'true')
     url.searchParams.set('punctuate', 'true')
   }
-  if (profile.diarization) {
+  if (resolveAsrFeatureMode(profile.diarizeMode, options?.purpose)) {
     // Deepgram recommends `diarize_model` for new pre-recorded integrations;
-    // it both enables diarization and pins the batch diarizer selection.
+    // it both enables diarization and pins the batch diarizer selection. Keep
+    // the default auto mode file-transcription only so regular dictation is
+    // not speaker-prefixed.
     url.searchParams.set('diarize_model', 'latest')
     url.searchParams.set('utterances', 'true')
   }
   return url.toString()
 }
 
-export function parseDeepgramPreRecordedResponse(payload: unknown): {
+export function parseDeepgramPreRecordedResponse(
+  payload: unknown,
+  options: { speakerLabels?: boolean } = { speakerLabels: true },
+): {
   text: string
   segments: AsrSegment[]
 } {
+  const includeSpeakerLabels = options.speakerLabels ?? true
   const channelTranscript = normalizeCjkTranscriptSpacing(
     extractTranscript(payload).trim(),
   )
   const utteranceSegments = extractUtteranceSegments(payload)
   if (utteranceSegments.length > 0) {
+    if (!includeSpeakerLabels) {
+      return {
+        text:
+          channelTranscript ||
+          normalizeCjkTranscriptSpacing(
+            utteranceSegments.map((segment) => segment.text).join('\n'),
+          ),
+        segments: utteranceSegments,
+      }
+    }
     const speakerLabel = readOnlySpeakerLabel(utteranceSegments)
     if (speakerLabel && channelTranscript) {
       return {
@@ -135,6 +163,16 @@ export function parseDeepgramPreRecordedResponse(payload: unknown): {
 
   const wordSegments = extractWordSpeakerSegments(payload)
   if (wordSegments.length > 0) {
+    if (!includeSpeakerLabels) {
+      return {
+        text:
+          channelTranscript ||
+          normalizeCjkTranscriptSpacing(
+            wordSegments.map((segment) => segment.text).join(' '),
+          ),
+        segments: wordSegments,
+      }
+    }
     const speakerLabel = readOnlySpeakerLabel(wordSegments)
     if (speakerLabel && channelTranscript) {
       return {

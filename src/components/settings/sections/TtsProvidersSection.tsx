@@ -43,6 +43,7 @@ const FORMAT_LABEL: Record<TtsApiFormat, string> = {
   'openai-compatible-speech': 'OpenAI-compatible',
   'mimo-chat-audio-tts': 'MiMo',
   'dashscope-cosyvoice': 'DashScope CosyVoice',
+  'volcengine-tts-http': 'Volcengine TTS',
 }
 
 function summariseConfig(config: TtsConfig): string {

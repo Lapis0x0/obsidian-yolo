@@ -15,9 +15,7 @@ import { isSupportedHttpLongAudioAsrConfig } from './capabilities'
 export function resolveConfiguredAsrConfig(
   options: ContextVoiceInputOptions,
 ): AsrConfig | null {
-  const list = options.asrConfigs.filter(
-    (config) => config.asrCategory !== 'http-long-audio',
-  )
+  const list = options.asrConfigs
   if (!Array.isArray(list) || list.length === 0) return null
 
   const active =
@@ -61,6 +59,9 @@ export function hasConfiguredAudioFileAsrConfig(
 }
 
 export function isUsableAsrConfig(config: AsrConfig): boolean {
+  if (config.asrCategory === 'http-long-audio') {
+    return isUsableLongAudioAsrConfig(config)
+  }
   switch (config.format) {
     case 'openai-compatible-transcription':
       if (config.asrProvider === 'funasr-local') {
@@ -78,19 +79,26 @@ export function isUsableAsrConfig(config: AsrConfig): boolean {
 
 function isUsableAudioFileAsrConfig(config: AsrConfig): boolean {
   if (config.asrCategory === 'http-long-audio') {
-    if (!isSupportedHttpLongAudioAsrConfig(config)) return false
-    if (config.baseURL.trim().length === 0) return false
-    if (config.asrProvider === 'deepgram-prerecorded') {
-      return config.apiKey.trim().length > 0
-    }
-    if (config.asrProvider === 'tencent-flash') {
-      return (
-        config.appId.trim().length > 0 &&
-        config.apiKey.trim().length > 0 &&
-        config.apiSecret.trim().length > 0
-      )
-    }
-    return true
+    return isUsableLongAudioAsrConfig(config)
   }
   return isUsableAsrConfig(config)
+}
+
+function isUsableLongAudioAsrConfig(config: AsrConfig): boolean {
+  if (!isSupportedHttpLongAudioAsrConfig(config)) return false
+  if (config.baseURL.trim().length === 0) return false
+  if (config.asrProvider === 'deepgram-prerecorded') {
+    return config.apiKey.trim().length > 0
+  }
+  if (config.asrProvider === 'tencent-flash') {
+    return (
+      config.appId.trim().length > 0 &&
+      config.apiKey.trim().length > 0 &&
+      config.apiSecret.trim().length > 0
+    )
+  }
+  if (config.asrProvider === 'volcengine-auc-flash') {
+    return config.apiKey.trim().length > 0
+  }
+  return true
 }

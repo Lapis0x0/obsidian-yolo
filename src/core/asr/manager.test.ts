@@ -37,7 +37,7 @@ const config = (overrides: Partial<AsrConfig> = {}): AsrConfig => ({
   transportMode: 'node',
   language: 'auto',
   longAudioPunctuation: true,
-  longAudioDiarization: true,
+  longAudioDiarizeMode: 'auto',
   longAudioSpeakerCount: 0,
   longAudioTimestamps: true,
   ...overrides,
@@ -75,7 +75,7 @@ describe('ASR manager config resolution', () => {
     ).toBe(first)
   })
 
-  it('skips long-audio placeholders when resolving context voice ASR configs', () => {
+  it('allows context voice ASR to select long-audio configs', () => {
     const longOnly = config({
       id: 'long',
       asrCategory: 'http-long-audio',
@@ -84,12 +84,17 @@ describe('ASR manager config resolution', () => {
     })
     const short = config({ id: 'short' })
 
+    expect(resolveActiveAsrConfig(options({ asrConfigs: [longOnly] }))).toBe(
+      longOnly,
+    )
     expect(
-      resolveActiveAsrConfig(options({ asrConfigs: [longOnly] })),
-    ).toBeNull()
-    expect(
-      resolveActiveAsrConfig(options({ asrConfigs: [longOnly, short] })),
-    ).toBe(short)
+      resolveActiveAsrConfig(
+        options({
+          asrConfigs: [short, longOnly],
+          activeAsrConfigId: 'long',
+        }),
+      ),
+    ).toBe(longOnly)
   })
 
   it('allows audio-file transcription to select long-audio configs', () => {

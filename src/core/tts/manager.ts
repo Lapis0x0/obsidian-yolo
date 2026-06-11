@@ -7,6 +7,7 @@ import { DashScopeCosyVoiceProvider } from './dashscopeCosyVoice'
 import { MimoChatAudioTtsProvider } from './mimoChatAudioTts'
 import { OpenAiCompatibleSpeechProvider } from './openAiCompatibleSpeech'
 import type { TtsProvider, TtsProviderProfile } from './types'
+import { VolcengineTtsHttpProvider } from './volcengineTtsHttp'
 
 export class TtsConfigError extends Error {
   constructor(message: string) {
@@ -45,6 +46,8 @@ export function buildTtsProviderForConfig(config: TtsConfig): TtsProvider {
       return new MimoChatAudioTtsProvider(profile)
     case 'dashscope-cosyvoice':
       return new DashScopeCosyVoiceProvider(profile)
+    case 'volcengine-tts-http':
+      return new VolcengineTtsHttpProvider(profile)
     default: {
       const exhaustive: never = config.format
       throw new TtsConfigError(
@@ -65,10 +68,11 @@ const assertConfigComplete = (config: TtsConfig): void => {
     throw new TtsConfigError('TTS provider is missing voice.')
   }
   if (
-    config.format === 'dashscope-cosyvoice' &&
+    (config.format === 'dashscope-cosyvoice' ||
+      config.format === 'volcengine-tts-http') &&
     config.apiKey.trim().length === 0
   ) {
-    throw new TtsConfigError('DashScope CosyVoice provider needs an API key.')
+    throw new TtsConfigError('This TTS provider needs an API key.')
   }
 }
 

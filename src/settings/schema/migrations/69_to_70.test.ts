@@ -141,7 +141,7 @@ describe('migrateFrom69To70', () => {
       transportMode: 'node',
       webSocketFileStreamingRate: 2,
       longAudioPunctuation: true,
-      longAudioDiarization: true,
+      longAudioDiarizeMode: 'auto',
       longAudioTimestamps: true,
     })
     expect(configs[1]).toMatchObject({
@@ -159,7 +159,7 @@ describe('migrateFrom69To70', () => {
       transportMode: 'node',
       webSocketFileStreamingRate: 2,
       longAudioPunctuation: true,
-      longAudioDiarization: true,
+      longAudioDiarizeMode: 'auto',
       longAudioTimestamps: true,
     })
     expect(voice.activeAsrConfigId).toBe(configs[1].id)

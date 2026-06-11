@@ -123,6 +123,32 @@ describe('parseDeepgramPreRecordedResponse', () => {
 
     expect(parsed.text).toBe('Speaker 1: 你好，世界')
   })
+
+  it('can return plain dictation text even when speaker metadata is present', () => {
+    const parsed = parseDeepgramPreRecordedResponse(
+      {
+        results: {
+          channels: [
+            {
+              alternatives: [
+                {
+                  transcript: 'hello again hi',
+                },
+              ],
+            },
+          ],
+          utterances: [
+            { start: 0, end: 1.2, transcript: 'hello', speaker: 0 },
+            { start: 1.3, end: 2, transcript: 'again', speaker: 0 },
+            { start: 2.1, end: 3, transcript: 'hi', speaker: 1 },
+          ],
+        },
+      },
+      { speakerLabels: false },
+    )
+
+    expect(parsed.text).toBe('hello again hi')
+  })
 })
 
 describe('buildDeepgramPreRecordedUrl', () => {
@@ -137,10 +163,10 @@ describe('buildDeepgramPreRecordedUrl', () => {
           transportMode: 'node',
           language: 'auto',
           punctuation: true,
-          diarization: true,
+          diarizeMode: 'auto',
           timestamps: true,
         },
-        { language: 'zh' },
+        { language: 'zh', purpose: 'audio-file-transcription' },
       ),
     )
 
@@ -163,7 +189,7 @@ describe('buildDeepgramPreRecordedUrl', () => {
         transportMode: 'node',
         language: 'zh',
         punctuation: false,
-        diarization: true,
+        diarizeMode: 'auto',
         timestamps: true,
       }),
     )
@@ -171,6 +197,50 @@ describe('buildDeepgramPreRecordedUrl', () => {
     expect(url.searchParams.get('language')).toBe('zh')
     expect(url.searchParams.get('smart_format')).toBeNull()
     expect(url.searchParams.get('punctuate')).toBeNull()
+    expect(url.searchParams.get('diarize_model')).toBeNull()
+    expect(url.searchParams.get('utterances')).toBeNull()
+  })
+
+  it('leaves auto diarization off for context voice input', () => {
+    const url = new URL(
+      buildDeepgramPreRecordedUrl(
+        {
+          baseURL: 'https://api.deepgram.com',
+          apiKey: 'key',
+          model: 'nova-3',
+          transcriptionPath: '/v1/listen',
+          transportMode: 'node',
+          language: 'zh',
+          punctuation: true,
+          diarizeMode: 'auto',
+          timestamps: true,
+        },
+        { purpose: 'context-voice-input' },
+      ),
+    )
+
+    expect(url.searchParams.get('diarize_model')).toBeNull()
+    expect(url.searchParams.get('utterances')).toBeNull()
+  })
+
+  it('forces diarization on when the mode is on', () => {
+    const url = new URL(
+      buildDeepgramPreRecordedUrl(
+        {
+          baseURL: 'https://api.deepgram.com',
+          apiKey: 'key',
+          model: 'nova-3',
+          transcriptionPath: '/v1/listen',
+          transportMode: 'node',
+          language: 'zh',
+          punctuation: true,
+          diarizeMode: 'on',
+          timestamps: true,
+        },
+        { purpose: 'context-voice-input' },
+      ),
+    )
+
     expect(url.searchParams.get('diarize_model')).toBe('latest')
     expect(url.searchParams.get('utterances')).toBe('true')
   })

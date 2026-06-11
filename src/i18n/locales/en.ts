@@ -1570,6 +1570,8 @@ export const en: TranslationKeys = {
       audioContentFormat: 'Audio content carrier',
       audioContentFormatDesc:
         'OpenAI / OpenRouter: input_audio (base64). Aliyun Bailian: input_audio (data URL). Some vLLM mimics: audio_url.',
+      chatAudioCustomParametersDesc:
+        'Attach additional request fields; values accept plain text or JSON, for example { "asr_options": { "language": "zh"  } }.',
       webSocketProtocol: 'WS speech protocol',
       webSocketProtocolDesc:
         'Changing this fills the common Base URL and path for that protocol.',
@@ -1596,10 +1598,14 @@ export const en: TranslationKeys = {
       longProviderFunasr: 'FunASR local',
       longProviderDeepgram: 'Deepgram pre-recorded',
       longProviderTencent: 'Tencent Flash',
+      longProviderVolcengineFlash: 'Volcengine / Doubao Flash',
       appId: 'AppID',
       appIdDesc: 'Cloud account or application ID for this provider.',
       tencentAppIdDesc:
         'Use the Tencent Cloud main account AppID, not the account ID.',
+      volcengineApiKey: 'API key',
+      volcengineResourceIdDesc:
+        'Volcengine / Doubao resource ID, for example volc.bigasr.auc_turbo.',
       apiKeyRequired: 'API key is required.',
       apiKeyRequiredDesc: 'Required by this cloud provider.',
       apiSecret: 'APISecret',
@@ -1613,7 +1619,7 @@ export const en: TranslationKeys = {
       resultPathDesc: 'Task polling endpoint. Full URLs are allowed.',
       longAudioDiarization: 'Speaker diarization',
       longAudioDiarizationDesc:
-        'Ask the provider to return speaker labels when supported.',
+        'Auto keeps speaker handling off for context voice input and on for audio file transcription.',
       longAudioTimestamps: 'Timestamps',
       longAudioTimestampsDesc:
         'Request provider timestamps when the API supports that option.',
@@ -1851,6 +1857,7 @@ export const en: TranslationKeys = {
         'openai-compatible-speech': 'OpenAI-compatible speech',
         'mimo-chat-audio-tts': 'MiMo chat audio TTS',
         'dashscope-cosyvoice': 'DashScope CosyVoice',
+        'volcengine-tts-http': 'Volcengine TTS',
       },
       baseURL: 'Base URL',
       baseURLDesc: 'Do not include the path here.',

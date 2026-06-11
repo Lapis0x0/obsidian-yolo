@@ -1448,6 +1448,8 @@ export const zh: TranslationKeys = {
       audioContentFormat: '音频内容载体',
       audioContentFormatDesc:
         'OpenAI / OpenRouter 选 input_audio（base64）；阿里百炼选 input_audio（data URL）；部分 vLLM 镜像选 audio_url。',
+      chatAudioCustomParametersDesc:
+        '为请求附加额外字段，值支持纯文本或 JSON，例如 { "asr_options": { "language": "zh"  } }。',
       webSocketProtocol: 'WS 语音协议',
       webSocketProtocolDesc: '切换后会自动填入该协议常用的 Base URL 和路径。',
       webSocketProvider: 'WebSocket 提供商',
@@ -1470,9 +1472,13 @@ export const zh: TranslationKeys = {
       longProviderFunasr: 'FunASR 本地',
       longProviderDeepgram: 'Deepgram 预录音频',
       longProviderTencent: '腾讯云极速版',
+      longProviderVolcengineFlash: '火山 / 豆包极速版',
       appId: 'AppID',
       appIdDesc: '该云服务商的账号或应用 ID。',
       tencentAppIdDesc: '填写腾讯云主账号 AppID，不是账号 ID。',
+      volcengineApiKey: 'API key',
+      volcengineResourceIdDesc:
+        '火山 / 豆包资源 ID，例如 volc.bigasr.auc_turbo。',
       apiKeyRequired: 'API key 必填。',
       apiKeyRequiredDesc: '该云服务商需要此凭据。',
       apiSecret: 'APISecret',
@@ -1485,7 +1491,8 @@ export const zh: TranslationKeys = {
       resultPath: '结果路径',
       resultPathDesc: '轮询转写结果的接口。可以填写完整 URL。',
       longAudioDiarization: '说话人区分',
-      longAudioDiarizationDesc: '请求 provider 返回说话人标签（如果支持）。',
+      longAudioDiarizationDesc:
+        '自动模式下，上下文语音输入关闭，音频文件转写开启。',
       longAudioTimestamps: '时间戳',
       longAudioTimestampsDesc: '请求 provider 返回时间戳（如果接口支持）。',
       longAudioSpeakerCount: '说话人数',
@@ -1700,6 +1707,7 @@ export const zh: TranslationKeys = {
         'openai-compatible-speech': 'OpenAI 兼容语音',
         'mimo-chat-audio-tts': 'MiMo 聊天音频 TTS',
         'dashscope-cosyvoice': '百炼 CosyVoice',
+        'volcengine-tts-http': '火山 / 豆包 TTS',
       },
       baseURL: 'Base URL',
       baseURLDesc: '这里不要填写请求路径。',

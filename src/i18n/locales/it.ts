@@ -791,6 +791,7 @@ export const it: TranslationKeys = {
         'openai-compatible-speech': 'Voce compatibile OpenAI',
         'mimo-chat-audio-tts': 'MiMo chat audio TTS',
         'dashscope-cosyvoice': 'DashScope CosyVoice',
+        'volcengine-tts-http': 'Volcengine TTS',
       },
       baseURL: 'Base URL',
       baseURLDesc: 'Non includere il percorso qui.',

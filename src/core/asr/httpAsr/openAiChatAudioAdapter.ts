@@ -2,6 +2,8 @@ import type {
   AsrAudioFormat,
   AsrTransportMode,
 } from '../../../settings/schema/setting.types'
+import type { CustomParameter } from '../../../types/custom-parameter.types'
+import { parseCustomParameterValue } from '../../../utils/custom-parameters'
 import { transcodeToWav } from '../audioTranscode'
 import { BaseAsrProvider } from '../base'
 import { sendAsrJsonRequest } from '../httpTransport'
@@ -23,6 +25,7 @@ export type ChatAudioProviderProfile = {
   audioFormat: AsrAudioFormat
   transportMode: AsrTransportMode
   language: string
+  customParameters?: CustomParameter[]
 }
 
 const DEFAULT_CHAT_COMPLETIONS_PATH = '/chat/completions'
@@ -107,6 +110,33 @@ const extractTextFromChatCompletion = (payload: unknown): string => {
   return ''
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function applyChatAudioCustomParameters(
+  requestBody: Record<string, unknown>,
+  entries: CustomParameter[] | undefined,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...requestBody }
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const key = typeof entry?.key === 'string' ? entry.key.trim() : ''
+    if (!key) continue
+    const rawValue = typeof entry?.value === 'string' ? entry.value : ''
+    if (rawValue.trim().length === 0) continue
+    const parsed = parseCustomParameterValue(rawValue, entry.type, key)
+    // Users often copy OpenAI SDK examples that put provider-specific fields
+    // under `extra_body`. We send raw HTTP here, so expand that object into the
+    // actual JSON body instead of nesting an `extra_body` property.
+    if (key === 'extra_body' && isRecord(parsed)) {
+      Object.assign(next, parsed)
+      continue
+    }
+    next[key] = parsed
+  }
+  return next
+}
+
 /**
  * OpenAI-compatible Chat Audio.
  *
@@ -138,6 +168,7 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
       audioFormat,
       transportMode,
       language,
+      customParameters,
     } = this.profile
     if (!baseURL.trim()) {
       throw new Error('ASR provider is missing baseURL.')
@@ -194,27 +225,30 @@ export class OpenAiCompatibleChatAudioAsrProvider extends BaseAsrProvider {
     // tens of seconds of hidden reasoning for what should be a sub-second
     // audio → text job. We always send reasoning_effort: 'none' to disable
     // it; backends that don't know the field will ignore it.
-    const body: Record<string, unknown> = isBailianAsrShape
-      ? {
-          model,
-          messages: [
-            {
-              role: 'user',
-              content: [audioPart],
-            },
-          ],
-        }
-      : {
-          model,
-          modalities: ['text'],
-          messages: [
-            {
-              role: 'user',
-              content: [{ type: 'text', text: promptText }, audioPart],
-            },
-          ],
-          reasoning_effort: 'none',
-        }
+    const body: Record<string, unknown> = applyChatAudioCustomParameters(
+      isBailianAsrShape
+        ? {
+            model,
+            messages: [
+              {
+                role: 'user',
+                content: [audioPart],
+              },
+            ],
+          }
+        : {
+            model,
+            modalities: ['text'],
+            messages: [
+              {
+                role: 'user',
+                content: [{ type: 'text', text: promptText }, audioPart],
+              },
+            ],
+            reasoning_effort: 'none',
+          },
+      customParameters,
+    )
 
     if (options?.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError')

@@ -30,7 +30,7 @@ const baseConfig: AsrConfig = {
   transportMode: 'node',
   language: 'auto',
   longAudioPunctuation: true,
-  longAudioDiarization: true,
+  longAudioDiarizeMode: 'auto',
   longAudioSpeakerCount: 0,
   longAudioTimestamps: true,
 }
@@ -52,6 +52,18 @@ describe('getAudioFileAsrCapability', () => {
 
     expect(capability.maxRequestBytes).toBe(14 * 1024 * 1024)
     expect(capability.maxDurationMs).toBeNull()
+  })
+
+  it('uses the stricter MiMo chat-audio data URI request cap', () => {
+    const capability = getAudioFileAsrCapability({
+      ...baseConfig,
+      asrProvider: 'xiaomimimo-asr',
+      baseURL: 'https://api.xiaomimimo.com/v1',
+      audioContentFormat: 'input_audio_data_url',
+    })
+
+    expect(capability.maxRequestBytes).toBe(7 * 1024 * 1024)
+    expect(capability.supportsChunkedUpload).toBe(true)
   })
 
   it('exposes direct local-file support for implemented long-audio providers', () => {
@@ -77,6 +89,18 @@ describe('getAudioFileAsrCapability', () => {
     expect(capability.supportsLocalFile).toBe(true)
     expect(capability.supportsChunkedUpload).toBe(false)
     expect(capability.supportsFileStreaming).toBe(false)
+  })
+
+  it('exposes Volcengine flash as an implemented direct long-audio provider', () => {
+    const capability = getAudioFileAsrCapability({
+      ...baseConfig,
+      asrCategory: 'http-long-audio',
+      asrProvider: 'volcengine-auc-flash',
+    })
+
+    expect(capability.maxRequestBytes).toBe(100 * 1024 * 1024)
+    expect(capability.maxDurationMs).toBe(2 * 60 * 60 * 1000)
+    expect(capability.supportsLocalFile).toBe(true)
   })
 
   it('advises a shorter chunk duration when known request-size caps conflict', () => {
