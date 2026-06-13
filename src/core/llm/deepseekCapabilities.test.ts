@@ -52,6 +52,9 @@ describe('applyDeepSeekCapabilities', () => {
 
   it('skips when model has no reasoning type', () => {
     expect(
+      run({ model: 'deepseek-v4-pro', reasoningType: 'none' }, 'off'),
+    ).toEqual({})
+    expect(
       run({ model: 'deepseek-v4-pro', reasoningType: 'none' }, 'high'),
     ).toEqual({})
   })

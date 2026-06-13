@@ -1,6 +1,7 @@
 import { Platform } from 'obsidian'
 
 import {
+  resolveExplicitRequestTransportMode,
   resolveRequestTransportMode,
   runWithRequestTransport,
   runWithRequestTransportForStream,
@@ -103,6 +104,17 @@ describe('requestTransport', () => {
           hasCustomBaseUrl: true,
         }),
       ).toBe('browser')
+    })
+  })
+
+  describe('resolveExplicitRequestTransportMode', () => {
+    it('uses LLM platform defaults for auto and normalizes node on mobile', () => {
+      expect(resolveExplicitRequestTransportMode('auto')).toBe('node')
+      expect(resolveExplicitRequestTransportMode('node')).toBe('node')
+      ;(Platform as { isDesktop: boolean }).isDesktop = false
+
+      expect(resolveExplicitRequestTransportMode('auto')).toBe('browser')
+      expect(resolveExplicitRequestTransportMode('node')).toBe('browser')
     })
   })
 

@@ -5,6 +5,7 @@ import {
   createLLMDebugTrace,
   flushLLMDebugTraceReads,
   getLLMDebugTrace,
+  logAuxiliaryLLMUsage,
   omitBase64DebugData,
   runWithLLMDebugTrace,
   setLLMDebugCaptureEnabled,
@@ -13,6 +14,7 @@ import {
 describe('debugCapture', () => {
   afterEach(() => {
     setLLMDebugCaptureEnabled(false)
+    jest.restoreAllMocks()
   })
 
   it('assigns fetches without signals when exactly one trace is active', async () => {
@@ -232,5 +234,43 @@ describe('debugCapture', () => {
     expect(body).toMatch(/client_secret=[^&]*REDACTED/)
     expect(body).toMatch(/refresh_token=[^&]*REDACTED/)
     expect(body).toMatch(/(^|&)code=[^&]*REDACTED/)
+  })
+
+  it('logs auxiliary LLM usage without prompt or response content', () => {
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {})
+    setLLMDebugCaptureEnabled(true)
+
+    logAuxiliaryLLMUsage({
+      purpose: 'voice-polish',
+      providerId: 'provider-a',
+      modelName: 'model-a',
+      durationMs: 123,
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120,
+        cache_read_input_tokens: 80,
+        cache_creation_input_tokens: 10,
+      },
+    })
+
+    expect(debugSpy).toHaveBeenCalledTimes(1)
+    const [, payload] = debugSpy.mock.calls[0]
+    expect(payload).toEqual({
+      purpose: 'voice-polish',
+      provider: 'provider-a',
+      model: 'model-a',
+      durationMs: 123,
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      total_tokens: 120,
+      cache_read_input_tokens: 80,
+      cache_creation_input_tokens: 10,
+      cache_hit_rate: 0.8,
+    })
+    expect(payload).not.toHaveProperty('messages')
+    expect(payload).not.toHaveProperty('prompt')
+    expect(payload).not.toHaveProperty('content')
+    expect(payload).not.toHaveProperty('response')
   })
 })

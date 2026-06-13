@@ -23,6 +23,11 @@ export const it: TranslationKeys = {
     triggerTabCompletion: 'Attiva completamento tab',
     acceptInlineSuggestion: 'Accetta completamento',
     capturePdfRegion: 'Cattura regione PDF nella chat',
+    toggleVoiceInput: 'Attiva/Disattiva input vocale contestuale',
+    cancelVoiceInput: 'Annulla input vocale contestuale',
+    readAloudSelection: 'Leggi selezione ad alta voce',
+    readAloudCurrentFile: 'Leggi file corrente ad alta voce',
+    stopReadAloud: 'Ferma lettura ad alta voce',
   },
 
   common: {
@@ -140,6 +145,7 @@ export const it: TranslationKeys = {
     title: 'Impostazioni Yolo',
     tabs: {
       models: 'Modelli',
+      voice: 'Voce',
       editor: 'Editor',
       knowledge: 'Conoscenza',
       tools: 'Strumenti',
@@ -755,6 +761,154 @@ export const it: TranslationKeys = {
       qwenOAuthStreamingNotice:
         'Qwen OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
     },
+    tts: {
+      title: 'Generazione vocale (TTS)',
+      description:
+        'Configura gli endpoint text-to-speech usati dalla lettura ad alta voce.',
+      addConfig: 'Aggiungi TTS',
+      addConfigTitle: 'Aggiungi configurazione TTS',
+      editConfigTitle: 'Modifica configurazione TTS: {name}',
+      empty: 'Nessun provider TTS configurato.',
+      none: '(nessuno - aggiungine uno in Modelli)',
+      colName: 'Nome',
+      colSummary: 'Formato · voce',
+      colActions: 'Azioni',
+      dragHandle: 'Trascina per riordinare',
+      unnamedConfig: '(senza nome)',
+      activePillLabel: 'lettura',
+      editConfigAria: 'Modifica configurazione',
+      deleteConfigAria: 'Elimina configurazione',
+      deleteConfigTitle: 'Elimina configurazione TTS',
+      deleteConfigMessagePrefix: 'Eliminare',
+      reorderFailed: 'Impossibile riordinare le configurazioni TTS.',
+      deleteFailed: 'Impossibile eliminare la configurazione TTS.',
+      saveFailed: 'Impossibile salvare la configurazione TTS.',
+      configName: 'Nome',
+      configNameDesc: 'Mostrato nel selettore provider per la lettura.',
+      apiFormat: 'Formato API',
+      apiFormatDesc: "Scegli il protocollo usato dall'endpoint.",
+      format: {
+        'openai-compatible-speech': 'Voce compatibile OpenAI',
+        'mimo-chat-audio-tts': 'MiMo chat audio TTS',
+        'dashscope-cosyvoice': 'DashScope CosyVoice',
+        'volcengine-tts-http': 'Volcengine TTS',
+      },
+      baseURL: 'Base URL',
+      baseURLDesc: 'Non includere il percorso qui.',
+      requestPath: 'Percorso richiesta',
+      requestPathDesc: "Lascia vuoto per l'adapter predefinito.",
+      apiKey: 'API key',
+      apiKeyDesc: 'Lascia vuoto per server locali senza autenticazione.',
+      apiKeyPlaceholder: 'Inserisci la tua API key',
+      model: 'Modello',
+      modelDesc: 'Nome modello inviato al provider.',
+      voice: 'Voce',
+      voiceDesc: 'Voce o speaker ID del provider.',
+      outputFormat: 'Formato output',
+      outputFormatDesc: 'Formato audio richiesto al provider.',
+      transport: 'Trasporto',
+      transportDesc:
+        'Percorso HTTP usato dall’app desktop. Auto va bene salvo requisiti specifici del provider.',
+      transportMode: {
+        auto: 'Auto',
+        obsidian: 'Obsidian requestUrl',
+        browser: 'Fetch browser',
+        node: 'Fetch Node desktop',
+      },
+      language: 'Lingua',
+      languageDesc: 'Codice lingua opzionale se supportato dal provider.',
+      sampleRate: 'Sample rate',
+      sampleRateDesc:
+        'Sample rate di output opzionale. Lascia vuoto per il valore predefinito del provider.',
+      providerDefault: 'Predefinito provider',
+      speed: 'Velocita',
+      speedDesc:
+        'Moltiplicatore opzionale della velocita. Lascia vuoto per il valore predefinito del provider.',
+      styleInstruction: 'Istruzione stile',
+      styleInstructionDesc:
+        'Istruzione opzionale su stile o tono se supportata dal provider.',
+      testText: 'Testo di test',
+      testTextDesc: 'Testo usato solo per questa prova.',
+      testPlaying: 'Riproduzione audio di test.',
+      testReady:
+        'Audio di test pronto. Usa il player qui sotto per verificare la riproduzione.',
+      testPlayback: 'Test riproduzione audio',
+      testPlaybackDesc:
+        'Riproduci di nuovo l’ultimo campione generato per verificare che il browser possa decodificarlo e riprodurlo.',
+      testFailed: 'Test TTS non riuscito.',
+      testRunning: 'Test...',
+      testRun: 'Esegui test',
+    },
+    voiceIsland: {
+      title: 'Isola vocale flottante',
+      description:
+        "Scegli quali modalita vocali appaiono nel controllo flottante dell'editor e in quale ordine.",
+      enable: 'Mostra isola vocale flottante',
+      enableDesc:
+        'L’isola appare solo quando almeno una modalita visibile e abilitata e configurata.',
+      bottomOffset: 'Distanza dal fondo dell’isola flottante',
+      bottomOffsetDesc:
+        "Distanza come percentuale dell'altezza della finestra. Predefinito: 9.",
+      dragHandle: 'Trascina per riordinare',
+      modeReady: 'Pronto',
+      dictationUnavailable: 'Abilita input vocale e configura ASR.',
+      audioFileUnavailable: 'Abilita trascrizione file audio e configura ASR.',
+      readAloudUnavailable: 'Abilita lettura e configura TTS.',
+      mode: {
+        'toggle-listen': 'Dettatura a clic',
+        'hold-to-talk': 'Tieni premuto per dettare',
+        'audio-file': 'File audio',
+        'read-aloud': 'Leggi ad alta voce',
+      },
+    },
+    readAloud: {
+      title: 'Leggi ad alta voce',
+      description:
+        'Legge la selezione o la nota corrente tramite un provider TTS configurato.',
+      enable: 'Abilita lettura ad alta voce',
+      enableDesc:
+        'Aggiunge la lettura come modalita dell’isola flottante e abilita i comandi dedicati.',
+      enableDescUnavailable:
+        'Aggiungi un provider TTS in Modelli prima di abilitare la lettura.',
+      ttsProvider: 'Provider TTS',
+      ttsProviderDesc:
+        'Usato per lettura dall’isola flottante e comandi della palette.',
+      markdownMode: 'Modalita Markdown',
+      markdownModeOption: {
+        readable: 'Leggibile',
+        raw: 'Markdown grezzo',
+      },
+      markdownModeDesc:
+        'Leggibile salta frontmatter/codice e legge i link per etichetta; raw conserva la sintassi Markdown.',
+      advancedToggle: 'Opzioni avanzate',
+      chunkTargetChars: 'Limite caratteri per segmento',
+      chunkTargetCharsDesc:
+        'I testi lunghi vengono divisi fino a questo limite, preferendo pause naturali; i segmenti effettivi possono essere più brevi. Intervallo: 200-6000.',
+      preloadSegments: 'Segmenti precaricati',
+      preloadSegmentsDesc:
+        'Numero di segmenti successivi da sintetizzare mentre quello corrente e in riproduzione. Valori piu alti riducono le pause ma possono consumare piu quota se interrompi prima. Intervallo: 0-3.',
+      cacheEnabled: 'Cache in memoria',
+      cacheEnabledDesc:
+        'Mantiene l’audio generato in memoria fino alla chiusura di Obsidian e lo riusa solo quando testo, provider, modello, voce, formato, velocita e stile coincidono.',
+      autoSave: 'Salva automaticamente audio generato',
+      autoSaveDesc:
+        'Salva audio generato nella cartella sotto e abilita il trascinamento fuori.',
+      saveDir: 'Cartella audio generato',
+      saveDirDesc:
+        'Cartella relativa al vault. I percorsi assoluti non sono accettati.',
+      speaker: 'Altoparlante',
+      speakerDesc:
+        'Scegli dove riprodurre la lettura ad alta voce e i test TTS.',
+      speakerDefault: 'Predefinito di sistema',
+      speakerFallbackName: 'Altoparlante',
+      speakerCurrent: 'Altoparlante selezionato',
+      speakerTest: 'Test altoparlante',
+      speakerTesting: 'Test...',
+      speakerTestPlaying: 'Riproduzione test altoparlante.',
+      speakerTestFailed: 'Test altoparlante non riuscito.',
+      speakerUnsupported:
+        'La selezione altoparlante non e supportata qui; riproduzione tramite il predefinito di sistema.',
+    },
     models: {
       title: 'Modelli',
       chatModels: 'Modelli chat',
@@ -1359,6 +1513,38 @@ export const it: TranslationKeys = {
       interactionSectionTitle: 'Interazione',
       maintenanceSectionTitle: 'Manutenzione',
     },
+  },
+
+  voiceInput: {
+    buttonCancel: 'Annulla input vocale',
+    modeSwitchToHold: 'Passa a premi-per-parlare',
+    modeSwitchToAudioFile: 'Passa alla modalita file audio',
+    modeSwitchToReadAloud: 'Passa alla lettura ad alta voce',
+    modeSwitchToToggle: 'Passa alla modalita clic',
+    modeSwitchUnavailable: 'Nessuna altra modalita vocale disponibile',
+    readAloudDisabledNotice:
+      'La lettura ad alta voce e disabilitata nelle impostazioni.',
+    readAloudNoProvider:
+      'Configura un provider TTS prima di usare la lettura ad alta voce.',
+    readAloudNoText: 'Nessun testo da leggere.',
+    readAloudPreparing: 'Preparazione lettura…',
+    readAloudConfirmLongText:
+      'Il testo lungo verra riprodotto in {{segments}} segmenti.',
+    readAloudProgress: 'Lettura {{index}}/{{total}}',
+    readAloudPaused: 'In pausa',
+    readAloudCompleted: 'Lettura completata',
+    readAloudFailed: 'Lettura ad alta voce non riuscita.',
+    readAloudFailedWithMessage:
+      'Lettura ad alta voce non riuscita: {{message}}',
+    readAloudPlaying: 'Lettura',
+    readAloudCancelled: 'Lettura fermata.',
+    readAloudAutoSaveFailed: 'Impossibile salvare l’audio generato.',
+    readSelection: 'Leggi selezione',
+    readNote: 'Leggi nota',
+    readAloudDragGeneratedAudio: 'Trascina audio generato',
+    readAloudConfirmButton: 'Avvia lettura',
+    readAloudPauseButton: 'Pausa lettura',
+    readAloudResumeButton: 'Riprendi lettura',
   },
 
   chat: {

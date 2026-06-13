@@ -25,6 +25,11 @@ export const en: TranslationKeys = {
     capturePdfRegion: 'Capture PDF region to chat',
     exportSettings: 'Export plugin settings',
     importSettings: 'Import plugin settings',
+    toggleVoiceInput: 'Toggle context-aware voice input',
+    cancelVoiceInput: 'Cancel context-aware voice input',
+    readAloudSelection: 'Read selection aloud',
+    readAloudCurrentFile: 'Read current file aloud',
+    stopReadAloud: 'Stop read aloud',
   },
 
   common: {
@@ -143,6 +148,7 @@ export const en: TranslationKeys = {
     title: 'Yolo settings',
     tabs: {
       models: 'Models',
+      voice: 'Voice',
       editor: 'Editor',
       knowledge: 'Knowledge',
       tools: 'Tools',
@@ -1478,6 +1484,629 @@ export const en: TranslationKeys = {
       interactionSectionTitle: 'Interaction',
       maintenanceSectionTitle: 'Maintenance',
     },
+
+    asr: {
+      title: 'Voice recognition (ASR)',
+      descriptionV2:
+        'Each row is one ASR endpoint. Badges show which features have selected it; choose them under Voice → Context-aware voice input and Voice → Audio file transcription.',
+      descriptionV3:
+        'Voice recognition endpoints are grouped by short HTTP, long HTTP, and WebSocket routes. Choose active endpoints under Voice → Context-aware voice input and Voice → Audio file transcription.',
+      sectionTitle: {
+        'http-short-audio': 'HTTP short audio',
+        'http-long-audio': 'HTTP long audio',
+        websocket: 'WebSocket',
+      },
+      sectionEmpty: {
+        'http-short-audio': 'No short-audio HTTP provider configured.',
+        'http-long-audio': 'No long-audio HTTP provider configured.',
+        websocket: 'No WebSocket provider configured.',
+      },
+      colName: 'Name',
+      colSummary: 'Format · model',
+      colActions: 'Actions',
+      dragHandle: 'Drag to reorder',
+      unnamedConfig: '(unnamed)',
+      activePill: 'Selected for voice input',
+      activePillLabel: 'voice',
+      audioFileActivePill: 'Selected for audio file transcription',
+      audioFileActivePillLabel: 'audio file',
+      editConfigAria: 'Edit configuration',
+      deleteConfigAria: 'Delete configuration',
+      deleteConfigMessagePrefix: 'Delete',
+      deleteConfigTitle: 'Delete ASR configuration',
+      deleteConfigFailed: 'Failed to delete ASR.',
+      reorderConfigFailed: 'Failed to reorder ASR.',
+      emptyHint:
+        'No ASR endpoint configured yet. Use "Add ASR configuration" in the header.',
+      addConfig: 'Add ASR configuration',
+      configName: 'Name',
+      configNameDesc: 'Shown in the ASR list.',
+      baseURLRequired: 'Base URL is required.',
+      modelRequired: 'Model is required.',
+      errorNoProvider: 'No ASR provider is configured.',
+      errorLongAudioNotImplemented:
+        'Long-audio provider adapters are not implemented yet.',
+      errorIncompleteConfig: 'This ASR configuration is incomplete.',
+      errorWebSocketMissingBaseUrl: 'This WebSocket provider needs a Base URL.',
+      errorTranscriptionRequestFailed: 'ASR transcription failed: {{detail}}',
+      errorChatAudioRequestFailed: 'ASR chat-audio request failed: {{detail}}',
+      apiFormat: 'API format',
+      apiFormatTranscription: 'Transcription',
+      apiFormatChatAudio: 'Chat Audio',
+      apiFormatWebSocket: 'WebSocket',
+      apiFormatDescTranscription:
+        'Uploads a short recording to an OpenAI-style transcription endpoint.',
+      apiFormatDescChatAudio:
+        'Sends the recording to a chat model that accepts audio.',
+      apiFormatDescWebSocket:
+        'Live WebSocket transcription. Supports Deepgram-compatible /listen and WhisperLiveKit native /asr.',
+      baseURL: 'Base URL',
+      baseURLDesc:
+        'Enter the service base URL. Include /v1 only when the service uses it as part of the base path; configure the endpoint path below.',
+      apiKey: 'API key',
+      apiKeyDesc: 'Leave empty for local servers without auth.',
+      apiKeyPlaceholder: 'Enter your API key',
+      model: 'Model',
+      modelDesc: 'Speech-to-text model id.',
+      chatAudioModelDesc:
+        'A multimodal chat model that accepts audio in messages.',
+      deepgramWsModelDesc:
+        'Deepgram model name; local compatible servers may ignore it.',
+      deepgramLanguageDesc:
+        'auto omits the language parameter; fill it explicitly for non-English speech, for example zh.',
+      deepgramWsLanguageDesc:
+        'auto omits the language parameter; fill it for non-English speech, for example zh.',
+      listenPath: 'Path',
+      listenPathDesc:
+        'Use the path expected by the selected WS speech protocol.',
+      transcriptionPath: 'Transcription path',
+      transcriptionPathDesc: 'Defaults to /audio/transcriptions.',
+      longAudioPathDesc:
+        'Provider-specific long-audio endpoint path. Switching providers fills the matching default.',
+      uploadPath: 'Upload path',
+      uploadPathDesc: 'File upload endpoint path.',
+      chatCompletionsPath: 'Chat completions path',
+      chatCompletionsPathDesc: 'Defaults to /chat/completions.',
+      audioContentFormat: 'Audio content carrier',
+      audioContentFormatDesc:
+        'OpenAI / OpenRouter: input_audio (base64). Aliyun Bailian: input_audio (data URL). Some vLLM mimics: audio_url.',
+      chatAudioCustomParametersDesc:
+        'Attach additional request fields; values accept plain text or JSON, for example { "asr_options": { "language": "zh"  } }.',
+      webSocketProtocol: 'WS speech protocol',
+      webSocketProtocolDesc:
+        'Changing this fills the common Base URL and path for that protocol.',
+      webSocketProvider: 'WebSocket provider',
+      webSocketProviderDesc:
+        'Changing this fills the common Base URL and path for that provider.',
+      webSocketProtocolDeepgram: 'Deepgram',
+      webSocketProtocolWhisperLiveKit: 'WhisperLiveKit',
+      webSocketPunctuate: 'Punctuation',
+      webSocketPunctuateDesc:
+        'Adds punctuation and capitalization to Deepgram-compatible transcripts.',
+      webSocketDiarize: 'Speaker diarization',
+      webSocketDiarizeDesc:
+        'Auto keeps speaker handling off for context voice input and on for audio file transcription.',
+      webSocketDictation: 'Dictation commands',
+      webSocketDictationDesc:
+        'Turns spoken punctuation commands such as comma, period, and new line into marks. Requires punctuation.',
+      webSocketFileStreamingRate: 'Rate limit',
+      webSocketFileStreamingRateDesc:
+        'Range 1-20, default 2. When an audio file is dropped in, stream to WhisperLiveKit at up to this realtime speed.',
+      longProvider: 'Long-audio provider',
+      longProviderDesc:
+        'Fixed long-audio providers keep their own request and result parsing.',
+      longProviderFunasr: 'FunASR local',
+      longProviderDeepgram: 'Deepgram pre-recorded',
+      longProviderTencent: 'Tencent Flash',
+      longProviderVolcengineFlash: 'Volcengine / Doubao Flash',
+      appId: 'AppID',
+      appIdDesc: 'Cloud account or application ID for this provider.',
+      tencentAppIdDesc:
+        'Use the Tencent Cloud main account AppID, not the account ID.',
+      volcengineApiKey: 'API key',
+      volcengineResourceIdDesc:
+        'Volcengine / Doubao resource ID, for example volc.bigasr.auc_turbo.',
+      apiKeyRequired: 'API key is required.',
+      apiKeyRequiredDesc: 'Required by this cloud provider.',
+      apiSecret: 'APISecret',
+      apiSecretDesc: 'Used only for signing ASR requests.',
+      apiSecretPlaceholder: 'Enter your API secret',
+      secretId: 'SecretID',
+      secretKey: 'SecretKey',
+      jobPath: 'Job path',
+      jobPathDesc: 'Task creation endpoint. Full URLs are allowed.',
+      resultPath: 'Result path',
+      resultPathDesc: 'Task polling endpoint. Full URLs are allowed.',
+      longAudioDiarization: 'Speaker diarization',
+      longAudioDiarizationDesc:
+        'Auto keeps speaker handling off for context voice input and on for audio file transcription.',
+      longAudioTimestamps: 'Timestamps',
+      longAudioTimestampsDesc:
+        'Request provider timestamps when the API supports that option.',
+      longAudioSpeakerCount: 'Speaker count',
+      longAudioSpeakerCountDesc: '0 means automatic speaker count.',
+      longProviderCredentialsRequired:
+        'AppID, API key, and API secret are required.',
+      funasrServerFeatures: 'Server features',
+      funasrServerFeaturesDesc:
+        'Configure punctuation and speaker diarization on the FunASR server. The plugin automatically uses returned punctuation and speaker fields.',
+      longAudioPunctuation: 'Punctuation',
+      longAudioPunctuationDesc:
+        'Ask Deepgram to add punctuation, capitalization, and Smart Format. Turn off if the selected language produces unwanted formatting.',
+      featureModeAuto: 'Auto',
+      featureModeOn: 'On',
+      featureModeOff: 'Off',
+      addConfigShort: '+ Add',
+      audioFormat: 'Audio format',
+      audioFormatAuto: 'auto',
+      audioFormatPcm16: 'PCM 16k',
+      audioFormatWav: 'wav',
+      audioFormatDescChat:
+        'wav has better compatibility, but creates larger uploads.',
+      audioFormatDescTranscription:
+        'wav has better compatibility, but creates larger uploads.',
+      audioFormatDescWebSocket:
+        'PCM has better compatibility, but sends larger data.',
+      transport: 'Transport',
+      language: 'Language',
+      languageDesc: 'Leave empty or "auto" to let the provider detect.',
+      microphone: 'Microphone',
+      microphoneDesc:
+        'Pick a specific input device. Labels appear after granting mic permission once.',
+      micDefault: 'System default',
+      microphoneFallbackName: 'Microphone',
+      microphoneUnlock: 'Unlock device labels',
+      microphoneUnlockDesc:
+        'Grants the mic permission once so device names become visible. No audio is recorded.',
+      microphoneUnlockButton: 'Grant',
+      testRecording: 'Test recording',
+      testRecordingDesc:
+        'Records a short clip with the current configuration to verify URL / key / model / format.',
+      testRecordingDescWebSocket:
+        'Starts a live streaming ASR test. Click Stop when done speaking.',
+      testRun: 'Run test',
+      testStopStreaming: 'Stop',
+      testRunning: 'Recording…',
+      testFinalizing: 'Stopping…',
+      testFailed: 'ASR test failed.',
+      testTookMs: 'Took {{ms}} ms',
+      testEmptyResult: 'ASR returned empty text.',
+      testStreamingRunning:
+        'Streaming ASR test is running. Click Stop when done.',
+      testStreamingUnsupported:
+        'This ASR provider does not support streaming tests.',
+      testStreamingAutoStop:
+        'Streaming ASR test reached the maximum duration. Stopping…',
+      testInvalidConfig: 'Invalid config.',
+      testRecordingSeconds: 'Recording {{seconds}} s…',
+      testCallingAsr: 'Calling ASR…',
+      testBadgePassed: '✓ Passed',
+      testBadgeFailed: '× Failed',
+      testBadgeRecording: '● Recording',
+      testBadgeFinalizing: '… Stopping',
+      testBadgeTranscribing: '… Transcribing',
+    },
+
+    audioFileTranscription: {
+      title: 'Audio file transcription',
+      description:
+        'Transcribe dropped or selected audio files through ASR and insert the transcript into the editor.',
+      voiceRequiredHint:
+        'Enable voice input above to show the floating island used for choosing or dropping audio files.',
+      enable: 'Enable audio file transcription',
+      enableDesc:
+        'Adds an audio-file mode to the floating voice island. File transcription only runs ASR and does not use context-aware polishing.',
+      enableDescUnavailable:
+        'Add an ASR provider before enabling audio file transcription.',
+      asrProvider: 'Audio file ASR provider',
+      asrProviderDesc:
+        'Defaults to the voice input ASR provider, but can be set separately for longer local audio files.',
+      chunkHeaderMode: 'Chunk header',
+      chunkHeaderModeDesc:
+        'For HTTP chunked transcription, optionally insert the local chunk start time before each chunk.',
+      chunkHeaderMode_none: 'No chunk headers',
+      'chunkHeaderMode_local-start-time': 'Local start time',
+      outputMetadataMode: 'Output metadata',
+      outputMetadataModeDesc:
+        'Controls whether transcription output includes file metadata and provider timestamps.',
+      outputMetadataMode_none: 'Body only',
+      outputMetadataMode_metadata: 'Metadata',
+      'outputMetadataMode_metadata-timestamps': 'Metadata + timestamps',
+      fallbackNotePathTemplate: 'Fallback note path',
+      fallbackNotePathTemplateDesc:
+        'Where results are saved if the transcription insertion point is unavailable. Supports {{date}}, {{time}}, {{basename}}, and {{filename}}.',
+      advancedToggle: 'Advanced options',
+      wavMaxDurationMin: 'Max WAV/PCM duration (minutes)',
+      wavMaxDurationMinDesc:
+        'Based on WAV/PCM upload-size conversion. Files beyond this limit are blocked before local conversion to avoid freezes and excessive upload traffic. Range: 1-120.',
+      wavDurationLimitProviderNotice:
+        'Current WAV/PCM limit is {{minutes}} minutes, based on upload-size conversion. Longer files are blocked to avoid freezes and excessive upload traffic.',
+      chunkTargetDurationSec: 'Audio file chunk duration (seconds)',
+      chunkTargetDurationSecDesc:
+        'WAV chunks; some providers need 30s or less. Range: 15-600.',
+      maxConcurrentChunks: 'Max concurrent chunks',
+      maxConcurrentChunksDesc:
+        'Maximum HTTP chunks in flight at once. Range: 1-5.',
+      chunkStartStaggerMs: 'Chunk start stagger (ms)',
+      chunkStartStaggerMsDesc:
+        'Delay between starting chunk uploads, reducing rate-limit spikes. Range: 1000-3000.',
+      chunkOverlapMs: 'Chunk overlap (ms)',
+      chunkOverlapMsDesc:
+        'Small overlap around chunk boundaries to reduce missed words. Range: 0-1500.',
+      chunkDurationLimitNotice:
+        'This provider has a known request-size limit for WAV chunks.',
+      chunkDurationLimitSuggestion: 'Suggested chunk duration:',
+      chunkDurationLimitSuffix: 'or less',
+    },
+
+    contextVoiceInput: {
+      title: 'Context-aware voice input',
+      description:
+        'Hold or click the mic to dictate at the cursor. The polish LLM uses the current file title, surrounding text, and selection.',
+      enable: 'Enable voice input',
+      enableDesc:
+        'Use the command palette, an Obsidian hotkey, or the floating mic to trigger it.',
+      enableDescUnavailable: 'Add an ASR provider before enabling voice input.',
+      asrProvider: 'ASR provider',
+      asrProviderDesc:
+        'Pick which of your configured ASR endpoints (Models → Voice recognition (ASR)) handles this voice input session.',
+      asrProviderNone:
+        '(none — add one under Models → Voice recognition (ASR))',
+      polishModel: 'Polish model',
+      polishModelDesc:
+        'Rewrites the raw transcript with surrounding editor context. Falls back to the default chat model when unset.',
+      polishTemperature: 'Polish call temperature',
+      polishTemperatureDesc:
+        "Default: 0.2. Leave blank to use the selected polish model's configured temperature.",
+      polishTemperaturePlaceholder: 'Use model temperature',
+      systemPromptMode: 'Prompt style',
+      systemPromptModeDesc:
+        'Pick a built-in preset or switch to custom to write your own.',
+      promptMode: {
+        default: 'Default (cleanup only, stay faithful)',
+        translate: 'Translate (zh ⇆ en)',
+        expand: 'Expand (outline → paragraph)',
+        polish: 'Polish (formal / academic / literary)',
+        custom: 'Custom',
+      },
+      builtinSystemPrompt: 'Built-in system prompt',
+      builtinSystemPromptDesc:
+        'Shown for review. Built-in presets are locked; switch to Custom to edit your own prompt.',
+      customSystemPrompt: 'Custom system prompt',
+      customSystemPromptDesc: 'Must still emit { action, text } JSON.',
+      tabCompletionAlwaysPaused:
+        'Tab completion is always paused while voice input is active, so Tab only accepts the voice draft.',
+      beforeWindowChars: 'Initial before-cursor window (characters)',
+      beforeWindowCharsDesc:
+        'Initial characters of editor text BEFORE the cursor sent to the polish model. During continuous dictation, this anchored prefix grows as you accept/write text. Independent from the after-cursor window below.',
+      afterWindowChars: 'After-cursor window (characters)',
+      afterWindowCharsDesc:
+        'Characters of editor text AFTER the cursor sent to the polish model. Helps the model avoid repeating text that already follows the cursor. Independent from the before-cursor window above. Does not limit how much text voice input can insert.',
+      maxRecordingSeconds: 'Max recording (seconds)',
+      maxRecordingSecondsDesc:
+        'Auto-stops a forgotten recording so it does not waste ASR calls.',
+      decibelMeter: 'Microphone level meter',
+      decibelMeterDesc:
+        'Listen locally and accumulate microphone loudness from -50 to -5 dB, so you can tune the speech and silence thresholds below. Audio is not recorded or sent.',
+      decibelMeterStart: 'Start',
+      decibelMeterStop: 'Stop',
+      decibelMeterLevel: 'Microphone loudness distribution',
+      decibelMeterPeak: 'Peak',
+      decibelMeterSpeechStart: 'Speech start',
+      decibelMeterSilence: 'Silence',
+      decibelMeterUnavailable:
+        'Microphone level meter is not available in this environment.',
+      decibelMeterPermissionError:
+        'Could not read the microphone. Check permission and device selection.',
+      vadSpeechStartDecibels: 'Speech start threshold (dB)',
+      vadSpeechStartDecibelsDesc:
+        'Range: -50 to -5. More negative catches quieter speech; closer to -5 ignores more background noise. Default: -40.',
+      vadSilenceDecibels: 'Silence threshold after speech (dB)',
+      vadSilenceDecibelsDesc:
+        'Range: -50 to -5. After speech has started, audio below this level counts as silence. Default: -36.',
+      vadSpeechRequiredMs: 'Speech confirmation duration (ms)',
+      vadSpeechRequiredMsDesc:
+        'How long audio must stay above the speech threshold before it counts as speech. Default: 200.',
+      vadSilenceHoldMs: 'Silence duration to stop (ms)',
+      vadSilenceHoldMsDesc:
+        'How long click-toggle mode waits after speech tails off before it sends the segment to ASR. Default: 1200.',
+      floatingIslandBottomOffsetVh: 'Floating island bottom distance',
+      floatingIslandBottomOffsetVhDesc:
+        'Distance as a percentage of the viewport height. Default: 9.',
+      advancedToggle: 'Advanced options',
+      autoRestartAfterAccept: 'Keep listening after Tab accept',
+      autoRestartAfterAcceptDesc:
+        'Click-toggle mode only. After Tab accepts a polished draft, automatically start the next recording segment without clicking the mic again.',
+      documentSummaryEnabled: 'Include document summary + hot words',
+      documentSummaryEnabledDesc:
+        "At recording start, ask an LLM to summarise the current file and extract ASR-confusable hot words (proper nouns, jargon, abbreviations). The summary keeps the polish model on tone and terminology; the hot words let it prefer the document's spelling when the transcript came back with a near-miss. Adds one LLM call per refresh cycle. Both stay in memory only and are dropped when Obsidian closes.",
+      documentSummaryRefresh: 'Summary refresh',
+      documentSummaryRefreshDesc:
+        'A full-document summary is generated automatically on first voice input; this controls when it is regenerated.',
+      documentSummaryRefresh_smart: 'Smart refresh',
+      documentSummaryRefresh_session: 'Do not refresh this session',
+      documentSummaryRefresh_15min: 'Every 15 minutes',
+      documentSummaryRefresh_1hour: 'Every 1 hour',
+    },
+    tts: {
+      title: 'Speech generation (TTS)',
+      description: 'Configure text-to-speech endpoints used by read aloud.',
+      addConfig: 'Add TTS',
+      addConfigTitle: 'Add TTS configuration',
+      editConfigTitle: 'Edit TTS config: {name}',
+      empty: 'No TTS provider configured.',
+      none: '(none - add one in Models)',
+      colName: 'Name',
+      colSummary: 'Format · voice',
+      colActions: 'Actions',
+      dragHandle: 'Drag to reorder',
+      unnamedConfig: '(unnamed)',
+      activePillLabel: 'read aloud',
+      editConfigAria: 'Edit configuration',
+      deleteConfigAria: 'Delete configuration',
+      deleteConfigTitle: 'Delete TTS configuration',
+      deleteConfigMessagePrefix: 'Delete',
+      reorderFailed: 'Failed to reorder TTS configs.',
+      deleteFailed: 'Failed to delete TTS config.',
+      saveFailed: 'Failed to save TTS config.',
+      configName: 'Name',
+      configNameDesc: 'Shown in the read-aloud provider picker.',
+      apiFormat: 'API format',
+      apiFormatDesc: 'Choose the protocol this endpoint speaks.',
+      format: {
+        'openai-compatible-speech': 'OpenAI-compatible speech',
+        'mimo-chat-audio-tts': 'MiMo chat audio TTS',
+        'dashscope-cosyvoice': 'DashScope CosyVoice',
+        'volcengine-tts-http': 'Volcengine TTS',
+      },
+      baseURL: 'Base URL',
+      baseURLDesc: 'Do not include the path here.',
+      requestPath: 'Request path',
+      requestPathDesc: 'Leave blank for the adapter default.',
+      apiKey: 'API key',
+      apiKeyDesc: 'Leave empty for local servers without auth.',
+      apiKeyPlaceholder: 'Enter your API key',
+      model: 'Model',
+      modelDesc: 'Model name sent to the provider.',
+      voice: 'Voice',
+      voiceDesc: 'Voice or speaker ID from the provider.',
+      outputFormat: 'Output format',
+      outputFormatDesc: 'Audio format requested from the provider.',
+      transport: 'Transport',
+      transportDesc:
+        'HTTP path used by the desktop app. Auto is best unless a provider needs a specific path.',
+      transportMode: {
+        auto: 'Auto',
+        obsidian: 'Obsidian requestUrl',
+        browser: 'Browser fetch',
+        node: 'Desktop Node fetch',
+      },
+      language: 'Language',
+      languageDesc: 'Optional language code when the provider supports it.',
+      sampleRate: 'Sample rate',
+      sampleRateDesc:
+        'Optional output sample rate. Leave blank for the provider default.',
+      providerDefault: 'Provider default',
+      speed: 'Speed',
+      speedDesc:
+        'Optional speaking speed multiplier. Leave blank for provider default.',
+      styleInstruction: 'Style instruction',
+      styleInstructionDesc:
+        'Optional style or tone instruction when the provider supports it.',
+      testText: 'Test text',
+      testTextDesc: 'Text used only for this test.',
+      testPlaying: 'Playing test audio.',
+      testReady: 'Test audio is ready. Use the player below to check playback.',
+      testPlayback: 'Audio playback test',
+      testPlaybackDesc:
+        'Replay the last generated sample to verify the browser can decode and play it.',
+      testFailed: 'TTS test failed.',
+      testRunning: 'Testing...',
+      testRun: 'Run test',
+    },
+    voiceIsland: {
+      title: 'Floating voice island',
+      description:
+        'Choose which voice modes appear in the editor floating control and in what order.',
+      enable: 'Show floating voice island',
+      enableDesc:
+        'The island appears only when at least one visible voice mode is enabled and configured.',
+      bottomOffset: 'Floating island bottom distance',
+      bottomOffsetDesc:
+        'Distance as a percentage of the viewport height. Default: 9.',
+      dragHandle: 'Drag to reorder',
+      modeReady: 'Ready',
+      dictationUnavailable: 'Enable voice input and configure ASR first.',
+      audioFileUnavailable:
+        'Enable audio file transcription and configure ASR first.',
+      readAloudUnavailable: 'Enable read aloud and configure TTS first.',
+      mode: {
+        'toggle-listen': 'Click to dictate',
+        'hold-to-talk': 'Hold to dictate',
+        'audio-file': 'Audio file',
+        'read-aloud': 'Read aloud',
+      },
+    },
+    readAloud: {
+      title: 'Read aloud',
+      description:
+        'Read the current selection or note through a configured TTS provider.',
+      enable: 'Enable read aloud',
+      enableDesc:
+        'Adds read aloud as a floating island mode and enables read-aloud commands.',
+      enableDescUnavailable:
+        'Add a TTS provider in Models before enabling read aloud.',
+      ttsProvider: 'TTS provider',
+      ttsProviderDesc:
+        'Used for floating island read aloud and command palette actions.',
+      markdownMode: 'Markdown mode',
+      markdownModeOption: {
+        readable: 'Readable',
+        raw: 'Raw markdown',
+      },
+      markdownModeDesc:
+        'Readable skips frontmatter/code and reads links by label; raw keeps markdown syntax.',
+      advancedToggle: 'Advanced options',
+      chunkTargetChars: 'Characters per segment limit',
+      chunkTargetCharsDesc:
+        'Long text is split up to this limit, preferring natural pauses; actual segments may be shorter. Range: 200-6000.',
+      preloadSegments: 'Preload segments',
+      preloadSegmentsDesc:
+        'How many upcoming text segments to synthesize while the current one is playing. Higher values reduce pauses but may spend more provider quota if you stop early. Range: 0-3.',
+      cacheEnabled: 'Memory cache',
+      cacheEnabledDesc:
+        'Keeps generated audio in memory until Obsidian closes, and reuses it only when the text, provider, model, voice, format, speed, and style match.',
+      autoSave: 'Auto-save generated audio',
+      autoSaveDesc:
+        'Saves generated audio to the folder below and enables drag-out.',
+      saveDir: 'Generated audio folder',
+      saveDirDesc: 'Vault-relative folder. Absolute paths are not accepted.',
+      speaker: 'Speaker',
+      speakerDesc: 'Choose where read aloud and TTS tests are played.',
+      speakerDefault: 'System default',
+      speakerFallbackName: 'Speaker',
+      speakerCurrent: 'Selected speaker',
+      speakerTest: 'Test speaker',
+      speakerTesting: 'Testing...',
+      speakerTestPlaying: 'Playing speaker test.',
+      speakerTestFailed: 'Speaker test failed.',
+      speakerUnsupported:
+        'Speaker selection is not supported here; playing through the system default.',
+    },
+  },
+
+  voiceInput: {
+    barTranscribing: 'Transcribing…',
+    barPolishing: 'Polishing…',
+    barReady: 'Tab to insert · Esc to discard',
+    barReadyShort: 'Tab insert',
+    barReadyEsc: 'Esc discard',
+    buttonStart: 'Start recording',
+    buttonStop: 'Stop recording',
+    buttonCancel: 'Cancel voice input',
+    buttonAccept: 'Insert draft',
+    modeSwitchToHold: 'Click to switch to push-to-talk',
+    modeSwitchToAudioFile: 'Click to switch to audio file mode',
+    modeSwitchToReadAloud: 'Click to switch to read aloud',
+    modeSwitchToToggle: 'Click to switch to click-toggle',
+    modeSwitchUnavailable: 'No other voice mode available',
+    holdToTalkHint: 'Press & hold to talk',
+    audioFileDropHint: 'Drop audio to transcribe',
+    audioFileCheckDropHint: 'Drop file to check audio',
+    audioFileUnsupportedDropHint: 'Only audio files',
+    audioFileChecking: 'Checking…',
+    audioFileConfirm: 'Confirm upload',
+    audioFilePreparing: 'Preparing…',
+    audioFileUploading: 'Uploading…',
+    audioFileInserting: 'Inserting…',
+    audioFileIdleHint: 'Drop or choose audio',
+    audioFileConfirmButton: 'Start upload',
+    audioFileChooseButton: 'Choose audio file',
+    audioFileFinished: 'Audio file transcription finished.',
+    audioFileEmptyLongAudioResult:
+      'Long-audio transcription finished, but the provider returned no text to insert.',
+    audioFileCancelled: 'Audio file transcription cancelled.',
+    audioFilePlanStream: 'Stream audio?',
+    audioFilePlanChunked: 'Upload {{count}} audio chunks?',
+    audioFilePlanLongAudio: 'Submit long audio?',
+    audioFilePlanDirect: 'Upload this audio file for transcription?',
+    audioFileProgressInsertingChunks: 'Inserting {{done}}/{{total}}…',
+    audioFileProgressTranscribingChunks: 'Transcribing {{done}}/{{total}}…',
+    audioFileProgressStreamingPercent: 'Streaming {{percent}}%…',
+    audioFileProgressUploadingPercent: 'Uploading {{percent}}%…',
+    audioFileFallbackNotice: 'Transcription is being written to {{path}}.',
+    audioFileWavPcmUploadNotice:
+      'This audio will send WAV/PCM data, about {{size}}. This can use much more traffic than compressed audio.',
+    audioFileLargeUploadNotice:
+      'This audio file is {{size}} and will be sent as-is. This may use a lot of upload traffic.',
+    audioFileSubmissionChunks: '{{count}} chunks',
+    audioFileSubmissionWebSocket: 'WebSocket stream',
+    audioFileSubmissionLongAudio: 'long-audio provider',
+    audioFileSubmissionDirect: 'direct upload',
+    audioFileMetadataSource: 'Source',
+    audioFileMetadataTranscribed: 'Transcribed',
+    audioFileMetadataProvider: 'Provider',
+    audioFileMetadataSubmission: 'Submission',
+    audioFileFailed: 'Audio file transcription failed.',
+    audioFileFailedWithMessage: 'Audio file transcription failed: {{message}}',
+    audioFileErrorNoProvider:
+      'No ASR provider is configured. Add one under Models → Voice recognition (ASR).',
+    audioFileErrorLongAudioNotImplemented:
+      'Long-audio provider adapters are not implemented yet.',
+    audioFileErrorUnsupportedLocalFile:
+      'The selected ASR configuration does not support audio file transcription. Choose a file-upload or WebSocket ASR provider.',
+    audioFileErrorProviderLimitExceeded:
+      "This audio file exceeds the selected ASR provider's upload limits.",
+    audioFileErrorUnsupportedChunking:
+      'The selected ASR provider cannot split this audio file.',
+    audioFileErrorDecodeRequiredForChunking:
+      'This file is too large for one request and cannot be decoded locally for chunking.',
+    audioFileErrorLocalDecodeTooLarge:
+      'This audio file is too large for local processing. Use a long-audio provider.',
+    audioFileErrorWebSocketPcmLargeUnsupported:
+      'Large files cannot be streamed as WAV/PCM. Use a long-audio provider.',
+    audioFileErrorWebSocketMp4TailMoovUnsupported:
+      'This m4a/mp4 file cannot be streamed directly. Use a long-audio provider, or choose PCM 16k in the WebSocket provider.',
+    audioFileErrorWavPcmDurationLimitExceeded:
+      'WAV/PCM upload is limited to {{minutes}} minutes to avoid freezes and excessive upload traffic. Use a long-audio provider for longer files.',
+    audioFileErrorMissingChunkPlan:
+      'Missing chunk plan for audio file transcription.',
+    audioFileErrorChunkFailed: 'Chunk failed.',
+    audioFileErrorStreamingUnsupported:
+      'The selected ASR provider does not support streaming.',
+    audioFileDirectChunkDurationHint:
+      'If this is a provider upload-size limit, choose a shorter Audio file chunk duration (currently {{seconds}}s) so the file is split before upload.',
+    audioFileChunkedChunkDurationHint:
+      'If this is a provider upload-size limit, lower Audio file chunk duration (currently {{seconds}}s).',
+    audioFileProviderGenericDurationHint:
+      'Some providers need shorter WAV chunks.',
+    audioFileProviderMaxDurationHint:
+      'This provider may need WAV chunks at {{seconds}}s or less.',
+    disabledNotice: 'Context-aware voice input is disabled in settings.',
+    configureAsrNotice: 'Configure an ASR provider before using voice input.',
+    selectPolishModelNotice:
+      'Select a polish model under Voice → Context-aware voice input.',
+    focusedEditorNotice: 'Voice input needs a focused editor.',
+    asrConfigIncompleteNotice: 'The selected ASR provider is incomplete.',
+    asrConfigMissingBaseUrlNotice:
+      'The selected WebSocket provider needs a Base URL.',
+    asrTranscriptionRequestFailed: 'ASR transcription failed: {{detail}}',
+    asrChatAudioRequestFailed: 'ASR chat-audio request failed: {{detail}}',
+    recorderPermissionDenied:
+      'Microphone access was denied. Grant the permission in your system or Obsidian settings.',
+    recorderNoDevice: 'No microphone was found.',
+    recorderDeviceBusy: 'The microphone is busy or not readable.',
+    recorderUnsupported: 'Recording is not supported in this environment.',
+    recordingCancelled: 'Recording cancelled.',
+    finishCurrentTaskNotice:
+      'Finish the current voice task before transcribing a file.',
+    audioFileDisabledNotice:
+      'Audio file transcription is disabled in voice input settings.',
+    failed: 'Voice input failed.',
+    failedWithMessage: 'Voice input failed: {{message}}',
+    startRecordingFailed: 'Could not start recording.',
+    noticePrefix: 'Voice polish',
+    malformedOutput:
+      'Voice polish returned malformed output; nothing inserted.',
+    readAloudDisabledNotice: 'Read aloud is disabled in settings.',
+    readAloudNoProvider: 'Configure a TTS provider before using read aloud.',
+    readAloudNoText: 'No text to read aloud.',
+    readAloudPreparing: 'Preparing read aloud…',
+    readAloudConfirmLongText: 'Long text will play in {{segments}} segments.',
+    readAloudProgress: 'Reading {{index}}/{{total}}',
+    readAloudPaused: 'Paused',
+    readAloudCompleted: 'Read aloud done',
+    readAloudFailed: 'Read aloud failed.',
+    readAloudFailedWithMessage: 'Read aloud failed: {{message}}',
+    readAloudPlaying: 'Reading',
+    readAloudCancelled: 'Read aloud stopped.',
+    readAloudAutoSaveFailed: 'Could not save generated audio.',
+    readSelection: 'Read selection',
+    readNote: 'Read note',
+    readAloudDragGeneratedAudio: 'Drag generated audio',
+    readAloudConfirmButton: 'Start read aloud',
+    readAloudPauseButton: 'Pause read aloud',
+    readAloudResumeButton: 'Resume read aloud',
   },
 
   chat: {

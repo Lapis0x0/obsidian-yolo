@@ -10,5 +10,9 @@ type EditorTabProps = {
 }
 
 export function EditorTab({ app }: EditorTabProps) {
-  return <ContinuationSection app={app} />
+  return (
+    <>
+      <ContinuationSection app={app} />
+    </>
+  )
 }

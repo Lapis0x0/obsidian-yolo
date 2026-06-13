@@ -1,5 +1,5 @@
 import { TextComponent } from 'obsidian'
-import { type HTMLAttributes, useEffect, useRef, useState } from 'react'
+import { type InputHTMLAttributes, useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'
 
@@ -10,7 +10,10 @@ type ObsidianTextInputProps = {
   onBlur?: (value: string) => void
   onFocus?: () => void
   type?: 'text' | 'number'
-  inputMode?: HTMLAttributes<HTMLInputElement>['inputMode']
+  inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode']
+  min?: InputHTMLAttributes<HTMLInputElement>['min']
+  max?: InputHTMLAttributes<HTMLInputElement>['max']
+  step?: InputHTMLAttributes<HTMLInputElement>['step']
   disabled?: boolean
 }
 
@@ -22,6 +25,9 @@ export function ObsidianTextInput({
   onFocus,
   type,
   inputMode,
+  min,
+  max,
+  step,
   disabled,
 }: ObsidianTextInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -95,12 +101,28 @@ export function ObsidianTextInput({
     if (!textComponent) return
     textComponent.setValue(value)
     if (placeholder) textComponent.setPlaceholder(placeholder)
-    if (type) textComponent.inputEl.type = type
+    textComponent.inputEl.type = type ?? 'text'
     if (inputMode !== undefined) {
       textComponent.inputEl.inputMode = inputMode
     }
+    if (min !== undefined) textComponent.inputEl.min = String(min)
+    else textComponent.inputEl.removeAttribute('min')
+    if (max !== undefined) textComponent.inputEl.max = String(max)
+    else textComponent.inputEl.removeAttribute('max')
+    if (step !== undefined) textComponent.inputEl.step = String(step)
+    else textComponent.inputEl.removeAttribute('step')
     textComponent.setDisabled(!!disabled)
-  }, [textComponent, value, placeholder, type, inputMode, disabled])
+  }, [
+    textComponent,
+    value,
+    placeholder,
+    type,
+    inputMode,
+    min,
+    max,
+    step,
+    disabled,
+  ])
 
   return <div ref={containerRef} />
 }

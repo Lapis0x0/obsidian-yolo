@@ -20,6 +20,7 @@ import { createToolCallArguments } from '../../utils/chat/tool-arguments'
 import { BaseLLMProvider } from '../llm/base'
 import {
   bindLLMDebugTraceToSignal,
+  logAuxiliaryLLMUsage,
   runWithLLMDebugTrace,
 } from '../llm/debugCapture'
 import { applyLightweightRequestPolicy } from '../llm/lightweight-request-policy'
@@ -259,6 +260,23 @@ export async function executeSingleTurn({
     : { model, options: baseProviderOptions }
   const effectiveModel = effectivePolicy.model
   const effectiveProviderOptions = effectivePolicy.options
+  // Lightweight helper calls are not tied to a visible conversation message,
+  // so debug capture has no panel row for them. Keep token / cache stats
+  // observable in the console when debug capture is enabled.
+  const lightweightStartedAt = Date.now()
+  const logLightweightIfNeeded = (
+    usage: ResponseUsage | undefined,
+    label: string,
+  ): void => {
+    if (!isLightweight) return
+    logAuxiliaryLLMUsage({
+      purpose: label,
+      modelName: model.name ?? model.model,
+      providerId: model.providerId,
+      usage,
+      durationMs: Date.now() - lightweightStartedAt,
+    })
+  }
   const withDebugTrace = <T>(run: () => Promise<T>): Promise<T> =>
     runWithLLMDebugTrace(debugTraceId, run)
   const runNonStreaming = async (): Promise<SingleTurnExecutionResult> => {
@@ -289,6 +307,7 @@ export async function executeSingleTurn({
         ),
       )
 
+      logLightweightIfNeeded(response.usage, 'single-turn:non-stream')
       return {
         content: response.choices?.[0]?.message?.content ?? '',
         reasoning: response.choices?.[0]?.message?.reasoning ?? undefined,
@@ -498,6 +517,7 @@ export async function executeSingleTurn({
       }
     }
 
+    logLightweightIfNeeded(usage, 'single-turn:stream')
     return {
       content,
       reasoning: reasoning || undefined,

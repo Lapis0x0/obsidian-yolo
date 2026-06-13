@@ -6,7 +6,16 @@ import {
   WidgetType,
 } from '@codemirror/view'
 
-export type InlineSuggestionGhostPayload = { from: number; text: string } | null
+export type InlineSuggestionGhostVariant =
+  | 'default'
+  | 'voice-asr'
+  | 'voice-polished'
+
+export type InlineSuggestionGhostPayload = {
+  from: number
+  text: string
+  variant?: InlineSuggestionGhostVariant
+} | null
 
 export const inlineSuggestionGhostEffect =
   StateEffect.define<InlineSuggestionGhostPayload>()
@@ -190,12 +199,15 @@ export const tabLoadingDotsField = StateField.define<DecorationSet>({
 })
 
 class InlineSuggestionGhostWidget extends WidgetType {
-  constructor(private readonly text: string) {
+  constructor(
+    private readonly text: string,
+    private readonly variant: InlineSuggestionGhostVariant = 'default',
+  ) {
     super()
   }
 
   eq(other: InlineSuggestionGhostWidget) {
-    return this.text === other.text
+    return this.text === other.text && this.variant === other.variant
   }
 
   ignoreEvent(): boolean {
@@ -204,7 +216,14 @@ class InlineSuggestionGhostWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const span = document.createElement('span')
-    span.className = 'yolo-ghost-text'
+    const baseClass = 'yolo-ghost-text'
+    const variantClass =
+      this.variant === 'voice-asr'
+        ? `${baseClass}--voice-asr`
+        : this.variant === 'voice-polished'
+          ? `${baseClass}--voice-polished`
+          : null
+    span.className = variantClass ? `${baseClass} ${variantClass}` : baseClass
     span.textContent = this.text
     return span
   }
@@ -225,7 +244,10 @@ export const inlineSuggestionGhostField = StateField.define<DecorationSet>({
           continue
         }
         const widget = Decoration.widget({
-          widget: new InlineSuggestionGhostWidget(payload.text),
+          widget: new InlineSuggestionGhostWidget(
+            payload.text,
+            payload.variant ?? 'default',
+          ),
           side: 1,
         }).range(payload.from)
         decorations = Decoration.set([widget])

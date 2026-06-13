@@ -125,6 +125,14 @@ export const resolveRequestTransportMode = ({
   return Platform.isDesktop ? 'node' : 'browser'
 }
 
+export const resolveExplicitRequestTransportMode = (
+  mode: RequestTransportMode | 'auto',
+): RequestTransportMode =>
+  resolveRequestTransportMode({
+    additionalSettings: { requestTransportMode: mode },
+    hasCustomBaseUrl: true,
+  })
+
 export const shouldRetryWithObsidianTransport = (error: unknown): boolean => {
   const message = collectErrorMessages(error).join(' ').toLowerCase()
   return CORS_RETRY_MESSAGE_PATTERNS.some((pattern) =>
