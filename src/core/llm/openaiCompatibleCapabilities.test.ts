@@ -61,6 +61,20 @@ describe('openaiCompatibleCapabilities', () => {
     expect(request.reasoning).toEqual({ effort: 'high' })
   })
 
+  it('skips reasoning_effort when OpenAI-style reasoning is off', () => {
+    const request: Record<string, unknown> = {}
+
+    applyOpenAICompatibleCapabilities({
+      request,
+      reasoningType: 'openai',
+      reasoningLevel: 'off',
+      baseUrl: 'https://example-proxy.ai/v1',
+    })
+
+    expect(request.reasoning_effort).toBeUndefined()
+    expect(request.reasoning).toBeUndefined()
+  })
+
   it('disables stream options for mistral host', () => {
     const capabilities = resolveOpenAICompatibleHostCapabilities(
       'https://api.mistral.ai/v1',
