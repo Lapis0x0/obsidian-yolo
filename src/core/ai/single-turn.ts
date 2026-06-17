@@ -498,6 +498,24 @@ export async function executeSingleTurn({
       }
     }
 
+    // Guard against silent failures: if the stream completed without
+    // producing any content, reasoning, or tool calls, the response is
+    // effectively empty.  This typically indicates a misconfigured base URL
+    // (e.g. missing `/v1`) where the proxy returns a valid but contentless
+    // SSE stream.  Throw so the agent layer can surface an error message
+    // instead of showing the user a blank bubble.
+    if (
+      !content &&
+      !reasoning &&
+      finalToolCalls.length === 0 &&
+      !finalFinishReason &&
+      !(signal?.aborted)
+    ) {
+      throw new Error(
+        'No content received — the stream completed without producing any tokens.',
+      )
+    }
+
     return {
       content,
       reasoning: reasoning || undefined,
