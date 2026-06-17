@@ -138,7 +138,7 @@ function JsSandboxConfigModalContent({
             )}
             description={t(
               'settings.agent.jsSandboxAllowDbQueryDesc',
-              'Let scripts query the knowledge base with semantic search, keyword search and path lookup. This capability is not constrained by the agent directory scope.',
+              'Let scripts query indexed vault content with semantic search and read Markdown/text content by known path. This capability is not constrained by the agent directory scope.',
             )}
             enabled={Boolean(config.allowDbQuery)}
             onToggle={(v) =>
@@ -147,7 +147,7 @@ function JsSandboxConfigModalContent({
                 v,
                 t(
                   'settings.agent.jsSandboxAllowDbQueryConfirm',
-                  'Enabling knowledge base query lets AI-generated scripts search your vault index and retrieve file contents. Continue?',
+                  'Enabling knowledge base query lets AI-generated scripts search indexed content and read Markdown/text content by known path. Continue?',
                 ),
               )
             }
@@ -157,11 +157,11 @@ function JsSandboxConfigModalContent({
                 className="yolo-js-exec-setting yolo-js-exec-textarea-header"
                 name={t(
                   'settings.agent.jsSandboxDbMaxLimit',
-                  'Max rows per query',
+                  'Max semantic rows',
                 )}
                 desc={t(
                   'settings.agent.jsSandboxDbMaxLimitDesc',
-                  'Upper bound on knowledge base results returned per query. Range 1–100.',
+                  'Upper bound on semantic search results. Path reads are not affected. Range 1–100.',
                 )}
               >
                 <ObsidianTextInput

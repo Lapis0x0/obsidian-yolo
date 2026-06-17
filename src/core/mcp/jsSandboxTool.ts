@@ -48,13 +48,9 @@ export const JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB = 10 * 1024
 export const JS_SANDBOX_VAULT_READ_HARD_MAX_KB = 1024 * 1024
 export const JS_SANDBOX_VAULT_READ_MIN_KB = 1
 export const JS_SANDBOX_VAULT_LIST_MAX_ENTRIES = 100_000
-// $db.find is a lightweight discovery helper, not an exhaustive scanner.
-// Keep the fuse aligned with $vault.list so keyword discovery can cover large
-// Markdown vaults without giving sandbox calls an unbounded full-vault read.
-export const JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES = 100_000
-export const JS_SANDBOX_DB_FIND_MAX_FILE_KB = 256
-export const JS_SANDBOX_DB_FIND_MAX_FILE_BYTES =
-  JS_SANDBOX_DB_FIND_MAX_FILE_KB * 1024
+export const JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT = 20
+export const JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT = 100
+export const JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT = 10
 
 type JsonRecord = Record<string, unknown>
 
@@ -106,7 +102,7 @@ export type JsSandboxProxyHandlers = {
     maxResponseKb: number
   }
   dbQuery?: (
-    method: 'search' | 'find' | 'get',
+    method: 'search',
     params: Record<string, unknown>,
   ) => Promise<unknown>
 }
@@ -660,7 +656,7 @@ function buildScope(rawVars) {
       list: caps.allowVaultRead
         ? (path, options) => proxyCall('vault_list', { path, options })
         : undefined,
-      readText: caps.allowVaultRead
+      readText: (caps.allowVaultRead || caps.allowDbQuery)
         ? (path) => proxyCall('vault_read_text', { path })
         : undefined,
       readBinary: caps.allowVaultRead
@@ -671,9 +667,7 @@ function buildScope(rawVars) {
     $tags: Array.isArray(rawVars && rawVars.$tags) ? rawVars.$tags : [],
     $utils: hostFetchAllowed ? SANDBOX_UTILS_WITH_HTML : SANDBOX_UTILS,
     $db: caps.allowDbQuery ? {
-      search: (query, limit) => proxyCall('db_query', { method: 'search', query, limit }),
-      find: (keyword, limit) => proxyCall('db_query', { method: 'find', keyword, limit }),
-      get: (path) => proxyCall('db_query', { method: 'get', path })
+      search: (query, limit) => proxyCall('db_query', { method: 'search', query, limit })
     } : undefined,
     $fetch: hostFetchAllowed ? hostFetch : undefined
   }
@@ -2048,7 +2042,7 @@ class JsSandboxRunner {
           )
           return
         }
-        const method = payload.method as 'search' | 'find' | 'get'
+        const method = payload.method as 'search'
         const result = await handlers.dbQuery(method, payload)
         this.sendProxyResponse(reqId, proxyId, result)
         return

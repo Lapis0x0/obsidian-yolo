@@ -609,9 +609,9 @@ export const en: TranslationKeys = {
         "Enabling vault read lets AI-generated scripts list vault paths and read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
       jsSandboxAllowDbQuery: 'Allow Knowledge Base Query',
       jsSandboxAllowDbQueryDesc:
-        'Let scripts query the vector database (semantic search, keyword search, path lookup). This capability is not constrained by the agent directory scope.',
+        'Let scripts query indexed vault content with semantic search and read Markdown/text content by known path. This capability is not constrained by the agent directory scope.',
       jsSandboxAllowDbQueryConfirm:
-        'Enabling knowledge base query lets AI-generated scripts search your vault index and retrieve file contents. Continue?',
+        'Enabling knowledge base query lets AI-generated scripts search indexed content and read Markdown/text content by known path. Continue?',
       jsSandboxAllowExternalScripts: 'Allow External Scripts',
       jsSandboxAllowExternalScriptsDesc:
         'Allow scripts to load and run remote JavaScript, and open the broader browser capabilities needed by those scripts.',
@@ -630,9 +630,9 @@ export const en: TranslationKeys = {
       jsSandboxVaultReadMaxKb: 'Max read size (KB)',
       jsSandboxVaultReadMaxKbDesc:
         'Per-call read limit. Larger text is shortened with a notice; larger binary files are refused. Range {min}–{max} KB.',
-      jsSandboxDbMaxLimit: 'Max rows per query',
+      jsSandboxDbMaxLimit: 'Max semantic rows',
       jsSandboxDbMaxLimitDesc:
-        'Upper bound on knowledge base results returned per query. Range 1–100.',
+        'Upper bound on semantic search results. Path reads are not affected. Range 1–100.',
     },
     jsSandbox: {
       openSettings: 'Configure JavaScript execution',

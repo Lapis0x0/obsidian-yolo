@@ -89,8 +89,7 @@ import type { RAGEngine } from '../rag/ragEngine'
 
 import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 import {
-  JS_SANDBOX_DB_FIND_MAX_FILE_KB,
-  JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES,
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
   JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   formatJsSandboxToolText,
 } from './jsSandboxTool'
@@ -154,6 +153,9 @@ describe('js sandbox vault list handler', () => {
         getAbstractFileByPath: jest
           .fn()
           .mockImplementation((path: string) => byPath.get(path) ?? null),
+        cachedRead: jest
+          .fn()
+          .mockImplementation((file: TFile) => `content:${file.path}`),
       },
     } as unknown as App
   }
@@ -243,6 +245,25 @@ describe('js sandbox vault list handler', () => {
     const handlers = buildJsSandboxProxyHandlers(makeApp(root, []), {})
 
     expect(handlers.vaultList).toBeUndefined()
+    expect(handlers.vaultReadText).toBeUndefined()
+    expect(handlers.vaultReadBinary).toBeUndefined()
+  })
+
+  it('exposes only known-path text reads when db query is enabled', async () => {
+    const file = makeFile('notes/a.md')
+    const root = makeFolder('', [file])
+    const handlers = buildJsSandboxProxyHandlers(makeApp(root, [file]), {
+      allowDbQuery: true,
+    })
+
+    expect(handlers.vaultList).toBeUndefined()
+    expect(handlers.vaultReadBinary).toBeUndefined()
+    if (!handlers.vaultReadText) {
+      throw new Error('expected vaultReadText handler')
+    }
+    await expect(handlers.vaultReadText('notes/a.md')).resolves.toBe(
+      'content:notes/a.md',
+    )
   })
 })
 
@@ -257,17 +278,30 @@ describe('js sandbox tool description', () => {
     expect(description).toContain('do NOT return the full list')
   })
 
-  it('keeps db find scan cap description in sync', () => {
+  it('describes db search and known-path text reads without keyword lookup', () => {
     const description = buildJsSandboxToolDescription({
       allowDbQuery: true,
     })
 
+    expect(description).toContain('$db.search')
+    expect(description).toContain('$vault.readText')
     expect(description).toContain(
-      `scans up to ${JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES} files`,
+      `clamped to ${JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT}`,
     )
-    expect(description).toContain(
-      `skips files larger than ${JS_SANDBOX_DB_FIND_MAX_FILE_KB} KB`,
-    )
+    expect(description).not.toContain('$db.get')
+    expect(description).not.toContain('$db.find')
+  })
+
+  it('does not duplicate vault readText guidance when db query and vault read are both enabled', () => {
+    const description = buildJsSandboxToolDescription({
+      allowDbQuery: true,
+      allowVaultRead: true,
+    })
+
+    const readTextMentions = description.match(/\$vault\.readText/g) ?? []
+    expect(readTextMentions).toHaveLength(1)
+    expect(description).not.toContain('$db.get')
+    expect(description).not.toContain('$db.find')
   })
 })
 
@@ -291,42 +325,6 @@ describe('js sandbox tool output formatting', () => {
         warning: expect.any(String),
       }),
     )
-  })
-})
-
-describe('js sandbox db find handler', () => {
-  const makeMarkdownFile = (path: string, size = 10): TFile =>
-    Object.assign(new TFile(), {
-      path,
-      name: path.split('/').pop() ?? path,
-      stat: { size, mtime: 1000 },
-      extension: 'md',
-      basename: path.replace(/\.md$/u, ''),
-    })
-
-  it('scans beyond the old 500-file cutoff', async () => {
-    const files = Array.from({ length: 501 }, (_, index) =>
-      makeMarkdownFile(`note-${index}.md`),
-    )
-    const target = files[500]
-    const cachedRead = jest.fn(async (file: TFile) =>
-      file === target ? 'needle is here' : 'plain text',
-    )
-    const handlers = buildJsSandboxProxyHandlers(
-      {
-        vault: {
-          getMarkdownFiles: jest.fn().mockReturnValue(files),
-          cachedRead,
-        },
-      } as unknown as App,
-      { allowDbQuery: true },
-      async () => ({}) as RAGEngine,
-    )
-
-    await expect(
-      handlers.dbQuery?.('find', { keyword: 'needle' }),
-    ).resolves.toEqual([{ path: 'note-500.md', excerpt: 'needle is here' }])
-    expect(cachedRead).toHaveBeenCalledTimes(501)
   })
 })
 

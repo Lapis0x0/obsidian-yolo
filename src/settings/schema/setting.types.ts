@@ -262,9 +262,7 @@ export const jsSandboxSettingsSchema = z.object({
   // timeoutMs in its tool args, but the host clamps the effective value
   // to this cap. Undefined means use the built-in default.
   timeoutMs: z.number().optional(),
-  // Maximum rows returned by $db.search / $db.find. The LLM may request a
-  // smaller limit per call but never larger. Undefined falls back to a
-  // built-in default.
+  // Maximum rows returned by $db.search (knowledge-base RAG/vector search).
   dbQueryMaxLimit: z.number().optional(),
   // Maximum size (in KB) of the tool's serialized JSON result returned to
   // the model. Output above this is truncated with a prefix. Undefined
