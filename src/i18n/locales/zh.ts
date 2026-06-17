@@ -553,9 +553,9 @@ export const zh: TranslationKeys = {
         '开启后，脚本可以请求浏览器允许访问的网络地址；遇到浏览器跨域限制时，也可以使用单独的 YOLO 宿主请求。仅在你信任此 Agent 时继续。是否继续？',
       jsSandboxAllowVaultRead: '允许读取库文件',
       jsSandboxAllowVaultReadDesc:
-        '允许脚本按路径读取任意库文件。此能力不受 Agent 目录限制约束。风险：脚本可能将笔记内容传递给外部服务。',
+        '允许脚本列出库内路径，并按路径读取任意库文件。此能力不受 Agent 目录限制约束。风险：脚本可能将笔记内容传递给外部服务。',
       jsSandboxAllowVaultReadConfirm:
-        '开启后，AI 生成的脚本可按路径读取 vault 中任意文件，内容将进入 LLM 上下文。请确认您信任此 Agent 生成的脚本后再继续。',
+        '开启后，AI 生成的脚本可列出 vault 路径，并按路径读取 vault 中任意文件，内容将进入 LLM 上下文。请确认您信任此 Agent 生成的脚本后再继续。',
       jsSandboxAllowDbQuery: '允许知识库查询',
       jsSandboxAllowDbQueryDesc:
         '允许脚本查询向量数据库（语义搜索、关键词搜索、路径查找）。此能力不受 Agent 目录限制约束。',

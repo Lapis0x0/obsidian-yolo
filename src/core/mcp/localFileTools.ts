@@ -2,6 +2,7 @@ import {
   App,
   FileSystemAdapter,
   Platform,
+  type TAbstractFile,
   TFile,
   TFolder,
   normalizePath,
@@ -109,7 +110,8 @@ import {
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
   JS_SANDBOX_VAULT_READ_MIN_KB,
-  JsSandboxProxyHandlers,
+  type JsSandboxProxyHandlers,
+  type JsSandboxVaultListEntry,
   callJsSandboxTool,
   getJsSandboxTool,
 } from './jsSandboxTool'
@@ -128,6 +130,7 @@ const DEFAULT_READ_START_LINE = 1
 const DEFAULT_READ_MAX_LINES = 50
 const MAX_READ_MAX_LINES = 2000
 const MAX_READ_LINE_INDEX = 1_000_000
+const JS_SANDBOX_VAULT_LIST_MAX_ENTRIES = 100_000
 const MAX_RAG_SNIPPET_CHARS = 500
 const RAG_FETCH_LIMIT_MAX = 300
 const BROWSER_READ_PATH_USAGE =
@@ -1404,6 +1407,95 @@ const resolveFolderByPath = (
   }
 
   return { folder: abstractFile, normalizedPath }
+}
+
+type CollectedVaultListEntry =
+  | {
+      kind: 'file'
+      node: TFile
+      path: string
+    }
+  | {
+      kind: 'dir'
+      node: TFolder
+      path: string
+    }
+
+const getAbstractFileName = (file: TAbstractFile): string => {
+  if (file.name) {
+    return file.name
+  }
+  return file.path.split('/').pop() ?? file.path
+}
+
+// Breadth-first walk collecting child dirs and files. Output order is not
+// significant here: the only caller re-sorts by path, and exceeding maxResults
+// is a hard error (the partial collection is discarded), so no intermediate
+// sort is needed.
+const collectVaultChildEntries = ({
+  folder,
+  depth,
+  maxResults,
+}: {
+  folder: TFolder
+  depth: number
+  maxResults: number
+}): CollectedVaultListEntry[] => {
+  const entries: CollectedVaultListEntry[] = []
+  const queue: Array<{ folder: TFolder; level: number }> = [
+    { folder, level: 1 },
+  ]
+  let queueIndex = 0
+
+  while (queueIndex < queue.length && entries.length < maxResults) {
+    const current = queue[queueIndex]
+    queueIndex++
+    const { folder: currentFolder, level } = current
+
+    for (const child of currentFolder.children) {
+      if (entries.length >= maxResults) break
+
+      if (child instanceof TFolder) {
+        entries.push({ kind: 'dir', node: child, path: child.path })
+        if (level < depth) {
+          queue.push({ folder: child, level: level + 1 })
+        }
+        continue
+      }
+
+      if (child instanceof TFile) {
+        entries.push({ kind: 'file', node: child, path: child.path })
+      }
+    }
+  }
+
+  return entries
+}
+
+const toJsSandboxVaultListEntry = (
+  entry: CollectedVaultListEntry,
+): JsSandboxVaultListEntry => {
+  if (entry.kind === 'dir') {
+    return {
+      kind: 'dir',
+      path: entry.path,
+      name: getAbstractFileName(entry.node),
+    }
+  }
+
+  const stat = entry.node.stat as
+    | {
+        size?: number
+        mtime?: number
+      }
+    | undefined
+  return {
+    kind: 'file',
+    path: entry.path,
+    name: getAbstractFileName(entry.node),
+    size: typeof stat?.size === 'number' ? stat.size : 0,
+    mtime: typeof stat?.mtime === 'number' ? stat.mtime : 0,
+  }
 }
 
 /**
@@ -4823,7 +4915,7 @@ function assertJsSandboxFetchAllowed(
   }
 }
 
-function buildJsSandboxProxyHandlers(
+export function buildJsSandboxProxyHandlers(
   app: App,
   config: JsSandboxSettings,
   getRagEngine?: () => Promise<RAGEngine>,
@@ -4842,6 +4934,30 @@ function buildJsSandboxProxyHandlers(
     )
     const vaultReadMaxBytes = vaultReadMaxKb * 1024
     handlers.vaultReadConfig = { maxKb: vaultReadMaxKb }
+    handlers.vaultList = async (
+      path?: string,
+      options?: Record<string, unknown>,
+    ) => {
+      const { folder, normalizedPath } = resolveFolderByPath(app, path)
+      const recursive = options?.recursive === true
+      // The list crosses the sandbox/host boundary as one array. Keep a hard
+      // fuse for pathological vaults while leaving normal large-vault stats
+      // practical inside the JS execution.
+      const entries = collectVaultChildEntries({
+        folder,
+        depth: recursive ? Number.POSITIVE_INFINITY : 1,
+        maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
+      })
+      if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
+        throw new Error(
+          `vault.list refused: more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries under "${normalizedPath || '/'}"; pass a narrower path.`,
+        )
+      }
+      return entries
+        .map(toJsSandboxVaultListEntry)
+        .sort((a, b) => a.path.localeCompare(b.path))
+    }
+
     handlers.vaultReadText = async (path: string) => {
       const normalized = normalizePath(path)
       const file = app.vault.getAbstractFileByPath(normalized)

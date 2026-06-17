@@ -192,7 +192,7 @@ function JsSandboxConfigModalContent({
             )}
             description={t(
               'settings.agent.jsSandboxAllowVaultReadDesc',
-              'Let scripts read any vault file by path. This capability is not constrained by the agent directory scope. Risk: scripts could pass note contents to external services.',
+              'Let scripts list vault paths and read any vault file by path. This capability is not constrained by the agent directory scope. Risk: scripts could pass note contents to external services.',
             )}
             enabled={Boolean(config.allowVaultRead)}
             onToggle={(v) =>
@@ -201,7 +201,7 @@ function JsSandboxConfigModalContent({
                 v,
                 t(
                   'settings.agent.jsSandboxAllowVaultReadConfirm',
-                  "Enabling vault read lets AI-generated scripts read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
+                  "Enabling vault read lets AI-generated scripts list vault paths and read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
                 ),
               )
             }

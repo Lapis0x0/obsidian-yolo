@@ -604,9 +604,9 @@ export const en: TranslationKeys = {
         'Enabling network requests lets scripts contact browser-accessible addresses and use a separate YOLO host request helper when browser cross-origin limits block a response. Only enable this for an agent you trust. Continue?',
       jsSandboxAllowVaultRead: 'Allow Vault Read',
       jsSandboxAllowVaultReadDesc:
-        'Let scripts read any vault file by path. This capability is not constrained by the agent directory scope. Risk: scripts could pass note contents to external services.',
+        'Let scripts list vault paths and read any vault file by path. This capability is not constrained by the agent directory scope. Risk: scripts could pass note contents to external services.',
       jsSandboxAllowVaultReadConfirm:
-        "Enabling vault read lets AI-generated scripts read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
+        "Enabling vault read lets AI-generated scripts list vault paths and read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
       jsSandboxAllowDbQuery: 'Allow Knowledge Base Query',
       jsSandboxAllowDbQueryDesc:
         'Let scripts query the vector database (semantic search, keyword search, path lookup). This capability is not constrained by the agent directory scope.',

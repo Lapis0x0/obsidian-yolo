@@ -87,7 +87,9 @@ import { findWebviewHandleByPageId } from '../browser/activeWebviewProbe'
 import { readActiveWebviewPage } from '../browser/activeWebviewReader'
 import type { RAGEngine } from '../rag/ragEngine'
 
+import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 import {
+  buildJsSandboxProxyHandlers,
   callLocalFileTool,
   getLocalFileTools,
   isLocalFsWriteToolName,
@@ -115,6 +117,135 @@ describe('recoverLikelyEscapedBackslashSequences', () => {
     const recovered = recoverLikelyEscapedBackslashSequences(input)
 
     expect(recovered).toBe(input)
+  })
+})
+
+describe('js sandbox vault list handler', () => {
+  const basename = (path: string) => path.split('/').pop() ?? path
+
+  const makeFile = (path: string, size = 10, mtime = 1000): TFile =>
+    Object.assign(new TFile(), {
+      path,
+      name: basename(path),
+      stat: { size, mtime },
+    })
+
+  const makeFolder = (
+    path: string,
+    children: Array<TFile | TFolder> = [],
+  ): TFolder =>
+    Object.assign(new TFolder(), {
+      path,
+      name: path ? basename(path) : '',
+      children,
+    })
+
+  const makeApp = (root: TFolder, entries: Array<TFile | TFolder>): App => {
+    const byPath = new Map(entries.map((entry) => [entry.path, entry]))
+    return {
+      vault: {
+        getRoot: jest.fn().mockReturnValue(root),
+        getAbstractFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) => byPath.get(path) ?? null),
+      },
+    } as unknown as App
+  }
+
+  const getVaultList = (app: App) => {
+    const handlers = buildJsSandboxProxyHandlers(app, {
+      allowVaultRead: true,
+    })
+    if (!handlers.vaultList) {
+      throw new Error('expected vaultList handler')
+    }
+    return handlers.vaultList
+  }
+
+  it('lists direct child dirs and files by default', async () => {
+    const nested = makeFile('a/nested.md', 20, 2000)
+    const folder = makeFolder('a', [nested])
+    const file = makeFile('b.md', 30, 3000)
+    const root = makeFolder('', [file, folder])
+    const list = getVaultList(makeApp(root, [folder, nested, file]))
+
+    await expect(list()).resolves.toEqual([
+      { kind: 'dir', path: 'a', name: 'a' },
+      {
+        kind: 'file',
+        path: 'b.md',
+        name: 'b.md',
+        size: 30,
+        mtime: 3000,
+      },
+    ])
+  })
+
+  it('lists the whole subtree when recursive is true', async () => {
+    const nested = makeFile('a/nested.md', 20, 2000)
+    const folder = makeFolder('a', [nested])
+    const file = makeFile('b.md', 30, 3000)
+    const root = makeFolder('', [file, folder])
+    const list = getVaultList(makeApp(root, [folder, nested, file]))
+
+    await expect(list('/', { recursive: true })).resolves.toEqual([
+      { kind: 'dir', path: 'a', name: 'a' },
+      {
+        kind: 'file',
+        path: 'a/nested.md',
+        name: 'nested.md',
+        size: 20,
+        mtime: 2000,
+      },
+      {
+        kind: 'file',
+        path: 'b.md',
+        name: 'b.md',
+        size: 30,
+        mtime: 3000,
+      },
+    ])
+  })
+
+  it('rejects missing folders, file targets, and invalid paths', async () => {
+    const file = makeFile('b.md')
+    const root = makeFolder('', [file])
+    const list = getVaultList(makeApp(root, [file]))
+
+    await expect(list('missing')).rejects.toThrow('Folder not found: missing')
+    await expect(list('b.md')).rejects.toThrow('Path is not a folder: b.md')
+    await expect(list('../outside')).rejects.toThrow(
+      'Path must be a vault-relative path.',
+    )
+  })
+
+  it('refuses pathological vault lists above the hard entry cap', async () => {
+    const files = Array.from({ length: 100_001 }, (_, index) =>
+      makeFile(`f-${index}.md`),
+    )
+    const root = makeFolder('', files)
+    const list = getVaultList(makeApp(root, files))
+
+    await expect(list()).rejects.toThrow('more than 100000 entries')
+  })
+
+  it('does not expose the handler when vault read is disabled', () => {
+    const root = makeFolder('')
+    const handlers = buildJsSandboxProxyHandlers(makeApp(root, []), {})
+
+    expect(handlers.vaultList).toBeUndefined()
+  })
+})
+
+describe('js sandbox tool description', () => {
+  it('mentions vault list only when vault read is enabled', () => {
+    expect(buildJsSandboxToolDescription({})).not.toContain('$vault.list')
+
+    const description = buildJsSandboxToolDescription({
+      allowVaultRead: true,
+    })
+    expect(description).toContain('$vault.list')
+    expect(description).toContain('do NOT return the full list')
   })
 })
 

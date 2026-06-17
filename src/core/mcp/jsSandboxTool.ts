@@ -56,6 +56,20 @@ export type JsSandboxBinaryReadResult = {
   byteLength: number
 }
 
+export type JsSandboxVaultListEntry =
+  | {
+      kind: 'dir'
+      path: string
+      name: string
+    }
+  | {
+      kind: 'file'
+      path: string
+      name: string
+      size: number
+      mtime: number
+    }
+
 export type JsSandboxFetchResponse = {
   ok: boolean
   status: number
@@ -66,6 +80,10 @@ export type JsSandboxFetchResponse = {
 }
 
 export type JsSandboxProxyHandlers = {
+  vaultList?: (
+    path?: string,
+    options?: Record<string, unknown>,
+  ) => Promise<JsSandboxVaultListEntry[]>
   vaultReadText?: (path: string) => Promise<string | null>
   vaultReadBinary?: (path: string) => Promise<JsSandboxBinaryReadResult | null>
   vaultReadConfig?: { maxKb: number }
@@ -631,6 +649,9 @@ function buildScope(rawVars) {
     $selection: rawVars ? rawVars.$selection ?? null : null,
     $vault: vaultBase ? {
       ...vaultBase,
+      list: caps.allowVaultRead
+        ? (path, options) => proxyCall('vault_list', { path, options })
+        : undefined,
       readText: caps.allowVaultRead
         ? (path) => proxyCall('vault_read_text', { path })
         : undefined,
@@ -1896,6 +1917,38 @@ class JsSandboxRunner {
   ): Promise<void> {
     const handlers = pending.proxyHandlers
     try {
+      if (cap === 'vault_list') {
+        if (!handlers?.vaultList) {
+          this.sendProxyResponse(
+            reqId,
+            proxyId,
+            undefined,
+            'vault read is not enabled',
+          )
+          return
+        }
+        const rawPath = payload.path
+        // Omitted path intentionally lists root; mistyped path values should
+        // fail closed instead of silently broadening the call to root.
+        if (rawPath !== undefined && typeof rawPath !== 'string') {
+          this.sendProxyResponse(
+            reqId,
+            proxyId,
+            undefined,
+            '$vault.list path must be a string.',
+          )
+          return
+        }
+        const path = rawPath
+        const options =
+          payload.options && typeof payload.options === 'object'
+            ? (payload.options as Record<string, unknown>)
+            : undefined
+        const result = await handlers.vaultList(path, options)
+        this.sendProxyResponse(reqId, proxyId, result)
+        return
+      }
+
       if (cap === 'vault_read_text') {
         if (!handlers?.vaultReadText) {
           this.sendProxyResponse(

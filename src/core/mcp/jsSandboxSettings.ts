@@ -84,7 +84,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
         ? s.vaultReadMaxKb
         : JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB
     enabled.push(
-      `await $vault.readText(path) -> string|null (path is vault-relative, NOT absolute under $vault.adapter.basePath; null only if the file is missing; folder paths and read failures throw; text above ${vaultCapKb} KB is truncated); await $vault.readBinary(path) -> {base64,mimeType,byteLength}|null (same path/null/throw semantics; files above ${vaultCapKb} KB are refused; for Blob: \`new Blob([Uint8Array.from(atob(base64), c=>c.charCodeAt(0))], {type:mimeType})\`)`,
+      `await $vault.list(path?, {recursive?: boolean}) -> Array<{kind:"dir"|"file",path,name,size?,mtime?}> (path defaults to "/", if provided path must be a string, direct children unless recursive true; hard safety cap 100000 entries; aggregate in JS, do NOT return the full list). await $vault.readText(path) -> string|null (path is vault-relative, NOT absolute under $vault.adapter.basePath; null only if the file is missing; folder paths and read failures throw; text above ${vaultCapKb} KB is truncated); await $vault.readBinary(path) -> {base64,mimeType,byteLength}|null (same path/null/throw semantics; files above ${vaultCapKb} KB are refused; for Blob: \`new Blob([Uint8Array.from(atob(base64), c=>c.charCodeAt(0))], {type:mimeType})\`)`,
     )
   }
 
@@ -151,7 +151,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
   // exhaustive scans over a known date/path set).
   const vaultVsDbLine =
     s.allowVaultRead && s.allowDbQuery
-      ? ' $vault vs $db: use $vault.readText(path) for exact bytes at known paths (raw text, missing-file checks, exhaustive scans); use $db.find/$db.search to discover files by keyword/similarity. Compose: $db locates, $vault reads.'
+      ? ' $vault vs $db: use $vault.list/readText for exact path-based scans (raw text, missing-file checks, exhaustive scans); use $db.find/$db.search to discover files by keyword/similarity. Compose: $db locates, $vault reads.'
       : ''
 
   const outputCapBytes = resolveJsSandboxOutputMaxBytes(s.outputMaxKb)
