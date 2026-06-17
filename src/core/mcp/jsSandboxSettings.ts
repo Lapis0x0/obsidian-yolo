@@ -4,9 +4,12 @@ import type {
 } from '../../settings/schema/setting.types'
 
 import {
+  JS_SANDBOX_DB_FIND_MAX_FILE_KB,
+  JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES,
   JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,
   JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   resolveJsSandboxOutputMaxBytes,
 } from './jsSandboxTool'
@@ -84,7 +87,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
         ? s.vaultReadMaxKb
         : JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB
     enabled.push(
-      `await $vault.list(path?, {recursive?: boolean}) -> Array<{kind:"dir"|"file",path,name,size?,mtime?}> (path defaults to "/", if provided path must be a string, direct children unless recursive true; hard safety cap 100000 entries; aggregate in JS, do NOT return the full list). await $vault.readText(path) -> string|null (path is vault-relative, NOT absolute under $vault.adapter.basePath; null only if the file is missing; folder paths and read failures throw; text above ${vaultCapKb} KB is truncated); await $vault.readBinary(path) -> {base64,mimeType,byteLength}|null (same path/null/throw semantics; files above ${vaultCapKb} KB are refused; for Blob: \`new Blob([Uint8Array.from(atob(base64), c=>c.charCodeAt(0))], {type:mimeType})\`)`,
+      `await $vault.list(path?, {recursive?: boolean}) -> Array<{kind:"dir"|"file",path,name,size?,mtime?}> (path defaults to "/", if provided path must be a string, direct children unless recursive true; hard safety cap ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries; aggregate in JS, do NOT return the full list). await $vault.readText(path) -> string|null (path is vault-relative, NOT absolute under $vault.adapter.basePath; null only if the file is missing; folder paths and read failures throw; text above ${vaultCapKb} KB is truncated); await $vault.readBinary(path) -> {base64,mimeType,byteLength}|null (same path/null/throw semantics; files above ${vaultCapKb} KB are refused; for Blob: \`new Blob([Uint8Array.from(atob(base64), c=>c.charCodeAt(0))], {type:mimeType})\`)`,
     )
   }
 
@@ -121,7 +124,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
       ? 'Do not use $db for images/PDF/audio/binary; use $vault.readBinary(path) for those.'
       : 'Do not use $db for images/PDF/audio/binary — those are out of scope.'
     enabled.push(
-      `Text only, markdown-focused. await $db.search(query, limit?) -> [{path,content,similarity,...}] (RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; up to ${dbLimit} results; throws when the vault has no index). await $db.find(keyword, limit?) -> [{path,excerpt}] (best-effort case-insensitive keyword scan over markdown files only; scans up to 500 files, skips files larger than 256 KB; returns [] for empty keyword, no match, or read failures — does not throw). await $db.get(path) -> {content,frontmatter}|null (null if the path is missing, points to a folder, or the read fails — null does NOT necessarily mean missing). ${binaryHint}`,
+      `Text only, markdown-focused. await $db.search(query, limit?) -> [{path,content,similarity,...}] (RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; up to ${dbLimit} results; throws when the vault has no index). await $db.find(keyword, limit?) -> [{path,excerpt}] (best-effort case-insensitive keyword scan over markdown files only; scans up to ${JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES} files, skips files larger than ${JS_SANDBOX_DB_FIND_MAX_FILE_KB} KB; returns [] for empty keyword, no match, or read failures — does not throw). await $db.get(path) -> {content,frontmatter}|null (null if the path is missing, points to a folder, or the read fails — null does NOT necessarily mean missing). ${binaryHint}`,
     )
   }
 

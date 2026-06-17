@@ -89,6 +89,12 @@ import type { RAGEngine } from '../rag/ragEngine'
 
 import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 import {
+  JS_SANDBOX_DB_FIND_MAX_FILE_KB,
+  JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
+  formatJsSandboxToolText,
+} from './jsSandboxTool'
+import {
   buildJsSandboxProxyHandlers,
   callLocalFileTool,
   getLocalFileTools,
@@ -220,13 +226,16 @@ describe('js sandbox vault list handler', () => {
   })
 
   it('refuses pathological vault lists above the hard entry cap', async () => {
-    const files = Array.from({ length: 100_001 }, (_, index) =>
-      makeFile(`f-${index}.md`),
+    const files = Array.from(
+      { length: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1 },
+      (_, index) => makeFile(`f-${index}.md`),
     )
     const root = makeFolder('', files)
     const list = getVaultList(makeApp(root, files))
 
-    await expect(list()).rejects.toThrow('more than 100000 entries')
+    await expect(list()).rejects.toThrow(
+      `more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries`,
+    )
   })
 
   it('does not expose the handler when vault read is disabled', () => {
@@ -246,6 +255,78 @@ describe('js sandbox tool description', () => {
     })
     expect(description).toContain('$vault.list')
     expect(description).toContain('do NOT return the full list')
+  })
+
+  it('keeps db find scan cap description in sync', () => {
+    const description = buildJsSandboxToolDescription({
+      allowDbQuery: true,
+    })
+
+    expect(description).toContain(
+      `scans up to ${JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES} files`,
+    )
+    expect(description).toContain(
+      `skips files larger than ${JS_SANDBOX_DB_FIND_MAX_FILE_KB} KB`,
+    )
+  })
+})
+
+describe('js sandbox tool output formatting', () => {
+  it('keeps JSON output compact', () => {
+    expect(
+      formatJsSandboxToolText('{"items":[{"path":"a.md","count":2}]}'),
+    ).toBe('{"items":[{"path":"a.md","count":2}]}')
+  })
+
+  it('keeps truncated output envelope compact', () => {
+    const text = formatJsSandboxToolText(
+      JSON.stringify({ items: Array.from({ length: 400 }, (_, i) => i) }),
+      { maxBytes: 1024 },
+    )
+
+    expect(text).not.toContain('\n')
+    expect(JSON.parse(text)).toEqual(
+      expect.objectContaining({
+        truncated: true,
+        warning: expect.any(String),
+      }),
+    )
+  })
+})
+
+describe('js sandbox db find handler', () => {
+  const makeMarkdownFile = (path: string, size = 10): TFile =>
+    Object.assign(new TFile(), {
+      path,
+      name: path.split('/').pop() ?? path,
+      stat: { size, mtime: 1000 },
+      extension: 'md',
+      basename: path.replace(/\.md$/u, ''),
+    })
+
+  it('scans beyond the old 500-file cutoff', async () => {
+    const files = Array.from({ length: 501 }, (_, index) =>
+      makeMarkdownFile(`note-${index}.md`),
+    )
+    const target = files[500]
+    const cachedRead = jest.fn(async (file: TFile) =>
+      file === target ? 'needle is here' : 'plain text',
+    )
+    const handlers = buildJsSandboxProxyHandlers(
+      {
+        vault: {
+          getMarkdownFiles: jest.fn().mockReturnValue(files),
+          cachedRead,
+        },
+      } as unknown as App,
+      { allowDbQuery: true },
+      async () => ({}) as RAGEngine,
+    )
+
+    await expect(
+      handlers.dbQuery?.('find', { keyword: 'needle' }),
+    ).resolves.toEqual([{ path: 'note-500.md', excerpt: 'needle is here' }])
+    expect(cachedRead).toHaveBeenCalledTimes(501)
   })
 })
 

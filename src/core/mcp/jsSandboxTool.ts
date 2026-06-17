@@ -47,6 +47,14 @@ export const JS_SANDBOX_FETCH_MIN_CONCURRENT = 1
 export const JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB = 10 * 1024
 export const JS_SANDBOX_VAULT_READ_HARD_MAX_KB = 1024 * 1024
 export const JS_SANDBOX_VAULT_READ_MIN_KB = 1
+export const JS_SANDBOX_VAULT_LIST_MAX_ENTRIES = 100_000
+// $db.find is a lightweight discovery helper, not an exhaustive scanner.
+// Keep the fuse aligned with $vault.list so keyword discovery can cover large
+// Markdown vaults without giving sandbox calls an unbounded full-vault read.
+export const JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES = 100_000
+export const JS_SANDBOX_DB_FIND_MAX_FILE_KB = 256
+export const JS_SANDBOX_DB_FIND_MAX_FILE_BYTES =
+  JS_SANDBOX_DB_FIND_MAX_FILE_KB * 1024
 
 type JsonRecord = Record<string, unknown>
 
@@ -1417,7 +1425,9 @@ export function formatJsSandboxToolText(
 ): string {
   let formatted = json
   try {
-    formatted = JSON.stringify(JSON.parse(json), null, 2)
+    // Keep tool results compact for the LLM context. The worker already
+    // returns JSON; re-stringify only to normalize valid JSON defensively.
+    formatted = JSON.stringify(JSON.parse(json))
   } catch {
     // The worker should only return JSON, but keep the formatter defensive.
   }
@@ -1433,16 +1443,12 @@ export function formatJsSandboxToolText(
   // Reserve a small slice for the truncation envelope so the JSON wrapper
   // itself stays within budget.
   const prefixBytes = Math.max(1024, Math.floor(maxBytes * 0.95))
-  return JSON.stringify(
-    {
-      warning: `Output exceeded ${maxBytes} bytes and was truncated.`,
-      truncated: true,
-      originalBytes: getByteLength(formatted),
-      jsonPrefix: formatted.slice(0, prefixBytes),
-    },
-    null,
-    2,
-  )
+  return JSON.stringify({
+    warning: `Output exceeded ${maxBytes} bytes and was truncated.`,
+    truncated: true,
+    originalBytes: getByteLength(formatted),
+    jsonPrefix: formatted.slice(0, prefixBytes),
+  })
 }
 
 export async function callJsSandboxTool({
