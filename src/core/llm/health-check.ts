@@ -197,6 +197,19 @@ export async function testChatModelHealth(
     }
 
     const totalMs = performance.now() - start
+
+    // Guard against false positives: if the stream completed without emitting
+    // any content or reasoning tokens, report a failure instead of a
+    // misleading 'ok'. This commonly happens when the base URL is missing a
+    // path prefix (e.g. `/v1`) and the server returns an empty SSE stream.
+    if (firstTokenMs === undefined) {
+      return {
+        status: 'fail',
+        message:
+          'No content received — the stream completed without producing any tokens.',
+      }
+    }
+
     return { status: 'ok', totalMs, firstTokenMs }
   } catch (error) {
     if (opts.signal.aborted && !timedOut) {
