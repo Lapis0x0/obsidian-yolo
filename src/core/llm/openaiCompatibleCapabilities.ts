@@ -132,7 +132,7 @@ export function applyOpenAICompatibleCapabilities(params: {
     case 'openai':
     default: {
       if (reasoningType === 'openai') {
-        if (reasoningLevel === 'auto') {
+        if (reasoningLevel === 'auto' || reasoningLevel === 'off') {
           return
         }
         const effort = REASONING_META[reasoningLevel].effort
