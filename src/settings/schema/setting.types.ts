@@ -384,14 +384,14 @@ export const yoloSettingsSchema = z.object({
   yolo: z
     .object({
       baseDir: z.string().catch('YOLO'),
-      vectorBackend: z.enum(['pglite', 'sharded']).catch('pglite'),
+      vectorBackend: z.enum(['pglite', 'sharded']).catch('sharded'),
       targetCentroidsPerShard: z.number().int().min(1).catch(8),
       maxProbeClusters: z.number().int().min(1).catch(2),
       adaptiveProbeScale: z.number().int().min(1).catch(2),
     })
     .catch({
       baseDir: 'YOLO',
-      vectorBackend: 'pglite',
+      vectorBackend: 'sharded',
       targetCentroidsPerShard: 8,
       maxProbeClusters: 2,
       adaptiveProbeScale: 2,

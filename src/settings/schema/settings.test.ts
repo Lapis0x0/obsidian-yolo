@@ -42,7 +42,7 @@ describe('parseYoloSettings', () => {
     expect(result.mcp.enableToolDisclosure).toBe(false)
     expect(result.yolo).toEqual({
       baseDir: 'YOLO',
-      vectorBackend: 'pglite',
+      vectorBackend: 'sharded',
       targetCentroidsPerShard: 8,
       maxProbeClusters: 2,
       adaptiveProbeScale: 2,

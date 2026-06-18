@@ -42,7 +42,7 @@ export class DatabaseManager {
   private app: App
   private dbPath: string
   private runtimeDir: string
-  private vectorBackendKind: 'pglite' | 'sharded' = 'pglite'
+  private vectorBackendKind: 'pglite' | 'sharded' = 'sharded'
   private vectorBackend: VectorBackend | null = null
   private pgClient: PgliteClientInstance | null = null
   private db: PgliteDatabase | null = null
@@ -74,7 +74,7 @@ export class DatabaseManager {
   ): Promise<DatabaseManager> {
     const dbPath = await ensureVectorDbPath(app, settings)
     const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
-    dbManager.vectorBackendKind = settings?.yolo?.vectorBackend ?? 'pglite'
+    dbManager.vectorBackendKind = settings?.yolo?.vectorBackend ?? 'sharded'
     dbManager.vectorBackend =
       dbManager.vectorBackendKind === 'sharded'
         ? new ShardedVectorBackend({
