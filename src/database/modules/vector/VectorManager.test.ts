@@ -28,6 +28,7 @@ import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { sha256HexPrefix16 } from '../../../utils/common/content-hash'
 
 import { VectorManager } from './VectorManager'
+import { VectorBackend } from './backend/VectorBackend'
 
 type ManagerInternals = {
   repository: Record<string, jest.Mock>
@@ -61,6 +62,7 @@ const setupManager = (
   const manager = new VectorManager(app as never, {} as never)
   const mtimeMap = new Map(existingRows.map((r) => [r.path, r.mtime]))
   const repository = {
+    getBackendKind: jest.fn().mockReturnValue('pglite'),
     getFileMtimes: jest.fn().mockResolvedValue(mtimeMap),
     listChunksForPaths: jest.fn(async (_modelId: string, paths: string[]) => {
       const set = new Set(paths)
@@ -302,6 +304,7 @@ describe('VectorManager.reconcile', () => {
     }
     const manager = new VectorManager(app as never, {} as never)
     const repository = {
+      getBackendKind: jest.fn().mockReturnValue('pglite'),
       getFileMtimes: jest.fn().mockResolvedValue(new Map()),
       listChunksForPaths: jest.fn().mockResolvedValue([]),
       deleteVectorsByIds: jest.fn().mockResolvedValue(undefined),
@@ -632,5 +635,188 @@ describe('VectorManager.reconcile', () => {
     expect(repository.deleteVectorsByPaths).toHaveBeenCalledWith('test-model', [
       'a.md',
     ])
+  })
+
+  it('uses an explicitly injected non-sharded backend without changing reconcile behavior', async () => {
+    const fileObjects = [
+      {
+        path: 'a.md',
+        extension: 'md',
+        stat: { mtime: 100, size: 'hello world'.length },
+      },
+    ]
+    const app = {
+      vault: {
+        getFiles: jest.fn().mockReturnValue(fileObjects),
+        cachedRead: jest.fn(async () => 'hello world'),
+      },
+    }
+    const backend: jest.Mocked<VectorBackend> = {
+      kind: 'pglite',
+      getFileMtimes: jest.fn().mockResolvedValue(new Map()),
+      listChunksForPaths: jest.fn().mockResolvedValue([]),
+      deleteVectorsByIds: jest.fn().mockResolvedValue(undefined),
+      deleteVectorsByPaths: jest.fn().mockResolvedValue(undefined),
+      bumpMtimeByIds: jest.fn().mockResolvedValue(undefined),
+      insertVectors: jest.fn().mockResolvedValue(undefined),
+      truncateModel: jest.fn().mockResolvedValue(undefined),
+      clearVectorsByModelIds: jest.fn().mockResolvedValue(undefined),
+      vacuum: jest.fn().mockResolvedValue(undefined),
+      performSimilaritySearch: jest.fn().mockResolvedValue([]),
+      getEmbeddingStats: jest.fn().mockResolvedValue([]),
+    }
+    const manager = new VectorManager(app as never, {} as never, {
+      backend,
+    })
+    manager.setSaveCallback(async () => undefined)
+    manager.setVacuumCallback(async () => undefined)
+
+    await expect(
+      manager.reconcile(embeddingModel, baseConfig, {
+        scope: { kind: 'all' },
+      }),
+    ).resolves.toEqual({
+      permanentFailedPaths: [],
+      chunkifyFailedPaths: [],
+    })
+
+    expect(backend.getFileMtimes).toHaveBeenCalledWith('test-model')
+    expect(backend.insertVectors).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses incremental reconcile semantics for sharded backend when backend supports path deletes', async () => {
+    const fileObjects = [
+      {
+        path: 'a.md',
+        extension: 'md',
+        stat: { mtime: 100, size: 'alpha'.length },
+      },
+      {
+        path: 'b.md',
+        extension: 'md',
+        stat: { mtime: 200, size: 'beta'.length },
+      },
+    ]
+    const app = {
+      vault: {
+        getFiles: jest.fn().mockReturnValue(fileObjects),
+        cachedRead: jest.fn(async (file: { path: string }) =>
+          file.path === 'a.md' ? 'alpha' : 'beta',
+        ),
+      },
+    }
+    const backend: jest.Mocked<VectorBackend> = {
+      kind: 'sharded',
+      getFileMtimes: jest.fn().mockResolvedValue(
+        new Map([
+          ['a.md', 100],
+          ['b.md', 200],
+        ]),
+      ),
+      listChunksForPaths: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          path: 'a.md',
+          mtime: 100,
+          content_hash: 'old-a',
+          metadata: { startLine: 1, endLine: 1 },
+        },
+      ]),
+      deleteVectorsByIds: jest.fn().mockResolvedValue(undefined),
+      deleteVectorsByPaths: jest.fn().mockResolvedValue(undefined),
+      bumpMtimeByIds: jest.fn().mockResolvedValue(undefined),
+      insertVectors: jest.fn().mockResolvedValue(undefined),
+      truncateModel: jest.fn().mockResolvedValue(undefined),
+      clearVectorsByModelIds: jest.fn().mockResolvedValue(undefined),
+      vacuum: jest.fn().mockResolvedValue(undefined),
+      performSimilaritySearch: jest.fn().mockResolvedValue([]),
+      getEmbeddingStats: jest.fn().mockResolvedValue([]),
+    }
+    const manager = new VectorManager(app as never, {} as never, {
+      backend,
+    })
+    manager.setSaveCallback(async () => undefined)
+    manager.setVacuumCallback(async () => undefined)
+
+    await expect(
+      manager.reconcile(embeddingModel, baseConfig, {
+        scope: { kind: 'paths', paths: ['a.md'] },
+      }),
+    ).resolves.toEqual({
+      permanentFailedPaths: [],
+      chunkifyFailedPaths: [],
+    })
+
+    expect(backend.getFileMtimes).toHaveBeenCalledWith('test-model')
+    expect(backend.truncateModel).not.toHaveBeenCalled()
+    expect(backend.bumpMtimeByIds).not.toHaveBeenCalled()
+  })
+
+  it('allows path-scoped incremental reconcile semantics for sharded backend once path deletes are supported', async () => {
+    const fileObjects = [
+      {
+        path: 'a.md',
+        extension: 'md',
+        stat: { mtime: 101, size: 'alpha updated'.length },
+      },
+      {
+        path: 'b.md',
+        extension: 'md',
+        stat: { mtime: 200, size: 'beta'.length },
+      },
+    ]
+    const app = {
+      vault: {
+        getFiles: jest.fn().mockReturnValue(fileObjects),
+        cachedRead: jest.fn(async (file: { path: string }) =>
+          file.path === 'a.md' ? 'alpha updated' : 'beta',
+        ),
+      },
+    }
+    const backend: jest.Mocked<VectorBackend> = {
+      kind: 'sharded',
+      getFileMtimes: jest.fn().mockResolvedValue(
+        new Map([
+          ['a.md', 100],
+          ['b.md', 200],
+        ]),
+      ),
+      listChunksForPaths: jest.fn().mockResolvedValue([
+        {
+          id: 1,
+          path: 'a.md',
+          mtime: 100,
+          content_hash: 'old-a',
+          metadata: { startLine: 1, endLine: 1 },
+        },
+      ]),
+      deleteVectorsByIds: jest.fn().mockResolvedValue(undefined),
+      deleteVectorsByPaths: jest.fn().mockResolvedValue(undefined),
+      bumpMtimeByIds: jest.fn().mockResolvedValue(undefined),
+      insertVectors: jest.fn().mockResolvedValue(undefined),
+      truncateModel: jest.fn().mockResolvedValue(undefined),
+      clearVectorsByModelIds: jest.fn().mockResolvedValue(undefined),
+      vacuum: jest.fn().mockResolvedValue(undefined),
+      performSimilaritySearch: jest.fn().mockResolvedValue([]),
+      getEmbeddingStats: jest.fn().mockResolvedValue([]),
+    }
+    const manager = new VectorManager(app as never, {} as never, {
+      backend,
+    })
+    manager.setSaveCallback(async () => undefined)
+    manager.setVacuumCallback(async () => undefined)
+
+    await expect(
+      manager.reconcile(embeddingModel, baseConfig, {
+        scope: { kind: 'paths', paths: ['a.md'] },
+      }),
+    ).resolves.toEqual({
+      permanentFailedPaths: [],
+      chunkifyFailedPaths: [],
+    })
+
+    expect(backend.getFileMtimes).toHaveBeenCalledWith('test-model')
+    expect(backend.listChunksForPaths).toHaveBeenCalledWith('test-model', ['a.md'])
+    expect(backend.truncateModel).not.toHaveBeenCalled()
   })
 })

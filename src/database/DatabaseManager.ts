@@ -10,6 +10,8 @@ import { yieldToMain } from '../utils/common/yield-to-main'
 import { PGLiteAbortedException } from './exception'
 import migrations from './migrations.json'
 import { VectorManager } from './modules/vector/VectorManager'
+import { ShardedVectorBackend } from './modules/vector/backend/sharded/ShardedVectorBackend'
+import { VectorBackend } from './modules/vector/backend/VectorBackend'
 import { loadPgliteRuntimeFromDisk } from './runtime/loadPgliteRuntimeFromDisk'
 
 type DrizzleMigratableDatabase = PgliteDatabase & {
@@ -40,6 +42,8 @@ export class DatabaseManager {
   private app: App
   private dbPath: string
   private runtimeDir: string
+  private vectorBackendKind: 'pglite' | 'sharded' = 'pglite'
+  private vectorBackend: VectorBackend | null = null
   private pgClient: PgliteClientInstance | null = null
   private db: PgliteDatabase | null = null
   // WeakMap to prevent circular references
@@ -60,37 +64,63 @@ export class DatabaseManager {
     settings?: {
       yolo?: {
         baseDir?: string
+        vectorBackend?: 'pglite' | 'sharded'
+        targetCentroidsPerShard?: number
+        maxProbeClusters?: number
+        adaptiveProbeScale?: number
       }
     } | null,
     pluginDir?: string,
   ): Promise<DatabaseManager> {
     const dbPath = await ensureVectorDbPath(app, settings)
     const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
+    dbManager.vectorBackendKind = settings?.yolo?.vectorBackend ?? 'pglite'
+    dbManager.vectorBackend =
+      dbManager.vectorBackendKind === 'sharded'
+        ? new ShardedVectorBackend({
+            app,
+            baseDir: normalizePath(settings?.yolo?.baseDir ?? 'YOLO'),
+            targetCentroidsPerShard:
+              settings?.yolo?.targetCentroidsPerShard ?? 8,
+            maxProbeClusters: settings?.yolo?.maxProbeClusters ?? 2,
+            adaptiveProbeScale: settings?.yolo?.adaptiveProbeScale ?? 2,
+          })
+        : null
     let createdNewDatabase = false
     void pluginDir
-    dbManager.db = await dbManager.loadExistingDatabase()
+    dbManager.db =
+      dbManager.vectorBackendKind === 'pglite'
+        ? await dbManager.loadExistingDatabase()
+        : null
     const migrationStateBefore =
       dbManager.db && !createdNewDatabase
         ? await dbManager.getMigrationState()
         : null
-    if (!dbManager.db) {
+    if (!dbManager.db && dbManager.vectorBackendKind === 'pglite') {
       dbManager.db = await dbManager.createNewDatabase()
       createdNewDatabase = true
     }
-    await dbManager.migrateDatabase()
+    if (dbManager.vectorBackendKind === 'pglite') {
+      await dbManager.migrateDatabase()
+    }
     const migrationStateAfter =
       dbManager.db && !createdNewDatabase
         ? await dbManager.getMigrationState()
         : null
     const shouldSaveAfterInit =
-      createdNewDatabase || migrationStateBefore !== migrationStateAfter
+      dbManager.vectorBackendKind === 'pglite' &&
+      (createdNewDatabase || migrationStateBefore !== migrationStateAfter)
 
     if (shouldSaveAfterInit) {
       await dbManager.save()
     }
 
     // WeakMap setup
-    const managers = { vectorManager: new VectorManager(app, dbManager.db) }
+    const managers = {
+      vectorManager: new VectorManager(app, dbManager.db as PgliteDatabase, {
+        backend: dbManager.vectorBackend ?? undefined,
+      }),
+    }
 
     // save, vacuum callback setup
     const saveCallback = dbManager.save.bind(dbManager) as () => Promise<void>
@@ -108,7 +138,14 @@ export class DatabaseManager {
     // but still occupy space and surface as confusing "unknown model" entries
     // in the embedding management modal. Idempotent — no-op once cleared.
     try {
-      const result = await dbManager.db.execute(
+      if (dbManager.vectorBackendKind !== 'pglite') {
+        return dbManager
+      }
+      const db = dbManager.db
+      if (!db) {
+        return dbManager
+      }
+      const result = await db.execute(
         `DELETE FROM embeddings WHERE model LIKE '%::staging:%'`,
       )
       const deleted = (result as unknown as { affectedRows?: number })
@@ -136,8 +173,14 @@ export class DatabaseManager {
   getVectorManager(): VectorManager {
     const managers = DatabaseManager.managers.get(this) ?? {}
     if (!managers.vectorManager) {
-      if (this.db) {
-        managers.vectorManager = new VectorManager(this.app, this.db)
+      if (this.db || this.vectorBackend) {
+        managers.vectorManager = new VectorManager(
+          this.app,
+          this.db as PgliteDatabase,
+          {
+            backend: this.vectorBackend ?? undefined,
+          },
+        )
         DatabaseManager.managers.set(this, managers)
       } else {
         throw new Error('Database is not initialized')
@@ -150,7 +193,7 @@ export class DatabaseManager {
 
   // vacuum the database to release unused space
   async vacuum() {
-    if (!this.pgClient) {
+    if (this.vectorBackendKind !== 'pglite' || !this.pgClient) {
       return
     }
     await this.pgClient.exec('VACUUM FULL;')
@@ -339,7 +382,7 @@ export class DatabaseManager {
   }
 
   async save(): Promise<void> {
-    if (!this.pgClient) {
+    if (this.vectorBackendKind !== 'pglite' || !this.pgClient) {
       return
     }
     try {

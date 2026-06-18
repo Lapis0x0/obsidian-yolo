@@ -40,7 +40,13 @@ describe('parseYoloSettings', () => {
 
     expect(result.mcp.servers).toEqual([])
     expect(result.mcp.enableToolDisclosure).toBe(false)
-    expect(result.yolo).toEqual({ baseDir: 'YOLO' })
+    expect(result.yolo).toEqual({
+      baseDir: 'YOLO',
+      vectorBackend: 'pglite',
+      targetCentroidsPerShard: 8,
+      maxProbeClusters: 2,
+      adaptiveProbeScale: 2,
+    })
 
     expect(result.chatOptions).toMatchObject({
       includeCurrentFileContent: true,
@@ -499,5 +505,26 @@ describe('parseYoloSettings', () => {
       },
     ])
     expect(result.embeddingModelId).toBe('openai/text-embedding-3-large')
+  })
+
+  it('parses sharded backend ANN tuning options from yolo settings', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      yolo: {
+        baseDir: 'YOLO',
+        vectorBackend: 'sharded',
+        targetCentroidsPerShard: 12,
+        maxProbeClusters: 3,
+        adaptiveProbeScale: 4,
+      },
+    })
+
+    expect(result.yolo).toEqual({
+      baseDir: 'YOLO',
+      vectorBackend: 'sharded',
+      targetCentroidsPerShard: 12,
+      maxProbeClusters: 3,
+      adaptiveProbeScale: 4,
+    })
   })
 })

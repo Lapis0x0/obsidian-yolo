@@ -33,6 +33,7 @@ import {
 import { InsertEmbedding, SelectEmbedding, VectorMetaData } from '../../schema'
 
 import { VectorRepository } from './VectorRepository'
+import { VectorBackend } from './backend/VectorBackend'
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
@@ -103,9 +104,19 @@ export class VectorManager {
     }
   }
 
-  constructor(app: App, db: PgliteDatabase) {
+  constructor(
+    app: App,
+    db: PgliteDatabase,
+    options?: {
+      backend?: VectorBackend
+    },
+  ) {
     this.app = app
-    this.repository = new VectorRepository(app, db)
+    this.repository = new VectorRepository({
+      app,
+      db,
+      backend: options?.backend,
+    })
   }
 
   setSaveCallback(callback: () => Promise<void>) {
@@ -156,6 +167,7 @@ export class VectorManager {
     options: ReconcileOptions,
   ): Promise<ReconcileResult> {
     const { signal, scope, truncate, onProgress } = options
+    const rebuildOnly = false
 
     if (truncate) {
       await this.repository.truncateModel(embeddingModel.id)
@@ -165,7 +177,7 @@ export class VectorManager {
     // 1. Determine the candidate file universe for this reconcile pass.
     const allCandidates = this.listIndexableFiles(config)
     const candidateFiles =
-      scope.kind === 'all'
+      rebuildOnly || scope.kind === 'all'
         ? allCandidates
         : (() => {
             const inScope = new Set(scope.paths)
@@ -174,7 +186,7 @@ export class VectorManager {
     const candidateSet = new Set(candidateFiles.map((f) => f.path))
 
     // 2. mtime map (used to skip unchanged files and to find removed paths).
-    const mtimeMap = truncate
+    const mtimeMap = truncate || rebuildOnly
       ? new Map<string, number>()
       : await this.repository.getFileMtimes(embeddingModel.id)
 
@@ -203,7 +215,7 @@ export class VectorManager {
 
     // 4. Removed paths: in actual but no longer a candidate (and within scope).
     const removedPaths: string[] = []
-    if (!truncate) {
+    if (!truncate && !rebuildOnly) {
       const inScope = (path: string): boolean =>
         scope.kind === 'all' ? true : scope.paths.includes(path)
       for (const path of mtimeMap.keys()) {
@@ -347,7 +359,7 @@ export class VectorManager {
     // transient I/O error. Skip them; next reconcile will retry.
     const failedPaths = new Set(failedFiles.map((f) => f.path))
     const safeDiffPaths = diffPaths.filter((p) => !failedPaths.has(p))
-    const actualRows = truncate
+    const actualRows = truncate || rebuildOnly
       ? []
       : await this.repository.listChunksForPaths(
           embeddingModel.id,
@@ -364,10 +376,13 @@ export class VectorManager {
 
     // 7. Apply deletions and mtime bumps before embedding so that on-disk
     //    state converges monotonically toward `desired`.
-    if (plan.toDeleteIds.length > 0) {
+    if (rebuildOnly) {
+      await this.repository.truncateModel(embeddingModel.id)
+      await this.requestVacuum()
+    } else if (plan.toDeleteIds.length > 0) {
       await this.repository.deleteVectorsByIds(plan.toDeleteIds)
     }
-    if (plan.toBumpMtime.length > 0) {
+    if (!rebuildOnly && plan.toBumpMtime.length > 0) {
       await this.repository.bumpMtimeByIds(plan.toBumpMtime)
     }
 
