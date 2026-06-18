@@ -3,7 +3,9 @@ import { App, Platform } from 'obsidian'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
+import { Language } from '../../../i18n'
 import YoloPlugin from '../../../main'
+import { openExternalLink } from '../../../utils/openExternalLink'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -11,13 +13,38 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ChatPreferencesSection } from '../sections/ChatPreferencesSection'
 import { EtcSection } from '../sections/EtcSection'
 
+const YOLO_REPO_URL = 'https://github.com/Lapis0x0/obsidian-yolo'
+
+function detectGithubIssueOs(): 'Windows' | 'macOS' | 'Linux' | 'Other' {
+  if (Platform.isMacOS) return 'macOS'
+  if (Platform.isWin) return 'Windows'
+  if (Platform.isLinux) return 'Linux'
+  return 'Other'
+}
+
+function buildBugReportUrl(pluginVersion: string, language: Language): string {
+  const template = language === 'zh' ? 'bug_report_zh.yml' : 'bug_report.yml'
+  const params = new URLSearchParams({
+    template,
+    'plugin-version': pluginVersion,
+    os: detectGithubIssueOs(),
+  })
+  return `${YOLO_REPO_URL}/issues/new?${params.toString()}`
+}
+
+function buildFeatureRequestUrl(language: Language): string {
+  const template =
+    language === 'zh' ? 'feature_request_zh.yml' : 'feature_request.yml'
+  return `${YOLO_REPO_URL}/issues/new?template=${template}`
+}
+
 type OthersTabProps = {
   app: App
   plugin: YoloPlugin
 }
 
 export function OthersTab({ app, plugin }: OthersTabProps) {
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
   const { settings, setSettings } = useSettings()
 
   const handleMentionDisplayModeChange = (value: string) => {
@@ -159,10 +186,20 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
         >
           <ObsidianButton
             text={t('settings.supportYolo.buyMeACoffee')}
-            onClick={() =>
-              window.open('https://afdian.com/a/lapis0x0', '_blank')
-            }
+            onClick={() => openExternalLink('https://afdian.com/a/lapis0x0')}
             cta
+          />
+          <ObsidianButton
+            text={t('settings.supportYolo.reportBug')}
+            onClick={() =>
+              openExternalLink(
+                buildBugReportUrl(plugin.manifest.version, language),
+              )
+            }
+          />
+          <ObsidianButton
+            text={t('settings.supportYolo.featureRequest')}
+            onClick={() => openExternalLink(buildFeatureRequestUrl(language))}
           />
         </ObsidianSetting>
       </div>

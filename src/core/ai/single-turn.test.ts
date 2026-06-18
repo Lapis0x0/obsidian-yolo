@@ -1008,4 +1008,58 @@ describe('executeSingleTurn', () => {
       },
     ])
   })
+
+  it('throws when the stream completes without any content, reasoning, tool calls, or finish reason', async () => {
+    const provider = new MockProvider()
+    // Simulate a misconfigured base URL where the proxy returns an empty SSE
+    // stream (zero chunks). Without the guard this would silently return an
+    // empty result and surface as a blank assistant bubble.
+    provider.streamResponseMock.mockResolvedValue(toAsyncIterable([]))
+
+    await expect(
+      executeSingleTurn({
+        providerClient: provider,
+        model: TEST_MODEL,
+        request: TEST_REQUEST,
+        stream: true,
+      }),
+    ).rejects.toThrow(/No content received from the model/)
+
+    // Must not silently fall back to non-stream — the empty-stream symptom
+    // would reproduce there too, so retrying it just hides the real cause.
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when the stream is empty but provides a finish_reason', async () => {
+    const provider = new MockProvider()
+    // A legitimate empty completion: the model chose to stop without emitting
+    // tokens but did report a terminal finish_reason. This must NOT trip the
+    // empty-stream guard.
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-empty-stop',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'stop',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      stream: true,
+    })
+
+    expect(result.content).toBe('')
+    expect(result.finishReason).toBe('stop')
+    expect(result.toolCalls).toEqual([])
+  })
 })

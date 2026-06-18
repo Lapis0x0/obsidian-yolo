@@ -1,0 +1,125 @@
+name: Bug 报告（中文）
+description: 反馈一个 Bug，帮助我们改进
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你抽时间填写 Bug 报告！请尽量详细地提供信息，便于我们排查。
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: 问题描述
+      description: 发生了什么？你期望的结果是什么？
+      placeholder: 请清晰简洁地描述这个 Bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 我们如何复现这个问题？
+      placeholder: |
+        1. 进入 '...'
+        2. 点击 '....'
+        3. 滚动到 '....'
+        4. 看到错误
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      description: 你使用的是哪个操作系统？
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: obsidian-version
+    attributes:
+      label: Obsidian 版本
+      description: 你使用的 Obsidian 版本是？
+      placeholder: 例如 1.4.16
+    validations:
+
+  - type: input
+    id: obsidian-installer-version
+    attributes:
+      label: Obsidian Installer 版本
+      description: 你使用的 Obsidian Installer 版本是？（在「设置 → 通用」中可以看到，位于当前版本号下方的 "installer version"）
+      placeholder: 例如 1.4.16
+    validations:
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: YOLO 版本
+      description: 你使用的 YOLO 版本是？（在「设置 → 第三方插件」中可以看到）
+      placeholder: 例如 1.0.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图
+      description: 如果方便，附上截图能帮助我们理解问题
+      placeholder: 在这里拖入或粘贴图片
+
+  - type: textarea
+    id: llm-debug-trace
+    attributes:
+      label: LLM 调试数据（涉及 AI / 聊天 / 工具调用问题时强烈推荐）
+      description: |
+        如果你的问题涉及 Chat、Agent、工具调用或任何 LLM 响应，
+        提供调试数据比控制台日志要有用得多。
+
+        采集方式：
+        1. 进入「设置 → 其他 → 维护」，开启 **启用 LLM 请求调试**。
+        2. 在 Chat 里复现问题。
+        3. 在出问题的助手消息上，点击信息栏中的 **Debug** 按钮
+           （或在「更多操作 (⋯)」菜单里找到）。
+        4. 在弹出的「LLM 调试数据」对话框中点 **复制** 或 **保存**，然后粘贴到下方。
+
+        隐私提示：API 密钥会自动脱敏，但调试数据 **仍然包含完整的对话内容
+        以及工具的输入与输出**。请在贴出前自行检查并删除任何敏感信息。
+
+        注意：调试数据仅保存在内存中，Obsidian 重启后会清空，
+        因此请务必 **先开启开关再去复现问题**。
+      render: markdown
+      placeholder: 在这里粘贴 LLM 调试数据
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 控制台日志
+      description: |
+        如果问题与 LLM 无关（例如插件无法加载、索引崩溃、UI 报错、
+        移动端专属问题），或上方的 LLM 调试数据无法获取，请提供控制台日志。
+
+        获取方式：
+        1. 打开 Obsidian 开发者工具：
+           - Windows / Linux：按 Ctrl + Shift + I
+           - macOS：按 Cmd + Option + I
+           - 或在菜单中选择 View > Toggle Developer Tools
+        2. 切到 "Console" 标签页
+        3. 找到红色的错误信息或警告
+        4. 复制并粘贴到这里
+      render: shell
+      placeholder: 在这里粘贴日志
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 其他补充
+      description: 还有什么你认为有帮助的信息？
+      placeholder: 任何你觉得相关的细节...

@@ -2619,7 +2619,22 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     if (yoloBaseDirChanged) {
       if (this.dbManager) {
-        await this.dbManager.save()
+        // Snapshot the in-memory DB to the OLD location before relocating.
+        // If this fails (#408 OOM, disk full, etc.), the move would carry a
+        // stale snapshot to the new location and silently lose embeddings —
+        // abort the relocation and keep the user on the previous root.
+        try {
+          await this.dbManager.save()
+        } catch (error) {
+          console.error(
+            '[YOLO] Failed to snapshot vector database before base-dir change; aborting move.',
+            error,
+          )
+          new Notice(
+            'Failed to snapshot YOLO vector database. Keeping previous YOLO root folder.',
+          )
+          return
+        }
       }
       const migrated = await relocateYoloManagedData({
         app: this.app,

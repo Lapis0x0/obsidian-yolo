@@ -4,7 +4,7 @@
   display: flex;
   align-items: flex-start;
   gap: var(--size-4-2);
-  margin: var(--size-4-2) 0;
+  margin: var(--size-4-2) 0 var(--size-4-4);
   border: 0;
   border-radius: 0;
   background: transparent;

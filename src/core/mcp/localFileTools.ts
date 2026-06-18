@@ -2,6 +2,7 @@ import {
   App,
   FileSystemAdapter,
   Platform,
+  type TAbstractFile,
   TFile,
   TFolder,
   normalizePath,
@@ -99,6 +100,9 @@ import {
   getJsSandboxSettings,
 } from './jsSandboxSettings'
 import {
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+  JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,
   JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
@@ -106,10 +110,12 @@ import {
   JS_SANDBOX_FETCH_MIN_CONCURRENT,
   JS_SANDBOX_FETCH_MIN_RESPONSE_KB,
   JS_SANDBOX_TOOL_NAME,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
   JS_SANDBOX_VAULT_READ_MIN_KB,
-  JsSandboxProxyHandlers,
+  type JsSandboxProxyHandlers,
+  type JsSandboxVaultListEntry,
   callJsSandboxTool,
   getJsSandboxTool,
 } from './jsSandboxTool'
@@ -1404,6 +1410,95 @@ const resolveFolderByPath = (
   }
 
   return { folder: abstractFile, normalizedPath }
+}
+
+type CollectedVaultListEntry =
+  | {
+      kind: 'file'
+      node: TFile
+      path: string
+    }
+  | {
+      kind: 'dir'
+      node: TFolder
+      path: string
+    }
+
+const getAbstractFileName = (file: TAbstractFile): string => {
+  if (file.name) {
+    return file.name
+  }
+  return file.path.split('/').pop() ?? file.path
+}
+
+// Breadth-first walk collecting child dirs and files. Output order is not
+// significant here: the only caller re-sorts by path, and exceeding maxResults
+// is a hard error (the partial collection is discarded), so no intermediate
+// sort is needed.
+const collectVaultChildEntries = ({
+  folder,
+  depth,
+  maxResults,
+}: {
+  folder: TFolder
+  depth: number
+  maxResults: number
+}): CollectedVaultListEntry[] => {
+  const entries: CollectedVaultListEntry[] = []
+  const queue: Array<{ folder: TFolder; level: number }> = [
+    { folder, level: 1 },
+  ]
+  let queueIndex = 0
+
+  while (queueIndex < queue.length && entries.length < maxResults) {
+    const current = queue[queueIndex]
+    queueIndex++
+    const { folder: currentFolder, level } = current
+
+    for (const child of currentFolder.children) {
+      if (entries.length >= maxResults) break
+
+      if (child instanceof TFolder) {
+        entries.push({ kind: 'dir', node: child, path: child.path })
+        if (level < depth) {
+          queue.push({ folder: child, level: level + 1 })
+        }
+        continue
+      }
+
+      if (child instanceof TFile) {
+        entries.push({ kind: 'file', node: child, path: child.path })
+      }
+    }
+  }
+
+  return entries
+}
+
+const toJsSandboxVaultListEntry = (
+  entry: CollectedVaultListEntry,
+): JsSandboxVaultListEntry => {
+  if (entry.kind === 'dir') {
+    return {
+      kind: 'dir',
+      path: entry.path,
+      name: getAbstractFileName(entry.node),
+    }
+  }
+
+  const stat = entry.node.stat as
+    | {
+        size?: number
+        mtime?: number
+      }
+    | undefined
+  return {
+    kind: 'file',
+    path: entry.path,
+    name: getAbstractFileName(entry.node),
+    size: typeof stat?.size === 'number' ? stat.size : 0,
+    mtime: typeof stat?.mtime === 'number' ? stat.mtime : 0,
+  }
 }
 
 /**
@@ -4706,11 +4801,6 @@ function executeTodoWrite({
   }
 }
 
-const JS_SANDBOX_DB_DEFAULT_MAX_LIMIT = 20
-const JS_SANDBOX_DB_HARD_MAX_LIMIT = 100
-const JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES = 500
-const JS_SANDBOX_DB_FIND_MAX_FILE_BYTES = 256 * 1024
-
 const MIME_TYPES_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -4739,10 +4829,15 @@ const MIME_TYPES_BY_EXT: Record<string, string> = {
   woff2: 'font/woff2',
 }
 
-function guessMimeTypeFromExtension(extension: string | undefined): string {
-  if (!extension) return 'application/octet-stream'
+function inferMimeType(path: string): string {
+  const name = path.split('/').pop() ?? path
+  const dotIndex = name.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === name.length - 1) {
+    return 'application/octet-stream'
+  }
   return (
-    MIME_TYPES_BY_EXT[extension.toLowerCase()] ?? 'application/octet-stream'
+    MIME_TYPES_BY_EXT[name.slice(dotIndex + 1).toLowerCase()] ??
+    'application/octet-stream'
   )
 }
 
@@ -4823,14 +4918,14 @@ function assertJsSandboxFetchAllowed(
   }
 }
 
-function buildJsSandboxProxyHandlers(
+export function buildJsSandboxProxyHandlers(
   app: App,
   config: JsSandboxSettings,
   getRagEngine?: () => Promise<RAGEngine>,
 ): JsSandboxProxyHandlers {
   const handlers: JsSandboxProxyHandlers = {}
 
-  if (config.allowVaultRead) {
+  if (config.allowVaultRead || config.allowDbQuery) {
     const configuredVaultKb =
       typeof config.vaultReadMaxKb === 'number' &&
       Number.isFinite(config.vaultReadMaxKb)
@@ -4842,6 +4937,33 @@ function buildJsSandboxProxyHandlers(
     )
     const vaultReadMaxBytes = vaultReadMaxKb * 1024
     handlers.vaultReadConfig = { maxKb: vaultReadMaxKb }
+
+    if (config.allowVaultRead) {
+      handlers.vaultList = async (
+        path?: string,
+        options?: Record<string, unknown>,
+      ) => {
+        const { folder, normalizedPath } = resolveFolderByPath(app, path)
+        const recursive = options?.recursive === true
+        // The list crosses the sandbox/host boundary as one array. Keep a hard
+        // fuse for pathological vaults while leaving normal large-vault stats
+        // practical inside the JS execution.
+        const entries = collectVaultChildEntries({
+          folder,
+          depth: recursive ? Number.POSITIVE_INFINITY : 1,
+          maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
+        })
+        if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
+          throw new Error(
+            `vault.list refused: more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries under "${normalizedPath || '/'}"; pass a narrower path.`,
+          )
+        }
+        return entries
+          .map(toJsSandboxVaultListEntry)
+          .sort((a, b) => a.path.localeCompare(b.path))
+      }
+    }
+
     handlers.vaultReadText = async (path: string) => {
       const normalized = normalizePath(path)
       const file = app.vault.getAbstractFileByPath(normalized)
@@ -4876,40 +4998,42 @@ function buildJsSandboxProxyHandlers(
       }
     }
 
-    handlers.vaultReadBinary = async (path: string) => {
-      const normalized = normalizePath(path)
-      const file = app.vault.getAbstractFileByPath(normalized)
-      // Same contract as readText: null only for "file does not exist".
-      if (file === null) {
-        return null
-      }
-      if (!(file instanceof TFile)) {
-        throw new Error(`vault.readBinary: "${path}" is a folder, not a file`)
-      }
-      const buffer = await app.vault.readBinary(file).catch((error) => {
-        const reason = error instanceof Error ? error.message : String(error)
-        throw new Error(`vault.readBinary: ${reason}`)
-      })
-      const bytes = new Uint8Array(buffer)
-      if (bytes.length > vaultReadMaxBytes) {
-        // Binary truncation would yield an invalid file; refuse instead so
-        // the model gets a clear signal rather than corrupted base64.
-        throw new Error(
-          `vault.readBinary refused: file is ${bytes.length} bytes, vaultReadMaxKb cap is ${vaultReadMaxKb} KB`,
-        )
-      }
-      // Convert in 32KB chunks to avoid `String.fromCharCode(...arr)` blowing the call-stack on large files.
-      let binary = ''
-      const chunkSize = 0x8000
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
-        binary += String.fromCharCode.apply(null, Array.from(chunk))
-      }
-      const base64 = btoa(binary)
-      return {
-        base64,
-        mimeType: guessMimeTypeFromExtension(file.extension),
-        byteLength: bytes.length,
+    if (config.allowVaultRead) {
+      handlers.vaultReadBinary = async (path: string) => {
+        const normalized = normalizePath(path)
+        const file = app.vault.getAbstractFileByPath(normalized)
+        // Same contract as readText: null only for "file does not exist".
+        if (file === null) {
+          return null
+        }
+        if (!(file instanceof TFile)) {
+          throw new Error(`vault.readBinary: "${path}" is a folder, not a file`)
+        }
+        const buffer = await app.vault.readBinary(file).catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error)
+          throw new Error(`vault.readBinary: ${reason}`)
+        })
+        const bytes = new Uint8Array(buffer)
+        if (bytes.length > vaultReadMaxBytes) {
+          // Binary truncation would yield an invalid file; refuse instead so
+          // the model gets a clear signal rather than corrupted base64.
+          throw new Error(
+            `vault.readBinary refused: file is ${bytes.length} bytes, vaultReadMaxKb cap is ${vaultReadMaxKb} KB`,
+          )
+        }
+        // Convert in 32KB chunks to avoid `String.fromCharCode(...arr)` blowing the call-stack on large files.
+        let binary = ''
+        const chunkSize = 0x8000
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
+          binary += String.fromCharCode.apply(null, Array.from(chunk))
+        }
+        const base64 = btoa(binary)
+        return {
+          base64,
+          mimeType: inferMimeType(path),
+          byteLength: bytes.length,
+        }
       }
     }
   }
@@ -4982,20 +5106,23 @@ function buildJsSandboxProxyHandlers(
       Number.isFinite(config.dbQueryMaxLimit) &&
       config.dbQueryMaxLimit > 0
         ? Math.min(
-            JS_SANDBOX_DB_HARD_MAX_LIMIT,
+            JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
             Math.floor(config.dbQueryMaxLimit),
           )
-        : JS_SANDBOX_DB_DEFAULT_MAX_LIMIT
+        : JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT
 
     const clampLimit = (raw: unknown): number => {
       if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
-        return Math.min(10, configuredLimit)
+        return Math.min(
+          JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+          configuredLimit,
+        )
       }
       return Math.min(configuredLimit, Math.floor(raw))
     }
 
     handlers.dbQuery = async (
-      method: 'search' | 'find' | 'get',
+      method: 'search',
       params: Record<string, unknown>,
     ) => {
       if (method === 'search') {
@@ -5004,68 +5131,6 @@ function buildJsSandboxProxyHandlers(
         const limit = clampLimit(params.limit)
         const results = await engine.processQuery({ query, limit })
         return results
-      }
-
-      if (method === 'find') {
-        const keywordRaw =
-          typeof params.keyword === 'string' ? params.keyword : ''
-        const keyword = keywordRaw.trim()
-        if (!keyword) return []
-        const needle = keyword.toLowerCase()
-        const limit = clampLimit(params.limit)
-
-        const files = app.vault.getMarkdownFiles()
-        const matches: Array<{ path: string; excerpt: string }> = []
-        let scanned = 0
-        for (const file of files) {
-          if (matches.length >= limit) break
-          if (scanned >= JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES) break
-          if (file.stat.size > JS_SANDBOX_DB_FIND_MAX_FILE_BYTES) continue
-          scanned++
-          let text: string
-          try {
-            const vault = app.vault as {
-              cachedRead?: (f: TFile) => Promise<string>
-              read: (f: TFile) => Promise<string>
-            }
-            text = vault.cachedRead
-              ? await vault.cachedRead(file)
-              : await vault.read(file)
-          } catch {
-            continue
-          }
-          const hitIndex = text.toLowerCase().indexOf(needle)
-          if (hitIndex < 0) continue
-          const start = Math.max(0, hitIndex - 60)
-          const end = Math.min(text.length, hitIndex + needle.length + 60)
-          const excerpt =
-            (start > 0 ? '…' : '') +
-            text.slice(start, end).replace(/\s+/g, ' ').trim() +
-            (end < text.length ? '…' : '')
-          matches.push({ path: file.path, excerpt })
-        }
-        return matches
-      }
-
-      if (method === 'get') {
-        const path = typeof params.path === 'string' ? params.path : ''
-        if (!path) return null
-        const file = app.vault.getAbstractFileByPath(normalizePath(path))
-        if (!(file instanceof TFile)) return null
-        try {
-          const vault = app.vault as {
-            cachedRead?: (f: TFile) => Promise<string>
-            read: (f: TFile) => Promise<string>
-          }
-          const content = vault.cachedRead
-            ? await vault.cachedRead(file)
-            : await vault.read(file)
-          const frontmatter =
-            app.metadataCache.getFileCache(file)?.frontmatter ?? {}
-          return { content, frontmatter }
-        } catch {
-          return null
-        }
       }
 
       throw new Error(`unknown db method: ${method}`)

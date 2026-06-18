@@ -139,6 +139,8 @@ export type TranslationKeys = {
       name: string
       desc: string
       buyMeACoffee: string
+      reportBug: string
+      featureRequest: string
     }
     defaults: {
       title: string

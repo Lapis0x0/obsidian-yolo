@@ -181,6 +181,7 @@ const getMessageGroupRunState = ({
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
+  inlineInfoMessages?: AssistantToolMessageGroup
   conversationId: string
   conversationRunSummary?: AgentConversationRunSummary
   activeBranchKey?: string | null
@@ -239,6 +240,7 @@ export type AssistantToolMessageGroupItemProps = {
 
 export default function AssistantToolMessageGroupItem({
   messages,
+  inlineInfoMessages,
   conversationId,
   conversationRunSummary,
   activeBranchKey: controlledActiveBranchKey,
@@ -764,7 +766,9 @@ export default function AssistantToolMessageGroupItem({
         !suppressFooter && (
           <div className="yolo-assistant-message-footer">
             {showInlineInfo && (
-              <LLMResponseInlineInfo messages={displayedMessages} />
+              <LLMResponseInlineInfo
+                messages={inlineInfoMessages ?? displayedMessages}
+              />
             )}
             <AssistantToolMessageGroupActions
               messages={displayedMessages}

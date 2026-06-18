@@ -160,6 +160,7 @@ async function runChildAgent(
 
   const childAllowedToolNames = filterAllowedToolsForSubagent(
     parent.allowedToolNames,
+    { jsSandboxSettings: parent.mcpManager.getJsSandboxSettings() },
   )
 
   const loopConfig: AgentRuntimeLoopConfig = {

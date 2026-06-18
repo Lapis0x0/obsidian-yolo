@@ -1177,7 +1177,12 @@ export class AgentToolGateway {
     if (!this.toolsEnabled) {
       return false
     }
-    if (this.isSubagentChildRun && isSubagentBlockedToolName(toolName)) {
+    if (
+      this.isSubagentChildRun &&
+      isSubagentBlockedToolName(toolName, {
+        jsSandboxSettings: this.mcpManager.getJsSandboxSettings(),
+      })
+    ) {
       return false
     }
     if (isLoadToolSchemasToolName(toolName)) {

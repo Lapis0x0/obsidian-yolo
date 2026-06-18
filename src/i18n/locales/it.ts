@@ -150,6 +150,8 @@ export const it: TranslationKeys = {
       name: 'Supporta il progetto',
       desc: 'Se trovi utile questo plugin, considera di supportarne lo sviluppo!',
       buyMeACoffee: 'Offrimi un caffè',
+      reportBug: 'Segnala bug',
+      featureRequest: 'Richiedi funzione',
     },
     defaults: {
       title: 'Criteri modello predefiniti e prompt',

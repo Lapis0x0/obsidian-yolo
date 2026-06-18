@@ -84,6 +84,10 @@ import {
 } from '../../utils/chat/editSummary'
 import { exportChatConversationToVault } from '../../utils/chat/exportConversation'
 import {
+  buildForegroundAgentVisualTurnPlan,
+  getForegroundAgentFooterForGroup,
+} from '../../utils/chat/foregroundAgentVisualTurns'
+import {
   getBlockContentHash,
   getBlockMentionableCountInfo,
   getMentionableKey,
@@ -4904,29 +4908,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return null
   }, [chatTimelineItems])
 
-  // 异步派遣结果作为独立 timeline 项追加到对话流；在派遣消息和结果之间
-  // 显示 footer 信息栏会切断「派遣 → 等结果 → 结果到达」这条逻辑流。
-  // 因此凡是后面紧跟一个 external_agent_result group 的 assistant-group，
-  // 都把它的 footer 抑制掉。
-  const renderKeysWithSuppressedAsyncFollowUpFooter = useMemo(() => {
-    const set = new Set<string>()
-    for (let i = 0; i < chatTimelineItems.length - 1; i++) {
-      const current = chatTimelineItems[i]
-      const next = chatTimelineItems[i + 1]
-      if (current.kind !== 'assistant-group') continue
-      if (next.kind !== 'assistant-group') continue
-      const nextFirst = next.messages[0]
-      if (
-        nextFirst &&
-        (nextFirst.role === 'external_agent_result' ||
-          nextFirst.role === 'subagent_result' ||
-          nextFirst.role === 'terminal_command_result')
-      ) {
-        set.add(current.renderKey)
-      }
-    }
-    return set
-  }, [chatTimelineItems])
+  // 后台任务结果在渲染上会接回对应 tool card，且 subagent/terminal result
+  // standalone group 会被 timeline 过滤掉；因此必须在过滤前的 grouped
+  // messages 上决定“视觉回合”的 footer 归属。
+  const foregroundAgentVisualTurnPlan = useMemo(
+    () => buildForegroundAgentVisualTurnPlan(groupedChatMessages),
+    [groupedChatMessages],
+  )
 
   const renderChatTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
@@ -4971,6 +4959,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
       if (timelineItem.kind === 'assistant-group') {
         const messageOrGroup = timelineItem.messages
+        const foregroundAgentFooter = getForegroundAgentFooterForGroup(
+          foregroundAgentVisualTurnPlan,
+          messageOrGroup,
+        )
         const containsCompactionAnchor =
           compactionDividerAnchorMessageId !== null &&
           messageOrGroup.some(
@@ -4994,9 +4986,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             )}
             suppressFooter={
               shouldSuppressCompactionAnchorFooter ||
-              renderKeysWithSuppressedAsyncFollowUpFooter.has(
-                timelineItem.renderKey,
-              )
+              foregroundAgentFooter?.suppress === true
+            }
+            inlineInfoMessages={
+              foregroundAgentFooter?.inlineInfoMessages ?? messageOrGroup
             }
             showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
             showRetryAction={chatSurfacePreset.assistantActions.showRetryAction}
@@ -5339,7 +5332,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       persistConversation,
       queryProgress,
       reasoningLevel,
-      renderKeysWithSuppressedAsyncFollowUpFooter,
+      foregroundAgentVisualTurnPlan,
       shouldHidePendingAssistantPlaceholders,
       undoingEditSummaryTarget,
       updateHistoricalUserMessage,

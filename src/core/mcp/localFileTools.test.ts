@@ -87,7 +87,14 @@ import { findWebviewHandleByPageId } from '../browser/activeWebviewProbe'
 import { readActiveWebviewPage } from '../browser/activeWebviewReader'
 import type { RAGEngine } from '../rag/ragEngine'
 
+import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 import {
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
+  formatJsSandboxToolText,
+} from './jsSandboxTool'
+import {
+  buildJsSandboxProxyHandlers,
   callLocalFileTool,
   getLocalFileTools,
   isLocalFsWriteToolName,
@@ -115,6 +122,209 @@ describe('recoverLikelyEscapedBackslashSequences', () => {
     const recovered = recoverLikelyEscapedBackslashSequences(input)
 
     expect(recovered).toBe(input)
+  })
+})
+
+describe('js sandbox vault list handler', () => {
+  const basename = (path: string) => path.split('/').pop() ?? path
+
+  const makeFile = (path: string, size = 10, mtime = 1000): TFile =>
+    Object.assign(new TFile(), {
+      path,
+      name: basename(path),
+      stat: { size, mtime },
+    })
+
+  const makeFolder = (
+    path: string,
+    children: Array<TFile | TFolder> = [],
+  ): TFolder =>
+    Object.assign(new TFolder(), {
+      path,
+      name: path ? basename(path) : '',
+      children,
+    })
+
+  const makeApp = (root: TFolder, entries: Array<TFile | TFolder>): App => {
+    const byPath = new Map(entries.map((entry) => [entry.path, entry]))
+    return {
+      vault: {
+        getRoot: jest.fn().mockReturnValue(root),
+        getAbstractFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) => byPath.get(path) ?? null),
+        cachedRead: jest
+          .fn()
+          .mockImplementation((file: TFile) => `content:${file.path}`),
+      },
+    } as unknown as App
+  }
+
+  const getVaultList = (app: App) => {
+    const handlers = buildJsSandboxProxyHandlers(app, {
+      allowVaultRead: true,
+    })
+    if (!handlers.vaultList) {
+      throw new Error('expected vaultList handler')
+    }
+    return handlers.vaultList
+  }
+
+  it('lists direct child dirs and files by default', async () => {
+    const nested = makeFile('a/nested.md', 20, 2000)
+    const folder = makeFolder('a', [nested])
+    const file = makeFile('b.md', 30, 3000)
+    const root = makeFolder('', [file, folder])
+    const list = getVaultList(makeApp(root, [folder, nested, file]))
+
+    await expect(list()).resolves.toEqual([
+      { kind: 'dir', path: 'a', name: 'a' },
+      {
+        kind: 'file',
+        path: 'b.md',
+        name: 'b.md',
+        size: 30,
+        mtime: 3000,
+      },
+    ])
+  })
+
+  it('lists the whole subtree when recursive is true', async () => {
+    const nested = makeFile('a/nested.md', 20, 2000)
+    const folder = makeFolder('a', [nested])
+    const file = makeFile('b.md', 30, 3000)
+    const root = makeFolder('', [file, folder])
+    const list = getVaultList(makeApp(root, [folder, nested, file]))
+
+    await expect(list('/', { recursive: true })).resolves.toEqual([
+      { kind: 'dir', path: 'a', name: 'a' },
+      {
+        kind: 'file',
+        path: 'a/nested.md',
+        name: 'nested.md',
+        size: 20,
+        mtime: 2000,
+      },
+      {
+        kind: 'file',
+        path: 'b.md',
+        name: 'b.md',
+        size: 30,
+        mtime: 3000,
+      },
+    ])
+  })
+
+  it('rejects missing folders, file targets, and invalid paths', async () => {
+    const file = makeFile('b.md')
+    const root = makeFolder('', [file])
+    const list = getVaultList(makeApp(root, [file]))
+
+    await expect(list('missing')).rejects.toThrow('Folder not found: missing')
+    await expect(list('b.md')).rejects.toThrow('Path is not a folder: b.md')
+    await expect(list('../outside')).rejects.toThrow(
+      'Path must be a vault-relative path.',
+    )
+  })
+
+  it('refuses pathological vault lists above the hard entry cap', async () => {
+    const files = Array.from(
+      { length: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1 },
+      (_, index) => makeFile(`f-${index}.md`),
+    )
+    const root = makeFolder('', files)
+    const list = getVaultList(makeApp(root, files))
+
+    await expect(list()).rejects.toThrow(
+      `more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries`,
+    )
+  })
+
+  it('does not expose the handler when vault read is disabled', () => {
+    const root = makeFolder('')
+    const handlers = buildJsSandboxProxyHandlers(makeApp(root, []), {})
+
+    expect(handlers.vaultList).toBeUndefined()
+    expect(handlers.vaultReadText).toBeUndefined()
+    expect(handlers.vaultReadBinary).toBeUndefined()
+  })
+
+  it('exposes only known-path text reads when db query is enabled', async () => {
+    const file = makeFile('notes/a.md')
+    const root = makeFolder('', [file])
+    const handlers = buildJsSandboxProxyHandlers(makeApp(root, [file]), {
+      allowDbQuery: true,
+    })
+
+    expect(handlers.vaultList).toBeUndefined()
+    expect(handlers.vaultReadBinary).toBeUndefined()
+    if (!handlers.vaultReadText) {
+      throw new Error('expected vaultReadText handler')
+    }
+    await expect(handlers.vaultReadText('notes/a.md')).resolves.toBe(
+      'content:notes/a.md',
+    )
+  })
+})
+
+describe('js sandbox tool description', () => {
+  it('mentions vault list only when vault read is enabled', () => {
+    expect(buildJsSandboxToolDescription({})).not.toContain('$vault.list')
+
+    const description = buildJsSandboxToolDescription({
+      allowVaultRead: true,
+    })
+    expect(description).toContain('$vault.list')
+    expect(description).toContain('do NOT return the full list')
+  })
+
+  it('describes db search and known-path text reads without keyword lookup', () => {
+    const description = buildJsSandboxToolDescription({
+      allowDbQuery: true,
+    })
+
+    expect(description).toContain('$db.search')
+    expect(description).toContain('$vault.readText')
+    expect(description).toContain(
+      `clamped to ${JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT}`,
+    )
+    expect(description).not.toContain('$db.get')
+    expect(description).not.toContain('$db.find')
+  })
+
+  it('does not duplicate vault readText guidance when db query and vault read are both enabled', () => {
+    const description = buildJsSandboxToolDescription({
+      allowDbQuery: true,
+      allowVaultRead: true,
+    })
+
+    const readTextMentions = description.match(/\$vault\.readText/g) ?? []
+    expect(readTextMentions).toHaveLength(1)
+    expect(description).not.toContain('$db.get')
+    expect(description).not.toContain('$db.find')
+  })
+})
+
+describe('js sandbox tool output formatting', () => {
+  it('keeps JSON output compact', () => {
+    expect(
+      formatJsSandboxToolText('{"items":[{"path":"a.md","count":2}]}'),
+    ).toBe('{"items":[{"path":"a.md","count":2}]}')
+  })
+
+  it('keeps truncated output envelope compact', () => {
+    const text = formatJsSandboxToolText(
+      JSON.stringify({ items: Array.from({ length: 400 }, (_, i) => i) }),
+      { maxBytes: 1024 },
+    )
+
+    expect(text).not.toContain('\n')
+    expect(JSON.parse(text)).toEqual(
+      expect.objectContaining({
+        truncated: true,
+        warning: expect.any(String),
+      }),
+    )
   })
 })
 

@@ -92,6 +92,8 @@ export class RAGEngine {
         {
           chunkSize: this.settings.ragOptions.chunkSize,
           excludePatterns: this.settings.ragOptions.excludePatterns,
+          excludeYoloBaseDir:
+            this.settings.ragOptions.excludeYoloBaseDir ?? true,
           includePatterns: this.settings.ragOptions.includePatterns,
           indexPdf: this.settings.ragOptions.indexPdf ?? true,
           embeddingConcurrency: this.settings.ragOptions.embeddingConcurrency,

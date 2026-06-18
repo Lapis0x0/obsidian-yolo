@@ -129,6 +129,8 @@ export const zh: TranslationKeys = {
       name: '支持 YOLO',
       desc: '如果你觉得 YOLO 有价值，请考虑支持它的开发！',
       buyMeACoffee: '爱发电',
+      reportBug: '报 Bug',
+      featureRequest: '提需求',
     },
     defaults: {
       title: '默认模型策略与提示词',
@@ -551,14 +553,14 @@ export const zh: TranslationKeys = {
         '开启后，脚本可以请求浏览器允许访问的网络地址；遇到浏览器跨域限制时，也可以使用单独的 YOLO 宿主请求。仅在你信任此 Agent 时继续。是否继续？',
       jsSandboxAllowVaultRead: '允许读取库文件',
       jsSandboxAllowVaultReadDesc:
-        '允许脚本按路径读取任意库文件。此能力不受 Agent 目录限制约束。风险：脚本可能将笔记内容传递给外部服务。',
+        '允许脚本列出库内路径，并按路径读取任意库文件。此能力不受 Agent 目录限制约束。风险：脚本可能将笔记内容传递给外部服务。',
       jsSandboxAllowVaultReadConfirm:
-        '开启后，AI 生成的脚本可按路径读取 vault 中任意文件，内容将进入 LLM 上下文。请确认您信任此 Agent 生成的脚本后再继续。',
+        '开启后，AI 生成的脚本可列出 vault 路径，并按路径读取 vault 中任意文件，内容将进入 LLM 上下文。请确认您信任此 Agent 生成的脚本后再继续。',
       jsSandboxAllowDbQuery: '允许知识库查询',
       jsSandboxAllowDbQueryDesc:
-        '允许脚本查询向量数据库（语义搜索、关键词搜索、路径查找）。此能力不受 Agent 目录限制约束。',
+        '允许脚本使用语义搜索查询已索引的库内容，并按已知路径读取 Markdown / 文本内容。此能力不受 Agent 目录限制约束。',
       jsSandboxAllowDbQueryConfirm:
-        '开启后，AI 生成的脚本可搜索 vault 索引并获取文件内容。是否继续？',
+        '开启后，AI 生成的脚本可搜索已索引内容，并按已知路径读取 Markdown / 文本内容。是否继续？',
       jsSandboxAllowExternalScripts: '允许加载外部脚本',
       jsSandboxAllowExternalScriptsDesc:
         '允许脚本加载并运行远程 JavaScript，同时打开这些脚本常用的浏览器能力。',
@@ -576,8 +578,9 @@ export const zh: TranslationKeys = {
       jsSandboxVaultReadMaxKb: '读取大小上限（KB）',
       jsSandboxVaultReadMaxKbDesc:
         '单次读取的返回上限。文本超出会被截断并附带提示；较大的二进制文件会直接拒绝。范围 {min}–{max} KB。',
-      jsSandboxDbMaxLimit: '单次查询最大行数',
-      jsSandboxDbMaxLimitDesc: '知识库查询单次返回行数的上限。范围 1–100。',
+      jsSandboxDbMaxLimit: '语义搜索最大行数',
+      jsSandboxDbMaxLimitDesc:
+        '语义搜索的返回行数上限。按路径读取不受此项影响。范围 1–100。',
     },
     jsSandbox: {
       openSettings: '配置 JavaScript 执行',

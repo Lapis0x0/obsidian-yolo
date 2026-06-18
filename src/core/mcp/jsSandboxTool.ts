@@ -47,6 +47,10 @@ export const JS_SANDBOX_FETCH_MIN_CONCURRENT = 1
 export const JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB = 10 * 1024
 export const JS_SANDBOX_VAULT_READ_HARD_MAX_KB = 1024 * 1024
 export const JS_SANDBOX_VAULT_READ_MIN_KB = 1
+export const JS_SANDBOX_VAULT_LIST_MAX_ENTRIES = 100_000
+export const JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT = 20
+export const JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT = 100
+export const JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT = 10
 
 type JsonRecord = Record<string, unknown>
 
@@ -55,6 +59,20 @@ export type JsSandboxBinaryReadResult = {
   mimeType: string
   byteLength: number
 }
+
+export type JsSandboxVaultListEntry =
+  | {
+      kind: 'dir'
+      path: string
+      name: string
+    }
+  | {
+      kind: 'file'
+      path: string
+      name: string
+      size: number
+      mtime: number
+    }
 
 export type JsSandboxFetchResponse = {
   ok: boolean
@@ -66,6 +84,10 @@ export type JsSandboxFetchResponse = {
 }
 
 export type JsSandboxProxyHandlers = {
+  vaultList?: (
+    path?: string,
+    options?: Record<string, unknown>,
+  ) => Promise<JsSandboxVaultListEntry[]>
   vaultReadText?: (path: string) => Promise<string | null>
   vaultReadBinary?: (path: string) => Promise<JsSandboxBinaryReadResult | null>
   vaultReadConfig?: { maxKb: number }
@@ -80,7 +102,7 @@ export type JsSandboxProxyHandlers = {
     maxResponseKb: number
   }
   dbQuery?: (
-    method: 'search' | 'find' | 'get',
+    method: 'search',
     params: Record<string, unknown>,
   ) => Promise<unknown>
 }
@@ -631,7 +653,10 @@ function buildScope(rawVars) {
     $selection: rawVars ? rawVars.$selection ?? null : null,
     $vault: vaultBase ? {
       ...vaultBase,
-      readText: caps.allowVaultRead
+      list: caps.allowVaultRead
+        ? (path, options) => proxyCall('vault_list', { path, options })
+        : undefined,
+      readText: (caps.allowVaultRead || caps.allowDbQuery)
         ? (path) => proxyCall('vault_read_text', { path })
         : undefined,
       readBinary: caps.allowVaultRead
@@ -642,9 +667,7 @@ function buildScope(rawVars) {
     $tags: Array.isArray(rawVars && rawVars.$tags) ? rawVars.$tags : [],
     $utils: hostFetchAllowed ? SANDBOX_UTILS_WITH_HTML : SANDBOX_UTILS,
     $db: caps.allowDbQuery ? {
-      search: (query, limit) => proxyCall('db_query', { method: 'search', query, limit }),
-      find: (keyword, limit) => proxyCall('db_query', { method: 'find', keyword, limit }),
-      get: (path) => proxyCall('db_query', { method: 'get', path })
+      search: (query, limit) => proxyCall('db_query', { method: 'search', query, limit })
     } : undefined,
     $fetch: hostFetchAllowed ? hostFetch : undefined
   }
@@ -1396,7 +1419,9 @@ export function formatJsSandboxToolText(
 ): string {
   let formatted = json
   try {
-    formatted = JSON.stringify(JSON.parse(json), null, 2)
+    // Keep tool results compact for the LLM context. The worker already
+    // returns JSON; re-stringify only to normalize valid JSON defensively.
+    formatted = JSON.stringify(JSON.parse(json))
   } catch {
     // The worker should only return JSON, but keep the formatter defensive.
   }
@@ -1412,16 +1437,12 @@ export function formatJsSandboxToolText(
   // Reserve a small slice for the truncation envelope so the JSON wrapper
   // itself stays within budget.
   const prefixBytes = Math.max(1024, Math.floor(maxBytes * 0.95))
-  return JSON.stringify(
-    {
-      warning: `Output exceeded ${maxBytes} bytes and was truncated.`,
-      truncated: true,
-      originalBytes: getByteLength(formatted),
-      jsonPrefix: formatted.slice(0, prefixBytes),
-    },
-    null,
-    2,
-  )
+  return JSON.stringify({
+    warning: `Output exceeded ${maxBytes} bytes and was truncated.`,
+    truncated: true,
+    originalBytes: getByteLength(formatted),
+    jsonPrefix: formatted.slice(0, prefixBytes),
+  })
 }
 
 export async function callJsSandboxTool({
@@ -1896,6 +1917,38 @@ class JsSandboxRunner {
   ): Promise<void> {
     const handlers = pending.proxyHandlers
     try {
+      if (cap === 'vault_list') {
+        if (!handlers?.vaultList) {
+          this.sendProxyResponse(
+            reqId,
+            proxyId,
+            undefined,
+            'vault read is not enabled',
+          )
+          return
+        }
+        const rawPath = payload.path
+        // Omitted path intentionally lists root; mistyped path values should
+        // fail closed instead of silently broadening the call to root.
+        if (rawPath !== undefined && typeof rawPath !== 'string') {
+          this.sendProxyResponse(
+            reqId,
+            proxyId,
+            undefined,
+            '$vault.list path must be a string.',
+          )
+          return
+        }
+        const path = rawPath
+        const options =
+          payload.options && typeof payload.options === 'object'
+            ? (payload.options as Record<string, unknown>)
+            : undefined
+        const result = await handlers.vaultList(path, options)
+        this.sendProxyResponse(reqId, proxyId, result)
+        return
+      }
+
       if (cap === 'vault_read_text') {
         if (!handlers?.vaultReadText) {
           this.sendProxyResponse(
@@ -1989,7 +2042,7 @@ class JsSandboxRunner {
           )
           return
         }
-        const method = payload.method as 'search' | 'find' | 'get'
+        const method = payload.method as 'search'
         const result = await handlers.dbQuery(method, payload)
         this.sendProxyResponse(reqId, proxyId, result)
         return

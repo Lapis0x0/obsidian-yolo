@@ -85,7 +85,7 @@ describe('testChatModelHealth', () => {
     }
   })
 
-  it('returns ok with firstTokenMs undefined when no text delta arrives (usage-only)', async () => {
+  it('returns fail when no content or reasoning delta arrives (usage-only stream)', async () => {
     mockStreamResponse.mockImplementation(async () => {
       return (async function* () {
         yield usageChunk(3)
@@ -96,9 +96,26 @@ describe('testChatModelHealth', () => {
       signal: new AbortController().signal,
     })
 
-    expect(result.status).toBe('ok')
-    if (result.status === 'ok') {
-      expect(result.firstTokenMs).toBeUndefined()
+    expect(result.status).toBe('fail')
+    if (result.status === 'fail') {
+      expect(result.message).toContain('No content received')
+    }
+  })
+
+  it('returns fail when the stream is completely empty (zero chunks)', async () => {
+    mockStreamResponse.mockImplementation(async () => {
+      return (async function* () {
+        // empty stream — no chunks at all
+      })()
+    })
+
+    const result = await testChatModelHealth(settings, chatModel, {
+      signal: new AbortController().signal,
+    })
+
+    expect(result.status).toBe('fail')
+    if (result.status === 'fail') {
+      expect(result.message).toContain('No content received')
     }
   })
 

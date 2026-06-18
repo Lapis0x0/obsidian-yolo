@@ -1,0 +1,38 @@
+name: 功能请求（中文）
+description: 提出一个功能请求，帮助我们改进
+title: '[Feature Request]: '
+labels: ['feature request']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你抽时间填写功能请求！
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题陈述
+      description: 这个功能想解决什么问题？请描述一下。
+      placeholder: 清晰简洁地描述当前遇到的问题。例如：每当 [...] 我都会感到困扰
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望方案
+      description: 描述你希望看到的解决方案
+      placeholder: |
+        清晰、详细地描述你希望发生的事情，包括：
+        - 这个功能应该如何工作
+        - 需要哪些 UI 元素
+        - 用户如何与之交互
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 其他补充
+      description: 关于这个功能请求，还有什么背景、原型图或截图想分享？
+      placeholder: 其他有助于理解这个请求的细节...

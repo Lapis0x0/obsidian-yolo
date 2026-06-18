@@ -7,7 +7,7 @@ import pgliteWorkerScript from 'virtual:pglite-worker-script'
 import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
-import { PGLiteAbortedException } from './exception'
+import { DatabaseSaveFailedError, PGLiteAbortedException } from './exception'
 import migrations from './migrations.json'
 import { VectorManager } from './modules/vector/VectorManager'
 import { ShardedVectorBackend } from './modules/vector/backend/sharded/ShardedVectorBackend'
@@ -112,7 +112,18 @@ export class DatabaseManager {
       (createdNewDatabase || migrationStateBefore !== migrationStateAfter)
 
     if (shouldSaveAfterInit) {
-      await dbManager.save()
+      // Init-time checkpoint: a save failure here must not block plugin
+      // startup, otherwise an OOM on the very first dump would lock the user
+      // out of changing settings to recover. Log and continue; the next
+      // indexing run will surface the same failure through proper channels.
+      try {
+        await dbManager.save()
+      } catch (error) {
+        console.warn(
+          '[YOLO] Initial database save failed; continuing without snapshot.',
+          error,
+        )
+      }
     }
 
     // WeakMap setup
@@ -155,7 +166,14 @@ export class DatabaseManager {
           `[YOLO] Dropped ${deleted} legacy staging row(s) from embeddings.`,
         )
         await dbManager.vacuum()
-        await dbManager.save()
+        try {
+          await dbManager.save()
+        } catch (error) {
+          console.warn(
+            '[YOLO] Save after legacy staging cleanup failed; data is cleaned in memory but snapshot is stale.',
+            error,
+          )
+        }
       }
     } catch (error) {
       console.warn('[YOLO] Failed to clean up legacy staging rows', error)
@@ -381,6 +399,19 @@ export class DatabaseManager {
     }
   }
 
+  /**
+   * Persist the in-memory PGlite database to the vault as a gzipped snapshot.
+   *
+   * Failures (most commonly `RangeError: Array buffer allocation failed` on
+   * large vector libraries — see issue #408) are wrapped in
+   * {@link DatabaseSaveFailedError} and re-thrown. Callers in the indexing
+   * loop rely on this so the run state can move to `failed` instead of
+   * silently reporting 100% complete on a database that wasn't flushed.
+   *
+   * Callsites that legitimately don't want a save failure to abort their flow
+   * (cleanup, init checkpoints, base-dir migration) must catch and decide
+   * locally — never swallow at this layer.
+   */
   async save(): Promise<void> {
     if (this.vectorBackendKind !== 'pglite' || !this.pgClient) {
       return
@@ -402,12 +433,23 @@ export class DatabaseManager {
       await this.app.vault.adapter.writeBinary(this.dbPath, arrayBuffer)
     } catch (error) {
       console.error('Error saving database:', error)
+      throw new DatabaseSaveFailedError(error)
     }
   }
 
   async cleanup() {
-    // save before cleanup
-    await this.save()
+    // Cleanup is best-effort: a save failure here must not stop us from
+    // closing the PGlite client and tearing down state. The error has already
+    // been logged inside `save()`; suppress the throw so cleanup paths
+    // (plugin unload, vault switch, base-dir migration) can complete.
+    try {
+      await this.save()
+    } catch (error) {
+      console.warn(
+        '[YOLO] Save during cleanup failed; closing without persisting.',
+        error,
+      )
+    }
     // WeakMap cleanup
     DatabaseManager.managers.delete(this)
     await this.pgClient?.close()

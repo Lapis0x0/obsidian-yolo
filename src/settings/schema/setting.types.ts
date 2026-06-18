@@ -41,6 +41,13 @@ const ragOptionsSchema = z.object({
    */
   embeddingConcurrency: z.number().catch(10),
   excludePatterns: z.array(z.string()).catch([]),
+  /**
+   * When true, the plugin's YOLO base directory (resolved dynamically from
+   * `yolo.baseDir`) is excluded from indexing on top of `excludePatterns`.
+   * The UI surfaces this as a removable chip in the exclude folder list;
+   * deleting that chip flips this flag to false and persists the choice.
+   */
+  excludeYoloBaseDir: z.boolean().catch(true),
   includePatterns: z.array(z.string()).catch([]),
   /** When true, index `.pdf` files for RAG (text extraction). */
   indexPdf: z.boolean().catch(true),
@@ -255,9 +262,7 @@ export const jsSandboxSettingsSchema = z.object({
   // timeoutMs in its tool args, but the host clamps the effective value
   // to this cap. Undefined means use the built-in default.
   timeoutMs: z.number().optional(),
-  // Maximum rows returned by $db.search / $db.find. The LLM may request a
-  // smaller limit per call but never larger. Undefined falls back to a
-  // built-in default.
+  // Maximum rows returned by $db.search (knowledge-base RAG/vector search).
   dbQueryMaxLimit: z.number().optional(),
   // Maximum size (in KB) of the tool's serialized JSON result returned to
   // the model. Output above this is truncated with a prefix. Undefined
@@ -325,6 +330,7 @@ export const yoloSettingsSchema = z.object({
     limit: 10,
     embeddingConcurrency: 10,
     excludePatterns: [],
+    excludeYoloBaseDir: true,
     includePatterns: [],
     indexPdf: true,
     autoUpdateEnabled: true,
