@@ -583,9 +583,9 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
   },
   {
     providerId: PROVIDER_PRESET_INFO['chatgpt-oauth'].defaultProviderId,
-    id: 'chatgpt-oauth/gpt-5.3-codex',
-    model: 'gpt-5.3-codex',
-    name: 'GPT-5.3 Codex',
+    id: 'chatgpt-oauth/gpt-5.3-codex-spark',
+    model: 'gpt-5.3-codex-spark',
+    name: 'GPT-5.3 Codex Spark',
     enable: false,
     reasoningType: 'openai',
   },

@@ -28,7 +28,6 @@ import { BaseLLMProvider } from './base'
 import { ChatGPTOAuthResponsesAdapter } from './chatgptOAuthResponsesAdapter'
 import { LLMProviderNotConfiguredException } from './exception'
 import { NoStainlessOpenAI } from './NoStainlessOpenAI'
-import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 import { ModelRequestPolicy, resolveSdkMaxRetries } from './requestPolicy'
 import {
   createRequestTransportMemoryKey,
@@ -63,13 +62,26 @@ function injectChatgptHostedTools<
   }
 }
 
+const CODEX_UNSUPPORTED_FIELDS = new Set([
+  'max_output_tokens',
+  'temperature',
+  'top_p',
+])
+
+function stripCodexUnsupportedFields<T extends Record<string, unknown>>(
+  body: T,
+): T {
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => !CODEX_UNSUPPORTED_FIELDS.has(key)),
+  ) as T
+}
+
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const OAUTH_PROVIDER_API_KEY = 'chatgpt-oauth'
 
 export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
   private readonly adapter = new ChatGPTOAuthResponsesAdapter()
-  private readonly chatAdapter = new OpenAIMessageAdapter()
   private readonly browserClient: OpenAI
   private readonly obsidianClient: OpenAI
   private readonly nodeClient: OpenAI
@@ -134,11 +146,13 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       }
     }
 
-    const body = this.adapter.buildRequest(
-      this.applyCustomModelParameters(model, {
-        ...formattedRequest,
-        stream: true,
-      }),
+    const body = stripCodexUnsupportedFields(
+      this.adapter.buildRequest(
+        this.applyCustomModelParameters(model, {
+          ...formattedRequest,
+          stream: true,
+        }),
+      ),
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransport({
@@ -187,8 +201,10 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       }
     }
 
-    const body = this.adapter.buildRequest(
-      this.applyCustomModelParameters(model, formattedRequest),
+    const body = stripCodexUnsupportedFields(
+      this.adapter.buildRequest(
+        this.applyCustomModelParameters(model, formattedRequest),
+      ),
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransportForStream({
@@ -273,7 +289,6 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     const parsed = new URL(url)
     if (
       parsed.pathname.includes('/v1/responses') ||
-      parsed.pathname.includes('/chat/completions') ||
       parsed.pathname.endsWith('/responses')
     ) {
       return CODEX_API_ENDPOINT
@@ -281,53 +296,30 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return input instanceof Request ? new Request(url, input) : url
   }
 
-  private isBadRequest(error: unknown): boolean {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'status' in error &&
-      (error as { status?: unknown }).status === 400
-    )
-  }
-
   private async generateResponseWithFallback(
     client: OpenAI,
     body: ResponseCreateParamsStreaming,
-    request: LLMRequestNonStreaming,
+    _request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
-    try {
-      return await this.collectResponseFromStream(
-        (await client.responses.create(body, {
-          signal: options?.signal,
-        })) as AsyncIterable<ResponseStreamEvent>,
-      )
-    } catch (error) {
-      if (!this.isBadRequest(error)) {
-        throw error
-      }
-      return this.chatAdapter.generateResponse(client, request, options)
-    }
+    return this.collectResponseFromStream(
+      (await client.responses.create(body, {
+        signal: options?.signal,
+      })) as AsyncIterable<ResponseStreamEvent>,
+    )
   }
 
   private async streamResponseWithFallback(
     client: OpenAI,
     body: ResponseCreateParamsStreaming,
-    request: LLMRequestStreaming,
+    _request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
-    try {
-      return await this.toStream(
-        (await client.responses.create(body, {
-          signal: options?.signal,
-        })) as AsyncIterable<ResponseStreamEvent>,
-      )
-    } catch (error) {
-      if (!this.isBadRequest(error)) {
-        throw error
-      }
-      return this.chatAdapter.streamResponse(client, request, options)
-    }
+    return this.toStream(
+      (await client.responses.create(body, {
+        signal: options?.signal,
+      })) as AsyncIterable<ResponseStreamEvent>,
+    )
   }
 
   private async toStream(
