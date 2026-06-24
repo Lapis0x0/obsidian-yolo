@@ -99,6 +99,43 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
     expect(request.tools).toEqual([{ type: 'web_search_preview' }])
   })
 
+  it('keeps standard Responses sampling and output limit fields by default', () => {
+    const request = adapter.buildRequest({
+      model: 'gpt-5.4',
+      stream: true,
+      max_tokens: 256,
+      temperature: 0.4,
+      top_p: 0.9,
+      messages: [{ role: 'user', content: 'Hello' }],
+    })
+
+    expect(request.max_output_tokens).toBe(256)
+    expect(request.temperature).toBe(0.4)
+    expect(request.top_p).toBe(0.9)
+  })
+
+  it('omits Codex-unsupported fields from generated and extra request params', () => {
+    const requestWithExtraParams = Object.assign(
+      {
+        model: 'gpt-5.3-codex-spark',
+        stream: true,
+        max_tokens: 256,
+        temperature: 0.4,
+        top_p: 0.9,
+        messages: [{ role: 'user' as const, content: 'Hello' }],
+      },
+      { max_output_tokens: 512 },
+    )
+
+    const request = adapter.buildRequest(requestWithExtraParams, {
+      profile: 'codex',
+    })
+
+    expect(request).not.toHaveProperty('max_output_tokens')
+    expect(request).not.toHaveProperty('temperature')
+    expect(request).not.toHaveProperty('top_p')
+  })
+
   it('parses non-streaming responses into chat completion shape', () => {
     const response = {
       id: 'resp_1',

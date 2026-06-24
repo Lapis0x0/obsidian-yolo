@@ -62,20 +62,6 @@ function injectChatgptHostedTools<
   }
 }
 
-const CODEX_UNSUPPORTED_FIELDS = new Set([
-  'max_output_tokens',
-  'temperature',
-  'top_p',
-])
-
-function stripCodexUnsupportedFields<T extends Record<string, unknown>>(
-  body: T,
-): T {
-  return Object.fromEntries(
-    Object.entries(body).filter(([key]) => !CODEX_UNSUPPORTED_FIELDS.has(key)),
-  ) as T
-}
-
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 const CODEX_API_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
 const OAUTH_PROVIDER_API_KEY = 'chatgpt-oauth'
@@ -146,37 +132,33 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       }
     }
 
-    const body = stripCodexUnsupportedFields(
-      this.adapter.buildRequest(
-        this.applyCustomModelParameters(model, {
-          ...formattedRequest,
-          stream: true,
-        }),
-      ),
+    const body = this.adapter.buildRequest(
+      this.applyCustomModelParameters(model, {
+        ...formattedRequest,
+        stream: true,
+      }),
+      { profile: 'codex' },
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransport({
       mode: this.requestTransportMode,
       memoryKey: this.requestTransportMemoryKey,
       runBrowser: async () =>
-        this.generateResponseWithFallback(
+        this.generateResponseFromResponsesStream(
           this.browserClient,
           body,
-          formattedRequest,
           options,
         ),
       runObsidian: async () =>
-        this.generateResponseWithFallback(
+        this.generateResponseFromResponsesStream(
           this.obsidianClient,
           body,
-          formattedRequest,
           options,
         ),
       runNode: async () =>
-        this.generateResponseWithFallback(
+        this.generateResponseFromResponsesStream(
           this.nodeClient,
           body,
-          formattedRequest,
           options,
         ),
     })
@@ -201,10 +183,9 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       }
     }
 
-    const body = stripCodexUnsupportedFields(
-      this.adapter.buildRequest(
-        this.applyCustomModelParameters(model, formattedRequest),
-      ),
+    const body = this.adapter.buildRequest(
+      this.applyCustomModelParameters(model, formattedRequest),
+      { profile: 'codex' },
     ) as ResponseCreateParamsStreaming
 
     return runWithRequestTransportForStream({
@@ -212,26 +193,20 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
       memoryKey: this.requestTransportMemoryKey,
       signal: options?.signal,
       createBrowserStream: async (signal) =>
-        this.streamResponseWithFallback(
-          this.browserClient,
-          body,
-          formattedRequest,
-          { ...options, signal: signal ?? options?.signal },
-        ),
+        this.createResponsesStream(this.browserClient, body, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
       createObsidianStream: async (signal) =>
-        this.streamResponseWithFallback(
-          this.obsidianClient,
-          body,
-          formattedRequest,
-          { ...options, signal: signal ?? options?.signal },
-        ),
+        this.createResponsesStream(this.obsidianClient, body, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
       createNodeStream: async (signal) =>
-        this.streamResponseWithFallback(
-          this.nodeClient,
-          body,
-          formattedRequest,
-          { ...options, signal: signal ?? options?.signal },
-        ),
+        this.createResponsesStream(this.nodeClient, body, {
+          ...options,
+          signal: signal ?? options?.signal,
+        }),
     })
   }
 
@@ -296,10 +271,9 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     return input instanceof Request ? new Request(url, input) : url
   }
 
-  private async generateResponseWithFallback(
+  private async generateResponseFromResponsesStream(
     client: OpenAI,
     body: ResponseCreateParamsStreaming,
-    _request: LLMRequestNonStreaming,
     options?: LLMOptions,
   ): Promise<LLMResponseNonStreaming> {
     return this.collectResponseFromStream(
@@ -309,10 +283,9 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     )
   }
 
-  private async streamResponseWithFallback(
+  private async createResponsesStream(
     client: OpenAI,
     body: ResponseCreateParamsStreaming,
-    _request: LLMRequestStreaming,
     options?: LLMOptions,
   ): Promise<AsyncIterable<LLMResponseStreaming>> {
     return this.toStream(
