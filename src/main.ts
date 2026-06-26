@@ -14,7 +14,7 @@ import {
 import { ChatView } from './ChatView'
 import { InstallerUpdateRequiredModal } from './components/modals/InstallerUpdateRequiredModal'
 import { mountUpdateToast } from './components/UpdateToast'
-import { CHAT_VIEW_TYPE } from './constants'
+import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
 import { createAgentConversationPersistence } from './core/agent/conversationPersistence'
@@ -42,6 +42,12 @@ import {
 } from './core/background/backgroundActivityRegistry'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import {
+  type MockReplayController,
+  RUST_OWNERSHIP_MOCK_SCRIPT,
+  startMockReplay,
+} from './core/learning/mockEventReplay'
+import type { ProjectEventBus } from './core/learning/projectEventBus'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import { McpCoordinator } from './core/mcp/mcpCoordinator'
@@ -129,6 +135,7 @@ import { WriteAssistController } from './features/editor/write-assist/writeAssis
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { isUntitledConversationTitle } from './hooks/useChatHistory'
 import { Language, createTranslationFunction } from './i18n'
+import { LearningView } from './LearningView'
 import {
   YoloSettings,
   yoloSettingsSchema,
@@ -206,6 +213,10 @@ export default class YoloPlugin extends Plugin {
   private mcpCoordinator: McpCoordinator | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
+  // Learning Mode: bus + mock-replay controller. The bus is registered by
+  // LearningWorkspace on mount so commands (e.g. mock replay) can drive it.
+  private learningEventBus: ProjectEventBus | null = null
+  private learningMockController: MockReplayController | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -286,6 +297,58 @@ export default class YoloPlugin extends Plugin {
       this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
     }
     return this.chatLeafSessionManager
+  }
+
+  /**
+   * Registers (or clears) the active LearningView's ProjectEventBus. The
+   * workspace component calls this on mount / unmount so plugin-level
+   * commands (e.g. mock replay) can reach the bus that's currently driving
+   * the on-screen graph.
+   */
+  setLearningEventBus(bus: ProjectEventBus | null): void {
+    this.learningEventBus = bus
+    if (!bus && this.learningMockController) {
+      this.learningMockController.cancel()
+      this.learningMockController = null
+    }
+  }
+
+  /**
+   * Opens the LearningView in the main workspace (new tab). Activates an
+   * existing leaf if one is already open.
+   */
+  async openLearningView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
+    if (existing) {
+      this.app.workspace.revealLeaf(existing)
+      return
+    }
+    const leaf = this.app.workspace.getLeaf('tab')
+    await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
+    this.app.workspace.revealLeaf(leaf)
+  }
+
+  /**
+   * Drives the registered learning event bus with the pre-baked mock script.
+   * Cancels any prior replay first so repeated invocations always start
+   * fresh. No-op if no LearningView is open.
+   */
+  replayLearningMock(): void {
+    if (!this.learningEventBus) {
+      new Notice('请先打开学习模式面板')
+      return
+    }
+    if (this.learningMockController) {
+      this.learningMockController.cancel()
+      this.learningMockController = null
+    }
+    this.learningMockController = startMockReplay(
+      this.learningEventBus,
+      RUST_OWNERSHIP_MOCK_SCRIPT,
+    )
+    void this.learningMockController.done.then(() => {
+      this.learningMockController = null
+    })
   }
 
   private getModelListCacheKey(
@@ -1796,6 +1859,10 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
+    this.registerView(
+      LEARNING_VIEW_TYPE,
+      (leaf) => new LearningView(leaf, this),
+    )
     this.startWebviewSelectionBridge()
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
@@ -1816,6 +1883,9 @@ export default class YoloPlugin extends Plugin {
     // This creates an icon in the left ribbon.
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
+    })
+    this.addRibbonIcon('graduation-cap', '打开学习模式', () => {
+      void this.openLearningView()
     })
 
     this.setupBackgroundActivityStatusBar()
@@ -1878,6 +1948,24 @@ export default class YoloPlugin extends Plugin {
           openNewChat: true,
           forceNewLeaf: true,
         })
+      },
+    })
+
+    // Learning Mode: open the workspace, then a dev-only mock replay command
+    // for iterating on the knowledge-graph growth animation without a real
+    // agent running.
+    this.addCommand({
+      id: 'open-learning-mode',
+      name: '打开学习模式',
+      callback: () => {
+        void this.openLearningView()
+      },
+    })
+    this.addCommand({
+      id: 'replay-mock-learning-project',
+      name: '学习模式：回放示例知识图生成',
+      callback: () => {
+        this.replayLearningMock()
       },
     })
 

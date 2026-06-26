@@ -1,4 +1,4 @@
-/* @yolo-version: 1.5.12.5 */
+/* @yolo-version: 1.5.12.6 */
 
 /* Settings */
 
@@ -21028,6 +21028,142 @@ body.yolo-quick-ask-global-interaction * {
 .yolo-simple-select-wrapper > .yolo-simple-select__trigger {
   width: 100%;
   max-width: 100%;
+}
+
+/*
+ * Learning Mode styles — scaffold layer.
+ *
+ * These rules intentionally lean on Obsidian's theme variables so the panel
+ * inherits the host palette automatically. The KnowledgeGraph visual itself
+ * is a placeholder; the next iteration will introduce the real renderer (and
+ * its own component-local CSS).
+ */
+
+.yolo-learning-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+}
+
+.yolo-learning-workspace-toolbar {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-learning-workspace-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-learning-workspace-subtitle {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-learning-workspace-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.yolo-learning-workspace-projects {
+  padding: 0.5rem 1rem;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.yolo-learning-workspace-projects-label {
+  color: var(--text-faint);
+}
+
+.yolo-learning-workspace-project-chip {
+  padding: 0.1rem 0.5rem;
+  background-color: var(--background-secondary);
+  border-radius: 999px;
+}
+
+/* ─── Knowledge graph (placeholder) ────────────────────────────────── */
+
+.yolo-learning-graph-root {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.yolo-learning-graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.5rem 1rem;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-learning-graph-topic {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yolo-learning-graph-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yolo-learning-graph-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.yolo-learning-graph-empty {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.yolo-learning-graph-fallback-list {
+  position: relative;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 720px;
+  padding: 0 1.5rem;
+}
+
+.yolo-learning-graph-fallback-list li {
+  padding: 0.4rem 0.6rem;
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+  font-size: var(--font-ui-smaller);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.yolo-learning-graph-fallback-list li[data-focused='true'] {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 /* ============================================

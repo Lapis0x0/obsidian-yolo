@@ -23,6 +23,8 @@
 @import './panels/smart-space.css';
 @import './panels/quick-ask.css';
 
+@import './learning/workspace.css';
+
 @import './selection/selection-chat.css';
 @import './selection/pdf-selection.css';
 
