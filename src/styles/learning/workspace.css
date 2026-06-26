@@ -61,7 +61,7 @@
   border-radius: 999px;
 }
 
-/* ─── Knowledge graph (placeholder) ────────────────────────────────── */
+/* ─── Knowledge graph (layout shell; visuals live in knowledge-graph.css) ─ */
 
 .yolo-learning-graph-root {
   flex: 1 1 auto;
@@ -104,32 +104,4 @@
 .yolo-learning-graph-empty {
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
-}
-
-.yolo-learning-graph-fallback-list {
-  position: relative;
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.5rem;
-  width: 100%;
-  max-width: 720px;
-  padding: 0 1.5rem;
-}
-
-.yolo-learning-graph-fallback-list li {
-  padding: 0.4rem 0.6rem;
-  background-color: var(--background-secondary);
-  border-radius: 4px;
-  font-size: var(--font-ui-smaller);
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
-}
-
-.yolo-learning-graph-fallback-list li[data-focused='true'] {
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
 }

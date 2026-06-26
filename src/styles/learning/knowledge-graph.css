@@ -1,0 +1,166 @@
+/*
+ * Knowledge Graph — visual layer.
+ *
+ * Bound entirely to Obsidian theme variables so the graph follows the user's
+ * light/dark theme. Deliberately restrained to read like a calm relative of
+ * Obsidian's native Graph View: small filled circles, thin lines, quiet
+ * labels. No gradients, glows, shadows, or particle effects.
+ *
+ * Three node kinds form a hierarchy:
+ *   - topic   → the central learning subject (largest, accent-filled)
+ *   - chapter → an outline section (a larger hollow ring, always labeled)
+ *   - kp      → a knowledge point (small filled dot)
+ * Two edge kinds:
+ *   - hierarchy → topic→chapter→kp spine (faint, structural)
+ *   - relation  → prereq / related links between knowledge points
+ *
+ * Positions (cx/cy/x1…/r) are written imperatively by the rAF loop in
+ * KnowledgeGraph.tsx; this file only owns color, weight, and the enter/exit/
+ * focus motion.
+ */
+
+/* ── Nodes (shared) ─────────────────────────────────────────────────────── */
+
+.yolo-learning-graph-node {
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+.yolo-learning-graph-node-dot {
+  transition:
+    fill 200ms ease,
+    stroke 200ms ease;
+}
+
+/* Topic: the central anchor — largest, accent-filled. */
+.yolo-learning-graph-node[data-kind='topic'] .yolo-learning-graph-node-dot {
+  fill: var(--interactive-accent);
+}
+
+/* Chapter: a hollow ring, visually distinct from solid knowledge points. */
+.yolo-learning-graph-node[data-kind='chapter'] .yolo-learning-graph-node-dot {
+  fill: var(--background-primary);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+
+/* Knowledge point: a small solid dot. */
+.yolo-learning-graph-node[data-kind='kp'] .yolo-learning-graph-node-dot {
+  fill: var(--text-normal);
+}
+
+/* Focused knowledge point glows to the accent color while the agent works it. */
+.yolo-learning-graph-node[data-kind='kp'][data-focused='true']
+  .yolo-learning-graph-node-dot {
+  fill: var(--interactive-accent);
+}
+
+/* Fade-in + tiny scale-up for nodes introduced by a live event. Scaling uses
+ * fill-box so the circle grows about its own center, not the SVG origin. */
+.yolo-learning-graph-node[data-entering='true'] .yolo-learning-graph-node-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: yolo-learning-node-enter 300ms ease-out;
+}
+
+.yolo-learning-graph-node[data-entering='true']
+  .yolo-learning-graph-node-label {
+  animation: yolo-learning-label-enter 300ms ease-out;
+}
+
+/* Brief fade-out before the node is dropped from the model. */
+.yolo-learning-graph-node[data-exiting='true'] {
+  opacity: 0;
+}
+
+@keyframes yolo-learning-node-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes yolo-learning-label-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Labels ─────────────────────────────────────────────────────────────── */
+
+.yolo-learning-graph-node-label {
+  font-family: var(--font-interface);
+  pointer-events: none;
+  user-select: none;
+  transition:
+    opacity 200ms ease,
+    fill 200ms ease;
+}
+
+.yolo-learning-graph-node[data-kind='kp'] .yolo-learning-graph-node-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+
+.yolo-learning-graph-node[data-kind='kp'][data-focused='true']
+  .yolo-learning-graph-node-label {
+  fill: var(--text-normal);
+}
+
+/* Chapter / topic labels stay legible — they are the structural signposts. */
+.yolo-learning-graph-node[data-kind='chapter'] .yolo-learning-graph-node-label {
+  fill: var(--text-normal);
+  font-size: 12px;
+  font-weight: var(--font-semibold);
+}
+
+.yolo-learning-graph-node[data-kind='topic'] .yolo-learning-graph-node-label {
+  fill: var(--text-normal);
+  font-size: 13px;
+  font-weight: var(--font-bold);
+}
+
+/* When knowledge points are dense, fade non-focused kp labels (à la Obsidian
+ * Graph at low zoom). Chapter / topic labels remain visible. */
+.yolo-learning-graph-svg.is-dense
+  .yolo-learning-graph-node[data-kind='kp']
+  .yolo-learning-graph-node-label:not([data-focused='true']) {
+  opacity: 0;
+}
+
+/* ── Edges ──────────────────────────────────────────────────────────────── */
+
+.yolo-learning-graph-edge {
+  opacity: 1;
+  transition: opacity 240ms ease;
+}
+
+.yolo-learning-graph-edge[data-exiting='true'] {
+  opacity: 0;
+}
+
+.yolo-learning-graph-edge-half {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+}
+
+/* Hierarchy spine: quiet structural lines, like a faint outline. */
+.yolo-learning-graph-edge[data-edge-kind='hierarchy']
+  .yolo-learning-graph-edge-half {
+  stroke: var(--background-modifier-border);
+  stroke-width: 1;
+}
+
+/* Prerequisite links read a touch heavier so the dependency spine is legible. */
+.yolo-learning-graph-edge[data-edge-kind='relation'][data-type='prereq']
+  .yolo-learning-graph-edge-half {
+  stroke: var(--text-muted);
+  stroke-width: 1.4;
+}

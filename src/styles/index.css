@@ -24,6 +24,7 @@
 @import './panels/quick-ask.css';
 
 @import './learning/workspace.css';
+@import './learning/knowledge-graph.css';
 
 @import './selection/selection-chat.css';
 @import './selection/pdf-selection.css';
