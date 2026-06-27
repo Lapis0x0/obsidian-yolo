@@ -30,13 +30,13 @@ describe('listChatGPTOAuthModels', () => {
       accessToken: 'access-token',
       accountId: 'account-id',
       headers: { 'X-Custom': 'value' },
-      clientVersion: '1.5.12.7',
+      clientVersion: '1.5.12',
     })
 
     expect(models).toEqual(['gpt-5.3-codex-spark', 'gpt-5.5'])
     expect(requestUrlMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: 'https://chatgpt.com/backend-api/codex/models',
+        url: 'https://chatgpt.com/backend-api/codex/models?client_version=1.5.12',
         headers: expect.objectContaining({
           Accept: 'application/json',
           Authorization: 'Bearer access-token',
@@ -48,37 +48,57 @@ describe('listChatGPTOAuthModels', () => {
     )
   })
 
-  it('retries the same models endpoint with client_version after an empty response', async () => {
-    requestUrlMock
-      .mockResolvedValueOnce({
-        status: 200,
-        json: { data: [] },
-        text: '',
-      } as never)
-      .mockResolvedValueOnce({
-        status: 200,
-        json: { models: [{ slug: 'gpt-5.4' }] },
-        text: '',
-      } as never)
+  it('truncates 4-segment version to 3-segment semver', async () => {
+    requestUrlMock.mockResolvedValue({
+      status: 200,
+      json: { models: [{ slug: 'gpt-5.4' }] },
+      text: '',
+    } as never)
 
     const models = await listChatGPTOAuthModels({
-      baseUrl: 'https://chatgpt.com/backend-api/codex',
       accessToken: 'access-token',
-      clientVersion: '1.5.12.7 beta',
+      clientVersion: '1.5.12.8',
     })
 
     expect(models).toEqual(['gpt-5.4'])
-    expect(requestUrlMock).toHaveBeenNthCalledWith(
-      1,
+    expect(requestUrlMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: 'https://chatgpt.com/backend-api/codex/models',
+        url: 'https://chatgpt.com/backend-api/codex/models?client_version=1.5.12',
       }),
     )
-    expect(requestUrlMock).toHaveBeenNthCalledWith(
-      2,
+  })
+
+  it('passes 3-segment version unchanged', async () => {
+    requestUrlMock.mockResolvedValue({
+      status: 200,
+      json: { models: [{ slug: 'gpt-5.5' }] },
+      text: '',
+    } as never)
+
+    await listChatGPTOAuthModels({
+      accessToken: 'access-token',
+      clientVersion: '2.0.0',
+    })
+
+    expect(requestUrlMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: 'https://chatgpt.com/backend-api/codex/models?client_version=1.5.12.7%20beta',
+        url: 'https://chatgpt.com/backend-api/codex/models?client_version=2.0.0',
       }),
     )
+  })
+
+  it('throws when the endpoint returns an error', async () => {
+    requestUrlMock.mockResolvedValue({
+      status: 400,
+      json: { error: { message: 'Invalid client_version format' } },
+      text: '',
+    } as never)
+
+    await expect(
+      listChatGPTOAuthModels({
+        accessToken: 'access-token',
+        clientVersion: '1.0.0',
+      }),
+    ).rejects.toThrow('Failed to fetch models')
   })
 })

@@ -136,6 +136,126 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
     expect(request).not.toHaveProperty('top_p')
   })
 
+  describe('buildRequest reasoning passthrough', () => {
+    const minimalRequest = (overrides: Record<string, unknown> = {}) =>
+      ({
+        model: 'gpt-5.5',
+        stream: false,
+        messages: [{ role: 'user', content: 'Hello' }],
+        ...overrides,
+      }) as Parameters<typeof adapter.buildRequest>[0]
+
+    it('passes reasoning effort "none" through for default profile', () => {
+      const request = adapter.buildRequest(
+        minimalRequest({ reasoning: { effort: 'none', summary: 'auto' } }),
+      )
+
+      expect(request.reasoning).toEqual({ effort: 'none', summary: 'auto' })
+    })
+
+    it('passes reasoning effort "none" through for codex profile', () => {
+      const request = adapter.buildRequest(
+        minimalRequest({ reasoning: { effort: 'none', summary: 'auto' } }),
+        { profile: 'codex' },
+      )
+
+      expect(request.reasoning).toEqual({ effort: 'none', summary: 'auto' })
+    })
+
+    it('maps reasoning_effort shorthand to reasoning object with summary', () => {
+      const request = adapter.buildRequest(
+        minimalRequest({ reasoning_effort: 'medium' }),
+      )
+
+      expect(request.reasoning).toEqual({ effort: 'medium', summary: 'auto' })
+      expect(request.include).toEqual(['reasoning.encrypted_content'])
+    })
+
+    it.each(['low', 'medium', 'high'] as const)(
+      'passes reasoning effort "%s" through for both profiles',
+      (effort) => {
+        const defaultProfile = adapter.buildRequest(
+          minimalRequest({ reasoning: { effort } }),
+        )
+        const codexProfile = adapter.buildRequest(
+          minimalRequest({ reasoning: { effort } }),
+          { profile: 'codex' },
+        )
+
+        expect(defaultProfile.reasoning).toEqual({ effort })
+        expect(codexProfile.reasoning).toEqual({ effort })
+        expect(defaultProfile.include).toEqual(['reasoning.encrypted_content'])
+        expect(codexProfile.include).toEqual(['reasoning.encrypted_content'])
+      },
+    )
+
+    it('omits reasoning and include when no reasoning config is provided', () => {
+      const request = adapter.buildRequest(minimalRequest())
+
+      expect(request).not.toHaveProperty('reasoning')
+      expect(request).not.toHaveProperty('include')
+    })
+
+    it('sets include when reasoning_effort shorthand is "none"', () => {
+      const request = adapter.buildRequest(
+        minimalRequest({ reasoning_effort: 'none' }),
+      )
+
+      expect(request.reasoning).toEqual({ effort: 'none', summary: 'auto' })
+      expect(request.include).toEqual(['reasoning.encrypted_content'])
+    })
+  })
+
+  describe('buildRequest codex profile field stripping', () => {
+    const codexRequest = (overrides: Record<string, unknown> = {}) =>
+      adapter.buildRequest(
+        Object.assign(
+          {
+            model: 'gpt-5.5',
+            stream: true,
+            max_tokens: 256,
+            temperature: 0.7,
+            top_p: 0.9,
+            messages: [{ role: 'user' as const, content: 'Hello' }],
+          },
+          overrides,
+        ),
+        { profile: 'codex' },
+      )
+
+    it('strips max_output_tokens, temperature, top_p for codex profile', () => {
+      const request = codexRequest()
+
+      expect(request).not.toHaveProperty('max_output_tokens')
+      expect(request).not.toHaveProperty('temperature')
+      expect(request).not.toHaveProperty('top_p')
+    })
+
+    it('preserves max_output_tokens, temperature, top_p for default profile', () => {
+      const request = adapter.buildRequest({
+        model: 'gpt-5.5',
+        stream: true,
+        max_tokens: 256,
+        temperature: 0.7,
+        top_p: 0.9,
+        messages: [{ role: 'user', content: 'Hello' }],
+      })
+
+      expect(request.max_output_tokens).toBe(256)
+      expect(request.temperature).toBe(0.7)
+      expect(request.top_p).toBe(0.9)
+    })
+
+    it('does not strip reasoning fields for codex profile', () => {
+      const request = codexRequest({
+        reasoning: { effort: 'high', summary: 'auto' },
+      })
+
+      expect(request.reasoning).toEqual({ effort: 'high', summary: 'auto' })
+      expect(request.include).toEqual(['reasoning.encrypted_content'])
+    })
+  })
+
   it('parses non-streaming responses into chat completion shape', () => {
     const response = {
       id: 'resp_1',

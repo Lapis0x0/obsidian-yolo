@@ -30,25 +30,18 @@ const collectModelsFromJson = (json: unknown): string[] => {
   return buckets
 }
 
-const getModelUrlCandidates = (rawBaseUrl?: string): string[] => {
+const toSemver = (version: string): string => {
+  const parts = version.split('.')
+  return parts.length > 3 ? parts.slice(0, 3).join('.') : version
+}
+
+const getModelUrl = (rawBaseUrl?: string, clientVersion?: string): string => {
   const base = (rawBaseUrl?.trim() || DEFAULT_CODEX_BASE_URL).replace(
     /\/+$/,
     '',
   )
-  const baseWithoutVersion = base.replace(/\/v\d+$/, '')
-  return Array.from(
-    new Set([
-      `${base}/models`,
-      `${baseWithoutVersion}/models`,
-      `${base}/responses/models`,
-      `${baseWithoutVersion}/responses/models`,
-    ]),
-  )
-}
-
-const appendClientVersion = (url: string, clientVersion: string): string => {
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}client_version=${encodeURIComponent(clientVersion)}`
+  const ver = toSemver(clientVersion || '1.0.0')
+  return `${base}/models?client_version=${encodeURIComponent(ver)}`
 }
 
 const fetchModelsFromUrl = async (
@@ -87,29 +80,7 @@ export async function listChatGPTOAuthModels({
     ...(accountId ? { 'ChatGPT-Account-Id': accountId } : {}),
     ...(headers ?? {}),
   }
-  let lastErr: unknown = null
-
-  for (const url of getModelUrlCandidates(baseUrl)) {
-    try {
-      const models = await fetchModelsFromUrl(url, oauthHeaders)
-      return Array.from(new Set(models)).sort()
-    } catch (error) {
-      lastErr = error
-    }
-
-    try {
-      const models = await fetchModelsFromUrl(
-        appendClientVersion(url, clientVersion),
-        oauthHeaders,
-      )
-      return Array.from(new Set(models)).sort()
-    } catch (error) {
-      lastErr = error
-    }
-  }
-
-  if (lastErr instanceof Error) {
-    throw lastErr
-  }
-  throw new Error('Failed to fetch ChatGPT OAuth models from all endpoints')
+  const url = getModelUrl(baseUrl, clientVersion)
+  const models = await fetchModelsFromUrl(url, oauthHeaders)
+  return Array.from(new Set(models)).sort()
 }
