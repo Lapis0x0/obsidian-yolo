@@ -88,6 +88,11 @@ import {
   checkForUpdate,
   normalizePluginVersion,
 } from './core/update/updateChecker'
+import {
+  dismissUpdateVersion as resolveDismissedUpdateVersion,
+  isUpdateVersionMuted,
+  isUpdateVersionSoftDismissed,
+} from './core/update/updateDismissal'
 import { DatabaseManager } from './database/DatabaseManager'
 import { PGLiteAbortedException } from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
@@ -3010,17 +3015,23 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   isUpdateVersionSoftDismissed(version: string): boolean {
-    return this.settings.softDismissedUpdateVersion === version
+    return isUpdateVersionSoftDismissed(this.settings, version)
+  }
+
+  isUpdateVersionMuted(version: string): boolean {
+    return isUpdateVersionMuted(this.settings, version)
   }
 
   async dismissUpdateVersion(version: string): Promise<void> {
     await this.setSettings({
       ...this.settings,
-      softDismissedUpdateVersion: version,
+      ...resolveDismissedUpdateVersion(this.settings, version),
     })
     // setSettings can no-op (e.g. external settings conflict). Only hide the
     // toast when the dismissal state actually persisted, so the user can retry.
-    const persisted = this.isUpdateVersionSoftDismissed(version)
+    const persisted =
+      this.isUpdateVersionSoftDismissed(version) ||
+      this.isUpdateVersionMuted(version)
     if (persisted) {
       this.updateCheckResult = null
       this.notifyUpdateCheckListeners()
@@ -3035,6 +3046,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     void (async () => {
       const fetched = await checkForUpdate(this.manifest.version)
       if (fetched?.hasUpdate) {
+        if (this.isUpdateVersionMuted(fetched.latestVersion)) {
+          return
+        }
         this.updateCheckResult = fetched
         this.notifyUpdateCheckListeners()
         await this.refreshPluginUpdateStaging(fetched.latestVersion)
