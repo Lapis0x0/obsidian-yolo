@@ -1,31 +1,23 @@
-## 1.5.12.10 Chat Attachments & Agent Editing ✨
+## 1.5.12.11 Agent Toggle & Update UX ✨
 
-### 📎 Attachments
+### 🤖 Agent Mode
 
-- Plain text files (txt, md, csv, json, yaml, etc.) can now be dragged directly into the chat composer as attachments.
-
-### 💬 Chat & Agent
-
-- Agent messages with tool calls can now be edited as a full conversation turn, not just the final text reply.
+- YOLO is no longer a separate chat mode — it's now an independent toggle in Agent mode, so you can switch auto-approve on or off without changing modes.
 
 ### 🛠️ Fixes & UX
 
-- Fixed Agent skill configuration showing skills disabled in global capabilities — they no longer appear in individual Agent skill lists.
-- Improved drag-and-drop feedback on the chat input: external files now show a clear drop-ready state when dragged over the composer.
+- Update notifications now include a "Don't remind for this version" option, so you can permanently skip a release you don't want to upgrade to yet.
+- Fixed update prompts reappearing on every startup.
 
 ---
 
-## 1.5.12.10 聊天附件与 Agent 编辑 ✨
+## 1.5.12.11 Agent 开关与更新体验 ✨
 
-### 📎 附件
+### 🤖 Agent 模式
 
-- 支持将 txt、md、csv、json、yaml 等纯文本文件直接拖入聊天输入框作为附件。
-
-### 💬 对话与 Agent
-
-- 优化带有 tool call 的 Agent 消息编辑体验，现在支持编辑整轮 AI 对话内容。
+- YOLO 不再作为独立对话模式，改为 Agent 模式下的独立开关，可在不切换模式的情况下开启或关闭自动批准工具调用。
 
 ### 🛠️ 修复与体验
 
-- 修复 Agent 技能配置与全局能力不一致的问题：在全局能力中禁用的技能，现在不会再出现在单个 Agent 的技能配置列表中。
-- 优化输入框文件拖拽反馈，为聊天输入框增加外部文件拖入时的可投放状态。
+- 更新弹窗新增「当前版本不提示」，不想立刻升级时可永久跳过该版本提醒。
+- 修复了每次启动都会重复弹出更新提示的问题。
