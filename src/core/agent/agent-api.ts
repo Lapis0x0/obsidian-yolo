@@ -309,7 +309,8 @@ export async function resolveAgentApiRunInput({
   const mode = requestedMode === 'agent-full' ? 'agent' : requestedMode
   const chatModeRuntime = resolveChatModeRuntime({
     mode,
-    yoloEnabled: requestedMode === 'agent-full' ? true : (request.yolo ?? false),
+    yoloEnabled:
+      requestedMode === 'agent-full' ? true : (request.yolo ?? false),
     assistant,
     assistantEnabledToolNames,
   })
