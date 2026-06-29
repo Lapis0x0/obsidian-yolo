@@ -60,6 +60,7 @@ jest.mock('../../utils/chat/requestContextBuilder', () => ({
 
 import { TFile, TFolder } from 'obsidian'
 
+import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
 import type { ChatUserMessage } from '../../types/chat'
 import {
   ToolCallResponse,
@@ -224,6 +225,61 @@ describe('agent api helpers', () => {
     expect(
       narrowAllowedToolNames(undefined, ['server__search']),
     ).toBeUndefined()
+  })
+
+  it('maps legacy agent-full API mode to agent with YOLO enabled', async () => {
+    const resolveRuntimeMock = jest.mocked(resolveChatModeRuntime)
+    resolveRuntimeMock.mockClear()
+
+    await resolveAgentApiRunInput({
+      request: {
+        prompt: 'Run this',
+        mode: 'agent-full',
+      },
+      conversationId: 'conversation-1',
+      abortSignal: new AbortController().signal,
+      app: {
+        vault: {
+          getFileByPath: jest.fn(() => null),
+          getFolderByPath: jest.fn(() => null),
+        },
+      } as unknown as import('obsidian').App,
+      settings: {
+        currentAssistantId: 'assistant-1',
+        chatModelId: 'mock-model',
+        assistants: [
+          {
+            id: 'assistant-1',
+            modelId: 'mock-model',
+            enabledToolNames: [],
+          },
+        ],
+        providers: [{ id: 'mock-provider', apiType: 'openai' }],
+        mcp: {
+          enableToolDisclosure: false,
+        },
+        continuationOptions: {
+          primaryRequestTimeoutMs: 30000,
+          streamFallbackRecoveryEnabled: true,
+        },
+        skills: {},
+      } as any,
+      agentService: {
+        getSystemPromptSnapshotStore: jest.fn(() => null),
+        getPromptSourceWatcher: jest.fn(() => ({
+          getRevision: jest.fn(() => 1),
+          setWatchedPaths: jest.fn(),
+        })),
+      } as any,
+      mcpManager: {} as any,
+    })
+
+    expect(resolveRuntimeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'agent',
+        yoloEnabled: true,
+      }),
+    )
   })
 
   it('converts state snapshots into text deltas and completion events', () => {

@@ -52,9 +52,10 @@ describe('resolveChatModeRuntime', () => {
     expect(runtime.runtimeModePrompt).toBeUndefined()
   })
 
-  it('keeps agent tools but enables bypass in agent-full mode', () => {
+  it('enables bypass only when agent mode and YOLO are combined', () => {
     const runtime = resolveChatModeRuntime({
-      mode: 'agent-full',
+      mode: 'agent',
+      yoloEnabled: true,
       assistant,
       assistantEnabledToolNames,
     })
@@ -66,5 +67,16 @@ describe('resolveChatModeRuntime', () => {
     )
     expect(runtime.bypassToolApproval).toBe(true)
     expect(runtime.runtimeModePrompt).toBeUndefined()
+  })
+
+  it('ignores YOLO outside agent mode', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'ask',
+      yoloEnabled: true,
+      assistant,
+      assistantEnabledToolNames,
+    })
+
+    expect(runtime.bypassToolApproval).toBe(false)
   })
 })

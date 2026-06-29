@@ -1981,6 +1981,9 @@ export const it: TranslationKeys = {
     agentFull: 'Agent (YOLO)',
     agentFullDesc:
       'Approva automaticamente le chiamate agli strumenti per task complessi',
+    yolo: 'YOLO',
+    yoloDesc:
+      'Approva automaticamente le chiamate agli strumenti per task complessi',
     warning: {
       title: 'Conferma prima di abilitare la modalita Agent',
       description:

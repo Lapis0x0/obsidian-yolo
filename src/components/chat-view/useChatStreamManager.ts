@@ -81,6 +81,7 @@ type UseChatStreamManagerParams = {
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
+  yoloEnabled: boolean
   currentFileOverride?: TFile | null
   currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
   assistantIdOverride?: string
@@ -271,6 +272,7 @@ export function useChatStreamManager({
   conversationOverrides,
   modelId,
   chatMode,
+  yoloEnabled,
   currentFileOverride,
   currentFileViewState,
   assistantIdOverride,
@@ -514,6 +516,7 @@ export function useChatStreamManager({
       const chatModeRuntime = enableAutoContextCompactionTool(
         resolveChatModeRuntime({
           mode: chatMode,
+          yoloEnabled,
           assistant: selectedAssistant,
           assistantEnabledToolNames:
             getEnabledAssistantToolNames(selectedAssistant),
@@ -648,6 +651,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      yoloEnabled,
       currentConversationId,
       currentFileOverride,
       currentFileViewState,
@@ -763,6 +767,7 @@ export function useChatStreamManager({
         const chatModeRuntime = enableAutoContextCompactionTool(
           resolveChatModeRuntime({
             mode: chatMode,
+            yoloEnabled,
             assistant: selectedAssistant,
             assistantEnabledToolNames:
               getEnabledAssistantToolNames(selectedAssistant),
@@ -1036,6 +1041,7 @@ export function useChatStreamManager({
       const effectiveModel = resolvedClient.model
       const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
+        yoloEnabled,
         assistant: selectedAssistant,
         assistantEnabledToolNames:
           getEnabledAssistantToolNames(selectedAssistant),
@@ -1074,6 +1080,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      yoloEnabled,
       compaction,
       currentConversationId,
       currentFileOverride,

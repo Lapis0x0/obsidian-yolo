@@ -38,12 +38,18 @@ export type ChatModeRuntime = {
 
 export type ChatModeRuntimeInput = {
   mode: ChatMode
+  /**
+   * Auto-approve tool calls (YOLO). Orthogonal to `mode`; only takes effect in
+   * Agent mode.
+   */
+  yoloEnabled?: boolean
   assistant?: AssistantRuntimeOptions | null
   assistantEnabledToolNames: string[]
 }
 
 export function resolveChatModeRuntime({
   mode,
+  yoloEnabled = false,
   assistant,
   assistantEnabledToolNames,
 }: ChatModeRuntimeInput): ChatModeRuntime {
@@ -71,7 +77,7 @@ export function resolveChatModeRuntime({
     toolServerPreferences: isAgentMode
       ? assistant?.toolServerPreferences
       : undefined,
-    bypassToolApproval: mode === 'agent-full',
+    bypassToolApproval: isAgentMode && yoloEnabled,
     runtimeModePrompt: isAgentMode
       ? undefined
       : `<runtime_mode>

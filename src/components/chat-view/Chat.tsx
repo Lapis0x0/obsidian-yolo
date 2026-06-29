@@ -124,6 +124,7 @@ import {
   type ChatMode,
   isAgentChatMode,
   normalizeChatMode,
+  normalizeYoloEnabled,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
@@ -787,6 +788,7 @@ export type ChatRuntimeSnapshot = {
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
+  yoloEnabled: boolean
   reasoningLevel: ReasoningLevel
   conversationOverrides: ConversationOverrideSettings | null
 }
@@ -1200,6 +1202,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     const defaultMode = settings.chatOptions.chatMode ?? 'agent'
     return defaultMode
   })
+  const [yoloEnabled, setYoloEnabled] = useState<boolean>(() => {
+    if (seededRuntimeSnapshot) {
+      return seededRuntimeSnapshot.yoloEnabled
+    }
+    return settings.chatOptions.agentYoloEnabled ?? false
+  })
 
   const selectedAssistant = useMemo(() => {
     return (
@@ -1305,6 +1313,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         })
       } catch (error: unknown) {
         console.error('Failed to persist preferred chat mode', error)
+      }
+    },
+    [setSettings, settings],
+  )
+
+  const persistPreferredYolo = useCallback(
+    async (enabled: boolean) => {
+      if ((settings.chatOptions.agentYoloEnabled ?? false) === enabled) {
+        return
+      }
+
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            agentYoloEnabled: enabled,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to persist preferred YOLO state', error)
       }
     },
     [setSettings, settings],
@@ -1760,6 +1789,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
+    yoloEnabled,
     currentFileOverride,
     currentFileViewState: activeViewState,
     assistantIdOverride: conversationAssistantId,
@@ -2138,6 +2168,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const effectiveOverrides = {
           ...(conversationOverrides ?? {}),
           chatMode,
+          agentYoloEnabled: yoloEnabled,
         }
         await createOrUpdateConversation(
           currentConversationId,
@@ -2165,6 +2196,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       chatMode,
+      yoloEnabled,
       conversationModelId,
       conversationOverrides,
       createOrUpdateConversation,
@@ -2187,6 +2219,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const effectiveOverrides = {
           ...(conversationOverrides ?? {}),
           chatMode,
+          agentYoloEnabled: yoloEnabled,
         }
         await createOrUpdateConversationImmediately(
           currentConversationId,
@@ -2216,6 +2249,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       chatMode,
+      yoloEnabled,
       conversationModelId,
       conversationOverrides,
       createOrUpdateConversationImmediately,
@@ -2413,6 +2447,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const effectiveOverrides = {
         ...(conversationOverrides ?? {}),
         chatMode,
+        agentYoloEnabled: yoloEnabled,
       }
       await createOrUpdateConversationImmediately(
         currentConversationId,
@@ -2446,6 +2481,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [
     chatMessages,
     chatMode,
+    yoloEnabled,
     compactConversation,
     conversationModelId,
     conversationOverrides,
@@ -2567,6 +2603,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           settings.chatOptions.chatMode ?? 'agent',
         )
         setChatMode(loadedChatMode)
+        setYoloEnabled(
+          normalizeYoloEnabled(
+            conversation.overrides?.chatMode,
+            conversation.overrides?.agentYoloEnabled,
+            settings.chatOptions.agentYoloEnabled ?? false,
+          ),
+        )
         if (conversation.overrides) {
           conversationOverridesRef.current.set(
             conversationId,
@@ -2661,6 +2704,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settings.chatModelId,
       settings.currentAssistantId,
       settings.chatOptions.chatMode,
+      settings.chatOptions.agentYoloEnabled,
       settings.assistants,
       getReasoningLevelForModelId,
       normalizeAssistantGroupBoundaryMessageIds,
@@ -2714,6 +2758,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       conversationModelId,
       conversationAssistantId,
       chatMode,
+      yoloEnabled,
       reasoningLevel,
       conversationOverrides,
     })
@@ -2724,6 +2769,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     conversationModelId,
     conversationAssistantId,
     chatMode,
+    yoloEnabled,
     reasoningLevel,
     conversationOverrides,
   ])
@@ -2763,6 +2809,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setConversationOverrides(null)
     const defaultChatMode = chatMode
     setChatMode(defaultChatMode)
+    setYoloEnabled(yoloEnabled)
     const defaultConversationModelId =
       selectedAssistant?.modelId ?? settings.chatModelId
     conversationModelIdRef.current.set(newId, defaultConversationModelId)
@@ -2995,6 +3042,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         conversationOverrides ??
         null
       const nextChatMode = normalizeChatMode(nextOverrides?.chatMode, chatMode)
+      const nextYoloEnabled = normalizeYoloEnabled(
+        nextOverrides?.chatMode,
+        nextOverrides?.agentYoloEnabled,
+        yoloEnabled,
+      )
 
       const resolvedConversationModelId =
         conversationModelIdRef.current.get(currentConversationId) ??
@@ -3050,6 +3102,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       setChatMode(nextChatMode)
+      setYoloEnabled(nextYoloEnabled)
 
       setConversationAssistantId(conversationAssistantId)
       conversationAssistantIdRef.current.set(
@@ -3087,6 +3140,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           {
             ...(nextOverrides ?? {}),
             chatMode: nextChatMode,
+            agentYoloEnabled: nextYoloEnabled,
           },
           resolvedConversationModelId,
           serializeMessageModelMap(nextMessages, nextMessageModelMap),
@@ -3108,6 +3162,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [
       chatList,
       chatMode,
+      yoloEnabled,
       conversationAssistantId,
       conversationModelId,
       conversationOverrides,
@@ -3518,6 +3573,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         {
           ...(conversationOverrides ?? {}),
           chatMode,
+          agentYoloEnabled: yoloEnabled,
         },
         conversationModelId,
         serializeMessageModelMap(
@@ -3571,6 +3627,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       effectiveCompactionState,
       generateConversationTitle,
       chatMode,
+      yoloEnabled,
       messageModelMap,
       normalizeAssistantGroupBoundaryMessageIds,
       reasoningLevel,
@@ -4980,14 +5037,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationId],
   )
 
-  const handleChatModeChange = useCallback(
-    (nextMode: ChatMode) => {
-      const resolvedMode = nextMode
+  const applyYoloChange = useCallback(
+    (enabled: boolean) => {
+      setYoloEnabled(enabled)
+      setConversationOverrides((prev) => ({
+        ...(prev ?? {}),
+        agentYoloEnabled: enabled,
+      }))
+      conversationOverridesRef.current.set(currentConversationId, {
+        ...(conversationOverridesRef.current.get(currentConversationId) ?? {}),
+        agentYoloEnabled: enabled,
+      })
+    },
+    [currentConversationId],
+  )
 
-      if (
-        resolvedMode === 'agent-full' &&
-        !settings.chatOptions.fullAccessWarningConfirmed
-      ) {
+  const handleYoloChange = useCallback(
+    (enabled: boolean) => {
+      if (enabled && !settings.chatOptions.fullAccessWarningConfirmed) {
         new AgentModeWarningModal(app, {
           title: t(
             'chatMode.fullAccessWarning.title',
@@ -5021,20 +5088,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'Continue with YOLO Mode',
           ),
           onConfirm: () => {
-            applyChatModeChange('agent-full')
-            void persistPreferredChatMode('agent-full')
+            applyYoloChange(true)
             void (async () => {
               try {
                 await setSettings({
                   ...settings,
                   chatOptions: {
                     ...settings.chatOptions,
+                    agentYoloEnabled: true,
                     fullAccessWarningConfirmed: true,
                   },
                 })
               } catch (error: unknown) {
                 console.error(
-                  'Failed to persist full access warning confirmation',
+                  'Failed to persist YOLO preference and warning confirmation',
                   error,
                 )
               }
@@ -5043,6 +5110,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }).open()
         return
       }
+
+      applyYoloChange(enabled)
+      void persistPreferredYolo(enabled)
+    },
+    [app, applyYoloChange, persistPreferredYolo, setSettings, settings, t],
+  )
+
+  const handleChatModeChange = useCallback(
+    (nextMode: ChatMode) => {
+      const resolvedMode = nextMode
 
       if (
         resolvedMode === 'agent' &&
@@ -5720,6 +5797,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ) : (
         <ChatConversationPane
           chatMode={chatMode}
+          yoloEnabled={yoloEnabled}
           groupedChatMessagesLength={groupedChatMessages.length}
           isCurrentConversationRunActive={isCurrentConversationRunActive}
           isAutoFollowEnabled={isAutoFollowEnabled}
@@ -6115,6 +6193,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   onSelectChatModeForConversation={handleChatModeChange}
                   chatMode={chatMode}
                   onChatModeChange={handleChatModeChange}
+                  yoloEnabled={yoloEnabled}
+                  onYoloChange={handleYoloChange}
                   allowAgentModeOption={true}
                   enableResize
                   onRunSlashCommand={(command) => {

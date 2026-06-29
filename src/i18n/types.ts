@@ -1789,6 +1789,8 @@ export type TranslationKeys = {
     agentDesc?: string
     agentFull?: string
     agentFullDesc?: string
+    yolo?: string
+    yoloDesc?: string
     warning?: {
       title?: string
       description?: string

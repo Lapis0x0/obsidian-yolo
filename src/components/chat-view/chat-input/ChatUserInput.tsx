@@ -128,6 +128,8 @@ export type ChatUserInputProps = {
   onSelectChatModeForConversation?: (mode: ChatMode) => void
   chatMode?: ChatMode
   onChatModeChange?: (mode: ChatMode) => void
+  yoloEnabled?: boolean
+  onYoloChange?: (enabled: boolean) => void
   controlLayout?: ChatUserInputControlLayout
   onControlPopoverOpenChange?: (isOpen: boolean) => void
   allowAgentModeOption?: boolean
@@ -202,6 +204,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onSelectChatModeForConversation,
       chatMode,
       onChatModeChange,
+      yoloEnabled = false,
+      onYoloChange,
       controlLayout = 'composer-toolbar',
       onControlPopoverOpenChange,
       allowAgentModeOption = true,
@@ -1525,6 +1529,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         <ChatModeSelect
           mode={chatMode}
           onChange={onChatModeChange}
+          yoloEnabled={yoloEnabled}
+          onYoloChange={onYoloChange ?? (() => {})}
           side="top"
           sideOffset={8}
         />

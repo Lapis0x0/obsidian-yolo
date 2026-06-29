@@ -18,7 +18,6 @@ import {
   FileIcon,
   FileText,
   FolderClosedIcon,
-  Infinity as InfinityIcon,
   MessageSquare,
 } from 'lucide-react'
 import {
@@ -321,12 +320,7 @@ function MentionsTypeaheadMenuItem({
     )
   } else if (option.payload.kind === 'mode') {
     iconNode =
-      option.payload.mode === 'agent-full' ? (
-        <InfinityIcon
-          size={14}
-          className="yolo-smart-space-mention-option-icon"
-        />
-      ) : option.payload.mode === 'agent' ? (
+      option.payload.mode === 'agent' ? (
         <Bot size={14} className="yolo-smart-space-mention-option-icon" />
       ) : (
         <MessageSquare
@@ -619,20 +613,13 @@ export default function NewMentionsPlugin({
         return modeOptions
           .map((mode) => {
             const label =
-              mode === 'agent-full'
-                ? t('chatMode.agentFull', 'Agent (YOLO)')
-                : mode === 'agent'
-                  ? t('chatMode.agent', 'Agent')
-                  : t('chatMode.ask', 'Ask')
+              mode === 'agent'
+                ? t('chatMode.agent', 'Agent')
+                : t('chatMode.ask', 'Ask')
             const subtitle =
-              mode === 'agent-full'
-                ? t(
-                    'chatMode.agentFullDesc',
-                    'Auto-approve tool calls for complex tasks',
-                  )
-                : mode === 'agent'
-                  ? t('chatMode.agentDesc', 'Enable tool calling capabilities')
-                  : t('chatMode.askDesc', 'Ask, refine, create')
+              mode === 'agent'
+                ? t('chatMode.agentDesc', 'Enable tool calling capabilities')
+                : t('chatMode.askDesc', 'Ask, refine, create')
             return { mode, label, subtitle }
           })
           .filter((option) => {

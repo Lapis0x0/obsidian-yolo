@@ -1944,6 +1944,8 @@ export const zh: TranslationKeys = {
     agentDesc: '启用工具链，处理多步骤任务',
     agentFull: 'Agent（YOLO）',
     agentFullDesc: '自动放行工具调用，适合复杂任务',
+    yolo: 'YOLO',
+    yoloDesc: '自动放行工具调用，适合复杂任务',
     warning: {
       title: '⚠️ Agent 模式风险提示',
       description:

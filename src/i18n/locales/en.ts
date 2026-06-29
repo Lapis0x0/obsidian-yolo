@@ -2083,6 +2083,8 @@ export const en: TranslationKeys = {
     agentDesc: 'Tools for complex tasks',
     agentFull: 'Agent (YOLO)',
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
+    yolo: 'YOLO',
+    yoloDesc: 'Auto-approve tool calls for complex tasks',
     warning: {
       title: 'Please confirm before enabling Agent mode',
       description:
