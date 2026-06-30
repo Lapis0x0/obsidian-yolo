@@ -390,6 +390,206 @@ describe('AgentService abort handling', () => {
   })
 })
 
+describe('AgentService streaming publish coalescing', () => {
+  const makeStreamingAssistantMessage = (
+    content: string,
+    options?: Partial<Extract<ChatMessage, { role: 'assistant' }>>,
+  ): ChatMessage => ({
+    role: 'assistant',
+    id: 'assistant-streaming',
+    content,
+    reasoning: options?.reasoning,
+    metadata: {
+      generationState: 'streaming',
+      ...options?.metadata,
+    },
+    toolCallRequests: options?.toolCallRequests,
+    annotations: options?.annotations,
+  })
+
+  beforeEach(() => {
+    runtimeInstances.length = 0
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  it('coalesces streaming assistant display updates into one bounded frame publish', async () => {
+    const service = new AgentService()
+    const publishedStates: ChatMessage[][] = []
+    service.subscribe(
+      'conv-streaming-publish',
+      (state) => {
+        publishedStates.push(state.messages)
+      },
+      { emitCurrent: false },
+    )
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-streaming-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-streaming-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(publishedStates).toHaveLength(2)
+    const firstPublishedAssistant = publishedStates.at(-1)?.at(-1)
+
+    assistantMessage.content = 'ab'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    assistantMessage.content = 'abc'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(publishedStates).toHaveLength(2)
+    expect(firstPublishedAssistant).toMatchObject({
+      role: 'assistant',
+      content: 'a',
+    })
+
+    jest.advanceTimersByTime(16)
+
+    expect(publishedStates).toHaveLength(3)
+    expect(publishedStates.at(-1)?.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: 'abc',
+    })
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('publishes tool call request changes immediately and cancels pending streaming publish', async () => {
+    const service = new AgentService()
+    const subscriber = jest.fn()
+    service.subscribe('conv-tool-request-publish', subscriber, {
+      emitCurrent: false,
+    })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-tool-request-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-tool-request-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    assistantMessage.content = 'ab'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    assistantMessage.toolCallRequests = [
+      {
+        id: 'call-1',
+        name: 'local:fs_read',
+        arguments: { kind: 'complete', value: {} },
+      },
+    ]
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(3)
+
+    jest.advanceTimersByTime(16)
+    expect(subscriber).toHaveBeenCalledTimes(3)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('publishes completion immediately and cancels pending streaming publish', async () => {
+    const service = new AgentService()
+    const subscriber = jest.fn()
+    service.subscribe('conv-complete-publish', subscriber, {
+      emitCurrent: false,
+    })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-complete-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-complete-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('a')])
+    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('ab')])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    runtime.resolveRun()
+    await runPromise
+
+    const callsAfterCompletion = subscriber.mock.calls.length
+    expect(callsAfterCompletion).toBeGreaterThanOrEqual(3)
+
+    jest.advanceTimersByTime(16)
+    expect(subscriber).toHaveBeenCalledTimes(callsAfterCompletion)
+  })
+
+  it('publishes abort immediately and cancels pending streaming publish', async () => {
+    const service = new AgentService()
+    const subscriber = jest.fn()
+    service.subscribe('conv-abort-publish', subscriber, { emitCurrent: false })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-abort-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-abort-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    assistantMessage.content = 'ab'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    expect(service.abortConversation('conv-abort-publish')).toBe(true)
+    expect(subscriber).toHaveBeenCalledTimes(3)
+    expect(subscriber.mock.calls.at(-1)?.[0]).toMatchObject({
+      status: 'aborted',
+    })
+
+    jest.advanceTimersByTime(16)
+    expect(subscriber).toHaveBeenCalledTimes(3)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+})
+
 const makeUserMessage = (id: string, text: string): ChatUserMessage => ({
   role: 'user',
   id,
