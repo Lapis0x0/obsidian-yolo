@@ -1948,6 +1948,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
       model,
       conversationId: 'conv-no-skills',
       hasTools: true,
+      systemPromptSnapshotMode: 'create',
     })
 
     const systemContent = getSystemContent(messages)
