@@ -226,6 +226,7 @@ export default class YoloPlugin extends Plugin {
   private backgroundStatusPanelEmpty: HTMLElement | null = null
   private latestBackgroundActivities = new Map<string, BackgroundActivity>()
   private backgroundStatusPanelRenderVersion = 0
+  private isUnloaded = false
   private backgroundStatusPanelItems = new Map<
     string,
     {
@@ -456,18 +457,26 @@ export default class YoloPlugin extends Plugin {
   async getPGliteRuntimeManager(): Promise<PGliteRuntimeManager> {
     if (!this.pgliteRuntimeManager) {
       this.pgliteRuntimeManagerInitPromise ??= (async () => {
-        const { PGliteRuntimeManager } = await import(
-          './database/runtime/PGliteRuntimeManager'
-        )
-        this.pgliteRuntimeManager = new PGliteRuntimeManager({
-          app: this.app,
-          pluginId: this.manifest.id,
-          pluginDir: this.manifest.dir
-            ? normalizePath(this.manifest.dir)
-            : undefined,
-          runtimeVersion: PGLITE_RUNTIME_VERSION,
-        })
-        return this.pgliteRuntimeManager
+        try {
+          const { PGliteRuntimeManager } = await import(
+            './database/runtime/PGliteRuntimeManager'
+          )
+          if (this.isUnloaded) {
+            throw new Error('[YOLO] Plugin unloaded during PGlite warmup')
+          }
+          this.pgliteRuntimeManager = new PGliteRuntimeManager({
+            app: this.app,
+            pluginId: this.manifest.id,
+            pluginDir: this.manifest.dir
+              ? normalizePath(this.manifest.dir)
+              : undefined,
+            runtimeVersion: PGLITE_RUNTIME_VERSION,
+          })
+          return this.pgliteRuntimeManager
+        } catch (error) {
+          this.pgliteRuntimeManagerInitPromise = null
+          throw error
+        }
       })()
     }
 
@@ -983,32 +992,40 @@ export default class YoloPlugin extends Plugin {
   async warmupAgentService(): Promise<AgentService> {
     if (!this.agentServiceReady) {
       this.agentServiceReady = (async () => {
-        const { AgentService } = await import('./core/agent/service')
-        const { YoloAgentApiService } = await import('./core/agent/agent-api')
-        const { createAgentConversationPersistence } = await import(
-          './core/agent/conversationPersistence'
-        )
-        const { persistConversationMessages } =
-          createAgentConversationPersistence(this.app, () => this.settings)
-        const service = new AgentService({
-          getSettings: () => this.settings,
-          persistConversationMessages,
-        })
-        const watcher = service.getPromptSourceWatcher()
-        const h = watcher.buildVaultHandlers()
-        this.registerEvent(this.app.vault.on('create', h.create))
-        this.registerEvent(this.app.vault.on('modify', h.modify))
-        this.registerEvent(this.app.vault.on('delete', h.delete))
-        this.registerEvent(this.app.vault.on('rename', h.rename))
-        service.startBackgroundTaskResultListener()
-        this.agentService = service
-        this.agentApiService = new YoloAgentApiService({
-          app: this.app,
-          getSettings: () => this.settings,
-          getAgentService: () => this.getAgentService(),
-          getMcpManager: () => this.getMcpManager(),
-        })
-        return service
+        try {
+          const { AgentService } = await import('./core/agent/service')
+          const { YoloAgentApiService } = await import('./core/agent/agent-api')
+          const { createAgentConversationPersistence } = await import(
+            './core/agent/conversationPersistence'
+          )
+          if (this.isUnloaded) {
+            throw new Error('[YOLO] Plugin unloaded during agent warmup')
+          }
+          const { persistConversationMessages } =
+            createAgentConversationPersistence(this.app, () => this.settings)
+          const service = new AgentService({
+            getSettings: () => this.settings,
+            persistConversationMessages,
+          })
+          const watcher = service.getPromptSourceWatcher()
+          const h = watcher.buildVaultHandlers()
+          this.registerEvent(this.app.vault.on('create', h.create))
+          this.registerEvent(this.app.vault.on('modify', h.modify))
+          this.registerEvent(this.app.vault.on('delete', h.delete))
+          this.registerEvent(this.app.vault.on('rename', h.rename))
+          service.startBackgroundTaskResultListener()
+          this.agentService = service
+          this.agentApiService = new YoloAgentApiService({
+            app: this.app,
+            getSettings: () => this.settings,
+            getAgentService: () => this.getAgentService(),
+            getMcpManager: () => this.getMcpManager(),
+          })
+          return service
+        } catch (error) {
+          this.agentServiceReady = null
+          throw error
+        }
       })()
     }
     return this.agentServiceReady
@@ -1132,16 +1149,20 @@ export default class YoloPlugin extends Plugin {
       })
     let isActive = true
     let unsubscribeAgentSummaries: (() => void) | null = null
-    void this.warmupAgentService().then((agentService) => {
-      if (!isActive) {
-        return
-      }
-      unsubscribeAgentSummaries = agentService.subscribeToRunSummaries(
-        (summaries) => {
-          this.syncAgentBackgroundActivities(summaries)
-        },
-      )
-    })
+    void this.warmupAgentService()
+      .then((agentService) => {
+        if (!isActive) {
+          return
+        }
+        unsubscribeAgentSummaries = agentService.subscribeToRunSummaries(
+          (summaries) => {
+            this.syncAgentBackgroundActivities(summaries)
+          },
+        )
+      })
+      .catch((error: unknown) => {
+        console.error('[YOLO] Agent service warmup failed:', error)
+      })
     this.register(() => {
       isActive = false
       unsubscribeActivities()
@@ -1794,11 +1815,13 @@ export default class YoloPlugin extends Plugin {
   }
 
   async onload() {
+    this.isUnloaded = false
     ensureBufferByteLengthCompat()
     clearRequestTransportMemory()
 
     await this.loadSettings()
     await loadLocale(this.resolveObsidianLanguage())
+    this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
     this.warnIfInstallationIncomplete()
     this.syncOAuthRuntimesFromSettings()
@@ -1875,11 +1898,15 @@ export default class YoloPlugin extends Plugin {
     // check at load time rather than waiting for a chat view to open.
     this.checkForUpdateOnce()
     let shouldStartAgentNotifications = true
-    void this.warmupAgentService().then(() => {
-      if (shouldStartAgentNotifications) {
-        this.getAgentNotificationCoordinator().start()
-      }
-    })
+    void this.warmupAgentService()
+      .then(() => {
+        if (shouldStartAgentNotifications) {
+          this.getAgentNotificationCoordinator().start()
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('[YOLO] Agent service warmup failed:', error)
+      })
     this.register(() => {
       shouldStartAgentNotifications = false
       this.agentNotificationCoordinator?.stop()
@@ -2153,10 +2180,15 @@ export default class YoloPlugin extends Plugin {
       id: 'export-settings',
       name: this.t('commands.exportSettings', '导出插件配置'),
       callback: async () => {
-        const { ExportConfigModal } = await import(
-          './features/config-transfer/components/ExportConfigModal'
-        )
-        new ExportConfigModal(this.app, this).open()
+        try {
+          const { ExportConfigModal } = await import(
+            './features/config-transfer/components/ExportConfigModal'
+          )
+          new ExportConfigModal(this.app, this).open()
+        } catch (error) {
+          console.error('[YOLO] Failed to load ExportConfigModal:', error)
+          new Notice('Failed to open export dialog')
+        }
       },
     })
 
@@ -2164,10 +2196,15 @@ export default class YoloPlugin extends Plugin {
       id: 'import-settings',
       name: this.t('commands.importSettings', '导入插件配置'),
       callback: async () => {
-        const { ImportConfigModal } = await import(
-          './features/config-transfer/components/ImportConfigModal'
-        )
-        new ImportConfigModal(this.app, this).open()
+        try {
+          const { ImportConfigModal } = await import(
+            './features/config-transfer/components/ImportConfigModal'
+          )
+          new ImportConfigModal(this.app, this).open()
+        } catch (error) {
+          console.error('[YOLO] Failed to load ImportConfigModal:', error)
+          new Notice('Failed to open import dialog')
+        }
       },
     })
 
@@ -2218,6 +2255,7 @@ export default class YoloPlugin extends Plugin {
   }
 
   onunload() {
+    this.isUnloaded = true
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
     this.closeSmartSpace()

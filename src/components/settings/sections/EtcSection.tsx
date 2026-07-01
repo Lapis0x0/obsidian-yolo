@@ -337,6 +337,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
             await manager.deleteChat(meta.id)
           }
           // Drop all frozen system prompts so no snapshot outlives its conversation.
+          await plugin.warmupAgentService()
           plugin.getAgentService().clearSystemPromptSnapshots()
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
