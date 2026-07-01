@@ -21,6 +21,25 @@ type MockRuntimeInstance = {
   getRunInput: () => AgentRuntimeRunInput | null
 }
 
+type AgentServiceInternals = {
+  conversationEntries: Map<string, unknown>
+  runEntriesByKey: Map<string, unknown>
+  foregroundToolAbortersByConversation: Map<string, unknown>
+  persistTimers: Map<string, unknown>
+  pendingScheduledConversationPublishes: Map<
+    string,
+    { rafId: number | null; timeoutId: ReturnType<typeof setTimeout> }
+  >
+  pendingBackgroundTaskResults: Map<string, unknown>
+  autoRunScheduled: Set<string>
+  pendingUserMessagesByKey: Map<string, unknown>
+  continuationScheduledByKey: Set<string>
+}
+
+const getAgentServiceInternals = (
+  service: AgentService,
+): AgentServiceInternals => service as unknown as AgentServiceInternals
+
 const runtimeInstances: MockRuntimeInstance[] = []
 
 jest.mock('./native-runtime', () => ({
@@ -701,6 +720,237 @@ const makeFailedSubagentTaskRecord = (): SubagentTaskRecord => {
     },
   }
 }
+
+describe('AgentService dropConversation', () => {
+  beforeEach(() => {
+    runtimeInstances.length = 0
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  it('drops in-memory conversation state without persisting a deleted empty state', () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const service = new AgentService({ persistConversationMessages })
+    const internals = getAgentServiceInternals(service)
+    const subscriber = jest.fn()
+    const stateFeedSubscriber = jest.fn()
+    const foregroundAbort = jest.fn()
+
+    service.subscribe('conv-drop', subscriber, { emitCurrent: false })
+    service.subscribeToConversationStates(stateFeedSubscriber, {
+      emitCurrent: false,
+    })
+    service.replaceConversationMessages('conv-drop', [
+      makeUserMessage('u1', 'hi'),
+    ])
+    service.registerForegroundToolAborter({
+      conversationId: 'conv-drop',
+      toolCallId: 'tool-call-1',
+      abort: foregroundAbort,
+    })
+
+    internals.pendingScheduledConversationPublishes.set('conv-drop', {
+      rafId: null,
+      timeoutId: setTimeout(() => undefined, 100),
+    })
+    internals.autoRunScheduled.add('conv-drop')
+    internals.pendingBackgroundTaskResults.set('conv-drop', [])
+    internals.pendingUserMessagesByKey.set('conv-drop::default', [
+      makeUserMessage('queued-1', 'queued'),
+    ])
+    internals.continuationScheduledByKey.add('conv-drop::default')
+
+    service.dropConversation('conv-drop')
+    service.dropConversation('conv-drop')
+
+    expect(foregroundAbort).toHaveBeenCalledTimes(1)
+    expect(subscriber.mock.calls.at(-1)?.[0]).toMatchObject({
+      conversationId: 'conv-drop',
+      status: 'aborted',
+      messages: [],
+    })
+    expect(stateFeedSubscriber.mock.calls.at(-1)?.[0]).toMatchObject({
+      conversationId: 'conv-drop',
+      status: 'aborted',
+      messages: [],
+    })
+    expect(internals.conversationEntries.has('conv-drop')).toBe(false)
+    expect(internals.persistTimers.has('conv-drop')).toBe(false)
+    expect(
+      internals.pendingScheduledConversationPublishes.has('conv-drop'),
+    ).toBe(false)
+    expect(internals.autoRunScheduled.has('conv-drop')).toBe(false)
+    expect(internals.pendingBackgroundTaskResults.has('conv-drop')).toBe(false)
+    expect(internals.pendingUserMessagesByKey.has('conv-drop::default')).toBe(
+      false,
+    )
+    expect(internals.continuationScheduledByKey.has('conv-drop::default')).toBe(
+      false,
+    )
+    expect(
+      internals.foregroundToolAbortersByConversation.has('conv-drop'),
+    ).toBe(false)
+
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).not.toHaveBeenCalled()
+  })
+
+  it('does not let stale reads, subscriptions, or writes recreate a dropped conversation', async () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const service = new AgentService({ persistConversationMessages })
+    const internals = getAgentServiceInternals(service)
+
+    service.replaceConversationMessages('conv-no-revive', [
+      makeUserMessage('u1', 'hi'),
+    ])
+    service.dropConversation('conv-no-revive')
+
+    expect(service.getState('conv-no-revive')).toMatchObject({
+      conversationId: 'conv-no-revive',
+      status: 'aborted',
+      messages: [],
+    })
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+
+    const subscriber = jest.fn()
+    service.subscribe('conv-no-revive', subscriber)
+    expect(subscriber).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-no-revive',
+        status: 'aborted',
+        messages: [],
+      }),
+    )
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+
+    expect(service.getConversationRunSummary('conv-no-revive')).toMatchObject({
+      conversationId: 'conv-no-revive',
+      status: 'aborted',
+      isActive: false,
+    })
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+
+    service.replaceConversationMessages('conv-no-revive', [
+      makeUserMessage('u2', 'revive'),
+    ])
+    await service.run({
+      conversationId: 'conv-no-revive',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-no-revive', [
+        makeUserMessage('u3', 'run'),
+      ]),
+    })
+
+    expect(runtimeInstances).toHaveLength(0)
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).not.toHaveBeenCalled()
+  })
+
+  it('does not create a conversation entry when checking an unknown running state', () => {
+    const service = new AgentService()
+    const internals = getAgentServiceInternals(service)
+
+    expect(service.isRunning('conv-never-created')).toBe(false)
+    expect(internals.conversationEntries.has('conv-never-created')).toBe(false)
+  })
+
+  it('does not recreate a dropped conversation when an aborted run settles', async () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const abortToolCall = jest.fn()
+    const service = new AgentService({ persistConversationMessages })
+    const internals = getAgentServiceInternals(service)
+    const userMessage = makeUserMessage('u1', 'run')
+    const runPromise = service.run({
+      conversationId: 'conv-running-drop',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conv-running-drop',
+        messages: [userMessage],
+        mcpManager: { abortToolCall },
+      } as unknown as AgentRuntimeRunInput,
+    })
+    const runtime = runtimeInstances[0]
+
+    runtime.emitSnapshot([
+      userMessage,
+      makeToolMessage(ToolCallResponseStatus.Running, 'tool-call-running'),
+    ])
+    expect(
+      service.enqueueUserMessage(
+        'conv-running-drop',
+        makeUserMessage('queued-1', 'queued'),
+      ),
+    ).toBe('enqueued')
+
+    service.dropConversation('conv-running-drop')
+
+    expect(runtime.abort).toHaveBeenCalledTimes(1)
+    expect(abortToolCall).toHaveBeenCalledWith('tool-call-running')
+    expect(internals.conversationEntries.has('conv-running-drop')).toBe(false)
+    expect(internals.runEntriesByKey.has('conv-running-drop::default')).toBe(
+      false,
+    )
+    expect(
+      internals.pendingUserMessagesByKey.has('conv-running-drop::default'),
+    ).toBe(false)
+
+    runtime.resolveRun()
+    await runPromise
+
+    expect(internals.conversationEntries.has('conv-running-drop')).toBe(false)
+    expect(internals.runEntriesByKey.has('conv-running-drop::default')).toBe(
+      false,
+    )
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).not.toHaveBeenCalled()
+  })
+
+  it('ignores background subagent completions after a conversation was dropped', () => {
+    const service = new AgentService()
+    const internals = getAgentServiceInternals(service)
+    const record = {
+      ...makeFailedSubagentTaskRecord(),
+      conversationId: 'conv-background-drop',
+    }
+    subagentTaskRegistry.register(record)
+    service.startBackgroundTaskResultListener()
+
+    try {
+      service.dropConversation(record.conversationId)
+      backgroundTaskCompletionBus.pushCompleted({
+        kind: 'subagent',
+        taskId: record.taskId,
+        conversationId: record.conversationId,
+        record,
+      })
+
+      expect(internals.conversationEntries.has(record.conversationId)).toBe(
+        false,
+      )
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.liveTranscript,
+      ).toBeUndefined()
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.result?.transcript,
+      ).toBeUndefined()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
+  })
+})
 
 describe('AgentService main activity summary', () => {
   beforeEach(() => {

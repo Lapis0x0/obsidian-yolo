@@ -73,6 +73,17 @@ export type AgentConversationState = {
   errorMessage?: string
 }
 
+const createEmptyConversationState = (
+  conversationId: string,
+  status: AgentRunStatus = 'idle',
+): AgentConversationState => ({
+  conversationId,
+  status,
+  messages: [],
+  compaction: [],
+  pendingCompactionAnchorMessageId: null,
+})
+
 export type AgentConversationStateSubscriber = (
   state: AgentConversationState,
 ) => void
@@ -956,6 +967,7 @@ export class AgentService {
     string,
     PendingScheduledConversationPublish
   >()
+  private droppedConversationIds = new Set<string>()
   /** pending background task results per conversation (queued while streaming) */
   private pendingBackgroundTaskResults = new Map<
     string,
@@ -1008,6 +1020,53 @@ export class AgentService {
    */
   evictSystemPromptSnapshot(conversationId: string): void {
     this.systemPromptSnapshotStore.evict(conversationId)
+  }
+
+  dropConversation(conversationId: string): void {
+    this.droppedConversationIds.add(conversationId)
+    this.evictSystemPromptSnapshot(conversationId)
+    this.cancelScheduledConversationPublish(conversationId)
+    this.cancelPersistTimer(conversationId)
+
+    const entry = this.conversationEntries.get(conversationId)
+    const droppedState: AgentConversationState | null = entry
+      ? createEmptyConversationState(conversationId, 'aborted')
+      : null
+    const subscribers = entry ? [...entry.subscribers] : []
+
+    this.abortRegisteredForegroundToolAbortersForConversation(conversationId)
+    for (const runEntry of this.runEntriesForConversation(conversationId)) {
+      this.abortRuntimeToolCalls(runEntry)
+      runEntry.runtime?.abort()
+      this.runEntriesByKey.delete(getRunKey(conversationId, runEntry.branchId))
+    }
+
+    const runKeyPrefix = `${conversationId}::`
+    for (const key of [...this.pendingUserMessagesByKey.keys()]) {
+      if (key.startsWith(runKeyPrefix)) {
+        this.pendingUserMessagesByKey.delete(key)
+      }
+    }
+    for (const key of [...this.continuationScheduledByKey]) {
+      if (key.startsWith(runKeyPrefix)) {
+        this.continuationScheduledByKey.delete(key)
+      }
+    }
+
+    this.autoRunScheduled.delete(conversationId)
+    this.pendingBackgroundTaskResults.delete(conversationId)
+    this.conversationEntries.delete(conversationId)
+
+    if (droppedState) {
+      const state = this.cloneState(droppedState)
+      for (const subscriber of subscribers) {
+        subscriber(state)
+      }
+      for (const subscriber of this.stateFeedSubscribers) {
+        subscriber(state)
+      }
+    }
+    this.notifyRunSummarySubscribers()
   }
 
   /**
@@ -1131,6 +1190,10 @@ export class AgentService {
 
   private handleBackgroundTaskCompleted(event: BackgroundTaskEvent): void {
     const { conversationId } = event
+    if (this.droppedConversationIds.has(conversationId)) {
+      this.compactCompletedBackgroundTaskRecord(event)
+      return
+    }
     const isRunning = this.isRunning(conversationId)
     const autoRunPending = this.autoRunScheduled.has(conversationId)
 
@@ -1222,6 +1285,17 @@ export class AgentService {
     callback: AgentConversationStateSubscriber,
     options?: { emitCurrent?: boolean },
   ): () => void {
+    if (this.droppedConversationIds.has(conversationId)) {
+      if (options?.emitCurrent ?? true) {
+        callback(
+          this.cloneState(
+            createEmptyConversationState(conversationId, 'aborted'),
+          ),
+        )
+      }
+      return () => undefined
+    }
+
     const entry = this.getOrCreateConversationEntry(conversationId)
     entry.subscribers.add(callback)
 
@@ -1235,6 +1309,15 @@ export class AgentService {
   }
 
   getState(conversationId: string): AgentConversationState {
+    const entry = this.conversationEntries.get(conversationId)
+    if (entry) {
+      return this.cloneState(entry.state)
+    }
+    if (this.droppedConversationIds.has(conversationId)) {
+      return this.cloneState(
+        createEmptyConversationState(conversationId, 'aborted'),
+      )
+    }
     return this.cloneState(
       this.getOrCreateConversationEntry(conversationId).state,
     )
@@ -1243,7 +1326,11 @@ export class AgentService {
   getConversationRunSummary(
     conversationId: string,
   ): AgentConversationRunSummary {
-    const state = this.getOrCreateConversationEntry(conversationId).state
+    const state =
+      this.conversationEntries.get(conversationId)?.state ??
+      (this.droppedConversationIds.has(conversationId)
+        ? createEmptyConversationState(conversationId, 'aborted')
+        : this.getOrCreateConversationEntry(conversationId).state)
     return buildAgentConversationRunSummary(state)
   }
 
@@ -1290,9 +1377,8 @@ export class AgentService {
   }
 
   isRunning(conversationId: string): boolean {
-    return (
-      this.getOrCreateConversationEntry(conversationId).state.status ===
-      'running'
+    return this.runEntriesForConversation(conversationId).some(
+      (entry) => entry.state.status === 'running',
     )
   }
 
@@ -1331,6 +1417,9 @@ export class AgentService {
       reason?: AgentReplaceConversationMessagesReason
     },
   ): void {
+    if (this.droppedConversationIds.has(conversationId)) {
+      return
+    }
     const entry = this.getOrCreateConversationEntry(conversationId)
     if (typeof options?.persistState === 'boolean') {
       entry.persistState = options.persistState
@@ -1356,9 +1445,9 @@ export class AgentService {
     conversationId: string,
   ): SubagentParentContext | undefined {
     const recovery =
-      this.getOrCreateConversationEntry(
+      this.conversationEntries.get(
         conversationId,
-      ).pendingApprovalRecoveryContext
+      )?.pendingApprovalRecoveryContext
     if (!recovery) {
       return undefined
     }
@@ -1893,6 +1982,27 @@ export class AgentService {
     return aborted
   }
 
+  private abortRegisteredForegroundToolAbortersForConversation(
+    conversationId: string,
+  ): void {
+    const aborters =
+      this.foregroundToolAbortersByConversation.get(conversationId)
+    if (!aborters) {
+      return
+    }
+    this.foregroundToolAbortersByConversation.delete(conversationId)
+    for (const abort of aborters.values()) {
+      try {
+        abort()
+      } catch (error) {
+        console.warn('[YOLO] Failed to abort foreground tool call', {
+          conversationId,
+          error,
+        })
+      }
+    }
+  }
+
   private abortRuntimeToolCalls(runEntry: AgentRunEntry): void {
     const mcpManager = runEntry.lastRunInput?.mcpManager
     if (!mcpManager) {
@@ -1980,6 +2090,9 @@ export class AgentService {
     loopConfig: AgentRuntimeLoopConfig
     persistState?: boolean
   }): Promise<void> {
+    if (this.droppedConversationIds.has(conversationId)) {
+      return
+    }
     const conversationEntry = this.getOrCreateConversationEntry(conversationId)
     if (typeof persistState === 'boolean') {
       conversationEntry.persistState = persistState
@@ -2437,7 +2550,12 @@ export class AgentService {
       return
     }
 
-    const conversationEntry = this.getOrCreateConversationEntry(conversationId)
+    const conversationEntry = this.conversationEntries.get(conversationId)
+    if (!conversationEntry) {
+      this.autoRunScheduled.delete(conversationId)
+      this.pendingBackgroundTaskResults.delete(conversationId)
+      return
+    }
     if (runEntries.length > 0) {
       conversationEntry.baseMessages = [...conversationEntry.state.messages]
       const defaultBranchEntry =
@@ -2552,6 +2670,15 @@ export class AgentService {
     this.pendingScheduledConversationPublishes.delete(conversationId)
   }
 
+  private cancelPersistTimer(conversationId: string): void {
+    const timer = this.persistTimers.get(conversationId)
+    if (!timer) {
+      return
+    }
+    clearTimeout(timer)
+    this.persistTimers.delete(conversationId)
+  }
+
   private cloneState(state: AgentConversationState): AgentConversationState {
     return {
       conversationId: state.conversationId,
@@ -2595,11 +2722,7 @@ export class AgentService {
       return
     }
 
-    const existingTimer = this.persistTimers.get(state.conversationId)
-    if (existingTimer) {
-      clearTimeout(existingTimer)
-      this.persistTimers.delete(state.conversationId)
-    }
+    this.cancelPersistTimer(state.conversationId)
 
     const delayMs =
       state.status === 'completed' ||

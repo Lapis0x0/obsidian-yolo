@@ -385,7 +385,7 @@ export function useChatHistory(): UseChatHistory {
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await chatManager.deleteChat(id)
-      plugin.getAgentService().evictSystemPromptSnapshot(id)
+      plugin.getAgentService().dropConversation(id)
       emitChatHistoryUpdated()
       await fetchChatList()
     },
