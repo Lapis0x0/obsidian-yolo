@@ -193,14 +193,16 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     try {
       // Must stay lightweight: getStatus uses readCurrentFile (small JSON) +
       // hasAllRuntimeFiles (exists() only). Do NOT introduce readBinary / SHA here.
-      const result = await plugin.getPGliteRuntimeManager().getStatus()
+      const runtimeManager = await plugin.getPGliteRuntimeManager()
+      const result = await runtimeManager.getStatus()
       setPgliteResourceStatus(result)
     } catch (error: unknown) {
       console.error('Failed to inspect PGlite resources', error)
+      const runtimeManager = await plugin.getPGliteRuntimeManager()
       setPgliteResourceStatus({
         kind: 'failed',
         expectedVersion: PGLITE_RUNTIME_VERSION,
-        dir: plugin.getPGliteRuntimeManager().getRuntimeRootDir(),
+        dir: runtimeManager.getRuntimeRootDir(),
         checkedAt: Date.now(),
         reason: error instanceof Error ? error.message : String(error),
       })
@@ -587,7 +589,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
     void (async () => {
       try {
-        const runtimeManager = plugin.getPGliteRuntimeManager()
+        const runtimeManager = await plugin.getPGliteRuntimeManager()
         if (pgliteResourceStatus?.kind === 'ready') {
           new Notice(
             t(

@@ -125,6 +125,12 @@
   line-height: 1;
 }
 
+.yolo-settings-loading {
+  padding: var(--size-4-6) var(--size-4-4);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
 /* Settings: Embedding DB Manage */
 
 .yolo-settings-embedding-db-manage-root {
