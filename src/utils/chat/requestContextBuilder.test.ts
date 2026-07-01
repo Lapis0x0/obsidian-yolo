@@ -1936,6 +1936,27 @@ describe('RequestContextBuilder system prompt freezing', () => {
     memMock.mockResolvedValue({ global: null, assistant: null })
   })
 
+  it('does not include skill loading guidance in generic tool instructions', async () => {
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+
+    memMock.mockResolvedValue({ global: null, assistant: null })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-no-skills',
+      hasTools: true,
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain('You have access to tools')
+    expect(systemContent).not.toContain(
+      'If available skills are listed, use yolo_local__fs_read',
+    )
+  })
+
   it('refreshes the frozen prompt when on-demand tool availability changes', async () => {
     const store = new SystemPromptSnapshotStore()
     const builder = new RequestContextBuilder(makeApp(), baseSettings, {

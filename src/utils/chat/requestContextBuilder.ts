@@ -2078,7 +2078,6 @@ ${customInstruction}
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
 - Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
-- If available skills are listed, use yolo_local__fs_read on the listed path to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
       if (hasOnDemandTools) {
         section += `
