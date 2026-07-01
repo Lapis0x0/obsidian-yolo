@@ -2,9 +2,9 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import {
+  ChatAssistantMessage,
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
-  ChatAssistantMessage,
   ChatMessage,
   ChatSubagentResultMessage,
   ChatTerminalCommandResultMessage,
@@ -46,6 +46,7 @@ import {
   type SubagentRuntimeEntry,
   subagentRuntimeRegistry,
 } from './subagent/runtime-registry'
+import { subagentTaskRegistry } from './subagent/task-registry'
 import type { SubagentTaskRecord } from './subagent/types'
 import { SystemPromptSnapshotStore } from './systemPromptSnapshotStore'
 import {
@@ -221,7 +222,7 @@ function buildSubagentResultMessage(
     usage: result?.usage,
     prompt: result?.prompt ?? record.prompt,
     modelName: result?.modelName,
-    transcript: result?.transcript,
+    transcript: result?.transcript ?? record.liveTranscript,
     delegateAssistantMessageId:
       record.source.type === 'llm_tool_call'
         ? record.source.assistantMessageId
@@ -1154,6 +1155,7 @@ export class AgentService {
     entry.baseMessages = nextMessages
     entry.state = { ...entry.state, messages: nextMessages }
     this.notifyConversationSubscribers(conversationId)
+    this.compactCompletedBackgroundTaskRecord(event)
   }
 
   private buildBackgroundTaskResultMessage(
@@ -1188,7 +1190,19 @@ export class AgentService {
     entry.state = { ...entry.state, messages: nextMessages }
     this.notifyConversationSubscribers(conversationId)
 
+    for (const event of queue) {
+      this.compactCompletedBackgroundTaskRecord(event)
+    }
+
     return appended
+  }
+
+  private compactCompletedBackgroundTaskRecord(
+    event: BackgroundTaskEvent,
+  ): void {
+    if (event.kind === 'subagent') {
+      subagentTaskRegistry.compactCompleted(event.taskId)
+    }
   }
 
   hasPendingBackgroundTaskResults(conversationId: string): boolean {

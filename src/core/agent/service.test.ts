@@ -1,8 +1,11 @@
 import { ChatMessage, ChatUserMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
+import { backgroundTaskCompletionBus } from './background-task/completion-bus'
 import { AgentService } from './service'
 import { subagentRuntimeRegistry } from './subagent/runtime-registry'
+import { subagentTaskRegistry } from './subagent/task-registry'
+import type { SubagentTaskRecord } from './subagent/types'
 import { AgentRuntimeRunInput } from './types'
 
 type MockRuntimeInstance = {
@@ -661,6 +664,44 @@ const makeCompletedSubagentResultMessage = (): ChatMessage => ({
   delegateToolCallId: 'subagent-call-1',
 })
 
+const makeFailedSubagentTaskRecord = (): SubagentTaskRecord => {
+  const liveTranscript: ChatMessage[] = [
+    {
+      role: 'assistant',
+      id: 'subagent-assistant-1',
+      content: 'partial investigation before failure',
+    },
+  ]
+
+  return {
+    taskId: 'sub_failed_transcript_fallback',
+    conversationId: 'conv-subagent-failed',
+    source: {
+      type: 'llm_tool_call',
+      toolCallId: 'subagent-call-failed',
+      assistantMessageId: 'assistant-1',
+    },
+    title: 'Investigate failure',
+    status: 'failed',
+    createdAt: 1,
+    completedAt: 2,
+    prompt: 'Investigate failure',
+    liveTranscript,
+    activityLog: '[error] failed',
+    abortController: new AbortController(),
+    result: {
+      taskId: 'sub_failed_transcript_fallback',
+      status: 'failed',
+      content: 'failed',
+      activityLog: '[error] failed',
+      durationMs: 1,
+      toolUseCount: 0,
+      prompt: 'Investigate failure',
+      modelName: 'test-model',
+    },
+  }
+}
+
 describe('AgentService main activity summary', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
@@ -791,6 +832,41 @@ describe('AgentService main activity summary', () => {
     expect(service.abortConversationMainActivity('conv-tracker')).toBe(true)
     expect(abort).toHaveBeenCalledTimes(1)
     unregister()
+  })
+})
+
+describe('AgentService background subagent results', () => {
+  it('persists live transcript fallback before compacting completed registry records', () => {
+    const service = new AgentService()
+    const record = makeFailedSubagentTaskRecord()
+    subagentTaskRegistry.register(record)
+    service.startBackgroundTaskResultListener()
+
+    try {
+      backgroundTaskCompletionBus.pushCompleted({
+        kind: 'subagent',
+        taskId: record.taskId,
+        conversationId: record.conversationId,
+        record,
+      })
+
+      const subagentResult = service
+        .getState(record.conversationId)
+        .messages.find((message) => message.role === 'subagent_result')
+      expect(subagentResult).toMatchObject({
+        role: 'subagent_result',
+        taskId: record.taskId,
+        transcript: record.liveTranscript,
+      })
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.liveTranscript,
+      ).toBeUndefined()
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.result?.transcript,
+      ).toBeUndefined()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
   })
 })
 
