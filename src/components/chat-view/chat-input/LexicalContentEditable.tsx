@@ -11,7 +11,7 @@ import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
-import { RefObject, useCallback, useEffect, useState } from 'react'
+import { RefObject, memo, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
@@ -146,7 +146,7 @@ function SafeSetRootElementPatchPlugin() {
   return null
 }
 
-export default function LexicalContentEditable({
+function LexicalContentEditable({
   editorRef,
   contentEditableRef,
   onChange,
@@ -348,3 +348,5 @@ export default function LexicalContentEditable({
     </LexicalComposer>
   )
 }
+
+export default memo(LexicalContentEditable)

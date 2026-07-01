@@ -1,5 +1,6 @@
 import { Ban, Check, CircleAlert, Loader2 } from 'lucide-react'
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -185,6 +186,7 @@ export type AssistantToolMessageGroupItemProps = {
   conversationId: string
   conversationRunSummary?: AgentConversationRunSummary
   activeBranchKey?: string | null
+  sourceUserMessageId?: string | null
   suppressFooter?: boolean
   showInlineInfo?: boolean
   showRetryAction?: boolean
@@ -229,7 +231,10 @@ export type AssistantToolMessageGroupItemProps = {
   onDeleteGroup: (messageIds: string[]) => void
   onRetryGroup: (messageIds: string[]) => void
   onBranchGroup: (messageIds: string[]) => void
-  onActiveBranchChange?: (branchKey: string | null) => void
+  onActiveBranchChange?: (
+    sourceUserMessageId: string,
+    branchKey: string | null,
+  ) => void
   onQuoteAssistantSelection: (payload: {
     messageId: string
     conversationId: string
@@ -243,12 +248,13 @@ export type AssistantToolMessageGroupItemProps = {
   showRunningToolFooter?: boolean
 }
 
-export default function AssistantToolMessageGroupItem({
+function AssistantToolMessageGroupItem({
   messages,
   inlineInfoMessages,
   conversationId,
   conversationRunSummary,
   activeBranchKey: controlledActiveBranchKey,
+  sourceUserMessageId,
   suppressFooter = false,
   showInlineInfo = true,
   showRetryAction = false,
@@ -338,6 +344,15 @@ export default function AssistantToolMessageGroupItem({
     controlledActiveBranchKey ?? uncontrolledActiveBranchKey
   const resolvedActiveBranchKey =
     activeBranchKey ?? branchGroups[0]?.key ?? null
+  const emitActiveBranchChange = useCallback(
+    (branchKey: string | null) => {
+      if (!sourceUserMessageId) {
+        return
+      }
+      onActiveBranchChange?.(sourceUserMessageId, branchKey)
+    },
+    [onActiveBranchChange, sourceUserMessageId],
+  )
 
   const handleBranchSwitch = useCallback(
     (branchKey: string) => {
@@ -355,15 +370,15 @@ export default function AssistantToolMessageGroupItem({
         }
       }
       setUncontrolledActiveBranchKey(branchKey)
-      onActiveBranchChange?.(branchKey)
+      emitActiveBranchChange(branchKey)
     },
-    [onActiveBranchChange, resolvedActiveBranchKey],
+    [emitActiveBranchChange, resolvedActiveBranchKey],
   )
 
   useEffect(() => {
     if (!hasMultipleBranches) {
       setUncontrolledActiveBranchKey(null)
-      onActiveBranchChange?.(null)
+      emitActiveBranchChange(null)
       return
     }
     if (
@@ -378,8 +393,13 @@ export default function AssistantToolMessageGroupItem({
     const nextActiveBranchKey =
       firstCompletedBranch?.key ?? branchGroups[0]?.key ?? null
     setUncontrolledActiveBranchKey(nextActiveBranchKey)
-    onActiveBranchChange?.(nextActiveBranchKey)
-  }, [activeBranchKey, branchGroups, hasMultipleBranches, onActiveBranchChange])
+    emitActiveBranchChange(nextActiveBranchKey)
+  }, [
+    activeBranchKey,
+    branchGroups,
+    emitActiveBranchChange,
+    hasMultipleBranches,
+  ])
 
   const displayedMessages = useMemo(() => {
     const selectedMessages = !hasMultipleBranches
@@ -844,3 +864,5 @@ export default function AssistantToolMessageGroupItem({
     </div>
   )
 }
+
+export default memo(AssistantToolMessageGroupItem)
