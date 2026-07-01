@@ -19,15 +19,9 @@ function makeUserItem(id: string): ChatTimelineItem {
     id,
     renderKey: id,
     estimatedHeight: 80,
-    message: {
-      role: 'user',
-      id,
-      content: {},
-      mentionables: [],
-      reasoningLevel: 'none',
-      timestamp: 0,
-    },
-  } as unknown as ChatTimelineItem
+    messageId: id,
+    revision: 1,
+  }
 }
 
 function renderList(props: {
@@ -97,5 +91,13 @@ describe('ChatTimelineList windowed timeline', () => {
 
     expect(html).toContain('Load earlier messages')
     expect(html).toContain('Load newer messages')
+  })
+
+  it('uses messageId for user scroll anchors', () => {
+    const html = renderList({
+      items: [makeUserItem('user-anchor')],
+    })
+
+    expect(html).toContain('data-yolo-user-anchor-id="user-anchor"')
   })
 })

@@ -69,7 +69,6 @@ import {
   getMentionableKey,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { readTFileContent } from '../../../utils/obsidian'
@@ -84,6 +83,10 @@ import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-
 import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
+import {
+  useChatTimelineReadModel,
+  useStableChatTimelineItems,
+} from '../../chat-view/useChatTimelineReadModel'
 import { useAutoScroll } from '../../chat-view/useAutoScroll'
 import UserMessageItem from '../../chat-view/UserMessageItem'
 import { YoloDropdownContent } from '../../common/popover'
@@ -93,6 +96,25 @@ import { ModeSelect, QuickAskMode } from './ModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
 type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
+
+const quickAskRenderVersionObjectIds = new WeakMap<object, number>()
+let nextQuickAskRenderVersionObjectId = 1
+
+function getQuickAskRenderVersionObjectId(
+  value: object | null | undefined,
+): number {
+  if (!value) {
+    return 0
+  }
+  const existing = quickAskRenderVersionObjectIds.get(value)
+  if (existing !== undefined) {
+    return existing
+  }
+  const id = nextQuickAskRenderVersionObjectId
+  nextQuickAskRenderVersionObjectId += 1
+  quickAskRenderVersionObjectIds.set(value, id)
+  return id
+}
 
 function normalizeQuickAskVisibleMode(
   mode?: QuickAskLaunchMode | null,
@@ -1816,8 +1838,10 @@ export function QuickAskPanel({
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
   const isResizedEmptyState = !hasMessages && !!panelSize?.height
-  const groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[] =
-    useMemo(() => groupAssistantAndToolMessages(chatMessages), [chatMessages])
+  const chatTimelineReadModel = useChatTimelineReadModel({
+    messages: chatMessages,
+  })
+  const groupedChatMessages = chatTimelineReadModel.groupedChatMessages
   const activeStreamingMessageId = useMemo(() => {
     for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
       const message = chatMessages[index]
@@ -1835,11 +1859,20 @@ export function QuickAskPanel({
     () =>
       buildMessageTimelineItems({
         groupedChatMessages,
+        revisionsById: chatTimelineReadModel.revisionsById,
         activeEditableMessageId: focusedUserMessageId,
         activeStreamingMessageId,
         includeBottomAnchor: true,
       }),
-    [activeStreamingMessageId, focusedUserMessageId, groupedChatMessages],
+    [
+      activeStreamingMessageId,
+      chatTimelineReadModel.revisionsById,
+      focusedUserMessageId,
+      groupedChatMessages,
+    ],
+  )
+  const stableQuickAskTimelineItems = useStableChatTimelineItems(
+    quickAskTimelineItems,
   )
   const hideScrollbarWhileFollowing =
     isStreaming && isAutoFollowEnabled && hasMessages
@@ -1850,16 +1883,19 @@ export function QuickAskPanel({
     [hideScrollbarWhileFollowing],
   )
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
-    for (let index = quickAskTimelineItems.length - 1; index >= 0; index -= 1) {
-      const candidate = quickAskTimelineItems[index]
+    for (
+      let index = stableQuickAskTimelineItems.length - 1;
+      index >= 0;
+      index -= 1
+    ) {
+      const candidate = stableQuickAskTimelineItems[index]
       if (candidate.kind === 'assistant-group') {
         return candidate.renderKey
       }
     }
 
     return null
-  }, [quickAskTimelineItems])
-
+  }, [stableQuickAskTimelineItems])
   useLayoutEffect(() => {
     if (timelineIsVirtualized) {
       return
@@ -2081,9 +2117,19 @@ export function QuickAskPanel({
   const renderQuickAskTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
       if (timelineItem.kind === 'assistant-group') {
+        const messages = timelineItem.messageIds
+          .map((messageId) => chatTimelineReadModel.messagesById.get(messageId))
+          .filter(
+            (message): message is AssistantToolMessageGroup[number] =>
+              message !== undefined && message.role !== 'user',
+          )
+        if (messages.length === 0) {
+          return null
+        }
+
         return (
           <AssistantToolMessageGroupItem
-            messages={timelineItem.messages}
+            messages={messages}
             conversationId={conversationId}
             suppressFooter={
               isStreaming &&
@@ -2132,7 +2178,12 @@ export function QuickAskPanel({
       }
 
       if (timelineItem.kind === 'user-message') {
-        const messageOrGroup = timelineItem.message
+        const messageOrGroup = chatTimelineReadModel.messagesById.get(
+          timelineItem.messageId,
+        )
+        if (!messageOrGroup || messageOrGroup.role !== 'user') {
+          return null
+        }
         const groupedMessageIndex = groupedChatMessages.findIndex(
           (candidate) =>
             !Array.isArray(candidate) && candidate.id === messageOrGroup.id,
@@ -2256,6 +2307,7 @@ export function QuickAskPanel({
     },
     [
       activeApplyRequestKey,
+      chatTimelineReadModel.messagesById,
       conversationId,
       focusedUserMessageId,
       groupedChatMessages,
@@ -2274,6 +2326,59 @@ export function QuickAskPanel({
       settings,
       submitMessage,
       mode,
+    ],
+  )
+
+  const quickAskTimelineRenderVersion = useCallback(
+    (timelineItem: ChatTimelineItem): string => {
+      if (timelineItem.kind === 'assistant-group') {
+        return [
+          'assistant',
+          timelineItem.revision,
+          conversationId,
+          isStreaming &&
+            timelineItem.renderKey === latestTimelineAssistantToolGroupKey,
+          quickAskSurfacePreset.assistantActions.showInlineInfo,
+          quickAskSurfacePreset.assistantActions.showRetryAction,
+          quickAskSurfacePreset.assistantActions.showInsertAction,
+          quickAskSurfacePreset.assistantActions.showCopyAction,
+          quickAskSurfacePreset.assistantActions.showBranchAction,
+          quickAskSurfacePreset.assistantActions.showEditAction,
+          quickAskSurfacePreset.assistantActions.showDeleteAction,
+          quickAskSurfacePreset.assistantActions.showQuoteAction,
+          isApplying,
+          activeApplyRequestKey ?? '',
+        ].join('|')
+      }
+
+      if (timelineItem.kind === 'user-message') {
+        return [
+          'user',
+          timelineItem.revision,
+          focusedUserMessageId === timelineItem.messageId,
+          settings.continuationOptions?.continuationModelId ?? '',
+          settings.chatModelId,
+          getQuickAskRenderVersionObjectId(settings.chatModels),
+          selectedAssistant?.id ?? '',
+          mode,
+          quickAskSurfacePreset.userMessage.showReasoningSelect,
+          quickAskSurfacePreset.userMessage.allowAgentModeOption,
+        ].join('|')
+      }
+
+      return timelineItem.renderKey
+    },
+    [
+      activeApplyRequestKey,
+      conversationId,
+      focusedUserMessageId,
+      isApplying,
+      isStreaming,
+      latestTimelineAssistantToolGroupKey,
+      mode,
+      quickAskSurfacePreset,
+      selectedAssistant?.id,
+      settings,
     ],
   )
 
@@ -2362,17 +2467,20 @@ export function QuickAskPanel({
       {/* Chat area - only shown when there are messages */}
       {hasMessages && (
         <SharedConversationSurface
-          items={quickAskTimelineItems}
+          items={stableQuickAskTimelineItems}
           conversationId={conversationId}
           scrollContainerRef={chatAreaRef}
           onScrollContainerChange={setChatAreaElement}
           containerClassName={quickAskChatShellClassName}
           renderItem={renderQuickAskTimelineItem}
+          renderVersion={quickAskTimelineRenderVersion}
           forceRenderItemIds={['bottom-anchor']}
           followOutput={followOutput}
           onAtBottomStateChange={onAtBottomStateChange}
           virtualizationThreshold={
-            focusedUserMessageId ? quickAskTimelineItems.length : undefined
+            focusedUserMessageId
+              ? stableQuickAskTimelineItems.length
+              : undefined
           }
           onVirtualizationChange={setTimelineIsVirtualized}
           scrollContainerClassName={quickAskChatAreaClassName}

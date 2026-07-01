@@ -1,11 +1,6 @@
 import type { SerializedEditorState } from 'lexical'
 
-import type {
-  AssistantToolMessageGroup,
-  ChatConversationCompaction,
-  ChatSelectedSkill,
-  ChatUserMessage,
-} from './chat'
+import type { ChatConversationCompaction, ChatSelectedSkill } from './chat'
 import type { Mentionable } from './mentionable'
 
 export type UserMessageDisplaySnapshot = {
@@ -36,12 +31,15 @@ type ChatTimelineBaseItem = {
 
 export type ChatTimelineUserMessageItem = ChatTimelineBaseItem & {
   kind: 'user-message'
-  message: ChatUserMessage
+  messageId: string
+  revision: number
 }
 
 export type ChatTimelineAssistantGroupItem = ChatTimelineBaseItem & {
   kind: 'assistant-group'
-  messages: AssistantToolMessageGroup
+  groupId: string
+  messageIds: string[]
+  revision: number
 }
 
 export type ChatTimelineCompactionPendingItem = ChatTimelineBaseItem & {

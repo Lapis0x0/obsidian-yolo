@@ -18,6 +18,7 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
     index: number,
     context?: ChatTimelineRenderContext,
   ) => ReactNode
+  renderVersion?: unknown
   followOutput?: FollowOutput
   onAtBottomStateChange?: (atBottom: boolean) => void
   virtualizationThreshold?: number
@@ -55,6 +56,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
   scrollContainerRef,
   onScrollContainerChange,
   renderItem,
+  renderVersion,
   followOutput,
   onAtBottomStateChange,
   virtualizationThreshold,
@@ -88,6 +90,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
       scrollContainerRef={scrollContainerRef}
       onScrollContainerChange={onScrollContainerChange}
       renderItem={renderItem}
+      renderVersion={renderVersion}
       followOutput={followOutput}
       onAtBottomStateChange={onAtBottomStateChange}
       virtualizationThreshold={virtualizationThreshold}

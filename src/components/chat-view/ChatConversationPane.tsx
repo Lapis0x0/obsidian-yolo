@@ -25,6 +25,7 @@ type ChatConversationPaneProps = {
   chatTimelineItems: ChatTimelineItem[]
   chatMessagesRef: RefObject<HTMLDivElement>
   renderChatTimelineItem: (timelineItem: ChatTimelineItem) => ReactNode
+  timelineRenderVersion?: unknown
   followOutput: FollowOutput
   onAtBottomStateChange: (atBottom: boolean) => void
   editingAssistantMessageId: string | null
@@ -64,6 +65,7 @@ export function ChatConversationPane({
   chatTimelineItems,
   chatMessagesRef,
   renderChatTimelineItem,
+  timelineRenderVersion,
   followOutput,
   onAtBottomStateChange,
   editingAssistantMessageId,
@@ -120,6 +122,7 @@ export function ChatConversationPane({
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
         renderItem={renderChatTimelineItem}
+        renderVersion={timelineRenderVersion}
         forceRenderItemIds={['bottom-anchor']}
         followOutput={followOutput}
         onAtBottomStateChange={onAtBottomStateChange}
