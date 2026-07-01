@@ -39,9 +39,10 @@ type RowProps<TItem extends ChatTimelineItem> = {
   renderVersion: unknown
 }
 
-type TimelineRenderVersion<TItem extends ChatTimelineItem> =
-  | unknown
-  | ((item: TItem, index: number) => unknown)
+export type ChatTimelineRenderVersion<TItem extends ChatTimelineItem> = (
+  item: TItem,
+  index: number,
+) => unknown
 
 function TimelineRowInner<TItem extends ChatTimelineItem>({
   item,
@@ -81,7 +82,7 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
     index: number,
     context?: ChatTimelineRenderContext,
   ) => ReactNode
-  renderVersion?: TimelineRenderVersion<TItem>
+  renderVersion?: ChatTimelineRenderVersion<TItem>
   overscanPx?: number
   virtualizationThreshold?: number
   forceRenderItemIds?: string[]
@@ -305,7 +306,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   scrollContainerRef,
   onScrollContainerChange,
   renderItem,
-  renderVersion = 0,
+  renderVersion,
   overscanPx,
   virtualizationThreshold,
   forceRenderItemIds,
@@ -641,13 +642,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   const safeSpacerHeight = Math.max(0, Math.ceil(bottomSpacerHeight))
   const resolveRenderVersion = useCallback(
     (item: TItem, index: number) => {
-      if (typeof renderVersion === 'function') {
-        return (renderVersion as (item: TItem, index: number) => unknown)(
-          item,
-          index,
-        )
-      }
-      return renderVersion
+      return renderVersion ? renderVersion(item, index) : 0
     },
     [renderVersion],
   )
