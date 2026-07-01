@@ -58,12 +58,47 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.YOLO_BOT_GH_TOKEN }}
 
+      - name: Check auto-triage skip label
+        id: skip-label
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
+          SKIP_LABEL: no-auto-triage
+        run: |
+          set -euo pipefail
+
+          should_check=false
+          if [[ "$EVENT_NAME" == "issues" || "$EVENT_NAME" == "pull_request_target" ]]; then
+            should_check=true
+          fi
+
+          if [[ "$should_check" != "true" || -z "$NUMBER" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          skip=false
+          while IFS= read -r label; do
+            if [[ "$label" == "$SKIP_LABEL" ]]; then
+              skip=true
+              break
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER" --jq '.labels[].name')
+
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          if [[ "$skip" == "true" ]]; then
+            echo "Skipping auto triage because #$NUMBER has the '$SKIP_LABEL' label."
+          fi
+
       - name: Use Node.js
+        if: steps.skip-label.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Restore Codex config
+        if: steps.skip-label.outputs.skip != 'true'
         env:
           YOLO_CODEX_CONFIG_TOML: ${{ secrets.YOLO_CODEX_CONFIG_TOML }}
         run: |
@@ -73,6 +108,7 @@ jobs:
           chmod 600 "$HOME/.codex/config.toml"
 
       - name: Install Codex and gh
+        if: steps.skip-label.outputs.skip != 'true'
         run: |
           set -euo pipefail
           npm install -g @openai/codex@0.139.0
@@ -91,6 +127,7 @@ jobs:
           gh --version | head -1
 
       - name: Configure GitHub identity
+        if: steps.skip-label.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
         run: |
@@ -101,6 +138,7 @@ jobs:
           gh auth status
 
       - name: Build prompt
+        if: steps.skip-label.outputs.skip != 'true'
         env:
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
@@ -142,6 +180,7 @@ jobs:
           fi
 
       - name: Run Codex triage
+        if: steps.skip-label.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
         run: |
