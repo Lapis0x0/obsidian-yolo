@@ -93,4 +93,4 @@ jobs:
             --base main \
             --head "$UPDATE_BRANCH" \
             --title 'chore: 更新 OpenRouter 模型能力快照' \
-            --body $'自动同步 OpenRouter `/api/v1/models` 的上下文长度和文本/视觉输入模态。\n\n由每月定时工作流生成。'
+            --body $'自动同步 OpenRouter `/api/v1/models` 的上下文长度和文本/视觉输入模态。\n\n由每月定时工作流生成。\n\n<!-- auto-triage: skip -->'

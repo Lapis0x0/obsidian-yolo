@@ -5806,7 +5806,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             }
             isApplying={applyMutation.isPending}
             activeApplyRequestKey={activeApplyRequestKey}
-            onApply={(...args) => timelineHandlersRef.current.handleApply(...args)}
+            onApply={(...args) =>
+              timelineHandlersRef.current.handleApply(...args)
+            }
             onToolMessageUpdate={(...args) =>
               timelineHandlersRef.current.handleToolMessageUpdate(...args)
             }
@@ -5835,7 +5837,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               )
             }
             onEditSave={(...args) =>
-              timelineHandlersRef.current.handleAssistantMessageEditSave(...args)
+              timelineHandlersRef.current.handleAssistantMessageEditSave(
+                ...args,
+              )
             }
             onDeleteGroup={(...args) =>
               timelineHandlersRef.current.handleAssistantMessageGroupDelete(
@@ -6240,7 +6244,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const shouldSuppressCompactionAnchorFooter =
           containsCompactionAnchor &&
           Boolean(latestCompactionState?.triggerToolCallId)
-        const isLastGroup = timelineItem.renderKey === lastAssistantGroupRenderKey
+        const isLastGroup =
+          timelineItem.renderKey === lastAssistantGroupRenderKey
         const isEditingGroup =
           editingAssistantMessageId !== null &&
           timelineItem.messageIds.includes(editingAssistantMessageId)

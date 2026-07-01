@@ -31,6 +31,7 @@ jobs:
         github.event_name == 'pull_request_target' &&
         !startsWith(github.event.pull_request.title, '[auto-triage]') &&
         !startsWith(github.event.pull_request.head.ref, 'auto-triage/') &&
+        !contains(github.event.pull_request.body || '', 'auto-triage: skip') &&
         !contains(github.event.pull_request.body || '', 'claude-routine:obsidian-yolo-triage:v1') &&
         (
           github.event.action != 'review_requested' ||

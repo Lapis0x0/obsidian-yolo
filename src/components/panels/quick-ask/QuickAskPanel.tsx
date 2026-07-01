@@ -83,11 +83,11 @@ import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-
 import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
+import { useAutoScroll } from '../../chat-view/useAutoScroll'
 import {
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from '../../chat-view/useChatTimelineReadModel'
-import { useAutoScroll } from '../../chat-view/useAutoScroll'
 import UserMessageItem from '../../chat-view/UserMessageItem'
 import { YoloDropdownContent } from '../../common/popover'
 

@@ -6,6 +6,7 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import {
   ChatTimelineList,
   type ChatTimelineRenderContext,
+  type ChatTimelineRenderVersion,
 } from './ChatTimelineList'
 
 type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
@@ -18,7 +19,7 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
     index: number,
     context?: ChatTimelineRenderContext,
   ) => ReactNode
-  renderVersion?: unknown
+  renderVersion?: ChatTimelineRenderVersion<TItem>
   followOutput?: FollowOutput
   onAtBottomStateChange?: (atBottom: boolean) => void
   virtualizationThreshold?: number
