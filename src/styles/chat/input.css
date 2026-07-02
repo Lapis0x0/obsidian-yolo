@@ -1676,8 +1676,6 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
     color-mix(in srgb, var(--background-secondary) 90%, transparent) 0%,
     color-mix(in srgb, var(--background-primary-alt) 88%, transparent) 100%
   );
-  box-shadow: 0 14px 34px
-    color-mix(in srgb, var(--background-modifier-box-shadow) 12%, transparent);
   text-align: center;
 }
 
