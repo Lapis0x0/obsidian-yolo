@@ -103,20 +103,6 @@ const buildTabCompletionConstraints = (
   return [presetConstraint, trimmedCustom].filter(Boolean).join('\n')
 }
 
-const extractAfterContext = (window: string): string => {
-  if (!window) return ''
-  return window
-}
-
-const extractBeforeContext = (window: string): string => {
-  if (!window) return ''
-  const lastParagraphBreak = window.lastIndexOf('\n\n')
-  if (lastParagraphBreak !== -1 && lastParagraphBreak + 2 < window.length) {
-    return window.slice(lastParagraphBreak + 2)
-  }
-  return window
-}
-
 const extractMaskedContext = (
   doc: Text,
   cursorOffset: number,
@@ -124,16 +110,14 @@ const extractMaskedContext = (
   maxAfterChars: number,
 ): { before: string; after: string } => {
   const beforeStart = Math.max(0, cursorOffset - maxBeforeChars)
-  const beforeWindow = doc.sliceString(beforeStart, cursorOffset)
-  const before = extractBeforeContext(beforeWindow)
+  const before = doc.sliceString(beforeStart, cursorOffset)
 
   if (maxAfterChars <= 0) {
     return { before, after: '' }
   }
 
   const afterEnd = Math.min(doc.length, cursorOffset + maxAfterChars)
-  const afterWindow = doc.sliceString(cursorOffset, afterEnd)
-  const after = extractAfterContext(afterWindow)
+  const after = doc.sliceString(cursorOffset, afterEnd)
 
   return { before, after }
 }
