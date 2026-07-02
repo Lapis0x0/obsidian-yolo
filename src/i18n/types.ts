@@ -845,6 +845,7 @@ export type TranslationKeys = {
       advanced?: string
       basicCardTitle?: string
       basicCardDesc?: string
+      vectorDbStorageHint?: string
       resourceCardTitle?: string
       resourceCardDesc?: string
       scopeCardTitle?: string

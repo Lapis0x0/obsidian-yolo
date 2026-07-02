@@ -1001,6 +1001,8 @@ export const zh: TranslationKeys = {
       advanced: '高级设置',
       basicCardTitle: '知识库',
       basicCardDesc: '控制知识库索引的启用状态、嵌入模型与相关维护操作。',
+      vectorDbStorageHint:
+        '向量数据库会保存为 YOLO 文件夹下的 .yolo_vector_db.tar.gz，用于缓存知识库索引。大库可能占用较多空间；如使用同步盘，建议确认该文件是否需要同步。',
       resourceCardTitle: 'PGlite 资源',
       resourceCardDesc: '管理知识库运行所需的数据库运行时资源。',
       scopeCardTitle: '索引范围',

@@ -1081,6 +1081,8 @@ export const en: TranslationKeys = {
       basicCardTitle: 'Knowledge base',
       basicCardDesc:
         'Control knowledge base indexing, the embedding model, and related maintenance actions.',
+      vectorDbStorageHint:
+        'The vector database is saved as .yolo_vector_db.tar.gz under the YOLO folder and caches the knowledge base index. Large vaults may use significant space; if you use a sync drive, check whether this file should be synced.',
       resourceCardTitle: 'PGlite Resources',
       resourceCardDesc:
         'Manage the database runtime resources required by the knowledge base.',

@@ -990,6 +990,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
+          <div className="yolo-muted-note">
+            {t(
+              'settings.rag.vectorDbStorageHint',
+              '向量数据库会保存为 YOLO 文件夹下的 .yolo_vector_db.tar.gz，用于缓存知识库索引。大库可能占用较多空间；如使用同步盘，建议确认该文件是否需要同步。',
+            )}
+          </div>
+
           {!canUseIndexMaintenance && isRagEnabled && (
             <div className="yolo-muted-note">
               {t(
