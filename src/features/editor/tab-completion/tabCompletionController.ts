@@ -138,6 +138,23 @@ const extractMaskedContext = (
   return { before, after }
 }
 
+const buildTabCompletionUserMessage = (
+  fileTitle: string,
+  before: string,
+  after: string,
+): string => {
+  const titleSection = fileTitle ? `File title:\n${fileTitle}\n\n` : ''
+  return (
+    titleSection +
+    'This is an inline completion request. The <mask/> is the cursor position between <text_before_cursor> and <text_after_cursor>.\n' +
+    'The final document text will be: <text_before_cursor> + your output + <text_after_cursor>.\n' +
+    'Continue exactly from the end of <text_before_cursor>. Return only the text to insert at <mask/>.\n\n' +
+    `<text_before_cursor>\n${before}\n</text_before_cursor>\n` +
+    `${MASK_TAG}\n` +
+    `<text_after_cursor>\n${after}\n</text_after_cursor>`
+  )
+}
+
 export class TabCompletionController {
   private tabCompletionTimer: ReturnType<typeof setTimeout> | null = null
   private tabCompletionAbortController: AbortController | null = null
@@ -397,7 +414,6 @@ export class TabCompletionController {
       })
 
       const fileTitle = this.deps.getActiveFileTitle()
-      const titleSection = fileTitle ? `File title: ${fileTitle}\n\n` : ''
       const baseSystemPrompt =
         settings.continuationOptions?.tabCompletionSystemPrompt ??
         DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
@@ -415,8 +431,6 @@ export class TabCompletionController {
         combinedConstraints,
       )
 
-      const contextWithMask = `${before}${MASK_TAG}${after}`
-
       const requestMessages: RequestMessage[] = [
         {
           role: 'system' as const,
@@ -424,7 +438,7 @@ export class TabCompletionController {
         },
         {
           role: 'user' as const,
-          content: `${titleSection}${contextWithMask}`,
+          content: buildTabCompletionUserMessage(fileTitle, before, after),
         },
       ]
 
