@@ -43,6 +43,7 @@ export type YoloAgentRunRequest = {
   tools?: {
     allowedToolNames?: string[]
   }
+  systemPromptOverride?: string
   abortSignal?: AbortSignal
 }
 
@@ -372,6 +373,7 @@ export async function resolveAgentApiRunInput({
       mcpManager,
       abortSignal,
       allowedToolNames,
+      systemPromptOverride: request.systemPromptOverride,
       enableToolDisclosure: settings.mcp.enableToolDisclosure,
       toolPreferences: chatModeRuntime.toolPreferences,
       runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
