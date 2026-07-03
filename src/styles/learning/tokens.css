@@ -56,6 +56,41 @@
   font-family: var(--font-interface);
 }
 
+/*
+ * Obsidian applies global chrome to every <button>, including a fixed
+ * input-height, normal interactive background, and input shadow. Learning UI
+ * uses buttons as cards, tabs, chips, and icon controls, so route those host
+ * styles through scoped variables that component classes can own explicitly.
+ */
+.yolo-learning button {
+  height: var(--yolo-learning-button-height, auto);
+  min-height: 0;
+  max-height: none;
+  font-family: inherit;
+  white-space: normal;
+}
+
+.yolo-learning button:not(.clickable-icon) {
+  background-color: var(--yolo-learning-button-background, transparent);
+  box-shadow: var(--yolo-learning-button-shadow, none);
+  color: var(--yolo-learning-button-color, inherit);
+}
+
+.yolo-learning button:not(.clickable-icon):hover {
+  background-color: var(
+    --yolo-learning-button-hover-background,
+    var(--yolo-learning-button-background, transparent)
+  );
+  box-shadow: var(
+    --yolo-learning-button-hover-shadow,
+    var(--yolo-learning-button-shadow, none)
+  );
+  color: var(
+    --yolo-learning-button-hover-color,
+    var(--yolo-learning-button-color, inherit)
+  );
+}
+
 /* Thin scrollbars (ported from the mock's `.scrollbar-thin` utility). */
 .yolo-learning .yolo-learning-scrollbar-thin {
   scrollbar-width: thin;

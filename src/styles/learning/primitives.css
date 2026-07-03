@@ -127,6 +127,11 @@
 }
 
 .yolo-learning-segmented-option {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -149,6 +154,11 @@
 }
 
 .yolo-learning-segmented-option.is-active {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   background-color: var(--yolo-primary);
   color: var(--yolo-primary-foreground);
 }

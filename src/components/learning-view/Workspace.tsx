@@ -35,7 +35,7 @@ export function Workspace({
           aria-label="返回学习中心"
           className="yolo-learning-workspace-back"
         >
-          <ChevronLeft size={18} />
+          <ChevronLeft size={18} strokeWidth={2} />
         </button>
         <div className="yolo-learning-workspace-divider" />
         <h1 className="yolo-learning-workspace-project-name">{project.name}</h1>

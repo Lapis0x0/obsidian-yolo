@@ -21088,6 +21088,42 @@ body.yolo-quick-ask-global-interaction * {
   font-family: var(--font-interface);
 }
 
+/*
+ * Obsidian applies global chrome to every <button>, including a fixed
+ * input-height, normal interactive background, and input shadow. Learning UI
+ * uses buttons as cards, tabs, chips, and icon controls, so route those host
+ * styles through scoped variables that component classes can own explicitly.
+ */
+
+.yolo-learning button {
+  height: var(--yolo-learning-button-height, auto);
+  min-height: 0;
+  max-height: none;
+  font-family: inherit;
+  white-space: normal;
+}
+
+.yolo-learning button:not(.clickable-icon) {
+  background-color: var(--yolo-learning-button-background, transparent);
+  box-shadow: var(--yolo-learning-button-shadow, none);
+  color: var(--yolo-learning-button-color, inherit);
+}
+
+.yolo-learning button:not(.clickable-icon):hover {
+  background-color: var(
+    --yolo-learning-button-hover-background,
+    var(--yolo-learning-button-background, transparent)
+  );
+  box-shadow: var(
+    --yolo-learning-button-hover-shadow,
+    var(--yolo-learning-button-shadow, none)
+  );
+  color: var(
+    --yolo-learning-button-hover-color,
+    var(--yolo-learning-button-color, inherit)
+  );
+}
+
 /* Thin scrollbars (ported from the mock's `.scrollbar-thin` utility). */
 
 .yolo-learning .yolo-learning-scrollbar-thin {
@@ -21238,6 +21274,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-segmented-option {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -21260,6 +21301,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-segmented-option.is-active {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   background-color: var(--yolo-primary);
   color: var(--yolo-primary-foreground);
 }
@@ -21371,26 +21417,45 @@ body.yolo-quick-ask-global-interaction * {
   border-bottom: 1px solid var(--yolo-border);
 }
 
-.yolo-learning-workspace-back {
+button.yolo-learning-workspace-back {
+  --yolo-learning-button-height: 32px;
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
+  min-width: 0;
+  min-height: 0;
+  margin-right: -7px;
   flex-shrink: 0;
   border-radius: var(--yolo-radius-md);
   border: none;
   background: transparent;
+  box-sizing: border-box;
   color: var(--yolo-muted-foreground);
   cursor: pointer;
+  line-height: 0;
+  padding: 0;
   transition:
     background-color 150ms ease,
     color 150ms ease;
 }
 
-.yolo-learning-workspace-back:hover {
+button.yolo-learning-workspace-back:hover {
   background-color: var(--yolo-secondary);
   color: var(--yolo-foreground);
+}
+
+button.yolo-learning-workspace-back svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
 }
 
 .yolo-learning-workspace-divider {
@@ -21470,6 +21535,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-home-new-btn {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -21495,6 +21565,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-home-card {
+  --yolo-learning-button-background: var(--yolo-card);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-card);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
   background-color: var(--yolo-card);
@@ -21557,6 +21632,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-close {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-muted-foreground);
+
   border: none;
   background: transparent;
   color: var(--yolo-muted-foreground);
@@ -21579,6 +21659,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-primary {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -21620,6 +21705,12 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-back {
+  --yolo-learning-button-height: 32px;
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -21651,6 +21742,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-complete {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -21700,6 +21796,14 @@ body.yolo-quick-ask-global-interaction * {
 
 .yolo-learning-home-new-button,
 .yolo-learning-home-review-button {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-shadow: 0 1px 2px
+    color-mix(in oklab, var(--yolo-foreground) 8%, transparent);
+  --yolo-learning-button-hover-shadow: var(--yolo-learning-button-shadow);
+
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
@@ -21811,8 +21915,17 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-home-project-card {
+  --yolo-learning-button-background: var(--yolo-card);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-card);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-shadow: 0 2px 12px -4px
+    color-mix(in oklab, var(--yolo-foreground) 12%, transparent);
+
   display: flex;
+  align-items: stretch;
   flex-direction: column;
+  justify-content: flex-start;
   gap: 20px;
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
@@ -21904,6 +22017,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-home-add-card {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   min-height: 160px;
   flex-direction: column;
@@ -22012,6 +22130,12 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-close {
+  --yolo-learning-button-height: 28px;
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   width: 28px;
   height: 28px;
@@ -22061,6 +22185,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-cancel {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   background: transparent;
   color: var(--yolo-muted-foreground);
   transition:
@@ -22074,6 +22203,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-primary {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   background-color: var(--yolo-primary);
   color: var(--yolo-primary-foreground);
   padding-right: 20px;
@@ -22197,6 +22331,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-chip {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   border: 1px solid var(--yolo-border);
   border-radius: 9999px;
   background: transparent;
@@ -22217,6 +22356,17 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-chip-selected {
+  --yolo-learning-button-background: color-mix(
+    in oklab,
+    var(--yolo-primary) 10%,
+    transparent
+  );
+  --yolo-learning-button-color: var(--yolo-primary);
+  --yolo-learning-button-hover-background: var(
+    --yolo-learning-button-background
+  );
+  --yolo-learning-button-hover-color: var(--yolo-primary);
+
   border-color: var(--yolo-primary);
   background-color: color-mix(in oklab, var(--yolo-primary) 10%, transparent);
   color: var(--yolo-primary);
@@ -22229,9 +22379,19 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-style-card {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: inherit;
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-secondary) 50%,
+    transparent
+  );
+  --yolo-learning-button-hover-color: inherit;
+
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: flex-start;
   gap: 6px;
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
@@ -22250,6 +22410,15 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-wizard-style-card-selected {
+  --yolo-learning-button-background: color-mix(
+    in oklab,
+    var(--yolo-primary) 5%,
+    transparent
+  );
+  --yolo-learning-button-hover-background: var(
+    --yolo-learning-button-background
+  );
+
   border-color: var(--yolo-primary);
   background-color: color-mix(in oklab, var(--yolo-primary) 5%, transparent);
 }
@@ -22360,6 +22529,11 @@ body.yolo-quick-ask-global-interaction * {
 
 .yolo-learning-outline-builder-back,
 .yolo-learning-outline-builder-icon-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -22374,12 +22548,16 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-back {
+  --yolo-learning-button-height: 32px;
+
   width: 32px;
   height: 32px;
   flex-shrink: 0;
 }
 
 .yolo-learning-outline-builder-icon-btn {
+  --yolo-learning-button-height: 28px;
+
   width: 28px;
   height: 28px;
 }
@@ -22500,10 +22678,20 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-drag {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: color-mix(
+    in oklab,
+    var(--yolo-muted-foreground) 30%,
+    transparent
+  );
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-muted-foreground);
+
   border: none;
   background: transparent;
   color: color-mix(in oklab, var(--yolo-muted-foreground) 30%, transparent);
   cursor: grab;
+  justify-content: flex-start;
   opacity: 0;
   padding: 0;
   transition:
@@ -22594,6 +22782,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-add {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22709,9 +22902,19 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-map-item {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-secondary) 60%,
+    transparent
+  );
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   width: 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   border: none;
   border-radius: var(--yolo-radius-md);
@@ -22762,6 +22965,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-builder-complete {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   width: 100%;
   align-items: center;
@@ -22911,9 +23119,15 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-chapter-trigger {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   width: 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   border: none;
   border-radius: var(--yolo-radius-md);
@@ -22973,9 +23187,15 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-point {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   border: none;
   border-radius: var(--yolo-radius-md);
@@ -22995,6 +23215,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-point.is-active {
+  --yolo-learning-button-background: var(--yolo-accent);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-accent);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   background-color: var(--yolo-accent);
   color: var(--yolo-foreground);
 }
@@ -23027,6 +23252,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-ghost-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -23094,6 +23324,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-outline-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -23225,6 +23460,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-cards-mastery-filter-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   border: none;
   border-radius: var(--yolo-radius-md);
   background: transparent;
@@ -23244,11 +23484,21 @@ body.yolo-quick-ask-global-interaction * {
 
 .yolo-learning-cards-mastery-filter-btn-active,
 .yolo-learning-cards-mastery-filter-btn-active:hover {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   background-color: var(--yolo-primary);
   color: var(--yolo-primary-foreground);
 }
 
 .yolo-learning-cards-new-btn {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -23335,9 +23585,16 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-cards-browse-card-body {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: inherit;
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: inherit;
+
   display: flex;
+  align-items: stretch;
   width: 100%;
   flex-direction: column;
+  justify-content: flex-start;
   border: none;
   background: transparent;
   padding: 8px 14px 14px;
@@ -23432,6 +23689,18 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-cards-icon-btn {
+  --yolo-learning-button-height: 24px;
+  --yolo-learning-button-background: color-mix(
+    in oklab,
+    var(--yolo-card) 80%,
+    transparent
+  );
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(
+    --yolo-learning-button-background
+  );
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -23696,10 +23965,14 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-cards-eval-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-hover-background: transparent;
+
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   border-radius: var(--yolo-radius-lg);
   border: 1px solid currentColor;
@@ -23710,26 +23983,53 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-cards-eval-btn-danger {
+  --yolo-learning-button-color: var(--yolo-danger);
+  --yolo-learning-button-hover-color: var(--yolo-danger);
+
   color: var(--yolo-danger);
 }
 
 .yolo-learning-cards-eval-btn-danger:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-danger) 12%,
+    transparent
+  );
+
   background-color: color-mix(in oklab, var(--yolo-danger) 12%, transparent);
 }
 
 .yolo-learning-cards-eval-btn-warning {
+  --yolo-learning-button-color: var(--yolo-warning);
+  --yolo-learning-button-hover-color: var(--yolo-warning);
+
   color: var(--yolo-warning);
 }
 
 .yolo-learning-cards-eval-btn-warning:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-warning) 12%,
+    transparent
+  );
+
   background-color: color-mix(in oklab, var(--yolo-warning) 12%, transparent);
 }
 
 .yolo-learning-cards-eval-btn-success {
+  --yolo-learning-button-color: var(--yolo-success);
+  --yolo-learning-button-hover-color: var(--yolo-success);
+
   color: var(--yolo-success);
 }
 
 .yolo-learning-cards-eval-btn-success:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-success) 12%,
+    transparent
+  );
+
   background-color: color-mix(in oklab, var(--yolo-success) 12%, transparent);
 }
 
@@ -23771,6 +24071,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-cards-review-back-btn {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   margin-top: 8px;
   border: none;
   border-radius: var(--yolo-radius-lg);
@@ -23878,6 +24183,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-exercise-primary-button {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -24048,6 +24358,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-exercise-exit-button {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -24140,6 +24455,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-exercise-answer-toggle {
+  --yolo-learning-button-background: var(--yolo-card);
+  --yolo-learning-button-color: inherit;
+  --yolo-learning-button-hover-background: var(--yolo-surface);
+  --yolo-learning-button-hover-color: inherit;
+
   display: flex;
   width: 100%;
   align-items: center;
@@ -24309,6 +24629,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-exercise-secondary-button {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -24328,6 +24653,11 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 .yolo-learning-exercise-transition-button {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-muted-foreground);
+
   display: inline-flex;
   flex: 1;
   align-items: center;

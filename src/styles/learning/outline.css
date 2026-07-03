@@ -54,9 +54,15 @@
 }
 
 .yolo-learning-outline-chapter-trigger {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   width: 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   border: none;
   border-radius: var(--yolo-radius-md);
@@ -116,9 +122,15 @@
 }
 
 .yolo-learning-outline-point {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   border: none;
   border-radius: var(--yolo-radius-md);
@@ -138,6 +150,11 @@
 }
 
 .yolo-learning-outline-point.is-active {
+  --yolo-learning-button-background: var(--yolo-accent);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-accent);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   background-color: var(--yolo-accent);
   color: var(--yolo-foreground);
 }
@@ -170,6 +187,11 @@
 }
 
 .yolo-learning-outline-ghost-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -237,6 +259,11 @@
 }
 
 .yolo-learning-outline-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;

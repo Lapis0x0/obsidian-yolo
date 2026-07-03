@@ -30,6 +30,14 @@
 
 .yolo-learning-home-new-button,
 .yolo-learning-home-review-button {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-shadow: 0 1px 2px
+    color-mix(in oklab, var(--yolo-foreground) 8%, transparent);
+  --yolo-learning-button-hover-shadow: var(--yolo-learning-button-shadow);
+
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
@@ -141,8 +149,17 @@
 }
 
 .yolo-learning-home-project-card {
+  --yolo-learning-button-background: var(--yolo-card);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-card);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-shadow: 0 2px 12px -4px
+    color-mix(in oklab, var(--yolo-foreground) 12%, transparent);
+
   display: flex;
+  align-items: stretch;
   flex-direction: column;
+  justify-content: flex-start;
   gap: 20px;
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
@@ -234,6 +251,11 @@
 }
 
 .yolo-learning-home-add-card {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   min-height: 160px;
   flex-direction: column;

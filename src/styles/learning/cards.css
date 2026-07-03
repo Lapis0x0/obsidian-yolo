@@ -40,6 +40,11 @@
 }
 
 .yolo-learning-cards-mastery-filter-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   border: none;
   border-radius: var(--yolo-radius-md);
   background: transparent;
@@ -59,11 +64,21 @@
 
 .yolo-learning-cards-mastery-filter-btn-active,
 .yolo-learning-cards-mastery-filter-btn-active:hover {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   background-color: var(--yolo-primary);
   color: var(--yolo-primary-foreground);
 }
 
 .yolo-learning-cards-new-btn {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -150,9 +165,16 @@
 }
 
 .yolo-learning-cards-browse-card-body {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: inherit;
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: inherit;
+
   display: flex;
+  align-items: stretch;
   width: 100%;
   flex-direction: column;
+  justify-content: flex-start;
   border: none;
   background: transparent;
   padding: 8px 14px 14px;
@@ -247,6 +269,18 @@
 }
 
 .yolo-learning-cards-icon-btn {
+  --yolo-learning-button-height: 24px;
+  --yolo-learning-button-background: color-mix(
+    in oklab,
+    var(--yolo-card) 80%,
+    transparent
+  );
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(
+    --yolo-learning-button-background
+  );
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -511,10 +545,14 @@
 }
 
 .yolo-learning-cards-eval-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-hover-background: transparent;
+
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   border-radius: var(--yolo-radius-lg);
   border: 1px solid currentColor;
@@ -525,26 +563,53 @@
 }
 
 .yolo-learning-cards-eval-btn-danger {
+  --yolo-learning-button-color: var(--yolo-danger);
+  --yolo-learning-button-hover-color: var(--yolo-danger);
+
   color: var(--yolo-danger);
 }
 
 .yolo-learning-cards-eval-btn-danger:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-danger) 12%,
+    transparent
+  );
+
   background-color: color-mix(in oklab, var(--yolo-danger) 12%, transparent);
 }
 
 .yolo-learning-cards-eval-btn-warning {
+  --yolo-learning-button-color: var(--yolo-warning);
+  --yolo-learning-button-hover-color: var(--yolo-warning);
+
   color: var(--yolo-warning);
 }
 
 .yolo-learning-cards-eval-btn-warning:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-warning) 12%,
+    transparent
+  );
+
   background-color: color-mix(in oklab, var(--yolo-warning) 12%, transparent);
 }
 
 .yolo-learning-cards-eval-btn-success {
+  --yolo-learning-button-color: var(--yolo-success);
+  --yolo-learning-button-hover-color: var(--yolo-success);
+
   color: var(--yolo-success);
 }
 
 .yolo-learning-cards-eval-btn-success:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-success) 12%,
+    transparent
+  );
+
   background-color: color-mix(in oklab, var(--yolo-success) 12%, transparent);
 }
 
@@ -586,6 +651,11 @@
 }
 
 .yolo-learning-cards-review-back-btn {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   margin-top: 8px;
   border: none;
   border-radius: var(--yolo-radius-lg);

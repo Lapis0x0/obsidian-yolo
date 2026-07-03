@@ -38,6 +38,11 @@
 
 .yolo-learning-outline-builder-back,
 .yolo-learning-outline-builder-icon-btn {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -52,12 +57,16 @@
 }
 
 .yolo-learning-outline-builder-back {
+  --yolo-learning-button-height: 32px;
+
   width: 32px;
   height: 32px;
   flex-shrink: 0;
 }
 
 .yolo-learning-outline-builder-icon-btn {
+  --yolo-learning-button-height: 28px;
+
   width: 28px;
   height: 28px;
 }
@@ -178,10 +187,20 @@
 }
 
 .yolo-learning-outline-builder-drag {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: color-mix(
+    in oklab,
+    var(--yolo-muted-foreground) 30%,
+    transparent
+  );
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-muted-foreground);
+
   border: none;
   background: transparent;
   color: color-mix(in oklab, var(--yolo-muted-foreground) 30%, transparent);
   cursor: grab;
+  justify-content: flex-start;
   opacity: 0;
   padding: 0;
   transition:
@@ -272,6 +291,11 @@
 }
 
 .yolo-learning-outline-builder-add {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   align-items: center;
   justify-content: center;
@@ -387,9 +411,19 @@
 }
 
 .yolo-learning-outline-builder-map-item {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-secondary) 60%,
+    transparent
+  );
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: flex;
   width: 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   border: none;
   border-radius: var(--yolo-radius-md);
@@ -440,6 +474,11 @@
 }
 
 .yolo-learning-outline-builder-complete {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
   display: inline-flex;
   width: 100%;
   align-items: center;
