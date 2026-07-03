@@ -167,12 +167,14 @@ export const zh: TranslationKeys = {
       topicLabel: '学习主题',
       topicHint: '例如：学习 React、刑法总则、读懂一篇论文',
       topicPlaceholder: '学习 React',
+      modeLabel: '学习模式',
       levelLabel: '当前水平',
       goalDefault: '能够独立开发中等复杂度的 React 应用',
-      goalLabel: '学习目标',
-      goalHint: '你希望达到什么程度？',
-      goalPlaceholder: '能够独立开发中等复杂度的 React 应用',
-      styleLabel: '偏好的学习方式',
+      goalLabel: '学习目标与补充要求',
+      goalHint:
+        '你希望达到什么程度？也可以补充时间安排、应用场景或不想学习的内容。',
+      goalPlaceholder:
+        '能够独立开发中等复杂度的 React 应用；两周内完成，偏实战，少讲纯理论',
       referencesLabel: '参考资料',
       referencesHint: '上传后 YOLO 会据此定制大纲',
       optional: '（可选）',
@@ -184,11 +186,16 @@ export const zh: TranslationKeys = {
         experienced: '有一定经验',
         advanced: '进阶提升',
       },
-      styles: {
-        exam: { title: '考试导向', desc: '围绕考点与真题，强化记忆与解题' },
-        project: { title: '项目导向', desc: '以动手项目驱动，边做边学' },
-        system: { title: '系统学习', desc: '完整知识体系，循序渐进' },
-        quick: { title: '快速入门', desc: '最短路径建立全局认知' },
+      modes: {
+        comingSoon: '即将推出',
+        standard: {
+          title: '标准模式',
+          desc: '生成结构化知识体系，含知识点、卡片和习题',
+        },
+        project: {
+          title: '项目制模式',
+          desc: '以动手项目驱动，AI 引导你逐步完成交付',
+        },
       },
     },
     outlineBuilder: {

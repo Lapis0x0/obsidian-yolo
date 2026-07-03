@@ -180,12 +180,14 @@ export const en: TranslationKeys = {
       topicHint:
         'For example: Learn React, criminal law basics, understand a paper',
       topicPlaceholder: 'Learn React',
+      modeLabel: 'Learning mode',
       levelLabel: 'Current level',
       goalDefault: 'Build medium-complexity React apps independently',
-      goalLabel: 'Learning goal',
-      goalHint: 'What level do you want to reach?',
-      goalPlaceholder: 'Build medium-complexity React apps independently',
-      styleLabel: 'Preferred learning style',
+      goalLabel: 'Learning goal and notes',
+      goalHint:
+        'What level do you want to reach? You can also add timing, use cases, or topics to avoid.',
+      goalPlaceholder:
+        'Build medium-complexity React apps independently; finish in two weeks, focus on practice, less pure theory',
       referencesLabel: 'Reference materials',
       referencesHint: 'YOLO will customize the outline based on uploaded files',
       optional: '(Optional)',
@@ -197,22 +199,15 @@ export const en: TranslationKeys = {
         experienced: 'Some experience',
         advanced: 'Advanced',
       },
-      styles: {
-        exam: {
-          title: 'Exam-focused',
-          desc: 'Use exam points and past questions to strengthen recall and problem solving',
+      modes: {
+        comingSoon: 'Coming soon',
+        standard: {
+          title: 'Standard mode',
+          desc: 'Generate a structured knowledge system with points, cards, and exercises',
         },
         project: {
-          title: 'Project-based',
-          desc: 'Learn by building hands-on projects',
-        },
-        system: {
-          title: 'Systematic',
-          desc: 'A complete knowledge system, step by step',
-        },
-        quick: {
-          title: 'Quick start',
-          desc: 'The shortest path to a working overview',
+          title: 'Project mode',
+          desc: 'Learn through hands-on projects, with AI guiding each deliverable step',
         },
       },
     },

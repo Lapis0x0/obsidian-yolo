@@ -19,34 +19,6 @@ export function Wizard({
     value: id,
     label: t(`learning.wizard.levels.${id}`, id),
   }))
-  const styles = [
-    {
-      id: 'exam',
-      title: t('learning.wizard.styles.exam.title', '考试导向'),
-      desc: t(
-        'learning.wizard.styles.exam.desc',
-        '围绕考点与真题，强化记忆与解题',
-      ),
-    },
-    {
-      id: 'project',
-      title: t('learning.wizard.styles.project.title', '项目导向'),
-      desc: t(
-        'learning.wizard.styles.project.desc',
-        '以动手项目驱动，边做边学',
-      ),
-    },
-    {
-      id: 'system',
-      title: t('learning.wizard.styles.system.title', '系统学习'),
-      desc: t('learning.wizard.styles.system.desc', '完整知识体系，循序渐进'),
-    },
-    {
-      id: 'quick',
-      title: t('learning.wizard.styles.quick.title', '快速入门'),
-      desc: t('learning.wizard.styles.quick.desc', '最短路径建立全局认知'),
-    },
-  ]
   const [topic, setTopic] = useState(() =>
     t('learning.wizard.topicDefault', '学习 React'),
   )
@@ -54,7 +26,6 @@ export function Wizard({
     t('learning.wizard.goalDefault', '能够独立开发中等复杂度的 React 应用'),
   )
   const [level, setLevel] = useState<(typeof levelIds)[number]>('familiar')
-  const [style, setStyle] = useState(styles[1].id)
 
   return (
     <div className="yolo-learning-wizard-overlay">
@@ -86,9 +57,6 @@ export function Wizard({
             setGoal={setGoal}
             level={level}
             setLevel={setLevel}
-            style={style}
-            setStyle={setStyle}
-            styles={styles}
             levels={levels}
             t={t}
           />
@@ -123,9 +91,6 @@ function StepOne({
   setGoal,
   level,
   setLevel,
-  style,
-  setStyle,
-  styles,
   levels,
   t,
 }: {
@@ -135,9 +100,6 @@ function StepOne({
   setGoal: (value: string) => void
   level: (typeof levelIds)[number]
   setLevel: (value: (typeof levelIds)[number]) => void
-  style: string
-  setStyle: (value: string) => void
-  styles: { id: string; title: string; desc: string }[]
   levels: { value: (typeof levelIds)[number]; label: string }[]
   t: (keyPath: string, fallback?: string) => string
 }) {
@@ -175,13 +137,54 @@ function StepOne({
         />
       </Field>
 
+      <Field label={t('learning.wizard.modeLabel', '学习模式')}>
+        <div className="yolo-learning-wizard-mode-grid">
+          <div
+            className={cx(
+              'yolo-learning-wizard-mode-card',
+              'yolo-learning-wizard-mode-card-selected',
+            )}
+          >
+            <div className="yolo-learning-wizard-mode-title">
+              {t('learning.wizard.modes.standard.title', '标准模式')}
+            </div>
+            <div className="yolo-learning-wizard-mode-description">
+              {t(
+                'learning.wizard.modes.standard.desc',
+                '生成结构化知识体系，含知识点、卡片和习题',
+              )}
+            </div>
+          </div>
+          <div
+            className="yolo-learning-wizard-mode-card yolo-learning-wizard-mode-card-disabled"
+            aria-disabled
+          >
+            <div className="yolo-learning-wizard-mode-title">
+              {t('learning.wizard.modes.project.title', '项目制模式')}
+            </div>
+            <div className="yolo-learning-wizard-mode-description">
+              {t(
+                'learning.wizard.modes.project.desc',
+                '以动手项目驱动，AI 引导你逐步完成交付',
+              )}
+            </div>
+            <span className="yolo-learning-wizard-mode-badge">
+              {t('learning.wizard.modes.comingSoon', '即将推出')}
+            </span>
+          </div>
+        </div>
+      </Field>
+
       <Field label={t('learning.wizard.levelLabel', '当前水平')}>
         <ChipGroup options={levels} value={level} onChange={setLevel} />
       </Field>
 
       <Field
-        label={t('learning.wizard.goalLabel', '学习目标')}
-        hint={t('learning.wizard.goalHint', '你希望达到什么程度？')}
+        label={t('learning.wizard.goalLabel', '学习目标与补充要求')}
+        hint={t(
+          'learning.wizard.goalHint',
+          '你希望达到什么程度？也可以补充时间安排、应用场景或不想学习的内容。',
+        )}
       >
         <textarea
           value={goal}
@@ -189,34 +192,10 @@ function StepOne({
           rows={3}
           placeholder={t(
             'learning.wizard.goalPlaceholder',
-            '能够独立开发中等复杂度的 React 应用',
+            '能够独立开发中等复杂度的 React 应用；两周内完成，偏实战，少讲纯理论',
           )}
           className="yolo-learning-wizard-textarea"
         />
-      </Field>
-
-      <Field label={t('learning.wizard.styleLabel', '偏好的学习方式')}>
-        <div className="yolo-learning-wizard-style-grid">
-          {styles.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setStyle(option.id)}
-              className={cx(
-                'yolo-learning-wizard-style-card',
-                style === option.id &&
-                  'yolo-learning-wizard-style-card-selected',
-              )}
-            >
-              <div className="yolo-learning-wizard-style-title">
-                {option.title}
-              </div>
-              <div className="yolo-learning-wizard-style-description">
-                {option.desc}
-              </div>
-            </button>
-          ))}
-        </div>
       </Field>
 
       <Field

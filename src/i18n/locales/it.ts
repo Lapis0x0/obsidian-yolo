@@ -178,13 +178,14 @@ export const it: TranslationKeys = {
       topicHint:
         'Per esempio: Imparare React, basi di diritto penale, capire un paper',
       topicPlaceholder: 'Imparare React',
+      modeLabel: 'Modalità di apprendimento',
       levelLabel: 'Livello attuale',
       goalDefault: 'Sviluppare autonomamente app React di media complessità',
-      goalLabel: 'Obiettivo',
-      goalHint: 'Che livello vuoi raggiungere?',
+      goalLabel: 'Obiettivo e note aggiuntive',
+      goalHint:
+        'Che livello vuoi raggiungere? Puoi anche aggiungere tempi, casi d’uso o argomenti da evitare.',
       goalPlaceholder:
-        'Sviluppare autonomamente app React di media complessità',
-      styleLabel: 'Stile di apprendimento preferito',
+        'Sviluppare autonomamente app React di media complessità; finire in due settimane, focus pratico, meno teoria pura',
       referencesLabel: 'Materiali di riferimento',
       referencesHint: 'YOLO personalizzerà lo schema in base ai file caricati',
       optional: '(Opzionale)',
@@ -196,22 +197,15 @@ export const it: TranslationKeys = {
         experienced: 'Ho esperienza',
         advanced: 'Avanzato',
       },
-      styles: {
-        exam: {
-          title: 'Orientato agli esami',
-          desc: 'Lavora su punti d’esame e domande reali per rafforzare memoria e soluzione dei problemi',
+      modes: {
+        comingSoon: 'In arrivo',
+        standard: {
+          title: 'Modalità standard',
+          desc: 'Genera un sistema strutturato con punti, carte ed esercizi',
         },
         project: {
-          title: 'Orientato ai progetti',
-          desc: 'Impara costruendo progetti pratici',
-        },
-        system: {
-          title: 'Sistematico',
-          desc: 'Un sistema completo di conoscenze, passo dopo passo',
-        },
-        quick: {
-          title: 'Avvio rapido',
-          desc: 'Il percorso più breve per una visione d’insieme',
+          title: 'Modalità progetto',
+          desc: 'Impara con progetti pratici, con l’AI che guida ogni consegna',
         },
       },
     },

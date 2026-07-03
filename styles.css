@@ -22160,6 +22160,7 @@ button.yolo-learning-workspace-back svg {
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
+  padding: 0;
 }
 
 .yolo-learning-wizard-footer {
@@ -22372,13 +22373,13 @@ button.yolo-learning-workspace-back svg {
   color: var(--yolo-primary);
 }
 
-.yolo-learning-wizard-style-grid {
+.yolo-learning-wizard-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.yolo-learning-wizard-style-card {
+.yolo-learning-wizard-mode-card {
   --yolo-learning-button-background: transparent;
   --yolo-learning-button-color: inherit;
   --yolo-learning-button-hover-background: color-mix(
@@ -22392,46 +22393,55 @@ button.yolo-learning-workspace-back svg {
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 4px;
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
   background: transparent;
-  padding: 16px;
+  padding: 14px 16px;
   text-align: left;
-  cursor: pointer;
   transition:
     background-color 150ms ease,
     border-color 150ms ease;
 }
 
-.yolo-learning-wizard-style-card:hover {
-  border-color: color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
-  background-color: color-mix(in oklab, var(--yolo-secondary) 50%, transparent);
-}
-
-.yolo-learning-wizard-style-card-selected {
+.yolo-learning-wizard-mode-card-selected {
   --yolo-learning-button-background: color-mix(
     in oklab,
     var(--yolo-primary) 5%,
     transparent
-  );
-  --yolo-learning-button-hover-background: var(
-    --yolo-learning-button-background
   );
 
   border-color: var(--yolo-primary);
   background-color: color-mix(in oklab, var(--yolo-primary) 5%, transparent);
 }
 
-.yolo-learning-wizard-style-title {
+.yolo-learning-wizard-mode-card-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  position: relative;
+}
+
+.yolo-learning-wizard-mode-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--yolo-foreground);
 }
 
-.yolo-learning-wizard-style-description {
+.yolo-learning-wizard-mode-description {
   font-size: 12px;
-  line-height: 1.625;
+  line-height: 1.5;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-wizard-mode-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--yolo-radius-sm);
+  background-color: color-mix(in oklab, var(--yolo-muted) 30%, transparent);
   color: var(--yolo-muted-foreground);
 }
 
@@ -22481,12 +22491,6 @@ button.yolo-learning-workspace-back svg {
   margin-top: 4px;
   font-size: 12px;
   color: var(--yolo-muted-foreground);
-}
-
-@media (min-width: 768px) {
-  .yolo-learning-wizard-style-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 /* Learning Mode — outline builder view. */
