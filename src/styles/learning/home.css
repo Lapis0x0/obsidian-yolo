@@ -1,0 +1,288 @@
+/* Learning Mode — home view. */
+
+.yolo-learning-home {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.yolo-learning-home-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.yolo-learning-home-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-home-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-new-button,
+.yolo-learning-home-review-button {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--yolo-radius-lg);
+  background-color: var(--yolo-primary);
+  color: var(--yolo-primary-foreground);
+  box-shadow: 0 1px 2px
+    color-mix(in oklab, var(--yolo-foreground) 8%, transparent);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.yolo-learning-home-new-button {
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.yolo-learning-home-review-button {
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.yolo-learning-home-new-button:hover,
+.yolo-learning-home-review-button:hover {
+  opacity: 0.9;
+}
+
+.yolo-learning-home-review-card {
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-xl);
+  background-color: var(--yolo-card);
+  padding: 20px;
+}
+
+.yolo-learning-home-review-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.yolo-learning-home-review-summary {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+.yolo-learning-home-review-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-home-review-stats {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+.yolo-learning-home-review-number {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--yolo-primary);
+}
+
+.yolo-learning-home-review-label {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-review-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  border-top: 1px solid var(--yolo-border);
+  padding-top: 12px;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-section-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.yolo-learning-home-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-home-section-count {
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-project-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.yolo-learning-home-project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-xl);
+  background-color: var(--yolo-card);
+  padding: 20px;
+  color: var(--yolo-foreground);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.yolo-learning-home-project-card:hover {
+  border-color: color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
+  box-shadow: 0 2px 12px -4px color-mix(in oklab, var(--yolo-foreground) 12%, transparent);
+}
+
+.yolo-learning-home-project-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.yolo-learning-home-project-ring {
+  flex-shrink: 0;
+}
+
+.yolo-learning-home-project-identity {
+  min-width: 0;
+}
+
+.yolo-learning-home-project-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-home-project-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.yolo-learning-home-project-last-studied {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.yolo-learning-home-metric-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.yolo-learning-home-metric-label {
+  width: 28px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-metric-progress {
+  flex: 1 1 auto;
+}
+
+.yolo-learning-home-metric-value {
+  width: 50px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-home-add-card {
+  display: flex;
+  min-height: 160px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--yolo-border);
+  border-radius: var(--yolo-radius-xl);
+  background: transparent;
+  color: var(--yolo-muted-foreground);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.yolo-learning-home-add-card:hover {
+  border-color: color-mix(in oklab, var(--yolo-primary) 50%, transparent);
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-home-add-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--yolo-border);
+  border-radius: 9999px;
+  transition: border-color 150ms ease;
+}
+
+.yolo-learning-home-add-card:hover .yolo-learning-home-add-icon {
+  border-color: color-mix(in oklab, var(--yolo-primary) 50%, transparent);
+}
+
+.yolo-learning-home-add-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@media (min-width: 768px) {
+  .yolo-learning-home-review-main {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .yolo-learning-home-project-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

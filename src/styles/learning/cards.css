@@ -1,0 +1,603 @@
+/* Learning Mode — cards tab (browse masonry + review swipe deck). */
+
+.yolo-learning-cards-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.yolo-learning-cards-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yolo-learning-cards-selected-point {
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-selected-point-title {
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-cards-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.yolo-learning-cards-mastery-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--yolo-radius-lg);
+  border: 1px solid var(--yolo-border);
+  background-color: var(--yolo-surface);
+  padding: 2px;
+}
+
+.yolo-learning-cards-mastery-filter-btn {
+  border: none;
+  border-radius: var(--yolo-radius-md);
+  background: transparent;
+  padding: 4px 10px;
+  color: var(--yolo-muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.yolo-learning-cards-mastery-filter-btn:hover {
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-cards-mastery-filter-btn-active,
+.yolo-learning-cards-mastery-filter-btn-active:hover {
+  background-color: var(--yolo-primary);
+  color: var(--yolo-primary-foreground);
+}
+
+.yolo-learning-cards-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  border: none;
+  border-radius: var(--yolo-radius-lg);
+  background-color: var(--yolo-primary);
+  padding: 6px 12px;
+  color: var(--yolo-primary-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.yolo-learning-cards-new-btn:hover {
+  opacity: 0.9;
+}
+
+.yolo-learning-cards-masonry {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.yolo-learning-cards-masonry-column {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.yolo-learning-cards-browse-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--yolo-radius-xl);
+  border: 1px solid var(--yolo-border);
+  background-color: var(--yolo-card);
+  transition: border-color 150ms ease;
+}
+
+.yolo-learning-cards-browse-card:hover {
+  border-color: color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
+}
+
+.yolo-learning-cards-browse-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 14px 0;
+}
+
+.yolo-learning-cards-browse-card-point {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-browse-card-meta {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.yolo-learning-cards-due-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--yolo-primary);
+}
+
+.yolo-learning-cards-mastery-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-browse-card-body {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  border: none;
+  background: transparent;
+  padding: 8px 14px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yolo-learning-cards-front-text {
+  margin: 0;
+  color: var(--yolo-foreground);
+  font-size: 14px;
+  line-height: 1.625;
+  transition: color 150ms ease;
+}
+
+.yolo-learning-cards-front-text-revealed {
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-answer {
+  position: relative;
+  margin-top: 12px;
+  border-top: 1px solid var(--yolo-border);
+  padding-top: 12px;
+}
+
+.yolo-learning-cards-answer-shimmer-mask {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.yolo-learning-cards-answer-sweep {
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in oklab, var(--yolo-primary) 20%, transparent),
+    transparent
+  );
+  animation: yolo-learning-card-answer-sweep 300ms ease-out forwards;
+}
+
+@keyframes yolo-learning-card-answer-sweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+.yolo-learning-cards-answer-label {
+  color: var(--yolo-muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.yolo-learning-cards-answer-content {
+  margin-top: 6px;
+}
+
+.yolo-learning-cards-stream-text {
+  margin: 0;
+  color: color-mix(in oklab, var(--yolo-foreground) 90%, transparent);
+  font-size: 14px;
+  line-height: 1.625;
+}
+
+.yolo-learning-cards-toggle-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-actions {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.yolo-learning-cards-browse-card:hover .yolo-learning-cards-actions {
+  opacity: 1;
+}
+
+.yolo-learning-cards-icon-btn {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--yolo-radius-md);
+  border: 1px solid var(--yolo-border);
+  background-color: color-mix(in oklab, var(--yolo-card) 80%, transparent);
+  color: var(--yolo-muted-foreground);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.yolo-learning-cards-icon-btn:hover {
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-cards-review {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding-block: 8px;
+}
+
+.yolo-learning-cards-review-stats {
+  display: flex;
+  width: 100%;
+  max-width: 560px;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 4px;
+  font-size: 14px;
+}
+
+.yolo-learning-cards-review-count {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-learning-cards-review-total,
+.yolo-learning-cards-review-timer {
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-review-timer {
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-learning-cards-review-progress {
+  width: 100%;
+  max-width: 560px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: var(--yolo-secondary);
+  padding-inline: 4px;
+}
+
+.yolo-learning-cards-review-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: var(--yolo-primary);
+  transition: width 300ms ease;
+}
+
+.yolo-learning-cards-review-stage-wrap {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  overflow: visible;
+}
+
+.yolo-learning-cards-review-stage {
+  position: relative;
+  width: 300px;
+  height: 320px;
+  overflow: visible;
+}
+
+.yolo-learning-cards-review-stack {
+  position: absolute;
+  inset: 0;
+}
+
+.yolo-learning-cards-review-peek {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  border: 1px solid var(--yolo-border);
+  background-color: var(--yolo-card);
+  box-shadow: var(--shadow-s);
+  transition:
+    transform 200ms ease-out,
+    opacity 200ms ease-out;
+}
+
+.yolo-learning-cards-review-peek-left,
+.yolo-learning-cards-review-peek-single {
+  z-index: 1;
+}
+
+.yolo-learning-cards-review-peek-right {
+  z-index: 2;
+}
+
+.yolo-learning-cards-review-peek-settling {
+  opacity: 0;
+}
+
+.yolo-learning-cards-review-promote {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.yolo-learning-cards-review-promote-card,
+.yolo-learning-cards-review-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px solid var(--yolo-border);
+  background-color: var(--yolo-card);
+  padding: 20px;
+  text-align: center;
+  box-shadow: var(--shadow-l);
+}
+
+.yolo-learning-cards-review-active {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  touch-action: none;
+  user-select: none;
+}
+
+.yolo-learning-cards-review-active-exiting {
+  pointer-events: none;
+  transition:
+    transform 300ms ease-out,
+    opacity 300ms ease-out;
+}
+
+.yolo-learning-cards-review-active-hidden {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.yolo-learning-cards-review-active-resting {
+  transition: transform 200ms ease;
+}
+
+.yolo-learning-cards-review-perspective {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 1600px;
+}
+
+.yolo-learning-cards-review-flip {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 500ms ease;
+}
+
+.yolo-learning-cards-review-flip-flipped {
+  transform: rotateY(180deg);
+}
+
+.yolo-learning-cards-review-face {
+  cursor: pointer;
+  backface-visibility: hidden;
+}
+
+.yolo-learning-cards-review-face-back {
+  transform: rotateY(180deg);
+}
+
+.yolo-learning-cards-review-card-point {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-review-card-front-text {
+  max-width: 248px;
+  margin: 0;
+  color: var(--yolo-foreground);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.625;
+  text-wrap: balance;
+}
+
+.yolo-learning-cards-review-card-back-text {
+  max-width: 248px;
+  max-height: 200px;
+  margin: 0;
+  overflow-y: auto;
+  color: color-mix(in oklab, var(--yolo-foreground) 90%, transparent);
+  font-size: 14px;
+  line-height: 1.625;
+}
+
+.yolo-learning-cards-review-card-bottom-hint {
+  position: absolute;
+  bottom: 16px;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-review-tint {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.yolo-learning-cards-review-tint-danger {
+  background-color: color-mix(in oklab, var(--yolo-danger) 14%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--yolo-danger) 30%, transparent);
+}
+
+.yolo-learning-cards-review-tint-warning {
+  background-color: color-mix(in oklab, var(--yolo-warning) 14%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in oklab, var(--yolo-warning) 30%, transparent);
+}
+
+.yolo-learning-cards-review-tint-success {
+  background-color: color-mix(in oklab, var(--yolo-success) 12%, transparent);
+  box-shadow: 0 0 0 2px
+    color-mix(in oklab, var(--yolo-success) 30%, transparent);
+}
+
+.yolo-learning-cards-review-actions {
+  display: flex;
+  width: 100%;
+  max-width: 480px;
+  align-items: center;
+  gap: 12px;
+  padding-inline: 4px;
+}
+
+.yolo-learning-cards-review-actions-busy {
+  pointer-events: none;
+}
+
+.yolo-learning-cards-eval-btn {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--yolo-radius-lg);
+  border: 1px solid currentColor;
+  background: transparent;
+  padding-block: 12px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.yolo-learning-cards-eval-btn-danger {
+  color: var(--yolo-danger);
+}
+
+.yolo-learning-cards-eval-btn-danger:hover {
+  background-color: color-mix(in oklab, var(--yolo-danger) 12%, transparent);
+}
+
+.yolo-learning-cards-eval-btn-warning {
+  color: var(--yolo-warning);
+}
+
+.yolo-learning-cards-eval-btn-warning:hover {
+  background-color: color-mix(in oklab, var(--yolo-warning) 12%, transparent);
+}
+
+.yolo-learning-cards-eval-btn-success {
+  color: var(--yolo-success);
+}
+
+.yolo-learning-cards-eval-btn-success:hover {
+  background-color: color-mix(in oklab, var(--yolo-success) 12%, transparent);
+}
+
+.yolo-learning-cards-eval-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.yolo-learning-cards-eval-hint {
+  color: var(--yolo-muted-foreground);
+  font-size: 12px;
+}
+
+.yolo-learning-cards-review-shortcuts {
+  text-align: center;
+  font-size: 12px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-cards-review-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding-block: 64px;
+  text-align: center;
+}
+
+.yolo-learning-cards-review-done-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.yolo-learning-cards-review-done-subtitle {
+  margin: 0;
+  color: var(--yolo-muted-foreground);
+  font-size: 14px;
+}
+
+.yolo-learning-cards-review-back-btn {
+  margin-top: 8px;
+  border: none;
+  border-radius: var(--yolo-radius-lg);
+  background-color: var(--yolo-primary);
+  padding: 8px 16px;
+  color: var(--yolo-primary-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.yolo-learning-cards-review-back-btn:hover {
+  opacity: 0.9;
+}

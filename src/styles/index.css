@@ -23,6 +23,15 @@
 @import './panels/smart-space.css';
 @import './panels/quick-ask.css';
 
+@import './learning/tokens.css';
+@import './learning/primitives.css';
+@import './learning/shell.css';
+@import './learning/home.css';
+@import './learning/wizard.css';
+@import './learning/outline-builder.css';
+@import './learning/outline.css';
+@import './learning/cards.css';
+@import './learning/exercises.css';
 @import './learning/workspace.css';
 @import './learning/knowledge-graph.css';
 

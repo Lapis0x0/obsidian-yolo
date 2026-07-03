@@ -1,0 +1,327 @@
+/* Learning Mode — outline tab. */
+
+.yolo-learning-outline {
+  display: flex;
+  gap: 24px;
+}
+
+.yolo-learning-outline-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+.yolo-learning-outline-search-wrap {
+  position: relative;
+}
+
+.yolo-learning-outline-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  color: var(--yolo-muted-foreground);
+  transform: translateY(-50%);
+}
+
+.yolo-learning-outline-search-input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--yolo-input);
+  border-radius: var(--yolo-radius-lg);
+  outline: none;
+  background-color: var(--yolo-surface);
+  color: var(--yolo-foreground);
+  padding: 0 12px 0 32px;
+  font-size: 14px;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.yolo-learning-outline-search-input::placeholder {
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-outline-search-input:focus-visible {
+  border-color: var(--yolo-primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--yolo-ring) 25%, transparent);
+}
+
+.yolo-learning-outline-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+
+.yolo-learning-outline-chapter-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--yolo-radius-md);
+  background: transparent;
+  color: var(--yolo-foreground);
+  padding: 6px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.yolo-learning-outline-chapter-trigger:hover {
+  background-color: var(--yolo-secondary);
+}
+
+.yolo-learning-outline-muted-icon {
+  flex-shrink: 0;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-outline-chapter-index {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: var(--yolo-secondary);
+  color: var(--yolo-muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.yolo-learning-outline-chapter-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.yolo-learning-outline-chapter-count,
+.yolo-learning-outline-point-progress {
+  color: var(--yolo-muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-learning-outline-points {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.yolo-learning-outline-point {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--yolo-radius-md);
+  background: transparent;
+  color: var(--yolo-muted-foreground);
+  padding: 6px 8px 6px 32px;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.yolo-learning-outline-point:hover {
+  background-color: var(--yolo-secondary);
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-outline-point.is-active {
+  background-color: var(--yolo-accent);
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-outline-active-bar {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 2px;
+  height: 16px;
+  border-radius: 9999px;
+  background-color: var(--yolo-primary);
+  transform: translateY(-50%);
+}
+
+.yolo-learning-outline-point-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-learning-outline-add-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.yolo-learning-outline-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--yolo-radius-md);
+  background: transparent;
+  color: var(--yolo-muted-foreground);
+  padding: 6px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.yolo-learning-outline-ghost-btn:hover {
+  background-color: var(--yolo-secondary);
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-outline-detail-panel {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.yolo-learning-outline-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.yolo-learning-outline-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--yolo-muted-foreground);
+  font-size: 12px;
+}
+
+.yolo-learning-outline-breadcrumb-current {
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-outline-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.yolo-learning-outline-title {
+  margin: 0;
+  color: var(--yolo-foreground);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.yolo-learning-outline-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.yolo-learning-outline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-md);
+  background: transparent;
+  color: var(--yolo-foreground);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.yolo-learning-outline-btn:hover {
+  background-color: var(--yolo-secondary);
+}
+
+.yolo-learning-outline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.yolo-learning-outline-markdown {
+  max-width: none;
+  border-top: 1px solid var(--yolo-border);
+  color: color-mix(in oklab, var(--yolo-foreground) 90%, transparent);
+  padding-top: 20px;
+  font-size: 14px;
+  line-height: 1.625;
+}
+
+.yolo-learning-outline-markdown p {
+  margin: 0 0 16px;
+}
+
+.yolo-learning-outline-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.yolo-learning-outline-markdown strong {
+  color: var(--yolo-foreground);
+  font-weight: 600;
+}
+
+.yolo-learning-outline-markdown code {
+  border-radius: var(--yolo-radius-sm);
+  background-color: var(--yolo-surface-2);
+  color: var(--yolo-foreground);
+  padding: 1px 4px;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+}
+
+.yolo-learning-outline-markdown pre {
+  overflow-x: auto;
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-lg);
+  background-color: var(--yolo-surface-2);
+  margin: 12px 0;
+  padding: 12px;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  line-height: 1.625;
+}
+
+.yolo-learning-outline-markdown pre code {
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+@media (max-width: 760px) {
+  .yolo-learning-outline {
+    flex-direction: column;
+  }
+
+  .yolo-learning-outline-sidebar {
+    width: 100%;
+  }
+
+  .yolo-learning-outline-title-row,
+  .yolo-learning-outline-actions {
+    flex-wrap: wrap;
+  }
+}

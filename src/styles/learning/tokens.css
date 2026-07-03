@@ -1,0 +1,77 @@
+/*
+ * Learning Mode — design token layer.
+ *
+ * The design mock (Next.js + Tailwind) declared a hard-coded palette in
+ * :root/.dark. This plugin must follow the user's Obsidian theme instead, so
+ * every design token is remapped onto an Obsidian theme variable here, scoped
+ * to `.yolo-learning`. All learning-view component CSS should reference these
+ * `--yolo-*` aliases (never hard-coded colors), so the mapping lives in one
+ * place.
+ *
+ * Migration note: when translating a Tailwind class from the mock, look up the
+ * design token it used (e.g. `bg-primary` → `--primary`) and use the matching
+ * `--yolo-*` alias below (`var(--yolo-primary)`).
+ */
+
+.yolo-learning {
+  /* Core surfaces */
+  --yolo-background: var(--background-primary);
+  --yolo-card: var(--background-primary);
+  --yolo-popover: var(--background-primary);
+  --yolo-surface: var(--background-secondary);
+  --yolo-surface-2: var(--background-secondary-alt);
+  --yolo-secondary: var(--background-secondary);
+  --yolo-muted: var(--background-secondary);
+  --yolo-accent: var(--background-modifier-hover);
+
+  /* Text */
+  --yolo-foreground: var(--text-normal);
+  --yolo-muted-foreground: var(--text-muted);
+  --yolo-faint: var(--text-faint);
+  --yolo-accent-foreground: var(--text-accent);
+
+  /* Primary / interactive */
+  --yolo-primary: var(--interactive-accent);
+  --yolo-primary-hover: var(--interactive-accent-hover);
+  --yolo-primary-foreground: var(--text-on-accent);
+  --yolo-ring: var(--interactive-accent);
+
+  /* Borders */
+  --yolo-border: var(--background-modifier-border);
+  --yolo-input: var(--background-modifier-border);
+
+  /* Status */
+  --yolo-success: var(--color-green);
+  --yolo-warning: var(--color-yellow);
+  --yolo-danger: var(--color-red);
+
+  /* Radii (mirrors the mock's --radius-* scale) */
+  --yolo-radius-sm: 4px;
+  --yolo-radius-md: 6px;
+  --yolo-radius-lg: 8px;
+  --yolo-radius-xl: 12px;
+
+  color: var(--yolo-foreground);
+  background-color: var(--yolo-background);
+  font-family: var(--font-interface);
+}
+
+/* Thin scrollbars (ported from the mock's `.scrollbar-thin` utility). */
+.yolo-learning .yolo-learning-scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--yolo-border) transparent;
+}
+
+.yolo-learning .yolo-learning-scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.yolo-learning .yolo-learning-scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--yolo-border);
+  border-radius: 8px;
+}
+
+.yolo-learning .yolo-learning-scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}

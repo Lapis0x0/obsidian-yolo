@@ -5,40 +5,44 @@ import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { scanProjects } from '../../core/learning/projectScanner'
-import type { Project } from '../../core/learning/types'
+import type { Project as VaultProject } from '../../core/learning/types'
 
+import { HomeView } from './HomeView'
 import { KnowledgeGraph } from './KnowledgeGraph'
+import { type TabKey, tabs } from './mockLearningData'
+import { OutlineBuilder } from './OutlineBuilder'
+import { Wizard } from './Wizard'
+import { Workspace } from './Workspace'
 
 /**
  * LearningWorkspace
  * ─────────────────
- * The single React entry rendered inside LearningView. In this MVP scaffold
- * it does the bare minimum to put the KnowledgeGraph on screen:
- *   1. Resolves the configured learning base dir (settings or default).
- *   2. Scans the vault once for projects; picks the first one (or none).
- *   3. Owns a ProjectEventBus, wires it to the active project, and feeds
- *      the graph component.
+ * Root React entry for the Learning Mode view. Owns the top-level navigation
+ * state machine (mirrors the design mock's `learning-view.tsx`):
  *
- * Project switching / creation UI is intentionally out of scope here — that
- * comes in a later iteration. For now, "open the demo project" is the only
- * path. The bus is exposed to the plugin via window for the mock replay
- * command to drive directly.
+ *   HomeView ─(新建)→ Wizard ─(完成)→ OutlineBuilder ─(完成)→ Workspace
+ *   HomeView ─(打开项目)──────────────────────────────────→ Workspace
+ *
+ * ⚠️ Migration phase: the views are driven by `mockLearningData`, NOT the
+ * vault. The ProjectEventBus / vault scan below is kept only to feed the
+ * existing force-directed KnowledgeGraph (the "知识地图" tab) and the mock
+ * replay command. Wiring the shell to real vault data is a later phase.
  */
 export function LearningWorkspace() {
   const app = useApp()
   const plugin = usePlugin()
-  // baseDir is hard-wired to the default for the MVP scaffold. When real
-  // settings UI lands, source it from settings.learning.baseDir instead.
   const baseDir = DEFAULT_LEARNING_BASE_DIR
 
-  const [projects, setProjects] = useState<Project[]>([])
-  const [activeProjectPath, setActiveProjectPath] = useState<string | null>(
-    null,
-  )
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [buildingOutline, setBuildingOutline] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
+  const [selectedPointId, setSelectedPointId] = useState<string | null>('p2-2')
 
+  // Event bus + vault scan: only feeds the KnowledgeGraph tab / mock replay.
   const bus = useMemo(() => new ProjectEventBus(app), [app])
+  const [, setVaultProjects] = useState<VaultProject[]>([])
 
-  // Register the bus with the plugin so mock-replay commands can drive it.
   useEffect(() => {
     plugin.setLearningEventBus(bus)
     return () => {
@@ -46,15 +50,13 @@ export function LearningWorkspace() {
     }
   }, [bus, plugin])
 
-  // Initial scan + watcher lifecycle.
   useEffect(() => {
     let cancelled = false
     const run = async () => {
       const { projects: scanned } = await scanProjects(app, baseDir)
       if (cancelled) return
-      setProjects(scanned)
+      setVaultProjects(scanned)
       const firstPath = scanned[0]?.folderPath ?? null
-      setActiveProjectPath(firstPath)
       await bus.setActiveProject(baseDir, firstPath)
       bus.startWatchingVault()
     }
@@ -65,45 +67,54 @@ export function LearningWorkspace() {
     }
   }, [app, bus, baseDir])
 
-  // Cleanup bus when workspace unmounts.
   useEffect(() => {
     return () => {
       bus.dispose()
     }
   }, [bus])
 
-  const initialSnapshot = bus.getSnapshot()
+  const knowledgeMap = (
+    <KnowledgeGraph eventBus={bus} initialSnapshot={bus.getSnapshot()} />
+  )
 
   return (
-    <div className="yolo-learning-workspace">
-      <div className="yolo-learning-workspace-toolbar">
-        <span className="yolo-learning-workspace-title">学习模式</span>
-        <span className="yolo-learning-workspace-subtitle">
-          {activeProjectPath
-            ? `项目：${activeProjectPath}`
-            : `未找到项目（目录：${baseDir}）`}
-        </span>
+    <div className="yolo-learning yolo-learning-root">
+      <div className="yolo-learning-page">
+        {buildingOutline ? (
+          <OutlineBuilder
+            onCancel={() => setBuildingOutline(false)}
+            onComplete={() => {
+              setBuildingOutline(false)
+              setProjectId('new')
+            }}
+          />
+        ) : projectId ? (
+          <Workspace
+            projectId={projectId}
+            onBack={() => setProjectId(null)}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            selectedPointId={selectedPointId}
+            onSelectPoint={setSelectedPointId}
+            knowledgeMap={knowledgeMap}
+          />
+        ) : (
+          <HomeView
+            onOpenProject={setProjectId}
+            onNewProject={() => setWizardOpen(true)}
+          />
+        )}
       </div>
-      <div className="yolo-learning-workspace-body">
-        <KnowledgeGraph eventBus={bus} initialSnapshot={initialSnapshot} />
-      </div>
-      {projects.length > 1 ? (
-        <div className="yolo-learning-workspace-projects">
-          <span className="yolo-learning-workspace-projects-label">
-            其他项目（暂未实现切换 UI）：
-          </span>
-          {projects
-            .filter((p) => p.folderPath !== activeProjectPath)
-            .map((p) => (
-              <span
-                key={p.folderPath}
-                className="yolo-learning-workspace-project-chip"
-              >
-                {p.topic}
-              </span>
-            ))}
-        </div>
-      ) : null}
+
+      {wizardOpen && (
+        <Wizard
+          onClose={() => setWizardOpen(false)}
+          onComplete={() => {
+            setWizardOpen(false)
+            setBuildingOutline(true)
+          }}
+        />
+      )}
     </div>
   )
 }
