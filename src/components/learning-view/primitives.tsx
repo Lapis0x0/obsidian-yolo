@@ -124,17 +124,29 @@ export const masteryLabel: Record<Mastery, string> = {
   new: '未开始',
 }
 
+type SelectOption = string | { value: string; label: string }
+
+function selectOptionValue(option: SelectOption) {
+  return typeof option === 'string' ? option : option.value
+}
+
+function selectOptionLabel(option: SelectOption) {
+  return typeof option === 'string' ? option : option.label
+}
+
 /* Segmented control (mode / tab switch) */
 export function Segmented<T extends string>({
   options,
   value,
   onChange,
   badges,
+  getLabel,
 }: {
   options: readonly T[]
   value: T
   onChange: (v: T) => void
   badges?: Partial<Record<T, number>>
+  getLabel?: (value: T) => React.ReactNode
 }) {
   return (
     <div className="yolo-learning-segmented">
@@ -150,7 +162,7 @@ export function Segmented<T extends string>({
               active && 'is-active',
             )}
           >
-            {opt}
+            {getLabel ? getLabel(opt) : opt}
             {badges?.[opt] ? (
               <span
                 className={cx(
@@ -176,7 +188,7 @@ export function SelectMenu({
   className,
 }: {
   value: string
-  options: string[]
+  options: SelectOption[]
   onChange?: (v: string) => void
   className?: string
 }) {
@@ -187,9 +199,12 @@ export function SelectMenu({
         onChange={(e) => onChange?.(e.target.value)}
         className="yolo-learning-select-input"
       >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
+        {options.map((option) => (
+          <option
+            key={selectOptionValue(option)}
+            value={selectOptionValue(option)}
+          >
+            {selectOptionLabel(option)}
           </option>
         ))}
       </select>

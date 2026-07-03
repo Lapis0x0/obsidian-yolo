@@ -12,6 +12,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
+import { useLanguage } from '../../contexts/language-context'
+import { formatLearningText } from './i18n'
 import { chapters, exercises } from './mockLearningData'
 import type { Exercise } from './mockLearningData'
 import { Pill, Segmented, SelectMenu } from './primitives'
@@ -29,6 +31,7 @@ export function ExercisesView({
 }: {
   selectedPointId: string | null
 }) {
+  const { t } = useLanguage()
   const practiceCount = exercises.filter(
     (exercise) => !exercise.practiced,
   ).length
@@ -40,6 +43,10 @@ export function ExercisesView({
   const enterPractice = (scope: PracticeScope = { kind: 'global' }) => {
     setPracticeScope(scope)
     setMode('练习')
+  }
+  const modeLabels: Record<'浏览' | '练习', string> = {
+    浏览: t('learning.common.browse', '浏览'),
+    练习: t('learning.exercises.practice', '练习'),
   }
 
   return (
@@ -53,10 +60,11 @@ export function ExercisesView({
             if (nextMode === '练习') setPracticeScope({ kind: 'global' })
           }}
           badges={practiceCount > 0 ? { 练习: practiceCount } : undefined}
+          getLabel={(option) => modeLabels[option]}
         />
         {selectedPointId && mode === '浏览' && (
           <span className="yolo-learning-exercises-location">
-            定位至：
+            {t('learning.exercises.locatedTo', '定位至：')}
             <span className="yolo-learning-exercises-location-target">
               {pointTitle(selectedPointId)}
             </span>
@@ -118,6 +126,7 @@ function BrowseMode({
   selectedPointId: string | null
   onPracticeChapter: (chapterId: string) => void
 }) {
+  const { t } = useLanguage()
   const [chapterFilter, setChapterFilter] = useState('全部章节')
   const [statusFilter, setStatusFilter] = useState('全部状态')
 
@@ -155,12 +164,31 @@ function BrowseMode({
       <div className="yolo-learning-exercises-filters">
         <SelectMenu
           value={chapterFilter}
-          options={['全部章节', ...chapters.map((chapter) => chapter.title)]}
+          options={[
+            {
+              value: '全部章节',
+              label: t('learning.common.allChapters', '全部章节'),
+            },
+            ...chapters.map((chapter) => chapter.title),
+          ]}
           onChange={setChapterFilter}
         />
         <SelectMenu
           value={statusFilter}
-          options={['全部状态', '已练习', '未练习']}
+          options={[
+            {
+              value: '全部状态',
+              label: t('learning.exercises.allStatus', '全部状态'),
+            },
+            {
+              value: '已练习',
+              label: t('learning.exercises.practiced', '已练习'),
+            },
+            {
+              value: '未练习',
+              label: t('learning.exercises.unpracticed', '未练习'),
+            },
+          ]}
           onChange={setStatusFilter}
         />
       </div>
@@ -176,7 +204,7 @@ function BrowseMode({
         ))}
         {visibleChapters.length === 0 && (
           <p className="yolo-learning-exercises-empty">
-            没有符合筛选条件的习题
+            {t('learning.exercises.emptyFiltered', '没有符合筛选条件的习题')}
           </p>
         )}
       </div>
@@ -195,6 +223,7 @@ function ChapterExerciseCard({
   selectedPointId: string | null
   onPracticeChapter: () => void
 }) {
+  const { t } = useLanguage()
   const stats = chapterExerciseStats(chapter.id)
 
   return (
@@ -202,16 +231,25 @@ function ChapterExerciseCard({
       <div className="yolo-learning-exercise-chapter-header">
         <div className="yolo-learning-exercise-chapter-title-wrap">
           <h3 className="yolo-learning-exercise-chapter-title">
-            第 {chapter.index} 章 · {chapter.title}
+            {formatLearningText(
+              t('learning.exercises.chapterTitle', '第 {index} 章 · {title}'),
+              { index: chapter.index, title: chapter.title },
+            )}
           </h3>
           <p className="yolo-learning-exercise-chapter-meta">
-            {stats.practiced}/{stats.total} 已练
+            {formatLearningText(
+              t('learning.exercises.practicedCount', '{done}/{total} 已练'),
+              { done: stats.practiced, total: stats.total },
+            )}
             {stats.pending > 0 && (
               <>
                 {' '}
                 ·{' '}
                 <span className="yolo-learning-exercise-pending-text">
-                  {stats.pending} 待练
+                  {formatLearningText(
+                    t('learning.exercises.pendingCount', '{count} 待练'),
+                    { count: stats.pending },
+                  )}
                 </span>
               </>
             )}
@@ -222,7 +260,7 @@ function ChapterExerciseCard({
           onClick={onPracticeChapter}
           className="yolo-learning-exercise-primary-button yolo-learning-exercise-chapter-action"
         >
-          练习 <ArrowRight size={14} />
+          {t('learning.exercises.practice', '练习')} <ArrowRight size={14} />
         </button>
       </div>
 
@@ -254,6 +292,7 @@ function PointProgressRow({
   highlighted: boolean
   className?: string
 }) {
+  const { t } = useLanguage()
   const practicedCount = pointExercises.filter(
     (exercise) => exercise.practiced,
   ).length
@@ -276,10 +315,15 @@ function PointProgressRow({
       <div className="yolo-learning-exercise-point-status">
         {allPracticed ? (
           <Pill tone="success">
-            <Check size={11} /> 完成
+            <Check size={11} /> {t('learning.exercises.completed', '完成')}
           </Pill>
         ) : (
-          <Pill tone="primary">{pending} 待练</Pill>
+          <Pill tone="primary">
+            {formatLearningText(
+              t('learning.exercises.pendingCount', '{count} 待练'),
+              { count: pending },
+            )}
+          </Pill>
         )}
       </div>
     </li>
@@ -395,6 +439,7 @@ function PracticeMode({
   scope: PracticeScope
   onExit: () => void
 }) {
+  const { t } = useLanguage()
   const queue = useMemo(() => buildPracticeQueue(scope), [scope])
 
   const [index, setIndex] = useState(0)
@@ -496,16 +541,21 @@ function PracticeMode({
   if (done) {
     return (
       <div className="yolo-learning-exercise-complete">
-        <p className="yolo-learning-exercise-complete-title">本轮练习完成</p>
+        <p className="yolo-learning-exercise-complete-title">
+          {t('learning.exercises.practiceDone', '本轮练习完成')}
+        </p>
         <p className="yolo-learning-exercise-complete-meta">
-          共完成 {queue.length} 道习题
+          {formatLearningText(
+            t('learning.exercises.practiceDoneCount', '共完成 {count} 道习题'),
+            { count: queue.length },
+          )}
         </p>
         <button
           type="button"
           onClick={onExit}
           className="yolo-learning-exercise-primary-button yolo-learning-exercise-complete-button"
         >
-          返回浏览
+          {t('learning.cards.backToBrowse', '返回浏览')}
         </button>
       </div>
     )
@@ -533,7 +583,7 @@ function PracticeMode({
           onClick={onExit}
           className="yolo-learning-exercise-exit-button"
         >
-          <X size={15} /> 退出
+          <X size={15} /> {t('learning.exercises.exit', '退出')}
         </button>
       </div>
 
@@ -563,14 +613,22 @@ function PracticeMode({
               readOnly={phase === 'submitting'}
               onChange={(event) => setAnswer(event.target.value)}
               className="yolo-learning-exercise-answer-input"
-              placeholder="在这里输入你的答案…"
+              placeholder={t(
+                'learning.exercises.answerPlaceholder',
+                '在这里输入你的答案…',
+              )}
             />
             <div className="yolo-learning-exercise-answer-footer">
-              <span>已输入 {answer.length} 字</span>
+              <span>
+                {formatLearningText(
+                  t('learning.exercises.answerChars', '已输入 {count} 字'),
+                  { count: answer.length },
+                )}
+              </span>
               {phase === 'submitting' && (
                 <span className="yolo-learning-exercise-answer-loading">
                   <Loader2 size={13} className="yolo-learning-exercise-spin" />{' '}
-                  AI 评估中…
+                  {t('learning.exercises.aiEvaluating', 'AI 评估中…')}
                 </span>
               )}
             </div>
@@ -585,10 +643,12 @@ function PracticeMode({
               className="yolo-learning-exercise-answer-toggle"
             >
               <span className="yolo-learning-exercise-answer-toggle-title">
-                你的作答
+                {t('learning.exercises.yourAnswer', '你的作答')}
               </span>
               <span className="yolo-learning-exercise-answer-toggle-state">
-                {showAnswer ? '收起' : '展开'}
+                {showAnswer
+                  ? t('learning.common.collapse', '收起')
+                  : t('learning.common.expand', '展开')}
                 {showAnswer ? (
                   <ChevronUp size={14} />
                 ) : (
@@ -616,21 +676,33 @@ function PracticeMode({
               </div>
 
               <div className="yolo-learning-exercise-feedback-list">
-                <FeedbackBlock title="你的答案要点" tone="success">
+                <FeedbackBlock
+                  title={t(
+                    'learning.exercises.answerStrengths',
+                    '你的答案要点',
+                  )}
+                  tone="success"
+                >
                   <ul className="yolo-learning-exercise-feedback-items yolo-learning-exercise-feedback-items-success">
                     {feedback.strengths.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
                 </FeedbackBlock>
-                <FeedbackBlock title="遗漏或错误" tone="warning">
+                <FeedbackBlock
+                  title={t('learning.exercises.answerGaps', '遗漏或错误')}
+                  tone="warning"
+                >
                   <ul className="yolo-learning-exercise-feedback-items yolo-learning-exercise-feedback-items-warning">
                     {feedback.gaps.map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
                 </FeedbackBlock>
-                <FeedbackBlock title="完整讲解" tone="neutral">
+                <FeedbackBlock
+                  title={t('learning.exercises.fullExplanation', '完整讲解')}
+                  tone="neutral"
+                >
                   <p className="yolo-learning-exercise-feedback-text">
                     {feedback.explanation}
                   </p>
@@ -639,7 +711,7 @@ function PracticeMode({
 
               <details className="yolo-learning-exercise-reference">
                 <summary className="yolo-learning-exercise-reference-summary">
-                  参考答案
+                  {t('learning.exercises.referenceAnswer', '参考答案')}
                 </summary>
                 <p className="yolo-learning-exercise-reference-text">
                   {exercise.answer}
@@ -664,7 +736,7 @@ function PracticeMode({
               onClick={submitAnswer}
               className="yolo-learning-exercise-primary-button yolo-learning-exercise-submit-button"
             >
-              提交评估
+              {t('learning.exercises.submitEvaluation', '提交评估')}
             </button>
           )}
           {phase === 'submitting' && (
@@ -674,7 +746,7 @@ function PracticeMode({
               className="yolo-learning-exercise-primary-button yolo-learning-exercise-submit-button is-loading"
             >
               <Loader2 size={15} className="yolo-learning-exercise-spin" />
-              评估中…
+              {t('learning.exercises.evaluating', '评估中…')}
             </button>
           )}
           {phase === 'feedback' && (
@@ -684,14 +756,15 @@ function PracticeMode({
                 onClick={goNext}
                 className="yolo-learning-exercise-primary-button yolo-learning-exercise-submit-button"
               >
-                下一题 <ArrowRight size={15} />
+                {t('learning.exercises.nextQuestion', '下一题')}{' '}
+                <ArrowRight size={15} />
               </button>
               <button
                 type="button"
                 onClick={retryExercise}
                 className="yolo-learning-exercise-secondary-button"
               >
-                <RotateCcw size={14} /> 重做
+                <RotateCcw size={14} /> {t('learning.exercises.retry', '重做')}
               </button>
             </>
           )}
@@ -701,16 +774,26 @@ function PracticeMode({
               disabled
               className="yolo-learning-exercise-transition-button"
             >
-              加载下一题…
+              {t('learning.exercises.loadingNext', '加载下一题…')}
             </button>
           )}
         </div>
 
         <div className="yolo-learning-exercise-shortcuts">
-          {phase === 'answering' && '⌘/Ctrl + Enter 提交 · Esc 回浏览'}
-          {phase === 'submitting' && 'AI 正在评估你的作答…'}
-          {phase === 'feedback' && 'Enter / → 下一题 · Esc 回浏览'}
-          {phase === 'transition' && '准备下一题…'}
+          {phase === 'answering' &&
+            t(
+              'learning.exercises.shortcutAnswering',
+              '⌘/Ctrl + Enter 提交 · Esc 回浏览',
+            )}
+          {phase === 'submitting' &&
+            t('learning.exercises.shortcutSubmitting', 'AI 正在评估你的作答…')}
+          {phase === 'feedback' &&
+            t(
+              'learning.exercises.shortcutFeedback',
+              'Enter / → 下一题 · Esc 回浏览',
+            )}
+          {phase === 'transition' &&
+            t('learning.exercises.shortcutTransition', '准备下一题…')}
         </div>
       </div>
     </div>

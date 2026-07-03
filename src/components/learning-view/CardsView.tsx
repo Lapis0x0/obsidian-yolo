@@ -10,11 +10,25 @@ import {
 } from 'react'
 import type { PointerEvent, ReactNode } from 'react'
 
+import { useLanguage } from '../../contexts/language-context'
+import { formatLearningText } from './i18n'
 import { type Card, cards, chapters } from './mockLearningData'
-import { MasteryDot, Segmented, SelectMenu, masteryLabel } from './primitives'
+import { MasteryDot, Segmented, SelectMenu } from './primitives'
 
 const cardModes = ['浏览', '复习'] as const
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
+
+function masteryText(
+  t: (keyPath: string, fallback?: string) => string,
+  mastery: Card['mastery'],
+) {
+  const labels: Record<Card['mastery'], string> = {
+    mastered: t('learning.mastery.mastered', '已掌握'),
+    learning: t('learning.mastery.learning', '学习中'),
+    new: t('learning.mastery.new', '未开始'),
+  }
+  return labels[mastery]
+}
 
 function pointTitle(pointId: string) {
   for (const chapter of chapters) {
@@ -29,8 +43,13 @@ export function CardsView({
 }: {
   selectedPointId: string | null
 }) {
+  const { t } = useLanguage()
   const dueCount = cards.filter((card) => card.due).length
   const [mode, setMode] = useState<'浏览' | '复习'>('浏览')
+  const modeLabels: Record<(typeof cardModes)[number], string> = {
+    浏览: t('learning.common.browse', '浏览'),
+    复习: t('learning.cards.review', '复习'),
+  }
 
   return (
     <div className="yolo-learning-cards-view">
@@ -40,10 +59,11 @@ export function CardsView({
           value={mode}
           onChange={(nextMode) => setMode(nextMode)}
           badges={{ 复习: dueCount }}
+          getLabel={(option) => modeLabels[option]}
         />
         {selectedPointId && mode === '浏览' && (
           <span className="yolo-learning-cards-selected-point">
-            已筛选至：
+            {t('learning.cards.filteredTo', '已筛选至：')}
             <span className="yolo-learning-cards-selected-point-title">
               {pointTitle(selectedPointId)}
             </span>
@@ -66,20 +86,40 @@ function BrowseMode({
 }: {
   selectedPointId: string | null
 }) {
+  const { t } = useLanguage()
   const [mastery, setMastery] =
     useState<(typeof masteryFilters)[number]>('全部')
   const columnCount = useMasonryColumnCount()
+  const masteryFilterLabels: Record<(typeof masteryFilters)[number], string> = {
+    全部: t('learning.common.all', '全部'),
+    已掌握: t('learning.mastery.mastered', '已掌握'),
+    学习中: t('learning.mastery.learning', '学习中'),
+    未开始: t('learning.mastery.new', '未开始'),
+  }
 
   return (
     <>
       <div className="yolo-learning-cards-filters">
         <SelectMenu
           value="全部章节"
-          options={['全部章节', ...chapters.map((c) => c.title)]}
+          options={[
+            {
+              value: '全部章节',
+              label: t('learning.common.allChapters', '全部章节'),
+            },
+            ...chapters.map((c) => c.title),
+          ]}
         />
         <SelectMenu
           value="全部知识点"
-          options={['全部知识点', '2.2 可变引用', '2.3 借用检查器规则']}
+          options={[
+            {
+              value: '全部知识点',
+              label: t('learning.common.allKnowledgePoints', '全部知识点'),
+            },
+            '2.2 可变引用',
+            '2.3 借用检查器规则',
+          ]}
         />
         <div className="yolo-learning-cards-mastery-filter">
           {masteryFilters.map((m) => (
@@ -93,16 +133,29 @@ function BrowseMode({
                   'yolo-learning-cards-mastery-filter-btn-active',
               )}
             >
-              {m}
+              {masteryFilterLabels[m]}
             </button>
           ))}
         </div>
         <SelectMenu
           value="按到期时间"
-          options={['按到期时间', '按掌握度', '按创建时间']}
+          options={[
+            {
+              value: '按到期时间',
+              label: t('learning.cards.sortDue', '按到期时间'),
+            },
+            {
+              value: '按掌握度',
+              label: t('learning.cards.sortMastery', '按掌握度'),
+            },
+            {
+              value: '按创建时间',
+              label: t('learning.home.sortCreated', '按创建时间'),
+            },
+          ]}
         />
         <button type="button" className="yolo-learning-cards-new-btn">
-          <Plus size={15} /> 新建卡片
+          <Plus size={15} /> {t('learning.cards.newCard', '新建卡片')}
         </button>
       </div>
 
@@ -200,6 +253,7 @@ function StreamReveal({ text, active }: { text: string; active: boolean }) {
 }
 
 function BrowseCard({ card }: { card: Card }) {
+  const { t } = useLanguage()
   const [revealed, setRevealed] = useState(false)
   const [shimmer, setShimmer] = useState(false)
 
@@ -219,11 +273,13 @@ function BrowseCard({ card }: { card: Card }) {
         </span>
         <div className="yolo-learning-cards-browse-card-meta">
           {card.due && (
-            <span className="yolo-learning-cards-due-label">待复习</span>
+            <span className="yolo-learning-cards-due-label">
+              {t('learning.cards.due', '待复习')}
+            </span>
           )}
           <span className="yolo-learning-cards-mastery-label">
             <MasteryDot mastery={card.mastery} />
-            {masteryLabel[card.mastery]}
+            {masteryText(t, card.mastery)}
           </span>
         </div>
       </div>
@@ -249,7 +305,9 @@ function BrowseCard({ card }: { card: Card }) {
                 <div className="yolo-learning-cards-answer-sweep" />
               </div>
             )}
-            <div className="yolo-learning-cards-answer-label">答案</div>
+            <div className="yolo-learning-cards-answer-label">
+              {t('learning.cards.answer', '答案')}
+            </div>
             <div className="yolo-learning-cards-answer-content">
               <StreamReveal text={card.back} active={revealed} />
             </div>
@@ -257,15 +315,17 @@ function BrowseCard({ card }: { card: Card }) {
         )}
 
         <span className="yolo-learning-cards-toggle-hint">
-          {revealed ? '点击收回' : '点击查看答案'}
+          {revealed
+            ? t('learning.cards.hideAnswer', '点击收回')
+            : t('learning.cards.showAnswer', '点击查看答案')}
         </span>
       </button>
 
       <div className="yolo-learning-cards-actions">
-        <CardIconBtn label="编辑">
+        <CardIconBtn label={t('common.edit', '编辑')}>
           <Pencil size={13} />
         </CardIconBtn>
-        <CardIconBtn label="删除">
+        <CardIconBtn label={t('common.delete', '删除')}>
           <Trash2 size={13} />
         </CardIconBtn>
       </div>
@@ -278,15 +338,6 @@ function BrowseCard({ card }: { card: Card }) {
 type ReviewGrade = 'forgot' | 'hard' | 'good'
 
 const SWIPE_THRESHOLD = 72
-
-const gradeMeta: Record<
-  ReviewGrade,
-  { label: string; hint: string; tone: 'danger' | 'warning' | 'success' }
-> = {
-  forgot: { label: '忘了', hint: '< 1 分钟后', tone: 'danger' },
-  hard: { label: '模糊', hint: '10 分钟后', tone: 'warning' },
-  good: { label: '会了', hint: '2 天后', tone: 'success' },
-}
 
 const gradeDragTint: Record<ReviewGrade, string> = {
   forgot: 'yolo-learning-cards-review-tint-danger',
@@ -328,6 +379,7 @@ const peekSingle = 'translateY(6px) scale(0.98)'
 const peekCenter = 'translate(0,0) rotate(0deg) scale(1)'
 
 function ReviewMode({ onExit }: { onExit: () => void }) {
+  const { t } = useLanguage()
   const queue = useMemo(() => {
     const due = cards.filter((card) => card.due)
     return due.length > 0 ? due : cards.slice(0, 5)
@@ -459,6 +511,27 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
   }
 
   const activeGrade = exitingGrade ?? resolveSwipeGrade(drag.x, drag.y)
+  const gradeMeta: Record<
+    ReviewGrade,
+    { label: string; hint: string; tone: 'danger' | 'warning' | 'success' }
+  > = {
+    forgot: {
+      label: t('learning.cards.reviewForgot', '忘了'),
+      hint: t('learning.cards.reviewForgotHint', '< 1 分钟后'),
+      tone: 'danger',
+    },
+    hard: {
+      label: t('learning.cards.reviewHard', '模糊'),
+      hint: t('learning.cards.reviewHardHint', '10 分钟后'),
+      tone: 'warning',
+    },
+    good: {
+      label: t('learning.cards.reviewGood', '会了'),
+      hint: t('learning.cards.reviewGoodHint', '2 天后'),
+      tone: 'success',
+    },
+  }
+  const flipHint = t('learning.cards.flipHint', '点击翻面或按空格')
 
   const cardTransform = exitingGrade
     ? exitTransforms[exitingGrade]
@@ -475,16 +548,21 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
   if (done) {
     return (
       <div className="yolo-learning-cards-review-done">
-        <p className="yolo-learning-cards-review-done-title">本轮复习完成</p>
+        <p className="yolo-learning-cards-review-done-title">
+          {t('learning.cards.reviewDone', '本轮复习完成')}
+        </p>
         <p className="yolo-learning-cards-review-done-subtitle">
-          共复习 {queue.length} 张卡片
+          {formatLearningText(
+            t('learning.cards.reviewDoneCount', '共复习 {count} 张卡片'),
+            { count: queue.length },
+          )}
         </p>
         <button
           type="button"
           onClick={onExit}
           className="yolo-learning-cards-review-back-btn"
         >
-          返回浏览
+          {t('learning.cards.backToBrowse', '返回浏览')}
         </button>
       </div>
     )
@@ -571,7 +649,7 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
                     {promoteCard.front}
                   </p>
                   <div className="yolo-learning-cards-review-card-bottom-hint">
-                    点击翻面或按空格
+                    {flipHint}
                   </div>
                 </div>
               </div>
@@ -615,7 +693,7 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
                       {card.front}
                     </p>
                     <div className="yolo-learning-cards-review-card-bottom-hint">
-                      点击翻面或按空格
+                      {flipHint}
                     </div>
                     <div
                       className={cx(
@@ -664,7 +742,10 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
       </div>
 
       <div className="yolo-learning-cards-review-shortcuts">
-        空格 翻面 · ← ↑ → 或 1 / 2 / 3 评估 · Esc 回浏览
+        {t(
+          'learning.cards.reviewShortcuts',
+          '空格 翻面 · ← ↑ → 或 1 / 2 / 3 评估 · Esc 回浏览',
+        )}
       </div>
     </div>
   )

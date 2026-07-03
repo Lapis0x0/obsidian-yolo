@@ -14,6 +14,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 
+import { useLanguage } from '../../contexts/language-context'
+import { formatLearningText } from './i18n'
 
 const initialChapters = [
   {
@@ -47,6 +49,7 @@ export function OutlineBuilder({
   onCancel: () => void
   onComplete: () => void
 }) {
+  const { t } = useLanguage()
   const [chapters, setChapters] = useState<Chapter[]>(initialChapters)
   const [generating, setGenerating] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -104,10 +107,17 @@ export function OutlineBuilder({
           <h1 className="yolo-learning-outline-builder-title">
             Rust 所有权与生命周期
           </h1>
-          <span className="yolo-learning-outline-builder-badge">大纲草稿</span>
+          <span className="yolo-learning-outline-builder-badge">
+            {t('learning.outlineBuilder.draftBadge', '大纲草稿')}
+          </span>
         </div>
         <span className="yolo-learning-outline-builder-status">
-          {generating ? 'Sub-Agent 待命中' : '确认后将交由 Sub-Agent 生成'}
+          {generating
+            ? t('learning.outlineBuilder.subagentPending', 'Sub-Agent 待命中')
+            : t(
+                'learning.outlineBuilder.subagentReady',
+                '确认后将交由 Sub-Agent 生成',
+              )}
         </span>
       </header>
 
@@ -122,7 +132,15 @@ export function OutlineBuilder({
             </div>
             <div>
               <h2 className="yolo-learning-outline-builder-heading">
-                {generating ? '正在为你规划学习路径...' : '章节大纲与生成契约'}
+                {generating
+                  ? t(
+                      'learning.outlineBuilder.generatingHeading',
+                      '正在为你规划学习路径...',
+                    )
+                  : t(
+                      'learning.outlineBuilder.readyHeading',
+                      '章节大纲与生成契约',
+                    )}
               </h2>
             </div>
           </div>
@@ -134,10 +152,11 @@ export function OutlineBuilder({
                 index={i + 1}
                 title={c.title}
                 contract={c.contract}
+                t={t}
               />
             ))}
 
-            {generating && <SkeletonCard />}
+            {generating && <SkeletonCard t={t} />}
 
             {!generating && (
               <button
@@ -145,7 +164,10 @@ export function OutlineBuilder({
                 className="yolo-learning-outline-builder-add"
               >
                 <Plus size={16} />
-                添加自定义章节
+                {t(
+                  'learning.outlineBuilder.addCustomChapter',
+                  '添加自定义章节',
+                )}
               </button>
             )}
           </div>
@@ -154,18 +176,21 @@ export function OutlineBuilder({
         <aside className="yolo-learning-outline-builder-rail">
           <div className="yolo-learning-outline-builder-rail-scroll yolo-learning-scrollbar-thin">
             <h3 className="yolo-learning-outline-builder-rail-title">
-              本次生成概览
+              {t('learning.outlineBuilder.overview', '本次生成概览')}
             </h3>
 
             <dl className="yolo-learning-outline-builder-stats">
               <Stat
                 icon={<ListTree size={14} />}
-                label="章节"
+                label={t('learning.outlineBuilder.chapters', '章节')}
                 value={generating ? '—' : String(chapters.length)}
               />
               <Stat
                 icon={<Target size={14} />}
-                label="预计知识点"
+                label={t(
+                  'learning.outlineBuilder.estimatedPoints',
+                  '预计知识点',
+                )}
                 value={
                   generating
                     ? '—'
@@ -176,24 +201,33 @@ export function OutlineBuilder({
               />
               <Stat
                 icon={<Layers size={14} />}
-                label="预计卡片"
+                label={t('learning.outlineBuilder.estimatedCards', '预计卡片')}
                 value={generating ? '—' : `${scale.min * 3}–${scale.max * 3}`}
-                hint="按每个知识点 ≈3 张估算"
+                hint={t(
+                  'learning.outlineBuilder.cardsHint',
+                  '按每个知识点 ≈3 张估算',
+                )}
               />
               <Stat
                 icon={<Clock size={14} />}
-                label="预估生成"
+                label={t(
+                  'learning.outlineBuilder.estimatedGeneration',
+                  '预估生成',
+                )}
                 value={
                   generating
                     ? '—'
-                    : `~${Math.max(1, Math.round(scale.max * 0.6))} 分钟`
+                    : formatLearningText(
+                        t('learning.outlineBuilder.minutes', '~{count} 分钟'),
+                        { count: Math.max(1, Math.round(scale.max * 0.6)) },
+                      )
                 }
               />
             </dl>
 
             <div className="yolo-learning-outline-builder-map">
               <div className="yolo-learning-outline-builder-map-title">
-                章节导航
+                {t('learning.outlineBuilder.chapterNavigation', '章节导航')}
               </div>
               {generating ? (
                 <div className="yolo-learning-outline-builder-map-skeletons">
@@ -235,7 +269,10 @@ export function OutlineBuilder({
               className="yolo-learning-outline-builder-complete"
             >
               <Layers size={16} />
-              确认大纲并生成知识点
+              {t(
+                'learning.outlineBuilder.confirmGenerate',
+                '确认大纲并生成知识点',
+              )}
             </button>
           </div>
         </aside>
@@ -286,10 +323,12 @@ function ChapterCard({
   index,
   title,
   contract,
+  t,
 }: {
   index: number
   title: string
   contract: string
+  t: (keyPath: string, fallback?: string) => string
 }) {
   return (
     <div id={`chapter-${index}`} className="yolo-learning-outline-builder-card">
@@ -297,7 +336,7 @@ function ChapterCard({
         <div className="yolo-learning-outline-builder-card-lead">
           <button
             type="button"
-            aria-label="拖拽排序"
+            aria-label={t('learning.outlineBuilder.dragSort', '拖拽排序')}
             className="yolo-learning-outline-builder-drag"
           >
             <GripVertical size={14} />
@@ -313,10 +352,10 @@ function ChapterCard({
               {title}
             </h3>
             <div className="yolo-learning-outline-builder-actions">
-              <IconBtn aria-label="编辑">
+              <IconBtn aria-label={t('common.edit', '编辑')}>
                 <Pencil size={14} />
               </IconBtn>
-              <IconBtn aria-label="删除">
+              <IconBtn aria-label={t('common.delete', '删除')}>
                 <Trash2 size={14} />
               </IconBtn>
             </div>
@@ -332,7 +371,11 @@ function ChapterCard({
   )
 }
 
-function SkeletonCard() {
+function SkeletonCard({
+  t,
+}: {
+  t: (keyPath: string, fallback?: string) => string
+}) {
   return (
     <div className="yolo-learning-outline-builder-skeleton-card">
       <div className="yolo-learning-outline-builder-card-row">
@@ -345,7 +388,7 @@ function SkeletonCard() {
                 size={10}
                 className="yolo-learning-outline-builder-pulse"
               />
-              生成中...
+              {t('learning.outlineBuilder.generating', '生成中...')}
             </span>
           </div>
           <div className="yolo-learning-outline-builder-skeleton-lines">

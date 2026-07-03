@@ -1,5 +1,7 @@
 import { ArrowRight, Clock, Plus } from 'lucide-react'
 
+import { useLanguage } from '../../contexts/language-context'
+import { formatLearningText } from './i18n'
 import { type Project, projects } from './mockLearningData'
 import { Pill, ProgressBar, RingProgress, SelectMenu } from './primitives'
 
@@ -10,6 +12,7 @@ export function HomeView({
   onOpenProject: (id: string) => void
   onNewProject: () => void
 }) {
+  const { t } = useLanguage()
   const totalDueCards = projects.reduce(
     (sum, project) => sum + project.dueCards,
     0,
@@ -18,14 +21,25 @@ export function HomeView({
     (sum, project) => sum + project.dueExercises,
     0,
   )
+  const sortValue = 'recent'
+  const sortOptions = [
+    { value: 'recent', label: t('learning.home.sortRecent', '按最近活跃') },
+    { value: 'created', label: t('learning.home.sortCreated', '按创建时间') },
+    { value: 'progress', label: t('learning.home.sortProgress', '按进度') },
+  ]
 
   return (
     <div className="yolo-learning-home">
       <header className="yolo-learning-home-header">
         <div>
-          <h1 className="yolo-learning-home-title">学习中心</h1>
+          <h1 className="yolo-learning-home-title">
+            {t('learning.home.title', '学习中心')}
+          </h1>
           <p className="yolo-learning-home-subtitle">
-            今天是 2026 年 6 月 28 日，你已经连续学习 5 天
+            {t(
+              'learning.home.subtitle',
+              '今天是 2026 年 6 月 28 日，你已经连续学习 5 天',
+            )}
           </p>
         </div>
         <button
@@ -34,21 +48,23 @@ export function HomeView({
           className="yolo-learning-home-new-button"
         >
           <Plus size={16} />
-          新建项目
+          {t('learning.home.newProject', '新建项目')}
         </button>
       </header>
 
       <section className="yolo-learning-home-review-card">
         <div className="yolo-learning-home-review-main">
           <div className="yolo-learning-home-review-summary">
-            <div className="yolo-learning-home-review-title">今日待复习</div>
+            <div className="yolo-learning-home-review-title">
+              {t('learning.home.todayReview', '今日待复习')}
+            </div>
             <div className="yolo-learning-home-review-stats">
               <div>
                 <div className="yolo-learning-home-review-number">
                   {totalDueCards}
                 </div>
                 <div className="yolo-learning-home-review-label">
-                  张卡片到期
+                  {t('learning.home.dueCardsLabel', '张卡片到期')}
                 </div>
               </div>
               <div>
@@ -56,32 +72,30 @@ export function HomeView({
                   {totalDueExercises}
                 </div>
                 <div className="yolo-learning-home-review-label">
-                  道题待练习
+                  {t('learning.home.dueExercisesLabel', '道题待练习')}
                 </div>
               </div>
             </div>
           </div>
           <button type="button" className="yolo-learning-home-review-button">
-            开始今日复习
+            {t('learning.home.startReview', '开始今日复习')}
             <ArrowRight size={16} />
           </button>
         </div>
         <div className="yolo-learning-home-review-meta">
-          <Clock size={13} />跨 2 个项目 · 预计耗时 20 分钟
+          <Clock size={13} />
+          {t('learning.home.reviewMeta', '跨 2 个项目 · 预计耗时 20 分钟')}
         </div>
       </section>
 
       <div className="yolo-learning-home-section-bar">
         <h2 className="yolo-learning-home-section-title">
-          我的项目{' '}
+          {t('learning.home.myProjects', '我的项目')}{' '}
           <span className="yolo-learning-home-section-count">
             ({projects.length})
           </span>
         </h2>
-        <SelectMenu
-          value="按最近活跃"
-          options={['按最近活跃', '按创建时间', '按进度']}
-        />
+        <SelectMenu value={sortValue} options={sortOptions} />
       </div>
 
       <div className="yolo-learning-home-project-grid">
@@ -90,6 +104,7 @@ export function HomeView({
             key={project.id}
             project={project}
             onClick={() => onOpenProject(project.id)}
+            t={t}
           />
         ))}
         <button
@@ -100,7 +115,9 @@ export function HomeView({
           <span className="yolo-learning-home-add-icon">
             <Plus size={18} />
           </span>
-          <span className="yolo-learning-home-add-label">新建学习项目</span>
+          <span className="yolo-learning-home-add-label">
+            {t('learning.home.newLearningProject', '新建学习项目')}
+          </span>
         </button>
       </div>
     </div>
@@ -110,9 +127,11 @@ export function HomeView({
 function ProjectCard({
   project,
   onClick,
+  t,
 }: {
   project: Project
   onClick: () => void
+  t: (keyPath: string, fallback?: string) => string
 }) {
   const due = project.dueCards + project.dueExercises
 
@@ -132,9 +151,19 @@ function ProjectCard({
         <div className="yolo-learning-home-project-identity">
           <h3 className="yolo-learning-home-project-name">{project.name}</h3>
           <div className="yolo-learning-home-project-status">
-            {due > 0 && <Pill tone="primary">今日 {due} 项待复习</Pill>}
+            {due > 0 && (
+              <Pill tone="primary">
+                {formatLearningText(
+                  t('learning.home.projectDue', '今日 {count} 项待复习'),
+                  { count: due },
+                )}
+              </Pill>
+            )}
             <span className="yolo-learning-home-project-last-studied">
-              最近学习于 {project.lastStudied}
+              {formatLearningText(
+                t('learning.home.lastStudied', '最近学习于 {time}'),
+                { time: project.lastStudied },
+              )}
             </span>
           </div>
         </div>
@@ -142,13 +171,13 @@ function ProjectCard({
 
       <div className="yolo-learning-home-metrics">
         <MetricBar
-          label="卡片"
+          label={t('learning.common.cards', '卡片')}
           value={project.cardProgress}
           completed={project.completedCards}
           total={project.totalCards}
         />
         <MetricBar
-          label="习题"
+          label={t('learning.common.exercises', '习题')}
           value={project.exerciseProgress}
           completed={project.completedExercises}
           total={project.totalExercises}

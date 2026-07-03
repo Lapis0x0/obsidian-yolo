@@ -17,6 +17,8 @@ import {
   useState,
 } from 'react'
 
+import { useLanguage } from '../../contexts/language-context'
+import { formatLearningText } from './i18n'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type {
   LearningEvent,
@@ -127,6 +129,7 @@ export function KnowledgeGraph({
   eventBus,
   initialSnapshot,
 }: KnowledgeGraphProps) {
+  const { t } = useLanguage()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
 
@@ -459,10 +462,17 @@ export function KnowledgeGraph({
     >
       <div className="yolo-learning-graph-header">
         <span className="yolo-learning-graph-topic">
-          {graph.projectTopic ?? '未选择项目'}
+          {graph.projectTopic ?? t('learning.graph.noProject', '未选择项目')}
         </span>
         <span className="yolo-learning-graph-stats">
-          {kpCount} 知识点 · {relationCount} 关系
+          {formatLearningText(
+            t('learning.graph.knowledgePoints', '{count} 知识点'),
+            { count: kpCount },
+          )}{' '}
+          ·{' '}
+          {formatLearningText(t('learning.graph.relations', '{count} 关系'), {
+            count: relationCount,
+          })}
         </span>
       </div>
       <div ref={containerRef} className="yolo-learning-graph-canvas">
@@ -523,7 +533,9 @@ export function KnowledgeGraph({
           </g>
         </svg>
         {!hasContent ? (
-          <div className="yolo-learning-graph-empty">等待学习主题生成…</div>
+          <div className="yolo-learning-graph-empty">
+            {t('learning.graph.empty', '等待学习主题生成…')}
+          </div>
         ) : null}
       </div>
     </div>

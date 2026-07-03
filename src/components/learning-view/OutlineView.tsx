@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
+import { useLanguage } from '../../contexts/language-context'
+import { formatLearningText } from './i18n'
 import { type KnowledgePoint, chapters } from './mockLearningData'
 import { MasteryDot, Pill } from './primitives'
 
@@ -20,6 +22,7 @@ export function OutlineView({
   selectedPointId: string | null
   onSelectPoint: (id: string) => void
 }) {
+  const { t } = useLanguage()
   const point = findPoint(selectedPointId) ?? chapters[1].points[1]
   const chapter = chapters.find((c) => c.points.some((p) => p.id === point.id))!
 
@@ -29,7 +32,7 @@ export function OutlineView({
         <div className="yolo-learning-outline-search-wrap">
           <Search size={15} className="yolo-learning-outline-search-icon" />
           <input
-            placeholder="搜索知识点…"
+            placeholder={t('learning.outline.searchPlaceholder', '搜索知识点…')}
             className="yolo-learning-outline-search-input"
           />
         </div>
@@ -47,10 +50,10 @@ export function OutlineView({
 
         <div className="yolo-learning-outline-add-actions">
           <GhostBtn>
-            <Plus size={14} /> 添加章节
+            <Plus size={14} /> {t('learning.outline.addChapter', '添加章节')}
           </GhostBtn>
           <GhostBtn>
-            <Plus size={14} /> 添加知识点
+            <Plus size={14} /> {t('learning.outline.addPoint', '添加知识点')}
           </GhostBtn>
         </div>
       </aside>
@@ -60,6 +63,7 @@ export function OutlineView({
           point={point}
           chapterTitle={chapter.title}
           chapterIndex={chapter.index}
+          t={t}
         />
       </section>
     </div>
@@ -142,20 +146,32 @@ function Detail({
   point,
   chapterTitle,
   chapterIndex,
+  t,
 }: {
   point: KnowledgePoint
   chapterTitle: string
   chapterIndex: number
+  t: (keyPath: string, fallback?: string) => string
 }) {
   return (
     <div className="yolo-learning-outline-detail">
       <div className="yolo-learning-outline-breadcrumb">
-        <span>章节 {chapterIndex}</span>
+        <span>
+          {formatLearningText(
+            t('learning.outline.chapterLabel', '章节 {index}'),
+            {
+              index: chapterIndex,
+            },
+          )}
+        </span>
         <span>·</span>
         <span>{chapterTitle}</span>
         <ChevronRight size={12} />
         <span className="yolo-learning-outline-breadcrumb-current">
-          知识点 {point.index} {point.title}
+          {formatLearningText(
+            t('learning.outline.pointLabel', '知识点 {index} {title}'),
+            { index: point.index, title: point.title },
+          )}
         </span>
       </div>
 
@@ -163,21 +179,44 @@ function Detail({
         <h1 className="yolo-learning-outline-title">{point.title}</h1>
         <div className="yolo-learning-outline-actions">
           <OutlineBtn>
-            <ExternalLink size={14} /> 在 Obsidian 中打开
+            <ExternalLink size={14} />{' '}
+            {t('learning.outline.openInObsidian', '在 Obsidian 中打开')}
           </OutlineBtn>
           <OutlineBtn>
-            <Pencil size={14} /> 编辑
+            <Pencil size={14} /> {t('common.edit', '编辑')}
           </OutlineBtn>
           <OutlineBtn>
-            <RotateCcw size={14} /> 重新生成
+            <RotateCcw size={14} />{' '}
+            {t('learning.outline.regenerate', '重新生成')}
           </OutlineBtn>
         </div>
       </div>
 
       <div className="yolo-learning-outline-meta">
-        <Pill tone="primary">掌握度 {point.masteryPct}%</Pill>
-        <Pill>卡片 {point.cardCount} 张</Pill>
-        <Pill>习题 {point.exerciseCount} 道</Pill>
+        <Pill tone="primary">
+          {formatLearningText(
+            t('learning.outline.masteryPct', '掌握度 {value}%'),
+            {
+              value: point.masteryPct,
+            },
+          )}
+        </Pill>
+        <Pill>
+          {formatLearningText(
+            t('learning.outline.cardCount', '卡片 {count} 张'),
+            {
+              count: point.cardCount,
+            },
+          )}
+        </Pill>
+        <Pill>
+          {formatLearningText(
+            t('learning.outline.exerciseCount', '习题 {count} 道'),
+            {
+              count: point.exerciseCount,
+            },
+          )}
+        </Pill>
       </div>
 
       <article className="yolo-learning-outline-markdown">

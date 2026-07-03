@@ -1,5 +1,9 @@
 export type Language = 'en' | 'zh' | 'it'
 
+type TranslationBranch = {
+  [key: string]: string | TranslationBranch
+}
+
 export type TranslationKeys = {
   // Commands
   commands: {
@@ -123,6 +127,8 @@ export type TranslationKeys = {
     urlContext?: string
     mentionContextLabel?: string
   }
+
+  learning?: TranslationBranch
 
   // Settings
   settings: {
