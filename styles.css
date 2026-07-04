@@ -24964,6 +24964,7 @@ body.yolo-learning-outline-global-resize * {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .yolo-learning-graph-svg {
@@ -24972,6 +24973,13 @@ body.yolo-learning-outline-global-resize * {
   width: 100%;
   height: 100%;
   display: block;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.yolo-learning-graph-svg[data-panning='true'] {
+  cursor: grabbing;
 }
 
 .yolo-learning-graph-empty {
@@ -25001,6 +25009,16 @@ body.yolo-learning-outline-global-resize * {
  */
 
 /* ── Nodes (shared) ─────────────────────────────────────────────────────── */
+
+.yolo-learning-graph-pan-surface {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.yolo-learning-graph-viewport {
+  transform-box: fill-box;
+  transform-origin: 0 0;
+}
 
 .yolo-learning-graph-node {
   cursor: grab;

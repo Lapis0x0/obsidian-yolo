@@ -124,9 +124,33 @@ const PULSE_MS = 1400
 const PULSE_AMPLITUDE = 0.15
 /** Above this knowledge-point count, non-focused kp labels fade out. */
 const LABEL_DENSE_THRESHOLD = 16
+const MIN_ZOOM = 0.35
+const MAX_ZOOM = 2.8
 
 const TOPIC_PREFIX = '__topic__'
 const HIER_PREFIX = 'hier'
+
+type ViewportTransform = {
+  x: number
+  y: number
+  zoom: number
+}
+
+type GraphGesture =
+  | {
+      type: 'node'
+      pointerId: number
+      nodeId: string
+      offsetX: number
+      offsetY: number
+    }
+  | {
+      type: 'pan'
+      pointerId: number
+      startClientX: number
+      startClientY: number
+      startViewport: ViewportTransform
+    }
 
 export function KnowledgeGraph({
   eventBus,
@@ -140,6 +164,12 @@ export function KnowledgeGraph({
     snapshotToGraph(initialSnapshot),
   )
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const [viewport, setViewport] = useState<ViewportTransform>({
+    x: 0,
+    y: 0,
+    zoom: 1,
+  })
 
   // ── Simulation + per-frame DOM handles (never trigger React renders) ──────
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null)
@@ -148,7 +178,8 @@ export function KnowledgeGraph({
   > | null>(null)
   const simNodesRef = useRef<Map<string, SimNode>>(new Map())
   const pinnedNodeIdsRef = useRef<Set<string>>(new Set())
-  const dragRef = useRef<{ id: string; pointerId: number } | null>(null)
+  const gestureRef = useRef<GraphGesture | null>(null)
+  const viewportRef = useRef<ViewportTransform>(viewport)
   const sizeRef = useRef<{ width: number; height: number }>({
     width: 600,
     height: 420,
@@ -189,6 +220,10 @@ export function KnowledgeGraph({
       for (const timer of exitTimers) clearTimeout(timer)
     }
   }, [eventBus])
+
+  useEffect(() => {
+    viewportRef.current = viewport
+  }, [viewport])
 
   const renderFrame = useCallback((now: number) => {
     const sim = simRef.current
@@ -277,30 +312,126 @@ export function KnowledgeGraph({
     const svg = svgRef.current
     if (!svg) return null
     const rect = svg.getBoundingClientRect()
+    const viewport = viewportRef.current
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: (event.clientX - rect.left - viewport.x) / viewport.zoom,
+      y: (event.clientY - rect.top - viewport.y) / viewport.zoom,
     }
+  }, [])
+
+  const handleWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
+    event.preventDefault()
+    const svg = svgRef.current
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    const pointerX = event.clientX - rect.left
+    const pointerY = event.clientY - rect.top
+
+    setViewport((current) => {
+      const factor = Math.exp(-event.deltaY * 0.001)
+      const nextZoom = clamp(current.zoom * factor, MIN_ZOOM, MAX_ZOOM)
+      if (nextZoom === current.zoom) return current
+      const graphX = (pointerX - current.x) / current.zoom
+      const graphY = (pointerY - current.y) / current.zoom
+      const next = {
+        zoom: nextZoom,
+        x: pointerX - graphX * nextZoom,
+        y: pointerY - graphY * nextZoom,
+      }
+      viewportRef.current = next
+      return next
+    })
+  }, [])
+
+  const handleCanvasPointerDown = useCallback(
+    (event: React.PointerEvent<SVGRectElement>) => {
+      if (event.button !== 0) return
+      if (gestureRef.current) return
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      gestureRef.current = {
+        type: 'pan',
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startViewport: viewportRef.current,
+      }
+      setIsPanning(true)
+    },
+    [],
+  )
+
+  const handleCanvasPointerMove = useCallback(
+    (event: React.PointerEvent<SVGRectElement>) => {
+      const gesture = gestureRef.current
+      if (
+        !gesture ||
+        gesture.type !== 'pan' ||
+        gesture.pointerId !== event.pointerId
+      ) {
+        return
+      }
+      event.preventDefault()
+      const next = {
+        ...gesture.startViewport,
+        x: gesture.startViewport.x + event.clientX - gesture.startClientX,
+        y: gesture.startViewport.y + event.clientY - gesture.startClientY,
+      }
+      viewportRef.current = next
+      setViewport(next)
+    },
+    [],
+  )
+
+  const handleCanvasPointerUp = useCallback(
+    (event: React.PointerEvent<SVGRectElement>) => {
+      const gesture = gestureRef.current
+      if (
+        !gesture ||
+        gesture.type !== 'pan' ||
+        gesture.pointerId !== event.pointerId
+      ) {
+        return
+      }
+      event.preventDefault()
+      gestureRef.current = null
+      setIsPanning(false)
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+    },
+    [],
+  )
+
+  const resetViewport = useCallback(() => {
+    const next = { x: 0, y: 0, zoom: 1 }
+    viewportRef.current = next
+    setViewport(next)
   }, [])
 
   const handleNodePointerDown = useCallback(
     (event: React.PointerEvent<SVGGElement>, id: string) => {
       if (event.button !== 0) return
+      if (gestureRef.current) return
       const position = resolvePointerPosition(event)
       const node = simNodesRef.current.get(id)
-      if (!position || !node) return
+      if (!position || !node || node.x == null || node.y == null) return
 
       event.preventDefault()
       event.stopPropagation()
       event.currentTarget.setPointerCapture(event.pointerId)
-      dragRef.current = { id, pointerId: event.pointerId }
+      gestureRef.current = {
+        type: 'node',
+        pointerId: event.pointerId,
+        nodeId: id,
+        offsetX: position.x - node.x,
+        offsetY: position.y - node.y,
+      }
       pinnedNodeIdsRef.current.add(id)
       setDraggingNodeId(id)
 
-      node.fx = position.x
-      node.fy = position.y
-      node.x = position.x
-      node.y = position.y
+      node.fx = node.x
+      node.fy = node.y
       simRef.current?.alpha(Math.max(simRef.current.alpha(), 0.35))
       renderFrame(performance.now())
     },
@@ -309,17 +440,25 @@ export function KnowledgeGraph({
 
   const handleNodePointerMove = useCallback(
     (event: React.PointerEvent<SVGGElement>) => {
-      const drag = dragRef.current
-      if (!drag || drag.pointerId !== event.pointerId) return
+      const gesture = gestureRef.current
+      if (
+        !gesture ||
+        gesture.type !== 'node' ||
+        gesture.pointerId !== event.pointerId
+      ) {
+        return
+      }
       const position = resolvePointerPosition(event)
-      const node = simNodesRef.current.get(drag.id)
+      const node = simNodesRef.current.get(gesture.nodeId)
       if (!position || !node) return
 
       event.preventDefault()
-      node.fx = position.x
-      node.fy = position.y
-      node.x = position.x
-      node.y = position.y
+      const x = position.x - gesture.offsetX
+      const y = position.y - gesture.offsetY
+      node.fx = x
+      node.fy = y
+      node.x = x
+      node.y = y
       simRef.current?.alpha(Math.max(simRef.current.alpha(), 0.25))
       renderFrame(performance.now())
     },
@@ -328,11 +467,17 @@ export function KnowledgeGraph({
 
   const handleNodePointerUp = useCallback(
     (event: React.PointerEvent<SVGGElement>) => {
-      const drag = dragRef.current
-      if (!drag || drag.pointerId !== event.pointerId) return
+      const gesture = gestureRef.current
+      if (
+        !gesture ||
+        gesture.type !== 'node' ||
+        gesture.pointerId !== event.pointerId
+      ) {
+        return
+      }
 
       event.preventDefault()
-      dragRef.current = null
+      gestureRef.current = null
       setDraggingNodeId(null)
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId)
@@ -557,63 +702,86 @@ export function KnowledgeGraph({
           className={`yolo-learning-graph-svg${dense ? ' is-dense' : ''}`}
           xmlns="http://www.w3.org/2000/svg"
           aria-label="Knowledge graph"
+          onWheel={handleWheel}
+          onDoubleClick={resetViewport}
+          data-panning={isPanning ? 'true' : 'false'}
         >
-          <g className="yolo-learning-graph-edges">
-            {graph.edges.map((edge) => (
-              <g
-                key={edge.id}
-                className="yolo-learning-graph-edge"
-                data-edge-kind={edge.kind}
-                data-type={edge.type ?? ''}
-                data-exiting={edge.exiting ? 'true' : 'false'}
-              >
-                <line
-                  ref={lineRef(edgeAEls, edge.id)}
-                  className="yolo-learning-graph-edge-half"
-                />
-                <line
-                  ref={lineRef(edgeBEls, edge.id)}
-                  className="yolo-learning-graph-edge-half"
-                />
-              </g>
-            ))}
-          </g>
-          <g className="yolo-learning-graph-nodes">
-            {graph.nodes.map((node) => {
-              const isFocused = node.id === graph.focusedId
-              return (
+          <rect
+            className="yolo-learning-graph-pan-surface"
+            width="100%"
+            height="100%"
+            onPointerDown={handleCanvasPointerDown}
+            onPointerMove={handleCanvasPointerMove}
+            onPointerUp={handleCanvasPointerUp}
+            onPointerCancel={handleCanvasPointerUp}
+            onLostPointerCapture={handleCanvasPointerUp}
+          />
+          <g
+            className="yolo-learning-graph-viewport"
+            transform={`translate(${viewport.x.toFixed(2)} ${viewport.y.toFixed(
+              2,
+            )}) scale(${viewport.zoom.toFixed(4)})`}
+          >
+            <g className="yolo-learning-graph-edges">
+              {graph.edges.map((edge) => (
                 <g
-                  key={node.id}
-                  className="yolo-learning-graph-node"
-                  data-kind={node.kind}
-                  data-status={node.status}
-                  data-entering={node.entering ? 'true' : 'false'}
-                  data-exiting={node.exiting ? 'true' : 'false'}
-                  data-focused={isFocused ? 'true' : 'false'}
-                  data-dragging={node.id === draggingNodeId ? 'true' : 'false'}
-                  onPointerDown={(event) =>
-                    handleNodePointerDown(event, node.id)
-                  }
-                  onPointerMove={handleNodePointerMove}
-                  onPointerUp={handleNodePointerUp}
-                  onPointerCancel={handleNodePointerUp}
+                  key={edge.id}
+                  className="yolo-learning-graph-edge"
+                  data-edge-kind={edge.kind}
+                  data-type={edge.type ?? ''}
+                  data-exiting={edge.exiting ? 'true' : 'false'}
                 >
-                  <circle
-                    ref={circleRef(circleEls, node.id)}
-                    className="yolo-learning-graph-node-dot"
-                    r={RADIUS_BY_KIND[node.kind]}
+                  <line
+                    ref={lineRef(edgeAEls, edge.id)}
+                    className="yolo-learning-graph-edge-half"
                   />
-                  <text
-                    ref={textRef(labelEls, node.id)}
-                    className="yolo-learning-graph-node-label"
-                    data-focused={isFocused ? 'true' : 'false'}
-                    textAnchor="middle"
-                  >
-                    {node.title}
-                  </text>
+                  <line
+                    ref={lineRef(edgeBEls, edge.id)}
+                    className="yolo-learning-graph-edge-half"
+                  />
                 </g>
-              )
-            })}
+              ))}
+            </g>
+            <g className="yolo-learning-graph-nodes">
+              {graph.nodes.map((node) => {
+                const isFocused = node.id === graph.focusedId
+                return (
+                  <g
+                    key={node.id}
+                    className="yolo-learning-graph-node"
+                    data-kind={node.kind}
+                    data-status={node.status}
+                    data-entering={node.entering ? 'true' : 'false'}
+                    data-exiting={node.exiting ? 'true' : 'false'}
+                    data-focused={isFocused ? 'true' : 'false'}
+                    data-dragging={
+                      node.id === draggingNodeId ? 'true' : 'false'
+                    }
+                    onPointerDown={(event) =>
+                      handleNodePointerDown(event, node.id)
+                    }
+                    onPointerMove={handleNodePointerMove}
+                    onPointerUp={handleNodePointerUp}
+                    onPointerCancel={handleNodePointerUp}
+                    onLostPointerCapture={handleNodePointerUp}
+                  >
+                    <circle
+                      ref={circleRef(circleEls, node.id)}
+                      className="yolo-learning-graph-node-dot"
+                      r={RADIUS_BY_KIND[node.kind]}
+                    />
+                    <text
+                      ref={textRef(labelEls, node.id)}
+                      className="yolo-learning-graph-node-label"
+                      data-focused={isFocused ? 'true' : 'false'}
+                      textAnchor="middle"
+                    >
+                      {node.title}
+                    </text>
+                  </g>
+                )
+              })}
+            </g>
           </g>
         </svg>
         {!hasContent ? (

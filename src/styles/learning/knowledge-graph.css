@@ -21,6 +21,16 @@
 
 /* ── Nodes (shared) ─────────────────────────────────────────────────────── */
 
+.yolo-learning-graph-pan-surface {
+  fill: transparent;
+  pointer-events: all;
+}
+
+.yolo-learning-graph-viewport {
+  transform-box: fill-box;
+  transform-origin: 0 0;
+}
+
 .yolo-learning-graph-node {
   cursor: grab;
   opacity: 1;
