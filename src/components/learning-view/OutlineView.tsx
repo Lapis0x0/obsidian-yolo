@@ -227,7 +227,7 @@ export function OutlineView({
         />
       </aside>
 
-      <section className="yolo-learning-outline-detail-panel">
+      <section className="yolo-learning-outline-detail-panel yolo-learning-scrollbar-thin">
         {point && chapter ? (
           <Detail
             point={point}

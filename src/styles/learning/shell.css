@@ -20,13 +20,8 @@
 }
 
 .yolo-learning-page.is-workspace {
-  /* Obsidian's host .view-content adds 12px right padding. Put the full-bleed
-     compensation here, above the internal overflow boundary, so workspace
-     scrollbars can visually hug the pane edge instead of stopping at the host
-     padding. Do not move this to a deeper scroll container: .yolo-learning-page
-     clips overflow and would cut the negative margin off. */
   margin-right: -12px;
-  padding: 24px 0 24px 24px;
+  padding: 0;
 }
 
 .yolo-learning-page > .yolo-learning-home {
@@ -44,12 +39,22 @@
 }
 
 .yolo-learning-workspace-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   min-height: 48px;
   padding: 12px 24px 16px 0;
-  border-bottom: 1px solid var(--yolo-border);
+}
+
+.yolo-learning-workspace-header::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background-color: var(--yolo-border);
 }
 
 button.yolo-learning-workspace-back {
@@ -129,8 +134,7 @@ button.yolo-learning-workspace-back svg {
 }
 
 .yolo-learning-workspace-main.is-outline {
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .yolo-learning-tab-placeholder {

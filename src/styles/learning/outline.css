@@ -6,14 +6,13 @@
   display: flex;
   align-items: stretch;
   gap: 28px;
-  height: auto;
-  min-height: 100%;
-  overflow: visible;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .yolo-learning-outline-sidebar {
-  position: sticky;
-  top: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -288,7 +287,8 @@ body.yolo-learning-outline-global-resize * {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .yolo-learning-outline-detail {
