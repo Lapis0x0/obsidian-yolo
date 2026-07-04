@@ -1,11 +1,5 @@
 import cx from 'clsx'
-import {
-  ChevronDown,
-  ChevronRight,
-  Pencil,
-  Plus,
-  Search,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
 import { App, Keymap, MarkdownRenderer, TFile } from 'obsidian'
 import {
   type CSSProperties,
@@ -32,8 +26,7 @@ import { openMarkdownFile } from '../../utils/obsidian'
 import { formatLearningText } from './i18n'
 import { MasteryDot, Pill } from './primitives'
 
-const OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY =
-  'yolo-learning-outline-sidebar-width'
+const OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY = 'yolo-learning-outline-sidebar-width'
 const OUTLINE_SIDEBAR_DEFAULT_WIDTH = 280
 const OUTLINE_SIDEBAR_MIN_WIDTH = 220
 const OUTLINE_SIDEBAR_MAX_WIDTH = 420
@@ -47,7 +40,9 @@ function clampOutlineSidebarWidth(width: number): number {
 
 function readOutlineSidebarWidth(): number {
   try {
-    const stored = window.localStorage.getItem(OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY)
+    const stored = window.localStorage.getItem(
+      OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY,
+    )
     if (!stored) return OUTLINE_SIDEBAR_DEFAULT_WIDTH
     const width = Number.parseInt(stored, 10)
     return Number.isFinite(width)
@@ -115,9 +110,7 @@ export function OutlineView({
     '--yolo-learning-outline-sidebar-width': string
   }
 
-  const handleSidebarResizeStart = (
-    event: ReactMouseEvent<HTMLDivElement>,
-  ) => {
+  const handleSidebarResizeStart = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
     event.preventDefault()
 
@@ -162,9 +155,7 @@ export function OutlineView({
     })
   }
 
-  const handleSidebarResizeKeyDown = (
-    event: KeyboardEvent<HTMLDivElement>,
-  ) => {
+  const handleSidebarResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const delta =
       event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
     if (delta === 0) return
@@ -234,7 +225,7 @@ export function OutlineView({
         />
       </aside>
 
-      <section className="yolo-learning-outline-detail-panel">
+      <section className="yolo-learning-outline-detail-panel yolo-learning-scrollbar-thin">
         {point && chapter ? (
           <Detail
             point={point}
@@ -441,7 +432,10 @@ function Detail({
         {loading ? (
           <p>{t('learning.common.loading', '加载中…')}</p>
         ) : body ? (
-          <LearningMarkdown content={body} sourcePath={point.knowledgeFilePath} />
+          <LearningMarkdown
+            content={body}
+            sourcePath={point.knowledgeFilePath}
+          />
         ) : (
           <p>{t('learning.outline.emptyBody', '这个知识点还没有正文内容')}</p>
         )}

@@ -96,7 +96,9 @@ export function LearningWorkspace() {
 
   return (
     <div className="yolo-learning yolo-learning-root">
-      <div className="yolo-learning-page">
+      <div
+        className={`yolo-learning-page ${projectId && !buildingOutline ? 'is-workspace' : ''}`}
+      >
         {buildingOutline ? (
           wizardInput && (
             <OutlineBuilder

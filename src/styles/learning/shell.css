@@ -15,8 +15,17 @@
 
 .yolo-learning-page {
   height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 24px;
+}
+
+.yolo-learning-page.is-workspace {
+  padding: 24px 0 24px 24px;
+}
+
+.yolo-learning-page > .yolo-learning-home {
+  height: 100%;
+  overflow-y: auto;
 }
 
 /* ── Workspace header + body ────────────────────────────────────────────── */
@@ -33,7 +42,7 @@
   align-items: center;
   gap: 12px;
   min-height: 48px;
-  padding: 12px 0 16px;
+  padding: 12px 24px 16px 0;
   border-bottom: 1px solid var(--yolo-border);
 }
 
@@ -105,6 +114,7 @@ button.yolo-learning-workspace-back svg {
 }
 
 .yolo-learning-workspace-main {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
