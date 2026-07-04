@@ -102,14 +102,25 @@ body.yolo-learning-outline-global-resize * {
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--yolo-ring) 25%, transparent);
 }
 
+.yolo-learning-outline-nav {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  margin-top: 12px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.yolo-learning-outline-nav::-webkit-scrollbar {
+  display: none;
+}
+
 .yolo-learning-outline-tree {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
   gap: 2px;
-  margin-top: 12px;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .yolo-learning-outline-chapter-trigger {
@@ -243,7 +254,6 @@ body.yolo-learning-outline-global-resize * {
   flex: 0 0 auto;
   flex-direction: column;
   gap: 4px;
-  margin-top: 12px;
 }
 
 .yolo-learning-outline-ghost-btn {

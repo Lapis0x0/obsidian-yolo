@@ -190,26 +190,28 @@ export function OutlineView({
           />
         </div>
 
-        <div className="yolo-learning-outline-tree">
-          {project.chapters.map((item, index) => (
-            <ChapterNode
-              key={item.id}
-              chapter={item}
-              chapterIndex={index + 1}
-              points={pointsByChapter.get(item.id) ?? []}
-              selectedPointId={point?.id ?? null}
-              onSelectPoint={onSelectPoint}
-            />
-          ))}
-        </div>
+        <div className="yolo-learning-outline-nav">
+          <div className="yolo-learning-outline-tree">
+            {project.chapters.map((item, index) => (
+              <ChapterNode
+                key={item.id}
+                chapter={item}
+                chapterIndex={index + 1}
+                points={pointsByChapter.get(item.id) ?? []}
+                selectedPointId={point?.id ?? null}
+                onSelectPoint={onSelectPoint}
+              />
+            ))}
+          </div>
 
-        <div className="yolo-learning-outline-add-actions">
-          <GhostBtn>
-            <Plus size={14} /> {t('learning.outline.addChapter', '添加章节')}
-          </GhostBtn>
-          <GhostBtn>
-            <Plus size={14} /> {t('learning.outline.addPoint', '添加知识点')}
-          </GhostBtn>
+          <div className="yolo-learning-outline-add-actions">
+            <GhostBtn>
+              <Plus size={14} /> {t('learning.outline.addChapter', '添加章节')}
+            </GhostBtn>
+            <GhostBtn>
+              <Plus size={14} /> {t('learning.outline.addPoint', '添加知识点')}
+            </GhostBtn>
+          </div>
         </div>
 
         <div
