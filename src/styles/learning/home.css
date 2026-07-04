@@ -143,7 +143,13 @@
 }
 
 .yolo-learning-home-project-grid {
+  --yolo-learning-home-project-card-min-height: 160px;
+
   display: grid;
+  grid-auto-rows: minmax(
+    var(--yolo-learning-home-project-card-min-height),
+    auto
+  );
   grid-template-columns: 1fr;
   gap: 16px;
 }
@@ -153,10 +159,14 @@
   --yolo-learning-button-color: var(--yolo-foreground);
   --yolo-learning-button-hover-background: var(--yolo-card);
   --yolo-learning-button-hover-color: var(--yolo-foreground);
-  --yolo-learning-button-hover-shadow: 0 2px 12px -4px
-    color-mix(in oklab, var(--yolo-foreground) 12%, transparent);
+  --yolo-learning-button-hover-shadow: 0 2px 12px -4px color-mix(in oklab, var(
+          --yolo-foreground
+        )
+        12%, transparent);
 
   display: flex;
+  min-height: var(--yolo-learning-home-project-card-min-height);
+  height: 100%;
   align-items: stretch;
   flex-direction: column;
   justify-content: flex-start;
@@ -257,7 +267,8 @@
   --yolo-learning-button-hover-color: var(--yolo-foreground);
 
   display: flex;
-  min-height: 160px;
+  min-height: var(--yolo-learning-home-project-card-min-height);
+  height: 100%;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -297,7 +308,7 @@
   font-weight: 500;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 900px) {
   .yolo-learning-home-review-main {
     flex-direction: row;
     align-items: center;
@@ -306,5 +317,17 @@
 
   .yolo-learning-home-project-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1320px) {
+  .yolo-learning-home-project-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1760px) {
+  .yolo-learning-home-project-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
