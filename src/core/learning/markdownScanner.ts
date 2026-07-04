@@ -6,6 +6,7 @@ export type MarkdownEntry = {
   kpUuid?: string
   title: string
   body: string
+  startLine: number
 }
 
 const HEADING_RE = /^##\s+(.+)$/gm
@@ -36,6 +37,7 @@ export function scanMarkdownEntries(content: string): MarkdownEntry[] {
       ...(kpUuid ? { kpUuid } : {}),
       title,
       body,
+      startLine: content.slice(0, start).split('\n').length,
     })
   }
 

@@ -2,10 +2,8 @@ import cx from 'clsx'
 import {
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Pencil,
   Plus,
-  RotateCcw,
   Search,
 } from 'lucide-react'
 import { App, Keymap, MarkdownRenderer, TFile } from 'obsidian'
@@ -29,6 +27,7 @@ import type {
   KnowledgePoint as VaultKnowledgePoint,
   Project as VaultProject,
 } from '../../core/learning/types'
+import { openMarkdownFile } from '../../utils/obsidian'
 
 import { formatLearningText } from './i18n'
 import { MasteryDot, Pill } from './primitives'
@@ -340,6 +339,7 @@ function Detail({
 }) {
   const app = useApp()
   const [body, setBody] = useState('')
+  const [startLine, setStartLine] = useState<number | undefined>()
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -350,6 +350,7 @@ function Detail({
       if (!(file instanceof TFile)) {
         if (!cancelled) {
           setBody('')
+          setStartLine(undefined)
           setLoading(false)
         }
         return
@@ -360,6 +361,7 @@ function Detail({
       )
       if (!cancelled) {
         setBody(entry?.body ?? '')
+        setStartLine(entry?.startLine)
         setLoading(false)
       }
     }
@@ -368,6 +370,10 @@ function Detail({
       cancelled = true
     }
   }, [app, point])
+
+  const handleEdit = () => {
+    openMarkdownFile(app, point.knowledgeFilePath, startLine)
+  }
 
   return (
     <div className="yolo-learning-outline-detail">
@@ -397,16 +403,8 @@ function Detail({
       <div className="yolo-learning-outline-title-row">
         <h1 className="yolo-learning-outline-title">{point.title}</h1>
         <div className="yolo-learning-outline-actions">
-          <OutlineBtn>
-            <ExternalLink size={14} />{' '}
-            {t('learning.outline.openInObsidian', '在 Obsidian 中打开')}
-          </OutlineBtn>
-          <OutlineBtn>
+          <OutlineBtn onClick={handleEdit}>
             <Pencil size={14} /> {t('common.edit', '编辑')}
-          </OutlineBtn>
-          <OutlineBtn>
-            <RotateCcw size={14} />{' '}
-            {t('learning.outline.regenerate', '重新生成')}
           </OutlineBtn>
         </div>
       </div>
@@ -534,9 +532,19 @@ function GhostBtn({ children }: { children: ReactNode }) {
   )
 }
 
-function OutlineBtn({ children }: { children: ReactNode }) {
+function OutlineBtn({
+  children,
+  onClick,
+}: {
+  children: ReactNode
+  onClick?: () => void
+}) {
   return (
-    <button type="button" className="yolo-learning-outline-btn">
+    <button
+      type="button"
+      className="yolo-learning-outline-btn"
+      onClick={onClick}
+    >
       {children}
     </button>
   )
