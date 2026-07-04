@@ -49,6 +49,7 @@ describe('ChatViewNavigator', () => {
       touchLeafInteracted?: jest.Mock
       revealLeaf?: jest.Mock
       getRightLeaf?: () => WorkspaceLeaf
+      getLeaf?: jest.Mock
     } = {},
   ) => {
     const sessionManager = {
@@ -68,6 +69,11 @@ describe('ChatViewNavigator', () => {
         overrides.getRightLeaf ??
         (() => {
           throw new Error('getRightLeaf should not be called in this test')
+        }),
+      getLeaf:
+        overrides.getLeaf ??
+        jest.fn(() => {
+          throw new Error('getLeaf should not be called in this test')
         }),
     }
 
@@ -229,5 +235,38 @@ describe('ChatViewNavigator', () => {
         currentConversationId: 'conversation-1',
       },
     })
+  })
+
+  it('asks Obsidian for a split leaf when opening a new split chat', async () => {
+    const setViewState = jest.fn().mockImplementation(function setViewState() {
+      this.view = new (MockChatView as unknown as new () => object)()
+      return Promise.resolve()
+    })
+    const newLeaf = {
+      setViewState,
+    } as unknown as WorkspaceLeaf
+    const getLeaf = jest.fn(() => newLeaf)
+    const setPendingPayload = jest.fn()
+    const registerLeaf = jest.fn()
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => null,
+      setPendingPayload,
+      registerLeaf,
+      revealLeaf: jest.fn().mockResolvedValue(undefined),
+      getLeaf,
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await navigator.openChatInSplit(true)
+
+    expect(getLeaf).toHaveBeenCalledWith('split')
+    expect(setPendingPayload).toHaveBeenCalledWith(
+      newLeaf,
+      expect.objectContaining({
+        placement: 'split',
+      }),
+    )
+    expect(registerLeaf).toHaveBeenCalledWith(newLeaf, 'split')
   })
 })
