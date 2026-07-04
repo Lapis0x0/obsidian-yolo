@@ -329,8 +329,9 @@ export function KnowledgeGraph({
   }, [])
 
   const handleWheel = useCallback(
-    (event: React.WheelEvent<SVGSVGElement>) => {
+    (event: WheelEvent) => {
       event.preventDefault()
+      event.stopPropagation()
       const svg = svgRef.current
       if (!svg) return
       const rect = svg.getBoundingClientRect()
@@ -353,6 +354,15 @@ export function KnowledgeGraph({
     },
     [scheduleViewportTransform],
   )
+
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    svg.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      svg.removeEventListener('wheel', handleWheel)
+    }
+  }, [handleWheel])
 
   const handleCanvasPointerDown = useCallback(
     (event: React.PointerEvent<SVGRectElement>) => {
@@ -717,7 +727,6 @@ export function KnowledgeGraph({
           className={`yolo-learning-graph-svg${dense ? ' is-dense' : ''}`}
           xmlns="http://www.w3.org/2000/svg"
           aria-label="Knowledge graph"
-          onWheel={handleWheel}
           onDoubleClick={resetViewport}
           data-panning={isPanning ? 'true' : 'false'}
         >
