@@ -62,7 +62,9 @@ export function Workspace({
           getLabel={(tab) => tabLabels[tab]}
         />
       </header>
-      <main className="yolo-learning-workspace-main">
+      <main
+        className={`yolo-learning-workspace-main ${activeTab === '大纲' ? 'is-outline yolo-learning-scrollbar-thin' : ''}`}
+      >
         {activeTab === '大纲' &&
           (project ? (
             <OutlineView
