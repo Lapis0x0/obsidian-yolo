@@ -8,11 +8,21 @@ import {
   RotateCcw,
   Search,
 } from 'lucide-react'
-import { TFile } from 'obsidian'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { App, Keymap, MarkdownRenderer, TFile } from 'obsidian'
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type {
   Chapter as VaultChapter,
@@ -22,6 +32,43 @@ import type {
 
 import { formatLearningText } from './i18n'
 import { MasteryDot, Pill } from './primitives'
+
+const OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY =
+  'yolo-learning-outline-sidebar-width'
+const OUTLINE_SIDEBAR_DEFAULT_WIDTH = 280
+const OUTLINE_SIDEBAR_MIN_WIDTH = 220
+const OUTLINE_SIDEBAR_MAX_WIDTH = 420
+
+function clampOutlineSidebarWidth(width: number): number {
+  return Math.min(
+    OUTLINE_SIDEBAR_MAX_WIDTH,
+    Math.max(OUTLINE_SIDEBAR_MIN_WIDTH, Math.round(width)),
+  )
+}
+
+function readOutlineSidebarWidth(): number {
+  try {
+    const stored = window.localStorage.getItem(OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY)
+    if (!stored) return OUTLINE_SIDEBAR_DEFAULT_WIDTH
+    const width = Number.parseInt(stored, 10)
+    return Number.isFinite(width)
+      ? clampOutlineSidebarWidth(width)
+      : OUTLINE_SIDEBAR_DEFAULT_WIDTH
+  } catch {
+    return OUTLINE_SIDEBAR_DEFAULT_WIDTH
+  }
+}
+
+function persistOutlineSidebarWidth(width: number): void {
+  try {
+    window.localStorage.setItem(
+      OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY,
+      String(clampOutlineSidebarWidth(width)),
+    )
+  } catch {
+    // Layout preference persistence is best-effort only.
+  }
+}
 
 export function OutlineView({
   project,
@@ -33,6 +80,12 @@ export function OutlineView({
   onSelectPoint: (id: string) => void
 }) {
   const { t } = useLanguage()
+  const sidebarResizeStartRef = useRef<{
+    x: number
+    width: number
+    currentWidth: number
+  } | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(readOutlineSidebarWidth)
   const pointsByChapter = useMemo(() => {
     const map = new Map<string, VaultKnowledgePoint[]>()
     for (const chapter of project.chapters) {
@@ -57,6 +110,74 @@ export function OutlineView({
     if (!selectedPointId && firstPoint) onSelectPoint(firstPoint.id)
   }, [firstPoint, onSelectPoint, selectedPointId])
 
+  const outlineStyle = {
+    '--yolo-learning-outline-sidebar-width': `${sidebarWidth}px`,
+  } as CSSProperties & {
+    '--yolo-learning-outline-sidebar-width': string
+  }
+
+  const handleSidebarResizeStart = (
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+
+    const ownerDoc = event.currentTarget.ownerDocument ?? document
+    const ownerWin = ownerDoc.defaultView ?? window
+    sidebarResizeStartRef.current = {
+      x: event.clientX,
+      width: sidebarWidth,
+      currentWidth: sidebarWidth,
+    }
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const resizeStart = sidebarResizeStartRef.current
+      if (!resizeStart) return
+
+      const nextWidth = clampOutlineSidebarWidth(
+        resizeStart.width + moveEvent.clientX - resizeStart.x,
+      )
+      resizeStart.currentWidth = nextWidth
+      setSidebarWidth(nextWidth)
+    }
+
+    const handleMouseUp = () => {
+      const finalWidth = sidebarResizeStartRef.current?.currentWidth
+      sidebarResizeStartRef.current = null
+      ownerWin.removeEventListener('mousemove', handleMouseMove)
+      ownerWin.removeEventListener('mouseup', handleMouseUp)
+      ownerDoc.body.classList.remove('yolo-learning-outline-global-resize')
+      ownerDoc.body.setCssProps({
+        '--yolo-learning-outline-global-cursor': '',
+        '--yolo-learning-outline-global-user-select': '',
+      })
+      if (finalWidth != null) persistOutlineSidebarWidth(finalWidth)
+    }
+
+    ownerWin.addEventListener('mousemove', handleMouseMove)
+    ownerWin.addEventListener('mouseup', handleMouseUp)
+    ownerDoc.body.classList.add('yolo-learning-outline-global-resize')
+    ownerDoc.body.setCssProps({
+      '--yolo-learning-outline-global-cursor': 'col-resize',
+      '--yolo-learning-outline-global-user-select': 'none',
+    })
+  }
+
+  const handleSidebarResizeKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+  ) => {
+    const delta =
+      event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0
+    if (delta === 0) return
+
+    event.preventDefault()
+    setSidebarWidth((currentWidth) => {
+      const nextWidth = clampOutlineSidebarWidth(currentWidth + delta)
+      persistOutlineSidebarWidth(nextWidth)
+      return nextWidth
+    })
+  }
+
   if (project.knowledgePoints.length === 0) {
     return (
       <div className="yolo-learning-outline-empty">
@@ -69,7 +190,7 @@ export function OutlineView({
   }
 
   return (
-    <div className="yolo-learning-outline">
+    <div className="yolo-learning-outline" style={outlineStyle}>
       <aside className="yolo-learning-outline-sidebar">
         <div className="yolo-learning-outline-search-wrap">
           <Search size={15} className="yolo-learning-outline-search-icon" />
@@ -100,6 +221,18 @@ export function OutlineView({
             <Plus size={14} /> {t('learning.outline.addPoint', '添加知识点')}
           </GhostBtn>
         </div>
+
+        <div
+          aria-orientation="vertical"
+          aria-valuemax={OUTLINE_SIDEBAR_MAX_WIDTH}
+          aria-valuemin={OUTLINE_SIDEBAR_MIN_WIDTH}
+          aria-valuenow={sidebarWidth}
+          className="yolo-learning-outline-resize-handle"
+          onKeyDown={handleSidebarResizeKeyDown}
+          onMouseDown={handleSidebarResizeStart}
+          role="separator"
+          tabIndex={0}
+        />
       </aside>
 
       <section className="yolo-learning-outline-detail-panel">
@@ -309,13 +442,88 @@ function Detail({
         {loading ? (
           <p>{t('learning.common.loading', '加载中…')}</p>
         ) : body ? (
-          <pre>{body}</pre>
+          <LearningMarkdown content={body} sourcePath={point.knowledgeFilePath} />
         ) : (
           <p>{t('learning.outline.emptyBody', '这个知识点还没有正文内容')}</p>
         )}
       </article>
     </div>
   )
+}
+
+function LearningMarkdown({
+  content,
+  sourcePath,
+}: {
+  content: string
+  sourcePath: string
+}) {
+  const app = useApp()
+  const plugin = usePlugin()
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const renderMarkdown = async () => {
+      const containerEl = containerRef.current
+      if (!containerEl) return
+
+      const staging = document.createElement('div')
+      await MarkdownRenderer.render(app, content, staging, sourcePath, plugin)
+      if (cancelled || !containerRef.current) return
+
+      containerRef.current.replaceChildren(...Array.from(staging.childNodes))
+      setupLearningMarkdownLinks(app, containerRef.current, sourcePath)
+    }
+
+    void renderMarkdown()
+    return () => {
+      cancelled = true
+    }
+  }, [app, content, plugin, sourcePath])
+
+  return (
+    <div
+      ref={containerRef}
+      className="markdown-rendered yolo-learning-outline-rendered-markdown"
+    />
+  )
+}
+
+function setupLearningMarkdownLinks(
+  app: App,
+  containerEl: HTMLElement,
+  sourcePath: string,
+) {
+  containerEl.querySelectorAll('a.internal-link').forEach((el) => {
+    el.addEventListener('click', (event: MouseEvent) => {
+      event.preventDefault()
+      const linktext = el.getAttribute('href')
+      if (linktext) {
+        void app.workspace.openLinkText(
+          linktext,
+          sourcePath,
+          Keymap.isModEvent(event),
+        )
+      }
+    })
+
+    el.addEventListener('mouseover', (event: MouseEvent) => {
+      event.preventDefault()
+      const linktext = el.getAttribute('href')
+      if (linktext) {
+        app.workspace.trigger('hover-link', {
+          event,
+          source: 'preview',
+          hoverParent: { hoverPopover: null },
+          targetEl: event.currentTarget,
+          linktext,
+          sourcePath,
+        })
+      }
+    })
+  })
 }
 
 function GhostBtn({ children }: { children: ReactNode }) {

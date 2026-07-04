@@ -23070,13 +23070,60 @@ button.yolo-learning-workspace-back svg {
 /* Learning Mode — outline tab. */
 
 .yolo-learning-outline {
+  --yolo-learning-outline-sidebar-width: 280px;
+
   display: flex;
-  gap: 24px;
+  align-items: stretch;
+  gap: 28px;
+  min-height: 100%;
 }
 
 .yolo-learning-outline-sidebar {
-  width: 320px;
-  flex-shrink: 0;
+  position: relative;
+  box-sizing: border-box;
+  width: var(--yolo-learning-outline-sidebar-width);
+  flex: 0 0 var(--yolo-learning-outline-sidebar-width);
+  border-right: 1px solid color-mix(in oklab, var(--yolo-border) 80%, transparent);
+  min-width: 0;
+  padding-right: 20px;
+}
+
+.yolo-learning-outline-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -14px;
+  bottom: 0;
+  z-index: 1;
+  width: 28px;
+  cursor: col-resize;
+  outline: none;
+}
+
+.yolo-learning-outline-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: transparent;
+  transform: translateX(-50%);
+  transition: background-color 150ms ease;
+}
+
+.yolo-learning-outline-resize-handle:hover::before,
+.yolo-learning-outline-resize-handle:focus-visible::before {
+  background-color: var(--yolo-primary);
+}
+
+body.yolo-learning-outline-global-resize,
+body.yolo-learning-outline-global-resize * {
+  cursor: var(--yolo-learning-outline-global-cursor, col-resize) !important;
+  -webkit-user-select: var(
+    --yolo-learning-outline-global-user-select,
+    none
+  ) !important;
+  user-select: var(--yolo-learning-outline-global-user-select, none) !important;
 }
 
 .yolo-learning-outline-search-wrap {
@@ -23414,6 +23461,13 @@ button.yolo-learning-workspace-back svg {
 
   .yolo-learning-outline-sidebar {
     width: 100%;
+    border-right: none;
+    flex-basis: auto;
+    padding-right: 0;
+  }
+
+  .yolo-learning-outline-resize-handle {
+    display: none;
   }
 
   .yolo-learning-outline-title-row,
