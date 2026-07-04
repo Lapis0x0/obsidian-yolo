@@ -11,6 +11,7 @@ export type GenerateOutlineOptions = {
   referencesBlock?: string
   abortSignal?: AbortSignal
   onProgress?: (delta: string, fullText: string) => void
+  onChapters?: (chapters: OutlineChapter[]) => void
 }
 
 export async function generateOutline({
@@ -21,9 +22,11 @@ export async function generateOutline({
   referencesBlock,
   abortSignal,
   onProgress,
+  onChapters,
 }: GenerateOutlineOptions): Promise<{ chapters: OutlineChapter[] }> {
   let accumulated = ''
   let completedText = ''
+  let streamedChapters: OutlineChapter[] = []
 
   const stream = plugin.agent.stream({
     prompt: buildOutlinePrompt({ topic, level, goal, referencesBlock }),
@@ -37,6 +40,11 @@ export async function generateOutline({
     if (event.type === 'text') {
       accumulated = event.text || accumulated + event.delta
       onProgress?.(event.delta, accumulated)
+      const chapters = parseCompletedOutlineChapters(accumulated)
+      if (!areOutlineChaptersEqual(chapters, streamedChapters)) {
+        streamedChapters = chapters
+        onChapters?.(chapters)
+      }
     }
     if (event.type === 'completed') {
       completedText = event.text
@@ -46,7 +54,11 @@ export async function generateOutline({
     }
   }
 
-  return { chapters: parseOutlineChapters(completedText || accumulated) }
+  const chapters = parseOutlineChapters(completedText || accumulated)
+  if (!areOutlineChaptersEqual(chapters, streamedChapters)) {
+    onChapters?.(chapters)
+  }
+  return { chapters }
 }
 
 function buildOutlinePrompt({
@@ -88,6 +100,75 @@ function parseOutlineChapters(text: string): OutlineChapter[] {
     throw new Error('大纲生成结果中没有可用章节')
   }
   return chapters
+}
+
+function parseCompletedOutlineChapters(text: string): OutlineChapter[] {
+  const arrayStart = text.indexOf('[')
+  if (arrayStart === -1) return []
+
+  const chapters: OutlineChapter[] = []
+  let objectStart = -1
+  let objectDepth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = arrayStart + 1; i < text.length; i += 1) {
+    const char = text[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === '{') {
+      if (objectDepth === 0) objectStart = i
+      objectDepth += 1
+      continue
+    }
+
+    if (char !== '}') continue
+
+    objectDepth -= 1
+    if (objectDepth !== 0 || objectStart === -1) continue
+
+    try {
+      const parsed = JSON.parse(text.slice(objectStart, i + 1))
+      if (isOutlineChapter(parsed)) {
+        chapters.push({
+          title: parsed.title.trim(),
+          contract: parsed.contract.trim(),
+        })
+      }
+    } catch {
+      // The model can still be streaming escape sequences; ignore until complete.
+    }
+    objectStart = -1
+  }
+
+  return chapters
+}
+
+function areOutlineChaptersEqual(
+  a: OutlineChapter[],
+  b: OutlineChapter[],
+): boolean {
+  if (a.length !== b.length) return false
+  return a.every(
+    (chapter, index) =>
+      chapter.title === b[index]?.title &&
+      chapter.contract === b[index]?.contract,
+  )
 }
 
 function parseJsonArray(text: string): unknown {

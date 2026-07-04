@@ -1,14 +1,26 @@
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import cx from 'clsx'
 import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   GripVertical,
   Layers,
   ListTree,
-  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -31,6 +43,7 @@ import type YoloPlugin from '../../main'
 type Phase = 'outline' | 'ready' | 'knowledge' | 'writing' | 'error'
 
 type EditableChapter = OutlineChapter & {
+  id: string
   progress?: GenerationProgress
 }
 
@@ -54,10 +67,30 @@ export function OutlineBuilder({
   const { t } = useLanguage()
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [phase, setPhase] = useState<Phase>('outline')
-  const [outlineText, setOutlineText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const nextChapterIdRef = useRef(0)
+  const dragSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  )
+
+  const createChapter = (chapter: OutlineChapter): EditableChapter => ({
+    ...chapter,
+    id: `chapter-${nextChapterIdRef.current++}`,
+  })
+
+  const reconcileChapters = (nextChapters: OutlineChapter[]) => {
+    setChapters((current) =>
+      nextChapters.map((chapter, index) => ({
+        ...chapter,
+        id: current[index]?.id ?? `chapter-${nextChapterIdRef.current++}`,
+        progress: current[index]?.progress,
+      })),
+    )
+  }
 
   const startOutlineGeneration = () => {
     abortRef.current?.abort()
@@ -65,7 +98,7 @@ export function OutlineBuilder({
     abortRef.current = controller
     setPhase('outline')
     setError(null)
-    setOutlineText('')
+    nextChapterIdRef.current = 0
     setChapters([])
     void generateOutline({
       plugin,
@@ -74,10 +107,10 @@ export function OutlineBuilder({
       goal,
       referencesBlock,
       abortSignal: controller.signal,
-      onProgress: (_delta, fullText) => setOutlineText(fullText),
+      onChapters: reconcileChapters,
     })
       .then(({ chapters }) => {
-        setChapters(chapters)
+        reconcileChapters(chapters)
         setPhase('ready')
       })
       .catch((err: unknown) => {
@@ -107,17 +140,6 @@ export function OutlineBuilder({
     )
   }
 
-  const moveChapter = (index: number, direction: -1 | 1) => {
-    setChapters((current) => {
-      const target = index + direction
-      if (target < 0 || target >= current.length) return current
-      const next = [...current]
-      const [item] = next.splice(index, 1)
-      next.splice(target, 0, item)
-      return next
-    })
-  }
-
   const deleteChapter = (index: number) => {
     setChapters((current) => current.filter((_, i) => i !== index))
   }
@@ -125,8 +147,21 @@ export function OutlineBuilder({
   const addChapter = () => {
     setChapters((current) => [
       ...current,
-      { title: '新章节', contract: '说明本章覆盖范围、边界和预计知识点。' },
+      createChapter({
+        title: '新章节',
+        contract: '说明本章覆盖范围、边界和预计知识点。',
+      }),
     ])
+  }
+
+  const handleChapterDragEnd = ({ active, over }: DragEndEvent) => {
+    if (busy || !over || active.id === over.id) return
+    setChapters((current) => {
+      const oldIndex = current.findIndex((chapter) => chapter.id === active.id)
+      const newIndex = current.findIndex((chapter) => chapter.id === over.id)
+      if (oldIndex < 0 || newIndex < 0) return current
+      return arrayMove(current, oldIndex, newIndex)
+    })
   }
 
   const confirmAndGenerate = async () => {
@@ -232,7 +267,7 @@ export function OutlineBuilder({
             </div>
             <div>
               <h2 className="yolo-learning-outline-builder-heading">
-                {generating
+                {generating && chapters.length === 0
                   ? t(
                       'learning.outlineBuilder.generatingHeading',
                       '正在为你规划学习路径...',
@@ -253,20 +288,30 @@ export function OutlineBuilder({
               />
             )}
 
-            {chapters.map((chapter, i) => (
-              <ChapterCard
-                key={`${chapter.title}-${i}`}
-                index={i}
-                chapter={chapter}
-                disabled={busy}
-                onUpdate={(patch) => updateChapter(i, patch)}
-                onMove={moveChapter}
-                onDelete={() => deleteChapter(i)}
-                t={t}
-              />
-            ))}
+            <DndContext
+              sensors={dragSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleChapterDragEnd}
+            >
+              <SortableContext
+                items={chapters.map((chapter) => chapter.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {chapters.map((chapter, i) => (
+                  <ChapterCard
+                    key={chapter.id}
+                    index={i}
+                    chapter={chapter}
+                    disabled={busy}
+                    onUpdate={(patch) => updateChapter(i, patch)}
+                    onDelete={() => deleteChapter(i)}
+                    t={t}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
 
-            {generating && <SkeletonCard t={t} outlineText={outlineText} />}
+            {generating && <SkeletonCard t={t} />}
 
             {phase === 'ready' && (
               <button
@@ -294,7 +339,11 @@ export function OutlineBuilder({
               <Stat
                 icon={<ListTree size={14} />}
                 label={t('learning.outlineBuilder.chapters', '章节')}
-                value={generating ? '-' : String(chapters.length)}
+                value={
+                  generating && chapters.length === 0
+                    ? '-'
+                    : String(chapters.length)
+                }
               />
             </dl>
 
@@ -302,7 +351,7 @@ export function OutlineBuilder({
               <div className="yolo-learning-outline-builder-map-title">
                 {t('learning.outlineBuilder.chapterNavigation', '章节导航')}
               </div>
-              {generating ? (
+              {generating && chapters.length === 0 ? (
                 <div className="yolo-learning-outline-builder-map-skeletons">
                   {['a', 'b', 'c'].map((k) => (
                     <div
@@ -411,14 +460,41 @@ function ChapterCard({
   chapter: EditableChapter
   disabled: boolean
   onUpdate: (patch: Partial<OutlineChapter>) => void
-  onMove: (index: number, direction: -1 | 1) => void
   onDelete: () => void
   t: (keyPath: string, fallback?: string) => string
 }) {
+  const contractRef = useRef<HTMLTextAreaElement>(null)
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: chapter.id, disabled })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  useEffect(() => {
+    const textarea = contractRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [chapter.contract])
+
   return (
     <div
+      ref={setNodeRef}
       id={`chapter-${index + 1}`}
-      className="yolo-learning-outline-builder-card"
+      style={style}
+      className={cx(
+        'yolo-learning-outline-builder-card',
+        isDragging && 'is-dragging',
+      )}
+      {...attributes}
     >
       <div className="yolo-learning-outline-builder-card-row">
         <div className="yolo-learning-outline-builder-card-lead">
@@ -426,6 +502,8 @@ function ChapterCard({
             type="button"
             aria-label={t('learning.outlineBuilder.dragSort', '拖拽排序')}
             className="yolo-learning-outline-builder-drag"
+            disabled={disabled}
+            {...listeners}
           >
             <GripVertical size={14} />
           </button>
@@ -444,23 +522,6 @@ function ChapterCard({
             />
             <div className="yolo-learning-outline-builder-actions">
               <IconBtn
-                aria-label={t('learning.outlineBuilder.moveUp', '上移')}
-                disabled={disabled || index === 0}
-                onClick={() => onMove(index, -1)}
-              >
-                <ChevronUp size={14} />
-              </IconBtn>
-              <IconBtn
-                aria-label={t('learning.outlineBuilder.moveDown', '下移')}
-                disabled={disabled}
-                onClick={() => onMove(index, 1)}
-              >
-                <ChevronDown size={14} />
-              </IconBtn>
-              <IconBtn aria-label={t('common.edit', '编辑')} disabled>
-                <Pencil size={14} />
-              </IconBtn>
-              <IconBtn
                 aria-label={t('common.delete', '删除')}
                 disabled={disabled}
                 onClick={onDelete}
@@ -470,9 +531,10 @@ function ChapterCard({
             </div>
           </div>
           <textarea
+            ref={contractRef}
             value={chapter.contract}
             disabled={disabled}
-            rows={5}
+            rows={1}
             onChange={(event) => onUpdate({ contract: event.target.value })}
             className="yolo-learning-outline-builder-contract"
           />
@@ -508,10 +570,8 @@ function ProgressLine({ progress }: { progress: GenerationProgress }) {
 
 function SkeletonCard({
   t,
-  outlineText,
 }: {
   t: (keyPath: string, fallback?: string) => string
-  outlineText: string
 }) {
   return (
     <div className="yolo-learning-outline-builder-skeleton-card">
@@ -532,11 +592,6 @@ function SkeletonCard({
             <div className="yolo-learning-outline-builder-skeleton-line yolo-learning-outline-builder-pulse" />
             <div className="yolo-learning-outline-builder-skeleton-line yolo-learning-outline-builder-skeleton-line-short yolo-learning-outline-builder-pulse" />
           </div>
-          {outlineText && (
-            <pre className="yolo-learning-outline-builder-contract">
-              {outlineText}
-            </pre>
-          )}
         </div>
       </div>
     </div>
