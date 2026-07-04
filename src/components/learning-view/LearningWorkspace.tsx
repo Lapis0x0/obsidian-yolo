@@ -1,5 +1,5 @@
 import { TAbstractFile } from 'obsidian'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
@@ -19,6 +19,8 @@ import { type TabKey, tabs } from './tabs'
 import { type LearningWizardInput, Wizard } from './Wizard'
 import { Workspace } from './Workspace'
 
+const LEARNING_PROJECT_REFRESH_DEBOUNCE_MS = 200
+
 export function LearningWorkspace() {
   const app = useApp()
   const plugin = usePlugin()
@@ -33,6 +35,7 @@ export function LearningWorkspace() {
   )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
+  const refreshTimerRef = useRef<number | null>(null)
 
   const bus = useMemo(() => new ProjectEventBus(app), [app])
   const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([])
@@ -86,8 +89,19 @@ export function LearningWorkspace() {
   }, [app, baseDir])
 
   useEffect(() => {
+    const scheduleRefreshProjects = () => {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current)
+      }
+
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null
+        void refreshProjects()
+      }, LEARNING_PROJECT_REFRESH_DEBOUNCE_MS)
+    }
+
     const refreshIfLearningPath = (file: TAbstractFile) => {
-      if (isPathUnderLearningBase(file.path, baseDir)) void refreshProjects()
+      if (isPathUnderLearningBase(file.path, baseDir)) scheduleRefreshProjects()
     }
     const refs = [
       app.vault.on('create', refreshIfLearningPath),
@@ -96,6 +110,10 @@ export function LearningWorkspace() {
     ]
     return () => {
       for (const ref of refs) app.vault.offref(ref)
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = null
+      }
     }
   }, [app, baseDir, refreshProjects])
 
