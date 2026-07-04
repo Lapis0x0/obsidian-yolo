@@ -6,14 +6,13 @@
  *
  *   <vault>/<learningBaseDir>/<projectSlug>/
  *     index.md                                # project metadata + outline
- *     <chapterSlug>/                          # one folder per chapter
- *       <knowledgePointSlug>/                 # one folder per knowledge point
- *         knowledge.md                        # knowledge point body
- *         cards.md                            # cards (optional)
- *         exercises.md                        # exercises (optional)
+ *     <chapterSlug>/
+ *       knowledge.md                          # all knowledge points in this chapter
+ *       cards.md                              # cards (optional)
+ *       exercises.md                          # exercises (optional)
  *
- * IDs are derived from vault paths so they remain stable across scans without
- * any external database.
+ * Knowledge point IDs are `${chapterId}/${uuid}`. The uuid is stored in the
+ * heading HTML comment inside chapter-level markdown files.
  */
 
 export type ProjectStatus = 'outlining' | 'building' | 'studying'
@@ -31,13 +30,11 @@ export type KnowledgePoint = {
   id: string
   projectId: string
   chapterId: string
-  slug: string
+  uuid: string
   title: string
   /** Vault path of `knowledge.md`. */
   knowledgeFilePath: string
-  /** Vault path of the knowledge point folder. */
-  folderPath: string
-  /** Relations declared in this knowledge point's frontmatter. */
+  /** Relations declared for this knowledge point. */
   relations: Relation[]
   /** Whether `cards.md` exists. */
   hasCards: boolean

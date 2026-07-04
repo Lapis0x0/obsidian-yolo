@@ -1,26 +1,23 @@
 import { ArrowRight, Clock, Plus } from 'lucide-react'
 
 import { useLanguage } from '../../contexts/language-context'
+import type { Project as VaultProject } from '../../core/learning/types'
+
 import { formatLearningText } from './i18n'
-import { type Project, projects } from './mockLearningData'
 import { Pill, ProgressBar, RingProgress, SelectMenu } from './primitives'
 
 export function HomeView({
+  projects,
   onOpenProject,
   onNewProject,
 }: {
+  projects: VaultProject[]
   onOpenProject: (id: string) => void
   onNewProject: () => void
 }) {
   const { t } = useLanguage()
-  const totalDueCards = projects.reduce(
-    (sum, project) => sum + project.dueCards,
-    0,
-  )
-  const totalDueExercises = projects.reduce(
-    (sum, project) => sum + project.dueExercises,
-    0,
-  )
+  const totalDueCards = 0
+  const totalDueExercises = 0
   const sortValue = 'recent'
   const sortOptions = [
     { value: 'recent', label: t('learning.home.sortRecent', '按最近活跃') },
@@ -84,7 +81,7 @@ export function HomeView({
         </div>
         <div className="yolo-learning-home-review-meta">
           <Clock size={13} />
-          {t('learning.home.reviewMeta', '跨 2 个项目 · 预计耗时 20 分钟')}
+          {t('learning.home.reviewMetaEmpty', '暂无到期复习')}
         </div>
       </section>
 
@@ -129,11 +126,12 @@ function ProjectCard({
   onClick,
   t,
 }: {
-  project: Project
+  project: VaultProject
   onClick: () => void
   t: (keyPath: string, fallback?: string) => string
 }) {
-  const due = project.dueCards + project.dueExercises
+  const due = 0
+  const totalCards = project.knowledgePoints.length
 
   return (
     <button
@@ -143,13 +141,13 @@ function ProjectCard({
     >
       <div className="yolo-learning-home-project-header">
         <RingProgress
-          value={project.progress}
+          value={0}
           size={52}
           stroke={5}
           className="yolo-learning-home-project-ring"
         />
         <div className="yolo-learning-home-project-identity">
-          <h3 className="yolo-learning-home-project-name">{project.name}</h3>
+          <h3 className="yolo-learning-home-project-name">{project.topic}</h3>
           <div className="yolo-learning-home-project-status">
             {due > 0 && (
               <Pill tone="primary">
@@ -162,7 +160,9 @@ function ProjectCard({
             <span className="yolo-learning-home-project-last-studied">
               {formatLearningText(
                 t('learning.home.lastStudied', '最近学习于 {time}'),
-                { time: project.lastStudied },
+                {
+                  time: '—',
+                },
               )}
             </span>
           </div>
@@ -172,15 +172,15 @@ function ProjectCard({
       <div className="yolo-learning-home-metrics">
         <MetricBar
           label={t('learning.common.cards', '卡片')}
-          value={project.cardProgress}
-          completed={project.completedCards}
-          total={project.totalCards}
+          value={0}
+          completed={0}
+          total={totalCards}
         />
         <MetricBar
           label={t('learning.common.exercises', '习题')}
-          value={project.exerciseProgress}
-          completed={project.completedExercises}
-          total={project.totalExercises}
+          value={0}
+          completed={0}
+          total={0}
         />
       </div>
     </button>

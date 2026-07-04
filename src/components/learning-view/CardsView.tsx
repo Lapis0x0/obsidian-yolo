@@ -1,5 +1,6 @@
 import cx from 'clsx'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { TFile, normalizePath } from 'obsidian'
 import {
   Children,
   useCallback,
@@ -10,13 +11,27 @@ import {
 } from 'react'
 import type { PointerEvent, ReactNode } from 'react'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
+import type { Project as VaultProject } from '../../core/learning/types'
+
 import { formatLearningText } from './i18n'
-import { type Card, cards, chapters } from './mockLearningData'
-import { MasteryDot, Segmented, SelectMenu } from './primitives'
+import { type Mastery, MasteryDot, Segmented, SelectMenu } from './primitives'
 
 const cardModes = ['浏览', '复习'] as const
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
+
+type Card = {
+  id: string
+  pointId: string | null
+  pointTitle: string
+  chapterTitle: string
+  front: string
+  back: string
+  mastery: Mastery
+  due: boolean
+}
 
 function masteryText(
   t: (keyPath: string, fallback?: string) => string,
@@ -30,21 +45,10 @@ function masteryText(
   return labels[mastery]
 }
 
-function pointTitle(pointId: string) {
-  for (const chapter of chapters) {
-    const point = chapter.points.find((p) => p.id === pointId)
-    if (point) return `${point.index} ${point.title}`
-  }
-  return ''
-}
-
-export function CardsView({
-  selectedPointId,
-}: {
-  selectedPointId: string | null
-}) {
+export function CardsView({ project }: { project: VaultProject | null }) {
   const { t } = useLanguage()
-  const dueCount = cards.filter((card) => card.due).length
+  const { cards, loading } = useProjectCards(project)
+  const dueCount = 0
   const [mode, setMode] = useState<'浏览' | '复习'>('浏览')
   const modeLabels: Record<(typeof cardModes)[number], string> = {
     浏览: t('learning.common.browse', '浏览'),
@@ -61,30 +65,99 @@ export function CardsView({
           badges={{ 复习: dueCount }}
           getLabel={(option) => modeLabels[option]}
         />
-        {selectedPointId && mode === '浏览' && (
-          <span className="yolo-learning-cards-selected-point">
-            {t('learning.cards.filteredTo', '已筛选至：')}
-            <span className="yolo-learning-cards-selected-point-title">
-              {pointTitle(selectedPointId)}
-            </span>
-          </span>
-        )}
       </div>
 
       {mode === '浏览' ? (
-        <BrowseMode selectedPointId={selectedPointId} />
+        <BrowseMode project={project} cards={cards} loading={loading} />
       ) : (
-        <ReviewMode onExit={() => setMode('浏览')} />
+        <ReviewMode cards={cards} onExit={() => setMode('浏览')} />
       )}
     </div>
   )
 }
 
+function useProjectCards(project: VaultProject | null) {
+  const app = useApp()
+  const [cards, setCards] = useState<Card[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!project) {
+        setCards([])
+        setLoading(false)
+        return
+      }
+      setLoading(true)
+      const nextCards: Card[] = []
+      const pointByUuid = new Map(
+        project.knowledgePoints.map((point) => [point.uuid, point]),
+      )
+      const chapterById = new Map(
+        project.chapters.map((chapter) => [chapter.id, chapter]),
+      )
+      for (const chapter of project.chapters) {
+        const file = app.vault.getAbstractFileByPath(
+          normalizePath(`${chapter.folderPath}/cards.md`),
+        )
+        if (!(file instanceof TFile)) continue
+        const content = await app.vault.cachedRead(file)
+        const entries = scanMarkdownEntries(content).filter(
+          (entry) => entry.type === 'card' && entry.uuid,
+        )
+        for (const entry of entries) {
+          const point = entry.kpUuid ? pointByUuid.get(entry.kpUuid) : undefined
+          const pointChapter = point
+            ? chapterById.get(point.chapterId)
+            : undefined
+          const parsed = parseCardBody(entry.body)
+          nextCards.push({
+            id: entry.uuid,
+            pointId: point?.id ?? null,
+            pointTitle: point?.title ?? entry.title,
+            chapterTitle: pointChapter?.title ?? chapter.title,
+            front: parsed.front || entry.title,
+            back: parsed.back || entry.body,
+            mastery: 'new',
+            due: false,
+          })
+        }
+      }
+      if (!cancelled) {
+        setCards(nextCards)
+        setLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [app, project])
+
+  return { cards, loading }
+}
+
+function parseCardBody(body: string) {
+  const frontMatch = body.match(
+    /\*\*正面：\*\*\s*([\s\S]*?)(?=\n\s*\*\*背面：\*\*|$)/,
+  )
+  const backMatch = body.match(/\*\*背面：\*\*\s*([\s\S]*)$/)
+  return {
+    front: frontMatch?.[1]?.trim() ?? '',
+    back: backMatch?.[1]?.trim() ?? '',
+  }
+}
+
 /* ---------------- Browse ---------------- */
 function BrowseMode({
-  selectedPointId: _selectedPointId,
+  project,
+  cards,
+  loading,
 }: {
-  selectedPointId: string | null
+  project: VaultProject | null
+  cards: Card[]
+  loading: boolean
 }) {
   const { t } = useLanguage()
   const [mastery, setMastery] =
@@ -107,7 +180,7 @@ function BrowseMode({
               value: '全部章节',
               label: t('learning.common.allChapters', '全部章节'),
             },
-            ...chapters.map((c) => c.title),
+            ...(project?.chapters.map((c) => c.title) ?? []),
           ]}
         />
         <SelectMenu
@@ -117,8 +190,7 @@ function BrowseMode({
               value: '全部知识点',
               label: t('learning.common.allKnowledgePoints', '全部知识点'),
             },
-            '2.2 可变引用',
-            '2.3 借用检查器规则',
+            ...(project?.knowledgePoints.map((point) => point.title) ?? []),
           ]}
         />
         <div className="yolo-learning-cards-mastery-filter">
@@ -159,11 +231,24 @@ function BrowseMode({
         </button>
       </div>
 
-      <MasonryColumns columnCount={columnCount}>
-        {cards.map((card) => (
-          <BrowseCard key={card.id} card={card} />
-        ))}
-      </MasonryColumns>
+      {loading ? (
+        <p className="yolo-learning-cards-empty">
+          {t('learning.common.loading', '加载中…')}
+        </p>
+      ) : cards.length === 0 ? (
+        <p className="yolo-learning-cards-empty">
+          {t(
+            'learning.cards.empty',
+            '还没有卡片，生成知识点后可在知识点上创建卡片',
+          )}
+        </p>
+      ) : (
+        <MasonryColumns columnCount={columnCount}>
+          {cards.map((card) => (
+            <BrowseCard key={card.id} card={card} />
+          ))}
+        </MasonryColumns>
+      )}
     </>
   )
 }
@@ -269,7 +354,7 @@ function BrowseCard({ card }: { card: Card }) {
     <article className="yolo-learning-cards-browse-card">
       <div className="yolo-learning-cards-browse-card-header">
         <span className="yolo-learning-cards-browse-card-point">
-          {pointTitle(card.pointId)}
+          {card.chapterTitle} · {card.pointTitle}
         </span>
         <div className="yolo-learning-cards-browse-card-meta">
           {card.due && (
@@ -378,7 +463,7 @@ const peekFanRight = 'translateX(18px) rotate(5deg) scale(0.98)'
 const peekSingle = 'translateY(6px) scale(0.98)'
 const peekCenter = 'translate(0,0) rotate(0deg) scale(1)'
 
-function ReviewMode({ onExit }: { onExit: () => void }) {
+function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
   const { t } = useLanguage()
   const queue = useMemo(() => {
     const due = cards.filter((card) => card.due)
@@ -533,6 +618,23 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
   }
   const flipHint = t('learning.cards.flipHint', '点击翻面或按空格')
 
+  if (queue.length === 0) {
+    return (
+      <div className="yolo-learning-cards-review-done">
+        <p className="yolo-learning-cards-review-done-title">
+          {t('learning.cards.noReviewCards', '暂无卡片可复习')}
+        </p>
+        <button
+          type="button"
+          onClick={onExit}
+          className="yolo-learning-cards-review-back-btn"
+        >
+          {t('learning.cards.backToBrowse', '返回浏览')}
+        </button>
+      </div>
+    )
+  }
+
   const cardTransform = exitingGrade
     ? exitTransforms[exitingGrade]
     : `translate(${drag.x}px, ${drag.y}px) rotate(${drag.x * 0.04}deg)`
@@ -643,7 +745,7 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
               >
                 <div className="yolo-learning-cards-review-promote-card">
                   <div className="yolo-learning-cards-review-card-point">
-                    {pointTitle(promoteCard.pointId)}
+                    {promoteCard.chapterTitle} · {promoteCard.pointTitle}
                   </div>
                   <p className="yolo-learning-cards-review-card-front-text">
                     {promoteCard.front}
@@ -687,7 +789,7 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
                 >
                   <div className="yolo-learning-cards-review-face yolo-learning-cards-review-face-front">
                     <div className="yolo-learning-cards-review-card-point">
-                      {pointTitle(card.pointId)}
+                      {card.chapterTitle} · {card.pointTitle}
                     </div>
                     <p className="yolo-learning-cards-review-card-front-text">
                       {card.front}
@@ -704,7 +806,7 @@ function ReviewMode({ onExit }: { onExit: () => void }) {
                   </div>
                   <div className="yolo-learning-cards-review-face yolo-learning-cards-review-face-back">
                     <div className="yolo-learning-cards-review-card-point">
-                      {pointTitle(card.pointId)}
+                      {card.chapterTitle} · {card.pointTitle}
                     </div>
                     <p className="yolo-learning-cards-review-card-back-text yolo-learning-scrollbar-thin">
                       {card.back}

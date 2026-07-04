@@ -1,33 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { TAbstractFile } from 'obsidian'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { DEFAULT_LEARNING_BASE_DIR } from '../../constants'
 import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
-import { scanProjects } from '../../core/learning/projectScanner'
+import {
+  isPathUnderLearningBase,
+  scanProjects,
+} from '../../core/learning/projectScanner'
 import type { Project as VaultProject } from '../../core/learning/types'
 
 import { HomeView } from './HomeView'
 import { KnowledgeGraph } from './KnowledgeGraph'
-import { type TabKey, tabs } from './mockLearningData'
 import { OutlineBuilder } from './OutlineBuilder'
-import { Wizard } from './Wizard'
+import { type TabKey, tabs } from './tabs'
+import { type LearningWizardInput, Wizard } from './Wizard'
 import { Workspace } from './Workspace'
 
-/**
- * LearningWorkspace
- * ─────────────────
- * Root React entry for the Learning Mode view. Owns the top-level navigation
- * state machine (mirrors the design mock's `learning-view.tsx`):
- *
- *   HomeView ─(新建)→ Wizard ─(完成)→ OutlineBuilder ─(完成)→ Workspace
- *   HomeView ─(打开项目)──────────────────────────────────→ Workspace
- *
- * ⚠️ Migration phase: the views are driven by `mockLearningData`, NOT the
- * vault. The ProjectEventBus / vault scan below is kept only to feed the
- * existing force-directed KnowledgeGraph (the "知识地图" tab) and the mock
- * replay command. Wiring the shell to real vault data is a later phase.
- */
 export function LearningWorkspace() {
   const app = useApp()
   const plugin = usePlugin()
@@ -36,12 +26,14 @@ export function LearningWorkspace() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
   const [buildingOutline, setBuildingOutline] = useState(false)
+  const [wizardInput, setWizardInput] = useState<LearningWizardInput | null>(
+    null,
+  )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
-  const [selectedPointId, setSelectedPointId] = useState<string | null>('p2-2')
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
 
-  // Event bus + vault scan: only feeds the KnowledgeGraph tab / mock replay.
   const bus = useMemo(() => new ProjectEventBus(app), [app])
-  const [, setVaultProjects] = useState<VaultProject[]>([])
+  const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([])
 
   useEffect(() => {
     plugin.setLearningEventBus(bus)
@@ -56,8 +48,6 @@ export function LearningWorkspace() {
       const { projects: scanned } = await scanProjects(app, baseDir)
       if (cancelled) return
       setVaultProjects(scanned)
-      const firstPath = scanned[0]?.folderPath ?? null
-      await bus.setActiveProject(baseDir, firstPath)
       bus.startWatchingVault()
     }
     void run()
@@ -68,10 +58,35 @@ export function LearningWorkspace() {
   }, [app, bus, baseDir])
 
   useEffect(() => {
+    const project = vaultProjects.find((item) => item.id === projectId)
+    void bus.setActiveProject(baseDir, project?.folderPath ?? null)
+  }, [baseDir, bus, projectId, vaultProjects])
+
+  useEffect(() => {
     return () => {
       bus.dispose()
     }
   }, [bus])
+
+  const refreshProjects = useCallback(async () => {
+    const { projects: scanned } = await scanProjects(app, baseDir)
+    setVaultProjects(scanned)
+    return scanned
+  }, [app, baseDir])
+
+  useEffect(() => {
+    const refreshIfLearningPath = (file: TAbstractFile) => {
+      if (isPathUnderLearningBase(file.path, baseDir)) void refreshProjects()
+    }
+    const refs = [
+      app.vault.on('create', refreshIfLearningPath),
+      app.vault.on('modify', refreshIfLearningPath),
+      app.vault.on('delete', refreshIfLearningPath),
+    ]
+    return () => {
+      for (const ref of refs) app.vault.offref(ref)
+    }
+  }, [app, baseDir, refreshProjects])
 
   const knowledgeMap = (
     <KnowledgeGraph eventBus={bus} initialSnapshot={bus.getSnapshot()} />
@@ -81,16 +96,24 @@ export function LearningWorkspace() {
     <div className="yolo-learning yolo-learning-root">
       <div className="yolo-learning-page">
         {buildingOutline ? (
-          <OutlineBuilder
-            onCancel={() => setBuildingOutline(false)}
-            onComplete={() => {
-              setBuildingOutline(false)
-              setProjectId('new')
-            }}
-          />
+          wizardInput && (
+            <OutlineBuilder
+              plugin={plugin}
+              topic={wizardInput.topic}
+              level={wizardInput.level}
+              goal={wizardInput.goal}
+              onCancel={() => setBuildingOutline(false)}
+              onComplete={(newProjectId) => {
+                setBuildingOutline(false)
+                void refreshProjects().then(() => setProjectId(newProjectId))
+              }}
+            />
+          )
         ) : projectId ? (
           <Workspace
-            projectId={projectId}
+            project={
+              vaultProjects.find((item) => item.id === projectId) ?? null
+            }
             onBack={() => setProjectId(null)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -100,6 +123,7 @@ export function LearningWorkspace() {
           />
         ) : (
           <HomeView
+            projects={vaultProjects}
             onOpenProject={setProjectId}
             onNewProject={() => setWizardOpen(true)}
           />
@@ -109,7 +133,8 @@ export function LearningWorkspace() {
       {wizardOpen && (
         <Wizard
           onClose={() => setWizardOpen(false)}
-          onComplete={() => {
+          onComplete={(input) => {
+            setWizardInput(input)
             setWizardOpen(false)
             setBuildingOutline(true)
           }}

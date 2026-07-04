@@ -2,28 +2,11 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import {
   chapterFrontmatterSchema,
-  knowledgePointFrontmatterSchema,
-  parseRelationsFromFrontmatter,
+  chapterKnowledgeFrontmatterSchema,
   projectFrontmatterSchema,
 } from './frontmatter-schema'
-import type {
-  Chapter,
-  KnowledgePoint,
-  Project,
-  ProjectStatus,
-  Relation,
-} from './types'
-
-/**
- * Scans the vault for learning projects.
- *
- * Vault layout (see types.ts for the full contract):
- *   <baseDir>/<projectSlug>/index.md
- *   <baseDir>/<projectSlug>/<chapterSlug>/<knowledgePointSlug>/knowledge.md
- *
- * No database. We rebuild the Project model from the filesystem on demand,
- * then keep it fresh with incremental vault events (see projectEventBus.ts).
- */
+import { scanMarkdownEntries } from './markdownScanner'
+import type { Chapter, KnowledgePoint, Project, ProjectStatus } from './types'
 
 const KNOWLEDGE_FILE = 'knowledge.md'
 const CARDS_FILE = 'cards.md'
@@ -61,10 +44,7 @@ export async function scanProject(
   const indexFile = projectFolder.children.find(
     (c): c is TFile => c instanceof TFile && c.name === PROJECT_INDEX_FILE,
   )
-  if (!indexFile) {
-    // Without index.md, we treat the folder as "not a learning project".
-    return null
-  }
+  if (!indexFile) return null
 
   const projectId = projectFolder.path
   const indexFrontmatter =
@@ -74,43 +54,22 @@ export async function scanProject(
     parsed.success && parsed.data.topic ? parsed.data.topic : projectFolder.name
   const status: ProjectStatus =
     parsed.success && parsed.data.status ? parsed.data.status : 'outlining'
-
   const orderedChapterSlugs =
     parsed.success && parsed.data.chapters ? parsed.data.chapters : null
 
   const chapterFolders = projectFolder.children.filter(
     (c): c is TFolder => c instanceof TFolder,
   )
-
   const orderedChapterFolders = orderedChapterSlugs
     ? orderChaptersBySlugs(chapterFolders, orderedChapterSlugs)
     : chapterFolders.sort((a, b) => a.name.localeCompare(b.name))
 
   const chapters: Chapter[] = []
   const knowledgePoints: KnowledgePoint[] = []
-
-  // First pass: collect all knowledge points so we can resolve relations by path.
   for (const chapterFolder of orderedChapterFolders) {
-    const { chapter, knowledgePoints: kps } = await scanChapter(
-      app,
-      projectId,
-      chapterFolder,
-    )
-    chapters.push(chapter)
-    knowledgePoints.push(...kps)
-  }
-
-  // Second pass: resolve relations by vault path → knowledgePointId.
-  const idByRelativeFolderPath = new Map<string, string>()
-  for (const kp of knowledgePoints) {
-    // Relative to project root: "<chapterSlug>/<kpSlug>"
-    const relative = kp.folderPath.slice(projectFolder.path.length + 1)
-    idByRelativeFolderPath.set(relative, kp.id)
-  }
-  for (const kp of knowledgePoints) {
-    if (kp.relations.length === 0) continue
-    // Relations were stored as unresolved targets; re-resolve via the lookup.
-    kp.relations = resolveRelationTargets(kp.relations, idByRelativeFolderPath)
+    const scanned = await scanChapter(app, projectId, chapterFolder)
+    chapters.push(scanned.chapter)
+    knowledgePoints.push(...scanned.knowledgePoints)
   }
 
   return {
@@ -130,7 +89,80 @@ async function scanChapter(
   projectId: string,
   chapterFolder: TFolder,
 ): Promise<{ chapter: Chapter; knowledgePoints: KnowledgePoint[] }> {
-  // A chapter may optionally have its own `index.md` with a title override.
+  const chapterId = chapterFolder.path
+  const fallbackTitle = resolveChapterTitleFromIndex(app, chapterFolder)
+  const knowledgeFile = chapterFolder.children.find(
+    (c): c is TFile => c instanceof TFile && c.name === KNOWLEDGE_FILE,
+  )
+  const hasCards = chapterFolder.children.some(
+    (c) => c instanceof TFile && c.name === CARDS_FILE,
+  )
+  const hasExercises = chapterFolder.children.some(
+    (c) => c instanceof TFile && c.name === EXERCISES_FILE,
+  )
+  const title = knowledgeFile
+    ? resolveChapterKnowledgeTitle(app, knowledgeFile, fallbackTitle)
+    : fallbackTitle
+  const knowledgePoints = knowledgeFile
+    ? await scanChapterKnowledgeFile({
+        app,
+        projectId,
+        chapterId,
+        knowledgeFile,
+        hasCards,
+        hasExercises,
+      })
+    : []
+
+  return {
+    chapter: {
+      id: chapterId,
+      projectId,
+      slug: chapterFolder.name,
+      title,
+      folderPath: chapterFolder.path,
+      knowledgePointIds: knowledgePoints.map((kp) => kp.id),
+    },
+    knowledgePoints,
+  }
+}
+
+async function scanChapterKnowledgeFile({
+  app,
+  projectId,
+  chapterId,
+  knowledgeFile,
+  hasCards,
+  hasExercises,
+}: {
+  app: App
+  projectId: string
+  chapterId: string
+  knowledgeFile: TFile
+  hasCards: boolean
+  hasExercises: boolean
+}): Promise<KnowledgePoint[]> {
+  const content = await app.vault.cachedRead(knowledgeFile)
+  return scanMarkdownEntries(content)
+    .filter((entry) => entry.type === 'kp' && entry.uuid)
+    .map((entry) => ({
+      id: `${chapterId}/${entry.uuid}`,
+      projectId,
+      chapterId,
+      uuid: entry.uuid,
+      title: entry.title,
+      knowledgeFilePath: knowledgeFile.path,
+      relations: [],
+      hasCards,
+      hasExercises,
+      mtime: knowledgeFile.stat.mtime,
+    }))
+}
+
+function resolveChapterTitleFromIndex(
+  app: App,
+  chapterFolder: TFolder,
+): string {
   const chapterIndex = chapterFolder.children.find(
     (c): c is TFile => c instanceof TFile && c.name === PROJECT_INDEX_FILE,
   )
@@ -138,80 +170,20 @@ async function scanChapter(
     ? (app.metadataCache.getFileCache(chapterIndex)?.frontmatter ?? {})
     : {}
   const parsedChapter = chapterFrontmatterSchema.safeParse(chapterFrontmatter)
-  const title =
-    parsedChapter.success && parsedChapter.data.title
-      ? parsedChapter.data.title
-      : chapterFolder.name
-
-  const chapterId = chapterFolder.path
-
-  const kpFolders = chapterFolder.children
-    .filter((c): c is TFolder => c instanceof TFolder)
-    .sort((a, b) => a.name.localeCompare(b.name))
-
-  const knowledgePoints: KnowledgePoint[] = []
-  for (const kpFolder of kpFolders) {
-    const kp = await scanKnowledgePoint(app, projectId, chapterId, kpFolder)
-    if (kp) knowledgePoints.push(kp)
-  }
-
-  const chapter: Chapter = {
-    id: chapterId,
-    projectId,
-    slug: chapterFolder.name,
-    title,
-    folderPath: chapterFolder.path,
-    knowledgePointIds: knowledgePoints.map((kp) => kp.id),
-  }
-
-  return { chapter, knowledgePoints }
+  return parsedChapter.success && parsedChapter.data.title
+    ? parsedChapter.data.title
+    : chapterFolder.name
 }
 
-async function scanKnowledgePoint(
+function resolveChapterKnowledgeTitle(
   app: App,
-  projectId: string,
-  chapterId: string,
-  kpFolder: TFolder,
-): Promise<KnowledgePoint | null> {
-  const knowledgeFile = kpFolder.children.find(
-    (c): c is TFile => c instanceof TFile && c.name === KNOWLEDGE_FILE,
-  )
-  if (!knowledgeFile) return null
-
+  knowledgeFile: TFile,
+  fallback: string,
+): string {
   const frontmatter =
     app.metadataCache.getFileCache(knowledgeFile)?.frontmatter ?? {}
-  const parsed = knowledgePointFrontmatterSchema.safeParse(frontmatter)
-  const title =
-    parsed.success && parsed.data.title ? parsed.data.title : kpFolder.name
-
-  // Phase-1 relations: we keep the raw target paths as `targetId` for now;
-  // scanProject() will resolve them to real knowledge-point IDs after all
-  // knowledge points are collected.
-  const rawRelations = parseRelationsFromFrontmatter(
-    parsed.success ? parsed.data.relations : [],
-    (rawTarget) => rawTarget, // pass through unresolved; resolved in second pass
-  )
-
-  const hasCards = kpFolder.children.some(
-    (c) => c instanceof TFile && c.name === CARDS_FILE,
-  )
-  const hasExercises = kpFolder.children.some(
-    (c) => c instanceof TFile && c.name === EXERCISES_FILE,
-  )
-
-  return {
-    id: kpFolder.path,
-    projectId,
-    chapterId,
-    slug: kpFolder.name,
-    title,
-    knowledgeFilePath: knowledgeFile.path,
-    folderPath: kpFolder.path,
-    relations: rawRelations,
-    hasCards,
-    hasExercises,
-    mtime: knowledgeFile.stat.mtime,
-  }
+  const parsed = chapterKnowledgeFrontmatterSchema.safeParse(frontmatter)
+  return parsed.success ? parsed.data.title : fallback
 }
 
 function orderChaptersBySlugs(
@@ -234,23 +206,6 @@ function orderChaptersBySlugs(
   return ordered
 }
 
-function resolveRelationTargets(
-  relations: Relation[],
-  idByRelativeFolderPath: Map<string, string>,
-): Relation[] {
-  const resolved: Relation[] = []
-  for (const relation of relations) {
-    const targetId = idByRelativeFolderPath.get(relation.targetId)
-    if (!targetId) continue
-    resolved.push({ ...relation, targetId })
-  }
-  return resolved
-}
-
-/**
- * Returns true if the given vault path lies under the configured learning
- * base directory and looks like it could belong to a learning project.
- */
 export function isPathUnderLearningBase(
   vaultPath: string,
   baseDir: string,

@@ -7,12 +7,18 @@ import { useLanguage } from '../../contexts/language-context'
 
 const levelIds = ['beginner', 'familiar', 'experienced', 'advanced'] as const
 
+export type LearningWizardInput = {
+  topic: string
+  level: string
+  goal: string
+}
+
 export function Wizard({
   onClose,
   onComplete,
 }: {
   onClose: () => void
-  onComplete: () => void
+  onComplete: (input: LearningWizardInput) => void
 }) {
   const { t } = useLanguage()
   const levels = levelIds.map((id) => ({
@@ -72,7 +78,7 @@ export function Wizard({
           </button>
           <button
             type="button"
-            onClick={onComplete}
+            onClick={() => onComplete({ topic, level, goal })}
             className="yolo-learning-wizard-primary"
           >
             <Sparkles size={16} />

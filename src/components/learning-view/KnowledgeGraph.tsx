@@ -18,13 +18,14 @@ import {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { formatLearningText } from './i18n'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type {
   LearningEvent,
   Project,
   RelationType,
 } from '../../core/learning/types'
+
+import { formatLearningText } from './i18n'
 
 /**
  * KnowledgeGraph — a force-directed knowledge graph that *grows* in response

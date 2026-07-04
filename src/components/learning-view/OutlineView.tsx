@@ -8,23 +8,65 @@ import {
   RotateCcw,
   Search,
 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { TFile } from 'obsidian'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
+import type {
+  Chapter as VaultChapter,
+  KnowledgePoint as VaultKnowledgePoint,
+  Project as VaultProject,
+} from '../../core/learning/types'
+
 import { formatLearningText } from './i18n'
-import { type KnowledgePoint, chapters } from './mockLearningData'
 import { MasteryDot, Pill } from './primitives'
 
 export function OutlineView({
+  project,
   selectedPointId,
   onSelectPoint,
 }: {
+  project: VaultProject
   selectedPointId: string | null
   onSelectPoint: (id: string) => void
 }) {
   const { t } = useLanguage()
-  const point = findPoint(selectedPointId) ?? chapters[1].points[1]
-  const chapter = chapters.find((c) => c.points.some((p) => p.id === point.id))!
+  const pointsByChapter = useMemo(() => {
+    const map = new Map<string, VaultKnowledgePoint[]>()
+    for (const chapter of project.chapters) {
+      map.set(
+        chapter.id,
+        project.knowledgePoints.filter(
+          (point) => point.chapterId === chapter.id,
+        ),
+      )
+    }
+    return map
+  }, [project])
+  const firstPoint = project.knowledgePoints[0] ?? null
+  const point =
+    project.knowledgePoints.find((item) => item.id === selectedPointId) ??
+    firstPoint
+  const chapter = point
+    ? (project.chapters.find((item) => item.id === point.chapterId) ?? null)
+    : null
+
+  useEffect(() => {
+    if (!selectedPointId && firstPoint) onSelectPoint(firstPoint.id)
+  }, [firstPoint, onSelectPoint, selectedPointId])
+
+  if (project.knowledgePoints.length === 0) {
+    return (
+      <div className="yolo-learning-outline-empty">
+        {t(
+          'learning.outline.emptyProject',
+          '这个项目还没有知识点。生成完成后会在这里显示大纲。',
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="yolo-learning-outline">
@@ -38,11 +80,13 @@ export function OutlineView({
         </div>
 
         <div className="yolo-learning-outline-tree">
-          {chapters.map((c) => (
+          {project.chapters.map((item, index) => (
             <ChapterNode
-              key={c.id}
-              chapter={c}
-              selectedPointId={point.id}
+              key={item.id}
+              chapter={item}
+              chapterIndex={index + 1}
+              points={pointsByChapter.get(item.id) ?? []}
+              selectedPointId={point?.id ?? null}
               onSelectPoint={onSelectPoint}
             />
           ))}
@@ -59,12 +103,20 @@ export function OutlineView({
       </aside>
 
       <section className="yolo-learning-outline-detail-panel">
-        <Detail
-          point={point}
-          chapterTitle={chapter.title}
-          chapterIndex={chapter.index}
-          t={t}
-        />
+        {point && chapter ? (
+          <Detail
+            point={point}
+            chapter={chapter}
+            chapterIndex={
+              project.chapters.findIndex((c) => c.id === chapter.id) + 1
+            }
+            t={t}
+          />
+        ) : (
+          <div className="yolo-learning-outline-empty">
+            {t('learning.outline.noPointSelected', '请选择一个知识点')}
+          </div>
+        )}
       </section>
     </div>
   )
@@ -72,15 +124,18 @@ export function OutlineView({
 
 function ChapterNode({
   chapter,
+  chapterIndex,
+  points,
   selectedPointId,
   onSelectPoint,
 }: {
-  chapter: (typeof chapters)[number]
-  selectedPointId: string
+  chapter: VaultChapter
+  chapterIndex: number
+  points: VaultKnowledgePoint[]
+  selectedPointId: string | null
   onSelectPoint: (id: string) => void
 }) {
   const [open, setOpen] = useState(true)
-  const mastered = chapter.points.filter((p) => p.mastery === 'mastered').length
 
   return (
     <div className="yolo-learning-outline-chapter">
@@ -98,21 +153,20 @@ function ChapterNode({
           />
         )}
         <span className="yolo-learning-outline-chapter-index">
-          {chapter.index}
+          {chapterIndex}
         </span>
         <span className="yolo-learning-outline-chapter-title">
           {chapter.title}
         </span>
         <span className="yolo-learning-outline-chapter-count">
-          {mastered}/{chapter.points.length}
+          0/{points.length}
         </span>
       </button>
 
       {open && (
         <div className="yolo-learning-outline-points">
-          {chapter.points.map((p) => {
+          {points.map((p, index) => {
             const active = p.id === selectedPointId
-
             return (
               <button
                 key={p.id}
@@ -126,13 +180,11 @@ function ChapterNode({
                 {active && (
                   <span className="yolo-learning-outline-active-bar" />
                 )}
-                <MasteryDot mastery={p.mastery} />
+                <MasteryDot mastery="new" />
                 <span className="yolo-learning-outline-point-title">
-                  {p.title}
+                  {chapterIndex}.{index + 1} {p.title}
                 </span>
-                <span className="yolo-learning-outline-point-progress">
-                  {p.masteryPct}%
-                </span>
+                <span className="yolo-learning-outline-point-progress">0%</span>
               </button>
             )
           })}
@@ -144,15 +196,46 @@ function ChapterNode({
 
 function Detail({
   point,
-  chapterTitle,
+  chapter,
   chapterIndex,
   t,
 }: {
-  point: KnowledgePoint
-  chapterTitle: string
+  point: VaultKnowledgePoint
+  chapter: VaultChapter
   chapterIndex: number
   t: (keyPath: string, fallback?: string) => string
 }) {
+  const app = useApp()
+  const [body, setBody] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      const file = app.vault.getAbstractFileByPath(point.knowledgeFilePath)
+      if (!(file instanceof TFile)) {
+        if (!cancelled) {
+          setBody('')
+          setLoading(false)
+        }
+        return
+      }
+      const content = await app.vault.cachedRead(file)
+      const entry = scanMarkdownEntries(content).find(
+        (item) => item.type === 'kp' && item.uuid === point.uuid,
+      )
+      if (!cancelled) {
+        setBody(entry?.body ?? '')
+        setLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [app, point])
+
   return (
     <div className="yolo-learning-outline-detail">
       <div className="yolo-learning-outline-breadcrumb">
@@ -165,12 +248,15 @@ function Detail({
           )}
         </span>
         <span>·</span>
-        <span>{chapterTitle}</span>
+        <span>{chapter.title}</span>
         <ChevronRight size={12} />
         <span className="yolo-learning-outline-breadcrumb-current">
           {formatLearningText(
             t('learning.outline.pointLabel', '知识点 {index} {title}'),
-            { index: point.index, title: point.title },
+            {
+              index: point.uuid,
+              title: point.title,
+            },
           )}
         </span>
       </div>
@@ -197,7 +283,7 @@ function Detail({
           {formatLearningText(
             t('learning.outline.masteryPct', '掌握度 {value}%'),
             {
-              value: point.masteryPct,
+              value: 0,
             },
           )}
         </Pill>
@@ -205,7 +291,7 @@ function Detail({
           {formatLearningText(
             t('learning.outline.cardCount', '卡片 {count} 张'),
             {
-              count: point.cardCount,
+              count: point.hasCards ? 1 : 0,
             },
           )}
         </Pill>
@@ -213,63 +299,23 @@ function Detail({
           {formatLearningText(
             t('learning.outline.exerciseCount', '习题 {count} 道'),
             {
-              count: point.exerciseCount,
+              count: point.hasExercises ? 1 : 0,
             },
           )}
         </Pill>
       </div>
 
       <article className="yolo-learning-outline-markdown">
-        <p>
-          <strong>可变引用（mutable reference）</strong>
-          允许你在不获取所有权的情况下修改借用的数据，写作{' '}
-          <code>&amp;mut T</code>。它是 Rust
-          借用系统中最容易触发编译错误、却也最能体现安全设计的部分。
-        </p>
-        <p>
-          与不可变引用 <code>&amp;T</code> 不同，可变引用对同一份数据具有
-          <strong>独占性</strong>
-          ：在一个可变引用存活的作用域内，既不能再创建另一个可变引用，也不能创建任何不可变引用。借用检查器在编译期强制这一规则，从根源上杜绝数据竞争。
-        </p>
-        <p>下面的代码可以正常编译并运行，因为同一时间只存在一个可变引用：</p>
-        <pre>
-          <code>{`fn main() {
-    let mut s = String::from("hello");
-    let r = &mut s;        // 唯一的可变引用
-    r.push_str(", world");
-    println!("{}", r);     // hello, world
-}`}</code>
-        </pre>
-        <p>
-          一旦尝试同时持有两个可变引用，编译器会立即报错{' '}
-          <code>cannot borrow `s` as mutable more than once at a time</code>
-          。这种限制看似严格，却把许多在 C/C++
-          中只能靠运行时调试发现的别名问题，提前暴露在了编译阶段。
-        </p>
-        <p>
-          值得注意的是 <strong>NLL（Non-Lexical Lifetimes）</strong>
-          ：引用的生命周期在它<em>最后一次被使用</em>
-          后即结束，而非延续到作用域末尾。因此先用完一个可变引用，再创建下一个，是完全合法的。
-        </p>
-        <p>
-          理解可变引用的独占性，是后续掌握<strong>借用检查器规则</strong>与
-          <strong>生命周期注解</strong>
-          的前提。建议结合本知识点的卡片与习题反复练习，直到能凭直觉判断一段代码是否会通过借用检查。
-        </p>
+        {loading ? (
+          <p>{t('learning.common.loading', '加载中…')}</p>
+        ) : body ? (
+          <pre>{body}</pre>
+        ) : (
+          <p>{t('learning.outline.emptyBody', '这个知识点还没有正文内容')}</p>
+        )}
       </article>
     </div>
   )
-}
-
-function findPoint(id: string | null): KnowledgePoint | undefined {
-  if (!id) return undefined
-
-  for (const c of chapters) {
-    const p = c.points.find((point) => point.id === id)
-    if (p) return p
-  }
-
-  return undefined
 }
 
 function GhostBtn({ children }: { children: ReactNode }) {

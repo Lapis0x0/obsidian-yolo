@@ -1,7 +1,7 @@
 import cx from 'clsx'
 import type React from 'react'
 
-import type { Mastery } from './mockLearningData'
+export type Mastery = 'mastered' | 'learning' | 'new'
 
 /* Ring / circular progress */
 export function RingProgress({

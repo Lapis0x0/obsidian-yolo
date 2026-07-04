@@ -6,15 +6,10 @@ import { Relation, RelationType } from './types'
  * Frontmatter schemas for learning-mode markdown files.
  *
  * Conventions (agent must respect these):
- * - All IDs are vault-path based ("project/chapter/knowledgePoint") and are
- *   derived at scan time, NOT written into frontmatter. Frontmatter only
- *   stores values the agent / user authored.
+ * - Knowledge point IDs are derived from chapter path + UUID comments in
+ *   chapter-level markdown files, NOT written into frontmatter.
  * - Titles are written in frontmatter, NOT derived from filenames. Filenames
  *   are slugs and may be transliterated.
- * - `relations[].target` is a vault-relative path to the target knowledge
- *   point folder (e.g. `chapter-1-slug/kp-3-slug`). Using paths keeps the
- *   markdown human-readable and survives renames as long as we rewrite on
- *   rename.
  */
 
 export const RELATION_TYPES: ReadonlyArray<RelationType> = [
@@ -39,9 +34,16 @@ export const projectFrontmatterSchema = z.object({
   chapters: z.array(z.string()).optional(),
 })
 
-export const knowledgePointFrontmatterSchema = z.object({
+export const chapterKnowledgeFrontmatterSchema = z.object({
   title: z.string().min(1),
-  relations: z.array(relationSchema).default([]).optional(),
+})
+
+export const chapterCardsFrontmatterSchema = z.object({
+  title: z.string().min(1),
+})
+
+export const chapterExercisesFrontmatterSchema = z.object({
+  title: z.string().min(1),
 })
 
 export const chapterFrontmatterSchema = z.object({
@@ -49,8 +51,14 @@ export const chapterFrontmatterSchema = z.object({
 })
 
 export type ProjectFrontmatter = z.infer<typeof projectFrontmatterSchema>
-export type KnowledgePointFrontmatter = z.infer<
-  typeof knowledgePointFrontmatterSchema
+export type ChapterKnowledgeFrontmatter = z.infer<
+  typeof chapterKnowledgeFrontmatterSchema
+>
+export type ChapterCardsFrontmatter = z.infer<
+  typeof chapterCardsFrontmatterSchema
+>
+export type ChapterExercisesFrontmatter = z.infer<
+  typeof chapterExercisesFrontmatterSchema
 >
 export type ChapterFrontmatter = z.infer<typeof chapterFrontmatterSchema>
 
