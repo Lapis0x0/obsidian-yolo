@@ -204,8 +204,8 @@ function parseCompletedKnowledgePointDrafts(
 }
 
 function parseKnowledgePointTitles(markdown: string): string[] {
-  return scanMarkdownEntries(markdown)
-    .map((entry) => entry.title.trim())
+  return [...markdown.matchAll(/^##[ \t]+([^\r\n]+)\r?\n/gm)]
+    .map((match) => match[1]?.trim() ?? '')
     .filter((title) => title.length > 0)
 }
 

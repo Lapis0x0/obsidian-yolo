@@ -36,6 +36,10 @@ export function LearningWorkspace() {
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
+  const activeProjectRef = useRef<{
+    baseDir: string
+    projectPath: string | null
+  } | null>(null)
 
   const bus = useMemo(() => new ProjectEventBus(app), [app])
   const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([])
@@ -64,7 +68,14 @@ export function LearningWorkspace() {
 
   useEffect(() => {
     const project = vaultProjects.find((item) => item.id === projectId)
-    void bus.setActiveProject(baseDir, project?.folderPath ?? null)
+    const projectPath = project?.folderPath ?? null
+    const active = activeProjectRef.current
+    if (active?.baseDir === baseDir && active.projectPath === projectPath) {
+      return
+    }
+
+    activeProjectRef.current = { baseDir, projectPath }
+    void bus.setActiveProject(baseDir, projectPath)
   }, [baseDir, bus, projectId, vaultProjects])
 
   useEffect(() => {
