@@ -165,11 +165,6 @@ export function KnowledgeGraph({
   )
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [isPanning, setIsPanning] = useState(false)
-  const [viewport, setViewport] = useState<ViewportTransform>({
-    x: 0,
-    y: 0,
-    zoom: 1,
-  })
 
   // ── Simulation + per-frame DOM handles (never trigger React renders) ──────
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null)
@@ -179,7 +174,9 @@ export function KnowledgeGraph({
   const simNodesRef = useRef<Map<string, SimNode>>(new Map())
   const pinnedNodeIdsRef = useRef<Set<string>>(new Set())
   const gestureRef = useRef<GraphGesture | null>(null)
-  const viewportRef = useRef<ViewportTransform>(viewport)
+  const viewportGroupRef = useRef<SVGGElement | null>(null)
+  const viewportRef = useRef<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
+  const viewportRafRef = useRef<number | null>(null)
   const sizeRef = useRef<{ width: number; height: number }>({
     width: 600,
     height: 420,
@@ -220,10 +217,6 @@ export function KnowledgeGraph({
       for (const timer of exitTimers) clearTimeout(timer)
     }
   }, [eventBus])
-
-  useEffect(() => {
-    viewportRef.current = viewport
-  }, [viewport])
 
   const renderFrame = useCallback((now: number) => {
     const sim = simRef.current
@@ -308,6 +301,22 @@ export function KnowledgeGraph({
     })
   }, [])
 
+  const applyViewportTransform = useCallback(() => {
+    viewportRafRef.current = null
+    const group = viewportGroupRef.current
+    if (!group) return
+    const { x, y, zoom } = viewportRef.current
+    group.setAttribute(
+      'transform',
+      `translate(${x.toFixed(2)} ${y.toFixed(2)}) scale(${zoom.toFixed(4)})`,
+    )
+  }, [])
+
+  const scheduleViewportTransform = useCallback(() => {
+    if (viewportRafRef.current != null) return
+    viewportRafRef.current = requestAnimationFrame(applyViewportTransform)
+  }, [applyViewportTransform])
+
   const resolvePointerPosition = useCallback((event: React.PointerEvent) => {
     const svg = svgRef.current
     if (!svg) return null
@@ -319,29 +328,31 @@ export function KnowledgeGraph({
     }
   }, [])
 
-  const handleWheel = useCallback((event: React.WheelEvent<SVGSVGElement>) => {
-    event.preventDefault()
-    const svg = svgRef.current
-    if (!svg) return
-    const rect = svg.getBoundingClientRect()
-    const pointerX = event.clientX - rect.left
-    const pointerY = event.clientY - rect.top
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<SVGSVGElement>) => {
+      event.preventDefault()
+      const svg = svgRef.current
+      if (!svg) return
+      const rect = svg.getBoundingClientRect()
+      const pointerX = event.clientX - rect.left
+      const pointerY = event.clientY - rect.top
 
-    setViewport((current) => {
-      const factor = Math.exp(-event.deltaY * 0.001)
+      const current = viewportRef.current
+      const delta = clamp(event.deltaY, -120, 120)
+      const factor = Math.exp(-delta * 0.001)
       const nextZoom = clamp(current.zoom * factor, MIN_ZOOM, MAX_ZOOM)
-      if (nextZoom === current.zoom) return current
+      if (nextZoom === current.zoom) return
       const graphX = (pointerX - current.x) / current.zoom
       const graphY = (pointerY - current.y) / current.zoom
-      const next = {
+      viewportRef.current = {
         zoom: nextZoom,
         x: pointerX - graphX * nextZoom,
         y: pointerY - graphY * nextZoom,
       }
-      viewportRef.current = next
-      return next
-    })
-  }, [])
+      scheduleViewportTransform()
+    },
+    [scheduleViewportTransform],
+  )
 
   const handleCanvasPointerDown = useCallback(
     (event: React.PointerEvent<SVGRectElement>) => {
@@ -378,9 +389,9 @@ export function KnowledgeGraph({
         y: gesture.startViewport.y + event.clientY - gesture.startClientY,
       }
       viewportRef.current = next
-      setViewport(next)
+      scheduleViewportTransform()
     },
-    [],
+    [scheduleViewportTransform],
   )
 
   const handleCanvasPointerUp = useCallback(
@@ -406,8 +417,8 @@ export function KnowledgeGraph({
   const resetViewport = useCallback(() => {
     const next = { x: 0, y: 0, zoom: 1 }
     viewportRef.current = next
-    setViewport(next)
-  }, [])
+    scheduleViewportTransform()
+  }, [scheduleViewportTransform])
 
   const handleNodePointerDown = useCallback(
     (event: React.PointerEvent<SVGGElement>, id: string) => {
@@ -657,6 +668,10 @@ export function KnowledgeGraph({
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
+      if (viewportRafRef.current != null) {
+        cancelAnimationFrame(viewportRafRef.current)
+        viewportRafRef.current = null
+      }
       resizeObserver?.disconnect()
       sim.stop()
       simRef.current = null
@@ -717,10 +732,9 @@ export function KnowledgeGraph({
             onLostPointerCapture={handleCanvasPointerUp}
           />
           <g
+            ref={viewportGroupRef}
             className="yolo-learning-graph-viewport"
-            transform={`translate(${viewport.x.toFixed(2)} ${viewport.y.toFixed(
-              2,
-            )}) scale(${viewport.zoom.toFixed(4)})`}
+            transform="translate(0 0) scale(1)"
           >
             <g className="yolo-learning-graph-edges">
               {graph.edges.map((edge) => (
