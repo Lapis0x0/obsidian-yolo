@@ -242,6 +242,11 @@ export function OutlineView({
             chapterIndex={
               project.chapters.findIndex((c) => c.id === chapter.id) + 1
             }
+            pointIndex={
+              (pointsByChapter
+                .get(chapter.id)
+                ?.findIndex((item) => item.id === point.id) ?? 0) + 1
+            }
             t={t}
           />
         ) : (
@@ -330,11 +335,13 @@ function Detail({
   point,
   chapter,
   chapterIndex,
+  pointIndex,
   t,
 }: {
   point: VaultKnowledgePoint
   chapter: VaultChapter
   chapterIndex: number
+  pointIndex: number
   t: (keyPath: string, fallback?: string) => string
 }) {
   const app = useApp()
@@ -390,13 +397,7 @@ function Detail({
         <span>{chapter.title}</span>
         <ChevronRight size={12} />
         <span className="yolo-learning-outline-breadcrumb-current">
-          {formatLearningText(
-            t('learning.outline.pointLabel', '知识点 {index} {title}'),
-            {
-              index: point.uuid,
-              title: point.title,
-            },
-          )}
+          {chapterIndex}.{pointIndex} {point.title}
         </span>
       </div>
 

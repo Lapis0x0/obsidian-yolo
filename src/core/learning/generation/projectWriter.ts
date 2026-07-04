@@ -31,8 +31,11 @@ export async function writeProject({
 
   const successfulChapters = chapters.filter((chapter) => !chapter.error)
   const chapterSlugs: string[] = []
-  for (const chapter of successfulChapters) {
-    chapterSlugs.push(createUniqueSlug(chapter.chapterTitle, chapterSlugs))
+  for (let i = 0; i < successfulChapters.length; i += 1) {
+    const chapter = successfulChapters[i]
+    const chapterNumber = String(i + 1).padStart(2, '0')
+    const orderedTitle = `${chapterNumber}-${chapter.chapterTitle}`
+    chapterSlugs.push(createUniqueSlug(orderedTitle, chapterSlugs))
   }
 
   await app.vault.create(
