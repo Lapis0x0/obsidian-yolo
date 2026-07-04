@@ -60,6 +60,7 @@ import { formatLearningText } from './i18n'
 
 export type NodeKind = 'topic' | 'chapter' | 'kp'
 export type EdgeKind = 'hierarchy' | 'relation'
+export type NodeStatus = 'generating' | 'completed'
 
 export type GraphNode = {
   id: string
@@ -67,6 +68,7 @@ export type GraphNode = {
   title: string
   /** topic → null; chapter → topic id; kp → chapter id. */
   parentId: string | null
+  status: NodeStatus
   entering: boolean
   exiting: boolean
 }
@@ -137,6 +139,7 @@ export function KnowledgeGraph({
   const [graph, setGraph] = useState<GraphModel>(() =>
     snapshotToGraph(initialSnapshot),
   )
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
 
   // ── Simulation + per-frame DOM handles (never trigger React renders) ──────
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null)
@@ -144,6 +147,8 @@ export function KnowledgeGraph({
     typeof forceLink<SimNode, SimLink>
   > | null>(null)
   const simNodesRef = useRef<Map<string, SimNode>>(new Map())
+  const pinnedNodeIdsRef = useRef<Set<string>>(new Set())
+  const dragRef = useRef<{ id: string; pointerId: number } | null>(null)
   const sizeRef = useRef<{ width: number; height: number }>({
     width: 600,
     height: 420,
@@ -268,6 +273,75 @@ export function KnowledgeGraph({
     })
   }, [])
 
+  const resolvePointerPosition = useCallback((event: React.PointerEvent) => {
+    const svg = svgRef.current
+    if (!svg) return null
+    const rect = svg.getBoundingClientRect()
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }
+  }, [])
+
+  const handleNodePointerDown = useCallback(
+    (event: React.PointerEvent<SVGGElement>, id: string) => {
+      if (event.button !== 0) return
+      const position = resolvePointerPosition(event)
+      const node = simNodesRef.current.get(id)
+      if (!position || !node) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      dragRef.current = { id, pointerId: event.pointerId }
+      pinnedNodeIdsRef.current.add(id)
+      setDraggingNodeId(id)
+
+      node.fx = position.x
+      node.fy = position.y
+      node.x = position.x
+      node.y = position.y
+      simRef.current?.alpha(Math.max(simRef.current.alpha(), 0.35))
+      renderFrame(performance.now())
+    },
+    [renderFrame, resolvePointerPosition],
+  )
+
+  const handleNodePointerMove = useCallback(
+    (event: React.PointerEvent<SVGGElement>) => {
+      const drag = dragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      const position = resolvePointerPosition(event)
+      const node = simNodesRef.current.get(drag.id)
+      if (!position || !node) return
+
+      event.preventDefault()
+      node.fx = position.x
+      node.fy = position.y
+      node.x = position.x
+      node.y = position.y
+      simRef.current?.alpha(Math.max(simRef.current.alpha(), 0.25))
+      renderFrame(performance.now())
+    },
+    [renderFrame, resolvePointerPosition],
+  )
+
+  const handleNodePointerUp = useCallback(
+    (event: React.PointerEvent<SVGGElement>) => {
+      const drag = dragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+
+      event.preventDefault()
+      dragRef.current = null
+      setDraggingNodeId(null)
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      }
+      simRef.current?.alpha(Math.max(simRef.current.alpha(), 0.12))
+    },
+    [],
+  )
+
   const reconcileSimulation = useCallback(
     (model: GraphModel) => {
       const sim = simRef.current
@@ -282,7 +356,10 @@ export function KnowledgeGraph({
 
       // Drop simulation nodes no longer in the model.
       for (const id of [...simNodes.keys()]) {
-        if (!modelNodeIds.has(id)) simNodes.delete(id)
+        if (!modelNodeIds.has(id)) {
+          simNodes.delete(id)
+          pinnedNodeIdsRef.current.delete(id)
+        }
       }
 
       // Index chapters for even radial distribution of their seed positions.
@@ -299,7 +376,7 @@ export function KnowledgeGraph({
         const existing = simNodes.get(node.id)
         if (existing) {
           existing.parentId = node.parentId
-          if (node.kind === 'topic') {
+          if (node.kind === 'topic' && !pinnedNodeIdsRef.current.has(node.id)) {
             existing.fx = cx
             existing.fy = cy
           }
@@ -422,6 +499,7 @@ export function KnowledgeGraph({
         sim.force('y', forceY<SimNode>(h / 2).strength(0.02))
         simNodesRef.current.forEach((n) => {
           if (n.kind === 'topic') {
+            if (pinnedNodeIdsRef.current.has(n.id)) return
             n.fx = w / 2
             n.fy = h / 2
           }
@@ -462,9 +540,6 @@ export function KnowledgeGraph({
       data-focused-id={graph.focusedId ?? ''}
     >
       <div className="yolo-learning-graph-header">
-        <span className="yolo-learning-graph-topic">
-          {graph.projectTopic ?? t('learning.graph.noProject', '未选择项目')}
-        </span>
         <span className="yolo-learning-graph-stats">
           {formatLearningText(
             t('learning.graph.knowledgePoints', '{count} 知识点'),
@@ -511,9 +586,17 @@ export function KnowledgeGraph({
                   key={node.id}
                   className="yolo-learning-graph-node"
                   data-kind={node.kind}
+                  data-status={node.status}
                   data-entering={node.entering ? 'true' : 'false'}
                   data-exiting={node.exiting ? 'true' : 'false'}
                   data-focused={isFocused ? 'true' : 'false'}
+                  data-dragging={node.id === draggingNodeId ? 'true' : 'false'}
+                  onPointerDown={(event) =>
+                    handleNodePointerDown(event, node.id)
+                  }
+                  onPointerMove={handleNodePointerMove}
+                  onPointerUp={handleNodePointerUp}
+                  onPointerCancel={handleNodePointerUp}
                 >
                   <circle
                     ref={circleRef(circleEls, node.id)}
@@ -675,6 +758,7 @@ function snapshotToGraph(snapshot: Project | null): GraphModel {
       kind: 'topic',
       title: snapshot.topic,
       parentId: null,
+      status: 'completed',
       entering: false,
       exiting: false,
     },
@@ -687,6 +771,7 @@ function snapshotToGraph(snapshot: Project | null): GraphModel {
       kind: 'chapter',
       title: chapter.title,
       parentId: topicId,
+      status: 'completed',
       entering: false,
       exiting: false,
     })
@@ -707,6 +792,7 @@ function snapshotToGraph(snapshot: Project | null): GraphModel {
       kind: 'kp',
       title: kp.title,
       parentId: kp.chapterId,
+      status: 'completed',
       entering: false,
       exiting: false,
     })
@@ -756,6 +842,7 @@ function applyEvent(prev: GraphModel, event: LearningEvent): GraphModel {
             kind: 'chapter',
             title: event.chapter.title,
             parentId: topicId,
+            status: 'completed',
             entering: true,
             exiting: false,
           },
@@ -801,8 +888,22 @@ function applyEvent(prev: GraphModel, event: LearningEvent): GraphModel {
     }
 
     case 'knowledge_point_added': {
-      if (prev.nodes.some((n) => n.id === event.knowledgePoint.id)) return prev
       const kp = event.knowledgePoint
+      if (prev.nodes.some((n) => n.id === kp.id)) {
+        return {
+          ...prev,
+          nodes: prev.nodes.map((node) =>
+            node.id === kp.id
+              ? {
+                  ...node,
+                  title: kp.title,
+                  parentId: kp.chapterId,
+                  status: 'completed',
+                }
+              : node,
+          ),
+        }
+      }
       return {
         ...prev,
         nodes: [
@@ -812,6 +913,53 @@ function applyEvent(prev: GraphModel, event: LearningEvent): GraphModel {
             kind: 'kp',
             title: kp.title,
             parentId: kp.chapterId,
+            status: 'completed',
+            entering: true,
+            exiting: false,
+          },
+        ],
+        edges: [
+          ...prev.edges,
+          {
+            id: hierarchyEdgeId(kp.chapterId, kp.id),
+            kind: 'hierarchy',
+            sourceId: kp.chapterId,
+            targetId: kp.id,
+            type: null,
+            entering: true,
+            exiting: false,
+          },
+        ],
+      }
+    }
+
+    case 'knowledge_point_drafted': {
+      const kp = event.knowledgePoint
+      if (prev.nodes.some((n) => n.id === kp.id)) {
+        return {
+          ...prev,
+          nodes: prev.nodes.map((node) =>
+            node.id === kp.id
+              ? {
+                  ...node,
+                  title: kp.title,
+                  parentId: kp.chapterId,
+                  status: 'generating',
+                }
+              : node,
+          ),
+        }
+      }
+      return {
+        ...prev,
+        nodes: [
+          ...prev.nodes,
+          {
+            id: kp.id,
+            kind: 'kp',
+            title: kp.title,
+            parentId: kp.chapterId,
+            status: 'generating',
             entering: true,
             exiting: false,
           },
@@ -840,6 +988,7 @@ function applyEvent(prev: GraphModel, event: LearningEvent): GraphModel {
                 ...node,
                 title: event.knowledgePoint.title,
                 parentId: event.knowledgePoint.chapterId,
+                status: 'completed',
               }
             : node,
         ),

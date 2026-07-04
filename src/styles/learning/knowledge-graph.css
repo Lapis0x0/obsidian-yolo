@@ -22,8 +22,14 @@
 /* ── Nodes (shared) ─────────────────────────────────────────────────────── */
 
 .yolo-learning-graph-node {
+  cursor: grab;
   opacity: 1;
+  touch-action: none;
   transition: opacity 240ms ease;
+}
+
+.yolo-learning-graph-node[data-dragging='true'] {
+  cursor: grabbing;
 }
 
 .yolo-learning-graph-node-dot {
@@ -46,13 +52,34 @@
 
 /* Knowledge point: a small solid dot. */
 .yolo-learning-graph-node[data-kind='kp'] .yolo-learning-graph-node-dot {
-  fill: var(--text-normal);
+  fill: color-mix(in oklab, var(--interactive-accent) 78%, var(--text-normal));
+}
+
+.yolo-learning-graph-node[data-kind='kp'][data-status='generating']
+  .yolo-learning-graph-node-dot {
+  fill: var(--text-faint);
+  animation: yolo-learning-kp-generating 1.15s ease-in-out infinite;
 }
 
 /* Focused knowledge point glows to the accent color while the agent works it. */
 .yolo-learning-graph-node[data-kind='kp'][data-focused='true']
   .yolo-learning-graph-node-dot {
   fill: var(--interactive-accent);
+}
+
+.yolo-learning-graph-node[data-kind='kp'][data-status='generating'][data-focused='true']
+  .yolo-learning-graph-node-dot {
+  fill: color-mix(in oklab, var(--interactive-accent) 42%, var(--text-faint));
+}
+
+@keyframes yolo-learning-kp-generating {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 /* Fade-in + tiny scale-up for nodes introduced by a live event. Scaling uses

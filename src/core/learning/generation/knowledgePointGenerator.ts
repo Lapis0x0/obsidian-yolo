@@ -17,6 +17,8 @@ export type GenerateKnowledgePointsForChapterOptions = {
   level: string
   abortSignal?: AbortSignal
   onProgress?: (delta: string, fullText: string) => void
+  onKnowledgePointTitle?: (title: string) => void | Promise<void>
+  onKnowledgePoint?: (point: KnowledgePointDraft) => void | Promise<void>
 }
 
 export async function generateKnowledgePointsForChapter({
@@ -27,9 +29,29 @@ export async function generateKnowledgePointsForChapter({
   level,
   abortSignal,
   onProgress,
+  onKnowledgePointTitle,
+  onKnowledgePoint,
 }: GenerateKnowledgePointsForChapterOptions): Promise<KnowledgePointDraft[]> {
   let accumulated = ''
   let completedText = ''
+  let titledCount = 0
+  let emittedCount = 0
+
+  const emitNewKnowledgePointTitles = async (titles: string[]) => {
+    if (!onKnowledgePointTitle) return
+    for (const title of titles.slice(titledCount)) {
+      await onKnowledgePointTitle(title)
+      titledCount += 1
+    }
+  }
+
+  const emitNewKnowledgePoints = async (points: KnowledgePointDraft[]) => {
+    if (!onKnowledgePoint) return
+    for (const point of points.slice(emittedCount)) {
+      await onKnowledgePoint(point)
+      emittedCount += 1
+    }
+  }
 
   const stream = plugin.agent.stream({
     prompt: buildKnowledgePointPrompt({
@@ -48,6 +70,10 @@ export async function generateKnowledgePointsForChapter({
     if (event.type === 'text') {
       accumulated = event.text || accumulated + event.delta
       onProgress?.(event.delta, accumulated)
+      await emitNewKnowledgePointTitles(parseKnowledgePointTitles(accumulated))
+      await emitNewKnowledgePoints(
+        parseCompletedKnowledgePointDrafts(accumulated),
+      )
     }
     if (event.type === 'completed') {
       completedText = event.text
@@ -57,7 +83,10 @@ export async function generateKnowledgePointsForChapter({
     }
   }
 
-  return parseKnowledgePointDrafts(completedText || accumulated)
+  const drafts = parseKnowledgePointDrafts(completedText || accumulated)
+  await emitNewKnowledgePointTitles(drafts.map((draft) => draft.title))
+  await emitNewKnowledgePoints(drafts)
+  return drafts
 }
 
 export type GenerateKnowledgePointsParallelOptions = {
@@ -159,6 +188,25 @@ function parseKnowledgePointDrafts(markdown: string): KnowledgePointDraft[] {
       title: entry.title.trim(),
       body: entry.body.trim(),
     }))
+}
+
+function parseCompletedKnowledgePointDrafts(
+  markdown: string,
+): KnowledgePointDraft[] {
+  const entries = scanMarkdownEntries(markdown).filter(
+    (entry) => entry.title.trim().length > 0,
+  )
+  if (entries.length <= 1) return []
+  return entries.slice(0, -1).map((entry) => ({
+    title: entry.title.trim(),
+    body: entry.body.trim(),
+  }))
+}
+
+function parseKnowledgePointTitles(markdown: string): string[] {
+  return scanMarkdownEntries(markdown)
+    .map((entry) => entry.title.trim())
+    .filter((title) => title.length > 0)
 }
 
 function getLatestHeading(markdown: string): string | undefined {

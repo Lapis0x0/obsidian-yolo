@@ -107,6 +107,11 @@ export type KnowledgePointAddedEvent = LearningEventBase & {
   knowledgePoint: KnowledgePoint
 }
 
+export type KnowledgePointDraftedEvent = LearningEventBase & {
+  type: 'knowledge_point_drafted'
+  knowledgePoint: KnowledgePoint
+}
+
 export type KnowledgePointUpdatedEvent = LearningEventBase & {
   type: 'knowledge_point_updated'
   knowledgePoint: KnowledgePoint
@@ -148,6 +153,7 @@ export type LearningEvent =
   | ChapterUpdatedEvent
   | ChapterRemovedEvent
   | KnowledgePointAddedEvent
+  | KnowledgePointDraftedEvent
   | KnowledgePointUpdatedEvent
   | KnowledgePointRemovedEvent
   | RelationEstablishedEvent

@@ -1,9 +1,13 @@
 import { dump as dumpYaml } from 'js-yaml'
-import { App, normalizePath } from 'obsidian'
+import { App, TFile, normalizePath } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import { createUniqueSlug } from './slug'
-import type { ChapterGenerationResult } from './types'
+import type {
+  ChapterGenerationResult,
+  KnowledgePointDraft,
+  OutlineChapter,
+} from './types'
 
 export type WriteProjectOptions = {
   app: App
@@ -11,6 +15,155 @@ export type WriteProjectOptions = {
   topic: string
   chapters: ChapterGenerationResult[]
   level: string
+}
+
+export type ProjectScaffold = {
+  projectPath: string
+  projectSlug: string
+  indexPath: string
+  chapters: ChapterWriteTarget[]
+}
+
+export type ChapterWriteTarget = {
+  chapterIndex: number
+  chapterTitle: string
+  chapterSlug: string
+  chapterPath: string
+  knowledgePath: string
+}
+
+export type WrittenKnowledgePoint = {
+  id: string
+  projectId: string
+  chapterId: string
+  uuid: string
+  title: string
+  knowledgeFilePath: string
+  relations: []
+  hasCards: false
+  hasExercises: false
+  mtime: number
+}
+
+export async function createProjectScaffold({
+  app,
+  baseDir,
+  topic,
+  chapters,
+}: {
+  app: App
+  baseDir: string
+  topic: string
+  chapters: OutlineChapter[]
+}): Promise<ProjectScaffold> {
+  const normalizedBaseDir = normalizePath(baseDir.replace(/\/$/, ''))
+  await ensureFolder(app, normalizedBaseDir)
+
+  const projectSlug = createUniqueSlug(
+    topic,
+    await listExistingChildNames(app, normalizedBaseDir),
+  )
+  const projectPath = normalizePath(`${normalizedBaseDir}/${projectSlug}`)
+  await ensureFolder(app, projectPath)
+
+  const chapterSlugs: string[] = []
+  const targets: ChapterWriteTarget[] = []
+  for (let i = 0; i < chapters.length; i += 1) {
+    const chapter = chapters[i]
+    const chapterNumber = String(i + 1).padStart(2, '0')
+    const orderedTitle = `${chapterNumber}-${chapter.title}`
+    const chapterSlug = createUniqueSlug(orderedTitle, chapterSlugs)
+    chapterSlugs.push(chapterSlug)
+    const chapterPath = normalizePath(`${projectPath}/${chapterSlug}`)
+    const knowledgePath = normalizePath(`${chapterPath}/knowledge.md`)
+    await ensureFolder(app, chapterPath)
+    await app.vault.create(
+      knowledgePath,
+      buildMarkdown({ title: chapter.title }, ''),
+    )
+    targets.push({
+      chapterIndex: i,
+      chapterTitle: chapter.title,
+      chapterSlug,
+      chapterPath,
+      knowledgePath,
+    })
+  }
+
+  const indexPath = normalizePath(`${projectPath}/index.md`)
+  await app.vault.create(
+    indexPath,
+    buildProjectIndexMarkdown({
+      topic,
+      status: 'building',
+      chapterSlugs,
+      chapters: chapters.map((chapter, index) => ({
+        chapterTitle: chapter.title,
+        chapterIndex: index,
+        knowledgePoints: [],
+      })),
+    }),
+  )
+
+  return { projectPath, projectSlug, indexPath, chapters: targets }
+}
+
+export async function appendKnowledgePointDraft({
+  app,
+  projectPath,
+  chapter,
+  point,
+  uuid = createKnowledgePointUuid(),
+}: {
+  app: App
+  projectPath: string
+  chapter: ChapterWriteTarget
+  point: KnowledgePointDraft
+  uuid?: string
+}): Promise<WrittenKnowledgePoint> {
+  const knowledgeFile = app.vault.getAbstractFileByPath(chapter.knowledgePath)
+  if (!(knowledgeFile instanceof TFile)) {
+    throw new Error(`Knowledge file not found: ${chapter.knowledgePath}`)
+  }
+
+  const existing = await app.vault.cachedRead(knowledgeFile)
+  const block = `## ${point.title} <!--kp:${uuid}-->\n\n${point.body.trim()}`
+  await app.vault.modify(knowledgeFile, `${existing.trimEnd()}\n\n${block}\n`)
+
+  return {
+    id: `${chapter.chapterPath}/${uuid}`,
+    projectId: projectPath,
+    chapterId: chapter.chapterPath,
+    uuid,
+    title: point.title,
+    knowledgeFilePath: chapter.knowledgePath,
+    relations: [],
+    hasCards: false,
+    hasExercises: false,
+    mtime: knowledgeFile.stat.mtime,
+  }
+}
+
+export function createKnowledgePointUuid(): string {
+  return uuidv4().replace(/-/g, '').slice(0, 8)
+}
+
+export async function markProjectStudying({
+  app,
+  indexPath,
+}: {
+  app: App
+  indexPath: string
+}): Promise<void> {
+  const indexFile = app.vault.getAbstractFileByPath(indexPath)
+  if (!(indexFile instanceof TFile)) {
+    throw new Error(`Project index not found: ${indexPath}`)
+  }
+  const existing = await app.vault.cachedRead(indexFile)
+  await app.vault.modify(
+    indexFile,
+    existing.replace(/^status: building$/m, 'status: studying'),
+  )
 }
 
 export async function writeProject({
@@ -40,10 +193,12 @@ export async function writeProject({
 
   await app.vault.create(
     normalizePath(`${projectPath}/index.md`),
-    buildMarkdown(
-      { topic, status: 'studying', chapters: chapterSlugs },
-      buildIndexBody(successfulChapters, chapterSlugs),
-    ),
+    buildProjectIndexMarkdown({
+      topic,
+      status: 'studying',
+      chapterSlugs,
+      chapters: successfulChapters,
+    }),
   )
 
   for (let i = 0; i < successfulChapters.length; i += 1) {
@@ -86,8 +241,25 @@ function buildMarkdown(
   return `---\n${yaml}\n---\n\n${body.trim()}\n`
 }
 
+function buildProjectIndexMarkdown({
+  topic,
+  status,
+  chapterSlugs,
+  chapters,
+}: {
+  topic: string
+  status: 'building' | 'studying'
+  chapterSlugs: string[]
+  chapters: Array<Pick<ChapterGenerationResult, 'chapterTitle'>>
+}): string {
+  return buildMarkdown(
+    { topic, status, chapters: chapterSlugs },
+    buildIndexBody(chapters, chapterSlugs),
+  )
+}
+
 function buildIndexBody(
-  chapters: ChapterGenerationResult[],
+  chapters: Array<Pick<ChapterGenerationResult, 'chapterTitle'>>,
   chapterSlugs: string[],
 ): string {
   return chapters

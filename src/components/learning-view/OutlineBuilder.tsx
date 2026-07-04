@@ -29,14 +29,20 @@ import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { generateKnowledgePointsParallel } from '../../core/learning/generation/knowledgePointGenerator'
+import { generateKnowledgePointsForChapter } from '../../core/learning/generation/knowledgePointGenerator'
 import { generateOutline } from '../../core/learning/generation/outlineGenerator'
-import { writeProject } from '../../core/learning/generation/projectWriter'
+import {
+  appendKnowledgePointDraft,
+  createKnowledgePointUuid,
+  createProjectScaffold,
+  markProjectStudying,
+  type WrittenKnowledgePoint,
+} from '../../core/learning/generation/projectWriter'
 import type {
-  ChapterGenerationResult,
   GenerationProgress,
   OutlineChapter,
 } from '../../core/learning/generation/types'
+import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 
@@ -49,19 +55,23 @@ type EditableChapter = OutlineChapter & {
 
 export function OutlineBuilder({
   plugin,
+  eventBus,
   topic,
   level,
   goal,
   referencesBlock,
   onCancel,
+  onProjectStarted,
   onComplete,
 }: {
   plugin: YoloPlugin
+  eventBus: ProjectEventBus
   topic: string
   level: string
   goal: string
   referencesBlock?: string
   onCancel: () => void
+  onProjectStarted: (projectId: string) => void | Promise<void>
   onComplete: (projectId: string) => void
 }) {
   const { t } = useLanguage()
@@ -70,6 +80,7 @@ export function OutlineBuilder({
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const abortOnUnmountRef = useRef(true)
   const nextChapterIdRef = useRef(0)
   const dragSensors = useSensors(
     useSensor(PointerSensor, {
@@ -122,7 +133,9 @@ export function OutlineBuilder({
 
   useEffect(() => {
     startOutlineGeneration()
-    return () => abortRef.current?.abort()
+    return () => {
+      if (abortOnUnmountRef.current) abortRef.current?.abort()
+    }
   }, [])
 
   const scrollToChapter = (index: number) => {
@@ -178,33 +191,18 @@ export function OutlineBuilder({
     setPhase('knowledge')
     setError(null)
 
-    const validChapterKeys = validChapters.map(
-      (chapter, index) => `${index}-${chapter.title}`,
-    )
-
-    let results: ChapterGenerationResult[]
+    const baseDir = getYoloLearningDir(plugin.settings)
+    let scaffold: Awaited<ReturnType<typeof createProjectScaffold>>
     try {
-      results = await generateKnowledgePointsParallel({
-        plugin,
-        projectTopic: topic,
+      scaffold = await createProjectScaffold({
+        app: plugin.app,
+        baseDir,
+        topic,
         chapters: validChapters,
-        level,
-        abortSignal: controller.signal,
-        onChapterProgress: (progress) => {
-          const key = validChapterKeys[progress.chapterIndex]
-          setChapters((current) => {
-            let validIndex = 0
-            return current.map((chapter) => {
-              if (!chapter.title.trim() || !chapter.contract.trim()) {
-                return chapter
-              }
-              const currentKey = validChapterKeys[validIndex]
-              validIndex += 1
-              return currentKey === key ? { ...chapter, progress } : chapter
-            })
-          })
-        },
       })
+      await eventBus.setActiveProject(baseDir, scaffold.projectPath)
+      abortOnUnmountRef.current = false
+      await onProjectStarted(scaffold.projectPath)
     } catch (err: unknown) {
       if (controller.signal.aborted) return
       setError(err instanceof Error ? err.message : String(err))
@@ -212,22 +210,106 @@ export function OutlineBuilder({
       return
     }
 
-    setPhase('writing')
-    let written: { projectPath: string; projectSlug: string }
     try {
-      written = await writeProject({
+      await Promise.all(
+        validChapters.map(async (chapter, index) => {
+          const target = scaffold.chapters[index]
+          if (!target) return
+          const draftedPoints: WrittenKnowledgePoint[] = []
+          let completedCount = 0
+
+          const draftKnowledgePoint = (
+            title: string,
+          ): WrittenKnowledgePoint => {
+            const uuid = createKnowledgePointUuid()
+            const knowledgePoint: WrittenKnowledgePoint = {
+              id: `${target.chapterPath}/${uuid}`,
+              projectId: scaffold.projectPath,
+              chapterId: target.chapterPath,
+              uuid,
+              title,
+              knowledgeFilePath: target.knowledgePath,
+              relations: [],
+              hasCards: false,
+              hasExercises: false,
+              mtime: Date.now(),
+            }
+            draftedPoints.push(knowledgePoint)
+            eventBus.emitSynthetic({
+              type: 'knowledge_point_drafted',
+              projectId: scaffold.projectPath,
+              knowledgePoint,
+            })
+            eventBus.emitSynthetic({
+              type: 'knowledge_point_focused',
+              projectId: scaffold.projectPath,
+              knowledgePointId: knowledgePoint.id,
+            })
+            return knowledgePoint
+          }
+
+          try {
+            await generateKnowledgePointsForChapter({
+              plugin,
+              projectTopic: topic,
+              chapterTitle: chapter.title,
+              chapterContract: chapter.contract,
+              level,
+              abortSignal: controller.signal,
+              onKnowledgePointTitle: (title) => {
+                draftKnowledgePoint(title)
+              },
+              onKnowledgePoint: async (point) => {
+                const drafted =
+                  draftedPoints[completedCount] ??
+                  draftKnowledgePoint(point.title)
+                const knowledgePoint = await appendKnowledgePointDraft({
+                  app: plugin.app,
+                  projectPath: scaffold.projectPath,
+                  chapter: target,
+                  point,
+                  uuid: drafted.uuid,
+                })
+                completedCount += 1
+                eventBus.emitSynthetic({
+                  type: 'knowledge_point_added',
+                  projectId: scaffold.projectPath,
+                  knowledgePoint,
+                })
+                eventBus.emitSynthetic({
+                  type: 'knowledge_point_focused',
+                  projectId: scaffold.projectPath,
+                  knowledgePointId: knowledgePoint.id,
+                })
+              },
+            })
+          } catch (error) {
+            if (controller.signal.aborted) return
+            console.error('[YOLO] Failed to generate chapter knowledge:', error)
+          }
+        }),
+      )
+      if (controller.signal.aborted) return
+      await markProjectStudying({
         app: plugin.app,
-        baseDir: getYoloLearningDir(plugin.settings),
-        topic,
-        level,
-        chapters: results,
+        indexPath: scaffold.indexPath,
       })
+      eventBus.emitSynthetic({
+        type: 'knowledge_point_focused',
+        projectId: scaffold.projectPath,
+        knowledgePointId: null,
+      })
+      await eventBus.refreshSnapshot({ emitInitial: false })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err))
-      setPhase('error')
+      if (!controller.signal.aborted) {
+        console.error(
+          '[YOLO] Failed to finalize generated learning project:',
+          err,
+        )
+      }
       return
     }
-    onComplete(written.projectPath)
+    onComplete(scaffold.projectPath)
   }
 
   const generating = phase === 'outline'
@@ -452,7 +534,6 @@ function ChapterCard({
   chapter,
   disabled,
   onUpdate,
-  onMove,
   onDelete,
   t,
 }: {

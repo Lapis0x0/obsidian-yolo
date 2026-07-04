@@ -101,12 +101,18 @@ export function LearningWorkspace() {
           wizardInput && (
             <OutlineBuilder
               plugin={plugin}
+              eventBus={bus}
               topic={wizardInput.topic}
               level={wizardInput.level}
               goal={wizardInput.goal}
               onCancel={() => setBuildingOutline(false)}
-              onComplete={(newProjectId) => {
+              onProjectStarted={async (newProjectId) => {
+                await refreshProjects()
+                setProjectId(newProjectId)
+                setActiveTab('知识地图')
                 setBuildingOutline(false)
+              }}
+              onComplete={(newProjectId) => {
                 void refreshProjects().then(() => setProjectId(newProjectId))
               }}
             />

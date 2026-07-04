@@ -72,16 +72,11 @@
 
 .yolo-learning-graph-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: baseline;
   padding: 0.5rem 1rem;
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
-}
-
-.yolo-learning-graph-topic {
-  font-weight: var(--font-semibold);
-  color: var(--text-normal);
 }
 
 .yolo-learning-graph-canvas {
