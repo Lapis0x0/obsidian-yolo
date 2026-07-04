@@ -65,6 +65,15 @@ export function LearningWorkspace() {
   }, [baseDir, bus, projectId, vaultProjects])
 
   useEffect(() => {
+    if (!projectId) return
+    if (vaultProjects.some((item) => item.id === projectId)) return
+
+    setProjectId(null)
+    setSelectedPointId(null)
+    setActiveTab(tabs[0])
+  }, [projectId, vaultProjects])
+
+  useEffect(() => {
     return () => {
       bus.dispose()
     }
