@@ -164,14 +164,6 @@
   font-weight: var(--font-bold);
 }
 
-/* When knowledge points are dense, fade non-focused kp labels (à la Obsidian
- * Graph at low zoom). Chapter / topic labels remain visible. */
-.yolo-learning-graph-svg.is-dense
-  .yolo-learning-graph-node[data-kind='kp']
-  .yolo-learning-graph-node-label:not([data-focused='true']) {
-  opacity: 0;
-}
-
 /* ── Edges ──────────────────────────────────────────────────────────────── */
 
 .yolo-learning-graph-edge {

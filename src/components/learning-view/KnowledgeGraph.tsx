@@ -122,8 +122,6 @@ const EDGE_DRAW_MS = 250
 const EXIT_MS = 260
 const PULSE_MS = 1400
 const PULSE_AMPLITUDE = 0.15
-/** Above this knowledge-point count, non-focused kp labels fade out. */
-const LABEL_DENSE_THRESHOLD = 16
 const MIN_ZOOM = 0.35
 const MAX_ZOOM = 2.8
 
@@ -701,7 +699,6 @@ export function KnowledgeGraph({
 
   const kpCount = graph.nodes.filter((n) => n.kind === 'kp').length
   const relationCount = graph.edges.filter((e) => e.kind === 'relation').length
-  const dense = kpCount > LABEL_DENSE_THRESHOLD
   const hasContent = graph.nodes.length > 0
 
   return (
@@ -724,7 +721,7 @@ export function KnowledgeGraph({
       <div ref={containerRef} className="yolo-learning-graph-canvas">
         <svg
           ref={svgRef}
-          className={`yolo-learning-graph-svg${dense ? ' is-dense' : ''}`}
+          className="yolo-learning-graph-svg"
           xmlns="http://www.w3.org/2000/svg"
           aria-label="Knowledge graph"
           onDoubleClick={resetViewport}
