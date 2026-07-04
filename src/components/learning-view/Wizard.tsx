@@ -25,12 +25,8 @@ export function Wizard({
     value: id,
     label: t(`learning.wizard.levels.${id}`, id),
   }))
-  const [topic, setTopic] = useState(() =>
-    t('learning.wizard.topicDefault', '学习 React'),
-  )
-  const [goal, setGoal] = useState(() =>
-    t('learning.wizard.goalDefault', '能够独立开发中等复杂度的 React 应用'),
-  )
+  const [topic, setTopic] = useState('')
+  const [goal, setGoal] = useState('')
   const [level, setLevel] = useState<(typeof levelIds)[number]>('familiar')
 
   return (

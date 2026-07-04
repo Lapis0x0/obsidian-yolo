@@ -1,15 +1,16 @@
 import { TAbstractFile } from 'obsidian'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { DEFAULT_LEARNING_BASE_DIR } from '../../constants'
 import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
+import { useSettings } from '../../contexts/settings-context'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
 import {
   isPathUnderLearningBase,
   scanProjects,
 } from '../../core/learning/projectScanner'
 import type { Project as VaultProject } from '../../core/learning/types'
+import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 
 import { HomeView } from './HomeView'
 import { KnowledgeGraph } from './KnowledgeGraph'
@@ -21,7 +22,8 @@ import { Workspace } from './Workspace'
 export function LearningWorkspace() {
   const app = useApp()
   const plugin = usePlugin()
-  const baseDir = DEFAULT_LEARNING_BASE_DIR
+  const { settings } = useSettings()
+  const baseDir = useMemo(() => getYoloLearningDir(settings), [settings])
 
   const [projectId, setProjectId] = useState<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)

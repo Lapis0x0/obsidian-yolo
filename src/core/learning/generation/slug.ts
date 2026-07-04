@@ -16,13 +16,8 @@ export function createUniqueSlug(
 export function createSlug(title: string): string {
   const trimmed = title.trim()
   if (!trimmed) return 'untitled'
-  if (/[\u3400-\u9fff]/.test(trimmed)) {
-    return encodeURIComponent(trimmed).replace(/%/g, '').toLowerCase()
-  }
-  const slug = trimmed
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-  return slug || 'untitled'
+
+  const sanitized = trimmed.replace(/[/\\:*?"<>|]+/g, '-').trim()
+  if (!sanitized) return 'untitled'
+  return sanitized
 }

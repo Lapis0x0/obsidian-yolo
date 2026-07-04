@@ -11,10 +11,6 @@ import {
 export const CHAT_VIEW_TYPE = 'yolo-chat-view'
 export const LEARNING_VIEW_TYPE = 'yolo-learning-view'
 
-// Default root folder under the vault that holds learning projects.
-// Each subfolder is one project; chapters are subfolders; knowledge points are
-// per-knowledge-point folders containing knowledge.md / cards.md / exercises.md.
-export const DEFAULT_LEARNING_BASE_DIR = 'Learning'
 // Empty-string sentinel; display layer localizes via getConversationDisplayTitle.
 export const DEFAULT_UNTITLED_CONVERSATION_TITLE = ''
 // Historical defaults persisted in user data — kept so auto-naming still overwrites them.

@@ -16,7 +16,6 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 
-import { DEFAULT_LEARNING_BASE_DIR } from '../../constants'
 import { useLanguage } from '../../contexts/language-context'
 import { generateKnowledgePointsParallel } from '../../core/learning/generation/knowledgePointGenerator'
 import { generateOutline } from '../../core/learning/generation/outlineGenerator'
@@ -26,6 +25,7 @@ import type {
   GenerationProgress,
   OutlineChapter,
 } from '../../core/learning/generation/types'
+import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'writing' | 'error'
@@ -182,7 +182,7 @@ export function OutlineBuilder({
     try {
       written = await writeProject({
         app: plugin.app,
-        baseDir: DEFAULT_LEARNING_BASE_DIR,
+        baseDir: getYoloLearningDir(plugin.settings),
         topic,
         level,
         chapters: results,
