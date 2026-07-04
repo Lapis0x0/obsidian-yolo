@@ -362,6 +362,11 @@ body.yolo-learning-outline-global-resize * {
   padding: 20px 4px 32px 0;
   font-size: 14px;
   line-height: 1.625;
+  user-select: text;
+}
+
+.yolo-learning-outline-rendered-markdown {
+  user-select: text;
 }
 
 .yolo-learning-outline-markdown p {

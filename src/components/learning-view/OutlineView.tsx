@@ -1,6 +1,6 @@
 import cx from 'clsx'
 import { ChevronDown, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
-import { App, Keymap, MarkdownRenderer, TFile } from 'obsidian'
+import { App, Keymap, MarkdownRenderer, TFile, htmlToMarkdown } from 'obsidian'
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -475,6 +475,47 @@ function LearningMarkdown({
       cancelled = true
     }
   }, [app, content, plugin, sourcePath])
+
+  useEffect(() => {
+    const containerEl = containerRef.current
+    if (!containerEl) return
+
+    const handleCopy = (event: ClipboardEvent) => {
+      const selection = (
+        containerEl.ownerDocument.defaultView ?? window
+      ).getSelection()
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return
+      }
+
+      const anchorNode = selection.anchorNode
+      const focusNode = selection.focusNode
+      if (
+        !anchorNode ||
+        !focusNode ||
+        !containerEl.contains(anchorNode) ||
+        !containerEl.contains(focusNode)
+      ) {
+        return
+      }
+
+      const range = selection.getRangeAt(0)
+      const fragment = range.cloneContents()
+      const staging = document.createElement('div')
+      staging.append(fragment)
+
+      const selectedMarkdown = htmlToMarkdown(staging.innerHTML).trim()
+      if (!selectedMarkdown || !event.clipboardData) return
+
+      event.preventDefault()
+      event.clipboardData.setData('text/plain', selectedMarkdown)
+    }
+
+    containerEl.addEventListener('copy', handleCopy)
+    return () => {
+      containerEl.removeEventListener('copy', handleCopy)
+    }
+  }, [])
 
   return (
     <div
