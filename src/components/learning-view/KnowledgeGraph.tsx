@@ -118,6 +118,11 @@ const RADIUS_BY_KIND: Record<NodeKind, number> = {
   chapter: 6.5,
   kp: 4.5,
 }
+const LABEL_MAX_CHARS: Record<NodeKind, number> = {
+  topic: 16,
+  chapter: 12,
+  kp: 8,
+}
 const EDGE_DRAW_MS = 250
 const EXIT_MS = 260
 const PULSE_MS = 1400
@@ -163,6 +168,7 @@ export function KnowledgeGraph({
   )
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [isPanning, setIsPanning] = useState(false)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
   // ── Simulation + per-frame DOM handles (never trigger React renders) ──────
   const simRef = useRef<Simulation<SimNode, SimLink> | null>(null)
@@ -427,6 +433,34 @@ export function KnowledgeGraph({
     viewportRef.current = next
     scheduleViewportTransform()
   }, [scheduleViewportTransform])
+
+  const handleLabelEnter = useCallback((ids: string[]) => {
+    if (ids.length === 0) return
+    setExpandedIds((prev) => {
+      let changed = false
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (!next.has(id)) {
+          next.add(id)
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [])
+
+  const resolveExpandIds = useCallback(
+    (node: GraphNode): string[] => {
+      if (node.kind === 'chapter') {
+        const childIds = graph.nodes
+          .filter((n) => n.parentId === node.id && n.kind === 'kp')
+          .map((n) => n.id)
+        return [node.id, ...childIds]
+      }
+      return [node.id]
+    },
+    [graph.nodes],
+  )
 
   const handleNodePointerDown = useCallback(
     (event: React.PointerEvent<SVGGElement>, id: string) => {
@@ -765,6 +799,16 @@ export function KnowledgeGraph({
             <g className="yolo-learning-graph-nodes">
               {graph.nodes.map((node) => {
                 const isFocused = node.id === graph.focusedId
+                const isTruncated =
+                  node.kind === 'chapter'
+                    ? graph.nodes.some(
+                        (n) =>
+                          (n.id === node.id ||
+                            (n.parentId === node.id && n.kind === 'kp')) &&
+                          n.title.length > LABEL_MAX_CHARS[n.kind],
+                      )
+                    : node.title.length > LABEL_MAX_CHARS[node.kind]
+                const isExpanded = expandedIds.has(node.id)
                 return (
                   <g
                     key={node.id}
@@ -784,6 +828,11 @@ export function KnowledgeGraph({
                     onPointerUp={handleNodePointerUp}
                     onPointerCancel={handleNodePointerUp}
                     onLostPointerCapture={handleNodePointerUp}
+                    onPointerEnter={
+                      isTruncated
+                        ? () => handleLabelEnter(resolveExpandIds(node))
+                        : undefined
+                    }
                   >
                     <circle
                       ref={circleRef(circleEls, node.id)}
@@ -794,9 +843,12 @@ export function KnowledgeGraph({
                       ref={textRef(labelEls, node.id)}
                       className="yolo-learning-graph-node-label"
                       data-focused={isFocused ? 'true' : 'false'}
+                      data-expanded={isExpanded ? 'true' : 'false'}
                       textAnchor="middle"
                     >
-                      {node.title}
+                      {isExpanded
+                        ? node.title
+                        : truncateLabel(node.title, node.kind)}
                     </text>
                   </g>
                 )
@@ -871,6 +923,12 @@ function lineRef(
 function clamp(value: number, min: number, max: number): number {
   if (max < min) return (min + max) / 2
   return Math.min(max, Math.max(min, value))
+}
+
+function truncateLabel(title: string, kind: NodeKind): string {
+  const max = LABEL_MAX_CHARS[kind]
+  if (title.length <= max) return title
+  return `${title.slice(0, max)}…`
 }
 
 function easeOut(t: number): number {

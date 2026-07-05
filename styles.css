@@ -25229,6 +25229,19 @@ body.yolo-learning-outline-global-resize * {
     fill 200ms ease;
 }
 
+.yolo-learning-graph-node-label[data-expanded='true'] {
+  animation: yolo-learning-label-expand 200ms ease-out;
+}
+
+@keyframes yolo-learning-label-expand {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .yolo-learning-graph-node[data-kind='kp'] .yolo-learning-graph-node-label {
   fill: var(--text-muted);
   font-size: 11px;
