@@ -37,7 +37,17 @@ export type YoloAgentContext =
   | { type: 'text'; content: string }
 
 export type YoloAgentRunRequest = {
-  prompt: string
+  /**
+   * 新对话的单轮 prompt。与 `messages` 互斥：传了 `messages` 就忽略 `prompt`。
+   * 二者至少传一个。
+   */
+  prompt?: string
+  /**
+   * 预置对话历史（含本次要发给模型的最后一条 user message）。
+   * 传入时 runtime 直接使用这些消息，不再从 `prompt` 构建新 user message。
+   * 用于链式 subagent 调用复用前缀缓存。
+   */
+  messages?: ChatMessage[]
   assistantId?: string
   mode?: 'ask' | 'agent' | 'agent-full'
   context?: YoloAgentContext[]
@@ -345,24 +355,41 @@ export async function resolveAgentApiRunInput({
     settings,
     context: request.context,
   })
-  const compiledPrompt =
-    await requestContextBuilder.compilePlainUserMessagePrompt({
-      prompt: buildAgentApiPrompt({
-        prompt: request.prompt,
-        context: resolvedContext.textBlocks,
+  let messages: ChatMessage[]
+  let sourceUserMessageId: string
+
+  if (request.messages && request.messages.length > 0) {
+    messages = request.messages
+    const lastUser = [...request.messages]
+      .reverse()
+      .find((message) => message.role === 'user')
+    if (!lastUser) {
+      throw new Error('request.messages must contain at least one user message')
+    }
+    sourceUserMessageId = lastUser.id
+  } else {
+    if (!request.prompt) {
+      throw new Error('Either prompt or messages must be provided')
+    }
+    const compiledPrompt =
+      await requestContextBuilder.compilePlainUserMessagePrompt({
+        prompt: buildAgentApiPrompt({
+          prompt: request.prompt,
+          context: resolvedContext.textBlocks,
+        }),
+        mentionables: resolvedContext.mentionables,
+        selectedSkills: resolvedContext.selectedSkills,
+      })
+    sourceUserMessageId = uuidv4()
+    messages = [
+      buildAgentApiUserMessage({
+        id: sourceUserMessageId,
+        promptContent: compiledPrompt.promptContent,
+        mentionables: resolvedContext.mentionables,
+        selectedSkills: resolvedContext.selectedSkills,
       }),
-      mentionables: resolvedContext.mentionables,
-      selectedSkills: resolvedContext.selectedSkills,
-    })
-  const sourceUserMessageId = uuidv4()
-  const messages = [
-    buildAgentApiUserMessage({
-      id: sourceUserMessageId,
-      promptContent: compiledPrompt.promptContent,
-      mentionables: resolvedContext.mentionables,
-      selectedSkills: resolvedContext.selectedSkills,
-    }),
-  ]
+    ]
+  }
 
   return {
     conversationId,
