@@ -15,6 +15,8 @@ const GITHUB_VERSIONS_URL =
 const GITHUB_LATEST_RELEASE_NOTE_URL =
   'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/latest-release-note.md'
 
+const LATEST_RELEASE_NOTE_RETRY_DELAYS_MS = [800, 2000] as const
+
 function releaseTagUrl(version: string): string {
   return `${GITHUB_RELEASES_URL}/tags/${encodeURIComponent(version)}`
 }
@@ -207,6 +209,43 @@ async function fetchLatestReleaseNotes(
 ): Promise<ReleaseNotesByLanguage> {
   const empty = { en: null, zh: null }
 
+  let lastFailureReason = 'unknown error'
+  const attempts = LATEST_RELEASE_NOTE_RETRY_DELAYS_MS.length + 1
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const result = await fetchLatestReleaseNotesOnce(latestVersion)
+    if (result.ok) {
+      return result.releaseNotes
+    }
+
+    lastFailureReason = result.reason
+    const retryDelayMs = LATEST_RELEASE_NOTE_RETRY_DELAYS_MS[attempt]
+    if (retryDelayMs !== undefined) {
+      await delay(retryDelayMs)
+    }
+  }
+
+  console.warn(
+    `[YOLO] Plugin update release note fetch failed after ${attempts} attempts: ${lastFailureReason}`,
+  )
+  return empty
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms)
+  })
+}
+
+type LatestReleaseNotesFetchResult =
+  | { ok: true; releaseNotes: ReleaseNotesByLanguage }
+  | { ok: false; reason: string }
+
+async function fetchLatestReleaseNotesOnce(
+  latestVersion: string,
+): Promise<LatestReleaseNotesFetchResult> {
+  const normalizedLatestVersion = normalizePluginVersion(latestVersion)
+
   try {
     const response = await requestUrl({
       url: GITHUB_LATEST_RELEASE_NOTE_URL,
@@ -214,33 +253,29 @@ async function fetchLatestReleaseNotes(
     })
 
     if (response.status < 200 || response.status >= 300) {
-      console.warn(
-        `[YOLO] Plugin update release note fetch failed: latest-release-note.md returned HTTP ${response.status}.`,
-      )
-      return empty
+      return {
+        ok: false,
+        reason: `latest-release-note.md returned HTTP ${response.status}.`,
+      }
     }
 
     const body = response.text.trim()
     if (!body) {
-      console.warn(
-        '[YOLO] Plugin update release note fetch failed: latest-release-note.md is empty.',
-      )
-      return empty
+      return { ok: false, reason: 'latest-release-note.md is empty.' }
     }
 
     const noteVersion = parseReleaseNoteVersion(body)
-    if (noteVersion !== normalizePluginVersion(latestVersion)) {
-      console.warn(
-        `[YOLO] Plugin update release note ignored: latest-release-note.md version ${noteVersion ?? 'unknown'} does not match ${latestVersion}.`,
-      )
-      return empty
+    if (noteVersion !== normalizedLatestVersion) {
+      return {
+        ok: false,
+        reason: `latest-release-note.md version ${noteVersion ?? 'unknown'} does not match ${normalizedLatestVersion}.`,
+      }
     }
 
-    return splitReleaseNotesByLanguage(body)
+    return { ok: true, releaseNotes: splitReleaseNotesByLanguage(body) }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    console.warn(`[YOLO] Plugin update release note fetch failed: ${message}`)
-    return empty
+    return { ok: false, reason: message }
   }
 }
 

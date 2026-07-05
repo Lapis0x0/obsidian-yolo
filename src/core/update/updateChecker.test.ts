@@ -59,6 +59,7 @@ describe('checkForUpdate', () => {
   })
 
   afterEach(() => {
+    jest.useRealTimers()
     jest.restoreAllMocks()
   })
 
@@ -149,6 +150,7 @@ describe('checkForUpdate', () => {
   })
 
   it('ignores latest-release-note.md when its heading version does not match latestVersion', async () => {
+    jest.useFakeTimers()
     mockedRequestUrl
       .mockResolvedValueOnce(
         createRequestUrlResponse(
@@ -158,11 +160,15 @@ describe('checkForUpdate', () => {
           }),
         ),
       )
-      .mockResolvedValueOnce(
+      .mockResolvedValue(
         createRequestUrlResponse('## 1.5.12.4 Old Notes\n\n- stale'),
       )
 
-    await expect(checkForUpdate('1.5.12.4')).resolves.toEqual({
+    const result = checkForUpdate('1.5.12.4')
+    await jest.advanceTimersByTimeAsync(800)
+    await jest.advanceTimersByTimeAsync(2000)
+
+    await expect(result).resolves.toEqual({
       hasUpdate: true,
       latestVersion: '1.5.12.5',
       releaseNotes: { en: null, zh: null },
@@ -171,8 +177,50 @@ describe('checkForUpdate', () => {
       assets: buildReleaseAssets('1.5.12.5'),
     })
     expect(console.warn).toHaveBeenCalledWith(
-      '[YOLO] Plugin update release note ignored: latest-release-note.md version 1.5.12.4 does not match 1.5.12.5.',
+      '[YOLO] Plugin update release note fetch failed after 3 attempts: latest-release-note.md version 1.5.12.4 does not match 1.5.12.5.',
     )
+    expect(mockedRequestUrl).toHaveBeenCalledTimes(4)
+  })
+
+  it('retries latest-release-note.md when the first fetch is stale', async () => {
+    jest.useFakeTimers()
+    const staleReleaseNote = '## 1.5.12.4 Old Notes\n\n- stale'
+    const freshReleaseNote = [
+      '## 1.5.12.5 Fresh Notes ✨',
+      '',
+      '### ✨ New',
+      '',
+      '- **Retry works**: The fresh release note is rendered.',
+    ].join('\n')
+
+    mockedRequestUrl
+      .mockResolvedValueOnce(
+        createRequestUrlResponse(
+          JSON.stringify({
+            '1.5.12.4': '1.8.0',
+            '1.5.12.5': '1.8.0',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(createRequestUrlResponse(staleReleaseNote))
+      .mockResolvedValueOnce(createRequestUrlResponse(freshReleaseNote))
+
+    const result = checkForUpdate('1.5.12.4')
+    await jest.advanceTimersByTimeAsync(800)
+
+    await expect(result).resolves.toEqual({
+      hasUpdate: true,
+      latestVersion: '1.5.12.5',
+      releaseNotes: {
+        en: freshReleaseNote,
+        zh: null,
+      },
+      releaseUrl:
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.5.12.5',
+      assets: buildReleaseAssets('1.5.12.5'),
+    })
+    expect(console.warn).not.toHaveBeenCalled()
+    expect(mockedRequestUrl).toHaveBeenCalledTimes(3)
   })
 
   it('returns null when versions.json cannot be fetched', async () => {
