@@ -391,15 +391,8 @@ export class ChatViewNavigator {
     switch (placement) {
       case 'sidebar':
         return this.plugin.app.workspace.getRightLeaf(false)
-      case 'split': {
-        const workspace = this.plugin.app.workspace
-        const baseLeaf =
-          workspace.getMostRecentLeaf(workspace.rootSplit) ??
-          workspace.getActiveViewOfType(MarkdownView)?.leaf ??
-          workspace.getLeaf(false)
-
-        return workspace.createLeafBySplit(baseLeaf, 'vertical')
-      }
+      case 'split':
+        return this.plugin.app.workspace.getLeaf('split')
       case 'tab':
         return this.plugin.app.workspace.getLeaf('tab')
       case 'window':
