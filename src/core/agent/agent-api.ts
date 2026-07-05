@@ -21,6 +21,7 @@ import { resolveAgentApiContext } from './agent-api-context'
 import { DEFAULT_ASSISTANT_ID } from './default-assistant'
 import type {
   AgentConversationState,
+  AgentRunActivity,
   AgentRunStatus,
   AgentService,
 } from './service'
@@ -44,6 +45,7 @@ export type YoloAgentRunRequest = {
     allowedToolNames?: string[]
   }
   systemPromptOverride?: string
+  activity?: AgentRunActivity
   abortSignal?: AbortSignal
 }
 
@@ -102,6 +104,7 @@ type AgentApiRunInput = {
   sourceUserMessageId: string
   loopConfig: AgentRuntimeLoopConfig
   input: AgentRuntimeRunInput
+  activity?: AgentRunActivity
 }
 
 export type YoloAgentApiServiceOptions = {
@@ -176,6 +179,7 @@ export class YoloAgentApiService implements YoloAgentApi {
         sourceUserMessageId: resolved.sourceUserMessageId,
         loopConfig: resolved.loopConfig,
         input: resolved.input,
+        activity: resolved.activity,
         agentService: this.options.getAgentService(),
       })) {
         yield event
@@ -208,12 +212,14 @@ export async function* streamResolvedAgentRunEvents({
   sourceUserMessageId,
   loopConfig,
   input,
+  activity,
   agentService,
 }: {
   conversationId: string
   sourceUserMessageId: string
   loopConfig: AgentRuntimeLoopConfig
   input: AgentRuntimeRunInput
+  activity?: AgentRunActivity
   agentService: AgentService
 }): AsyncIterable<YoloAgentEvent> {
   const queue = new AsyncEventQueue<YoloAgentEvent>()
@@ -250,6 +256,7 @@ export async function* streamResolvedAgentRunEvents({
       persistState: false,
       loopConfig,
       input,
+      activity,
     })
     .catch((error) => {
       queue.push({
@@ -360,6 +367,7 @@ export async function resolveAgentApiRunInput({
   return {
     conversationId,
     sourceUserMessageId,
+    activity: request.activity,
     loopConfig: chatModeRuntime.loopConfig,
     input: {
       providerClient: resolvedClient.providerClient,

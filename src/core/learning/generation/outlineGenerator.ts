@@ -1,4 +1,5 @@
 import type YoloPlugin from '../../../main'
+import type { AgentRunActivity } from '../../agent/service'
 
 import { OUTLINE_GENERATOR_PROMPT } from './prompts'
 import type { Outline, OutlineChapter } from './types'
@@ -10,6 +11,7 @@ export type GenerateOutlineOptions = {
   goal: string
   referencesBlock?: string
   abortSignal?: AbortSignal
+  activity?: AgentRunActivity
   onProgress?: (delta: string, fullText: string) => void
   onOutline?: (outline: Outline) => void
 }
@@ -21,6 +23,7 @@ export async function generateOutline({
   goal,
   referencesBlock,
   abortSignal,
+  activity,
   onProgress,
   onOutline,
 }: GenerateOutlineOptions): Promise<{ outline: Outline }> {
@@ -37,6 +40,7 @@ export async function generateOutline({
     mode: 'agent',
     systemPromptOverride: OUTLINE_GENERATOR_PROMPT,
     tools: { allowedToolNames: [] },
+    activity,
     abortSignal,
   })
 

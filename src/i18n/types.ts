@@ -1691,6 +1691,7 @@ export type TranslationKeys = {
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
+    learningTasksRunning?: string
     ragAutoUpdateRunning?: string
     ragAutoUpdateRunningDetail?: string
     ragAutoUpdateFailed?: string

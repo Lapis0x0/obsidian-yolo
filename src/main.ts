@@ -1153,20 +1153,27 @@ export default class YoloPlugin extends Plugin {
       nextActivityIds.add(id)
       registry.upsert({
         id,
-        kind: 'agent',
-        title: this.t(
-          'statusBar.agentStatusFallbackConversationTitle',
-          '运行中的对话',
-        ),
-        detail: summary.isWaitingApproval
-          ? this.t('statusBar.agentStatusWaitingApproval', '待审批')
-          : this.t('statusBar.agentStatusRunning', '运行中'),
+        kind: summary.activity?.kind ?? 'agent',
+        title:
+          summary.activity?.title ??
+          this.t(
+            'statusBar.agentStatusFallbackConversationTitle',
+            '运行中的对话',
+          ),
+        detail:
+          summary.activity?.detail ??
+          (summary.isWaitingApproval
+            ? this.t('statusBar.agentStatusWaitingApproval', '待审批')
+            : this.t('statusBar.agentStatusRunning', '运行中')),
         status: summary.isWaitingApproval ? 'waiting' : 'running',
         updatedAt: Date.now(),
-        action: {
-          type: 'open-agent-conversation',
-          conversationId: summary.conversationId,
-        },
+        action:
+          summary.activity?.action === 'open-learning-view'
+            ? { type: 'open-learning-view' }
+            : {
+                type: 'open-agent-conversation',
+                conversationId: summary.conversationId,
+              },
       })
     }
 
@@ -1256,9 +1263,25 @@ export default class YoloPlugin extends Plugin {
     const agentActivities = runningActivities.filter(
       (activity) => activity.kind === 'agent',
     )
+    const learningActivities = runningActivities.filter(
+      (activity) => activity.kind === 'learning-agent',
+    )
     const waitingApprovalCount = runningActivities.filter(
       (activity) => activity.status === 'waiting',
     ).length
+
+    if (
+      runningActivities.length > 0 &&
+      learningActivities.length === runningActivities.length
+    ) {
+      if (learningActivities.length === 1) {
+        return learningActivities[0].detail || learningActivities[0].title
+      }
+      return this.t(
+        'statusBar.learningTasksRunning',
+        '学习模式有 {count} 个任务正在运行',
+      ).replace('{count}', String(learningActivities.length))
+    }
 
     if (
       runningActivities.length > 0 &&
@@ -1486,6 +1509,10 @@ export default class YoloPlugin extends Plugin {
       }
       if (action.type === 'open-knowledge-settings') {
         this.openKnowledgeSettings()
+        return
+      }
+      if (action.type === 'open-learning-view') {
+        void this.openLearningView()
       }
     }
 

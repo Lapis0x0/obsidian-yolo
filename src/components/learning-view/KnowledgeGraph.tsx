@@ -1190,7 +1190,8 @@ function applyEvent(prev: GraphModel, event: LearningEvent): GraphModel {
                   ...node,
                   title: kp.title,
                   parentId: kp.chapterId,
-                  status: 'generating',
+                  status:
+                    node.status === 'completed' ? 'completed' : 'generating',
                 }
               : node,
           ),

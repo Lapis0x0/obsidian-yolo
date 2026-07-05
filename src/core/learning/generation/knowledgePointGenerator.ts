@@ -1,4 +1,5 @@
 import type YoloPlugin from '../../../main'
+import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
 import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
@@ -16,6 +17,7 @@ export type GenerateKnowledgePointsForChapterOptions = {
   chapterContract: string
   level: string
   abortSignal?: AbortSignal
+  activity?: AgentRunActivity
   onProgress?: (delta: string, fullText: string) => void
   onKnowledgePointTitle?: (title: string) => void | Promise<void>
   onKnowledgePoint?: (point: KnowledgePointDraft) => void | Promise<void>
@@ -28,6 +30,7 @@ export async function generateKnowledgePointsForChapter({
   chapterContract,
   level,
   abortSignal,
+  activity,
   onProgress,
   onKnowledgePointTitle,
   onKnowledgePoint,
@@ -63,6 +66,7 @@ export async function generateKnowledgePointsForChapter({
     mode: 'agent',
     systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
     tools: { allowedToolNames: [] },
+    activity,
     abortSignal,
   })
 

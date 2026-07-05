@@ -2157,6 +2157,7 @@ export const en: TranslationKeys = {
     backgroundTasksRunning:
       'There are currently {count} background tasks running',
     backgroundTasksNeedAttention: 'A background task needs attention',
+    learningTasksRunning: 'Learning mode has {count} running tasks',
     ragAutoUpdateRunning: 'Knowledge base updating in background',
     ragAutoUpdateRunningDetail:
       'Incrementally synchronizing the knowledge base index.',

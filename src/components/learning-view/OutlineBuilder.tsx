@@ -33,11 +33,11 @@ import { useLanguage } from '../../contexts/language-context'
 import { generateKnowledgePointsForChapter } from '../../core/learning/generation/knowledgePointGenerator'
 import { generateOutline } from '../../core/learning/generation/outlineGenerator'
 import {
+  type WrittenKnowledgePoint,
   appendKnowledgePointDraft,
   createKnowledgePointUuid,
   createProjectScaffold,
   markProjectStudying,
-  type WrittenKnowledgePoint,
 } from '../../core/learning/generation/projectWriter'
 import type {
   GenerationProgress,
@@ -48,7 +48,7 @@ import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 
-type Phase = 'outline' | 'ready' | 'knowledge' | 'writing' | 'error'
+type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
 
 type EditableChapter = OutlineChapter & {
   id: string
@@ -126,6 +126,15 @@ export function OutlineBuilder({
       goal,
       referencesBlock,
       abortSignal: controller.signal,
+      activity: {
+        kind: 'learning-agent',
+        title: t('learning.wizard.modeLabel', '学习模式'),
+        detail: t(
+          'learning.outlineBuilder.planningPath',
+          '正在规划学习路径',
+        ),
+        action: 'open-learning-view',
+      },
       onOutline: reconcileOutline,
     })
       .then(({ outline }) => {
@@ -265,6 +274,15 @@ export function OutlineBuilder({
               chapterContract: chapter.contract,
               level,
               abortSignal: controller.signal,
+              activity: {
+                kind: 'learning-agent',
+                title: t('learning.wizard.modeLabel', '学习模式'),
+                detail: `${t(
+                  'learning.outlineBuilder.knowledgeGenerating',
+                  '正在生成知识点',
+                )}：${chapter.title}`,
+                action: 'open-learning-view',
+              },
               onKnowledgePointTitle: (title) => {
                 draftKnowledgePoint(title)
               },
@@ -322,8 +340,7 @@ export function OutlineBuilder({
   }
 
   const generating = phase === 'outline'
-  const busy =
-    phase === 'outline' || phase === 'knowledge' || phase === 'writing'
+  const busy = phase === 'outline' || phase === 'knowledge'
 
   return (
     <div className="yolo-learning-outline-builder">
@@ -500,12 +517,10 @@ export function OutlineBuilder({
               className="yolo-learning-outline-builder-complete"
             >
               <Layers size={16} />
-              {phase === 'writing'
-                ? t('learning.outlineBuilder.writing', '正在写入文件')
-                : t(
-                    'learning.outlineBuilder.confirmGenerate',
-                    '确认大纲并生成知识点',
-                  )}
+              {t(
+                'learning.outlineBuilder.confirmGenerate',
+                '确认大纲并生成知识点',
+              )}
             </button>
           </div>
         </aside>
@@ -523,9 +538,6 @@ function resolveStatusLabel(
   }
   if (phase === 'knowledge') {
     return t('learning.outlineBuilder.knowledgeGenerating', '正在生成知识点')
-  }
-  if (phase === 'writing') {
-    return t('learning.outlineBuilder.writing', '正在写入文件')
   }
   if (phase === 'error') {
     return t('learning.outlineBuilder.failed', '生成失败')
@@ -589,8 +601,8 @@ function ChapterCard({
   useEffect(() => {
     const textarea = contractRef.current
     if (!textarea) return
-    textarea.style.height = 'auto'
-    textarea.style.height = `${textarea.scrollHeight}px`
+    textarea.setCssProps({ height: 'auto' })
+    textarea.setCssProps({ height: `${textarea.scrollHeight}px` })
   }, [chapter.contract])
 
   return (

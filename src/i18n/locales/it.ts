@@ -2055,6 +2055,8 @@ export const it: TranslationKeys = {
       'Al momento ci sono {count} attivita in background in esecuzione',
     backgroundTasksNeedAttention:
       "Un'attivita in background richiede attenzione",
+    learningTasksRunning:
+      'La modalita apprendimento ha {count} attivita in esecuzione',
     ragAutoUpdateRunning: 'La knowledge base si sta aggiornando in background',
     ragAutoUpdateRunningDetail:
       "Sincronizzazione incrementale dell'indice della knowledge base in corso.",

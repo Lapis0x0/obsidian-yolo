@@ -2019,6 +2019,7 @@ export const zh: TranslationKeys = {
     backgroundStatusPanelEmpty: '当前没有正在运行的后台任务',
     backgroundTasksRunning: '当前有 {count} 个后台任务正在运行',
     backgroundTasksNeedAttention: '有后台任务需要关注',
+    learningTasksRunning: '学习模式有 {count} 个任务正在运行',
     ragAutoUpdateRunning: '知识库正在后台更新',
     ragAutoUpdateRunningDetail: '正在增量同步知识库索引。',
     ragAutoUpdateFailed: '知识库自动更新失败',
