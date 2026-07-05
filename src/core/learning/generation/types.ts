@@ -3,6 +3,12 @@ export type OutlineChapter = {
   contract: string
 }
 
+export type Outline = {
+  projectName: string
+  chapters: OutlineChapter[]
+  estimatedKnowledgePoints: number
+}
+
 export type KnowledgePointDraft = {
   title: string
   body: string

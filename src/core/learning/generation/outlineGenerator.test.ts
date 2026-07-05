@@ -1,14 +1,14 @@
 import type YoloPlugin from '../../../main'
 
 import { generateOutline } from './outlineGenerator'
-import type { OutlineChapter } from './types'
+import type { Outline } from './types'
 
 describe('generateOutline', () => {
-  it('emits chapters as soon as streamed JSON objects are complete', async () => {
+  it('emits outline as chapters stream in, then finalizes with estimatedKnowledgePoints', async () => {
     const text =
-      '[{"title":"第一章","contract":"覆盖变量与 { 类型 }"},{"title":"第二章","contract":"覆盖控制流"}]'
+      '{"projectName":"Python","chapters":[{"title":"第一章","contract":"覆盖变量与 { 类型 }"},{"title":"第二章","contract":"覆盖控制流"}],"estimatedKnowledgePoints":10}'
     const plugin = createPlugin([
-      { type: 'text', delta: '[' },
+      { type: 'text', delta: '{"projectName":"Python","chapters":[' },
       {
         type: 'text',
         delta: '{"title":"第一章","contract":"覆盖变量与 { 类型 }"}',
@@ -17,30 +17,55 @@ describe('generateOutline', () => {
         type: 'text',
         delta: ',{"title":"第二章","contract":"覆盖控制流"}',
       },
-      { type: 'text', delta: ']' },
+      { type: 'text', delta: '],"estimatedKnowledgePoints":10}' },
       { type: 'completed', text },
     ])
 
-    const snapshots: OutlineChapter[][] = []
+    const snapshots: Outline[] = []
     const result = await generateOutline({
       plugin,
-      topic: 'Python',
+      topic: 'python',
       level: 'beginner',
       goal: '入门',
-      onChapters: (chapters) => snapshots.push(chapters),
+      onOutline: (outline) => snapshots.push(outline),
     })
 
     expect(snapshots).toEqual([
-      [{ title: '第一章', contract: '覆盖变量与 { 类型 }' }],
-      [
+      {
+        projectName: 'Python',
+        chapters: [],
+        estimatedKnowledgePoints: 0,
+      },
+      {
+        projectName: 'Python',
+        chapters: [{ title: '第一章', contract: '覆盖变量与 { 类型 }' }],
+        estimatedKnowledgePoints: 0,
+      },
+      {
+        projectName: 'Python',
+        chapters: [
+          { title: '第一章', contract: '覆盖变量与 { 类型 }' },
+          { title: '第二章', contract: '覆盖控制流' },
+        ],
+        estimatedKnowledgePoints: 0,
+      },
+      {
+        projectName: 'Python',
+        chapters: [
+          { title: '第一章', contract: '覆盖变量与 { 类型 }' },
+          { title: '第二章', contract: '覆盖控制流' },
+        ],
+        estimatedKnowledgePoints: 10,
+      },
+    ])
+    expect(result.outline).toEqual({
+      projectName: 'Python',
+      chapters: [
         { title: '第一章', contract: '覆盖变量与 { 类型 }' },
         { title: '第二章', contract: '覆盖控制流' },
       ],
-    ])
-    expect(result.chapters).toEqual([
-      { title: '第一章', contract: '覆盖变量与 { 类型 }' },
-      { title: '第二章', contract: '覆盖控制流' },
-    ])
+      estimatedKnowledgePoints: 10,
+    })
   })
 })
 

@@ -1,7 +1,7 @@
 import type YoloPlugin from '../../../main'
 
 import { OUTLINE_GENERATOR_PROMPT } from './prompts'
-import type { OutlineChapter } from './types'
+import type { Outline, OutlineChapter } from './types'
 
 export type GenerateOutlineOptions = {
   plugin: YoloPlugin
@@ -11,7 +11,7 @@ export type GenerateOutlineOptions = {
   referencesBlock?: string
   abortSignal?: AbortSignal
   onProgress?: (delta: string, fullText: string) => void
-  onChapters?: (chapters: OutlineChapter[]) => void
+  onOutline?: (outline: Outline) => void
 }
 
 export async function generateOutline({
@@ -22,11 +22,15 @@ export async function generateOutline({
   referencesBlock,
   abortSignal,
   onProgress,
-  onChapters,
-}: GenerateOutlineOptions): Promise<{ chapters: OutlineChapter[] }> {
+  onOutline,
+}: GenerateOutlineOptions): Promise<{ outline: Outline }> {
   let accumulated = ''
   let completedText = ''
-  let streamedChapters: OutlineChapter[] = []
+  let streamedOutline: Outline = {
+    projectName: '',
+    chapters: [],
+    estimatedKnowledgePoints: 0,
+  }
 
   const stream = plugin.agent.stream({
     prompt: buildOutlinePrompt({ topic, level, goal, referencesBlock }),
@@ -40,10 +44,10 @@ export async function generateOutline({
     if (event.type === 'text') {
       accumulated = event.text || accumulated + event.delta
       onProgress?.(event.delta, accumulated)
-      const chapters = parseCompletedOutlineChapters(accumulated)
-      if (!areOutlineChaptersEqual(chapters, streamedChapters)) {
-        streamedChapters = chapters
-        onChapters?.(chapters)
+      const outline = parsePartialOutline(accumulated)
+      if (!isOutlineEqual(outline, streamedOutline)) {
+        streamedOutline = outline
+        onOutline?.(outline)
       }
     }
     if (event.type === 'completed') {
@@ -54,11 +58,11 @@ export async function generateOutline({
     }
   }
 
-  const chapters = parseOutlineChapters(completedText || accumulated)
-  if (!areOutlineChaptersEqual(chapters, streamedChapters)) {
-    onChapters?.(chapters)
+  const outline = parseOutline(completedText || accumulated)
+  if (!isOutlineEqual(outline, streamedOutline)) {
+    onOutline?.(outline)
   }
-  return { chapters }
+  return { outline }
 }
 
 function buildOutlinePrompt({
@@ -81,30 +85,58 @@ function buildOutlinePrompt({
 ${referencesBlock?.trim() ?? ''}`.trim()
 }
 
-function parseOutlineChapters(text: string): OutlineChapter[] {
-  const parsed = parseJsonArray(text)
-  if (!Array.isArray(parsed)) {
-    throw new Error('大纲生成结果不是 JSON 数组')
+function parseOutline(text: string): Outline {
+  const parsed = parseJsonObject(text)
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('大纲生成结果不是 JSON 对象')
   }
 
-  const chapters: OutlineChapter[] = []
-  for (const item of parsed) {
-    if (!isOutlineChapter(item)) continue
-    chapters.push({
-      title: item.title.trim(),
-      contract: item.contract.trim(),
-    })
-  }
+  const record = parsed as Record<string, unknown>
+  const projectName =
+    typeof record.projectName === 'string' ? record.projectName.trim() : ''
+  const chapters = parseChapters(record.chapters)
+  const estimatedKnowledgePoints =
+    typeof record.estimatedKnowledgePoints === 'number'
+      ? record.estimatedKnowledgePoints
+      : 0
 
+  if (!projectName) {
+    throw new Error('大纲生成结果缺少 projectName')
+  }
   if (chapters.length === 0) {
     throw new Error('大纲生成结果中没有可用章节')
   }
-  return chapters
+
+  return { projectName, chapters, estimatedKnowledgePoints }
 }
 
-function parseCompletedOutlineChapters(text: string): OutlineChapter[] {
-  const arrayStart = text.indexOf('[')
+function parsePartialOutline(text: string): Outline {
+  const projectName = extractStringField(text, 'projectName')
+  const chapters = extractChapters(text)
+  const estimatedMatch = text.match(/"estimatedKnowledgePoints"\s*:\s*(\d+)/)
+  const estimatedKnowledgePoints = estimatedMatch
+    ? Number(estimatedMatch[1])
+    : 0
+  return { projectName, chapters, estimatedKnowledgePoints }
+}
+
+function extractStringField(text: string, field: string): string {
+  const match = text.match(
+    new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`),
+  )
+  if (!match) return ''
+  try {
+    return JSON.parse(`"${match[1]}"`).trim()
+  } catch {
+    return match[1].trim()
+  }
+}
+
+function extractChapters(text: string): OutlineChapter[] {
+  const arrayStart = text.indexOf('"chapters"')
   if (arrayStart === -1) return []
+  const bracketStart = text.indexOf('[', arrayStart)
+  if (bracketStart === -1) return []
 
   const chapters: OutlineChapter[] = []
   let objectStart = -1
@@ -112,7 +144,7 @@ function parseCompletedOutlineChapters(text: string): OutlineChapter[] {
   let inString = false
   let escaped = false
 
-  for (let i = arrayStart + 1; i < text.length; i += 1) {
+  for (let i = bracketStart + 1; i < text.length; i += 1) {
     const char = text[i]
 
     if (inString) {
@@ -159,23 +191,35 @@ function parseCompletedOutlineChapters(text: string): OutlineChapter[] {
   return chapters
 }
 
-function areOutlineChaptersEqual(
-  a: OutlineChapter[],
-  b: OutlineChapter[],
-): boolean {
-  if (a.length !== b.length) return false
-  return a.every(
+function parseChapters(value: unknown): OutlineChapter[] {
+  if (!Array.isArray(value)) return []
+  const chapters: OutlineChapter[] = []
+  for (const item of value) {
+    if (!isOutlineChapter(item)) continue
+    chapters.push({
+      title: item.title.trim(),
+      contract: item.contract.trim(),
+    })
+  }
+  return chapters
+}
+
+function isOutlineEqual(a: Outline, b: Outline): boolean {
+  if (a.projectName !== b.projectName) return false
+  if (a.estimatedKnowledgePoints !== b.estimatedKnowledgePoints) return false
+  if (a.chapters.length !== b.chapters.length) return false
+  return a.chapters.every(
     (chapter, index) =>
-      chapter.title === b[index]?.title &&
-      chapter.contract === b[index]?.contract,
+      chapter.title === b.chapters[index]?.title &&
+      chapter.contract === b.chapters[index]?.contract,
   )
 }
 
-function parseJsonArray(text: string): unknown {
+function parseJsonObject(text: string): unknown {
   try {
     return JSON.parse(text)
   } catch {
-    const match = text.match(/\[[\s\S]*\]/)
+    const match = text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error('无法解析大纲 JSON')
     return JSON.parse(match[0])
   }

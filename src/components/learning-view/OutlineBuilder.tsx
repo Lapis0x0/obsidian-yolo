@@ -24,6 +24,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
@@ -40,6 +41,7 @@ import {
 } from '../../core/learning/generation/projectWriter'
 import type {
   GenerationProgress,
+  Outline,
   OutlineChapter,
 } from '../../core/learning/generation/types'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
@@ -76,6 +78,8 @@ export function OutlineBuilder({
 }) {
   const { t } = useLanguage()
   const [chapters, setChapters] = useState<EditableChapter[]>([])
+  const [projectName, setProjectName] = useState('')
+  const [estimatedKnowledgePoints, setEstimatedKnowledgePoints] = useState(0)
   const [phase, setPhase] = useState<Phase>('outline')
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -93,9 +97,11 @@ export function OutlineBuilder({
     id: `chapter-${nextChapterIdRef.current++}`,
   })
 
-  const reconcileChapters = (nextChapters: OutlineChapter[]) => {
+  const reconcileOutline = (outline: Outline) => {
+    setProjectName(outline.projectName)
+    setEstimatedKnowledgePoints(outline.estimatedKnowledgePoints)
     setChapters((current) =>
-      nextChapters.map((chapter, index) => ({
+      outline.chapters.map((chapter, index) => ({
         ...chapter,
         id: current[index]?.id ?? `chapter-${nextChapterIdRef.current++}`,
         progress: current[index]?.progress,
@@ -111,6 +117,8 @@ export function OutlineBuilder({
     setError(null)
     nextChapterIdRef.current = 0
     setChapters([])
+    setProjectName('')
+    setEstimatedKnowledgePoints(0)
     void generateOutline({
       plugin,
       topic,
@@ -118,10 +126,10 @@ export function OutlineBuilder({
       goal,
       referencesBlock,
       abortSignal: controller.signal,
-      onChapters: reconcileChapters,
+      onOutline: reconcileOutline,
     })
-      .then(({ chapters }) => {
-        reconcileChapters(chapters)
+      .then(({ outline }) => {
+        reconcileOutline(outline)
         setPhase('ready')
       })
       .catch((err: unknown) => {
@@ -192,12 +200,13 @@ export function OutlineBuilder({
     setError(null)
 
     const baseDir = getYoloLearningDir(plugin.settings)
+    const resolvedProjectName = projectName || topic
     let scaffold: Awaited<ReturnType<typeof createProjectScaffold>>
     try {
       scaffold = await createProjectScaffold({
         app: plugin.app,
         baseDir,
-        topic,
+        topic: resolvedProjectName,
         chapters: validChapters,
       })
       await eventBus.setActiveProject(baseDir, scaffold.projectPath)
@@ -251,7 +260,7 @@ export function OutlineBuilder({
           try {
             await generateKnowledgePointsForChapter({
               plugin,
-              projectTopic: topic,
+              projectTopic: resolvedProjectName,
               chapterTitle: chapter.title,
               chapterContract: chapter.contract,
               level,
@@ -328,7 +337,13 @@ export function OutlineBuilder({
             <ArrowLeft size={18} />
           </button>
           <div className="yolo-learning-outline-builder-divider" />
-          <h1 className="yolo-learning-outline-builder-title">{topic}</h1>
+          <h1 className="yolo-learning-outline-builder-title">
+            {generating && !projectName ? (
+              <span className="yolo-learning-outline-builder-title-skeleton yolo-learning-outline-builder-pulse" />
+            ) : (
+              projectName
+            )}
+          </h1>
           <span className="yolo-learning-outline-builder-badge">
             {t('learning.outlineBuilder.draftBadge', '大纲草稿')}
           </span>
@@ -425,6 +440,18 @@ export function OutlineBuilder({
                   generating && chapters.length === 0
                     ? '-'
                     : String(chapters.length)
+                }
+              />
+              <Stat
+                icon={<Zap size={14} />}
+                label={t(
+                  'learning.outlineBuilder.estimatedKnowledgePoints',
+                  '预计知识点',
+                )}
+                value={
+                  generating && chapters.length === 0
+                    ? '-'
+                    : String(estimatedKnowledgePoints)
                 }
               />
             </dl>

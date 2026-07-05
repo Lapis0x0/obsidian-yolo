@@ -22668,6 +22668,14 @@ button.yolo-learning-outline-builder-icon-btn svg {
   white-space: nowrap;
 }
 
+.yolo-learning-outline-builder-title-skeleton {
+  display: inline-block;
+  width: 120px;
+  height: 14px;
+  border-radius: var(--yolo-radius-sm);
+  background-color: var(--yolo-secondary);
+}
+
 .yolo-learning-outline-builder-badge {
   display: inline-flex;
   flex-shrink: 0;
