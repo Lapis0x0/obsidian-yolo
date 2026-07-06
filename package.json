@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "dev": "concurrently -n app,styles -c blue,magenta \"npm:dev:app\" \"npm:styles:watch\"",
+    "ob": "osascript -e 'quit app \"Obsidian\"' >/dev/null 2>&1 || true && sleep 1 && open -a Obsidian --args --remote-debugging-port=9222 && npm run dev",
     "dev:app": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && npm run styles:build && node esbuild.config.mjs production",
     "styles:build": "postcss src/styles/index.css -o styles.css",
