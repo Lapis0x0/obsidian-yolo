@@ -10,7 +10,10 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { parseCustomParameterValue } from '../../utils/custom-parameters'
-import { providerSupportsTransportModeSelection } from '../../utils/llm/provider-config'
+import {
+  getResponseStreamingMode,
+  providerSupportsTransportModeSelection,
+} from '../../utils/llm/provider-config'
 
 import { resolveRequestTransportMode } from './requestTransport'
 import {
@@ -36,7 +39,11 @@ export abstract class BaseLLMProvider<P extends LLMProvider> {
         })
       : undefined
 
-    return resolveResponseExecutionMode({ deliveryMode, transportMode })
+    return resolveResponseExecutionMode({
+      deliveryMode,
+      transportMode,
+      streamingMode: getResponseStreamingMode(this.provider.additionalSettings),
+    })
   }
 
   abstract generateResponse(

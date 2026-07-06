@@ -87,6 +87,14 @@
   font-size: var(--font-ui-smaller);
 }
 
+.yolo-agent-cap-status {
+  color: var(--text-faint);
+}
+
+.yolo-agent-cap-status::before {
+  content: ' · ';
+}
+
 .yolo-agent-cap-tags {
   margin-top: var(--size-4-2);
   display: flex;
@@ -531,31 +539,41 @@
 }
 
 button.yolo-agent-tool-group-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
   margin-left: var(--size-2-2);
-  padding: 0;
+  padding: 1px 4px;
   height: auto;
   line-height: 1.4;
   border: none;
+  border-radius: var(--radius-s);
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  text-decoration: underline;
-  text-decoration-color: var(--background-modifier-border);
-  text-underline-offset: 2px;
+  text-decoration: none;
   cursor: pointer;
 }
 
 button.yolo-agent-tool-group-disclosure:hover {
   color: var(--text-normal);
-  text-decoration-color: currentColor;
   background: transparent;
+}
+
+button.yolo-agent-tool-group-disclosure svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+button.yolo-agent-tool-group-approval-trigger {
+  margin-left: 0;
 }
 
 .yolo-agent-tool-group-meta {
   display: inline-flex;
   align-items: center;
-  gap: var(--size-4-4);
+  gap: var(--size-4-3);
   margin-right: var(--size-4-1);
 }
 

@@ -56,9 +56,11 @@ export function AgentSection({ app }: AgentSectionProps) {
   const assistants = settings.assistants || []
   const [mcpManager, setMcpManager] = useState<McpManager | null>(null)
   const [mcpServers, setMcpServers] = useState<McpServerState[]>([])
+  const [mcpManagerLoading, setMcpManagerLoading] = useState(true)
 
   useEffect(() => {
     let isMounted = true
+    setMcpManagerLoading(true)
     void plugin
       .getMcpManager()
       .then((manager) => {
@@ -67,8 +69,12 @@ export function AgentSection({ app }: AgentSectionProps) {
         }
         setMcpManager(manager)
         setMcpServers(manager.getServers())
+        setMcpManagerLoading(false)
       })
       .catch((error: unknown) => {
+        if (isMounted) {
+          setMcpManagerLoading(false)
+        }
         console.error(
           'Failed to initialize MCP manager in Agent section',
           error,
@@ -310,6 +316,32 @@ export function AgentSection({ app }: AgentSectionProps) {
     .replace('{count}', String(builtinTools.length + mcpTools.length))
     .replace('{enabled}', String(enabledToolsCount))
 
+  const enabledConfiguredMcpServerCount = settings.mcp.servers.filter(
+    (server) => server.enabled,
+  ).length
+  const mcpLoadingCount = mcpManagerLoading
+    ? enabledConfiguredMcpServerCount
+    : mcpServers.filter(
+        (server) => server.status === McpServerStatus.Connecting,
+      ).length
+  const mcpErrorCount = mcpServers.filter(
+    (server) => server.status === McpServerStatus.Error,
+  ).length
+  const mcpToolStatusLabels = [
+    mcpLoadingCount > 0
+      ? t('settings.agent.mcpLoadingStatus', 'Loading {count} MCP...').replace(
+          '{count}',
+          String(mcpLoadingCount),
+        )
+      : null,
+    mcpErrorCount > 0
+      ? t(
+          'settings.agent.mcpErrorStatus',
+          '{count} MCP failed to connect',
+        ).replace('{count}', String(mcpErrorCount))
+      : null,
+  ].filter((label): label is string => Boolean(label))
+
   const mcpCountLabel = t(
     'settings.agent.mcpServerCount',
     '{count} MCP servers connected',
@@ -368,7 +400,14 @@ export function AgentSection({ app }: AgentSectionProps) {
                 {t('settings.agent.manageTools', 'Manage tools')}
               </button>
             </div>
-            <div className="yolo-agent-cap-count">{toolsCountLabel}</div>
+            <div className="yolo-agent-cap-count">
+              <span>{toolsCountLabel}</span>
+              {mcpToolStatusLabels.map((label) => (
+                <span key={label} className="yolo-agent-cap-status">
+                  {label}
+                </span>
+              ))}
+            </div>
             <div className="yolo-agent-cap-tags">
               {visibleToolTags.map((tool) => (
                 <span

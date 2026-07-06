@@ -21,7 +21,7 @@ function UpdateToast() {
   const { language, t } = useLanguage()
   const plugin = usePlugin()
   const { app } = plugin
-  const { result, dismissVersion } = useUpdateCheck()
+  const { result, muteUpdateVersion } = useUpdateCheck()
   const {
     primaryCta,
     hasSelfUpdate,
@@ -49,18 +49,16 @@ function UpdateToast() {
     }
   }, [latestVersion, language, result])
 
-  // Closing plays the exit animation first, then persists the dismissal state
-  // (which unmounts the card). Timer-driven rather than onAnimationEnd so it still fires under
+  // Closing plays the exit animation first, then hides for this session only.
+  // Use "Skip this version" in the header to persist a mute across launches.
+  // Timer-driven rather than onAnimationEnd so it still fires under
   // prefers-reduced-motion (where the animation is disabled). Keep in sync with
   // the 160ms exit duration in input.css.
   useEffect(() => {
     if (!exiting || !result) return
-    const id = window.setTimeout(
-      () => dismissVersion(result.latestVersion),
-      160,
-    )
+    const id = window.setTimeout(() => setHiddenForSession(true), 160)
     return () => window.clearTimeout(id)
-  }, [dismissVersion, exiting, result])
+  }, [exiting, result])
 
   const releaseNotes = result?.releaseNotes
   // The header (title + subtitle) tracks the UI's default language; only the
@@ -132,16 +130,27 @@ function UpdateToast() {
             <div className="yolo-update-toast-subtitle">{subtitle}</div>
           ) : null}
         </div>
-        {langToggle}
-        <button
-          type="button"
-          className="yolo-update-toast-icon-button"
-          onClick={() => setExiting(true)}
-          aria-label={closeLabel}
-          title={closeLabel}
-        >
-          <X size={14} strokeWidth={1.8} />
-        </button>
+        <div className="yolo-update-toast-header-actions">
+          <button
+            type="button"
+            className="yolo-update-toast-skip-btn"
+            title={t('update.skipVersion', "Don't remind me for this version")}
+            onClick={() => {
+              muteUpdateVersion(result.latestVersion)
+            }}
+          >
+            {t('update.skipVersion', "Don't remind me for this version")}
+          </button>
+          <button
+            type="button"
+            className="yolo-update-toast-icon-button"
+            onClick={() => setExiting(true)}
+            aria-label={closeLabel}
+            title={closeLabel}
+          >
+            <X size={14} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
 
       <div className="yolo-update-toast-divider" />
@@ -160,46 +169,51 @@ function UpdateToast() {
       ) : null}
 
       <div className="yolo-update-toast-footer">
-        <button
-          type="button"
-          className="yolo-update-toast-history-btn"
-          title={t('update.viewHistory', 'View release history')}
-          onClick={() => {
-            setHiddenForSession(true)
-            new UpdateHistoryModal(
-              app,
-              plugin,
-              t('update.historyTitle', 'Release history'),
-            ).open()
-          }}
-        >
-          {t('update.viewHistory', 'View release history')}
-        </button>
-        {showCommunityPluginsFallback && hasSelfUpdate ? (
+        <div className="yolo-update-toast-footer-start">
+          {langToggle}
           <button
             type="button"
-            className="yolo-update-toast-secondary-btn"
-            title={t(
-              'update.updateInCommunityPlugins',
-              'Update in community plugins',
-            )}
-            onClick={openCommunityPlugins}
+            className="yolo-update-toast-history-btn"
+            title={t('update.viewHistory', 'View release history')}
+            onClick={() => {
+              setHiddenForSession(true)
+              new UpdateHistoryModal(
+                app,
+                plugin,
+                t('update.historyTitle', 'Release history'),
+              ).open()
+            }}
           >
-            {t(
-              'update.updateInCommunityPlugins',
-              'Update in community plugins',
-            )}
+            {t('update.viewHistory', 'View release history')}
           </button>
-        ) : null}
-        <button
-          type="button"
-          className={`yolo-update-toast-cta${primaryCta.disabled ? ' is-disabled' : ''}`}
-          title={primaryCta.label}
-          disabled={primaryCta.disabled}
-          onClick={primaryCta.onClick}
-        >
-          {primaryCta.label}
-        </button>
+        </div>
+        <div className="yolo-update-toast-footer-actions">
+          {showCommunityPluginsFallback && hasSelfUpdate ? (
+            <button
+              type="button"
+              className="yolo-update-toast-secondary-btn"
+              title={t(
+                'update.updateInCommunityPlugins',
+                'Update in community plugins',
+              )}
+              onClick={openCommunityPlugins}
+            >
+              {t(
+                'update.updateInCommunityPlugins',
+                'Update in community plugins',
+              )}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={`yolo-update-toast-cta${primaryCta.disabled ? ' is-disabled' : ''}`}
+            title={primaryCta.label}
+            disabled={primaryCta.disabled}
+            onClick={primaryCta.onClick}
+          >
+            {primaryCta.label}
+          </button>
+        </div>
       </div>
       {isSelfUpdateError && releaseUrl ? (
         <button

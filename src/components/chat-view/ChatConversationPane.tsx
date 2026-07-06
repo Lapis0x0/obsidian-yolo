@@ -11,11 +11,13 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { isAgentChatMode } from './chat-input/ChatModeSelect'
+import type { ChatTimelineRenderVersion } from './ChatTimelineList'
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
 import { SharedConversationSurface } from './SharedConversationSurface'
 
 type ChatConversationPaneProps = {
   chatMode: ChatMode
+  yoloEnabled: boolean
   groupedChatMessagesLength: number
   isCurrentConversationRunActive: boolean
   isAutoFollowEnabled: boolean
@@ -24,6 +26,7 @@ type ChatConversationPaneProps = {
   chatTimelineItems: ChatTimelineItem[]
   chatMessagesRef: RefObject<HTMLDivElement>
   renderChatTimelineItem: (timelineItem: ChatTimelineItem) => ReactNode
+  timelineRenderVersion?: ChatTimelineRenderVersion<ChatTimelineItem>
   followOutput: FollowOutput
   onAtBottomStateChange: (atBottom: boolean) => void
   editingAssistantMessageId: string | null
@@ -54,6 +57,7 @@ type ChatConversationPaneProps = {
 
 export function ChatConversationPane({
   chatMode,
+  yoloEnabled,
   groupedChatMessagesLength,
   isCurrentConversationRunActive,
   isAutoFollowEnabled,
@@ -62,6 +66,7 @@ export function ChatConversationPane({
   chatTimelineItems,
   chatMessagesRef,
   renderChatTimelineItem,
+  timelineRenderVersion,
   followOutput,
   onAtBottomStateChange,
   editingAssistantMessageId,
@@ -98,18 +103,17 @@ export function ChatConversationPane({
     groupedChatMessagesLength > 0 &&
     (!isAutoFollowEnabled || hasNewerMessages)
 
-  const emptyStateTitle =
-    chatMode === 'agent-full'
-      ? emptyStateAgentFullTitle
-      : isAgentChatMode(chatMode)
-        ? emptyStateAgentTitle
-        : emptyStateAskTitle
-  const emptyStateDescription =
-    chatMode === 'agent-full'
-      ? emptyStateAgentFullDescription
-      : isAgentChatMode(chatMode)
-        ? emptyStateAgentDescription
-        : emptyStateAskDescription
+  const isYoloAgent = isAgentChatMode(chatMode) && yoloEnabled
+  const emptyStateTitle = isYoloAgent
+    ? emptyStateAgentFullTitle
+    : isAgentChatMode(chatMode)
+      ? emptyStateAgentTitle
+      : emptyStateAskTitle
+  const emptyStateDescription = isYoloAgent
+    ? emptyStateAgentFullDescription
+    : isAgentChatMode(chatMode)
+      ? emptyStateAgentDescription
+      : emptyStateAskDescription
 
   return (
     <>
@@ -119,6 +123,7 @@ export function ChatConversationPane({
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
         renderItem={renderChatTimelineItem}
+        renderVersion={timelineRenderVersion}
         forceRenderItemIds={['bottom-anchor']}
         followOutput={followOutput}
         onAtBottomStateChange={onAtBottomStateChange}
@@ -134,11 +139,11 @@ export function ChatConversationPane({
                   <div className="yolo-chat-empty-state-overlay-inner">
                     <div className="yolo-chat-empty-state">
                       <div
-                        key={chatMode}
+                        key={`${chatMode}-${isYoloAgent ? 'yolo' : 'std'}`}
                         className="yolo-chat-empty-state-icon"
-                        data-mode={chatMode}
+                        data-mode={isYoloAgent ? 'agent-full' : chatMode}
                       >
-                        {chatMode === 'agent-full' ? (
+                        {isYoloAgent ? (
                           <InfinityIcon size={18} strokeWidth={2} />
                         ) : isAgentChatMode(chatMode) ? (
                           <Bot size={18} strokeWidth={2} />

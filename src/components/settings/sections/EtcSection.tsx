@@ -18,8 +18,6 @@ import { clearPdfTextCache } from '../../../database/json/chat/pdfTextCacheStore
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
-import { ExportConfigModal } from '../../../features/config-transfer/components/ExportConfigModal'
-import { ImportConfigModal } from '../../../features/config-transfer/components/ImportConfigModal'
 import YoloPlugin from '../../../main'
 import { yoloSettingsSchema } from '../../../settings/schema/setting.types'
 import {
@@ -339,6 +337,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
             await manager.deleteChat(meta.id)
           }
           // Drop all frozen system prompts so no snapshot outlives its conversation.
+          await plugin.warmupAgentService()
           plugin.getAgentService().clearSystemPromptSnapshots()
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
@@ -479,7 +478,13 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
           >
             <ObsidianButton
               text={t('settings.etc.export', '导出')}
-              onClick={() => new ExportConfigModal(app, plugin).open()}
+              onClick={() => {
+                void import(
+                  '../../../features/config-transfer/components/ExportConfigModal'
+                ).then(({ ExportConfigModal }) => {
+                  new ExportConfigModal(app, plugin).open()
+                })
+              }}
             />
           </ObsidianSetting>
 
@@ -493,7 +498,13 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
           >
             <ObsidianButton
               text={t('settings.etc.import', '导入')}
-              onClick={() => new ImportConfigModal(app, plugin).open()}
+              onClick={() => {
+                void import(
+                  '../../../features/config-transfer/components/ImportConfigModal'
+                ).then(({ ImportConfigModal }) => {
+                  new ImportConfigModal(app, plugin).open()
+                })
+              }}
             />
           </ObsidianSetting>
 

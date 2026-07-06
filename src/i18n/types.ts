@@ -216,6 +216,8 @@ export type TranslationKeys = {
       tools?: string
       toolsCount?: string
       toolsCountWithEnabled?: string
+      mcpLoadingStatus?: string
+      mcpErrorStatus?: string
       skills?: string
       skillsCount?: string
       skillsCountWithEnabled?: string
@@ -395,7 +397,10 @@ export type TranslationKeys = {
       toolApproval?: string
       toolApprovalFullAccess?: string
       toolApprovalRequire?: string
+      toolDisclosureAuto?: string
+      toolDisclosureAutoSelect?: string
       toolDisclosureAlways?: string
+      toolDisclosureMixed?: string
       toolDisclosureOnDemand?: string
       editorEnabled?: string
       editorDisabled?: string
@@ -631,6 +636,11 @@ export type TranslationKeys = {
       requestTransportModeBrowser: string
       requestTransportModeObsidian: string
       requestTransportModeNode: string
+      responseStreamingMode: string
+      responseStreamingModeDesc: string
+      responseStreamingModeAuto: string
+      responseStreamingModeStreaming: string
+      responseStreamingModeNonStreaming: string
       promptCaching: string
       promptCachingDesc: string
       customHeaders: string
@@ -1358,10 +1368,13 @@ export type TranslationKeys = {
     selectModel: string
     uploadImage: string
     uploadFile?: string
+    dropFilesHint?: string
     imageUnsupportedByModel?: string
     unsupportedFileType?: string
     processImagesFailed?: string
     readPdfFailed?: string
+    readOfficeFailed?: string
+    readTextAttachmentFailed?: string
     addContext: string
     applyChanges: string
     copyMessage: string
@@ -1783,6 +1796,8 @@ export type TranslationKeys = {
     agentDesc?: string
     agentFull?: string
     agentFullDesc?: string
+    yolo?: string
+    yoloDesc?: string
     warning?: {
       title?: string
       description?: string
@@ -1835,6 +1850,8 @@ export type TranslationKeys = {
       selectNone: string
       sensitive: string
       redactedOption: string
+      confirmUnredactedTitle: string
+      confirmUnredacted: string
       submit: string
       cancel: string
       noticeAtLeastOne: string
@@ -1919,6 +1936,7 @@ export type TranslationKeys = {
     languageEnglish: string
     languageChinese: string
     viewHistory?: string
+    skipVersion?: string
     historyTitle?: string
     historyLoading?: string
     historyError?: string

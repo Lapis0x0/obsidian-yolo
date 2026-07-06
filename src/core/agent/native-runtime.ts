@@ -111,6 +111,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       allowedToolNames: input.allowedToolNames,
       enableToolDisclosure: input.enableToolDisclosure,
       toolPreferences: input.toolPreferences,
+      toolServerPreferences: input.toolServerPreferences,
       workspaceScope: input.workspaceScope,
       allowedSkillPaths: input.allowedSkillPaths,
       apiType: input.apiType,

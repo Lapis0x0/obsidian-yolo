@@ -81,6 +81,7 @@ type UseChatStreamManagerParams = {
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
+  yoloEnabled: boolean
   currentFileOverride?: TFile | null
   currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
   assistantIdOverride?: string
@@ -271,6 +272,7 @@ export function useChatStreamManager({
   conversationOverrides,
   modelId,
   chatMode,
+  yoloEnabled,
   currentFileOverride,
   currentFileViewState,
   assistantIdOverride,
@@ -514,6 +516,7 @@ export function useChatStreamManager({
       const chatModeRuntime = enableAutoContextCompactionTool(
         resolveChatModeRuntime({
           mode: chatMode,
+          yoloEnabled,
           assistant: selectedAssistant,
           assistantEnabledToolNames:
             getEnabledAssistantToolNames(selectedAssistant),
@@ -563,19 +566,21 @@ export function useChatStreamManager({
             chatModelModalities: effectiveModel.modalities,
           })
         : []
-      const { hasTools, hasMemoryTools, requestTools } = selectAllowedTools({
-        availableTools,
-        allowedToolNames: effectiveAllowedToolNames,
-        toolPreferences: chatModeRuntime.toolPreferences,
-        apiType: manualApiType,
-        enableToolDisclosure: settings.mcp.enableToolDisclosure,
-        jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-      })
+      const { hasTools, hasMemoryTools, hasOnDemandTools, requestTools } =
+        await selectAllowedTools({
+          availableTools,
+          allowedToolNames: effectiveAllowedToolNames,
+          toolPreferences: chatModeRuntime.toolPreferences,
+          apiType: manualApiType,
+          enableToolDisclosure: settings.mcp.enableToolDisclosure,
+          jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+        })
       const compactionPrefix =
         await requestContextBuilder.generateRequestMessages({
           messages,
           hasTools,
           hasMemoryTools,
+          hasOnDemandTools,
           model: effectiveModel,
           conversationId: currentConversationId,
           compaction: manualCompaction,
@@ -646,6 +651,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      yoloEnabled,
       currentConversationId,
       currentFileOverride,
       currentFileViewState,
@@ -761,6 +767,7 @@ export function useChatStreamManager({
         const chatModeRuntime = enableAutoContextCompactionTool(
           resolveChatModeRuntime({
             mode: chatMode,
+            yoloEnabled,
             assistant: selectedAssistant,
             assistantEnabledToolNames:
               getEnabledAssistantToolNames(selectedAssistant),
@@ -802,6 +809,7 @@ export function useChatStreamManager({
           allowedToolNames: chatModeRuntime.allowedToolNames,
           enableToolDisclosure: settings.mcp.enableToolDisclosure,
           toolPreferences: chatModeRuntime.toolPreferences,
+          toolServerPreferences: chatModeRuntime.toolServerPreferences,
           runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
           bypassToolApproval: chatModeRuntime.bypassToolApproval,
           blockedCommandPrefixes: settings.mcp.builtinToolOptions[
@@ -1033,6 +1041,7 @@ export function useChatStreamManager({
       const effectiveModel = resolvedClient.model
       const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
+        yoloEnabled,
         assistant: selectedAssistant,
         assistantEnabledToolNames:
           getEnabledAssistantToolNames(selectedAssistant),
@@ -1071,6 +1080,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      yoloEnabled,
       compaction,
       currentConversationId,
       currentFileOverride,

@@ -340,6 +340,16 @@
   min-height: 0;
 }
 
+body.is-mobile
+  .workspace-leaf-content[data-type='yolo-chat-view']
+  > .view-content.yolo-chat-view-content--keyboard-managed {
+  padding-bottom: 0;
+}
+
+body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
+  height: var(--yolo-chat-mobile-viewport-height, 100%);
+}
+
 .yolo-chat-container--sidebar {
   --yolo-chat-sidebar-inline-padding: calc(var(--size-4-6) / 2);
 }
@@ -1666,8 +1676,6 @@
     color-mix(in srgb, var(--background-secondary) 90%, transparent) 0%,
     color-mix(in srgb, var(--background-primary-alt) 88%, transparent) 100%
   );
-  box-shadow: 0 14px 34px
-    color-mix(in srgb, var(--background-modifier-box-shadow) 12%, transparent);
   text-align: center;
 }
 
@@ -1817,6 +1825,14 @@
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.yolo-update-toast-header-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 46%;
 }
 
 .yolo-update-toast-lang {
@@ -2011,6 +2027,21 @@
   padding: 7px 0 6px;
 }
 
+.yolo-update-toast-footer-start {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.yolo-update-toast-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .yolo-update-toast-history-btn {
   flex-shrink: 0;
   padding: 4px 10px;
@@ -2030,6 +2061,31 @@
 .yolo-update-toast-history-btn:hover {
   background: var(--background-modifier-hover) !important;
   color: var(--text-normal);
+}
+
+.yolo-update-toast-skip-btn {
+  flex-shrink: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: none !important;
+  border-radius: var(--radius-s);
+  box-shadow: none !important;
+  background: transparent !important;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+  line-height: 1.3;
+  white-space: normal;
+  text-align: right;
+  cursor: var(--cursor);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.yolo-update-toast-skip-btn:hover {
+  background: var(--background-modifier-hover) !important;
+  color: var(--text-muted);
 }
 
 .yolo-update-toast-cta {
@@ -2063,7 +2119,6 @@
 .yolo-update-toast-github-btn,
 .yolo-update-toast-secondary-btn {
   flex-shrink: 0;
-  margin-left: auto;
   padding: 4px 10px;
   border: none !important;
   border-radius: var(--radius-s);
@@ -2574,6 +2629,10 @@
   outline: none;
   --yolo-mention-max-width: 240px;
   --yolo-mention-badge-max-width: 180px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 
   &:focus-within,
   &:focus,
@@ -2582,6 +2641,90 @@
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
     transition: box-shadow 0.15s ease-in-out;
   }
+}
+
+.yolo-chat-user-input-container[data-file-drag-active='true'] {
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 11%,
+    var(--background-modifier-form-field)
+  );
+  border-color: color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--interactive-accent) 28%, transparent),
+    0 10px 28px color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.yolo-chat-user-input-container[data-file-drag-active='true']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--interactive-accent) 7%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.yolo-chat-user-input-container[data-file-drag-active='true']::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--size-2-3) - 1px);
+  border: 1px dashed
+    color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+  border-radius: calc(var(--radius-s) - 1px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.yolo-chat-user-input-container[data-file-drag-active='true']
+  .yolo-chat-user-input-editor,
+.yolo-chat-user-input-container[data-file-drag-active='true']
+  .yolo-chat-user-input-send-row,
+.yolo-chat-user-input-container[data-file-drag-active='true']
+  .yolo-chat-user-input-controls {
+  position: relative;
+  z-index: 2;
+}
+
+.yolo-chat-user-input-container[data-file-drag-active='true']
+  .yolo-chat-user-input-placeholder {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.yolo-chat-user-input-drop-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  max-width: min(80%, 240px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--interactive-accent);
+  box-shadow: none;
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  line-height: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+}
+
+.yolo-chat-user-input-drop-hint svg {
+  flex: 0 0 auto;
+}
+
+.yolo-chat-user-input-container[data-file-drag-active='true']
+  .yolo-chat-user-input-upload-button,
+.yolo-chat-user-input-container[data-file-drag-active='true']
+  button.yolo-chat-user-input-submit-button-circle {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .yolo-chat-user-input-container[data-resizable='true'] .yolo-obsidian-textarea,
@@ -3200,6 +3343,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  min-height: 56px;
   padding: 8px 10px !important;
 }
 
@@ -3242,9 +3386,157 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
 
 .yolo-chat-mode-select-item[data-state='checked']
   .yolo-chat-mode-select-item__icon,
+.yolo-chat-mode-agent-card[data-state='checked']
+  .yolo-chat-mode-select-item__icon,
 .yolo-chat-mode-select-item[data-highlighted]
   .yolo-chat-mode-select-item__icon {
   color: var(--text-normal);
+}
+
+/* Self-drawn dropdown rows: Ask remains a plain button; Agent hosts the YOLO
+ * switch while the outer row keeps the same popover-item sizing as before. */
+button.yolo-chat-mode-select-item {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+button.yolo-chat-mode-select-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
+  border-radius: var(--radius-s);
+}
+
+button.yolo-chat-mode-select-item:hover,
+button.yolo-chat-mode-select-item[data-highlighted] {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 90%,
+    transparent
+  ) !important;
+}
+
+button.yolo-chat-mode-select-item[data-state='checked'] {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 45%,
+    transparent
+  ) !important;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent) !important;
+}
+
+.yolo-chat-mode-agent-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.yolo-chat-mode-agent-card:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
+  border-radius: var(--radius-s);
+}
+
+.yolo-chat-mode-agent-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.yolo-chat-mode-agent-card__title-row .yolo-chat-mode-select-item__label {
+  flex: 0 0 auto;
+}
+
+.yolo-chat-mode-yolo-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--interactive-accent) !important;
+  border-radius: var(--radius-s);
+}
+
+.yolo-chat-mode-yolo-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  height: 18px;
+  min-height: 0;
+  padding: 2px 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.yolo-chat-mode-yolo-toggle[data-active='true'] {
+  color: var(--interactive-accent);
+}
+
+.yolo-chat-mode-yolo-toggle__label {
+  letter-spacing: 0.02em;
+}
+
+.yolo-chat-mode-yolo-toggle__switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 26px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.yolo-chat-mode-yolo-toggle[data-active='true']
+  .yolo-chat-mode-yolo-toggle__switch {
+  background: var(--interactive-accent);
+}
+
+.yolo-chat-mode-yolo-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.yolo-chat-mode-yolo-toggle[data-active='true']
+  .yolo-chat-mode-yolo-toggle__thumb {
+  transform: translateX(11px);
+}
+
+/* Trigger badge while YOLO is on (sits between label and chevron). */
+.yolo-chat-mode-select__yolo-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--interactive-accent);
+}
+
+.yolo-chat-mode-select__yolo-badge svg {
+  width: 11px;
+  height: 11px;
 }
 
 /* Reasoning Select */

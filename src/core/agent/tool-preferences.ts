@@ -4,6 +4,8 @@ import {
   AssistantToolDisclosureMode,
   AssistantToolPreference,
 } from '../../types/assistant.types'
+import type { RequestTool } from '../../types/llm/request'
+import type { McpTool } from '../../types/mcp.types'
 import { JS_SANDBOX_TOOL_NAME } from '../mcp/jsSandboxTool'
 import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
@@ -18,6 +20,7 @@ export const DEFAULT_ASSISTANT_TOOL_APPROVAL_MODE: AssistantToolApprovalMode =
   'require_approval'
 export const DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE: AssistantToolDisclosureMode =
   'always'
+export const SERVER_TOOL_DISCLOSURE_AUTO_TOKEN_THRESHOLD = 2000
 
 /**
  * 这些工具永远不允许"始终允许"（always-allow）模式。
@@ -40,6 +43,55 @@ const REQUIRE_APPROVAL_LOCAL_TOOLS: ReadonlySet<string> = new Set([
 const FULL_ACCESS_LOCAL_TOOLS: ReadonlySet<string> = new Set([
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
 ])
+
+const buildToolTokenPayload = (tools: readonly McpTool[]): RequestTool[] =>
+  tools.map((tool) => ({
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        ...tool.inputSchema,
+        properties: tool.inputSchema.properties ?? {},
+      },
+    },
+  }))
+
+export const resolveDefaultDisclosureModeForServer = (
+  serverTokenBudget: number | undefined,
+): AssistantToolDisclosureMode => {
+  if (
+    typeof serverTokenBudget !== 'number' ||
+    !Number.isFinite(serverTokenBudget)
+  ) {
+    return DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE
+  }
+  return serverTokenBudget >= SERVER_TOOL_DISCLOSURE_AUTO_TOKEN_THRESHOLD
+    ? 'on_demand'
+    : 'always'
+}
+
+export const buildServerToolTokenBudgets = async (
+  serverToolsMap: ReadonlyMap<string, readonly McpTool[]>,
+  estimateJsonTokens: (value: unknown) => Promise<number>,
+): Promise<Map<string, number>> => {
+  const budgets = new Map<string, number>()
+  const localServerName = getLocalFileToolServerName()
+
+  await Promise.all(
+    [...serverToolsMap.entries()].map(async ([serverName, tools]) => {
+      if (serverName === localServerName || tools.length === 0) {
+        return
+      }
+      budgets.set(
+        serverName,
+        await estimateJsonTokens(buildToolTokenPayload(tools)),
+      )
+    }),
+  )
+
+  return budgets
+}
 
 /**
  * Built-in tools that default to **off** even when the user has never
@@ -116,8 +168,9 @@ export const getDefaultEnabledForTool = (toolName: string): boolean => {
  *
  * Built-in `yolo_local__*` tools default to `always`: they total ~3.9K tokens
  * across ~13 tools, stub-izing them saves little and only adds a first-use
- * latency hit. Third-party MCP server tools default to `on_demand` so large
- * MCP fleets don't bloat the cached `tools` prefix.
+ * latency hit. Third-party MCP server tools also fall back to `always` here;
+ * runtime callers that have the current server token budget pass it through
+ * `getAssistantToolDisclosureMode` for automatic server-level selection.
  *
  * `load_tool_schemas` is a protocol-only tool injected by `selectAllowedTools`
  * when on-demand disclosure is in use; it is not a user-configurable surface
@@ -131,7 +184,7 @@ export const getDefaultDisclosureModeForTool = (
     if (serverName === getLocalFileToolServerName()) {
       return 'always'
     }
-    return 'on_demand'
+    return DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE
   } catch {
     return DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE
   }
@@ -277,7 +330,10 @@ export const getExplicitlyEnabledAssistantToolNames = (
  * preference is dead weight that only bloats data.json and confuses UI counts.
  */
 export const pruneOrphanedAssistantToolPreferences = <
-  T extends Pick<Assistant, 'toolPreferences' | 'enabledToolNames'>,
+  T extends Pick<
+    Assistant,
+    'toolPreferences' | 'enabledToolNames' | 'toolServerPreferences'
+  >,
 >(
   assistant: T,
   knownServerNames: ReadonlySet<string>,
@@ -312,11 +368,31 @@ export const pruneOrphanedAssistantToolPreferences = <
     if (filtered.length !== names.length) nextNames = filtered
   }
 
-  if (nextPrefs === prefs && nextNames === names) return assistant
+  const serverPrefs = assistant.toolServerPreferences
+  let nextServerPrefs = serverPrefs
+  if (serverPrefs && typeof serverPrefs === 'object') {
+    const filtered = Object.fromEntries(
+      Object.entries(serverPrefs).filter(([serverName]) =>
+        knownServerNames.has(serverName),
+      ),
+    )
+    if (Object.keys(filtered).length !== Object.keys(serverPrefs).length) {
+      nextServerPrefs = filtered
+    }
+  }
+
+  if (
+    nextPrefs === prefs &&
+    nextNames === names &&
+    nextServerPrefs === serverPrefs
+  ) {
+    return assistant
+  }
   return {
     ...assistant,
     toolPreferences: nextPrefs,
     enabledToolNames: nextNames,
+    toolServerPreferences: nextServerPrefs,
   }
 }
 
@@ -328,7 +404,10 @@ export const pruneOrphanedAssistantToolPreferences = <
  * `pruneOrphanedAssistantToolPreferences` would silently drop them.
  */
 export const renameAssistantToolPreferencesServer = <
-  T extends Pick<Assistant, 'toolPreferences' | 'enabledToolNames'>,
+  T extends Pick<
+    Assistant,
+    'toolPreferences' | 'enabledToolNames' | 'toolServerPreferences'
+  >,
 >(
   assistant: T,
   oldServerName: string,
@@ -378,11 +457,31 @@ export const renameAssistantToolPreferencesServer = <
     if (changed) nextNames = rebuilt
   }
 
-  if (nextPrefs === prefs && nextNames === names) return assistant
+  const serverPrefs = assistant.toolServerPreferences
+  let nextServerPrefs = serverPrefs
+  if (serverPrefs && typeof serverPrefs === 'object') {
+    const existing = serverPrefs[oldServerName]
+    if (existing) {
+      const { [oldServerName]: _old, ...rest } = serverPrefs
+      nextServerPrefs = {
+        ...rest,
+        [newServerName]: existing,
+      }
+    }
+  }
+
+  if (
+    nextPrefs === prefs &&
+    nextNames === names &&
+    nextServerPrefs === serverPrefs
+  ) {
+    return assistant
+  }
   return {
     ...assistant,
     toolPreferences: nextPrefs,
     enabledToolNames: nextNames,
+    toolServerPreferences: nextServerPrefs,
   }
 }
 
@@ -399,11 +498,26 @@ export const isAssistantToolEnabled = (
 
 export const getAssistantToolApprovalMode = (
   assistant:
-    | Pick<Assistant, 'toolPreferences' | 'enabledToolNames'>
+    | Pick<
+        Assistant,
+        'toolPreferences' | 'enabledToolNames' | 'toolServerPreferences'
+      >
     | null
     | undefined,
   toolName: string,
 ): AssistantToolApprovalMode => {
+  try {
+    const { serverName } = parseToolName(toolName)
+    if (serverName !== getLocalFileToolServerName()) {
+      return (
+        assistant?.toolServerPreferences?.[serverName]?.approvalMode ??
+        'require_approval'
+      )
+    }
+  } catch {
+    // Fall through to legacy per-tool/default handling.
+  }
+
   const toolPreferences = getAssistantToolPreferences(assistant)
   return (
     toolPreferences[toolName]?.approvalMode ??
@@ -417,7 +531,10 @@ export const getAssistantToolDisclosureMode = (
     | null
     | undefined,
   toolName: string,
-  options?: { enableToolDisclosure?: boolean },
+  options?: {
+    enableToolDisclosure?: boolean
+    serverToolTokenBudgets?: ReadonlyMap<string, number>
+  },
 ): AssistantToolDisclosureMode => {
   if (options?.enableToolDisclosure === false) {
     return 'always'
@@ -426,8 +543,10 @@ export const getAssistantToolDisclosureMode = (
   // Built-in tools are part of the agent's core capabilities (~3.9K tokens
   // total) and are always loaded. Disclosure is an MCP-only concept now;
   // any stale `on_demand` value in toolPreferences for a built-in is ignored.
+  let parsedServerName: string | null = null
   try {
     const { serverName } = parseToolName(toolName)
+    parsedServerName = serverName
     if (serverName === getLocalFileToolServerName()) {
       return 'always'
     }
@@ -436,8 +555,14 @@ export const getAssistantToolDisclosureMode = (
   }
 
   const toolPreferences = getAssistantToolPreferences(assistant)
-  return (
-    toolPreferences[toolName]?.disclosureMode ??
-    getDefaultDisclosureModeForTool(toolName)
-  )
+  const explicitMode = toolPreferences[toolName]?.disclosureMode
+  if (explicitMode) {
+    return explicitMode
+  }
+  if (parsedServerName) {
+    return resolveDefaultDisclosureModeForServer(
+      options?.serverToolTokenBudgets?.get(parsedServerName),
+    )
+  }
+  return getDefaultDisclosureModeForTool(toolName)
 }

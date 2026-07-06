@@ -122,6 +122,7 @@ export class ChatView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.isClosed = false
+    await this.plugin.warmupAgentService()
     const manager = this.plugin.getChatLeafSessionManager()
     const pendingPayload = manager.consumePendingPayload(this.leaf)
     const placement =

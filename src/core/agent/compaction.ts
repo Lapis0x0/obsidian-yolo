@@ -79,7 +79,7 @@ export const resolveAutoContextCompactionChatOptions = (chatOptions: {
     autoContextCompactionThresholdMode:
       chatOptions.autoContextCompactionThresholdMode ?? 'tokens',
     autoContextCompactionThresholdTokens:
-      chatOptions.autoContextCompactionThresholdTokens ?? 24000,
+      chatOptions.autoContextCompactionThresholdTokens ?? 100000,
     autoContextCompactionThresholdRatio:
       chatOptions.autoContextCompactionThresholdRatio ?? 0.8,
   }

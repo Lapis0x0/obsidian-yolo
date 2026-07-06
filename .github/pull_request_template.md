@@ -1,6 +1,6 @@
 <!-- Thanks for contributing! Please fill this out so review can move quickly. -->
 
-> 👋 Before opening this PR, please confirm you've read [CONTRIBUTING.md](../CONTRIBUTING.md) — it covers what we welcome, the AI-assisted PR policy, and PR size guidelines. PRs that ignore those guidelines may be closed without detailed review.
+> 👋 Before opening this PR, please confirm you've read [CONTRIBUTING.md](https://github.com/Lapis0x0/obsidian-yolo/blob/main/CONTRIBUTING.md) — it covers what we welcome, the AI-assisted PR policy, and PR size guidelines. PRs that ignore those guidelines may be closed without detailed review.
 
 ## Summary
 
@@ -55,7 +55,7 @@ If you checked the second box, please confirm:
 
 ## Pre-submit checklist
 
-- [ ] I've read [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [ ] I've read [CONTRIBUTING.md](https://github.com/Lapis0x0/obsidian-yolo/blob/main/CONTRIBUTING.md)
 - [ ] `npm run type:check` passes
 - [ ] `npm run lint:check` passes (or `npm run lint:fix` was run)
 - [ ] `npm test` passes

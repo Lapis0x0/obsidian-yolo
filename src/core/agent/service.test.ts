@@ -1,8 +1,11 @@
 import { ChatMessage, ChatUserMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
+import { backgroundTaskCompletionBus } from './background-task/completion-bus'
 import { AgentService } from './service'
 import { subagentRuntimeRegistry } from './subagent/runtime-registry'
+import { subagentTaskRegistry } from './subagent/task-registry'
+import type { SubagentTaskRecord } from './subagent/types'
 import { AgentRuntimeRunInput } from './types'
 
 type MockRuntimeInstance = {
@@ -17,6 +20,25 @@ type MockRuntimeInstance = {
   rejectRun: (error: Error) => void
   getRunInput: () => AgentRuntimeRunInput | null
 }
+
+type AgentServiceInternals = {
+  conversationEntries: Map<string, unknown>
+  runEntriesByKey: Map<string, unknown>
+  foregroundToolAbortersByConversation: Map<string, unknown>
+  persistTimers: Map<string, unknown>
+  pendingScheduledConversationPublishes: Map<
+    string,
+    { rafId: number | null; timeoutId: ReturnType<typeof setTimeout> }
+  >
+  pendingBackgroundTaskResults: Map<string, unknown>
+  autoRunScheduled: Set<string>
+  pendingUserMessagesByKey: Map<string, unknown>
+  continuationScheduledByKey: Set<string>
+}
+
+const getAgentServiceInternals = (
+  service: AgentService,
+): AgentServiceInternals => service as unknown as AgentServiceInternals
 
 const runtimeInstances: MockRuntimeInstance[] = []
 
@@ -390,6 +412,206 @@ describe('AgentService abort handling', () => {
   })
 })
 
+describe('AgentService streaming publish coalescing', () => {
+  const makeStreamingAssistantMessage = (
+    content: string,
+    options?: Partial<Extract<ChatMessage, { role: 'assistant' }>>,
+  ): ChatMessage => ({
+    role: 'assistant',
+    id: 'assistant-streaming',
+    content,
+    reasoning: options?.reasoning,
+    metadata: {
+      generationState: 'streaming',
+      ...options?.metadata,
+    },
+    toolCallRequests: options?.toolCallRequests,
+    annotations: options?.annotations,
+  })
+
+  beforeEach(() => {
+    runtimeInstances.length = 0
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  it('coalesces streaming assistant display updates into one bounded frame publish', async () => {
+    const service = new AgentService()
+    const publishedStates: ChatMessage[][] = []
+    service.subscribe(
+      'conv-streaming-publish',
+      (state) => {
+        publishedStates.push(state.messages)
+      },
+      { emitCurrent: false },
+    )
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-streaming-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-streaming-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(publishedStates).toHaveLength(2)
+    const firstPublishedAssistant = publishedStates.at(-1)?.at(-1)
+
+    assistantMessage.content = 'ab'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    assistantMessage.content = 'abc'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(publishedStates).toHaveLength(2)
+    expect(firstPublishedAssistant).toMatchObject({
+      role: 'assistant',
+      content: 'a',
+    })
+
+    jest.advanceTimersByTime(16)
+
+    expect(publishedStates).toHaveLength(3)
+    expect(publishedStates.at(-1)?.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: 'abc',
+    })
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('publishes tool call request changes immediately and cancels pending streaming publish', async () => {
+    const service = new AgentService()
+    const subscriber = jest.fn()
+    service.subscribe('conv-tool-request-publish', subscriber, {
+      emitCurrent: false,
+    })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-tool-request-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-tool-request-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    assistantMessage.content = 'ab'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    assistantMessage.toolCallRequests = [
+      {
+        id: 'call-1',
+        name: 'local:fs_read',
+        arguments: { kind: 'complete', value: {} },
+      },
+    ]
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(3)
+
+    jest.advanceTimersByTime(16)
+    expect(subscriber).toHaveBeenCalledTimes(3)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('publishes completion immediately and cancels pending streaming publish', async () => {
+    const service = new AgentService()
+    const subscriber = jest.fn()
+    service.subscribe('conv-complete-publish', subscriber, {
+      emitCurrent: false,
+    })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-complete-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-complete-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('a')])
+    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('ab')])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    runtime.resolveRun()
+    await runPromise
+
+    const callsAfterCompletion = subscriber.mock.calls.length
+    expect(callsAfterCompletion).toBeGreaterThanOrEqual(3)
+
+    jest.advanceTimersByTime(16)
+    expect(subscriber).toHaveBeenCalledTimes(callsAfterCompletion)
+  })
+
+  it('publishes abort immediately and cancels pending streaming publish', async () => {
+    const service = new AgentService()
+    const subscriber = jest.fn()
+    service.subscribe('conv-abort-publish', subscriber, { emitCurrent: false })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-abort-publish',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-abort-publish', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    assistantMessage.content = 'ab'
+    runtime.emitSnapshot([userMessage, assistantMessage])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+
+    expect(service.abortConversation('conv-abort-publish')).toBe(true)
+    expect(subscriber).toHaveBeenCalledTimes(3)
+    expect(subscriber.mock.calls.at(-1)?.[0]).toMatchObject({
+      status: 'aborted',
+    })
+
+    jest.advanceTimersByTime(16)
+    expect(subscriber).toHaveBeenCalledTimes(3)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+})
+
 const makeUserMessage = (id: string, text: string): ChatUserMessage => ({
   role: 'user',
   id,
@@ -459,6 +681,275 @@ const makeCompletedSubagentResultMessage = (): ChatMessage => ({
   toolUseCount: 0,
   delegateAssistantMessageId: 'assistant-1',
   delegateToolCallId: 'subagent-call-1',
+})
+
+const makeFailedSubagentTaskRecord = (): SubagentTaskRecord => {
+  const liveTranscript: ChatMessage[] = [
+    {
+      role: 'assistant',
+      id: 'subagent-assistant-1',
+      content: 'partial investigation before failure',
+    },
+  ]
+
+  return {
+    taskId: 'sub_failed_transcript_fallback',
+    conversationId: 'conv-subagent-failed',
+    source: {
+      type: 'llm_tool_call',
+      toolCallId: 'subagent-call-failed',
+      assistantMessageId: 'assistant-1',
+    },
+    title: 'Investigate failure',
+    status: 'failed',
+    createdAt: 1,
+    completedAt: 2,
+    prompt: 'Investigate failure',
+    liveTranscript,
+    activityLog: '[error] failed',
+    abortController: new AbortController(),
+    result: {
+      taskId: 'sub_failed_transcript_fallback',
+      status: 'failed',
+      content: 'failed',
+      activityLog: '[error] failed',
+      durationMs: 1,
+      toolUseCount: 0,
+      prompt: 'Investigate failure',
+      modelName: 'test-model',
+    },
+  }
+}
+
+describe('AgentService dropConversation', () => {
+  beforeEach(() => {
+    runtimeInstances.length = 0
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  it('drops in-memory conversation state without persisting a deleted empty state', () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const service = new AgentService({ persistConversationMessages })
+    const internals = getAgentServiceInternals(service)
+    const subscriber = jest.fn()
+    const stateFeedSubscriber = jest.fn()
+    const foregroundAbort = jest.fn()
+
+    service.subscribe('conv-drop', subscriber, { emitCurrent: false })
+    service.subscribeToConversationStates(stateFeedSubscriber, {
+      emitCurrent: false,
+    })
+    service.replaceConversationMessages('conv-drop', [
+      makeUserMessage('u1', 'hi'),
+    ])
+    service.registerForegroundToolAborter({
+      conversationId: 'conv-drop',
+      toolCallId: 'tool-call-1',
+      abort: foregroundAbort,
+    })
+
+    internals.pendingScheduledConversationPublishes.set('conv-drop', {
+      rafId: null,
+      timeoutId: setTimeout(() => undefined, 100),
+    })
+    internals.autoRunScheduled.add('conv-drop')
+    internals.pendingBackgroundTaskResults.set('conv-drop', [])
+    internals.pendingUserMessagesByKey.set('conv-drop::default', [
+      makeUserMessage('queued-1', 'queued'),
+    ])
+    internals.continuationScheduledByKey.add('conv-drop::default')
+
+    service.dropConversation('conv-drop')
+    service.dropConversation('conv-drop')
+
+    expect(foregroundAbort).toHaveBeenCalledTimes(1)
+    expect(subscriber.mock.calls.at(-1)?.[0]).toMatchObject({
+      conversationId: 'conv-drop',
+      status: 'aborted',
+      messages: [],
+    })
+    expect(stateFeedSubscriber.mock.calls.at(-1)?.[0]).toMatchObject({
+      conversationId: 'conv-drop',
+      status: 'aborted',
+      messages: [],
+    })
+    expect(internals.conversationEntries.has('conv-drop')).toBe(false)
+    expect(internals.persistTimers.has('conv-drop')).toBe(false)
+    expect(
+      internals.pendingScheduledConversationPublishes.has('conv-drop'),
+    ).toBe(false)
+    expect(internals.autoRunScheduled.has('conv-drop')).toBe(false)
+    expect(internals.pendingBackgroundTaskResults.has('conv-drop')).toBe(false)
+    expect(internals.pendingUserMessagesByKey.has('conv-drop::default')).toBe(
+      false,
+    )
+    expect(internals.continuationScheduledByKey.has('conv-drop::default')).toBe(
+      false,
+    )
+    expect(
+      internals.foregroundToolAbortersByConversation.has('conv-drop'),
+    ).toBe(false)
+
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).not.toHaveBeenCalled()
+  })
+
+  it('does not let stale reads, subscriptions, or writes recreate a dropped conversation', async () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const service = new AgentService({ persistConversationMessages })
+    const internals = getAgentServiceInternals(service)
+
+    service.replaceConversationMessages('conv-no-revive', [
+      makeUserMessage('u1', 'hi'),
+    ])
+    service.dropConversation('conv-no-revive')
+
+    expect(service.getState('conv-no-revive')).toMatchObject({
+      conversationId: 'conv-no-revive',
+      status: 'aborted',
+      messages: [],
+    })
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+
+    const subscriber = jest.fn()
+    service.subscribe('conv-no-revive', subscriber)
+    expect(subscriber).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-no-revive',
+        status: 'aborted',
+        messages: [],
+      }),
+    )
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+
+    expect(service.getConversationRunSummary('conv-no-revive')).toMatchObject({
+      conversationId: 'conv-no-revive',
+      status: 'aborted',
+      isActive: false,
+    })
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+
+    service.replaceConversationMessages('conv-no-revive', [
+      makeUserMessage('u2', 'revive'),
+    ])
+    await service.run({
+      conversationId: 'conv-no-revive',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-no-revive', [
+        makeUserMessage('u3', 'run'),
+      ]),
+    })
+
+    expect(runtimeInstances).toHaveLength(0)
+    expect(internals.conversationEntries.has('conv-no-revive')).toBe(false)
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).not.toHaveBeenCalled()
+  })
+
+  it('does not create a conversation entry when checking an unknown running state', () => {
+    const service = new AgentService()
+    const internals = getAgentServiceInternals(service)
+
+    expect(service.isRunning('conv-never-created')).toBe(false)
+    expect(internals.conversationEntries.has('conv-never-created')).toBe(false)
+  })
+
+  it('does not recreate a dropped conversation when an aborted run settles', async () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const abortToolCall = jest.fn()
+    const service = new AgentService({ persistConversationMessages })
+    const internals = getAgentServiceInternals(service)
+    const userMessage = makeUserMessage('u1', 'run')
+    const runPromise = service.run({
+      conversationId: 'conv-running-drop',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conv-running-drop',
+        messages: [userMessage],
+        mcpManager: { abortToolCall },
+      } as unknown as AgentRuntimeRunInput,
+    })
+    const runtime = runtimeInstances[0]
+
+    runtime.emitSnapshot([
+      userMessage,
+      makeToolMessage(ToolCallResponseStatus.Running, 'tool-call-running'),
+    ])
+    expect(
+      service.enqueueUserMessage(
+        'conv-running-drop',
+        makeUserMessage('queued-1', 'queued'),
+      ),
+    ).toBe('enqueued')
+
+    service.dropConversation('conv-running-drop')
+
+    expect(runtime.abort).toHaveBeenCalledTimes(1)
+    expect(abortToolCall).toHaveBeenCalledWith('tool-call-running')
+    expect(internals.conversationEntries.has('conv-running-drop')).toBe(false)
+    expect(internals.runEntriesByKey.has('conv-running-drop::default')).toBe(
+      false,
+    )
+    expect(
+      internals.pendingUserMessagesByKey.has('conv-running-drop::default'),
+    ).toBe(false)
+
+    runtime.resolveRun()
+    await runPromise
+
+    expect(internals.conversationEntries.has('conv-running-drop')).toBe(false)
+    expect(internals.runEntriesByKey.has('conv-running-drop::default')).toBe(
+      false,
+    )
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).not.toHaveBeenCalled()
+  })
+
+  it('ignores background subagent completions after a conversation was dropped', () => {
+    const service = new AgentService()
+    const internals = getAgentServiceInternals(service)
+    const record = {
+      ...makeFailedSubagentTaskRecord(),
+      conversationId: 'conv-background-drop',
+    }
+    subagentTaskRegistry.register(record)
+    service.startBackgroundTaskResultListener()
+
+    try {
+      service.dropConversation(record.conversationId)
+      backgroundTaskCompletionBus.pushCompleted({
+        kind: 'subagent',
+        taskId: record.taskId,
+        conversationId: record.conversationId,
+        record,
+      })
+
+      expect(internals.conversationEntries.has(record.conversationId)).toBe(
+        false,
+      )
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.liveTranscript,
+      ).toBeUndefined()
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.result?.transcript,
+      ).toBeUndefined()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
+  })
 })
 
 describe('AgentService main activity summary', () => {
@@ -591,6 +1082,41 @@ describe('AgentService main activity summary', () => {
     expect(service.abortConversationMainActivity('conv-tracker')).toBe(true)
     expect(abort).toHaveBeenCalledTimes(1)
     unregister()
+  })
+})
+
+describe('AgentService background subagent results', () => {
+  it('persists live transcript fallback before compacting completed registry records', () => {
+    const service = new AgentService()
+    const record = makeFailedSubagentTaskRecord()
+    subagentTaskRegistry.register(record)
+    service.startBackgroundTaskResultListener()
+
+    try {
+      backgroundTaskCompletionBus.pushCompleted({
+        kind: 'subagent',
+        taskId: record.taskId,
+        conversationId: record.conversationId,
+        record,
+      })
+
+      const subagentResult = service
+        .getState(record.conversationId)
+        .messages.find((message) => message.role === 'subagent_result')
+      expect(subagentResult).toMatchObject({
+        role: 'subagent_result',
+        taskId: record.taskId,
+        transcript: record.liveTranscript,
+      })
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.liveTranscript,
+      ).toBeUndefined()
+      expect(
+        subagentTaskRegistry.get(record.taskId)?.result?.transcript,
+      ).toBeUndefined()
+    } finally {
+      service.stopBackgroundTaskResultListener()
+    }
   })
 })
 

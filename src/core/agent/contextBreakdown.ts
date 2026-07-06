@@ -160,19 +160,21 @@ export const estimateContextBreakdown = async ({
         chatModelModalities: model.modalities,
       })
     : []
-  const { hasTools, hasMemoryTools, requestTools } = selectAllowedTools({
-    availableTools,
-    allowedToolNames,
-    toolPreferences,
-    apiType,
-    enableToolDisclosure,
-    jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-  })
+  const { hasTools, hasMemoryTools, hasOnDemandTools, requestTools } =
+    await selectAllowedTools({
+      availableTools,
+      allowedToolNames,
+      toolPreferences,
+      apiType,
+      enableToolDisclosure,
+      jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+    })
 
   const sections = await requestContextBuilder.generateRequestSections({
     messages,
     hasTools,
     hasMemoryTools,
+    hasOnDemandTools,
     model,
     conversationId,
     compaction,

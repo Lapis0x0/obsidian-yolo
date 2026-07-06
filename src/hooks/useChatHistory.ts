@@ -7,7 +7,6 @@ import { editorStateToPlainText } from '../components/chat-view/chat-input/utils
 import {
   DEFAULT_CHAT_TITLE_PROMPT,
   DEFAULT_UNTITLED_CONVERSATION_TITLE,
-  LEGACY_UNTITLED_CONVERSATION_TITLES,
 } from '../constants'
 import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
@@ -40,15 +39,16 @@ import { ConversationOverrideSettings } from '../types/conversation-settings.typ
 import { Mentionable } from '../types/mentionable'
 import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
+  getConversationDisplayTitle,
+  isUntitledConversationTitle,
+} from '../utils/chat/conversationTitle'
+import {
   deserializeMentionable,
   serializeMentionable,
 } from '../utils/chat/mentionable'
 
 import { useChatManager } from './useJsonManagers'
 
-const LEGACY_UNTITLED_TITLE_SET = new Set<string>(
-  LEGACY_UNTITLED_CONVERSATION_TITLES,
-)
 const AUTO_TITLE_TIMEOUT_MS = 10000
 const AUTO_TITLE_MAX_RETRIES = 2
 const AUTO_TITLE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
@@ -56,17 +56,7 @@ const AUTO_TITLE_WAIT_CONVERSATION_RETRIES = 15
 const AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS = 200
 const CHAT_HISTORY_UPDATED_EVENT = 'yolo:chat-history-updated'
 
-export const isUntitledConversationTitle = (
-  title: string | null | undefined,
-): boolean => {
-  const normalized = title?.trim() ?? ''
-  return normalized.length === 0 || LEGACY_UNTITLED_TITLE_SET.has(normalized)
-}
-
-export const getConversationDisplayTitle = (
-  title: string | null | undefined,
-  fallback: string,
-): string => (isUntitledConversationTitle(title) ? fallback : title!.trim())
+export { getConversationDisplayTitle, isUntitledConversationTitle }
 
 const formatSelectedSkillsForTitleInput = (
   selectedSkills: ChatSelectedSkill[],
@@ -385,7 +375,7 @@ export function useChatHistory(): UseChatHistory {
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await chatManager.deleteChat(id)
-      plugin.getAgentService().evictSystemPromptSnapshot(id)
+      plugin.getAgentService().dropConversation(id)
       emitChatHistoryUpdated()
       await fetchChatList()
     },

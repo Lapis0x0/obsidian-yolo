@@ -4,7 +4,7 @@ import type { McpTool } from '../../types/mcp.types'
 import { selectAllowedTools } from './tool-selection'
 
 describe('selectAllowedTools', () => {
-  it('keeps full schemas for tools left in always mode', () => {
+  it('keeps full schemas for tools left in always mode', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -16,7 +16,7 @@ describe('selectAllowedTools', () => {
       },
     ]
 
-    const result = selectAllowedTools({
+    const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
@@ -37,7 +37,7 @@ describe('selectAllowedTools', () => {
     })
   })
 
-  it('injects delegate_subagent model pool into the request schema', () => {
+  it('injects delegate_subagent model pool into the request schema', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'yolo_local__delegate_subagent',
@@ -81,7 +81,7 @@ describe('selectAllowedTools', () => {
       },
     } as unknown as YoloSettings
 
-    const result = selectAllowedTools({
+    const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['yolo_local__delegate_subagent'],
       toolPreferences: {
@@ -107,7 +107,7 @@ describe('selectAllowedTools', () => {
     })
   })
 
-  it('replaces on-demand tools with a permissive stub schema (non-Gemini)', () => {
+  it('replaces on-demand tools with a permissive stub schema (non-Gemini)', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -120,7 +120,7 @@ describe('selectAllowedTools', () => {
       },
     ]
 
-    const result = selectAllowedTools({
+    const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
@@ -146,7 +146,7 @@ describe('selectAllowedTools', () => {
     expect(stub?.function.description).toContain('load_tool_schemas')
   })
 
-  it('uses args_json stub form on Gemini', () => {
+  it('uses args_json stub form on Gemini', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -155,7 +155,7 @@ describe('selectAllowedTools', () => {
       },
     ]
 
-    const result = selectAllowedTools({
+    const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
@@ -176,7 +176,7 @@ describe('selectAllowedTools', () => {
     })
   })
 
-  it('uses full schemas and skips loader injection when disclosure is disabled', () => {
+  it('uses full schemas and skips loader injection when disclosure is disabled', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -189,7 +189,7 @@ describe('selectAllowedTools', () => {
       },
     ]
 
-    const result = selectAllowedTools({
+    const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['server__tool_a'],
       enableToolDisclosure: false,
@@ -208,7 +208,7 @@ describe('selectAllowedTools', () => {
     })
   })
 
-  it('omits the loader when no surviving tool is on-demand', () => {
+  it('omits the loader when no surviving tool is on-demand', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -217,7 +217,7 @@ describe('selectAllowedTools', () => {
       },
     ]
 
-    const result = selectAllowedTools({
+    const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
@@ -233,7 +233,81 @@ describe('selectAllowedTools', () => {
     ])
   })
 
-  it('keeps the tools-field stable across identical selections', () => {
+  it('defaults lightweight MCP servers to always-loaded full schemas', async () => {
+    const availableTools: McpTool[] = [
+      {
+        name: 'server__tool_a',
+        description: 'Tool A',
+        inputSchema: {
+          type: 'object',
+          properties: { foo: { type: 'string' } },
+        },
+      },
+    ]
+
+    const result = await selectAllowedTools({
+      availableTools,
+      allowedToolNames: ['server__tool_a'],
+      toolPreferences: {
+        server__tool_a: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    expect(result.hasOnDemandTools).toBe(false)
+    expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
+      'server__tool_a',
+    ])
+    expect(result.requestTools?.[0]?.function.parameters).toEqual({
+      type: 'object',
+      properties: { foo: { type: 'string' } },
+    })
+  })
+
+  it('defaults heavy MCP servers to on-demand stubs', async () => {
+    const availableTools: McpTool[] = [
+      {
+        name: 'server__tool_a',
+        description: 'Tool A '.repeat(12000),
+        inputSchema: {
+          type: 'object',
+          properties: { foo: { type: 'string' } },
+          required: ['foo'],
+        },
+      },
+    ]
+
+    const result = await selectAllowedTools({
+      availableTools,
+      allowedToolNames: ['server__tool_a'],
+      toolPreferences: {
+        server__tool_a: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+      apiType: 'anthropic',
+    })
+
+    expect(result.hasOnDemandTools).toBe(true)
+    expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
+      'yolo_local__load_tool_schemas',
+      'server__tool_a',
+    ])
+    const stub = result.requestTools?.find(
+      (tool) => tool.function.name === 'server__tool_a',
+    )
+    expect(stub?.function.parameters).toEqual({
+      type: 'object',
+      properties: {},
+      additionalProperties: true,
+    })
+    expect(stub?.function.description).toContain('ON-DEMAND')
+  })
+
+  it('keeps the tools-field stable across identical selections', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -253,8 +327,8 @@ describe('selectAllowedTools', () => {
       apiType: 'anthropic' as const,
     }
 
-    const before = selectAllowedTools(params)
-    const after = selectAllowedTools(params)
+    const before = await selectAllowedTools(params)
+    const after = await selectAllowedTools(params)
 
     expect(JSON.stringify(before.requestTools)).toEqual(
       JSON.stringify(after.requestTools),

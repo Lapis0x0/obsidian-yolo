@@ -11,11 +11,18 @@ jest.mock('./which', () => ({
 
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
 
-import { killAllBashSessions, runBash } from './session-manager'
+import {
+  killAllBashSessions,
+  runBash,
+  sessionManagerTimings,
+} from './session-manager'
 
 describe('terminal command session-manager', () => {
+  const originalIdleWaitMs = sessionManagerTimings.idleWaitMs
+
   afterEach(() => {
     jest.useRealTimers()
+    sessionManagerTimings.idleWaitMs = originalIdleWaitMs
     killAllBashSessions()
   })
 
@@ -171,6 +178,8 @@ describe('terminal command session-manager', () => {
   })
 
   it('emits a background waiting event with separated output after idle', async () => {
+    sessionManagerTimings.idleWaitMs = 100
+
     const subscriber = jest.fn()
     const unsubscribe = backgroundTaskCompletionBus.subscribe(subscriber)
 
@@ -190,7 +199,7 @@ describe('terminal command session-manager', () => {
     const result = await resultPromise
     expect(result.state).toBe('background')
 
-    await new Promise((resolve) => setTimeout(resolve, 10_500))
+    await new Promise((resolve) => setTimeout(resolve, 500))
     expect(subscriber).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'terminal_command_waiting',
@@ -204,5 +213,5 @@ describe('terminal command session-manager', () => {
     )
 
     unsubscribe()
-  }, 20_000)
+  })
 })

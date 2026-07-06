@@ -142,6 +142,12 @@ function mentionablesToMarkdownLines(
       case 'pdf':
         lines.push(`PDF: ${m.name}`)
         break
+      case 'office':
+        lines.push(`${m.kind.toUpperCase()}: ${m.name}`)
+        break
+      case 'text-attachment':
+        lines.push(`${m.kind.toUpperCase()}: ${m.name}`)
+        break
       case 'model':
         lines.push(`Model: ${m.name}`)
         break

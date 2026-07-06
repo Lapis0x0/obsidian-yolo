@@ -117,8 +117,9 @@ export class AgentLlmTurnExecutor {
     const {
       hasTools,
       hasMemoryTools,
+      hasOnDemandTools,
       requestTools: tools,
-    } = selectAllowedTools({
+    } = await selectAllowedTools({
       availableTools,
       allowedToolNames: this.input.allowedToolNames,
       toolPreferences: this.input.toolPreferences,
@@ -132,6 +133,7 @@ export class AgentLlmTurnExecutor {
         messages: this.input.messages,
         hasTools,
         hasMemoryTools,
+        hasOnDemandTools,
         model: this.input.model,
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,

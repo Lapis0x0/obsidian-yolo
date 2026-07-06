@@ -100,6 +100,18 @@ export type ToolEditSummary = {
   undoStatus: ToolEditUndoStatus
 }
 
+export type ToolFsReadOperationSummary =
+  | {
+      type: 'full'
+      isPdf: boolean
+    }
+  | {
+      type: 'lines'
+      startLine: number
+      endLine: number
+      isPdf: boolean
+    }
+
 export type ToolCallRequest = {
   id: string
   name: string
@@ -126,6 +138,7 @@ export type ToolCallResponse =
         contentParts?: ContentPart[]
         metadata?: {
           editSummary?: ToolEditSummary
+          fsReadOperation?: ToolFsReadOperationSummary
           appliedAt?: number
           truncated?: { totalBytes: number; omittedBytes: number }
         }

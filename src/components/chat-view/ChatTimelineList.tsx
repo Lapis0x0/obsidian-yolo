@@ -1,5 +1,6 @@
 import type { CSSProperties, KeyboardEvent, ReactNode, RefObject } from 'react'
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -28,24 +29,37 @@ type AnchorSnapshot = {
 type RowProps<TItem extends ChatTimelineItem> = {
   item: TItem
   index: number
-  renderItem: (
-    item: TItem,
-    index: number,
-    context?: ChatTimelineRenderContext,
-  ) => ReactNode
+  renderItemRef: RefObject<
+    (
+      item: TItem,
+      index: number,
+      context?: ChatTimelineRenderContext,
+    ) => ReactNode
+  >
+  renderVersion: unknown
 }
 
-function TimelineRow<TItem extends ChatTimelineItem>({
+export type ChatTimelineRenderVersion<TItem extends ChatTimelineItem> = (
+  item: TItem,
+  index: number,
+) => unknown
+
+function TimelineRowInner<TItem extends ChatTimelineItem>({
   item,
   index,
-  renderItem,
+  renderItemRef,
 }: RowProps<TItem>) {
+  const renderItem = renderItemRef.current
+  if (!renderItem) {
+    return null
+  }
+
   return (
     <div
       className={`yolo-chat-timeline-row yolo-chat-timeline-row--${item.kind}`}
       data-timeline-kind={item.kind}
       data-yolo-user-anchor-id={
-        item.kind === 'user-message' ? item.message.id : undefined
+        item.kind === 'user-message' ? item.messageId : undefined
       }
       style={
         item.spacingBefore ? { paddingTop: item.spacingBefore } : undefined
@@ -54,6 +68,50 @@ function TimelineRow<TItem extends ChatTimelineItem>({
       {renderItem(item, index, { mode: 'full' })}
     </div>
   )
+}
+
+const TimelineRow = memo(TimelineRowInner) as typeof TimelineRowInner
+
+type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
+  items: TItem[]
+  conversationId?: string
+  scrollContainerRef: RefObject<HTMLElement>
+  onScrollContainerChange?: (element: HTMLElement | null) => void
+  renderItem: (
+    item: TItem,
+    index: number,
+    context?: ChatTimelineRenderContext,
+  ) => ReactNode
+  renderVersion?: ChatTimelineRenderVersion<TItem>
+  overscanPx?: number
+  virtualizationThreshold?: number
+  forceRenderItemIds?: string[]
+  onRenderStateChange?: (state: {
+    visibleStartIndex: number
+    visibleEndIndex: number
+    heightByItemId: Record<string, number>
+  }) => void
+  scrollContainerClassName?: string
+  scrollContainerStyle?: CSSProperties
+  followOutput?: FollowOutput
+  atBottomThreshold?: number
+  onAtBottomStateChange?: (atBottom: boolean) => void
+  onVirtualizationChange?: (isVirtualized: boolean) => void
+  onActiveUserMessageChange?: (messageId: string | null) => void
+  windowNavigationKey?: number
+  windowNavigationTargetMessageId?: string | null
+  hasEarlierMessages?: boolean
+  hasNewerMessages?: boolean
+  onLoadEarlier?: () => void
+  onLoadNewer?: () => void
+  loadEarlierLabel?: string
+  loadNewerLabel?: string
+  /**
+   * Additional bottom spacer height (px). Used to keep the last item from
+   * being visually obscured by an absolute-positioned overlay (e.g. todo
+   * panel / queued bubbles) anchored above the input box.
+   */
+  bottomSpacerHeight?: number
 }
 
 function TimelineBottomSpacer({ height }: { height: number }) {
@@ -105,47 +163,6 @@ function TimelineLoadMoreButton({
       </div>
     </div>
   )
-}
-
-type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
-  items: TItem[]
-  conversationId?: string
-  scrollContainerRef: RefObject<HTMLElement>
-  onScrollContainerChange?: (element: HTMLElement | null) => void
-  renderItem: (
-    item: TItem,
-    index: number,
-    context?: ChatTimelineRenderContext,
-  ) => ReactNode
-  overscanPx?: number
-  virtualizationThreshold?: number
-  forceRenderItemIds?: string[]
-  onRenderStateChange?: (state: {
-    visibleStartIndex: number
-    visibleEndIndex: number
-    heightByItemId: Record<string, number>
-  }) => void
-  scrollContainerClassName?: string
-  scrollContainerStyle?: CSSProperties
-  followOutput?: FollowOutput
-  atBottomThreshold?: number
-  onAtBottomStateChange?: (atBottom: boolean) => void
-  onVirtualizationChange?: (isVirtualized: boolean) => void
-  onActiveUserMessageChange?: (messageId: string | null) => void
-  windowNavigationKey?: number
-  windowNavigationTargetMessageId?: string | null
-  hasEarlierMessages?: boolean
-  hasNewerMessages?: boolean
-  onLoadEarlier?: () => void
-  onLoadNewer?: () => void
-  loadEarlierLabel?: string
-  loadNewerLabel?: string
-  /**
-   * Additional bottom spacer height (px). Used to keep the last item from
-   * being visually obscured by an absolute-positioned overlay (e.g. todo
-   * panel / queued bubbles) anchored above the input box.
-   */
-  bottomSpacerHeight?: number
 }
 
 function setScrollContainerRef(
@@ -289,6 +306,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   scrollContainerRef,
   onScrollContainerChange,
   renderItem,
+  renderVersion,
   overscanPx,
   virtualizationThreshold,
   forceRenderItemIds,
@@ -317,6 +335,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     null,
   )
   const lastAtBottomStateRef = useRef<boolean | null>(null)
+  const renderItemRef = useRef(renderItem)
+  renderItemRef.current = renderItem
   const initialBottomKeyRef = useRef<string | null>(null)
   const pendingAnchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
   const loadInFlightRef = useRef(false)
@@ -620,6 +640,12 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   }, [items.length, onRenderStateChange])
 
   const safeSpacerHeight = Math.max(0, Math.ceil(bottomSpacerHeight))
+  const resolveRenderVersion = useCallback(
+    (item: TItem, index: number) => {
+      return renderVersion ? renderVersion(item, index) : 0
+    },
+    [renderVersion],
+  )
 
   return (
     <div
@@ -640,7 +666,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
           key={item.renderKey}
           item={item}
           index={index}
-          renderItem={renderItem}
+          renderItemRef={renderItemRef}
+          renderVersion={resolveRenderVersion(item, index)}
         />
       ))}
       {hasNewerMessages && onLoadNewer ? (

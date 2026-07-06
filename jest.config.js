@@ -3,7 +3,7 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testEnvironment: 'node',
   transform: {
-    '^.+.tsx?$': ['ts-jest', {}],
+    '^.+.tsx?$': ['ts-jest', { isolatedModules: true }],
   },
   testPathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   modulePathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],

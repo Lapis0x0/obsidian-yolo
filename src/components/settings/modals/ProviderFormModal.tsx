@@ -23,6 +23,7 @@ import {
 } from '../../../utils/llm/provider-base-url'
 import {
   getRequestTransportModeValue,
+  getResponseStreamingMode,
   providerSupportsTransportModeSelection,
   reconcileEmbeddingModelsForProviderUpdate,
 } from '../../../utils/llm/provider-config'
@@ -257,6 +258,11 @@ function ProviderFormComponent({
         }
       : {}),
   }
+  const responseStreamingOptions = {
+    auto: t('settings.providers.responseStreamingModeAuto'),
+    streaming: t('settings.providers.responseStreamingModeStreaming'),
+    'non-streaming': t('settings.providers.responseStreamingModeNonStreaming'),
+  }
   type AdditionalSettingEntry =
     | (typeof providerTypeInfo.additionalSettings)[number]
     | typeof PROMPT_CACHING_SETTING
@@ -417,17 +423,21 @@ function ProviderFormComponent({
             ? t('settings.providers.noStainlessHeaders')
             : setting.key === 'requestTransportMode'
               ? t('settings.providers.requestTransportMode')
-              : setting.key === 'promptCaching'
-                ? t('settings.providers.promptCaching')
-                : setting.label
+              : setting.key === 'responseStreamingMode'
+                ? t('settings.providers.responseStreamingMode')
+                : setting.key === 'promptCaching'
+                  ? t('settings.providers.promptCaching')
+                  : setting.label
         const description =
           setting.key === 'noStainless'
             ? t('settings.providers.noStainlessHeadersDesc')
             : setting.key === 'requestTransportMode'
               ? t('settings.providers.requestTransportModeDesc')
-              : setting.key === 'promptCaching'
-                ? t('settings.providers.promptCachingDesc')
-                : (setting as { description?: string }).description
+              : setting.key === 'responseStreamingMode'
+                ? t('settings.providers.responseStreamingModeDesc')
+                : setting.key === 'promptCaching'
+                  ? t('settings.providers.promptCachingDesc')
+                  : (setting as { description?: string }).description
 
         return (
           <ObsidianSetting
@@ -456,7 +466,8 @@ function ProviderFormComponent({
                   )
                 }
               />
-            ) : setting.type === 'select' ? (
+            ) : setting.type === 'select' &&
+              setting.key === 'requestTransportMode' ? (
               <ObsidianDropdown
                 value={getRequestTransportModeValue(
                   formData.additionalSettings,
@@ -487,7 +498,25 @@ function ProviderFormComponent({
                   })
                 }
               />
-            ) : (
+            ) : setting.type === 'select' &&
+              setting.key === 'responseStreamingMode' ? (
+              <ObsidianDropdown
+                value={getResponseStreamingMode(formData.additionalSettings)}
+                options={responseStreamingOptions}
+                onChange={(value: string) =>
+                  setFormData(
+                    (prev) =>
+                      ({
+                        ...prev,
+                        additionalSettings: {
+                          ...(prev.additionalSettings ?? {}),
+                          [setting.key]: value,
+                        },
+                      }) as LLMProvider,
+                  )
+                }
+              />
+            ) : setting.type === 'text' ? (
               <ObsidianTextInput
                 value={
                   (formData.additionalSettings as Record<string, string>)?.[
@@ -508,7 +537,7 @@ function ProviderFormComponent({
                   )
                 }
               />
-            )}
+            ) : null}
           </ObsidianSetting>
         )
       })}

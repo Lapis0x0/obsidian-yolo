@@ -51,19 +51,21 @@ export const estimateContinuationRequestContextTokens = async ({
         chatModelModalities: model.modalities,
       })
     : []
-  const { hasTools, hasMemoryTools, requestTools } = selectAllowedTools({
-    availableTools,
-    allowedToolNames,
-    toolPreferences,
-    apiType,
-    enableToolDisclosure,
-    jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-  })
+  const { hasTools, hasMemoryTools, hasOnDemandTools, requestTools } =
+    await selectAllowedTools({
+      availableTools,
+      allowedToolNames,
+      toolPreferences,
+      apiType,
+      enableToolDisclosure,
+      jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+    })
 
   const requestMessages = await requestContextBuilder.generateRequestMessages({
     messages,
     hasTools,
     hasMemoryTools,
+    hasOnDemandTools,
     model,
     conversationId,
     compaction,

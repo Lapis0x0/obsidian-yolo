@@ -208,6 +208,43 @@ describe('tool-preferences defaults', () => {
         ),
       ).toBe('full_access')
     })
+
+    it('uses server-level approval for third-party MCP tools', () => {
+      expect(
+        getAssistantToolApprovalMode(
+          {
+            toolPreferences: {
+              server__tool_a: {
+                enabled: true,
+                approvalMode: 'require_approval',
+              },
+            },
+            toolServerPreferences: {
+              server: { approvalMode: 'full_access' },
+            },
+            enabledToolNames: [],
+          },
+          'server__tool_a',
+        ),
+      ).toBe('full_access')
+    })
+
+    it('defaults third-party MCP tools to approval when no server setting exists', () => {
+      expect(
+        getAssistantToolApprovalMode(
+          {
+            toolPreferences: {
+              server__tool_a: {
+                enabled: true,
+                approvalMode: 'full_access',
+              },
+            },
+            enabledToolNames: [],
+          },
+          'server__tool_a',
+        ),
+      ).toBe('require_approval')
+    })
   })
 
   describe('getExplicitlyEnabledAssistantToolNames', () => {
@@ -264,6 +301,10 @@ describe('tool-preferences defaults', () => {
             'Gemini__click',
             'github__list',
           ],
+          toolServerPreferences: {
+            Gemini: { approvalMode: 'full_access' as const },
+            github: { approvalMode: 'require_approval' as const },
+          },
         },
         new Set(['yolo_local', 'github']),
       )
@@ -275,6 +316,9 @@ describe('tool-preferences defaults', () => {
         'yolo_local__fs_read',
         'github__list',
       ])
+      expect(result.toolServerPreferences).toEqual({
+        github: { approvalMode: 'require_approval' as const },
+      })
     })
 
     it('returns the same reference when nothing changes', () => {
@@ -309,6 +353,9 @@ describe('tool-preferences defaults', () => {
             },
           },
           enabledToolNames: ['old__a', 'yolo_local__fs_read'],
+          toolServerPreferences: {
+            old: { approvalMode: 'full_access' as const },
+          },
         },
         'old',
         'new',
@@ -322,6 +369,9 @@ describe('tool-preferences defaults', () => {
         },
       })
       expect(result.enabledToolNames).toEqual(['new__a', 'yolo_local__fs_read'])
+      expect(result.toolServerPreferences).toEqual({
+        new: { approvalMode: 'full_access' as const },
+      })
     })
 
     it('dedupes enabledToolNames when the rename collides with an existing entry', () => {

@@ -1,7 +1,11 @@
 import { YoloSettings } from '../../settings/schema/setting.types'
 import { ChatModel } from '../../types/chat-model.types'
 import { EmbeddingModel } from '../../types/embedding-model.types'
-import { LLMProvider, RequestTransportMode } from '../../types/provider.types'
+import {
+  LLMProvider,
+  RequestTransportMode,
+  ResponseStreamingMode,
+} from '../../types/provider.types'
 
 import { isBedrockMantleProvider, isNativeBedrockProvider } from './bedrock'
 
@@ -60,6 +64,17 @@ export function getRequestTransportModeValue(
   }
 
   return isDesktop ? 'node' : 'browser'
+}
+
+export function getResponseStreamingMode(
+  additionalSettings: Record<string, unknown> | undefined,
+): ResponseStreamingMode {
+  const mode = additionalSettings?.responseStreamingMode
+  if (mode === 'auto' || mode === 'streaming' || mode === 'non-streaming') {
+    return mode
+  }
+
+  return 'auto'
 }
 
 export function providerSupportsEmbedding(provider: LLMProvider): boolean {

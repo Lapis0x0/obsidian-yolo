@@ -9,17 +9,18 @@ import type { LLMProviderApiType } from '../../types/provider.types'
 const STUB_DESCRIPTION_MAX_CHARS = 200
 
 const STUB_DESCRIPTION_SUFFIX =
-  ' (on-demand: call yolo_local__load_tool_schemas to load full schema before use)'
+  ' ON-DEMAND: Before calling this tool, call yolo_local__load_tool_schemas with {"servers":["<server>"]} to load its full schema.'
 
 const truncateDescription = (description: string | undefined): string => {
   const raw = (description ?? '').trim()
   if (raw.length === 0) {
-    return 'On-demand tool. Call yolo_local__load_tool_schemas to load the full schema before invoking.'
+    return STUB_DESCRIPTION_SUFFIX.trim()
   }
-  if (raw.length <= STUB_DESCRIPTION_MAX_CHARS) {
+  const maxRawLength = STUB_DESCRIPTION_MAX_CHARS
+  if (raw.length <= maxRawLength) {
     return `${raw}${STUB_DESCRIPTION_SUFFIX}`
   }
-  return `${raw.slice(0, STUB_DESCRIPTION_MAX_CHARS - 3)}...${STUB_DESCRIPTION_SUFFIX}`
+  return `${raw.slice(0, maxRawLength - 3)}...${STUB_DESCRIPTION_SUFFIX}`
 }
 
 /**

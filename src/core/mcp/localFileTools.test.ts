@@ -1006,6 +1006,10 @@ describe('local fs tool action helpers', () => {
       totalLines: 3,
     })
     expect(payload.results[0].returnedRange).toBeUndefined()
+    expect(result.metadata?.fsReadOperation).toEqual({
+      type: 'full',
+      isPdf: false,
+    })
   })
 
   it('defaults fs_read to full operation when operation is omitted', async () => {
@@ -1523,6 +1527,12 @@ describe('local fs tool action helpers', () => {
       returnedRange: { startLine: 2, endLine: 3 },
       hasMoreBelow: true,
       nextStartLine: 4,
+    })
+    expect(result.metadata?.fsReadOperation).toEqual({
+      type: 'lines',
+      startLine: 2,
+      endLine: 3,
+      isPdf: false,
     })
   })
 

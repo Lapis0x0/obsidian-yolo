@@ -20,6 +20,12 @@ export const requestTransportModeByPlatformSchema = z.object({
   mobile: z.enum(['browser', 'obsidian']).optional(),
 })
 
+export const responseStreamingModeSchema = z.enum([
+  'auto',
+  'streaming',
+  'non-streaming',
+])
+
 export const providerPresetTypeSchema = z.enum([
   'openai',
   'chatgpt-oauth',
@@ -236,6 +242,7 @@ export const llmProviderSchema = baseLlmProviderInputSchema
 export type LLMProvider = z.infer<typeof llmProviderSchema>
 export type ProviderHeader = z.infer<typeof providerHeaderSchema>
 export type RequestTransportMode = z.infer<typeof requestTransportModeSchema>
+export type ResponseStreamingMode = z.infer<typeof responseStreamingModeSchema>
 export type RequestTransportModeByPlatform = {
   desktop?: RequestTransportMode
   mobile?: Extract<RequestTransportMode, 'browser' | 'obsidian'>

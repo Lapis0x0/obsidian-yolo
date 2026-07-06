@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import {
   AssistantToolPreference,
+  AssistantToolServerPreference,
   AssistantWorkspaceScope,
 } from '../../types/assistant.types'
 import {
@@ -29,6 +30,7 @@ import {
   parseAndRepairToolArguments,
   parseAndRepairToolArgumentsText,
 } from '../../utils/chat/tool-argument-parser'
+import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
 import {
   ASK_USER_QUESTION_TOOL_NAME,
@@ -54,11 +56,15 @@ import {
   extractLoadedDeferredToolNames,
 } from './tool-disclosure'
 import {
+  buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
   isAssistantToolEnabled,
 } from './tool-preferences'
-import { isLoadToolSchemasToolName } from './tool-selection'
+import {
+  expandAllowedToolNames,
+  isLoadToolSchemasToolName,
+} from './tool-selection'
 import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
 import type { AgentRunContext } from './types'
 import {
@@ -244,6 +250,10 @@ export class AgentToolGateway {
   private readonly toolsEnabled: boolean
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
+  private readonly toolServerPreferences?: Record<
+    string,
+    AssistantToolServerPreference
+  >
   private readonly enableToolDisclosure: boolean
   private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillPaths?: readonly string[]
@@ -259,6 +269,10 @@ export class AgentToolGateway {
     string,
     AjvValidateFunction | null
   >()
+  private serverToolTokenBudgets: ReadonlyMap<string, number> | null = null
+  private serverToolTokenBudgetsPromise: Promise<
+    ReadonlyMap<string, number>
+  > | null = null
 
   constructor(
     private readonly mcpManager: McpManager,
@@ -266,6 +280,7 @@ export class AgentToolGateway {
       toolsEnabled?: boolean
       allowedToolNames?: string[]
       toolPreferences?: Record<string, AssistantToolPreference>
+      toolServerPreferences?: Record<string, AssistantToolServerPreference>
       enableToolDisclosure?: boolean
       workspaceScope?: AssistantWorkspaceScope
       allowedSkillPaths?: string[]
@@ -280,9 +295,10 @@ export class AgentToolGateway {
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
     this.allowedToolNames = options?.allowedToolNames
-      ? new Set(options.allowedToolNames)
+      ? expandAllowedToolNames(options.allowedToolNames)
       : undefined
     this.toolPreferences = options?.toolPreferences
+    this.toolServerPreferences = options?.toolServerPreferences
     this.enableToolDisclosure = options?.enableToolDisclosure ?? true
     this.workspaceScope = options?.workspaceScope
     this.allowedSkillPaths = options?.allowedSkillPaths
@@ -301,13 +317,59 @@ export class AgentToolGateway {
     this.ajv = new Ajv({ allErrors: true, useDefaults: false })
   }
 
-  private isOnDemandToolName(toolName: string): boolean {
+  private async getServerToolTokenBudgets(): Promise<
+    ReadonlyMap<string, number>
+  > {
+    if (this.serverToolTokenBudgets) {
+      return this.serverToolTokenBudgets
+    }
+    if (!this.serverToolTokenBudgetsPromise) {
+      this.serverToolTokenBudgetsPromise = (async () => {
+        const availableTools = await this.mcpManager.listAvailableTools({
+          includeBuiltinTools: true,
+        })
+        const serverToolsMap = new Map<string, McpTool[]>()
+        for (const tool of availableTools) {
+          if (!this.isToolAllowed(tool.name)) {
+            continue
+          }
+          let serverName: string
+          try {
+            serverName = parseToolName(tool.name).serverName
+          } catch {
+            continue
+          }
+          const bucket = serverToolsMap.get(serverName) ?? []
+          bucket.push(tool)
+          serverToolsMap.set(serverName, bucket)
+        }
+        const budgets = await buildServerToolTokenBudgets(
+          serverToolsMap,
+          estimateJsonTokens,
+        )
+        this.serverToolTokenBudgets = budgets
+        return budgets
+      })()
+    }
+    return this.serverToolTokenBudgetsPromise
+  }
+
+  private async isOnDemandToolName(toolName: string): Promise<boolean> {
     if (!this.enableToolDisclosure) {
       return false
     }
     if (isLoadToolSchemasToolName(toolName)) {
       return false
     }
+    try {
+      const { serverName } = parseToolName(toolName)
+      if (serverName === getLocalFileToolServerName()) {
+        return false
+      }
+    } catch {
+      return false
+    }
+    const serverToolTokenBudgets = await this.getServerToolTokenBudgets()
     return (
       getAssistantToolDisclosureMode(
         {
@@ -317,6 +379,7 @@ export class AgentToolGateway {
             : undefined,
         },
         toolName,
+        { serverToolTokenBudgets },
       ) === 'on_demand'
     )
   }
@@ -380,7 +443,7 @@ export class AgentToolGateway {
     | { ok: true; request: ToolCallRequest }
     | { ok: false; response: ToolCallResponse }
   > {
-    if (!this.isOnDemandToolName(request.name)) {
+    if (!(await this.isOnDemandToolName(request.name))) {
       return { ok: true, request }
     }
 
@@ -1393,6 +1456,7 @@ export class AgentToolGateway {
     const approvalMode = getAssistantToolApprovalMode(
       {
         toolPreferences: this.toolPreferences,
+        toolServerPreferences: this.toolServerPreferences,
         enabledToolNames: this.allowedToolNames
           ? [...this.allowedToolNames]
           : undefined,
@@ -1478,6 +1542,7 @@ export class AgentToolGateway {
         getAssistantToolApprovalMode(
           {
             toolPreferences: this.toolPreferences,
+            toolServerPreferences: this.toolServerPreferences,
             enabledToolNames: this.allowedToolNames
               ? [...this.allowedToolNames]
               : undefined,

@@ -66,6 +66,12 @@ export type AgentRuntimeRunInput = {
       disclosureMode?: 'always' | 'on_demand'
     }
   >
+  toolServerPreferences?: Record<
+    string,
+    {
+      approvalMode?: 'full_access' | 'require_approval'
+    }
+  >
   workspaceScope?: {
     enabled: boolean
     include: string[]

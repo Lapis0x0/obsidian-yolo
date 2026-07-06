@@ -267,7 +267,7 @@ describe('parseVaultData', () => {
 
   it('should migrate older vault data before extracting importable keys', () => {
     const result = parseVaultData({
-      version: SETTINGS_SCHEMA_VERSION - 1,
+      version: 71,
       ragOptions: { enabled: true },
     })
     expect(result.valid).toBe(true)

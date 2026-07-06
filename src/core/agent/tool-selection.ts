@@ -3,6 +3,7 @@ import type { AssistantToolPreference } from '../../types/assistant.types'
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
+import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
@@ -19,7 +20,10 @@ import {
   formatSubagentModelOption,
   resolveSubagentModelConfig,
 } from './subagent/model-config'
-import { getAssistantToolDisclosureMode } from './tool-preferences'
+import {
+  buildServerToolTokenBudgets,
+  getAssistantToolDisclosureMode,
+} from './tool-preferences'
 import { buildToolStub } from './tool-stub'
 
 const LOCAL_MEMORY_TOOL_NAMES = new Set([
@@ -102,6 +106,24 @@ const isToolAllowed = ({
   }
 
   return allowedToolNames.has(toolName)
+}
+
+const groupToolsByServer = (
+  tools: readonly McpTool[],
+): Map<string, McpTool[]> => {
+  const serverTools = new Map<string, McpTool[]>()
+  for (const tool of tools) {
+    let serverName: string
+    try {
+      serverName = parseToolName(tool.name).serverName
+    } catch {
+      continue
+    }
+    const bucket = serverTools.get(serverName) ?? []
+    bucket.push(tool)
+    serverTools.set(serverName, bucket)
+  }
+  return serverTools
 }
 
 export const buildRequestTools = (
@@ -198,7 +220,7 @@ function applySubagentModelSchema(
   }
 }
 
-export const selectAllowedTools = ({
+export const selectAllowedTools = async ({
   availableTools,
   allowedToolNames,
   toolPreferences,
@@ -206,6 +228,7 @@ export const selectAllowedTools = ({
   enableToolDisclosure = true,
   jsSandboxSettings = {},
   settings,
+  serverToolTokenBudgets,
 }: {
   availableTools: McpTool[]
   allowedToolNames?: string[]
@@ -214,12 +237,15 @@ export const selectAllowedTools = ({
   enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
   settings?: YoloSettings
-}): {
+  serverToolTokenBudgets?: ReadonlyMap<string, number>
+}): Promise<{
   filteredTools: McpTool[]
   hasTools: boolean
   hasMemoryTools: boolean
+  hasOnDemandTools: boolean
   requestTools: RequestTool[] | undefined
-} => {
+  serverToolTokenBudgets: ReadonlyMap<string, number>
+}> => {
   const normalizedAllowedToolNames = expandAllowedToolNames(allowedToolNames)
 
   const baseFiltered = applyDynamicToolDescriptions(
@@ -237,6 +263,12 @@ export const selectAllowedTools = ({
       ? [...normalizedAllowedToolNames]
       : undefined,
   }
+  const resolvedServerToolTokenBudgets =
+    serverToolTokenBudgets ??
+    (await buildServerToolTokenBudgets(
+      groupToolsByServer(baseFiltered),
+      estimateJsonTokens,
+    ))
 
   // Per-tool disclosure decisions for the filtered (non-loader) tools.
   // Computed up front so the loader injection can ask "does any surviving
@@ -247,6 +279,7 @@ export const selectAllowedTools = ({
       tool.name,
       getAssistantToolDisclosureMode(assistantLike, tool.name, {
         enableToolDisclosure,
+        serverToolTokenBudgets: resolvedServerToolTokenBudgets,
       }),
     )
   }
@@ -288,7 +321,9 @@ export const selectAllowedTools = ({
     hasMemoryTools: filteredTools.some((tool) =>
       isMemoryToolAvailable(tool.name),
     ),
+    hasOnDemandTools: hasOnDemand,
     requestTools: buildRequestTools(requestToolDefinitions),
+    serverToolTokenBudgets: resolvedServerToolTokenBudgets,
   }
 }
 

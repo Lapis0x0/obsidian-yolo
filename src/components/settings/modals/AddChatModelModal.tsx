@@ -11,8 +11,14 @@ import { App, Notice, requestUrl } from 'obsidian'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 
 import { DEFAULT_CHAT_MODELS } from '../../../constants'
+import { BAKED_PLUGIN_VERSION } from '../../../constants/bakedVersion'
 import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
+import { listChatGPTOAuthModels } from '../../../core/llm/chatgptOAuthModelCatalog'
+import {
+  collectModelIdentifiers,
+  extractModelIdentifier,
+} from '../../../core/llm/modelCatalogIdentifiers'
 import YoloPlugin from '../../../main'
 import {
   ChatModel,
@@ -54,8 +60,6 @@ type AddChatModelModalComponentProps = {
 type CustomParameterFormEntry = CustomParameter & {
   uid: string
 }
-
-const MODEL_IDENTIFIER_KEYS = ['id', 'name', 'model'] as const
 
 const REASONING_TYPES = ['none', 'openai', 'gemini', 'anthropic'] as const
 type ReasoningType = (typeof REASONING_TYPES)[number]
@@ -116,28 +120,6 @@ const clampMaxContextTokens = (value: number): number =>
 const clampMaxOutputTokens = (value: number): number =>
   Math.max(1, Math.floor(value))
 
-const extractModelIdentifier = (value: unknown): string | null => {
-  if (typeof value === 'string') {
-    return value
-  }
-  if (!value || typeof value !== 'object') {
-    return null
-  }
-  const record = value as Record<string, unknown>
-  for (const key of MODEL_IDENTIFIER_KEYS) {
-    const candidate = record[key]
-    if (typeof candidate === 'string' && candidate.length > 0) {
-      return candidate
-    }
-  }
-  return null
-}
-
-const collectModelIdentifiers = (values: unknown[]): string[] =>
-  values
-    .map((entry) => extractModelIdentifier(entry))
-    .filter((id): id is string => Boolean(id))
-
 const normalizeGeminiBaseUrl = (raw?: string): string | undefined => {
   if (!raw) return undefined
   const trimmed = raw.replace(/\/+$/, '')
@@ -156,11 +138,10 @@ const CHATGPT_OAUTH_DEFAULT_MODELS = Array.from(
     ...DEFAULT_CHAT_MODELS.filter((model) =>
       model.providerId.startsWith('chatgpt-oauth'),
     ).map((model) => model.model),
-    'gpt-5.1-codex',
-    'gpt-5.1-codex-max',
-    'gpt-5.1-codex-mini',
-    'gpt-5.2',
-    'gpt-5.2-codex',
+    'gpt-5.5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.3-codex-spark',
   ]),
 )
 
@@ -386,79 +367,30 @@ function AddChatModelModalComponent({
             return
           }
 
-          const base = (
-            selectedProvider.baseUrl?.trim() ||
-            'https://chatgpt.com/backend-api/codex'
-          ).replace(/\/+$/, '')
-          const baseWithoutVersion = base.replace(/\/v\d+$/, '')
-          const urlCandidates = Array.from(
-            new Set([
-              `${base}/models`,
-              `${baseWithoutVersion}/models`,
-              `${base}/responses/models`,
-              `${baseWithoutVersion}/responses/models`,
-            ]),
-          )
-
-          let lastErr: unknown = null
-          for (const url of urlCandidates) {
-            try {
-              const response = await requestUrl({
-                url,
-                method: 'GET',
-                headers: {
-                  Accept: 'application/json',
-                  Authorization: `Bearer ${credential.accessToken}`,
-                  originator: 'opencode',
-                  ...(credential.accountId
-                    ? { 'ChatGPT-Account-Id': credential.accountId }
-                    : {}),
-                  ...(providerHeaders ?? {}),
-                },
-              })
-              if (response.status < 200 || response.status >= 300) {
-                lastErr = new Error(
-                  `Failed to fetch models: ${response.status}`,
-                )
-                continue
-              }
-              const json = response.json ?? JSON.parse(response.text)
-              const buckets: string[] = []
-              if (Array.isArray(json?.data)) {
-                buckets.push(...collectModelIdentifiers(json.data))
-              }
-              if (Array.isArray(json?.models)) {
-                buckets.push(...collectModelIdentifiers(json.models))
-              }
-              if (Array.isArray(json)) {
-                buckets.push(...collectModelIdentifiers(json))
-              }
-
-              const unique = Array.from(
-                new Set([...buckets, ...CHATGPT_OAUTH_DEFAULT_MODELS]),
-              ).sort()
-              if (unique.length === 0) {
-                lastErr = new Error('Empty models list in response')
-                continue
-              }
-
-              setAvailableModels(unique)
-              plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
-              return
-            } catch (error) {
-              lastErr = error
-            }
+          try {
+            const models = await listChatGPTOAuthModels({
+              baseUrl: selectedProvider.baseUrl,
+              accessToken: credential.accessToken,
+              accountId: credential.accountId,
+              headers: providerHeaders,
+              clientVersion: BAKED_PLUGIN_VERSION,
+            })
+            const unique = Array.from(
+              new Set([...models, ...CHATGPT_OAUTH_DEFAULT_MODELS]),
+            ).sort()
+            setAvailableModels(unique)
+            plugin.setCachedModelList(selectedProvider.id, unique, 'chat')
+          } catch (error) {
+            console.warn(
+              '[YOLO] Failed to fetch ChatGPT OAuth models, fallback to defaults.',
+              error,
+            )
+            const fallback = Array.from(
+              new Set(CHATGPT_OAUTH_DEFAULT_MODELS),
+            ).sort()
+            setAvailableModels(fallback)
+            plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
           }
-
-          console.warn(
-            '[YOLO] Failed to fetch ChatGPT OAuth models, fallback to defaults.',
-            lastErr,
-          )
-          const fallback = Array.from(
-            new Set(CHATGPT_OAUTH_DEFAULT_MODELS),
-          ).sort()
-          setAvailableModels(fallback)
-          plugin.setCachedModelList(selectedProvider.id, fallback, 'chat')
           return
         }
 

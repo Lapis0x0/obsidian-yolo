@@ -21,6 +21,7 @@ import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallResponseStatus,
   type ToolEditSummary,
+  type ToolFsReadOperationSummary,
 } from '../../types/tool-call.types'
 import { uint8ArrayToBase64 } from '../../utils/base64'
 import {
@@ -35,6 +36,10 @@ import {
   chatModelSupportsPdf,
   chatModelSupportsVision,
 } from '../../utils/llm/model-modalities'
+import {
+  type OfficeDocumentKind,
+  parseOfficeDocument,
+} from '../../utils/office'
 import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
@@ -131,6 +136,7 @@ export { recoverLikelyEscapedBackslashSequences }
 const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 export const TERMINAL_COMMAND_TOOL_NAME = 'terminal_command'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
+const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
 // fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES 是"快照阈值"
 // （超过则跳过 undo/review 快照），本常量是"绝对拒绝上限"（超过才真正拒绝编辑）。
 const MAX_EDIT_FILE_SIZE_BYTES = 16 * 1024 * 1024
@@ -246,8 +252,19 @@ type FsReadOperation =
 type ContextPruneMode = 'selected' | 'all'
 type FsFileOpAction = 'write' | 'delete' | 'create_dir' | 'move'
 
+function getOfficeDocumentKindFromExtension(
+  extension: string | undefined,
+): OfficeDocumentKind | null {
+  const normalized = extension?.toLowerCase()
+  if (normalized === 'docx' || normalized === 'pptx' || normalized === 'xlsx') {
+    return normalized
+  }
+  return null
+}
+
 type LocalToolCallResultMetadata = {
   editSummary?: ToolEditSummary
+  fsReadOperation?: ToolFsReadOperationSummary
   appliedAt?: number
   truncated?: { totalBytes: number; omittedBytes: number }
 }
@@ -741,7 +758,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_read',
       description:
-        'Read vault files, skill instructions, or open Obsidian web pages. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Prefer lines for targeted reads. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
+        'Read vault files, skill instructions, or open Obsidian web pages. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Prefer lines for targeted reads. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -838,7 +855,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_edit',
       description:
-        'Apply a single targeted text edit within an existing file. Prefer this tool when modifying content in an existing file. Two ways to locate the edit, choose exactly one: for an exact-text edit, provide oldText (the text to find, which must match the file exactly once) and newText; for a line-range edit, provide startLine and endLine (1-based inclusive) and newText. Do not provide both oldText and startLine/endLine. To make several edits in the same file, emit multiple fs_edit calls — the system automatically merges edits targeting the same file into one atomic review and write, so earlier edits cannot invalidate later ones.',
+        'Apply one targeted text edit to an existing file. You must provide path, newText, and exactly one locator: oldText for exact-text replacement, or startLine+endLine for line-range replacement. Do not call fs_edit with only path and newText. Do not provide both oldText and startLine/endLine. Use fs_write to create a new file, fill an empty file, or overwrite full file content. To make several edits in the same file, emit multiple fs_edit calls — the system automatically merges edits targeting the same file into one atomic review and write, so earlier edits cannot invalidate later ones.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -846,14 +863,15 @@ export function getLocalFileTools(options?: {
             type: 'string',
             description: 'Vault-relative file path.',
           },
+          newText: {
+            type: 'string',
+            description:
+              'Replacement text. This is not a standalone write request; it is only valid together with oldText or startLine+endLine.',
+          },
           oldText: {
             type: 'string',
             description:
               'Exact-text mode: the existing text to find and replace. Must match the file exactly once. Do not combine with startLine/endLine.',
-          },
-          newText: {
-            type: 'string',
-            description: 'Replacement text. Required in both modes.',
           },
           startLine: {
             type: 'integer',
@@ -3697,6 +3715,54 @@ export async function callLocalFileTool({
             continue
           }
 
+          const officeKind = getOfficeDocumentKindFromExtension(file.extension)
+          if (officeKind) {
+            if (file.stat.size > OFFICE_READ_MAX_BYTES) {
+              results.push({
+                path,
+                ok: false,
+                error: `Office document too large (${file.stat.size} bytes).`,
+              })
+              continue
+            }
+
+            try {
+              const rawBuf = await app.vault.readBinary(file)
+              const parsed = await parseOfficeDocument(rawBuf, officeKind)
+              const content = parsed.markdown
+              const lines = content.length === 0 ? [] : content.split('\n')
+              const sliced = sliceLinesForFsReadOperation(lines, operation)
+
+              results.push({
+                path,
+                ok: true,
+                totalLines: sliced.totalLines,
+                returnedRange:
+                  operation.type === 'lines'
+                    ? {
+                        startLine: sliced.returnedStartLine,
+                        endLine: sliced.returnedEndLine,
+                      }
+                    : undefined,
+                hasMoreBelow: sliced.hasMoreBelow,
+                nextStartLine: sliced.nextStartLine,
+                content: sliced.outputContent,
+              })
+            } catch (error) {
+              results.push({
+                path,
+                ok: false,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : typeof error === 'string'
+                      ? error
+                      : JSON.stringify(error),
+              })
+            }
+            continue
+          }
+
           if (file.stat.size > MAX_FILE_SIZE_BYTES) {
             results.push({
               path,
@@ -3790,10 +3856,37 @@ export async function callLocalFileTool({
             ? perFileAttachmentParts.flatMap((p) => p.parts)
             : undefined
 
+        const firstReadableResult = results[0]?.ok ? results[0] : undefined
+        const isPdf =
+          typeof firstReadableResult?.path === 'string' &&
+          firstReadableResult.path.toLowerCase().endsWith('.pdf')
+        const fsReadOperation: ToolFsReadOperationSummary | undefined = (() => {
+          if (!firstReadableResult) {
+            return undefined
+          }
+          if (operation.type === 'full') {
+            return { type: 'full', isPdf }
+          }
+          const returnedRange = firstReadableResult.returnedRange
+          if (
+            typeof returnedRange?.startLine !== 'number' ||
+            typeof returnedRange.endLine !== 'number'
+          ) {
+            return undefined
+          }
+          return {
+            type: 'lines',
+            startLine: returnedRange.startLine,
+            endLine: returnedRange.endLine,
+            isPdf,
+          }
+        })()
+
         return {
           status: ToolCallResponseStatus.Success,
           text: textResult,
           contentParts,
+          metadata: fsReadOperation ? { fsReadOperation } : undefined,
         }
       }
 

@@ -8,7 +8,10 @@ import { isAgentChatMode } from './chat-input/ChatModeSelect'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,
-  'enableTools' | 'includeBuiltinTools' | 'toolPreferences'
+  | 'enableTools'
+  | 'includeBuiltinTools'
+  | 'toolPreferences'
+  | 'toolServerPreferences'
 >
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
@@ -28,18 +31,25 @@ export type ChatModeRuntime = {
   loopConfig: AgentRuntimeLoopConfig
   allowedToolNames: string[] | undefined
   toolPreferences: Assistant['toolPreferences']
+  toolServerPreferences: Assistant['toolServerPreferences']
   bypassToolApproval: boolean
   runtimeModePrompt?: string
 }
 
 export type ChatModeRuntimeInput = {
   mode: ChatMode
+  /**
+   * Auto-approve tool calls (YOLO). Orthogonal to `mode`; only takes effect in
+   * Agent mode.
+   */
+  yoloEnabled?: boolean
   assistant?: AssistantRuntimeOptions | null
   assistantEnabledToolNames: string[]
 }
 
 export function resolveChatModeRuntime({
   mode,
+  yoloEnabled = false,
   assistant,
   assistantEnabledToolNames,
 }: ChatModeRuntimeInput): ChatModeRuntime {
@@ -64,7 +74,10 @@ export function resolveChatModeRuntime({
     },
     allowedToolNames,
     toolPreferences: isAgentMode ? assistant?.toolPreferences : undefined,
-    bypassToolApproval: mode === 'agent-full',
+    toolServerPreferences: isAgentMode
+      ? assistant?.toolServerPreferences
+      : undefined,
+    bypassToolApproval: isAgentMode && yoloEnabled,
     runtimeModePrompt: isAgentMode
       ? undefined
       : `<runtime_mode>

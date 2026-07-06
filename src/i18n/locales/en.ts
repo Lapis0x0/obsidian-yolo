@@ -494,6 +494,8 @@ export const en: TranslationKeys = {
       tools: 'Tools',
       toolsCount: '{count} tools',
       toolsCountWithEnabled: '{count} tools (enabled {enabled})',
+      mcpLoadingStatus: 'Loading {count} MCP…',
+      mcpErrorStatus: '{count} MCP failed to connect',
       skills: 'Skills',
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
@@ -707,7 +709,10 @@ export const en: TranslationKeys = {
       toolApproval: 'Approval',
       toolApprovalFullAccess: 'Full access',
       toolApprovalRequire: 'Require approval',
+      toolDisclosureAuto: 'Auto',
+      toolDisclosureAutoSelect: 'Auto select',
       toolDisclosureAlways: 'In context',
+      toolDisclosureMixed: 'Mixed',
       toolDisclosureOnDemand: 'On demand',
       editorEnabled: 'Enabled',
       editorDisabled: 'Disabled',
@@ -998,6 +1003,12 @@ export const en: TranslationKeys = {
       requestTransportModeBrowser: 'Browser request',
       requestTransportModeObsidian: 'Obsidian built-in request',
       requestTransportModeNode: 'Desktop direct connection (recommended)',
+      responseStreamingMode: 'Response streaming mode',
+      responseStreamingModeDesc:
+        'Control whether this provider uses streaming or non-streaming responses.',
+      responseStreamingModeAuto: 'Auto (default)',
+      responseStreamingModeStreaming: 'Streaming',
+      responseStreamingModeNonStreaming: 'Non-streaming',
       promptCaching: 'Prompt caching',
       promptCachingDesc:
         'Enable Anthropic ephemeral prompt caching. Reuses system prompt, tools, and conversation history across turns to cut input tokens. Cache writes carry a 25% premium; reads cost ~10% of normal input. Available whenever the provider API type is Anthropic; upstream must actually honor the cache_control field.',
@@ -1767,11 +1778,14 @@ export const en: TranslationKeys = {
     selectModel: 'Select model',
     uploadImage: 'Upload image',
     uploadFile: 'Add file',
+    dropFilesHint: 'Drop to add files',
     imageUnsupportedByModel:
       'This model has not declared image support. Enable the "Vision" input modality in the model settings to attach images.',
     unsupportedFileType: 'Unsupported file type: {names}',
     processImagesFailed: 'Failed to process uploaded images',
     readPdfFailed: 'Failed to read PDF "{name}": {error}',
+    readOfficeFailed: 'Failed to read Office document "{name}": {error}',
+    readTextAttachmentFailed: 'Failed to read text file "{name}": {error}',
     addContext: 'Add context',
     applyChanges: 'Apply changes',
     copyMessage: 'Copy message',
@@ -2249,6 +2263,8 @@ export const en: TranslationKeys = {
     agentDesc: 'Tools for complex tasks',
     agentFull: 'Agent (YOLO)',
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
+    yolo: 'YOLO',
+    yoloDesc: 'Auto-approve tool calls for complex tasks',
     warning: {
       title: 'Please confirm before enabling Agent mode',
       description:
@@ -2302,17 +2318,21 @@ export const en: TranslationKeys = {
   configTransfer: {
     export: {
       title: 'Export settings',
-      description: 'Select the settings to export',
+      description:
+        'Select the settings to export. The file will be saved to {path}',
       selectAll: 'Select all',
       selectNone: 'Select none',
       sensitive: 'Contains credentials',
       redactedOption:
         'Redact credentials (replace API keys / passwords / headers / env vars with random strings)',
+      confirmUnredactedTitle: 'Confirm export',
+      confirmUnredacted:
+        'This unredacted export will save API keys / passwords / headers / env vars and other sensitive data to a file in the current vault. Continue?',
       submit: 'Export',
       cancel: 'Cancel',
       noticeAtLeastOne: 'Please select at least one item',
       noticeReadFailed: 'Failed to read current settings',
-      noticeSuccess: 'Settings exported as {fileName}',
+      noticeSuccess: 'Settings exported to {path}',
       noticeFailed: 'Failed to export settings — check console for details',
     },
     import: {
@@ -2408,6 +2428,7 @@ export const en: TranslationKeys = {
     languageEnglish: 'EN',
     languageChinese: '中文',
     viewHistory: 'View update history',
+    skipVersion: "Don't remind me for this version",
     historyTitle: 'Release history',
     historyLoading: 'Loading release history...',
     historyError: 'Failed to load release history. Please try again later.',

@@ -1,5 +1,6 @@
 import { Ban, Check, CircleAlert, Loader2 } from 'lucide-react'
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -30,9 +31,9 @@ import {
 
 import AssistantEditSummary from './AssistantEditSummary'
 import AssistantErrorCard from './AssistantErrorCard'
+import AssistantGroupEditor from './AssistantGroupEditor'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
 import AssistantMessageContent from './AssistantMessageContent'
-import AssistantMessageEditor from './AssistantMessageEditor'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantMessageSources from './AssistantMessageSources'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
@@ -185,6 +186,7 @@ export type AssistantToolMessageGroupItemProps = {
   conversationId: string
   conversationRunSummary?: AgentConversationRunSummary
   activeBranchKey?: string | null
+  sourceUserMessageId?: string | null
   suppressFooter?: boolean
   showInlineInfo?: boolean
   showRetryAction?: boolean
@@ -202,6 +204,11 @@ export type AssistantToolMessageGroupItemProps = {
     targetFilePath?: string,
   ) => void
   onToolMessageUpdate: (message: ChatToolMessage) => void
+  onToolCallResponseUpdate?: (
+    toolMessageId: string,
+    toolCallId: string,
+    response: ChatToolMessage['toolCalls'][number]['response'],
+  ) => void
   terminalCommandResultsByToolCallId?: ReadonlyMap<
     string,
     ChatTerminalCommandResultMessage
@@ -220,11 +227,14 @@ export type AssistantToolMessageGroupItemProps = {
   editingAssistantMessageId?: string | null
   onEditStart: (messageId: string) => void
   onEditCancel: () => void
-  onEditSave: (messageId: string, content: string) => void
+  onEditSave: (messageId: string, replacementMessages: ChatMessage[]) => void
   onDeleteGroup: (messageIds: string[]) => void
   onRetryGroup: (messageIds: string[]) => void
   onBranchGroup: (messageIds: string[]) => void
-  onActiveBranchChange?: (branchKey: string | null) => void
+  onActiveBranchChange?: (
+    sourceUserMessageId: string,
+    branchKey: string | null,
+  ) => void
   onQuoteAssistantSelection: (payload: {
     messageId: string
     conversationId: string
@@ -238,12 +248,13 @@ export type AssistantToolMessageGroupItemProps = {
   showRunningToolFooter?: boolean
 }
 
-export default function AssistantToolMessageGroupItem({
+function AssistantToolMessageGroupItem({
   messages,
   inlineInfoMessages,
   conversationId,
   conversationRunSummary,
   activeBranchKey: controlledActiveBranchKey,
+  sourceUserMessageId,
   suppressFooter = false,
   showInlineInfo = true,
   showRetryAction = false,
@@ -257,6 +268,7 @@ export default function AssistantToolMessageGroupItem({
   activeApplyRequestKey,
   onApply,
   onToolMessageUpdate,
+  onToolCallResponseUpdate,
   terminalCommandResultsByToolCallId,
   subagentResultsByToolCallId,
   onRecoverToolCall,
@@ -285,6 +297,10 @@ export default function AssistantToolMessageGroupItem({
     scrollContainer: HTMLElement
     scrollTop: number
   } | null>(null)
+  const groupBodyRef = useRef<HTMLDivElement | null>(null)
+  const [editBodyMinHeight, setEditBodyMinHeight] = useState<number | null>(
+    null,
+  )
   const branchGroups = useMemo(() => {
     const groups = new Map<
       string,
@@ -328,6 +344,15 @@ export default function AssistantToolMessageGroupItem({
     controlledActiveBranchKey ?? uncontrolledActiveBranchKey
   const resolvedActiveBranchKey =
     activeBranchKey ?? branchGroups[0]?.key ?? null
+  const emitActiveBranchChange = useCallback(
+    (branchKey: string | null) => {
+      if (!sourceUserMessageId) {
+        return
+      }
+      onActiveBranchChange?.(sourceUserMessageId, branchKey)
+    },
+    [onActiveBranchChange, sourceUserMessageId],
+  )
 
   const handleBranchSwitch = useCallback(
     (branchKey: string) => {
@@ -345,15 +370,15 @@ export default function AssistantToolMessageGroupItem({
         }
       }
       setUncontrolledActiveBranchKey(branchKey)
-      onActiveBranchChange?.(branchKey)
+      emitActiveBranchChange(branchKey)
     },
-    [onActiveBranchChange, resolvedActiveBranchKey],
+    [emitActiveBranchChange, resolvedActiveBranchKey],
   )
 
   useEffect(() => {
     if (!hasMultipleBranches) {
       setUncontrolledActiveBranchKey(null)
-      onActiveBranchChange?.(null)
+      emitActiveBranchChange(null)
       return
     }
     if (
@@ -368,8 +393,13 @@ export default function AssistantToolMessageGroupItem({
     const nextActiveBranchKey =
       firstCompletedBranch?.key ?? branchGroups[0]?.key ?? null
     setUncontrolledActiveBranchKey(nextActiveBranchKey)
-    onActiveBranchChange?.(nextActiveBranchKey)
-  }, [activeBranchKey, branchGroups, hasMultipleBranches, onActiveBranchChange])
+    emitActiveBranchChange(nextActiveBranchKey)
+  }, [
+    activeBranchKey,
+    branchGroups,
+    emitActiveBranchChange,
+    hasMultipleBranches,
+  ])
 
   const displayedMessages = useMemo(() => {
     const selectedMessages = !hasMultipleBranches
@@ -412,13 +442,7 @@ export default function AssistantToolMessageGroupItem({
   const assistantMessages = displayedMessages.filter(
     (message): message is ChatAssistantMessage => message.role === 'assistant',
   )
-  const editableAssistantMessage =
-    [...assistantMessages]
-      .reverse()
-      .find((message) => message.content.length > 0) ??
-    assistantMessages.at(-1) ??
-    null
-  const editableAssistantMessageId = editableAssistantMessage?.id ?? null
+  const groupAnchorMessageId = displayedMessages[0]?.id ?? null
   const isEditingGroup = displayedMessages.some(
     (message) => message.id === editingAssistantMessageId,
   )
@@ -428,6 +452,23 @@ export default function AssistantToolMessageGroupItem({
   })
   const isRunActive =
     groupRunState === 'streaming' || groupRunState === 'waiting-approval'
+  const handleEditStart = useCallback(() => {
+    if (!groupAnchorMessageId || isRunActive) {
+      return
+    }
+
+    setEditBodyMinHeight(
+      groupBodyRef.current?.getBoundingClientRect().height ?? null,
+    )
+
+    onEditStart(groupAnchorMessageId)
+  }, [groupAnchorMessageId, isRunActive, onEditStart])
+
+  useEffect(() => {
+    if (!isEditingGroup) {
+      setEditBodyMinHeight(null)
+    }
+  }, [isEditingGroup])
   const hasPendingAssistantShell = assistantMessages.some(
     (message) =>
       message.metadata?.generationState === 'streaming' &&
@@ -605,134 +646,141 @@ export default function AssistantToolMessageGroupItem({
           })}
         </div>
       )}
-      {displayedMessages.map((message, messageIndex) => {
-        const hasVisibleAssistantContent =
-          message.role === 'assistant' && message.content.trim().length > 0
-        const hasVisibleAssistantReasoning =
-          message.role === 'assistant' &&
-          (message.reasoning ?? '').trim().length > 0
-        const hasVisibleAssistantAnnotations =
-          message.role === 'assistant' && Boolean(message.annotations)
-        const hasToolResponseForThis =
-          message.role === 'assistant' &&
-          displayedMessages[messageIndex + 1]?.role === 'tool'
-        const shouldShowAssistantToolPreview =
-          message.role === 'assistant' &&
-          shouldRenderAssistantToolPreview({
-            generationState: message.metadata?.generationState,
-            toolCallRequestCount: message.toolCallRequests?.length ?? 0,
-            hasToolMessages: hasToolResponseForThis,
-          })
-        const shouldHideAssistantPendingState =
-          message.role === 'assistant' &&
-          (hasToolResponseForThis || hidePendingAssistantPlaceholders) &&
-          !hasVisibleAssistantContent &&
-          !hasVisibleAssistantReasoning &&
-          !hasVisibleAssistantAnnotations &&
-          !shouldShowAssistantToolPreview
+      <div className="yolo-assistant-group-body" ref={groupBodyRef}>
+        {isEditingGroup ? (
+          <AssistantGroupEditor
+            messages={displayedMessages}
+            minHeight={editBodyMinHeight}
+            onCancel={onEditCancel}
+            onSave={(replacementMessages) => {
+              if (!groupAnchorMessageId) return
+              onEditSave(groupAnchorMessageId, replacementMessages)
+            }}
+          />
+        ) : (
+          displayedMessages.map((message, messageIndex) => {
+            const hasVisibleAssistantContent =
+              message.role === 'assistant' && message.content.trim().length > 0
+            const hasVisibleAssistantReasoning =
+              message.role === 'assistant' &&
+              (message.reasoning ?? '').trim().length > 0
+            const hasVisibleAssistantAnnotations =
+              message.role === 'assistant' && Boolean(message.annotations)
+            const hasToolResponseForThis =
+              message.role === 'assistant' &&
+              displayedMessages[messageIndex + 1]?.role === 'tool'
+            const shouldShowAssistantToolPreview =
+              message.role === 'assistant' &&
+              shouldRenderAssistantToolPreview({
+                generationState: message.metadata?.generationState,
+                toolCallRequestCount: message.toolCallRequests?.length ?? 0,
+                hasToolMessages: hasToolResponseForThis,
+              })
+            const shouldHideAssistantPendingState =
+              message.role === 'assistant' &&
+              (hasToolResponseForThis || hidePendingAssistantPlaceholders) &&
+              !hasVisibleAssistantContent &&
+              !hasVisibleAssistantReasoning &&
+              !hasVisibleAssistantAnnotations &&
+              !shouldShowAssistantToolPreview
 
-        if (shouldHideAssistantPendingState) {
-          return null
-        }
+            if (shouldHideAssistantPendingState) {
+              return null
+            }
 
-        return message.role === 'assistant' ? (
-          message.reasoning ||
-          message.annotations ||
-          message.content ||
-          (message.metadata?.generationState === 'error' &&
-            Boolean(message.metadata?.errorMessage)) ||
-          (message.metadata?.generationState === 'streaming' &&
-            !message.content &&
-            !message.reasoning) ||
-          shouldShowAssistantToolPreview ? (
-            <div key={message.id} className="yolo-chat-messages-assistant">
-              {(message.reasoning ||
-                (message.metadata?.generationState === 'streaming' &&
-                  !message.content &&
-                  !message.annotations &&
-                  !message.toolCallRequests?.length)) && (
-                <AssistantMessageReasoning
-                  reasoning={message.reasoning ?? ''}
-                  hasAnswerContent={message.content.trim().length > 0}
-                  generationState={message.metadata?.generationState}
-                />
-              )}
-              {message.id === editingAssistantMessageId ? (
-                <AssistantMessageEditor
-                  initialContent={message.content}
-                  onCancel={onEditCancel}
-                  onSave={(content) => {
-                    onEditSave(message.id, content)
-                  }}
-                />
-              ) : (
-                <AssistantMessageContent
-                  messageId={message.id}
-                  conversationId={effectiveConversationId}
-                  content={message.content}
-                  annotations={message.annotations}
-                  sources={message.metadata?.sources}
-                  handleApply={onApply}
-                  isApplying={isApplying}
-                  activeApplyRequestKey={activeApplyRequestKey}
-                  generationState={message.metadata?.generationState}
-                  toolCallRequests={message.toolCallRequests}
-                  showToolCallPreview={shouldShowAssistantToolPreview}
-                  onQuote={onQuoteAssistantSelection}
-                  enableSelectionQuote={showQuoteAction}
-                />
-              )}
-              {message.annotations && (
-                <AssistantMessageAnnotations
-                  annotations={message.annotations}
-                />
-              )}
-              {message.metadata?.sources &&
-                message.metadata.sources.length > 0 && (
-                  <AssistantMessageSources sources={message.metadata.sources} />
-                )}
-              {message.metadata?.generationState === 'error' &&
-                message.metadata.errorMessage && (
-                  <AssistantErrorCard
-                    errorMessage={message.metadata.errorMessage}
+            return message.role === 'assistant' ? (
+              message.reasoning ||
+              message.annotations ||
+              message.content ||
+              (message.metadata?.generationState === 'error' &&
+                Boolean(message.metadata?.errorMessage)) ||
+              (message.metadata?.generationState === 'streaming' &&
+                !message.content &&
+                !message.reasoning) ||
+              shouldShowAssistantToolPreview ? (
+                <div key={message.id} className="yolo-chat-messages-assistant">
+                  {(message.reasoning ||
+                    (message.metadata?.generationState === 'streaming' &&
+                      !message.content &&
+                      !message.annotations &&
+                      !message.toolCallRequests?.length)) && (
+                    <AssistantMessageReasoning
+                      reasoning={message.reasoning ?? ''}
+                      hasAnswerContent={message.content.trim().length > 0}
+                      generationState={message.metadata?.generationState}
+                    />
+                  )}
+                  <AssistantMessageContent
+                    messageId={message.id}
+                    conversationId={effectiveConversationId}
+                    content={message.content}
+                    annotations={message.annotations}
+                    sources={message.metadata?.sources}
+                    handleApply={onApply}
+                    isApplying={isApplying}
+                    activeApplyRequestKey={activeApplyRequestKey}
+                    generationState={message.metadata?.generationState}
+                    toolCallRequests={message.toolCallRequests}
+                    showToolCallPreview={shouldShowAssistantToolPreview}
+                    onQuote={onQuoteAssistantSelection}
+                    enableSelectionQuote={showQuoteAction}
                   />
-                )}
-            </div>
-          ) : null
-        ) : message.role === 'external_agent_result' ? (
-          <div key={message.id}>
-            <ToolMessage
-              message={buildSynthToolMessageFromResult(message)}
-              conversationId={effectiveConversationId}
-              showRunningFooter={false}
-              onMessageUpdate={() => {
-                // 异步派遣结果是终态消息，UI 内部不会触发 update；
-                // 万一调到这里也不持久化（result message 有自己的存储路径）。
-              }}
-              onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
-            />
-          </div>
-        ) : message.role === 'subagent_result' ||
-          message.role === 'terminal_command_result' ? null : (
-          <div key={message.id}>
-            <ToolMessage
-              message={message}
-              conversationId={effectiveConversationId}
-              isCompactionPending={
-                message.id === pendingCompactionAnchorMessageId
-              }
-              showRunningFooter={showRunningToolFooter}
-              terminalCommandResultsByToolCallId={
-                terminalCommandResultsByToolCallId
-              }
-              subagentResultsByToolCallId={subagentResultsByToolCallId}
-              onMessageUpdate={onToolMessageUpdate}
-              onRecoverToolCall={onRecoverToolCall}
-              onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
-            />
-          </div>
-        )
-      })}
+                  {message.annotations && (
+                    <AssistantMessageAnnotations
+                      annotations={message.annotations}
+                    />
+                  )}
+                  {message.metadata?.sources &&
+                    message.metadata.sources.length > 0 && (
+                      <AssistantMessageSources
+                        sources={message.metadata.sources}
+                      />
+                    )}
+                  {message.metadata?.generationState === 'error' &&
+                    message.metadata.errorMessage && (
+                      <AssistantErrorCard
+                        errorMessage={message.metadata.errorMessage}
+                      />
+                    )}
+                </div>
+              ) : null
+            ) : message.role === 'external_agent_result' ? (
+              <div key={message.id}>
+                <ToolMessage
+                  message={buildSynthToolMessageFromResult(message)}
+                  conversationId={effectiveConversationId}
+                  showRunningFooter={false}
+                  onMessageUpdate={() => {
+                    // 异步派遣结果是终态消息，UI 内部不会触发 update；
+                    // 万一调到这里也不持久化（result message 有自己的存储路径）。
+                  }}
+                  onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
+                />
+              </div>
+            ) : message.role === 'subagent_result' ||
+              message.role === 'terminal_command_result' ? null : (
+              <div key={message.id}>
+                <ToolMessage
+                  message={message}
+                  conversationId={effectiveConversationId}
+                  isCompactionPending={
+                    message.id === pendingCompactionAnchorMessageId
+                  }
+                  showRunningFooter={showRunningToolFooter}
+                  terminalCommandResultsByToolCallId={
+                    terminalCommandResultsByToolCallId
+                  }
+                  subagentResultsByToolCallId={subagentResultsByToolCallId}
+                  onMessageUpdate={onToolMessageUpdate}
+                  onToolCallResponseUpdate={onToolCallResponseUpdate}
+                  onRecoverToolCall={onRecoverToolCall}
+                  onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
+                />
+              </div>
+            )
+          })
+        )}
+      </div>
       {groupEditSummary &&
         !suppressFooter &&
         !hasPendingAssistantShell &&
@@ -795,10 +843,8 @@ export default function AssistantToolMessageGroupItem({
                   : undefined
               }
               onEdit={
-                editableAssistantMessageId && !isRunActive
-                  ? () => {
-                      onEditStart(editableAssistantMessageId)
-                    }
+                groupAnchorMessageId && !isRunActive
+                  ? handleEditStart
                   : undefined
               }
               onDelete={
@@ -818,3 +864,5 @@ export default function AssistantToolMessageGroupItem({
     </div>
   )
 }
+
+export default memo(AssistantToolMessageGroupItem)

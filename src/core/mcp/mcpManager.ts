@@ -51,6 +51,7 @@ const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
 const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
+import type { McpRemoteTransportBackend } from './remoteTransport'
 import {
   getToolName,
   parseToolName,
@@ -454,14 +455,19 @@ export class McpManager {
     }
 
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
-    const client = new Client({ name, version: '1.0.0' })
+    const createClient = () => {
+      const nextClient = new Client({ name, version: '1.0.0' })
 
-    // Self-heal hook: fires when the underlying transport closes for any
-    // reason (including our own close() calls). The intentional-closes
-    // WeakSet inside the handler short-circuits planned teardowns.
-    client.onclose = () => {
-      this.handleUnexpectedServerClose(name, client)
+      // Self-heal hook: fires when the underlying transport closes for any
+      // reason (including our own close() calls). The intentional-closes
+      // WeakSet inside the handler short-circuits planned teardowns.
+      nextClient.onclose = () => {
+        this.handleUnexpectedServerClose(name, nextClient)
+      }
+
+      return nextClient
     }
+    let client = createClient()
 
     // The SDK only forwards `signal` to the initialize request, not to
     // `transport.start()`. Bind an abort listener that force-closes the client
@@ -484,43 +490,107 @@ export class McpManager {
       }
     }
 
+    let remoteTransportBackend: McpRemoteTransportBackend = 'chromium-fetch'
+
     try {
-      const transport = await this.createClientTransport(serverParams)
+      const transport = await this.createClientTransport(serverParams, {
+        httpBackend: remoteTransportBackend,
+      })
       await client.connect(transport, signal ? { signal } : undefined)
     } catch (error) {
-      signal?.removeEventListener('abort', abortListener)
       const remoteTransport = await this.loadRemoteTransportModule()
       const remoteTransportContext =
-        remoteTransport.getMcpRemoteTransportContext(serverParams)
-      console.error(
-        `[YOLO] Failed to connect to MCP server "${name}":`,
-        remoteTransportContext
-          ? remoteTransport.getMcpRemoteTransportDiagnostics(
-              remoteTransportContext,
+        remoteTransport.getMcpRemoteTransportContext(
+          serverParams,
+          remoteTransportBackend,
+        )
+
+      if (
+        !signal?.aborted &&
+        remoteTransport.shouldRetryMcpHttpWithJsonBackend({
+          params: serverParams,
+          error,
+        })
+      ) {
+        console.warn(
+          `[YOLO] MCP server "${name}" HTTP connection failed with Chromium fetch; retrying with Obsidian requestUrl JSON backend.`,
+          error,
+        )
+        await this.closeClient(client).catch(() => {
+          /* best-effort teardown */
+        })
+        client = createClient()
+        remoteTransportBackend = 'obsidian-request-url-json'
+
+        try {
+          const transport = await this.createClientTransport(serverParams, {
+            httpBackend: remoteTransportBackend,
+          })
+          await client.connect(transport, signal ? { signal } : undefined)
+        } catch (fallbackError) {
+          signal?.removeEventListener('abort', abortListener)
+          const fallbackRemoteTransportContext =
+            remoteTransport.getMcpRemoteTransportContext(
+              serverParams,
+              remoteTransportBackend,
             )
-          : { transport: serverParams.transport },
-        error,
-      )
-      return {
-        name,
-        config: serverConfig,
-        status: McpServerStatus.Error,
-        error: remoteTransportContext
-          ? remoteTransport.createMcpRemoteTransportError({
-              serverName: name,
-              action: 'connect',
-              context: remoteTransportContext,
-              error,
-            })
-          : new Error(
-              `Failed to connect to MCP server ${name}: ${error instanceof Error ? error.message : String(error)}`,
-            ),
+          console.error(
+            `[YOLO] Failed to connect to MCP server "${name}" with Obsidian requestUrl JSON backend:`,
+            fallbackRemoteTransportContext
+              ? remoteTransport.getMcpRemoteTransportDiagnostics(
+                  fallbackRemoteTransportContext,
+                )
+              : { transport: serverParams.transport },
+            fallbackError,
+          )
+          return {
+            name,
+            config: serverConfig,
+            status: McpServerStatus.Error,
+            error: fallbackRemoteTransportContext
+              ? remoteTransport.createMcpRemoteTransportError({
+                  serverName: name,
+                  action: 'connect',
+                  context: fallbackRemoteTransportContext,
+                  error: fallbackError,
+                })
+              : new Error(
+                  `Failed to connect to MCP server ${name}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+                ),
+          }
+        }
+      } else {
+        signal?.removeEventListener('abort', abortListener)
+        console.error(
+          `[YOLO] Failed to connect to MCP server "${name}":`,
+          remoteTransportContext
+            ? remoteTransport.getMcpRemoteTransportDiagnostics(
+                remoteTransportContext,
+              )
+            : { transport: serverParams.transport },
+          error,
+        )
+        return {
+          name,
+          config: serverConfig,
+          status: McpServerStatus.Error,
+          error: remoteTransportContext
+            ? remoteTransport.createMcpRemoteTransportError({
+                serverName: name,
+                action: 'connect',
+                context: remoteTransportContext,
+                error,
+              })
+            : new Error(
+                `Failed to connect to MCP server ${name}: ${error instanceof Error ? error.message : String(error)}`,
+              ),
+        }
       }
     }
 
     try {
       const toolList = await client.listTools(
-        undefined,
+        {},
         signal ? { signal } : undefined,
       )
       signal?.removeEventListener('abort', abortListener)
@@ -541,7 +611,10 @@ export class McpManager {
       })
       const remoteTransport = await this.loadRemoteTransportModule()
       const remoteTransportContext =
-        remoteTransport.getMcpRemoteTransportContext(serverParams)
+        remoteTransport.getMcpRemoteTransportContext(
+          serverParams,
+          remoteTransportBackend,
+        )
       console.error(
         `[YOLO] Failed to list tools for MCP server "${name}":`,
         remoteTransportContext
@@ -571,6 +644,7 @@ export class McpManager {
 
   private async createClientTransport(
     serverParams: McpServerConfig['parameters'],
+    options: { httpBackend?: McpRemoteTransportBackend } = {},
   ) {
     switch (serverParams.transport) {
       case 'stdio': {
@@ -598,7 +672,10 @@ export class McpManager {
             env: this.defaultEnv ?? {},
           })
         return new StreamableHTTPClientTransport(new URL(serverParams.url), {
-          ...remoteTransportFactory.createHttpOptions(serverParams),
+          ...remoteTransportFactory.createHttpOptions(
+            serverParams,
+            options.httpBackend,
+          ),
         })
       }
       case 'sse': {
@@ -669,7 +746,7 @@ export class McpManager {
                 return []
               }
               try {
-                const toolList = await server.client.listTools()
+                const toolList = await server.client.listTools({})
                 return toolList.tools
                   .filter(
                     (tool) => !server.config.toolOptions[tool.name]?.disabled,

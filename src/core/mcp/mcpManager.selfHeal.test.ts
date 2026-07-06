@@ -23,6 +23,13 @@ class FakeClient {
   }
 
   async connect(transport: unknown): Promise<void> {
+    if (
+      transport !== null &&
+      typeof transport === 'object' &&
+      'connectError' in transport
+    ) {
+      throw (transport as { connectError: Error }).connectError
+    }
     this.transport = (transport as object | undefined) ?? {}
   }
 
@@ -84,6 +91,16 @@ const stdioServerConfig = (id = 'demo'): McpServerConfig => ({
   toolOptions: {},
 })
 
+const httpServerConfig = (id = 'demo'): McpServerConfig => ({
+  id,
+  enabled: true,
+  parameters: {
+    transport: 'http',
+    url: 'https://example.com/mcp',
+  },
+  toolOptions: {},
+})
+
 const buildManager = () => {
   const manager = new McpManager({
     app: { vault: {} } as unknown as App,
@@ -122,14 +139,70 @@ const connectedServer = (manager: McpManager, id: string) => {
 
 describe('McpManager self-heal', () => {
   const originalIsDesktop = Platform.isDesktop
+  let warnSpy: jest.SpyInstance
 
   beforeEach(() => {
     Platform.isDesktop = true
     fakeClientInstances.length = 0
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
   afterEach(() => {
+    warnSpy.mockRestore()
     Platform.isDesktop = originalIsDesktop
+  })
+
+  it('retries HTTP connection setup with the JSON backend after Chromium fetch fails', async () => {
+    const manager = buildManager()
+    const createClientTransport = jest
+      .fn()
+      .mockImplementation(
+        async (
+          _params: McpServerConfig['parameters'],
+          options?: { httpBackend?: string },
+        ) => {
+          if (options?.httpBackend === 'obsidian-request-url-json') {
+            return { backend: options.httpBackend }
+          }
+
+          return {
+            backend: options?.httpBackend,
+            connectError: new TypeError('Failed to fetch'),
+          }
+        },
+      )
+    ;(
+      manager as unknown as { createClientTransport: jest.Mock }
+    ).createClientTransport = createClientTransport
+
+    await manager.handleSettingsUpdate({
+      mcp: { servers: [httpServerConfig()], builtinToolOptions: {} },
+      webSearch: {
+        providers: [],
+        defaultProviderId: undefined,
+        common: {
+          resultSize: 8,
+          searchTimeoutMs: 15000,
+          scrapeTimeoutMs: 20000,
+        },
+      },
+    } as never)
+
+    expect(createClientTransport).toHaveBeenCalledTimes(2)
+    expect(createClientTransport).toHaveBeenNthCalledWith(
+      1,
+      httpServerConfig().parameters,
+      { httpBackend: 'chromium-fetch' },
+    )
+    expect(createClientTransport).toHaveBeenNthCalledWith(
+      2,
+      httpServerConfig().parameters,
+      { httpBackend: 'obsidian-request-url-json' },
+    )
+    expect(fakeClientInstances).toHaveLength(2)
+    expect(connectedServer(manager, 'demo').client.transport).toEqual({
+      backend: 'obsidian-request-url-json',
+    })
   })
 
   it('automatically reconnects when the underlying transport closes unexpectedly', async () => {

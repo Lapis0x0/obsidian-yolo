@@ -138,6 +138,23 @@ describe('OpenAIMessageAdapter', () => {
     expect(params.reasoningLevel).toBeUndefined()
   })
 
+  it('collapses text-only user content parts into legacy string content', () => {
+    const params = adapter.buildParams({
+      model: 'legacy-openai-compatible-model',
+      stream: false,
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: '你是？' }],
+        },
+      ],
+    }) as unknown as {
+      messages: Array<{ role: string; content: string }>
+    }
+
+    expect(params.messages[0]?.content).toBe('你是？')
+  })
+
   it('translates document content parts into OpenAI file content (OpenRouter-style PDF passthrough)', () => {
     const params = adapter.buildParams({
       model: 'gemini-2.5-flash',

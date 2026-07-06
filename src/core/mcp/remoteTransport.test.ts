@@ -1,3 +1,5 @@
+import { Platform, requestUrl } from 'obsidian'
+
 import { createDesktopMcpFetch } from './desktopMcpFetch'
 import {
   classifyRemoteTransportError,
@@ -5,9 +7,11 @@ import {
   createMcpRemoteTransportFactory,
   getMcpRemoteTransportContext,
   getMcpRemoteTransportDiagnostics,
+  shouldRetryMcpHttpWithJsonBackend,
 } from './remoteTransport'
 
 // jest.mock is hoisted by ts-jest above imports, so order with imports is fine.
+jest.mock('obsidian')
 jest.mock('./desktopMcpFetch', () => ({
   createDesktopMcpFetch: jest.fn(),
 }))
@@ -15,9 +19,16 @@ jest.mock('./desktopMcpFetch', () => ({
 describe('remoteTransport', () => {
   const mockedCreateDesktopMcpFetch =
     createDesktopMcpFetch as jest.MockedFunction<typeof createDesktopMcpFetch>
+  const mockedRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>
+  const originalIsDesktop = Platform.isDesktop
 
   beforeEach(() => {
     jest.clearAllMocks()
+    Platform.isDesktop = true
+  })
+
+  afterEach(() => {
+    Platform.isDesktop = originalIsDesktop
   })
 
   it('shares one MCP fetch backend for http and sse transports', () => {
@@ -47,6 +58,87 @@ describe('remoteTransport', () => {
     expect(sseOptions.eventSourceInit).toEqual({ headers })
   })
 
+  it('creates an Obsidian requestUrl JSON backend for HTTP fallback', async () => {
+    mockedCreateDesktopMcpFetch.mockReturnValue(
+      jest.fn() as unknown as typeof fetch,
+    )
+    const responseBody = '{"jsonrpc":"2.0","id":1,"result":{}}'
+    mockedRequestUrl.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      arrayBuffer: new TextEncoder().encode(responseBody).buffer as ArrayBuffer,
+      json: JSON.parse(responseBody),
+      text: responseBody,
+    })
+
+    const factory = createMcpRemoteTransportFactory({ env: {} })
+    const options = factory.createHttpOptions(
+      {
+        transport: 'http',
+        url: 'https://example.com/mcp',
+        headers: { Authorization: 'Bearer token' },
+      },
+      'obsidian-request-url-json',
+    )
+
+    const response = await options.fetch!(new URL('https://example.com/mcp'), {
+      method: 'POST',
+      headers: new Headers({
+        Accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+      }),
+      body: '{"jsonrpc":"2.0","id":1,"method":"initialize"}',
+    })
+
+    expect(mockedRequestUrl).toHaveBeenCalledWith({
+      url: 'https://example.com/mcp',
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+      },
+      contentType: 'application/json',
+      body: '{"jsonrpc":"2.0","id":1,"method":"initialize"}',
+      throw: false,
+    })
+    await expect(response.json()).resolves.toEqual({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {},
+    })
+  })
+
+  it('rejects streaming responses from the Obsidian requestUrl JSON backend', async () => {
+    mockedCreateDesktopMcpFetch.mockReturnValue(
+      jest.fn() as unknown as typeof fetch,
+    )
+    mockedRequestUrl.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+      arrayBuffer: new ArrayBuffer(0),
+      json: null,
+      text: '',
+    })
+
+    const factory = createMcpRemoteTransportFactory({ env: {} })
+    const options = factory.createHttpOptions(
+      {
+        transport: 'http',
+        url: 'https://example.com/mcp',
+      },
+      'obsidian-request-url-json',
+    )
+
+    await expect(
+      options.fetch!(new URL('https://example.com/mcp'), {
+        method: 'POST',
+        body: '{}',
+      }),
+    ).rejects.toThrow(
+      'MCP HTTP JSON backend does not support text/event-stream responses.',
+    )
+  })
+
   it('forwards shell env into desktopMcpFetch', () => {
     mockedCreateDesktopMcpFetch.mockReturnValue(
       jest.fn() as unknown as typeof fetch,
@@ -69,10 +161,46 @@ describe('remoteTransport', () => {
       'network connection failed',
     )
 
+    expect(classifyRemoteTransportError(new TypeError('Failed to fetch'))).toBe(
+      'network connection failed',
+    )
+
     const etimedout = Object.assign(new Error('socket hang up'), {
       code: 'ETIMEDOUT',
     })
     expect(classifyRemoteTransportError(etimedout)).toBe('request timed out')
+  })
+
+  it('only retries HTTP Chromium fetch failures with the JSON backend', () => {
+    expect(
+      shouldRetryMcpHttpWithJsonBackend({
+        params: {
+          transport: 'http',
+          url: 'https://example.com/mcp',
+        },
+        error: new TypeError('Failed to fetch'),
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldRetryMcpHttpWithJsonBackend({
+        params: {
+          transport: 'sse',
+          url: 'https://example.com/sse',
+        },
+        error: new TypeError('Failed to fetch'),
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldRetryMcpHttpWithJsonBackend({
+        params: {
+          transport: 'http',
+          url: 'https://example.com/mcp',
+        },
+        error: new Error('HTTP 401 Unauthorized'),
+      }),
+    ).toBe(false)
   })
 
   it('classifies undici error codes (issue #252)', () => {

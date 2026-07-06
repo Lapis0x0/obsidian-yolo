@@ -28,7 +28,9 @@ const SIGKILL_DELAY_MS = 3000
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 10 * 60_000
 const BACKGROUND_INITIAL_WAIT_MS = 2_000
-const IDLE_WAIT_MS = 10_000
+export const sessionManagerTimings = {
+  idleWaitMs: 10_000,
+}
 const SESSION_IDLE_TTL_MS = 5 * 60_000
 const DONE_SETTLE_MS = 50
 
@@ -640,7 +642,10 @@ const scheduleBackgroundIdleTimer = (session: BashSession): void => {
     clearTimeout(active.backgroundIdleTimer)
   }
 
-  const delay = Math.max(0, IDLE_WAIT_MS - (Date.now() - active.lastOutputAt))
+  const delay = Math.max(
+    0,
+    sessionManagerTimings.idleWaitMs - (Date.now() - active.lastOutputAt),
+  )
   active.backgroundIdleTimer = setTimeout(() => {
     active.backgroundIdleTimer = null
     emitBackgroundCommandWaiting(session)
@@ -921,7 +926,10 @@ const waitForCommandState = async ({
       }
       return buildResult(session, 'background', outputSnapshotOptions)
     }
-    if (!background && now - active.lastOutputAt >= IDLE_WAIT_MS) {
+    if (
+      !background &&
+      now - active.lastOutputAt >= sessionManagerTimings.idleWaitMs
+    ) {
       return buildResult(session, 'waiting', outputSnapshotOptions)
     }
     if (!background && now - startedAt >= timeoutMs) {

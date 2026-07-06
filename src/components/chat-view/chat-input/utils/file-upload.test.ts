@@ -14,16 +14,39 @@ function fakeFile(
 }
 
 describe('classifyUploadFiles', () => {
-  it('classifies images, PDFs, and unsupported files', () => {
+  it('classifies images, PDFs, Office docs, text attachments, and unsupported files', () => {
     const image = fakeFile('image.png', 'image/png')
     const typedPdf = fakeFile('doc.pdf', 'application/pdf')
     const extensionPdf = fakeFile('scanned.PDF', '')
-    const text = fakeFile('note.txt', 'text/plain')
+    const docx = fakeFile('report.docx', '')
+    const pptx = fakeFile('slides.PPTX', '')
+    const xlsx = fakeFile('budget.xlsx', '')
+    const txt = fakeFile('note.txt', 'text/plain')
+    const md = fakeFile('README.md', '')
+    const csv = fakeFile('rows.CSV', '')
+    const yaml = fakeFile('config.yaml', '')
+    const unsupported = fakeFile('archive.zip', 'application/zip')
 
-    expect(classifyUploadFiles([image, typedPdf, extensionPdf, text])).toEqual({
+    expect(
+      classifyUploadFiles([
+        image,
+        typedPdf,
+        extensionPdf,
+        docx,
+        pptx,
+        xlsx,
+        txt,
+        md,
+        csv,
+        yaml,
+        unsupported,
+      ]),
+    ).toEqual({
       imageFiles: [image],
       pdfFiles: [typedPdf, extensionPdf],
-      unsupportedFiles: [text],
+      officeFiles: [docx, pptx, xlsx],
+      textAttachmentFiles: [txt, md, csv, yaml],
+      unsupportedFiles: [unsupported],
     })
   })
 })

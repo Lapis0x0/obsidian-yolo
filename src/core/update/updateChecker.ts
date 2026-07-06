@@ -12,6 +12,11 @@ const GITHUB_RELEASE_PAGE_BASE =
 const GITHUB_VERSIONS_URL =
   'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/versions.json'
 
+const GITHUB_LATEST_RELEASE_NOTE_URL =
+  'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/latest-release-note.md'
+
+const LATEST_RELEASE_NOTE_RETRY_DELAYS_MS = [800, 2000] as const
+
 function releaseTagUrl(version: string): string {
   return `${GITHUB_RELEASES_URL}/tags/${encodeURIComponent(version)}`
 }
@@ -184,6 +189,93 @@ export function parseLatestVersionFromVersionsJson(raw: string): string | null {
     return latestVersion
   } catch {
     return null
+  }
+}
+
+export function parseReleaseNoteVersion(markdown: string): string | null {
+  for (const raw of markdown.split('\n')) {
+    const line = raw.trim()
+    if (!line.startsWith('#')) {
+      continue
+    }
+    const match = line.match(/^#{1,6}\s+(v?\d+(?:\.\d+)*)\b/i)
+    return match ? normalizePluginVersion(match[1]) : null
+  }
+  return null
+}
+
+async function fetchLatestReleaseNotes(
+  latestVersion: string,
+): Promise<ReleaseNotesByLanguage> {
+  const empty = { en: null, zh: null }
+
+  let lastFailureReason = 'unknown error'
+  const attempts = LATEST_RELEASE_NOTE_RETRY_DELAYS_MS.length + 1
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const result = await fetchLatestReleaseNotesOnce(latestVersion)
+    if (result.ok) {
+      return result.releaseNotes
+    }
+
+    lastFailureReason = result.reason
+    const retryDelayMs = LATEST_RELEASE_NOTE_RETRY_DELAYS_MS[attempt]
+    if (retryDelayMs !== undefined) {
+      await delay(retryDelayMs)
+    }
+  }
+
+  console.warn(
+    `[YOLO] Plugin update release note fetch failed after ${attempts} attempts: ${lastFailureReason}`,
+  )
+  return empty
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms)
+  })
+}
+
+type LatestReleaseNotesFetchResult =
+  | { ok: true; releaseNotes: ReleaseNotesByLanguage }
+  | { ok: false; reason: string }
+
+async function fetchLatestReleaseNotesOnce(
+  latestVersion: string,
+): Promise<LatestReleaseNotesFetchResult> {
+  const normalizedLatestVersion = normalizePluginVersion(latestVersion)
+
+  try {
+    const response = await requestUrl({
+      url: GITHUB_LATEST_RELEASE_NOTE_URL,
+      method: 'GET',
+    })
+
+    if (response.status < 200 || response.status >= 300) {
+      return {
+        ok: false,
+        reason: `latest-release-note.md returned HTTP ${response.status}.`,
+      }
+    }
+
+    const body = response.text.trim()
+    if (!body) {
+      return { ok: false, reason: 'latest-release-note.md is empty.' }
+    }
+
+    const noteVersion = parseReleaseNoteVersion(body)
+    if (noteVersion !== normalizedLatestVersion) {
+      return {
+        ok: false,
+        reason: `latest-release-note.md version ${noteVersion ?? 'unknown'} does not match ${normalizedLatestVersion}.`,
+      }
+    }
+
+    return { ok: true, releaseNotes: splitReleaseNotesByLanguage(body) }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, reason: message }
   }
 }
 
@@ -512,11 +604,14 @@ export async function checkForUpdate(
     }
 
     const hasUpdate = compareVersions(currentVersion, latestVersion)
+    const releaseNotes = hasUpdate
+      ? await fetchLatestReleaseNotes(latestVersion)
+      : { en: null, zh: null }
 
     return {
       hasUpdate,
       latestVersion,
-      releaseNotes: { en: null, zh: null },
+      releaseNotes,
       releaseUrl: releasePageUrl(latestVersion),
       assets: buildReleaseAssets(latestVersion),
     }

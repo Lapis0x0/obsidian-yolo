@@ -734,7 +734,21 @@
   margin-top: var(--size-2-2);
 }
 
-.yolo-assistant-message-editor-textarea {
+.yolo-assistant-group-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  margin-top: var(--size-2-2);
+}
+
+.yolo-assistant-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.yolo-assistant-message-editor-textarea,
+.yolo-assistant-group-editor-textarea {
   width: 100%;
   min-height: 120px;
   max-height: 320px;
@@ -753,10 +767,24 @@
   overscroll-behavior: contain;
 }
 
+.yolo-assistant-group-editor-textarea {
+  min-height: 240px;
+  max-height: 60vh;
+  font-family: var(--font-monospace);
+}
+
 .yolo-assistant-message-editor-textarea:focus,
-.yolo-assistant-message-editor-textarea:focus-visible {
+.yolo-assistant-message-editor-textarea:focus-visible,
+.yolo-assistant-group-editor-textarea:focus,
+.yolo-assistant-group-editor-textarea:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.yolo-assistant-editor-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-2-2);
 }
 
 .yolo-assistant-message-footer {

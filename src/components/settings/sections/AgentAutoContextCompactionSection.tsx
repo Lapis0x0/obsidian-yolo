@@ -21,7 +21,7 @@ export function AgentAutoContextCompactionSection() {
     settings.chatOptions.autoContextCompactionEnabled ?? false
 
   const [autoCompactionTokensInput, setAutoCompactionTokensInput] = useState(
-    String(settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000),
+    String(settings.chatOptions.autoContextCompactionThresholdTokens ?? 100000),
   )
   const [
     isAutoCompactionTokensInputFocused,
@@ -40,7 +40,7 @@ export function AgentAutoContextCompactionSection() {
   useEffect(() => {
     setAutoCompactionTokensInput(
       String(
-        settings.chatOptions.autoContextCompactionThresholdTokens ?? 24000,
+        settings.chatOptions.autoContextCompactionThresholdTokens ?? 100000,
       ),
     )
   }, [settings.chatOptions.autoContextCompactionThresholdTokens])
@@ -154,7 +154,7 @@ export function AgentAutoContextCompactionSection() {
                     setAutoCompactionTokensInput(
                       String(
                         settings.chatOptions
-                          .autoContextCompactionThresholdTokens ?? 24000,
+                          .autoContextCompactionThresholdTokens ?? 100000,
                       ),
                     )
                     return
@@ -167,7 +167,7 @@ export function AgentAutoContextCompactionSection() {
                   if (
                     clamped !==
                     (settings.chatOptions
-                      .autoContextCompactionThresholdTokens ?? 24000)
+                      .autoContextCompactionThresholdTokens ?? 100000)
                   ) {
                     updateChatOptions(
                       {

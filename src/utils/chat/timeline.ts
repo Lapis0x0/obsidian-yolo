@@ -176,14 +176,31 @@ export const getDefaultTimelineEstimatedHeight = (
 
 type BuildMessageTimelineItemsParams = {
   groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
+  revisionsById?: ReadonlyMap<string, number>
   assistantGroupBoundaryMessageIds?: readonly string[]
   activeEditableMessageId?: string | null
   activeStreamingMessageId?: string | null
   includeBottomAnchor?: boolean
 }
 
+const getMessageRevision = (
+  revisionsById: ReadonlyMap<string, number> | undefined,
+  messageId: string,
+): number => revisionsById?.get(messageId) ?? 0
+
+const getGroupRevision = (
+  messages: AssistantToolMessageGroup,
+  revisionsById: ReadonlyMap<string, number> | undefined,
+): number =>
+  messages.reduce(
+    (revision, message) =>
+      revision + getMessageRevision(revisionsById, message.id),
+    messages.length,
+  )
+
 export const buildMessageTimelineItems = ({
   groupedChatMessages,
+  revisionsById,
   assistantGroupBoundaryMessageIds = [],
   activeEditableMessageId,
   activeStreamingMessageId,
@@ -231,7 +248,9 @@ export const buildMessageTimelineItems = ({
           renderKey: firstMessageId,
           estimatedHeight: estimateAssistantGroupHeight(messageOrGroup),
           spacingBefore,
-          messages: messageOrGroup,
+          groupId: firstMessageId,
+          messageIds: messageOrGroup.map((message) => message.id),
+          revision: getGroupRevision(messageOrGroup, revisionsById),
           isPinnedForRender:
             activeStreamingMessageId !== null &&
             lastMessageId === activeStreamingMessageId,
@@ -245,7 +264,8 @@ export const buildMessageTimelineItems = ({
         renderKey: messageOrGroup.id,
         estimatedHeight: estimateUserMessageHeight(messageOrGroup),
         spacingBefore,
-        message: messageOrGroup,
+        messageId: messageOrGroup.id,
+        revision: getMessageRevision(revisionsById, messageOrGroup.id),
         isEditable: true,
         isActive: messageOrGroup.id === activeEditableMessageId,
         isPinnedForRender: messageOrGroup.id === activeEditableMessageId,
@@ -268,6 +288,7 @@ export const buildMessageTimelineItems = ({
 
 type BuildChatTimelineItemsParams = {
   groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
+  revisionsById?: ReadonlyMap<string, number>
   assistantGroupBoundaryMessageIds?: readonly string[]
   compactionDividerAnchorMessageIds: string[]
   latestCompaction: ChatConversationCompaction | null
@@ -281,6 +302,7 @@ type BuildChatTimelineItemsParams = {
 
 export const buildChatTimelineItems = ({
   groupedChatMessages,
+  revisionsById,
   assistantGroupBoundaryMessageIds = [],
   compactionDividerAnchorMessageIds,
   latestCompaction,
@@ -296,8 +318,23 @@ export const buildChatTimelineItems = ({
   const compactionAnchorMessageIdSet = new Set(
     compactionDividerAnchorMessageIds,
   )
+  const messagesById = new Map<
+    string,
+    ChatUserMessage | AssistantToolMessageGroup[number]
+  >()
+  groupedChatMessages.forEach((messageOrGroup) => {
+    if (Array.isArray(messageOrGroup)) {
+      messageOrGroup.forEach((message) => {
+        messagesById.set(message.id, message)
+      })
+      return
+    }
+
+    messagesById.set(messageOrGroup.id, messageOrGroup)
+  })
   const messageItems = buildMessageTimelineItems({
     groupedChatMessages,
+    revisionsById,
     assistantGroupBoundaryMessageIds,
     activeEditableMessageId,
     activeStreamingMessageId,
@@ -325,6 +362,12 @@ export const buildChatTimelineItems = ({
 
   messageItems.forEach((item) => {
     if (item.kind === 'assistant-group') {
+      const groupMessages = item.messageIds
+        .map((messageId) => messagesById.get(messageId))
+        .filter(
+          (message): message is AssistantToolMessageGroup[number] =>
+            message !== undefined && message.role !== 'user',
+        )
       let currentSlice: AssistantToolMessageGroup = []
       let sliceIndex = 0
       const pushCurrentGroup = () => {
@@ -338,19 +381,22 @@ export const buildChatTimelineItems = ({
           ...item,
           id: firstMessageId,
           renderKey: `${item.id}-slice-${sliceIndex}`,
-          messages: currentSlice,
+          groupId: firstMessageId,
+          messageIds: currentSlice.map((message) => message.id),
+          revision: getGroupRevision(currentSlice, revisionsById),
           isPinnedForRender:
-            item.isPinnedForRender ||
+            currentSlice.at(-1)?.id === activeStreamingMessageId ||
             currentSlice.some(
               (message) => message.id === activeEditingAssistantMessageId,
             ),
+          isStreaming: currentSlice.at(-1)?.id === activeStreamingMessageId,
         })
         insertPendingItem(currentSlice.at(-1)?.id ?? '')
         currentSlice = []
         sliceIndex += 1
       }
 
-      item.messages.forEach((message) => {
+      groupMessages.forEach((message) => {
         currentSlice.push(message)
         if (!compactionAnchorMessageIdSet.has(message.id)) {
           return
