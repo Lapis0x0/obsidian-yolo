@@ -225,9 +225,6 @@ export class SelectionHighlightController {
       selectionHighlightField,
       EditorView.theme({
         [`&.${HIDE_NATIVE_SELECTION_CLASS}`]: {
-          '& ::selection, & *::selection': {
-            background: 'transparent !important',
-          },
           '& .cm-selectionLayer': {
             display: 'none',
           },

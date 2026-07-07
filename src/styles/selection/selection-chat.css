@@ -23,20 +23,9 @@
   z-index: 2;
 }
 
-/* Suppress native CM + browser selection when our persisted layer paints it.
-   Obsidian sets both .cm-selectionLayer and ::selection on .markdown-source-view.
-   Scope to .cm-selectionLayer only — our markers also use cm-selectionBackground
-   inside .yolo-selection-highlight-layer and must stay visible. */
-.markdown-source-view.mod-cm6 .cm-editor.yolo-hide-native-selection ::selection,
-.markdown-source-view.mod-cm6
-  .cm-editor.yolo-hide-native-selection
-  *::selection,
-.cm-editor.yolo-hide-native-selection ::selection,
-.cm-editor.yolo-hide-native-selection *::selection {
-  background: transparent !important;
-  background-color: transparent !important;
-}
-
+/* Suppress CodeMirror's native selection layer when our persisted layer paints
+   it. Keep browser ::selection intact so Live Preview widgets such as tables
+   can still show their own selected cells/text. */
 .markdown-source-view.mod-cm6
   .cm-editor.yolo-hide-native-selection
   .cm-selectionLayer,
