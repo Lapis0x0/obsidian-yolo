@@ -9,6 +9,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
+import { Platform } from 'obsidian'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -90,6 +91,9 @@ function ChatListItem({
   onFinishEdit,
   onToggleMoreMenu,
   onCloseMoreMenu,
+  onLongPress,
+  isContextMenuOpen,
+  isMobile,
 }: {
   title: string
   displayTitle?: string
@@ -113,11 +117,26 @@ function ChatListItem({
   onFinishEdit: (title: string) => void
   onToggleMoreMenu: () => void
   onCloseMoreMenu: () => void
+  onLongPress?: (cardEl: HTMLElement) => void
+  isContextMenuOpen?: boolean
+  isMobile?: boolean
 }) {
   const { t } = useLanguage()
   const moreActionsLabelId = useId()
   const itemRef = useRef<HTMLLIElement>(null)
+  const pressTimerRef = useRef<number | null>(null)
+  const pressStartRef = useRef<{ x: number; y: number; moved: boolean } | null>(
+    null,
+  )
   const [editingTitle, setEditingTitle] = useState(title)
+
+  const clearPress = useCallback(() => {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+    pressStartRef.current = null
+  }, [])
 
   useEffect(() => {
     if (isFocused && shouldScrollIntoView && itemRef.current) {
@@ -133,17 +152,81 @@ function ChatListItem({
     }
   }, [isEditing, title])
 
+  useEffect(() => clearPress, [clearPress])
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLLIElement>) => {
+      if (!isMobile || !e.isPrimary || e.button !== 0 || isEditing) {
+        return
+      }
+      if (e.target instanceof Element && e.target.closest('button, input')) {
+        return
+      }
+      e.preventDefault()
+      pressStartRef.current = { x: e.clientX, y: e.clientY, moved: false }
+      pressTimerRef.current = window.setTimeout(() => {
+        pressTimerRef.current = null
+        pressStartRef.current = null
+        if (itemRef.current) {
+          onLongPress?.(itemRef.current)
+        }
+      }, 420)
+    },
+    [isEditing, isMobile, onLongPress],
+  )
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLLIElement>) => {
+      if (!isMobile || !pressStartRef.current) {
+        return
+      }
+      const dx = Math.abs(e.clientX - pressStartRef.current.x)
+      const dy = Math.abs(e.clientY - pressStartRef.current.y)
+      if (dx > 8 || dy > 8) {
+        pressStartRef.current.moved = true
+        clearPress()
+      }
+    },
+    [clearPress, isMobile],
+  )
+
+  const handlePointerUp = useCallback(() => {
+    if (!isMobile) {
+      return
+    }
+    if (pressTimerRef.current !== null) {
+      clearPress()
+      onSelect()
+    }
+  }, [clearPress, isMobile, onSelect])
+
+  const handlePointerCancel = useCallback(() => {
+    if (isMobile) {
+      clearPress()
+    }
+  }, [clearPress, isMobile])
+
   return (
     <li
       ref={itemRef}
       onMouseDown={(e) => {
+        if (isMobile) {
+          return
+        }
         if (e.target instanceof Element && e.target.closest('button')) {
           return
         }
         onSelect()
       }}
+      onPointerDown={isMobile ? handlePointerDown : undefined}
+      onPointerMove={isMobile ? handlePointerMove : undefined}
+      onPointerUp={isMobile ? handlePointerUp : undefined}
+      onPointerCancel={isMobile ? handlePointerCancel : undefined}
       onMouseEnter={onMouseEnter}
       onPointerLeave={() => {
+        if (isMobile) {
+          clearPress()
+        }
         onMouseLeave()
         if (isEditing || !itemRef.current) {
           return
@@ -156,7 +239,9 @@ function ChatListItem({
           activeElement.blur()
         }
       }}
-      className={`yolo-chat-list-dropdown-item${isFocused ? ' selected' : ''}`}
+      className={`yolo-chat-list-dropdown-item${isFocused ? ' selected' : ''}${
+        isContextMenuOpen ? ' is-ctx-open' : ''
+      }`}
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (
@@ -224,107 +309,111 @@ function ChatListItem({
             <Check />
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onCloseMoreMenu()
-            onDelete()
-          }}
-          className="clickable-icon yolo-chat-list-dropdown-item-icon"
-        >
-          <Trash2 />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onCloseMoreMenu()
-            onTogglePinned()
-          }}
-          className={`clickable-icon yolo-chat-list-pin-button${
-            isPinned ? ' is-pinned' : ''
-          }`}
-        >
-          <Star />
-        </button>
-        {!isEditing ? (
-          <div
-            className={`yolo-chat-list-inline-actions${
-              isMoreMenuOpen ? ' is-open' : ''
-            }`}
-            aria-hidden={isMoreMenuOpen ? undefined : 'true'}
-          >
-            <div className="yolo-chat-list-inline-actions-inner">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCloseMoreMenu()
-                  onStartEdit()
-                }}
-                className="clickable-icon yolo-chat-list-dropdown-item-icon"
-                aria-label={t('common.edit', 'Edit')}
-                tabIndex={isMoreMenuOpen ? undefined : -1}
-              >
-                <Pencil size={16} />
-              </button>
-              <button
-                type="button"
-                disabled={isRetrying}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCloseMoreMenu()
-                  onRetryTitle()
-                }}
-                className={`clickable-icon yolo-chat-list-dropdown-item-icon${
-                  isRetrying ? ' is-pending' : ''
+        {!isMobile ? (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onCloseMoreMenu()
+                onDelete()
+              }}
+              className="clickable-icon yolo-chat-list-dropdown-item-icon"
+            >
+              <Trash2 />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onCloseMoreMenu()
+                onTogglePinned()
+              }}
+              className={`clickable-icon yolo-chat-list-pin-button${
+                isPinned ? ' is-pinned' : ''
+              }`}
+            >
+              <Star />
+            </button>
+            {!isEditing ? (
+              <div
+                className={`yolo-chat-list-inline-actions${
+                  isMoreMenuOpen ? ' is-open' : ''
                 }`}
-                aria-label={t('sidebar.chatList.retryTitle', 'Retry title')}
-                aria-busy={isRetrying ? 'true' : undefined}
-                tabIndex={isMoreMenuOpen ? undefined : -1}
+                aria-hidden={isMoreMenuOpen ? undefined : 'true'}
               >
-                <RotateCcw
-                  className={isRetrying ? 'yolo-spinner' : undefined}
-                />
-              </button>
+                <div className="yolo-chat-list-inline-actions-inner">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCloseMoreMenu()
+                      onStartEdit()
+                    }}
+                    className="clickable-icon yolo-chat-list-dropdown-item-icon"
+                    aria-label={t('common.edit', 'Edit')}
+                    tabIndex={isMoreMenuOpen ? undefined : -1}
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isRetrying}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCloseMoreMenu()
+                      onRetryTitle()
+                    }}
+                    className={`clickable-icon yolo-chat-list-dropdown-item-icon${
+                      isRetrying ? ' is-pending' : ''
+                    }`}
+                    aria-label={t('sidebar.chatList.retryTitle', 'Retry title')}
+                    aria-busy={isRetrying ? 'true' : undefined}
+                    tabIndex={isMoreMenuOpen ? undefined : -1}
+                  >
+                    <RotateCcw
+                      className={isRetrying ? 'yolo-spinner' : undefined}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onCloseMoreMenu()
+                      onExport()
+                    }}
+                    className="clickable-icon yolo-chat-list-dropdown-item-icon"
+                    aria-label={t(
+                      'sidebar.chatList.exportConversation',
+                      'Export conversation to vault',
+                    )}
+                    tabIndex={isMoreMenuOpen ? undefined : -1}
+                  >
+                    <Download size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {!isEditing ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCloseMoreMenu()
-                  onExport()
+                  onToggleMoreMenu()
                 }}
-                className="clickable-icon yolo-chat-list-dropdown-item-icon"
-                aria-label={t(
-                  'sidebar.chatList.exportConversation',
-                  'Export conversation to vault',
-                )}
-                tabIndex={isMoreMenuOpen ? undefined : -1}
+                className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-more-button${
+                  isMoreMenuOpen ? ' is-open' : ''
+                }`}
+                aria-labelledby={moreActionsLabelId}
+                aria-expanded={isMoreMenuOpen ? 'true' : 'false'}
               >
-                <Download size={16} />
+                <Ellipsis size={16} />
+                <span id={moreActionsLabelId} className="yolo-sr-only">
+                  {t('sidebar.chatList.moreActions', 'More actions')}
+                </span>
               </button>
-            </div>
-          </div>
-        ) : null}
-        {!isEditing ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleMoreMenu()
-            }}
-            className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-more-button${
-              isMoreMenuOpen ? ' is-open' : ''
-            }`}
-            aria-labelledby={moreActionsLabelId}
-            aria-expanded={isMoreMenuOpen ? 'true' : 'false'}
-          >
-            <Ellipsis size={16} />
-            <span id={moreActionsLabelId} className="yolo-sr-only">
-              {t('sidebar.chatList.moreActions', 'More actions')}
-            </span>
-          </button>
+            ) : null}
+          </>
         ) : null}
       </div>
     </li>
@@ -409,12 +498,19 @@ export function ChatListDropdown({
   const [moreMenuConversationId, setMoreMenuConversationId] = useState<
     string | null
   >(null)
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number
+    left: number
+  } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
   const searchCacheRef = useRef<
     Map<string, { updatedAt: number; text: string }>
   >(new Map())
   const searchIdRef = useRef(0)
+  const isMobile = Platform.isMobileApp
 
   const normalizedQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -544,6 +640,8 @@ export function ChatListDropdown({
         setShowArchived(false)
         setIsHoveringArchiveRow(false)
         setMoreMenuConversationId(null)
+        setActiveMenuId(null)
+        setMenuPosition(null)
         clearContentMatches()
       } else {
         setEditingId(null)
@@ -551,11 +649,37 @@ export function ChatListDropdown({
         setScrollIntoViewConversationId(null)
         setIsHoveringArchiveRow(false)
         setMoreMenuConversationId(null)
+        setActiveMenuId(null)
+        setMenuPosition(null)
       }
       setOpen(nextOpen)
     },
     [clearContentMatches, currentConversationId, pinnedSortedChatList],
   )
+
+  const handleLongPress = useCallback((chatId: string, cardEl: HTMLElement) => {
+    const contentEl = contentRef.current
+    if (!contentEl) {
+      return
+    }
+    const contentRect = contentEl.getBoundingClientRect()
+    const cardRect = cardEl.getBoundingClientRect()
+    const menuWidth = 176
+    const menuHeight = 168
+    let top = cardRect.bottom - contentRect.top + 6
+    const maxLeft = Math.max(8, contentRect.width - menuWidth - 8)
+    const left = Math.min(
+      Math.max(8, cardRect.left - contentRect.left),
+      maxLeft,
+    )
+    if (top + menuHeight > contentRect.height) {
+      top = cardRect.top - contentRect.top - 6
+    }
+    setMoreMenuConversationId(null)
+    setFocusedConversationId(chatId)
+    setMenuPosition({ top, left })
+    setActiveMenuId(chatId)
+  }, [])
 
   const syncPopoverWidth = useCallback(() => {
     const content = contentRef.current
@@ -691,6 +815,11 @@ export function ChatListDropdown({
     [displayChatIndexById, focusedConversationId],
   )
 
+  const activeMenuChat = useMemo(
+    () => renderedChatList.find((chat) => chat.id === activeMenuId) ?? null,
+    [activeMenuId, renderedChatList],
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const target = e.target
@@ -776,7 +905,27 @@ export function ChatListDropdown({
             />
           </div>
         </div>
-        <ul className="yolo-model-select-list">
+        <ul
+          ref={listRef}
+          className="yolo-model-select-list"
+          onPointerDownCapture={(e) => {
+            if (activeMenuId === null) {
+              return
+            }
+            if (
+              e.target instanceof Element &&
+              e.target.closest('.yolo-chat-list-ctx-menu')
+            ) {
+              return
+            }
+            setActiveMenuId(null)
+            setMenuPosition(null)
+          }}
+          onScroll={() => {
+            setActiveMenuId(null)
+            setMenuPosition(null)
+          }}
+        >
           {chatList.length === 0 ? (
             <li className="yolo-chat-list-dropdown-empty">
               {t('sidebar.chatList.empty', 'No conversations')}
@@ -805,6 +954,8 @@ export function ChatListDropdown({
                   isPinned={Boolean(chat.isPinned)}
                   isRetrying={retryingConversationIds.has(chat.id)}
                   isMoreMenuOpen={moreMenuConversationId === chat.id}
+                  isContextMenuOpen={activeMenuId === chat.id}
+                  isMobile={isMobile}
                   onMouseEnter={() => {
                     setFocusedConversationId(chat.id)
                     setScrollIntoViewConversationId(null)
@@ -927,6 +1078,12 @@ export function ChatListDropdown({
                       prev === chat.id ? null : prev,
                     )
                   }}
+                  onLongPress={(cardEl) => {
+                    if (!isMobile) {
+                      return
+                    }
+                    handleLongPress(chat.id, cardEl)
+                  }}
                 />
               ))}
               {shouldUseArchive && archivedChatList.length > 0 && (
@@ -957,6 +1114,135 @@ export function ChatListDropdown({
             </>
           )}
         </ul>
+        {isMobile && activeMenuChat && menuPosition ? (
+          <div
+            className="yolo-chat-list-ctx-menu is-open"
+            style={{ top: menuPosition.top, left: menuPosition.left }}
+          >
+            <button
+              type="button"
+              data-act="pin"
+              onClick={(e) => {
+                e.stopPropagation()
+                setActiveMenuId(null)
+                setMenuPosition(null)
+                setMoreMenuConversationId(null)
+                void Promise.resolve(onTogglePinned(activeMenuChat.id)).catch(
+                  (error) => {
+                    console.error('Failed to toggle pin', error)
+                  },
+                )
+              }}
+            >
+              <Star size={16} />
+              <span>
+                {activeMenuChat.isPinned
+                  ? t('sidebar.chatList.unpinConversation', 'Unpin')
+                  : t('sidebar.chatList.pinConversation', 'Pin')}
+              </span>
+            </button>
+            <button
+              type="button"
+              data-act="rename"
+              onClick={(e) => {
+                e.stopPropagation()
+                setActiveMenuId(null)
+                setMenuPosition(null)
+                setMoreMenuConversationId(null)
+                setEditingId(activeMenuChat.id)
+              }}
+            >
+              <Pencil size={16} />
+              <span>{t('common.edit', 'Edit')}</span>
+            </button>
+            <button
+              type="button"
+              data-act="retitle"
+              disabled={retryingConversationIds.has(activeMenuChat.id)}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (retryingConversationIds.has(activeMenuChat.id)) {
+                  return
+                }
+                setActiveMenuId(null)
+                setMenuPosition(null)
+                const retryStartedAt = Date.now()
+                setRetryingConversationIds((prev) => {
+                  const next = new Set(prev)
+                  next.add(activeMenuChat.id)
+                  return next
+                })
+                void Promise.resolve(onRetryTitle(activeMenuChat.id))
+                  .catch((error) => {
+                    console.error(
+                      'Failed to retry conversation title generation',
+                      error,
+                    )
+                  })
+                  .finally(() => {
+                    const elapsed = Date.now() - retryStartedAt
+                    const remaining = Math.max(0, 320 - elapsed)
+                    window.setTimeout(() => {
+                      setRetryingConversationIds((prev) => {
+                        if (!prev.has(activeMenuChat.id)) {
+                          return prev
+                        }
+                        const next = new Set(prev)
+                        next.delete(activeMenuChat.id)
+                        return next
+                      })
+                    }, remaining)
+                  })
+              }}
+            >
+              <RotateCcw size={16} />
+              <span>{t('sidebar.chatList.retryTitle', 'Retry title')}</span>
+            </button>
+            <button
+              type="button"
+              data-act="export"
+              onClick={(e) => {
+                e.stopPropagation()
+                setActiveMenuId(null)
+                setMenuPosition(null)
+                setMoreMenuConversationId(null)
+                void Promise.resolve(
+                  onExportConversation(activeMenuChat.id),
+                ).catch((error) => {
+                  console.error('Failed to export conversation', error)
+                })
+              }}
+            >
+              <Download size={16} />
+              <span>
+                {t(
+                  'sidebar.chatList.exportConversation',
+                  'Export conversation to vault',
+                )}
+              </span>
+            </button>
+            <hr />
+            <button
+              type="button"
+              data-act="delete"
+              className="danger"
+              onClick={(e) => {
+                e.stopPropagation()
+                setActiveMenuId(null)
+                setMenuPosition(null)
+                setMoreMenuConversationId(null)
+                void Promise.resolve(onDelete(activeMenuChat.id)).catch(
+                  (error) => {
+                    console.error('Failed to delete conversation', error)
+                  },
+                )
+              }}
+            >
+              <Trash2 size={16} />
+              <span>{t('common.delete', 'Delete')}</span>
+            </button>
+          </div>
+        ) : null}
       </YoloPopoverContent>
     </Popover.Root>
   )

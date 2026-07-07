@@ -64,6 +64,8 @@ export const it: TranslationKeys = {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
       current: 'Attuale',
+      pinConversation: 'Fissa',
+      unpinConversation: 'Rimuovi fissaggio',
       retryTitle: 'Riprova titolo',
       archived: 'Archiviate',
       hideArchived: 'Nascondi archiviate',

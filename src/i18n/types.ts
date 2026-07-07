@@ -70,6 +70,8 @@ export type TranslationKeys = {
       searchPlaceholder?: string
       empty?: string
       current?: string
+      pinConversation?: string
+      unpinConversation?: string
       retryTitle?: string
       archived?: string
       hideArchived?: string
