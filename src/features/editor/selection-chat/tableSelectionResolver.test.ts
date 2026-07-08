@@ -1,4 +1,7 @@
-import { resolveMarkdownTableSelectionFromCoordinates } from './tableSelectionResolver'
+import {
+  resolveMarkdownTableSelectionFromCoordinates,
+  resolveMarkdownTableSelectionFromTableElement,
+} from './tableSelectionResolver'
 
 describe('tableSelectionResolver', () => {
   const source = [
@@ -67,4 +70,63 @@ describe('tableSelectionResolver', () => {
       }),
     ).toBeNull()
   })
+
+  test('resolves table element selection by source line instead of table index', () => {
+    const sourceWithTwoTables = [
+      '| A | B |',
+      '| --- | --- |',
+      '| wrong | table |',
+      '',
+      '| 项目 | 测试内容 | 测试数据 | 预期结果 |',
+      '| --- | --- | --- | --- |',
+      '| 1 | 登录功能 | 用户名/密码 | 登录成功 |',
+      '| 2 | 注册功能 | 邮箱/验证码 | 注册成功 |',
+      '| 3 | 搜索功能 | 关键词 | 返回结果列表 |',
+    ].join('\n')
+    const table = createSelectedTableElement([
+      [1, 2],
+      [1, 3],
+      [2, 2],
+      [2, 3],
+    ])
+
+    const result = resolveMarkdownTableSelectionFromTableElement(
+      sourceWithTwoTables,
+      5,
+      table,
+    )
+
+    expect(result).toEqual({
+      content: [
+        '| 项目 | ... | 测试数据 | 预期结果 |',
+        '| --- | --- | --- | --- |',
+        '| 1 | ... | 用户名/密码 | 登录成功 |',
+        '| 2 | ... | 邮箱/验证码 | 注册成功 |',
+      ].join('\n'),
+      startLine: 7,
+      endLine: 8,
+      rowCount: 2,
+      columnCount: 2,
+    })
+  })
 })
+
+function createSelectedTableElement(cells: Array<[number, number]>): Element {
+  const selectedCells = cells.map(([rowIndex, cellIndex]) => ({
+    tagName: 'TD',
+    cellIndex,
+    parentElement: {
+      closest: (selector: string) =>
+        selector === 'tr'
+          ? {
+              rowIndex,
+            }
+          : null,
+    },
+  }))
+
+  return {
+    querySelectorAll: (selector: string) =>
+      selector === 'td.is-selected, th.is-selected' ? selectedCells : [],
+  } as unknown as Element
+}

@@ -41,7 +41,6 @@ import type { PdfSelectionResult } from './getPdfSelectionData'
 import { getPdfLeafContentEl } from './getPdfSelectionData'
 import { PdfSelectionManager } from './PdfSelectionManager'
 import {
-  resolveMarkdownTableSelection,
   resolveMarkdownTableSelectionFromTableElement,
 } from './tableSelectionResolver'
 
@@ -389,26 +388,7 @@ export class SelectionChatController {
         ? editorView.state.sliceDoc(highlightRange.from, highlightRange.to)
         : ''
     const domContent = selection.text.trim()
-    const isTableSelection = this.isTableDomRange(selection.range)
-    const editorSelection = editorView?.state.selection.main
-    const tableSourceRange =
-      highlightRange ??
-      (editorSelection && !editorSelection.empty
-        ? { from: editorSelection.from, to: editorSelection.to }
-        : null)
-    const tableSelection =
-      isTableSelection && editorView && tableSourceRange
-        ? resolveMarkdownTableSelection(
-            editorView,
-            tableSourceRange,
-            selection.range,
-          )
-        : null
-    const content =
-      tableSelection?.content ??
-      (isTableSelection && domContent
-        ? domContent
-        : sourceContent || domContent)
+    const content = sourceContent || domContent
     const editContent = sourceContent || content
 
     if (!content.trim()) {
@@ -421,19 +401,16 @@ export class SelectionChatController {
         : null
     const selectionFrom = sourcePosition ?? editor.getCursor('from')
     const startLine =
-      tableSelection?.startLine ??
-      (editorView && highlightRange
+      editorView && highlightRange
         ? editorView.state.doc.lineAt(highlightRange.from).number
-        : selectionFrom.line + 1)
+        : selectionFrom.line + 1
     const endLine =
-      tableSelection?.endLine ??
-      (editorView && highlightRange
+      editorView && highlightRange
         ? editorView.state.doc.lineAt(highlightRange.to).number
-        : selectionFrom.line + 1)
+        : selectionFrom.line + 1
 
     const blockData: MentionableBlockData = {
       content,
-      ...(tableSelection ? { contentFormat: 'markdown-table' as const } : {}),
       file,
       startLine,
       endLine,
@@ -449,7 +426,7 @@ export class SelectionChatController {
       editContextText: editContent,
       editorView,
       highlightRange,
-      isTableSelection,
+      isTableSelection: false,
       selectionFrom,
     }
   }
@@ -485,17 +462,18 @@ export class SelectionChatController {
       return null
     }
 
-    const widgets = Array.from(
-      view.containerEl.querySelectorAll('.cm-table-widget'),
+    const sourceLine = this.getSourceLineFromTableWidget(
+      editorView,
+      widget,
+      table,
     )
-    const tableIndex = widgets.indexOf(widget)
-    if (tableIndex < 0) {
+    if (sourceLine === null) {
       return null
     }
 
     const tableSelection = resolveMarkdownTableSelectionFromTableElement(
       editorView.state.doc.toString(),
-      tableIndex,
+      sourceLine,
       table,
     )
     if (!tableSelection) {
@@ -532,6 +510,22 @@ export class SelectionChatController {
       isTableSelection: true,
       selectionFrom,
     }
+  }
+
+  private getSourceLineFromTableWidget(
+    editorView: EditorView,
+    widget: Element,
+    table: Element,
+  ): number | null {
+    for (const element of [widget, table]) {
+      try {
+        const offset = editorView.posAtDOM(element, 0)
+        return editorView.state.doc.lineAt(offset).number
+      } catch {
+        // Try the next DOM anchor.
+      }
+    }
+    return null
   }
 
   private resolveMarkdownSelectionSnapshot(
@@ -626,32 +620,6 @@ export class SelectionChatController {
       from: fromLine.from,
       to: toLine.to,
     }
-  }
-
-  private isTableDomRange(range: Range): boolean {
-    const ownerDocument =
-      range.commonAncestorContainer.ownerDocument ?? document
-    if (
-      ownerDocument.querySelector('table td.is-selected, table th.is-selected')
-    ) {
-      return true
-    }
-
-    return [
-      range.commonAncestorContainer,
-      range.startContainer,
-      range.endContainer,
-    ]
-      .map((node) => this.nodeElement(node))
-      .some((element) =>
-        element?.closest('td, th, table, .cm-table-widget') ? true : false,
-      )
-  }
-
-  private nodeElement(node: Node): Element | null {
-    return node.nodeType === Node.ELEMENT_NODE
-      ? (node as Element)
-      : node.parentElement
   }
 
   private shouldPreserveTableSelectionLoss(): boolean {
