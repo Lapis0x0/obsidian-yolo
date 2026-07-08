@@ -14851,6 +14851,18 @@ button.yolo-llm-debug-modal-button:focus-visible {
   overflow-x: auto;
 }
 
+.yolo-chat-messages {
+  --yolo-chat-response-font-family: var(--font-interface);
+}
+
+.yolo-chat-messages
+  .yolo-chat-messages-assistant
+  .yolo-markdown-rendered.markdown-rendered:not(
+    .yolo-assistant-message-metadata-content .yolo-markdown-rendered
+  ) {
+  font-family: var(--yolo-chat-response-font-family);
+}
+
 /**
  * ChatUserInput
  */
