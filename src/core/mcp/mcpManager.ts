@@ -18,7 +18,11 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
-import { WEB_OPS_GROUP_TOOL_NAME } from '../agent/builtinToolUiMeta'
+import {
+  FILE_EDIT_GROUP_TOOL_NAME,
+  FILE_OPS_GROUP_TOOL_NAME,
+  WEB_OPS_GROUP_TOOL_NAME,
+} from '../agent/builtinToolUiMeta'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
 import type { AgentRunContext } from '../agent/types'
@@ -37,7 +41,8 @@ import {
 import { disposeJsSandbox } from './jsSandboxTool'
 // eslint-disable-next-line import/order -- false positive: sibling group is contiguous; rule miscounts the blank line above this group
 import {
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   callLocalFileTool,
   getLocalFileToolServerName,
@@ -45,8 +50,9 @@ import {
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
 
-const LOCAL_FS_SPLIT_TOOL_NAME_SET = new Set<string>(
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+const LOCAL_FS_EDIT_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
+const LOCAL_FS_PATH_OPERATION_TOOL_NAME_SET = new Set<string>(
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
 )
 const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
@@ -152,16 +158,20 @@ export class McpManager {
       }
       return true
     }
-    const directDisabled =
-      this.settings.mcp.builtinToolOptions[toolName]?.disabled
-    if (typeof directDisabled === 'boolean') {
-      return !directDisabled
+    if (LOCAL_FS_EDIT_TOOL_NAME_SET.has(toolName)) {
+      const splitToolDisabled =
+        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
+      const groupedEditOpsDisabled =
+        this.settings.mcp.builtinToolOptions[FILE_EDIT_GROUP_TOOL_NAME]
+          ?.disabled ?? false
+      return !(splitToolDisabled || groupedEditOpsDisabled)
     }
-    if (LOCAL_FS_SPLIT_TOOL_NAME_SET.has(toolName)) {
+    if (LOCAL_FS_PATH_OPERATION_TOOL_NAME_SET.has(toolName)) {
       const splitToolDisabled =
         this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
       const groupedFileOpsDisabled =
-        this.settings.mcp.builtinToolOptions.fs_file_ops?.disabled ?? false
+        this.settings.mcp.builtinToolOptions[FILE_OPS_GROUP_TOOL_NAME]
+          ?.disabled ?? false
       return !(splitToolDisabled || groupedFileOpsDisabled)
     }
     if (LOCAL_MEMORY_SPLIT_TOOL_NAME_SET.has(toolName)) {
@@ -170,6 +180,11 @@ export class McpManager {
       const groupedMemoryOpsDisabled =
         this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
       return !(splitToolDisabled || groupedMemoryOpsDisabled)
+    }
+    const directDisabled =
+      this.settings.mcp.builtinToolOptions[toolName]?.disabled
+    if (typeof directDisabled === 'boolean') {
+      return !directDisabled
     }
     return true
   }

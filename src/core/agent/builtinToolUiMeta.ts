@@ -6,6 +6,7 @@ export type BuiltinToolUiMeta = {
 }
 
 export const FILE_OPS_GROUP_TOOL_NAME = 'fs_file_ops'
+export const FILE_EDIT_GROUP_TOOL_NAME = 'fs_edit_ops'
 export const MEMORY_OPS_GROUP_TOOL_NAME = 'memory_ops'
 export const WEB_OPS_GROUP_TOOL_NAME = 'web_ops'
 
@@ -63,12 +64,19 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Apply exactly one text edit within a single existing file, by exact text (oldText) or by line range (startLine/endLine).',
   },
+  [FILE_EDIT_GROUP_TOOL_NAME]: {
+    labelKey: 'settings.agent.builtinFsEditOpsLabel',
+    descKey: 'settings.agent.builtinFsEditOpsDesc',
+    labelFallback: 'File Editing Toolset',
+    descFallback:
+      'Grouped file editing tools: targeted text edits and full-file writes.',
+  },
   [FILE_OPS_GROUP_TOOL_NAME]: {
     labelKey: 'settings.agent.builtinFsFileOpsLabel',
     descKey: 'settings.agent.builtinFsFileOpsDesc',
-    labelFallback: 'File Operation Toolset',
+    labelFallback: 'Path Operation Toolset',
     descFallback:
-      'Grouped file path operations: create/delete file, create/delete folder, and move.',
+      'Grouped file path operations: delete files or folders, create folders, and move paths.',
   },
   [MEMORY_OPS_GROUP_TOOL_NAME]: {
     labelKey: 'settings.agent.builtinMemoryOpsLabel',
@@ -170,6 +178,7 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   fs_search: 'vault',
   fs_read: 'vault',
   fs_edit: 'vault',
+  [FILE_EDIT_GROUP_TOOL_NAME]: 'vault',
   [FILE_OPS_GROUP_TOOL_NAME]: 'vault',
   context_prune_tool_results: 'context',
   context_compact: 'context',

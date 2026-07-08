@@ -328,6 +328,8 @@ export type TranslationKeys = {
       fsEditReviewToggleDesc?: string
       safetyControls?: string
       safetyControlsDesc?: string
+      builtinFsEditOpsLabel?: string
+      builtinFsEditOpsDesc?: string
       builtinFsFileOpsLabel?: string
       builtinFsFileOpsDesc?: string
       builtinMemoryOpsLabel?: string
@@ -1546,6 +1548,7 @@ export type TranslationKeys = {
         fs_search?: string
         fs_read?: string
         fs_edit?: string
+        fs_edit_ops?: string
         fs_file_ops?: string
         memory_add?: string
         memory_update?: string

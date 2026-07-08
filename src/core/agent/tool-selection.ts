@@ -8,7 +8,8 @@ import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLoadToolSchemasTool,
   getLocalFileToolServerName,
@@ -16,6 +17,7 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 
+import { FILE_EDIT_GROUP_TOOL_NAME } from './builtinToolUiMeta'
 import {
   formatSubagentModelOption,
   resolveSubagentModelConfig,
@@ -54,15 +56,27 @@ export const expandAllowedToolNames = (
 
   const expanded = new Set<string>(toolNames)
   const localServer = getLocalFileToolServerName()
+  const localFileEditTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}${FILE_EDIT_GROUP_TOOL_NAME}`
   const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
   const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
+  const hasFileEditGroup =
+    expanded.has(localFileEditTool) || expanded.has(FILE_EDIT_GROUP_TOOL_NAME)
   const hasFileOpsGroup =
     expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
   const hasMemoryOpsGroup =
     expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
 
+  if (hasFileEditGroup) {
+    for (const splitToolName of LOCAL_FS_EDIT_TOOL_NAMES) {
+      expanded.add(
+        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+      )
+      expanded.add(splitToolName)
+    }
+  }
+
   if (hasFileOpsGroup) {
-    for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
+    for (const splitToolName of LOCAL_FS_PATH_OPERATION_TOOL_NAMES) {
       expanded.add(
         `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
       )

@@ -70,11 +70,12 @@ import { migrateFrom6To7 } from './6_to_7'
 import { migrateFrom70To71 } from './70_to_71'
 import { migrateFrom71To72 } from './71_to_72'
 import { migrateFrom72To73 } from './72_to_73'
+import { migrateFrom73To74 } from './73_to_74'
 import { migrateFrom7To8 } from './7_to_8'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
-export const SETTINGS_SCHEMA_VERSION = 73
+export const SETTINGS_SCHEMA_VERSION = 74
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {
@@ -441,5 +442,10 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 72,
     toVersion: 73,
     migrate: migrateFrom72To73,
+  },
+  {
+    fromVersion: 73,
+    toVersion: 74,
+    migrate: migrateFrom73To74,
   },
 ]

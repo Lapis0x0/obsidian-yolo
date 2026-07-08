@@ -7,6 +7,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  FILE_EDIT_GROUP_TOOL_NAME,
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
@@ -16,7 +17,8 @@ import {
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import {
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
@@ -43,7 +45,10 @@ type AgentSectionProps = {
   app: App
 }
 
-const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
+const PATH_FS_TOOL_NAME_SET = new Set<string>(
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
+)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -215,7 +220,8 @@ export function AgentSection({ app }: AgentSectionProps) {
     const tools = getLocalFileTools()
       .filter(
         (tool) =>
-          !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !PATH_FS_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
@@ -228,7 +234,22 @@ export function AgentSection({ app }: AgentSectionProps) {
         }
       })
 
-    const splitToolEnabled = LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.every(
+    const editSplitToolEnabled = LOCAL_FS_EDIT_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[FILE_EDIT_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
+    if (!fileEditMeta) {
+      throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
+    }
+    const fileEditTool = {
+      id: FILE_EDIT_GROUP_TOOL_NAME,
+      label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
+      enabled: editSplitToolEnabled,
+    }
+
+    const splitToolEnabled = LOCAL_FS_PATH_OPERATION_TOOL_NAMES.every(
       (toolName) =>
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
@@ -275,10 +296,12 @@ export function AgentSection({ app }: AgentSectionProps) {
 
     const fsReadIndex = tools.findIndex((tool) => tool.id === 'fs_read')
     if (fsReadIndex >= 0) {
-      tools.splice(fsReadIndex, 0, fileOpsTool)
-      tools.splice(fsReadIndex + 1, 0, memoryOpsTool)
-      tools.splice(fsReadIndex + 2, 0, webOpsTool)
+      tools.splice(fsReadIndex, 0, fileEditTool)
+      tools.splice(fsReadIndex + 1, 0, fileOpsTool)
+      tools.splice(fsReadIndex + 2, 0, memoryOpsTool)
+      tools.splice(fsReadIndex + 3, 0, webOpsTool)
     } else {
+      tools.push(fileEditTool)
       tools.push(fileOpsTool)
       tools.push(memoryOpsTool)
       tools.push(webOpsTool)

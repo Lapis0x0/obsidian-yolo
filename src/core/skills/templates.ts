@@ -106,7 +106,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a single targeted content change in an existing file, and \`fs_write\` / \`fs_delete\` / \`fs_create_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a targeted content change in an existing file, \`fs_write\` to create or overwrite full file content, and \`fs_delete\` / \`fs_create_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
 
 ## Anatomy of a Skill
 

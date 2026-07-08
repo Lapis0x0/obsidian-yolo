@@ -446,8 +446,11 @@ export const it: TranslationKeys = {
       fsEditReviewToggle: 'Richiedi approvazione prima di modificare i file',
       fsEditReviewToggleDesc:
         "Se abilitato, le modifiche fs_edit dell'agent aprono la revisione inline/apply prima di scrivere il file.",
-      builtinFsFileOpsLabel: 'Set operazioni file',
-      builtinFsFileOpsDesc: 'Scrivi, elimina e sposta file e cartelle',
+      builtinFsEditOpsLabel: 'Set modifica file',
+      builtinFsEditOpsDesc:
+        'Modifica testo mirato o scrive il contenuto completo del file',
+      builtinFsFileOpsLabel: 'Set operazioni percorsi',
+      builtinFsFileOpsDesc: 'Elimina o sposta file e cartelle, e crea cartelle',
       builtinMemoryOpsLabel: 'Set strumenti memoria',
       builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
       builtinMemoryAddLabel: 'Aggiungi memoria',
@@ -1727,7 +1730,8 @@ export const it: TranslationKeys = {
         fs_search: 'Cerca nel vault',
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
-        fs_file_ops: 'Set operazioni file',
+        fs_edit_ops: 'Set modifica file',
+        fs_file_ops: 'Set operazioni percorsi',
         memory_add: 'Aggiungi memoria',
         memory_update: 'Aggiorna memoria',
         memory_delete: 'Elimina memoria',

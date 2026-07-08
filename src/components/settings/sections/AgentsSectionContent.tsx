@@ -27,6 +27,7 @@ import {
   BUILTIN_TOOL_CATEGORY_I18N,
   BUILTIN_TOOL_CATEGORY_ORDER,
   type BuiltinToolCategory,
+  FILE_EDIT_GROUP_TOOL_NAME,
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
@@ -50,7 +51,8 @@ import {
 import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection'
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
 import {
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../../../core/mcp/localFileTools'
@@ -118,7 +120,10 @@ type SkillRowView = LiteSkillEntry & {
   loadMode: AssistantSkillLoadMode
 }
 
-const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
+const PATH_FS_TOOL_NAME_SET = new Set<string>(
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
+)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -739,7 +744,8 @@ export function AgentsSectionContent({
       string,
       { title: string; tools: AgentToolView[]; isBuiltin: boolean }
     >()
-    const localSplitToolTargets = new Set<string>()
+    const localEditSplitToolTargets = new Set<string>()
+    const localPathSplitToolTargets = new Set<string>()
     const localMemorySplitToolTargets = new Set<string>()
     const localWebSplitToolTargets = new Set<string>()
 
@@ -760,8 +766,12 @@ export function AgentsSectionContent({
       if (isBuiltin && draftAgent?.includeBuiltinTools === false) {
         return
       }
-      if (isBuiltin && SPLIT_FS_TOOL_NAME_SET.has(toolName)) {
-        localSplitToolTargets.add(tool.name)
+      if (isBuiltin && EDIT_FS_TOOL_NAME_SET.has(toolName)) {
+        localEditSplitToolTargets.add(tool.name)
+        return
+      }
+      if (isBuiltin && PATH_FS_TOOL_NAME_SET.has(toolName)) {
+        localPathSplitToolTargets.add(tool.name)
         return
       }
       if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
@@ -814,7 +824,23 @@ export function AgentsSectionContent({
 
     if (
       draftAgent?.includeBuiltinTools !== false &&
-      localSplitToolTargets.size > 0
+      localEditSplitToolTargets.size > 0
+    ) {
+      const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
+      if (!fileEditMeta) {
+        throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
+      }
+      pushBuiltinGroupTool(FILE_EDIT_GROUP_TOOL_NAME, {
+        fullName: `${localFsServerName}__${FILE_EDIT_GROUP_TOOL_NAME}`,
+        toggleTargets: [...localEditSplitToolTargets],
+        displayName: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
+        description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
+      })
+    }
+
+    if (
+      draftAgent?.includeBuiltinTools !== false &&
+      localPathSplitToolTargets.size > 0
     ) {
       const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
       if (!fileOpsMeta) {
@@ -822,7 +848,7 @@ export function AgentsSectionContent({
       }
       pushBuiltinGroupTool(FILE_OPS_GROUP_TOOL_NAME, {
         fullName: `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localSplitToolTargets],
+        toggleTargets: [...localPathSplitToolTargets],
         displayName: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
         description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       })

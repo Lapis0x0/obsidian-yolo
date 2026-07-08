@@ -20,6 +20,7 @@ describe('McpManager mobile built-in tool behavior', () => {
 
   function createManager(
     openApplyReview: (state: unknown) => Promise<boolean> = jest.fn(),
+    builtinToolOptions: Record<string, { disabled?: boolean }> = {},
   ) {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
@@ -39,7 +40,7 @@ describe('McpManager mobile built-in tool behavior', () => {
       settings: {
         mcp: {
           servers: [],
-          builtinToolOptions: {},
+          builtinToolOptions,
         },
         webSearch: {
           providers: [],
@@ -88,6 +89,42 @@ describe('McpManager mobile built-in tool behavior', () => {
         expect.objectContaining({ name: 'yolo_local__web_search' }),
       ]),
     )
+  })
+
+  it('keeps file editing tools separate from the file path operation group switch', async () => {
+    const manager = createManager(jest.fn(), {
+      fs_file_ops: { disabled: true },
+      fs_edit: { disabled: false },
+      fs_write: { disabled: false },
+      fs_delete: { disabled: false },
+    })
+
+    const toolNames = (
+      await manager.listAvailableTools({ includeBuiltinTools: true })
+    ).map((tool) => tool.name)
+
+    expect(toolNames).toContain('yolo_local__fs_edit')
+    expect(toolNames).toContain('yolo_local__fs_write')
+    expect(toolNames).not.toContain('yolo_local__fs_delete')
+    expect(toolNames).toContain('yolo_local__fs_read')
+  })
+
+  it('keeps file path operation tools separate from the file editing group switch', async () => {
+    const manager = createManager(jest.fn(), {
+      fs_edit_ops: { disabled: true },
+      fs_edit: { disabled: false },
+      fs_write: { disabled: false },
+      fs_delete: { disabled: false },
+    })
+
+    const toolNames = (
+      await manager.listAvailableTools({ includeBuiltinTools: true })
+    ).map((tool) => tool.name)
+
+    expect(toolNames).not.toContain('yolo_local__fs_edit')
+    expect(toolNames).not.toContain('yolo_local__fs_write')
+    expect(toolNames).toContain('yolo_local__fs_delete')
+    expect(toolNames).toContain('yolo_local__fs_read')
   })
 
   it('executes built-in tools on mobile', async () => {

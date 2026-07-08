@@ -456,8 +456,11 @@ export const en: TranslationKeys = {
       fsEditReviewToggle: 'Require approval before editing files',
       fsEditReviewToggleDesc:
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
-      builtinFsFileOpsLabel: 'File Operation Toolset',
-      builtinFsFileOpsDesc: 'Write, delete, and move files and folders',
+      builtinFsEditOpsLabel: 'File Editing Toolset',
+      builtinFsEditOpsDesc: 'Edit targeted text or write full file content',
+      builtinFsFileOpsLabel: 'Path Operation Toolset',
+      builtinFsFileOpsDesc:
+        'Delete or move files and folders, and create folders',
       builtinMemoryOpsLabel: 'Memory Toolset',
       builtinMemoryOpsDesc: 'Add, update, and delete memory',
       builtinMemoryAddLabel: 'Add Memory',
@@ -1832,7 +1835,8 @@ export const en: TranslationKeys = {
         fs_search: 'Search vault',
         fs_read: 'Read files',
         fs_edit: 'Text editing',
-        fs_file_ops: 'File Operation Toolset',
+        fs_edit_ops: 'File Editing Toolset',
+        fs_file_ops: 'Path Operation Toolset',
         memory_add: 'Add memory',
         memory_update: 'Update memory',
         memory_delete: 'Delete memory',
