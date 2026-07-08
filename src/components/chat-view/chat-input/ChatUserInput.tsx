@@ -227,6 +227,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         characters: t('common.characters', 'chars'),
         words: t('common.words', 'words'),
         wordsCharacters: t('common.wordsCharacters', 'words/chars'),
+        rows: t('common.rows', 'rows'),
+        columns: t('common.columns', 'columns'),
       }),
       [t],
     )

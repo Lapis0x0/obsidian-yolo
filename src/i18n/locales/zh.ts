@@ -49,6 +49,8 @@ export const zh: TranslationKeys = {
     characters: '字符',
     words: '词',
     wordsCharacters: '词/字',
+    rows: '行',
+    columns: '列',
     default: '默认',
     modelDefault: '模型默认',
     on: '开',

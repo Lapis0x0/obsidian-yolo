@@ -35,9 +35,12 @@ export type MentionableBlockData = {
   pageNumber?: number // 1-indexed; present when selection originates from a PDF view
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
   highlightId?: string // runtime-only; links this mention to its visual highlight; not persisted
+  contentFormat?: 'markdown-table'
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
+  tableRowCount?: number
+  tableColumnCount?: number
 }
 export type MentionableBlock = MentionableBlockData & {
   type: 'block'
@@ -142,9 +145,12 @@ export type SerializedMentionableBlock = {
   endLine: number
   pageNumber?: number
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
+  contentFormat?: 'markdown-table'
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
+  tableRowCount?: number
+  tableColumnCount?: number
 }
 export type SerializedMentionableAssistantQuote = {
   type: 'assistant-quote'

@@ -49,6 +49,8 @@ export const en: TranslationKeys = {
     characters: 'Chars',
     words: 'Words',
     wordsCharacters: 'Words/characters',
+    rows: 'rows',
+    columns: 'columns',
     default: 'Default',
     modelDefault: 'Model default',
     on: 'On',

@@ -38,10 +38,13 @@ export const serializeMentionable = (
         endLine: mentionable.endLine,
         pageNumber: mentionable.pageNumber,
         source: mentionable.source,
+        contentFormat: mentionable.contentFormat,
         contentHash:
           mentionable.contentHash ?? getBlockContentHash(mentionable.content),
         contentCount: mentionable.contentCount,
         contentUnit: mentionable.contentUnit,
+        tableRowCount: mentionable.tableRowCount,
+        tableColumnCount: mentionable.tableColumnCount,
       }
     case 'assistant-quote':
       return {
@@ -180,10 +183,13 @@ export const deserializeMentionable = (
           endLine: mentionable.endLine,
           pageNumber: mentionable.pageNumber,
           source: mentionable.source,
+          contentFormat: mentionable.contentFormat,
           contentHash:
             mentionable.contentHash ?? getBlockContentHash(mentionable.content),
           contentCount: mentionable.contentCount,
           contentUnit: mentionable.contentUnit,
+          tableRowCount: mentionable.tableRowCount,
+          tableColumnCount: mentionable.tableColumnCount,
         }
       }
       case 'assistant-quote': {
@@ -413,7 +419,7 @@ export function getBlockMentionableCountInfo(
 }
 
 export type MentionableUnitLabels = Partial<
-  Record<MentionableBlockUnit, string>
+  Record<MentionableBlockUnit | 'rows' | 'columns', string>
 >
 
 function resolveUnitLabel(
@@ -436,6 +442,15 @@ export function getMentionableName(
     case 'folder':
       return mentionable.folder.name
     case 'block': {
+      if (
+        mentionable.contentFormat === 'markdown-table' &&
+        mentionable.tableRowCount !== undefined &&
+        mentionable.tableColumnCount !== undefined
+      ) {
+        const rowsLabel = options?.unitLabels?.rows ?? 'rows'
+        const columnsLabel = options?.unitLabels?.columns ?? 'columns'
+        return `${mentionable.file.name} (${mentionable.tableRowCount} ${rowsLabel} ${mentionable.tableColumnCount} ${columnsLabel})`
+      }
       const info = getBlockMentionableCountInfo(mentionable.content)
       const count = mentionable.contentCount ?? info.count
       const unit = mentionable.contentUnit ?? info.unit

@@ -51,6 +51,8 @@ export type TranslationKeys = {
     characters: string
     words: string
     wordsCharacters: string
+    rows?: string
+    columns?: string
     // additions
     default?: string
     modelDefault?: string

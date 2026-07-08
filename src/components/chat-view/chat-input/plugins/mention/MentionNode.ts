@@ -244,6 +244,7 @@ function compactInlineMentionable(
     endLine: mentionable.endLine,
     pageNumber: mentionable.pageNumber,
     source: mentionable.source,
+    contentFormat: mentionable.contentFormat,
     contentHash:
       mentionable.contentHash ??
       (typeof mentionable.content === 'string'
@@ -251,6 +252,8 @@ function compactInlineMentionable(
         : undefined),
     contentCount: mentionable.contentCount,
     contentUnit: mentionable.contentUnit,
+    tableRowCount: mentionable.tableRowCount,
+    tableColumnCount: mentionable.tableColumnCount,
   }
 }
 

@@ -2,6 +2,7 @@ import { EditorView } from '@codemirror/view'
 import {
   App,
   Editor,
+  type EditorPosition,
   type EventRef,
   MarkdownView,
   Notice,
@@ -39,6 +40,10 @@ import {
 import type { PdfSelectionResult } from './getPdfSelectionData'
 import { getPdfLeafContentEl } from './getPdfSelectionData'
 import { PdfSelectionManager } from './PdfSelectionManager'
+import {
+  resolveMarkdownTableSelection,
+  resolveMarkdownTableSelectionFromTableElement,
+} from './tableSelectionResolver'
 
 export type PendingSelectionRewrite = {
   editor: Editor
@@ -46,6 +51,24 @@ export type PendingSelectionRewrite = {
   from: { line: number; ch: number }
   to: { line: number; ch: number }
 }
+
+type EditorRange = {
+  from: number
+  to: number
+}
+
+type MarkdownSelectionSnapshot = {
+  blockData: MentionableBlockData
+  capturedAt: number
+  editBlockData: MentionableBlockData
+  editContextText: string
+  editorView: EditorView | null
+  highlightRange: EditorRange | null
+  isTableSelection: boolean
+  selectionFrom: EditorPosition
+}
+
+const TABLE_SELECTION_LOSS_PRESERVE_MS = 800
 
 type SelectionChatControllerDeps = {
   plugin: YoloPlugin
@@ -179,6 +202,8 @@ export class SelectionChatController {
    * closed.  Always null when the widget's source is `'markdown'`.
    */
   private currentWidgetPdfLeaf: WorkspaceLeaf | null = null
+  private currentMarkdownSelectionSnapshot: MarkdownSelectionSnapshot | null =
+    null
   /**
    * Stable identity of the most recent PDF selection we've synced to chat
    * (file + page + content).  Used to skip the addHighlight + sync + remount
@@ -313,6 +338,7 @@ export class SelectionChatController {
       this.app.workspace.offref(this.layoutChangeEventRef)
       this.layoutChangeEventRef = null
     }
+    this.currentMarkdownSelectionSnapshot = null
     // Drop all highlights and detach PDF eventBus listeners.  Reconcile in
     // Chat.tsx only clears 'chat' owner; here we want everything gone.
     selectionHighlightController.clearAll()
@@ -339,18 +365,325 @@ export class SelectionChatController {
     return `${data.file.path}#${data.pageNumber}#${data.content}`
   }
 
+  private createMarkdownSelectionSnapshot(
+    selection: SelectionInfo,
+    editor: Editor,
+  ): MarkdownSelectionSnapshot | null {
+    const tableSnapshot = this.createObsidianTableSelectionSnapshot(editor)
+    if (tableSnapshot) {
+      return tableSnapshot
+    }
+
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
+    const file = view?.file
+    if (!file) {
+      return null
+    }
+
+    const editorView = this.getEditorView(editor)
+    const highlightRange = editorView
+      ? this.resolveEditorRangeFromDomRange(editorView, selection.range)
+      : null
+    const sourceContent =
+      editorView && highlightRange
+        ? editorView.state.sliceDoc(highlightRange.from, highlightRange.to)
+        : ''
+    const domContent = selection.text.trim()
+    const isTableSelection = this.isTableDomRange(selection.range)
+    const editorSelection = editorView?.state.selection.main
+    const tableSourceRange =
+      highlightRange ??
+      (editorSelection && !editorSelection.empty
+        ? { from: editorSelection.from, to: editorSelection.to }
+        : null)
+    const tableSelection =
+      isTableSelection && editorView && tableSourceRange
+        ? resolveMarkdownTableSelection(
+            editorView,
+            tableSourceRange,
+            selection.range,
+          )
+        : null
+    const content =
+      tableSelection?.content ??
+      (isTableSelection && domContent
+        ? domContent
+        : sourceContent || domContent)
+    const editContent = sourceContent || content
+
+    if (!content.trim()) {
+      return null
+    }
+
+    const sourcePosition =
+      editorView && highlightRange
+        ? this.getEditorPositionFromOffset(editorView, highlightRange.from)
+        : null
+    const selectionFrom = sourcePosition ?? editor.getCursor('from')
+    const startLine =
+      tableSelection?.startLine ??
+      (editorView && highlightRange
+        ? editorView.state.doc.lineAt(highlightRange.from).number
+        : selectionFrom.line + 1)
+    const endLine =
+      tableSelection?.endLine ??
+      (editorView && highlightRange
+        ? editorView.state.doc.lineAt(highlightRange.to).number
+        : selectionFrom.line + 1)
+
+    const blockData: MentionableBlockData = {
+      content,
+      ...(tableSelection ? { contentFormat: 'markdown-table' as const } : {}),
+      file,
+      startLine,
+      endLine,
+    }
+
+    return {
+      blockData,
+      capturedAt: Date.now(),
+      editBlockData: {
+        ...blockData,
+        content: editContent,
+      },
+      editContextText: editContent,
+      editorView,
+      highlightRange,
+      isTableSelection,
+      selectionFrom,
+    }
+  }
+
+  private createObsidianTableSelectionSnapshot(
+    editor: Editor,
+  ): MarkdownSelectionSnapshot | null {
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      return null
+    }
+
+    const leaf = this.app.workspace
+      .getLeavesOfType('markdown')
+      .find((candidate) => {
+        if (!(candidate.view instanceof MarkdownView)) {
+          return false
+        }
+        return this.getEditorView(candidate.view.editor) === editorView
+      })
+    const view = leaf?.view instanceof MarkdownView ? leaf.view : null
+    const file = view?.file
+    if (!view || !file) {
+      return null
+    }
+
+    const selectedCell = view.containerEl.querySelector(
+      'table.table-editor td.is-selected, table.table-editor th.is-selected',
+    )
+    const table = selectedCell?.closest('table.table-editor')
+    const widget = table?.closest('.cm-table-widget')
+    if (!table || !widget) {
+      return null
+    }
+
+    const widgets = Array.from(
+      view.containerEl.querySelectorAll('.cm-table-widget'),
+    )
+    const tableIndex = widgets.indexOf(widget)
+    if (tableIndex < 0) {
+      return null
+    }
+
+    const tableSelection = resolveMarkdownTableSelectionFromTableElement(
+      editorView.state.doc.toString(),
+      tableIndex,
+      table,
+    )
+    if (!tableSelection) {
+      return null
+    }
+
+    const highlightRange = this.getEditorRangeForLines(
+      editorView,
+      tableSelection.startLine,
+      tableSelection.endLine,
+    )
+    const selectionFrom = this.getEditorPositionFromOffset(
+      editorView,
+      highlightRange.from,
+    )
+
+    const blockData: MentionableBlockData = {
+      content: tableSelection.content,
+      contentFormat: 'markdown-table',
+      file,
+      startLine: tableSelection.startLine,
+      endLine: tableSelection.endLine,
+      tableRowCount: tableSelection.rowCount,
+      tableColumnCount: tableSelection.columnCount,
+    }
+
+    return {
+      blockData,
+      capturedAt: Date.now(),
+      editBlockData: blockData,
+      editContextText: tableSelection.content,
+      editorView,
+      highlightRange,
+      isTableSelection: true,
+      selectionFrom,
+    }
+  }
+
+  private resolveMarkdownSelectionSnapshot(
+    editor: Editor,
+    view: MarkdownView,
+    snapshot?: MarkdownSelectionSnapshot,
+  ): MarkdownSelectionSnapshot | null {
+    if (snapshot) {
+      return snapshot
+    }
+
+    const data = getMentionableBlockData(editor, view)
+    if (!data) {
+      return null
+    }
+
+    const editorView = this.getEditorView(editor)
+    const selection = editorView?.state.selection.main
+    const highlightRange =
+      selection && !selection.empty
+        ? { from: selection.from, to: selection.to }
+        : null
+
+    return {
+      blockData: data,
+      capturedAt: Date.now(),
+      editBlockData: data,
+      editContextText: data.content,
+      editorView,
+      highlightRange,
+      isTableSelection: false,
+      selectionFrom: editor.getCursor('from'),
+    }
+  }
+
+  private resolveEditorRangeFromDomRange(
+    editorView: EditorView,
+    range: Range,
+  ): EditorRange | null {
+    if (!editorView.contentDOM.contains(range.commonAncestorContainer)) {
+      return null
+    }
+
+    try {
+      let from = editorView.posAtDOM(range.startContainer, range.startOffset)
+      let to = editorView.posAtDOM(range.endContainer, range.endOffset)
+      if (from > to) {
+        ;[from, to] = [to, from]
+      }
+
+      if (from === to) {
+        const rect = range.getBoundingClientRect()
+        if (rect.width > 0 || rect.height > 0) {
+          const topPos = editorView.posAtCoords({ x: rect.left, y: rect.top })
+          const bottomPos = editorView.posAtCoords({
+            x: Math.max(rect.right - 1, rect.left),
+            y: Math.max(rect.bottom - 1, rect.top),
+          })
+          if (typeof topPos === 'number' && typeof bottomPos === 'number') {
+            from = Math.min(topPos, bottomPos)
+            to = Math.max(topPos, bottomPos)
+          }
+        }
+      }
+
+      return from < to ? { from, to } : null
+    } catch {
+      return null
+    }
+  }
+
+  private getEditorPositionFromOffset(
+    editorView: EditorView,
+    offset: number,
+  ): EditorPosition {
+    const line = editorView.state.doc.lineAt(offset)
+    return {
+      line: line.number - 1,
+      ch: offset - line.from,
+    }
+  }
+
+  private getEditorRangeForLines(
+    editorView: EditorView,
+    startLine: number,
+    endLine: number,
+  ): EditorRange {
+    const doc = editorView.state.doc
+    const fromLine = doc.line(Math.max(1, Math.min(startLine, doc.lines)))
+    const toLine = doc.line(Math.max(1, Math.min(endLine, doc.lines)))
+    return {
+      from: fromLine.from,
+      to: toLine.to,
+    }
+  }
+
+  private isTableDomRange(range: Range): boolean {
+    const ownerDocument =
+      range.commonAncestorContainer.ownerDocument ?? document
+    if (
+      ownerDocument.querySelector('table td.is-selected, table th.is-selected')
+    ) {
+      return true
+    }
+
+    return [
+      range.commonAncestorContainer,
+      range.startContainer,
+      range.endContainer,
+    ]
+      .map((node) => this.nodeElement(node))
+      .some((element) =>
+        element?.closest('td, th, table, .cm-table-widget') ? true : false,
+      )
+  }
+
+  private nodeElement(node: Node): Element | null {
+    return node.nodeType === Node.ELEMENT_NODE
+      ? (node as Element)
+      : node.parentElement
+  }
+
+  private shouldPreserveTableSelectionLoss(): boolean {
+    const snapshot = this.currentMarkdownSelectionSnapshot
+    return Boolean(
+      snapshot?.isTableSelection &&
+        Date.now() - snapshot.capturedAt < TABLE_SELECTION_LOSS_PRESERVE_MS,
+    )
+  }
+
   private handleSelectionChange(
     selection: SelectionInfo | null,
     editor: Editor,
   ) {
+    const tableSnapshot = this.createObsidianTableSelectionSnapshot(editor)
     if (
       !selection &&
-      this.selectionChatWidget?.shouldPreserveOnSelectionLoss()
+      !tableSnapshot &&
+      (this.selectionChatWidget?.shouldPreserveOnSelectionLoss() ||
+        this.shouldPreserveTableSelectionLoss())
     ) {
       return
     }
 
-    this.syncSelectionBadge(selection, editor)
+    const snapshot =
+      tableSnapshot ??
+      (selection
+        ? this.createMarkdownSelectionSnapshot(selection, editor)
+        : null)
+    this.currentMarkdownSelectionSnapshot = snapshot
+
+    this.syncSelectionBadge(snapshot)
 
     // Switching to a markdown selection invalidates any sticky PDF state.
     this.lastSyncedPdfKey = null
@@ -367,7 +700,7 @@ export class SelectionChatController {
       return
     }
 
-    if (selection) {
+    if (selection && snapshot) {
       const currentView = this.app.workspace.getActiveViewOfType(MarkdownView)
       const hostEl = currentView?.containerEl.querySelector('.cm-editor')
       if (!hostEl) {
@@ -398,6 +731,7 @@ export class SelectionChatController {
             mode,
             rewriteBehavior,
             assistantId,
+            snapshot,
           )
         },
       })
@@ -412,6 +746,7 @@ export class SelectionChatController {
     mode: SelectionActionMode,
     rewriteBehavior?: SelectionActionRewriteBehavior,
     assistantId?: string,
+    snapshot?: MarkdownSelectionSnapshot,
   ) {
     // undefined = "follow current selection" → use the sidebar's active assistant
     const resolvedAssistantId =
@@ -425,44 +760,65 @@ export class SelectionChatController {
         instruction,
         rewriteBehavior,
         resolvedAssistantId,
+        snapshot,
       )
       return
     }
 
     if (mode === 'chat-input') {
       if (actionId === 'add-to-sidebar') {
-        await this.addToSidebar(editor)
+        await this.addToSidebar(editor, snapshot)
         return
       }
-      await this.addToChatInput(editor, instruction, resolvedAssistantId)
+      await this.addToChatInput(
+        editor,
+        instruction,
+        resolvedAssistantId,
+        snapshot,
+      )
       return
     }
 
     if (mode === 'chat-send') {
-      await this.addToChatAndSend(editor, instruction, resolvedAssistantId)
+      await this.addToChatAndSend(
+        editor,
+        instruction,
+        resolvedAssistantId,
+        snapshot,
+      )
       return
     }
 
     const prompt = instruction.trim()
     if (!prompt) {
-      await this.openCustomAsk(editor, resolvedAssistantId)
+      await this.openCustomAsk(editor, resolvedAssistantId, snapshot)
       return
     }
-    await this.explainSelection(editor, prompt, resolvedAssistantId)
+    await this.explainSelection(editor, prompt, resolvedAssistantId, snapshot)
   }
 
-  private async openCustomAsk(editor: Editor, assistantId?: string) {
+  private async openCustomAsk(
+    editor: Editor,
+    assistantId?: string,
+    snapshot?: MarkdownSelectionSnapshot,
+  ) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!editor || !view) {
       new Notice('无法获取当前编辑器')
       return
     }
 
-    const mentionable = this.createSelectionMentionable(editor, view)
-    if (!mentionable) {
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      view,
+      snapshot,
+    )
+    if (!resolvedSnapshot) {
       new Notice('无法创建选区数据')
       return
     }
+
+    const mentionable = this.createSelectionMentionable(resolvedSnapshot)
 
     const editorView = this.getEditorView(editor)
     if (!editorView) {
@@ -473,38 +829,33 @@ export class SelectionChatController {
     this.showQuickAskWithOptions(editor, editorView, {
       initialMode: 'ask',
       initialMentionables: [mentionable],
-      selectionScope: this.createSelectionScope(mentionable, editor),
+      selectionScope: this.createSelectionScope(mentionable, resolvedSnapshot),
       initialAssistantId: assistantId,
     })
   }
 
   private createSelectionMentionable(
-    editor: Editor,
-    view: MarkdownView,
-  ): MentionableBlock | null {
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
-      return null
-    }
-
+    snapshot: MarkdownSelectionSnapshot,
+    options?: { forEdit?: boolean },
+  ): MentionableBlock {
     return {
       type: 'block',
-      ...data,
+      ...(options?.forEdit ? snapshot.editBlockData : snapshot.blockData),
       source: 'selection',
     }
   }
 
   private createSelectionScope(
     mentionable: MentionableBlock,
-    editor: Editor,
+    snapshot: MarkdownSelectionSnapshot,
   ): QuickAskSelectionScope {
     return {
       mentionable,
-      selectionFrom: editor.getCursor('from'),
+      selectionFrom: snapshot.selectionFrom,
     }
   }
 
-  private syncSelectionBadge(selection: SelectionInfo | null, editor: Editor) {
+  private syncSelectionBadge(snapshot: MarkdownSelectionSnapshot | null) {
     const targetLeaf = this.plugin
       .getChatLeafSessionManager()
       .resolveTargetLeaf()
@@ -514,7 +865,7 @@ export class SelectionChatController {
 
     const chatView = targetLeaf.view
 
-    if (!selection) {
+    if (!snapshot) {
       const activeMarkdownView =
         this.app.workspace.getActiveViewOfType(MarkdownView)
       if (!activeMarkdownView) {
@@ -524,33 +875,23 @@ export class SelectionChatController {
       return
     }
 
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (!view) {
-      return
-    }
-
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
-      return
-    }
-
     // Stamp a highlightId and pin the sync highlight immediately.
     const highlightId = crypto.randomUUID()
-    const editorView = this.getEditorView(editor)
-    if (editorView && this.shouldPersistSelectionHighlight()) {
-      const selection = editorView.state.selection.main
-      if (!selection.empty) {
-        selectionHighlightController.addHighlight(
-          editorView,
-          highlightId,
-          { from: selection.from, to: selection.to },
-          'sync',
-          'chat',
-        )
-      }
+    if (
+      snapshot.editorView &&
+      snapshot.highlightRange &&
+      this.shouldPersistSelectionHighlight()
+    ) {
+      selectionHighlightController.addHighlight(
+        snapshot.editorView,
+        highlightId,
+        snapshot.highlightRange,
+        'sync',
+        'chat',
+      )
     }
 
-    chatView.syncSelectionToChat({ ...data, highlightId })
+    chatView.syncSelectionToChat({ ...snapshot.blockData, highlightId })
   }
 
   /**
@@ -861,6 +1202,7 @@ export class SelectionChatController {
     instruction: string,
     rewriteBehavior?: SelectionActionRewriteBehavior,
     assistantId?: string,
+    snapshot?: MarkdownSelectionSnapshot,
   ) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!view) {
@@ -868,17 +1210,19 @@ export class SelectionChatController {
       return
     }
 
-    const selectedText = editor.getSelection()
-    if (!selectedText || selectedText.trim().length === 0) {
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      view,
+      snapshot,
+    )
+    if (!resolvedSnapshot || !resolvedSnapshot.editContextText.trim()) {
       new Notice('请先选择要改写的文本。')
       return
     }
 
-    const mentionable = this.createSelectionMentionable(editor, view)
-    if (!mentionable) {
-      new Notice('无法创建选区数据')
-      return
-    }
+    const mentionable = this.createSelectionMentionable(resolvedSnapshot, {
+      forEdit: true,
+    })
 
     const editorView = this.getEditorView(editor)
     if (!editorView) {
@@ -898,9 +1242,9 @@ export class SelectionChatController {
       initialPrompt: behavior === 'preset' ? prompt : undefined,
       initialInput: behavior === 'custom' ? prompt : undefined,
       initialMentionables: [mentionable],
-      editContextText: selectedText,
-      editSelectionFrom: editor.getCursor('from'),
-      selectionScope: this.createSelectionScope(mentionable, editor),
+      editContextText: resolvedSnapshot.editContextText,
+      editSelectionFrom: resolvedSnapshot.selectionFrom,
+      selectionScope: this.createSelectionScope(mentionable, resolvedSnapshot),
       autoSend: behavior === 'preset',
       initialAssistantId: assistantId,
     })
@@ -910,6 +1254,7 @@ export class SelectionChatController {
     editor: Editor,
     prompt?: string,
     assistantId?: string,
+    snapshot?: MarkdownSelectionSnapshot,
   ) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!editor || !view) {
@@ -917,11 +1262,17 @@ export class SelectionChatController {
       return
     }
 
-    const mentionable = this.createSelectionMentionable(editor, view)
-    if (!mentionable) {
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      view,
+      snapshot,
+    )
+    if (!resolvedSnapshot) {
       new Notice('无法创建选区数据')
       return
     }
+
+    const mentionable = this.createSelectionMentionable(resolvedSnapshot)
 
     const editorView = this.getEditorView(editor)
     if (!editorView) {
@@ -934,7 +1285,7 @@ export class SelectionChatController {
     this.showQuickAskWithAutoSend(editor, editorView, {
       prompt: basePrompt,
       mentionables: [mentionable],
-      selectionScope: this.createSelectionScope(mentionable, editor),
+      selectionScope: this.createSelectionScope(mentionable, resolvedSnapshot),
       initialAssistantId: assistantId,
     })
   }
@@ -943,6 +1294,7 @@ export class SelectionChatController {
     editor: Editor,
     prompt?: string,
     assistantId?: string,
+    snapshot?: MarkdownSelectionSnapshot,
   ) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!editor || !view) {
@@ -950,76 +1302,54 @@ export class SelectionChatController {
       return
     }
 
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      view,
+      snapshot,
+    )
+    if (!resolvedSnapshot) {
       new Notice('无法创建选区数据')
       return
     }
 
-    const editorView = this.getEditorView(editor)
-    const highlightId = crypto.randomUUID()
-
-    if (editorView && this.shouldPersistSelectionHighlight()) {
-      const sel = editorView.state.selection.main
-      if (!sel.empty) {
-        selectionHighlightController.addHighlight(
-          editorView,
-          highlightId,
-          { from: sel.from, to: sel.to },
-          'pinned',
-          'chat',
-        )
-      }
-    }
-
     const resolvedPrompt = prompt?.trim() ?? ''
     await this.openChatWithSelectionAndPrefill(
-      { ...data, source: 'selection-pinned', highlightId },
+      this.createPinnedMarkdownBlock(resolvedSnapshot),
       resolvedPrompt,
       assistantId,
     )
   }
 
-  private async addToSidebar(editor: Editor) {
+  private async addToSidebar(
+    editor: Editor,
+    snapshot?: MarkdownSelectionSnapshot,
+  ) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!editor || !view) {
       new Notice('无法获取当前编辑器')
       return
     }
 
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      view,
+      snapshot,
+    )
+    if (!resolvedSnapshot) {
       new Notice('无法创建选区数据')
       return
     }
 
-    const editorView = this.getEditorView(editor)
-    const highlightId = crypto.randomUUID()
-
-    if (editorView && this.shouldPersistSelectionHighlight()) {
-      const sel = editorView.state.selection.main
-      if (!sel.empty) {
-        selectionHighlightController.addHighlight(
-          editorView,
-          highlightId,
-          { from: sel.from, to: sel.to },
-          'pinned',
-          'chat',
-        )
-      }
-    }
-
-    await this.addSelectionToSidebarChat({
-      ...data,
-      source: 'selection-pinned',
-      highlightId,
-    })
+    await this.addSelectionToSidebarChat(
+      this.createPinnedMarkdownBlock(resolvedSnapshot),
+    )
   }
 
   private async addToChatAndSend(
     editor: Editor,
     prompt?: string,
     assistantId?: string,
+    snapshot?: MarkdownSelectionSnapshot,
   ) {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!editor || !view) {
@@ -1027,33 +1357,47 @@ export class SelectionChatController {
       return
     }
 
-    const data = getMentionableBlockData(editor, view)
-    if (!data) {
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      view,
+      snapshot,
+    )
+    if (!resolvedSnapshot) {
       new Notice('无法创建选区数据')
       return
     }
 
-    const editorView = this.getEditorView(editor)
-    const highlightId = crypto.randomUUID()
-
-    if (editorView && this.shouldPersistSelectionHighlight()) {
-      const sel = editorView.state.selection.main
-      if (!sel.empty) {
-        selectionHighlightController.addHighlight(
-          editorView,
-          highlightId,
-          { from: sel.from, to: sel.to },
-          'pinned',
-          'chat',
-        )
-      }
-    }
-
     await this.openChatWithSelectionAndSend(
-      { ...data, source: 'selection-pinned', highlightId },
+      this.createPinnedMarkdownBlock(resolvedSnapshot),
       prompt?.trim() ?? '',
       assistantId,
     )
+  }
+
+  private createPinnedMarkdownBlock(
+    snapshot: MarkdownSelectionSnapshot,
+  ): MentionableBlockData {
+    const highlightId = crypto.randomUUID()
+
+    if (
+      snapshot.editorView &&
+      snapshot.highlightRange &&
+      this.shouldPersistSelectionHighlight()
+    ) {
+      selectionHighlightController.addHighlight(
+        snapshot.editorView,
+        highlightId,
+        snapshot.highlightRange,
+        'pinned',
+        'chat',
+      )
+    }
+
+    return {
+      ...snapshot.blockData,
+      source: 'selection-pinned',
+      highlightId,
+    }
   }
 
   private shouldPersistSelectionHighlight(): boolean {

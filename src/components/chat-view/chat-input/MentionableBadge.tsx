@@ -170,12 +170,18 @@ function BlockBadge({
   const count = mentionable.contentCount ?? info.count
   const unit = mentionable.contentUnit ?? info.unit
   const unitLabel = t(`common.${unit}`, unit)
+  const tableSizeLabel =
+    mentionable.contentFormat === 'markdown-table' &&
+    mentionable.tableRowCount !== undefined &&
+    mentionable.tableColumnCount !== undefined
+      ? `${mentionable.tableRowCount} ${t('common.rows', 'rows')} ${mentionable.tableColumnCount} ${t('common.columns', 'columns')}`
+      : null
 
   // PDF selection: show "Page N" instead of character count
   const suffix =
     mentionable.pageNumber !== undefined
       ? ` (${t('mentionable.pdfPage', 'Page {{page}}').replace('{{page}}', String(mentionable.pageNumber))})`
-      : ` (${count} ${unitLabel})`
+      : ` (${tableSizeLabel ?? `${count} ${unitLabel}`})`
 
   return (
     <BadgeBase
