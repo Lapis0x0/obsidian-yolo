@@ -1,7 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { SerializedEditorState } from 'lexical'
-import { ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Editor, Notice, TFile } from 'obsidian'
 import React, {
   useCallback,
@@ -1710,25 +1710,6 @@ export function QuickAskPanel({
     }
   }, [executionMode, submitEditMode, submitEditDirect, submitMessage])
 
-  // Clear conversation
-  const clearConversation = useCallback(() => {
-    // Abort any in-flight run first: clearing starts a new topic under the same
-    // conversationId, and a still-running loop would otherwise re-create the
-    // snapshot we are about to evict on its next iteration.
-    abortStream()
-    setChatMessages([])
-    // New topic under the same conversationId, so drop the frozen system prompt
-    // to re-snapshot against the current memory / config on the next message.
-    plugin.getAgentService().evictSystemPromptSnapshot(conversationId)
-    new Notice(t('quickAsk.cleared', 'Conversation cleared'))
-    // Re-enable follow mode after clearing.
-    forceScrollToBottom()
-    // Focus input after clearing
-    setTimeout(() => {
-      messageInputRef.current?.focus()
-    }, 0)
-  }, [abortStream, conversationId, plugin, forceScrollToBottom, t])
-
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
   const isResizedEmptyState = !hasMessages && !!panelSize?.height
@@ -2310,14 +2291,16 @@ export function QuickAskPanel({
           : undefined
       }
     >
-      <button
-        type="button"
-        className="yolo-quick-ask-close-button"
-        onClick={onClose}
-        aria-label={t('quickAsk.close', 'Close')}
-      >
-        <X size={14} />
-      </button>
+      <div className="yolo-quick-ask-header-actions">
+        <button
+          type="button"
+          className="yolo-quick-ask-header-button"
+          onClick={onClose}
+          aria-label={t('quickAsk.close', 'Close')}
+        >
+          <X size={14} />
+        </button>
+      </div>
 
       <div
         ref={dragHandleRef}
@@ -2588,20 +2571,8 @@ export function QuickAskPanel({
           </div>
         </div>
 
-        {/* Right: Action buttons */}
+        {/* Right: Send / stop */}
         <div className="yolo-quick-ask-toolbar-right">
-          {/* Clear conversation button - only shown when there are messages */}
-          {hasMessages && (
-            <button
-              type="button"
-              className="yolo-quick-ask-toolbar-button"
-              onClick={clearConversation}
-              aria-label={t('quickAsk.clear', 'Clear conversation')}
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-
           <SubmitButton
             isGenerating={isStreaming}
             onAbort={abortStream}

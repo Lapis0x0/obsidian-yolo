@@ -553,13 +553,23 @@
   }
 }
 
-.yolo-quick-ask-close-button {
+.yolo-quick-ask-header-actions {
+  position: absolute;
+  top: 7px;
+  right: 6px;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.yolo-quick-ask-header-button {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  margin-top: 0;
+  margin: 0;
   padding: 0;
   background: transparent !important;
   border: none !important;
@@ -572,13 +582,9 @@
   appearance: none;
   -webkit-appearance: none;
   outline: none !important;
-  position: absolute;
-  top: 7px;
-  right: 6px;
-  z-index: 3;
 }
 
-.yolo-quick-ask-close-button:hover {
+.yolo-quick-ask-header-button:hover {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
@@ -634,42 +640,6 @@
   flex-shrink: 0;
 }
 
-/* Toolbar action buttons */
-.yolo-quick-ask-toolbar-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--text-normal) 82%, transparent);
-  transition: all 0.15s ease;
-  appearance: none;
-  -webkit-appearance: none;
-  outline: none;
-}
-
-.yolo-quick-ask-toolbar-button:hover {
-  background: transparent;
-  color: var(--text-normal);
-}
-
-/* Divider between action buttons and send */
-.yolo-quick-ask-toolbar-divider {
-  width: 1px;
-  height: 12px;
-  margin: 0 2px;
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-border) 75%,
-    transparent
-  );
-}
-
 /* Chat Area - only shown when there are messages */
 .yolo-quick-ask-chat-shell {
   flex: 1 1 auto;
@@ -694,6 +664,38 @@
   gap: 10px;
   user-select: text;
   pointer-events: auto;
+  /* Same thin auto-hide overlay scrollbar as .yolo-model-select-list.
+     Do NOT transition scrollbar-color — Chromium can't interpolate it. */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-quick-ask-chat-area:hover,
+.yolo-quick-ask-chat-area:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
+}
+
+.yolo-quick-ask-chat-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.yolo-quick-ask-chat-area::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 8px 0;
+}
+
+.yolo-quick-ask-chat-area::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.yolo-quick-ask-chat-area:hover::-webkit-scrollbar-thumb,
+.yolo-quick-ask-chat-area:focus-within::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 50%, transparent);
+  background-clip: padding-box;
 }
 
 .yolo-quick-ask-chat-area.yolo-quick-ask-chat-area--hide-scrollbar {
