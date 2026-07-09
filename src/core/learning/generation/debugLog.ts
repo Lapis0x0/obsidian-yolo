@@ -70,31 +70,26 @@ export function emitPhaseDebugLog(data: PhaseDebugData): void {
 
   const durationMs = data.completedAt - data.startedAt
   const durationStr = `${(durationMs / 1000).toFixed(1)}s`
-  const lines: string[] = []
-
-  lines.push(`${data.label} completed`)
   const metaParts = Object.entries(data.meta).map(
     ([key, value]) => `${key}: ${value}`,
   )
   metaParts.push(`duration: ${durationStr}`)
-  lines.push(`  ${metaParts.join(', ')}`)
 
+  console.groupCollapsed(
+    `[yolo-learning] ${data.label} completed  ${metaParts.join(', ')}`,
+  )
   if (data.toolCalls.length > 0) {
-    lines.push(`  tool-calls (${data.toolCalls.length}):`)
+    console.debug(`tool-calls (${data.toolCalls.length}):`)
     for (let i = 0; i < data.toolCalls.length; i += 1) {
       const tc = data.toolCalls[i]
       const argStr = formatToolCallArgs(tc)
-      lines.push(`    #${i + 1} ${tc.name}  ${argStr}  ${tc.status}`)
+      console.debug(`  #${i + 1} ${tc.name}  ${argStr}  ${tc.status}`)
     }
   }
-
-  lines.push(`  output length: ${data.outputLength}`)
-  lines.push('  output:')
-  for (const line of data.output.split('\n')) {
-    lines.push(`    ${line}`)
-  }
-
-  console.debug(`[yolo-learning] ${lines.join('\n')}`)
+  console.debug(`output length: ${data.outputLength}`)
+  console.debug('output:')
+  console.debug(data.output)
+  console.groupEnd()
 }
 
 export function emitChaptersDebugLog(chapters: ChapterDebugData[]): void {
@@ -102,37 +97,36 @@ export function emitChaptersDebugLog(chapters: ChapterDebugData[]): void {
   if (chapters.length === 0) return
 
   const sorted = [...chapters].sort((a, b) => a.chapterIndex - b.chapterIndex)
-  const lines: string[] = []
-  lines.push(`kp-generator completed (${sorted.length} chapters)`)
+  const totalDuration = sorted.reduce(
+    (sum, ch) => sum + (ch.completedAt - ch.startedAt),
+    0,
+  )
+  const totalCalls = sorted.reduce((sum, ch) => sum + ch.toolCalls.length, 0)
+  const totalPts = sorted.reduce((sum, ch) => sum + ch.pointCount, 0)
+
+  console.groupCollapsed(
+    `[yolo-learning] kp-generator completed (${sorted.length} chapters, ${(totalDuration / 1000).toFixed(1)}s, ${totalCalls} calls, ${totalPts} pts)`,
+  )
 
   for (const ch of sorted) {
     const durationStr = `${((ch.completedAt - ch.startedAt) / 1000).toFixed(1)}s`
-    lines.push(
-      `  ch${ch.chapterIndex} "${ch.chapterTitle}"  ${durationStr}  ${ch.toolCalls.length} call  ${ch.pointCount} pts  ${ch.outputLength}c`,
+    console.groupCollapsed(
+      `ch${ch.chapterIndex} "${ch.chapterTitle}"  ${durationStr}  ${ch.toolCalls.length} call  ${ch.pointCount} pts  ${ch.outputLength}c`,
     )
-  }
-
-  const allToolCalls = sorted.flatMap((ch) =>
-    ch.toolCalls.map((tc) => ({ ...tc, chapterIndex: ch.chapterIndex })),
-  )
-  if (allToolCalls.length > 0) {
-    lines.push(`  tool-calls (${allToolCalls.length}):`)
-    for (const tc of allToolCalls) {
-      const argStr = formatToolCallArgs(tc)
-      lines.push(
-        `    ch${tc.chapterIndex}: ${tc.name}  ${argStr}  ${tc.status}`,
-      )
+    if (ch.toolCalls.length > 0) {
+      console.debug(`tool-calls (${ch.toolCalls.length}):`)
+      for (let i = 0; i < ch.toolCalls.length; i += 1) {
+        const tc = ch.toolCalls[i]
+        const argStr = formatToolCallArgs(tc)
+        console.debug(`  #${i + 1} ${tc.name}  ${argStr}  ${tc.status}`)
+      }
     }
+    console.debug('output:')
+    console.debug(ch.output)
+    console.groupEnd()
   }
 
-  for (const ch of sorted) {
-    lines.push(`  output ch${ch.chapterIndex}:`)
-    for (const line of ch.output.split('\n')) {
-      lines.push(`    ${line}`)
-    }
-  }
-
-  console.debug(`[yolo-learning] ${lines.join('\n')}`)
+  console.groupEnd()
 }
 
 function formatToolCallArgs(tc: ToolCallRecord): string {
