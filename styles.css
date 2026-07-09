@@ -20861,6 +20861,12 @@ button.yolo-todo-panel__icon-button svg {
   min-height: 34px;
 }
 
+.yolo-quick-ask-input.is-disabled .yolo-message-input-core,
+.yolo-quick-ask-input .yolo-message-input-core.is-disabled {
+  pointer-events: none;
+  opacity: 0.55;
+}
+
 .yolo-quick-ask-content-editable {
   width: 100%;
   max-width: 100%;

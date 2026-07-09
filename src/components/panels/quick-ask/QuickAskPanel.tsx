@@ -1,11 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-  $getRoot,
-  $nodesOfType,
-  LexicalEditor,
-  SerializedEditorState,
-} from 'lexical'
+import { SerializedEditorState } from 'lexical'
 import { ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react'
 import { Editor, Notice, TFile } from 'obsidian'
 import React, {
@@ -37,6 +32,7 @@ import type {
 import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAskController'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../../hooks/useChatHistory'
+import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import YoloPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
@@ -44,21 +40,17 @@ import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatMessage,
+  ChatSelectedSkill,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../../types/chat'
 import type { ChatTimelineItem } from '../../../types/chat-timeline'
-import {
-  Mentionable,
-  MentionableBlock,
-  SerializedMentionable,
-} from '../../../types/mentionable'
+import { Mentionable, MentionableBlock } from '../../../types/mentionable'
 import type { ToolCallResponse } from '../../../types/tool-call.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
-  deserializeMentionable,
   getMentionableKey,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
@@ -68,11 +60,11 @@ import { readTFileContent } from '../../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../../utils/prompt/timeContext'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
-import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
+import MessageInputCore, {
+  type MessageInputCoreRef,
+} from '../../chat-view/chat-input/MessageInputCore'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import { SubmitButton } from '../../chat-view/chat-input/SubmitButton'
-import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
-import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
 import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
@@ -267,6 +259,7 @@ export function QuickAskPanel({
   const [conversationId] = useState(() => uuidv4())
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
+  const [selectedSkills, setSelectedSkills] = useState<ChatSelectedSkill[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   // While the LLM is streaming, flip the QuickAsk-owned selection highlight
   // into a "pending" shimmer so users get visible feedback that AI is working
@@ -311,6 +304,24 @@ export function QuickAskPanel({
     }),
     [t],
   )
+  const initialSerializedEditorState = useMemo(() => {
+    if (autoSend) return null
+    if (!initialInput && (initialMentionables?.length ?? 0) === 0) {
+      return null
+    }
+    return createQuickAskEditorState({
+      prompt: initialInput ?? '',
+      mentionables: initialMentionables ?? [],
+      mentionableUnitLabels,
+    })
+  }, [autoSend, initialInput, initialMentionables, mentionableUnitLabels])
+
+  useEffect(() => {
+    if (initialSerializedEditorState) {
+      latestEditorStateRef.current = initialSerializedEditorState
+    }
+  }, [initialSerializedEditorState])
+
   const [mode, setMode] = useState<QuickAskMode>(() =>
     normalizeQuickAskVisibleMode(
       initialMode ?? settings.continuationOptions?.quickAskMode,
@@ -335,9 +346,9 @@ export function QuickAskPanel({
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const inputRowRef = useRef<HTMLDivElement | null>(null)
-  const contentEditableRef = useRef<HTMLDivElement>(null)
+  const messageInputRef = useRef<MessageInputCoreRef>(null)
+  const latestEditorStateRef = useRef<SerializedEditorState | null>(null)
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
-  const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
   const [chatAreaElement, setChatAreaElement] = useState<HTMLElement | null>(
     null,
@@ -347,7 +358,6 @@ export function QuickAskPanel({
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
   const autoSendRef = useRef(false)
-  const hasAppliedInitialInputRef = useRef(false)
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
@@ -494,40 +504,38 @@ export function QuickAskPanel({
     return t('quickAsk.statusModifying', 'Modifying...')
   }, [runStatus, t])
 
-  const hasStreamingAssistantPlaceholder = useMemo(
-    () =>
-      chatMessages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.metadata?.generationState === 'streaming',
-      ),
-    [chatMessages],
-  )
-  const hasVisibleAssistantOrToolMessages = useMemo(
-    () =>
-      chatMessages.some((message) => {
-        if (message.role === 'tool') {
-          return true
-        }
-
-        if (message.role !== 'assistant') {
-          return false
-        }
-
-        return (
-          message.content.trim().length > 0 ||
-          Boolean(message.reasoning?.trim().length) ||
-          Boolean(message.toolCallRequests?.length)
-        )
-      }),
-    [chatMessages],
-  )
-
   const shouldShowInlineRunStatus =
     isStreaming &&
     !!runStatusLabel &&
-    ((executionMode !== 'agent' && executionMode !== 'ask') ||
-      (!hasStreamingAssistantPlaceholder && !hasVisibleAssistantOrToolMessages))
+    executionMode !== 'agent' &&
+    executionMode !== 'ask'
+
+  const allSkillEntries = useLiteSkillEntries(app, { settings })
+  const availableSkills = useMemo(() => {
+    if (!selectedAssistant) {
+      return []
+    }
+
+    const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
+    return allSkillEntries.filter((skill) =>
+      isSkillEnabledForAssistant({
+        assistant: selectedAssistant,
+        skillName: skill.name,
+        disabledSkillNames,
+        defaultLoadMode: skill.mode,
+      }),
+    )
+  }, [allSkillEntries, selectedAssistant, settings])
+
+  const enabledChatModels = useMemo(
+    () => settings.chatModels.filter((chatModel) => chatModel.enable ?? true),
+    [settings.chatModels],
+  )
+
+  const canSubmitMainInput =
+    inputText.trim().length > 0 ||
+    mentionables.length > 0 ||
+    selectedSkills.length > 0
 
   const noop = useCallback(() => {}, [])
   const handleOpenEditSummaryFile = useCallback(
@@ -561,73 +569,20 @@ export function QuickAskPanel({
     }
   }, [])
 
-  // Handle mention node mutations to track mentionables
-  const handleMentionNodeMutation = useCallback(
-    (mutations: NodeMutations<MentionNode>) => {
-      const destroyedMentionableKeys: string[] = []
-      const addedMentionables: SerializedMentionable[] = []
-      const selectionMentionableKey = selectionMentionable
-        ? getMentionableKey(serializeMentionable(selectionMentionable))
-        : null
-
-      mutations.forEach((mutation) => {
-        const mentionable = mutation.node.getMentionable()
-        const mentionableKey = getMentionableKey(mentionable)
-
-        if (mutation.mutation === 'destroyed') {
-          const nodeWithSameMentionable = lexicalEditorRef.current?.read(() =>
-            $nodesOfType(MentionNode).find(
-              (node) =>
-                getMentionableKey(node.getMentionable()) === mentionableKey,
-            ),
-          )
-
-          if (!nodeWithSameMentionable) {
-            // remove mentionable only if it's not present in the editor state
-            destroyedMentionableKeys.push(mentionableKey)
-          }
-        } else if (mutation.mutation === 'created') {
-          if (
-            mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            ) ||
-            addedMentionables.some(
-              (m) => getMentionableKey(m) === mentionableKey,
-            )
-          ) {
-            // do nothing if mentionable is already added
-            return
-          }
-
-          addedMentionables.push(mentionable)
-        }
-      })
-
-      setMentionables((prev) =>
-        prev
-          .filter(
-            (m) =>
-              !destroyedMentionableKeys.includes(
-                getMentionableKey(serializeMentionable(m)),
-              ),
-          )
-          .concat(
-            addedMentionables
-              .map((m) => deserializeMentionable(m, app))
-              .filter((v): v is Mentionable => !!v),
-          ),
-      )
-
-      if (
-        selectionMentionableKey &&
-        destroyedMentionableKeys.includes(selectionMentionableKey)
-      ) {
-        setActiveSelectionScope(null)
-      }
-    },
-    [app, mentionables, selectionMentionable],
-  )
+  // Clear selection scope when its mentionable is removed from the input.
+  useEffect(() => {
+    if (!selectionMentionable) return
+    const selectionKey = getMentionableKey(
+      serializeMentionable(selectionMentionable),
+    )
+    const stillPresent = mentionables.some(
+      (mentionable) =>
+        getMentionableKey(serializeMentionable(mentionable)) === selectionKey,
+    )
+    if (!stillPresent) {
+      setActiveSelectionScope(null)
+    }
+  }, [mentionables, selectionMentionable])
 
   // System prompt is intentionally minimal: Quick Ask's "current editor scene"
   // (file path/title, cursor context, selection) is injected via the agent
@@ -751,7 +706,7 @@ export function QuickAskPanel({
         (active && assistantTriggerRef.current?.contains(active)) ||
         (active && modelTriggerRef.current?.contains(active)) ||
         (active && modeTriggerRef.current?.contains(active)) ||
-        (active && contentEditableRef.current?.contains(active))
+        (active && inputRowRef.current?.contains(active))
       ) {
         return
       }
@@ -773,7 +728,7 @@ export function QuickAskPanel({
       if (active !== assistantTriggerRef.current) return
       event.preventDefault()
       event.stopPropagation()
-      contentEditableRef.current?.focus()
+      messageInputRef.current?.focus()
     }
     window.addEventListener('keydown', handleArrowUpBack, true)
     return () => window.removeEventListener('keydown', handleArrowUpBack, true)
@@ -788,7 +743,7 @@ export function QuickAskPanel({
       event.stopPropagation()
       setIsAssistantMenuOpen(false)
       requestAnimationFrame(() => {
-        contentEditableRef.current?.focus()
+        messageInputRef.current?.focus()
       })
     }
     window.addEventListener('keydown', handleMenuEscape, true)
@@ -996,6 +951,7 @@ export function QuickAskPanel({
       options?: {
         baseMessages?: ChatMessage[]
         userMessageId?: string
+        selectedSkillsOverride?: ChatSelectedSkill[]
       },
     ) => {
       if (isStreaming) return
@@ -1010,24 +966,27 @@ export function QuickAskPanel({
         return
       }
 
+      const resolvedMentionables = mentionablesOverride ?? mentionables
+      const resolvedSelectedSkills =
+        options?.selectedSkillsOverride ?? selectedSkills
+
       // Extract text from editor state
       const textContent = editorStateToPlainText(editorState)
-      if (!textContent.trim()) return
+      if (
+        !textContent.trim() &&
+        resolvedMentionables.length === 0 &&
+        resolvedSelectedSkills.length === 0
+      ) {
+        return
+      }
 
       setIsStreaming(true)
       setRunStatus('requesting')
       setInputText('')
       forceScrollToBottom()
 
-      // Clear the lexical editor
-      lexicalEditorRef.current?.update(() => {
-        const root = lexicalEditorRef.current?.getEditorState().read(() => {
-          return $getRoot()
-        })
-        if (root) {
-          root.clear()
-        }
-      })
+      messageInputRef.current?.replaceText('')
+      latestEditorStateRef.current = null
 
       // 新用户回合进入对话:在此固定当前时间(与侧边栏 Chat 同一机制)。
       const userMessage: ChatUserMessage = stampUserMessageTimeContext(
@@ -1036,13 +995,15 @@ export function QuickAskPanel({
           content: editorState,
           promptContent: null,
           id: options?.userMessageId ?? uuidv4(),
-          mentionables: mentionablesOverride ?? mentionables,
+          mentionables: resolvedMentionables,
+          selectedSkills: resolvedSelectedSkills,
         },
         resolveAssistantTimeContextEnabled(selectedAssistant, settings),
       )
 
-      // Clear mentionables after creating the message
+      // Clear mentionables / skills after creating the message
       setMentionables([])
+      setSelectedSkills([])
 
       const newMessages: ChatMessage[] = [
         ...(options?.baseMessages ?? chatMessages),
@@ -1208,6 +1169,7 @@ export function QuickAskPanel({
       getMcpManager,
       isStreaming,
       mentionables,
+      selectedSkills,
       executionMode,
       forceScrollToBottom,
       model,
@@ -1426,41 +1388,6 @@ export function QuickAskPanel({
     [activeApplyRequestKey, app, isApplying, plugin, resolveEditTargetFile],
   )
 
-  useEffect(() => {
-    if (
-      autoSend ||
-      hasAppliedInitialInputRef.current ||
-      (!initialInput && (initialMentionables?.length ?? 0) === 0)
-    ) {
-      return
-    }
-
-    let cancelled = false
-    const applyInitialState = () => {
-      if (cancelled || hasAppliedInitialInputRef.current) return
-      const editor = lexicalEditorRef.current
-      if (!editor) {
-        requestAnimationFrame(applyInitialState)
-        return
-      }
-
-      hasAppliedInitialInputRef.current = true
-      const editorState = createQuickAskEditorState({
-        prompt: initialInput ?? '',
-        mentionables: initialMentionables ?? [],
-        mentionableUnitLabels,
-      })
-      editor.setEditorState(editor.parseEditorState(editorState))
-      // setEditorState 会重置选区并让 contentEditable 失焦，这里把焦点/光标拿回来
-      editor.focus(undefined, { defaultSelection: 'rootEnd' })
-    }
-
-    requestAnimationFrame(applyInitialState)
-    return () => {
-      cancelled = true
-    }
-  }, [autoSend, initialInput, initialMentionables, mentionableUnitLabels])
-
   // Submit edit mode - generate a text edit plan and open ApplyView
   const submitEditMode = useCallback(
     async (instruction: string) => {
@@ -1488,16 +1415,10 @@ export function QuickAskPanel({
       setIsStreaming(true)
       setRunStatus('requesting')
 
-      // Clear the lexical editor
-      lexicalEditorRef.current?.update(() => {
-        const root = lexicalEditorRef.current?.getEditorState().read(() => {
-          return $getRoot()
-        })
-        if (root) {
-          root.clear()
-        }
-      })
+      messageInputRef.current?.replaceText('')
+      latestEditorStateRef.current = null
       setInputText('')
+      setSelectedSkills([])
 
       let closedForReview = false
       try {
@@ -1621,16 +1542,10 @@ export function QuickAskPanel({
       setIsStreaming(true)
       setRunStatus('requesting')
 
-      // Clear the lexical editor
-      lexicalEditorRef.current?.update(() => {
-        const root = lexicalEditorRef.current?.getEditorState().read(() => {
-          return $getRoot()
-        })
-        if (root) {
-          root.clear()
-        }
-      })
+      messageInputRef.current?.replaceText('')
+      latestEditorStateRef.current = null
       setInputText('')
+      setSelectedSkills([])
 
       try {
         const scopedToSelection =
@@ -1724,45 +1639,30 @@ export function QuickAskPanel({
     const prompt = initialPrompt?.trim()
     if (!prompt) return
 
-    let cancelled = false
-    const tryAutoSend = () => {
-      if (cancelled || autoSendRef.current) return
-      const editor = lexicalEditorRef.current
-      if (!editor) {
-        requestAnimationFrame(tryAutoSend)
-        return
-      }
+    autoSendRef.current = true
 
-      autoSendRef.current = true
-
-      if (executionMode === 'edit') {
-        void submitEditMode(prompt)
-        return
-      }
-
-      if (executionMode === 'edit-direct') {
-        void submitEditDirect(prompt)
-        return
-      }
-
-      const mentionablesToInsert = initialMentionables ?? []
-      if (mentionablesToInsert.length > 0) {
-        setMentionables(mentionablesToInsert)
-      }
-
-      const editorState = createQuickAskEditorState({
-        prompt,
-        mentionables: mentionablesToInsert,
-        mentionableUnitLabels,
-      })
-      editor.setEditorState(editor.parseEditorState(editorState))
-      void submitMessage(editorState, mentionablesToInsert)
+    if (executionMode === 'edit') {
+      void submitEditMode(prompt)
+      return
     }
 
-    requestAnimationFrame(tryAutoSend)
-    return () => {
-      cancelled = true
+    if (executionMode === 'edit-direct') {
+      void submitEditDirect(prompt)
+      return
     }
+
+    const mentionablesToInsert = initialMentionables ?? []
+    if (mentionablesToInsert.length > 0) {
+      setMentionables(mentionablesToInsert)
+    }
+
+    const editorState = createQuickAskEditorState({
+      prompt,
+      mentionables: mentionablesToInsert,
+      mentionableUnitLabels,
+    })
+    latestEditorStateRef.current = editorState
+    void submitMessage(editorState, mentionablesToInsert)
   }, [
     autoSend,
     initialMentionables,
@@ -1790,27 +1690,25 @@ export function QuickAskPanel({
     [setSettings, settings],
   )
 
-  // Handle Enter key
-  const handleEnter = useCallback(
-    (event: KeyboardEvent) => {
-      if (event.shiftKey) return // Allow Shift+Enter for newline
+  const handleMainInputChange = useCallback((content: SerializedEditorState) => {
+    latestEditorStateRef.current = content
+  }, [])
 
-      const lexicalEditor = lexicalEditorRef.current
-      if (lexicalEditor) {
-        const editorState = lexicalEditor.getEditorState().toJSON()
-        const textContent = editorStateToPlainText(editorState)
+  // Handle Enter key / submit from MessageInputCore
+  const handleEnter = useCallback(() => {
+    const editorState = latestEditorStateRef.current
+    if (!editorState) return
 
-        if (executionMode === 'edit') {
-          void submitEditMode(textContent)
-        } else if (executionMode === 'edit-direct') {
-          void submitEditDirect(textContent)
-        } else {
-          void submitMessage(editorState)
-        }
-      }
-    },
-    [executionMode, submitEditMode, submitEditDirect, submitMessage],
-  )
+    const textContent = editorStateToPlainText(editorState)
+
+    if (executionMode === 'edit') {
+      void submitEditMode(textContent)
+    } else if (executionMode === 'edit-direct') {
+      void submitEditDirect(textContent)
+    } else {
+      void submitMessage(editorState)
+    }
+  }, [executionMode, submitEditMode, submitEditDirect, submitMessage])
 
   // Clear conversation
   const clearConversation = useCallback(() => {
@@ -1827,7 +1725,7 @@ export function QuickAskPanel({
     forceScrollToBottom()
     // Focus input after clearing
     setTimeout(() => {
-      contentEditableRef.current?.focus()
+      messageInputRef.current?.focus()
     }, 0)
   }, [abortStream, conversationId, plugin, forceScrollToBottom, t])
 
@@ -2220,7 +2118,8 @@ export function QuickAskPanel({
               onSubmit={(content) => {
                 if (
                   editorStateToPlainText(content).trim() === '' &&
-                  messageOrGroup.mentionables.length === 0
+                  messageOrGroup.mentionables.length === 0 &&
+                  (messageOrGroup.selectedSkills?.length ?? 0) === 0
                 ) {
                   return
                 }
@@ -2234,10 +2133,11 @@ export function QuickAskPanel({
                 void submitMessage(content, messageOrGroup.mentionables, {
                   baseMessages,
                   userMessageId: messageOrGroup.id,
+                  selectedSkillsOverride: messageOrGroup.selectedSkills ?? [],
                 })
                 setFocusedUserMessageId(null)
                 requestAnimationFrame(() => {
-                  contentEditableRef.current?.focus()
+                  messageInputRef.current?.focus()
                 })
               }}
               onFocus={() => {
@@ -2250,6 +2150,19 @@ export function QuickAskPanel({
                       ? {
                           ...message,
                           mentionables,
+                          promptContent: null,
+                        }
+                      : message,
+                  ),
+                )
+              }}
+              onSelectedSkillsChange={(skills) => {
+                setChatMessages((prev) =>
+                  prev.map((message) =>
+                    message.role === 'user' && message.id === messageOrGroup.id
+                      ? {
+                          ...message,
+                          selectedSkills: skills,
                           promptContent: null,
                         }
                       : message,
@@ -2414,51 +2327,60 @@ export function QuickAskPanel({
         <div className="yolo-quick-ask-drag-indicator" />
       </div>
 
-      {/* Top: Input row */}
-      {(!isStreaming || shouldShowInlineRunStatus) && (
-        <div className="yolo-quick-ask-input-row" ref={inputRowRef}>
-          <div
-            className={`yolo-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
-          >
-            {!isStreaming && (
-              <LexicalContentEditable
-                editorRef={lexicalEditorRef}
-                contentEditableRef={contentEditableRef}
-                onTextContentChange={setInputText}
-                onEnter={handleEnter}
-                onKeyDown={(event) => {
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault()
-                    assistantTriggerRef.current?.focus()
-                  }
-                }}
-                onMentionMenuToggle={(open) => {
-                  setIsMentionMenuOpen(open)
-                  if (open) updateMentionMenuPlacement()
-                }}
-                onMentionNodeMutation={handleMentionNodeMutation}
-                mentionMenuPlacement={mentionMenuPlacement}
-                autoFocus
-                contentClassName="yolo-obsidian-textarea yolo-content-editable yolo-quick-ask-content-editable"
-              />
-            )}
-            {inputText.length === 0 && !isStreaming && (
+      {/* Top: Input row — keep mounted during streaming (disabled keep-alive) */}
+      <div className="yolo-quick-ask-input-row" ref={inputRowRef}>
+        <div
+          className={`yolo-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
+        >
+          <MessageInputCore
+            ref={messageInputRef}
+            initialSerializedEditorState={initialSerializedEditorState}
+            onChange={handleMainInputChange}
+            onTextContentChange={setInputText}
+            onEnter={handleEnter}
+            autoFocus
+            disabled={isStreaming}
+            enableSkills
+            enableAttachments={false}
+            mentionables={mentionables}
+            setMentionables={setMentionables}
+            selectedSkills={selectedSkills}
+            setSelectedSkills={setSelectedSkills}
+            mentionDisplayMode="inline"
+            contentClassName="yolo-obsidian-textarea yolo-content-editable yolo-quick-ask-content-editable"
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                assistantTriggerRef.current?.focus()
+              }
+            }}
+            onMentionMenuToggle={(open) => {
+              setIsMentionMenuOpen(open)
+              if (open) updateMentionMenuPlacement()
+            }}
+            mentionMenuPlacement={mentionMenuPlacement}
+            models={enabledChatModels}
+            skills={availableSkills}
+          />
+          {inputText.length === 0 &&
+            mentionables.length === 0 &&
+            selectedSkills.length === 0 &&
+            !isStreaming && (
               <div className="yolo-quick-ask-input-placeholder">
                 {t('quickAsk.inputPlaceholder', 'Ask a question...')}
               </div>
             )}
-            {shouldShowInlineRunStatus && (
-              <div className="yolo-quick-ask-run-status" aria-live="polite">
-                <span
-                  className="yolo-quick-ask-run-status-dot"
-                  aria-hidden="true"
-                />
-                <span>{runStatusLabel}</span>
-              </div>
-            )}
-          </div>
+          {shouldShowInlineRunStatus && (
+            <div className="yolo-quick-ask-run-status" aria-live="polite">
+              <span
+                className="yolo-quick-ask-run-status-dot"
+                aria-hidden="true"
+              />
+              <span>{runStatusLabel}</span>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Chat area - only shown when there are messages */}
       {hasMessages && (
@@ -2501,7 +2423,7 @@ export function QuickAskPanel({
                     if (event.key === 'ArrowUp') {
                       event.preventDefault()
                       event.stopPropagation()
-                      contentEditableRef.current?.focus()
+                      messageInputRef.current?.focus()
                       return
                     }
                     if (
@@ -2555,7 +2477,7 @@ export function QuickAskPanel({
                   })
                   setIsAssistantMenuOpen(false)
                   requestAnimationFrame(() => {
-                    contentEditableRef.current?.focus()
+                    messageInputRef.current?.focus()
                   })
                 }}
                 onClose={() => setIsAssistantMenuOpen(false)}
@@ -2616,7 +2538,7 @@ export function QuickAskPanel({
                 }
                 if (event.key === 'ArrowUp') {
                   event.preventDefault()
-                  contentEditableRef.current?.focus()
+                  messageInputRef.current?.focus()
                 }
               }}
               onModelSelected={() => {
@@ -2659,7 +2581,7 @@ export function QuickAskPanel({
                 }
                 if (event.key === 'ArrowUp') {
                   event.preventDefault()
-                  contentEditableRef.current?.focus()
+                  messageInputRef.current?.focus()
                 }
               }}
             />
@@ -2683,22 +2605,13 @@ export function QuickAskPanel({
           <SubmitButton
             isGenerating={isStreaming}
             onAbort={abortStream}
-            disabled={isStreaming || inputText.trim().length === 0}
-            onClick={() => {
-              const lexicalEditor = lexicalEditorRef.current
-              if (lexicalEditor) {
-                const editorState = lexicalEditor.getEditorState().toJSON()
-                const textContent = editorStateToPlainText(editorState)
-
-                if (executionMode === 'edit') {
-                  void submitEditMode(textContent)
-                } else if (executionMode === 'edit-direct') {
-                  void submitEditDirect(textContent)
-                } else {
-                  void submitMessage(editorState)
-                }
-              }
-            }}
+            disabled={
+              isStreaming ||
+              (executionMode === 'edit' || executionMode === 'edit-direct'
+                ? inputText.trim().length === 0
+                : !canSubmitMainInput)
+            }
+            onClick={handleEnter}
           />
         </div>
       </div>

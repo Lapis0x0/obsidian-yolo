@@ -60,6 +60,16 @@ export type LexicalContentEditableProps = {
   onPasteFiles?: (files: File[]) => void
   initialEditorState?: InitialEditorStateType
   autoFocus?: boolean
+  /**
+   * When false, the Lexical editor rejects edits (streaming keep-alive).
+   * Defaults to true.
+   */
+  editable?: boolean
+  /**
+   * When false, paste/drop attachment plugins are not mounted.
+   * Defaults to true when attachment handlers are provided.
+   */
+  enableAttachments?: boolean
   contentClassName?: string
   searchResultByQuery?: (query: string) => SearchableMentionable[]
   onMentionMenuToggle?: (isOpen: boolean) => void
@@ -160,6 +170,8 @@ function LexicalContentEditable({
   onPasteFiles,
   initialEditorState,
   autoFocus = false,
+  editable = true,
+  enableAttachments = true,
   contentClassName,
   searchResultByQuery,
   onMentionMenuToggle,
@@ -188,6 +200,9 @@ function LexicalContentEditable({
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
     app.workspace.getActiveFile()?.path ?? null,
   )
+  const attachmentsEnabled =
+    enableAttachments &&
+    (Boolean(onPasteFiles) || Boolean(onCreateImageMentionables))
 
   const initialConfig: InitialConfigType = {
     namespace: 'LexicalContentEditable',
@@ -197,6 +212,7 @@ function LexicalContentEditable({
     },
     nodes: [MentionNode, SkillNode],
     editorState: initialEditorState,
+    editable,
     onError: (error) => {
       console.error(error)
     },
@@ -226,7 +242,7 @@ function LexicalContentEditable({
    * See: https://github.com/facebook/lexical/issues/4460
    */
   useEffect(() => {
-    if (autoFocus) {
+    if (autoFocus && editable) {
       requestAnimationFrame(() => {
         contentEditableRef.current?.focus()
         editorRef.current?.update(() => {
@@ -234,7 +250,13 @@ function LexicalContentEditable({
         })
       })
     }
-  }, [autoFocus, contentEditableRef, editorRef])
+  }, [autoFocus, contentEditableRef, editable, editorRef])
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.setEditable(editable)
+  }, [editable, editorRef])
 
   useEffect(() => {
     const handleActiveLeafChange = () => {
@@ -263,6 +285,8 @@ function LexicalContentEditable({
             className={
               contentClassName ?? 'yolo-obsidian-textarea yolo-content-editable'
             }
+            contentEditable={editable}
+            aria-disabled={!editable}
             onFocus={onFocus}
             onKeyDown={onKeyDown}
             ref={contentEditableRef}
@@ -317,7 +341,7 @@ function LexicalContentEditable({
           }
         }}
       />
-      {onEnter && (
+      {onEnter && editable && (
         <OnEnterPlugin
           onEnter={onEnter}
           onVaultChat={plugins?.onEnter?.onVaultChat}
@@ -339,11 +363,17 @@ function LexicalContentEditable({
       <NoFormatPlugin />
       <AutoLinkMentionPlugin />
       <MentionSelectionHighlightPlugin />
-      <AttachmentPastePlugin onPasteFiles={onPasteFiles} />
-      <ImagePastePlugin onCreateImageMentionables={onCreateImageMentionables} />
+      {attachmentsEnabled && (
+        <>
+          <AttachmentPastePlugin onPasteFiles={onPasteFiles} />
+          <ImagePastePlugin
+            onCreateImageMentionables={onCreateImageMentionables}
+          />
+          <DragDropPaste onDropFiles={onPasteFiles} />
+        </>
+      )}
       <PlainTextPastePlugin />
       <ObsidianFileDropPlugin />
-      <DragDropPaste onDropFiles={onPasteFiles} />
       {/* templates feature removed */}
     </LexicalComposer>
   )

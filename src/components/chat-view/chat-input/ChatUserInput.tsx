@@ -1,17 +1,4 @@
-import {
-  $createParagraphNode,
-  $createTextNode,
-  $getRoot,
-  $getSelection,
-  $isParagraphNode,
-  $isRangeSelection,
-  $isTextNode,
-  $nodesOfType,
-  LexicalEditor,
-  type LexicalNode,
-  type ParagraphNode,
-  SerializedEditorState,
-} from 'lexical'
+import { SerializedEditorState } from 'lexical'
 import { FilePlus2 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {
@@ -37,29 +24,15 @@ import { openSnippetsFileInVault } from '../../../core/snippets/snippetsFile'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { ChatSelectedSkill } from '../../../types/chat'
 import { ChatModel } from '../../../types/chat-model.types'
-import {
-  Mentionable,
-  MentionableImage,
-  MentionableOffice,
-  MentionablePDF,
-  MentionableTextAttachment,
-  SerializedMentionable,
-} from '../../../types/mentionable'
+import { Mentionable } from '../../../types/mentionable'
 import {
   ReasoningLevel,
   getDefaultReasoningLevel,
 } from '../../../types/reasoning'
 import {
-  deserializeMentionable,
   getMentionableKey,
-  getMentionableName,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { fileToMentionableImage } from '../../../utils/llm/image'
-import { chatModelSupportsVision } from '../../../utils/llm/model-modalities'
-import { fileToMentionableOffice } from '../../../utils/llm/office'
-import { fileToMentionablePDF } from '../../../utils/llm/pdf'
-import { fileToMentionableTextAttachment } from '../../../utils/llm/text-attachment'
 import ContextUsagePopover from '../ContextUsagePopover'
 import ContextUsageRing from '../ContextUsageRing'
 import { useSnippetEntries } from '../hooks/useSnippetEntries'
@@ -68,24 +41,14 @@ import type { ContextBreakdownInputs } from '../useContextBreakdown'
 import { ChatMode, ChatModeSelect } from './ChatModeSelect'
 import ChatSkillBadge from './ChatSkillBadge'
 import { FileUploadButton } from './FileUploadButton'
-import LexicalContentEditable from './LexicalContentEditable'
 import MentionableBadge from './MentionableBadge'
+import MessageInputCore, {
+  type MessageInputCoreRef,
+} from './MessageInputCore'
 import { ModelSelect } from './ModelSelect'
-import {
-  $createMentionNode,
-  $isMentionNode,
-  MentionNode,
-} from './plugins/mention/MentionNode'
-import {
-  $createSkillNode,
-  $isSkillNode,
-  SkillNode,
-} from './plugins/mention/SkillNode'
 import type { SlashCommand } from './plugins/mention/SkillSlashPlugin'
-import { NodeMutations } from './plugins/on-mutation/OnMutationPlugin'
 import { ReasoningSelect, supportsReasoning } from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
-import { classifyUploadFiles } from './utils/file-upload'
 
 export type ChatUserInputRef = {
   focus: () => void
@@ -158,15 +121,6 @@ export type ChatUserInputProps = {
   }
 }
 
-const INLINE_MENTIONABLE_TYPES = [
-  'file',
-  'folder',
-  'block',
-  'assistant-quote',
-  'web-selection',
-  'model',
-  'image',
-]
 const DEFAULT_INPUT_HEIGHT = 80
 const MIN_INPUT_HEIGHT = 80
 const MAX_INPUT_HEIGHT = 520
@@ -222,16 +176,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
   ) => {
     const app = useApp()
     const { t } = useLanguage()
-    const mentionableUnitLabels = useMemo(
-      () => ({
-        characters: t('common.characters', 'chars'),
-        words: t('common.words', 'words'),
-        wordsCharacters: t('common.wordsCharacters', 'words/chars'),
-        rows: t('common.rows', 'rows'),
-        columns: t('common.columns', 'columns'),
-      }),
-      [t],
-    )
     const { settings, setSettings } = useSettings()
     const mentionDisplayMode =
       settings.chatOptions.mentionDisplayMode ?? 'inline'
@@ -246,18 +190,16 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       )
     }, [settings.chatOptions.chatInputHeight])
 
-    // Get current model for reasoning support check
     const currentModel: ChatModel | null = useMemo(() => {
       if (!modelId) return null
       return settings.chatModels.find((m) => m.id === modelId) ?? null
     }, [modelId, settings.chatModels])
 
-    const editorRef = useRef<LexicalEditor | null>(null)
-    const contentEditableRef = useRef<HTMLDivElement>(null)
+    const coreRef = useRef<MessageInputCoreRef>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const [isEditorReady, setIsEditorReady] = useState(false)
-    const suppressedDestroyedMentionableKeysRef = useRef<Set<string>>(new Set())
-    const suppressedDestroyedSkillNamesRef = useRef<Set<string>>(new Set())
+    const latestContentRef = useRef<SerializedEditorState | null>(
+      initialSerializedEditorState,
+    )
     const [inputText, setInputText] = useState('')
     const [resizedHeight, setResizedHeight] = useState<number | null>(
       rememberedInputHeight,
@@ -272,13 +214,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => displayMentionables ?? mentionables,
       [displayMentionables, mentionables],
     )
-    const inlineMentionables = useMemo(() => {
-      if (mentionDisplayMode !== 'inline') {
-        return [] as Mentionable[]
-      }
-
-      return [...mentionables]
-    }, [mentionDisplayMode, mentionables])
     const effectiveSelectedSkills = useMemo(
       () => selectedSkills,
       [selectedSkills],
@@ -286,24 +221,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const enabledChatModels = useMemo(
       () => settings.chatModels.filter((model) => model.enable ?? true),
       [settings.chatModels],
-    )
-    const selectedModelIds = useMemo(
-      () =>
-        mentionables
-          .filter(
-            (
-              mentionable,
-            ): mentionable is Mentionable & {
-              type: 'model'
-              modelId: string
-            } => mentionable.type === 'model',
-          )
-          .map((mentionable) => mentionable.modelId),
-      [mentionables],
-    )
-    const selectedSkillNames = useMemo(
-      () => effectiveSelectedSkills.map((skill) => skill.name),
-      [effectiveSelectedSkills],
     )
 
     const allSkillEntries = useLiteSkillEntries(app, { settings })
@@ -353,29 +270,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     }, [currentModel, reasoningLevel])
 
     useEffect(() => {
-      if (isEditorReady) return
-      let animationFrame = 0
-      const checkEditorReady = () => {
-        if (editorRef.current) {
-          setIsEditorReady(true)
-          return
-        }
-        animationFrame = requestAnimationFrame(checkEditorReady)
-      }
-      checkEditorReady()
-      return () => {
-        if (animationFrame) {
-          cancelAnimationFrame(animationFrame)
-        }
-      }
-    }, [isEditorReady])
-
-    useEffect(() => {
-      if (!isEditorReady || !editorRef.current) return
-      editorRef.current.getEditorState().read(() => {
-        setInputText($getRoot().getTextContent())
-      })
-    }, [isEditorReady])
+      latestContentRef.current = initialSerializedEditorState
+    }, [initialSerializedEditorState])
 
     useEffect(() => {
       if (!compact) {
@@ -409,8 +305,16 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       }
     }, [])
 
-    const handleSubmit = useCallback(() => {
-      const content = editorRef.current?.getEditorState()?.toJSON()
+    const handleChange = useCallback(
+      (content: SerializedEditorState) => {
+        latestContentRef.current = content
+        onChange(content)
+      },
+      [onChange],
+    )
+
+    const handleEnter = useCallback(() => {
+      const content = latestContentRef.current
       if (content) {
         onSubmit(content)
       }
@@ -420,857 +324,22 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       ref,
       () => ({
         focus: () => {
-          contentEditableRef.current?.focus()
+          coreRef.current?.focus()
         },
         insertText: (text: string) => {
-          if (!editorRef.current) return
-
-          editorRef.current.update(
-            () => {
-              const selection = $getSelection()
-              if ($isRangeSelection(selection)) {
-                selection.insertText(text)
-              } else {
-                // If no selection, insert at the end
-                const root = $getRoot()
-                root.selectEnd()
-                const newSelection = $getSelection()
-                if ($isRangeSelection(newSelection)) {
-                  newSelection.insertText(text)
-                }
-              }
-            },
-            { discrete: true },
-          )
-
-          // Focus the editor after inserting
-          contentEditableRef.current?.focus()
+          coreRef.current?.insertText(text)
         },
         appendText: (text: string) => {
-          if (!editorRef.current) return
-
-          editorRef.current.update(
-            () => {
-              const root = $getRoot()
-              root.selectEnd()
-              const selection = $getSelection()
-              if ($isRangeSelection(selection)) {
-                selection.insertText(text)
-              }
-            },
-            { discrete: true },
-          )
-
-          contentEditableRef.current?.focus()
+          coreRef.current?.appendText(text)
         },
         replaceText: (text: string) => {
-          if (!editorRef.current) return
-
-          editorRef.current.update(
-            () => {
-              const root = $getRoot()
-              root.clear()
-              const paragraph = $createParagraphNode()
-              if (text) {
-                paragraph.append($createTextNode(text))
-              }
-              root.append(paragraph)
-              paragraph.selectEnd()
-            },
-            { discrete: true },
-          )
-
-          contentEditableRef.current?.focus()
+          coreRef.current?.replaceText(text)
         },
         submit: () => {
-          handleSubmit()
+          coreRef.current?.submit()
         },
       }),
-      [handleSubmit],
-    )
-
-    const handleMentionNodeMutation = useCallback(
-      (mutations: NodeMutations<MentionNode>) => {
-        const destroyedMentionableKeys: string[] = []
-        const addedMentionables: SerializedMentionable[] = []
-        let hasDanglingLightweightBlockToken = false
-        mutations.forEach((mutation) => {
-          const mentionable = mutation.node.getMentionable()
-          const mentionableKey = getMentionableKey(mentionable)
-
-          if (mutation.mutation === 'destroyed') {
-            if (
-              suppressedDestroyedMentionableKeysRef.current.has(mentionableKey)
-            ) {
-              suppressedDestroyedMentionableKeysRef.current.delete(
-                mentionableKey,
-              )
-              return
-            }
-
-            const nodeWithSameMentionable = editorRef.current?.read(() =>
-              $nodesOfType(MentionNode).find(
-                (node) =>
-                  getMentionableKey(node.getMentionable()) === mentionableKey,
-              ),
-            )
-
-            if (!nodeWithSameMentionable) {
-              // remove mentionable only if it's not present in the editor state
-              destroyedMentionableKeys.push(mentionableKey)
-            }
-          } else if (mutation.mutation === 'created') {
-            if (
-              mentionable.type === 'block' &&
-              typeof mentionable.content !== 'string'
-            ) {
-              const existsInMentionables = mentionables.some(
-                (m) =>
-                  getMentionableKey(serializeMentionable(m)) === mentionableKey,
-              )
-              if (!existsInMentionables) {
-                hasDanglingLightweightBlockToken = true
-              }
-              return
-            }
-
-            if (
-              mentionables.some(
-                (m) =>
-                  getMentionableKey(serializeMentionable(m)) === mentionableKey,
-              ) ||
-              addedMentionables.some(
-                (m) => getMentionableKey(m) === mentionableKey,
-              )
-            ) {
-              // do nothing if mentionable is already added
-              return
-            }
-
-            addedMentionables.push(mentionable)
-          }
-        })
-
-        if (hasDanglingLightweightBlockToken) {
-          new Notice(
-            'Block reference pasted as text. Please reselect the block.',
-          )
-        }
-
-        if (destroyedMentionableKeys.length > 0 && onDeleteFromAll) {
-          destroyedMentionableKeys.forEach((mentionableKey) => {
-            const mentionable = effectiveMentionables.find(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-            if (mentionable) {
-              onDeleteFromAll(mentionable)
-            }
-          })
-        }
-
-        if (!onDeleteFromAll || addedMentionables.length > 0) {
-          setMentionables(
-            mentionables
-              .filter(
-                (m) =>
-                  !destroyedMentionableKeys.includes(
-                    getMentionableKey(serializeMentionable(m)),
-                  ),
-              )
-              .concat(
-                addedMentionables
-                  .map((m) => deserializeMentionable(m, app))
-                  .filter((v) => !!v),
-              ),
-          )
-        }
-        // 默认保持收起状态，不自动展开新添加的徽章
-      },
-      [
-        app,
-        effectiveMentionables,
-        mentionables,
-        onDeleteFromAll,
-        setMentionables,
-      ],
-    )
-
-    const handleSkillNodeMutation = useCallback(
-      (mutations: NodeMutations<SkillNode>) => {
-        if (!setSelectedSkills) {
-          return
-        }
-
-        const destroyedSkillNames: string[] = []
-        const addedSkills: ChatSelectedSkill[] = []
-
-        mutations.forEach((mutation) => {
-          const skill = mutation.node.getSkill()
-          if (mutation.mutation === 'destroyed') {
-            if (suppressedDestroyedSkillNamesRef.current.has(skill.name)) {
-              suppressedDestroyedSkillNamesRef.current.delete(skill.name)
-              return
-            }
-
-            const nodeWithSameSkill = editorRef.current?.read(() =>
-              $nodesOfType(SkillNode).find(
-                (node) => node.getSkill().name === skill.name,
-              ),
-            )
-
-            if (!nodeWithSameSkill) {
-              destroyedSkillNames.push(skill.name)
-            }
-            return
-          }
-
-          if (
-            effectiveSelectedSkills.some(
-              (selectedSkill) => selectedSkill.name === skill.name,
-            ) ||
-            addedSkills.some(
-              (selectedSkill) => selectedSkill.name === skill.name,
-            )
-          ) {
-            return
-          }
-
-          addedSkills.push(skill)
-        })
-
-        if (destroyedSkillNames.length === 0 && addedSkills.length === 0) {
-          return
-        }
-
-        setSelectedSkills(
-          effectiveSelectedSkills
-            .filter((skill) => !destroyedSkillNames.includes(skill.name))
-            .concat(addedSkills),
-        )
-      },
-      [effectiveSelectedSkills, setSelectedSkills],
-    )
-
-    useEffect(() => {
-      const editor = editorRef.current
-      if (!editor || !isEditorReady) return
-
-      const mirrorTypes =
-        mentionDisplayMode === 'inline' ? INLINE_MENTIONABLE_TYPES : []
-      const mentionablesToMirror = inlineMentionables.filter((m) =>
-        mirrorTypes.includes(m.type),
-      )
-      const mentionablesByKey = new Map(
-        mentionablesToMirror.map((mentionable) => [
-          getMentionableKey(serializeMentionable(mentionable)),
-          mentionable,
-        ]),
-      )
-
-      const shouldMoveCursor =
-        contentEditableRef.current ===
-        (contentEditableRef.current?.ownerDocument ?? document).activeElement
-
-      editor.update(() => {
-        const mirrorTypeSet = new Set(INLINE_MENTIONABLE_TYPES)
-        $nodesOfType(MentionNode).forEach((node) => {
-          const mentionable = node.getMentionable()
-          if (!mirrorTypeSet.has(mentionable.type)) return
-          const mentionableKey = getMentionableKey(mentionable)
-          const desiredMentionable = mentionablesByKey.get(mentionableKey)
-          if (!desiredMentionable) {
-            suppressedDestroyedMentionableKeysRef.current.add(mentionableKey)
-            const prevSibling = node.getPreviousSibling()
-            if (
-              prevSibling &&
-              $isTextNode(prevSibling) &&
-              prevSibling.getTextContent() === ' '
-            ) {
-              prevSibling.remove()
-            } else {
-              const nextSibling = node.getNextSibling()
-              if (
-                nextSibling &&
-                $isTextNode(nextSibling) &&
-                nextSibling.getTextContent() === ' '
-              ) {
-                nextSibling.remove()
-              }
-            }
-            node.remove()
-            return
-          }
-        })
-
-        if (mentionablesToMirror.length === 0) return
-
-        const existingKeys = new Set(
-          $nodesOfType(MentionNode).map((node) =>
-            getMentionableKey(node.getMentionable()),
-          ),
-        )
-        const root = $getRoot()
-        let paragraphNode = root.getFirstChild()
-        if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
-          const created = $createParagraphNode()
-          root.append(created)
-          paragraphNode = created
-        }
-        const paragraph = paragraphNode as ParagraphNode
-        const cursorSelection = $getSelection()
-        const canInsertAtCursor =
-          $isRangeSelection(cursorSelection) && cursorSelection.isCollapsed()
-
-        let didInsert = false
-        mentionablesToMirror.forEach((mentionable) => {
-          const serialized = serializeMentionable(mentionable)
-          const mentionableKey = getMentionableKey(serialized)
-          if (existingKeys.has(mentionableKey)) return
-
-          const mentionNode = $createMentionNode(
-            getMentionableName(mentionable, {
-              unitLabels: mentionableUnitLabels,
-            }),
-            serialized,
-          )
-          const spacer = $createTextNode(' ')
-          if (canInsertAtCursor) {
-            cursorSelection.insertNodes([mentionNode, spacer])
-          } else {
-            paragraph.append(mentionNode)
-            paragraph.append(spacer)
-          }
-          didInsert = true
-        })
-
-        if (!shouldMoveCursor) return
-        const selection = $getSelection()
-        if (
-          !selection ||
-          !$isRangeSelection(selection) ||
-          !selection.isCollapsed()
-        ) {
-          return
-        }
-        const anchorNode = selection.anchor.getNode()
-        const anchorTopLevel = anchorNode.getTopLevelElement()
-        if (anchorTopLevel && anchorTopLevel !== paragraph) return
-        if (selection.anchor.offset !== 0 || anchorNode.getPreviousSibling()) {
-          return
-        }
-        const hasUserText = paragraph
-          .getChildren()
-          .some((node: LexicalNode) => {
-            if ($isMentionNode(node)) return false
-            return node.getTextContent().trim().length > 0
-          })
-        if (hasUserText) return
-        const hasMentionables = paragraph
-          .getChildren()
-          .some((node: LexicalNode) => $isMentionNode(node))
-        if (!didInsert && !hasMentionables) return
-        paragraph.selectEnd()
-      })
-    }, [
-      inlineMentionables,
-      isEditorReady,
-      mentionDisplayMode,
-      mentionableUnitLabels,
-    ])
-
-    useEffect(() => {
-      const editor = editorRef.current
-      if (!editor || !isEditorReady || !setSelectedSkills) return
-
-      const skillsToMirror =
-        mentionDisplayMode === 'inline' ? effectiveSelectedSkills : []
-      const skillsByName = new Map(
-        skillsToMirror.map((skill) => [skill.name, skill] as const),
-      )
-
-      const shouldMoveCursor =
-        contentEditableRef.current ===
-        (contentEditableRef.current?.ownerDocument ?? document).activeElement
-
-      editor.update(() => {
-        $nodesOfType(SkillNode).forEach((node) => {
-          const skill = node.getSkill()
-          if (skillsByName.has(skill.name)) return
-
-          suppressedDestroyedSkillNamesRef.current.add(skill.name)
-          const prevSibling = node.getPreviousSibling()
-          if (
-            prevSibling &&
-            $isTextNode(prevSibling) &&
-            prevSibling.getTextContent() === ' '
-          ) {
-            prevSibling.remove()
-          } else {
-            const nextSibling = node.getNextSibling()
-            if (
-              nextSibling &&
-              $isTextNode(nextSibling) &&
-              nextSibling.getTextContent() === ' '
-            ) {
-              nextSibling.remove()
-            }
-          }
-          node.remove()
-        })
-
-        if (skillsToMirror.length === 0) return
-
-        const existingNames = new Set(
-          $nodesOfType(SkillNode).map((node) => node.getSkill().name),
-        )
-        const root = $getRoot()
-        let paragraphNode = root.getFirstChild()
-        if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
-          const created = $createParagraphNode()
-          root.append(created)
-          paragraphNode = created
-        }
-        const paragraph = paragraphNode as ParagraphNode
-        const insertBefore = paragraph.getFirstChild()
-
-        let didInsert = false
-        skillsToMirror.forEach((skill) => {
-          if (existingNames.has(skill.name)) return
-
-          const skillNode = $createSkillNode(skill.name, skill)
-          const spacer = $createTextNode(' ')
-          if (insertBefore) {
-            insertBefore.insertBefore(spacer)
-            insertBefore.insertBefore(skillNode)
-          } else {
-            paragraph.append(skillNode)
-            paragraph.append(spacer)
-          }
-          didInsert = true
-        })
-
-        if (!shouldMoveCursor) return
-        const selection = $getSelection()
-        if (
-          !selection ||
-          !$isRangeSelection(selection) ||
-          !selection.isCollapsed()
-        ) {
-          return
-        }
-        const anchorNode = selection.anchor.getNode()
-        const anchorTopLevel = anchorNode.getTopLevelElement()
-        if (anchorTopLevel && anchorTopLevel !== paragraph) return
-        if (selection.anchor.offset !== 0 || anchorNode.getPreviousSibling()) {
-          return
-        }
-        const hasUserText = paragraph
-          .getChildren()
-          .some((node: LexicalNode) => {
-            if ($isMentionNode(node) || $isSkillNode(node)) return false
-            return node.getTextContent().trim().length > 0
-          })
-        if (hasUserText) return
-        const hasTokens = paragraph
-          .getChildren()
-          .some(
-            (node: LexicalNode) => $isMentionNode(node) || $isSkillNode(node),
-          )
-        if (!didInsert && !hasTokens) return
-        paragraph.selectEnd()
-      })
-    }, [
-      effectiveSelectedSkills,
-      isEditorReady,
-      mentionDisplayMode,
-      setSelectedSkills,
-    ])
-
-    const handleCreateImageMentionables = useCallback(
-      (mentionableImages: MentionableImage[]) => {
-        if (
-          mentionableImages.length > 0 &&
-          !chatModelSupportsVision(currentModel)
-        ) {
-          const modelLabel =
-            currentModel?.name ?? currentModel?.model ?? 'model'
-          const prefix = t(
-            'chat.imageUnsupportedByModel',
-            'This model does not accept image input. Enable "Vision" in the model settings to attach images.',
-          )
-          new Notice(`${prefix} (${modelLabel})`)
-          return
-        }
-        const newMentionableImages = mentionableImages.filter(
-          (m) =>
-            !mentionables.some(
-              (mentionable) =>
-                getMentionableKey(serializeMentionable(mentionable)) ===
-                getMentionableKey(serializeMentionable(m)),
-            ),
-        )
-        if (newMentionableImages.length === 0) return
-        const editor = editorRef.current
-        if (editor) {
-          editor.update(() => {
-            const nodesToInsert: LexicalNode[] = []
-            newMentionableImages.forEach((mentionable) => {
-              nodesToInsert.push(
-                $createMentionNode(
-                  getMentionableName(mentionable, {
-                    unitLabels: mentionableUnitLabels,
-                  }),
-                  serializeMentionable(mentionable),
-                ),
-              )
-              nodesToInsert.push($createTextNode(' '))
-            })
-            const selection = $getSelection()
-            if (selection && $isRangeSelection(selection)) {
-              selection.insertNodes(nodesToInsert)
-              return
-            }
-
-            const root = $getRoot()
-            let paragraphNode = root.getFirstChild()
-            if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
-              const created = $createParagraphNode()
-              root.append(created)
-              paragraphNode = created
-            }
-            const paragraph = paragraphNode as ParagraphNode
-            nodesToInsert.forEach((node) => {
-              paragraph.append(node)
-            })
-          })
-        }
-        setMentionables([...mentionables, ...newMentionableImages])
-        // 默认保持收起状态，不自动展开新添加的徽章
-      },
-      [currentModel, mentionableUnitLabels, mentionables, setMentionables, t],
-    )
-
-    const handleCreatePdfMentionables = useCallback(
-      (mentionablePdfs: MentionablePDF[]) => {
-        const newMentionablePdfs = mentionablePdfs.filter(
-          (m) =>
-            !mentionables.some(
-              (mentionable) =>
-                getMentionableKey(serializeMentionable(mentionable)) ===
-                getMentionableKey(serializeMentionable(m)),
-            ),
-        )
-        if (newMentionablePdfs.length === 0) return
-        const editor = editorRef.current
-        if (editor) {
-          editor.update(() => {
-            const nodesToInsert: LexicalNode[] = []
-            newMentionablePdfs.forEach((mentionable) => {
-              nodesToInsert.push(
-                $createMentionNode(
-                  getMentionableName(mentionable, {
-                    unitLabels: mentionableUnitLabels,
-                  }),
-                  serializeMentionable(mentionable),
-                ),
-              )
-              nodesToInsert.push($createTextNode(' '))
-            })
-            const selection = $getSelection()
-            if (selection && $isRangeSelection(selection)) {
-              selection.insertNodes(nodesToInsert)
-              return
-            }
-
-            const root = $getRoot()
-            let paragraphNode = root.getFirstChild()
-            if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
-              const created = $createParagraphNode()
-              root.append(created)
-              paragraphNode = created
-            }
-            const paragraph = paragraphNode as ParagraphNode
-            nodesToInsert.forEach((node) => {
-              paragraph.append(node)
-            })
-          })
-        }
-        setMentionables([...mentionables, ...newMentionablePdfs])
-      },
-      [mentionableUnitLabels, mentionables, setMentionables],
-    )
-
-    const handleCreateOfficeMentionables = useCallback(
-      (mentionableOffices: MentionableOffice[]) => {
-        const newMentionableOffices = mentionableOffices.filter(
-          (m) =>
-            !mentionables.some(
-              (mentionable) =>
-                getMentionableKey(serializeMentionable(mentionable)) ===
-                getMentionableKey(serializeMentionable(m)),
-            ),
-        )
-        if (newMentionableOffices.length === 0) return
-        const editor = editorRef.current
-        if (editor) {
-          editor.update(() => {
-            const nodesToInsert: LexicalNode[] = []
-            newMentionableOffices.forEach((mentionable) => {
-              nodesToInsert.push(
-                $createMentionNode(
-                  getMentionableName(mentionable, {
-                    unitLabels: mentionableUnitLabels,
-                  }),
-                  serializeMentionable(mentionable),
-                ),
-              )
-              nodesToInsert.push($createTextNode(' '))
-            })
-            const selection = $getSelection()
-            if (selection && $isRangeSelection(selection)) {
-              selection.insertNodes(nodesToInsert)
-              return
-            }
-
-            const root = $getRoot()
-            let paragraphNode = root.getFirstChild()
-            if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
-              const created = $createParagraphNode()
-              root.append(created)
-              paragraphNode = created
-            }
-            const paragraph = paragraphNode as ParagraphNode
-            nodesToInsert.forEach((node) => {
-              paragraph.append(node)
-            })
-          })
-        }
-        setMentionables([...mentionables, ...newMentionableOffices])
-      },
-      [mentionableUnitLabels, mentionables, setMentionables],
-    )
-
-    const handleCreateTextAttachmentMentionables = useCallback(
-      (mentionableTextAttachments: MentionableTextAttachment[]) => {
-        const newMentionables = mentionableTextAttachments.filter(
-          (m) =>
-            !mentionables.some(
-              (mentionable) =>
-                getMentionableKey(serializeMentionable(mentionable)) ===
-                getMentionableKey(serializeMentionable(m)),
-            ),
-        )
-        if (newMentionables.length === 0) return
-        const editor = editorRef.current
-        if (editor) {
-          editor.update(() => {
-            const nodesToInsert: LexicalNode[] = []
-            newMentionables.forEach((mentionable) => {
-              nodesToInsert.push(
-                $createMentionNode(
-                  getMentionableName(mentionable, {
-                    unitLabels: mentionableUnitLabels,
-                  }),
-                  serializeMentionable(mentionable),
-                ),
-              )
-              nodesToInsert.push($createTextNode(' '))
-            })
-            const selection = $getSelection()
-            if (selection && $isRangeSelection(selection)) {
-              selection.insertNodes(nodesToInsert)
-              return
-            }
-
-            const root = $getRoot()
-            let paragraphNode = root.getFirstChild()
-            if (!paragraphNode || !$isParagraphNode(paragraphNode)) {
-              const created = $createParagraphNode()
-              root.append(created)
-              paragraphNode = created
-            }
-            const paragraph = paragraphNode as ParagraphNode
-            nodesToInsert.forEach((node) => {
-              paragraph.append(node)
-            })
-          })
-        }
-        setMentionables([...mentionables, ...newMentionables])
-      },
-      [mentionableUnitLabels, mentionables, setMentionables],
-    )
-
-    const handleUploadFiles = useCallback(
-      (files: File[]) => {
-        const {
-          imageFiles,
-          pdfFiles,
-          officeFiles,
-          textAttachmentFiles,
-          unsupportedFiles,
-        } = classifyUploadFiles(files)
-        if (unsupportedFiles.length > 0) {
-          new Notice(
-            t(
-              'chat.unsupportedFileType',
-              'Unsupported file type: {names}',
-            ).replace(
-              '{names}',
-              unsupportedFiles.map((file) => file.name).join(', '),
-            ),
-          )
-        }
-        if (imageFiles.length > 0) {
-          void Promise.all(
-            imageFiles.map((file) => fileToMentionableImage(file)),
-          )
-            .then((mentionableImages) => {
-              handleCreateImageMentionables(mentionableImages)
-            })
-            .catch((error) => {
-              console.error('Failed to process uploaded images', error)
-              new Notice(
-                t(
-                  'chat.processImagesFailed',
-                  'Failed to process uploaded images',
-                ),
-              )
-            })
-        }
-        if (pdfFiles.length > 0) {
-          void Promise.allSettled(
-            pdfFiles.map((file) =>
-              fileToMentionablePDF(app, file, { settings }),
-            ),
-          ).then((results) => {
-            const successes: MentionablePDF[] = []
-            results.forEach((result, idx) => {
-              if (result.status === 'fulfilled') {
-                successes.push(result.value)
-              } else {
-                const name = pdfFiles[idx]?.name ?? 'PDF'
-                console.error(`Failed to extract PDF ${name}`, result.reason)
-                new Notice(
-                  t(
-                    'chat.readPdfFailed',
-                    'Failed to read PDF "{name}": {error}',
-                  )
-                    .replace('{name}', name)
-                    .replace(
-                      '{error}',
-                      result.reason instanceof Error
-                        ? result.reason.message
-                        : 'unknown error',
-                    ),
-                )
-              }
-            })
-            if (successes.length > 0) {
-              handleCreatePdfMentionables(successes)
-            }
-          })
-        }
-        if (officeFiles.length > 0) {
-          void Promise.allSettled(
-            officeFiles.map((file) => fileToMentionableOffice(file)),
-          ).then((results) => {
-            const successes: MentionableOffice[] = []
-            results.forEach((result, idx) => {
-              if (result.status === 'fulfilled') {
-                successes.push(result.value)
-              } else {
-                const name = officeFiles[idx]?.name ?? 'Office document'
-                console.error(
-                  `Failed to extract Office document ${name}`,
-                  result.reason,
-                )
-                new Notice(
-                  t(
-                    'chat.readOfficeFailed',
-                    'Failed to read Office document "{name}": {error}',
-                  )
-                    .replace('{name}', name)
-                    .replace(
-                      '{error}',
-                      result.reason instanceof Error
-                        ? result.reason.message
-                        : 'unknown error',
-                    ),
-                )
-              }
-            })
-            if (successes.length > 0) {
-              handleCreateOfficeMentionables(successes)
-            }
-          })
-        }
-        if (textAttachmentFiles.length > 0) {
-          void Promise.allSettled(
-            textAttachmentFiles.map((file) =>
-              fileToMentionableTextAttachment(file),
-            ),
-          ).then((results) => {
-            const successes: MentionableTextAttachment[] = []
-            results.forEach((result, idx) => {
-              if (result.status === 'fulfilled') {
-                successes.push(result.value)
-              } else {
-                const name = textAttachmentFiles[idx]?.name ?? 'text file'
-                console.error(
-                  `Failed to read text attachment ${name}`,
-                  result.reason,
-                )
-                new Notice(
-                  t(
-                    'chat.readTextAttachmentFailed',
-                    'Failed to read text file "{name}": {error}',
-                  )
-                    .replace('{name}', name)
-                    .replace(
-                      '{error}',
-                      result.reason instanceof Error
-                        ? result.reason.message
-                        : 'unknown error',
-                    ),
-                )
-              }
-            })
-            if (successes.length > 0) {
-              handleCreateTextAttachmentMentionables(successes)
-            }
-          })
-        }
-      },
-      [
-        app,
-        handleCreateImageMentionables,
-        handleCreateOfficeMentionables,
-        handleCreatePdfMentionables,
-        handleCreateTextAttachmentMentionables,
-        settings,
-        t,
-      ],
-    )
-
-    const handleSelectMentionableForBadge = useCallback(
-      (mentionable: Mentionable) => {
-        if (mentionDisplayMode !== 'badge') return
-        const mentionableKey = getMentionableKey(
-          serializeMentionable(mentionable),
-        )
-        if (
-          mentionables.some(
-            (existing) =>
-              getMentionableKey(serializeMentionable(existing)) ===
-              mentionableKey,
-          )
-        ) {
-          return
-        }
-        setMentionables([...mentionables, mentionable])
-      },
-      [mentionDisplayMode, mentionables, setMentionables],
+      [],
     )
 
     const handleDeleteMentionableFromBadge = useCallback(
@@ -1292,31 +361,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [mentionables, onDeleteFromAll, setMentionables],
     )
 
-    const handleSelectSkill = useCallback(
-      (skill: { name: string; description: string; path: string }) => {
-        if (!setSelectedSkills) {
-          return
-        }
-
-        const nextSkill: ChatSelectedSkill = {
-          name: skill.name,
-          description: skill.description,
-          path: skill.path,
-        }
-
-        if (
-          effectiveSelectedSkills.some(
-            (selectedSkill) => selectedSkill.name === nextSkill.name,
-          )
-        ) {
-          return
-        }
-
-        setSelectedSkills([...effectiveSelectedSkills, nextSkill])
-      },
-      [effectiveSelectedSkills, setSelectedSkills],
-    )
-
     const handleDeleteSelectedSkill = useCallback(
       (skillName: string) => {
         if (!setSelectedSkills) {
@@ -1330,69 +374,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
 
     const handleTriggerClick = useCallback((char: string) => {
-      if (!editorRef.current) return
-      editorRef.current.update(
-        () => {
-          const root = $getRoot()
-          root.selectEnd()
-          const selection = $getSelection()
-          if ($isRangeSelection(selection)) {
-            selection.insertText(char)
-          }
-        },
-        { discrete: true },
-      )
-      contentEditableRef.current?.focus()
+      coreRef.current?.insertText(char)
     }, [])
-
-    const handleEditorBackgroundMouseDown = useCallback(
-      (event: ReactMouseEvent<HTMLDivElement>) => {
-        const editorRoot = contentEditableRef.current
-        const editor = editorRef.current
-        if (!editorRoot || !editor) return
-
-        // Only handle clicks on the contentEditable background itself.
-        // This keeps normal caret placement when clicking on real text nodes.
-        if (event.target !== editorRoot) return
-
-        requestAnimationFrame(() => {
-          editorRoot.focus()
-          editor.update(() => {
-            $getRoot().selectEnd()
-          })
-        })
-      },
-      [],
-    )
-
-    const initialEditorState = useMemo(() => {
-      if (!initialSerializedEditorState) {
-        return undefined
-      }
-
-      return (editor: LexicalEditor) => {
-        try {
-          editor.setEditorState(
-            editor.parseEditorState(initialSerializedEditorState),
-          )
-        } catch (error) {
-          // Defensive: a malformed serialized state shouldn't break the input box.
-          console.warn(
-            '[YOLO] Failed to restore chat input editor state',
-            error,
-          )
-        }
-      }
-    }, [initialSerializedEditorState])
-
-    const lexicalPlugins = useMemo(
-      () => ({
-        onEnter: {
-          onVaultChat: handleSubmit,
-        },
-      }),
-      [handleSubmit],
-    )
 
     const clearResizeBodyStyles = useCallback(() => {
       ;(containerRef.current?.ownerDocument ?? document).body.setCssProps({
@@ -1431,7 +414,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         dragStartYRef.current = clientY
         dragStartHeightRef.current =
           resizedHeight ??
-          contentEditableRef.current?.offsetHeight ??
+          containerRef.current
+            ?.querySelector<HTMLElement>('.yolo-content-editable')
+            ?.offsetHeight ??
           DEFAULT_INPUT_HEIGHT
 
         const ownerDoc = containerRef.current?.ownerDocument ?? document
@@ -1567,7 +552,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         }
 
         requestAnimationFrame(() => {
-          contentEditableRef.current?.focus()
+          coreRef.current?.focus()
         })
       },
       [compact],
@@ -1644,7 +629,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     const renderSubmitControl = () => (
       <SubmitButton
-        onClick={() => handleSubmit()}
+        onClick={() => coreRef.current?.submit()}
         isGenerating={isGenerating}
         canQueue={canQueueWhileGenerating}
         onAbort={onAbort}
@@ -1729,11 +714,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               <span>{t('chat.dropFilesHint', '松开以添加文件')}</span>
             </div>
           )}
-          <div
-            className="yolo-chat-user-input-editor"
-            onMouseDown={handleEditorBackgroundMouseDown}
-            role="presentation"
-          >
+          <div className="yolo-chat-user-input-editor" role="presentation">
             {inputText.trim().length === 0 &&
               effectiveMentionables.length === 0 &&
               effectiveSelectedSkills.length === 0 &&
@@ -1774,27 +755,24 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                   {t('chat.placeholderSkill', '选择技能或命令')}
                 </div>
               )}
-            <LexicalContentEditable
-              // Pass `undefined` (not a no-op function) when there's no draft
-              // to restore: Lexical only auto-creates the initial empty
-              // paragraph in the `undefined` branch. With a function — even
-              // one that does nothing — `root` stays `children: []`, which
-              // violates Lexical's "root must never be empty" invariant and
-              // produces a flood of `setEditorState` errors as soon as
-              // selection / OnChangePlugin / mutations touch the editor.
-              initialEditorState={initialEditorState}
-              editorRef={editorRef}
-              contentEditableRef={contentEditableRef}
-              onChange={onChange}
+            <MessageInputCore
+              ref={coreRef}
+              initialSerializedEditorState={initialSerializedEditorState}
+              onChange={handleChange}
               onTextContentChange={setInputText}
-              onEnter={handleSubmit}
+              onEnter={handleEnter}
               onFocus={onFocus}
-              onMentionNodeMutation={handleMentionNodeMutation}
-              onSkillNodeMutation={handleSkillNodeMutation}
-              onCreateImageMentionables={handleCreateImageMentionables}
-              onPasteFiles={handleUploadFiles}
+              autoFocus={autoFocus}
+              mentionables={mentionables}
+              setMentionables={setMentionables}
               mentionDisplayMode={mentionDisplayMode}
-              onSelectMentionable={handleSelectMentionableForBadge}
+              onDeleteFromAll={onDeleteFromAll}
+              displayMentionablesForDelete={effectiveMentionables}
+              enableSkills
+              enableAttachments
+              selectedSkills={selectedSkills}
+              setSelectedSkills={setSelectedSkills}
+              currentModel={currentModel}
               mentionMenuMode={
                 onSelectAssistantForConversation ||
                 onSelectChatModeForConversation
@@ -1808,22 +786,19 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               onSelectChatMode={onSelectChatModeForConversation}
               allowAgentModeOption={allowAgentModeOption}
               models={enabledChatModels}
-              selectedModelIds={selectedModelIds}
               skills={availableSkills}
-              selectedSkillNames={selectedSkillNames}
-              onSelectSkill={handleSelectSkill}
-              onRunSlashCommand={onRunSlashCommand}
               snippets={availableSnippets}
               onCreateSnippetsFile={handleCreateSnippetsFile}
-              autoFocus={autoFocus}
-              plugins={lexicalPlugins}
+              onRunSlashCommand={onRunSlashCommand}
             />
           </div>
 
           {!compact && controlLayout === 'inline' && (
             <div className="yolo-chat-user-input-controls">
               <div className="yolo-chat-user-input-controls__left">
-                <FileUploadButton onUpload={handleUploadFiles} />
+                <FileUploadButton
+                  onUpload={(files) => coreRef.current?.uploadFiles(files)}
+                />
                 {renderModelControl()}
                 {renderReasoningControl()}
               </div>
@@ -1836,7 +811,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
           {!compact && controlLayout === 'composer-toolbar' && (
             <div className="yolo-chat-user-input-send-row">
-              <FileUploadButton onUpload={handleUploadFiles} />
+              <FileUploadButton
+                onUpload={(files) => coreRef.current?.uploadFiles(files)}
+              />
               <div className="yolo-chat-user-input-send-row__right">
                 {renderContextUsageControl()}
                 {renderSubmitControl()}
