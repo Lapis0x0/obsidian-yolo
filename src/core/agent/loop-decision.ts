@@ -9,13 +9,14 @@ type ToolResultInput = {
   hasPendingTools: boolean
   iteration: number
   maxIterations: number
-  forceStopReason?: 'repeated_tool_failure'
+  forceStopReason?: 'repeated_tool_failure' | 'repeated_read_call'
 }
 
 export type LoopDoneReason =
   | 'completed'
   | 'max_iterations'
   | 'repeated_tool_failure'
+  | 'repeated_read_call'
 
 export type LoopDecision =
   | { type: 'tool_phase' }

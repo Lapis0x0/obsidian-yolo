@@ -30,6 +30,10 @@ import {
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
 import {
+  applyRepeatedReadCallGuard,
+  createRepeatedReadCallGuardState,
+} from './repeated-read-call-guard'
+import {
   applyRepeatedToolFailureGuard,
   createRepeatedToolFailureGuardState,
 } from './repeated-tool-failure-guard'
@@ -140,6 +144,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     let runSettled = false
     let workerTaskQueue = Promise.resolve()
     let abortListener: (() => void) | null = null
+    let repeatedReadCallGuardState = createRepeatedReadCallGuardState()
     let repeatedToolFailureGuardState = createRepeatedToolFailureGuardState()
     const promptedAutoCompactionAssistantMessageIds = new Set<string>()
 
@@ -279,12 +284,21 @@ export class NativeAgentRuntime implements AgentRuntime {
                       debugTraceId: currentDebugTraceId,
                     }),
                 )
+                const readGuardedToolResult = applyRepeatedReadCallGuard({
+                  state: repeatedReadCallGuardState,
+                  toolMessage: completedToolMessage,
+                })
+                repeatedReadCallGuardState = readGuardedToolResult.state
+
                 const guardedToolResult = applyRepeatedToolFailureGuard({
                   state: repeatedToolFailureGuardState,
-                  toolMessage: completedToolMessage,
+                  toolMessage: readGuardedToolResult.toolMessage,
                 })
                 repeatedToolFailureGuardState = guardedToolResult.state
                 const guardedToolMessage = guardedToolResult.toolMessage
+                const forceStopReason =
+                  readGuardedToolResult.forceStopReason ??
+                  guardedToolResult.forceStopReason
 
                 this.replaceToolMessage(guardedToolMessage)
                 this.notifySubscribers()
@@ -403,7 +417,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     type: 'tool_result',
                     runId,
                     hasPendingTools: false,
-                    forceStopReason: guardedToolResult.forceStopReason,
+                    forceStopReason,
                   })
                   return
                 }
@@ -413,7 +427,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   runId,
                   hasPendingTools:
                     toolGateway.hasPendingToolCalls(guardedToolMessage),
-                  forceStopReason: guardedToolResult.forceStopReason,
+                  forceStopReason,
                 })
                 return
               }

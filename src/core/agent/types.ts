@@ -138,7 +138,7 @@ export type AgentWorkerInbound =
       type: 'tool_result'
       runId: string
       hasPendingTools: boolean
-      forceStopReason?: 'repeated_tool_failure'
+      forceStopReason?: 'repeated_tool_failure' | 'repeated_read_call'
     }
   | {
       type: 'abort'
@@ -162,6 +162,7 @@ export type AgentWorkerOutbound =
         | 'completed'
         | 'max_iterations'
         | 'repeated_tool_failure'
+        | 'repeated_read_call'
         | 'aborted'
     }
   | {
