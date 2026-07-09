@@ -2310,61 +2310,6 @@ export function QuickAskPanel({
         <div className="yolo-quick-ask-drag-indicator" />
       </div>
 
-      {/* Top: Input row — keep mounted during streaming (disabled keep-alive) */}
-      <div className="yolo-quick-ask-input-row" ref={inputRowRef}>
-        <div
-          className={`yolo-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
-        >
-          <MessageInputCore
-            ref={messageInputRef}
-            initialSerializedEditorState={initialSerializedEditorState}
-            onChange={handleMainInputChange}
-            onTextContentChange={setInputText}
-            onEnter={handleEnter}
-            autoFocus
-            disabled={isStreaming}
-            enableSkills
-            enableAttachments={false}
-            mentionables={mentionables}
-            setMentionables={setMentionables}
-            selectedSkills={selectedSkills}
-            setSelectedSkills={setSelectedSkills}
-            mentionDisplayMode="inline"
-            contentClassName="yolo-obsidian-textarea yolo-content-editable yolo-quick-ask-content-editable"
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown') {
-                event.preventDefault()
-                assistantTriggerRef.current?.focus()
-              }
-            }}
-            onMentionMenuToggle={(open) => {
-              setIsMentionMenuOpen(open)
-              if (open) updateMentionMenuPlacement()
-            }}
-            mentionMenuPlacement={mentionMenuPlacement}
-            models={enabledChatModels}
-            skills={availableSkills}
-          />
-          {inputText.length === 0 &&
-            mentionables.length === 0 &&
-            selectedSkills.length === 0 &&
-            !isStreaming && (
-              <div className="yolo-quick-ask-input-placeholder">
-                {t('quickAsk.inputPlaceholder', 'Ask a question...')}
-              </div>
-            )}
-          {shouldShowInlineRunStatus && (
-            <div className="yolo-quick-ask-run-status" aria-live="polite">
-              <span
-                className="yolo-quick-ask-run-status-dot"
-                aria-hidden="true"
-              />
-              <span>{runStatusLabel}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Chat area - only shown when there are messages */}
       {hasMessages && (
         <SharedConversationSurface
@@ -2388,8 +2333,65 @@ export function QuickAskPanel({
         />
       )}
 
-      {/* Bottom toolbar (Cursor style): assistant selector left, actions right */}
-      <div className="yolo-quick-ask-toolbar">
+      {/* Composer: input + toolbar stay glued together in both empty and chat layouts */}
+      <div className="yolo-quick-ask-composer">
+        {/* Keep mounted during streaming (disabled keep-alive) */}
+        <div className="yolo-quick-ask-input-row" ref={inputRowRef}>
+          <div
+            className={`yolo-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
+          >
+            <MessageInputCore
+              ref={messageInputRef}
+              initialSerializedEditorState={initialSerializedEditorState}
+              onChange={handleMainInputChange}
+              onTextContentChange={setInputText}
+              onEnter={handleEnter}
+              autoFocus
+              disabled={isStreaming}
+              enableSkills
+              enableAttachments={false}
+              mentionables={mentionables}
+              setMentionables={setMentionables}
+              selectedSkills={selectedSkills}
+              setSelectedSkills={setSelectedSkills}
+              mentionDisplayMode="inline"
+              contentClassName="yolo-obsidian-textarea yolo-content-editable yolo-quick-ask-content-editable"
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  assistantTriggerRef.current?.focus()
+                }
+              }}
+              onMentionMenuToggle={(open) => {
+                setIsMentionMenuOpen(open)
+                if (open) updateMentionMenuPlacement()
+              }}
+              mentionMenuPlacement={mentionMenuPlacement}
+              models={enabledChatModels}
+              skills={availableSkills}
+            />
+            {inputText.length === 0 &&
+              mentionables.length === 0 &&
+              selectedSkills.length === 0 &&
+              !isStreaming && (
+                <div className="yolo-quick-ask-input-placeholder">
+                  {t('quickAsk.inputPlaceholder', 'Ask a question...')}
+                </div>
+              )}
+            {shouldShowInlineRunStatus && (
+              <div className="yolo-quick-ask-run-status" aria-live="polite">
+                <span
+                  className="yolo-quick-ask-run-status-dot"
+                  aria-hidden="true"
+                />
+                <span>{runStatusLabel}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Toolbar: assistant / model / mode left, send right */}
+        <div className="yolo-quick-ask-toolbar">
         {/* Left: Assistant selector */}
         <div className="yolo-quick-ask-toolbar-left">
           <DropdownMenu.Root
@@ -2584,6 +2586,7 @@ export function QuickAskPanel({
             }
             onClick={handleEnter}
           />
+        </div>
         </div>
       </div>
 

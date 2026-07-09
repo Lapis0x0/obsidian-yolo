@@ -87,8 +87,15 @@
   max-height: min(500px, 70vh);
 }
 
-.yolo-quick-ask-panel.has-messages .yolo-quick-ask-input-row {
-  order: 2;
+/* Composer keeps input + toolbar glued together; chat sits above when present. */
+.yolo-quick-ask-composer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  background: color-mix(in srgb, var(--background-primary) 96%, transparent);
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
 }
 
 /* Input Row */
@@ -96,13 +103,19 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Right 32px reserves space for the absolute close button in the empty
+     (top-input) layout. Dropped under .has-messages where input sits at the
+     bottom and no longer collides with the header chrome. */
   padding: 2px 32px 0 6px;
-  margin-top: 4px;
+  margin-top: 0;
   background: transparent;
   border-bottom: none;
   position: relative;
   min-height: 0;
-  order: 0;
+}
+
+.yolo-quick-ask-panel.has-messages .yolo-quick-ask-input-row {
+  padding-right: 6px;
 }
 
 .yolo-quick-ask-assistant-trigger {
@@ -596,12 +609,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Stable gap from the input line — independent of chat length / panel height. */
   padding: 0px 8px 6px;
   border-top: none;
-  background: color-mix(in srgb, var(--background-primary) 96%, transparent);
+  background: transparent;
   border-bottom-left-radius: inherit;
   border-bottom-right-radius: inherit;
-  order: 3;
+}
+
+.yolo-quick-ask-panel.is-resized-empty .yolo-quick-ask-composer {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .yolo-quick-ask-panel.is-resized-empty .yolo-quick-ask-input-row {
@@ -650,7 +668,6 @@
   overflow: hidden;
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
-  order: 1;
 }
 
 .yolo-quick-ask-chat-area {
