@@ -8,6 +8,12 @@ export type ToolCallRecord = {
   arguments?: Record<string, unknown>
 }
 
+export type CollectorResult = {
+  startedAt: number
+  completedAt: number
+  toolCalls: ToolCallRecord[]
+}
+
 export type PhaseDebugData = {
   label: string
   startedAt: number
@@ -41,10 +47,6 @@ export class PhaseDebugCollector {
     this.startedAt = Date.now()
   }
 
-  get startTime(): number {
-    return this.startedAt
-  }
-
   recordToolCall(event: YoloAgentEvent & { type: 'tool' }): void {
     if (event.status !== 'completed' && event.status !== 'error') return
     this.toolCalls.push({
@@ -54,19 +56,11 @@ export class PhaseDebugCollector {
     })
   }
 
-  finalize(data: {
-    label: string
-    output: string
-    meta?: Record<string, string>
-  }): PhaseDebugData {
+  finalize(): CollectorResult {
     return {
-      label: data.label,
       startedAt: this.startedAt,
       completedAt: Date.now(),
       toolCalls: this.toolCalls,
-      outputLength: data.output.length,
-      output: data.output,
-      meta: data.meta ?? {},
     }
   }
 }
@@ -107,17 +101,18 @@ export function emitChaptersDebugLog(chapters: ChapterDebugData[]): void {
   if (!isLLMDebugCaptureEnabled()) return
   if (chapters.length === 0) return
 
+  const sorted = [...chapters].sort((a, b) => a.chapterIndex - b.chapterIndex)
   const lines: string[] = []
-  lines.push(`kp-generator completed (${chapters.length} chapters)`)
+  lines.push(`kp-generator completed (${sorted.length} chapters)`)
 
-  for (const ch of chapters) {
+  for (const ch of sorted) {
     const durationStr = `${((ch.completedAt - ch.startedAt) / 1000).toFixed(1)}s`
     lines.push(
       `  ch${ch.chapterIndex} "${ch.chapterTitle}"  ${durationStr}  ${ch.toolCalls.length} call  ${ch.pointCount} pts  ${ch.outputLength}c`,
     )
   }
 
-  const allToolCalls = chapters.flatMap((ch) =>
+  const allToolCalls = sorted.flatMap((ch) =>
     ch.toolCalls.map((tc) => ({ ...tc, chapterIndex: ch.chapterIndex })),
   )
   if (allToolCalls.length > 0) {
@@ -130,7 +125,7 @@ export function emitChaptersDebugLog(chapters: ChapterDebugData[]): void {
     }
   }
 
-  for (const ch of chapters) {
+  for (const ch of sorted) {
     lines.push(`  output ch${ch.chapterIndex}:`)
     for (const line of ch.output.split('\n')) {
       lines.push(`    ${line}`)

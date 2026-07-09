@@ -33,6 +33,10 @@ import { useLanguage } from '../../contexts/language-context'
 import { generateKnowledgePointsForChapter } from '../../core/learning/generation/knowledgePointGenerator'
 import { generateOutline } from '../../core/learning/generation/outlineGenerator'
 import {
+  type ChapterDebugData,
+  emitChaptersDebugLog,
+} from '../../core/learning/generation/debugLog'
+import {
   type WrittenKnowledgePoint,
   appendKnowledgePointDraft,
   createKnowledgePointUuid,
@@ -253,6 +257,7 @@ export function OutlineBuilder({
         projectRefPath
           ? { enabled: true, include: [projectRefPath], exclude: [] }
           : workspaceScope
+      const chapterDebugData: ChapterDebugData[] = []
       await Promise.all(
         validChapters.map(async (chapter, index) => {
           const target = scaffold.chapters[index]
@@ -291,8 +296,9 @@ export function OutlineBuilder({
           }
 
           try {
-            await generateKnowledgePointsForChapter({
+            const { debugData } = await generateKnowledgePointsForChapter({
               plugin,
+              chapterIndex: index,
               projectTopic: resolvedProjectName,
               chapterTitle: chapter.title,
               chapterContract: chapter.contract,
@@ -336,6 +342,7 @@ export function OutlineBuilder({
                 })
               },
             })
+            chapterDebugData.push(debugData)
           } catch (error) {
             if (controller.signal.aborted) return
             console.error('[YOLO] Failed to generate chapter knowledge:', error)
@@ -343,6 +350,7 @@ export function OutlineBuilder({
         }),
       )
       if (controller.signal.aborted) return
+      emitChaptersDebugLog(chapterDebugData)
       await markProjectStudying({
         app: plugin.app,
         indexPath: scaffold.indexPath,

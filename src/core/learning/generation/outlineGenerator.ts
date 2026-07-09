@@ -86,9 +86,14 @@ export async function generateOutline({
   }
 
   const finalText = completedText || accumulated
-  emitPhaseDebugLog(
-    debug.finalize({
+  if (!abortSignal?.aborted) {
+    const collected = debug.finalize()
+    emitPhaseDebugLog({
       label: 'outline-generator',
+      startedAt: collected.startedAt,
+      completedAt: collected.completedAt,
+      toolCalls: collected.toolCalls,
+      outputLength: finalText.length,
       output: finalText,
       meta: {
         topic: `"${topic}"`,
@@ -99,8 +104,8 @@ export async function generateOutline({
             }
           : {}),
       },
-    }),
-  )
+    })
+  }
   const outline = parseOutline(finalText)
   if (!isOutlineEqual(outline, streamedOutline)) {
     onOutline?.(outline)

@@ -3,11 +3,7 @@ import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
-import {
-  type ChapterDebugData,
-  PhaseDebugCollector,
-  emitChaptersDebugLog,
-} from './debugLog'
+import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
 import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
@@ -19,6 +15,7 @@ import type {
 
 export type GenerateKnowledgePointsForChapterOptions = {
   plugin: YoloPlugin
+  chapterIndex: number
   projectTopic: string
   chapterTitle: string
   chapterContract: string
@@ -32,12 +29,9 @@ export type GenerateKnowledgePointsForChapterOptions = {
   onKnowledgePoint?: (point: KnowledgePointDraft) => void | Promise<void>
 }
 
-export type ChapterGenerationDebugResult = {
-  debugData: ChapterDebugData
-}
-
 export async function generateKnowledgePointsForChapter({
   plugin,
+  chapterIndex,
   projectTopic,
   chapterTitle,
   chapterContract,
@@ -121,19 +115,20 @@ export async function generateKnowledgePointsForChapter({
   await emitNewKnowledgePoints(drafts)
 
   const finalText = completedText || accumulated
-  const finalized = debug.finalize({ label: '', output: finalText })
-  const debugData: ChapterDebugData = {
-    chapterIndex: -1,
-    chapterTitle,
-    startedAt: debug.startTime,
-    completedAt: finalized.completedAt,
-    toolCalls: finalized.toolCalls,
-    outputLength: finalized.outputLength,
-    output: finalized.output,
-    pointCount: drafts.length,
+  const collected = debug.finalize()
+  return {
+    drafts,
+    debugData: {
+      chapterIndex,
+      chapterTitle,
+      startedAt: collected.startedAt,
+      completedAt: collected.completedAt,
+      toolCalls: collected.toolCalls,
+      outputLength: finalText.length,
+      output: finalText,
+      pointCount: drafts.length,
+    },
   }
-
-  return { drafts, debugData }
 }
 
 export type GenerateKnowledgePointsParallelOptions = {
@@ -157,7 +152,6 @@ export async function generateKnowledgePointsParallel({
   abortSignal,
   onChapterProgress,
 }: GenerateKnowledgePointsParallelOptions): Promise<ChapterGenerationResult[]> {
-  const debugDataList: ChapterDebugData[] = []
   const tasks = chapters.map(async (chapter, index) => {
     const chapterIndex = index
     onChapterProgress?.({
@@ -166,8 +160,9 @@ export async function generateKnowledgePointsParallel({
       status: 'generating',
     })
     try {
-      const { drafts, debugData } = await generateKnowledgePointsForChapter({
+      const { drafts } = await generateKnowledgePointsForChapter({
         plugin,
+        chapterIndex,
         projectTopic,
         chapterTitle: chapter.title,
         chapterContract: chapter.contract,
@@ -184,8 +179,6 @@ export async function generateKnowledgePointsParallel({
           })
         },
       })
-      debugData.chapterIndex = chapterIndex
-      debugDataList.push(debugData)
       onChapterProgress?.({
         chapterIndex,
         chapterTitle: chapter.title,
@@ -213,10 +206,7 @@ export async function generateKnowledgePointsParallel({
     }
   })
 
-  const results = await Promise.all(tasks)
-  debugDataList.sort((a, b) => a.chapterIndex - b.chapterIndex)
-  emitChaptersDebugLog(debugDataList)
-  return results
+  return Promise.all(tasks)
 }
 
 function buildKnowledgePointPrompt({
