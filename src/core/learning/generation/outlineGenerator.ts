@@ -2,6 +2,7 @@ import type YoloPlugin from '../../../main'
 import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 
+import { PhaseDebugCollector, emitPhaseDebugLog } from './debugLog'
 import { OUTLINE_GENERATOR_PROMPT } from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type { Outline, OutlineChapter } from './types'
@@ -40,6 +41,7 @@ export async function generateOutline({
     chapters: [],
     estimatedKnowledgePoints: 0,
   }
+  const debug = new PhaseDebugCollector()
 
   const stream = plugin.agent.stream({
     prompt: buildOutlinePrompt({
@@ -72,9 +74,11 @@ export async function generateOutline({
         onOutline?.(outline)
       }
     }
+    if (event.type === 'tool') {
+      debug.recordToolCall(event)
+    }
     if (event.type === 'completed') {
       completedText = event.text
-      console.debug('[yolo-learning] outline completed text:', completedText)
     }
     if (event.type === 'error') {
       throw new Error(event.message)
@@ -82,7 +86,21 @@ export async function generateOutline({
   }
 
   const finalText = completedText || accumulated
-  console.debug('[yolo-learning] outline final text length:', finalText.length)
+  emitPhaseDebugLog(
+    debug.finalize({
+      label: 'outline-generator',
+      output: finalText,
+      meta: {
+        topic: `"${topic}"`,
+        level,
+        ...(referenceFiles && referenceFiles.length > 0
+          ? {
+              references: `[${referenceFiles.map((f) => f.name).join(', ')}]`,
+            }
+          : {}),
+      },
+    }),
+  )
   const outline = parseOutline(finalText)
   if (!isOutlineEqual(outline, streamedOutline)) {
     onOutline?.(outline)

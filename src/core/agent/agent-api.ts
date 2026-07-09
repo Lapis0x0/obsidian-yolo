@@ -99,6 +99,8 @@ export type YoloAgentEvent =
         | 'completed'
         | 'error'
         | 'awaiting_approval'
+      /** Parsed tool-call arguments (only when arguments are complete). */
+      arguments?: Record<string, unknown>
     }
   | {
       type: 'completed'
@@ -646,12 +648,16 @@ function toolEventsFromMessages({
 
   for (const message of relevantToolMessages) {
     for (const toolCall of message.toolCalls) {
+      const args = toolCall.request.arguments
+      const parsedArgs =
+        args?.kind === 'complete' ? args.value : undefined
       const event: YoloAgentEvent & { type: 'tool' } = {
         type: 'tool',
         conversationId,
         toolCallId: toolCall.request.id,
         name: toolCall.request.name,
         status: mapToolStatus(toolCall.response.status),
+        ...(parsedArgs ? { arguments: parsedArgs } : {}),
       }
       const previousEvent = previous.toolStatusById.get(event.toolCallId)
       nextTracker.toolStatusById.set(event.toolCallId, event)

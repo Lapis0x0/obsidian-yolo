@@ -3,6 +3,11 @@ import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
+import {
+  type ChapterDebugData,
+  PhaseDebugCollector,
+  emitChaptersDebugLog,
+} from './debugLog'
 import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
@@ -27,6 +32,10 @@ export type GenerateKnowledgePointsForChapterOptions = {
   onKnowledgePoint?: (point: KnowledgePointDraft) => void | Promise<void>
 }
 
+export type ChapterGenerationDebugResult = {
+  debugData: ChapterDebugData
+}
+
 export async function generateKnowledgePointsForChapter({
   plugin,
   projectTopic,
@@ -40,11 +49,15 @@ export async function generateKnowledgePointsForChapter({
   onProgress,
   onKnowledgePointTitle,
   onKnowledgePoint,
-}: GenerateKnowledgePointsForChapterOptions): Promise<KnowledgePointDraft[]> {
+}: GenerateKnowledgePointsForChapterOptions): Promise<{
+  drafts: KnowledgePointDraft[]
+  debugData: ChapterDebugData
+}> {
   let accumulated = ''
   let completedText = ''
   let titledCount = 0
   let emittedCount = 0
+  const debug = new PhaseDebugCollector()
 
   const emitNewKnowledgePointTitles = async (titles: string[]) => {
     if (!onKnowledgePointTitle) return
@@ -92,6 +105,9 @@ export async function generateKnowledgePointsForChapter({
         parseCompletedKnowledgePointDrafts(accumulated),
       )
     }
+    if (event.type === 'tool') {
+      debug.recordToolCall(event)
+    }
     if (event.type === 'completed') {
       completedText = event.text
     }
@@ -103,7 +119,21 @@ export async function generateKnowledgePointsForChapter({
   const drafts = parseKnowledgePointDrafts(completedText || accumulated)
   await emitNewKnowledgePointTitles(drafts.map((draft) => draft.title))
   await emitNewKnowledgePoints(drafts)
-  return drafts
+
+  const finalText = completedText || accumulated
+  const finalized = debug.finalize({ label: '', output: finalText })
+  const debugData: ChapterDebugData = {
+    chapterIndex: -1,
+    chapterTitle,
+    startedAt: debug.startTime,
+    completedAt: finalized.completedAt,
+    toolCalls: finalized.toolCalls,
+    outputLength: finalized.outputLength,
+    output: finalized.output,
+    pointCount: drafts.length,
+  }
+
+  return { drafts, debugData }
 }
 
 export type GenerateKnowledgePointsParallelOptions = {
@@ -127,6 +157,7 @@ export async function generateKnowledgePointsParallel({
   abortSignal,
   onChapterProgress,
 }: GenerateKnowledgePointsParallelOptions): Promise<ChapterGenerationResult[]> {
+  const debugDataList: ChapterDebugData[] = []
   const tasks = chapters.map(async (chapter, index) => {
     const chapterIndex = index
     onChapterProgress?.({
@@ -135,7 +166,7 @@ export async function generateKnowledgePointsParallel({
       status: 'generating',
     })
     try {
-      const knowledgePoints = await generateKnowledgePointsForChapter({
+      const { drafts, debugData } = await generateKnowledgePointsForChapter({
         plugin,
         projectTopic,
         chapterTitle: chapter.title,
@@ -153,6 +184,8 @@ export async function generateKnowledgePointsParallel({
           })
         },
       })
+      debugData.chapterIndex = chapterIndex
+      debugDataList.push(debugData)
       onChapterProgress?.({
         chapterIndex,
         chapterTitle: chapter.title,
@@ -161,7 +194,7 @@ export async function generateKnowledgePointsParallel({
       return {
         chapterIndex,
         chapterTitle: chapter.title,
-        knowledgePoints,
+        knowledgePoints: drafts,
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -180,7 +213,10 @@ export async function generateKnowledgePointsParallel({
     }
   })
 
-  return Promise.all(tasks)
+  const results = await Promise.all(tasks)
+  debugDataList.sort((a, b) => a.chapterIndex - b.chapterIndex)
+  emitChaptersDebugLog(debugDataList)
+  return results
 }
 
 function buildKnowledgePointPrompt({
