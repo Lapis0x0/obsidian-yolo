@@ -6,14 +6,7 @@ import {
   LexicalEditor,
   SerializedEditorState,
 } from 'lexical'
-import {
-  ChevronDown,
-  ChevronUp,
-  RotateCcw,
-  Send,
-  Square,
-  X,
-} from 'lucide-react'
+import { ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react'
 import { Editor, Notice, TFile } from 'obsidian'
 import React, {
   useCallback,
@@ -77,6 +70,7 @@ import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageG
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
+import { SubmitButton } from '../../chat-view/chat-input/SubmitButton'
 import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
 import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
@@ -2686,41 +2680,26 @@ export function QuickAskPanel({
             </button>
           )}
 
-          {/* Send/Stop button */}
-          {isStreaming ? (
-            <button
-              type="button"
-              className="yolo-quick-ask-send-button stop"
-              onClick={abortStream}
-              aria-label={t('quickAsk.stop', 'Stop')}
-            >
-              <Square size={14} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="yolo-quick-ask-send-button"
-              onClick={() => {
-                const lexicalEditor = lexicalEditorRef.current
-                if (lexicalEditor) {
-                  const editorState = lexicalEditor.getEditorState().toJSON()
-                  const textContent = editorStateToPlainText(editorState)
+          <SubmitButton
+            isGenerating={isStreaming}
+            onAbort={abortStream}
+            disabled={isStreaming || inputText.trim().length === 0}
+            onClick={() => {
+              const lexicalEditor = lexicalEditorRef.current
+              if (lexicalEditor) {
+                const editorState = lexicalEditor.getEditorState().toJSON()
+                const textContent = editorStateToPlainText(editorState)
 
-                  if (executionMode === 'edit') {
-                    void submitEditMode(textContent)
-                  } else if (executionMode === 'edit-direct') {
-                    void submitEditDirect(textContent)
-                  } else {
-                    void submitMessage(editorState)
-                  }
+                if (executionMode === 'edit') {
+                  void submitEditMode(textContent)
+                } else if (executionMode === 'edit-direct') {
+                  void submitEditDirect(textContent)
+                } else {
+                  void submitMessage(editorState)
                 }
-              }}
-              disabled={inputText.trim().length === 0}
-              aria-label={t('quickAsk.send', 'Send')}
-            >
-              <Send size={14} />
-            </button>
-          )}
+              }
+            }}
+          />
         </div>
       </div>
 

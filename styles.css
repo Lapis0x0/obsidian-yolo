@@ -21063,58 +21063,6 @@ button.yolo-todo-panel__icon-button svg {
   );
 }
 
-/* Send button */
-
-.yolo-quick-ask-send-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--text-normal) 82%, transparent);
-  transition: all 0.15s ease;
-  appearance: none;
-  -webkit-appearance: none;
-  outline: none;
-}
-
-.yolo-quick-ask-send-button:hover:not(:disabled) {
-  background: transparent;
-  color: var(--text-on-accent);
-}
-
-.yolo-quick-ask-send-button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.yolo-quick-ask-send-button.stop {
-  background: color-mix(
-    in srgb,
-    var(--text-error) 24%,
-    var(--background-secondary) 76%
-  );
-  color: var(--text-on-accent);
-  border-color: color-mix(
-    in srgb,
-    var(--text-error) 30%,
-    var(--background-modifier-border) 70%
-  );
-}
-
-.yolo-quick-ask-send-button.stop:hover {
-  background: color-mix(
-    in srgb,
-    var(--text-error) 58%,
-    var(--background-secondary)
-  );
-}
-
 /* Chat Area - only shown when there are messages */
 
 .yolo-quick-ask-chat-shell {
