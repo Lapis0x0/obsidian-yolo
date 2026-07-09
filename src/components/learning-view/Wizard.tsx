@@ -1,9 +1,18 @@
 import cx from 'clsx'
 import { Sparkles, Upload, X } from 'lucide-react'
+import { TFile } from 'obsidian'
 import type React from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import {
+  type StagedReference,
+  cleanupStaging,
+  createStagingDir,
+  validateReferenceFile,
+  writeReferenceToStaging,
+} from '../../core/learning/generation/referenceStaging'
 
 const levelIds = ['beginner', 'familiar', 'experienced', 'advanced'] as const
 
@@ -11,15 +20,20 @@ export type LearningWizardInput = {
   topic: string
   level: string
   goal: string
+  referenceFiles?: StagedReference[]
+  stagingDir?: string
 }
 
 export function Wizard({
+  learningBaseDir,
   onClose,
   onComplete,
 }: {
+  learningBaseDir: string
   onClose: () => void
   onComplete: (input: LearningWizardInput) => void
 }) {
+  const app = useApp()
   const { t } = useLanguage()
   const levels = levelIds.map((id) => ({
     value: id,
@@ -28,12 +42,63 @@ export function Wizard({
   const [topic, setTopic] = useState('')
   const [goal, setGoal] = useState('')
   const [level, setLevel] = useState<(typeof levelIds)[number]>('familiar')
+  const [referenceFiles, setReferenceFiles] = useState<StagedReference[]>([])
+  const [stagingDir, setStagingDir] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const closeAndCleanup = () => {
+    if (stagingDir) void cleanupStaging(app, stagingDir)
+    onClose()
+  }
+
+  const handleFiles = async (files: FileList | File[]) => {
+    setUploadError(null)
+    const fileArray = Array.from(files)
+    if (fileArray.length === 0) return
+
+    let dir = stagingDir
+    if (!dir) {
+      dir = await createStagingDir(app, learningBaseDir, crypto.randomUUID())
+      setStagingDir(dir)
+    }
+
+    const newRefs: StagedReference[] = []
+    for (const file of fileArray) {
+      const error = validateReferenceFile(file)
+      if (error) {
+        setUploadError(error)
+        continue
+      }
+      const ref = await writeReferenceToStaging(
+        app,
+        dir,
+        file.name,
+        await file.arrayBuffer(),
+      )
+      newRefs.push(ref)
+    }
+    const newPaths = new Set(newRefs.map((ref) => ref.vaultPath))
+    setReferenceFiles((prev) => [
+      ...prev.filter((ref) => !newPaths.has(ref.vaultPath)),
+      ...newRefs,
+    ])
+  }
+
+  const removeReference = async (ref: StagedReference) => {
+    const file = app.vault.getAbstractFileByPath(ref.vaultPath)
+    if (file instanceof TFile) await app.fileManager.trashFile(file)
+    setReferenceFiles((prev) =>
+      prev.filter((item) => item.vaultPath !== ref.vaultPath),
+    )
+  }
 
   return (
     <div className="yolo-learning-wizard-overlay">
       <div
         className="yolo-learning-wizard-backdrop"
-        onClick={onClose}
+        onClick={closeAndCleanup}
         aria-hidden
       />
       <div className="yolo-learning-wizard-dialog">
@@ -43,7 +108,7 @@ export function Wizard({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeAndCleanup}
             className="yolo-learning-wizard-close"
             aria-label={t('common.close', '关闭')}
           >
@@ -60,6 +125,13 @@ export function Wizard({
             level={level}
             setLevel={setLevel}
             levels={levels}
+            referenceFiles={referenceFiles}
+            uploadError={uploadError}
+            isDragOver={isDragOver}
+            fileInputRef={fileInputRef}
+            setIsDragOver={setIsDragOver}
+            handleFiles={handleFiles}
+            removeReference={removeReference}
             t={t}
           />
         </div>
@@ -67,14 +139,22 @@ export function Wizard({
         <div className="yolo-learning-wizard-footer">
           <button
             type="button"
-            onClick={onClose}
+            onClick={closeAndCleanup}
             className="yolo-learning-wizard-cancel"
           >
             {t('common.cancel', '取消')}
           </button>
           <button
             type="button"
-            onClick={() => onComplete({ topic, level, goal })}
+            onClick={() =>
+              onComplete({
+                topic,
+                level,
+                goal,
+                referenceFiles,
+                stagingDir: stagingDir ?? undefined,
+              })
+            }
             className="yolo-learning-wizard-primary"
           >
             <Sparkles size={16} />
@@ -94,6 +174,13 @@ function StepOne({
   level,
   setLevel,
   levels,
+  referenceFiles,
+  uploadError,
+  isDragOver,
+  fileInputRef,
+  setIsDragOver,
+  handleFiles,
+  removeReference,
   t,
 }: {
   topic: string
@@ -103,6 +190,13 @@ function StepOne({
   level: (typeof levelIds)[number]
   setLevel: (value: (typeof levelIds)[number]) => void
   levels: { value: (typeof levelIds)[number]; label: string }[]
+  referenceFiles: StagedReference[]
+  uploadError: string | null
+  isDragOver: boolean
+  fileInputRef: React.RefObject<HTMLInputElement>
+  setIsDragOver: (value: boolean) => void
+  handleFiles: (files: FileList | File[]) => Promise<void>
+  removeReference: (ref: StagedReference) => Promise<void>
   t: (keyPath: string, fallback?: string) => string
 }) {
   return (
@@ -206,7 +300,23 @@ function StepOne({
         hint={t('learning.wizard.referencesHint', '上传后 YOLO 会据此定制大纲')}
         optionalLabel={t('learning.wizard.optional', '（可选）')}
       >
-        <div className="yolo-learning-wizard-upload">
+        <div
+          className={cx(
+            'yolo-learning-wizard-upload',
+            isDragOver && 'yolo-learning-wizard-upload-drag-over',
+          )}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setIsDragOver(true)
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setIsDragOver(false)
+            void handleFiles(event.dataTransfer.files)
+          }}
+        >
           <div className="yolo-learning-wizard-upload-icon">
             <Upload size={18} />
           </div>
@@ -221,7 +331,43 @@ function StepOne({
               )}
             </div>
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.docx,.doc,.md,.markdown,.txt"
+            className="yolo-learning-wizard-upload-input"
+            onChange={(event) => {
+              if (event.target.files) void handleFiles(event.target.files)
+              event.target.value = ''
+            }}
+          />
         </div>
+        {uploadError && (
+          <div className="yolo-learning-wizard-upload-error">{uploadError}</div>
+        )}
+        {referenceFiles.length > 0 && (
+          <div className="yolo-learning-wizard-upload-list">
+            {referenceFiles.map((ref) => (
+              <div
+                key={ref.vaultPath}
+                className="yolo-learning-wizard-upload-item"
+              >
+                <span className="yolo-learning-wizard-upload-item-name">
+                  {ref.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void removeReference(ref)}
+                  className="yolo-learning-wizard-upload-item-remove"
+                  aria-label={t('common.remove', '移除')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </Field>
     </div>
   )

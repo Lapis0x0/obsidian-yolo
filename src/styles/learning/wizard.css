@@ -389,6 +389,15 @@
   background-color: var(--yolo-surface);
 }
 
+.yolo-learning-wizard-upload-drag-over {
+  border-color: var(--yolo-primary);
+  background-color: color-mix(in oklab, var(--yolo-primary) 8%, transparent);
+}
+
+.yolo-learning-wizard-upload-input {
+  display: none;
+}
+
 .yolo-learning-wizard-upload-icon {
   display: flex;
   width: 40px;
@@ -414,4 +423,55 @@
   margin-top: 4px;
   font-size: 12px;
   color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-wizard-upload-error {
+  font-size: 12px;
+  color: var(--yolo-danger);
+}
+
+.yolo-learning-wizard-upload-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yolo-learning-wizard-upload-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-md);
+  background-color: var(--yolo-surface);
+  padding: 8px 10px;
+}
+
+.yolo-learning-wizard-upload-item-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--yolo-foreground);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-learning-wizard-upload-item-remove {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--yolo-radius-sm);
+  background: transparent;
+  color: var(--yolo-muted-foreground);
+  cursor: pointer;
+}
+
+.yolo-learning-wizard-upload-item-remove:hover {
+  background-color: var(--yolo-secondary);
+  color: var(--yolo-foreground);
 }

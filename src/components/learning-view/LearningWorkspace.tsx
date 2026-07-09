@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import { cleanupStaging } from '../../core/learning/generation/referenceStaging'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
 import {
   isPathUnderLearningBase,
@@ -145,7 +146,14 @@ export function LearningWorkspace() {
               topic={wizardInput.topic}
               level={wizardInput.level}
               goal={wizardInput.goal}
-              onCancel={() => setBuildingOutline(false)}
+              stagingDir={wizardInput.stagingDir}
+              referenceFiles={wizardInput.referenceFiles}
+              onCancel={() => {
+                if (wizardInput.stagingDir) {
+                  void cleanupStaging(app, wizardInput.stagingDir)
+                }
+                setBuildingOutline(false)
+              }}
               onProjectStarted={async (newProjectId) => {
                 await refreshProjects()
                 setProjectId(newProjectId)
@@ -180,6 +188,7 @@ export function LearningWorkspace() {
 
       {wizardOpen && (
         <Wizard
+          learningBaseDir={baseDir}
           onClose={() => setWizardOpen(false)}
           onComplete={(input) => {
             setWizardInput(input)

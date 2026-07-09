@@ -1,8 +1,10 @@
 import type YoloPlugin from '../../../main'
+import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
 import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
+import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
   ChapterGenerationResult,
   GenerationProgress,
@@ -16,6 +18,7 @@ export type GenerateKnowledgePointsForChapterOptions = {
   chapterTitle: string
   chapterContract: string
   level: string
+  workspaceScope?: AssistantWorkspaceScope
   abortSignal?: AbortSignal
   activity?: AgentRunActivity
   onProgress?: (delta: string, fullText: string) => void
@@ -29,6 +32,7 @@ export async function generateKnowledgePointsForChapter({
   chapterTitle,
   chapterContract,
   level,
+  workspaceScope,
   abortSignal,
   activity,
   onProgress,
@@ -65,7 +69,12 @@ export async function generateKnowledgePointsForChapter({
     }),
     mode: 'agent',
     systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
-    tools: { allowedToolNames: [] },
+    tools: {
+      allowedToolNames: workspaceScope?.enabled
+        ? LEARNING_READONLY_TOOL_NAMES
+        : [],
+    },
+    workspaceScope,
     activity,
     abortSignal,
   })
@@ -98,6 +107,7 @@ export type GenerateKnowledgePointsParallelOptions = {
   projectTopic: string
   chapters: OutlineChapter[]
   level: string
+  workspaceScope?: AssistantWorkspaceScope
   abortSignal?: AbortSignal
   onChapterProgress?: (progress: GenerationProgress) => void
 }
@@ -107,6 +117,7 @@ export async function generateKnowledgePointsParallel({
   projectTopic,
   chapters,
   level,
+  workspaceScope,
   abortSignal,
   onChapterProgress,
 }: GenerateKnowledgePointsParallelOptions): Promise<ChapterGenerationResult[]> {
@@ -124,6 +135,7 @@ export async function generateKnowledgePointsParallel({
         chapterTitle: chapter.title,
         chapterContract: chapter.contract,
         level,
+        workspaceScope,
         abortSignal,
         onProgress: (_delta, fullText) => {
           onChapterProgress?.({

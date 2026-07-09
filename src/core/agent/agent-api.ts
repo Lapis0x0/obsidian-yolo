@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { resolveWorkspaceScopeForRuntimeInput } from '../../components/chat-view/chat-runtime-inputs'
 import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type {
   ChatAssistantMessage,
   ChatMessage,
@@ -56,6 +57,11 @@ export type YoloAgentRunRequest = {
   tools?: {
     allowedToolNames?: string[]
   }
+  /**
+   * 覆盖 assistant 的 workspace scope。学习模块 subagent 按参考资料范围
+   * 动态传入；不传时回退到 assistant 的 scope。
+   */
+  workspaceScope?: AssistantWorkspaceScope
   systemPromptOverride?: string
   activity?: AgentRunActivity
   abortSignal?: AbortSignal
@@ -420,7 +426,9 @@ export async function resolveAgentApiRunInput({
       toolServerPreferences: chatModeRuntime.toolServerPreferences,
       runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
       bypassToolApproval: chatModeRuntime.bypassToolApproval,
-      workspaceScope: resolveWorkspaceScopeForRuntimeInput(assistant),
+      workspaceScope:
+        request.workspaceScope ??
+        resolveWorkspaceScopeForRuntimeInput(assistant),
       allowedSkillPaths,
       requestParams: {
         deliveryMode: 'incremental',

@@ -256,6 +256,22 @@ describe('agent api helpers', () => {
     expect(mockCompilePlainUserMessagePrompt).not.toHaveBeenCalled()
   })
 
+  it('uses request.workspaceScope when provided', async () => {
+    const workspaceScope = { enabled: true, include: ['ref/'], exclude: [] }
+
+    const result = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({ prompt: 'Read refs', workspaceScope }),
+    )
+
+    expect(result.input.workspaceScope).toBe(workspaceScope)
+
+    const fallbackResult = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({ prompt: 'No refs' }),
+    )
+
+    expect(fallbackResult.input.workspaceScope).toBeNull()
+  })
+
   it('throws when neither prompt nor messages is provided', async () => {
     await expect(
       resolveAgentApiRunInput(buildResolveAgentApiRunInputArgs({})),

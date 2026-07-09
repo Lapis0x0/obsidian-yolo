@@ -1,7 +1,9 @@
 import type YoloPlugin from '../../../main'
+import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 
 import { OUTLINE_GENERATOR_PROMPT } from './prompts'
+import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type { Outline, OutlineChapter } from './types'
 
 export type GenerateOutlineOptions = {
@@ -10,6 +12,7 @@ export type GenerateOutlineOptions = {
   level: string
   goal: string
   referencesBlock?: string
+  workspaceScope?: AssistantWorkspaceScope
   abortSignal?: AbortSignal
   activity?: AgentRunActivity
   onProgress?: (delta: string, fullText: string) => void
@@ -22,6 +25,7 @@ export async function generateOutline({
   level,
   goal,
   referencesBlock,
+  workspaceScope,
   abortSignal,
   activity,
   onProgress,
@@ -39,7 +43,12 @@ export async function generateOutline({
     prompt: buildOutlinePrompt({ topic, level, goal, referencesBlock }),
     mode: 'agent',
     systemPromptOverride: OUTLINE_GENERATOR_PROMPT,
-    tools: { allowedToolNames: [] },
+    tools: {
+      allowedToolNames: workspaceScope?.enabled
+        ? LEARNING_READONLY_TOOL_NAMES
+        : [],
+    },
+    workspaceScope,
     activity,
     abortSignal,
   })

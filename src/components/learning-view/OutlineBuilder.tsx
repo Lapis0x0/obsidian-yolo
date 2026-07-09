@@ -39,6 +39,10 @@ import {
   createProjectScaffold,
   markProjectStudying,
 } from '../../core/learning/generation/projectWriter'
+import {
+  type StagedReference,
+  moveStagingToProject,
+} from '../../core/learning/generation/referenceStaging'
 import type {
   GenerationProgress,
   Outline,
@@ -47,6 +51,7 @@ import type {
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
 
@@ -62,6 +67,8 @@ export function OutlineBuilder({
   level,
   goal,
   referencesBlock,
+  stagingDir,
+  referenceFiles,
   onCancel,
   onProjectStarted,
   onComplete,
@@ -72,6 +79,8 @@ export function OutlineBuilder({
   level: string
   goal: string
   referencesBlock?: string
+  stagingDir?: string
+  referenceFiles?: StagedReference[]
   onCancel: () => void
   onProjectStarted: (projectId: string) => void | Promise<void>
   onComplete: (projectId: string) => void
@@ -91,6 +100,10 @@ export function OutlineBuilder({
       activationConstraint: { distance: 6 },
     }),
   )
+  const workspaceScope: AssistantWorkspaceScope | undefined =
+    stagingDir && referenceFiles && referenceFiles.length > 0
+      ? { enabled: true, include: [stagingDir], exclude: [] }
+      : undefined
 
   const createChapter = (chapter: OutlineChapter): EditableChapter => ({
     ...chapter,
@@ -125,14 +138,12 @@ export function OutlineBuilder({
       level,
       goal,
       referencesBlock,
+      workspaceScope,
       abortSignal: controller.signal,
       activity: {
         kind: 'learning-agent',
         title: t('learning.wizard.modeLabel', '学习模式'),
-        detail: t(
-          'learning.outlineBuilder.planningPath',
-          '正在规划学习路径',
-        ),
+        detail: t('learning.outlineBuilder.planningPath', '正在规划学习路径'),
         action: 'open-learning-view',
       },
       onOutline: reconcileOutline,
@@ -211,6 +222,7 @@ export function OutlineBuilder({
     const baseDir = getYoloLearningDir(plugin.settings)
     const resolvedProjectName = projectName || topic
     let scaffold: Awaited<ReturnType<typeof createProjectScaffold>>
+    let projectRefPath: string | undefined
     try {
       scaffold = await createProjectScaffold({
         app: plugin.app,
@@ -218,6 +230,13 @@ export function OutlineBuilder({
         topic: resolvedProjectName,
         chapters: validChapters,
       })
+      if (stagingDir && referenceFiles && referenceFiles.length > 0) {
+        projectRefPath = await moveStagingToProject(
+          plugin.app,
+          stagingDir,
+          scaffold.projectPath,
+        )
+      }
       await eventBus.setActiveProject(baseDir, scaffold.projectPath)
       abortOnUnmountRef.current = false
       await onProjectStarted(scaffold.projectPath)
@@ -229,6 +248,10 @@ export function OutlineBuilder({
     }
 
     try {
+      const knowledgeWorkspaceScope: AssistantWorkspaceScope | undefined =
+        projectRefPath
+          ? { enabled: true, include: [projectRefPath], exclude: [] }
+          : workspaceScope
       await Promise.all(
         validChapters.map(async (chapter, index) => {
           const target = scaffold.chapters[index]
@@ -273,6 +296,7 @@ export function OutlineBuilder({
               chapterTitle: chapter.title,
               chapterContract: chapter.contract,
               level,
+              workspaceScope: knowledgeWorkspaceScope,
               abortSignal: controller.signal,
               activity: {
                 kind: 'learning-agent',
