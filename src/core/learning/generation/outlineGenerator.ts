@@ -12,6 +12,7 @@ export type GenerateOutlineOptions = {
   level: string
   goal: string
   referencesBlock?: string
+  referenceFiles?: { name: string; vaultPath: string }[]
   workspaceScope?: AssistantWorkspaceScope
   abortSignal?: AbortSignal
   activity?: AgentRunActivity
@@ -25,6 +26,7 @@ export async function generateOutline({
   level,
   goal,
   referencesBlock,
+  referenceFiles,
   workspaceScope,
   abortSignal,
   activity,
@@ -40,8 +42,15 @@ export async function generateOutline({
   }
 
   const stream = plugin.agent.stream({
-    prompt: buildOutlinePrompt({ topic, level, goal, referencesBlock }),
+    prompt: buildOutlinePrompt({
+      topic,
+      level,
+      goal,
+      referencesBlock,
+      referenceFiles,
+    }),
     mode: 'agent',
+    yolo: true,
     systemPromptOverride: OUTLINE_GENERATOR_PROMPT,
     tools: {
       allowedToolNames: workspaceScope?.enabled
@@ -65,13 +74,16 @@ export async function generateOutline({
     }
     if (event.type === 'completed') {
       completedText = event.text
+      console.debug('[yolo-learning] outline completed text:', completedText)
     }
     if (event.type === 'error') {
       throw new Error(event.message)
     }
   }
 
-  const outline = parseOutline(completedText || accumulated)
+  const finalText = completedText || accumulated
+  console.debug('[yolo-learning] outline final text length:', finalText.length)
+  const outline = parseOutline(finalText)
   if (!isOutlineEqual(outline, streamedOutline)) {
     onOutline?.(outline)
   }
@@ -83,19 +95,25 @@ function buildOutlinePrompt({
   level,
   goal,
   referencesBlock,
+  referenceFiles,
 }: {
   topic: string
   level: string
   goal: string
   referencesBlock?: string
+  referenceFiles?: { name: string; vaultPath: string }[]
 }): string {
+  const refSection =
+    referenceFiles && referenceFiles.length > 0
+      ? `\n参考资料（请用 fs_read 读取以下文件，路径已给出）：\n${referenceFiles.map((f) => `- ${f.name}（路径：${f.vaultPath}）`).join('\n')}`
+      : ''
+
   return `请为以下学习需求生成大纲：
 
 主题：${topic}
 当前水平：${level}
 学习目标：${goal}
-
-${referencesBlock?.trim() ?? ''}`.trim()
+${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.trim()
 }
 
 function parseOutline(text: string): Outline {
@@ -233,8 +251,18 @@ function parseJsonObject(text: string): unknown {
     return JSON.parse(text)
   } catch {
     const match = text.match(/\{[\s\S]*\}/)
-    if (!match) throw new Error('无法解析大纲 JSON')
-    return JSON.parse(match[0])
+    if (!match) {
+      throw new Error(
+        `无法解析大纲 JSON（未找到 JSON 对象）。原始文本前 500 字符：\n${text.slice(0, 500)}`,
+      )
+    }
+    try {
+      return JSON.parse(match[0])
+    } catch (e) {
+      throw new Error(
+        `无法解析大纲 JSON：${e instanceof Error ? e.message : String(e)}。提取的 JSON 片段前 500 字符：\n${match[0].slice(0, 500)}`,
+      )
+    }
   }
 }
 

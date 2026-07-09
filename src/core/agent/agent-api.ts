@@ -596,13 +596,16 @@ function findAssistantMessageForUser(
   messages: ChatMessage[],
   sourceUserMessageId: string,
 ): ChatAssistantMessage | null {
-  const metadataMatch = messages.find(
-    (message): message is ChatAssistantMessage =>
+  // In tool-calling loops, multiple assistant messages share the same
+  // sourceUserMessageId. The final output lives in the last one.
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (
       message.role === 'assistant' &&
-      message.metadata?.sourceUserMessageId === sourceUserMessageId,
-  )
-  if (metadataMatch) {
-    return metadataMatch
+      message.metadata?.sourceUserMessageId === sourceUserMessageId
+    ) {
+      return message
+    }
   }
 
   const userIndex = messages.findIndex(
@@ -612,12 +615,9 @@ function findAssistantMessageForUser(
     return null
   }
 
-  for (const message of messages.slice(userIndex + 1)) {
-    if (message.role === 'user') {
-      return null
-    }
-    if (message.role === 'assistant') {
-      return message
+  for (let i = messages.length - 1; i > userIndex; i -= 1) {
+    if (messages[i].role === 'assistant') {
+      return messages[i] as ChatAssistantMessage
     }
   }
 

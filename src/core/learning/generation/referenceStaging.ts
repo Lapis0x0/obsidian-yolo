@@ -24,7 +24,7 @@ export async function createStagingDir(
   learningBaseDir: string,
   tempId: string,
 ): Promise<string> {
-  const stagingPath = normalizePath(`${learningBaseDir}/.staging/${tempId}`)
+  const stagingPath = normalizePath(`${learningBaseDir}/_staging/${tempId}`)
   await ensureFolder(app, stagingPath)
   return stagingPath
 }
@@ -36,7 +36,7 @@ export async function writeReferenceToStaging(
   content: ArrayBuffer,
 ): Promise<StagedReference> {
   const vaultPath = normalizePath(`${stagingDir}/${fileName}`)
-  await app.vault.adapter.writeBinary(vaultPath, content)
+  await app.vault.createBinary(vaultPath, content)
   return { name: fileName, vaultPath }
 }
 

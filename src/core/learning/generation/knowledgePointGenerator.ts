@@ -19,6 +19,7 @@ export type GenerateKnowledgePointsForChapterOptions = {
   chapterContract: string
   level: string
   workspaceScope?: AssistantWorkspaceScope
+  referenceDir?: string
   abortSignal?: AbortSignal
   activity?: AgentRunActivity
   onProgress?: (delta: string, fullText: string) => void
@@ -33,6 +34,7 @@ export async function generateKnowledgePointsForChapter({
   chapterContract,
   level,
   workspaceScope,
+  referenceDir,
   abortSignal,
   activity,
   onProgress,
@@ -66,8 +68,10 @@ export async function generateKnowledgePointsForChapter({
       chapterTitle,
       chapterContract,
       level,
+      referenceDir,
     }),
     mode: 'agent',
+    yolo: true,
     systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
     tools: {
       allowedToolNames: workspaceScope?.enabled
@@ -108,6 +112,7 @@ export type GenerateKnowledgePointsParallelOptions = {
   chapters: OutlineChapter[]
   level: string
   workspaceScope?: AssistantWorkspaceScope
+  referenceDir?: string
   abortSignal?: AbortSignal
   onChapterProgress?: (progress: GenerationProgress) => void
 }
@@ -118,6 +123,7 @@ export async function generateKnowledgePointsParallel({
   chapters,
   level,
   workspaceScope,
+  referenceDir,
   abortSignal,
   onChapterProgress,
 }: GenerateKnowledgePointsParallelOptions): Promise<ChapterGenerationResult[]> {
@@ -136,6 +142,7 @@ export async function generateKnowledgePointsParallel({
         chapterContract: chapter.contract,
         level,
         workspaceScope,
+        referenceDir,
         abortSignal,
         onProgress: (_delta, fullText) => {
           onChapterProgress?.({
@@ -181,12 +188,18 @@ function buildKnowledgePointPrompt({
   chapterTitle,
   chapterContract,
   level,
+  referenceDir,
 }: {
   projectTopic: string
   chapterTitle: string
   chapterContract: string
   level: string
+  referenceDir?: string
 }): string {
+  const refSection = referenceDir
+    ? `\n参考资料目录：${referenceDir}（如契约中注明了参考文件，用 fs_read 读取对应路径）`
+    : ''
+
   return `请为以下章节生成知识点：
 
 项目主题：${projectTopic}
@@ -194,7 +207,7 @@ function buildKnowledgePointPrompt({
 章节契约：
 ${chapterContract}
 
-用户当前水平：${level}`
+用户当前水平：${level}${refSection}`
 }
 
 function parseKnowledgePointDrafts(markdown: string): KnowledgePointDraft[] {

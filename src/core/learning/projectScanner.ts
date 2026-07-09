@@ -58,7 +58,7 @@ export async function scanProject(
     parsed.success && parsed.data.chapters ? parsed.data.chapters : null
 
   const chapterFolders = projectFolder.children.filter(
-    (c): c is TFolder => c instanceof TFolder,
+    (c): c is TFolder => c instanceof TFolder && c.name !== 'ref',
   )
   const orderedChapterFolders = orderedChapterSlugs
     ? orderChaptersBySlugs(chapterFolders, orderedChapterSlugs)

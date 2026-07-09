@@ -138,6 +138,7 @@ export function OutlineBuilder({
       level,
       goal,
       referencesBlock,
+      referenceFiles,
       workspaceScope,
       abortSignal: controller.signal,
       activity: {
@@ -297,6 +298,7 @@ export function OutlineBuilder({
               chapterContract: chapter.contract,
               level,
               workspaceScope: knowledgeWorkspaceScope,
+              referenceDir: projectRefPath,
               abortSignal: controller.signal,
               activity: {
                 kind: 'learning-agent',
