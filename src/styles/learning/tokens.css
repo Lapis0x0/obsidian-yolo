@@ -44,6 +44,7 @@
   --yolo-success: var(--color-green);
   --yolo-warning: var(--color-yellow);
   --yolo-danger: var(--color-red);
+  --yolo-easy: var(--color-purple);
 
   /* Radii (mirrors the mock's --radius-* scale) */
   --yolo-radius-sm: 4px;

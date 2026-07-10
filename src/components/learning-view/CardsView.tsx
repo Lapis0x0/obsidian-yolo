@@ -28,6 +28,11 @@ import type { Project as VaultProject } from '../../core/learning/types'
 
 import { formatLearningText } from './i18n'
 import { type Mastery, MasteryDot, Segmented, SelectMenu } from './primitives'
+import {
+  getExtremeGradeThreshold,
+  keyboardToGrade,
+  resolveSwipeGrade,
+} from './reviewInteractions'
 
 const cardModes = ['浏览', '复习'] as const
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
@@ -603,31 +608,13 @@ function BrowseCard({ card, due }: { card: Card; due: boolean }) {
 
 type ReviewGrade = ReviewRating
 
-const SWIPE_THRESHOLD = 72
+type GradeTone = 'danger' | 'warning' | 'success' | 'easy'
 
 const gradeDragTint: Record<ReviewGrade, string> = {
   again: 'yolo-learning-cards-review-tint-danger',
   hard: 'yolo-learning-cards-review-tint-warning',
   good: 'yolo-learning-cards-review-tint-success',
-  easy: 'yolo-learning-cards-review-tint-success',
-}
-
-function resolveSwipeGrade(dx: number, dy: number): ReviewGrade | null {
-  if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD)
-    return null
-  if (Math.abs(dy) > Math.abs(dx) && dy < -SWIPE_THRESHOLD) return 'hard'
-  if (Math.abs(dy) > Math.abs(dx) && dy > SWIPE_THRESHOLD) return 'easy'
-  if (Math.abs(dx) >= Math.abs(dy) && dx < -SWIPE_THRESHOLD) return 'again'
-  if (Math.abs(dx) >= Math.abs(dy) && dx > SWIPE_THRESHOLD) return 'good'
-  return null
-}
-
-function keyboardToGrade(event: KeyboardEvent): ReviewGrade | null {
-  if (event.key === '1' || event.key === 'ArrowLeft') return 'again'
-  if (event.key === '2' || event.key === 'ArrowUp') return 'hard'
-  if (event.key === '3' || event.key === 'ArrowRight') return 'good'
-  if (event.key === '4' || event.key === 'ArrowDown') return 'easy'
-  return null
+  easy: 'yolo-learning-cards-review-tint-easy',
 }
 
 type ReviewPhase = 'idle' | 'exit' | 'settle'
@@ -638,9 +625,9 @@ const SETTLE_MS = 150
 
 const exitTransforms: Record<ReviewGrade, string> = {
   again: 'translateX(-135%) rotate(-14deg)',
-  hard: 'translateY(-135%) rotate(-3deg)',
-  good: 'translateX(135%) rotate(14deg)',
-  easy: 'translateY(135%) rotate(3deg)',
+  hard: 'translateX(-135%) rotate(-8deg)',
+  good: 'translateX(135%) rotate(8deg)',
+  easy: 'translateX(135%) rotate(14deg)',
 }
 
 const peekFanLeft = 'translateX(-18px) rotate(-5deg) scale(0.98)'
@@ -689,6 +676,9 @@ function ReviewMode({
   const [flipped, setFlipped] = useState(false)
   const [phase, setPhase] = useState<ReviewPhase>('idle')
   const [exitingGrade, setExitingGrade] = useState<ReviewGrade | null>(null)
+  const [submittingGrade, setSubmittingGrade] = useState<ReviewGrade | null>(
+    null,
+  )
   const [promoting, setPromoting] = useState(false)
   const [peeksSettling, setPeeksSettling] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -696,7 +686,15 @@ function ReviewMode({
     Map<string, Record<ReviewGrade, CardScheduling>>
   >(new Map())
   const [drag, setDrag] = useState({ x: 0, y: 0 })
-  const dragOrigin = useRef<{ x: number; y: number } | null>(null)
+  const dragOrigin = useRef<{
+    x: number
+    y: number
+    cardWidth: number
+    extremeGradeThreshold: number
+    pointerId: number
+  } | null>(null)
+  const dragCardWidthRef = useRef(300)
+  const dragExtremeGradeThresholdRef = useRef(getExtremeGradeThreshold('mouse'))
   const activeCardRef = useRef<HTMLDivElement>(null)
   const timersRef = useRef<number[]>([])
   const hasStartedRef = useRef(false)
@@ -724,6 +722,18 @@ function ReviewMode({
       window.clearTimeout(id)
     }
     timersRef.current = []
+  }, [])
+
+  const resetDrag = useCallback(() => {
+    const pointerId = dragOrigin.current?.pointerId
+    if (
+      pointerId !== undefined &&
+      activeCardRef.current?.hasPointerCapture(pointerId)
+    ) {
+      activeCardRef.current.releasePointerCapture(pointerId)
+    }
+    dragOrigin.current = null
+    setDrag({ x: 0, y: 0 })
   }, [])
 
   useEffect(() => {
@@ -770,7 +780,7 @@ function ReviewMode({
 
       clearTimers()
       setSubmitting(true)
-      setDrag({ x: 0, y: 0 })
+      setSubmittingGrade(grade)
       const introduced = card.srsState === null
       let result
       try {
@@ -779,6 +789,8 @@ function ReviewMode({
           .reviewCard(projectSlug, card.id, grade, new Date())
       } catch {
         setSubmitting(false)
+        setSubmittingGrade(null)
+        resetDrag()
         new Notice(t('learning.cards.reviewSaveFailed', '评分保存失败，请重试'))
         return
       }
@@ -800,6 +812,7 @@ function ReviewMode({
       }
 
       setSubmitting(false)
+      setSubmittingGrade(null)
       setExitingGrade(grade)
       setPhase('exit')
       setPromoting(false)
@@ -813,6 +826,7 @@ function ReviewMode({
       schedule(() => {
         setIndex((i) => i + 1)
         setFlipped(false)
+        setDrag({ x: 0, y: 0 })
         setExitingGrade(null)
         setPhase('settle')
         setPeeksSettling(true)
@@ -834,6 +848,7 @@ function ReviewMode({
       phase,
       plugin,
       projectSlug,
+      resetDrag,
       submitting,
       t,
     ],
@@ -853,63 +868,98 @@ function ReviewMode({
 
       if (event.code === 'Space') {
         event.preventDefault()
+        resetDrag()
         setFlipped((f) => !f)
-        setDrag({ x: 0, y: 0 })
         return
       }
 
-      const grade = keyboardToGrade(event)
+      const grade = keyboardToGrade(event.key)
       if (grade) {
         event.preventDefault()
+        resetDrag()
         void commitGrade(grade)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [busy, done, onExit, commitGrade])
+  }, [busy, done, onExit, commitGrade, resetDrag])
 
   const handlePointerDown = (event: PointerEvent) => {
-    if (busy || done) return
-    dragOrigin.current = { x: event.clientX, y: event.clientY }
+    if (
+      busy ||
+      done ||
+      dragOrigin.current ||
+      !event.isPrimary ||
+      event.button !== 0
+    )
+      return
+    const cardWidth =
+      activeCardRef.current?.getBoundingClientRect().width ?? 300
+    const extremeGradeThreshold = getExtremeGradeThreshold(event.pointerType)
+    dragCardWidthRef.current = cardWidth
+    dragExtremeGradeThresholdRef.current = extremeGradeThreshold
+    dragOrigin.current = {
+      x: event.clientX,
+      y: event.clientY,
+      cardWidth,
+      extremeGradeThreshold,
+      pointerId: event.pointerId,
+    }
     activeCardRef.current?.setPointerCapture(event.pointerId)
   }
 
   const handlePointerMove = (event: PointerEvent) => {
-    if (!dragOrigin.current || busy) return
+    if (
+      !dragOrigin.current ||
+      dragOrigin.current.pointerId !== event.pointerId ||
+      busy
+    )
+      return
     setDrag({
       x: event.clientX - dragOrigin.current.x,
-      y: event.clientY - dragOrigin.current.y,
+      y: 0,
     })
   }
 
   const handlePointerUp = (event: PointerEvent) => {
-    if (!dragOrigin.current || busy || done) return
-    const dx = event.clientX - dragOrigin.current.x
-    const dy = event.clientY - dragOrigin.current.y
-    dragOrigin.current = null
-    activeCardRef.current?.releasePointerCapture(event.pointerId)
+    if (!dragOrigin.current || dragOrigin.current.pointerId !== event.pointerId)
+      return
+    const { x, y, cardWidth, extremeGradeThreshold } = dragOrigin.current
+    const dx = event.clientX - x
+    const dy = event.clientY - y
+    resetDrag()
+
+    if (busy || done) return
 
     if (Math.hypot(dx, dy) < 10) {
       setFlipped((f) => !f)
-      setDrag({ x: 0, y: 0 })
       return
     }
 
-    const grade = resolveSwipeGrade(dx, dy)
-    if (grade) void commitGrade(grade)
-    else setDrag({ x: 0, y: 0 })
+    const grade = resolveSwipeGrade(dx, cardWidth, extremeGradeThreshold)
+    if (grade) {
+      setDrag({ x: dx, y: 0 })
+      void commitGrade(grade)
+    }
   }
 
-  const handlePointerCancel = () => {
-    dragOrigin.current = null
-    setDrag({ x: 0, y: 0 })
+  const handlePointerCancel = (event: PointerEvent) => {
+    if (dragOrigin.current?.pointerId !== event.pointerId) return
+    resetDrag()
   }
 
-  const activeGrade = exitingGrade ?? resolveSwipeGrade(drag.x, drag.y)
+  const activeGrade =
+    exitingGrade ??
+    submittingGrade ??
+    resolveSwipeGrade(
+      drag.x,
+      dragCardWidthRef.current,
+      dragExtremeGradeThresholdRef.current,
+    )
   const scheduling = card ? schedulingByCardUuid.get(card.id) : undefined
   const gradeMeta: Record<
     ReviewGrade,
-    { label: string; hint: string; tone: 'danger' | 'warning' | 'success' }
+    { label: string; hint: string; tone: GradeTone }
   > = {
     again: {
       label: t('learning.cards.reviewAgain', '重来'),
@@ -929,7 +979,7 @@ function ReviewMode({
     easy: {
       label: t('learning.cards.reviewEasy', '简单'),
       hint: formatSchedulingHint(scheduling?.easy, new Date()),
-      tone: 'success',
+      tone: 'easy',
     },
   }
   const flipHint = t('learning.cards.flipHint', '点击翻面或按空格')
@@ -953,7 +1003,7 @@ function ReviewMode({
 
   const cardTransform = exitingGrade
     ? exitTransforms[exitingGrade]
-    : `translate(${drag.x}px, ${drag.y}px) rotate(${drag.x * 0.04}deg)`
+    : `translateX(${drag.x}px) rotate(${drag.x * 0.04}deg)`
 
   const promoteFrom = remainingAfter >= 2 ? peekFanRight : peekSingle
   const promoteCard =
@@ -1104,9 +1154,25 @@ function ReviewMode({
                   )}
                 >
                   <div className="yolo-learning-cards-review-face yolo-learning-cards-review-face-front">
-                    <div className="yolo-learning-cards-review-card-point">
+                    <div
+                      className={cx(
+                        'yolo-learning-cards-review-card-point',
+                        activeGrade &&
+                          'yolo-learning-cards-review-card-point-with-grade',
+                      )}
+                    >
                       {card.chapterTitle} · {card.pointTitle}
                     </div>
+                    {activeGrade && (
+                      <div
+                        className={cx(
+                          'yolo-learning-cards-review-grade-badge',
+                          `yolo-learning-cards-review-grade-badge-${gradeMeta[activeGrade].tone}`,
+                        )}
+                      >
+                        {gradeMeta[activeGrade].label}
+                      </div>
+                    )}
                     <p className="yolo-learning-cards-review-card-front-text">
                       {card.front}
                     </p>
@@ -1121,9 +1187,25 @@ function ReviewMode({
                     />
                   </div>
                   <div className="yolo-learning-cards-review-face yolo-learning-cards-review-face-back">
-                    <div className="yolo-learning-cards-review-card-point">
+                    <div
+                      className={cx(
+                        'yolo-learning-cards-review-card-point',
+                        activeGrade &&
+                          'yolo-learning-cards-review-card-point-with-grade',
+                      )}
+                    >
                       {card.chapterTitle} · {card.pointTitle}
                     </div>
+                    {activeGrade && (
+                      <div
+                        className={cx(
+                          'yolo-learning-cards-review-grade-badge',
+                          `yolo-learning-cards-review-grade-badge-${gradeMeta[activeGrade].tone}`,
+                        )}
+                      >
+                        {gradeMeta[activeGrade].label}
+                      </div>
+                    )}
                     <p className="yolo-learning-cards-review-card-back-text yolo-learning-scrollbar-thin">
                       {card.back}
                     </p>
@@ -1154,6 +1236,7 @@ function ReviewMode({
             tone={gradeMeta[grade].tone}
             label={gradeMeta[grade].label}
             hint={gradeMeta[grade].hint}
+            active={activeGrade === grade}
             disabled={busy}
             onClick={() => void commitGrade(grade)}
           />
@@ -1163,7 +1246,7 @@ function ReviewMode({
       <div className="yolo-learning-cards-review-shortcuts">
         {t(
           'learning.cards.reviewShortcuts',
-          '空格 翻面 · ← ↑ → ↓ 或 1 / 2 / 3 / 4 评估 · Esc 回浏览',
+          '空格翻面 · 左右拖动或 1 / 2 / 3 / 4 评分 · Esc 返回浏览',
         )}
       </div>
     </div>
@@ -1174,12 +1257,14 @@ function EvalBtn({
   tone,
   label,
   hint,
+  active,
   disabled,
   onClick,
 }: {
-  tone: 'danger' | 'warning' | 'success'
+  tone: GradeTone
   label: string
   hint: string
+  active: boolean
   disabled?: boolean
   onClick?: () => void
 }) {
@@ -1191,6 +1276,7 @@ function EvalBtn({
       className={cx(
         'yolo-learning-cards-eval-btn',
         `yolo-learning-cards-eval-btn-${tone}`,
+        active && 'yolo-learning-cards-eval-btn-active',
       )}
     >
       <span className="yolo-learning-cards-eval-label">{label}</span>

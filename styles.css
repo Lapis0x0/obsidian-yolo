@@ -21450,6 +21450,7 @@ body.yolo-quick-ask-global-interaction * {
   --yolo-success: var(--color-green);
   --yolo-warning: var(--color-yellow);
   --yolo-danger: var(--color-red);
+  --yolo-easy: var(--color-purple);
 
   /* Radii (mirrors the mock's --radius-* scale) */
   --yolo-radius-sm: 4px;
@@ -24531,7 +24532,7 @@ body.yolo-learning-outline-global-resize * {
   position: absolute;
   inset: 0;
   z-index: 20;
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
 }
 
@@ -24585,6 +24586,54 @@ body.yolo-learning-outline-global-resize * {
   top: 16px;
   font-size: 12px;
   color: var(--yolo-muted-foreground);
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-learning-cards-review-card-point-with-grade {
+  max-width: calc(100% - 112px);
+}
+
+.yolo-learning-cards-review-grade-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 1px solid
+    color-mix(in oklab, var(--yolo-grade-color) 45%, transparent);
+  border-radius: 9999px;
+  background-color: color-mix(
+    in oklab,
+    var(--yolo-grade-color) 12%,
+    var(--yolo-card)
+  );
+  padding: 3px 9px;
+  color: color-mix(
+    in oklab,
+    var(--yolo-grade-color) 78%,
+    var(--yolo-foreground)
+  );
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.yolo-learning-cards-review-grade-badge-danger {
+  --yolo-grade-color: var(--yolo-danger);
+}
+
+.yolo-learning-cards-review-grade-badge-warning {
+  --yolo-grade-color: var(--yolo-warning);
+}
+
+.yolo-learning-cards-review-grade-badge-success {
+  --yolo-grade-color: var(--yolo-success);
+}
+
+.yolo-learning-cards-review-grade-badge-easy {
+  --yolo-grade-color: var(--yolo-easy);
 }
 
 .yolo-learning-cards-review-card-front-text {
@@ -24641,6 +24690,11 @@ body.yolo-learning-outline-global-resize * {
     color-mix(in oklab, var(--yolo-success) 30%, transparent);
 }
 
+.yolo-learning-cards-review-tint-easy {
+  background-color: color-mix(in oklab, var(--yolo-easy) 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--yolo-easy) 30%, transparent);
+}
+
 .yolo-learning-cards-review-actions {
   display: flex;
   width: 100%;
@@ -24669,10 +24723,14 @@ body.yolo-learning-outline-global-resize * {
   background: transparent;
   padding-block: 12px;
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .yolo-learning-cards-eval-btn-danger {
+  --yolo-learning-eval-color: var(--yolo-danger);
   --yolo-learning-button-color: var(--yolo-danger);
   --yolo-learning-button-hover-color: var(--yolo-danger);
 
@@ -24690,6 +24748,7 @@ body.yolo-learning-outline-global-resize * {
 }
 
 .yolo-learning-cards-eval-btn-warning {
+  --yolo-learning-eval-color: var(--yolo-warning);
   --yolo-learning-button-color: var(--yolo-warning);
   --yolo-learning-button-hover-color: var(--yolo-warning);
 
@@ -24707,6 +24766,7 @@ body.yolo-learning-outline-global-resize * {
 }
 
 .yolo-learning-cards-eval-btn-success {
+  --yolo-learning-eval-color: var(--yolo-success);
   --yolo-learning-button-color: var(--yolo-success);
   --yolo-learning-button-hover-color: var(--yolo-success);
 
@@ -24721,6 +24781,42 @@ body.yolo-learning-outline-global-resize * {
   );
 
   background-color: color-mix(in oklab, var(--yolo-success) 12%, transparent);
+}
+
+.yolo-learning-cards-eval-btn-easy {
+  --yolo-learning-eval-color: var(--yolo-easy);
+  --yolo-learning-button-color: var(--yolo-easy);
+  --yolo-learning-button-hover-color: var(--yolo-easy);
+
+  color: var(--yolo-easy);
+}
+
+.yolo-learning-cards-eval-btn-easy:hover {
+  --yolo-learning-button-hover-background: color-mix(
+    in oklab,
+    var(--yolo-easy) 12%,
+    transparent
+  );
+
+  background-color: color-mix(in oklab, var(--yolo-easy) 12%, transparent);
+}
+
+.yolo-learning-cards-eval-btn-active,
+.yolo-learning-cards-eval-btn-active:hover {
+  --yolo-learning-button-background: color-mix(
+    in oklab,
+    var(--yolo-learning-eval-color) 14%,
+    transparent
+  );
+
+  background-color: color-mix(
+    in oklab,
+    var(--yolo-learning-eval-color) 14%,
+    transparent
+  );
+  box-shadow: 0 5px 14px
+    color-mix(in oklab, var(--yolo-learning-eval-color) 18%, transparent);
+  transform: translateY(-2px) scale(1.04);
 }
 
 .yolo-learning-cards-eval-label {
