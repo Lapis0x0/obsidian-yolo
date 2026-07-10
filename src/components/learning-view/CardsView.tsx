@@ -32,6 +32,7 @@ import {
   getExtremeGradeThreshold,
   keyboardToGrade,
   resolveSwipeGrade,
+  updateReviewQueue,
 } from './reviewInteractions'
 
 const cardModes = ['浏览', '复习'] as const
@@ -698,16 +699,12 @@ function ReviewMode({
   const activeCardRef = useRef<HTMLDivElement>(null)
   const timersRef = useRef<number[]>([])
   const hasStartedRef = useRef(false)
-  const appearanceCountByCardUuid = useRef(new Map<string, number>())
   const schedulingRequestGenerationRef = useRef(0)
 
   useEffect(() => {
     if (hasStartedRef.current) return
     setQueue(initialQueue)
     setIndex(0)
-    appearanceCountByCardUuid.current = new Map(
-      initialQueue.map((item) => [item.id, 1]),
-    )
   }, [initialQueue])
 
   const card = queue[index]
@@ -803,13 +800,9 @@ function ReviewMode({
         next.set(card.id, result.scheduling)
         return next
       })
-      if (
-        grade === 'again' &&
-        (appearanceCountByCardUuid.current.get(card.id) ?? 1) < 2
-      ) {
-        appearanceCountByCardUuid.current.set(card.id, 2)
-        setQueue((current) => [...current, { ...card, srsState: result.card }])
-      }
+      setQueue((current) =>
+        updateReviewQueue(current, { ...card, srsState: result.card }, grade),
+      )
 
       setSubmitting(false)
       setSubmittingGrade(null)

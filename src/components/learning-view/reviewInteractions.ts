@@ -31,3 +31,11 @@ export function keyboardToGrade(key: string): ReviewRating | null {
   if (key === '4') return 'easy'
   return null
 }
+
+export function updateReviewQueue<T>(
+  queue: T[],
+  reviewedCard: T,
+  grade: ReviewRating,
+): T[] {
+  return grade === 'again' ? [...queue, reviewedCard] : queue
+}

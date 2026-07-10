@@ -2,6 +2,7 @@ import {
   getExtremeGradeThreshold,
   keyboardToGrade,
   resolveSwipeGrade,
+  updateReviewQueue,
 } from './reviewInteractions'
 
 describe('review card interactions', () => {
@@ -40,5 +41,16 @@ describe('review card interactions', () => {
     expect(keyboardToGrade('ArrowUp')).toBeNull()
     expect(keyboardToGrade('ArrowRight')).toBeNull()
     expect(keyboardToGrade('ArrowDown')).toBeNull()
+  })
+
+  test('moves a card to the end after every again grade', () => {
+    const card = { id: 'a' }
+    let queue = [{ id: 'b' }]
+
+    queue = updateReviewQueue(queue, card, 'again')
+    queue = updateReviewQueue(queue, card, 'again')
+
+    expect(queue.map((item) => item.id)).toEqual(['b', 'a', 'a'])
+    expect(updateReviewQueue(queue, card, 'hard')).toBe(queue)
   })
 })
