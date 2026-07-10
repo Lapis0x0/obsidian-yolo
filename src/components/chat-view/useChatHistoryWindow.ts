@@ -9,7 +9,7 @@ const INITIAL_WINDOW_TURNS = 10
 const PAGE_TURNS = 8
 const MAX_WINDOW_TURNS = 40
 
-type GroupedChatMessage = ChatUserMessage | AssistantToolMessageGroup
+export type GroupedChatMessage = ChatUserMessage | AssistantToolMessageGroup
 
 type TurnRange = {
   startIndex: number
@@ -24,6 +24,36 @@ type ChatHistoryWindow = {
 type UserMessageTurnIndex = {
   messageId: string
   turnIndex: number
+}
+
+export function createChatHistoryWindowSelector() {
+  let previousMessages: GroupedChatMessage[] | null = null
+  let previousStartIndex = -1
+  let previousEndIndex = -1
+  let previousResult: GroupedChatMessage[] = []
+
+  return (
+    groupedChatMessages: GroupedChatMessage[],
+    startIndex: number,
+    endIndex: number,
+  ): GroupedChatMessage[] => {
+    if (
+      previousMessages === groupedChatMessages &&
+      previousStartIndex === startIndex &&
+      previousEndIndex === endIndex
+    ) {
+      return previousResult
+    }
+
+    previousMessages = groupedChatMessages
+    previousStartIndex = startIndex
+    previousEndIndex = endIndex
+    previousResult =
+      startIndex >= 0 && endIndex >= 0
+        ? groupedChatMessages.slice(startIndex, endIndex + 1)
+        : []
+    return previousResult
+  }
 }
 
 function buildTurnRanges(
@@ -175,6 +205,7 @@ export function useChatHistoryWindow({
     useState<string | null>(null)
   const previousConversationIdRef = useRef(conversationId)
   const previousTotalTurnsRef = useRef(totalTurns)
+  const windowSelectorRef = useRef(createChatHistoryWindowSelector())
 
   useEffect(() => {
     const previousConversationId = previousConversationIdRef.current
@@ -268,13 +299,19 @@ export function useChatHistoryWindow({
     [totalTurns, userMessageTurnIndices],
   )
 
-  const normalizedWindow = normalizeWindow(window, totalTurns)
+  const normalizedWindow = useMemo(
+    () => normalizeWindow(window, totalTurns),
+    [totalTurns, window],
+  )
   const startRange = turnRanges[normalizedWindow.startTurnIndex]
   const endRange = turnRanges[normalizedWindow.endTurnIndex]
-  const windowedGroupedChatMessages =
-    startRange && endRange
-      ? groupedChatMessages.slice(startRange.startIndex, endRange.endIndex + 1)
-      : []
+  const startMessageIndex = startRange?.startIndex ?? -1
+  const endMessageIndex = endRange?.endIndex ?? -1
+  const windowedGroupedChatMessages = windowSelectorRef.current(
+    groupedChatMessages,
+    startMessageIndex,
+    endMessageIndex,
+  )
 
   return {
     windowedGroupedChatMessages,

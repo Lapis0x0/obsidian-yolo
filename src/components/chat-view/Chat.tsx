@@ -120,6 +120,7 @@ import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
 
 import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
+import { ChatInputDraftHolder } from './chat-input/chatInputDraft'
 import {
   type ChatMode,
   isAgentChatMode,
@@ -807,6 +808,7 @@ export type ChatRef = {
     | ConversationOverrideSettings
     | undefined
   getCurrentConversationModelId: () => string | undefined
+  getRuntimeSnapshot: () => ChatRuntimeSnapshot
 }
 
 /**
@@ -932,7 +934,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
   const [workspaceWideHeaderHeight, setWorkspaceWideHeaderHeight] = useState(0)
 
-  const [inputMessage, setInputMessage] = useState<ChatUserMessage>(() => {
+  const [inputMessage, setInputMessageState] = useState<ChatUserMessage>(() => {
     if (seededRuntimeSnapshot) {
       return seededRuntimeSnapshot.inputMessage
     }
@@ -945,29 +947,42 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return newMessage
   })
+  const inputDraftHolderRef = useRef<ChatInputDraftHolder | null>(null)
+  if (!inputDraftHolderRef.current) {
+    inputDraftHolderRef.current = new ChatInputDraftHolder(inputMessage)
+  }
+  const inputDraftHolder = inputDraftHolderRef.current
+  const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
+  const inputMessageRef = useRef(inputMessage)
+  const getLatestInputMessage = useCallback(
+    () => inputDraftHolder.get(),
+    [inputDraftHolder],
+  )
+  const getLatestInputContent = useCallback(
+    () => getLatestInputMessage().content,
+    [getLatestInputMessage],
+  )
+  const setInputMessage = useCallback(
+    (updater: (message: ChatUserMessage) => ChatUserMessage) => {
+      const nextMessage = inputDraftHolder.update(updater)
+      inputMessageRef.current = nextMessage
+      setInputMessageState(nextMessage)
+    },
+    [inputDraftHolder],
+  )
+  const replaceInputMessage = useCallback(
+    (message: ChatUserMessage) => {
+      const nextMessage = inputDraftHolder.replace(message)
+      inputMessageRef.current = nextMessage
+      setInputMessageState(nextMessage)
+      setInputReplacementVersion(inputDraftHolder.getReplacementVersion())
+    },
+    [inputDraftHolder],
+  )
   const [queuedMessageEditState, setQueuedMessageEditState] = useState<{
     preservedInputMessage: ChatUserMessage
     preservedReasoningLevel: ReasoningLevel
   } | null>(null)
-  const inputMessageRef = useRef(inputMessage)
-  // 主输入框「是否为空」——发送按钮根据它切换淡化态/激活态。判断口径与
-  // 下方 onSubmit 里的早返回一致：纯文本 trim 后为空、且无 mentionable、
-  // 也无 skill。content 是 SerializedEditorState，每次 keystroke 引用都会变，
-  // 所以 useMemo 这里足够。
-  const isInputEmpty = useMemo(() => {
-    const text = inputMessage.content
-      ? editorStateToPlainText(inputMessage.content).trim()
-      : ''
-    return (
-      text === '' &&
-      inputMessage.mentionables.length === 0 &&
-      (inputMessage.selectedSkills?.length ?? 0) === 0
-    )
-  }, [
-    inputMessage.content,
-    inputMessage.mentionables,
-    inputMessage.selectedSkills,
-  ])
   const chatMessagesStateRef = useRef<ChatMessage[]>([])
   const activeBranchByUserMessageIdRef = useRef<Map<string, string>>(new Map())
   const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
@@ -1556,10 +1571,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   useEffect(() => {
-    inputMessageRef.current = inputMessage
-  }, [inputMessage])
-
-  useEffect(() => {
     setQueuedMessageEditState(null)
   }, [currentConversationId])
 
@@ -2050,18 +2061,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         releaseHighlightIds(
           collectSelectionHighlightIdsFromMessages(messages.slice(0, -1)),
         )
-        setInputMessage((prev) => ({
-          ...prev,
+        const currentInputMessage = getLatestInputMessage()
+        replaceInputMessage({
+          ...currentInputMessage,
           content: latest.content,
           promptContent: latest.promptContent,
           snapshotRef: latest.snapshotRef,
           mentionables: latest.mentionables,
           selectedSkills: latest.selectedSkills,
           selectedModelIds: latest.selectedModelIds,
-          reasoningLevel: latest.reasoningLevel ?? prev.reasoningLevel,
+          reasoningLevel:
+            latest.reasoningLevel ?? currentInputMessage.reasoningLevel,
           // 该消息从未真正发送出去 → 清掉入队时打的旧时间,下次提交会重新打戳。
           timeContext: undefined,
-        }))
+        })
         if (messages.length > 1) {
           new Notice(
             t(
@@ -2082,7 +2095,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return () => {
       unsubscribe()
     }
-  }, [agentService, currentConversationId, releaseHighlightIds, t])
+  }, [
+    agentService,
+    currentConversationId,
+    getLatestInputMessage,
+    releaseHighlightIds,
+    replaceInputMessage,
+    t,
+  ])
 
   // Auto-run when external agent results arrive for the current conversation
   useEffect(() => {
@@ -2702,11 +2722,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           }
         })
         setMessageReasoningMap(nextMessageReasoningMap)
-        const preservedInput = inputMessageRef.current
+        const preservedInput = getLatestInputMessage()
         const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
         newInputMessage.content = preservedInput.content
         newInputMessage.mentionables = [...preservedInput.mentionables]
-        setInputMessage(newInputMessage)
+        newInputMessage.selectedSkills = [
+          ...(preservedInput.selectedSkills ?? []),
+        ]
+        replaceInputMessage(newInputMessage)
         setFocusedMessageId(newInputMessage.id)
         setEditingAssistantMessageId(null)
         setQueryProgress({
@@ -2750,6 +2773,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       normalizeAssistantGroupBoundaryMessageIds,
       normalizeReasoningLevel,
       props.onConversationContextChange,
+      getLatestInputMessage,
+      replaceInputMessage,
       untitledFallback,
     ],
   )
@@ -2794,7 +2819,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (!onRuntimeSnapshotChange) return
     onRuntimeSnapshotChange({
       currentConversationId,
-      inputMessage,
+      inputMessage: getLatestInputMessage(),
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -2812,6 +2837,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     yoloEnabled,
     reasoningLevel,
     conversationOverrides,
+    getLatestInputMessage,
   ])
 
   const handleExportChatToVault = useCallback(
@@ -2869,8 +2895,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setPendingCompactionAnchorMessageId(null)
     setEditingAssistantMessageId(null)
     const newInputMessage = getNewInputMessage(defaultReasoningLevel)
-    newInputMessage.content = inputMessage.content
-    newInputMessage.mentionables = [...inputMessage.mentionables]
+    const latestInputMessage = getLatestInputMessage()
+    newInputMessage.content = latestInputMessage.content
+    newInputMessage.mentionables = [...latestInputMessage.mentionables]
+    newInputMessage.selectedSkills = [
+      ...(latestInputMessage.selectedSkills ?? []),
+    ]
     if (selectedBlock) {
       const mentionableBlock = createSelectionBlockMentionable(selectedBlock)
       newInputMessage.mentionables = [
@@ -2879,7 +2909,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ]
     }
     setAddedBlockKey(null)
-    setInputMessage(newInputMessage)
+    replaceInputMessage(newInputMessage)
     setFocusedMessageId(newInputMessage.id)
     setQueryProgress({
       type: 'idle',
@@ -3169,7 +3199,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
 
       const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
-      setInputMessage(newInputMessage)
+      replaceInputMessage(newInputMessage)
       setFocusedMessageId(newInputMessage.id)
       setQueryProgress({ type: 'idle' })
 
@@ -3487,17 +3517,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const buildInputMessageForSubmit = useCallback(
     (content: ChatUserMessage['content']): ChatUserMessage => {
-      const mentionables = inputMessage.mentionables
+      const latestInputMessage = getLatestInputMessage()
+      const mentionables = latestInputMessage.mentionables
       return {
-        ...inputMessage,
+        ...latestInputMessage,
         content,
         reasoningLevel,
         mentionables,
-        selectedSkills: inputMessage.selectedSkills ?? [],
+        selectedSkills: latestInputMessage.selectedSkills ?? [],
         selectedModelIds: extractSelectedModelIds(mentionables),
       }
     },
-    [inputMessage, reasoningLevel],
+    [getLatestInputMessage, reasoningLevel],
   )
 
   const handleUserMessageSubmit = useCallback(
@@ -5059,6 +5090,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       return conversationModelIdRef.current.get(currentConversationId)
     },
+    getRuntimeSnapshot: () => ({
+      currentConversationId,
+      inputMessage: getLatestInputMessage(),
+      conversationModelId,
+      conversationAssistantId,
+      chatMode,
+      yoloEnabled,
+      reasoningLevel,
+      conversationOverrides,
+    }),
   }))
 
   const applyChatModeChange = useCallback(
@@ -5403,12 +5444,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleMainInputChange = useCallback<ChatUserInputProps['onChange']>(
     (content) => {
-      setInputMessage((prevInputMessage) => ({
-        ...prevInputMessage,
-        content,
-      }))
+      inputDraftHolder.updateContent(content)
+      inputMessageRef.current = inputDraftHolder.get()
     },
-    [],
+    [inputDraftHolder],
   )
 
   const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
@@ -5477,10 +5516,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               state.currentConversationId,
               state.queuedMessageEditState.preservedReasoningLevel,
             )
-            setInputMessage(state.queuedMessageEditState.preservedInputMessage)
+            replaceInputMessage(
+              state.queuedMessageEditState.preservedInputMessage,
+            )
             setQueuedMessageEditState(null)
           } else {
-            setInputMessage(getNewInputMessage(state.reasoningLevel))
+            replaceInputMessage(getNewInputMessage(state.reasoningLevel))
           }
           return
         }
@@ -5526,13 +5567,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           state.currentConversationId,
           state.queuedMessageEditState.preservedReasoningLevel,
         )
-        setInputMessage(state.queuedMessageEditState.preservedInputMessage)
+        replaceInputMessage(state.queuedMessageEditState.preservedInputMessage)
         setQueuedMessageEditState(null)
       } else {
-        setInputMessage(getNewInputMessage(state.reasoningLevel))
+        replaceInputMessage(getNewInputMessage(state.reasoningLevel))
       }
     },
-    [mainInputSubmitStateRef],
+    [mainInputSubmitStateRef, replaceInputMessage],
   )
 
   const handleMainInputFocus = useCallback(() => {
@@ -6510,11 +6551,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                                     ) ?? reasoningLevel
                                   setQueuedMessageEditState({
                                     preservedInputMessage:
-                                      inputMessageRef.current,
+                                      getLatestInputMessage(),
                                     preservedReasoningLevel,
                                   })
                                   setReasoningLevel(editingReasoningLevel)
-                                  setInputMessage({
+                                  replaceInputMessage({
                                     ...removed,
                                     timeContext: undefined,
                                   })
@@ -6569,7 +6610,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 <ChatUserInput
                   key={inputMessage.id}
                   ref={handleMainInputRef}
-                  initialSerializedEditorState={inputMessage.content}
+                  initialSerializedEditorState={null}
+                  getInitialSerializedEditorState={getLatestInputContent}
+                  replacementVersion={inputReplacementVersion}
                   onChange={handleMainInputChange}
                   onSubmit={handleMainInputSubmit}
                   onFocus={handleMainInputFocus}
@@ -6604,7 +6647,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     currentConversationRunSummary.isQueueable
                   }
                   onAbort={handleMainInputAbort}
-                  submitDisabled={isInputEmpty}
                   contextUsage={mainInputContextUsage}
                 />
               </div>

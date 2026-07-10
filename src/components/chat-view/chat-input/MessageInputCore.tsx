@@ -81,6 +81,7 @@ export type MessageInputCoreRef = {
 
 export type MessageInputCoreProps = {
   initialSerializedEditorState: SerializedEditorState | null
+  replacementVersion?: number
   onChange: (content: SerializedEditorState) => void
   onTextContentChange?: (text: string) => void
   onEnter: () => void
@@ -90,7 +91,9 @@ export type MessageInputCoreProps = {
   className?: string
   contentClassName?: string
   onKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void
-  onEditorBackgroundMouseDown?: (event: React.MouseEvent<HTMLDivElement>) => void
+  onEditorBackgroundMouseDown?: (
+    event: React.MouseEvent<HTMLDivElement>,
+  ) => void
 
   mentionables: Mentionable[]
   setMentionables: (mentionables: Mentionable[]) => void
@@ -136,6 +139,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
   (
     {
       initialSerializedEditorState,
+      replacementVersion = 0,
       onChange,
       onTextContentChange,
       onEnter,
@@ -197,6 +201,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
     const [isEditorReady, setIsEditorReady] = useState(false)
     const suppressedDestroyedMentionableKeysRef = useRef<Set<string>>(new Set())
     const suppressedDestroyedSkillNamesRef = useRef<Set<string>>(new Set())
+    const appliedReplacementVersionRef = useRef(replacementVersion)
 
     const effectiveMentionables = useMemo(
       () => displayMentionablesForDelete ?? mentionables,
@@ -1184,6 +1189,36 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         }
       }
     }, [initialSerializedEditorState])
+
+    useEffect(() => {
+      if (appliedReplacementVersionRef.current === replacementVersion) {
+        return
+      }
+      const editor = editorRef.current
+      if (!editor || !isEditorReady) {
+        return
+      }
+      appliedReplacementVersionRef.current = replacementVersion
+
+      try {
+        if (!initialSerializedEditorState) {
+          editor.update(
+            () => {
+              const root = $getRoot()
+              root.clear()
+              root.append($createParagraphNode())
+            },
+            { discrete: true },
+          )
+          return
+        }
+        editor.setEditorState(
+          editor.parseEditorState(initialSerializedEditorState),
+        )
+      } catch (error) {
+        console.warn('[YOLO] Failed to replace chat input editor state', error)
+      }
+    }, [initialSerializedEditorState, isEditorReady, replacementVersion])
 
     const lexicalPlugins = useMemo(
       () => ({

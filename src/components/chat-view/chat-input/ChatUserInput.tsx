@@ -38,17 +38,21 @@ import ContextUsageRing from '../ContextUsageRing'
 import { useSnippetEntries } from '../hooks/useSnippetEntries'
 import type { ContextBreakdownInputs } from '../useContextBreakdown'
 
+import {
+  type ChatInputEditorSeed,
+  isChatInputEmpty,
+  resolveChatInputEditorSeed,
+} from './chatInputDraft'
 import { ChatMode, ChatModeSelect } from './ChatModeSelect'
 import ChatSkillBadge from './ChatSkillBadge'
 import { FileUploadButton } from './FileUploadButton'
 import MentionableBadge from './MentionableBadge'
-import MessageInputCore, {
-  type MessageInputCoreRef,
-} from './MessageInputCore'
+import MessageInputCore, { type MessageInputCoreRef } from './MessageInputCore'
 import { ModelSelect } from './ModelSelect'
 import type { SlashCommand } from './plugins/mention/SkillSlashPlugin'
 import { ReasoningSelect, supportsReasoning } from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
+import { editorStateToPlainText } from './utils/editor-state-to-plain-text'
 
 export type ChatUserInputRef = {
   focus: () => void
@@ -62,6 +66,8 @@ export type ChatUserInputControlLayout = 'composer-toolbar' | 'inline'
 
 export type ChatUserInputProps = {
   initialSerializedEditorState: SerializedEditorState | null
+  getInitialSerializedEditorState?: () => SerializedEditorState | null
+  replacementVersion?: number
   onChange: (content: SerializedEditorState) => void
   onSubmit: (content: SerializedEditorState) => void
   onFocus: () => void
@@ -103,8 +109,6 @@ export type ChatUserInputProps = {
   isGenerating?: boolean
   canQueueWhileGenerating?: boolean
   onAbort?: () => void
-  // 当输入为空、无 mentionable、无 skill 时，发送按钮以淡化态显示，不可点击
-  submitDisabled?: boolean
   // 上下文窗口占用环，传入时显示在发送按钮左侧
   contextUsage?: {
     promptTokens: number
@@ -134,6 +138,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
   (
     {
       initialSerializedEditorState,
+      getInitialSerializedEditorState,
+      replacementVersion = 0,
       onChange,
       onSubmit,
       onFocus,
@@ -169,7 +175,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       isGenerating = false,
       canQueueWhileGenerating = true,
       onAbort,
-      submitDisabled = false,
       contextUsage,
     },
     ref,
@@ -197,10 +202,24 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     const coreRef = useRef<MessageInputCoreRef>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const latestContentRef = useRef<SerializedEditorState | null>(
-      initialSerializedEditorState,
+    const editorSeedRef = useRef<ChatInputEditorSeed | null>(null)
+    const editorSeed = resolveChatInputEditorSeed(
+      editorSeedRef.current,
+      replacementVersion,
+      () =>
+        getInitialSerializedEditorState
+          ? getInitialSerializedEditorState()
+          : initialSerializedEditorState,
     )
-    const [inputText, setInputText] = useState('')
+    editorSeedRef.current = editorSeed
+    const latestContentRef = useRef<SerializedEditorState | null>(
+      editorSeed.content,
+    )
+    const [isTextEmpty, setIsTextEmpty] = useState(() =>
+      editorSeed.content
+        ? editorStateToPlainText(editorSeed.content).trim().length === 0
+        : true,
+    )
     const [resizedHeight, setResizedHeight] = useState<number | null>(
       rememberedInputHeight,
     )
@@ -270,8 +289,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     }, [currentModel, reasoningLevel])
 
     useEffect(() => {
-      latestContentRef.current = initialSerializedEditorState
-    }, [initialSerializedEditorState])
+      latestContentRef.current = editorSeed.content
+      const nextIsEmpty = editorSeed.content
+        ? editorStateToPlainText(editorSeed.content).trim().length === 0
+        : true
+      setIsTextEmpty((current) =>
+        current === nextIsEmpty ? current : nextIsEmpty,
+      )
+    }, [editorSeed])
 
     useEffect(() => {
       if (!compact) {
@@ -311,6 +336,19 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         onChange(content)
       },
       [onChange],
+    )
+
+    const handleTextContentChange = useCallback((text: string) => {
+      const nextIsEmpty = text.trim().length === 0
+      setIsTextEmpty((current) =>
+        current === nextIsEmpty ? current : nextIsEmpty,
+      )
+    }, [])
+
+    const submitDisabled = isChatInputEmpty(
+      isTextEmpty ? '' : 'content',
+      mentionables.length,
+      selectedSkills.length,
     )
 
     const handleEnter = useCallback(() => {
@@ -414,9 +452,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         dragStartYRef.current = clientY
         dragStartHeightRef.current =
           resizedHeight ??
-          containerRef.current
-            ?.querySelector<HTMLElement>('.yolo-content-editable')
-            ?.offsetHeight ??
+          containerRef.current?.querySelector<HTMLElement>(
+            '.yolo-content-editable',
+          )?.offsetHeight ??
           DEFAULT_INPUT_HEIGHT
 
         const ownerDoc = containerRef.current?.ownerDocument ?? document
@@ -715,7 +753,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             </div>
           )}
           <div className="yolo-chat-user-input-editor" role="presentation">
-            {inputText.trim().length === 0 &&
+            {isTextEmpty &&
               effectiveMentionables.length === 0 &&
               effectiveSelectedSkills.length === 0 &&
               compact && (
@@ -725,7 +763,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               )}
             {showPlaceholder &&
               !compact &&
-              inputText.trim().length === 0 &&
+              isTextEmpty &&
               effectiveMentionables.length === 0 &&
               effectiveSelectedSkills.length === 0 && (
                 <div className="yolo-chat-user-input-placeholder">
@@ -757,9 +795,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               )}
             <MessageInputCore
               ref={coreRef}
-              initialSerializedEditorState={initialSerializedEditorState}
+              initialSerializedEditorState={editorSeed.content}
+              replacementVersion={editorSeed.replacementVersion}
               onChange={handleChange}
-              onTextContentChange={setInputText}
+              onTextContentChange={handleTextContentChange}
               onEnter={handleEnter}
               onFocus={onFocus}
               autoFocus={autoFocus}
