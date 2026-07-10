@@ -43,6 +43,7 @@ import {
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
 import type { ProjectEventBus } from './core/learning/projectEventBus'
+import { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
@@ -210,6 +211,7 @@ export default class YoloPlugin extends Plugin {
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
   private learningEventBus: ProjectEventBus | null = null
+  private learningSrsStore: LearningSrsStore | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -302,6 +304,13 @@ export default class YoloPlugin extends Plugin {
    */
   setLearningEventBus(bus: ProjectEventBus | null): void {
     this.learningEventBus = bus
+  }
+
+  getLearningSrsStore(): LearningSrsStore {
+    if (!this.learningSrsStore) {
+      this.learningSrsStore = new LearningSrsStore(this.app)
+    }
+    return this.learningSrsStore
   }
 
   /**

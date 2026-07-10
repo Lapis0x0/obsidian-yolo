@@ -1,6 +1,6 @@
 import cx from 'clsx'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { TFile, normalizePath } from 'obsidian'
+import { Notice, TFile, normalizePath } from 'obsidian'
 import {
   Children,
   useCallback,
@@ -13,7 +13,17 @@ import type { PointerEvent, ReactNode } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
+import {
+  fsrsStateToMastery,
+  isDue,
+} from '../../core/learning/srs/masteryMapping'
+import type {
+  CardScheduling,
+  ReviewRating,
+  SrsCardState,
+} from '../../core/learning/srs/srsTypes'
 import type { Project as VaultProject } from '../../core/learning/types'
 
 import { formatLearningText } from './i18n'
@@ -30,7 +40,8 @@ type Card = {
   front: string
   back: string
   mastery: Mastery
-  due: boolean
+  dueAt: string | null
+  srsState: SrsCardState | null
 }
 
 function masteryText(
@@ -47,8 +58,14 @@ function masteryText(
 
 export function CardsView({ project }: { project: VaultProject | null }) {
   const { t } = useLanguage()
-  const { cards, loading } = useProjectCards(project)
-  const dueCount = 0
+  const {
+    cards,
+    loading,
+    now,
+    dueCount,
+    todayIntroducedCount,
+    applyReviewResult,
+  } = useProjectCards(project)
   const [mode, setMode] = useState<'浏览' | '复习'>('浏览')
   const modeLabels: Record<(typeof cardModes)[number], string> = {
     浏览: t('learning.common.browse', '浏览'),
@@ -68,9 +85,22 @@ export function CardsView({ project }: { project: VaultProject | null }) {
       </div>
 
       {mode === '浏览' ? (
-        <BrowseMode project={project} cards={cards} loading={loading} />
+        <BrowseMode
+          project={project}
+          cards={cards}
+          loading={loading}
+          now={now}
+        />
       ) : (
-        <ReviewMode cards={cards} onExit={() => setMode('浏览')} />
+        <ReviewMode
+          key={project?.slug}
+          projectSlug={project?.slug ?? null}
+          cards={cards}
+          now={now}
+          todayIntroducedCount={todayIntroducedCount}
+          onReviewed={applyReviewResult}
+          onExit={() => setMode('浏览')}
+        />
       )}
     </div>
   )
@@ -78,18 +108,36 @@ export function CardsView({ project }: { project: VaultProject | null }) {
 
 function useProjectCards(project: VaultProject | null) {
   const app = useApp()
+  const plugin = usePlugin()
+  const { t } = useLanguage()
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
+  const [todayIntroducedCount, setTodayIntroducedCount] = useState(0)
+  const loadGenerationRef = useRef(0)
+  const introducedLoadGenerationRef = useRef(0)
+  const introducedDayRef = useRef('')
+  const { now, refreshNow } = useReviewClock(cards)
 
   useEffect(() => {
     let cancelled = false
+    const generation = loadGenerationRef.current + 1
+    loadGenerationRef.current = generation
     const run = async () => {
       if (!project) {
         setCards([])
+        setTodayIntroducedCount(0)
         setLoading(false)
         return
       }
       setLoading(true)
+      const now = new Date()
+      let introducedDay = localDayKey(now)
+      const srsStore = plugin.getLearningSrsStore()
+      const [projectState, initialIntroducedCount] = await Promise.all([
+        srsStore.getProjectState(project.slug),
+        srsStore.getTodayIntroducedCount(project.slug, now),
+      ])
+      let introducedCount = initialIntroducedCount
       const nextCards: Card[] = []
       const pointByUuid = new Map(
         project.knowledgePoints.map((point) => [point.uuid, point]),
@@ -112,6 +160,7 @@ function useProjectCards(project: VaultProject | null) {
             ? chapterById.get(point.chapterId)
             : undefined
           const parsed = parseCardBody(entry.body)
+          const srsState = projectState.cards[entry.uuid] ?? null
           nextCards.push({
             id: entry.uuid,
             pointId: point?.id ?? null,
@@ -119,30 +168,154 @@ function useProjectCards(project: VaultProject | null) {
             chapterTitle: pointChapter?.title ?? chapter.title,
             front: parsed.front || entry.title,
             back: parsed.back || entry.body,
-            mastery: 'new',
-            due: false,
+            mastery: srsState ? fsrsStateToMastery(srsState.state) : 'new',
+            dueAt: srsState?.due ?? null,
+            srsState,
           })
         }
       }
-      if (!cancelled) {
+      const commitNow = new Date()
+      const commitDay = localDayKey(commitNow)
+      if (commitDay !== introducedDay) {
+        introducedCount = await srsStore.getTodayIntroducedCount(
+          project.slug,
+          commitNow,
+        )
+        introducedDay = commitDay
+      }
+      if (!cancelled && loadGenerationRef.current === generation) {
         setCards(nextCards)
+        setTodayIntroducedCount(introducedCount)
+        introducedDayRef.current = introducedDay
         setLoading(false)
       }
     }
-    void run()
+    void run().catch(() => {
+      if (!cancelled && loadGenerationRef.current === generation) {
+        setCards([])
+        setTodayIntroducedCount(0)
+        setLoading(false)
+        new Notice(
+          t('learning.cards.srsLoadFailed', '复习数据加载失败，请重试'),
+        )
+      }
+    })
     return () => {
       cancelled = true
     }
-  }, [app, project])
+  }, [app, plugin, project, t])
 
-  return { cards, loading }
+  const applyReviewResult = useCallback(
+    (cardUuid: string, srsState: SrsCardState, introduced: boolean) => {
+      const now = new Date()
+      loadGenerationRef.current += 1
+      introducedLoadGenerationRef.current += 1
+      setLoading(false)
+      refreshNow()
+      setCards((current) =>
+        current.map((card) =>
+          card.id === cardUuid
+            ? {
+                ...card,
+                mastery: fsrsStateToMastery(srsState.state),
+                dueAt: srsState.due,
+                srsState,
+              }
+            : card,
+        ),
+      )
+      if (introduced) {
+        const day = localDayKey(now)
+        if (introducedDayRef.current === day) {
+          setTodayIntroducedCount((count) => count + 1)
+        } else {
+          introducedDayRef.current = day
+          setTodayIntroducedCount(1)
+        }
+      }
+    },
+    [refreshNow],
+  )
+
+  useEffect(() => {
+    if (!project) return
+    const day = localDayKey(now)
+    if (introducedDayRef.current === day) return
+    const generation = introducedLoadGenerationRef.current + 1
+    introducedLoadGenerationRef.current = generation
+    void plugin
+      .getLearningSrsStore()
+      .getTodayIntroducedCount(project.slug, now)
+      .then((count) => {
+        if (introducedLoadGenerationRef.current !== generation) return
+        introducedDayRef.current = day
+        setTodayIntroducedCount(count)
+      })
+      .catch(() => {
+        if (introducedLoadGenerationRef.current !== generation) return
+        new Notice(
+          t('learning.cards.srsLoadFailed', '复习数据加载失败，请重试'),
+        )
+      })
+  }, [now, plugin, project, t])
+
+  const dueCount = cards.filter(
+    (card) => card.srsState && card.dueAt && isDue(card.dueAt, now),
+  ).length
+
+  return {
+    cards,
+    loading,
+    now,
+    dueCount,
+    todayIntroducedCount,
+    applyReviewResult,
+  }
+}
+
+function useReviewClock(cards: Card[]): { now: Date; refreshNow: () => void } {
+  const [now, setNow] = useState(() => new Date())
+  const refreshNow = useCallback(() => setNow(new Date()), [])
+
+  useEffect(() => {
+    const nowMs = now.getTime()
+    const futureDueTimes = cards
+      .map((card) => (card.dueAt ? new Date(card.dueAt).getTime() : Number.NaN))
+      .filter((dueAt) => Number.isFinite(dueAt) && dueAt > nowMs)
+    const nextDueAt =
+      futureDueTimes.length > 0 ? Math.min(...futureDueTimes) : Infinity
+    const nextMidnight = new Date(now)
+    nextMidnight.setHours(24, 0, 0, 0)
+    const nextWakeAt = Math.min(nextDueAt, nextMidnight.getTime())
+    const delay = Math.min(
+      Math.max(1_000, nextWakeAt - nowMs + 50),
+      2_147_000_000,
+    )
+    const timer = window.setTimeout(refreshNow, delay)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshNow()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('focus', refreshNow)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('focus', refreshNow)
+    }
+  }, [cards, now, refreshNow])
+
+  return { now, refreshNow }
+}
+
+function localDayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
 function parseCardBody(body: string) {
   const frontMatch = body.match(
-    /\*\*正面：\*\*\s*([\s\S]*?)(?=\n\s*\*\*背面：\*\*|$)/,
+    /\*\*正面：\*\*[ \t]*([\s\S]*?)(?=\n[ \t]*\*\*背面：\*\*|$)/,
   )
-  const backMatch = body.match(/\*\*背面：\*\*\s*([\s\S]*)$/)
+  const backMatch = body.match(/\*\*背面：\*\*[ \t]*([\s\S]*)$/)
   return {
     front: frontMatch?.[1]?.trim() ?? '',
     back: backMatch?.[1]?.trim() ?? '',
@@ -154,10 +327,12 @@ function BrowseMode({
   project,
   cards,
   loading,
+  now,
 }: {
   project: VaultProject | null
   cards: Card[]
   loading: boolean
+  now: Date
 }) {
   const { t } = useLanguage()
   const [mastery, setMastery] =
@@ -245,7 +420,13 @@ function BrowseMode({
       ) : (
         <MasonryColumns columnCount={columnCount}>
           {cards.map((card) => (
-            <BrowseCard key={card.id} card={card} />
+            <BrowseCard
+              key={card.id}
+              card={card}
+              due={Boolean(
+                card.srsState && card.dueAt && isDue(card.dueAt, now),
+              )}
+            />
           ))}
         </MasonryColumns>
       )}
@@ -337,7 +518,7 @@ function StreamReveal({ text, active }: { text: string; active: boolean }) {
   )
 }
 
-function BrowseCard({ card }: { card: Card }) {
+function BrowseCard({ card, due }: { card: Card; due: boolean }) {
   const { t } = useLanguage()
   const [revealed, setRevealed] = useState(false)
   const [shimmer, setShimmer] = useState(false)
@@ -357,7 +538,7 @@ function BrowseCard({ card }: { card: Card }) {
           {card.chapterTitle} · {card.pointTitle}
         </span>
         <div className="yolo-learning-cards-browse-card-meta">
-          {card.due && (
+          {due && (
             <span className="yolo-learning-cards-due-label">
               {t('learning.cards.due', '待复习')}
             </span>
@@ -420,29 +601,32 @@ function BrowseCard({ card }: { card: Card }) {
 
 /* ---------------- Review ---------------- */
 
-type ReviewGrade = 'forgot' | 'hard' | 'good'
+type ReviewGrade = ReviewRating
 
 const SWIPE_THRESHOLD = 72
 
 const gradeDragTint: Record<ReviewGrade, string> = {
-  forgot: 'yolo-learning-cards-review-tint-danger',
+  again: 'yolo-learning-cards-review-tint-danger',
   hard: 'yolo-learning-cards-review-tint-warning',
   good: 'yolo-learning-cards-review-tint-success',
+  easy: 'yolo-learning-cards-review-tint-success',
 }
 
 function resolveSwipeGrade(dx: number, dy: number): ReviewGrade | null {
   if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD)
     return null
   if (Math.abs(dy) > Math.abs(dx) && dy < -SWIPE_THRESHOLD) return 'hard'
-  if (Math.abs(dx) >= Math.abs(dy) && dx < -SWIPE_THRESHOLD) return 'forgot'
+  if (Math.abs(dy) > Math.abs(dx) && dy > SWIPE_THRESHOLD) return 'easy'
+  if (Math.abs(dx) >= Math.abs(dy) && dx < -SWIPE_THRESHOLD) return 'again'
   if (Math.abs(dx) >= Math.abs(dy) && dx > SWIPE_THRESHOLD) return 'good'
   return null
 }
 
 function keyboardToGrade(event: KeyboardEvent): ReviewGrade | null {
-  if (event.key === '1' || event.key === 'ArrowLeft') return 'forgot'
+  if (event.key === '1' || event.key === 'ArrowLeft') return 'again'
   if (event.key === '2' || event.key === 'ArrowUp') return 'hard'
   if (event.key === '3' || event.key === 'ArrowRight') return 'good'
+  if (event.key === '4' || event.key === 'ArrowDown') return 'easy'
   return null
 }
 
@@ -453,9 +637,10 @@ const PROMOTE_DELAY_MS = 120
 const SETTLE_MS = 150
 
 const exitTransforms: Record<ReviewGrade, string> = {
-  forgot: 'translateX(-135%) rotate(-14deg)',
+  again: 'translateX(-135%) rotate(-14deg)',
   hard: 'translateY(-135%) rotate(-3deg)',
   good: 'translateX(135%) rotate(14deg)',
+  easy: 'translateY(135%) rotate(3deg)',
 }
 
 const peekFanLeft = 'translateX(-18px) rotate(-5deg) scale(0.98)'
@@ -463,29 +648,75 @@ const peekFanRight = 'translateX(18px) rotate(5deg) scale(0.98)'
 const peekSingle = 'translateY(6px) scale(0.98)'
 const peekCenter = 'translate(0,0) rotate(0deg) scale(1)'
 
-function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
+function ReviewMode({
+  projectSlug,
+  cards,
+  now,
+  todayIntroducedCount,
+  onReviewed,
+  onExit,
+}: {
+  projectSlug: string | null
+  cards: Card[]
+  now: Date
+  todayIntroducedCount: number
+  onReviewed: (
+    cardUuid: string,
+    state: SrsCardState,
+    introduced: boolean,
+  ) => void
+  onExit: () => void
+}) {
   const { t } = useLanguage()
-  const queue = useMemo(() => {
-    const due = cards.filter((card) => card.due)
-    return due.length > 0 ? due : cards.slice(0, 5)
-  }, [])
+  const plugin = usePlugin()
+  const initialQueue = useMemo(() => {
+    const due = cards
+      .filter((card) => card.srsState && card.dueAt && isDue(card.dueAt, now))
+      .sort(
+        (left, right) =>
+          new Date(left.dueAt ?? 0).getTime() -
+          new Date(right.dueAt ?? 0).getTime(),
+      )
+    const newCardLimit = Math.max(0, 20 - todayIntroducedCount)
+    const newCards = cards
+      .filter((card) => !card.srsState)
+      .slice(0, newCardLimit)
+    return [...due, ...newCards]
+  }, [cards, now, todayIntroducedCount])
 
+  const [queue, setQueue] = useState<Card[]>(initialQueue)
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [phase, setPhase] = useState<ReviewPhase>('idle')
   const [exitingGrade, setExitingGrade] = useState<ReviewGrade | null>(null)
   const [promoting, setPromoting] = useState(false)
   const [peeksSettling, setPeeksSettling] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [schedulingByCardUuid, setSchedulingByCardUuid] = useState<
+    Map<string, Record<ReviewGrade, CardScheduling>>
+  >(new Map())
   const [drag, setDrag] = useState({ x: 0, y: 0 })
   const dragOrigin = useRef<{ x: number; y: number } | null>(null)
   const activeCardRef = useRef<HTMLDivElement>(null)
   const timersRef = useRef<number[]>([])
+  const hasStartedRef = useRef(false)
+  const appearanceCountByCardUuid = useRef(new Map<string, number>())
+  const schedulingRequestGenerationRef = useRef(0)
+
+  useEffect(() => {
+    if (hasStartedRef.current) return
+    setQueue(initialQueue)
+    setIndex(0)
+    appearanceCountByCardUuid.current = new Map(
+      initialQueue.map((item) => [item.id, 1]),
+    )
+  }, [initialQueue])
 
   const card = queue[index]
   const nextCard = queue[index + 1]
   const done = index >= queue.length
   const remainingAfter = queue.length - index - 1
-  const busy = phase !== 'idle'
+  const busy = phase !== 'idle' || submitting
   const progress = done ? 100 : ((index + 1) / queue.length) * 100
 
   const clearTimers = useCallback(() => {
@@ -495,12 +726,80 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
     timersRef.current = []
   }, [])
 
+  useEffect(() => {
+    if (!projectSlug || !card) return
+    let cancelled = false
+    const generation = schedulingRequestGenerationRef.current + 1
+    schedulingRequestGenerationRef.current = generation
+    const loadScheduling = async () => {
+      try {
+        const scheduling = await plugin
+          .getLearningSrsStore()
+          .getCardScheduling(projectSlug, card.id, new Date())
+        if (
+          !cancelled &&
+          schedulingRequestGenerationRef.current === generation
+        ) {
+          setSchedulingByCardUuid((current) => {
+            const next = new Map(current)
+            next.set(card.id, scheduling)
+            return next
+          })
+        }
+      } catch {
+        if (
+          !cancelled &&
+          schedulingRequestGenerationRef.current === generation
+        ) {
+          new Notice(
+            t('learning.cards.srsLoadFailed', '复习计划加载失败，请重试'),
+          )
+        }
+      }
+    }
+    void loadScheduling()
+    return () => {
+      cancelled = true
+    }
+  }, [card, plugin, projectSlug, t])
+
   const commitGrade = useCallback(
-    (grade: ReviewGrade) => {
-      if (phase !== 'idle' || done) return
+    async (grade: ReviewGrade) => {
+      if (phase !== 'idle' || submitting || done || !card || !projectSlug)
+        return
 
       clearTimers()
+      setSubmitting(true)
       setDrag({ x: 0, y: 0 })
+      const introduced = card.srsState === null
+      let result
+      try {
+        result = await plugin
+          .getLearningSrsStore()
+          .reviewCard(projectSlug, card.id, grade, new Date())
+      } catch {
+        setSubmitting(false)
+        new Notice(t('learning.cards.reviewSaveFailed', '评分保存失败，请重试'))
+        return
+      }
+
+      hasStartedRef.current = true
+      onReviewed(card.id, result.card, introduced)
+      schedulingRequestGenerationRef.current += 1
+      setSchedulingByCardUuid((current) => {
+        const next = new Map(current)
+        next.set(card.id, result.scheduling)
+        return next
+      })
+      if (
+        grade === 'again' &&
+        (appearanceCountByCardUuid.current.get(card.id) ?? 1) < 2
+      ) {
+        appearanceCountByCardUuid.current.set(card.id, 2)
+        setQueue((current) => [...current, { ...card, srsState: result.card }])
+      }
+
+      setSubmitting(false)
       setExitingGrade(grade)
       setPhase('exit')
       setPromoting(false)
@@ -527,19 +826,30 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
         setPromoting(false)
       }, EXIT_MS + SETTLE_MS)
     },
-    [phase, done, clearTimers],
+    [
+      card,
+      clearTimers,
+      done,
+      onReviewed,
+      phase,
+      plugin,
+      projectSlug,
+      submitting,
+      t,
+    ],
   )
 
   useEffect(() => () => clearTimers(), [clearTimers])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (busy) return
       if (event.code === 'Escape') {
         event.preventDefault()
         onExit()
         return
       }
-      if (busy || done) return
+      if (done) return
 
       if (event.code === 'Space') {
         event.preventDefault()
@@ -551,7 +861,7 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
       const grade = keyboardToGrade(event)
       if (grade) {
         event.preventDefault()
-        commitGrade(grade)
+        void commitGrade(grade)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -586,7 +896,7 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
     }
 
     const grade = resolveSwipeGrade(dx, dy)
-    if (grade) commitGrade(grade)
+    if (grade) void commitGrade(grade)
     else setDrag({ x: 0, y: 0 })
   }
 
@@ -596,23 +906,29 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
   }
 
   const activeGrade = exitingGrade ?? resolveSwipeGrade(drag.x, drag.y)
+  const scheduling = card ? schedulingByCardUuid.get(card.id) : undefined
   const gradeMeta: Record<
     ReviewGrade,
     { label: string; hint: string; tone: 'danger' | 'warning' | 'success' }
   > = {
-    forgot: {
-      label: t('learning.cards.reviewForgot', '忘了'),
-      hint: t('learning.cards.reviewForgotHint', '< 1 分钟后'),
+    again: {
+      label: t('learning.cards.reviewAgain', '重来'),
+      hint: formatSchedulingHint(scheduling?.again, new Date()),
       tone: 'danger',
     },
     hard: {
       label: t('learning.cards.reviewHard', '模糊'),
-      hint: t('learning.cards.reviewHardHint', '10 分钟后'),
+      hint: formatSchedulingHint(scheduling?.hard, new Date()),
       tone: 'warning',
     },
     good: {
       label: t('learning.cards.reviewGood', '会了'),
-      hint: t('learning.cards.reviewGoodHint', '2 天后'),
+      hint: formatSchedulingHint(scheduling?.good, new Date()),
+      tone: 'success',
+    },
+    easy: {
+      label: t('learning.cards.reviewEasy', '简单'),
+      hint: formatSchedulingHint(scheduling?.easy, new Date()),
       tone: 'success',
     },
   }
@@ -622,7 +938,7 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
     return (
       <div className="yolo-learning-cards-review-done">
         <p className="yolo-learning-cards-review-done-title">
-          {t('learning.cards.noReviewCards', '暂无卡片可复习')}
+          {t('learning.cards.noReviewCards', '暂无到期卡片')}
         </p>
         <button
           type="button"
@@ -832,13 +1148,14 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
           busy && 'yolo-learning-cards-review-actions-busy',
         )}
       >
-        {(['forgot', 'hard', 'good'] as const).map((grade) => (
+        {(['again', 'hard', 'good', 'easy'] as const).map((grade) => (
           <EvalBtn
             key={grade}
             tone={gradeMeta[grade].tone}
             label={gradeMeta[grade].label}
             hint={gradeMeta[grade].hint}
-            onClick={() => commitGrade(grade)}
+            disabled={busy}
+            onClick={() => void commitGrade(grade)}
           />
         ))}
       </div>
@@ -846,7 +1163,7 @@ function ReviewMode({ cards, onExit }: { cards: Card[]; onExit: () => void }) {
       <div className="yolo-learning-cards-review-shortcuts">
         {t(
           'learning.cards.reviewShortcuts',
-          '空格 翻面 · ← ↑ → 或 1 / 2 / 3 评估 · Esc 回浏览',
+          '空格 翻面 · ← ↑ → ↓ 或 1 / 2 / 3 / 4 评估 · Esc 回浏览',
         )}
       </div>
     </div>
@@ -857,16 +1174,19 @@ function EvalBtn({
   tone,
   label,
   hint,
+  disabled,
   onClick,
 }: {
   tone: 'danger' | 'warning' | 'success'
   label: string
   hint: string
+  disabled?: boolean
   onClick?: () => void
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       className={cx(
         'yolo-learning-cards-eval-btn',
@@ -877,6 +1197,21 @@ function EvalBtn({
       <span className="yolo-learning-cards-eval-hint">{hint}</span>
     </button>
   )
+}
+
+function formatSchedulingHint(
+  scheduling: CardScheduling | undefined,
+  now: Date,
+): string {
+  if (!scheduling) return '…'
+  const minutes = Math.max(
+    1,
+    Math.round((scheduling.due.getTime() - now.getTime()) / 60_000),
+  )
+  if (minutes < 60) return `${minutes} 分钟后`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours} 小时后`
+  return `${Math.max(1, scheduling.scheduledDays)} 天后`
 }
 
 function CardIconBtn({

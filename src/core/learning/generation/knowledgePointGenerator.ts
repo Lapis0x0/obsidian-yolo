@@ -126,7 +126,7 @@ export async function generateKnowledgePointsForChapter({
       toolCalls: collected.toolCalls,
       outputLength: finalText.length,
       output: finalText,
-      pointCount: drafts.length,
+      count: drafts.length,
     },
   }
 }

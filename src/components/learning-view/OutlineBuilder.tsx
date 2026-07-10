@@ -26,16 +26,18 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react'
+import { Notice } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { generateKnowledgePointsForChapter } from '../../core/learning/generation/knowledgePointGenerator'
-import { generateOutline } from '../../core/learning/generation/outlineGenerator'
+import { generateCardsParallel } from '../../core/learning/generation/cardGenerator'
 import {
   type ChapterDebugData,
   emitChaptersDebugLog,
 } from '../../core/learning/generation/debugLog'
+import { generateKnowledgePointsForChapter } from '../../core/learning/generation/knowledgePointGenerator'
+import { generateOutline } from '../../core/learning/generation/outlineGenerator'
 import {
   type WrittenKnowledgePoint,
   appendKnowledgePointDraft,
@@ -56,6 +58,7 @@ import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import { ConfirmModal } from '../modals/ConfirmModal'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
 
@@ -258,10 +261,15 @@ export function OutlineBuilder({
           ? { enabled: true, include: [projectRefPath], exclude: [] }
           : workspaceScope
       const chapterDebugData: ChapterDebugData[] = []
-      await Promise.all(
+      const knowledgeResults = await Promise.all(
         validChapters.map(async (chapter, index) => {
           const target = scaffold.chapters[index]
-          if (!target) return
+          if (!target) {
+            return {
+              chapterTitle: chapter.title,
+              error: `Missing scaffold target for chapter: ${chapter.title}`,
+            }
+          }
           const draftedPoints: WrittenKnowledgePoint[] = []
           let completedCount = 0
 
@@ -296,61 +304,92 @@ export function OutlineBuilder({
           }
 
           try {
-            const { debugData } = await generateKnowledgePointsForChapter({
-              plugin,
-              chapterIndex: index,
-              projectTopic: resolvedProjectName,
-              chapterTitle: chapter.title,
-              chapterContract: chapter.contract,
-              level,
-              workspaceScope: knowledgeWorkspaceScope,
-              referenceDir: projectRefPath,
-              abortSignal: controller.signal,
-              activity: {
-                kind: 'learning-agent',
-                title: t('learning.wizard.modeLabel', '学习模式'),
-                detail: `${t(
-                  'learning.outlineBuilder.knowledgeGenerating',
-                  '正在生成知识点',
-                )}：${chapter.title}`,
-                action: 'open-learning-view',
-              },
-              onKnowledgePointTitle: (title) => {
-                draftKnowledgePoint(title)
-              },
-              onKnowledgePoint: async (point) => {
-                const drafted =
-                  draftedPoints[completedCount] ??
-                  draftKnowledgePoint(point.title)
-                const knowledgePoint = await appendKnowledgePointDraft({
-                  app: plugin.app,
-                  projectPath: scaffold.projectPath,
-                  chapter: target,
-                  point,
-                  uuid: drafted.uuid,
-                })
-                completedCount += 1
-                eventBus.emitSynthetic({
-                  type: 'knowledge_point_added',
-                  projectId: scaffold.projectPath,
-                  knowledgePoint,
-                })
-                eventBus.emitSynthetic({
-                  type: 'knowledge_point_focused',
-                  projectId: scaffold.projectPath,
-                  knowledgePointId: knowledgePoint.id,
-                })
-              },
-            })
+            const { drafts, debugData } =
+              await generateKnowledgePointsForChapter({
+                plugin,
+                chapterIndex: index,
+                projectTopic: resolvedProjectName,
+                chapterTitle: chapter.title,
+                chapterContract: chapter.contract,
+                level,
+                workspaceScope: knowledgeWorkspaceScope,
+                referenceDir: projectRefPath,
+                abortSignal: controller.signal,
+                activity: {
+                  kind: 'learning-agent',
+                  title: t('learning.wizard.modeLabel', '学习模式'),
+                  detail: `${t(
+                    'learning.outlineBuilder.knowledgeGenerating',
+                    '正在生成知识点',
+                  )}：${chapter.title}`,
+                  action: 'open-learning-view',
+                },
+                onKnowledgePointTitle: (title) => {
+                  draftKnowledgePoint(title)
+                },
+                onKnowledgePoint: async (point) => {
+                  const drafted =
+                    draftedPoints[completedCount] ??
+                    draftKnowledgePoint(point.title)
+                  const knowledgePoint = await appendKnowledgePointDraft({
+                    app: plugin.app,
+                    projectPath: scaffold.projectPath,
+                    chapter: target,
+                    point,
+                    uuid: drafted.uuid,
+                  })
+                  completedCount += 1
+                  eventBus.emitSynthetic({
+                    type: 'knowledge_point_added',
+                    projectId: scaffold.projectPath,
+                    knowledgePoint,
+                  })
+                  eventBus.emitSynthetic({
+                    type: 'knowledge_point_focused',
+                    projectId: scaffold.projectPath,
+                    knowledgePointId: knowledgePoint.id,
+                  })
+                },
+              })
+            if (drafts.length === 0) {
+              throw new Error(`No knowledge points generated: ${chapter.title}`)
+            }
             chapterDebugData.push(debugData)
+            return { chapterTitle: chapter.title }
           } catch (error) {
-            if (controller.signal.aborted) return
+            if (controller.signal.aborted) {
+              return {
+                chapterTitle: chapter.title,
+                error: 'Generation aborted',
+              }
+            }
             console.error('[YOLO] Failed to generate chapter knowledge:', error)
+            return {
+              chapterTitle: chapter.title,
+              error: error instanceof Error ? error.message : String(error),
+            }
           }
         }),
       )
       if (controller.signal.aborted) return
       emitChaptersDebugLog(chapterDebugData)
+      const failedKnowledgeChapters = knowledgeResults.filter(
+        (result) => result.error,
+      )
+      if (failedKnowledgeChapters.length > 0) {
+        eventBus.emitSynthetic({
+          type: 'knowledge_point_focused',
+          projectId: scaffold.projectPath,
+          knowledgePointId: null,
+        })
+        await eventBus.refreshSnapshot({ emitInitial: false })
+        new Notice(
+          `知识点生成失败：${failedKnowledgeChapters
+            .map((result) => result.chapterTitle)
+            .join('、')}`,
+        )
+        return
+      }
       await markProjectStudying({
         app: plugin.app,
         indexPath: scaffold.indexPath,
@@ -361,6 +400,61 @@ export function OutlineBuilder({
         knowledgePointId: null,
       })
       await eventBus.refreshSnapshot({ emitInitial: false })
+      onComplete(scaffold.projectPath)
+
+      new ConfirmModal(plugin.app, {
+        title: t('learning.cards.generateTitle', '生成学习卡片'),
+        message: t(
+          'learning.cards.generatePrompt',
+          '知识点已全部生成完成。是否现在为各章节生成学习卡片？',
+        ),
+        ctaText: t('learning.cards.generateNow', '生成卡片'),
+        cancelText: t('common.cancel', '取消'),
+        onConfirm: () => {
+          void generateCardsParallel({
+            plugin,
+            projectTopic: resolvedProjectName,
+            projectPath: scaffold.projectPath,
+            chapters: validChapters.map((chapter, index) => ({
+              title: chapter.title,
+              contract: chapter.contract,
+              knowledgePath: scaffold.chapters[index].knowledgePath,
+              cardsPath: scaffold.chapters[index].cardsPath,
+            })),
+            level,
+            workspaceScope: knowledgeWorkspaceScope,
+            activity: {
+              kind: 'learning-agent',
+              title: t('learning.wizard.modeLabel', '学习模式'),
+              detail: t('learning.cards.generating', '正在生成学习卡片'),
+              action: 'open-learning-view',
+            },
+          })
+            .then(async (results) => {
+              await eventBus.refreshSnapshot({ emitInitial: false })
+              const generated = results.filter(
+                (result) => result.status === 'generated',
+              ).length
+              const partial = results.filter(
+                (result) => result.status === 'partial',
+              ).length
+              const failed = results.filter(
+                (result) => result.status === 'failed',
+              ).length
+              const skipped = results.filter(
+                (result) => result.status === 'skipped',
+              ).length
+              new Notice(
+                `卡片生成完成：成功 ${generated} 章，部分完成 ${partial} 章，失败 ${failed} 章，跳过 ${skipped} 章`,
+              )
+            })
+            .catch((error: unknown) => {
+              new Notice(
+                `卡片生成失败：${error instanceof Error ? error.message : String(error)}`,
+              )
+            })
+        },
+      }).open()
     } catch (err: unknown) {
       if (!controller.signal.aborted) {
         console.error(
@@ -370,7 +464,6 @@ export function OutlineBuilder({
       }
       return
     }
-    onComplete(scaffold.projectPath)
   }
 
   const generating = phase === 'outline'

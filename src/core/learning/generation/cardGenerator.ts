@@ -1,0 +1,640 @@
+import { dump as dumpYaml } from 'js-yaml'
+import { App, TFile, normalizePath } from 'obsidian'
+import { v4 as uuidv4 } from 'uuid'
+
+import type YoloPlugin from '../../../main'
+import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
+import type { ChatAssistantMessage, ChatUserMessage } from '../../../types/chat'
+import { buildAgentApiUserMessage } from '../../agent/agent-api'
+import type { AgentRunActivity } from '../../agent/service'
+
+import {
+  type ChapterDebugData,
+  PhaseDebugCollector,
+  emitChaptersDebugLog,
+} from './debugLog'
+import { CARD_GENERATOR_PROMPT, buildCardPrompt } from './prompts'
+import { LEARNING_CARD_TOOL_NAMES } from './tools'
+import type {
+  CardDraft,
+  CardGenerationResult,
+  GenerationProgress,
+  OutlineChapter,
+} from './types'
+
+const KNOWLEDGE_POINT_UUID_RE = /<!--\s*kp:([0-9a-fA-F]{8})\s*-->/g
+const CARD_HEADING_RE = /^##[ \t]+([^\r\n]+)$/gm
+const CARD_KP_UUID_RE = /<!--\s*kp:([0-9a-fA-F]{8})\s*-->/
+const WRITTEN_CARD_COMMENT_RE =
+  /<!--\s*card:([0-9a-fA-F]{8})(?:\s+kp:([0-9a-fA-F]{8}))?\s*-->/
+const CARD_FRONT_RE =
+  /\*\*正面：\*\*[ \t]*([\s\S]*?)(?=\n[ \t]*\*\*背面：\*\*|$)/
+const CARD_BACK_RE = /\*\*背面：\*\*[ \t]*([\s\S]*)$/
+
+type AssignedCardDraft = CardDraft & { cardUuid: string }
+
+type WrittenCardEntry = CardDraft & {
+  cardUuid: string
+  block: string
+}
+
+type WrittenCardValidation = {
+  valid: WrittenCardEntry[]
+  invalid: Array<{
+    cardUuid: string
+    block: string
+    errors: string[]
+  }>
+  discardedCount: number
+}
+
+export type GenerateCardsForChapterOptions = {
+  plugin: YoloPlugin
+  chapterIndex: number
+  projectTopic: string
+  chapterTitle: string
+  chapterContract: string
+  knowledgePath: string
+  cardsPath: string
+  level: string
+  usedCardUuids: Set<string>
+  workspaceScope?: AssistantWorkspaceScope
+  abortSignal?: AbortSignal
+  activity?: AgentRunActivity
+  onProgress?: (delta: string, fullText: string) => void
+}
+
+export async function generateCardsForChapter({
+  plugin,
+  chapterIndex,
+  projectTopic,
+  chapterTitle,
+  chapterContract,
+  knowledgePath,
+  cardsPath,
+  level,
+  usedCardUuids,
+  workspaceScope,
+  abortSignal,
+  activity,
+  onProgress,
+}: GenerateCardsForChapterOptions): Promise<{
+  drafts: CardDraft[]
+  status: 'generated' | 'partial'
+  discardedCount: number
+  debugData: ChapterDebugData
+}> {
+  const knowledgeFile = plugin.app.vault.getAbstractFileByPath(knowledgePath)
+  if (!(knowledgeFile instanceof TFile)) {
+    throw new Error(`Knowledge file not found: ${knowledgePath}`)
+  }
+
+  const knowledgeSnapshot = await plugin.app.vault.read(knowledgeFile)
+  const validKpUuids = extractKnowledgePointUuids(knowledgeSnapshot)
+  if (validKpUuids.size === 0) {
+    throw new Error(
+      `Knowledge file has no valid knowledge points: ${knowledgePath}`,
+    )
+  }
+
+  const prompt = buildCardPrompt({
+    projectTopic,
+    chapterTitle,
+    chapterContract,
+    knowledgeMdContent: extractMarkdownBody(knowledgeSnapshot),
+    cardsFilePath: cardsPath,
+    level,
+  })
+  const cardWorkspaceScope = buildCardWorkspaceScope(workspaceScope, cardsPath)
+  const debug = new PhaseDebugCollector()
+  const runStream = async (
+    request:
+      | { prompt: string }
+      | { messages: Array<ChatUserMessage | ChatAssistantMessage> },
+  ): Promise<string> => {
+    let accumulated = ''
+    let completedText = ''
+    const stream = plugin.agent.stream({
+      ...request,
+      mode: 'agent',
+      yolo: true,
+      systemPromptOverride: CARD_GENERATOR_PROMPT,
+      tools: { allowedToolNames: LEARNING_CARD_TOOL_NAMES },
+      workspaceScope: cardWorkspaceScope,
+      activity,
+      abortSignal,
+    })
+
+    for await (const event of stream) {
+      if (event.type === 'text') {
+        accumulated = event.text || accumulated + event.delta
+        onProgress?.(event.delta, accumulated)
+      }
+      if (event.type === 'tool') {
+        debug.recordToolCall(event)
+      }
+      if (event.type === 'completed') {
+        completedText = event.text
+      }
+      if (event.type === 'error') {
+        throw new Error(event.message)
+      }
+    }
+
+    return completedText || accumulated
+  }
+
+  const firstUserMessage: ChatUserMessage = buildAgentApiUserMessage({
+    id: `card-gen-${chapterIndex}-req-1`,
+    promptContent: prompt,
+    mentionables: [],
+  })
+  const firstOutput = await runStream({ messages: [firstUserMessage] })
+  throwIfAborted(abortSignal)
+  const firstDrafts = parseCardDrafts(firstOutput)
+  if (firstDrafts.length === 0) {
+    throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
+  }
+
+  const assignedDrafts = assignCardUuids(firstDrafts, usedCardUuids)
+  await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
+  const cardsFile = await createCardsFile(
+    plugin,
+    cardsPath,
+    chapterTitle,
+    assignedDrafts,
+  )
+  try {
+    await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
+  } catch (error) {
+    const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back only the file created by this generation transaction.
+    await plugin.app.vault.delete(ownedCardsFile)
+    throw error
+  }
+  const expectedCardUuids = new Set(
+    assignedDrafts.map((draft) => draft.cardUuid),
+  )
+
+  let finalOutput = firstOutput
+  let fileContent = await plugin.app.vault.read(cardsFile)
+  let validation = validateWrittenCards(
+    parseWrittenCardEntries(fileContent),
+    expectedCardUuids,
+    validKpUuids,
+  )
+
+  if (validation.invalid.length > 0 && !abortSignal?.aborted) {
+    const firstAssistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: `card-gen-${chapterIndex}-resp-1`,
+      content: firstOutput,
+    }
+    const retryUserMessage: ChatUserMessage = buildAgentApiUserMessage({
+      id: `card-gen-${chapterIndex}-req-2`,
+      promptContent: buildValidationRetryPrompt(
+        validation.invalid,
+        validKpUuids,
+        cardsPath,
+      ),
+      mentionables: [],
+    })
+    try {
+      finalOutput = await runStream({
+        messages: [firstUserMessage, firstAssistantMessage, retryUserMessage],
+      })
+    } catch (error) {
+      console.error('[YOLO] Failed to correct generated cards:', error)
+    }
+
+    if (abortSignal?.aborted) {
+      const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+      // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
+      await plugin.app.vault.delete(ownedCardsFile)
+      throw new Error(`Card generation aborted: ${chapterTitle}`)
+    }
+
+    try {
+      await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
+    } catch (error) {
+      const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+      // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Remove only the transient file created by this generation transaction.
+      await plugin.app.vault.delete(ownedCardsFile)
+      throw error
+    }
+    const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    fileContent = await plugin.app.vault.read(currentCardsFile)
+    validation = validateWrittenCards(
+      parseWrittenCardEntries(fileContent),
+      expectedCardUuids,
+      validKpUuids,
+    )
+  }
+
+  const discardedCount = validation.discardedCount
+  if (validation.valid.length === 0) {
+    const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- An empty generated artifact should not be moved into the user's trash.
+    await plugin.app.vault.delete(currentCardsFile)
+    throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
+  }
+
+  if (discardedCount > 0) {
+    const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    await plugin.app.vault.modify(
+      currentCardsFile,
+      buildCardsContent(
+        chapterTitle,
+        validation.valid.map((entry) => entry.block),
+      ),
+    )
+  }
+
+  const finalDrafts = validation.valid.map(toCardDraft)
+  if (abortSignal?.aborted) {
+    const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
+    await plugin.app.vault.delete(ownedCardsFile)
+    throw new Error(`Card generation aborted: ${chapterTitle}`)
+  }
+  const collected = debug.finalize()
+  return {
+    drafts: finalDrafts,
+    status: discardedCount > 0 ? 'partial' : 'generated',
+    discardedCount,
+    debugData: {
+      chapterIndex,
+      chapterTitle,
+      startedAt: collected.startedAt,
+      completedAt: collected.completedAt,
+      toolCalls: collected.toolCalls,
+      outputLength: finalOutput.length,
+      output: finalOutput,
+      count: finalDrafts.length,
+    },
+  }
+}
+
+export type CardGenerationChapter = OutlineChapter & {
+  knowledgePath: string
+  cardsPath: string
+}
+
+export type GenerateCardsParallelOptions = {
+  plugin: YoloPlugin
+  projectTopic: string
+  projectPath: string
+  chapters: CardGenerationChapter[]
+  level: string
+  workspaceScope?: AssistantWorkspaceScope
+  abortSignal?: AbortSignal
+  activity?: AgentRunActivity
+  onChapterProgress?: (progress: GenerationProgress) => void
+}
+
+export async function generateCardsParallel({
+  plugin,
+  projectTopic,
+  projectPath,
+  chapters,
+  level,
+  workspaceScope,
+  abortSignal,
+  activity,
+  onChapterProgress,
+}: GenerateCardsParallelOptions): Promise<CardGenerationResult[]> {
+  const chapterDebugData: ChapterDebugData[] = []
+  const usedCardUuids = await collectExistingCardUuids(plugin.app, projectPath)
+  const tasks = chapters.map(async (chapter, chapterIndex) => {
+    if (plugin.app.vault.getAbstractFileByPath(chapter.cardsPath)) {
+      return {
+        chapterIndex,
+        chapterTitle: chapter.title,
+        cards: [],
+        status: 'skipped' as const,
+        discardedCount: 0,
+      }
+    }
+
+    onChapterProgress?.({
+      chapterIndex,
+      chapterTitle: chapter.title,
+      status: 'generating',
+    })
+    try {
+      const { drafts, debugData, status, discardedCount } =
+        await generateCardsForChapter({
+          plugin,
+          chapterIndex,
+          projectTopic,
+          chapterTitle: chapter.title,
+          chapterContract: chapter.contract,
+          knowledgePath: chapter.knowledgePath,
+          cardsPath: chapter.cardsPath,
+          level,
+          usedCardUuids,
+          workspaceScope,
+          abortSignal,
+          activity,
+        })
+      chapterDebugData.push(debugData)
+      onChapterProgress?.({
+        chapterIndex,
+        chapterTitle: chapter.title,
+        status: 'completed',
+      })
+      return {
+        chapterIndex,
+        chapterTitle: chapter.title,
+        cards: drafts,
+        status,
+        discardedCount,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      onChapterProgress?.({
+        chapterIndex,
+        chapterTitle: chapter.title,
+        status: 'error',
+        error: message,
+      })
+      return {
+        chapterIndex,
+        chapterTitle: chapter.title,
+        cards: [],
+        status: 'failed' as const,
+        discardedCount: 0,
+        error: message,
+      }
+    }
+  })
+
+  const results = await Promise.all(tasks)
+  if (!abortSignal?.aborted) {
+    emitChaptersDebugLog(chapterDebugData, 'card-generator', 'cards')
+  }
+  return results
+}
+
+export function parseCardDrafts(markdown: string): CardDraft[] {
+  const headings = [...markdown.matchAll(CARD_HEADING_RE)]
+  return headings.map((heading, index) => {
+    const start = heading.index ?? 0
+    const nextStart = headings[index + 1]?.index ?? markdown.length
+    const block = markdown.slice(start, nextStart).trim()
+    const titleLine = heading[1]?.trim() ?? ''
+    const kpMatch = titleLine.match(CARD_KP_UUID_RE)
+    const bodyStart = block.indexOf('\n')
+    const body = bodyStart === -1 ? '' : block.slice(bodyStart + 1).trim()
+    const frontMatch = body.match(CARD_FRONT_RE)
+    const backMatch = body.match(CARD_BACK_RE)
+    return {
+      title: titleLine.replace(CARD_KP_UUID_RE, '').trim(),
+      kpUuid: kpMatch?.[1]?.toLowerCase() ?? '',
+      front: frontMatch?.[1]?.trim() ?? '',
+      back: backMatch?.[1]?.trim() ?? '',
+      startLine: markdown.slice(0, start).split('\n').length,
+    }
+  })
+}
+
+export function parseWrittenCardEntries(content: string): WrittenCardEntry[] {
+  const headings = [...content.matchAll(CARD_HEADING_RE)]
+  return headings.map((heading, index) => {
+    const start = heading.index ?? 0
+    const nextStart = headings[index + 1]?.index ?? content.length
+    const block = content.slice(start, nextStart).trim()
+    const titleLine = heading[1]?.trim() ?? ''
+    const commentMatch = titleLine.match(WRITTEN_CARD_COMMENT_RE)
+    const bodyStart = block.indexOf('\n')
+    const body = bodyStart === -1 ? '' : block.slice(bodyStart + 1).trim()
+    return {
+      cardUuid: commentMatch?.[1]?.toLowerCase() ?? '',
+      kpUuid: commentMatch?.[2]?.toLowerCase() ?? '',
+      title: titleLine.replace(WRITTEN_CARD_COMMENT_RE, '').trim(),
+      front: body.match(CARD_FRONT_RE)?.[1]?.trim() ?? '',
+      back: body.match(CARD_BACK_RE)?.[1]?.trim() ?? '',
+      startLine: content.slice(0, start).split('\n').length,
+      block,
+    }
+  })
+}
+
+export function validateWrittenCards(
+  entries: WrittenCardEntry[],
+  expectedCardUuids: Set<string>,
+  validKpUuids: Set<string>,
+): WrittenCardValidation {
+  const entriesByUuid = new Map<string, WrittenCardEntry[]>()
+  for (const entry of entries) {
+    const existing = entriesByUuid.get(entry.cardUuid) ?? []
+    existing.push(entry)
+    entriesByUuid.set(entry.cardUuid, existing)
+  }
+
+  const valid: WrittenCardEntry[] = []
+  const invalid: WrittenCardValidation['invalid'] = []
+  for (const cardUuid of expectedCardUuids) {
+    const matches = entriesByUuid.get(cardUuid) ?? []
+    if (matches.length !== 1) {
+      invalid.push({
+        cardUuid,
+        block: matches[0]?.block ?? '',
+        errors: [matches.length === 0 ? '缺少该 card UUID' : 'card UUID 重复'],
+      })
+      continue
+    }
+
+    const entry = matches[0]
+    const errors: string[] = []
+    if (!entry.title) errors.push('缺少标题')
+    if (!entry.kpUuid) {
+      errors.push('缺少 kp UUID')
+    } else if (!validKpUuids.has(entry.kpUuid)) {
+      errors.push(`kp:${entry.kpUuid} 不属于本章`)
+    }
+    if (!entry.front) errors.push('缺少精确格式的 **正面：** 内容')
+    if (!entry.back) errors.push('缺少精确格式的 **背面：** 内容')
+    if (errors.length > 0) {
+      invalid.push({ cardUuid, block: entry.block, errors })
+    } else {
+      valid.push(entry)
+    }
+  }
+
+  const unexpectedCount = entries.filter(
+    (entry) => !expectedCardUuids.has(entry.cardUuid),
+  ).length
+  return {
+    valid,
+    invalid,
+    discardedCount: invalid.length + unexpectedCount,
+  }
+}
+
+function buildCardWorkspaceScope(
+  workspaceScope: AssistantWorkspaceScope | undefined,
+  cardsPath: string,
+): AssistantWorkspaceScope {
+  const include = workspaceScope?.enabled ? workspaceScope.include : []
+  return {
+    enabled: true,
+    include: [...new Set([...include, normalizePath(cardsPath)])],
+    exclude: workspaceScope?.enabled ? workspaceScope.exclude : [],
+  }
+}
+
+function extractKnowledgePointUuids(markdown: string): Set<string> {
+  return new Set(
+    [...markdown.matchAll(KNOWLEDGE_POINT_UUID_RE)].map((match) =>
+      (match[1] ?? '').toLowerCase(),
+    ),
+  )
+}
+
+function throwIfAborted(abortSignal: AbortSignal | undefined): void {
+  if (abortSignal?.aborted) {
+    throw new Error('Card generation aborted')
+  }
+}
+
+function getOwnedCardsFile(
+  plugin: YoloPlugin,
+  cardsPath: string,
+  expectedFile: TFile,
+): TFile {
+  const currentFile = plugin.app.vault.getAbstractFileByPath(cardsPath)
+  if (currentFile !== expectedFile) {
+    throw new Error(`Cards file changed concurrently: ${cardsPath}`)
+  }
+  return expectedFile
+}
+
+function assignCardUuids(
+  drafts: CardDraft[],
+  usedCardUuids: Set<string>,
+): AssignedCardDraft[] {
+  return drafts.map((draft) => {
+    let cardUuid = createCardUuid()
+    while (usedCardUuids.has(cardUuid)) {
+      cardUuid = createCardUuid()
+    }
+    usedCardUuids.add(cardUuid)
+    return { ...draft, cardUuid }
+  })
+}
+
+function buildValidationRetryPrompt(
+  invalid: WrittenCardValidation['invalid'],
+  validKpUuids: Set<string>,
+  cardsPath: string,
+): string {
+  const details = invalid
+    .map(
+      (entry) => `card UUID：${entry.cardUuid}
+问题：${entry.errors.join('；')}
+当前原文：
+${entry.block || '<该 UUID 已从文件中消失>'}`,
+    )
+    .join('\n\n')
+
+  return `cards.md 已写入以下路径：${cardsPath}
+
+以下卡片格式不正确，请使用 fs_edit 逐个精确修正：
+
+${details}
+
+本章合法的知识点 UUID：${[...validKpUuids].join(', ')}
+
+只允许修改上述有问题的卡片，不要重写整个文件，也不要新增卡片。
+每张卡片必须保留现有 card UUID，标题行的最终格式必须是：
+## <卡片标题> <!--card:<现有card UUID> kp:<合法的知识点UUID>-->
+
+正面和背面必须精确使用 **正面：** 与 **背面：** 标记。修正完成后不要再输出卡片正文。`
+}
+
+async function assertKnowledgeUnchanged(
+  plugin: YoloPlugin,
+  knowledgeFile: TFile,
+  expectedContent: string,
+): Promise<void> {
+  const currentFile = plugin.app.vault.getAbstractFileByPath(knowledgeFile.path)
+  if (!(currentFile instanceof TFile)) {
+    throw new Error(`Knowledge file disappeared: ${knowledgeFile.path}`)
+  }
+  const currentContent = await plugin.app.vault.read(currentFile)
+  if (currentContent !== expectedContent) {
+    throw new Error(
+      `Knowledge file changed during generation: ${knowledgeFile.path}`,
+    )
+  }
+}
+
+async function createCardsFile(
+  plugin: YoloPlugin,
+  cardsPath: string,
+  chapterTitle: string,
+  drafts: AssignedCardDraft[],
+): Promise<TFile> {
+  if (plugin.app.vault.getAbstractFileByPath(cardsPath)) {
+    throw new Error(`Cards file already exists: ${cardsPath}`)
+  }
+  const blocks = drafts.map((draft) => {
+    const title = draft.title.trim()
+    const kpPart = draft.kpUuid ? ` kp:${draft.kpUuid.toLowerCase()}` : ''
+    return `## ${title}${title ? ' ' : ''}<!--card:${draft.cardUuid}${kpPart}-->\n\n**正面：** ${draft.front.trim()}\n\n**背面：** ${draft.back.trim()}`
+  })
+  return plugin.app.vault.create(
+    cardsPath,
+    buildCardsContent(chapterTitle, blocks),
+  )
+}
+
+function buildCardsContent(chapterTitle: string, blocks: string[]): string {
+  const yaml = dumpYaml(
+    { title: `${chapterTitle} - 卡片` },
+    { lineWidth: -1 },
+  ).trimEnd()
+  return `---\n${yaml}\n---\n\n${blocks.join('\n\n')}\n`
+}
+
+function toCardDraft(entry: WrittenCardEntry): CardDraft {
+  return {
+    title: entry.title,
+    kpUuid: entry.kpUuid,
+    front: entry.front,
+    back: entry.back,
+    startLine: entry.startLine,
+  }
+}
+
+async function collectExistingCardUuids(
+  app: App,
+  projectPath: string,
+): Promise<Set<string>> {
+  const normalizedProject = normalizePath(projectPath.replace(/\/$/, ''))
+  const projectPrefix = `${normalizedProject}/`
+  const uuids = new Set<string>()
+  const cardFiles = app.vault
+    .getMarkdownFiles()
+    .filter(
+      (file) => file.name === 'cards.md' && file.path.startsWith(projectPrefix),
+    )
+  for (const file of cardFiles) {
+    const content = await app.vault.cachedRead(file)
+    for (const match of content.matchAll(
+      /<!--\s*card:([0-9a-fA-F]{8})(?:\s+kp:[0-9a-fA-F]{8})?\s*-->/g,
+    )) {
+      uuids.add((match[1] ?? '').toLowerCase())
+    }
+  }
+  return uuids
+}
+
+function createCardUuid(): string {
+  return uuidv4().replace(/-/g, '').slice(0, 8)
+}
+
+function extractMarkdownBody(markdown: string): string {
+  return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+}

@@ -21,6 +21,23 @@ export type ChapterGenerationResult = {
   error?: string
 }
 
+export type CardDraft = {
+  title: string
+  kpUuid: string
+  front: string
+  back: string
+  startLine: number
+}
+
+export type CardGenerationResult = {
+  chapterIndex: number
+  chapterTitle: string
+  cards: CardDraft[]
+  status: 'generated' | 'partial' | 'failed' | 'skipped'
+  discardedCount: number
+  error?: string
+}
+
 export type GenerationProgress = {
   chapterIndex: number
   chapterTitle: string

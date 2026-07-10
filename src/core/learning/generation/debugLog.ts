@@ -32,7 +32,7 @@ export type ChapterDebugData = {
   toolCalls: ToolCallRecord[]
   outputLength: number
   output: string
-  pointCount: number
+  count: number
 }
 
 /**
@@ -92,7 +92,11 @@ export function emitPhaseDebugLog(data: PhaseDebugData): void {
   console.groupEnd()
 }
 
-export function emitChaptersDebugLog(chapters: ChapterDebugData[]): void {
+export function emitChaptersDebugLog(
+  chapters: ChapterDebugData[],
+  phaseLabel = 'kp-generator',
+  countLabel = 'pts',
+): void {
   if (!isLLMDebugCaptureEnabled()) return
   if (chapters.length === 0) return
 
@@ -102,16 +106,16 @@ export function emitChaptersDebugLog(chapters: ChapterDebugData[]): void {
     0,
   )
   const totalCalls = sorted.reduce((sum, ch) => sum + ch.toolCalls.length, 0)
-  const totalPts = sorted.reduce((sum, ch) => sum + ch.pointCount, 0)
+  const totalCount = sorted.reduce((sum, ch) => sum + ch.count, 0)
 
   console.groupCollapsed(
-    `[yolo-learning] kp-generator completed (${sorted.length} chapters, ${(totalDuration / 1000).toFixed(1)}s, ${totalCalls} calls, ${totalPts} pts)`,
+    `[yolo-learning] ${phaseLabel} completed (${sorted.length} chapters, ${(totalDuration / 1000).toFixed(1)}s, ${totalCalls} calls, ${totalCount} ${countLabel})`,
   )
 
   for (const ch of sorted) {
     const durationStr = `${((ch.completedAt - ch.startedAt) / 1000).toFixed(1)}s`
     console.groupCollapsed(
-      `ch${ch.chapterIndex} "${ch.chapterTitle}"  ${durationStr}  ${ch.toolCalls.length} call  ${ch.pointCount} pts  ${ch.outputLength}c`,
+      `ch${ch.chapterIndex} "${ch.chapterTitle}"  ${durationStr}  ${ch.toolCalls.length} call  ${ch.count} ${countLabel}  ${ch.outputLength}c`,
     )
     if (ch.toolCalls.length > 0) {
       console.debug(`tool-calls (${ch.toolCalls.length}):`)
@@ -141,10 +145,7 @@ function formatToolCallArgs(tc: ToolCallRecord): string {
   if (typeof args.page === 'number') {
     parts.push(`page=${args.page}`)
   }
-  if (
-    typeof args.startLine === 'number' &&
-    typeof args.endLine === 'number'
-  ) {
+  if (typeof args.startLine === 'number' && typeof args.endLine === 'number') {
     parts.push(`lines=${args.startLine}-${args.endLine}`)
   } else if (typeof args.startLine === 'number') {
     parts.push(`startLine=${args.startLine}`)

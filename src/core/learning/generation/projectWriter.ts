@@ -30,6 +30,7 @@ export type ChapterWriteTarget = {
   chapterSlug: string
   chapterPath: string
   knowledgePath: string
+  cardsPath: string
 }
 
 export type WrittenKnowledgePoint = {
@@ -76,6 +77,7 @@ export async function createProjectScaffold({
     chapterSlugs.push(chapterSlug)
     const chapterPath = normalizePath(`${projectPath}/${chapterSlug}`)
     const knowledgePath = normalizePath(`${chapterPath}/knowledge.md`)
+    const cardsPath = normalizePath(`${chapterPath}/cards.md`)
     await ensureFolder(app, chapterPath)
     await app.vault.create(
       knowledgePath,
@@ -87,6 +89,7 @@ export async function createProjectScaffold({
       chapterSlug,
       chapterPath,
       knowledgePath,
+      cardsPath,
     })
   }
 
