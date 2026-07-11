@@ -2,6 +2,8 @@ import {
   DndContext,
   type Collision,
   type CollisionDetection,
+  defaultDropAnimationSideEffects,
+  type DropAnimation,
   type DragEndEvent,
   type DragMoveEvent,
   DragOverlay,
@@ -24,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -112,8 +115,32 @@ type VirtualDropSlots = Map<
   { grid: HTMLElement; slots: VirtualDropSlot[] }
 >
 
+type CardLayoutTransition = {
+  direction: 'open' | 'close' | 'drag'
+  rects: Map<string, DOMRect>
+}
+
 const DROP_SLOT_HYSTERESIS = 6
 const DROP_CONTAINER_ENTRY_THRESHOLD = 12
+const CARD_DRAG_SCALE = 1.015
+const CARD_DROP_DURATION = 150
+const CARD_DROP_ANIMATION: DropAnimation = {
+  duration: CARD_DROP_DURATION,
+  easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  keyframes: ({ transform: { initial, final } }) => [
+    { transform: CSS.Transform.toString(initial) },
+    {
+      transform: CSS.Transform.toString({
+        ...final,
+        scaleX: final.scaleX / CARD_DRAG_SCALE,
+        scaleY: final.scaleY / CARD_DRAG_SCALE,
+      }),
+    },
+  ],
+  sideEffects: defaultDropAnimationSideEffects({
+    styles: { active: { opacity: '0' } },
+  }),
+}
 
 function createCardContainers(
   project: VaultProject,
@@ -647,6 +674,9 @@ function BrowseMode({
   const dragContainersRef = useRef<CardContainers | null>(null)
   const dragAreaRef = useRef<HTMLDivElement | null>(null)
   const inspectorRef = useRef<CardInspectorHandle | null>(null)
+  const pendingCardLayoutTransitionRef =
+    useRef<CardLayoutTransition | null>(null)
+  const cardLayoutAnimationsRef = useRef(new Map<HTMLElement, Animation>())
   const newCardDraftKeyRef = useRef(0)
   const cardContainerByIdRef = useRef(new Map<string, string>())
   const virtualDropSlotsRef = useRef<VirtualDropSlots>(new Map())
@@ -656,10 +686,40 @@ function BrowseMode({
     over: NonNullable<DragMoveEvent['over']>
   } | null>(null)
   const dragMoveFrameRef = useRef<number | null>(null)
+  const dropSettleTimerRef = useRef<number | null>(null)
   const dragCollisionRectRef =
     useRef<Parameters<CollisionDetection>[0]['collisionRect'] | null>(null)
   const lastContainerCollisionRef = useRef<Collision | null>(null)
   const containerCollisionStickyRef = useRef(false)
+  const captureCardLayout = useCallback(
+    (direction: CardLayoutTransition['direction']) => {
+      const root = dragAreaRef.current
+      const layout = root?.closest<HTMLElement>(
+        '.yolo-learning-cards-browser-layout',
+      )
+      if (
+        !root ||
+        !layout ||
+        getComputedStyle(layout).display !== 'grid' ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+        (direction !== 'drag' &&
+          root.querySelector('.yolo-learning-cards-sortable.is-dragging'))
+      ) {
+        pendingCardLayoutTransitionRef.current = null
+        return
+      }
+
+      const rects = new Map<string, DOMRect>()
+      root
+        .querySelectorAll<HTMLElement>('[data-yolo-card-id]')
+        .forEach((element) => {
+          const cardId = element.dataset.yoloCardId
+          if (cardId) rects.set(cardId, element.getBoundingClientRect())
+        })
+      pendingCardLayoutTransitionRef.current = { direction, rects }
+    },
+    [],
+  )
   const collisionDetection = useCallback<CollisionDetection>((args) => {
     dragCollisionRectRef.current = args.collisionRect
     const collisions = rectIntersection({
@@ -698,6 +758,18 @@ function BrowseMode({
       if (dragMoveFrameRef.current !== null) {
         cancelAnimationFrame(dragMoveFrameRef.current)
       }
+      if (dropSettleTimerRef.current !== null) {
+        window.clearTimeout(dropSettleTimerRef.current)
+      }
+    },
+    [],
+  )
+  useEffect(
+    () => () => {
+      cardLayoutAnimationsRef.current.forEach((animation) => {
+        animation.cancel()
+      })
+      cardLayoutAnimationsRef.current.clear()
     },
     [],
   )
@@ -748,6 +820,7 @@ function BrowseMode({
     : null
   const inspectorCard =
     persistedInspectorCard ?? optimisticInspectorCard ?? draftInspectorCard
+  const inspectorOpen = Boolean(inspectorCard)
   const baseGroups = project
     ? groupCardsByProjectOrder(project, filteredCards)
     : []
@@ -789,6 +862,71 @@ function BrowseMode({
     generation && settledIndexes.size < (project?.chapters.length ?? 0),
   )
   const writeDisabled = Boolean(error || writing)
+  useLayoutEffect(() => {
+    const transition = pendingCardLayoutTransitionRef.current
+    pendingCardLayoutTransitionRef.current = null
+    const root = dragAreaRef.current
+    if (!transition || !root) return
+
+    cardLayoutAnimationsRef.current.forEach((animation) => animation.cancel())
+    cardLayoutAnimationsRef.current.clear()
+
+    const movements: Array<{
+      distance: number
+      dx: number
+      dy: number
+      element: HTMLElement
+    }> = []
+    root
+      .querySelectorAll<HTMLElement>('[data-yolo-card-id]')
+      .forEach((element) => {
+        const cardId = element.dataset.yoloCardId
+        const previousRect = cardId ? transition.rects.get(cardId) : undefined
+        if (!previousRect) return
+        const nextRect = element.getBoundingClientRect()
+        const dx = previousRect.left - nextRect.left
+        const dy = previousRect.top - nextRect.top
+        const distance = Math.hypot(dx, dy)
+        if (distance < 1) return
+        movements.push({ distance, dx, dy, element })
+      })
+
+    const maxDistance = Math.max(...movements.map(({ distance }) => distance), 1)
+    movements.forEach(({ distance, dx, dy, element }) => {
+      const animation = element.animate(
+        [
+          { transform: `translate3d(${dx}px, ${dy}px, 0)` },
+          { transform: 'translate3d(0, 0, 0)' },
+        ],
+        {
+          delay:
+            transition.direction === 'drag'
+              ? 0
+              : 8 + (distance / maxDistance) * 8,
+          duration:
+            transition.direction === 'drag'
+              ? 160
+              : transition.direction === 'open'
+                ? 250
+                : 280,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+          fill: 'both',
+        },
+      )
+      cardLayoutAnimationsRef.current.set(element, animation)
+      const clearAnimation = () => {
+        if (cardLayoutAnimationsRef.current.get(element) !== animation) return
+        cardLayoutAnimationsRef.current.delete(element)
+        animation.cancel()
+      }
+      animation.onfinish = clearAnimation
+      animation.oncancel = () => {
+        if (cardLayoutAnimationsRef.current.get(element) === animation) {
+          cardLayoutAnimationsRef.current.delete(element)
+        }
+      }
+    })
+  }, [dragContainers, inspectorOpen])
   const chapterMemoryRetention = useMemo(() => {
     const totals = new Map<string, { count: number; retrievability: number }>()
     const srsStore = plugin.getLearningSrsStore()
@@ -874,6 +1012,7 @@ function BrowseMode({
     if (inspectorRef.current && !(await inspectorRef.current.flush())) {
       return false
     }
+    if (!inspectorCard) captureCardLayout('open')
     setInspectorClosing(false)
     setNewCardDraft(null)
     setOptimisticInspectorCard(null)
@@ -967,6 +1106,7 @@ function BrowseMode({
     point: VaultKnowledgePoint,
   ) => {
     if (inspectorRef.current && !(await inspectorRef.current.flush())) return
+    if (!inspectorCard) captureCardLayout('open')
     newCardDraftKeyRef.current += 1
     setSelectedCardId(null)
     setInspectorCardId(null)
@@ -1045,8 +1185,12 @@ function BrowseMode({
   }
 
   const clearDragSession = useCallback(() => {
+    captureCardLayout('drag')
     if (dragMoveFrameRef.current !== null) {
       cancelAnimationFrame(dragMoveFrameRef.current)
+    }
+    if (dropSettleTimerRef.current !== null) {
+      window.clearTimeout(dropSettleTimerRef.current)
     }
     setActiveCardId(null)
     setActiveCardHeight(null)
@@ -1059,10 +1203,11 @@ function BrowseMode({
     lastProjectionRef.current = null
     pendingDragMoveRef.current = null
     dragMoveFrameRef.current = null
+    dropSettleTimerRef.current = null
     dragCollisionRectRef.current = null
     lastContainerCollisionRef.current = null
     containerCollisionStickyRef.current = false
-  }, [])
+  }, [captureCardLayout])
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (dragMoveFrameRef.current !== null) {
@@ -1073,7 +1218,6 @@ function BrowseMode({
     if (over && !containerCollisionStickyRef.current) {
       updateDragPosition(active, over)
     }
-    else resetToOriginalContainers()
     const containers = dragContainersRef.current
     if (!over || !containers || !project) {
       clearDragSession()
@@ -1116,7 +1260,16 @@ function BrowseMode({
       kpUuid: targetKpUuid,
       persistedIndex: targetVisibleIndex,
     })
-    setActiveCardId(null)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setActiveCardId(null)
+      setActiveCardHeight(null)
+    } else {
+      dropSettleTimerRef.current = window.setTimeout(() => {
+        dropSettleTimerRef.current = null
+        setActiveCardId(null)
+        setActiveCardHeight(null)
+      }, CARD_DROP_DURATION)
+    }
     void (async () => {
       const moved = await withWrite(() =>
         fileStore.moveCard({
@@ -1142,6 +1295,7 @@ function BrowseMode({
       ),
     )
     lastProjectionRef.current = null
+    captureCardLayout('drag')
     setDragContainers(original)
   }
 
@@ -1224,6 +1378,7 @@ function BrowseMode({
     dragContainersRef.current = next
     cardContainerByIdRef.current.set(activeId, targetKpUuid)
     lastProjectionRef.current = projection
+    captureCardLayout('drag')
     setDragContainers(next)
   }
 
@@ -1264,9 +1419,10 @@ function BrowseMode({
       persistedCards.findIndex((card) => card.id === pendingDrop.cardId) ===
       pendingDrop.persistedIndex
     ) {
+      if (dropSettleTimerRef.current !== null) return
       clearDragSession()
     }
-  }, [cards, clearDragSession, error, pendingDrop])
+  }, [activeCardId, cards, clearDragSession, error, pendingDrop])
 
   return (
     <>
@@ -1443,7 +1599,7 @@ function BrowseMode({
                       point={point}
                       cards={pointCards}
                       placeholderCardId={
-                        activeCardId ?? pendingDrop?.cardId ?? null
+                        activeCardId
                       }
                       placeholderHeight={activeCardHeight}
                       readonly={generating || writeDisabled}
@@ -1476,6 +1632,7 @@ function BrowseMode({
                   onClose={() => void handleCloseInspector()}
                   onExitComplete={() => {
                     if (!inspectorClosing) return
+                    captureCardLayout('close')
                     setInspectorCardId(null)
                     setNewCardDraft(null)
                     setOptimisticInspectorCard(null)
@@ -1492,7 +1649,13 @@ function BrowseMode({
             </div>
           </div>
           {createPortal(
-            <DragOverlay>
+            <DragOverlay
+              dropAnimation={
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                  ? null
+                  : CARD_DROP_ANIMATION
+              }
+            >
               {activeCard ? (
                 <div className="yolo-learning yolo-learning-cards-drag-overlay">
                   <BrowseCard

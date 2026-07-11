@@ -24320,12 +24320,15 @@ body.yolo-learning-outline-global-resize * {
   padding: 10px;
   transition:
     border-color 150ms ease,
-    background-color 150ms ease;
+    background-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .yolo-learning-cards-point.is-over {
   border-color: var(--yolo-primary);
   background-color: color-mix(in oklab, var(--yolo-primary) 5%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklab, var(--yolo-primary) 12%, transparent);
 }
 
 .yolo-learning-cards-point-header h3 {
@@ -24369,6 +24372,29 @@ body.yolo-learning-outline-global-resize * {
 
 .yolo-learning-cards-drag-overlay {
   pointer-events: none;
+}
+
+.yolo-learning-cards-drag-overlay .yolo-learning-cards-browse-card {
+  border-color: color-mix(in oklab, var(--yolo-primary) 32%, var(--yolo-border));
+  box-shadow: 0 12px 28px
+    color-mix(in oklab, var(--yolo-foreground) 16%, transparent);
+  animation: yolo-learning-cards-drag-lift 120ms
+    cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform: scale(1.015);
+}
+
+@keyframes yolo-learning-cards-drag-lift {
+  from {
+    box-shadow: 0 2px 8px
+      color-mix(in oklab, var(--yolo-foreground) 6%, transparent);
+    transform: translateY(2px) scale(0.995);
+  }
+
+  to {
+    box-shadow: 0 12px 28px
+      color-mix(in oklab, var(--yolo-foreground) 16%, transparent);
+    transform: translateY(0) scale(1.015);
+  }
 }
 
 .yolo-learning-cards-drop-placeholder {
@@ -24531,12 +24557,13 @@ body.yolo-learning-outline-global-resize * {
   border-radius: var(--yolo-radius-xl);
   background: var(--yolo-card);
   color: var(--yolo-foreground);
-  animation: yolo-learning-cards-inspector-enter 140ms ease-out both;
+  animation: yolo-learning-cards-inspector-enter 170ms
+    cubic-bezier(0.22, 1, 0.36, 1) 50ms both;
 }
 
 .yolo-learning-cards-inspector.is-closing {
   pointer-events: none;
-  animation: yolo-learning-cards-inspector-exit 120ms ease-in both;
+  animation: yolo-learning-cards-inspector-exit 100ms ease-in both;
 }
 
 .yolo-learning-cards-inspector-header {
@@ -25197,6 +25224,7 @@ button.yolo-learning-cards-icon-btn svg {
 
 @media (prefers-reduced-motion: reduce) {
   .yolo-learning-cards-browse-card.is-revealed,
+  .yolo-learning-cards-drag-overlay .yolo-learning-cards-browse-card,
   .yolo-learning-cards-inspector,
   .yolo-learning-cards-inspector.is-closing {
     animation: none;
