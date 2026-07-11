@@ -17,11 +17,12 @@ import {
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import cx from 'clsx'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2, X } from 'lucide-react'
 import { Notice, TFile, normalizePath } from 'obsidian'
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -92,21 +93,6 @@ function createCardContainers(
       point.uuid,
       cards.filter((card) => card.kpUuid === point.uuid).map((card) => card.id),
     ]),
-  )
-}
-
-function findCardContainer(
-  containers: CardContainers,
-  id: string,
-): string | null {
-  if (id.startsWith('kp:')) {
-    const kpUuid = id.slice(3)
-    return kpUuid in containers ? kpUuid : null
-  }
-  return (
-    Object.entries(containers).find(([, cardIds]) =>
-      cardIds.includes(id),
-    )?.[0] ?? null
   )
 }
 
@@ -558,12 +544,28 @@ function BrowseMode({
     useState<CardContainers | null>(null)
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
   const originalContainersRef = useRef<CardContainers | null>(null)
+  const dragContainersRef = useRef<CardContainers | null>(null)
+  const cardContainerByIdRef = useRef(new Map<string, string>())
+  const lastProjectionRef = useRef<string | null>(null)
+  const pendingDragMoveRef = useRef<{
+    active: DragMoveEvent['active']
+    over: NonNullable<DragMoveEvent['over']>
+  } | null>(null)
+  const dragMoveFrameRef = useRef<number | null>(null)
   const dragCollisionRectRef =
     useRef<Parameters<CollisionDetection>[0]['collisionRect'] | null>(null)
   const collisionDetection = useCallback<CollisionDetection>((args) => {
     dragCollisionRectRef.current = args.collisionRect
     return cardRectCollisionDetection(args)
   }, [])
+  useEffect(
+    () => () => {
+      if (dragMoveFrameRef.current !== null) {
+        cancelAnimationFrame(dragMoveFrameRef.current)
+      }
+    },
+    [],
+  )
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
@@ -702,6 +704,15 @@ function BrowseMode({
     if (!initialRect) return
     const containers = createCardContainers(project, cards)
     originalContainersRef.current = containers
+    dragContainersRef.current = containers
+    cardContainerByIdRef.current = new Map(
+      Object.entries(containers).flatMap(([kpUuid, cardIds]) =>
+        cardIds.map((cardId) => [cardId, kpUuid] as const),
+      ),
+    )
+    lastProjectionRef.current = `${source.kpUuid}:${containers[
+      source.kpUuid
+    ].indexOf(source.id)}`
     setActiveCardId(String(active.id))
     setActiveCardHeight(initialRect.height)
     setDragContainers(containers)
@@ -709,22 +720,37 @@ function BrowseMode({
   }
 
   const clearDragSession = useCallback(() => {
+    if (dragMoveFrameRef.current !== null) {
+      cancelAnimationFrame(dragMoveFrameRef.current)
+    }
     setActiveCardId(null)
     setActiveCardHeight(null)
     setDragContainers(null)
     setPendingDrop(null)
     originalContainersRef.current = null
+    dragContainersRef.current = null
+    cardContainerByIdRef.current.clear()
+    lastProjectionRef.current = null
+    pendingDragMoveRef.current = null
+    dragMoveFrameRef.current = null
     dragCollisionRectRef.current = null
   }, [])
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    const containers = dragContainers
+    if (dragMoveFrameRef.current !== null) {
+      cancelAnimationFrame(dragMoveFrameRef.current)
+      dragMoveFrameRef.current = null
+    }
+    pendingDragMoveRef.current = null
+    if (over) updateDragPosition(active, over)
+    else resetToOriginalContainers()
+    const containers = dragContainersRef.current
     if (!over || !containers || !project) {
       clearDragSession()
       return
     }
     const source = cards.find((card) => card.id === active.id)
-    const targetKpUuid = findCardContainer(containers, String(active.id))
+    const targetKpUuid = cardContainerByIdRef.current.get(String(active.id))
     const point = project.knowledgePoints.find(
       (item) => item.uuid === targetKpUuid,
     )
@@ -778,7 +804,15 @@ function BrowseMode({
 
   const resetToOriginalContainers = () => {
     const original = originalContainersRef.current
-    if (original) setDragContainers(original)
+    if (!original || dragContainersRef.current === original) return
+    dragContainersRef.current = original
+    cardContainerByIdRef.current = new Map(
+      Object.entries(original).flatMap(([kpUuid, cardIds]) =>
+        cardIds.map((cardId) => [cardId, kpUuid] as const),
+      ),
+    )
+    lastProjectionRef.current = null
+    setDragContainers(original)
   }
 
   const updateDragPosition = (
@@ -788,58 +822,82 @@ function BrowseMode({
     const activeId = String(active.id)
     const overId = String(over.id)
     if (activeId === overId) return
-    setDragContainers((current) => {
-      if (!current) return current
-      const sourceKpUuid = findCardContainer(current, activeId)
-      const targetKpUuid = findCardContainer(current, overId)
-      if (!sourceKpUuid || !targetKpUuid) return current
+    const current = dragContainersRef.current
+    if (!current) return
+    const sourceKpUuid = cardContainerByIdRef.current.get(activeId)
+    const targetKpUuid = overId.startsWith('kp:')
+      ? overId.slice(3)
+      : cardContainerByIdRef.current.get(overId)
+    if (!sourceKpUuid || !targetKpUuid || !(targetKpUuid in current)) return
 
-      const sourceItems = current[sourceKpUuid]
-      const targetItems = current[targetKpUuid]
-      const sourceIndex = sourceItems.indexOf(activeId)
-      if (sourceIndex < 0) return current
-      const remainingTargetItems = targetItems.filter((id) => id !== activeId)
-      let targetIndex = remainingTargetItems.length
+    const sourceItems = current[sourceKpUuid]
+    const targetItems = current[targetKpUuid]
+    const sourceIndex = sourceItems.indexOf(activeId)
+    if (sourceIndex < 0) return
+    const remainingTargetItems = targetItems.filter((id) => id !== activeId)
+    let targetIndex = remainingTargetItems.length
 
-      if (!overId.startsWith('kp:')) {
-        const overIndex = remainingTargetItems.indexOf(overId)
-        if (overIndex < 0) return current
-        const collisionRect = dragCollisionRectRef.current
-        if (!collisionRect) return current
-        const activeCenterX = collisionRect.left + collisionRect.width / 2
-        const activeCenterY = collisionRect.top + collisionRect.height / 2
-        const sameRow =
-          activeCenterY >= over.rect.top && activeCenterY <= over.rect.bottom
-        const insertAfter = sameRow
-          ? activeCenterX > over.rect.left + over.rect.width / 2
-          : activeCenterY > over.rect.top + over.rect.height / 2
-        targetIndex = overIndex + (insertAfter ? 1 : 0)
-      }
+    if (!overId.startsWith('kp:')) {
+      const overIndex = remainingTargetItems.indexOf(overId)
+      if (overIndex < 0) return
+      const collisionRect = dragCollisionRectRef.current
+      if (!collisionRect) return
+      const activeCenterX = collisionRect.left + collisionRect.width / 2
+      const activeCenterY = collisionRect.top + collisionRect.height / 2
+      const sameRow =
+        activeCenterY >= over.rect.top && activeCenterY <= over.rect.bottom
+      const insertAfter = sameRow
+        ? activeCenterX > over.rect.left + over.rect.width / 2
+        : activeCenterY > over.rect.top + over.rect.height / 2
+      targetIndex = overIndex + (insertAfter ? 1 : 0)
+    }
 
-      const nextTargetItems = [...remainingTargetItems]
-      nextTargetItems.splice(targetIndex, 0, activeId)
-      if (sourceKpUuid === targetKpUuid) {
-        if (nextTargetItems.every((id, index) => id === sourceItems[index])) {
-          return current
-        }
-        return { ...current, [sourceKpUuid]: nextTargetItems }
-      }
-      return {
-        ...current,
-        [sourceKpUuid]: sourceItems.filter((id) => id !== activeId),
-        [targetKpUuid]: nextTargetItems,
-      }
-    })
+    const projection = `${targetKpUuid}:${targetIndex}`
+    if (lastProjectionRef.current === projection) return
+    const nextTargetItems = [...remainingTargetItems]
+    nextTargetItems.splice(targetIndex, 0, activeId)
+    if (
+      sourceKpUuid === targetKpUuid &&
+      nextTargetItems.every((id, index) => id === sourceItems[index])
+    ) {
+      lastProjectionRef.current = projection
+      return
+    }
+
+    const next =
+      sourceKpUuid === targetKpUuid
+        ? { ...current, [sourceKpUuid]: nextTargetItems }
+        : {
+            ...current,
+            [sourceKpUuid]: sourceItems.filter((id) => id !== activeId),
+            [targetKpUuid]: nextTargetItems,
+          }
+    dragContainersRef.current = next
+    cardContainerByIdRef.current.set(activeId, targetKpUuid)
+    lastProjectionRef.current = projection
+    setDragContainers(next)
   }
 
   const handleDragMove = ({ active, collisions, over }: DragMoveEvent) => {
     const collisionId = collisions?.[0]?.id
     if (!collisionId) {
+      pendingDragMoveRef.current = null
+      if (dragMoveFrameRef.current !== null) {
+        cancelAnimationFrame(dragMoveFrameRef.current)
+        dragMoveFrameRef.current = null
+      }
       resetToOriginalContainers()
       return
     }
     if (!over || over.id !== collisionId) return
-    updateDragPosition(active, over)
+    pendingDragMoveRef.current = { active, over }
+    if (dragMoveFrameRef.current !== null) return
+    dragMoveFrameRef.current = requestAnimationFrame(() => {
+      dragMoveFrameRef.current = null
+      const pending = pendingDragMoveRef.current
+      pendingDragMoveRef.current = null
+      if (pending) updateDragPosition(pending.active, pending.over)
+    })
   }
 
   const handleDragOver = ({ active, over }: DragOverEvent) => {
@@ -847,6 +905,11 @@ function BrowseMode({
       resetToOriginalContainers()
       return
     }
+    if (dragMoveFrameRef.current !== null) {
+      cancelAnimationFrame(dragMoveFrameRef.current)
+      dragMoveFrameRef.current = null
+    }
+    pendingDragMoveRef.current = null
     updateDragPosition(active, over)
   }
 
@@ -1128,37 +1191,6 @@ function KnowledgePointDropZone({
   )
 }
 
-function StreamReveal({ text, active }: { text: string; active: boolean }) {
-  const [visible, setVisible] = useState(0)
-
-  useEffect(() => {
-    if (!active) {
-      setVisible(0)
-      return
-    }
-
-    const total = text.length
-    if (total === 0) return
-
-    const duration = Math.min(380, Math.max(100, total * 4))
-    const start = performance.now()
-    let frame = 0
-
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - start) / duration)
-      setVisible(Math.max(1, Math.ceil(progress * total)))
-      if (progress < 1) frame = requestAnimationFrame(tick)
-    }
-
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [active, text])
-
-  return (
-    <p className="yolo-learning-cards-stream-text">{text.slice(0, visible)}</p>
-  )
-}
-
 function SortableBrowseCard({
   card,
   containerKpUuid,
@@ -1224,16 +1256,7 @@ function BrowseCard({
 }) {
   const { t } = useLanguage()
   const app = useApp()
-  const [revealed, setRevealed] = useState(false)
-  const [shimmer, setShimmer] = useState(false)
-
-  const handleToggle = () => {
-    if (!revealed) {
-      setShimmer(true)
-      window.setTimeout(() => setShimmer(false), 300)
-    }
-    setRevealed((r) => !r)
-  }
+  const [detailOpen, setDetailOpen] = useState(false)
 
   return (
     <article
@@ -1261,34 +1284,11 @@ function BrowseCard({
 
       <button
         type="button"
-        onClick={handleToggle}
+        onClick={() => setDetailOpen(true)}
+        aria-haspopup="dialog"
         className="yolo-learning-cards-browse-card-body"
       >
-        <p
-          className={cx(
-            'yolo-learning-cards-front-text',
-            revealed && 'yolo-learning-cards-front-text-revealed',
-          )}
-        >
-          {card.front}
-        </p>
-
-        {revealed && (
-          <div className="yolo-learning-cards-answer">
-            {shimmer && (
-              <div className="yolo-learning-cards-answer-shimmer-mask">
-                <div className="yolo-learning-cards-answer-sweep" />
-              </div>
-            )}
-            <div className="yolo-learning-cards-answer-label">
-              {t('learning.cards.answer', '答案')}
-            </div>
-            <div className="yolo-learning-cards-answer-content">
-              <StreamReveal text={card.back} active={revealed} />
-            </div>
-          </div>
-        )}
-
+        <p className="yolo-learning-cards-front-text">{card.front}</p>
       </button>
 
       <div className="yolo-learning-cards-actions">
@@ -1310,7 +1310,129 @@ function BrowseCard({
           <Trash2 size={13} />
         </CardIconBtn>
       </div>
+      {detailOpen && (
+        <CardDetailDialog
+          card={card}
+          due={due}
+          onClose={() => setDetailOpen(false)}
+          onDelete={() => {
+            setDetailOpen(false)
+            onDelete()
+          }}
+        />
+      )}
     </article>
+  )
+}
+
+function CardDetailDialog({
+  card,
+  due,
+  onClose,
+  onDelete,
+}: {
+  card: Card
+  due: boolean
+  onClose: () => void
+  onDelete: () => void
+}) {
+  const { t } = useLanguage()
+  const app = useApp()
+  const titleId = useId()
+  const closeRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null
+    closeRef.current?.focus()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      previousFocus?.focus()
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="yolo-learning yolo-learning-cards-detail-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <article className="yolo-learning-cards-detail-panel">
+        <header className="yolo-learning-cards-detail-header">
+          <div className="yolo-learning-cards-detail-heading">
+            <span className="yolo-learning-cards-browse-card-point">
+              {card.chapterTitle} · {card.pointTitle}
+            </span>
+            <div className="yolo-learning-cards-browse-card-meta">
+              {due && (
+                <span className="yolo-learning-cards-due-label">
+                  {t('learning.cards.due', '待复习')}
+                </span>
+              )}
+              <span className="yolo-learning-cards-mastery-label">
+                <MasteryDot mastery={card.mastery} />
+                {masteryText(t, card.mastery)}
+              </span>
+            </div>
+          </div>
+          <div className="yolo-learning-cards-detail-actions">
+            <CardIconBtn
+              label={t('common.edit', '编辑')}
+              disabled={!card.filePath}
+              onClick={() => {
+                if (!card.filePath) return
+                onClose()
+                openMarkdownFile(app, card.filePath, card.startLine)
+              }}
+            >
+              <Pencil size={15} />
+            </CardIconBtn>
+            <CardIconBtn
+              label={t('common.delete', '删除')}
+              disabled={!card.filePath}
+              onClick={onDelete}
+            >
+              <Trash2 size={15} />
+            </CardIconBtn>
+            <button
+              ref={closeRef}
+              type="button"
+              className="clickable-icon yolo-learning-cards-detail-close"
+              aria-label={t('common.close', '关闭')}
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </header>
+        <div className="yolo-learning-cards-detail-body">
+          <section className="yolo-learning-cards-detail-section">
+            <div className="yolo-learning-cards-detail-label">
+              {t('learning.cards.question', '问题')}
+            </div>
+            <p id={titleId} className="yolo-learning-cards-detail-question">
+              {card.front}
+            </p>
+          </section>
+          <section className="yolo-learning-cards-detail-section">
+            <div className="yolo-learning-cards-detail-label">
+              {t('learning.cards.answer', '答案')}
+            </div>
+            <p className="yolo-learning-cards-detail-answer">{card.back}</p>
+          </section>
+        </div>
+      </article>
+    </div>,
+    document.body,
   )
 }
 

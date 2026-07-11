@@ -249,6 +249,7 @@ export const en: TranslationKeys = {
       sortMastery: 'Mastery',
       newCard: 'New card',
       due: 'Due',
+      question: 'Question',
       answer: 'Answer',
       hideAnswer: 'Hide answer',
       showAnswer: 'Show answer',

@@ -236,6 +236,7 @@ export const zh: TranslationKeys = {
       sortMastery: '按掌握度',
       newCard: '新建卡片',
       due: '待复习',
+      question: '问题',
       answer: '答案',
       hideAnswer: '点击收回',
       showAnswer: '点击查看答案',

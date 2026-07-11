@@ -247,6 +247,7 @@ export const it: TranslationKeys = {
       sortMastery: 'Padronanza',
       newCard: 'Nuova carta',
       due: 'Da ripassare',
+      question: 'Domanda',
       answer: 'Risposta',
       hideAnswer: 'Nascondi risposta',
       showAnswer: 'Mostra risposta',
