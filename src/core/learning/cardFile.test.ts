@@ -204,10 +204,13 @@ describe('cardFile', () => {
     expect(files.get(path)?.startsWith(preserved)).toBe(true)
     expect(files.get(path)).not.toContain('card:aaaaaaaa')
 
-    const created = await store.createCard('p', path, 'Chapter', '11111111')
+    const created = await store.createCard('p', path, 'Chapter', '11111111', {
+      front: 'created front',
+      back: 'created back',
+    })
     expect(created.cardUuid).toMatch(/^[0-9a-f]{8}$/)
-    expect(created.front).toBe('')
-    expect(created.back).toBe('')
+    expect(created.front).toBe('created front')
+    expect(created.back).toBe('created back')
   })
 
   it('creates a missing cards.md through Vault with canonical frontmatter', async () => {

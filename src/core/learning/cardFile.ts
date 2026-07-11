@@ -190,7 +190,7 @@ export class LearningCardFileStore {
     filePath: string,
     chapterTitle: string,
     kpUuid: string,
-    title = '新卡片',
+    content: { front: string; back: string } = { front: '', back: '' },
   ): Promise<CardBlock> {
     return this.enqueueWrite(async () => {
       validateUuid(kpUuid, '知识点')
@@ -202,7 +202,13 @@ export class LearningCardFileStore {
 
       const snapshot = await this.readSnapshot(filePath)
       this.assertWritable(filePath, snapshot.content)
-      const block = formatCard(cardUuid, kpUuid, title, '', '')
+      const block = formatCard(
+        cardUuid,
+        kpUuid,
+        '新卡片',
+        content.front,
+        content.back,
+      )
       const expected = snapshot.content
       const initialContent = buildCardsContent(chapterTitle)
       const base = snapshot.file ? expected : initialContent

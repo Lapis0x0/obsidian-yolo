@@ -1,5 +1,6 @@
 import {
   DndContext,
+  type Collision,
   type CollisionDetection,
   type DragEndEvent,
   type DragMoveEvent,
@@ -50,8 +51,11 @@ import type {
   ReviewRating,
   SrsCardState,
 } from '../../core/learning/srs/srsTypes'
-import type { Project as VaultProject } from '../../core/learning/types'
-import { openMarkdownFile } from '../../utils/obsidian'
+import type {
+  Chapter as VaultChapter,
+  KnowledgePoint as VaultKnowledgePoint,
+  Project as VaultProject,
+} from '../../core/learning/types'
 import { ConfirmModal } from '../modals/ConfirmModal'
 
 import {
@@ -78,6 +82,13 @@ const MEMORY_RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000
 
 type Card = WorkspaceCard
 
+type NewCardDraft = {
+  key: number
+  chapter: VaultChapter
+  point: VaultKnowledgePoint
+  filePath: string
+}
+
 type CardContainers = Record<string, string[]>
 
 type PendingDrop = {
@@ -102,6 +113,7 @@ type VirtualDropSlots = Map<
 >
 
 const DROP_SLOT_HYSTERESIS = 6
+const DROP_CONTAINER_ENTRY_THRESHOLD = 12
 
 function createCardContainers(
   project: VaultProject,
@@ -160,8 +172,18 @@ function createVirtualDropSlots(
         const styles = getComputedStyle(grid)
         const columnGap = Number.parseFloat(styles.columnGap) || 0
         const rowGap = Number.parseFloat(styles.rowGap) || 0
+        const chapter = point.closest<HTMLElement>(
+          '.yolo-learning-cards-chapter',
+        )
+        const chapterStyles = chapter ? getComputedStyle(chapter) : null
+        const pointStyles = getComputedStyle(point)
+        const availableRight = chapter
+          ? chapter.getBoundingClientRect().right -
+            (Number.parseFloat(chapterStyles?.paddingRight ?? '') || 0) -
+            (Number.parseFloat(pointStyles.paddingRight) || 0)
+          : gridRect.right
         const fitsCurrentRow =
-          lastRect.right + columnGap + activeRect.width <= gridRect.right + 1
+          lastRect.right + columnGap + activeRect.width <= availableRight + 1
         const rowRects = cardRects.filter(
           (rect) => Math.abs(rect.top - lastRect.top) < 1,
         )
@@ -185,14 +207,6 @@ function createVirtualDropSlots(
 
   return result
 }
-
-const knowledgePointCollisionDetection: CollisionDetection = (args) =>
-  rectIntersection({
-    ...args,
-    droppableContainers: args.droppableContainers.filter(
-      (container) => container.data.current?.kind === 'container',
-    ),
-  })
 
 type CardWorkspaceError = {
   kind: 'format' | 'load'
@@ -615,6 +629,11 @@ function BrowseMode({
   const [mastery, setMastery] =
     useState<(typeof masteryFilters)[number]>('全部')
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [inspectorCardId, setInspectorCardId] = useState<string | null>(null)
+  const [inspectorClosing, setInspectorClosing] = useState(false)
+  const [newCardDraft, setNewCardDraft] = useState<NewCardDraft | null>(null)
+  const [optimisticInspectorCard, setOptimisticInspectorCard] =
+    useState<Card | null>(null)
   const [editRequest, setEditRequest] = useState<{
     cardId: string
     sequence: number
@@ -628,6 +647,7 @@ function BrowseMode({
   const dragContainersRef = useRef<CardContainers | null>(null)
   const dragAreaRef = useRef<HTMLDivElement | null>(null)
   const inspectorRef = useRef<CardInspectorHandle | null>(null)
+  const newCardDraftKeyRef = useRef(0)
   const cardContainerByIdRef = useRef(new Map<string, string>())
   const virtualDropSlotsRef = useRef<VirtualDropSlots>(new Map())
   const lastProjectionRef = useRef<DropProjection | null>(null)
@@ -638,9 +658,40 @@ function BrowseMode({
   const dragMoveFrameRef = useRef<number | null>(null)
   const dragCollisionRectRef =
     useRef<Parameters<CollisionDetection>[0]['collisionRect'] | null>(null)
+  const lastContainerCollisionRef = useRef<Collision | null>(null)
+  const containerCollisionStickyRef = useRef(false)
   const collisionDetection = useCallback<CollisionDetection>((args) => {
     dragCollisionRectRef.current = args.collisionRect
-    return knowledgePointCollisionDetection(args)
+    const collisions = rectIntersection({
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        (container) => container.data.current?.kind === 'container',
+      ),
+    })
+    const activeCenterY =
+      args.collisionRect.top + args.collisionRect.height / 2
+    const enteredCollision = collisions.find((collision) => {
+      const rect = args.droppableRects.get(collision.id)
+      return (
+        rect &&
+        activeCenterY >= rect.top + DROP_CONTAINER_ENTRY_THRESHOLD &&
+        activeCenterY <= rect.bottom - DROP_CONTAINER_ENTRY_THRESHOLD
+      )
+    })
+    if (enteredCollision) {
+      lastContainerCollisionRef.current = enteredCollision
+      containerCollisionStickyRef.current = false
+      return [enteredCollision]
+    }
+    if (lastContainerCollisionRef.current) {
+      containerCollisionStickyRef.current = true
+      return [lastContainerCollisionRef.current]
+    }
+    const initialCollision = collisions[0]
+    if (!initialCollision) return []
+    lastContainerCollisionRef.current = initialCollision
+    containerCollisionStickyRef.current = false
+    return [initialCollision]
   }, [])
   useEffect(
     () => () => {
@@ -674,7 +725,29 @@ function BrowseMode({
     (card) => !masteryValue[mastery] || card.mastery === masteryValue[mastery],
   )
   const activeCard = cards.find((card) => card.id === activeCardId)
-  const selectedCard = cards.find((card) => card.id === selectedCardId) ?? null
+  const persistedInspectorCard =
+    cards.find((card) => card.id === inspectorCardId) ?? null
+  const draftInspectorCard: Card | null = newCardDraft
+    ? {
+        id: `new-card-${newCardDraft.key}`,
+        kpUuid: newCardDraft.point.uuid,
+        pointId: newCardDraft.point.id,
+        pointTitle: newCardDraft.point.title,
+        chapterId: newCardDraft.chapter.id,
+        chapterTitle: newCardDraft.chapter.title,
+        front: '',
+        back: '',
+        mastery: 'new',
+        dueAt: null,
+        srsState: null,
+        filePath: newCardDraft.filePath,
+        startLine: 0,
+        sourceIndex: Number.MAX_SAFE_INTEGER,
+        preview: false,
+      }
+    : null
+  const inspectorCard =
+    persistedInspectorCard ?? optimisticInspectorCard ?? draftInspectorCard
   const baseGroups = project
     ? groupCardsByProjectOrder(project, filteredCards)
     : []
@@ -702,16 +775,13 @@ function BrowseMode({
     }))
     .filter((group) => group.points.length > 0)
   const selectedCardIsVisible = selectedCardId
-    ? visibleGroups.some((group) =>
+    ? optimisticInspectorCard?.id === selectedCardId ||
+      visibleGroups.some((group) =>
         group.points.some(({ cards: pointCards }) =>
           pointCards.some((card) => card.id === selectedCardId),
         ),
       )
     : false
-  useEffect(() => {
-    if (!selectedCardId || selectedCardIsVisible) return
-    setSelectedCardId(null)
-  }, [selectedCardId, selectedCardIsVisible])
   const settledIndexes = new Set(
     generation?.settled.map((item) => item.chapterIndex),
   )
@@ -769,18 +839,52 @@ function BrowseMode({
     }
   }
 
-  const handleSelectCard = async (cardId: string): Promise<boolean> => {
-    if (selectedCardId === cardId) return true
+  const beginInspectorClose = useCallback(() => {
+    setSelectedCardId(null)
+    setEditRequest(null)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setInspectorCardId(null)
+      setNewCardDraft(null)
+      setOptimisticInspectorCard(null)
+      setInspectorClosing(false)
+      return
+    }
+    setInspectorClosing(true)
+  }, [])
+
+  const handleCloseInspector = useCallback(async (): Promise<boolean> => {
     if (inspectorRef.current && !(await inspectorRef.current.flush())) {
       return false
     }
+    beginInspectorClose()
+    return true
+  }, [beginInspectorClose])
+
+  useEffect(() => {
+    if (!selectedCardId || selectedCardIsVisible) return
+    void handleCloseInspector()
+  }, [handleCloseInspector, selectedCardId, selectedCardIsVisible])
+
+  const handleSelectCard = async (
+    cardId: string,
+    closeIfSelected = true,
+  ): Promise<boolean> => {
+    if (selectedCardId === cardId && !closeIfSelected) return true
+    if (selectedCardId === cardId) return handleCloseInspector()
+    if (inspectorRef.current && !(await inspectorRef.current.flush())) {
+      return false
+    }
+    setInspectorClosing(false)
+    setNewCardDraft(null)
+    setOptimisticInspectorCard(null)
+    setInspectorCardId(cardId)
     setSelectedCardId(cardId)
     setEditRequest(null)
     return true
   }
 
   const handleEditCard = async (cardId: string) => {
-    if (!(await handleSelectCard(cardId))) return
+    if (!(await handleSelectCard(cardId, false))) return
     setEditRequest((current) => ({
       cardId,
       sequence: (current?.sequence ?? 0) + 1,
@@ -812,21 +916,69 @@ function BrowseMode({
       })
   }
 
-  const handleCreate = (
-    chapter: VaultProject['chapters'][number],
-    kpUuid: string,
-  ) => {
-    void withWrite(async () => {
-      if (!project) return
-      const path = normalizePath(`${chapter.folderPath}/cards.md`)
-      const created = await fileStore.createCard(
+  const handleCreateCard = (
+    draft: NewCardDraft,
+    card: Card,
+    content: { front: string; back: string },
+  ): Promise<boolean> => {
+    if (!project || (!content.front.trim() && !content.back.trim())) {
+      return Promise.resolve(true)
+    }
+    return fileStore
+      .createCard(
         project.folderPath,
-        path,
-        chapter.title,
-        kpUuid,
+        draft.filePath,
+        draft.chapter.title,
+        draft.point.uuid,
+        content,
       )
-      openMarkdownFile(app, path, created.startLine)
+      .then((created) => {
+        const createdCard: Card = {
+          ...card,
+          id: created.cardUuid,
+          front: created.front,
+          back: created.back,
+          startLine: created.startLine,
+          sourceIndex: created.startLine,
+        }
+        setNewCardDraft(null)
+        setOptimisticInspectorCard(createdCard)
+        setInspectorCardId(createdCard.id)
+        setSelectedCardId(createdCard.id)
+        refresh()
+        return true
+      })
+      .catch((operationError: unknown) => {
+        console.error('[YOLO] Failed to create learning card:', operationError)
+        new Notice(
+          operationError instanceof CardFileConflictError
+            ? t(
+                'learning.cards.cardFileConflict',
+                '卡片文件已在其他位置修改，请刷新后重试',
+              )
+            : t('learning.cards.cardCreateFailed', '卡片创建失败，请重试'),
+        )
+        return false
+      })
+  }
+
+  const handleCreate = async (
+    chapter: VaultChapter,
+    point: VaultKnowledgePoint,
+  ) => {
+    if (inspectorRef.current && !(await inspectorRef.current.flush())) return
+    newCardDraftKeyRef.current += 1
+    setSelectedCardId(null)
+    setInspectorCardId(null)
+    setOptimisticInspectorCard(null)
+    setNewCardDraft({
+      key: newCardDraftKeyRef.current,
+      chapter,
+      point,
+      filePath: normalizePath(`${chapter.folderPath}/cards.md`),
     })
+    setInspectorClosing(false)
+    setEditRequest(null)
   }
 
   const handleDelete = (card: Card) => {
@@ -884,6 +1036,8 @@ function BrowseMode({
       kpUuid: source.kpUuid,
       index: containers[source.kpUuid].indexOf(source.id),
     }
+    lastContainerCollisionRef.current = { id: `kp:${source.kpUuid}` }
+    containerCollisionStickyRef.current = false
     setActiveCardId(String(active.id))
     setActiveCardHeight(initialRect.height)
     setDragContainers(containers)
@@ -906,6 +1060,8 @@ function BrowseMode({
     pendingDragMoveRef.current = null
     dragMoveFrameRef.current = null
     dragCollisionRectRef.current = null
+    lastContainerCollisionRef.current = null
+    containerCollisionStickyRef.current = false
   }, [])
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -914,7 +1070,9 @@ function BrowseMode({
       dragMoveFrameRef.current = null
     }
     pendingDragMoveRef.current = null
-    if (over) updateDragPosition(active, over)
+    if (over && !containerCollisionStickyRef.current) {
+      updateDragPosition(active, over)
+    }
     else resetToOriginalContainers()
     const containers = dragContainersRef.current
     if (!over || !containers || !project) {
@@ -1071,15 +1229,7 @@ function BrowseMode({
 
   const handleDragMove = ({ active, collisions, over }: DragMoveEvent) => {
     const collisionId = collisions?.[0]?.id
-    if (!collisionId) {
-      pendingDragMoveRef.current = null
-      if (dragMoveFrameRef.current !== null) {
-        cancelAnimationFrame(dragMoveFrameRef.current)
-        dragMoveFrameRef.current = null
-      }
-      resetToOriginalContainers()
-      return
-    }
+    if (!collisionId || containerCollisionStickyRef.current) return
     if (!over || over.id !== collisionId) return
     pendingDragMoveRef.current = { active, over }
     if (dragMoveFrameRef.current !== null) return
@@ -1092,10 +1242,7 @@ function BrowseMode({
   }
 
   const handleDragOver = ({ active, over }: DragOverEvent) => {
-    if (!over) {
-      resetToOriginalContainers()
-      return
-    }
+    if (!over || containerCollisionStickyRef.current) return
     if (dragMoveFrameRef.current !== null) {
       cancelAnimationFrame(dragMoveFrameRef.current)
       dragMoveFrameRef.current = null
@@ -1227,7 +1374,7 @@ function BrowseMode({
             <div
               className={cx(
                 'yolo-learning-cards-browser-layout',
-                selectedCard && 'has-selection',
+                inspectorCard && 'has-selection',
               )}
             >
               <div ref={dragAreaRef} className="yolo-learning-cards-chapters">
@@ -1303,7 +1450,7 @@ function BrowseMode({
                       mastery={mastery}
                       now={now}
                       selectedCardId={selectedCardId}
-                      onCreate={() => handleCreate(chapter, point.uuid)}
+                      onCreate={() => void handleCreate(chapter, point)}
                       onDelete={handleDelete}
                       onSelect={(cardId) => void handleSelectCard(cardId)}
                       onEdit={(cardId) => void handleEditCard(cardId)}
@@ -1313,30 +1460,33 @@ function BrowseMode({
               )
               })}
               </div>
-              {selectedCard && (
+              {inspectorCard && (
                 <CardInspector
-                  key={selectedCard.id}
+                  key={inspectorCard.id}
                   ref={inspectorRef}
-                  card={selectedCard}
+                  card={inspectorCard}
                   due={Boolean(
-                    selectedCard.srsState &&
-                      selectedCard.dueAt &&
-                      isDue(selectedCard.dueAt, now),
+                    inspectorCard.srsState &&
+                      inspectorCard.dueAt &&
+                      isDue(inspectorCard.dueAt, now),
                   )}
                   disabled={writeDisabled}
                   editRequest={editRequest}
-                  onClose={() => {
-                    void (async () => {
-                      if (
-                        inspectorRef.current &&
-                        !(await inspectorRef.current.flush())
-                      )
-                        return
-                      setSelectedCardId(null)
-                      setEditRequest(null)
-                    })()
+                  closing={inspectorClosing}
+                  onClose={() => void handleCloseInspector()}
+                  onExitComplete={() => {
+                    if (!inspectorClosing) return
+                    setInspectorCardId(null)
+                    setNewCardDraft(null)
+                    setOptimisticInspectorCard(null)
+                    setInspectorClosing(false)
                   }}
-                  onSave={handleUpdateCard}
+                  onSave={
+                    newCardDraft
+                      ? (card, content) =>
+                          handleCreateCard(newCardDraft, card, content)
+                      : handleUpdateCard
+                  }
                 />
               )}
             </div>
@@ -1610,13 +1760,24 @@ const CardInspector = forwardRef<CardInspectorHandle, {
   due: boolean
   disabled: boolean
   editRequest: { cardId: string; sequence: number } | null
+  closing: boolean
   onClose: () => void
+  onExitComplete: () => void
   onSave: (
     card: Card,
     content: { front: string; back: string },
   ) => Promise<boolean>
 }>(function CardInspector(
-  { card, due, disabled, editRequest, onClose, onSave },
+  {
+    card,
+    due,
+    disabled,
+    editRequest,
+    closing,
+    onClose,
+    onExitComplete,
+    onSave,
+  },
   ref,
 ) {
   const { t } = useLanguage()
@@ -1704,7 +1865,7 @@ const CardInspector = forwardRef<CardInspectorHandle, {
     saveTimerRef.current = window.setTimeout(() => {
       saveTimerRef.current = null
       void persistLatest()
-    }, 1_000)
+    }, 600)
   }
 
   const statusText: Partial<Record<CardSaveStatus, string>> = {
@@ -1715,7 +1876,15 @@ const CardInspector = forwardRef<CardInspectorHandle, {
   }
 
   return (
-    <aside className="yolo-learning-cards-inspector">
+    <aside
+      className={cx(
+        'yolo-learning-cards-inspector',
+        closing && 'is-closing',
+      )}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget && closing) onExitComplete()
+      }}
+    >
       <header className="yolo-learning-cards-inspector-header">
         <div className="yolo-learning-cards-inspector-heading">
           <span className="yolo-learning-cards-browse-card-point">
@@ -1731,6 +1900,17 @@ const CardInspector = forwardRef<CardInspectorHandle, {
               <MasteryDot mastery={card.mastery} />
               {masteryText(t, card.mastery)}
             </span>
+            {statusText[saveStatus] && (
+              <span
+                className={cx(
+                  'yolo-learning-cards-inspector-status',
+                  saveStatus === 'error' && 'is-error',
+                )}
+                aria-live="polite"
+              >
+                {statusText[saveStatus]}
+              </span>
+            )}
           </div>
         </div>
         <div className="yolo-learning-cards-inspector-actions">
@@ -1775,19 +1955,10 @@ const CardInspector = forwardRef<CardInspectorHandle, {
               setBack(nextBack)
               queueSave({ ...latestContentRef.current, back: nextBack })
             }}
-            className="yolo-learning-cards-inspector-textarea"
+            className="yolo-learning-cards-inspector-textarea is-answer"
           />
         </section>
       </div>
-      <footer
-        className={cx(
-          'yolo-learning-cards-inspector-status',
-          saveStatus === 'error' && 'is-error',
-        )}
-        aria-live="polite"
-      >
-        {statusText[saveStatus] ?? '\u00a0'}
-      </footer>
     </aside>
   )
 })
