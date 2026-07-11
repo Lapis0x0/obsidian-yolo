@@ -219,15 +219,27 @@ export class LearningCardFileStore {
   }
 
   deleteCard(filePath: string, cardUuid: string): Promise<void> {
+    return this.deleteCards(filePath, [cardUuid])
+  }
+
+  deleteCards(filePath: string, cardUuids: Iterable<string>): Promise<void> {
+    const uuids = new Set(cardUuids)
+    if (uuids.size === 0) return Promise.resolve()
     return this.enqueueWrite(async () => {
       const snapshot = await this.readSnapshot(filePath)
       const expected = snapshot.content
       const parsed = this.assertWritable(filePath, expected)
-      const card = requireCard(parsed, cardUuid, filePath)
+      uuids.forEach((uuid) => requireCard(parsed, uuid, filePath))
       await this.casWrite(
         filePath,
         snapshot,
-        expected.slice(0, card.startOffset) + expected.slice(card.endOffset),
+        replaceCardSlots(
+          expected,
+          parsed.cards,
+          parsed.cards.map((card) =>
+            uuids.has(card.cardUuid) ? '' : card.rawBlock,
+          ),
+        ),
       )
     })
   }

@@ -34,6 +34,7 @@ import {
 } from 'react'
 import type {
   CSSProperties,
+  MouseEvent as ReactMouseEvent,
   PointerEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -124,10 +125,35 @@ type CardLayoutTransition = {
   rects: Map<string, DOMRect>
 }
 
+type MarqueePoint = { x: number; y: number }
+
+type MarqueeRect = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+type MarqueeSession = {
+  active: boolean
+  additive: boolean
+  baseline: Set<string>
+  origin: MarqueePoint
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  latestClientX: number
+  latestClientY: number
+  scrollContainer: HTMLElement
+}
+
 const DROP_SLOT_HYSTERESIS = 6
 const DROP_CONTAINER_ENTRY_THRESHOLD = 12
 const CARD_DRAG_SCALE = 1.015
 const CARD_DROP_DURATION = 150
+const MARQUEE_ACTIVATION_DISTANCE = 4
+const MARQUEE_SCROLL_EDGE = 48
+const MARQUEE_MAX_SCROLL_SPEED = 18
 const CARD_DROP_ANIMATION: DropAnimation = {
   duration: CARD_DROP_DURATION,
   easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
@@ -660,6 +686,10 @@ function BrowseMode({
   const [mastery, setMastery] =
     useState<(typeof masteryFilters)[number]>('全部')
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [batchSelectedCardIds, setBatchSelectedCardIds] = useState<Set<string>>(
+    new Set(),
+  )
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
   const [inspectorCardId, setInspectorCardId] = useState<string | null>(null)
   const [inspectorClosing, setInspectorClosing] = useState(false)
   const [newCardDraft, setNewCardDraft] = useState<NewCardDraft | null>(null)
@@ -667,15 +697,17 @@ function BrowseMode({
     useState<Card | null>(null)
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
   const [activeCardHeight, setActiveCardHeight] = useState<number | null>(null)
-  const [dragContainers, setDragContainers] =
-    useState<CardContainers | null>(null)
+  const [dragContainers, setDragContainers] = useState<CardContainers | null>(
+    null,
+  )
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
   const originalContainersRef = useRef<CardContainers | null>(null)
   const dragContainersRef = useRef<CardContainers | null>(null)
   const dragAreaRef = useRef<HTMLDivElement | null>(null)
   const inspectorRef = useRef<CardInspectorHandle | null>(null)
-  const pendingCardLayoutTransitionRef =
-    useRef<CardLayoutTransition | null>(null)
+  const pendingCardLayoutTransitionRef = useRef<CardLayoutTransition | null>(
+    null,
+  )
   const cardLayoutAnimationsRef = useRef(new Map<HTMLElement, Animation>())
   const newCardDraftKeyRef = useRef(0)
   const cardContainerByIdRef = useRef(new Map<string, string>())
@@ -686,9 +718,12 @@ function BrowseMode({
     over: NonNullable<DragMoveEvent['over']>
   } | null>(null)
   const dragMoveFrameRef = useRef<number | null>(null)
+  const marqueeScrollFrameRef = useRef<number | null>(null)
+  const marqueeSessionRef = useRef<MarqueeSession | null>(null)
   const dropSettleTimerRef = useRef<number | null>(null)
-  const dragCollisionRectRef =
-    useRef<Parameters<CollisionDetection>[0]['collisionRect'] | null>(null)
+  const dragCollisionRectRef = useRef<
+    Parameters<CollisionDetection>[0]['collisionRect'] | null
+  >(null)
   const lastContainerCollisionRef = useRef<Collision | null>(null)
   const containerCollisionStickyRef = useRef(false)
   const captureCardLayout = useCallback(
@@ -728,8 +763,7 @@ function BrowseMode({
         (container) => container.data.current?.kind === 'container',
       ),
     })
-    const activeCenterY =
-      args.collisionRect.top + args.collisionRect.height / 2
+    const activeCenterY = args.collisionRect.top + args.collisionRect.height / 2
     const enteredCollision = collisions.find((collision) => {
       const rect = args.droppableRects.get(collision.id)
       return (
@@ -760,6 +794,9 @@ function BrowseMode({
       }
       if (dropSettleTimerRef.current !== null) {
         window.clearTimeout(dropSettleTimerRef.current)
+      }
+      if (marqueeScrollFrameRef.current !== null) {
+        cancelAnimationFrame(marqueeScrollFrameRef.current)
       }
     },
     [],
@@ -847,6 +884,223 @@ function BrowseMode({
       ),
     }))
     .filter((group) => group.points.length > 0)
+  const selectableCards = cards.filter((card) => card.filePath && !card.preview)
+  const batchSelectedCards = selectableCards.filter((card) =>
+    batchSelectedCardIds.has(card.id),
+  )
+  const updateMarqueeSelection = useCallback(
+    (clientX: number, clientY: number) => {
+      const session = marqueeSessionRef.current
+      const root = dragAreaRef.current
+      if (!session?.active || !root) return
+      session.latestClientX = clientX
+      session.latestClientY = clientY
+      const rootRect = root.getBoundingClientRect()
+      const current = {
+        x: clientX - rootRect.left,
+        y: clientY - rootRect.top,
+      }
+      const left = Math.min(session.origin.x, current.x)
+      const top = Math.min(session.origin.y, current.y)
+      const right = Math.max(session.origin.x, current.x)
+      const bottom = Math.max(session.origin.y, current.y)
+      setMarqueeRect({ left, top, width: right - left, height: bottom - top })
+
+      const next = session.additive
+        ? new Set(session.baseline)
+        : new Set<string>()
+      root
+        .querySelectorAll<HTMLElement>('[data-yolo-marquee-selectable]')
+        .forEach((element) => {
+          const cardId = element.dataset.yoloCardId
+          if (!cardId) return
+          const rect = element.getBoundingClientRect()
+          const centerX = rect.left + rect.width / 2 - rootRect.left
+          const centerY = rect.top + rect.height / 2 - rootRect.top
+          if (
+            centerX >= left &&
+            centerX <= right &&
+            centerY >= top &&
+            centerY <= bottom
+          ) {
+            next.add(cardId)
+          }
+        })
+      setBatchSelectedCardIds((currentSelection) => {
+        if (
+          currentSelection.size === next.size &&
+          [...currentSelection].every((cardId) => next.has(cardId))
+        ) {
+          return currentSelection
+        }
+        return next
+      })
+    },
+    [],
+  )
+  const stopMarquee = useCallback(() => {
+    const session = marqueeSessionRef.current
+    const root = dragAreaRef.current
+    if (session && root?.hasPointerCapture(session.pointerId)) {
+      root.releasePointerCapture(session.pointerId)
+    }
+    if (marqueeScrollFrameRef.current !== null) {
+      cancelAnimationFrame(marqueeScrollFrameRef.current)
+      marqueeScrollFrameRef.current = null
+    }
+    marqueeSessionRef.current = null
+    setMarqueeRect(null)
+  }, [])
+  const startMarqueeAutoScroll = useCallback(() => {
+    if (marqueeScrollFrameRef.current !== null) return
+    const tick = () => {
+      const session = marqueeSessionRef.current
+      if (!session?.active) {
+        marqueeScrollFrameRef.current = null
+        return
+      }
+      const container = session.scrollContainer
+      const rect = container.getBoundingClientRect()
+      const pointerY = session.latestClientY
+      let speed = 0
+      if (pointerY < rect.top + MARQUEE_SCROLL_EDGE) {
+        const intensity = Math.min(
+          1,
+          (rect.top + MARQUEE_SCROLL_EDGE - pointerY) / MARQUEE_SCROLL_EDGE,
+        )
+        speed = -MARQUEE_MAX_SCROLL_SPEED * intensity * intensity
+      } else if (pointerY > rect.bottom - MARQUEE_SCROLL_EDGE) {
+        const intensity = Math.min(
+          1,
+          (pointerY - (rect.bottom - MARQUEE_SCROLL_EDGE)) /
+            MARQUEE_SCROLL_EDGE,
+        )
+        speed = MARQUEE_MAX_SCROLL_SPEED * intensity * intensity
+      }
+      if (speed !== 0) {
+        const previousScrollTop = container.scrollTop
+        container.scrollTop += speed
+        if (container.scrollTop !== previousScrollTop) {
+          updateMarqueeSelection(session.latestClientX, session.latestClientY)
+        }
+      }
+      marqueeScrollFrameRef.current = requestAnimationFrame(tick)
+    }
+    marqueeScrollFrameRef.current = requestAnimationFrame(tick)
+  }, [updateMarqueeSelection])
+  const handleMarqueePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const root = dragAreaRef.current
+    if (
+      !root ||
+      event.button !== 0 ||
+      event.pointerType !== 'mouse' ||
+      !window.matchMedia('(hover: hover) and (pointer: fine)').matches ||
+      activeCardId ||
+      marqueeSessionRef.current
+    ) {
+      return
+    }
+    const target = event.target as Element | null
+    if (
+      !target?.closest ||
+      target.closest(
+        '[data-yolo-card-id], button, input, textarea, select, a, h1, h2, h3, p, span, [contenteditable="true"]',
+      )
+    ) {
+      return
+    }
+    const scrollContainer = root.closest<HTMLElement>(
+      '.yolo-learning-cards-view',
+    )
+    if (!scrollContainer) return
+    const rootRect = root.getBoundingClientRect()
+    const additive = event.metaKey || event.ctrlKey
+    marqueeSessionRef.current = {
+      active: false,
+      additive,
+      baseline: additive ? new Set(batchSelectedCardIds) : new Set(),
+      origin: {
+        x: event.clientX - rootRect.left,
+        y: event.clientY - rootRect.top,
+      },
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      latestClientX: event.clientX,
+      latestClientY: event.clientY,
+      scrollContainer,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.preventDefault()
+  }
+  const handleMarqueePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const session = marqueeSessionRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+    session.latestClientX = event.clientX
+    session.latestClientY = event.clientY
+    if (!session.active) {
+      const distance = Math.hypot(
+        event.clientX - session.startClientX,
+        event.clientY - session.startClientY,
+      )
+      if (distance < MARQUEE_ACTIVATION_DISTANCE) return
+      session.active = true
+      startMarqueeAutoScroll()
+    }
+    event.preventDefault()
+    updateMarqueeSelection(event.clientX, event.clientY)
+  }
+  const handleMarqueePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const session = marqueeSessionRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+    if (session.active) {
+      updateMarqueeSelection(event.clientX, event.clientY)
+    } else if (!session.additive) {
+      setBatchSelectedCardIds(new Set())
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    stopMarquee()
+  }
+  const handleMarqueePointerCancel = (event: PointerEvent<HTMLDivElement>) => {
+    const session = marqueeSessionRef.current
+    if (!session || session.pointerId !== event.pointerId) return
+    setBatchSelectedCardIds(new Set(session.baseline))
+    stopMarquee()
+  }
+  useEffect(() => {
+    setBatchSelectedCardIds(new Set())
+  }, [chapterFilter, mastery, pointFilter])
+  useEffect(() => {
+    const existingIds = new Set(
+      cards
+        .filter((card) => card.filePath && !card.preview)
+        .map((card) => card.id),
+    )
+    setBatchSelectedCardIds((current) => {
+      const next = new Set(
+        [...current].filter((cardId) => existingIds.has(cardId)),
+      )
+      return next.size === current.size ? current : next
+    })
+  }, [cards])
+  useEffect(() => {
+    const ownerDocument = dragAreaRef.current?.ownerDocument ?? document
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Escape' ||
+        (!marqueeSessionRef.current && batchSelectedCardIds.size === 0)
+      ) {
+        return
+      }
+      event.preventDefault()
+      stopMarquee()
+      setBatchSelectedCardIds(new Set())
+    }
+    ownerDocument.addEventListener('keydown', handleKeyDown)
+    return () => ownerDocument.removeEventListener('keydown', handleKeyDown)
+  }, [batchSelectedCardIds.size, stopMarquee])
   const selectedCardIsVisible = selectedCardId
     ? optimisticInspectorCard?.id === selectedCardId ||
       visibleGroups.some((group) =>
@@ -891,7 +1145,10 @@ function BrowseMode({
         movements.push({ distance, dx, dy, element })
       })
 
-    const maxDistance = Math.max(...movements.map(({ distance }) => distance), 1)
+    const maxDistance = Math.max(
+      ...movements.map(({ distance }) => distance),
+      1,
+    )
     movements.forEach(({ distance, dx, dy, element }) => {
       const animation = element.animate(
         [
@@ -1096,6 +1353,7 @@ function BrowseMode({
     point: VaultKnowledgePoint,
   ) => {
     if (inspectorRef.current && !(await inspectorRef.current.flush())) return
+    setBatchSelectedCardIds(new Set())
     if (!inspectorCard) captureCardLayout('open')
     newCardDraftKeyRef.current += 1
     setSelectedCardId(null)
@@ -1110,47 +1368,103 @@ function BrowseMode({
     setInspectorClosing(false)
   }
 
-  const handleDelete = (card: Card) => {
-    if (!card.filePath || !project) return
-    void withWrite(async () => {
-      await fileStore.deleteCard(card.filePath!, card.id)
+  const resolveActionCards = (card: Card): Card[] =>
+    batchSelectedCardIds.has(card.id) && batchSelectedCards.length > 0
+      ? batchSelectedCards
+      : [card]
+
+  const handleDeleteCards = async (targetCards: Card[]) => {
+    if (!project || targetCards.length === 0) return
+    const persistedCards = targetCards.filter(
+      (card): card is Card & { filePath: string } =>
+        Boolean(card.filePath && !card.preview),
+    )
+    if (persistedCards.length === 0) return
+    const deletesInspectorCard = persistedCards.some(
+      (card) => card.id === inspectorCard?.id,
+    )
+    if (
+      deletesInspectorCard &&
+      inspectorRef.current &&
+      !(await inspectorRef.current.flush())
+    ) {
+      return
+    }
+    const cardsByFile = new Map<string, string[]>()
+    persistedCards.forEach((card) => {
+      const cardIds = cardsByFile.get(card.filePath) ?? []
+      cardIds.push(card.id)
+      cardsByFile.set(card.filePath, cardIds)
+    })
+    const deleted = await withWrite(async () => {
+      for (const [filePath, cardIds] of cardsByFile) {
+        await fileStore.deleteCards(filePath, cardIds)
+      }
       try {
-        await plugin
-          .getLearningSrsStore()
-          .removeCards(project.slug, [card.id])
+        await plugin.getLearningSrsStore().removeCards(
+          project.slug,
+          persistedCards.map((card) => card.id),
+        )
       } catch {
         new Notice(
-          t(
-            'learning.cards.srsDeleteFailed',
-            '卡片已删除，但复习记录清理失败',
-          ),
+          t('learning.cards.srsDeleteFailed', '卡片已删除，但复习记录清理失败'),
         )
       }
     })
+    if (!deleted) return
+    const deletedIds = new Set(persistedCards.map((card) => card.id))
+    setBatchSelectedCardIds(
+      (current) =>
+        new Set([...current].filter((cardId) => !deletedIds.has(cardId))),
+    )
+    if (deletesInspectorCard) beginInspectorClose()
   }
 
-  const handleQuickReview = async (
-    card: Card,
+  const handleQuickReviewCards = async (
+    targetCards: Card[],
     rating: Extract<ReviewRating, 'again' | 'easy'>,
   ) => {
-    if (!project || card.preview || writeDisabled) return
+    if (!project || targetCards.length === 0 || writeDisabled) return
+    const cardIds = targetCards
+      .filter((card) => card.filePath && !card.preview)
+      .map((card) => card.id)
+    if (cardIds.length === 0) return
     setWriting(true)
     try {
       await plugin
         .getLearningSrsStore()
-        .reviewCard(project.slug, card.id, rating, new Date())
+        .reviewCards(project.slug, cardIds, rating, new Date())
       refresh()
     } catch (reviewError) {
       console.error('[YOLO] Failed to update card review state:', reviewError)
       new Notice(
-        t(
-          'learning.cards.quickReviewFailed',
-          '学习状态更新失败，请重试',
-        ),
+        t('learning.cards.quickReviewFailed', '学习状态更新失败，请重试'),
       )
     } finally {
       setWriting(false)
     }
+  }
+
+  const handleBrowseCardClick = (
+    card: Card,
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    if ((event.metaKey || event.ctrlKey) && card.filePath && !card.preview) {
+      setBatchSelectedCardIds((current) => {
+        const next = new Set(current)
+        if (next.has(card.id)) next.delete(card.id)
+        else next.add(card.id)
+        return next
+      })
+      return
+    }
+    setBatchSelectedCardIds(new Set())
+    void handleSelectCard(card.id)
+  }
+
+  const handleCardMenuOpen = (card: Card) => {
+    if (batchSelectedCardIds.has(card.id)) return
+    setBatchSelectedCardIds(new Set([card.id]))
   }
 
   const handleDragStart = ({ active }: DragStartEvent) => {
@@ -1349,10 +1663,7 @@ function BrowseMode({
     ) {
       targetSlot = previousSlot
     }
-    const targetIndex = Math.min(
-      targetSlot.index,
-      remainingTargetItems.length,
-    )
+    const targetIndex = Math.min(targetSlot.index, remainingTargetItems.length)
     const projection = { kpUuid: targetKpUuid, index: targetIndex }
     if (
       previousProjection?.kpUuid === projection.kpUuid &&
@@ -1536,90 +1847,121 @@ function BrowseMode({
                 inspectorCard && 'has-selection',
               )}
             >
-              <div ref={dragAreaRef} className="yolo-learning-cards-chapters">
-              {visibleGroups.map(({ chapter, points }) => {
-              const sourceChapterIndex = project.chapters.findIndex(
-                (item) => item.id === chapter.id,
-              )
-              const memoryRetention = chapterMemoryRetention.get(chapter.id)
-              const memoryPercent =
-                memoryRetention === undefined
-                  ? null
-                  : Math.round(memoryRetention * 100)
-              const chapterStyle =
-                memoryRetention === undefined
-                  ? undefined
-                  : ({
-                      '--yolo-learning-chapter-memory': `${Math.min(
-                        memoryRetention / TARGET_MEMORY_RETENTION,
-                        1,
-                      ) * 100}%`,
-                    } as CSSProperties)
-              const settled = generation?.settled.find(
-                (item) => item.chapterIndex === sourceChapterIndex,
-              )
-              const generating = generationActive && !settled
-              return (
-                <section
-                  key={chapter.id}
-                  className={cx(
-                    'yolo-learning-cards-chapter',
-                    memoryRetention !== undefined && 'has-memory-retention',
-                  )}
-                  style={chapterStyle}
-                >
-                  <header className="yolo-learning-cards-chapter-header">
-                    <h2>
-                      {chapter.title}
-                      {memoryPercent !== null && (
-                        <span className="yolo-learning-cards-chapter-memory-sr">
-                          {`, ${t(
-                            'learning.cards.chapterMemoryRetention',
-                            '预计 30 天后记忆保持率 {{percent}}%',
-                          ).replace('{{percent}}', String(memoryPercent))}`}
-                        </span>
+              <div
+                ref={dragAreaRef}
+                className={cx(
+                  'yolo-learning-cards-chapters',
+                  marqueeRect && 'is-marquee-selecting',
+                )}
+                onPointerDown={handleMarqueePointerDown}
+                onPointerMove={handleMarqueePointerMove}
+                onPointerUp={handleMarqueePointerUp}
+                onPointerCancel={handleMarqueePointerCancel}
+              >
+                {marqueeRect && (
+                  <div
+                    className="yolo-learning-cards-marquee"
+                    style={marqueeRect}
+                  />
+                )}
+                {visibleGroups.map(({ chapter, points }) => {
+                  const sourceChapterIndex = project.chapters.findIndex(
+                    (item) => item.id === chapter.id,
+                  )
+                  const memoryRetention = chapterMemoryRetention.get(chapter.id)
+                  const memoryPercent =
+                    memoryRetention === undefined
+                      ? null
+                      : Math.round(memoryRetention * 100)
+                  const chapterStyle =
+                    memoryRetention === undefined
+                      ? undefined
+                      : ({
+                          '--yolo-learning-chapter-memory': `${
+                            Math.min(
+                              memoryRetention / TARGET_MEMORY_RETENTION,
+                              1,
+                            ) * 100
+                          }%`,
+                        } as CSSProperties)
+                  const settled = generation?.settled.find(
+                    (item) => item.chapterIndex === sourceChapterIndex,
+                  )
+                  const generating = generationActive && !settled
+                  return (
+                    <section
+                      key={chapter.id}
+                      className={cx(
+                        'yolo-learning-cards-chapter',
+                        memoryRetention !== undefined && 'has-memory-retention',
                       )}
-                    </h2>
-                    {generating && (
-                      <span>
-                        {t('learning.cards.chapterGenerating', '正在生成卡片…')}
-                      </span>
-                    )}
-                    {settled?.status === 'partial' && (
-                      <span>
-                        {t('learning.cards.chapterPartial', '部分卡片已生成')}
-                      </span>
-                    )}
-                    {settled?.status === 'failed' && (
-                      <span className="is-error">
-                        {t('learning.cards.chapterFailed', '本章生成失败')}
-                      </span>
-                    )}
-                  </header>
-                  {points.map(({ point, cards: pointCards }) => (
-                    <KnowledgePointDropZone
-                      key={point.id}
-                      point={point}
-                      cards={pointCards}
-                      placeholderCardId={
-                        activeCardId
-                      }
-                      placeholderHeight={activeCardHeight}
-                      readonly={generating || writeDisabled}
-                      mastery={mastery}
-                      now={now}
-                      selectedCardId={selectedCardId}
-                      onCreate={() => void handleCreate(chapter, point)}
-                      onDelete={handleDelete}
-                      onQuickReview={(card, rating) =>
-                        void handleQuickReview(card, rating)
-                      }
-                      onSelect={(cardId) => void handleSelectCard(cardId)}
-                    />
-                  ))}
-                </section>
-              )
-              })}
+                      style={chapterStyle}
+                    >
+                      <header className="yolo-learning-cards-chapter-header">
+                        <h2>
+                          {chapter.title}
+                          {memoryPercent !== null && (
+                            <span className="yolo-learning-cards-chapter-memory-sr">
+                              {`, ${t(
+                                'learning.cards.chapterMemoryRetention',
+                                '预计 30 天后记忆保持率 {{percent}}%',
+                              ).replace('{{percent}}', String(memoryPercent))}`}
+                            </span>
+                          )}
+                        </h2>
+                        {generating && (
+                          <span>
+                            {t(
+                              'learning.cards.chapterGenerating',
+                              '正在生成卡片…',
+                            )}
+                          </span>
+                        )}
+                        {settled?.status === 'partial' && (
+                          <span>
+                            {t(
+                              'learning.cards.chapterPartial',
+                              '部分卡片已生成',
+                            )}
+                          </span>
+                        )}
+                        {settled?.status === 'failed' && (
+                          <span className="is-error">
+                            {t('learning.cards.chapterFailed', '本章生成失败')}
+                          </span>
+                        )}
+                      </header>
+                      {points.map(({ point, cards: pointCards }) => (
+                        <KnowledgePointDropZone
+                          key={point.id}
+                          point={point}
+                          cards={pointCards}
+                          placeholderCardId={activeCardId}
+                          placeholderHeight={activeCardHeight}
+                          readonly={generating || writeDisabled}
+                          mastery={mastery}
+                          now={now}
+                          selectedCardId={selectedCardId}
+                          batchSelectedCardIds={batchSelectedCardIds}
+                          batchSelectionCount={batchSelectedCards.length}
+                          dragDisabled={batchSelectedCards.length > 1}
+                          onCreate={() => void handleCreate(chapter, point)}
+                          onDelete={(card) =>
+                            void handleDeleteCards(resolveActionCards(card))
+                          }
+                          onMenuOpen={handleCardMenuOpen}
+                          onQuickReview={(card, rating) =>
+                            void handleQuickReviewCards(
+                              resolveActionCards(card),
+                              rating,
+                            )
+                          }
+                          onSelect={handleBrowseCardClick}
+                        />
+                      ))}
+                    </section>
+                  )
+                })}
               </div>
               {inspectorCard && (
                 <CardInspector
@@ -1662,14 +2004,14 @@ function BrowseMode({
             >
               {activeCard ? (
                 <div className="yolo-learning yolo-learning-cards-drag-overlay">
-                    <BrowseCard
-                      card={activeCard}
-                      due={Boolean(
+                  <BrowseCard
+                    card={activeCard}
+                    due={Boolean(
                       activeCard.srsState &&
                         activeCard.dueAt &&
                         isDue(activeCard.dueAt, now),
                     )}
-                      onSelect={() => undefined}
+                    onSelect={() => undefined}
                     selected={false}
                   />
                 </div>
@@ -1692,8 +2034,12 @@ function KnowledgePointDropZone({
   mastery,
   now,
   selectedCardId,
+  batchSelectedCardIds,
+  batchSelectionCount,
+  dragDisabled,
   onCreate,
   onDelete,
+  onMenuOpen,
   onQuickReview,
   onSelect,
 }: {
@@ -1705,13 +2051,17 @@ function KnowledgePointDropZone({
   mastery: (typeof masteryFilters)[number]
   now: Date
   selectedCardId: string | null
+  batchSelectedCardIds: ReadonlySet<string>
+  batchSelectionCount: number
+  dragDisabled: boolean
   onCreate: () => void
   onDelete: (card: Card) => void
+  onMenuOpen: (card: Card) => void
   onQuickReview: (
     card: Card,
     rating: Extract<ReviewRating, 'again' | 'easy'>,
   ) => void
-  onSelect: (cardId: string) => void
+  onSelect: (card: Card, event: ReactMouseEvent<HTMLButtonElement>) => void
 }) {
   const { t } = useLanguage()
   const { setNodeRef } = useDroppable({
@@ -1753,20 +2103,27 @@ function KnowledgePointDropZone({
               placeholder={card.id === placeholderCardId}
               placeholderHeight={placeholderHeight}
               projecting={placeholderCardId !== null}
-              disabled={isBrowseDragDisabled({
-                masteryFilter: mastery,
-                writeDisabled: readonly,
-                chapterGenerating: false,
-                preview: card.preview,
-              })}
+              disabled={
+                isBrowseDragDisabled({
+                  masteryFilter: mastery,
+                  writeDisabled: readonly,
+                  chapterGenerating: false,
+                  preview: card.preview,
+                }) || dragDisabled
+              }
               due={Boolean(
                 card.srsState && card.dueAt && isDue(card.dueAt, now),
               )}
+              batchSelected={batchSelectedCardIds.has(card.id)}
+              menuCardCount={
+                batchSelectedCardIds.has(card.id) ? batchSelectionCount : 1
+              }
               menuDisabled={readonly}
               onDelete={() => onDelete(card)}
               onForget={() => onQuickReview(card, 'again')}
+              onMenuOpen={() => onMenuOpen(card)}
               selected={card.id === selectedCardId}
-              onSelect={() => onSelect(card.id)}
+              onSelect={(event) => onSelect(card, event)}
               onRemember={() => onQuickReview(card, 'easy')}
             />
           ))}
@@ -1783,12 +2140,15 @@ function KnowledgePointDropZone({
 
 function SortableBrowseCard({
   card,
+  batchSelected,
   containerKpUuid,
   due,
   disabled,
+  menuCardCount,
   menuDisabled,
   onDelete,
   onForget,
+  onMenuOpen,
   placeholder,
   placeholderHeight,
   projecting,
@@ -1797,17 +2157,20 @@ function SortableBrowseCard({
   onRemember,
 }: {
   card: Card
+  batchSelected: boolean
   containerKpUuid: string
   due: boolean
   disabled: boolean
+  menuCardCount: number
   menuDisabled: boolean
   onDelete: () => void
   onForget: () => void
+  onMenuOpen: () => void
   placeholder: boolean
   placeholderHeight: number | null
   projecting: boolean
   selected: boolean
-  onSelect: () => void
+  onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void
   onRemember: () => void
 }) {
   const sortable = useSortable({
@@ -1819,6 +2182,9 @@ function SortableBrowseCard({
     <div
       ref={sortable.setNodeRef}
       data-yolo-card-id={card.id}
+      data-yolo-marquee-selectable={
+        card.filePath && !card.preview ? 'true' : undefined
+      }
       style={{
         transform: projecting
           ? undefined
@@ -1841,10 +2207,13 @@ function SortableBrowseCard({
       ) : (
         <BrowseCard
           card={card}
+          batchSelected={batchSelected}
           due={due}
+          menuCardCount={menuCardCount}
           menuDisabled={menuDisabled}
           onDelete={onDelete}
           onForget={onForget}
+          onMenuOpen={onMenuOpen}
           onSelect={onSelect}
           onRemember={onRemember}
           selected={selected}
@@ -1856,20 +2225,26 @@ function SortableBrowseCard({
 
 function BrowseCard({
   card,
+  batchSelected = false,
   due,
+  menuCardCount = 1,
   menuDisabled = false,
   onDelete,
   onForget,
+  onMenuOpen,
   onSelect,
   onRemember,
   selected,
 }: {
   card: Card
+  batchSelected?: boolean
   due: boolean
+  menuCardCount?: number
   menuDisabled?: boolean
   onDelete?: () => void
   onForget?: () => void
-  onSelect: () => void
+  onMenuOpen?: () => void
+  onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void
   onRemember?: () => void
   selected: boolean
 }) {
@@ -1880,7 +2255,38 @@ function BrowseCard({
   const menuAnchorRef = useRef({
     getBoundingClientRect: () => DOMRect.fromRect(),
   })
-  const hasMenu = Boolean(onDelete && onForget && onRemember && card.filePath)
+  const hasMenu = Boolean(
+    onDelete && onForget && onRemember && card.filePath && !card.preview,
+  )
+  const count = String(menuCardCount)
+  const rememberedLabel =
+    menuCardCount > 1
+      ? t('learning.cards.markRememberedCount', '熟记 {{count}} 张').replace(
+          '{{count}}',
+          count,
+        )
+      : t('learning.cards.markRemembered', '熟记')
+  const forgottenLabel =
+    menuCardCount > 1
+      ? t('learning.cards.markForgottenCount', '遗忘 {{count}} 张').replace(
+          '{{count}}',
+          count,
+        )
+      : t('learning.cards.markForgotten', '遗忘')
+  const deleteLabel =
+    menuCardCount > 1
+      ? t('learning.cards.deleteCount', '删除 {{count}} 张').replace(
+          '{{count}}',
+          count,
+        )
+      : t('common.delete', '删除')
+  const confirmDeleteLabel =
+    menuCardCount > 1
+      ? t(
+          'learning.cards.confirmDeleteCount',
+          '确认删除 {{count}} 张？',
+        ).replace('{{count}}', count)
+      : t('learning.cards.confirmDelete', '确认删除？')
   const openMenuAt = (x: number, y: number) => {
     menuAnchorRef.current = {
       getBoundingClientRect: () => DOMRect.fromRect({ x, y }),
@@ -1908,12 +2314,14 @@ function BrowseCard({
         className={cx(
           'yolo-learning-cards-browse-card',
           card.preview && 'is-revealed',
+          batchSelected && 'is-batch-selected',
           selected && 'is-selected',
         )}
         onContextMenu={
           hasMenu
             ? (event) => {
                 event.preventDefault()
+                onMenuOpen?.()
                 openMenuAt(event.clientX, event.clientY)
               }
             : undefined
@@ -1954,6 +2362,7 @@ function BrowseCard({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation()
+              onMenuOpen?.()
               const rect = event.currentTarget.getBoundingClientRect()
               openMenuAt(rect.right, rect.bottom + 4)
             }}
@@ -1983,7 +2392,7 @@ function BrowseCard({
               onClick={() => runMenuAction(onRemember)}
             >
               <CircleCheck size={15} />
-              <span>{t('learning.cards.markRemembered', '熟记')}</span>
+              <span>{rememberedLabel}</span>
             </button>
             <button
               type="button"
@@ -1992,7 +2401,7 @@ function BrowseCard({
               onClick={() => runMenuAction(onForget)}
             >
               <RotateCcw size={15} />
-              <span>{t('learning.cards.markForgotten', '遗忘')}</span>
+              <span>{forgottenLabel}</span>
             </button>
             <button
               type="button"
@@ -2010,11 +2419,7 @@ function BrowseCard({
               }}
             >
               <Trash2 size={15} />
-              <span>
-                {deleteArmed
-                  ? t('learning.cards.confirmDelete', '确认删除？')
-                  : t('common.delete', '删除')}
-              </span>
+              <span>{deleteArmed ? confirmDeleteLabel : deleteLabel}</span>
             </button>
           </div>
         </YoloPopoverContent>
@@ -2029,27 +2434,22 @@ type CardInspectorHandle = {
 
 type CardSaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
-const CardInspector = forwardRef<CardInspectorHandle, {
-  card: Card
-  due: boolean
-  disabled: boolean
-  closing: boolean
-  onClose: () => void
-  onExitComplete: () => void
-  onSave: (
-    card: Card,
-    content: { front: string; back: string },
-  ) => Promise<boolean>
-}>(function CardInspector(
+const CardInspector = forwardRef<
+  CardInspectorHandle,
   {
-    card,
-    due,
-    disabled,
-    closing,
-    onClose,
-    onExitComplete,
-    onSave,
-  },
+    card: Card
+    due: boolean
+    disabled: boolean
+    closing: boolean
+    onClose: () => void
+    onExitComplete: () => void
+    onSave: (
+      card: Card,
+      content: { front: string; back: string },
+    ) => Promise<boolean>
+  }
+>(function CardInspector(
+  { card, due, disabled, closing, onClose, onExitComplete, onSave },
   ref,
 ) {
   const { t } = useLanguage()
@@ -2143,10 +2543,7 @@ const CardInspector = forwardRef<CardInspectorHandle, {
 
   return (
     <aside
-      className={cx(
-        'yolo-learning-cards-inspector',
-        closing && 'is-closing',
-      )}
+      className={cx('yolo-learning-cards-inspector', closing && 'is-closing')}
       onAnimationEnd={(event) => {
         if (event.target === event.currentTarget && closing) onExitComplete()
       }}

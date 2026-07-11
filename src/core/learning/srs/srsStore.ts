@@ -77,6 +77,36 @@ export class LearningSrsStore {
     })
   }
 
+  reviewCards(
+    projectSlug: string,
+    cardUuids: Iterable<string>,
+    rating: ReviewRating,
+    reviewedAt: Date,
+  ): Promise<void> {
+    const uuids = new Set(cardUuids)
+    uuids.forEach((uuid) => this.validateCardUuid(uuid))
+    if (uuids.size === 0) return Promise.resolve()
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      const cards = { ...current.cards }
+      uuids.forEach((uuid) => {
+        const existing = current.cards[uuid]
+        const introducedAt = existing?.introducedAt ?? reviewedAt.toISOString()
+        const card = existing
+          ? this.toFsrsCard(existing)
+          : createEmptyCard(reviewedAt)
+        const repeated = scheduler.repeat(card, reviewedAt)
+        cards[uuid] = this.toSrsCardState(
+          repeated[ratingByName[rating]].card,
+          introducedAt,
+        )
+      })
+      const nextState = { version: SRS_SCHEMA_VERSION, cards }
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+    })
+  }
+
   async getCardScheduling(
     projectSlug: string,
     cardUuid: string,

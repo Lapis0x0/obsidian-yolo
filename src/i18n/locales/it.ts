@@ -284,11 +284,15 @@ export const it: TranslationKeys = {
       addToKnowledgePoint: 'Aggiungi carta',
       emptyKnowledgePoint: 'Nessuna carta',
       markRemembered: 'Ricordata',
+      markRememberedCount: 'Ricorda {{count}} carte',
       markForgotten: 'Dimenticata',
+      markForgottenCount: 'Dimentica {{count}} carte',
       moreActions: 'Altre azioni',
       quickReviewFailed:
         'Impossibile aggiornare lo stato di apprendimento. Riprova.',
       confirmDelete: 'Confermare l’eliminazione?',
+      confirmDeleteCount: 'Eliminare {{count}} carte?',
+      deleteCount: 'Elimina {{count}} carte',
       deleteTitle: 'Elimina carta',
       deletePrompt:
         'Eliminare questa carta? L’azione non può essere annullata.',

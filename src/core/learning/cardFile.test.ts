@@ -213,6 +213,19 @@ describe('cardFile', () => {
     expect(created.back).toBe('created back')
   })
 
+  it('deletes multiple cards in one file write', async () => {
+    const path = 'p/a/cards.md'
+    const { app, files, modify } = createApp({
+      [path]: `---\ntitle: Cards\n---\n\n${A}\n\n${B}\n`,
+    })
+    const store = new LearningCardFileStore(app)
+
+    await store.deleteCards(path, ['aaaaaaaa', 'bbbbbbbb'])
+
+    expect(parseCardFile(files.get(path) ?? '').cards).toHaveLength(0)
+    expect(modify).toHaveBeenCalledTimes(1)
+  })
+
   it('creates a missing cards.md through Vault with canonical frontmatter', async () => {
     const path = 'p/new/cards.md'
     const { app, adapter, files, create, modify } = createApp({})

@@ -24199,10 +24199,25 @@ body.yolo-learning-outline-global-resize * {
 }
 
 .yolo-learning-cards-chapters {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 18px;
+}
+
+.yolo-learning-cards-chapters.is-marquee-selecting {
+  cursor: crosshair;
+  user-select: none;
+}
+
+.yolo-learning-cards-marquee {
+  position: absolute;
+  z-index: 20;
+  border: 1px solid color-mix(in oklab, var(--yolo-primary) 72%, transparent);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--yolo-primary) 10%, transparent);
+  pointer-events: none;
 }
 
 .yolo-learning-cards-browser-container {
@@ -24247,16 +24262,15 @@ body.yolo-learning-outline-global-resize * {
   --yolo-learning-chapter-memory-low-mix: clamp(
     0%,
     calc(
-      var(--yolo-learning-chapter-memory) +
-        var(--yolo-learning-chapter-memory)
+      var(--yolo-learning-chapter-memory) + var(--yolo-learning-chapter-memory)
     ),
     100%
   );
   --yolo-learning-chapter-memory-high-mix: clamp(
     0%,
     calc(
-      var(--yolo-learning-chapter-memory) +
-        var(--yolo-learning-chapter-memory) - 100%
+      var(--yolo-learning-chapter-memory) + var(--yolo-learning-chapter-memory) -
+        100%
     ),
     100%
   );
@@ -24375,11 +24389,15 @@ body.yolo-learning-outline-global-resize * {
 }
 
 .yolo-learning-cards-drag-overlay .yolo-learning-cards-browse-card {
-  border-color: color-mix(in oklab, var(--yolo-primary) 32%, var(--yolo-border));
+  border-color: color-mix(
+    in oklab,
+    var(--yolo-primary) 32%,
+    var(--yolo-border)
+  );
   box-shadow: 0 12px 28px
     color-mix(in oklab, var(--yolo-foreground) 16%, transparent);
-  animation: yolo-learning-cards-drag-lift 120ms
-    cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: yolo-learning-cards-drag-lift 120ms cubic-bezier(0.22, 1, 0.36, 1)
+    both;
   transform: scale(1.015);
 }
 
@@ -24423,7 +24441,25 @@ body.yolo-learning-outline-global-resize * {
   border-radius: var(--yolo-radius-xl);
   border: 1px solid var(--yolo-border);
   background-color: var(--yolo-card);
-  transition: border-color 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.yolo-learning-cards-browse-card.is-batch-selected {
+  border-color: color-mix(
+    in oklab,
+    var(--yolo-primary) 48%,
+    var(--yolo-border)
+  );
+  background-color: color-mix(
+    in oklab,
+    var(--yolo-primary) 7%,
+    var(--yolo-card)
+  );
+  box-shadow: 0 0 0 1px
+    color-mix(in oklab, var(--yolo-primary) 10%, transparent);
 }
 
 .yolo-learning-cards-browse-card.is-revealed {
@@ -24600,8 +24636,8 @@ body.yolo-learning-outline-global-resize * {
   padding: 20px 22px 24px;
 }
 
-.yolo-learning-cards-inspector-section +
-  .yolo-learning-cards-inspector-section {
+.yolo-learning-cards-inspector-section
+  + .yolo-learning-cards-inspector-section {
   margin-top: 14px;
 }
 

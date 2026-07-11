@@ -42,6 +42,25 @@ describe('LearningSrsStore', () => {
     expect(state.cards.bbbbbbbb.introducedAt).toBe(reviewedAt.toISOString())
   })
 
+  it('reviews multiple cards in one project write', async () => {
+    const { app, adapter } = createApp()
+    const store = new LearningSrsStore(app)
+    const reviewedAt = new Date('2026-07-10T12:00:00.000Z')
+
+    await store.reviewCards(
+      'project',
+      ['aaaaaaaa', 'bbbbbbbb'],
+      'easy',
+      reviewedAt,
+    )
+
+    const state = await store.getProjectState('project')
+    expect(Object.keys(state.cards).sort()).toEqual(['aaaaaaaa', 'bbbbbbbb'])
+    expect(state.cards.aaaaaaaa.introducedAt).toBe(reviewedAt.toISOString())
+    expect(state.cards.bbbbbbbb.introducedAt).toBe(reviewedAt.toISOString())
+    expect(adapter.write).toHaveBeenCalledTimes(1)
+  })
+
   it('does not expose a failed write through the cache', async () => {
     const { app, adapter } = createApp()
     const store = new LearningSrsStore(app)
