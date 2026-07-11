@@ -2,8 +2,11 @@
 
 .yolo-learning-cards-view {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 20px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .yolo-learning-cards-topbar {

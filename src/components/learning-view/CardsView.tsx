@@ -2,13 +2,14 @@ import {
   DndContext,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   DragOverlay,
   type DragOverEvent,
   type DragStartEvent,
   PointerSensor,
   TouchSensor,
   closestCenter,
-  pointerWithin,
+  rectIntersection,
   useDroppable,
   useSensor,
   useSensors,
@@ -109,10 +110,12 @@ function findCardContainer(
   )
 }
 
-const cardPointerCollisionDetection: CollisionDetection = (args) => {
-  const collisions = pointerWithin(args)
+const cardRectCollisionDetection: CollisionDetection = (args) => {
+  const collisions = rectIntersection(args)
   const cardCollision = collisions.find(
-    (collision) => !String(collision.id).startsWith('kp:'),
+    (collision) =>
+      collision.id !== args.active.id &&
+      !String(collision.id).startsWith('kp:'),
   )
   if (cardCollision) return [cardCollision]
   const containerCollision = collisions.find((collision) =>
@@ -177,7 +180,7 @@ export function CardsView({
   }
 
   return (
-    <div className="yolo-learning-cards-view">
+    <div className="yolo-learning-cards-view yolo-learning-scrollbar-thin">
       <div className="yolo-learning-cards-topbar">
         <Segmented
           options={cardModes}
@@ -555,6 +558,12 @@ function BrowseMode({
     useState<CardContainers | null>(null)
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
   const originalContainersRef = useRef<CardContainers | null>(null)
+  const dragCollisionRectRef =
+    useRef<Parameters<CollisionDetection>[0]['collisionRect'] | null>(null)
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    dragCollisionRectRef.current = args.collisionRect
+    return cardRectCollisionDetection(args)
+  }, [])
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
@@ -705,6 +714,7 @@ function BrowseMode({
     setDragContainers(null)
     setPendingDrop(null)
     originalContainersRef.current = null
+    dragCollisionRectRef.current = null
   }, [])
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -766,12 +776,15 @@ function BrowseMode({
     })()
   }
 
-  const handleDragOver = ({ active, over }: DragOverEvent) => {
-    if (!over) {
-      const original = originalContainersRef.current
-      if (original) setDragContainers(original)
-      return
-    }
+  const resetToOriginalContainers = () => {
+    const original = originalContainersRef.current
+    if (original) setDragContainers(original)
+  }
+
+  const updateDragPosition = (
+    active: DragMoveEvent['active'],
+    over: NonNullable<DragMoveEvent['over']>,
+  ) => {
     const activeId = String(active.id)
     const overId = String(over.id)
     if (activeId === overId) return
@@ -791,10 +804,10 @@ function BrowseMode({
       if (!overId.startsWith('kp:')) {
         const overIndex = remainingTargetItems.indexOf(overId)
         if (overIndex < 0) return current
-        const translated = active.rect.current.translated
-        if (!translated) return current
-        const activeCenterX = translated.left + translated.width / 2
-        const activeCenterY = translated.top + translated.height / 2
+        const collisionRect = dragCollisionRectRef.current
+        if (!collisionRect) return current
+        const activeCenterX = collisionRect.left + collisionRect.width / 2
+        const activeCenterY = collisionRect.top + collisionRect.height / 2
         const sameRow =
           activeCenterY >= over.rect.top && activeCenterY <= over.rect.bottom
         const insertAfter = sameRow
@@ -817,6 +830,24 @@ function BrowseMode({
         [targetKpUuid]: nextTargetItems,
       }
     })
+  }
+
+  const handleDragMove = ({ active, collisions, over }: DragMoveEvent) => {
+    const collisionId = collisions?.[0]?.id
+    if (!collisionId) {
+      resetToOriginalContainers()
+      return
+    }
+    if (!over || over.id !== collisionId) return
+    updateDragPosition(active, over)
+  }
+
+  const handleDragOver = ({ active, over }: DragOverEvent) => {
+    if (!over) {
+      resetToOriginalContainers()
+      return
+    }
+    updateDragPosition(active, over)
   }
 
   useEffect(() => {
@@ -929,8 +960,9 @@ function BrowseMode({
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={cardPointerCollisionDetection}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragOver={handleDragOver}
           onDragCancel={() => {
             clearDragSession()
@@ -1072,6 +1104,7 @@ function KnowledgePointDropZone({
               containerKpUuid={point.uuid}
               placeholder={card.id === placeholderCardId}
               placeholderHeight={placeholderHeight}
+              projecting={placeholderCardId !== null}
               disabled={isBrowseDragDisabled({
                 masteryFilter: mastery,
                 writeDisabled: readonly,
@@ -1133,6 +1166,7 @@ function SortableBrowseCard({
   disabled,
   placeholder,
   placeholderHeight,
+  projecting,
   onDelete,
 }: {
   card: Card
@@ -1141,6 +1175,7 @@ function SortableBrowseCard({
   disabled: boolean
   placeholder: boolean
   placeholderHeight: number | null
+  projecting: boolean
   onDelete: () => void
 }) {
   const sortable = useSortable({
@@ -1153,10 +1188,10 @@ function SortableBrowseCard({
       ref={sortable.setNodeRef}
       data-yolo-card-id={card.id}
       style={{
-        transform: placeholder
+        transform: projecting
           ? undefined
           : CSS.Transform.toString(sortable.transform),
-        transition: sortable.transition,
+        transition: projecting ? undefined : sortable.transition,
       }}
       className={cx(
         'yolo-learning-cards-sortable',
