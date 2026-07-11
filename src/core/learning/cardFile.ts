@@ -319,6 +319,139 @@ export class LearningCardFileStore {
     })
   }
 
+  moveCards(input: {
+    cards: Array<{ sourcePath: string; cardUuid: string }>
+    targetPath: string
+    kpUuid: string
+    targetIndex: number
+    targetChapterTitle?: string
+  }): Promise<void> {
+    return this.enqueueWrite(async () => {
+      validateUuid(input.kpUuid, '知识点')
+      if (input.cards.length === 0) return
+      const movingUuids = new Set(input.cards.map((card) => card.cardUuid))
+      if (movingUuids.size !== input.cards.length) {
+        throw new Error('批量移动卡片包含重复 UUID')
+      }
+      movingUuids.forEach((uuid) => validateUuid(uuid, '卡片'))
+
+      const paths = [
+        input.targetPath,
+        ...input.cards.map((card) => card.sourcePath),
+      ].filter((path, index, all) => all.indexOf(path) === index)
+      const snapshots = new Map<string, CardFileSnapshot>()
+      const parsedByPath = new Map<string, CardFileParseResult>()
+      for (const path of paths) {
+        const snapshot = await this.readSnapshot(path)
+        snapshots.set(path, snapshot)
+        parsedByPath.set(path, this.assertWritable(path, snapshot.content))
+      }
+
+      const movingCards = input.cards.map(({ sourcePath, cardUuid }) => {
+        const parsed = parsedByPath.get(sourcePath)
+        if (!parsed) throw new Error(`找不到源卡片文件：${sourcePath}`)
+        return requireCard(parsed, cardUuid, sourcePath)
+      })
+      const nextByPath = new Map<string, string>()
+      for (const path of paths) {
+        const snapshot = snapshots.get(path)
+        const parsed = parsedByPath.get(path)
+        if (!snapshot || !parsed) continue
+        nextByPath.set(
+          path,
+          replaceCardSlots(
+            snapshot.content,
+            parsed.cards,
+            parsed.cards.map((card) =>
+              movingUuids.has(card.cardUuid) ? '' : card.rawBlock,
+            ),
+          ),
+        )
+      }
+
+      const targetSnapshot = snapshots.get(input.targetPath)
+      if (!targetSnapshot)
+        throw new Error(`找不到目标卡片文件：${input.targetPath}`)
+      if (!targetSnapshot.file && !input.targetChapterTitle?.trim()) {
+        throw new Error(
+          `目标 cards.md 不存在，需要提供目标章节标题：${input.targetPath}`,
+        )
+      }
+      const targetBase = targetSnapshot.file
+        ? (nextByPath.get(input.targetPath) ?? '')
+        : buildCardsContent(input.targetChapterTitle ?? '')
+      const targetParsed = this.assertWritable(input.targetPath, targetBase)
+      if (
+        input.targetIndex < 0 ||
+        input.targetIndex > targetParsed.cards.length
+      ) {
+        throw new Error(`卡片目标位置越界：${input.targetIndex}`)
+      }
+      const changedBlocks = movingCards.map((card) =>
+        formatCard(
+          card.cardUuid,
+          input.kpUuid,
+          card.title,
+          card.front,
+          card.back,
+        ),
+      )
+      nextByPath.set(
+        input.targetPath,
+        insertCard(
+          targetBase,
+          targetParsed.cards,
+          changedBlocks.join('\n\n'),
+          input.targetIndex,
+        ),
+      )
+
+      const orderedPaths = [
+        input.targetPath,
+        ...paths.filter((path) => path !== input.targetPath),
+      ]
+      const written: Array<{
+        path: string
+        before: CardFileSnapshot
+        after: string
+        file: TFile
+      }> = []
+      try {
+        for (const path of orderedPaths) {
+          const before = snapshots.get(path)
+          const after = nextByPath.get(path)
+          if (!before || after === undefined || after === before.content)
+            continue
+          const file = await this.casWrite(path, before, after)
+          written.push({ path, before, after, file })
+        }
+      } catch (error) {
+        try {
+          for (const entry of written.reverse()) {
+            if (entry.before.file) {
+              await this.casWrite(
+                entry.path,
+                { file: entry.file, content: entry.after },
+                entry.before.content,
+              )
+            } else {
+              await this.casDeleteCreatedFile(
+                entry.path,
+                entry.file,
+                entry.after,
+              )
+            }
+          }
+        } catch (rollbackError) {
+          throw new Error(
+            `批量移动卡片失败且回滚失败；源错误：${toErrorMessage(error)}；回滚错误：${toErrorMessage(rollbackError)}`,
+          )
+        }
+        throw error
+      }
+    })
+  }
+
   private async moveWithinFile(input: {
     sourcePath: string
     cardUuid: string

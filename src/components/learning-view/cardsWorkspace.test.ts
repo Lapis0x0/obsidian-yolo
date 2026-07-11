@@ -120,22 +120,14 @@ describe('cards workspace calculations', () => {
       card('33333333', 'aaaaaaaa'),
     ]
     expect(
-      calculateTargetFileIndex(
-        'bbbbbbbb',
-        0,
-        ['aaaaaaaa', 'bbbbbbbb'],
-        cards,
+      calculateTargetFileIndex('bbbbbbbb', 0, ['aaaaaaaa', 'bbbbbbbb'], cards, [
         '33333333',
-      ),
+      ]),
     ).toBe(1)
     expect(
-      calculateTargetFileIndex(
-        'aaaaaaaa',
-        1,
-        ['aaaaaaaa', 'bbbbbbbb'],
-        cards,
+      calculateTargetFileIndex('aaaaaaaa', 1, ['aaaaaaaa', 'bbbbbbbb'], cards, [
         '22222222',
-      ),
+      ]),
     ).toBe(1)
   })
 
@@ -153,7 +145,7 @@ describe('cards workspace calculations', () => {
         2,
         ['aaaaaaaa', 'bbbbbbbb', 'cccccccc'],
         cards,
-        '44444444',
+        ['44444444'],
       ),
     ).toBe(3)
     expect(
@@ -162,7 +154,7 @@ describe('cards workspace calculations', () => {
         0,
         ['aaaaaaaa', 'bbbbbbbb', 'cccccccc'],
         cards,
-        '44444444',
+        ['44444444'],
       ),
     ).toBe(1)
   })

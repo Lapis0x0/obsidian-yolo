@@ -82,9 +82,10 @@ export function calculateTargetFileIndex(
   visibleTargetIndex: number,
   chapterPointUuids: string[],
   fileCards: Array<{ id: string; kpUuid: string }>,
-  movingCardUuid: string,
+  movingCardUuids: Iterable<string>,
 ): number {
-  const remaining = fileCards.filter((card) => card.id !== movingCardUuid)
+  const moving = new Set(movingCardUuids)
+  const remaining = fileCards.filter((card) => !moving.has(card.id))
   const targetCards = remaining.filter((card) => card.kpUuid === targetKpUuid)
   const boundedIndex = Math.max(
     0,

@@ -100,7 +100,7 @@ type NewCardDraft = {
 type CardContainers = Record<string, string[]>
 
 type PendingDrop = {
-  cardId: string
+  cardIds: string[]
   kpUuid: string
   persistedIndex: number
 }
@@ -108,9 +108,12 @@ type PendingDrop = {
 type DropProjection = {
   kpUuid: string
   index: number
+  slotIndex: number
 }
 
-type VirtualDropSlot = DropProjection & {
+type VirtualDropSlot = {
+  kpUuid: string
+  index: number
   offsetX: number
   offsetY: number
 }
@@ -168,6 +171,7 @@ const CARD_DROP_ANIMATION: DropAnimation = {
     },
   ],
   sideEffects: defaultDropAnimationSideEffects({
+    className: { dragOverlay: 'yolo-learning-cards-drag-overlay-dropping' },
     styles: { active: { opacity: '0' } },
   }),
 }
@@ -186,7 +190,7 @@ function createCardContainers(
 
 function createVirtualDropSlots(
   root: HTMLElement,
-  activeId: string,
+  activeIds: ReadonlySet<string>,
   activeRect: { width: number; height: number },
 ): VirtualDropSlots {
   const result: VirtualDropSlots = new Map()
@@ -207,7 +211,8 @@ function createVirtualDropSlots(
       element.getBoundingClientRect(),
     )
     const containsActive = cardElements.some(
-      (element) => element.dataset.yoloCardId === activeId,
+      (element) =>
+        element.dataset.yoloCardId && activeIds.has(element.dataset.yoloCardId),
     )
     const slots = cardRects.map((rect, index) => ({
       kpUuid,
@@ -216,7 +221,7 @@ function createVirtualDropSlots(
       offsetY: rect.top - gridRect.top + activeRect.height / 2,
     }))
 
-    if (!containsActive) {
+    if (!containsActive || activeIds.size > 1) {
       const lastRect = cardRects.at(-1)
       if (!lastRect) {
         slots.push({
@@ -697,6 +702,10 @@ function BrowseMode({
     useState<Card | null>(null)
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
   const [activeCardHeight, setActiveCardHeight] = useState<number | null>(null)
+  const [activeDragCardIds, setActiveDragCardIds] = useState<string[]>([])
+  const [activeCardHeights, setActiveCardHeights] = useState<
+    Record<string, number>
+  >({})
   const [dragContainers, setDragContainers] = useState<CardContainers | null>(
     null,
   )
@@ -711,6 +720,7 @@ function BrowseMode({
   const cardLayoutAnimationsRef = useRef(new Map<HTMLElement, Animation>())
   const newCardDraftKeyRef = useRef(0)
   const cardContainerByIdRef = useRef(new Map<string, string>())
+  const dragCardIdsRef = useRef<string[]>([])
   const virtualDropSlotsRef = useRef<VirtualDropSlots>(new Map())
   const lastProjectionRef = useRef<DropProjection | null>(null)
   const pendingDragMoveRef = useRef<{
@@ -834,6 +844,9 @@ function BrowseMode({
     (card) => !masteryValue[mastery] || card.mastery === masteryValue[mastery],
   )
   const activeCard = cards.find((card) => card.id === activeCardId)
+  const activeDragCards = activeDragCardIds
+    .map((cardId) => cards.find((card) => card.id === cardId))
+    .filter((card): card is Card => Boolean(card))
   const persistedInspectorCard =
     cards.find((card) => card.id === inspectorCardId) ?? null
   const draftInspectorCard: Card | null = newCardDraft
@@ -1470,12 +1483,33 @@ function BrowseMode({
   const handleDragStart = ({ active }: DragStartEvent) => {
     const source = cards.find((card) => card.id === active.id)
     if (!source || !project) return
+    const movingSelectedCards = batchSelectedCardIds.has(source.id)
+    const dragCards = movingSelectedCards
+      ? visibleGroups
+          .flatMap(({ points }) => points.flatMap(({ cards }) => cards))
+          .filter((card) => batchSelectedCardIds.has(card.id))
+      : [source]
+    if (dragCards.length === 0) return
+    if (!movingSelectedCards) setBatchSelectedCardIds(new Set())
+    const dragCardIds = dragCards.map((card) => card.id)
+    const dragCardIdSet = new Set(dragCardIds)
     const initialRect =
       active.rect.current.initial ??
       document
         .querySelector(`[data-yolo-card-id="${String(active.id)}"]`)
         ?.getBoundingClientRect()
     if (!initialRect || !dragAreaRef.current) return
+    const cardHeights = Object.fromEntries(
+      dragCardIds.map((cardId) => {
+        const element = dragAreaRef.current?.querySelector<HTMLElement>(
+          `[data-yolo-card-id="${cardId}"]`,
+        )
+        return [
+          cardId,
+          element?.getBoundingClientRect().height ?? initialRect.height,
+        ]
+      }),
+    )
     const containers = createCardContainers(project, cards)
     originalContainersRef.current = containers
     dragContainersRef.current = containers
@@ -1486,17 +1520,23 @@ function BrowseMode({
     )
     virtualDropSlotsRef.current = createVirtualDropSlots(
       dragAreaRef.current,
-      String(active.id),
+      dragCardIdSet,
       initialRect,
     )
     lastProjectionRef.current = {
       kpUuid: source.kpUuid,
-      index: containers[source.kpUuid].indexOf(source.id),
+      index: containers[source.kpUuid]
+        .slice(0, containers[source.kpUuid].indexOf(source.id))
+        .filter((cardId) => !dragCardIdSet.has(cardId)).length,
+      slotIndex: containers[source.kpUuid].indexOf(source.id),
     }
     lastContainerCollisionRef.current = { id: `kp:${source.kpUuid}` }
     containerCollisionStickyRef.current = false
+    dragCardIdsRef.current = dragCardIds
     setActiveCardId(String(active.id))
     setActiveCardHeight(initialRect.height)
+    setActiveDragCardIds(dragCardIds)
+    setActiveCardHeights(cardHeights)
     setDragContainers(containers)
     setPendingDrop(null)
   }
@@ -1511,11 +1551,14 @@ function BrowseMode({
     }
     setActiveCardId(null)
     setActiveCardHeight(null)
+    setActiveDragCardIds([])
+    setActiveCardHeights({})
     setDragContainers(null)
     setPendingDrop(null)
     originalContainersRef.current = null
     dragContainersRef.current = null
     cardContainerByIdRef.current.clear()
+    dragCardIdsRef.current = []
     virtualDropSlotsRef.current.clear()
     lastProjectionRef.current = null
     pendingDragMoveRef.current = null
@@ -1536,11 +1579,32 @@ function BrowseMode({
       updateDragPosition(active, over)
     }
     const containers = dragContainersRef.current
-    if (!over || !containers || !project) {
+    const original = originalContainersRef.current
+    const dragCardIds = dragCardIdsRef.current
+    if (
+      !over ||
+      !containers ||
+      !original ||
+      !project ||
+      dragCardIds.length === 0
+    ) {
       clearDragSession()
       return
     }
-    const source = cards.find((card) => card.id === active.id)
+    const unchanged = Object.keys(original).every((kpUuid) =>
+      original[kpUuid].every(
+        (cardId, index) => containers[kpUuid]?.[index] === cardId,
+      ),
+    )
+    if (unchanged) {
+      clearDragSession()
+      return
+    }
+    const movingCards = dragCardIds
+      .map((cardId) => cards.find((card) => card.id === cardId))
+      .filter((card): card is Card & { filePath: string } =>
+        Boolean(card?.filePath),
+      )
     const targetKpUuid = cardContainerByIdRef.current.get(String(active.id))
     const point = project.knowledgePoints.find(
       (item) => item.uuid === targetKpUuid,
@@ -1548,15 +1612,27 @@ function BrowseMode({
     const chapter = point
       ? project.chapters.find((item) => item.id === point.chapterId)
       : undefined
-    if (!source?.filePath || !targetKpUuid || !point || !chapter) {
+    if (
+      movingCards.length !== dragCardIds.length ||
+      !targetKpUuid ||
+      !point ||
+      !chapter
+    ) {
       clearDragSession()
       return
     }
+    const dragCardIdSet = new Set(dragCardIds)
     const chapterCards = cards.filter(
       (card) => card.chapterId === chapter.id && !card.preview,
     )
     const targetCardIds = containers[targetKpUuid] ?? []
-    const targetVisualIndex = targetCardIds.indexOf(source.id)
+    const targetVisualIndex = targetCardIds.findIndex((cardId) =>
+      dragCardIdSet.has(cardId),
+    )
+    if (targetVisualIndex < 0) {
+      clearDragSession()
+      return
+    }
     const targetVisibleIndex = targetCardIds
       .slice(0, targetVisualIndex)
       .map((id) => cardsById.get(id))
@@ -1570,29 +1646,43 @@ function BrowseMode({
         )
         .filter((uuid): uuid is string => Boolean(uuid)),
       chapterCards,
-      source.id,
+      dragCardIds,
     )
     setPendingDrop({
-      cardId: source.id,
+      cardIds: dragCardIds,
       kpUuid: targetKpUuid,
       persistedIndex: targetVisibleIndex,
     })
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setActiveCardId(null)
       setActiveCardHeight(null)
+      setActiveDragCardIds([])
+      setActiveCardHeights({})
     } else {
       dropSettleTimerRef.current = window.setTimeout(() => {
         dropSettleTimerRef.current = null
         setActiveCardId(null)
         setActiveCardHeight(null)
+        setActiveDragCardIds([])
+        setActiveCardHeights({})
       }, CARD_DROP_DURATION)
     }
     void (async () => {
+      if (
+        movingCards.some((card) => card.id === inspectorCard?.id) &&
+        inspectorRef.current &&
+        !(await inspectorRef.current.flush())
+      ) {
+        clearDragSession()
+        return
+      }
       const moved = await withWrite(() =>
-        fileStore.moveCard({
-          sourcePath: source.filePath!,
+        fileStore.moveCards({
+          cards: movingCards.map((card) => ({
+            sourcePath: card.filePath,
+            cardUuid: card.id,
+          })),
           targetPath: normalizePath(`${chapter.folderPath}/cards.md`),
-          cardUuid: source.id,
           kpUuid: targetKpUuid,
           targetIndex,
           targetChapterTitle: chapter.title,
@@ -1622,20 +1712,16 @@ function BrowseMode({
   ) => {
     const activeId = String(active.id)
     const overId = String(over.id)
-    if (activeId === overId) return
     const current = dragContainersRef.current
-    if (!current) return
-    const sourceKpUuid = cardContainerByIdRef.current.get(activeId)
+    const original = originalContainersRef.current
+    const dragCardIds = dragCardIdsRef.current
+    if (!current || !original || dragCardIds.length === 0) return
+    const dragCardIdSet = new Set(dragCardIds)
     const targetKpUuid = overId.startsWith('kp:')
       ? overId.slice(3)
       : cardContainerByIdRef.current.get(overId)
-    if (!sourceKpUuid || !targetKpUuid || !(targetKpUuid in current)) return
+    if (!targetKpUuid || !(targetKpUuid in current)) return
 
-    const sourceItems = current[sourceKpUuid]
-    const targetItems = current[targetKpUuid]
-    const sourceIndex = sourceItems.indexOf(activeId)
-    if (sourceIndex < 0) return
-    const remainingTargetItems = targetItems.filter((id) => id !== activeId)
     const collisionRect = dragCollisionRectRef.current
     const targetSlots = virtualDropSlotsRef.current.get(targetKpUuid)
     if (!collisionRect || !targetSlots || targetSlots.slots.length === 0) return
@@ -1650,11 +1736,20 @@ function BrowseMode({
     let targetSlot = targetSlots.slots.reduce((nearest, slot) =>
       distanceTo(slot) < distanceTo(nearest) ? slot : nearest,
     )
+    const originalTargetItems = original[targetKpUuid] ?? []
+    const resolveTargetIndex = (slot: VirtualDropSlot) =>
+      Math.min(
+        originalTargetItems
+          .slice(0, slot.index)
+          .filter((cardId) => !dragCardIdSet.has(cardId)).length,
+        originalTargetItems.filter((cardId) => !dragCardIdSet.has(cardId))
+          .length,
+      )
     const previousProjection = lastProjectionRef.current
     const previousSlot =
       previousProjection?.kpUuid === targetKpUuid
         ? targetSlots.slots.find(
-            (slot) => slot.index === previousProjection.index,
+            (slot) => slot.index === previousProjection.slotIndex,
           )
         : undefined
     if (
@@ -1663,34 +1758,30 @@ function BrowseMode({
     ) {
       targetSlot = previousSlot
     }
-    const targetIndex = Math.min(targetSlot.index, remainingTargetItems.length)
-    const projection = { kpUuid: targetKpUuid, index: targetIndex }
+    const targetIndex = resolveTargetIndex(targetSlot)
+    const projection = {
+      kpUuid: targetKpUuid,
+      index: targetIndex,
+      slotIndex: targetSlot.index,
+    }
     if (
       previousProjection?.kpUuid === projection.kpUuid &&
       previousProjection.index === projection.index
     ) {
-      return
-    }
-    const nextTargetItems = [...remainingTargetItems]
-    nextTargetItems.splice(targetIndex, 0, activeId)
-    if (
-      sourceKpUuid === targetKpUuid &&
-      nextTargetItems.every((id, index) => id === sourceItems[index])
-    ) {
       lastProjectionRef.current = projection
       return
     }
-
-    const next =
-      sourceKpUuid === targetKpUuid
-        ? { ...current, [sourceKpUuid]: nextTargetItems }
-        : {
-            ...current,
-            [sourceKpUuid]: sourceItems.filter((id) => id !== activeId),
-            [targetKpUuid]: nextTargetItems,
-          }
+    const next = Object.fromEntries(
+      Object.entries(current).map(([kpUuid, cardIds]) => [
+        kpUuid,
+        cardIds.filter((cardId) => !dragCardIdSet.has(cardId)),
+      ]),
+    )
+    next[targetKpUuid].splice(targetIndex, 0, ...dragCardIds)
     dragContainersRef.current = next
-    cardContainerByIdRef.current.set(activeId, targetKpUuid)
+    dragCardIds.forEach((cardId) => {
+      cardContainerByIdRef.current.set(cardId, targetKpUuid)
+    })
     lastProjectionRef.current = projection
     captureCardLayout('drag')
     setDragContainers(next)
@@ -1729,10 +1820,12 @@ function BrowseMode({
     const persistedCards = cards.filter(
       (card) => card.kpUuid === pendingDrop.kpUuid && !card.preview,
     )
-    if (
-      persistedCards.findIndex((card) => card.id === pendingDrop.cardId) ===
-      pendingDrop.persistedIndex
-    ) {
+    const persistedIds = persistedCards.map((card) => card.id)
+    const movedCardsPersisted = pendingDrop.cardIds.every(
+      (cardId, index) =>
+        persistedIds[pendingDrop.persistedIndex + index] === cardId,
+    )
+    if (movedCardsPersisted) {
       if (dropSettleTimerRef.current !== null) return
       clearDragSession()
     }
@@ -1936,15 +2029,15 @@ function BrowseMode({
                           key={point.id}
                           point={point}
                           cards={pointCards}
-                          placeholderCardId={activeCardId}
-                          placeholderHeight={activeCardHeight}
+                          placeholderCardIds={activeDragCardIds}
+                          placeholderHeights={activeCardHeights}
+                          dropTargetCardId={activeCardId}
                           readonly={generating || writeDisabled}
                           mastery={mastery}
                           now={now}
                           selectedCardId={selectedCardId}
                           batchSelectedCardIds={batchSelectedCardIds}
                           batchSelectionCount={batchSelectedCards.length}
-                          dragDisabled={batchSelectedCards.length > 1}
                           onCreate={() => void handleCreate(chapter, point)}
                           onDelete={(card) =>
                             void handleDeleteCards(resolveActionCards(card))
@@ -2004,16 +2097,28 @@ function BrowseMode({
             >
               {activeCard ? (
                 <div className="yolo-learning yolo-learning-cards-drag-overlay">
-                  <BrowseCard
-                    card={activeCard}
-                    due={Boolean(
-                      activeCard.srsState &&
-                        activeCard.dueAt &&
-                        isDue(activeCard.dueAt, now),
+                  <div
+                    className={cx(
+                      'yolo-learning-cards-drag-stack',
+                      activeDragCards.length > 1 && 'is-multi',
                     )}
-                    onSelect={() => undefined}
-                    selected={false}
-                  />
+                  >
+                    <BrowseCard
+                      card={activeCard}
+                      due={Boolean(
+                        activeCard.srsState &&
+                          activeCard.dueAt &&
+                          isDue(activeCard.dueAt, now),
+                      )}
+                      onSelect={() => undefined}
+                      selected={false}
+                    />
+                    {activeDragCards.length > 1 && (
+                      <span className="yolo-learning-cards-drag-count">
+                        {activeDragCards.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </DragOverlay>,
@@ -2028,15 +2133,15 @@ function BrowseMode({
 function KnowledgePointDropZone({
   point,
   cards,
-  placeholderCardId,
-  placeholderHeight,
+  placeholderCardIds,
+  placeholderHeights,
+  dropTargetCardId,
   readonly,
   mastery,
   now,
   selectedCardId,
   batchSelectedCardIds,
   batchSelectionCount,
-  dragDisabled,
   onCreate,
   onDelete,
   onMenuOpen,
@@ -2045,15 +2150,15 @@ function KnowledgePointDropZone({
 }: {
   point: VaultProject['knowledgePoints'][number]
   cards: Card[]
-  placeholderCardId: string | null
-  placeholderHeight: number | null
+  placeholderCardIds: string[]
+  placeholderHeights: Record<string, number>
+  dropTargetCardId: string | null
   readonly: boolean
   mastery: (typeof masteryFilters)[number]
   now: Date
   selectedCardId: string | null
   batchSelectedCardIds: ReadonlySet<string>
   batchSelectionCount: number
-  dragDisabled: boolean
   onCreate: () => void
   onDelete: (card: Card) => void
   onMenuOpen: (card: Card) => void
@@ -2069,9 +2174,8 @@ function KnowledgePointDropZone({
     disabled: readonly || mastery !== '全部',
     data: { kind: 'container', kpUuid: point.uuid },
   })
-  const containsPlaceholder = cards.some(
-    (card) => card.id === placeholderCardId,
-  )
+  const placeholderCardIdSet = new Set(placeholderCardIds)
+  const containsPlaceholder = cards.some((card) => card.id === dropTargetCardId)
   return (
     <section
       ref={setNodeRef}
@@ -2100,17 +2204,15 @@ function KnowledgePointDropZone({
               key={card.id}
               card={card}
               containerKpUuid={point.uuid}
-              placeholder={card.id === placeholderCardId}
-              placeholderHeight={placeholderHeight}
-              projecting={placeholderCardId !== null}
-              disabled={
-                isBrowseDragDisabled({
-                  masteryFilter: mastery,
-                  writeDisabled: readonly,
-                  chapterGenerating: false,
-                  preview: card.preview,
-                }) || dragDisabled
-              }
+              placeholder={placeholderCardIdSet.has(card.id)}
+              placeholderHeight={placeholderHeights[card.id] ?? null}
+              projecting={placeholderCardIds.length > 0}
+              disabled={isBrowseDragDisabled({
+                masteryFilter: mastery,
+                writeDisabled: readonly,
+                chapterGenerating: false,
+                preview: card.preview,
+              })}
               due={Boolean(
                 card.srsState && card.dueAt && isDue(card.dueAt, now),
               )}

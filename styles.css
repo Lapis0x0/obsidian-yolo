@@ -24388,6 +24388,69 @@ body.yolo-learning-outline-global-resize * {
   pointer-events: none;
 }
 
+.yolo-learning-cards-drag-stack {
+  position: relative;
+  isolation: isolate;
+}
+
+.yolo-learning-cards-drag-stack.is-multi::before,
+.yolo-learning-cards-drag-stack.is-multi::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: 1px solid
+    color-mix(in oklab, var(--yolo-primary) 26%, var(--yolo-border));
+  border-radius: var(--yolo-radius-xl);
+  background: var(--yolo-card);
+  content: '';
+  transition:
+    opacity 130ms ease,
+    transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.yolo-learning-cards-drag-stack.is-multi::before {
+  transform: translate(5px, 5px);
+}
+
+.yolo-learning-cards-drag-stack.is-multi::after {
+  z-index: -2;
+  opacity: 0.72;
+  transform: translate(10px, 10px);
+}
+
+.yolo-learning-cards-drag-count {
+  position: absolute;
+  right: -8px;
+  top: -8px;
+  z-index: 2;
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--yolo-card);
+  border-radius: 999px;
+  background: var(--yolo-primary);
+  padding-inline: 6px;
+  color: var(--yolo-primary-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    opacity 100ms ease,
+    transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.yolo-learning-cards-drag-overlay-dropping
+  .yolo-learning-cards-drag-stack::before,
+.yolo-learning-cards-drag-overlay-dropping
+  .yolo-learning-cards-drag-stack::after,
+.yolo-learning-cards-drag-overlay-dropping .yolo-learning-cards-drag-count {
+  opacity: 0;
+  transform: translate(0, 0) scale(0.92);
+}
+
 .yolo-learning-cards-drag-overlay .yolo-learning-cards-browse-card {
   border-color: color-mix(
     in oklab,

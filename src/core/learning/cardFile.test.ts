@@ -320,6 +320,38 @@ describe('cardFile', () => {
     )
   })
 
+  it('moves an ordered card group across multiple files', async () => {
+    const firstPath = 'p/a/cards.md'
+    const secondPath = 'p/b/cards.md'
+    const targetPath = 'p/c/cards.md'
+    const C =
+      '## C <!--card:cccccccc kp:33333333-->\n\n**正面：** front C\n\n**背面：** back C'
+    const { app, files } = createApp({
+      [firstPath]: `${A}\n`,
+      [secondPath]: `${B}\n`,
+      [targetPath]: `${C}\n`,
+    })
+    const store = new LearningCardFileStore(app)
+
+    await store.moveCards({
+      cards: [
+        { sourcePath: secondPath, cardUuid: 'bbbbbbbb' },
+        { sourcePath: firstPath, cardUuid: 'aaaaaaaa' },
+      ],
+      targetPath,
+      kpUuid: '44444444',
+      targetIndex: 0,
+    })
+
+    expect(parseCardFile(files.get(targetPath) ?? '').cards).toMatchObject([
+      { cardUuid: 'bbbbbbbb', kpUuid: '44444444' },
+      { cardUuid: 'aaaaaaaa', kpUuid: '44444444' },
+      { cardUuid: 'cccccccc', kpUuid: '33333333' },
+    ])
+    expect(parseCardFile(files.get(firstPath) ?? '').cards).toHaveLength(0)
+    expect(parseCardFile(files.get(secondPath) ?? '').cards).toHaveLength(0)
+  })
+
   it('moves fenced level-two heading content across files intact', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/b/cards.md'
