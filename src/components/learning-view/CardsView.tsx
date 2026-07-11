@@ -8,7 +8,6 @@ import {
   type DragStartEvent,
   PointerSensor,
   TouchSensor,
-  closestCenter,
   rectIntersection,
   useDroppable,
   useSensor,
@@ -84,6 +83,23 @@ type PendingDrop = {
   persistedIndex: number
 }
 
+type DropProjection = {
+  kpUuid: string
+  index: number
+}
+
+type VirtualDropSlot = DropProjection & {
+  offsetX: number
+  offsetY: number
+}
+
+type VirtualDropSlots = Map<
+  string,
+  { grid: HTMLElement; slots: VirtualDropSlot[] }
+>
+
+const DROP_SLOT_HYSTERESIS = 6
+
 function createCardContainers(
   project: VaultProject,
   cards: Card[],
@@ -96,31 +112,84 @@ function createCardContainers(
   )
 }
 
-const cardRectCollisionDetection: CollisionDetection = (args) => {
-  const collisions = rectIntersection(args)
-  const cardCollision = collisions.find(
-    (collision) =>
-      collision.id !== args.active.id &&
-      !String(collision.id).startsWith('kp:'),
-  )
-  if (cardCollision) return [cardCollision]
-  const containerCollision = collisions.find((collision) =>
-    String(collision.id).startsWith('kp:'),
-  )
-  if (!containerCollision) return []
-  const kpUuid = String(containerCollision.id).slice(3)
-  const childContainers = args.droppableContainers.filter(
-    (container) =>
-      container.id !== args.active.id &&
-      container.data.current?.kind === 'card' &&
-      container.data.current.kpUuid === kpUuid,
-  )
-  const childCollision = closestCenter({
-    ...args,
-    droppableContainers: childContainers,
+function createVirtualDropSlots(
+  root: HTMLElement,
+  activeId: string,
+  activeRect: { width: number; height: number },
+): VirtualDropSlots {
+  const result: VirtualDropSlots = new Map()
+  const points = root.querySelectorAll<HTMLElement>('[data-yolo-kp-uuid]')
+
+  points.forEach((point) => {
+    const kpUuid = point.dataset.yoloKpUuid
+    const grid = point.querySelector<HTMLElement>(
+      '.yolo-learning-cards-point-grid',
+    )
+    if (!kpUuid || !grid) return
+
+    const gridRect = grid.getBoundingClientRect()
+    const cardElements = Array.from(
+      grid.querySelectorAll<HTMLElement>(':scope > [data-yolo-card-id]'),
+    )
+    const cardRects = cardElements.map((element) =>
+      element.getBoundingClientRect(),
+    )
+    const containsActive = cardElements.some(
+      (element) => element.dataset.yoloCardId === activeId,
+    )
+    const slots = cardRects.map((rect, index) => ({
+      kpUuid,
+      index,
+      offsetX: rect.left - gridRect.left + activeRect.width / 2,
+      offsetY: rect.top - gridRect.top + activeRect.height / 2,
+    }))
+
+    if (!containsActive) {
+      const lastRect = cardRects.at(-1)
+      if (!lastRect) {
+        slots.push({
+          kpUuid,
+          index: 0,
+          offsetX: activeRect.width / 2,
+          offsetY: activeRect.height / 2,
+        })
+      } else {
+        const styles = getComputedStyle(grid)
+        const columnGap = Number.parseFloat(styles.columnGap) || 0
+        const rowGap = Number.parseFloat(styles.rowGap) || 0
+        const fitsCurrentRow =
+          lastRect.right + columnGap + activeRect.width <= gridRect.right + 1
+        const rowRects = cardRects.filter(
+          (rect) => Math.abs(rect.top - lastRect.top) < 1,
+        )
+        const nextLeft = fitsCurrentRow
+          ? lastRect.right + columnGap
+          : gridRect.left
+        const nextTop = fitsCurrentRow
+          ? lastRect.top
+          : Math.max(...rowRects.map((rect) => rect.bottom)) + rowGap
+        slots.push({
+          kpUuid,
+          index: cardRects.length,
+          offsetX: nextLeft - gridRect.left + activeRect.width / 2,
+          offsetY: nextTop - gridRect.top + activeRect.height / 2,
+        })
+      }
+    }
+
+    result.set(kpUuid, { grid, slots })
   })
-  return childCollision.length > 0 ? childCollision : [containerCollision]
+
+  return result
 }
+
+const knowledgePointCollisionDetection: CollisionDetection = (args) =>
+  rectIntersection({
+    ...args,
+    droppableContainers: args.droppableContainers.filter(
+      (container) => container.data.current?.kind === 'container',
+    ),
+  })
 
 type CardWorkspaceError = {
   kind: 'format' | 'load'
@@ -545,8 +614,10 @@ function BrowseMode({
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null)
   const originalContainersRef = useRef<CardContainers | null>(null)
   const dragContainersRef = useRef<CardContainers | null>(null)
+  const dragAreaRef = useRef<HTMLDivElement | null>(null)
   const cardContainerByIdRef = useRef(new Map<string, string>())
-  const lastProjectionRef = useRef<string | null>(null)
+  const virtualDropSlotsRef = useRef<VirtualDropSlots>(new Map())
+  const lastProjectionRef = useRef<DropProjection | null>(null)
   const pendingDragMoveRef = useRef<{
     active: DragMoveEvent['active']
     over: NonNullable<DragMoveEvent['over']>
@@ -556,7 +627,7 @@ function BrowseMode({
     useRef<Parameters<CollisionDetection>[0]['collisionRect'] | null>(null)
   const collisionDetection = useCallback<CollisionDetection>((args) => {
     dragCollisionRectRef.current = args.collisionRect
-    return cardRectCollisionDetection(args)
+    return knowledgePointCollisionDetection(args)
   }, [])
   useEffect(
     () => () => {
@@ -701,7 +772,7 @@ function BrowseMode({
       document
         .querySelector(`[data-yolo-card-id="${String(active.id)}"]`)
         ?.getBoundingClientRect()
-    if (!initialRect) return
+    if (!initialRect || !dragAreaRef.current) return
     const containers = createCardContainers(project, cards)
     originalContainersRef.current = containers
     dragContainersRef.current = containers
@@ -710,9 +781,15 @@ function BrowseMode({
         cardIds.map((cardId) => [cardId, kpUuid] as const),
       ),
     )
-    lastProjectionRef.current = `${source.kpUuid}:${containers[
-      source.kpUuid
-    ].indexOf(source.id)}`
+    virtualDropSlotsRef.current = createVirtualDropSlots(
+      dragAreaRef.current,
+      String(active.id),
+      initialRect,
+    )
+    lastProjectionRef.current = {
+      kpUuid: source.kpUuid,
+      index: containers[source.kpUuid].indexOf(source.id),
+    }
     setActiveCardId(String(active.id))
     setActiveCardHeight(initialRect.height)
     setDragContainers(containers)
@@ -730,6 +807,7 @@ function BrowseMode({
     originalContainersRef.current = null
     dragContainersRef.current = null
     cardContainerByIdRef.current.clear()
+    virtualDropSlotsRef.current.clear()
     lastProjectionRef.current = null
     pendingDragMoveRef.current = null
     dragMoveFrameRef.current = null
@@ -835,25 +913,44 @@ function BrowseMode({
     const sourceIndex = sourceItems.indexOf(activeId)
     if (sourceIndex < 0) return
     const remainingTargetItems = targetItems.filter((id) => id !== activeId)
-    let targetIndex = remainingTargetItems.length
-
-    if (!overId.startsWith('kp:')) {
-      const overIndex = remainingTargetItems.indexOf(overId)
-      if (overIndex < 0) return
-      const collisionRect = dragCollisionRectRef.current
-      if (!collisionRect) return
-      const activeCenterX = collisionRect.left + collisionRect.width / 2
-      const activeCenterY = collisionRect.top + collisionRect.height / 2
-      const sameRow =
-        activeCenterY >= over.rect.top && activeCenterY <= over.rect.bottom
-      const insertAfter = sameRow
-        ? activeCenterX > over.rect.left + over.rect.width / 2
-        : activeCenterY > over.rect.top + over.rect.height / 2
-      targetIndex = overIndex + (insertAfter ? 1 : 0)
+    const collisionRect = dragCollisionRectRef.current
+    const targetSlots = virtualDropSlotsRef.current.get(targetKpUuid)
+    if (!collisionRect || !targetSlots || targetSlots.slots.length === 0) return
+    const gridRect = targetSlots.grid.getBoundingClientRect()
+    const activeCenterX = collisionRect.left + collisionRect.width / 2
+    const activeCenterY = collisionRect.top + collisionRect.height / 2
+    const distanceTo = (slot: VirtualDropSlot) =>
+      Math.hypot(
+        activeCenterX - (gridRect.left + slot.offsetX),
+        activeCenterY - (gridRect.top + slot.offsetY),
+      )
+    let targetSlot = targetSlots.slots.reduce((nearest, slot) =>
+      distanceTo(slot) < distanceTo(nearest) ? slot : nearest,
+    )
+    const previousProjection = lastProjectionRef.current
+    const previousSlot =
+      previousProjection?.kpUuid === targetKpUuid
+        ? targetSlots.slots.find(
+            (slot) => slot.index === previousProjection.index,
+          )
+        : undefined
+    if (
+      previousSlot &&
+      distanceTo(targetSlot) + DROP_SLOT_HYSTERESIS >= distanceTo(previousSlot)
+    ) {
+      targetSlot = previousSlot
     }
-
-    const projection = `${targetKpUuid}:${targetIndex}`
-    if (lastProjectionRef.current === projection) return
+    const targetIndex = Math.min(
+      targetSlot.index,
+      remainingTargetItems.length,
+    )
+    const projection = { kpUuid: targetKpUuid, index: targetIndex }
+    if (
+      previousProjection?.kpUuid === projection.kpUuid &&
+      previousProjection.index === projection.index
+    ) {
+      return
+    }
     const nextTargetItems = [...remainingTargetItems]
     nextTargetItems.splice(targetIndex, 0, activeId)
     if (
@@ -1032,7 +1129,7 @@ function BrowseMode({
           }}
           onDragEnd={handleDragEnd}
         >
-          <div className="yolo-learning-cards-chapters">
+          <div ref={dragAreaRef} className="yolo-learning-cards-chapters">
             {visibleGroups.map(({ chapter, points }) => {
               const sourceChapterIndex = project.chapters.findIndex(
                 (item) => item.id === chapter.id,
@@ -1141,6 +1238,7 @@ function KnowledgePointDropZone({
   return (
     <section
       ref={setNodeRef}
+      data-yolo-kp-uuid={point.uuid}
       className={cx(
         'yolo-learning-cards-point',
         containsPlaceholder && 'is-over',
