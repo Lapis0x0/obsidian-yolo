@@ -264,6 +264,23 @@ export const it: TranslationKeys = {
       backToBrowse: 'Torna a sfoglia',
       reviewShortcuts:
         'Spazio per girare · Trascina orizzontalmente o premi 1 / 2 / 3 / 4 · Esc per sfogliare',
+      invalidProjectCards:
+        'I file delle carte hanno un formato non valido o UUID duplicati. Le modifiche sono disabilitate.',
+      invalidCardEntry: 'Formato della carta non valido',
+      cardLoadFailed: 'Impossibile caricare le carte. Riprova.',
+      cardUpdateFailed: 'Impossibile aggiornare la carta. Riprova.',
+      cardFileConflict:
+        'Il file delle carte è stato modificato altrove. Aggiorna e riprova.',
+      chapterGenerating: 'Generazione delle carte…',
+      chapterPartial: 'Alcune carte sono state generate',
+      chapterFailed: 'Generazione del capitolo non riuscita',
+      addToKnowledgePoint: 'Aggiungi carta',
+      emptyKnowledgePoint: 'Nessuna carta',
+      deleteTitle: 'Elimina carta',
+      deletePrompt:
+        'Eliminare questa carta? L’azione non può essere annullata.',
+      srsDeleteFailed:
+        'Carta eliminata, ma non è stato possibile rimuovere la cronologia',
     },
     exercises: {
       practice: 'Pratica',

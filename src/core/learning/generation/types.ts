@@ -29,10 +29,24 @@ export type CardDraft = {
   startLine: number
 }
 
+export type GeneratedCard = CardDraft & {
+  cardUuid: string
+}
+
+export type CardGenerationEvent = {
+  runId: string
+  projectId: string
+  chapterId: string
+  chapterIndex: number
+  cardIndex: number
+  cardUuid: string
+  card: GeneratedCard
+}
+
 export type CardGenerationResult = {
   chapterIndex: number
   chapterTitle: string
-  cards: CardDraft[]
+  cards: GeneratedCard[]
   status: 'generated' | 'partial' | 'failed' | 'skipped'
   discardedCount: number
   error?: string

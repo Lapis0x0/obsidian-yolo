@@ -266,6 +266,22 @@ export const en: TranslationKeys = {
       backToBrowse: 'Back to browse',
       reviewShortcuts:
         'Space to flip · Drag horizontally or press 1 / 2 / 3 / 4 to grade · Esc to browse',
+      invalidProjectCards:
+        'Card files contain invalid formatting or duplicate UUIDs. Write actions are disabled.',
+      invalidCardEntry: 'Invalid card format',
+      cardLoadFailed: 'Failed to load cards. Please try again.',
+      cardUpdateFailed: 'Failed to update the card. Please try again.',
+      cardFileConflict:
+        'The card file changed elsewhere. Refresh and try again.',
+      chapterGenerating: 'Generating cards…',
+      chapterPartial: 'Some cards were generated',
+      chapterFailed: 'Chapter generation failed',
+      addToKnowledgePoint: 'Add card',
+      emptyKnowledgePoint: 'No cards yet',
+      deleteTitle: 'Delete card',
+      deletePrompt: 'Delete this card? This action cannot be undone.',
+      srsDeleteFailed:
+        'Card deleted, but its review history could not be removed',
     },
     exercises: {
       practice: 'Practice',

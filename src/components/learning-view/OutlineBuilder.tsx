@@ -50,6 +50,8 @@ import {
   moveStagingToProject,
 } from '../../core/learning/generation/referenceStaging'
 import type {
+  CardGenerationEvent,
+  CardGenerationResult,
   GenerationProgress,
   Outline,
   OutlineChapter,
@@ -79,6 +81,10 @@ export function OutlineBuilder({
   onCancel,
   onProjectStarted,
   onComplete,
+  onCardGenerationStarted,
+  onCard,
+  onChapterSettled,
+  onCardGenerationFinished,
 }: {
   plugin: YoloPlugin
   eventBus: ProjectEventBus
@@ -91,6 +97,18 @@ export function OutlineBuilder({
   onCancel: () => void
   onProjectStarted: (projectId: string) => void | Promise<void>
   onComplete: (projectId: string) => void
+  onCardGenerationStarted: (runId: string, projectId: string) => void
+  onCard: (event: CardGenerationEvent) => void
+  onChapterSettled: (
+    runId: string,
+    projectId: string,
+    result: CardGenerationResult,
+  ) => void
+  onCardGenerationFinished: (
+    runId: string,
+    projectId: string,
+    failed: boolean,
+  ) => void
 }) {
   const { t } = useLanguage()
   const [chapters, setChapters] = useState<EditableChapter[]>([])
@@ -411,6 +429,8 @@ export function OutlineBuilder({
         ctaText: t('learning.cards.generateNow', '生成卡片'),
         cancelText: t('common.cancel', '取消'),
         onConfirm: () => {
+          const runId = `cards-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          onCardGenerationStarted(runId, scaffold.projectPath)
           void generateCardsParallel({
             plugin,
             projectTopic: resolvedProjectName,
@@ -429,9 +449,15 @@ export function OutlineBuilder({
               detail: t('learning.cards.generating', '正在生成学习卡片'),
               action: 'open-learning-view',
             },
+            runId,
+            projectId: scaffold.projectPath,
+            onCard,
+            onChapterSettled: (result) =>
+              onChapterSettled(runId, scaffold.projectPath, result),
           })
             .then(async (results) => {
               await eventBus.refreshSnapshot({ emitInitial: false })
+              onCardGenerationFinished(runId, scaffold.projectPath, false)
               const generated = results.filter(
                 (result) => result.status === 'generated',
               ).length
@@ -449,6 +475,7 @@ export function OutlineBuilder({
               )
             })
             .catch((error: unknown) => {
+              onCardGenerationFinished(runId, scaffold.projectPath, true)
               new Notice(
                 `卡片生成失败：${error instanceof Error ? error.message : String(error)}`,
               )

@@ -1,20 +1,34 @@
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { SortableContext, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import cx from 'clsx'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Notice, TFile, normalizePath } from 'obsidian'
-import {
-  Children,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent, ReactNode } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
-import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
+import {
+  CardFileConflictError,
+  type CardFileError,
+  CardFileFormatError,
+  getLearningCardFileStore,
+  parseCardFile,
+  scanProjectCards,
+} from '../../core/learning/cardFile'
 import {
   fsrsStateToMastery,
   isDue,
@@ -25,7 +39,17 @@ import type {
   SrsCardState,
 } from '../../core/learning/srs/srsTypes'
 import type { Project as VaultProject } from '../../core/learning/types'
+import { openMarkdownFile } from '../../utils/obsidian'
+import { ConfirmModal } from '../modals/ConfirmModal'
 
+import {
+  type CardGenerationWorkspace,
+  type WorkspaceCard,
+  calculateTargetFileIndex,
+  groupCardsByProjectOrder,
+  isBrowseDragDisabled,
+  mergeDiskAndPreviewCards,
+} from './cardsWorkspace'
 import { formatLearningText } from './i18n'
 import { type Mastery, MasteryDot, Segmented, SelectMenu } from './primitives'
 import {
@@ -38,16 +62,11 @@ import {
 const cardModes = ['浏览', '复习'] as const
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
 
-type Card = {
-  id: string
-  pointId: string | null
-  pointTitle: string
-  chapterTitle: string
-  front: string
-  back: string
-  mastery: Mastery
-  dueAt: string | null
-  srsState: SrsCardState | null
+type Card = WorkspaceCard
+
+type CardWorkspaceError = {
+  kind: 'format' | 'load'
+  items: CardFileError[]
 }
 
 function masteryText(
@@ -62,7 +81,13 @@ function masteryText(
   return labels[mastery]
 }
 
-export function CardsView({ project }: { project: VaultProject | null }) {
+export function CardsView({
+  project,
+  generation,
+}: {
+  project: VaultProject | null
+  generation: CardGenerationWorkspace | null
+}) {
   const { t } = useLanguage()
   const {
     cards,
@@ -71,7 +96,11 @@ export function CardsView({ project }: { project: VaultProject | null }) {
     dueCount,
     todayIntroducedCount,
     applyReviewResult,
-  } = useProjectCards(project)
+    error,
+    refresh,
+    writing,
+    setWriting,
+  } = useProjectCards(project, generation)
   const [mode, setMode] = useState<'浏览' | '复习'>('浏览')
   const modeLabels: Record<(typeof cardModes)[number], string> = {
     浏览: t('learning.common.browse', '浏览'),
@@ -96,12 +125,17 @@ export function CardsView({ project }: { project: VaultProject | null }) {
           cards={cards}
           loading={loading}
           now={now}
+          generation={generation}
+          error={error}
+          refresh={refresh}
+          writing={writing}
+          setWriting={setWriting}
         />
       ) : (
         <ReviewMode
           key={project?.slug}
           projectSlug={project?.slug ?? null}
-          cards={cards}
+          cards={cards.filter((card) => !card.preview)}
           now={now}
           todayIntroducedCount={todayIntroducedCount}
           onReviewed={applyReviewResult}
@@ -112,22 +146,29 @@ export function CardsView({ project }: { project: VaultProject | null }) {
   )
 }
 
-function useProjectCards(project: VaultProject | null) {
+function useProjectCards(
+  project: VaultProject | null,
+  generation: CardGenerationWorkspace | null,
+) {
   const app = useApp()
   const plugin = usePlugin()
   const { t } = useLanguage()
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<CardWorkspaceError | null>(null)
+  const [writing, setWriting] = useState(false)
+  const [refreshToken, setRefreshToken] = useState(0)
   const [todayIntroducedCount, setTodayIntroducedCount] = useState(0)
   const loadGenerationRef = useRef(0)
   const introducedLoadGenerationRef = useRef(0)
   const introducedDayRef = useRef('')
+  const prunedProjectRef = useRef<string | null>(null)
   const { now, refreshNow } = useReviewClock(cards)
 
   useEffect(() => {
     let cancelled = false
-    const generation = loadGenerationRef.current + 1
-    loadGenerationRef.current = generation
+    const loadGeneration = loadGenerationRef.current + 1
+    loadGenerationRef.current = loadGeneration
     const run = async () => {
       if (!project) {
         setCards([])
@@ -157,28 +198,61 @@ function useProjectCards(project: VaultProject | null) {
         )
         if (!(file instanceof TFile)) continue
         const content = await app.vault.cachedRead(file)
-        const entries = scanMarkdownEntries(content).filter(
-          (entry) => entry.type === 'card' && entry.uuid,
-        )
-        for (const entry of entries) {
-          const point = entry.kpUuid ? pointByUuid.get(entry.kpUuid) : undefined
+        const parsedFile = parseCardFile(content, file.path)
+        if (!parsedFile.complete) {
+          throw new CardFileFormatError(file.path, parsedFile.errors)
+        }
+        for (const [sourceIndex, entry] of parsedFile.cards.entries()) {
+          const point = pointByUuid.get(entry.kpUuid)
+          if (!point || point.chapterId !== chapter.id) {
+            throw new CardFileFormatError(file.path, [
+              {
+                path: file.path,
+                line: entry.startLine,
+                message: !point
+                  ? `卡片引用了不存在的知识点：${entry.kpUuid}`
+                  : `卡片知识点不属于当前章节：${entry.kpUuid}`,
+              },
+            ])
+          }
           const pointChapter = point
             ? chapterById.get(point.chapterId)
             : undefined
-          const parsed = parseCardBody(entry.body)
-          const srsState = projectState.cards[entry.uuid] ?? null
+          const srsState = projectState.cards[entry.cardUuid] ?? null
           nextCards.push({
-            id: entry.uuid,
+            id: entry.cardUuid,
+            kpUuid: entry.kpUuid,
             pointId: point?.id ?? null,
-            pointTitle: point?.title ?? entry.title,
+            pointTitle: point?.title ?? entry.kpUuid,
+            chapterId: chapter.id,
             chapterTitle: pointChapter?.title ?? chapter.title,
-            front: parsed.front || entry.title,
-            back: parsed.back || entry.body,
+            front: entry.front,
+            back: entry.back,
             mastery: srsState ? fsrsStateToMastery(srsState.state) : 'new',
             dueAt: srsState?.due ?? null,
             srsState,
+            filePath: file.path,
+            startLine: entry.startLine,
+            sourceIndex,
+            preview: false,
           })
         }
+      }
+      const projectScan = await scanProjectCards(
+        app,
+        project.folderPath,
+        project.chapters.map((chapter) => `${chapter.folderPath}/cards.md`),
+      )
+      if (!projectScan.complete) {
+        throw new CardFileFormatError(project.folderPath, projectScan.errors)
+      }
+      if (
+        prunedProjectRef.current !== project.id &&
+        (!generation || generation.settled.length >= project.chapters.length) &&
+        !writing
+      ) {
+        await srsStore.pruneOrphanedCards(project.slug, projectScan.uuids)
+        prunedProjectRef.current = project.id
       }
       const commitNow = new Date()
       const commitDay = localDayKey(commitNow)
@@ -189,27 +263,82 @@ function useProjectCards(project: VaultProject | null) {
         )
         introducedDay = commitDay
       }
-      if (!cancelled && loadGenerationRef.current === generation) {
+      if (!cancelled && loadGenerationRef.current === loadGeneration) {
         setCards(nextCards)
+        setError(null)
         setTodayIntroducedCount(introducedCount)
         introducedDayRef.current = introducedDay
         setLoading(false)
       }
     }
-    void run().catch(() => {
-      if (!cancelled && loadGenerationRef.current === generation) {
+    void run().catch((loadError: unknown) => {
+      if (!cancelled && loadGenerationRef.current === loadGeneration) {
         setCards([])
         setTodayIntroducedCount(0)
         setLoading(false)
+        const formatError = loadError instanceof CardFileFormatError
+        const errors = formatError
+          ? loadError.errors
+          : [
+              {
+                message:
+                  loadError instanceof Error
+                    ? loadError.message
+                    : String(loadError),
+              },
+            ]
+        setError({ kind: formatError ? 'format' : 'load', items: errors })
         new Notice(
-          t('learning.cards.srsLoadFailed', '复习数据加载失败，请重试'),
+          formatError
+            ? t(
+                'learning.cards.invalidProjectCards',
+                '卡片文件格式错误或 UUID 重复，写操作已禁用',
+              )
+            : t('learning.cards.cardLoadFailed', '卡片加载失败，请重试'),
         )
       }
     })
     return () => {
       cancelled = true
     }
-  }, [app, plugin, project, t])
+  }, [app, generation, plugin, project, refreshToken, t, writing])
+
+  const previewCards = useMemo(() => {
+    if (!project || generation?.projectId !== project.id) return []
+    const points = new Map(
+      project.knowledgePoints.map((point) => [point.uuid, point]),
+    )
+    const chapters = new Map(
+      project.chapters.map((chapter) => [chapter.id, chapter]),
+    )
+    return generation.cards.map(({ card: draft, chapterIndex }): Card => {
+      const point = points.get(draft.kpUuid)
+      const chapter =
+        project.chapters[chapterIndex] ??
+        (point ? chapters.get(point.chapterId) : undefined)
+      return {
+        id: draft.cardUuid,
+        kpUuid: draft.kpUuid,
+        pointId: point?.id ?? null,
+        pointTitle: point?.title ?? draft.kpUuid,
+        chapterId: chapter?.id ?? '',
+        chapterTitle: chapter?.title ?? '',
+        front: draft.front,
+        back: draft.back,
+        mastery: 'new',
+        dueAt: null,
+        srsState: null,
+        filePath: null,
+        startLine: draft.startLine,
+        sourceIndex: draft.startLine,
+        preview: true,
+      }
+    })
+  }, [generation, project])
+  const mergedCards = useMemo(
+    () => mergeDiskAndPreviewCards(cards, previewCards),
+    [cards, previewCards],
+  )
 
   const applyReviewResult = useCallback(
     (cardUuid: string, srsState: SrsCardState, introduced: boolean) => {
@@ -270,12 +399,16 @@ function useProjectCards(project: VaultProject | null) {
   ).length
 
   return {
-    cards,
+    cards: mergedCards,
     loading,
     now,
     dueCount,
     todayIntroducedCount,
     applyReviewResult,
+    error,
+    refresh: () => setRefreshToken((value) => value + 1),
+    writing,
+    setWriting,
   }
 }
 
@@ -317,33 +450,43 @@ function localDayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
-function parseCardBody(body: string) {
-  const frontMatch = body.match(
-    /\*\*正面：\*\*[ \t]*([\s\S]*?)(?=\n[ \t]*\*\*背面：\*\*|$)/,
-  )
-  const backMatch = body.match(/\*\*背面：\*\*[ \t]*([\s\S]*)$/)
-  return {
-    front: frontMatch?.[1]?.trim() ?? '',
-    back: backMatch?.[1]?.trim() ?? '',
-  }
-}
-
 /* ---------------- Browse ---------------- */
 function BrowseMode({
   project,
   cards,
   loading,
   now,
+  generation,
+  error,
+  refresh,
+  writing,
+  setWriting,
 }: {
   project: VaultProject | null
   cards: Card[]
   loading: boolean
   now: Date
+  generation: CardGenerationWorkspace | null
+  error: CardWorkspaceError | null
+  refresh: () => void
+  writing: boolean
+  setWriting: (writing: boolean) => void
 }) {
   const { t } = useLanguage()
+  const app = useApp()
+  const plugin = usePlugin()
+  const fileStore = getLearningCardFileStore(app)
+  const [chapterFilter, setChapterFilter] = useState('all')
+  const [pointFilter, setPointFilter] = useState('all')
   const [mastery, setMastery] =
     useState<(typeof masteryFilters)[number]>('全部')
-  const columnCount = useMasonryColumnCount()
+  const [activeCardId, setActiveCardId] = useState<string | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 6 },
+    }),
+  )
   const masteryFilterLabels: Record<(typeof masteryFilters)[number], string> = {
     全部: t('learning.common.all', '全部'),
     已掌握: t('learning.mastery.mastered', '已掌握'),
@@ -351,27 +494,186 @@ function BrowseMode({
     未开始: t('learning.mastery.new', '未开始'),
   }
 
+  const masteryValue: Record<(typeof masteryFilters)[number], Mastery | null> =
+    {
+      全部: null,
+      已掌握: 'mastered',
+      学习中: 'learning',
+      未开始: 'new',
+    }
+  const filteredCards = cards.filter(
+    (card) => !masteryValue[mastery] || card.mastery === masteryValue[mastery],
+  )
+  const groups = project ? groupCardsByProjectOrder(project, filteredCards) : []
+  const visibleGroups = groups
+    .filter(
+      ({ chapter }) => chapterFilter === 'all' || chapter.id === chapterFilter,
+    )
+    .map((group) => ({
+      ...group,
+      points: group.points.filter(
+        ({ point }) => pointFilter === 'all' || point.id === pointFilter,
+      ),
+    }))
+    .filter((group) => group.points.length > 0)
+  const settledIndexes = new Set(
+    generation?.settled.map((item) => item.chapterIndex),
+  )
+  const generationActive = Boolean(
+    generation && settledIndexes.size < (project?.chapters.length ?? 0),
+  )
+  const writeDisabled = Boolean(error || writing)
+
+  const withWrite = async (operation: () => Promise<void>) => {
+    if (writeDisabled) return
+    setWriting(true)
+    try {
+      await operation()
+      refresh()
+    } catch (operationError) {
+      console.error('[YOLO] Failed to update learning card:', operationError)
+      new Notice(
+        operationError instanceof CardFileConflictError
+          ? t(
+              'learning.cards.cardFileConflict',
+              '卡片文件已在其他位置修改，请刷新后重试',
+            )
+          : t('learning.cards.cardUpdateFailed', '卡片更新失败，请重试'),
+      )
+    } finally {
+      setWriting(false)
+    }
+  }
+
+  const handleCreate = (
+    chapter: VaultProject['chapters'][number],
+    kpUuid: string,
+  ) => {
+    void withWrite(async () => {
+      if (!project) return
+      const path = normalizePath(`${chapter.folderPath}/cards.md`)
+      const created = await fileStore.createCard(
+        project.folderPath,
+        path,
+        chapter.title,
+        kpUuid,
+      )
+      openMarkdownFile(app, path, created.startLine)
+    })
+  }
+
+  const handleDelete = (card: Card) => {
+    if (!card.filePath || !project) return
+    new ConfirmModal(app, {
+      title: t('learning.cards.deleteTitle', '删除卡片'),
+      message: t(
+        'learning.cards.deletePrompt',
+        '确定删除这张卡片吗？此操作无法撤销。',
+      ),
+      ctaText: t('common.delete', '删除'),
+      onConfirm: () => {
+        void withWrite(async () => {
+          await fileStore.deleteCard(card.filePath!, card.id)
+          try {
+            await plugin
+              .getLearningSrsStore()
+              .removeCards(project.slug, [card.id])
+          } catch {
+            new Notice(
+              t(
+                'learning.cards.srsDeleteFailed',
+                '卡片已删除，但复习记录清理失败',
+              ),
+            )
+          }
+        })
+      },
+    }).open()
+  }
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveCardId(null)
+    if (!over || !project) return
+    const source = cards.find((card) => card.id === active.id)
+    const targetCard = cards.find((card) => card.id === over.id)
+    const targetKpUuid =
+      targetCard?.kpUuid ?? String(over.id).replace(/^kp:/, '')
+    const point = project.knowledgePoints.find(
+      (item) => item.uuid === targetKpUuid,
+    )
+    const chapter = point
+      ? project.chapters.find((item) => item.id === point.chapterId)
+      : undefined
+    if (!source?.filePath || !point || !chapter) return
+    const chapterCards = cards.filter(
+      (card) => card.chapterId === chapter.id && !card.preview,
+    )
+    const pointCards = chapterCards.filter(
+      (card) => card.kpUuid === targetKpUuid,
+    )
+    const targetVisibleIndex = targetCard
+      ? Math.max(
+          0,
+          pointCards.findIndex((card) => card.id === targetCard.id),
+        )
+      : pointCards.length
+    const targetIndex = calculateTargetFileIndex(
+      targetKpUuid,
+      targetVisibleIndex,
+      chapter.knowledgePointIds
+        .map(
+          (id) => project.knowledgePoints.find((item) => item.id === id)?.uuid,
+        )
+        .filter((uuid): uuid is string => Boolean(uuid)),
+      chapterCards,
+      source.id,
+    )
+    void withWrite(() =>
+      fileStore.moveCard({
+        sourcePath: source.filePath!,
+        targetPath: normalizePath(`${chapter.folderPath}/cards.md`),
+        cardUuid: source.id,
+        kpUuid: targetKpUuid,
+        targetIndex,
+        targetChapterTitle: chapter.title,
+      }),
+    )
+  }
+
   return (
     <>
       <div className="yolo-learning-cards-filters">
         <SelectMenu
-          value="全部章节"
+          value={chapterFilter}
+          onChange={(value) => {
+            setChapterFilter(value)
+            setPointFilter('all')
+          }}
           options={[
             {
-              value: '全部章节',
+              value: 'all',
               label: t('learning.common.allChapters', '全部章节'),
             },
-            ...(project?.chapters.map((c) => c.title) ?? []),
+            ...(project?.chapters.map((chapter) => ({
+              value: chapter.id,
+              label: chapter.title,
+            })) ?? []),
           ]}
         />
         <SelectMenu
-          value="全部知识点"
+          value={pointFilter}
+          onChange={setPointFilter}
           options={[
             {
-              value: '全部知识点',
+              value: 'all',
               label: t('learning.common.allKnowledgePoints', '全部知识点'),
             },
-            ...(project?.knowledgePoints.map((point) => point.title) ?? []),
+            ...(project?.knowledgePoints
+              .filter(
+                (point) =>
+                  chapterFilter === 'all' || point.chapterId === chapterFilter,
+              )
+              .map((point) => ({ value: point.id, label: point.title })) ?? []),
           ]}
         />
         <div className="yolo-learning-cards-mastery-filter">
@@ -390,33 +692,38 @@ function BrowseMode({
             </button>
           ))}
         </div>
-        <SelectMenu
-          value="按到期时间"
-          options={[
-            {
-              value: '按到期时间',
-              label: t('learning.cards.sortDue', '按到期时间'),
-            },
-            {
-              value: '按掌握度',
-              label: t('learning.cards.sortMastery', '按掌握度'),
-            },
-            {
-              value: '按创建时间',
-              label: t('learning.home.sortCreated', '按创建时间'),
-            },
-          ]}
-        />
-        <button type="button" className="yolo-learning-cards-new-btn">
-          <Plus size={15} /> {t('learning.cards.newCard', '新建卡片')}
-        </button>
       </div>
 
-      {loading ? (
+      {error && (
+        <div className="yolo-learning-cards-error" role="alert">
+          <strong>
+            {error.kind === 'format'
+              ? t(
+                  'learning.cards.invalidProjectCards',
+                  '卡片文件格式错误或 UUID 重复，写操作已禁用',
+                )
+              : t('learning.cards.cardLoadFailed', '卡片加载失败，请重试')}
+          </strong>
+          {error.items.map((item, index) => (
+            <div key={`${item.path}-${item.line}-${index}`}>
+              {[
+                item.path,
+                item.line ? `:${item.line}` : '',
+                error.kind === 'format'
+                  ? t('learning.cards.invalidCardEntry', '卡片格式无效')
+                  : t('learning.cards.cardLoadFailed', '卡片加载失败，请重试'),
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            </div>
+          ))}
+        </div>
+      )}
+      {loading && cards.length === 0 ? (
         <p className="yolo-learning-cards-empty">
           {t('learning.common.loading', '加载中…')}
         </p>
-      ) : cards.length === 0 ? (
+      ) : !project ? (
         <p className="yolo-learning-cards-empty">
           {t(
             'learning.cards.empty',
@@ -424,72 +731,142 @@ function BrowseMode({
           )}
         </p>
       ) : (
-        <MasonryColumns columnCount={columnCount}>
-          {cards.map((card) => (
-            <BrowseCard
-              key={card.id}
-              card={card}
-              due={Boolean(
-                card.srsState && card.dueAt && isDue(card.dueAt, now),
-              )}
-            />
-          ))}
-        </MasonryColumns>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }: DragStartEvent) =>
+            setActiveCardId(String(active.id))
+          }
+          onDragCancel={() => setActiveCardId(null)}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="yolo-learning-cards-chapters">
+            {visibleGroups.map(({ chapter, points }) => {
+              const sourceChapterIndex = project.chapters.findIndex(
+                (item) => item.id === chapter.id,
+              )
+              const settled = generation?.settled.find(
+                (item) => item.chapterIndex === sourceChapterIndex,
+              )
+              const generating = generationActive && !settled
+              return (
+                <section
+                  key={chapter.id}
+                  className="yolo-learning-cards-chapter"
+                >
+                  <header className="yolo-learning-cards-chapter-header">
+                    <h2>{chapter.title}</h2>
+                    {generating && (
+                      <span>
+                        {t('learning.cards.chapterGenerating', '正在生成卡片…')}
+                      </span>
+                    )}
+                    {settled?.status === 'partial' && (
+                      <span>
+                        {t('learning.cards.chapterPartial', '部分卡片已生成')}
+                      </span>
+                    )}
+                    {settled?.status === 'failed' && (
+                      <span className="is-error">
+                        {t('learning.cards.chapterFailed', '本章生成失败')}
+                      </span>
+                    )}
+                  </header>
+                  {points.map(({ point, cards: pointCards }) => (
+                    <KnowledgePointDropZone
+                      key={point.id}
+                      point={point}
+                      cards={pointCards}
+                      readonly={generating || writeDisabled}
+                      mastery={mastery}
+                      now={now}
+                      onCreate={() => handleCreate(chapter, point.uuid)}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </section>
+              )
+            })}
+          </div>
+          <DragOverlay>
+            {activeCardId ? (
+              <div className="yolo-learning-cards-drag-overlay">
+                {cards.find((card) => card.id === activeCardId)?.front}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
     </>
   )
 }
 
-/** Match tailwind sm / lg / xl breakpoints for 1-4 columns. */
-function useMasonryColumnCount() {
-  const [count, setCount] = useState(1)
-
-  useEffect(() => {
-    const update = () => {
-      const width = window.innerWidth
-      if (width >= 1280) setCount(4)
-      else if (width >= 1024) setCount(3)
-      else if (width >= 640) setCount(2)
-      else setCount(1)
-    }
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [])
-
-  return count
-}
-
-/**
- * Round-robin into independent column stacks so expanding one card only pushes
- * siblings below it in the same column, never sideways.
- */
-function MasonryColumns({
-  columnCount,
-  children,
+function KnowledgePointDropZone({
+  point,
+  cards,
+  readonly,
+  mastery,
+  now,
+  onCreate,
+  onDelete,
 }: {
-  columnCount: number
-  children: ReactNode
+  point: VaultProject['knowledgePoints'][number]
+  cards: Card[]
+  readonly: boolean
+  mastery: (typeof masteryFilters)[number]
+  now: Date
+  onCreate: () => void
+  onDelete: (card: Card) => void
 }) {
-  const items = Children.toArray(children)
-  const columns = Array.from({ length: columnCount }, () => [] as ReactNode[])
-  for (let i = 0; i < items.length; i += 1) {
-    columns[i % columnCount].push(items[i])
-  }
-
-  const colIds = ['masonry-a', 'masonry-b', 'masonry-c', 'masonry-d'] as const
-
+  const { t } = useLanguage()
+  const { setNodeRef, isOver } = useDroppable({
+    id: `kp:${point.uuid}`,
+    disabled: readonly || mastery !== '全部',
+  })
   return (
-    <div className="yolo-learning-cards-masonry">
-      {columns.map((col, colIndex) => (
-        <div
-          key={colIds[colIndex]}
-          className="yolo-learning-cards-masonry-column"
+    <section
+      ref={setNodeRef}
+      className={cx('yolo-learning-cards-point', isOver && 'is-over')}
+    >
+      <header className="yolo-learning-cards-point-header">
+        <h3>{point.title}</h3>
+        <button
+          type="button"
+          disabled={readonly}
+          onClick={onCreate}
+          className="yolo-learning-cards-point-add"
         >
-          {col}
+          <Plus size={14} />{' '}
+          {t('learning.cards.addToKnowledgePoint', '新增卡片')}
+        </button>
+      </header>
+      <SortableContext items={cards.map((card) => card.id)}>
+        <div className="yolo-learning-cards-point-grid">
+          {cards.map((card) => (
+            <SortableBrowseCard
+              key={card.id}
+              card={card}
+              disabled={isBrowseDragDisabled({
+                masteryFilter: mastery,
+                writeDisabled: readonly,
+                chapterGenerating: false,
+                preview: card.preview,
+              })}
+              due={Boolean(
+                card.srsState && card.dueAt && isDue(card.dueAt, now),
+              )}
+              onDelete={() => onDelete(card)}
+            />
+          ))}
+          {isOver && <div className="yolo-learning-cards-drop-placeholder" />}
+          {cards.length === 0 && !isOver && (
+            <span className="yolo-learning-cards-point-empty">
+              {t('learning.cards.emptyKnowledgePoint', '暂无卡片')}
+            </span>
+          )}
         </div>
-      ))}
-    </div>
+      </SortableContext>
+    </section>
   )
 }
 
@@ -524,8 +901,49 @@ function StreamReveal({ text, active }: { text: string; active: boolean }) {
   )
 }
 
-function BrowseCard({ card, due }: { card: Card; due: boolean }) {
+function SortableBrowseCard({
+  card,
+  due,
+  disabled,
+  onDelete,
+}: {
+  card: Card
+  due: boolean
+  disabled: boolean
+  onDelete: () => void
+}) {
+  const sortable = useSortable({ id: card.id, disabled })
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+      }}
+      className={cx(
+        'yolo-learning-cards-sortable',
+        sortable.isDragging && 'is-dragging',
+        card.preview && 'is-preview',
+      )}
+      {...sortable.attributes}
+      {...sortable.listeners}
+    >
+      <BrowseCard card={card} due={due} onDelete={onDelete} />
+    </div>
+  )
+}
+
+function BrowseCard({
+  card,
+  due,
+  onDelete,
+}: {
+  card: Card
+  due: boolean
+  onDelete: () => void
+}) {
   const { t } = useLanguage()
+  const app = useApp()
   const [revealed, setRevealed] = useState(false)
   const [shimmer, setShimmer] = useState(false)
 
@@ -538,7 +956,12 @@ function BrowseCard({ card, due }: { card: Card; due: boolean }) {
   }
 
   return (
-    <article className="yolo-learning-cards-browse-card">
+    <article
+      className={cx(
+        'yolo-learning-cards-browse-card',
+        card.preview && 'is-revealed',
+      )}
+    >
       <div className="yolo-learning-cards-browse-card-header">
         <span className="yolo-learning-cards-browse-card-point">
           {card.chapterTitle} · {card.pointTitle}
@@ -594,10 +1017,21 @@ function BrowseCard({ card, due }: { card: Card; due: boolean }) {
       </button>
 
       <div className="yolo-learning-cards-actions">
-        <CardIconBtn label={t('common.edit', '编辑')}>
+        <CardIconBtn
+          label={t('common.edit', '编辑')}
+          disabled={!card.filePath}
+          onClick={() =>
+            card.filePath &&
+            openMarkdownFile(app, card.filePath, card.startLine)
+          }
+        >
           <Pencil size={13} />
         </CardIconBtn>
-        <CardIconBtn label={t('common.delete', '删除')}>
+        <CardIconBtn
+          label={t('common.delete', '删除')}
+          disabled={!card.filePath}
+          onClick={onDelete}
+        >
           <Trash2 size={13} />
         </CardIconBtn>
       </div>
@@ -1296,16 +1730,26 @@ function formatSchedulingHint(
 function CardIconBtn({
   children,
   label,
+  onClick,
+  disabled,
 }: {
   children: ReactNode
   label: string
+  onClick: () => void
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
-      onClick={(event) => event.stopPropagation()}
+      disabled={disabled}
+      data-no-dnd
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
       className="yolo-learning-cards-icon-btn"
     >
       {children}

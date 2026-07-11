@@ -17,7 +17,9 @@ import { CARD_GENERATOR_PROMPT, buildCardPrompt } from './prompts'
 import { LEARNING_CARD_TOOL_NAMES } from './tools'
 import type {
   CardDraft,
+  CardGenerationEvent,
   CardGenerationResult,
+  GeneratedCard,
   GenerationProgress,
   OutlineChapter,
 } from './types'
@@ -30,8 +32,9 @@ const WRITTEN_CARD_COMMENT_RE =
 const CARD_FRONT_RE =
   /\*\*正面：\*\*[ \t]*([\s\S]*?)(?=\n[ \t]*\*\*背面：\*\*|$)/
 const CARD_BACK_RE = /\*\*背面：\*\*[ \t]*([\s\S]*)$/
+export const CARD_END_MARKER = '<!--yolo-card-end-->'
 
-type AssignedCardDraft = CardDraft & { cardUuid: string }
+type AssignedCardDraft = GeneratedCard
 
 type WrittenCardEntry = CardDraft & {
   cardUuid: string
@@ -62,6 +65,10 @@ export type GenerateCardsForChapterOptions = {
   abortSignal?: AbortSignal
   activity?: AgentRunActivity
   onProgress?: (delta: string, fullText: string) => void
+  runId: string
+  projectId: string
+  chapterId: string
+  onCard?: (event: CardGenerationEvent) => void
 }
 
 export async function generateCardsForChapter({
@@ -78,8 +85,12 @@ export async function generateCardsForChapter({
   abortSignal,
   activity,
   onProgress,
+  runId,
+  projectId,
+  chapterId,
+  onCard,
 }: GenerateCardsForChapterOptions): Promise<{
-  drafts: CardDraft[]
+  cards: GeneratedCard[]
   status: 'generated' | 'partial'
   discardedCount: number
   debugData: ChapterDebugData
@@ -107,11 +118,27 @@ export async function generateCardsForChapter({
   })
   const cardWorkspaceScope = buildCardWorkspaceScope(workspaceScope, cardsPath)
   const debug = new PhaseDebugCollector()
+  const assignedDrafts: AssignedCardDraft[] = []
+  const streamParser = new CardStreamParser(validKpUuids, (draft) => {
+    const card = assignCardUuid(draft, usedCardUuids)
+    const cardIndex = assignedDrafts.length
+    assignedDrafts.push(card)
+    onCard?.({
+      runId,
+      projectId,
+      chapterId,
+      chapterIndex,
+      cardIndex,
+      cardUuid: card.cardUuid,
+      card,
+    })
+  })
   const runStream = async (
     request:
       | { prompt: string }
       | { messages: Array<ChatUserMessage | ChatAssistantMessage> },
-  ): Promise<string> => {
+    consumeCards = false,
+  ): Promise<{ text: string; error?: Error }> => {
     let accumulated = ''
     let completedText = ''
     const stream = plugin.agent.stream({
@@ -125,23 +152,27 @@ export async function generateCardsForChapter({
       abortSignal,
     })
 
-    for await (const event of stream) {
-      if (event.type === 'text') {
-        accumulated = event.text || accumulated + event.delta
-        onProgress?.(event.delta, accumulated)
+    try {
+      for await (const event of stream) {
+        if (event.type === 'text') {
+          accumulated = event.text || accumulated + event.delta
+          if (consumeCards) streamParser.push(event.delta)
+          onProgress?.(event.delta, accumulated)
+        }
+        if (event.type === 'tool') debug.recordToolCall(event)
+        if (event.type === 'completed') completedText = event.text
+        if (event.type === 'error') throw new Error(event.message)
       }
-      if (event.type === 'tool') {
-        debug.recordToolCall(event)
-      }
-      if (event.type === 'completed') {
-        completedText = event.text
-      }
-      if (event.type === 'error') {
-        throw new Error(event.message)
+    } catch (error) {
+      if (consumeCards) streamParser.finish()
+      return {
+        text: completedText || accumulated,
+        error: error instanceof Error ? error : new Error(String(error)),
       }
     }
 
-    return completedText || accumulated
+    if (consumeCards) streamParser.finish()
+    return { text: completedText || accumulated }
   }
 
   const firstUserMessage: ChatUserMessage = buildAgentApiUserMessage({
@@ -149,14 +180,14 @@ export async function generateCardsForChapter({
     promptContent: prompt,
     mentionables: [],
   })
-  const firstOutput = await runStream({ messages: [firstUserMessage] })
+  const firstRun = await runStream({ messages: [firstUserMessage] }, true)
+  const firstOutput = firstRun.text
   throwIfAborted(abortSignal)
-  const firstDrafts = parseCardDrafts(firstOutput)
-  if (firstDrafts.length === 0) {
+  if (assignedDrafts.length === 0) {
+    if (firstRun.error) throw firstRun.error
     throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
   }
 
-  const assignedDrafts = assignCardUuids(firstDrafts, usedCardUuids)
   await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
   const cardsFile = await createCardsFile(
     plugin,
@@ -200,9 +231,11 @@ export async function generateCardsForChapter({
       mentionables: [],
     })
     try {
-      finalOutput = await runStream({
+      const retryRun = await runStream({
         messages: [firstUserMessage, firstAssistantMessage, retryUserMessage],
       })
+      finalOutput = retryRun.text
+      if (retryRun.error) throw retryRun.error
     } catch (error) {
       console.error('[YOLO] Failed to correct generated cards:', error)
     }
@@ -231,7 +264,7 @@ export async function generateCardsForChapter({
     )
   }
 
-  const discardedCount = validation.discardedCount
+  const discardedCount = validation.discardedCount + streamParser.discardedCount
   if (validation.valid.length === 0) {
     const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
     // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- An empty generated artifact should not be moved into the user's trash.
@@ -250,7 +283,7 @@ export async function generateCardsForChapter({
     )
   }
 
-  const finalDrafts = validation.valid.map(toCardDraft)
+  const finalCards = validation.valid.map(toGeneratedCard)
   if (abortSignal?.aborted) {
     const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
     // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
@@ -259,8 +292,8 @@ export async function generateCardsForChapter({
   }
   const collected = debug.finalize()
   return {
-    drafts: finalDrafts,
-    status: discardedCount > 0 ? 'partial' : 'generated',
+    cards: finalCards,
+    status: firstRun.error || discardedCount > 0 ? 'partial' : 'generated',
     discardedCount,
     debugData: {
       chapterIndex,
@@ -270,12 +303,13 @@ export async function generateCardsForChapter({
       toolCalls: collected.toolCalls,
       outputLength: finalOutput.length,
       output: finalOutput,
-      count: finalDrafts.length,
+      count: finalCards.length,
     },
   }
 }
 
 export type CardGenerationChapter = OutlineChapter & {
+  chapterId?: string
   knowledgePath: string
   cardsPath: string
 }
@@ -290,6 +324,10 @@ export type GenerateCardsParallelOptions = {
   abortSignal?: AbortSignal
   activity?: AgentRunActivity
   onChapterProgress?: (progress: GenerationProgress) => void
+  runId?: string
+  projectId?: string
+  onCard?: (event: CardGenerationEvent) => void
+  onChapterSettled?: (result: CardGenerationResult) => void
 }
 
 export async function generateCardsParallel({
@@ -302,18 +340,27 @@ export async function generateCardsParallel({
   abortSignal,
   activity,
   onChapterProgress,
+  runId,
+  projectId,
+  onCard,
+  onChapterSettled,
 }: GenerateCardsParallelOptions): Promise<CardGenerationResult[]> {
   const chapterDebugData: ChapterDebugData[] = []
   const usedCardUuids = await collectExistingCardUuids(plugin.app, projectPath)
+  const resolvedRunId = runId ?? `card-generation-${Date.now()}`
+  const resolvedProjectId = projectId ?? projectPath
   const tasks = chapters.map(async (chapter, chapterIndex) => {
+    let result: CardGenerationResult
     if (plugin.app.vault.getAbstractFileByPath(chapter.cardsPath)) {
-      return {
+      result = {
         chapterIndex,
         chapterTitle: chapter.title,
         cards: [],
         status: 'skipped' as const,
         discardedCount: 0,
       }
+      onChapterSettled?.(result)
+      return result
     }
 
     onChapterProgress?.({
@@ -322,7 +369,7 @@ export async function generateCardsParallel({
       status: 'generating',
     })
     try {
-      const { drafts, debugData, status, discardedCount } =
+      const { cards, debugData, status, discardedCount } =
         await generateCardsForChapter({
           plugin,
           chapterIndex,
@@ -336,6 +383,10 @@ export async function generateCardsParallel({
           workspaceScope,
           abortSignal,
           activity,
+          runId: resolvedRunId,
+          projectId: resolvedProjectId,
+          chapterId: chapter.chapterId ?? chapter.cardsPath,
+          onCard,
         })
       chapterDebugData.push(debugData)
       onChapterProgress?.({
@@ -343,13 +394,15 @@ export async function generateCardsParallel({
         chapterTitle: chapter.title,
         status: 'completed',
       })
-      return {
+      result = {
         chapterIndex,
         chapterTitle: chapter.title,
-        cards: drafts,
+        cards,
         status,
         discardedCount,
       }
+      onChapterSettled?.(result)
+      return result
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       onChapterProgress?.({
@@ -358,7 +411,7 @@ export async function generateCardsParallel({
         status: 'error',
         error: message,
       })
-      return {
+      result = {
         chapterIndex,
         chapterTitle: chapter.title,
         cards: [],
@@ -366,6 +419,8 @@ export async function generateCardsParallel({
         discardedCount: 0,
         error: message,
       }
+      onChapterSettled?.(result)
+      return result
     }
   })
 
@@ -510,18 +565,14 @@ function getOwnedCardsFile(
   return expectedFile
 }
 
-function assignCardUuids(
-  drafts: CardDraft[],
+function assignCardUuid(
+  draft: CardDraft,
   usedCardUuids: Set<string>,
-): AssignedCardDraft[] {
-  return drafts.map((draft) => {
-    let cardUuid = createCardUuid()
-    while (usedCardUuids.has(cardUuid)) {
-      cardUuid = createCardUuid()
-    }
-    usedCardUuids.add(cardUuid)
-    return { ...draft, cardUuid }
-  })
+): AssignedCardDraft {
+  let cardUuid = createCardUuid()
+  while (usedCardUuids.has(cardUuid)) cardUuid = createCardUuid()
+  usedCardUuids.add(cardUuid)
+  return { ...draft, cardUuid }
 }
 
 function buildValidationRetryPrompt(
@@ -598,13 +649,70 @@ function buildCardsContent(chapterTitle: string, blocks: string[]): string {
   return `---\n${yaml}\n---\n\n${blocks.join('\n\n')}\n`
 }
 
-function toCardDraft(entry: WrittenCardEntry): CardDraft {
+function toGeneratedCard(entry: WrittenCardEntry): GeneratedCard {
   return {
+    cardUuid: entry.cardUuid,
     title: entry.title,
     kpUuid: entry.kpUuid,
     front: entry.front,
     back: entry.back,
     startLine: entry.startLine,
+  }
+}
+
+export class CardStreamParser {
+  private pending = ''
+  private block = ''
+  discardedCount = 0
+
+  constructor(
+    private readonly validKpUuids: Set<string>,
+    private readonly onCard: (draft: CardDraft) => void,
+  ) {}
+
+  push(delta: string): void {
+    this.pending += delta
+    let newlineIndex = this.pending.indexOf('\n')
+    while (newlineIndex !== -1) {
+      const rawLine = this.pending.slice(0, newlineIndex)
+      this.pending = this.pending.slice(newlineIndex + 1)
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+      if (line === CARD_END_MARKER) {
+        this.publishBlock()
+      } else {
+        this.block += `${line}\n`
+      }
+      newlineIndex = this.pending.indexOf('\n')
+    }
+  }
+
+  finish(): void {
+    const line = this.pending.endsWith('\r')
+      ? this.pending.slice(0, -1)
+      : this.pending
+    if (line === CARD_END_MARKER) this.publishBlock()
+    this.pending = ''
+    this.block = ''
+  }
+
+  private publishBlock(): void {
+    const drafts = parseCardDrafts(this.block)
+    this.block = ''
+    if (drafts.length !== 1) {
+      this.discardedCount++
+      return
+    }
+    const draft = drafts[0]
+    if (
+      draft.title &&
+      draft.front &&
+      draft.back &&
+      this.validKpUuids.has(draft.kpUuid)
+    ) {
+      this.onCard(draft)
+    } else {
+      this.discardedCount++
+    }
   }
 }
 

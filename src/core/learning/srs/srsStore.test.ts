@@ -183,4 +183,42 @@ describe('LearningSrsStore', () => {
 
     await expect(store.getProjectState('project')).resolves.toEqual(state)
   })
+
+  it('removes cards and skips writes when nothing changes', async () => {
+    const { app, adapter } = createApp()
+    const store = new LearningSrsStore(app)
+    const now = new Date('2026-07-10T12:00:00.000Z')
+    await store.reviewCard('project', 'aaaaaaaa', 'good', now)
+    await store.reviewCard('project', 'bbbbbbbb', 'good', now)
+    adapter.write.mockClear()
+
+    await store.removeCards('project', ['aaaaaaaa', 'cccccccc'])
+    expect(Object.keys((await store.getProjectState('project')).cards)).toEqual(
+      ['bbbbbbbb'],
+    )
+    expect(adapter.write).toHaveBeenCalledTimes(1)
+
+    await store.removeCards('project', ['aaaaaaaa'])
+    expect(adapter.write).toHaveBeenCalledTimes(1)
+  })
+
+  it('prunes orphaned cards without exposing failed writes in cache', async () => {
+    const { app, adapter } = createApp()
+    const store = new LearningSrsStore(app)
+    const now = new Date('2026-07-10T12:00:00.000Z')
+    await store.reviewCard('project', 'aaaaaaaa', 'good', now)
+    await store.reviewCard('project', 'bbbbbbbb', 'good', now)
+    adapter.write.mockRejectedValueOnce(new Error('prune failed'))
+
+    await expect(
+      store.pruneOrphanedCards('project', new Set(['aaaaaaaa'])),
+    ).rejects.toThrow('prune failed')
+    expect(
+      Object.keys((await store.getProjectState('project')).cards).sort(),
+    ).toEqual(['aaaaaaaa', 'bbbbbbbb'])
+
+    adapter.write.mockClear()
+    await store.pruneOrphanedCards('project', new Set(['aaaaaaaa', 'bbbbbbbb']))
+    expect(adapter.write).not.toHaveBeenCalled()
+  })
 })

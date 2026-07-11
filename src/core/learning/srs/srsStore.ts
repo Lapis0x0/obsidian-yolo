@@ -108,6 +108,42 @@ export class LearningSrsStore {
     ).length
   }
 
+  removeCards(projectSlug: string, cardUuids: Iterable<string>): Promise<void> {
+    const uuids = new Set(cardUuids)
+    uuids.forEach((uuid) => this.validateCardUuid(uuid))
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      const cards = Object.fromEntries(
+        Object.entries(current.cards).filter(([uuid]) => !uuids.has(uuid)),
+      )
+      const changed =
+        Object.keys(cards).length !== Object.keys(current.cards).length
+      if (!changed) return
+      const nextState = { version: SRS_SCHEMA_VERSION, cards }
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+    })
+  }
+
+  pruneOrphanedCards(
+    projectSlug: string,
+    existingCardUuids: ReadonlySet<string>,
+  ): Promise<void> {
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      const cards = Object.fromEntries(
+        Object.entries(current.cards).filter(([uuid]) =>
+          existingCardUuids.has(uuid),
+        ),
+      )
+      if (Object.keys(cards).length === Object.keys(current.cards).length)
+        return
+      const nextState = { version: SRS_SCHEMA_VERSION, cards }
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+    })
+  }
+
   private enqueueWrite<R>(operation: () => Promise<R>): Promise<R> {
     const next = this.writeQueue.then(operation, operation)
     this.writeQueue = next.then(

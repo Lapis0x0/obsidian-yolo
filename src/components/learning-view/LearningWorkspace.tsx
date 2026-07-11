@@ -5,6 +5,10 @@ import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import { cleanupStaging } from '../../core/learning/generation/referenceStaging'
+import type {
+  CardGenerationEvent,
+  CardGenerationResult,
+} from '../../core/learning/generation/types'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
 import {
   isPathUnderLearningBase,
@@ -13,6 +17,10 @@ import {
 import type { Project as VaultProject } from '../../core/learning/types'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 
+import {
+  type CardGenerationWorkspace,
+  reconcilePreviewEvents,
+} from './cardsWorkspace'
 import { HomeView } from './HomeView'
 import { KnowledgeGraph } from './KnowledgeGraph'
 import { OutlineBuilder } from './OutlineBuilder'
@@ -36,7 +44,10 @@ export function LearningWorkspace() {
   )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
+  const [cardGeneration, setCardGeneration] =
+    useState<CardGenerationWorkspace | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
+  const refreshGenerationRef = useRef(0)
   const activeProjectRef = useRef<{
     baseDir: string
     projectPath: string | null
@@ -55,10 +66,13 @@ export function LearningWorkspace() {
   useEffect(() => {
     let cancelled = false
     const run = async () => {
+      const generation = refreshGenerationRef.current + 1
+      refreshGenerationRef.current = generation
       const { projects: scanned } = await scanProjects(app, baseDir)
       if (cancelled) return
-      setVaultProjects(scanned)
       bus.startWatchingVault()
+      if (refreshGenerationRef.current !== generation) return
+      setVaultProjects(scanned)
     }
     void run()
     return () => {
@@ -95,8 +109,10 @@ export function LearningWorkspace() {
   }, [bus])
 
   const refreshProjects = useCallback(async () => {
+    const generation = refreshGenerationRef.current + 1
+    refreshGenerationRef.current = generation
     const { projects: scanned } = await scanProjects(app, baseDir)
-    setVaultProjects(scanned)
+    if (refreshGenerationRef.current === generation) setVaultProjects(scanned)
     return scanned
   }, [app, baseDir])
 
@@ -163,6 +179,55 @@ export function LearningWorkspace() {
               onComplete={(newProjectId) => {
                 void refreshProjects().then(() => setProjectId(newProjectId))
               }}
+              onCardGenerationStarted={(runId, generationProjectId) => {
+                setCardGeneration({
+                  runId,
+                  projectId: generationProjectId,
+                  cards: [],
+                  settled: [],
+                })
+                setActiveTab('卡片')
+              }}
+              onCard={(event: CardGenerationEvent) => {
+                setCardGeneration((current) =>
+                  current?.runId === event.runId &&
+                  current.projectId === event.projectId
+                    ? { ...current, cards: [...current.cards, event] }
+                    : current,
+                )
+              }}
+              onChapterSettled={(
+                runId,
+                generationProjectId,
+                result: CardGenerationResult,
+              ) => {
+                setCardGeneration((current) =>
+                  current?.runId === runId &&
+                  current.projectId === generationProjectId
+                    ? {
+                        ...current,
+                        cards: reconcilePreviewEvents(current.cards, result),
+                        settled: [...current.settled, result],
+                      }
+                    : current,
+                )
+              }}
+              onCardGenerationFinished={(
+                runId,
+                generationProjectId,
+                failed,
+              ) => {
+                void refreshProjects().then(() => {
+                  setCardGeneration((current) => {
+                    if (
+                      current?.runId !== runId ||
+                      current.projectId !== generationProjectId
+                    )
+                      return current
+                    return failed ? null : { ...current, cards: [] }
+                  })
+                })
+              }}
             />
           )
         ) : projectId ? (
@@ -176,6 +241,9 @@ export function LearningWorkspace() {
             selectedPointId={selectedPointId}
             onSelectPoint={setSelectedPointId}
             knowledgeMap={knowledgeMap}
+            cardGeneration={
+              cardGeneration?.projectId === projectId ? cardGeneration : null
+            }
           />
         ) : (
           <HomeView

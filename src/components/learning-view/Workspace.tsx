@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/language-context'
 import type { Project as VaultProject } from '../../core/learning/types'
 
 import { CardsView } from './CardsView'
+import type { CardGenerationWorkspace } from './cardsWorkspace'
 import { ExercisesView } from './ExercisesView'
 import { OutlineView } from './OutlineView'
 import { Pill, Segmented } from './primitives'
@@ -18,6 +19,7 @@ export function Workspace({
   selectedPointId,
   onSelectPoint,
   knowledgeMap,
+  cardGeneration,
 }: {
   project: VaultProject | null
   onBack: () => void
@@ -26,6 +28,7 @@ export function Workspace({
   selectedPointId: string | null
   onSelectPoint: (id: string) => void
   knowledgeMap: ReactNode
+  cardGeneration: CardGenerationWorkspace | null
 }) {
   const { t } = useLanguage()
   const tabLabels: Record<TabKey, string> = {
@@ -81,7 +84,9 @@ export function Workspace({
             </div>
           ))}
         {activeTab === '知识地图' && knowledgeMap}
-        {activeTab === '卡片' && <CardsView project={project} />}
+        {activeTab === '卡片' && (
+          <CardsView project={project} generation={cardGeneration} />
+        )}
         {activeTab === '习题' && <ExercisesView project={project} />}
       </main>
     </div>
