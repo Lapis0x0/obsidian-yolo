@@ -277,6 +277,10 @@ export const it: TranslationKeys = {
       chapterFailed: 'Generazione del capitolo non riuscita',
       chapterMemoryRetention:
         'Conservazione prevista tra 30 giorni: {{percent}}%',
+      savePending: 'In attesa del salvataggio…',
+      saving: 'Salvataggio…',
+      saved: 'Salvato',
+      saveFailed: 'Salvataggio non riuscito',
       addToKnowledgePoint: 'Aggiungi carta',
       emptyKnowledgePoint: 'Nessuna carta',
       deleteTitle: 'Elimina carta',

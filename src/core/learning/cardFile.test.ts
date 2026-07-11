@@ -178,7 +178,7 @@ describe('cardFile', () => {
     expect(succeeded.uuids).toEqual(new Set(['aaaaaaaa']))
   })
 
-  it('creates, deletes and reorders cards without changing surrounding text', async () => {
+  it('creates, updates, deletes and reorders cards without changing surrounding text', async () => {
     const path = 'p/a/cards.md'
     const note = '### 说明\n\ninterlude'
     const preserved = `---\ntitle: Cards\n---\n\nprefix\n\n${note}\n\n`
@@ -189,6 +189,15 @@ describe('cardFile', () => {
     await store.reorderCard(path, 'aaaaaaaa', 1)
     const reordered = files.get(path) ?? ''
     expect(reordered).toBe(`${preserved}${B}\n\n${A}\n`)
+
+    await store.updateCard(path, 'aaaaaaaa', {
+      front: 'updated front',
+      back: 'updated back',
+    })
+    expect(files.get(path)).toContain('**正面：** updated front')
+    expect(files.get(path)).toContain('**背面：** updated back')
+    expect(files.get(path)).toContain('interlude')
+    expect(files.get(path)).toContain('card:bbbbbbbb')
 
     await store.deleteCard(path, 'aaaaaaaa')
     expect(files.get(path)).toContain('interlude')

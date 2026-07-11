@@ -92,6 +92,23 @@
   gap: 18px;
 }
 
+.yolo-learning-cards-browser-container {
+  container: yolo-cards-browser / inline-size;
+  min-width: 0;
+}
+
+.yolo-learning-cards-browser-layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.yolo-learning-cards-browser-layout.has-selection {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px);
+}
+
 .yolo-learning-cards-chapter {
   --yolo-learning-chapter-memory-start: oklch(72% 0.1 55deg);
   --yolo-learning-chapter-memory-middle: oklch(76% 0.11 85deg);
@@ -286,6 +303,12 @@
   border-color: color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
 }
 
+.yolo-learning-cards-browse-card.is-selected {
+  border-color: color-mix(in oklab, var(--yolo-primary) 70%, transparent);
+  box-shadow: 0 0 0 1px
+    color-mix(in oklab, var(--yolo-primary) 18%, transparent);
+}
+
 .yolo-learning-cards-browse-card-header {
   display: flex;
   align-items: flex-start;
@@ -355,32 +378,22 @@
   line-height: 1.625;
 }
 
-.yolo-learning-cards-detail-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--layer-modal, 100);
+.yolo-learning-cards-inspector {
+  position: sticky;
+  top: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: color-mix(in oklab, var(--yolo-background) 66%, transparent);
-  backdrop-filter: blur(2px);
-}
-
-.yolo-learning-cards-detail-panel {
-  display: flex;
-  width: min(560px, 100%);
-  max-height: min(720px, calc(100dvh - 48px));
+  min-width: 0;
+  min-height: 320px;
+  max-height: calc(100dvh - 190px);
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
   background: var(--yolo-card);
-  box-shadow: var(--shadow-l);
   color: var(--yolo-foreground);
 }
 
-.yolo-learning-cards-detail-header {
+.yolo-learning-cards-inspector-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -389,7 +402,7 @@
   padding: 16px 18px;
 }
 
-.yolo-learning-cards-detail-heading {
+.yolo-learning-cards-inspector-heading {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -397,30 +410,31 @@
   gap: 7px;
 }
 
-.yolo-learning-cards-detail-actions {
+.yolo-learning-cards-inspector-actions {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: 3px;
 }
 
-.yolo-learning-cards-detail-close {
+.yolo-learning-cards-inspector-close {
   color: var(--yolo-muted-foreground);
 }
 
-.yolo-learning-cards-detail-body {
+.yolo-learning-cards-inspector-body {
   min-height: 0;
   overflow-y: auto;
   padding: 20px 22px 24px;
 }
 
-.yolo-learning-cards-detail-section + .yolo-learning-cards-detail-section {
+.yolo-learning-cards-inspector-section +
+  .yolo-learning-cards-inspector-section {
   margin-top: 24px;
   border-top: 1px solid var(--yolo-border);
   padding-top: 20px;
 }
 
-.yolo-learning-cards-detail-label {
+.yolo-learning-cards-inspector-label {
   margin-bottom: 8px;
   color: var(--yolo-muted-foreground);
   font-size: 11px;
@@ -428,22 +442,44 @@
   letter-spacing: 0.08em;
 }
 
-.yolo-learning-cards-detail-question,
-.yolo-learning-cards-detail-answer {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.yolo-learning-cards-detail-question {
-  font-size: 17px;
-  font-weight: 600;
+.yolo-learning-cards-inspector-textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  border: 1px solid var(--yolo-input);
+  border-radius: var(--yolo-radius-lg);
+  background: var(--yolo-background);
+  padding: 10px 12px;
+  color: var(--yolo-foreground);
+  font-family: inherit;
+  font-size: 14px;
   line-height: 1.65;
 }
 
-.yolo-learning-cards-detail-answer {
-  font-size: 14px;
-  line-height: 1.75;
+.yolo-learning-cards-inspector-textarea.is-question {
+  min-height: 120px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.yolo-learning-cards-inspector-textarea:focus {
+  border-color: var(--yolo-primary);
+  box-shadow: 0 0 0 2px
+    color-mix(in oklab, var(--yolo-primary) 15%, transparent);
+  outline: none;
+}
+
+.yolo-learning-cards-inspector-status {
+  min-height: 38px;
+  border-top: 1px solid var(--yolo-border);
+  padding: 10px 16px;
+  color: var(--yolo-muted-foreground);
+  font-size: 11px;
+  text-align: right;
+}
+
+.yolo-learning-cards-inspector-status.is-error {
+  color: var(--yolo-danger);
 }
 
 .yolo-learning-cards-actions {
@@ -492,6 +528,20 @@
   backdrop-filter: blur(8px);
   cursor: pointer;
   transition: color 150ms ease;
+}
+
+button.yolo-learning-cards-icon-btn {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  box-shadow: none;
+  line-height: 0;
+}
+
+button.yolo-learning-cards-icon-btn svg {
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 .yolo-learning-cards-icon-btn:hover {
@@ -966,6 +1016,28 @@
   opacity: 0.9;
 }
 
+@container yolo-cards-browser (max-width: 900px) {
+  .yolo-learning-cards-browser-layout {
+    display: block;
+  }
+
+  .yolo-learning-cards-browser-layout .yolo-learning-cards-inspector {
+    position: relative;
+    display: none;
+    max-height: none;
+  }
+
+  .yolo-learning-cards-browser-layout.has-selection
+    .yolo-learning-cards-chapters {
+    display: none;
+  }
+
+  .yolo-learning-cards-browser-layout.has-selection
+    .yolo-learning-cards-inspector {
+    display: flex;
+  }
+}
+
 @media (max-width: 600px) {
   .yolo-learning-cards-chapter,
   .yolo-learning-cards-point,
@@ -977,17 +1049,6 @@
 
   .yolo-learning-cards-point-grid {
     flex-direction: column;
-  }
-
-  .yolo-learning-cards-detail-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .yolo-learning-cards-detail-panel {
-    width: 100%;
-    max-height: 88dvh;
-    border-radius: var(--yolo-radius-xl) var(--yolo-radius-xl) 0 0;
   }
 }
 

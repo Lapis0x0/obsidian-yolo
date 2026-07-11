@@ -226,6 +226,35 @@ export class LearningCardFileStore {
     })
   }
 
+  updateCard(
+    filePath: string,
+    cardUuid: string,
+    content: { front: string; back: string },
+  ): Promise<void> {
+    return this.enqueueWrite(async () => {
+      const snapshot = await this.readSnapshot(filePath)
+      const expected = snapshot.content
+      const parsed = this.assertWritable(filePath, expected)
+      const card = requireCard(parsed, cardUuid, filePath)
+      const changed = formatCard(
+        card.cardUuid,
+        card.kpUuid,
+        card.title,
+        content.front,
+        content.back,
+      )
+      if (changed === card.rawBlock) return
+      const blocks = parsed.cards.map((entry) =>
+        entry.cardUuid === cardUuid ? changed : entry.rawBlock,
+      )
+      await this.casWrite(
+        filePath,
+        snapshot,
+        replaceCardSlots(expected, parsed.cards, blocks),
+      )
+    })
+  }
+
   reorderCard(
     filePath: string,
     cardUuid: string,
