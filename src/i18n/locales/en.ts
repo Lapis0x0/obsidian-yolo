@@ -284,6 +284,11 @@ export const en: TranslationKeys = {
       saveFailed: 'Save failed',
       addToKnowledgePoint: 'Add card',
       emptyKnowledgePoint: 'No cards yet',
+      markRemembered: 'Remembered',
+      markForgotten: 'Forgotten',
+      moreActions: 'More actions',
+      quickReviewFailed: 'Failed to update learning status. Please try again.',
+      confirmDelete: 'Confirm delete?',
       deleteTitle: 'Delete card',
       deletePrompt: 'Delete this card? This action cannot be undone.',
       srsDeleteFailed:

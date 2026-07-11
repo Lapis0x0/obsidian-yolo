@@ -18,8 +18,9 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import * as Popover from '@radix-ui/react-popover'
 import cx from 'clsx'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { CircleCheck, Ellipsis, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { Notice, TFile, normalizePath } from 'obsidian'
 import {
   forwardRef,
@@ -31,7 +32,10 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { CSSProperties, PointerEvent, ReactNode } from 'react'
+import type {
+  CSSProperties,
+  PointerEvent,
+} from 'react'
 import { createPortal } from 'react-dom'
 
 import { useApp } from '../../contexts/app-context'
@@ -59,7 +63,7 @@ import type {
   KnowledgePoint as VaultKnowledgePoint,
   Project as VaultProject,
 } from '../../core/learning/types'
-import { ConfirmModal } from '../modals/ConfirmModal'
+import { YoloPopoverContent } from '../common/popover'
 
 import {
   type CardGenerationWorkspace,
@@ -661,10 +665,6 @@ function BrowseMode({
   const [newCardDraft, setNewCardDraft] = useState<NewCardDraft | null>(null)
   const [optimisticInspectorCard, setOptimisticInspectorCard] =
     useState<Card | null>(null)
-  const [editRequest, setEditRequest] = useState<{
-    cardId: string
-    sequence: number
-  } | null>(null)
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
   const [activeCardHeight, setActiveCardHeight] = useState<number | null>(null)
   const [dragContainers, setDragContainers] =
@@ -979,7 +979,6 @@ function BrowseMode({
 
   const beginInspectorClose = useCallback(() => {
     setSelectedCardId(null)
-    setEditRequest(null)
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       setInspectorCardId(null)
       setNewCardDraft(null)
@@ -1018,16 +1017,7 @@ function BrowseMode({
     setOptimisticInspectorCard(null)
     setInspectorCardId(cardId)
     setSelectedCardId(cardId)
-    setEditRequest(null)
     return true
-  }
-
-  const handleEditCard = async (cardId: string) => {
-    if (!(await handleSelectCard(cardId, false))) return
-    setEditRequest((current) => ({
-      cardId,
-      sequence: (current?.sequence ?? 0) + 1,
-    }))
   }
 
   const handleUpdateCard = (
@@ -1118,36 +1108,49 @@ function BrowseMode({
       filePath: normalizePath(`${chapter.folderPath}/cards.md`),
     })
     setInspectorClosing(false)
-    setEditRequest(null)
   }
 
   const handleDelete = (card: Card) => {
     if (!card.filePath || !project) return
-    new ConfirmModal(app, {
-      title: t('learning.cards.deleteTitle', '删除卡片'),
-      message: t(
-        'learning.cards.deletePrompt',
-        '确定删除这张卡片吗？此操作无法撤销。',
-      ),
-      ctaText: t('common.delete', '删除'),
-      onConfirm: () => {
-        void withWrite(async () => {
-          await fileStore.deleteCard(card.filePath!, card.id)
-          try {
-            await plugin
-              .getLearningSrsStore()
-              .removeCards(project.slug, [card.id])
-          } catch {
-            new Notice(
-              t(
-                'learning.cards.srsDeleteFailed',
-                '卡片已删除，但复习记录清理失败',
-              ),
-            )
-          }
-        })
-      },
-    }).open()
+    void withWrite(async () => {
+      await fileStore.deleteCard(card.filePath!, card.id)
+      try {
+        await plugin
+          .getLearningSrsStore()
+          .removeCards(project.slug, [card.id])
+      } catch {
+        new Notice(
+          t(
+            'learning.cards.srsDeleteFailed',
+            '卡片已删除，但复习记录清理失败',
+          ),
+        )
+      }
+    })
+  }
+
+  const handleQuickReview = async (
+    card: Card,
+    rating: Extract<ReviewRating, 'again' | 'easy'>,
+  ) => {
+    if (!project || card.preview || writeDisabled) return
+    setWriting(true)
+    try {
+      await plugin
+        .getLearningSrsStore()
+        .reviewCard(project.slug, card.id, rating, new Date())
+      refresh()
+    } catch (reviewError) {
+      console.error('[YOLO] Failed to update card review state:', reviewError)
+      new Notice(
+        t(
+          'learning.cards.quickReviewFailed',
+          '学习状态更新失败，请重试',
+        ),
+      )
+    } finally {
+      setWriting(false)
+    }
   }
 
   const handleDragStart = ({ active }: DragStartEvent) => {
@@ -1608,8 +1611,10 @@ function BrowseMode({
                       selectedCardId={selectedCardId}
                       onCreate={() => void handleCreate(chapter, point)}
                       onDelete={handleDelete}
+                      onQuickReview={(card, rating) =>
+                        void handleQuickReview(card, rating)
+                      }
                       onSelect={(cardId) => void handleSelectCard(cardId)}
-                      onEdit={(cardId) => void handleEditCard(cardId)}
                     />
                   ))}
                 </section>
@@ -1627,7 +1632,6 @@ function BrowseMode({
                       isDue(inspectorCard.dueAt, now),
                   )}
                   disabled={writeDisabled}
-                  editRequest={editRequest}
                   closing={inspectorClosing}
                   onClose={() => void handleCloseInspector()}
                   onExitComplete={() => {
@@ -1658,16 +1662,14 @@ function BrowseMode({
             >
               {activeCard ? (
                 <div className="yolo-learning yolo-learning-cards-drag-overlay">
-                  <BrowseCard
-                    card={activeCard}
-                    due={Boolean(
+                    <BrowseCard
+                      card={activeCard}
+                      due={Boolean(
                       activeCard.srsState &&
                         activeCard.dueAt &&
                         isDue(activeCard.dueAt, now),
                     )}
-                    onDelete={() => undefined}
-                    onEdit={() => undefined}
-                    onSelect={() => undefined}
+                      onSelect={() => undefined}
                     selected={false}
                   />
                 </div>
@@ -1692,8 +1694,8 @@ function KnowledgePointDropZone({
   selectedCardId,
   onCreate,
   onDelete,
+  onQuickReview,
   onSelect,
-  onEdit,
 }: {
   point: VaultProject['knowledgePoints'][number]
   cards: Card[]
@@ -1705,8 +1707,11 @@ function KnowledgePointDropZone({
   selectedCardId: string | null
   onCreate: () => void
   onDelete: (card: Card) => void
+  onQuickReview: (
+    card: Card,
+    rating: Extract<ReviewRating, 'again' | 'easy'>,
+  ) => void
   onSelect: (cardId: string) => void
-  onEdit: (cardId: string) => void
 }) {
   const { t } = useLanguage()
   const { setNodeRef } = useDroppable({
@@ -1757,10 +1762,12 @@ function KnowledgePointDropZone({
               due={Boolean(
                 card.srsState && card.dueAt && isDue(card.dueAt, now),
               )}
-              selected={card.id === selectedCardId}
+              menuDisabled={readonly}
               onDelete={() => onDelete(card)}
+              onForget={() => onQuickReview(card, 'again')}
+              selected={card.id === selectedCardId}
               onSelect={() => onSelect(card.id)}
-              onEdit={() => onEdit(card.id)}
+              onRemember={() => onQuickReview(card, 'easy')}
             />
           ))}
           {cards.length === 0 && (
@@ -1779,25 +1786,29 @@ function SortableBrowseCard({
   containerKpUuid,
   due,
   disabled,
+  menuDisabled,
+  onDelete,
+  onForget,
   placeholder,
   placeholderHeight,
   projecting,
-  onDelete,
   selected,
   onSelect,
-  onEdit,
+  onRemember,
 }: {
   card: Card
   containerKpUuid: string
   due: boolean
   disabled: boolean
+  menuDisabled: boolean
+  onDelete: () => void
+  onForget: () => void
   placeholder: boolean
   placeholderHeight: number | null
   projecting: boolean
-  onDelete: () => void
   selected: boolean
   onSelect: () => void
-  onEdit: () => void
+  onRemember: () => void
 }) {
   const sortable = useSortable({
     id: card.id,
@@ -1831,9 +1842,11 @@ function SortableBrowseCard({
         <BrowseCard
           card={card}
           due={due}
+          menuDisabled={menuDisabled}
           onDelete={onDelete}
-          onEdit={onEdit}
+          onForget={onForget}
           onSelect={onSelect}
+          onRemember={onRemember}
           selected={selected}
         />
       )}
@@ -1844,71 +1857,169 @@ function SortableBrowseCard({
 function BrowseCard({
   card,
   due,
+  menuDisabled = false,
   onDelete,
-  onEdit,
+  onForget,
   onSelect,
+  onRemember,
   selected,
 }: {
   card: Card
   due: boolean
-  onDelete: () => void
-  onEdit: () => void
+  menuDisabled?: boolean
+  onDelete?: () => void
+  onForget?: () => void
   onSelect: () => void
+  onRemember?: () => void
   selected: boolean
 }) {
   const { t } = useLanguage()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [deleteArmed, setDeleteArmed] = useState(false)
+  const cardRef = useRef<HTMLElement>(null)
+  const menuAnchorRef = useRef({
+    getBoundingClientRect: () => DOMRect.fromRect(),
+  })
+  const hasMenu = Boolean(onDelete && onForget && onRemember && card.filePath)
+  const openMenuAt = (x: number, y: number) => {
+    menuAnchorRef.current = {
+      getBoundingClientRect: () => DOMRect.fromRect({ x, y }),
+    }
+    setDeleteArmed(false)
+    setMenuOpen(true)
+  }
+  const runMenuAction = (action: (() => void) | undefined) => {
+    setDeleteArmed(false)
+    setMenuOpen(false)
+    action?.()
+  }
 
   return (
-    <article
-      className={cx(
-        'yolo-learning-cards-browse-card',
-        card.preview && 'is-revealed',
-        selected && 'is-selected',
-      )}
+    <Popover.Root
+      open={menuOpen}
+      onOpenChange={(open) => {
+        setMenuOpen(open)
+        if (!open) setDeleteArmed(false)
+      }}
     >
-      <div className="yolo-learning-cards-browse-card-header">
-        <span className="yolo-learning-cards-browse-card-point">
-          {card.chapterTitle} · {card.pointTitle}
-        </span>
-        <div className="yolo-learning-cards-browse-card-meta">
-          {due && (
-            <span className="yolo-learning-cards-due-label">
-              {t('learning.cards.due', '待复习')}
-            </span>
-          )}
-          <span className="yolo-learning-cards-mastery-label">
-            <MasteryDot mastery={card.mastery} />
-            {masteryText(t, card.mastery)}
-          </span>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-pressed={selected}
-        className="yolo-learning-cards-browse-card-body"
+      <Popover.Anchor virtualRef={menuAnchorRef} />
+      <article
+        ref={cardRef}
+        className={cx(
+          'yolo-learning-cards-browse-card',
+          card.preview && 'is-revealed',
+          selected && 'is-selected',
+        )}
+        onContextMenu={
+          hasMenu
+            ? (event) => {
+                event.preventDefault()
+                openMenuAt(event.clientX, event.clientY)
+              }
+            : undefined
+        }
       >
-        <p className="yolo-learning-cards-front-text">{card.front}</p>
-      </button>
+        <div className="yolo-learning-cards-browse-card-header">
+          <span className="yolo-learning-cards-browse-card-point">
+            {card.chapterTitle} · {card.pointTitle}
+          </span>
+          <div className="yolo-learning-cards-browse-card-meta">
+            {due && (
+              <span className="yolo-learning-cards-due-label">
+                {t('learning.cards.due', '待复习')}
+              </span>
+            )}
+            <span className="yolo-learning-cards-mastery-label">
+              <MasteryDot mastery={card.mastery} />
+              {masteryText(t, card.mastery)}
+            </span>
+          </div>
+        </div>
 
-      <div className="yolo-learning-cards-actions">
-        <CardIconBtn
-          label={t('common.edit', '编辑')}
-          disabled={!card.filePath}
-          onClick={onEdit}
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-pressed={selected}
+          className="yolo-learning-cards-browse-card-body"
         >
-          <Pencil size={13} />
-        </CardIconBtn>
-        <CardIconBtn
-          label={t('common.delete', '删除')}
-          disabled={!card.filePath}
-          onClick={onDelete}
+          <p className="yolo-learning-cards-front-text">{card.front}</p>
+        </button>
+
+        {hasMenu && (
+          <button
+            type="button"
+            aria-label={t('learning.cards.moreActions', '更多操作')}
+            title={t('learning.cards.moreActions', '更多操作')}
+            data-no-dnd
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              openMenuAt(rect.right, rect.bottom + 4)
+            }}
+            className="yolo-learning-cards-more-btn"
+          >
+            <Ellipsis size={15} />
+          </button>
+        )}
+      </article>
+      {hasMenu && (
+        <YoloPopoverContent
+          anchorRef={cardRef}
+          variant="default"
+          minWidth={156}
+          maxWidth={220}
+          sideOffset={4}
+          align="start"
+          collisionPadding={10}
+          className="yolo-learning-card-menu"
+          onCloseAutoFocus={(event) => event.preventDefault()}
         >
-          <Trash2 size={13} />
-        </CardIconBtn>
-      </div>
-    </article>
+          <div className="yolo-learning-card-menu-list">
+            <button
+              type="button"
+              className="yolo-learning-card-menu-item"
+              disabled={menuDisabled}
+              onClick={() => runMenuAction(onRemember)}
+            >
+              <CircleCheck size={15} />
+              <span>{t('learning.cards.markRemembered', '熟记')}</span>
+            </button>
+            <button
+              type="button"
+              className="yolo-learning-card-menu-item"
+              disabled={menuDisabled}
+              onClick={() => runMenuAction(onForget)}
+            >
+              <RotateCcw size={15} />
+              <span>{t('learning.cards.markForgotten', '遗忘')}</span>
+            </button>
+            <button
+              type="button"
+              className={cx(
+                'yolo-learning-card-menu-item is-danger',
+                deleteArmed && 'is-confirming',
+              )}
+              disabled={menuDisabled}
+              onClick={() => {
+                if (!deleteArmed) {
+                  setDeleteArmed(true)
+                  return
+                }
+                runMenuAction(onDelete)
+              }}
+            >
+              <Trash2 size={15} />
+              <span>
+                {deleteArmed
+                  ? t('learning.cards.confirmDelete', '确认删除？')
+                  : t('common.delete', '删除')}
+              </span>
+            </button>
+          </div>
+        </YoloPopoverContent>
+      )}
+    </Popover.Root>
   )
 }
 
@@ -1922,7 +2033,6 @@ const CardInspector = forwardRef<CardInspectorHandle, {
   card: Card
   due: boolean
   disabled: boolean
-  editRequest: { cardId: string; sequence: number } | null
   closing: boolean
   onClose: () => void
   onExitComplete: () => void
@@ -1935,7 +2045,6 @@ const CardInspector = forwardRef<CardInspectorHandle, {
     card,
     due,
     disabled,
-    editRequest,
     closing,
     onClose,
     onExitComplete,
@@ -1947,7 +2056,6 @@ const CardInspector = forwardRef<CardInspectorHandle, {
   const [front, setFront] = useState(card.front)
   const [back, setBack] = useState(card.back)
   const [saveStatus, setSaveStatus] = useState<CardSaveStatus>('idle')
-  const frontRef = useRef<HTMLTextAreaElement>(null)
   const backRef = useRef<HTMLTextAreaElement>(null)
   const latestContentRef = useRef({ front: card.front, back: card.back })
   const savedContentRef = useRef({ front: card.front, back: card.back })
@@ -1965,11 +2073,6 @@ const CardInspector = forwardRef<CardInspectorHandle, {
     latestContentRef.current = { front: card.front, back: card.back }
     savedContentRef.current = { front: card.front, back: card.back }
   }, [card.back, card.front])
-
-  useEffect(() => {
-    if (editRequest?.cardId !== cardId) return
-    requestAnimationFrame(() => frontRef.current?.focus())
-  }, [cardId, editRequest])
 
   const persistLatest = useCallback(async (): Promise<boolean> => {
     if (saveTimerRef.current !== null) {
@@ -2094,7 +2197,6 @@ const CardInspector = forwardRef<CardInspectorHandle, {
             {t('learning.cards.question', '问题')}
           </div>
           <textarea
-            ref={frontRef}
             value={front}
             disabled={!card.filePath || disabled}
             onChange={(event) => {
@@ -2812,34 +2914,4 @@ function formatSchedulingHint(
   const hours = Math.round(minutes / 60)
   if (hours < 48) return `${hours} 小时后`
   return `${Math.max(1, scheduling.scheduledDays)} 天后`
-}
-
-function CardIconBtn({
-  children,
-  label,
-  onClick,
-  disabled,
-}: {
-  children: ReactNode
-  label: string
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      data-no-dnd
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => {
-        event.stopPropagation()
-        onClick()
-      }}
-      className="yolo-learning-cards-icon-btn"
-    >
-      {children}
-    </button>
-  )
 }

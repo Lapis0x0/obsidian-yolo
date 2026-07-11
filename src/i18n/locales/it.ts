@@ -283,6 +283,12 @@ export const it: TranslationKeys = {
       saveFailed: 'Salvataggio non riuscito',
       addToKnowledgePoint: 'Aggiungi carta',
       emptyKnowledgePoint: 'Nessuna carta',
+      markRemembered: 'Ricordata',
+      markForgotten: 'Dimenticata',
+      moreActions: 'Altre azioni',
+      quickReviewFailed:
+        'Impossibile aggiornare lo stato di apprendimento. Riprova.',
+      confirmDelete: 'Confermare l’eliminazione?',
       deleteTitle: 'Elimina carta',
       deletePrompt:
         'Eliminare questa carta? L’azione non può essere annullata.',

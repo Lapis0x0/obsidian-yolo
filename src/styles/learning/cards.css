@@ -541,28 +541,7 @@
   color: var(--yolo-danger);
 }
 
-.yolo-learning-cards-actions {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-
-.yolo-learning-cards-browse-card:hover .yolo-learning-cards-actions {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .yolo-learning-cards-actions {
-    opacity: 1;
-  }
-}
-
-.yolo-learning-cards-icon-btn {
+.yolo-learning-cards-more-btn {
   --yolo-learning-button-height: 24px;
   --yolo-learning-button-background: color-mix(
     in oklab,
@@ -575,7 +554,10 @@
   );
   --yolo-learning-button-hover-color: var(--yolo-foreground);
 
-  display: inline-flex;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: none;
   width: 24px;
   height: 24px;
   align-items: center;
@@ -589,7 +571,7 @@
   transition: color 150ms ease;
 }
 
-button.yolo-learning-cards-icon-btn {
+button.yolo-learning-cards-more-btn {
   min-width: 0;
   min-height: 0;
   padding: 0;
@@ -597,14 +579,72 @@ button.yolo-learning-cards-icon-btn {
   line-height: 0;
 }
 
-button.yolo-learning-cards-icon-btn svg {
+button.yolo-learning-cards-more-btn svg {
   display: block;
   width: 15px;
   height: 15px;
 }
 
-.yolo-learning-cards-icon-btn:hover {
+.yolo-learning-cards-more-btn:hover {
   color: var(--yolo-foreground);
+}
+
+@media (hover: none) {
+  .yolo-learning-cards-more-btn {
+    display: inline-flex;
+  }
+}
+
+.yolo-learning-card-menu-list {
+  padding: 4px;
+}
+
+button.yolo-learning-card-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  border-radius: var(--radius-s);
+  border: 0;
+  background-color: transparent;
+  background-image: none;
+  padding: 6px 10px;
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  line-height: var(--line-height-tight);
+  cursor: pointer;
+  outline: none;
+  box-shadow: none;
+  text-align: left;
+}
+
+.yolo-learning-card-menu-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+button.yolo-learning-card-menu-item:hover,
+button.yolo-learning-card-menu-item:focus-visible {
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+}
+
+button.yolo-learning-card-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.yolo-learning-card-menu-item.is-danger,
+.yolo-learning-card-menu-item.is-danger svg {
+  color: var(--text-error);
+}
+
+button.yolo-learning-card-menu-item.is-confirming {
+  background: color-mix(in srgb, var(--text-error) 10%, transparent);
 }
 
 .yolo-learning-cards-review {
