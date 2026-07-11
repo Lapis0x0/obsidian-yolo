@@ -159,6 +159,7 @@
 }
 
 .yolo-learning-cards-point-grid {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -182,17 +183,11 @@
 }
 
 .yolo-learning-cards-drag-overlay {
-  overflow: hidden;
-  border: 1px solid var(--yolo-primary);
-  border-radius: var(--yolo-radius-xl);
-  background: var(--yolo-card);
-  padding: 14px;
-  box-shadow: var(--shadow-l);
-  color: var(--yolo-foreground);
+  pointer-events: none;
 }
 
 .yolo-learning-cards-drop-placeholder {
-  min-height: 96px;
+  box-sizing: border-box;
   border: 1px dashed var(--yolo-primary);
   border-radius: var(--yolo-radius-xl);
   background: color-mix(in oklab, var(--yolo-primary) 7%, transparent);
@@ -353,12 +348,6 @@
   color: color-mix(in oklab, var(--yolo-foreground) 90%, transparent);
   font-size: 14px;
   line-height: 1.625;
-}
-
-.yolo-learning-cards-toggle-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--yolo-muted-foreground);
 }
 
 .yolo-learning-cards-actions {
