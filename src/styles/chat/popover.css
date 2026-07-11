@@ -1192,6 +1192,25 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   margin: 0;
 }
 
+.yolo-code-block-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  border-radius: 0 0 var(--radius-s) var(--radius-s);
+  min-height: calc(var(--size-4-8) - var(--size-4-1));
+}
+
+.yolo-code-block-footer-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  min-height: calc(var(--size-4-8) - var(--size-4-1));
+  padding: 0 var(--size-4-2);
+  font-size: var(--font-small);
+  color: var(--text-color) !important;
+}
+
 .yolo-code-block-obsidian-markdown {
   position: relative;
   padding: var(--size-4-3);
