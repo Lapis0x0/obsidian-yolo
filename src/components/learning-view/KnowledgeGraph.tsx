@@ -758,10 +758,10 @@ export function KnowledgeGraph({
           className="yolo-learning-graph-svg"
           xmlns="http://www.w3.org/2000/svg"
           role="img"
+          aria-label={t('learning.tabs.knowledgeMap', '知识地图')}
           onDoubleClick={resetViewport}
           data-panning={isPanning ? 'true' : 'false'}
         >
-          <title>{t('learning.tabs.knowledgeMap', '知识地图')}</title>
           <rect
             className="yolo-learning-graph-pan-surface"
             width="100%"
