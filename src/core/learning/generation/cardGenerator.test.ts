@@ -13,7 +13,7 @@ import {
 import type { CardDraft, CardGenerationEvent } from './types'
 
 const cardBlock = (title: string, kpUuid = 'aaaaaaaa') =>
-  `## ${title} <!--kp:${kpUuid}-->\n\n**正面：** ${title}?\n\n**背面：** ${title}!\n`
+  `## ${title} <!--kp:${kpUuid}-->\n\n${title}?\n\n---\n\n${title}!\n`
 
 describe('CardStreamParser', () => {
   it('publishes multiple cards from arbitrary chunks exactly once', () => {
@@ -177,6 +177,7 @@ describe('generateCardsForChapter streaming', () => {
       expect(written).toContain(
         `<!--card:${result.cards[0]?.cardUuid} kp:aaaaaaaa-->`,
       )
+      expect(written).toContain('A?\n\n---\n\nA!')
       expect(written).not.toContain(CARD_END_MARKER)
       expect(create).toHaveBeenCalledTimes(1)
     },
@@ -188,9 +189,11 @@ describe('cardGenerator validation', () => {
     expect(
       parseCardDrafts(`## 所有权 <!--kp:aaaaaaaa-->
 
-**正面：** 什么是所有权？
+什么是所有权？
 
-**背面：** 值在任一时刻只有一个所有者。`),
+---
+
+值在任一时刻只有一个所有者。`),
     ).toEqual([
       {
         title: '所有权',
@@ -209,9 +212,7 @@ title: 测试
 
 ## <!--card:11111111 kp:aaaaaaaa-->
 
-**正面：**
-
-**背面：**`)
+---`)
     const result = validateWrittenCards(
       entries,
       new Set(['11111111']),
@@ -221,8 +222,8 @@ title: 测试
     expect(result.valid).toHaveLength(0)
     expect(result.invalid[0]?.errors).toEqual([
       '缺少标题',
-      '缺少精确格式的 **正面：** 内容',
-      '缺少精确格式的 **背面：** 内容',
+      '分隔线前缺少正面内容',
+      '分隔线后缺少背面内容',
     ])
   })
 
@@ -230,21 +231,27 @@ title: 测试
     const entries =
       parseWrittenCardEntries(`## A <!--card:11111111 kp:aaaaaaaa-->
 
-**正面：** A?
+A?
 
-**背面：** A
+---
+
+A
 
 ## B <!--card:11111111 kp:aaaaaaaa-->
 
-**正面：** B?
+B?
 
-**背面：** B
+---
+
+B
 
 ## C <!--card:33333333 kp:aaaaaaaa-->
 
-**正面：** C?
+C?
 
-**背面：** C`)
+---
+
+C`)
     const result = validateWrittenCards(
       entries,
       new Set(['11111111', '22222222']),

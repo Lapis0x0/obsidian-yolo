@@ -8,10 +8,8 @@ import {
   scanProjectCards,
 } from './cardFile'
 
-const A =
-  '## A <!--card:aaaaaaaa kp:11111111-->\n\n**正面：** front A\n\n**背面：** back A'
-const B =
-  '## B <!--card:bbbbbbbb kp:22222222-->\n\n**正面：** front B\n\n**背面：** back B'
+const A = '## A <!--card:aaaaaaaa kp:11111111-->\n\nfront A\n\n---\n\nback A'
+const B = '## B <!--card:bbbbbbbb kp:22222222-->\n\nfront B\n\n---\n\nback B'
 
 function createApp(initialFiles: Record<string, string>) {
   const files = new Map(Object.entries(initialFiles))
@@ -94,7 +92,7 @@ describe('cardFile', () => {
   it('parses multiline Markdown on the card front', () => {
     const front =
       'first line\n\n- item one\n- item two\n\n```ts\nconst n = 1\n```'
-    const content = `## Multi <!--card:aaaaaaaa kp:11111111-->\n\n**正面：** ${front}\n\n**背面：** answer`
+    const content = `## Multi <!--card:aaaaaaaa kp:11111111-->\n\n${front}\n\n---\n\nanswer`
 
     const result = parseCardFile(content)
 
@@ -103,13 +101,31 @@ describe('cardFile', () => {
     expect(result.cards[0].back).toBe('answer')
   })
 
+  it.each([
+    ['missing', '## Missing <!--card:aaaaaaaa kp:11111111-->\n\nfront\n\nback'],
+    [
+      'duplicate',
+      '## Duplicate <!--card:aaaaaaaa kp:11111111-->\n\nfront\n\n---\n\nback\n\n---\n\nextra',
+    ],
+  ])('rejects %s side separators', (_case, content) => {
+    const result = parseCardFile(content)
+
+    expect(result.complete).toBe(false)
+    expect(result.cards).toHaveLength(0)
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        message: '卡片正文必须包含唯一的独占行 --- 作为正反面分隔',
+      }),
+    ])
+  })
+
   it('rejects a level-two heading directly in the card back', () => {
     const result = parseCardFile(`${A}\n\n## unexpected\n\nmore text`)
 
     expect(result.complete).toBe(false)
     expect(result.errors).toEqual([
       expect.objectContaining({
-        line: 7,
+        line: 9,
         message: 'cards.md 中的二级标题必须是合法卡片标题',
       }),
     ])
@@ -118,7 +134,7 @@ describe('cardFile', () => {
   it('keeps level-two heading text inside matching code fences', () => {
     const back =
       'before\n\n```md\n## backtick heading\n```\n\n~~~~text\n## tilde heading\n~~~\nstill fenced\n~~~~'
-    const content = `## Fenced <!--card:aaaaaaaa kp:11111111-->\n\n**正面：** front\n\n**背面：** ${back}`
+    const content = `## Fenced <!--card:aaaaaaaa kp:11111111-->\n\nfront\n\n---\n\n${back}`
     const result = parseCardFile(content)
 
     expect(result.complete).toBe(true)
@@ -194,8 +210,7 @@ describe('cardFile', () => {
       front: 'updated front',
       back: 'updated back',
     })
-    expect(files.get(path)).toContain('**正面：** updated front')
-    expect(files.get(path)).toContain('**背面：** updated back')
+    expect(files.get(path)).toContain('updated front\n\n---\n\nupdated back')
     expect(files.get(path)).toContain('interlude')
     expect(files.get(path)).toContain('card:bbbbbbbb')
 
@@ -211,6 +226,21 @@ describe('cardFile', () => {
     expect(created.cardUuid).toMatch(/^[0-9a-f]{8}$/)
     expect(created.front).toBe('created front')
     expect(created.back).toBe('created back')
+  })
+
+  it('rejects the reserved side separator inside edited content', async () => {
+    const path = 'p/a/cards.md'
+    const { app, files, modify } = createApp({ [path]: `${A}\n` })
+    const store = new LearningCardFileStore(app)
+
+    await expect(
+      store.updateCard(path, 'aaaaaaaa', {
+        front: 'front\n\n---\n\nextra',
+        back: 'back',
+      }),
+    ).rejects.toThrow('卡片正反面正文不能包含独占一行的 ---')
+    expect(modify).not.toHaveBeenCalled()
+    expect(files.get(path)).toBe(`${A}\n`)
   })
 
   it('deletes multiple cards in one file write', async () => {
@@ -325,7 +355,7 @@ describe('cardFile', () => {
     const secondPath = 'p/b/cards.md'
     const targetPath = 'p/c/cards.md'
     const C =
-      '## C <!--card:cccccccc kp:33333333-->\n\n**正面：** front C\n\n**背面：** back C'
+      '## C <!--card:cccccccc kp:33333333-->\n\nfront C\n\n---\n\nback C'
     const { app, files } = createApp({
       [firstPath]: `${A}\n`,
       [secondPath]: `${B}\n`,
@@ -356,7 +386,7 @@ describe('cardFile', () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/b/cards.md'
     const fencedBack = 'before\n\n```md\n## example heading\n```\n\nafter'
-    const fencedCard = `## Fenced <!--card:aaaaaaaa kp:11111111-->\n\n**正面：** front\n\n**背面：** ${fencedBack}`
+    const fencedCard = `## Fenced <!--card:aaaaaaaa kp:11111111-->\n\nfront\n\n---\n\n${fencedBack}`
     const { app, files } = createApp({
       [sourcePath]: `${fencedCard}\n`,
       [targetPath]: `${B}\n`,

@@ -7,6 +7,7 @@ import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { ChatAssistantMessage, ChatUserMessage } from '../../../types/chat'
 import { buildAgentApiUserMessage } from '../../agent/agent-api'
 import type { AgentRunActivity } from '../../agent/service'
+import { formatCardBody, parseCardBody } from '../cardFormat'
 
 import {
   type ChapterDebugData,
@@ -29,9 +30,6 @@ const CARD_HEADING_RE = /^##[ \t]+([^\r\n]+)$/gm
 const CARD_KP_UUID_RE = /<!--\s*kp:([0-9a-fA-F]{8})\s*-->/
 const WRITTEN_CARD_COMMENT_RE =
   /<!--\s*card:([0-9a-fA-F]{8})(?:\s+kp:([0-9a-fA-F]{8}))?\s*-->/
-const CARD_FRONT_RE =
-  /\*\*正面：\*\*[ \t]*([\s\S]*?)(?=\n[ \t]*\*\*背面：\*\*|$)/
-const CARD_BACK_RE = /\*\*背面：\*\*[ \t]*([\s\S]*)$/
 export const CARD_END_MARKER = '<!--yolo-card-end-->'
 
 type AssignedCardDraft = GeneratedCard
@@ -441,13 +439,12 @@ export function parseCardDrafts(markdown: string): CardDraft[] {
     const kpMatch = titleLine.match(CARD_KP_UUID_RE)
     const bodyStart = block.indexOf('\n')
     const body = bodyStart === -1 ? '' : block.slice(bodyStart + 1).trim()
-    const frontMatch = body.match(CARD_FRONT_RE)
-    const backMatch = body.match(CARD_BACK_RE)
+    const sides = parseCardBody(body)
     return {
       title: titleLine.replace(CARD_KP_UUID_RE, '').trim(),
       kpUuid: kpMatch?.[1]?.toLowerCase() ?? '',
-      front: frontMatch?.[1]?.trim() ?? '',
-      back: backMatch?.[1]?.trim() ?? '',
+      front: sides?.front ?? '',
+      back: sides?.back ?? '',
       startLine: markdown.slice(0, start).split('\n').length,
     }
   })
@@ -463,12 +460,13 @@ export function parseWrittenCardEntries(content: string): WrittenCardEntry[] {
     const commentMatch = titleLine.match(WRITTEN_CARD_COMMENT_RE)
     const bodyStart = block.indexOf('\n')
     const body = bodyStart === -1 ? '' : block.slice(bodyStart + 1).trim()
+    const sides = parseCardBody(body)
     return {
       cardUuid: commentMatch?.[1]?.toLowerCase() ?? '',
       kpUuid: commentMatch?.[2]?.toLowerCase() ?? '',
       title: titleLine.replace(WRITTEN_CARD_COMMENT_RE, '').trim(),
-      front: body.match(CARD_FRONT_RE)?.[1]?.trim() ?? '',
-      back: body.match(CARD_BACK_RE)?.[1]?.trim() ?? '',
+      front: sides?.front ?? '',
+      back: sides?.back ?? '',
       startLine: content.slice(0, start).split('\n').length,
       block,
     }
@@ -508,8 +506,8 @@ export function validateWrittenCards(
     } else if (!validKpUuids.has(entry.kpUuid)) {
       errors.push(`kp:${entry.kpUuid} 不属于本章`)
     }
-    if (!entry.front) errors.push('缺少精确格式的 **正面：** 内容')
-    if (!entry.back) errors.push('缺少精确格式的 **背面：** 内容')
+    if (!entry.front) errors.push('分隔线前缺少正面内容')
+    if (!entry.back) errors.push('分隔线后缺少背面内容')
     if (errors.length > 0) {
       invalid.push({ cardUuid, block: entry.block, errors })
     } else {
@@ -601,7 +599,7 @@ ${details}
 每张卡片必须保留现有 card UUID，标题行的最终格式必须是：
 ## <卡片标题> <!--card:<现有card UUID> kp:<合法的知识点UUID>-->
 
-正面和背面必须精确使用 **正面：** 与 **背面：** 标记。修正完成后不要再输出卡片正文。`
+正面和背面之间必须有且只有一个独占一行的 ---，正文不得再包含独占一行的 ---。修正完成后不要再输出卡片正文。`
 }
 
 async function assertKnowledgeUnchanged(
@@ -633,7 +631,7 @@ async function createCardsFile(
   const blocks = drafts.map((draft) => {
     const title = draft.title.trim()
     const kpPart = draft.kpUuid ? ` kp:${draft.kpUuid.toLowerCase()}` : ''
-    return `## ${title}${title ? ' ' : ''}<!--card:${draft.cardUuid}${kpPart}-->\n\n**正面：** ${draft.front.trim()}\n\n**背面：** ${draft.back.trim()}`
+    return `## ${title}${title ? ' ' : ''}<!--card:${draft.cardUuid}${kpPart}-->\n\n${formatCardBody(draft.front, draft.back)}`
   })
   return plugin.app.vault.create(
     cardsPath,

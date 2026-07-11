@@ -3,6 +3,8 @@ import { TFile, normalizePath } from 'obsidian'
 import type { App } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
+import { formatCardBody, parseCardBody } from './cardFormat'
+
 const UUID_RE = /^[0-9a-f]{8}$/
 const CARD_HEADING_RE =
   /^##[ \t]+(.+?)[ \t]+<!--card:([0-9a-fA-F]{8})[ \t]+kp:([0-9a-fA-F]{8})-->[ \t]*$/
@@ -88,14 +90,12 @@ export function parseCardFile(
     encounteredUuids.push((headingMatch[2] ?? '').toLowerCase())
 
     const body = rawBlock.slice(headingText.length).replace(/^\r?\n/, '')
-    const bodyMatch = body.match(
-      /^\s*\*\*正面：\*\*[ \t]*([\s\S]*?)\r?\n\s*\r?\n\*\*背面：\*\*[ \t]*([\s\S]*?)\s*$/,
-    )
-    if (!bodyMatch) {
+    const sides = parseCardBody(body)
+    if (!sides) {
       errors.push({
         path,
         line: startLine,
-        message: '卡片正文必须依次包含正面和背面标记，并以空行分隔',
+        message: '卡片正文必须包含唯一的独占行 --- 作为正反面分隔',
       })
       return
     }
@@ -104,8 +104,8 @@ export function parseCardFile(
       title: headingMatch[1]?.trim() ?? '',
       cardUuid: (headingMatch[2] ?? '').toLowerCase(),
       kpUuid: (headingMatch[3] ?? '').toLowerCase(),
-      front: bodyMatch[1]?.trim() ?? '',
-      back: bodyMatch[2]?.trim() ?? '',
+      front: sides.front,
+      back: sides.back,
       rawBlock,
       startLine,
       startOffset,
@@ -705,7 +705,7 @@ function formatCard(
   front: string,
   back: string,
 ): string {
-  return `## ${title.trim()} <!--card:${cardUuid} kp:${kpUuid.toLowerCase()}-->\n\n**正面：** ${front.trim()}\n\n**背面：** ${back.trim()}`
+  return `## ${title.trim()} <!--card:${cardUuid} kp:${kpUuid.toLowerCase()}-->\n\n${formatCardBody(front, back)}`
 }
 
 function buildCardsContent(chapterTitle: string): string {
