@@ -61,8 +61,10 @@ import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import { ConfirmModal } from '../modals/ConfirmModal'
+import { formatLearningText } from './i18n'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
+type OutlineWaitingStage = 'preparing' | 'structuring'
 
 type EditableChapter = OutlineChapter & {
   id: string
@@ -115,6 +117,8 @@ export function OutlineBuilder({
   const [projectName, setProjectName] = useState('')
   const [estimatedKnowledgePoints, setEstimatedKnowledgePoints] = useState(0)
   const [phase, setPhase] = useState<Phase>('outline')
+  const [outlineWaitingStage, setOutlineWaitingStage] =
+    useState<OutlineWaitingStage>('preparing')
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -152,6 +156,7 @@ export function OutlineBuilder({
     const controller = new AbortController()
     abortRef.current = controller
     setPhase('outline')
+    setOutlineWaitingStage('preparing')
     setError(null)
     nextChapterIdRef.current = 0
     setChapters([])
@@ -173,6 +178,11 @@ export function OutlineBuilder({
         action: 'open-learning-view',
       },
       onOutline: reconcileOutline,
+      onProgress: (delta, fullText) => {
+        if (!controller.signal.aborted && (delta || fullText)) {
+          setOutlineWaitingStage('structuring')
+        }
+      },
     })
       .then(({ outline }) => {
         reconcileOutline(outline)
@@ -495,6 +505,18 @@ export function OutlineBuilder({
 
   const generating = phase === 'outline'
   const busy = phase === 'outline' || phase === 'knowledge'
+  const generationHeading =
+    chapters.length > 0
+      ? formatLearningText(
+          t(
+            'learning.outlineBuilder.refiningHeading',
+            '已规划 {count} 个章节，正在继续完善...',
+          ),
+          { count: chapters.length },
+        )
+      : outlineWaitingStage === 'structuring'
+        ? t('learning.outlineBuilder.structuringHeading', '正在组织章节结构...')
+        : t('learning.outlineBuilder.generatingHeading', '正在准备学习规划...')
 
   return (
     <div className="yolo-learning-outline-builder">
@@ -535,15 +557,19 @@ export function OutlineBuilder({
             </div>
             <div>
               <h2 className="yolo-learning-outline-builder-heading">
-                {generating && chapters.length === 0
-                  ? t(
-                      'learning.outlineBuilder.generatingHeading',
-                      '正在为你规划学习路径...',
-                    )
-                  : t(
-                      'learning.outlineBuilder.readyHeading',
-                      '章节大纲与生成契约',
-                    )}
+                {generating ? (
+                  <span
+                    key={generationHeading}
+                    className="yolo-learning-outline-builder-heading-status"
+                  >
+                    {generationHeading}
+                  </span>
+                ) : (
+                  t(
+                    'learning.outlineBuilder.readyHeading',
+                    '章节大纲与生成契约',
+                  )
+                )}
               </h2>
             </div>
           </div>

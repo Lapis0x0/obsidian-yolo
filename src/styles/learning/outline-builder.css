@@ -6,6 +6,13 @@
   }
 }
 
+@keyframes yolo-learning-outline-builder-status-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
 .yolo-learning-outline-builder {
   display: flex;
   flex-direction: column;
@@ -182,6 +189,11 @@ button.yolo-learning-outline-builder-icon-btn svg {
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1.3;
+}
+
+.yolo-learning-outline-builder-heading-status {
+  display: inline-block;
+  animation: yolo-learning-outline-builder-status-enter 180ms ease-out;
 }
 
 .yolo-learning-outline-builder-chapters {
@@ -680,5 +692,12 @@ textarea.yolo-learning-outline-builder-contract:not(:disabled):focus-visible {
 
   .yolo-learning-outline-builder-main {
     padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-learning-outline-builder-heading-status,
+  .yolo-learning-outline-builder-pulse {
+    animation: none;
   }
 }
