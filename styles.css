@@ -24204,13 +24204,56 @@ body.yolo-learning-outline-global-resize * {
 }
 
 .yolo-learning-cards-chapter {
+  --yolo-learning-chapter-memory-start: oklch(72% 0.1 55deg);
+  --yolo-learning-chapter-memory-middle: oklch(76% 0.11 85deg);
+  --yolo-learning-chapter-memory-end: oklch(68% 0.1 150deg);
+
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 14px;
-  border: 1px dashed var(--yolo-border);
+  border: 1.5px dashed var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
   padding: 14px;
+  transition: border-color 300ms ease;
+}
+
+.theme-dark .yolo-learning-cards-chapter {
+  --yolo-learning-chapter-memory-start: oklch(68% 0.1 55deg);
+  --yolo-learning-chapter-memory-middle: oklch(72% 0.11 85deg);
+  --yolo-learning-chapter-memory-end: oklch(72% 0.1 150deg);
+}
+
+.yolo-learning-cards-chapter.has-memory-retention {
+  --yolo-learning-chapter-memory-low-mix: clamp(
+    0%,
+    calc(
+      var(--yolo-learning-chapter-memory) +
+        var(--yolo-learning-chapter-memory)
+    ),
+    100%
+  );
+  --yolo-learning-chapter-memory-high-mix: clamp(
+    0%,
+    calc(
+      var(--yolo-learning-chapter-memory) +
+        var(--yolo-learning-chapter-memory) - 100%
+    ),
+    100%
+  );
+  --yolo-learning-chapter-memory-low-color: color-mix(
+    in oklch,
+    var(--yolo-learning-chapter-memory-start),
+    var(--yolo-learning-chapter-memory-middle)
+      var(--yolo-learning-chapter-memory-low-mix)
+  );
+
+  border-color: color-mix(
+    in oklch,
+    var(--yolo-learning-chapter-memory-low-color),
+    var(--yolo-learning-chapter-memory-end)
+      var(--yolo-learning-chapter-memory-high-mix)
+  );
 }
 
 .yolo-learning-cards-chapter-header,
@@ -24229,6 +24272,15 @@ body.yolo-learning-outline-global-resize * {
 
 .yolo-learning-cards-chapter-header h2 {
   font-size: 15px;
+}
+
+.yolo-learning-cards-chapter-memory-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .yolo-learning-cards-chapter-header span {

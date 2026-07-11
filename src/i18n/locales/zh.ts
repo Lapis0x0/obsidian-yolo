@@ -262,6 +262,7 @@ export const zh: TranslationKeys = {
       chapterGenerating: '正在生成卡片…',
       chapterPartial: '部分卡片已生成',
       chapterFailed: '本章生成失败',
+      chapterMemoryRetention: '预计 30 天后记忆保持率 {{percent}}%',
       addToKnowledgePoint: '新增卡片',
       emptyKnowledgePoint: '暂无卡片',
       deleteTitle: '删除卡片',

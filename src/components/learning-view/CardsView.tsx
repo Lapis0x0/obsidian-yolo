@@ -26,7 +26,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { PointerEvent, ReactNode } from 'react'
+import type { CSSProperties, PointerEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useApp } from '../../contexts/app-context'
@@ -72,6 +72,8 @@ import {
 
 const cardModes = ['浏览', '复习'] as const
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
+const TARGET_MEMORY_RETENTION = 0.9
+const MEMORY_RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000
 
 type Card = WorkspaceCard
 
@@ -552,7 +554,11 @@ function useReviewClock(cards: Card[]): { now: Date; refreshNow: () => void } {
       futureDueTimes.length > 0 ? Math.min(...futureDueTimes) : Infinity
     const nextMidnight = new Date(now)
     nextMidnight.setHours(24, 0, 0, 0)
-    const nextWakeAt = Math.min(nextDueAt, nextMidnight.getTime())
+    const nextWakeAt = Math.min(
+      nextDueAt,
+      nextMidnight.getTime(),
+      nowMs + 60_000,
+    )
     const delay = Math.min(
       Math.max(1_000, nextWakeAt - nowMs + 50),
       2_147_000_000,
@@ -694,6 +700,32 @@ function BrowseMode({
     generation && settledIndexes.size < (project?.chapters.length ?? 0),
   )
   const writeDisabled = Boolean(error || writing)
+  const chapterMemoryRetention = useMemo(() => {
+    const totals = new Map<string, { count: number; retrievability: number }>()
+    const srsStore = plugin.getLearningSrsStore()
+    const horizon = new Date(now.getTime() + MEMORY_RETENTION_HORIZON_MS)
+    cards.forEach((card) => {
+      if (card.preview) return
+      const current = totals.get(card.chapterId) ?? {
+        count: 0,
+        retrievability: 0,
+      }
+      current.count += 1
+      if (card.srsState) {
+        current.retrievability += srsStore.getCardRetrievability(
+          card.srsState,
+          horizon,
+        )
+      }
+      totals.set(card.chapterId, current)
+    })
+    return new Map(
+      Array.from(totals, ([chapterId, total]) => [
+        chapterId,
+        total.retrievability / total.count,
+      ]),
+    )
+  }, [cards, now, plugin])
 
   const withWrite = async (operation: () => Promise<void>) => {
     if (writeDisabled) return false
@@ -1134,6 +1166,20 @@ function BrowseMode({
               const sourceChapterIndex = project.chapters.findIndex(
                 (item) => item.id === chapter.id,
               )
+              const memoryRetention = chapterMemoryRetention.get(chapter.id)
+              const memoryPercent =
+                memoryRetention === undefined
+                  ? null
+                  : Math.round(memoryRetention * 100)
+              const chapterStyle =
+                memoryRetention === undefined
+                  ? undefined
+                  : ({
+                      '--yolo-learning-chapter-memory': `${Math.min(
+                        memoryRetention / TARGET_MEMORY_RETENTION,
+                        1,
+                      ) * 100}%`,
+                    } as CSSProperties)
               const settled = generation?.settled.find(
                 (item) => item.chapterIndex === sourceChapterIndex,
               )
@@ -1141,10 +1187,24 @@ function BrowseMode({
               return (
                 <section
                   key={chapter.id}
-                  className="yolo-learning-cards-chapter"
+                  className={cx(
+                    'yolo-learning-cards-chapter',
+                    memoryRetention !== undefined && 'has-memory-retention',
+                  )}
+                  style={chapterStyle}
                 >
                   <header className="yolo-learning-cards-chapter-header">
-                    <h2>{chapter.title}</h2>
+                    <h2>
+                      {chapter.title}
+                      {memoryPercent !== null && (
+                        <span className="yolo-learning-cards-chapter-memory-sr">
+                          {`, ${t(
+                            'learning.cards.chapterMemoryRetention',
+                            '预计 30 天后记忆保持率 {{percent}}%',
+                          ).replace('{{percent}}', String(memoryPercent))}`}
+                        </span>
+                      )}
+                    </h2>
                     {generating && (
                       <span>
                         {t('learning.cards.chapterGenerating', '正在生成卡片…')}

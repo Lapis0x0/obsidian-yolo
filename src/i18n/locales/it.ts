@@ -275,6 +275,8 @@ export const it: TranslationKeys = {
       chapterGenerating: 'Generazione delle carte…',
       chapterPartial: 'Alcune carte sono state generate',
       chapterFailed: 'Generazione del capitolo non riuscita',
+      chapterMemoryRetention:
+        'Conservazione prevista tra 30 giorni: {{percent}}%',
       addToKnowledgePoint: 'Aggiungi carta',
       emptyKnowledgePoint: 'Nessuna carta',
       deleteTitle: 'Elimina carta',

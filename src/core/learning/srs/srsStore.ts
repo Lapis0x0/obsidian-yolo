@@ -14,6 +14,7 @@ import type {
 
 const SRS_SCHEMA_VERSION = 1
 const SRS_DIR_NAME = 'learning-srs'
+const scheduler = fsrs()
 
 type FsrsCardCompat = {
   elapsed_days: number
@@ -56,7 +57,7 @@ export class LearningSrsStore {
       const card = existing
         ? this.toFsrsCard(existing)
         : createEmptyCard(reviewedAt)
-      const repeated = fsrs().repeat(card, reviewedAt)
+      const repeated = scheduler.repeat(card, reviewedAt)
       const nextCard = this.toSrsCardState(
         repeated[ratingByName[rating]].card,
         introducedAt,
@@ -86,7 +87,11 @@ export class LearningSrsStore {
     const card = state.cards[cardUuid]
       ? this.toFsrsCard(state.cards[cardUuid])
       : createEmptyCard(now)
-    return this.toScheduling(fsrs().repeat(card, now))
+    return this.toScheduling(scheduler.repeat(card, now))
+  }
+
+  getCardRetrievability(card: SrsCardState, at: Date): number {
+    return scheduler.get_retrievability(this.toFsrsCard(card), at, false)
   }
 
   async getDueCardUuids(projectSlug: string, now: Date): Promise<Set<string>> {
