@@ -46,8 +46,8 @@ export function Workspace({
     习题: t('learning.tabs.exercises', '习题'),
   }
   const cardModeLabels: Record<CardMode, string> = {
+    学习: t('learning.cards.study', '学习'),
     浏览: t('learning.common.browse', '浏览'),
-    复习: t('learning.cards.review', '复习'),
   }
 
   return (
@@ -74,7 +74,7 @@ export function Workspace({
             options={cardModes}
             value={cardMode}
             onChange={setCardMode}
-            badges={{ 复习: dueCardCount }}
+            badges={{ 学习: dueCardCount }}
             getLabel={(mode) => cardModeLabels[mode]}
             className="yolo-learning-workspace-card-mode"
           />

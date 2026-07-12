@@ -278,7 +278,7 @@ export const it: TranslationKeys = {
       exerciseCount: '{count} esercizi',
     },
     cards: {
-      review: 'Ripasso',
+      study: 'Studia',
       filteredTo: 'Filtrato su: ',
       sortDue: 'Scadenza',
       sortMastery: 'Padronanza',

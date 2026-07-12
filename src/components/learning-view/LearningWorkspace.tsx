@@ -44,7 +44,7 @@ export function LearningWorkspace() {
     null,
   )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
-  const [initialCardMode, setInitialCardMode] = useState<CardMode>('浏览')
+  const [initialCardMode, setInitialCardMode] = useState<CardMode>('学习')
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [cardGeneration, setCardGeneration] =
     useState<CardGenerationWorkspace | null>(null)
@@ -252,11 +252,11 @@ export function LearningWorkspace() {
           <HomeView
             projects={vaultProjects}
             onOpenProject={(id) => {
-              setInitialCardMode('浏览')
+              setInitialCardMode('学习')
               setProjectId(id)
             }}
             onStartReview={(id) => {
-              setInitialCardMode('复习')
+              setInitialCardMode('学习')
               setActiveTab('卡片')
               setProjectId(id)
             }}

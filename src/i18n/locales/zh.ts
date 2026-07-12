@@ -266,7 +266,7 @@ export const zh: TranslationKeys = {
       exerciseCount: '习题 {count} 道',
     },
     cards: {
-      review: '复习',
+      study: '学习',
       filteredTo: '已筛选至：',
       sortDue: '按到期时间',
       sortMastery: '按掌握度',

@@ -87,7 +87,7 @@ import {
   updateReviewQueue,
 } from './reviewInteractions'
 
-export const cardModes = ['浏览', '复习'] as const
+export const cardModes = ['学习', '浏览'] as const
 export type CardMode = (typeof cardModes)[number]
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
 
