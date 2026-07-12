@@ -138,6 +138,12 @@ button.yolo-learning-workspace-back svg {
   flex: 1 1 auto;
 }
 
+.yolo-learning-workspace-coming-soon {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .yolo-learning-workspace-main {
   box-sizing: border-box;
   display: flex;

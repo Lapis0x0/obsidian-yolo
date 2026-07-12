@@ -131,6 +131,7 @@ export const it: TranslationKeys = {
       browse: 'Sfoglia',
       cards: 'Carte',
       exercises: 'Esercizi',
+      comingSoon: 'In arrivo',
       expand: 'Espandi',
       collapse: 'Comprimi',
     },

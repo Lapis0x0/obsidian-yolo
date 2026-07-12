@@ -123,6 +123,7 @@ export const zh: TranslationKeys = {
       browse: '浏览',
       cards: '卡片',
       exercises: '习题',
+      comingSoon: '即将推出',
       expand: '展开',
       collapse: '收起',
     },

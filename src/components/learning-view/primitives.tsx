@@ -142,6 +142,7 @@ export function Segmented<T extends string>({
   badges,
   getLabel,
   className,
+  disabledOptions,
 }: {
   options: readonly T[]
   value: T
@@ -149,16 +150,19 @@ export function Segmented<T extends string>({
   badges?: Partial<Record<T, number>>
   getLabel?: (value: T) => React.ReactNode
   className?: string
+  disabledOptions?: readonly T[]
 }) {
   return (
     <div className={cx('yolo-learning-segmented', className)}>
       {options.map((opt) => {
         const active = value === opt
+        const disabled = disabledOptions?.includes(opt) ?? false
         return (
           <button
             key={opt}
             type="button"
             onClick={() => onChange(opt)}
+            disabled={disabled}
             className={cx(
               'yolo-learning-segmented-option',
               active && 'is-active',

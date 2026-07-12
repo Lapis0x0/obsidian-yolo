@@ -82,7 +82,17 @@ export function Workspace({
           options={tabs}
           value={activeTab}
           onChange={onTabChange}
-          getLabel={(tab) => tabLabels[tab]}
+          disabledOptions={['习题']}
+          getLabel={(tab) => (
+            <>
+              {tabLabels[tab]}
+              {tab === '习题' && (
+                <span className="yolo-learning-workspace-coming-soon">
+                  {t('learning.common.comingSoon', '即将推出')}
+                </span>
+              )}
+            </>
+          )}
         />
       </header>
       <main

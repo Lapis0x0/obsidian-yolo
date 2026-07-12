@@ -21675,6 +21675,19 @@ body.yolo-quick-ask-global-interaction * {
   color: var(--yolo-foreground);
 }
 
+.yolo-learning-segmented-option:disabled,
+.yolo-learning-segmented-option:disabled:hover {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-muted-foreground);
+
+  background-color: transparent;
+  color: var(--yolo-muted-foreground);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .yolo-learning-segmented-option.is-active {
   --yolo-learning-button-background: var(--yolo-primary);
   --yolo-learning-button-color: var(--yolo-primary-foreground);
@@ -21902,6 +21915,12 @@ button.yolo-learning-workspace-back svg {
 
 .yolo-learning-workspace-header-spacer {
   flex: 1 1 auto;
+}
+
+.yolo-learning-workspace-coming-soon {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .yolo-learning-workspace-main {

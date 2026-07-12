@@ -134,6 +134,7 @@ export const en: TranslationKeys = {
       browse: 'Browse',
       cards: 'Cards',
       exercises: 'Exercises',
+      comingSoon: 'Coming soon',
       expand: 'Expand',
       collapse: 'Collapse',
     },
