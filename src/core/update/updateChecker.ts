@@ -329,7 +329,7 @@ export type ChangelogItem = {
   title: string
   /** Issue/PR ref like `#360`, extracted from the title; null when absent. */
   ref: string | null
-  /** Remainder of the bullet after the title + separator; may contain `code`. */
+  /** Remainder of the bullet after the title + separator; may contain inline Markdown. */
   body: string
 }
 

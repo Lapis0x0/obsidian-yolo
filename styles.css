@@ -10772,6 +10772,11 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
   color: var(--text-normal);
 }
 
+.yolo-update-toast-strong {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
 .yolo-update-toast-item-ref {
   margin-left: 5px;
   font-family: var(--font-monospace);
