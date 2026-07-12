@@ -237,10 +237,16 @@
   line-height: 1.625;
 }
 
+.yolo-learning-wizard-input:focus,
 .yolo-learning-wizard-input:focus-visible,
-.yolo-learning-wizard-textarea:focus-visible {
-  border-color: var(--yolo-primary);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--yolo-ring) 25%, transparent);
+.yolo-learning-wizard-input:hover,
+.yolo-learning-wizard-textarea:focus,
+.yolo-learning-wizard-textarea:focus-visible,
+.yolo-learning-wizard-textarea:hover {
+  border-color: var(--yolo-input) !important;
+  background-color: var(--yolo-surface) !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .yolo-learning-wizard-input::placeholder,
