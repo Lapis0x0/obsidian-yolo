@@ -417,6 +417,7 @@ export const zh: TranslationKeys = {
       knowledge: '知识库',
       tools: '工具',
       agent: 'Agent',
+      learning: '学习模式',
       others: '其他',
     },
     supportYolo: {
@@ -448,6 +449,12 @@ export const zh: TranslationKeys = {
       tabCompletionSystemPrompt: 'Tab 补全系统提示词',
       tabCompletionSystemPromptDesc:
         '生成 Tab 补全建议时使用的系统提示词。留空则使用内置默认值。',
+    },
+    learning: {
+      generationTitle: '内容生成',
+      generationModel: '学习生成模型',
+      generationModelDesc:
+        '用于生成大纲、知识点和卡片。该模型独立于当前选择的助手。',
     },
     smartSpace: {
       quickActionsTitle: 'Smart Space 快捷选项',

@@ -13,6 +13,7 @@ import YoloPlugin from '../../main'
 import { AgentTab } from './tabs/AgentTab'
 import { EditorTab } from './tabs/EditorTab'
 import { KnowledgeTab } from './tabs/KnowledgeTab'
+import { LearningTab } from './tabs/LearningTab'
 import { ModelsTab } from './tabs/ModelsTab'
 import { OthersTab } from './tabs/OthersTab'
 
@@ -25,6 +26,7 @@ export type SettingsTabId =
   | 'models'
   | 'editor'
   | 'knowledge'
+  | 'learning'
   | 'agent'
   | 'others'
 
@@ -54,6 +56,11 @@ const SETTINGS_TABS: SettingsTab[] = [
     id: 'knowledge',
     labelKey: 'settings.tabs.knowledge',
     component: KnowledgeTab,
+  },
+  {
+    id: 'learning',
+    labelKey: 'settings.tabs.learning',
+    component: LearningTab,
   },
   {
     id: 'others',

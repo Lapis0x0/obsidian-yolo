@@ -9,6 +9,7 @@ import type { Outline, OutlineChapter } from './types'
 
 export type GenerateOutlineOptions = {
   plugin: YoloPlugin
+  modelId?: string
   topic: string
   level: string
   goal: string
@@ -23,6 +24,7 @@ export type GenerateOutlineOptions = {
 
 export async function generateOutline({
   plugin,
+  modelId,
   topic,
   level,
   goal,
@@ -52,6 +54,7 @@ export async function generateOutline({
       referencesBlock,
       referenceFiles,
     }),
+    modelId,
     mode: 'agent',
     yolo: true,
     systemPromptOverride: OUTLINE_GENERATOR_PROMPT,

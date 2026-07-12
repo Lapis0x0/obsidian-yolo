@@ -51,6 +51,7 @@ type WrittenCardValidation = {
 
 export type GenerateCardsForChapterOptions = {
   plugin: YoloPlugin
+  modelId?: string
   chapterIndex: number
   projectTopic: string
   chapterTitle: string
@@ -71,6 +72,7 @@ export type GenerateCardsForChapterOptions = {
 
 export async function generateCardsForChapter({
   plugin,
+  modelId,
   chapterIndex,
   projectTopic,
   chapterTitle,
@@ -141,6 +143,7 @@ export async function generateCardsForChapter({
     let completedText = ''
     const stream = plugin.agent.stream({
       ...request,
+      modelId,
       mode: 'agent',
       yolo: true,
       systemPromptOverride: CARD_GENERATOR_PROMPT,
@@ -314,6 +317,7 @@ export type CardGenerationChapter = OutlineChapter & {
 
 export type GenerateCardsParallelOptions = {
   plugin: YoloPlugin
+  modelId?: string
   projectTopic: string
   projectPath: string
   chapters: CardGenerationChapter[]
@@ -330,6 +334,7 @@ export type GenerateCardsParallelOptions = {
 
 export async function generateCardsParallel({
   plugin,
+  modelId,
   projectTopic,
   projectPath,
   chapters,
@@ -370,6 +375,7 @@ export async function generateCardsParallel({
       const { cards, debugData, status, discardedCount } =
         await generateCardsForChapter({
           plugin,
+          modelId,
           chapterIndex,
           projectTopic,
           chapterTitle: chapter.title,

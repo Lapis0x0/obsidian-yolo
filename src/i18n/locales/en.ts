@@ -140,7 +140,7 @@ export const en: TranslationKeys = {
     },
     mastery: {
       mastered: 'Mastered',
-      learning: 'Learning',
+      learning: 'Learning mode',
       new: 'New',
     },
     tabs: {
@@ -450,6 +450,7 @@ export const en: TranslationKeys = {
       knowledge: 'Knowledge',
       tools: 'Tools',
       agent: 'Agent',
+      learning: 'Learning',
       others: 'Others',
     },
     supportYolo: {
@@ -485,6 +486,12 @@ export const en: TranslationKeys = {
       tabCompletionSystemPrompt: 'Tab completion system prompt',
       tabCompletionSystemPromptDesc:
         'System message applied when generating tab completion suggestions; leave empty to use the built-in default.',
+    },
+    learning: {
+      generationTitle: 'Generation',
+      generationModel: 'Learning generation model',
+      generationModelDesc:
+        'Used to generate outlines, knowledge points, and cards. This selection is independent of the current assistant.',
     },
     smartSpace: {
       quickActionsTitle: 'Smart space quick actions',

@@ -135,6 +135,8 @@ export function OutlineBuilder({
     stagingDir && referenceFiles && referenceFiles.length > 0
       ? { enabled: true, include: [stagingDir], exclude: [] }
       : undefined
+  const learningModelId =
+    plugin.settings.learningOptions.modelId || plugin.settings.chatModelId
 
   const createChapter = (chapter: OutlineChapter): EditableChapter => ({
     ...chapter,
@@ -168,6 +170,7 @@ export function OutlineBuilder({
     setEstimatedKnowledgePoints(0)
     void generateOutline({
       plugin,
+      modelId: learningModelId,
       topic,
       level,
       goal,
@@ -342,6 +345,7 @@ export function OutlineBuilder({
             const { drafts, debugData } =
               await generateKnowledgePointsForChapter({
                 plugin,
+                modelId: learningModelId,
                 chapterIndex: index,
                 projectTopic: resolvedProjectName,
                 chapterTitle: chapter.title,
@@ -524,6 +528,7 @@ export function OutlineBuilder({
       onCardGenerationStarted(runId, scaffold.projectPath)
       void generateCardsParallel({
         plugin,
+        modelId: learningModelId,
         projectTopic: resolvedProjectName,
         projectPath: scaffold.projectPath,
         chapters: validChapters.map((chapter, index) => ({

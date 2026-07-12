@@ -479,6 +479,14 @@ export const yoloSettingsSchema = z.object({
 
   notificationOptions: notificationOptionsSchema,
 
+  learningOptions: z
+    .object({
+      modelId: z.string().catch(''),
+    })
+    .catch({
+      modelId: '',
+    }),
+
   // Continuation (续写) options
   continuationOptions: z
     .object({

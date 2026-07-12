@@ -451,6 +451,7 @@ export const it: TranslationKeys = {
       knowledge: 'Conoscenza',
       tools: 'Strumenti',
       agent: 'Agent',
+      learning: 'Modalità studio',
       others: 'Altro',
     },
     supportYolo: {
@@ -487,6 +488,12 @@ export const it: TranslationKeys = {
       tabCompletionSystemPrompt: 'Prompt di sistema completamento tab',
       tabCompletionSystemPromptDesc:
         'Messaggio di sistema applicato quando si generano suggerimenti di completamento tab; lascia vuoto per usare quello predefinito incorporato.',
+    },
+    learning: {
+      generationTitle: 'Generazione',
+      generationModel: 'Modello di generazione per lo studio',
+      generationModelDesc:
+        "Usato per generare scalette, punti di conoscenza e schede. Questa scelta e indipendente dall'assistente corrente.",
     },
     smartSpace: {
       quickActionsTitle: 'Azioni rapide smart space',

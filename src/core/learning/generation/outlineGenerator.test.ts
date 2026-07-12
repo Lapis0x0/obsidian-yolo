@@ -7,27 +7,32 @@ describe('generateOutline', () => {
   it('emits outline as chapters stream in, then finalizes with estimatedKnowledgePoints', async () => {
     const text =
       '{"projectName":"Python","projectGoal":"能够编写基础 Python 程序","chapters":[{"title":"第一章","contract":"覆盖变量与 { 类型 }"},{"title":"第二章","contract":"覆盖控制流"}],"estimatedKnowledgePoints":10}'
-    const plugin = createPlugin([
-      {
-        type: 'text',
-        delta:
-          '{"projectName":"Python","projectGoal":"能够编写基础 Python 程序","chapters":[',
-      },
-      {
-        type: 'text',
-        delta: '{"title":"第一章","contract":"覆盖变量与 { 类型 }"}',
-      },
-      {
-        type: 'text',
-        delta: ',{"title":"第二章","contract":"覆盖控制流"}',
-      },
-      { type: 'text', delta: '],"estimatedKnowledgePoints":10}' },
-      { type: 'completed', text },
-    ])
+    const onRequest = jest.fn()
+    const plugin = createPlugin(
+      [
+        {
+          type: 'text',
+          delta:
+            '{"projectName":"Python","projectGoal":"能够编写基础 Python 程序","chapters":[',
+        },
+        {
+          type: 'text',
+          delta: '{"title":"第一章","contract":"覆盖变量与 { 类型 }"}',
+        },
+        {
+          type: 'text',
+          delta: ',{"title":"第二章","contract":"覆盖控制流"}',
+        },
+        { type: 'text', delta: '],"estimatedKnowledgePoints":10}' },
+        { type: 'completed', text },
+      ],
+      onRequest,
+    )
 
     const snapshots: Outline[] = []
     const result = await generateOutline({
       plugin,
+      modelId: 'learning-model',
       topic: 'python',
       level: 'beginner',
       goal: '入门',
@@ -75,6 +80,9 @@ describe('generateOutline', () => {
       ],
       estimatedKnowledgePoints: 10,
     })
+    expect(onRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'learning-model' }),
+    )
   })
 
   it('rejects an outline without a generated project goal', async () => {
@@ -96,10 +104,16 @@ describe('generateOutline', () => {
   })
 })
 
-function createPlugin(events: unknown[]): YoloPlugin {
+function createPlugin(
+  events: unknown[],
+  onRequest?: (request: unknown) => void,
+): YoloPlugin {
   return {
     agent: {
-      stream: () => streamEvents(events),
+      stream: (request: unknown) => {
+        onRequest?.(request)
+        return streamEvents(events)
+      },
     },
   } as unknown as YoloPlugin
 }

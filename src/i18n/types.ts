@@ -139,6 +139,7 @@ export type TranslationKeys = {
       knowledge: string
       tools: string
       agent: string
+      learning: string
       others: string
     }
     supportYolo: {
@@ -166,6 +167,11 @@ export type TranslationKeys = {
       chatTitlePromptDesc: string
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
+    }
+    learning: {
+      generationTitle: string
+      generationModel: string
+      generationModelDesc: string
     }
     chatPreferences: {
       title: string

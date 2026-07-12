@@ -50,6 +50,8 @@ export type YoloAgentRunRequest = {
    */
   messages?: ChatMessage[]
   assistantId?: string
+  /** Override the assistant model for this run. */
+  modelId?: string
   mode?: 'ask' | 'agent' | 'agent-full'
   /** Auto-approve tool calls (YOLO). Only effective in Agent mode. */
   yolo?: boolean
@@ -322,7 +324,8 @@ export async function resolveAgentApiRunInput({
   const assistant =
     settings.assistants.find((candidate) => candidate.id === assistantId) ??
     null
-  const requestedModelId = assistant?.modelId || settings.chatModelId
+  const requestedModelId =
+    request.modelId || assistant?.modelId || settings.chatModelId
   const resolvedClient = getChatModelClient({
     settings,
     modelId: requestedModelId,
@@ -649,8 +652,7 @@ function toolEventsFromMessages({
   for (const message of relevantToolMessages) {
     for (const toolCall of message.toolCalls) {
       const args = toolCall.request.arguments
-      const parsedArgs =
-        args?.kind === 'complete' ? args.value : undefined
+      const parsedArgs = args?.kind === 'complete' ? args.value : undefined
       const event: YoloAgentEvent & { type: 'tool' } = {
         type: 'tool',
         conversationId,

@@ -63,13 +63,14 @@ jest.mock('../../utils/chat/requestContextBuilder', () => ({
 import { TFile, TFolder } from 'obsidian'
 import type { App } from 'obsidian'
 
+import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
-import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
 import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
+import { getChatModelClient } from '../llm/manager'
 import type { McpManager } from '../mcp/mcpManager'
 
 import {
@@ -270,6 +271,19 @@ describe('agent api helpers', () => {
     )
 
     expect(fallbackResult.input.workspaceScope).toBeNull()
+  })
+
+  it('uses an explicit request model before the assistant model', async () => {
+    await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({
+        prompt: 'Generate learning content',
+        modelId: 'learning-model',
+      }),
+    )
+
+    expect(jest.mocked(getChatModelClient)).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'learning-model' }),
+    )
   })
 
   it('throws when neither prompt nor messages is provided', async () => {

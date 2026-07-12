@@ -113,6 +113,15 @@ describe('generateCardsForChapter streaming', () => {
         contents.set(path, content)
         return file
       })
+      const stream = jest.fn(async function* () {
+        const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
+        yield { type: 'text' as const, delta: text, text }
+        if (interrupted) {
+          yield { type: 'error' as const, message: 'stream interrupted' }
+        } else {
+          yield { type: 'completed' as const, text }
+        }
+      })
       const plugin = {
         app: {
           vault: {
@@ -133,21 +142,14 @@ describe('generateCardsForChapter streaming', () => {
           },
         },
         agent: {
-          stream: async function* () {
-            const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
-            yield { type: 'text' as const, delta: text, text }
-            if (interrupted) {
-              yield { type: 'error' as const, message: 'stream interrupted' }
-            } else {
-              yield { type: 'completed' as const, text }
-            }
-          },
+          stream,
         },
       } as unknown as YoloPlugin
       const events: CardGenerationEvent[] = []
 
       const result = await generateCardsForChapter({
         plugin,
+        modelId: 'learning-model',
         chapterIndex: 2,
         projectTopic: 'Topic',
         chapterTitle: 'Chapter',
@@ -180,6 +182,9 @@ describe('generateCardsForChapter streaming', () => {
       expect(written).toContain('A?\n\n---\n\nA!')
       expect(written).not.toContain(CARD_END_MARKER)
       expect(create).toHaveBeenCalledTimes(1)
+      expect(stream).toHaveBeenCalledWith(
+        expect.objectContaining({ modelId: 'learning-model' }),
+      )
     },
   )
 })

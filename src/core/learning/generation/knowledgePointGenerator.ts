@@ -15,6 +15,7 @@ import type {
 
 export type GenerateKnowledgePointsForChapterOptions = {
   plugin: YoloPlugin
+  modelId?: string
   chapterIndex: number
   projectTopic: string
   chapterTitle: string
@@ -31,6 +32,7 @@ export type GenerateKnowledgePointsForChapterOptions = {
 
 export async function generateKnowledgePointsForChapter({
   plugin,
+  modelId,
   chapterIndex,
   projectTopic,
   chapterTitle,
@@ -77,6 +79,7 @@ export async function generateKnowledgePointsForChapter({
       level,
       referenceDir,
     }),
+    modelId,
     mode: 'agent',
     yolo: true,
     systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
@@ -133,6 +136,7 @@ export async function generateKnowledgePointsForChapter({
 
 export type GenerateKnowledgePointsParallelOptions = {
   plugin: YoloPlugin
+  modelId?: string
   projectTopic: string
   chapters: OutlineChapter[]
   level: string
@@ -144,6 +148,7 @@ export type GenerateKnowledgePointsParallelOptions = {
 
 export async function generateKnowledgePointsParallel({
   plugin,
+  modelId,
   projectTopic,
   chapters,
   level,
@@ -162,6 +167,7 @@ export async function generateKnowledgePointsParallel({
     try {
       const { drafts } = await generateKnowledgePointsForChapter({
         plugin,
+        modelId,
         chapterIndex,
         projectTopic,
         chapterTitle: chapter.title,
