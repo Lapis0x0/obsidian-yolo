@@ -439,7 +439,9 @@ export class ChatGPTOAuthResponsesAdapter {
       )
       .flatMap(getReasoningSummaryTexts)
       .join('\n')
-    const contentParts = messages.flatMap((message) => message.content)
+    const contentParts = messages.flatMap((message) =>
+      Array.isArray(message.content) ? message.content : [],
+    )
     const text = contentParts
       .map((part) => {
         if (part.type === 'output_text') {
@@ -456,7 +458,7 @@ export class ChatGPTOAuthResponsesAdapter {
         if (part.type !== 'output_text') {
           return []
         }
-        return part.annotations
+        return part.annotations ?? []
       })
       .map(toAnnotation)
       .filter((annotation): annotation is Annotation => Boolean(annotation))

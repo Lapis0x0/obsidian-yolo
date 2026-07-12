@@ -518,6 +518,55 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
     expect(parsed.choices[0].message).not.toHaveProperty('reasoning')
   })
 
+  it('ignores message output items without content in non-streaming responses', () => {
+    const response = {
+      id: 'resp_3',
+      created_at: 789,
+      model: 'gpt-5.4',
+      status: 'completed',
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      metadata: null,
+      output_text: 'Done',
+      parallel_tool_calls: true,
+      temperature: null,
+      tool_choice: 'auto',
+      tools: [],
+      top_p: null,
+      max_output_tokens: null,
+      previous_response_id: null,
+      reasoning: null,
+      store: false,
+      truncation: 'disabled',
+      user: null,
+      usage: null,
+      output: [
+        {
+          id: 'msg_empty',
+          type: 'message',
+          role: 'assistant',
+          status: 'completed',
+        },
+        {
+          id: 'msg_text',
+          type: 'message',
+          role: 'assistant',
+          status: 'completed',
+          content: [
+            {
+              type: 'output_text',
+              text: 'Done',
+            },
+          ],
+        },
+      ],
+    } as unknown as Response
+
+    const parsed = adapter.parseResponse(response)
+    expect(parsed.choices[0].message.content).toBe('Done')
+  })
+
   it('handles response.output_item.done for reasoning items without summary', () => {
     const state = adapter.createStreamState()
     const event = {
