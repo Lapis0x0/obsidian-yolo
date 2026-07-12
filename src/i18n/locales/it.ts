@@ -1763,6 +1763,7 @@ export const it: TranslationKeys = {
       noParameters: 'Nessun parametro',
       result: 'Risultato',
       error: 'Errore',
+      rejectionReason: 'Motivo del rifiuto',
       allow: 'Consenti',
       reject: 'Rifiuta',
       abort: 'Interrompi',

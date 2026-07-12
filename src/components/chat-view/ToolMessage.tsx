@@ -63,6 +63,7 @@ export type ToolLabels = {
   noParameters: string
   result: string
   error: string
+  rejectionReason: string
   allow: string
   reject: string
   abort: string
@@ -235,6 +236,10 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
     noParameters: translate('chat.toolCall.noParameters', 'No parameters'),
     result: translate('chat.toolCall.result', 'Result'),
     error: translate('chat.toolCall.error', 'Error'),
+    rejectionReason: translate(
+      'chat.toolCall.rejectionReason',
+      'Rejection reason',
+    ),
     allow: translate('chat.toolCall.allow', 'Allow'),
     reject: translate('chat.toolCall.reject', 'Reject'),
     abort: translate('chat.toolCall.abort', 'Abort'),
@@ -1532,6 +1537,13 @@ function ToolCallItem({
                       <ObsidianCodeBlock content={response.error} />
                     </div>
                   )}
+                  {response.status === ToolCallResponseStatus.Rejected &&
+                    response.reason && (
+                      <div className="yolo-toolcall-content-section">
+                        <div>{toolLabels.rejectionReason}:</div>
+                        <ObsidianCodeBlock content={response.reason} />
+                      </div>
+                    )}
                 </>
               )}
             </div>

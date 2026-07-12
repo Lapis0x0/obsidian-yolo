@@ -1741,6 +1741,7 @@ export const zh: TranslationKeys = {
       noParameters: '无参数',
       result: '结果',
       error: '错误',
+      rejectionReason: '拒绝原因',
       allow: '允许',
       reject: '拒绝',
       abort: '停止执行',

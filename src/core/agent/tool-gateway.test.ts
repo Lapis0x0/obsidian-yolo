@@ -1093,12 +1093,48 @@ describe('AgentToolGateway', () => {
       conversationId: 'conv-1',
     })
 
-    expect(message.toolCalls[0]?.response.status).toBe(
-      ToolCallResponseStatus.Rejected,
-    )
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason: 'Tool "server__tool_b" is not available in this workspace.',
+    })
     // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
     const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
     expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+  })
+
+  it('explains workspace scope path rejections', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn(),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_read'],
+      workspaceScope: {
+        enabled: true,
+        include: ['Notes'],
+        exclude: [],
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: { paths: ['Private/secret.md'] },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Path "Private/secret.md" is outside this agent\'s workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.',
+    })
   })
 
   describe('on-demand harness', () => {

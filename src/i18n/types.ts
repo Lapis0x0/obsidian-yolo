@@ -1581,6 +1581,7 @@ export type TranslationKeys = {
       noParameters?: string
       result?: string
       error?: string
+      rejectionReason?: string
       allow?: string
       reject?: string
       abort?: string

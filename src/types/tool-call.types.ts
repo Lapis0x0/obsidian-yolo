@@ -126,9 +126,12 @@ export type ToolCallResponse =
   | {
       status:
         | ToolCallResponseStatus.PendingApproval
-        | ToolCallResponseStatus.Rejected
         | ToolCallResponseStatus.Running
         | ToolCallResponseStatus.AwaitingUserInput
+    }
+  | {
+      status: ToolCallResponseStatus.Rejected
+      reason?: string
     }
   | {
       status: ToolCallResponseStatus.Success

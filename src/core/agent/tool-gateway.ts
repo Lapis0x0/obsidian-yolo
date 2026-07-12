@@ -542,21 +542,19 @@ export class AgentToolGateway {
     return { ok: true, request: normalizedRequest }
   }
 
-  private isRequestPathAllowed(request: ToolCallRequest): boolean {
-    if (!this.workspaceScope?.enabled) return true
+  private findRequestPathOutsideScope(request: ToolCallRequest): string | null {
+    if (!this.workspaceScope?.enabled) return null
     try {
       const parsed = parseToolName(request.name)
-      if (parsed.serverName !== getLocalFileToolServerName()) return true
+      if (parsed.serverName !== getLocalFileToolServerName()) return null
       const args = getToolCallArgumentsObject(request.arguments)
-      return (
-        findPathOutsideScope(parsed.toolName, args, this.workspaceScope, {
-          exemptPaths: this.allowedSkillPaths
-            ? buildAllowedSkillPathSet(this.allowedSkillPaths)
-            : undefined,
-        }) === null
-      )
+      return findPathOutsideScope(parsed.toolName, args, this.workspaceScope, {
+        exemptPaths: this.allowedSkillPaths
+          ? buildAllowedSkillPathSet(this.allowedSkillPaths)
+          : undefined,
+      })
     } catch {
-      return true
+      return null
     }
   }
 
@@ -780,11 +778,19 @@ export class AgentToolGateway {
       }
     }
 
-    if (
-      !this.isToolAllowed(request.name) ||
-      !this.isRequestPathAllowed(request)
-    ) {
-      return { status: ToolCallResponseStatus.Rejected }
+    if (!this.isToolAllowed(request.name)) {
+      return {
+        status: ToolCallResponseStatus.Rejected,
+        reason: `Tool "${request.name}" is not available in this workspace.`,
+      }
+    }
+
+    const pathOutsideScope = this.findRequestPathOutsideScope(request)
+    if (pathOutsideScope !== null) {
+      return {
+        status: ToolCallResponseStatus.Rejected,
+        reason: `Path "${pathOutsideScope}" is outside this agent's workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.`,
+      }
     }
 
     const localWriteArgumentError = this.getLocalWriteArgumentError(request)

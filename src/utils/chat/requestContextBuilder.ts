@@ -29,6 +29,7 @@ import {
 } from '../../core/skills/skillPolicy'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
@@ -1304,7 +1305,9 @@ ${message.annotations
           toolMessages.push({
             role: 'tool',
             tool_call: toolCall.request,
-            content: `Tool call ${toolCall.request.id} is rejected`,
+            content: toolCall.response.reason
+              ? `Tool call ${toolCall.request.id} was rejected: ${toolCall.response.reason}`
+              : `Tool call ${toolCall.request.id} is rejected`,
           })
           break
         case ToolCallResponseStatus.Success: {
@@ -1900,6 +1903,17 @@ ${entries}
       })
     }
 
+    const workspaceScopeContent = this.buildWorkspaceScopeSection(
+      currentAssistant?.workspaceScope,
+    )
+    if (workspaceScopeContent) {
+      sections.push({
+        bucket: 'rules',
+        id: 'rules.workspace-scope',
+        content: workspaceScopeContent,
+      })
+    }
+
     const projectInstructionsContent = await getProjectInstructionsSection(
       this.app,
       currentAssistant?.enableProjectInstructions === true,
@@ -1914,6 +1928,25 @@ ${entries}
     }
 
     return sections
+  }
+
+  private buildWorkspaceScopeSection(
+    scope: AssistantWorkspaceScope | undefined,
+  ): string {
+    if (!scope?.enabled) return ''
+
+    const include = scope.include.map((path) => path.trim()).filter(Boolean)
+    const exclude = scope.exclude.map((path) => path.trim()).filter(Boolean)
+    if (include.length === 0 && exclude.length === 0) return ''
+
+    return `<workspace_scope>
+- Included paths: ${include.length > 0 ? include.join(', ') : 'all vault paths'}
+- Excluded paths: ${exclude.length > 0 ? exclude.join(', ') : 'none'}
+- All file paths must be vault-relative.
+- Each listed folder includes itself and all descendants.
+- Excluded paths take precedence over included paths.
+- Do not attempt to access paths outside this scope. If the task requires an out-of-scope path, tell the user about the workspace restriction.
+</workspace_scope>`
   }
 
   /**

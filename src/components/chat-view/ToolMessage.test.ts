@@ -349,6 +349,7 @@ describe('ToolMessage headline helpers', () => {
     noParameters: 'No parameters',
     result: 'Result',
     error: 'Error',
+    rejectionReason: 'Rejection reason',
     allow: 'Allow',
     reject: 'Reject',
     abort: 'Abort',

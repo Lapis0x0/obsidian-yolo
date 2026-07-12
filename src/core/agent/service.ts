@@ -1793,7 +1793,10 @@ export class AgentService {
       this.updateToolCallResponse({
         conversationId,
         toolCallId,
-        response: { status: ToolCallResponseStatus.Rejected },
+        response: {
+          status: ToolCallResponseStatus.Rejected,
+          reason: 'The user rejected this tool call.',
+        },
       }),
     )
   }
@@ -1899,6 +1902,7 @@ export class AgentService {
 
     const patched = entry.runtime.setToolCallResponse(toolCallId, {
       status: ToolCallResponseStatus.Rejected,
+      reason: 'The user rejected this tool call.',
     })
     if (patched) {
       void entry.resumeRun()
