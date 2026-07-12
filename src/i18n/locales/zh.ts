@@ -116,6 +116,13 @@ export const zh: TranslationKeys = {
   },
 
   learning: {
+    betaNotice: {
+      title: '学习模式公开测试说明',
+      description:
+        '学习模式目前处于公开测试阶段，部分功能仍在持续完善，使用过程中可能出现不稳定或错误。未来，学习模式的部分功能将纳入付费方案。免费用户仍可继续使用，但可创建的学习项目数量等可能会受到限制。超出免费额度的已有项目可能转为只读，但不会被自动删除。',
+      confirm: '我已了解，进入学习模式',
+      cancel: '暂不进入',
+    },
     common: {
       all: '全部',
       allChapters: '全部章节',

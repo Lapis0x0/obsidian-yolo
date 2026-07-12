@@ -127,6 +127,13 @@ export const en: TranslationKeys = {
   },
 
   learning: {
+    betaNotice: {
+      title: 'Learning Mode Public Beta Notice',
+      description:
+        'Learning mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some learning mode features will become part of paid plans in the future. Free users will still be able to use learning mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.',
+      confirm: 'I understand, enter learning mode',
+      cancel: 'Not now',
+    },
     common: {
       all: 'All',
       allChapters: 'All chapters',

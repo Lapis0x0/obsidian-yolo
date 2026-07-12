@@ -103,6 +103,7 @@ export function normalizeYoloSettingsReferences(
       ),
     },
     learningOptions: {
+      ...settings.learningOptions,
       modelId:
         normalizeModelReference(
           settings.learningOptions.modelId,

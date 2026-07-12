@@ -25,7 +25,10 @@ describe('parseYoloSettings', () => {
     expect(result.softDismissedUpdateVersion).toBe('')
     expect(result.mutedUpdateVersion).toBe('')
     expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
-    expect(result.learningOptions).toEqual({ modelId: '' })
+    expect(result.learningOptions).toEqual({
+      modelId: '',
+      betaNoticeAcknowledged: false,
+    })
 
     expect(result.ragOptions).toMatchObject({
       enabled: true,
@@ -453,6 +456,18 @@ describe('parseYoloSettings', () => {
         learningOptions: { modelId: 'openai/disabled' },
       }).learningOptions.modelId,
     ).toBe('openai/gpt-5')
+  })
+
+  it('initializes and preserves the learning beta notice acknowledgement', () => {
+    expect(
+      parseYoloSettings({ learningOptions: { modelId: '' } }).learningOptions
+        .betaNoticeAcknowledged,
+    ).toBe(false)
+    expect(
+      parseYoloSettings({
+        learningOptions: { modelId: '', betaNoticeAcknowledged: true },
+      }).learningOptions.betaNoticeAcknowledged,
+    ).toBe(true)
   })
 
   it('clears invalid model references when no valid models remain after parsing', () => {

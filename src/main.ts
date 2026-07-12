@@ -7,6 +7,7 @@ import {
   Plugin,
   TFile,
   TFolder,
+  type WorkspaceLeaf,
   getLanguage,
   normalizePath,
 } from 'obsidian'
@@ -18,6 +19,7 @@ import {
   mountActionToast,
 } from './components/ActionToast'
 import { mountUpdateToast } from './components/UpdateToast'
+import { AcknowledgementModal } from './components/modals/AcknowledgementModal'
 import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import type { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
@@ -359,17 +361,65 @@ export default class YoloPlugin extends Plugin {
    * existing leaf if one is already open.
    */
   async openLearningView(target?: LearningNavigationTarget): Promise<void> {
+    const leaf = await this.revealLearningView(target)
+
+    if (!this.settings.learningOptions.betaNoticeAcknowledged) {
+      new AcknowledgementModal(this.app, {
+        title: this.t(
+          'learning.betaNotice.title',
+          'Learning mode public beta notice',
+        ),
+        messages: [
+          this.t(
+            'learning.betaNotice.description',
+            'Learning mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some learning mode features will become part of paid plans in the future. Free users will still be able to use learning mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.',
+          ),
+        ],
+        centered: true,
+        confirmText: this.t(
+          'learning.betaNotice.confirm',
+          'I understand, enter learning mode',
+        ),
+        cancelText: this.t('learning.betaNotice.cancel', 'Not now'),
+        onConfirm: () => {
+          void this.acknowledgeLearningBetaNotice()
+        },
+        onDismiss: () => {
+          if (leaf.view.getViewType() === LEARNING_VIEW_TYPE) leaf.detach()
+        },
+      }).open()
+    }
+  }
+
+  private async acknowledgeLearningBetaNotice(): Promise<void> {
+    try {
+      await this.setSettings({
+        ...this.settings,
+        learningOptions: {
+          ...this.settings.learningOptions,
+          betaNoticeAcknowledged: true,
+        },
+      })
+    } catch (error: unknown) {
+      console.error('Failed to persist learning beta notice confirmation', error)
+    }
+  }
+
+  private async revealLearningView(
+    target?: LearningNavigationTarget,
+  ): Promise<WorkspaceLeaf> {
     if (target) this.pendingLearningNavigation = target
     const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
     if (existing) {
       this.app.workspace.revealLeaf(existing)
       this.flushLearningNavigation()
-      return
+      return existing
     }
     const leaf = this.app.workspace.getLeaf('tab')
     await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
     this.app.workspace.revealLeaf(leaf)
     this.flushLearningNavigation()
+    return leaf
   }
 
   private getModelListCacheKey(

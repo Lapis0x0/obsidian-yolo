@@ -482,9 +482,11 @@ export const yoloSettingsSchema = z.object({
   learningOptions: z
     .object({
       modelId: z.string().catch(''),
+      betaNoticeAcknowledged: z.boolean().catch(false),
     })
     .catch({
       modelId: '',
+      betaNoticeAcknowledged: false,
     }),
 
   // Continuation (续写) options

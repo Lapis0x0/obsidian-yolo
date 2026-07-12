@@ -124,6 +124,13 @@ export const it: TranslationKeys = {
   },
 
   learning: {
+    betaNotice: {
+      title: 'Avviso sulla beta pubblica della modalità apprendimento',
+      description:
+        'La modalità apprendimento è attualmente in beta pubblica. Alcune funzioni sono ancora in fase di perfezionamento e potrebbero essere instabili o contenere errori. In futuro, alcune funzioni della modalità apprendimento entreranno a far parte dei piani a pagamento. Gli utenti gratuiti potranno continuare a utilizzarla, ma potrebbero essere applicati limiti al numero di progetti di apprendimento creabili. I progetti esistenti che superano il limite gratuito potrebbero diventare di sola lettura, ma non verranno eliminati automaticamente.',
+      confirm: 'Ho capito, entra nella modalità apprendimento',
+      cancel: 'Non ora',
+    },
     common: {
       all: 'Tutti',
       allChapters: 'Tutti i capitoli',
