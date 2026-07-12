@@ -37,6 +37,7 @@ function createFixture() {
     },
   } as unknown as App
   const project: Project = {
+    kind: 'outline',
     id: 'learning/test',
     slug: 'test',
     topic: 'Test',
@@ -233,6 +234,85 @@ describe('loadLearningProjectStats', () => {
       errors: expect.arrayContaining([
         expect.objectContaining({ path: unexpected.path }),
       ]),
+    })
+  })
+
+  it('loads chapter-direct cards projects without knowledge points', async () => {
+    const { app, project, cards, content } = createFixture()
+    content.set(
+      cards.path,
+      '## A <!--card:aaaaaaaa-->\n\nfront A\n\n---\n\nback A\n\n## B <!--card:bbbbbbbb-->\n\nfront B\n\n---\n\nback B',
+    )
+    const cardsProject: Project = {
+      ...project,
+      kind: 'cards',
+      chapters: [
+        {
+          id: project.chapters[0].id,
+          projectId: project.id,
+          slug: project.chapters[0].slug,
+          title: project.chapters[0].title,
+          folderPath: project.chapters[0].folderPath,
+          cardsFilePath: cards.path,
+        },
+      ],
+      knowledgePoints: [],
+    }
+    const srsStore = {
+      getProjectState: jest.fn(async () => ({
+        version: 2,
+        cards: {},
+        suspended: ['bbbbbbbb'],
+      })),
+      getCardRetrievability: jest.fn(),
+    } as unknown as LearningSrsStore
+
+    const result = await loadLearningProjectStats({
+      app,
+      project: cardsProject,
+      srsStore,
+      now: new Date('2026-07-12T12:00:00.000Z'),
+    })
+
+    expect(result.totalCards).toBe(1)
+    expect(result.dueCards).toBe(0)
+    expect(result.nextAction).toEqual({
+      kind: 'learn',
+      knowledgePointTitle: 'Chapter',
+      started: false,
+    })
+  })
+
+  it('excludes suspended outline cards from counts and recommendations', async () => {
+    const { app, project } = createFixture()
+    const srsStore = {
+      getProjectState: jest.fn(async () => ({
+        version: 2,
+        cards: {
+          aaaaaaaa: state(
+            '2026-07-11T12:00:00.000Z',
+            '2026-07-10T12:00:00.000Z',
+            0.9,
+          ),
+        },
+        suspended: ['aaaaaaaa', 'cccccccc'],
+      })),
+      getCardRetrievability: jest.fn((card: SrsCardState) => card.stability),
+    } as unknown as LearningSrsStore
+
+    const result = await loadLearningProjectStats({
+      app,
+      project,
+      srsStore,
+      now: new Date('2026-07-12T12:00:00.000Z'),
+    })
+
+    expect(result.totalCards).toBe(1)
+    expect(result.dueCards).toBe(0)
+    expect(result.nextAction).toEqual({
+      kind: 'learn',
+      knowledgePointTitle: 'B',
+      started: false,
     })
   })
 })

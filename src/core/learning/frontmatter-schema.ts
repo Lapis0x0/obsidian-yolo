@@ -25,6 +25,7 @@ const relationSchema = z.object({
 })
 
 export const projectFrontmatterSchema = z.object({
+  kind: z.enum(['outline', 'cards']).default('outline'),
   topic: z.string().min(1),
   goal: z.string().min(1),
   status: z

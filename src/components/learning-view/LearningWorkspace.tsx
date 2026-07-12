@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../../contexts/app-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import { recoverAnkiImports } from '../../core/learning/anki/importService'
 import { cleanupStaging } from '../../core/learning/generation/referenceStaging'
 import type {
   CardGenerationEvent,
@@ -17,6 +18,7 @@ import {
 import type { Project as VaultProject } from '../../core/learning/types'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 
+import { AnkiImportModal } from './AnkiImportModal'
 import type { CardMode } from './CardsView'
 import {
   type CardGenerationWorkspace,
@@ -39,6 +41,7 @@ export function LearningWorkspace() {
 
   const [projectId, setProjectId] = useState<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [ankiImportOpen, setAnkiImportOpen] = useState(false)
   const [buildingOutline, setBuildingOutline] = useState(false)
   const [wizardInput, setWizardInput] = useState<LearningWizardInput | null>(
     null,
@@ -95,6 +98,15 @@ export function LearningWorkspace() {
     const run = async () => {
       const generation = refreshGenerationRef.current + 1
       refreshGenerationRef.current = generation
+      try {
+        await recoverAnkiImports({
+          app,
+          srsStore: plugin.getLearningSrsStore(),
+        })
+      } catch (error) {
+        console.error('[YOLO] Failed to recover Anki imports:', error)
+      }
+      if (cancelled) return
       const { projects: scanned } = await scanProjects(app, baseDir)
       if (cancelled) return
       bus.startWatchingVault()
@@ -106,7 +118,7 @@ export function LearningWorkspace() {
       cancelled = true
       bus.stopWatchingVault()
     }
-  }, [app, bus, baseDir])
+  }, [app, bus, baseDir, plugin])
 
   useEffect(() => {
     const project = vaultProjects.find((item) => item.id === projectId)
@@ -279,7 +291,14 @@ export function LearningWorkspace() {
           <HomeView
             projects={vaultProjects}
             onOpenProject={(id) => {
-              setCardMode('学习')
+              const project = vaultProjects.find((item) => item.id === id)
+              if (project?.kind === 'cards') {
+                setCardMode('浏览')
+                setActiveTab('卡片')
+              } else {
+                setCardMode('学习')
+                setActiveTab(tabs[0])
+              }
               setProjectId(id)
             }}
             onStartReview={(id) => {
@@ -288,6 +307,7 @@ export function LearningWorkspace() {
               setProjectId(id)
             }}
             onNewProject={() => setWizardOpen(true)}
+            onImportAnki={() => setAnkiImportOpen(true)}
           />
         )}
       </div>
@@ -300,6 +320,24 @@ export function LearningWorkspace() {
             setWizardInput(input)
             setWizardOpen(false)
             setBuildingOutline(true)
+          }}
+        />
+      )}
+      {ankiImportOpen && (
+        <AnkiImportModal
+          baseDir={baseDir}
+          onClose={() => setAnkiImportOpen(false)}
+          onImported={async (projectPath) => {
+            const projects = await refreshProjects()
+            const imported = projects.find(
+              (project) => project.folderPath === projectPath,
+            )
+            if (!imported) {
+              throw new Error(`Imported project was not found: ${projectPath}`)
+            }
+            setCardMode('浏览')
+            setActiveTab('卡片')
+            setProjectId(imported.id)
           }}
         />
       )}

@@ -2,7 +2,7 @@ import type {
   CardGenerationEvent,
   CardGenerationResult,
 } from '../../core/learning/generation/types'
-import type { Project } from '../../core/learning/types'
+import type { OutlineProject } from '../../core/learning/types'
 
 import type { Mastery } from './primitives'
 
@@ -22,6 +22,7 @@ export type WorkspaceCard = {
   startLine: number
   sourceIndex: number
   preview: boolean
+  suspended: boolean
 }
 
 export type CardGenerationWorkspace = {
@@ -90,22 +91,22 @@ export function mergeDiskAndPreviewCards(
 }
 
 export type CardGroup = {
-  chapter: Project['chapters'][number]
+  chapter: OutlineProject['chapters'][number]
   points: Array<{
-    point: Project['knowledgePoints'][number]
+    point: OutlineProject['knowledgePoints'][number]
     cards: WorkspaceCard[]
   }>
 }
 
 export function groupCardsByProjectOrder(
-  project: Project,
+  project: OutlineProject,
   cards: WorkspaceCard[],
 ): CardGroup[] {
   return project.chapters.map((chapter) => ({
     chapter,
     points: chapter.knowledgePointIds
       .map((id) => project.knowledgePoints.find((point) => point.id === id))
-      .filter((point): point is Project['knowledgePoints'][number] =>
+      .filter((point): point is OutlineProject['knowledgePoints'][number] =>
         Boolean(point),
       )
       .map((point) => ({

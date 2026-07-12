@@ -1,12 +1,19 @@
 import { App, TFile, TFolder, normalizePath, parseYaml } from 'obsidian'
 
 import {
+  chapterCardsFrontmatterSchema,
   chapterFrontmatterSchema,
   chapterKnowledgeFrontmatterSchema,
   projectFrontmatterSchema,
 } from './frontmatter-schema'
 import { scanMarkdownEntries } from './markdownScanner'
-import type { Chapter, KnowledgePoint, Project, ProjectStatus } from './types'
+import type {
+  CardChapter,
+  Chapter,
+  KnowledgePoint,
+  Project,
+  ProjectStatus,
+} from './types'
 
 const KNOWLEDGE_FILE = 'knowledge.md'
 const CARDS_FILE = 'cards.md'
@@ -55,6 +62,27 @@ export async function scanProject(
   const status: ProjectStatus = parsed.data.status ?? 'outlining'
   const orderedChapterSlugs = parsed.data.chapters ?? null
 
+  if (parsed.data.kind === 'cards') {
+    const chapters = await scanCardChapters(
+      app,
+      projectId,
+      projectFolder,
+      orderedChapterSlugs ?? [],
+    )
+    return {
+      kind: 'cards',
+      id: projectId,
+      slug: projectFolder.name,
+      topic,
+      goal,
+      status,
+      folderPath: projectFolder.path,
+      indexFilePath: indexFile.path,
+      chapters,
+      knowledgePoints: [],
+    }
+  }
+
   const chapterFolders = projectFolder.children.filter(
     (c): c is TFolder => c instanceof TFolder && c.name !== 'ref',
   )
@@ -71,6 +99,7 @@ export async function scanProject(
   }
 
   return {
+    kind: 'outline',
     id: projectId,
     slug: projectFolder.name,
     topic,
@@ -81,6 +110,56 @@ export async function scanProject(
     chapters,
     knowledgePoints,
   }
+}
+
+async function scanCardChapters(
+  app: App,
+  projectId: string,
+  projectFolder: TFolder,
+  orderedSlugs: string[],
+): Promise<CardChapter[]> {
+  const folders = new Map(
+    projectFolder.children
+      .filter(
+        (child): child is TFolder =>
+          child instanceof TFolder &&
+          child.name !== 'assets' &&
+          child.name !== 'ref',
+      )
+      .map((folder) => [folder.name, folder]),
+  )
+  const chapters: CardChapter[] = []
+  for (const slug of orderedSlugs) {
+    const folder = folders.get(slug)
+    if (!folder) continue
+    const indexFile = findChildFile(folder, PROJECT_INDEX_FILE)
+    const cardsFile = findChildFile(folder, CARDS_FILE)
+    if (!indexFile || !cardsFile) continue
+    const indexFrontmatter = await readFrontmatter(app, indexFile)
+    const cardsFrontmatter = await readFrontmatter(app, cardsFile)
+    const parsedIndex = chapterFrontmatterSchema.safeParse(indexFrontmatter)
+    const parsedCards =
+      chapterCardsFrontmatterSchema.safeParse(cardsFrontmatter)
+    const title =
+      (parsedIndex.success ? parsedIndex.data.title : undefined) ??
+      (parsedCards.success ? parsedCards.data.title : undefined) ??
+      folder.name
+    chapters.push({
+      id: folder.path,
+      projectId,
+      slug: folder.name,
+      title,
+      folderPath: folder.path,
+      cardsFilePath: cardsFile.path,
+    })
+  }
+  return chapters
+}
+
+function findChildFile(folder: TFolder, name: string): TFile | undefined {
+  return folder.children.find(
+    (child): child is TFile => child instanceof TFile && child.name === name,
+  )
 }
 
 async function scanChapter(

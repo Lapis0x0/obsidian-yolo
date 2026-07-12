@@ -12,7 +12,7 @@ import type {
   SrsProjectState,
 } from './srsTypes'
 
-const SRS_SCHEMA_VERSION = 1
+const SRS_SCHEMA_VERSION = 2
 const SRS_DIR_NAME = 'learning-srs'
 const scheduler = fsrs()
 
@@ -27,6 +27,37 @@ const ratingByName: Record<ReviewRating, Grade> = {
   easy: Rating.Easy,
 }
 
+export type SrsReplayEvent = {
+  reviewedAt: number
+  rating: 1 | 2 | 3 | 4
+}
+
+export function replaySrsEvents(
+  events: readonly SrsReplayEvent[],
+  introducedAt: Date,
+): SrsCardState {
+  let card = createEmptyCard(introducedAt)
+  for (const event of [...events].sort((a, b) => a.reviewedAt - b.reviewedAt)) {
+    const reviewedAt = new Date(event.reviewedAt)
+    card = scheduler.repeat(card, reviewedAt)[event.rating as Grade].card
+  }
+  return toStoredCard(card, introducedAt.toISOString())
+}
+
+const toStoredCard = (card: Card, introducedAt: string): SrsCardState => ({
+  due: card.due.toISOString(),
+  stability: card.stability,
+  difficulty: card.difficulty,
+  elapsedDays: (card as unknown as FsrsCardCompat).elapsed_days,
+  scheduledDays: card.scheduled_days,
+  learningSteps: card.learning_steps,
+  reps: card.reps,
+  lapses: card.lapses,
+  state: card.state,
+  ...(card.last_review ? { lastReview: card.last_review.toISOString() } : {}),
+  introducedAt,
+})
+
 export class LearningSrsStore {
   private readonly app: App
   private readonly cache = new Map<string, SrsProjectState>()
@@ -36,6 +67,49 @@ export class LearningSrsStore {
 
   constructor(app: App) {
     this.app = app
+  }
+
+  initializeProjectState(
+    projectSlug: string,
+    state: SrsProjectState,
+    options: { activateCache?: boolean } = {},
+  ): Promise<void> {
+    return this.enqueueWrite(async () => {
+      this.validateProjectSlug(projectSlug)
+      const validated = this.parseProjectState(
+        structuredClone(state),
+        `${projectSlug}.json`,
+      ).state
+      await this.writeProjectState(projectSlug, validated)
+      if (options.activateCache !== false)
+        this.cache.set(projectSlug, validated)
+      else this.invalidateProject(projectSlug)
+    })
+  }
+
+  activateProjectState(projectSlug: string, state: SrsProjectState): void {
+    this.validateProjectSlug(projectSlug)
+    this.cache.set(projectSlug, structuredClone(state))
+    this.loadPromises.delete(projectSlug)
+  }
+
+  invalidateProject(projectSlug: string): void {
+    this.cache.delete(projectSlug)
+    this.loadPromises.delete(projectSlug)
+  }
+
+  deleteProjectState(projectSlug: string): Promise<void> {
+    return this.enqueueWrite(async () => {
+      const filePath = await this.getProjectFilePath(projectSlug)
+      if (await this.app.vault.adapter.exists(filePath))
+        await this.app.vault.adapter.remove(filePath)
+      this.invalidateProject(projectSlug)
+    })
+  }
+
+  getProjectStateFilePath(projectSlug: string): Promise<string> {
+    this.validateProjectSlug(projectSlug)
+    return this.getProjectFilePath(projectSlug)
   }
 
   async getProjectState(projectSlug: string): Promise<SrsProjectState> {
@@ -52,6 +126,7 @@ export class LearningSrsStore {
     this.validateCardUuid(cardUuid)
     return this.enqueueWrite(async () => {
       const current = await this.loadProjectState(projectSlug)
+      this.assertNotSuspended(current, [cardUuid])
       const existing = current.cards[cardUuid]
       const introducedAt = existing?.introducedAt ?? reviewedAt.toISOString()
       const card = existing
@@ -65,6 +140,7 @@ export class LearningSrsStore {
       const nextState: SrsProjectState = {
         version: SRS_SCHEMA_VERSION,
         cards: { ...current.cards, [cardUuid]: nextCard },
+        suspended: current.suspended,
       }
 
       await this.writeProjectState(projectSlug, nextState)
@@ -88,6 +164,7 @@ export class LearningSrsStore {
     if (uuids.size === 0) return Promise.resolve()
     return this.enqueueWrite(async () => {
       const current = await this.loadProjectState(projectSlug)
+      this.assertNotSuspended(current, uuids)
       const cards = { ...current.cards }
       uuids.forEach((uuid) => {
         const existing = current.cards[uuid]
@@ -101,7 +178,7 @@ export class LearningSrsStore {
           introducedAt,
         )
       })
-      const nextState = { version: SRS_SCHEMA_VERSION, cards }
+      const nextState: SrsProjectState = { ...current, cards }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
     })
@@ -114,6 +191,7 @@ export class LearningSrsStore {
   ): Promise<Record<ReviewRating, CardScheduling>> {
     this.validateCardUuid(cardUuid)
     const state = await this.loadProjectState(projectSlug)
+    this.assertNotSuspended(state, [cardUuid])
     const card = state.cards[cardUuid]
       ? this.toFsrsCard(state.cards[cardUuid])
       : createEmptyCard(now)
@@ -128,7 +206,11 @@ export class LearningSrsStore {
     const state = await this.loadProjectState(projectSlug)
     return new Set(
       Object.entries(state.cards)
-        .filter(([, card]) => new Date(card.due).getTime() <= now.getTime())
+        .filter(
+          ([uuid, card]) =>
+            !state.suspended.includes(uuid) &&
+            new Date(card.due).getTime() <= now.getTime(),
+        )
         .map(([uuid]) => uuid),
     )
   }
@@ -138,9 +220,55 @@ export class LearningSrsStore {
     now: Date,
   ): Promise<number> {
     const state = await this.loadProjectState(projectSlug)
-    return Object.values(state.cards).filter((card) =>
-      this.isSameLocalDay(new Date(card.introducedAt), now),
+    const suspended = new Set(state.suspended)
+    return Object.entries(state.cards).filter(
+      ([uuid, card]) =>
+        !suspended.has(uuid) &&
+        this.isSameLocalDay(new Date(card.introducedAt), now),
     ).length
+  }
+
+  suspendCards(
+    projectSlug: string,
+    cardUuids: Iterable<string>,
+  ): Promise<void> {
+    const uuids = this.validateAndDedupeCardUuids(cardUuids)
+    if (uuids.size === 0) return Promise.resolve()
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      const suspended = [...new Set([...current.suspended, ...uuids])].sort()
+      if (suspended.length === current.suspended.length) return
+      const nextState: SrsProjectState = { ...current, suspended }
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+    })
+  }
+
+  resumeCards(projectSlug: string, cardUuids: Iterable<string>): Promise<void> {
+    const uuids = this.validateAndDedupeCardUuids(cardUuids)
+    if (uuids.size === 0) return Promise.resolve()
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      const suspended = current.suspended.filter((uuid) => !uuids.has(uuid))
+      if (suspended.length === current.suspended.length) return
+      const nextState: SrsProjectState = { ...current, suspended }
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+    })
+  }
+
+  async isCardSuspended(
+    projectSlug: string,
+    cardUuid: string,
+  ): Promise<boolean> {
+    this.validateCardUuid(cardUuid)
+    return (await this.loadProjectState(projectSlug)).suspended.includes(
+      cardUuid,
+    )
+  }
+
+  async getSuspendedCardUuids(projectSlug: string): Promise<Set<string>> {
+    return new Set((await this.loadProjectState(projectSlug)).suspended)
   }
 
   removeCards(projectSlug: string, cardUuids: Iterable<string>): Promise<void> {
@@ -151,10 +279,12 @@ export class LearningSrsStore {
       const cards = Object.fromEntries(
         Object.entries(current.cards).filter(([uuid]) => !uuids.has(uuid)),
       )
+      const suspended = current.suspended.filter((uuid) => !uuids.has(uuid))
       const changed =
-        Object.keys(cards).length !== Object.keys(current.cards).length
+        Object.keys(cards).length !== Object.keys(current.cards).length ||
+        suspended.length !== current.suspended.length
       if (!changed) return
-      const nextState = { version: SRS_SCHEMA_VERSION, cards }
+      const nextState: SrsProjectState = { ...current, cards, suspended }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
     })
@@ -171,9 +301,15 @@ export class LearningSrsStore {
           existingCardUuids.has(uuid),
         ),
       )
-      if (Object.keys(cards).length === Object.keys(current.cards).length)
+      const suspended = current.suspended.filter((uuid) =>
+        existingCardUuids.has(uuid),
+      )
+      if (
+        Object.keys(cards).length === Object.keys(current.cards).length &&
+        suspended.length === current.suspended.length
+      )
         return
-      const nextState = { version: SRS_SCHEMA_VERSION, cards }
+      const nextState: SrsProjectState = { ...current, cards, suspended }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
     })
@@ -214,7 +350,11 @@ export class LearningSrsStore {
   ): Promise<SrsProjectState> {
     const filePath = await this.getProjectFilePath(projectSlug)
     if (!(await this.app.vault.adapter.exists(filePath))) {
-      const empty = { version: SRS_SCHEMA_VERSION, cards: {} }
+      const empty: SrsProjectState = {
+        version: SRS_SCHEMA_VERSION,
+        cards: {},
+        suspended: [],
+      }
       this.cache.set(projectSlug, empty)
       return empty
     }
@@ -226,7 +366,8 @@ export class LearningSrsStore {
     } catch {
       throw new Error(`SRS 文件损坏：${filePath}`)
     }
-    const state = this.parseProjectState(parsed, filePath)
+    const { state, migrated } = this.parseProjectState(parsed, filePath)
+    if (migrated) await this.writeProjectState(projectSlug, state)
     this.cache.set(projectSlug, state)
     return state
   }
@@ -267,11 +408,14 @@ export class LearningSrsStore {
     return dir
   }
 
-  private parseProjectState(value: unknown, filePath: string): SrsProjectState {
+  private parseProjectState(
+    value: unknown,
+    filePath: string,
+  ): { state: SrsProjectState; migrated: boolean } {
     if (!this.isRecord(value)) {
       throw new Error(`SRS 文件格式无效：${filePath}`)
     }
-    if (value.version !== SRS_SCHEMA_VERSION) {
+    if (value.version !== 1 && value.version !== SRS_SCHEMA_VERSION) {
       throw new Error(`SRS 文件版本不受支持，需要迁移：${filePath}`)
     }
     if (!this.isRecord(value.cards)) {
@@ -283,7 +427,42 @@ export class LearningSrsStore {
       this.validateCardUuid(uuid, filePath)
       cards[uuid] = this.parseCardState(card, filePath, uuid)
     }
-    return { version: SRS_SCHEMA_VERSION, cards }
+    let suspended: string[] = []
+    if (value.version === SRS_SCHEMA_VERSION) {
+      if (!Array.isArray(value.suspended)) {
+        throw new Error(`SRS 暂停卡片数据格式无效：${filePath}`)
+      }
+      const unique = new Set<string>()
+      for (const uuid of value.suspended) {
+        if (typeof uuid !== 'string') {
+          throw new Error(`SRS 暂停卡片 UUID 无效：${filePath}`)
+        }
+        this.validateCardUuid(uuid, filePath)
+        unique.add(uuid)
+      }
+      suspended = [...unique].sort()
+    }
+    return {
+      state: { version: SRS_SCHEMA_VERSION, cards, suspended },
+      migrated: value.version === 1,
+    }
+  }
+
+  private assertNotSuspended(
+    state: SrsProjectState,
+    cardUuids: Iterable<string>,
+  ): void {
+    const suspended = new Set(state.suspended)
+    const blocked = [...cardUuids].filter((uuid) => suspended.has(uuid)).sort()
+    if (blocked.length > 0) {
+      throw new Error(`暂停卡片不能评分或计算排程：${blocked.join(', ')}`)
+    }
+  }
+
+  private validateAndDedupeCardUuids(cardUuids: Iterable<string>): Set<string> {
+    const uuids = new Set(cardUuids)
+    uuids.forEach((uuid) => this.validateCardUuid(uuid))
+    return uuids
   }
 
   private parseCardState(
@@ -419,21 +598,7 @@ export class LearningSrsStore {
   }
 
   private toSrsCardState(card: Card, introducedAt: string): SrsCardState {
-    return {
-      due: card.due.toISOString(),
-      stability: card.stability,
-      difficulty: card.difficulty,
-      elapsedDays: (card as unknown as FsrsCardCompat).elapsed_days,
-      scheduledDays: card.scheduled_days,
-      learningSteps: card.learning_steps,
-      reps: card.reps,
-      lapses: card.lapses,
-      state: card.state,
-      ...(card.last_review
-        ? { lastReview: card.last_review.toISOString() }
-        : {}),
-      introducedAt,
-    }
+    return toStoredCard(card, introducedAt)
   }
 
   private toScheduling(

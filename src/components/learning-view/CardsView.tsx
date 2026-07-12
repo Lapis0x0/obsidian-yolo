@@ -1,16 +1,16 @@
 import {
-  DndContext,
   type Collision,
   type CollisionDetection,
-  defaultDropAnimationSideEffects,
-  type DropAnimation,
+  DndContext,
   type DragEndEvent,
   type DragMoveEvent,
-  DragOverlay,
   type DragOverEvent,
+  DragOverlay,
   type DragStartEvent,
+  type DropAnimation,
   PointerSensor,
   TouchSensor,
+  defaultDropAnimationSideEffects,
   rectIntersection,
   useDroppable,
   useSensor,
@@ -20,7 +20,16 @@ import { SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import * as Popover from '@radix-ui/react-popover'
 import cx from 'clsx'
-import { CircleCheck, Ellipsis, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import {
+  CircleCheck,
+  Ellipsis,
+  PauseCircle,
+  PlayCircle,
+  Plus,
+  RotateCcw,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { Notice, TFile, normalizePath } from 'obsidian'
 import {
   forwardRef,
@@ -34,8 +43,8 @@ import {
 } from 'react'
 import type {
   CSSProperties,
-  MouseEvent as ReactMouseEvent,
   PointerEvent,
+  MouseEvent as ReactMouseEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -64,12 +73,14 @@ import type {
   SrsCardState,
 } from '../../core/learning/srs/srsTypes'
 import type {
+  CardChapter as VaultCardChapter,
   Chapter as VaultChapter,
   KnowledgePoint as VaultKnowledgePoint,
   Project as VaultProject,
 } from '../../core/learning/types'
 import { YoloPopoverContent } from '../common/popover'
 
+import { CardMarkdown } from './CardMarkdown'
 import {
   type CardGenerationWorkspace,
   type WorkspaceCard,
@@ -89,14 +100,14 @@ import {
 
 export const cardModes = ['学习', '浏览'] as const
 export type CardMode = (typeof cardModes)[number]
-const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
+const masteryFilters = ['全部', '已掌握', '学习中', '未开始', '已暂停'] as const
 
 type Card = WorkspaceCard
 
 type NewCardDraft = {
   key: number
-  chapter: VaultChapter
-  point: VaultKnowledgePoint
+  chapter: VaultChapter | VaultCardChapter
+  point: VaultKnowledgePoint | null
   filePath: string
 }
 
@@ -183,6 +194,16 @@ function createCardContainers(
   project: VaultProject,
   cards: Card[],
 ): CardContainers {
+  if (project.kind === 'cards') {
+    return Object.fromEntries(
+      project.chapters.map((chapter) => [
+        chapter.id,
+        cards
+          .filter((card) => card.chapterId === chapter.id)
+          .map((card) => card.id),
+      ]),
+    )
+  }
   return Object.fromEntries(
     project.knowledgePoints.map((point) => [
       point.uuid,
@@ -338,7 +359,7 @@ export function CardsView({
         <ReviewMode
           key={project?.slug}
           projectSlug={project?.slug ?? null}
-          cards={cards.filter((card) => !card.preview)}
+          cards={cards.filter((card) => !card.preview && !card.suspended)}
           now={now}
           todayIntroducedCount={todayIntroducedCount}
           onReviewed={applyReviewResult}
@@ -397,15 +418,50 @@ function useProjectCards(
       )
       for (const chapter of project.chapters) {
         const file = app.vault.getAbstractFileByPath(
-          normalizePath(`${chapter.folderPath}/cards.md`),
+          normalizePath(
+            project.kind === 'cards'
+              ? (chapter as VaultCardChapter).cardsFilePath
+              : `${chapter.folderPath}/cards.md`,
+          ),
         )
         if (!(file instanceof TFile)) continue
         const content = await app.vault.cachedRead(file)
-        const parsedFile = parseCardFile(content, file.path)
+        const parsedFile =
+          project.kind === 'cards'
+            ? parseCardFile(content, {
+                mode: 'chapter-direct',
+                path: file.path,
+              })
+            : parseCardFile(content, file.path)
         if (!parsedFile.complete) {
           throw new CardFileFormatError(file.path, parsedFile.errors)
         }
         for (const [sourceIndex, entry] of parsedFile.cards.entries()) {
+          if (project.kind === 'cards') {
+            const srsState = projectState.cards[entry.cardUuid] ?? null
+            nextCards.push({
+              id: entry.cardUuid,
+              kpUuid: chapter.id,
+              pointId: null,
+              pointTitle: '',
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              front: entry.front,
+              back: entry.back,
+              mastery: srsState ? fsrsStateToMastery(srsState.state) : 'new',
+              dueAt: srsState?.due ?? null,
+              srsState,
+              filePath: file.path,
+              startLine: entry.startLine,
+              sourceIndex,
+              preview: false,
+              suspended: projectState.suspended.includes(entry.cardUuid),
+            })
+            continue
+          }
+          if (entry.kpUuid === null) {
+            throw new CardFileFormatError(file.path, parsedFile.errors)
+          }
           const point = pointByUuid.get(entry.kpUuid)
           if (!point || point.chapterId !== chapter.id) {
             throw new CardFileFormatError(file.path, [
@@ -438,13 +494,18 @@ function useProjectCards(
             startLine: entry.startLine,
             sourceIndex,
             preview: false,
+            suspended: projectState.suspended.includes(entry.cardUuid),
           })
         }
       }
       const projectScan = await scanProjectCards(
         app,
         project.folderPath,
-        project.chapters.map((chapter) => `${chapter.folderPath}/cards.md`),
+        project.chapters.map((chapter) =>
+          project.kind === 'cards'
+            ? (chapter as VaultCardChapter).cardsFilePath
+            : `${chapter.folderPath}/cards.md`,
+        ),
       )
       if (!projectScan.complete) {
         throw new CardFileFormatError(project.folderPath, projectScan.errors)
@@ -535,6 +596,7 @@ function useProjectCards(
         startLine: draft.startLine,
         sourceIndex: draft.startLine,
         preview: true,
+        suspended: false,
       }
     })
   }, [generation, project])
@@ -598,7 +660,8 @@ function useProjectCards(
   }, [now, plugin, project, t])
 
   const dueCount = cards.filter(
-    (card) => card.srsState && card.dueAt && isDue(card.dueAt, now),
+    (card) =>
+      !card.suspended && card.srsState && card.dueAt && isDue(card.dueAt, now),
   ).length
 
   return {
@@ -698,7 +761,7 @@ function BrowseMode({
   const [optimisticInspectorCard, setOptimisticInspectorCard] =
     useState<Card | null>(null)
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
-  const [activeCardHeight, setActiveCardHeight] = useState<number | null>(null)
+  const [, setActiveCardHeight] = useState<number | null>(null)
   const [activeDragCardIds, setActiveDragCardIds] = useState<string[]>([])
   const [activeCardHeights, setActiveCardHeights] = useState<
     Record<string, number>
@@ -828,17 +891,23 @@ function BrowseMode({
     已掌握: t('learning.mastery.mastered', '已掌握'),
     学习中: t('learning.mastery.learning', '学习中'),
     未开始: t('learning.mastery.new', '未开始'),
+    已暂停: t('learning.cards.suspended', '已暂停'),
   }
 
-  const masteryValue: Record<(typeof masteryFilters)[number], Mastery | null> =
-    {
-      全部: null,
-      已掌握: 'mastered',
-      学习中: 'learning',
-      未开始: 'new',
-    }
-  const filteredCards = cards.filter(
-    (card) => !masteryValue[mastery] || card.mastery === masteryValue[mastery],
+  const masteryValue: Record<
+    Exclude<(typeof masteryFilters)[number], '已暂停'>,
+    Mastery | null
+  > = {
+    全部: null,
+    已掌握: 'mastered',
+    学习中: 'learning',
+    未开始: 'new',
+  }
+  const filteredCards = cards.filter((card) =>
+    mastery === '已暂停'
+      ? card.suspended
+      : !masteryValue[mastery] ||
+        (!card.suspended && card.mastery === masteryValue[mastery]),
   )
   const activeCard = cards.find((card) => card.id === activeCardId)
   const activeDragCards = activeDragCardIds
@@ -849,9 +918,9 @@ function BrowseMode({
   const draftInspectorCard: Card | null = newCardDraft
     ? {
         id: `new-card-${newCardDraft.key}`,
-        kpUuid: newCardDraft.point.uuid,
-        pointId: newCardDraft.point.id,
-        pointTitle: newCardDraft.point.title,
+        kpUuid: newCardDraft.point?.uuid ?? newCardDraft.chapter.id,
+        pointId: newCardDraft.point?.id ?? null,
+        pointTitle: newCardDraft.point?.title ?? '',
         chapterId: newCardDraft.chapter.id,
         chapterTitle: newCardDraft.chapter.title,
         front: '',
@@ -863,13 +932,31 @@ function BrowseMode({
         startLine: 0,
         sourceIndex: Number.MAX_SAFE_INTEGER,
         preview: false,
+        suspended: false,
       }
     : null
   const inspectorCard =
     persistedInspectorCard ?? optimisticInspectorCard ?? draftInspectorCard
   const inspectorOpen = Boolean(inspectorCard)
   const baseGroups = project
-    ? groupCardsByProjectOrder(project, filteredCards)
+    ? project.kind === 'outline'
+      ? groupCardsByProjectOrder(project, filteredCards)
+      : project.chapters.map((chapter) => ({
+          chapter,
+          points: [
+            {
+              point: {
+                id: chapter.id,
+                uuid: chapter.id,
+                chapterId: chapter.id,
+                title: '',
+              },
+              cards: filteredCards.filter(
+                (card) => card.chapterId === chapter.id,
+              ),
+            },
+          ],
+        }))
     : []
   const cardsById = new Map(cards.map((card) => [card.id, card]))
   const groups = dragContainers
@@ -890,7 +977,10 @@ function BrowseMode({
     .map((group) => ({
       ...group,
       points: group.points.filter(
-        ({ point }) => pointFilter === 'all' || point.id === pointFilter,
+        ({ point }) =>
+          project?.kind === 'cards' ||
+          pointFilter === 'all' ||
+          point.id === pointFilter,
       ),
     }))
     .filter((group) => group.points.length > 0)
@@ -1293,7 +1383,12 @@ function BrowseMode({
   ): Promise<boolean> => {
     if (!card.filePath) return Promise.resolve(false)
     return fileStore
-      .updateCard(card.filePath, card.id, content)
+      .updateCard(
+        card.filePath,
+        card.id,
+        content,
+        project?.kind === 'cards' ? 'chapter-direct' : 'knowledge-linked',
+      )
       .then(() => {
         refresh()
         return true
@@ -1320,14 +1415,22 @@ function BrowseMode({
     if (!project || (!content.front.trim() && !content.back.trim())) {
       return Promise.resolve(true)
     }
-    return fileStore
-      .createCard(
-        project.folderPath,
-        draft.filePath,
-        draft.chapter.title,
-        draft.point.uuid,
-        content,
-      )
+    const create =
+      project.kind === 'cards'
+        ? fileStore.createChapterCard(
+            project.folderPath,
+            draft.filePath,
+            draft.chapter.title,
+            content,
+          )
+        : fileStore.createCard(
+            project.folderPath,
+            draft.filePath,
+            draft.chapter.title,
+            draft.point?.uuid ?? '',
+            content,
+          )
+    return create
       .then((created) => {
         const createdCard: Card = {
           ...card,
@@ -1359,8 +1462,8 @@ function BrowseMode({
   }
 
   const handleCreate = async (
-    chapter: VaultChapter,
-    point: VaultKnowledgePoint,
+    chapter: VaultChapter | VaultCardChapter,
+    point: VaultKnowledgePoint | null,
   ) => {
     if (inspectorRef.current && !(await inspectorRef.current.flush())) return
     setBatchSelectedCardIds(new Set())
@@ -1376,6 +1479,29 @@ function BrowseMode({
       filePath: normalizePath(`${chapter.folderPath}/cards.md`),
     })
     setInspectorClosing(false)
+  }
+
+  const handleChapterChange = async (card: Card, chapterId: string) => {
+    if (!project || project.kind !== 'cards') return false
+    const chapter = project.chapters.find((item) => item.id === chapterId)
+    if (!chapter) return false
+    if (newCardDraft) {
+      setNewCardDraft({
+        ...newCardDraft,
+        chapter,
+        filePath: chapter.cardsFilePath,
+      })
+      return true
+    }
+    if (!card.filePath || card.chapterId === chapter.id) return true
+    return withWrite(() =>
+      fileStore.moveChapterCard({
+        sourcePath: card.filePath ?? '',
+        targetPath: chapter.cardsFilePath,
+        cardUuid: card.id,
+        targetChapterTitle: chapter.title,
+      }),
+    )
   }
 
   const resolveActionCards = (card: Card): Card[] =>
@@ -1408,7 +1534,11 @@ function BrowseMode({
     })
     const deleted = await withWrite(async () => {
       for (const [filePath, cardIds] of cardsByFile) {
-        await fileStore.deleteCards(filePath, cardIds)
+        await fileStore.deleteCards(
+          filePath,
+          cardIds,
+          project.kind === 'cards' ? 'chapter-direct' : 'knowledge-linked',
+        )
       }
       try {
         await plugin.getLearningSrsStore().removeCards(
@@ -1436,7 +1566,7 @@ function BrowseMode({
   ) => {
     if (!project || targetCards.length === 0 || writeDisabled) return
     const cardIds = targetCards
-      .filter((card) => card.filePath && !card.preview)
+      .filter((card) => card.filePath && !card.preview && !card.suspended)
       .map((card) => card.id)
     if (cardIds.length === 0) return
     setWriting(true)
@@ -1450,6 +1580,29 @@ function BrowseMode({
       new Notice(
         t('learning.cards.quickReviewFailed', '学习状态更新失败，请重试'),
       )
+    } finally {
+      setWriting(false)
+    }
+  }
+
+  const handleSuspendCards = async (
+    targetCards: Card[],
+    suspended: boolean,
+  ) => {
+    if (!project || targetCards.length === 0 || writeDisabled) return
+    const cardIds = targetCards
+      .filter((card) => card.filePath && !card.preview)
+      .map((card) => card.id)
+    if (cardIds.length === 0) return
+    setWriting(true)
+    try {
+      const store = plugin.getLearningSrsStore()
+      if (suspended) await store.suspendCards(project.slug, cardIds)
+      else await store.resumeCards(project.slug, cardIds)
+      refresh()
+    } catch (srsError) {
+      console.error('[YOLO] Failed to update card suspension:', srsError)
+      new Notice(t('learning.cards.suspendFailed', '暂停状态更新失败，请重试'))
     } finally {
       setWriting(false)
     }
@@ -1603,16 +1756,20 @@ function BrowseMode({
         Boolean(card?.filePath),
       )
     const targetKpUuid = cardContainerByIdRef.current.get(String(active.id))
-    const point = project.knowledgePoints.find(
-      (item) => item.uuid === targetKpUuid,
-    )
-    const chapter = point
-      ? project.chapters.find((item) => item.id === point.chapterId)
-      : undefined
+    const point =
+      project.kind === 'outline'
+        ? project.knowledgePoints.find((item) => item.uuid === targetKpUuid)
+        : undefined
+    const chapter =
+      project.kind === 'cards'
+        ? project.chapters.find((item) => item.id === targetKpUuid)
+        : point
+          ? project.chapters.find((item) => item.id === point.chapterId)
+          : undefined
     if (
       movingCards.length !== dragCardIds.length ||
       !targetKpUuid ||
-      !point ||
+      (project.kind === 'outline' && !point) ||
       !chapter
     ) {
       clearDragSession()
@@ -1634,17 +1791,21 @@ function BrowseMode({
       .slice(0, targetVisualIndex)
       .map((id) => cardsById.get(id))
       .filter((card): card is Card => Boolean(card && !card.preview)).length
-    const targetIndex = calculateTargetFileIndex(
-      targetKpUuid,
-      targetVisibleIndex,
-      chapter.knowledgePointIds
-        .map(
-          (id) => project.knowledgePoints.find((item) => item.id === id)?.uuid,
-        )
-        .filter((uuid): uuid is string => Boolean(uuid)),
-      chapterCards,
-      dragCardIds,
-    )
+    const targetIndex =
+      project.kind === 'cards'
+        ? targetVisibleIndex
+        : calculateTargetFileIndex(
+            targetKpUuid,
+            targetVisibleIndex,
+            (chapter as VaultChapter).knowledgePointIds
+              .map(
+                (id) =>
+                  project.knowledgePoints.find((item) => item.id === id)?.uuid,
+              )
+              .filter((uuid): uuid is string => Boolean(uuid)),
+            chapterCards,
+            dragCardIds,
+          )
     setPendingDrop({
       cardIds: dragCardIds,
       kpUuid: targetKpUuid,
@@ -1674,40 +1835,35 @@ function BrowseMode({
         return
       }
       const moved = await withWrite(() =>
-        fileStore.moveCards({
-          cards: movingCards.map((card) => ({
-            sourcePath: card.filePath,
-            cardUuid: card.id,
-          })),
-          targetPath: normalizePath(`${chapter.folderPath}/cards.md`),
-          kpUuid: targetKpUuid,
-          targetIndex,
-          targetChapterTitle: chapter.title,
-        }),
+        project.kind === 'cards'
+          ? fileStore.moveChapterCards({
+              cards: movingCards.map((card) => ({
+                sourcePath: card.filePath,
+                cardUuid: card.id,
+              })),
+              targetPath: (chapter as VaultCardChapter).cardsFilePath,
+              targetIndex,
+              targetChapterTitle: chapter.title,
+            })
+          : fileStore.moveCards({
+              cards: movingCards.map((card) => ({
+                sourcePath: card.filePath,
+                cardUuid: card.id,
+              })),
+              targetPath: normalizePath(`${chapter.folderPath}/cards.md`),
+              kpUuid: targetKpUuid,
+              targetIndex,
+              targetChapterTitle: chapter.title,
+            }),
       )
       if (!moved) clearDragSession()
     })()
-  }
-
-  const resetToOriginalContainers = () => {
-    const original = originalContainersRef.current
-    if (!original || dragContainersRef.current === original) return
-    dragContainersRef.current = original
-    cardContainerByIdRef.current = new Map(
-      Object.entries(original).flatMap(([kpUuid, cardIds]) =>
-        cardIds.map((cardId) => [cardId, kpUuid] as const),
-      ),
-    )
-    lastProjectionRef.current = null
-    captureCardLayout('drag')
-    setDragContainers(original)
   }
 
   const updateDragPosition = (
     active: DragMoveEvent['active'],
     over: NonNullable<DragMoveEvent['over']>,
   ) => {
-    const activeId = String(active.id)
     const overId = String(over.id)
     const current = dragContainersRef.current
     const original = originalContainersRef.current
@@ -1848,22 +2004,26 @@ function BrowseMode({
             })) ?? []),
           ]}
         />
-        <SelectMenu
-          value={pointFilter}
-          onChange={setPointFilter}
-          options={[
-            {
-              value: 'all',
-              label: t('learning.common.allKnowledgePoints', '全部知识点'),
-            },
-            ...(project?.knowledgePoints
-              .filter(
-                (point) =>
-                  chapterFilter === 'all' || point.chapterId === chapterFilter,
-              )
-              .map((point) => ({ value: point.id, label: point.title })) ?? []),
-          ]}
-        />
+        {project?.kind !== 'cards' && (
+          <SelectMenu
+            value={pointFilter}
+            onChange={setPointFilter}
+            options={[
+              {
+                value: 'all',
+                label: t('learning.common.allKnowledgePoints', '全部知识点'),
+              },
+              ...(project?.knowledgePoints
+                .filter(
+                  (point) =>
+                    chapterFilter === 'all' ||
+                    point.chapterId === chapterFilter,
+                )
+                .map((point) => ({ value: point.id, label: point.title })) ??
+                []),
+            ]}
+          />
+        )}
         <div className="yolo-learning-cards-mastery-filter">
           {masteryFilters.map((m) => (
             <button
@@ -2025,6 +2185,7 @@ function BrowseMode({
                         <KnowledgePointDropZone
                           key={point.id}
                           point={point}
+                          chapterDirect={project.kind === 'cards'}
                           cards={pointCards}
                           placeholderCardIds={activeDragCardIds}
                           placeholderHeights={activeCardHeights}
@@ -2035,11 +2196,24 @@ function BrowseMode({
                           selectedCardId={selectedCardId}
                           batchSelectedCardIds={batchSelectedCardIds}
                           batchSelectionCount={batchSelectedCards.length}
-                          onCreate={() => void handleCreate(chapter, point)}
+                          onCreate={() =>
+                            void handleCreate(
+                              chapter,
+                              project.kind === 'cards'
+                                ? null
+                                : (point as VaultKnowledgePoint),
+                            )
+                          }
                           onDelete={(card) =>
                             void handleDeleteCards(resolveActionCards(card))
                           }
                           onMenuOpen={handleCardMenuOpen}
+                          onSuspend={(card, suspended) =>
+                            void handleSuspendCards(
+                              resolveActionCards(card),
+                              suspended,
+                            )
+                          }
                           onQuickReview={(card, rating) =>
                             void handleQuickReviewCards(
                               resolveActionCards(card),
@@ -2058,6 +2232,7 @@ function BrowseMode({
                   key={inspectorCard.id}
                   ref={inspectorRef}
                   card={inspectorCard}
+                  chapters={project.kind === 'cards' ? project.chapters : null}
                   due={Boolean(
                     inspectorCard.srsState &&
                       inspectorCard.dueAt &&
@@ -2080,6 +2255,7 @@ function BrowseMode({
                           handleCreateCard(newCardDraft, card, content)
                       : handleUpdateCard
                   }
+                  onChapterChange={handleChapterChange}
                 />
               )}
             </div>
@@ -2129,6 +2305,7 @@ function BrowseMode({
 
 function KnowledgePointDropZone({
   point,
+  chapterDirect,
   cards,
   placeholderCardIds,
   placeholderHeights,
@@ -2142,10 +2319,12 @@ function KnowledgePointDropZone({
   onCreate,
   onDelete,
   onMenuOpen,
+  onSuspend,
   onQuickReview,
   onSelect,
 }: {
-  point: VaultProject['knowledgePoints'][number]
+  point: { id: string; uuid: string; chapterId: string; title: string }
+  chapterDirect: boolean
   cards: Card[]
   placeholderCardIds: string[]
   placeholderHeights: Record<string, number>
@@ -2159,6 +2338,7 @@ function KnowledgePointDropZone({
   onCreate: () => void
   onDelete: (card: Card) => void
   onMenuOpen: (card: Card) => void
+  onSuspend: (card: Card, suspended: boolean) => void
   onQuickReview: (
     card: Card,
     rating: Extract<ReviewRating, 'again' | 'easy'>,
@@ -2183,7 +2363,7 @@ function KnowledgePointDropZone({
       )}
     >
       <header className="yolo-learning-cards-point-header">
-        <h3>{point.title}</h3>
+        {!chapterDirect && <h3>{point.title}</h3>}
         <button
           type="button"
           disabled={readonly}
@@ -2191,7 +2371,9 @@ function KnowledgePointDropZone({
           className="yolo-learning-cards-point-add"
         >
           <Plus size={14} />{' '}
-          {t('learning.cards.addToKnowledgePoint', '新增卡片')}
+          {chapterDirect
+            ? t('learning.cards.addToChapter', '新增卡片')
+            : t('learning.cards.addToKnowledgePoint', '新增卡片')}
         </button>
       </header>
       <SortableContext items={cards.map((card) => card.id)}>
@@ -2221,6 +2403,7 @@ function KnowledgePointDropZone({
               onDelete={() => onDelete(card)}
               onForget={() => onQuickReview(card, 'again')}
               onMenuOpen={() => onMenuOpen(card)}
+              onSuspend={() => onSuspend(card, !card.suspended)}
               selected={card.id === selectedCardId}
               onSelect={(event) => onSelect(card, event)}
               onRemember={() => onQuickReview(card, 'easy')}
@@ -2248,6 +2431,7 @@ function SortableBrowseCard({
   onDelete,
   onForget,
   onMenuOpen,
+  onSuspend,
   placeholder,
   placeholderHeight,
   projecting,
@@ -2265,6 +2449,7 @@ function SortableBrowseCard({
   onDelete: () => void
   onForget: () => void
   onMenuOpen: () => void
+  onSuspend: () => void
   placeholder: boolean
   placeholderHeight: number | null
   projecting: boolean
@@ -2313,6 +2498,7 @@ function SortableBrowseCard({
           onDelete={onDelete}
           onForget={onForget}
           onMenuOpen={onMenuOpen}
+          onSuspend={onSuspend}
           onSelect={onSelect}
           onRemember={onRemember}
           selected={selected}
@@ -2331,6 +2517,7 @@ function BrowseCard({
   onDelete,
   onForget,
   onMenuOpen,
+  onSuspend,
   onSelect,
   onRemember,
   selected,
@@ -2343,6 +2530,7 @@ function BrowseCard({
   onDelete?: () => void
   onForget?: () => void
   onMenuOpen?: () => void
+  onSuspend?: () => void
   onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void
   onRemember?: () => void
   selected: boolean
@@ -2355,7 +2543,12 @@ function BrowseCard({
     getBoundingClientRect: () => DOMRect.fromRect(),
   })
   const hasMenu = Boolean(
-    onDelete && onForget && onRemember && card.filePath && !card.preview,
+    onDelete &&
+      onForget &&
+      onRemember &&
+      onSuspend &&
+      card.filePath &&
+      !card.preview,
   )
   const count = String(menuCardCount)
   const rememberedLabel =
@@ -2428,12 +2621,19 @@ function BrowseCard({
       >
         <div className="yolo-learning-cards-browse-card-header">
           <span className="yolo-learning-cards-browse-card-point">
-            {card.chapterTitle} · {card.pointTitle}
+            {card.pointTitle
+              ? `${card.chapterTitle} · ${card.pointTitle}`
+              : card.chapterTitle}
           </span>
           <div className="yolo-learning-cards-browse-card-meta">
             {due && (
               <span className="yolo-learning-cards-due-label">
                 {t('learning.cards.due', '待复习')}
+              </span>
+            )}
+            {card.suspended && (
+              <span className="yolo-learning-cards-due-label">
+                {t('learning.cards.suspended', '已暂停')}
               </span>
             )}
             <span className="yolo-learning-cards-mastery-label">
@@ -2449,7 +2649,11 @@ function BrowseCard({
           aria-pressed={selected}
           className="yolo-learning-cards-browse-card-body"
         >
-          <p className="yolo-learning-cards-front-text">{card.front}</p>
+          <CardMarkdown
+            markdown={card.front}
+            sourcePath={card.filePath ?? ''}
+            className="yolo-learning-cards-front-text markdown-rendered"
+          />
         </button>
 
         {hasMenu && (
@@ -2484,6 +2688,23 @@ function BrowseCard({
           onCloseAutoFocus={(event) => event.preventDefault()}
         >
           <div className="yolo-learning-card-menu-list">
+            <button
+              type="button"
+              className="yolo-learning-card-menu-item"
+              disabled={menuDisabled}
+              onClick={() => runMenuAction(onSuspend)}
+            >
+              {card.suspended ? (
+                <PlayCircle size={15} />
+              ) : (
+                <PauseCircle size={15} />
+              )}
+              <span>
+                {card.suspended
+                  ? t('learning.cards.resume', '恢复卡片')
+                  : t('learning.cards.suspend', '暂停卡片')}
+              </span>
+            </button>
             <button
               type="button"
               className="yolo-learning-card-menu-item"
@@ -2537,6 +2758,7 @@ const CardInspector = forwardRef<
   CardInspectorHandle,
   {
     card: Card
+    chapters: VaultCardChapter[] | null
     due: boolean
     disabled: boolean
     closing: boolean
@@ -2546,9 +2768,20 @@ const CardInspector = forwardRef<
       card: Card,
       content: { front: string; back: string },
     ) => Promise<boolean>
+    onChapterChange: (card: Card, chapterId: string) => Promise<boolean>
   }
 >(function CardInspector(
-  { card, due, disabled, closing, onClose, onExitComplete, onSave },
+  {
+    card,
+    chapters,
+    due,
+    disabled,
+    closing,
+    onClose,
+    onExitComplete,
+    onSave,
+    onChapterChange,
+  },
   ref,
 ) {
   const { t } = useLanguage()
@@ -2560,8 +2793,6 @@ const CardInspector = forwardRef<
   const savedContentRef = useRef({ front: card.front, back: card.back })
   const saveTimerRef = useRef<number | null>(null)
   const savePromiseRef = useRef<Promise<boolean> | null>(null)
-  const cardId = card.id
-
   useEffect(() => {
     const hasLocalChanges =
       latestContentRef.current.front !== savedContentRef.current.front ||
@@ -2650,7 +2881,9 @@ const CardInspector = forwardRef<
       <header className="yolo-learning-cards-inspector-header">
         <div className="yolo-learning-cards-inspector-heading">
           <span className="yolo-learning-cards-browse-card-point">
-            {card.chapterTitle} · {card.pointTitle}
+            {card.pointTitle
+              ? `${card.chapterTitle} · ${card.pointTitle}`
+              : card.chapterTitle}
           </span>
           <div className="yolo-learning-cards-browse-card-meta">
             {due && (
@@ -2688,6 +2921,30 @@ const CardInspector = forwardRef<
         </div>
       </header>
       <div className="yolo-learning-cards-inspector-body">
+        {chapters && (
+          <section className="yolo-learning-cards-inspector-section">
+            <div className="yolo-learning-cards-inspector-label">
+              {t('learning.cards.targetChapter', '卡片章节')}
+            </div>
+            <SelectMenu
+              value={card.chapterId}
+              disabled={disabled}
+              onChange={(chapterId) => {
+                if (card.id.startsWith('new-card-')) {
+                  void onChapterChange(card, chapterId)
+                  return
+                }
+                void persistLatest().then((saved) => {
+                  if (saved) return onChapterChange(card, chapterId)
+                })
+              }}
+              options={chapters.map((chapter) => ({
+                value: chapter.id,
+                label: chapter.title,
+              }))}
+            />
+          </section>
+        )}
         <section className="yolo-learning-cards-inspector-section">
           <div className="yolo-learning-cards-inspector-label">
             {t('learning.cards.question', '问题')}
@@ -3223,11 +3480,15 @@ function ReviewMode({
               >
                 <div className="yolo-learning-cards-review-promote-card">
                   <div className="yolo-learning-cards-review-card-point">
-                    {promoteCard.chapterTitle} · {promoteCard.pointTitle}
+                    {promoteCard.pointTitle
+                      ? `${promoteCard.chapterTitle} · ${promoteCard.pointTitle}`
+                      : promoteCard.chapterTitle}
                   </div>
-                  <p className="yolo-learning-cards-review-card-front-text">
-                    {promoteCard.front}
-                  </p>
+                  <CardMarkdown
+                    markdown={promoteCard.front}
+                    sourcePath={promoteCard.filePath ?? ''}
+                    className="yolo-learning-cards-review-card-front-text markdown-rendered"
+                  />
                   <div className="yolo-learning-cards-review-card-bottom-hint">
                     {flipHint}
                   </div>
@@ -3273,7 +3534,9 @@ function ReviewMode({
                           'yolo-learning-cards-review-card-point-with-grade',
                       )}
                     >
-                      {card.chapterTitle} · {card.pointTitle}
+                      {card.pointTitle
+                        ? `${card.chapterTitle} · ${card.pointTitle}`
+                        : card.chapterTitle}
                     </div>
                     {activeGrade && (
                       <div
@@ -3285,9 +3548,11 @@ function ReviewMode({
                         {gradeMeta[activeGrade].label}
                       </div>
                     )}
-                    <p className="yolo-learning-cards-review-card-front-text">
-                      {card.front}
-                    </p>
+                    <CardMarkdown
+                      markdown={card.front}
+                      sourcePath={card.filePath ?? ''}
+                      className="yolo-learning-cards-review-card-front-text markdown-rendered"
+                    />
                     <div className="yolo-learning-cards-review-card-bottom-hint">
                       {flipHint}
                     </div>
@@ -3306,7 +3571,9 @@ function ReviewMode({
                           'yolo-learning-cards-review-card-point-with-grade',
                       )}
                     >
-                      {card.chapterTitle} · {card.pointTitle}
+                      {card.pointTitle
+                        ? `${card.chapterTitle} · ${card.pointTitle}`
+                        : card.chapterTitle}
                     </div>
                     {activeGrade && (
                       <div
@@ -3318,9 +3585,11 @@ function ReviewMode({
                         {gradeMeta[activeGrade].label}
                       </div>
                     )}
-                    <p className="yolo-learning-cards-review-card-back-text yolo-learning-scrollbar-thin">
-                      {card.back}
-                    </p>
+                    <CardMarkdown
+                      markdown={card.back}
+                      sourcePath={card.filePath ?? ''}
+                      className="yolo-learning-cards-review-card-back-text yolo-learning-scrollbar-thin markdown-rendered"
+                    />
 
                     <div
                       className={cx(

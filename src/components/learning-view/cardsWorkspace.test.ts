@@ -24,6 +24,7 @@ const card = (id: string, kpUuid = 'aaaaaaaa'): WorkspaceCard => ({
   startLine: 1,
   sourceIndex: 0,
   preview: true,
+  suspended: false,
 })
 
 describe('cards workspace calculations', () => {
@@ -113,6 +114,7 @@ describe('cards workspace calculations', () => {
 
   test('groups chapters and knowledge points in project order including empty points', () => {
     const project = {
+      kind: 'outline' as const,
       id: 'p',
       slug: 'p',
       topic: 'P',

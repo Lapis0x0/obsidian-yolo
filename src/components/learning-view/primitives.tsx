@@ -194,16 +194,19 @@ export function SelectMenu({
   options,
   onChange,
   className,
+  disabled = false,
 }: {
   value: string
   options: SelectOption[]
   onChange?: (v: string) => void
   className?: string
+  disabled?: boolean
 }) {
   return (
     <div className={cx('yolo-learning-select', className)}>
       <select
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange?.(e.target.value)}
         className="yolo-learning-select-input"
       >

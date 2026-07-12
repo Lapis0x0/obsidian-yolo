@@ -13,8 +13,9 @@ export type SrsCardState = {
 }
 
 export type SrsProjectState = {
-  version: number
+  version: 2
   cards: Record<string, SrsCardState>
+  suspended: string[]
 }
 
 export type Mastery = 'new' | 'learning' | 'mastered'

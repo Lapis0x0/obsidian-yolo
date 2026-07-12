@@ -10,6 +10,7 @@ import {
 
 const A = '## A <!--card:aaaaaaaa kp:11111111-->\n\nfront A\n\n---\n\nback A'
 const B = '## B <!--card:bbbbbbbb kp:22222222-->\n\nfront B\n\n---\n\nback B'
+const DIRECT_A = '## A <!--card:aaaaaaaa-->\n\nfront A\n\n---\n\nback A'
 
 function createApp(initialFiles: Record<string, string>) {
   const files = new Map(Object.entries(initialFiles))
@@ -101,6 +102,59 @@ describe('cardFile', () => {
     expect(result.cards[0].back).toBe('answer')
   })
 
+  it('strictly distinguishes knowledge-linked and chapter-direct cards', () => {
+    const direct = parseCardFile(DIRECT_A, { mode: 'chapter-direct' })
+    expect(direct.complete).toBe(true)
+    expect(direct.cards[0]).toMatchObject({
+      mode: 'chapter-direct',
+      cardUuid: 'aaaaaaaa',
+      kpUuid: null,
+    })
+    expect(parseCardFile(DIRECT_A, { mode: 'knowledge-linked' }).complete).toBe(
+      false,
+    )
+    expect(parseCardFile(A, { mode: 'chapter-direct' }).complete).toBe(false)
+  })
+
+  it('creates, updates, reorders, moves and deletes chapter-direct cards', async () => {
+    const sourcePath = 'p/a/cards.md'
+    const targetPath = 'p/b/cards.md'
+    const directB = '## B <!--card:bbbbbbbb-->\n\nfront B\n\n---\n\nback B'
+    const { app, files } = createApp({
+      [sourcePath]: `${DIRECT_A}\n`,
+      [targetPath]: `${directB}\n`,
+    })
+    const store = new LearningCardFileStore(app)
+
+    const created = await store.createChapterCard('p', sourcePath, '第一章', {
+      front: 'new front',
+      back: 'new back',
+    })
+    await store.updateCard(
+      sourcePath,
+      created.cardUuid,
+      { front: 'updated', back: 'answer' },
+      'chapter-direct',
+    )
+    await store.reorderCard(sourcePath, created.cardUuid, 0, 'chapter-direct')
+    await store.moveChapterCard({
+      sourcePath,
+      targetPath,
+      cardUuid: created.cardUuid,
+      targetIndex: 1,
+    })
+    await store.deleteCard(targetPath, 'bbbbbbbb', 'chapter-direct')
+
+    const result = parseCardFile(files.get(targetPath) ?? '', {
+      mode: 'chapter-direct',
+    })
+    expect(result.complete).toBe(true)
+    expect(result.cards).toMatchObject([
+      { cardUuid: created.cardUuid, kpUuid: null, front: 'updated' },
+    ])
+    expect(files.get(targetPath)).not.toContain(' kp:')
+  })
+
   it.each([
     ['missing', '## Missing <!--card:aaaaaaaa kp:11111111-->\n\nfront\n\nback'],
     [
@@ -167,6 +221,19 @@ describe('cardFile', () => {
     const result = await scanProjectCards(app, 'p')
 
     expect(result.uuids).toEqual(new Set(['aaaaaaaa', 'bbbbbbbb']))
+    expect(result.duplicateUuids).toEqual(new Set(['aaaaaaaa']))
+    expect(result.complete).toBe(false)
+  })
+
+  it('detects UUID collisions across chapter-direct card files', async () => {
+    const { app } = createApp({
+      'p/a/cards.md': `${DIRECT_A}\n`,
+      'p/b/cards.md': `${DIRECT_A}\n`,
+    })
+
+    const result = await scanProjectCards(app, 'p')
+
+    expect(result.uuids).toEqual(new Set(['aaaaaaaa']))
     expect(result.duplicateUuids).toEqual(new Set(['aaaaaaaa']))
     expect(result.complete).toBe(false)
   })

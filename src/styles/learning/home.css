@@ -52,6 +52,7 @@
 }
 
 .yolo-learning-home-new-button,
+.yolo-learning-home-import-button,
 .yolo-learning-home-continue-button {
   --yolo-learning-button-background: var(--yolo-primary);
   --yolo-learning-button-color: var(--yolo-primary-foreground);
@@ -72,6 +73,26 @@
   font-size: 14px;
   font-weight: 550;
   cursor: pointer;
+}
+
+.yolo-learning-home-create-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.yolo-learning-home-import-button {
+  --yolo-learning-button-background: var(--yolo-card);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-muted);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--yolo-border);
+  background-color: var(--yolo-card);
+  color: var(--yolo-foreground);
 }
 
 .yolo-learning-home-new-button {
@@ -684,8 +705,12 @@
     gap: 16px;
   }
 
-  .yolo-learning-home-new-button {
+  .yolo-learning-home-create-actions {
     width: 100%;
+  }
+
+  .yolo-learning-home-new-button {
+    flex: 1;
   }
 
   .yolo-learning-home-focus-action {

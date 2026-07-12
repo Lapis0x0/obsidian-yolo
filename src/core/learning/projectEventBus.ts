@@ -9,10 +9,19 @@ import type {
   Chapter,
   KnowledgePoint,
   LearningEvent,
-  LearningEventListener,
-  Project,
+  OutlineProject,
   Relation,
 } from './types'
+
+type OutlineLearningEvent =
+  | Exclude<LearningEvent, { type: 'project_initialized' }>
+  | (Omit<
+      Extract<LearningEvent, { type: 'project_initialized' }>,
+      'snapshot'
+    > & {
+      snapshot: OutlineProject
+    })
+type OutlineLearningEventListener = (event: OutlineLearningEvent) => void
 
 /**
  * Distributive Omit so that LearningEvent (a discriminated union) keeps its
@@ -23,7 +32,7 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown
   : never
 
 export type SyntheticLearningEventInput = DistributiveOmit<
-  LearningEvent,
+  OutlineLearningEvent,
   'sequence' | 'timestamp'
 >
 
@@ -54,8 +63,8 @@ export type SyntheticLearningEventInput = DistributiveOmit<
  *     initial `project_initialized` event.
  */
 export class ProjectEventBus {
-  private readonly listeners = new Set<LearningEventListener>()
-  private snapshot: Project | null = null
+  private readonly listeners = new Set<OutlineLearningEventListener>()
+  private snapshot: OutlineProject | null = null
   private sequence = 0
   private activeProjectPath: string | null = null
   private activeBaseDir: string | null = null
@@ -75,11 +84,11 @@ export class ProjectEventBus {
 
   constructor(private readonly app: App) {}
 
-  getSnapshot(): Project | null {
+  getSnapshot(): OutlineProject | null {
     return this.snapshot
   }
 
-  subscribe(listener: LearningEventListener): () => void {
+  subscribe(listener: OutlineLearningEventListener): () => void {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
@@ -125,7 +134,7 @@ export class ProjectEventBus {
     }
 
     const next = await scanProject(this.app, folder)
-    if (!next) {
+    if (!next || next.kind !== 'outline') {
       this.snapshot = null
       return
     }
@@ -221,12 +230,12 @@ export class ProjectEventBus {
    * Emit a synthesized event (mock or agent-driven). The `sequence` and
    * `timestamp` will be filled in automatically.
    */
-  emitSynthetic(event: SyntheticLearningEventInput): LearningEvent {
+  emitSynthetic(event: SyntheticLearningEventInput): OutlineLearningEvent {
     const enriched = {
       ...event,
       sequence: this.nextSequence(),
       timestamp: Date.now(),
-    } as LearningEvent
+    } as OutlineLearningEvent
     this.emit(enriched)
     return enriched
   }
@@ -249,7 +258,7 @@ export class ProjectEventBus {
     }, 150)
   }
 
-  private emit(event: LearningEvent): void {
+  private emit(event: OutlineLearningEvent): void {
     for (const listener of this.listeners) {
       try {
         listener(event)
@@ -272,11 +281,11 @@ export class ProjectEventBus {
  * edge before both endpoints exist.
  */
 export function diffProjects(
-  prev: Project,
-  next: Project,
+  prev: OutlineProject,
+  next: OutlineProject,
   meta: () => { sequence: number; timestamp: number },
-): LearningEvent[] {
-  const events: LearningEvent[] = []
+): OutlineLearningEvent[] {
+  const events: OutlineLearningEvent[] = []
   const projectId = next.id
 
   const prevChapters = new Map(prev.chapters.map((c) => [c.id, c]))

@@ -16,6 +16,7 @@
  */
 
 export type ProjectStatus = 'outlining' | 'building' | 'studying'
+export type ProjectKind = 'outline' | 'cards'
 
 export type RelationType = 'prereq' | 'parent' | 'related'
 
@@ -55,7 +56,18 @@ export type Chapter = {
   knowledgePointIds: string[]
 }
 
-export type Project = {
+export type CardChapter = {
+  id: string
+  projectId: string
+  slug: string
+  title: string
+  /** Vault path of the chapter folder. */
+  folderPath: string
+  /** Vault path of the chapter's `cards.md`. */
+  cardsFilePath: string
+}
+
+type ProjectBase = {
   id: string
   slug: string
   topic: string
@@ -65,9 +77,21 @@ export type Project = {
   folderPath: string
   /** Vault path of `index.md`. */
   indexFilePath: string
+}
+
+export type OutlineProject = ProjectBase & {
+  kind: 'outline'
   chapters: Chapter[]
   knowledgePoints: KnowledgePoint[]
 }
+
+export type CardsProject = ProjectBase & {
+  kind: 'cards'
+  chapters: CardChapter[]
+  knowledgePoints: []
+}
+
+export type Project = OutlineProject | CardsProject
 
 /**
  * Domain events emitted as the project grows. The KnowledgeGraph component

@@ -21,7 +21,7 @@ import { useLanguage } from '../../contexts/language-context'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type {
   LearningEvent,
-  Project,
+  OutlineProject as Project,
   RelationType,
 } from '../../core/learning/types'
 
@@ -1075,7 +1075,9 @@ function snapshotToGraph(snapshot: Project | null): GraphModel {
 function applyEvent(prev: GraphModel, event: LearningEvent): GraphModel {
   switch (event.type) {
     case 'project_initialized':
-      return snapshotToGraph(event.snapshot)
+      return event.snapshot.kind === 'outline'
+        ? snapshotToGraph(event.snapshot)
+        : prev
 
     case 'chapter_added': {
       if (prev.nodes.some((n) => n.id === event.chapter.id)) return prev

@@ -7,7 +7,7 @@ import {
 } from './cardFile'
 import type { LearningSrsStore } from './srs/srsStore'
 import type { SrsCardState } from './srs/srsTypes'
-import type { Project } from './types'
+import type { CardChapter, Project } from './types'
 
 export const LEARNING_TARGET_RETENTION = 0.9
 export const MEMORY_RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000
@@ -50,15 +50,41 @@ export async function loadLearningProjectStats({
   )
 
   for (const chapter of project.chapters) {
-    const path = normalizePath(`${chapter.folderPath}/cards.md`)
+    const path = normalizePath(
+      project.kind === 'cards'
+        ? (chapter as CardChapter).cardsFilePath
+        : `${chapter.folderPath}/cards.md`,
+    )
     const file = app.vault.getAbstractFileByPath(path)
     if (!(file instanceof TFile)) continue
 
-    const parsed = parseCardFile(await app.vault.cachedRead(file), file.path)
+    const parsed =
+      project.kind === 'cards'
+        ? parseCardFile(await app.vault.cachedRead(file), {
+            mode: 'chapter-direct',
+            path: file.path,
+          })
+        : parseCardFile(await app.vault.cachedRead(file), file.path)
     if (!parsed.complete)
       throw new CardFileFormatError(file.path, parsed.errors)
 
     for (const entry of parsed.cards) {
+      if (project.kind === 'cards') {
+        if (cardUuids.has(entry.cardUuid)) {
+          throw new CardFileFormatError(file.path, [
+            { path: file.path, message: `card UUID 重复：${entry.cardUuid}` },
+          ])
+        }
+        cardUuids.add(entry.cardUuid)
+        cardPointUuids.set(entry.cardUuid, chapter.id)
+        const chapterCards = cardUuidsByPoint.get(chapter.id) ?? []
+        chapterCards.push(entry.cardUuid)
+        cardUuidsByPoint.set(chapter.id, chapterCards)
+        continue
+      }
+      if (entry.kpUuid === null) {
+        throw new CardFileFormatError(file.path, parsed.errors)
+      }
       const point = pointByUuid.get(entry.kpUuid)
       if (!point || point.chapterId !== chapter.id) {
         throw new CardFileFormatError(file.path, [
@@ -87,13 +113,19 @@ export async function loadLearningProjectStats({
   const projectScan = await scanProjectCards(
     app,
     project.folderPath,
-    project.chapters.map((chapter) => `${chapter.folderPath}/cards.md`),
+    project.chapters.map((chapter) =>
+      project.kind === 'cards'
+        ? (chapter as CardChapter).cardsFilePath
+        : `${chapter.folderPath}/cards.md`,
+    ),
   )
   if (!projectScan.complete) {
     throw new CardFileFormatError(project.folderPath, projectScan.errors)
   }
 
   const projectState = await srsStore.getProjectState(project.slug)
+  const suspended = new Set(projectState.suspended ?? [])
+  suspended.forEach((uuid) => cardUuids.delete(uuid))
   const horizon = new Date(now.getTime() + MEMORY_RETENTION_HORIZON_MS)
   const nowMs = now.getTime()
   let retrievabilityTotal = 0
@@ -115,8 +147,7 @@ export async function loadLearningProjectStats({
     if (dueAt <= nowMs) {
       dueCards += 1
       dueCardEntries.push({ cardUuid, dueAt })
-    }
-    else if (nextDueAt === null || dueAt < nextDueAt) nextDueAt = dueAt
+    } else if (nextDueAt === null || dueAt < nextDueAt) nextDueAt = dueAt
 
     const reviewedAt = resolveReviewedAt(state)
     if (
@@ -149,6 +180,7 @@ export async function loadLearningProjectStats({
     cardPointUuids,
     cardUuidsByPoint,
     dueCardEntries,
+    suspended,
   })
 
   return {
@@ -172,13 +204,49 @@ function resolveNextAction({
   cardPointUuids,
   cardUuidsByPoint,
   dueCardEntries,
+  suspended,
 }: {
   project: Project
   projectCards: Record<string, SrsCardState>
   cardPointUuids: Map<string, string>
   cardUuidsByPoint: Map<string, string[]>
   dueCardEntries: { cardUuid: string; dueAt: number }[]
+  suspended: ReadonlySet<string>
 }): LearningProjectAction | null {
+  if (project.kind === 'cards') {
+    const firstDueCard = dueCardEntries.reduce<
+      { cardUuid: string; dueAt: number } | undefined
+    >(
+      (earliest, entry) =>
+        !earliest || entry.dueAt < earliest.dueAt ? entry : earliest,
+      undefined,
+    )
+    if (firstDueCard) {
+      const chapterId = cardPointUuids.get(firstDueCard.cardUuid)
+      const chapter = project.chapters.find((item) => item.id === chapterId)
+      return {
+        kind: 'review',
+        knowledgePointTitle: chapter?.title ?? project.topic,
+        started: true,
+      }
+    }
+    for (const chapter of project.chapters) {
+      const chapterCardUuids = (cardUuidsByPoint.get(chapter.id) ?? []).filter(
+        (uuid) => !suspended.has(uuid),
+      )
+      if (chapterCardUuids.length === 0) continue
+      const introduced = chapterCardUuids.filter(
+        (uuid) => projectCards[uuid],
+      ).length
+      if (introduced === chapterCardUuids.length) continue
+      return {
+        kind: 'learn',
+        knowledgePointTitle: chapter.title,
+        started: introduced > 0,
+      }
+    }
+    return null
+  }
   const pointByUuid = new Map(
     project.knowledgePoints.map((point) => [point.uuid, point]),
   )
@@ -203,7 +271,9 @@ function resolveNextAction({
   }
 
   for (const point of project.knowledgePoints) {
-    const pointCardUuids = cardUuidsByPoint.get(point.uuid) ?? []
+    const pointCardUuids = (cardUuidsByPoint.get(point.uuid) ?? []).filter(
+      (uuid) => !suspended.has(uuid),
+    )
     if (pointCardUuids.length === 0) continue
     const introducedCards = pointCardUuids.filter(
       (cardUuid) => projectCards[cardUuid],

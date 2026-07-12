@@ -50,6 +50,7 @@ export function Workspace({
     学习: t('learning.cards.study', '学习'),
     浏览: t('learning.common.browse', '浏览'),
   }
+  const visibleTabs = project?.kind === 'cards' ? (['卡片'] as const) : tabs
 
   return (
     <div className="yolo-learning-workspace-shell">
@@ -82,7 +83,7 @@ export function Workspace({
         )}
         <div className="yolo-learning-workspace-header-spacer" />
         <Segmented
-          options={tabs}
+          options={visibleTabs}
           value={activeTab}
           onChange={onTabChange}
           disabledOptions={['习题']}
@@ -102,7 +103,7 @@ export function Workspace({
         className={`yolo-learning-workspace-main ${activeTab === '大纲' ? 'is-outline yolo-learning-scrollbar-thin' : ''}`}
       >
         {activeTab === '大纲' &&
-          (project ? (
+          (project?.kind === 'outline' ? (
             <OutlineView
               project={project}
               selectedPointId={selectedPointId}
@@ -116,7 +117,9 @@ export function Workspace({
               )}
             </div>
           ))}
-        {activeTab === '知识地图' && knowledgeMap}
+        {activeTab === '知识地图' &&
+          project?.kind === 'outline' &&
+          knowledgeMap}
         {activeTab === '卡片' && (
           <CardsView
             project={project}

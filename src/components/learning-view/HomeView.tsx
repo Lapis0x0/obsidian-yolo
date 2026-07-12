@@ -2,6 +2,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
+  Import,
   PlayCircle,
   Plus,
   RotateCcw,
@@ -38,11 +39,13 @@ export function HomeView({
   onOpenProject,
   onStartReview,
   onNewProject,
+  onImportAnki,
 }: {
   projects: VaultProject[]
   onOpenProject: (id: string) => void
   onStartReview: (id: string) => void
   onNewProject: () => void
+  onImportAnki: () => void
 }) {
   const app = useApp()
   const plugin = usePlugin()
@@ -199,14 +202,25 @@ export function HomeView({
             )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onNewProject}
-          className="yolo-learning-home-new-button"
-        >
-          <Plus size={16} aria-hidden />
-          {t('learning.home.createPlan', '创建学习计划')}
-        </button>
+        <div className="yolo-learning-home-create-actions">
+          <button
+            type="button"
+            onClick={onImportAnki}
+            className="yolo-learning-home-import-button"
+            title={t('learning.anki.entry', '从 Anki 导入')}
+            aria-label={t('learning.anki.entry', '从 Anki 导入')}
+          >
+            <Import size={16} aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={onNewProject}
+            className="yolo-learning-home-new-button"
+          >
+            <Plus size={16} aria-hidden />
+            {t('learning.home.createPlan', '创建学习计划')}
+          </button>
+        </div>
       </header>
 
       <div className="yolo-learning-home-focus-grid">
@@ -492,9 +506,7 @@ function ProjectCard({
         <span>{stats ? `${stats.targetCardProgress}%` : '—'}</span>
       </div>
 
-      {stats?.nextAction && (
-        <ProjectAction action={stats.nextAction} t={t} />
-      )}
+      {stats?.nextAction && <ProjectAction action={stats.nextAction} t={t} />}
 
       <div className="yolo-learning-home-project-meta">
         <span>

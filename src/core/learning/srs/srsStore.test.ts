@@ -76,8 +76,9 @@ describe('LearningSrsStore', () => {
     ).rejects.toThrow('write failed')
 
     await expect(store.getProjectState('project')).resolves.toEqual({
-      version: 1,
+      version: 2,
       cards: {},
+      suspended: [],
     })
   })
 
@@ -107,7 +108,7 @@ describe('LearningSrsStore', () => {
 
   it.each([
     ['damaged JSON', '{'],
-    ['unsupported version', JSON.stringify({ version: 2, cards: {} })],
+    ['unsupported version', JSON.stringify({ version: 3, cards: {} })],
   ])('rejects %s without overwriting the file', async (_, content) => {
     const path = 'YOLO/.yolo_json_db/learning-srs/project.json'
     const { app, adapter, files } = createApp({ [path]: content })
@@ -200,7 +201,11 @@ describe('LearningSrsStore', () => {
     const { app } = createApp({ [path]: JSON.stringify(state) })
     const store = new LearningSrsStore(app)
 
-    await expect(store.getProjectState('project')).resolves.toEqual(state)
+    await expect(store.getProjectState('project')).resolves.toEqual({
+      ...state,
+      version: 2,
+      suspended: [],
+    })
   })
 
   it('removes cards and skips writes when nothing changes', async () => {
@@ -239,5 +244,132 @@ describe('LearningSrsStore', () => {
     adapter.write.mockClear()
     await store.pruneOrphanedCards('project', new Set(['aaaaaaaa', 'bbbbbbbb']))
     expect(adapter.write).not.toHaveBeenCalled()
+  })
+
+  it('migrates v1 deterministically and caches only after persistence succeeds', async () => {
+    const path = 'YOLO/.yolo_json_db/learning-srs/project.json'
+    const { app, adapter, files } = createApp({
+      [path]: JSON.stringify({ version: 1, cards: {} }),
+    })
+    const store = new LearningSrsStore(app)
+
+    await expect(store.getProjectState('project')).resolves.toEqual({
+      version: 2,
+      cards: {},
+      suspended: [],
+    })
+    expect(JSON.parse(files.get(path)!)).toEqual({
+      version: 2,
+      cards: {},
+      suspended: [],
+    })
+    expect(adapter.write).toHaveBeenCalledTimes(1)
+
+    const failed = createApp({
+      [path]: JSON.stringify({ version: 1, cards: {} }),
+    })
+    failed.adapter.write.mockRejectedValueOnce(new Error('migration failed'))
+    const failedStore = new LearningSrsStore(failed.app)
+    await expect(failedStore.getProjectState('project')).rejects.toThrow(
+      'migration failed',
+    )
+    await expect(failedStore.getProjectState('project')).resolves.toEqual({
+      version: 2,
+      cards: {},
+      suspended: [],
+    })
+    expect(failed.adapter.read).toHaveBeenCalledTimes(2)
+  })
+
+  it('suspends new and learned cards, resumes without changing due, and filters queues', async () => {
+    const { app } = createApp()
+    const store = new LearningSrsStore(app)
+    const now = new Date('2026-07-10T12:00:00.000Z')
+    await store.reviewCard('project', 'aaaaaaaa', 'good', now)
+    const due = (await store.getProjectState('project')).cards.aaaaaaaa.due
+
+    await store.suspendCards('project', ['aaaaaaaa', 'bbbbbbbb', 'bbbbbbbb'])
+    expect(await store.getSuspendedCardUuids('project')).toEqual(
+      new Set(['aaaaaaaa', 'bbbbbbbb']),
+    )
+    await expect(store.isCardSuspended('project', 'bbbbbbbb')).resolves.toBe(
+      true,
+    )
+    await expect(
+      store.getDueCardUuids('project', new Date('2030-01-01T00:00:00.000Z')),
+    ).resolves.toEqual(new Set())
+    await expect(store.getTodayIntroducedCount('project', now)).resolves.toBe(0)
+
+    await store.resumeCards('project', ['aaaaaaaa'])
+    expect((await store.getProjectState('project')).cards.aaaaaaaa.due).toBe(
+      due,
+    )
+    await expect(
+      store.getDueCardUuids('project', new Date('2030-01-01T00:00:00.000Z')),
+    ).resolves.toEqual(new Set(['aaaaaaaa']))
+  })
+
+  it('rejects scheduling and single or batch reviews for suspended cards', async () => {
+    const { app } = createApp()
+    const store = new LearningSrsStore(app)
+    const now = new Date('2026-07-10T12:00:00.000Z')
+    await store.suspendCards('project', ['aaaaaaaa'])
+
+    await expect(
+      store.reviewCard('project', 'aaaaaaaa', 'good', now),
+    ).rejects.toThrow('暂停卡片不能评分或计算排程：aaaaaaaa')
+    await expect(
+      store.reviewCards('project', ['bbbbbbbb', 'aaaaaaaa'], 'good', now),
+    ).rejects.toThrow('暂停卡片不能评分或计算排程：aaaaaaaa')
+    await expect(
+      store.getCardScheduling('project', 'aaaaaaaa', now),
+    ).rejects.toThrow('暂停卡片不能评分或计算排程：aaaaaaaa')
+    expect((await store.getProjectState('project')).cards).toEqual({})
+  })
+
+  it('removes and prunes suspended UUIDs even when they have no card state', async () => {
+    const { app } = createApp()
+    const store = new LearningSrsStore(app)
+    await store.suspendCards('project', ['aaaaaaaa', 'bbbbbbbb'])
+
+    await store.removeCards('project', ['aaaaaaaa'])
+    await expect(store.getSuspendedCardUuids('project')).resolves.toEqual(
+      new Set(['bbbbbbbb']),
+    )
+    await store.pruneOrphanedCards('project', new Set())
+    await expect(store.getSuspendedCardUuids('project')).resolves.toEqual(
+      new Set(),
+    )
+  })
+
+  it('fully validates v2 suspended data and deduplicates persisted UUIDs', async () => {
+    const path = 'YOLO/.yolo_json_db/learning-srs/project.json'
+    const valid = createApp({
+      [path]: JSON.stringify({
+        version: 2,
+        cards: {},
+        suspended: ['bbbbbbbb', 'aaaaaaaa', 'aaaaaaaa'],
+      }),
+    })
+    await expect(
+      new LearningSrsStore(valid.app).getProjectState('project'),
+    ).resolves.toEqual({
+      version: 2,
+      cards: {},
+      suspended: ['aaaaaaaa', 'bbbbbbbb'],
+    })
+
+    for (const [suspended, message] of [
+      [undefined, 'SRS 暂停卡片'],
+      [['invalid'], 'SRS 卡片 UUID 无效'],
+      [[123], 'SRS 暂停卡片'],
+    ] as const) {
+      const invalid = createApp({
+        [path]: JSON.stringify({ version: 2, cards: {}, suspended }),
+      })
+      await expect(
+        new LearningSrsStore(invalid.app).getProjectState('project'),
+      ).rejects.toThrow(message)
+    }
   })
 })

@@ -19,7 +19,7 @@ import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type {
   Chapter as VaultChapter,
   KnowledgePoint as VaultKnowledgePoint,
-  Project as VaultProject,
+  OutlineProject as VaultProject,
 } from '../../core/learning/types'
 import { openMarkdownFile } from '../../utils/obsidian'
 

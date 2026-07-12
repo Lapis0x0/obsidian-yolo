@@ -6,12 +6,15 @@ import { v4 as uuidv4 } from 'uuid'
 import { formatCardBody, parseCardBody } from './cardFormat'
 
 const UUID_RE = /^[0-9a-f]{8}$/
-const CARD_HEADING_RE =
+const LINKED_CARD_HEADING_RE =
   /^##[ \t]+(.+?)[ \t]+<!--card:([0-9a-fA-F]{8})[ \t]+kp:([0-9a-fA-F]{8})-->[ \t]*$/
+const DIRECT_CARD_HEADING_RE =
+  /^##[ \t]+(.+?)[ \t]+<!--card:([0-9a-fA-F]{8})-->[ \t]*$/
 
-export type CardBlock = {
+export type CardFileMode = 'knowledge-linked' | 'chapter-direct'
+
+type CardBlockBase = {
   cardUuid: string
-  kpUuid: string
   title: string
   front: string
   back: string
@@ -21,14 +24,26 @@ export type CardBlock = {
   endOffset: number
 }
 
+export type KnowledgeLinkedCardBlock = CardBlockBase & {
+  mode: 'knowledge-linked'
+  kpUuid: string
+}
+
+export type ChapterDirectCardBlock = CardBlockBase & {
+  mode: 'chapter-direct'
+  kpUuid: null
+}
+
+export type CardBlock = KnowledgeLinkedCardBlock | ChapterDirectCardBlock
+
 export type CardFileError = {
   path?: string
   line?: number
   message: string
 }
 
-export type CardFileParseResult = {
-  cards: CardBlock[]
+export type CardFileParseResult<T extends CardBlock = CardBlock> = {
+  cards: T[]
   complete: boolean
   errors: CardFileError[]
   duplicateUuids: Set<string>
@@ -61,7 +76,29 @@ export class CardFileFormatError extends Error {
 export function parseCardFile(
   content: string,
   path?: string,
+): CardFileParseResult<KnowledgeLinkedCardBlock>
+export function parseCardFile(
+  content: string,
+  options: { mode: 'knowledge-linked'; path?: string },
+): CardFileParseResult<KnowledgeLinkedCardBlock>
+export function parseCardFile(
+  content: string,
+  options: { mode: 'chapter-direct'; path?: string },
+): CardFileParseResult<ChapterDirectCardBlock>
+export function parseCardFile(
+  content: string,
+  options: { mode: CardFileMode; path?: string },
+): CardFileParseResult
+export function parseCardFile(
+  content: string,
+  pathOrOptions?: string | { mode: CardFileMode; path?: string },
 ): CardFileParseResult {
+  const path =
+    typeof pathOrOptions === 'string' ? pathOrOptions : pathOrOptions?.path
+  const mode =
+    typeof pathOrOptions === 'object'
+      ? pathOrOptions.mode
+      : ('knowledge-linked' as const)
   const headings = scanLevelTwoHeadings(content)
   const cards: CardBlock[] = []
   const errors: CardFileError[] = []
@@ -78,7 +115,11 @@ export function parseCardFile(
     }
     const rawBlock = content.slice(startOffset, endOffset)
     const startLine = lineAtOffset(content, startOffset)
-    const headingMatch = headingText.match(CARD_HEADING_RE)
+    const headingMatch = headingText.match(
+      mode === 'knowledge-linked'
+        ? LINKED_CARD_HEADING_RE
+        : DIRECT_CARD_HEADING_RE,
+    )
     if (!headingMatch) {
       errors.push({
         path,
@@ -100,17 +141,25 @@ export function parseCardFile(
       return
     }
 
-    cards.push({
+    const base = {
       title: headingMatch[1]?.trim() ?? '',
       cardUuid: (headingMatch[2] ?? '').toLowerCase(),
-      kpUuid: (headingMatch[3] ?? '').toLowerCase(),
       front: sides.front,
       back: sides.back,
       rawBlock,
       startLine,
       startOffset,
       endOffset,
-    })
+    }
+    cards.push(
+      mode === 'knowledge-linked'
+        ? {
+            ...base,
+            mode,
+            kpUuid: (headingMatch[3] ?? '').toLowerCase(),
+          }
+        : { ...base, mode, kpUuid: null },
+    )
   })
 
   const counts = new Map<string, number>()
@@ -153,7 +202,11 @@ export async function scanProjectCards(
 
   for (const file of filesByPath.values()) {
     try {
-      const parsed = parseCardFile(await app.vault.cachedRead(file), file.path)
+      const content = await app.vault.cachedRead(file)
+      const parsed = parseCardFile(content, {
+        mode: detectCardFileMode(content),
+        path: file.path,
+      })
       errors.push(...parsed.errors)
       parsed.duplicateUuids.forEach((uuid) => duplicateUuids.add(uuid))
       for (const card of parsed.cards) {
@@ -192,8 +245,42 @@ export class LearningCardFileStore {
     kpUuid: string,
     content: { front: string; back: string } = { front: '', back: '' },
   ): Promise<CardBlock> {
+    return this.createCardInMode(
+      projectPath,
+      filePath,
+      chapterTitle,
+      'knowledge-linked',
+      kpUuid,
+      content,
+    )
+  }
+
+  createChapterCard(
+    projectPath: string,
+    filePath: string,
+    chapterTitle: string,
+    content: { front: string; back: string } = { front: '', back: '' },
+  ): Promise<CardBlock> {
+    return this.createCardInMode(
+      projectPath,
+      filePath,
+      chapterTitle,
+      'chapter-direct',
+      null,
+      content,
+    )
+  }
+
+  private createCardInMode(
+    projectPath: string,
+    filePath: string,
+    chapterTitle: string,
+    mode: CardFileMode,
+    kpUuid: string | null,
+    content: { front: string; back: string },
+  ): Promise<CardBlock> {
     return this.enqueueWrite(async () => {
-      validateUuid(kpUuid, '知识点')
+      if (mode === 'knowledge-linked') validateUuid(kpUuid ?? '', '知识点')
       const scan = await scanProjectCards(this.app, projectPath, [filePath])
       if (!scan.complete)
         throw new CardFileFormatError(projectPath, scan.errors)
@@ -201,34 +288,47 @@ export class LearningCardFileStore {
       while (scan.uuids.has(cardUuid)) cardUuid = createUuid()
 
       const snapshot = await this.readSnapshot(filePath)
-      this.assertWritable(filePath, snapshot.content)
+      this.assertWritable(filePath, snapshot.content, mode)
       const block = formatCard(
         cardUuid,
         kpUuid,
         '新卡片',
         content.front,
         content.back,
+        mode,
       )
       const expected = snapshot.content
       const initialContent = buildCardsContent(chapterTitle)
       const base = snapshot.file ? expected : initialContent
       const next = `${base}${cardAppendSeparator(base)}${block}\n`
       await this.casWrite(filePath, snapshot, next)
-      return requireCard(parseCardFile(next, filePath), cardUuid, filePath)
+      return requireCard(
+        parseCardFile(next, { mode, path: filePath }),
+        cardUuid,
+        filePath,
+      )
     })
   }
 
-  deleteCard(filePath: string, cardUuid: string): Promise<void> {
-    return this.deleteCards(filePath, [cardUuid])
+  deleteCard(
+    filePath: string,
+    cardUuid: string,
+    mode: CardFileMode = 'knowledge-linked',
+  ): Promise<void> {
+    return this.deleteCards(filePath, [cardUuid], mode)
   }
 
-  deleteCards(filePath: string, cardUuids: Iterable<string>): Promise<void> {
+  deleteCards(
+    filePath: string,
+    cardUuids: Iterable<string>,
+    mode: CardFileMode = 'knowledge-linked',
+  ): Promise<void> {
     const uuids = new Set(cardUuids)
     if (uuids.size === 0) return Promise.resolve()
     return this.enqueueWrite(async () => {
       const snapshot = await this.readSnapshot(filePath)
       const expected = snapshot.content
-      const parsed = this.assertWritable(filePath, expected)
+      const parsed = this.assertWritable(filePath, expected, mode)
       uuids.forEach((uuid) => requireCard(parsed, uuid, filePath))
       await this.casWrite(
         filePath,
@@ -248,11 +348,12 @@ export class LearningCardFileStore {
     filePath: string,
     cardUuid: string,
     content: { front: string; back: string },
+    mode: CardFileMode = 'knowledge-linked',
   ): Promise<void> {
     return this.enqueueWrite(async () => {
       const snapshot = await this.readSnapshot(filePath)
       const expected = snapshot.content
-      const parsed = this.assertWritable(filePath, expected)
+      const parsed = this.assertWritable(filePath, expected, mode)
       const card = requireCard(parsed, cardUuid, filePath)
       const changed = formatCard(
         card.cardUuid,
@@ -260,6 +361,7 @@ export class LearningCardFileStore {
         card.title,
         content.front,
         content.back,
+        mode,
       )
       if (changed === card.rawBlock) return
       const blocks = parsed.cards.map((entry) =>
@@ -277,11 +379,12 @@ export class LearningCardFileStore {
     filePath: string,
     cardUuid: string,
     targetIndex: number,
+    mode: CardFileMode = 'knowledge-linked',
   ): Promise<void> {
     return this.enqueueWrite(async () => {
       const snapshot = await this.readSnapshot(filePath)
       const expected = snapshot.content
-      const parsed = this.assertWritable(filePath, expected)
+      const parsed = this.assertWritable(filePath, expected, mode)
       const sourceIndex = parsed.cards.findIndex(
         (card) => card.cardUuid === cardUuid,
       )
@@ -309,8 +412,35 @@ export class LearningCardFileStore {
     targetIndex?: number
     targetChapterTitle?: string
   }): Promise<void> {
+    return this.moveCardInMode({ ...input, mode: 'knowledge-linked' })
+  }
+
+  moveChapterCard(input: {
+    sourcePath: string
+    targetPath: string
+    cardUuid: string
+    targetIndex?: number
+    targetChapterTitle?: string
+  }): Promise<void> {
+    return this.moveCardInMode({
+      ...input,
+      mode: 'chapter-direct',
+      kpUuid: null,
+    })
+  }
+
+  private moveCardInMode(input: {
+    sourcePath: string
+    targetPath: string
+    cardUuid: string
+    kpUuid: string | null
+    mode: CardFileMode
+    targetIndex?: number
+    targetChapterTitle?: string
+  }): Promise<void> {
     return this.enqueueWrite(async () => {
-      validateUuid(input.kpUuid, '知识点')
+      if (input.mode === 'knowledge-linked')
+        validateUuid(input.kpUuid ?? '', '知识点')
       if (input.sourcePath === input.targetPath) {
         await this.moveWithinFile(input)
         return
@@ -326,8 +456,33 @@ export class LearningCardFileStore {
     targetIndex: number
     targetChapterTitle?: string
   }): Promise<void> {
+    return this.moveCardsInMode({ ...input, mode: 'knowledge-linked' })
+  }
+
+  moveChapterCards(input: {
+    cards: Array<{ sourcePath: string; cardUuid: string }>
+    targetPath: string
+    targetIndex: number
+    targetChapterTitle?: string
+  }): Promise<void> {
+    return this.moveCardsInMode({
+      ...input,
+      mode: 'chapter-direct',
+      kpUuid: null,
+    })
+  }
+
+  private moveCardsInMode(input: {
+    cards: Array<{ sourcePath: string; cardUuid: string }>
+    targetPath: string
+    kpUuid: string | null
+    mode: CardFileMode
+    targetIndex: number
+    targetChapterTitle?: string
+  }): Promise<void> {
     return this.enqueueWrite(async () => {
-      validateUuid(input.kpUuid, '知识点')
+      if (input.mode === 'knowledge-linked')
+        validateUuid(input.kpUuid ?? '', '知识点')
       if (input.cards.length === 0) return
       const movingUuids = new Set(input.cards.map((card) => card.cardUuid))
       if (movingUuids.size !== input.cards.length) {
@@ -344,7 +499,10 @@ export class LearningCardFileStore {
       for (const path of paths) {
         const snapshot = await this.readSnapshot(path)
         snapshots.set(path, snapshot)
-        parsedByPath.set(path, this.assertWritable(path, snapshot.content))
+        parsedByPath.set(
+          path,
+          this.assertWritable(path, snapshot.content, input.mode),
+        )
       }
 
       const movingCards = input.cards.map(({ sourcePath, cardUuid }) => {
@@ -380,7 +538,11 @@ export class LearningCardFileStore {
       const targetBase = targetSnapshot.file
         ? (nextByPath.get(input.targetPath) ?? '')
         : buildCardsContent(input.targetChapterTitle ?? '')
-      const targetParsed = this.assertWritable(input.targetPath, targetBase)
+      const targetParsed = this.assertWritable(
+        input.targetPath,
+        targetBase,
+        input.mode,
+      )
       if (
         input.targetIndex < 0 ||
         input.targetIndex > targetParsed.cards.length
@@ -394,6 +556,7 @@ export class LearningCardFileStore {
           card.title,
           card.front,
           card.back,
+          input.mode,
         ),
       )
       nextByPath.set(
@@ -455,12 +618,13 @@ export class LearningCardFileStore {
   private async moveWithinFile(input: {
     sourcePath: string
     cardUuid: string
-    kpUuid: string
+    kpUuid: string | null
+    mode: CardFileMode
     targetIndex?: number
   }): Promise<void> {
     const snapshot = await this.readSnapshot(input.sourcePath)
     const expected = snapshot.content
-    const parsed = this.assertWritable(input.sourcePath, expected)
+    const parsed = this.assertWritable(input.sourcePath, expected, input.mode)
     const sourceIndex = parsed.cards.findIndex(
       (card) => card.cardUuid === input.cardUuid,
     )
@@ -477,6 +641,7 @@ export class LearningCardFileStore {
       source.title,
       source.front,
       source.back,
+      input.mode,
     )
     blocks.splice(sourceIndex, 1)
     blocks.splice(targetIndex, 0, changed)
@@ -488,7 +653,8 @@ export class LearningCardFileStore {
     sourcePath: string
     targetPath: string
     cardUuid: string
-    kpUuid: string
+    kpUuid: string | null
+    mode: CardFileMode
     targetIndex?: number
     targetChapterTitle?: string
   }): Promise<void> {
@@ -497,10 +663,12 @@ export class LearningCardFileStore {
     const sourceParsed = this.assertWritable(
       input.sourcePath,
       sourceSnapshot.content,
+      input.mode,
     )
     const targetParsed = this.assertWritable(
       input.targetPath,
       targetSnapshot.content,
+      input.mode,
     )
     const source = sourceParsed.cards.find(
       (card) => card.cardUuid === input.cardUuid,
@@ -531,6 +699,7 @@ export class LearningCardFileStore {
         source.title,
         source.front,
         source.back,
+        input.mode,
       )
       if (!targetSnapshot.file && !input.targetChapterTitle?.trim()) {
         throw new Error(
@@ -588,8 +757,12 @@ export class LearningCardFileStore {
     }
   }
 
-  private assertWritable(path: string, content: string): CardFileParseResult {
-    const parsed = parseCardFile(content, path)
+  private assertWritable(
+    path: string,
+    content: string,
+    mode: CardFileMode,
+  ): CardFileParseResult {
+    const parsed = parseCardFile(content, { mode, path })
     if (!parsed.complete) throw new CardFileFormatError(path, parsed.errors)
     return parsed
   }
@@ -700,12 +873,25 @@ function replaceCardSlots(
 
 function formatCard(
   cardUuid: string,
-  kpUuid: string,
+  kpUuid: string | null,
   title: string,
   front: string,
   back: string,
+  mode: CardFileMode,
 ): string {
-  return `## ${title.trim()} <!--card:${cardUuid} kp:${kpUuid.toLowerCase()}-->\n\n${formatCardBody(front, back)}`
+  const comment =
+    mode === 'knowledge-linked'
+      ? `<!--card:${cardUuid} kp:${(kpUuid ?? '').toLowerCase()}-->`
+      : `<!--card:${cardUuid}-->`
+  return `## ${title.trim()} ${comment}\n\n${formatCardBody(front, back)}`
+}
+
+function detectCardFileMode(content: string): CardFileMode {
+  for (const heading of scanLevelTwoHeadings(content)) {
+    if (LINKED_CARD_HEADING_RE.test(heading.text)) return 'knowledge-linked'
+    if (DIRECT_CARD_HEADING_RE.test(heading.text)) return 'chapter-direct'
+  }
+  return 'knowledge-linked'
 }
 
 function buildCardsContent(chapterTitle: string): string {
