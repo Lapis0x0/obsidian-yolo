@@ -465,6 +465,7 @@ describe('parseYoloSettings', () => {
     ).toBe(false)
     expect(
       parseYoloSettings({
+        version: SETTINGS_SCHEMA_VERSION,
         learningOptions: { modelId: '', betaNoticeAcknowledged: true },
       }).learningOptions.betaNoticeAcknowledged,
     ).toBe(true)

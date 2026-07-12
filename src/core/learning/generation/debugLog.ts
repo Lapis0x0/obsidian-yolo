@@ -1,6 +1,5 @@
-import { isLLMDebugCaptureEnabled } from '../../llm/debugCapture'
-
 import type { YoloAgentEvent } from '../../agent/agent-api'
+import { isLLMDebugCaptureEnabled } from '../../llm/debugCapture'
 
 export type ToolCallRecord = {
   name: string
@@ -75,6 +74,7 @@ export function emitPhaseDebugLog(data: PhaseDebugData): void {
   )
   metaParts.push(`duration: ${durationStr}`)
 
+  // eslint-disable-next-line no-console -- Preserve grouped learning diagnostics when debug capture is enabled.
   console.groupCollapsed(
     `[yolo-learning] ${data.label} completed  ${metaParts.join(', ')}`,
   )
@@ -89,6 +89,7 @@ export function emitPhaseDebugLog(data: PhaseDebugData): void {
   console.debug(`output length: ${data.outputLength}`)
   console.debug('output:')
   console.debug(data.output)
+  // eslint-disable-next-line no-console -- Close the grouped learning diagnostics above.
   console.groupEnd()
 }
 
@@ -108,12 +109,14 @@ export function emitChaptersDebugLog(
   const totalCalls = sorted.reduce((sum, ch) => sum + ch.toolCalls.length, 0)
   const totalCount = sorted.reduce((sum, ch) => sum + ch.count, 0)
 
+  // eslint-disable-next-line no-console -- Preserve grouped learning diagnostics when debug capture is enabled.
   console.groupCollapsed(
     `[yolo-learning] ${phaseLabel} completed (${sorted.length} chapters, ${(totalDuration / 1000).toFixed(1)}s, ${totalCalls} calls, ${totalCount} ${countLabel})`,
   )
 
   for (const ch of sorted) {
     const durationStr = `${((ch.completedAt - ch.startedAt) / 1000).toFixed(1)}s`
+    // eslint-disable-next-line no-console -- Group each chapter under the aggregate diagnostics.
     console.groupCollapsed(
       `ch${ch.chapterIndex} "${ch.chapterTitle}"  ${durationStr}  ${ch.toolCalls.length} call  ${ch.count} ${countLabel}  ${ch.outputLength}c`,
     )
@@ -127,9 +130,11 @@ export function emitChaptersDebugLog(
     }
     console.debug('output:')
     console.debug(ch.output)
+    // eslint-disable-next-line no-console -- Close the chapter diagnostics group above.
     console.groupEnd()
   }
 
+  // eslint-disable-next-line no-console -- Close the aggregate learning diagnostics group above.
   console.groupEnd()
 }
 

@@ -54,7 +54,6 @@
 }
 
 .yolo-acknowledgement-modal--centered .modal-title,
-.yolo-acknowledgement-modal--centered
-  .yolo-acknowledgement-modal-messages {
+.yolo-acknowledgement-modal--centered .yolo-acknowledgement-modal-messages {
   text-align: center;
 }

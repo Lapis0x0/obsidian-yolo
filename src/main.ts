@@ -18,8 +18,8 @@ import {
   type ActionToastOptions,
   mountActionToast,
 } from './components/ActionToast'
-import { mountUpdateToast } from './components/UpdateToast'
 import { AcknowledgementModal } from './components/modals/AcknowledgementModal'
+import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import type { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
@@ -401,7 +401,10 @@ export default class YoloPlugin extends Plugin {
         },
       })
     } catch (error: unknown) {
-      console.error('Failed to persist learning beta notice confirmation', error)
+      console.error(
+        'Failed to persist learning beta notice confirmation',
+        error,
+      )
     }
   }
 

@@ -1,6 +1,13 @@
 import cx from 'clsx'
 import { ChevronDown, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
-import { App, Keymap, MarkdownRenderer, TFile, htmlToMarkdown } from 'obsidian'
+import {
+  App,
+  Component,
+  Keymap,
+  MarkdownRenderer,
+  TFile,
+  htmlToMarkdown,
+} from 'obsidian'
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -14,7 +21,6 @@ import {
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type {
   Chapter as VaultChapter,
@@ -454,18 +460,25 @@ function LearningMarkdown({
   sourcePath: string
 }) {
   const app = useApp()
-  const plugin = usePlugin()
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
+    const component = new Component()
+    component.load()
 
     const renderMarkdown = async () => {
       const containerEl = containerRef.current
       if (!containerEl) return
 
       const staging = document.createElement('div')
-      await MarkdownRenderer.render(app, content, staging, sourcePath, plugin)
+      await MarkdownRenderer.render(
+        app,
+        content,
+        staging,
+        sourcePath,
+        component,
+      )
       if (cancelled || !containerRef.current) return
 
       containerRef.current.replaceChildren(...Array.from(staging.childNodes))
@@ -475,8 +488,9 @@ function LearningMarkdown({
     void renderMarkdown()
     return () => {
       cancelled = true
+      component.unload()
     }
-  }, [app, content, plugin, sourcePath])
+  }, [app, content, sourcePath])
 
   useEffect(() => {
     const containerEl = containerRef.current
