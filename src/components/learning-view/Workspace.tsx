@@ -20,6 +20,7 @@ export function Workspace({
   onSelectPoint,
   knowledgeMap,
   cardGeneration,
+  initialCardMode,
 }: {
   project: VaultProject | null
   onBack: () => void
@@ -29,9 +30,10 @@ export function Workspace({
   onSelectPoint: (id: string) => void
   knowledgeMap: ReactNode
   cardGeneration: CardGenerationWorkspace | null
+  initialCardMode: CardMode
 }) {
   const { t } = useLanguage()
-  const [cardMode, setCardMode] = useState<CardMode>('浏览')
+  const [cardMode, setCardMode] = useState<CardMode>(initialCardMode)
   const [dueCardCount, setDueCardCount] = useState(0)
   const handleDueCardCountChange = useCallback(
     (count: number) => setDueCardCount(count),

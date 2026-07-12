@@ -10,12 +10,14 @@ export function RingProgress({
   stroke = 5,
   showLabel = true,
   className,
+  label,
 }: {
   value: number
   size?: number
   stroke?: number
   showLabel?: boolean
   className?: string
+  label?: React.ReactNode
 }) {
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
@@ -51,7 +53,7 @@ export function RingProgress({
           className="yolo-learning-ring-label"
           style={{ fontSize: size * 0.24 }}
         >
-          {value}%
+          {label ?? `${value}%`}
         </span>
       )}
     </div>

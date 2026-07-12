@@ -51,6 +51,10 @@ import {
   scanProjectCards,
 } from '../../core/learning/cardFile'
 import {
+  LEARNING_TARGET_RETENTION,
+  MEMORY_RETENTION_HORIZON_MS,
+} from '../../core/learning/learningStats'
+import {
   fsrsStateToMastery,
   isDue,
 } from '../../core/learning/srs/masteryMapping'
@@ -86,8 +90,6 @@ import {
 export const cardModes = ['浏览', '复习'] as const
 export type CardMode = (typeof cardModes)[number]
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
-const TARGET_MEMORY_RETENTION = 0.9
-const MEMORY_RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000
 
 type Card = WorkspaceCard
 
@@ -1967,7 +1969,7 @@ function BrowseMode({
                       : ({
                           '--yolo-learning-chapter-memory': `${
                             Math.min(
-                              memoryRetention / TARGET_MEMORY_RETENTION,
+                              memoryRetention / LEARNING_TARGET_RETENTION,
                               1,
                             ) * 100
                           }%`,

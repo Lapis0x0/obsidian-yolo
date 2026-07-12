@@ -17,6 +17,7 @@ import {
 import type { Project as VaultProject } from '../../core/learning/types'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 
+import type { CardMode } from './CardsView'
 import {
   type CardGenerationWorkspace,
   reconcilePreviewEvents,
@@ -43,6 +44,7 @@ export function LearningWorkspace() {
     null,
   )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
+  const [initialCardMode, setInitialCardMode] = useState<CardMode>('浏览')
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [cardGeneration, setCardGeneration] =
     useState<CardGenerationWorkspace | null>(null)
@@ -244,11 +246,20 @@ export function LearningWorkspace() {
             cardGeneration={
               cardGeneration?.projectId === projectId ? cardGeneration : null
             }
+            initialCardMode={initialCardMode}
           />
         ) : (
           <HomeView
             projects={vaultProjects}
-            onOpenProject={setProjectId}
+            onOpenProject={(id) => {
+              setInitialCardMode('浏览')
+              setProjectId(id)
+            }}
+            onStartReview={(id) => {
+              setInitialCardMode('复习')
+              setActiveTab('卡片')
+              setProjectId(id)
+            }}
             onNewProject={() => setWizardOpen(true)}
           />
         )}

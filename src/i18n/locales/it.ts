@@ -152,14 +152,14 @@ export const it: TranslationKeys = {
     },
     home: {
       title: 'Centro apprendimento',
-      subtitle:
-        'Oggi è il 28 giugno 2026. Hai studiato per 5 giorni consecutivi.',
       newProject: 'Nuovo progetto',
       todayReview: 'Da ripassare oggi',
       dueCardsLabel: 'carte in scadenza',
-      dueExercisesLabel: 'esercizi da fare',
       startReview: 'Inizia il ripasso di oggi',
-      reviewMeta: 'Su 2 progetti · Circa 20 minuti',
+      reviewProjects: 'Da {count} progetti',
+      reviewMetaEmpty: 'Nessun ripasso in scadenza',
+      statsLoading: 'Aggiornamento dati di apprendimento',
+      statsUnavailable: 'Statistiche non disponibili per {count} progetti',
       myProjects: 'I miei progetti',
       sortRecent: 'Più recenti',
       sortCreated: 'Data creazione',
@@ -167,6 +167,7 @@ export const it: TranslationKeys = {
       newLearningProject: 'Nuovo progetto di apprendimento',
       projectDue: '{count} elementi da ripassare oggi',
       lastStudied: 'Ultimo studio {time}',
+      neverStudied: 'Non ancora studiato',
     },
     wizard: {
       title: 'Nuovo progetto di apprendimento',
