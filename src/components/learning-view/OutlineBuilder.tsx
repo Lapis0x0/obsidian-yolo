@@ -60,8 +60,8 @@ import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
-import { ConfirmModal } from '../modals/ConfirmModal'
 
+import { summarizeCardGeneration } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
@@ -255,6 +255,7 @@ export function OutlineBuilder({
       return
     }
     const controller = new AbortController()
+    plugin.trackLearningGeneration(controller)
     abortRef.current = controller
     setPhase('knowledge')
     setError(null)
@@ -282,6 +283,7 @@ export function OutlineBuilder({
       abortOnUnmountRef.current = false
       await onProjectStarted(scaffold.projectPath)
     } catch (err: unknown) {
+      plugin.releaseLearningGeneration(controller)
       if (controller.signal.aborted) return
       setError(err instanceof Error ? err.message : String(err))
       setPhase('error')
@@ -404,7 +406,10 @@ export function OutlineBuilder({
           }
         }),
       )
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted) {
+        plugin.releaseLearningGeneration(controller)
+        return
+      }
       emitChaptersDebugLog(chapterDebugData)
       const failedKnowledgeChapters = knowledgeResults.filter(
         (result) => result.error,
@@ -416,11 +421,16 @@ export function OutlineBuilder({
           knowledgePointId: null,
         })
         await eventBus.refreshSnapshot({ emitInitial: false })
+        if (controller.signal.aborted) {
+          plugin.releaseLearningGeneration(controller)
+          return
+        }
         new Notice(
           `知识点生成失败：${failedKnowledgeChapters
             .map((result) => result.chapterTitle)
             .join('、')}`,
         )
+        plugin.releaseLearningGeneration(controller)
         return
       }
       await markProjectStudying({
@@ -433,71 +443,126 @@ export function OutlineBuilder({
         knowledgePointId: null,
       })
       await eventBus.refreshSnapshot({ emitInitial: false })
+      if (controller.signal.aborted) {
+        plugin.releaseLearningGeneration(controller)
+        return
+      }
       onComplete(scaffold.projectPath)
 
-      new ConfirmModal(plugin.app, {
-        title: t('learning.cards.generateTitle', '生成学习卡片'),
-        message: t(
-          'learning.cards.generatePrompt',
-          '知识点已全部生成完成。是否现在为各章节生成学习卡片？',
-        ),
-        ctaText: t('learning.cards.generateNow', '生成卡片'),
-        cancelText: t('common.cancel', '取消'),
-        onConfirm: () => {
-          const runId = `cards-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-          onCardGenerationStarted(runId, scaffold.projectPath)
-          void generateCardsParallel({
-            plugin,
-            projectTopic: resolvedProjectName,
-            projectPath: scaffold.projectPath,
-            chapters: validChapters.map((chapter, index) => ({
-              title: chapter.title,
-              contract: chapter.contract,
-              knowledgePath: scaffold.chapters[index].knowledgePath,
-              cardsPath: scaffold.chapters[index].cardsPath,
-            })),
-            level,
-            workspaceScope: knowledgeWorkspaceScope,
-            activity: {
-              kind: 'learning-agent',
-              title: t('learning.wizard.modeLabel', '学习模式'),
-              detail: t('learning.cards.generating', '正在生成学习卡片'),
-              action: 'open-learning-view',
-            },
-            runId,
-            projectId: scaffold.projectPath,
-            onCard,
-            onChapterSettled: (result) =>
-              onChapterSettled(runId, scaffold.projectPath, result),
-          })
-            .then(async (results) => {
-              await eventBus.refreshSnapshot({ emitInitial: false })
-              onCardGenerationFinished(runId, scaffold.projectPath, false)
-              const generated = results.filter(
-                (result) => result.status === 'generated',
-              ).length
-              const partial = results.filter(
-                (result) => result.status === 'partial',
-              ).length
-              const failed = results.filter(
-                (result) => result.status === 'failed',
-              ).length
-              const skipped = results.filter(
-                (result) => result.status === 'skipped',
-              ).length
-              new Notice(
-                `卡片生成完成：成功 ${generated} 章，部分完成 ${partial} 章，失败 ${failed} 章，跳过 ${skipped} 章`,
-              )
-            })
-            .catch((error: unknown) => {
-              onCardGenerationFinished(runId, scaffold.projectPath, true)
-              new Notice(
-                `卡片生成失败：${error instanceof Error ? error.message : String(error)}`,
-              )
-            })
+      const runId = `cards-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const showGenerationResult = (results: CardGenerationResult[]) => {
+        const summary = summarizeCardGeneration(results)
+        const canStartLearning = summary.outcome !== 'failed'
+        const title =
+          summary.outcome === 'success'
+            ? t('learning.cards.generationCompleteTitle', '学习卡片已生成')
+            : summary.outcome === 'partial'
+              ? t('learning.cards.generationPartialTitle', '部分卡片生成完成')
+              : t('learning.cards.generationFailedTitle', '学习卡片生成失败')
+        const message =
+          summary.outcome === 'success'
+            ? summary.skippedChapterCount > 0
+              ? formatLearningText(
+                  t(
+                    'learning.cards.generationExistingSummary',
+                    '{chapters} 个章节的学习卡片已准备好，本次新增 {cards} 张。',
+                  ),
+                  {
+                    chapters: summary.chapterCount,
+                    cards: summary.cardCount,
+                  },
+                )
+              : formatLearningText(
+                  t(
+                    'learning.cards.generationCompleteSummary',
+                    '已生成 {chapters} 个章节、{cards} 张卡片。',
+                  ),
+                  {
+                    chapters: summary.chapterCount,
+                    cards: summary.cardCount,
+                  },
+                )
+            : summary.outcome === 'partial'
+              ? formatLearningText(
+                  t(
+                    'learning.cards.generationPartialSummary',
+                    '已生成 {cards} 张卡片，{count} 个章节未完整生成。',
+                  ),
+                  {
+                    cards: summary.cardCount,
+                    count: summary.incompleteChapterCount,
+                  },
+                )
+              : t(
+                  'learning.cards.generationFailedSummary',
+                  '未能生成学习卡片，请查看章节状态。',
+                )
+
+        plugin.showActionToast({
+          id: `learning-card-generation:${scaffold.projectPath}`,
+          tone:
+            summary.outcome === 'success'
+              ? 'success'
+              : summary.outcome === 'partial'
+                ? 'warning'
+                : 'error',
+          title,
+          message,
+          actionLabel: canStartLearning
+            ? t('learning.cards.startLearning', '开始学习')
+            : t('learning.cards.viewGenerationDetails', '查看详情'),
+          dismissLabel: t('common.close', '关闭'),
+          onAction: () =>
+            plugin.openLearningView({
+              projectId: scaffold.projectPath,
+              tab: '卡片',
+              cardMode: canStartLearning ? '学习' : '浏览',
+            }),
+        })
+      }
+
+      onCardGenerationStarted(runId, scaffold.projectPath)
+      void generateCardsParallel({
+        plugin,
+        projectTopic: resolvedProjectName,
+        projectPath: scaffold.projectPath,
+        chapters: validChapters.map((chapter, index) => ({
+          title: chapter.title,
+          contract: chapter.contract,
+          knowledgePath: scaffold.chapters[index].knowledgePath,
+          cardsPath: scaffold.chapters[index].cardsPath,
+        })),
+        level,
+        workspaceScope: knowledgeWorkspaceScope,
+        abortSignal: controller.signal,
+        activity: {
+          kind: 'learning-agent',
+          title: t('learning.wizard.modeLabel', '学习模式'),
+          detail: t('learning.cards.generating', '正在生成学习卡片'),
+          action: 'open-learning-view',
         },
-      }).open()
+        runId,
+        projectId: scaffold.projectPath,
+        onCard,
+        onChapterSettled: (result) =>
+          onChapterSettled(runId, scaffold.projectPath, result),
+      })
+        .then(async (results) => {
+          if (controller.signal.aborted) return
+          await eventBus.refreshSnapshot({ emitInitial: false })
+          if (controller.signal.aborted) return
+          onCardGenerationFinished(runId, scaffold.projectPath, false)
+          showGenerationResult(results)
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return
+          onCardGenerationFinished(runId, scaffold.projectPath, true)
+          console.error('[YOLO] Card generation failed:', error)
+          showGenerationResult([])
+        })
+        .finally(() => plugin.releaseLearningGeneration(controller))
     } catch (err: unknown) {
+      plugin.releaseLearningGeneration(controller)
       if (!controller.signal.aborted) {
         console.error(
           '[YOLO] Failed to finalize generated learning project:',

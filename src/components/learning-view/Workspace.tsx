@@ -20,7 +20,8 @@ export function Workspace({
   onSelectPoint,
   knowledgeMap,
   cardGeneration,
-  initialCardMode,
+  cardMode,
+  onCardModeChange,
 }: {
   project: VaultProject | null
   onBack: () => void
@@ -30,10 +31,10 @@ export function Workspace({
   onSelectPoint: (id: string) => void
   knowledgeMap: ReactNode
   cardGeneration: CardGenerationWorkspace | null
-  initialCardMode: CardMode
+  cardMode: CardMode
+  onCardModeChange: (mode: CardMode) => void
 }) {
   const { t } = useLanguage()
-  const [cardMode, setCardMode] = useState<CardMode>(initialCardMode)
   const [dueCardCount, setDueCardCount] = useState(0)
   const handleDueCardCountChange = useCallback(
     (count: number) => setDueCardCount(count),
@@ -73,7 +74,7 @@ export function Workspace({
           <Segmented<CardMode>
             options={cardModes}
             value={cardMode}
-            onChange={setCardMode}
+            onChange={onCardModeChange}
             badges={{ 学习: dueCardCount }}
             getLabel={(mode) => cardModeLabels[mode]}
             className="yolo-learning-workspace-card-mode"
@@ -121,7 +122,7 @@ export function Workspace({
             project={project}
             generation={cardGeneration}
             mode={cardMode}
-            onModeChange={setCardMode}
+            onModeChange={onCardModeChange}
             onDueCountChange={handleDueCardCountChange}
           />
         )}

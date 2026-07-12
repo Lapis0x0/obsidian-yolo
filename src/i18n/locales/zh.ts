@@ -267,6 +267,17 @@ export const zh: TranslationKeys = {
     },
     cards: {
       study: '学习',
+      generationCompleteTitle: '学习卡片已生成',
+      generationCompleteSummary: '已生成 {chapters} 个章节、{cards} 张卡片。',
+      generationExistingSummary:
+        '{chapters} 个章节的学习卡片已准备好，本次新增 {cards} 张。',
+      generationPartialTitle: '部分卡片生成完成',
+      generationPartialSummary:
+        '已生成 {cards} 张卡片，{count} 个章节未完整生成。',
+      generationFailedTitle: '学习卡片生成失败',
+      generationFailedSummary: '未能生成学习卡片，请查看章节状态。',
+      startLearning: '开始学习',
+      viewGenerationDetails: '查看详情',
       filteredTo: '已筛选至：',
       sortDue: '按到期时间',
       sortMastery: '按掌握度',

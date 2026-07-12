@@ -5,6 +5,7 @@ import {
   isBrowseDragDisabled,
   mergeDiskAndPreviewCards,
   reconcilePreviewEvents,
+  summarizeCardGeneration,
 } from './cardsWorkspace'
 
 const card = (id: string, kpUuid = 'aaaaaaaa'): WorkspaceCard => ({
@@ -26,6 +27,59 @@ const card = (id: string, kpUuid = 'aaaaaaaa'): WorkspaceCard => ({
 })
 
 describe('cards workspace calculations', () => {
+  test('summarizes complete, partial, and failed generation results', () => {
+    const result = (
+      status: 'generated' | 'partial' | 'failed' | 'skipped',
+      cardCount: number,
+    ) => ({
+      chapterIndex: 0,
+      chapterTitle: 'Chapter',
+      cards: Array.from({ length: cardCount }, (_, index) => ({
+        title: `Card ${index}`,
+        kpUuid: 'aaaaaaaa',
+        front: 'Question',
+        back: 'Answer',
+        startLine: index,
+        cardUuid: `card-${index}`,
+      })),
+      status,
+      discardedCount: 0,
+    })
+
+    expect(
+      summarizeCardGeneration([result('generated', 2), result('generated', 3)]),
+    ).toEqual({
+      outcome: 'success',
+      chapterCount: 2,
+      cardCount: 5,
+      incompleteChapterCount: 0,
+      skippedChapterCount: 0,
+    })
+    expect(
+      summarizeCardGeneration([result('generated', 2), result('partial', 1)]),
+    ).toEqual({
+      outcome: 'partial',
+      chapterCount: 2,
+      cardCount: 3,
+      incompleteChapterCount: 1,
+      skippedChapterCount: 0,
+    })
+    expect(summarizeCardGeneration([result('failed', 0)])).toEqual({
+      outcome: 'failed',
+      chapterCount: 1,
+      cardCount: 0,
+      incompleteChapterCount: 1,
+      skippedChapterCount: 0,
+    })
+    expect(summarizeCardGeneration([result('skipped', 0)])).toEqual({
+      outcome: 'success',
+      chapterCount: 1,
+      cardCount: 0,
+      incompleteChapterCount: 0,
+      skippedChapterCount: 1,
+    })
+  })
+
   test('disk cards replace previews with the same UUID', () => {
     const disk = { ...card('11111111'), preview: false, filePath: 'cards.md' }
     expect(

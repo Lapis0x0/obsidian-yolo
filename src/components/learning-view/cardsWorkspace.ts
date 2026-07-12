@@ -31,6 +31,44 @@ export type CardGenerationWorkspace = {
   settled: CardGenerationResult[]
 }
 
+export type CardGenerationSummary = {
+  outcome: 'success' | 'partial' | 'failed'
+  chapterCount: number
+  cardCount: number
+  incompleteChapterCount: number
+  skippedChapterCount: number
+}
+
+export function summarizeCardGeneration(
+  results: CardGenerationResult[],
+): CardGenerationSummary {
+  const cardCount = results.reduce(
+    (total, result) => total + result.cards.length,
+    0,
+  )
+  const incompleteChapterCount = results.filter(
+    (result) => result.status === 'partial' || result.status === 'failed',
+  ).length
+  const skippedChapterCount = results.filter(
+    (result) => result.status === 'skipped',
+  ).length
+  const hasUsableChapter = results.some((result) => result.status !== 'failed')
+  const outcome =
+    results.length === 0 || !hasUsableChapter
+      ? 'failed'
+      : incompleteChapterCount > 0
+        ? 'partial'
+        : 'success'
+
+  return {
+    outcome,
+    chapterCount: results.length,
+    cardCount,
+    incompleteChapterCount,
+    skippedChapterCount,
+  }
+}
+
 export function reconcilePreviewEvents(
   events: CardGenerationEvent[],
   result: CardGenerationResult,

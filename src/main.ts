@@ -12,6 +12,11 @@ import {
 } from 'obsidian'
 
 import { ChatView } from './ChatView'
+import {
+  type ActionToastController,
+  type ActionToastOptions,
+  mountActionToast,
+} from './components/ActionToast'
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
@@ -42,6 +47,10 @@ import {
 } from './core/background/backgroundActivityRegistry'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import type {
+  LearningNavigationHandler,
+  LearningNavigationTarget,
+} from './core/learning/learningNavigation'
 import type { ProjectEventBus } from './core/learning/projectEventBus'
 import { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
@@ -177,6 +186,7 @@ export default class YoloPlugin extends Plugin {
   private pluginUpdateListeners: (() => void)[] = []
   private pluginUpdateDownloadPromise: Promise<void> | null = null
   private updateToastCleanup: (() => void) | null = null
+  private actionToastController: ActionToastController | null = null
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -190,6 +200,7 @@ export default class YoloPlugin extends Plugin {
     null
   private isContinuationInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
+  private learningGenerationAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
   private diffReviewController: DiffReviewController | null = null
@@ -212,6 +223,8 @@ export default class YoloPlugin extends Plugin {
   private writeAssistController: WriteAssistController | null = null
   private learningEventBus: ProjectEventBus | null = null
   private learningSrsStore: LearningSrsStore | null = null
+  private learningNavigationHandler: LearningNavigationHandler | null = null
+  private pendingLearningNavigation: LearningNavigationTarget | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -306,6 +319,34 @@ export default class YoloPlugin extends Plugin {
     this.learningEventBus = bus
   }
 
+  setLearningNavigationHandler(
+    handler: LearningNavigationHandler | null,
+  ): void {
+    this.learningNavigationHandler = handler
+    this.flushLearningNavigation()
+  }
+
+  showActionToast(toast: ActionToastOptions): void {
+    this.actionToastController?.show(toast)
+  }
+
+  trackLearningGeneration(controller: AbortController): void {
+    this.learningGenerationAbortControllers.add(controller)
+  }
+
+  releaseLearningGeneration(controller: AbortController): void {
+    this.learningGenerationAbortControllers.delete(controller)
+  }
+
+  private flushLearningNavigation(): void {
+    if (!this.learningNavigationHandler || !this.pendingLearningNavigation) {
+      return
+    }
+    const target = this.pendingLearningNavigation
+    this.pendingLearningNavigation = null
+    this.learningNavigationHandler(target)
+  }
+
   getLearningSrsStore(): LearningSrsStore {
     if (!this.learningSrsStore) {
       this.learningSrsStore = new LearningSrsStore(this.app)
@@ -317,15 +358,18 @@ export default class YoloPlugin extends Plugin {
    * Opens the LearningView in the main workspace (new tab). Activates an
    * existing leaf if one is already open.
    */
-  async openLearningView(): Promise<void> {
+  async openLearningView(target?: LearningNavigationTarget): Promise<void> {
+    if (target) this.pendingLearningNavigation = target
     const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
     if (existing) {
       this.app.workspace.revealLeaf(existing)
+      this.flushLearningNavigation()
       return
     }
     const leaf = this.app.workspace.getLeaf('tab')
     await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
     this.app.workspace.revealLeaf(leaf)
+    this.flushLearningNavigation()
   }
 
   private getModelListCacheKey(
@@ -1964,6 +2008,7 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.setupBackgroundActivityStatusBar()
+    this.actionToastController = mountActionToast()
     this.updateToastCleanup = mountUpdateToast(this)
     // The toast is anchored to the window (not a chat view), so trigger the
     // check at load time rather than waiting for a chat view to open.
@@ -2335,8 +2380,16 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    for (const controller of this.learningGenerationAbortControllers) {
+      controller.abort()
+    }
+    this.learningGenerationAbortControllers.clear()
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
+    this.actionToastController?.destroy()
+    this.actionToastController = null
+    this.learningNavigationHandler = null
+    this.pendingLearningNavigation = null
     this.closeSmartSpace()
 
     // Selection chat cleanup

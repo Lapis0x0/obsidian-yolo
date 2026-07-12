@@ -279,6 +279,19 @@ export const it: TranslationKeys = {
     },
     cards: {
       study: 'Studia',
+      generationCompleteTitle: 'Le carte di studio sono pronte',
+      generationCompleteSummary:
+        'Generati {chapters} capitoli e {cards} carte.',
+      generationExistingSummary:
+        'Le carte di {chapters} capitoli sono pronte; aggiunte {cards} nuove carte.',
+      generationPartialTitle: 'Alcune carte di studio sono pronte',
+      generationPartialSummary:
+        'Generate {cards} carte; {count} capitoli non sono stati completati.',
+      generationFailedTitle: 'Generazione delle carte non riuscita',
+      generationFailedSummary:
+        'Nessuna carta è stata generata. Controlla lo stato dei capitoli.',
+      startLearning: 'Inizia a studiare',
+      viewGenerationDetails: 'Vedi dettagli',
       filteredTo: 'Filtrato su: ',
       sortDue: 'Scadenza',
       sortMastery: 'Padronanza',

@@ -44,7 +44,12 @@ export function LearningWorkspace() {
     null,
   )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
-  const [initialCardMode, setInitialCardMode] = useState<CardMode>('学习')
+  const [cardMode, setCardMode] = useState<CardMode>('学习')
+  const [navigationTarget, setNavigationTarget] = useState<{
+    projectId: string
+    tab: '卡片'
+    cardMode: CardMode
+  } | null>(null)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [cardGeneration, setCardGeneration] =
     useState<CardGenerationWorkspace | null>(null)
@@ -64,6 +69,26 @@ export function LearningWorkspace() {
       plugin.setLearningEventBus(null)
     }
   }, [bus, plugin])
+
+  useEffect(() => {
+    plugin.setLearningNavigationHandler(setNavigationTarget)
+    return () => plugin.setLearningNavigationHandler(null)
+  }, [plugin])
+
+  useEffect(() => {
+    if (
+      !navigationTarget ||
+      !vaultProjects.some(
+        (project) => project.id === navigationTarget.projectId,
+      )
+    ) {
+      return
+    }
+    setCardMode(navigationTarget.cardMode)
+    setActiveTab(navigationTarget.tab)
+    setProjectId(navigationTarget.projectId)
+    setNavigationTarget(null)
+  }, [navigationTarget, vaultProjects])
 
   useEffect(() => {
     let cancelled = false
@@ -188,6 +213,7 @@ export function LearningWorkspace() {
                   cards: [],
                   settled: [],
                 })
+                setCardMode('浏览')
                 setActiveTab('卡片')
               }}
               onCard={(event: CardGenerationEvent) => {
@@ -246,17 +272,18 @@ export function LearningWorkspace() {
             cardGeneration={
               cardGeneration?.projectId === projectId ? cardGeneration : null
             }
-            initialCardMode={initialCardMode}
+            cardMode={cardMode}
+            onCardModeChange={setCardMode}
           />
         ) : (
           <HomeView
             projects={vaultProjects}
             onOpenProject={(id) => {
-              setInitialCardMode('学习')
+              setCardMode('学习')
               setProjectId(id)
             }}
             onStartReview={(id) => {
-              setInitialCardMode('学习')
+              setCardMode('学习')
               setActiveTab('卡片')
               setProjectId(id)
             }}

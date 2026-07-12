@@ -282,6 +282,19 @@ export const en: TranslationKeys = {
     },
     cards: {
       study: 'Learn',
+      generationCompleteTitle: 'Learning cards are ready',
+      generationCompleteSummary:
+        'Generated {chapters} chapters and {cards} cards.',
+      generationExistingSummary:
+        'Cards for {chapters} chapters are ready; {cards} new cards were added.',
+      generationPartialTitle: 'Some learning cards are ready',
+      generationPartialSummary:
+        'Generated {cards} cards; {count} chapters did not finish.',
+      generationFailedTitle: 'Learning card generation failed',
+      generationFailedSummary:
+        'No learning cards were generated. View the chapter status for details.',
+      startLearning: 'Start learning',
+      viewGenerationDetails: 'View details',
       filteredTo: 'Filtered to: ',
       sortDue: 'Due date',
       sortMastery: 'Mastery',

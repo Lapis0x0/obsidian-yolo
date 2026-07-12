@@ -12,6 +12,7 @@
 
 @import './popover/index.css';
 
+@import './action-toast.css';
 @import './chat/input.css';
 @import './chat/message.css';
 @import './chat/popover.css';
