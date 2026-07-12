@@ -13,6 +13,7 @@ export type WriteProjectOptions = {
   app: App
   baseDir: string
   topic: string
+  goal: string
   chapters: ChapterGenerationResult[]
   level: string
 }
@@ -50,11 +51,13 @@ export async function createProjectScaffold({
   app,
   baseDir,
   topic,
+  goal,
   chapters,
 }: {
   app: App
   baseDir: string
   topic: string
+  goal: string
   chapters: OutlineChapter[]
 }): Promise<ProjectScaffold> {
   const normalizedBaseDir = normalizePath(baseDir.replace(/\/$/, ''))
@@ -98,6 +101,7 @@ export async function createProjectScaffold({
     indexPath,
     buildProjectIndexMarkdown({
       topic,
+      goal,
       status: 'building',
       chapterSlugs,
       chapters: chapters.map((chapter, index) => ({
@@ -173,6 +177,7 @@ export async function writeProject({
   app,
   baseDir,
   topic,
+  goal,
   chapters,
 }: WriteProjectOptions): Promise<{ projectPath: string; projectSlug: string }> {
   const normalizedBaseDir = normalizePath(baseDir.replace(/\/$/, ''))
@@ -198,6 +203,7 @@ export async function writeProject({
     normalizePath(`${projectPath}/index.md`),
     buildProjectIndexMarkdown({
       topic,
+      goal,
       status: 'studying',
       chapterSlugs,
       chapters: successfulChapters,
@@ -246,17 +252,19 @@ function buildMarkdown(
 
 function buildProjectIndexMarkdown({
   topic,
+  goal,
   status,
   chapterSlugs,
   chapters,
 }: {
   topic: string
+  goal: string
   status: 'building' | 'studying'
   chapterSlugs: string[]
   chapters: Array<Pick<ChapterGenerationResult, 'chapterTitle'>>
 }): string {
   return buildMarkdown(
-    { topic, status, chapters: chapterSlugs },
+    { topic, goal, status, chapters: chapterSlugs },
     buildIndexBody(chapters, chapterSlugs),
   )
 }

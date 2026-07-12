@@ -61,6 +61,7 @@ import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import { ConfirmModal } from '../modals/ConfirmModal'
+
 import { formatLearningText } from './i18n'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
@@ -115,6 +116,7 @@ export function OutlineBuilder({
   const { t } = useLanguage()
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [projectName, setProjectName] = useState('')
+  const [projectGoal, setProjectGoal] = useState('')
   const [estimatedKnowledgePoints, setEstimatedKnowledgePoints] = useState(0)
   const [phase, setPhase] = useState<Phase>('outline')
   const [outlineWaitingStage, setOutlineWaitingStage] =
@@ -141,6 +143,7 @@ export function OutlineBuilder({
 
   const reconcileOutline = (outline: Outline) => {
     setProjectName(outline.projectName)
+    setProjectGoal(outline.projectGoal)
     setEstimatedKnowledgePoints(outline.estimatedKnowledgePoints)
     setChapters((current) =>
       outline.chapters.map((chapter, index) => ({
@@ -161,6 +164,7 @@ export function OutlineBuilder({
     nextChapterIdRef.current = 0
     setChapters([])
     setProjectName('')
+    setProjectGoal('')
     setEstimatedKnowledgePoints(0)
     void generateOutline({
       plugin,
@@ -264,6 +268,7 @@ export function OutlineBuilder({
         app: plugin.app,
         baseDir,
         topic: resolvedProjectName,
+        goal: projectGoal,
         chapters: validChapters,
       })
       if (stagingDir && referenceFiles && referenceFiles.length > 0) {

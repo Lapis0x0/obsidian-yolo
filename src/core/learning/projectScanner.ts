@@ -50,12 +50,11 @@ export async function scanProject(
   const indexFrontmatter =
     app.metadataCache.getFileCache(indexFile)?.frontmatter ?? {}
   const parsed = projectFrontmatterSchema.safeParse(indexFrontmatter)
-  const topic =
-    parsed.success && parsed.data.topic ? parsed.data.topic : projectFolder.name
-  const status: ProjectStatus =
-    parsed.success && parsed.data.status ? parsed.data.status : 'outlining'
-  const orderedChapterSlugs =
-    parsed.success && parsed.data.chapters ? parsed.data.chapters : null
+  if (!parsed.success) return null
+  const topic = parsed.data.topic
+  const goal = parsed.data.goal
+  const status: ProjectStatus = parsed.data.status ?? 'outlining'
+  const orderedChapterSlugs = parsed.data.chapters ?? null
 
   const chapterFolders = projectFolder.children.filter(
     (c): c is TFolder => c instanceof TFolder && c.name !== 'ref',
@@ -76,6 +75,7 @@ export async function scanProject(
     id: projectId,
     slug: projectFolder.name,
     topic,
+    goal,
     status,
     folderPath: projectFolder.path,
     indexFilePath: indexFile.path,

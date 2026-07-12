@@ -6,6 +6,7 @@ export const OUTLINE_GENERATOR_PROMPT = `你是一位学习内容架构师。根
 
 {
   "projectName": "<规范化的学习主题名称>",
+  "projectGoal": "<一句话描述完成该计划后能够做到什么>",
   "chapters": [
     {
       "title": "<章节标题>",
@@ -18,6 +19,10 @@ export const OUTLINE_GENERATOR_PROMPT = `你是一位学习内容架构师。根
 ## projectName
 
 对用户输入的学习主题做规范化：修正大小写、补全缺失的专有名词形式（如 react → React、ts → TypeScript）。不要改写主题本身，不要翻译，不要加多余修饰。如果用户输入已经足够规范，原样使用。
+
+## projectGoal
+
+结合用户输入的学习目标、当前水平和补充要求，整理成一句适合长期展示的学习目标。描述完成计划后用户能够做到什么，使用明确、具体的结果表述；不要复述时间安排、学习偏好或排除项，也不要使用“学习”“了解”等无法验证的空泛措辞。
 
 ## chapters 与章节划分原则
 

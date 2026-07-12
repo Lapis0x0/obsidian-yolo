@@ -59,6 +59,7 @@ export type Project = {
   id: string
   slug: string
   topic: string
+  goal: string
   status: ProjectStatus
   /** Vault path of the project folder. */
   folderPath: string

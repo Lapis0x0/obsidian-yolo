@@ -62,6 +62,7 @@ describe('cards workspace calculations', () => {
       id: 'p',
       slug: 'p',
       topic: 'P',
+      goal: 'Understand P',
       status: 'studying' as const,
       folderPath: 'p',
       indexFilePath: 'p/index.md',

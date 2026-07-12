@@ -12,16 +12,24 @@ import type { Project } from './types'
 export const LEARNING_TARGET_RETENTION = 0.9
 export const MEMORY_RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000
 
+export type LearningProjectAction = {
+  kind: 'learn' | 'review'
+  knowledgePointTitle: string
+  started: boolean
+}
+
 export type LearningProjectStats = {
   totalCards: number
   targetCards: number
   targetCardProgress: number
+  estimatedRetention: number
   memoryProgress: number
   dueCards: number
   lastStudiedAt: number | null
   createdAt: number
   lastActiveAt: number
   nextDueAt: number | null
+  nextAction: LearningProjectAction | null
 }
 
 export async function loadLearningProjectStats({
@@ -36,6 +44,8 @@ export async function loadLearningProjectStats({
   now: Date
 }): Promise<LearningProjectStats> {
   const cardUuids = new Set<string>()
+  const cardPointUuids = new Map<string, string>()
+  const cardUuidsByPoint = new Map<string, string[]>()
   const pointByUuid = new Map(
     project.knowledgePoints.map((point) => [point.uuid, point]),
   )
@@ -68,6 +78,10 @@ export async function loadLearningProjectStats({
         ])
       }
       cardUuids.add(entry.cardUuid)
+      cardPointUuids.set(entry.cardUuid, entry.kpUuid)
+      const pointCardUuids = cardUuidsByPoint.get(entry.kpUuid) ?? []
+      pointCardUuids.push(entry.cardUuid)
+      cardUuidsByPoint.set(entry.kpUuid, pointCardUuids)
     }
   }
 
@@ -86,6 +100,7 @@ export async function loadLearningProjectStats({
   let retrievabilityTotal = 0
   let targetCards = 0
   let dueCards = 0
+  const dueCardEntries: { cardUuid: string; dueAt: number }[] = []
   let lastStudiedAt: number | null = null
   let nextDueAt: number | null = null
 
@@ -98,7 +113,10 @@ export async function loadLearningProjectStats({
     if (retrievability >= LEARNING_TARGET_RETENTION) targetCards += 1
 
     const dueAt = new Date(state.due).getTime()
-    if (dueAt <= nowMs) dueCards += 1
+    if (dueAt <= nowMs) {
+      dueCards += 1
+      dueCardEntries.push({ cardUuid, dueAt })
+    }
     else if (nextDueAt === null || dueAt < nextDueAt) nextDueAt = dueAt
 
     const reviewedAt = resolveReviewedAt(state)
@@ -126,12 +144,20 @@ export async function loadLearningProjectStats({
     (latest, file) => Math.max(latest, file.stat.mtime),
     createdAt,
   )
+  const nextAction = resolveNextAction({
+    project,
+    projectCards: projectState.cards,
+    cardPointUuids,
+    cardUuidsByPoint,
+    dueCardEntries,
+  })
 
   return {
     totalCards,
     targetCards,
     targetCardProgress:
       totalCards === 0 ? 0 : Math.round((targetCards / totalCards) * 100),
+    estimatedRetention: Math.round(averageRetention * 100),
     memoryProgress: Math.round(
       Math.min(averageRetention / LEARNING_TARGET_RETENTION, 1) * 100,
     ),
@@ -140,7 +166,61 @@ export async function loadLearningProjectStats({
     createdAt,
     lastActiveAt: Math.max(lastModifiedAt, lastStudiedAt ?? 0),
     nextDueAt,
+    nextAction,
   }
+}
+
+function resolveNextAction({
+  project,
+  projectCards,
+  cardPointUuids,
+  cardUuidsByPoint,
+  dueCardEntries,
+}: {
+  project: Project
+  projectCards: Record<string, SrsCardState>
+  cardPointUuids: Map<string, string>
+  cardUuidsByPoint: Map<string, string[]>
+  dueCardEntries: { cardUuid: string; dueAt: number }[]
+}): LearningProjectAction | null {
+  const pointByUuid = new Map(
+    project.knowledgePoints.map((point) => [point.uuid, point]),
+  )
+  const firstDueCard = dueCardEntries.reduce<
+    { cardUuid: string; dueAt: number } | undefined
+  >(
+    (earliest, entry) =>
+      !earliest || entry.dueAt < earliest.dueAt ? entry : earliest,
+    undefined,
+  )
+
+  if (firstDueCard) {
+    const pointUuid = cardPointUuids.get(firstDueCard.cardUuid)
+    const point = pointUuid ? pointByUuid.get(pointUuid) : undefined
+    if (point && pointUuid) {
+      return {
+        kind: 'review',
+        knowledgePointTitle: point.title,
+        started: true,
+      }
+    }
+  }
+
+  for (const point of project.knowledgePoints) {
+    const pointCardUuids = cardUuidsByPoint.get(point.uuid) ?? []
+    if (pointCardUuids.length === 0) continue
+    const introducedCards = pointCardUuids.filter(
+      (cardUuid) => projectCards[cardUuid],
+    ).length
+    if (introducedCards === pointCardUuids.length) continue
+    return {
+      kind: 'learn',
+      knowledgePointTitle: point.title,
+      started: introducedCards > 0,
+    }
+  }
+
+  return null
 }
 
 function resolveReviewedAt(state: SrsCardState): number | null {

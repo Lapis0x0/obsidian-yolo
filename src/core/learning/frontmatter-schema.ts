@@ -26,6 +26,7 @@ const relationSchema = z.object({
 
 export const projectFrontmatterSchema = z.object({
   topic: z.string().min(1),
+  goal: z.string().min(1),
   status: z
     .enum(['outlining', 'building', 'studying'])
     .default('outlining')

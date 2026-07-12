@@ -40,6 +40,7 @@ function createFixture() {
     id: 'learning/test',
     slug: 'test',
     topic: 'Test',
+    goal: 'Build reliable tests',
     status: 'studying',
     folderPath: 'learning/test',
     indexFilePath: index.path,
@@ -142,12 +143,48 @@ describe('loadLearningProjectStats', () => {
       totalCards: 3,
       targetCards: 1,
       targetCardProgress: 33,
+      estimatedRetention: 45,
       memoryProgress: 50,
       dueCards: 1,
       lastStudiedAt: new Date('2026-07-12T12:00:00.000Z').getTime(),
       createdAt: 100,
       lastActiveAt: new Date('2026-07-12T12:00:00.000Z').getTime(),
       nextDueAt: new Date('2026-07-15T12:00:00.000Z').getTime(),
+      nextAction: {
+        kind: 'review',
+        knowledgePointTitle: 'A',
+        started: true,
+      },
+    })
+  })
+
+  it('selects the first knowledge point with unintroduced cards when no review is due', async () => {
+    const { app, project } = createFixture()
+    const srsStore = {
+      getProjectState: jest.fn(async () => ({
+        version: 1,
+        cards: {
+          aaaaaaaa: state(
+            '2026-07-15T12:00:00.000Z',
+            '2026-07-10T12:00:00.000Z',
+            0.9,
+          ),
+        },
+      })),
+      getCardRetrievability: jest.fn((card: SrsCardState) => card.stability),
+    } as unknown as LearningSrsStore
+
+    const result = await loadLearningProjectStats({
+      app,
+      project,
+      srsStore,
+      now: new Date('2026-07-12T12:00:00.000Z'),
+    })
+
+    expect(result.nextAction).toEqual({
+      kind: 'learn',
+      knowledgePointTitle: 'B',
+      started: false,
     })
   })
 

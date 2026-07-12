@@ -38,6 +38,7 @@ export async function generateOutline({
   let completedText = ''
   let streamedOutline: Outline = {
     projectName: '',
+    projectGoal: '',
     chapters: [],
     estimatedKnowledgePoints: 0,
   }
@@ -148,6 +149,8 @@ function parseOutline(text: string): Outline {
   const record = parsed as Record<string, unknown>
   const projectName =
     typeof record.projectName === 'string' ? record.projectName.trim() : ''
+  const projectGoal =
+    typeof record.projectGoal === 'string' ? record.projectGoal.trim() : ''
   const chapters = parseChapters(record.chapters)
   const estimatedKnowledgePoints =
     typeof record.estimatedKnowledgePoints === 'number'
@@ -157,21 +160,25 @@ function parseOutline(text: string): Outline {
   if (!projectName) {
     throw new Error('大纲生成结果缺少 projectName')
   }
+  if (!projectGoal) {
+    throw new Error('大纲生成结果缺少 projectGoal')
+  }
   if (chapters.length === 0) {
     throw new Error('大纲生成结果中没有可用章节')
   }
 
-  return { projectName, chapters, estimatedKnowledgePoints }
+  return { projectName, projectGoal, chapters, estimatedKnowledgePoints }
 }
 
 function parsePartialOutline(text: string): Outline {
   const projectName = extractStringField(text, 'projectName')
+  const projectGoal = extractStringField(text, 'projectGoal')
   const chapters = extractChapters(text)
   const estimatedMatch = text.match(/"estimatedKnowledgePoints"\s*:\s*(\d+)/)
   const estimatedKnowledgePoints = estimatedMatch
     ? Number(estimatedMatch[1])
     : 0
-  return { projectName, chapters, estimatedKnowledgePoints }
+  return { projectName, projectGoal, chapters, estimatedKnowledgePoints }
 }
 
 function extractStringField(text: string, field: string): string {
@@ -260,6 +267,7 @@ function parseChapters(value: unknown): OutlineChapter[] {
 
 function isOutlineEqual(a: Outline, b: Outline): boolean {
   if (a.projectName !== b.projectName) return false
+  if (a.projectGoal !== b.projectGoal) return false
   if (a.estimatedKnowledgePoints !== b.estimatedKnowledgePoints) return false
   if (a.chapters.length !== b.chapters.length) return false
   return a.chapters.every(

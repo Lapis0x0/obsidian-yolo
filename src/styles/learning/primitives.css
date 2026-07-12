@@ -55,12 +55,15 @@
 
 .yolo-learning-pill {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   border-radius: var(--yolo-radius-md);
   padding: 2px 8px;
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .yolo-learning-pill-neutral {

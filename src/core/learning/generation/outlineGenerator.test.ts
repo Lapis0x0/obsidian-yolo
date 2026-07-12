@@ -6,9 +6,13 @@ import type { Outline } from './types'
 describe('generateOutline', () => {
   it('emits outline as chapters stream in, then finalizes with estimatedKnowledgePoints', async () => {
     const text =
-      '{"projectName":"Python","chapters":[{"title":"第一章","contract":"覆盖变量与 { 类型 }"},{"title":"第二章","contract":"覆盖控制流"}],"estimatedKnowledgePoints":10}'
+      '{"projectName":"Python","projectGoal":"能够编写基础 Python 程序","chapters":[{"title":"第一章","contract":"覆盖变量与 { 类型 }"},{"title":"第二章","contract":"覆盖控制流"}],"estimatedKnowledgePoints":10}'
     const plugin = createPlugin([
-      { type: 'text', delta: '{"projectName":"Python","chapters":[' },
+      {
+        type: 'text',
+        delta:
+          '{"projectName":"Python","projectGoal":"能够编写基础 Python 程序","chapters":[',
+      },
       {
         type: 'text',
         delta: '{"title":"第一章","contract":"覆盖变量与 { 类型 }"}',
@@ -33,16 +37,19 @@ describe('generateOutline', () => {
     expect(snapshots).toEqual([
       {
         projectName: 'Python',
+        projectGoal: '能够编写基础 Python 程序',
         chapters: [],
         estimatedKnowledgePoints: 0,
       },
       {
         projectName: 'Python',
+        projectGoal: '能够编写基础 Python 程序',
         chapters: [{ title: '第一章', contract: '覆盖变量与 { 类型 }' }],
         estimatedKnowledgePoints: 0,
       },
       {
         projectName: 'Python',
+        projectGoal: '能够编写基础 Python 程序',
         chapters: [
           { title: '第一章', contract: '覆盖变量与 { 类型 }' },
           { title: '第二章', contract: '覆盖控制流' },
@@ -51,6 +58,7 @@ describe('generateOutline', () => {
       },
       {
         projectName: 'Python',
+        projectGoal: '能够编写基础 Python 程序',
         chapters: [
           { title: '第一章', contract: '覆盖变量与 { 类型 }' },
           { title: '第二章', contract: '覆盖控制流' },
@@ -60,12 +68,31 @@ describe('generateOutline', () => {
     ])
     expect(result.outline).toEqual({
       projectName: 'Python',
+      projectGoal: '能够编写基础 Python 程序',
       chapters: [
         { title: '第一章', contract: '覆盖变量与 { 类型 }' },
         { title: '第二章', contract: '覆盖控制流' },
       ],
       estimatedKnowledgePoints: 10,
     })
+  })
+
+  it('rejects an outline without a generated project goal', async () => {
+    const plugin = createPlugin([
+      {
+        type: 'completed',
+        text: '{"projectName":"Python","chapters":[{"title":"第一章","contract":"覆盖基础语法"}],"estimatedKnowledgePoints":5}',
+      },
+    ])
+
+    await expect(
+      generateOutline({
+        plugin,
+        topic: 'python',
+        level: 'beginner',
+        goal: '入门',
+      }),
+    ).rejects.toThrow('大纲生成结果缺少 projectGoal')
   })
 })
 
