@@ -275,7 +275,7 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
         }
       } else if (isGemini3) {
         config.thinkingConfig = {
-          thinkingLevel: level === 'extra-high' ? 'high' : level,
+          thinkingLevel: level,
           includeThoughts: true,
         }
       } else {

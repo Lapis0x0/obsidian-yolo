@@ -225,7 +225,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
           : { thinkingBudget: 0, includeThoughts: false }
       } else if (isGemini3) {
         generationConfig.thinkingConfig = {
-          thinkingLevel: level === 'extra-high' ? 'high' : level,
+          thinkingLevel: level,
           includeThoughts: true,
         }
       } else {

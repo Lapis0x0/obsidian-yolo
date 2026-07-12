@@ -1,6 +1,29 @@
 import { migrateFrom73To74 } from './73_to_74'
 
 describe('migrateFrom73To74', () => {
+  it('renames persisted extra-high reasoning levels to xhigh', () => {
+    const result = migrateFrom73To74({
+      version: 73,
+      tabCompletionOptions: { reasoningLevel: 'extra-high' },
+      chatOptions: {
+        reasoningLevelByModelId: {
+          legacy: 'extra-high',
+          unchanged: 'high',
+        },
+      },
+    })
+
+    expect(result.tabCompletionOptions).toMatchObject({
+      reasoningLevel: 'xhigh',
+    })
+    expect(result.chatOptions).toMatchObject({
+      reasoningLevelByModelId: {
+        legacy: 'xhigh',
+        unchanged: 'high',
+      },
+    })
+  })
+
   it('preserves legacy file ops write selection without enabling fs_edit', () => {
     const result = migrateFrom73To74({
       version: 73,

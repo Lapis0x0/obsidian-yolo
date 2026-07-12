@@ -1833,13 +1833,15 @@ export type TranslationKeys = {
     low?: string
     medium?: string
     high?: string
-    extraHigh?: string
+    xhigh?: string
+    max?: string
     offDesc?: string
     autoDesc?: string
     lowDesc?: string
     mediumDesc?: string
     highDesc?: string
-    extraHighDesc?: string
+    xhighDesc?: string
+    maxDesc?: string
   }
 
   // Config import / export

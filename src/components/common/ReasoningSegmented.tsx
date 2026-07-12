@@ -51,11 +51,17 @@ const LEVEL_META: Record<
     descKey: 'reasoning.highDesc',
     descFallback: 'Deep thinking, suited for complex problems',
   },
-  'extra-high': {
-    labelKey: 'reasoning.extraHigh',
-    labelFallback: 'Extra high',
-    descKey: 'reasoning.extraHighDesc',
-    descFallback: 'Maximum thinking, for the toughest reasoning',
+  xhigh: {
+    labelKey: 'reasoning.xhigh',
+    labelFallback: 'XHigh',
+    descKey: 'reasoning.xhighDesc',
+    descFallback: 'Extended thinking for highly demanding tasks',
+  },
+  max: {
+    labelKey: 'reasoning.max',
+    labelFallback: 'Max',
+    descKey: 'reasoning.maxDesc',
+    descFallback: 'Maximum thinking for the most demanding tasks',
   },
 }
 

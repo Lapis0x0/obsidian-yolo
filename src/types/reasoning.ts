@@ -4,7 +4,8 @@ export const REASONING_LEVELS = [
   'low',
   'medium',
   'high',
-  'extra-high',
+  'xhigh',
+  'max',
 ] as const
 
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number]
@@ -18,7 +19,8 @@ export const REASONING_META: Record<
   low: { effort: 'low', budget: 4096 },
   medium: { effort: 'medium', budget: 8192 },
   high: { effort: 'high', budget: 16384 },
-  'extra-high': { effort: 'xhigh', budget: 32768 },
+  xhigh: { effort: 'xhigh', budget: 32768 },
+  max: { effort: 'max', budget: 65536 },
 }
 
 export const isReasoningEnabledLevel = (level: ReasoningLevel): boolean =>
@@ -34,6 +36,7 @@ export function normalizeStoredReasoningLevel(
 ): ReasoningLevel | null {
   if (!value) return null
   if (value === 'on') return 'medium'
+  if (value === 'extra-high') return 'xhigh'
   return isReasoningLevelString(value) ? value : null
 }
 

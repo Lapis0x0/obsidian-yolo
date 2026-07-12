@@ -2135,13 +2135,15 @@ export const en: TranslationKeys = {
     low: 'Low',
     medium: 'Medium',
     high: 'High',
-    extraHigh: 'Extra high',
+    xhigh: 'XHigh',
+    max: 'Max',
     offDesc: 'No thinking, answer directly',
     autoDesc: 'Let the model decide thinking depth based on the prompt',
     lowDesc: 'Lightweight thinking, faster response',
     mediumDesc: 'Balanced thinking depth',
     highDesc: 'Deep thinking, suited for complex problems',
-    extraHighDesc: 'Maximum thinking, for the toughest reasoning',
+    xhighDesc: 'Extended thinking for highly demanding tasks',
+    maxDesc: 'Maximum thinking for the most demanding tasks',
   },
 
   configTransfer: {

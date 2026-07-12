@@ -7,6 +7,9 @@ const FQN_PREFIX = 'yolo_local__'
 const FILE_OPS_GROUP = 'fs_file_ops'
 const WRITE_TOOL = 'fs_write'
 
+const migrateReasoningLevel = (value: unknown): unknown =>
+  value === 'extra-high' ? 'xhigh' : value
+
 const splitKey = (key: string): { prefix: string; shortName: string } => {
   if (key.startsWith(FQN_PREFIX)) {
     return { prefix: FQN_PREFIX, shortName: key.slice(FQN_PREFIX.length) }
@@ -67,7 +70,8 @@ const preserveDisabledFileOpsWrite = (
 }
 
 /**
- * v73→v74: split full-file writes out of the file path operation group.
+ * v73→v74: split full-file writes out of the file path operation group and
+ * rename the persisted `extra-high` reasoning level to its API name, `xhigh`.
  *
  * `fs_file_ops` used to include `fs_write`. It now represents path operations
  * only (`fs_delete`, `fs_create_dir`, `fs_move`), while `fs_write` is grouped
@@ -77,6 +81,30 @@ const preserveDisabledFileOpsWrite = (
  */
 export const migrateFrom73To74: SettingMigration['migrate'] = (data) => {
   const next: Record<string, unknown> = { ...data, version: 74 }
+
+  if (isRecord(next.tabCompletionOptions)) {
+    next.tabCompletionOptions = {
+      ...next.tabCompletionOptions,
+      reasoningLevel: migrateReasoningLevel(
+        next.tabCompletionOptions.reasoningLevel,
+      ),
+    }
+  }
+
+  if (
+    isRecord(next.chatOptions) &&
+    isRecord(next.chatOptions.reasoningLevelByModelId)
+  ) {
+    const reasoningLevelByModelId = Object.fromEntries(
+      Object.entries(next.chatOptions.reasoningLevelByModelId).map(
+        ([modelId, level]) => [modelId, migrateReasoningLevel(level)],
+      ),
+    )
+    next.chatOptions = {
+      ...next.chatOptions,
+      reasoningLevelByModelId,
+    }
+  }
 
   if (Array.isArray(next.assistants)) {
     next.assistants = next.assistants.map((assistant: unknown) => {
