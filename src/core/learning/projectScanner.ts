@@ -1,4 +1,4 @@
-import { App, TFile, TFolder, normalizePath } from 'obsidian'
+import { App, TFile, TFolder, normalizePath, parseYaml } from 'obsidian'
 
 import {
   chapterFrontmatterSchema,
@@ -47,8 +47,7 @@ export async function scanProject(
   if (!indexFile) return null
 
   const projectId = projectFolder.path
-  const indexFrontmatter =
-    app.metadataCache.getFileCache(indexFile)?.frontmatter ?? {}
+  const indexFrontmatter = await readFrontmatter(app, indexFile)
   const parsed = projectFrontmatterSchema.safeParse(indexFrontmatter)
   if (!parsed.success) return null
   const topic = parsed.data.topic
@@ -90,7 +89,7 @@ async function scanChapter(
   chapterFolder: TFolder,
 ): Promise<{ chapter: Chapter; knowledgePoints: KnowledgePoint[] }> {
   const chapterId = chapterFolder.path
-  const fallbackTitle = resolveChapterTitleFromIndex(app, chapterFolder)
+  const fallbackTitle = await resolveChapterTitleFromIndex(app, chapterFolder)
   const knowledgeFile = chapterFolder.children.find(
     (c): c is TFile => c instanceof TFile && c.name === KNOWLEDGE_FILE,
   )
@@ -101,7 +100,7 @@ async function scanChapter(
     (c) => c instanceof TFile && c.name === EXERCISES_FILE,
   )
   const title = knowledgeFile
-    ? resolveChapterKnowledgeTitle(app, knowledgeFile, fallbackTitle)
+    ? await resolveChapterKnowledgeTitle(app, knowledgeFile, fallbackTitle)
     : fallbackTitle
   const knowledgePoints = knowledgeFile
     ? await scanChapterKnowledgeFile({
@@ -159,15 +158,15 @@ async function scanChapterKnowledgeFile({
     }))
 }
 
-function resolveChapterTitleFromIndex(
+async function resolveChapterTitleFromIndex(
   app: App,
   chapterFolder: TFolder,
-): string {
+): Promise<string> {
   const chapterIndex = chapterFolder.children.find(
     (c): c is TFile => c instanceof TFile && c.name === PROJECT_INDEX_FILE,
   )
   const chapterFrontmatter = chapterIndex
-    ? (app.metadataCache.getFileCache(chapterIndex)?.frontmatter ?? {})
+    ? await readFrontmatter(app, chapterIndex)
     : {}
   const parsedChapter = chapterFrontmatterSchema.safeParse(chapterFrontmatter)
   return parsedChapter.success && parsedChapter.data.title
@@ -175,15 +174,34 @@ function resolveChapterTitleFromIndex(
     : chapterFolder.name
 }
 
-function resolveChapterKnowledgeTitle(
+async function resolveChapterKnowledgeTitle(
   app: App,
   knowledgeFile: TFile,
   fallback: string,
-): string {
-  const frontmatter =
-    app.metadataCache.getFileCache(knowledgeFile)?.frontmatter ?? {}
+): Promise<string> {
+  const frontmatter = await readFrontmatter(app, knowledgeFile)
   const parsed = chapterKnowledgeFrontmatterSchema.safeParse(frontmatter)
   return parsed.success ? parsed.data.title : fallback
+}
+
+async function readFrontmatter(
+  app: App,
+  file: TFile,
+): Promise<Record<string, unknown>> {
+  const content = await app.vault.cachedRead(file)
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)
+  if (!match) return {}
+
+  try {
+    const parsed: unknown = parseYaml(match[1])
+    return parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 function orderChaptersBySlugs(
