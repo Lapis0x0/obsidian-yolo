@@ -223,6 +223,32 @@ export default function MarkdownCodeComponent({
               </>
             )}
           </button>
+          {parsedPlan && (
+            <button
+              type="button"
+              className="clickable-icon yolo-code-block-header-button"
+              onClick={
+                isApplying && !isBlockApplying
+                  ? undefined
+                  : () => {
+                      onApply(codeContent, applyRequestKey, filename)
+                    }
+              }
+              aria-disabled={isApplying && !isBlockApplying}
+            >
+              {isBlockApplying ? (
+                <>
+                  <Loader2 className="yolo-spinner" size={14} />
+                  <span>{t('chat.codeBlock.stopApplying', 'Stop apply')}</span>
+                </>
+              ) : (
+                <>
+                  <Play size={10} />
+                  <span>{t('chat.codeBlock.apply', 'Apply')}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
       <div
@@ -262,37 +288,39 @@ export default function MarkdownCodeComponent({
             }`}
           >
             <ObsidianMarkdown content={renderedPreviewContent} scale="sm" />
+            {parsedPlan && (
+              <div className="yolo-code-block-actions">
+                <button
+                  type="button"
+                  className="clickable-icon yolo-code-block-action-button"
+                  onClick={
+                    isApplying && !isBlockApplying
+                      ? undefined
+                      : () => {
+                          onApply(codeContent, applyRequestKey, filename)
+                        }
+                  }
+                  aria-disabled={isApplying && !isBlockApplying}
+                >
+                  {isBlockApplying ? (
+                    <>
+                      <Loader2 className="yolo-spinner" size={14} />
+                      <span>
+                        {t('chat.codeBlock.stopApplying', 'Stop apply')}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={10} />
+                      <span>{t('chat.codeBlock.apply', 'Apply')}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
-      {parsedPlan && (
-        <div className="yolo-code-block-footer">
-          <button
-            type="button"
-            className="clickable-icon yolo-code-block-footer-button"
-            onClick={
-              isApplying && !isBlockApplying
-                ? undefined
-                : () => {
-                    onApply(codeContent, applyRequestKey, filename)
-                  }
-            }
-            aria-disabled={isApplying && !isBlockApplying}
-          >
-            {isBlockApplying ? (
-              <>
-                <Loader2 className="yolo-spinner" size={14} />
-                <span>{t('chat.codeBlock.stopApplying', 'Stop apply')}</span>
-              </>
-            ) : (
-              <>
-                <Play size={10} />
-                <span>{t('chat.codeBlock.apply', 'Apply')}</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
