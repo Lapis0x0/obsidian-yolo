@@ -11,14 +11,19 @@
 }
 
 .yolo-settings-tabs-nav {
+  --yolo-settings-tabs-ring: color-mix(
+    in srgb,
+    var(--background-modifier-border) 40%,
+    transparent
+  );
+
   display: flex;
   gap: var(--size-2-2);
   padding: var(--size-2-2);
   border-radius: var(--radius-m);
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+  box-shadow: inset 0 0 0 1px var(--yolo-settings-tabs-ring);
   margin-bottom: var(--size-4-4);
   overflow-x: auto;
   scrollbar-width: thin;

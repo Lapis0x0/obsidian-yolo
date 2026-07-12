@@ -57,8 +57,14 @@
 }
 
 .yolo-settings-card.setting-item {
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 45%, transparent) !important;
+  --yolo-settings-card-border: color-mix(
+    in srgb,
+    var(--background-modifier-border) 45%,
+    transparent
+  );
+
+  border: 1px solid !important;
+  border-color: var(--yolo-settings-card-border) !important;
   background: color-mix(
     in srgb,
     var(--background-primary) 72%,
