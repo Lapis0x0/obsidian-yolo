@@ -114,7 +114,7 @@ import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capabili
 import { readTFileContent } from '../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
-import { AgentModeWarningModal } from '../modals/AgentModeWarningModal'
+import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
 // removed Prompt Templates feature
 
@@ -5135,16 +5135,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleYoloChange = useCallback(
     (enabled: boolean) => {
       if (enabled && !settings.chatOptions.fullAccessWarningConfirmed) {
-        new AgentModeWarningModal(app, {
+        new AcknowledgementModal(app, {
           title: t(
             'chatMode.fullAccessWarning.title',
             'Please confirm before enabling YOLO Mode',
           ),
-          description: t(
-            'chatMode.fullAccessWarning.description',
-            'YOLO Mode auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
-          ),
-          risks: [
+          messages: [
+            t(
+              'chatMode.fullAccessWarning.description',
+              'YOLO Mode auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
+            ),
+          ],
+          items: [
             t(
               'chatMode.fullAccessWarning.permission',
               'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
@@ -5167,6 +5169,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chatMode.fullAccessWarning.confirm',
             'Continue with YOLO Mode',
           ),
+          confirmTone: 'warning',
           onConfirm: () => {
             applyYoloChange(true)
             void (async () => {
@@ -5205,16 +5208,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         resolvedMode === 'agent' &&
         !settings.chatOptions.agentModeWarningConfirmed
       ) {
-        new AgentModeWarningModal(app, {
+        new AcknowledgementModal(app, {
           title: t(
             'chatMode.warning.title',
             'Please confirm before enabling Agent mode',
           ),
-          description: t(
-            'chatMode.warning.description',
-            'Agent can automatically invoke tools. Please review the following risks before continuing:',
-          ),
-          risks: [
+          messages: [
+            t(
+              'chatMode.warning.description',
+              'Agent can automatically invoke tools. Please review the following risks before continuing:',
+            ),
+          ],
+          items: [
             t(
               'chatMode.warning.permission',
               'Strictly control tool-call permissions and grant only what is necessary.',
@@ -5237,6 +5242,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chatMode.warning.confirm',
             'Continue and Enable Agent',
           ),
+          confirmTone: 'warning',
           onConfirm: () => {
             applyChatModeChange('agent')
             void persistPreferredChatMode('agent')

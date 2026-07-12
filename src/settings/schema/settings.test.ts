@@ -25,6 +25,10 @@ describe('parseYoloSettings', () => {
     expect(result.softDismissedUpdateVersion).toBe('')
     expect(result.mutedUpdateVersion).toBe('')
     expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
+    expect(result.learningOptions).toEqual({
+      modelId: '',
+      betaNoticeAcknowledged: false,
+    })
 
     expect(result.ragOptions).toMatchObject({
       enabled: true,
@@ -379,6 +383,7 @@ describe('parseYoloSettings', () => {
         continuationModelId: 'missing/model',
         tabCompletionModelId: 'missing/model',
       },
+      learningOptions: { modelId: 'missing/model' },
       assistants: [
         {
           id: 'assistant-1',
@@ -404,6 +409,7 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
     expect(result.continuationOptions.continuationModelId).toBe('openai/gpt-5')
     expect(result.continuationOptions.tabCompletionModelId).toBe('openai/gpt-5')
+    expect(result.learningOptions.modelId).toBe('openai/gpt-5')
     expect(result.assistants).toEqual([
       {
         id: 'assistant-1',
@@ -414,6 +420,55 @@ describe('parseYoloSettings', () => {
     ])
     expect(result.currentAssistantId).toBeUndefined()
     expect(result.quickAskAssistantId).toBeUndefined()
+  })
+
+  it('copies the default chat model when the learning model is missing or disabled', () => {
+    const base = {
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      chatModels: [
+        {
+          providerId: 'openai',
+          id: 'openai/gpt-5',
+          model: 'gpt-5',
+          enable: true,
+        },
+        {
+          providerId: 'openai',
+          id: 'openai/disabled',
+          model: 'disabled',
+          enable: false,
+        },
+      ],
+      chatModelId: 'openai/gpt-5',
+    }
+
+    expect(parseYoloSettings(base).learningOptions.modelId).toBe('openai/gpt-5')
+    expect(
+      parseYoloSettings({
+        ...base,
+        learningOptions: { modelId: 'openai/disabled' },
+      }).learningOptions.modelId,
+    ).toBe('openai/gpt-5')
+  })
+
+  it('initializes and preserves the learning beta notice acknowledgement', () => {
+    expect(
+      parseYoloSettings({ learningOptions: { modelId: '' } }).learningOptions
+        .betaNoticeAcknowledged,
+    ).toBe(false)
+    expect(
+      parseYoloSettings({
+        version: SETTINGS_SCHEMA_VERSION,
+        learningOptions: { modelId: '', betaNoticeAcknowledged: true },
+      }).learningOptions.betaNoticeAcknowledged,
+    ).toBe(true)
   })
 
   it('clears invalid model references when no valid models remain after parsing', () => {
@@ -449,6 +504,7 @@ describe('parseYoloSettings', () => {
         continuationModelId: 'broken/model',
         tabCompletionModelId: 'broken/model',
       },
+      learningOptions: { modelId: 'broken/model' },
     })
 
     expect(result.chatModels).toEqual([])
@@ -458,6 +514,7 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
     expect(result.continuationOptions.continuationModelId).toBe('')
     expect(result.continuationOptions.tabCompletionModelId).toBe('')
+    expect(result.learningOptions.modelId).toBe('')
   })
 
   it('deduplicates embedding models with the same provider and model', () => {

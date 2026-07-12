@@ -1,5 +1,9 @@
 export type Language = 'en' | 'zh' | 'it'
 
+type TranslationBranch = {
+  [key: string]: string | TranslationBranch
+}
+
 export type TranslationKeys = {
   // Commands
   commands: {
@@ -128,6 +132,8 @@ export type TranslationKeys = {
     mentionContextLabel?: string
   }
 
+  learning?: TranslationBranch
+
   // Settings
   settings: {
     title: string
@@ -137,6 +143,7 @@ export type TranslationKeys = {
       knowledge: string
       tools: string
       agent: string
+      learning: string
       others: string
     }
     supportYolo: {
@@ -164,6 +171,11 @@ export type TranslationKeys = {
       chatTitlePromptDesc: string
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
+    }
+    learning: {
+      generationTitle: string
+      generationModel: string
+      generationModelDesc: string
     }
     chatPreferences: {
       title: string
@@ -1706,6 +1718,7 @@ export type TranslationKeys = {
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
+    learningTasksRunning?: string
     ragAutoUpdateRunning?: string
     ragAutoUpdateRunningDetail?: string
     ragAutoUpdateFailed?: string

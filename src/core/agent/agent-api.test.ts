@@ -1,3 +1,21 @@
+const mockCompilePlainUserMessagePrompt = jest.fn(
+  async ({
+    prompt,
+    mentionables,
+    selectedSkills,
+  }: {
+    prompt: string
+    mentionables: unknown[]
+    selectedSkills?: unknown[]
+  }) => ({
+    promptContent: {
+      prompt,
+      mentionables,
+      selectedSkills: selectedSkills ?? [],
+    },
+  }),
+)
+
 jest.mock('../../components/chat-view/chat-runtime-inputs', () => ({
   resolveWorkspaceScopeForRuntimeInput: jest.fn(() => null),
 }))
@@ -38,34 +56,22 @@ jest.mock('../skills/liteSkills', () => ({
 
 jest.mock('../../utils/chat/requestContextBuilder', () => ({
   RequestContextBuilder: jest.fn().mockImplementation(() => ({
-    compilePlainUserMessagePrompt: jest.fn(
-      async ({
-        prompt,
-        mentionables,
-        selectedSkills,
-      }: {
-        prompt: string
-        mentionables: unknown[]
-        selectedSkills?: unknown[]
-      }) => ({
-        promptContent: {
-          prompt,
-          mentionables,
-          selectedSkills: selectedSkills ?? [],
-        },
-      }),
-    ),
+    compilePlainUserMessagePrompt: mockCompilePlainUserMessagePrompt,
   })),
 }))
 
 import { TFile, TFolder } from 'obsidian'
+import type { App } from 'obsidian'
 
 import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
-import type { ChatUserMessage } from '../../types/chat'
+import type { YoloSettings } from '../../settings/schema/setting.types'
+import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
+import { getChatModelClient } from '../llm/manager'
+import type { McpManager } from '../mcp/mcpManager'
 
 import {
   buildAgentApiPrompt,
@@ -73,9 +79,14 @@ import {
   narrowAllowedToolNames,
   resolveAgentApiRunInput,
 } from './agent-api'
-import type { AgentConversationState } from './service'
+import type { YoloAgentRunRequest } from './agent-api'
+import type { AgentConversationState, AgentService } from './service'
 
 describe('agent api helpers', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
   it('appends context blocks to the prompt in order', () => {
     expect(
       buildAgentApiPrompt({
@@ -212,6 +223,73 @@ describe('agent api helpers', () => {
         ],
       },
     )
+  })
+
+  it('uses request.messages when provided instead of building from prompt', async () => {
+    const messages: ChatMessage[] = [
+      {
+        role: 'user',
+        id: 'user-1',
+        content: null,
+        promptContent: 'Outline the topic',
+        mentionables: [],
+      },
+      {
+        role: 'assistant',
+        id: 'assistant-1',
+        content: 'Outline result',
+      },
+      {
+        role: 'user',
+        id: 'user-2',
+        content: null,
+        promptContent: 'Turn the outline into knowledge points',
+        mentionables: [],
+      },
+    ]
+
+    const result = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({ messages }),
+    )
+
+    expect(result.input.messages).toBe(messages)
+    expect(result.sourceUserMessageId).toBe('user-2')
+    expect(mockCompilePlainUserMessagePrompt).not.toHaveBeenCalled()
+  })
+
+  it('uses request.workspaceScope when provided', async () => {
+    const workspaceScope = { enabled: true, include: ['ref/'], exclude: [] }
+
+    const result = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({ prompt: 'Read refs', workspaceScope }),
+    )
+
+    expect(result.input.workspaceScope).toBe(workspaceScope)
+
+    const fallbackResult = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({ prompt: 'No refs' }),
+    )
+
+    expect(fallbackResult.input.workspaceScope).toBeNull()
+  })
+
+  it('uses an explicit request model before the assistant model', async () => {
+    await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({
+        prompt: 'Generate learning content',
+        modelId: 'learning-model',
+      }),
+    )
+
+    expect(jest.mocked(getChatModelClient)).toHaveBeenCalledWith(
+      expect.objectContaining({ modelId: 'learning-model' }),
+    )
+  })
+
+  it('throws when neither prompt nor messages is provided', async () => {
+    await expect(
+      resolveAgentApiRunInput(buildResolveAgentApiRunInputArgs({})),
+    ).rejects.toThrow('Either prompt or messages must be provided')
   })
 
   it('only narrows runtime allowed tools', () => {
@@ -401,6 +479,49 @@ describe('agent api helpers', () => {
     })
   })
 })
+
+function buildResolveAgentApiRunInputArgs(request: YoloAgentRunRequest) {
+  const settings = {
+    currentAssistantId: 'assistant-1',
+    chatModelId: 'mock-model',
+    assistants: [
+      {
+        id: 'assistant-1',
+        modelId: 'mock-model',
+        toolPreferences: {},
+        enabledToolNames: [],
+        includeBuiltinTools: true,
+        skillPreferences: {},
+      },
+    ],
+    providers: [{ id: 'mock-provider', apiType: 'openai' }],
+    mcp: {
+      enableToolDisclosure: false,
+    },
+    continuationOptions: {
+      primaryRequestTimeoutMs: 30000,
+      streamFallbackRecoveryEnabled: true,
+    },
+    skills: {},
+  } as unknown as YoloSettings
+  const agentService = {
+    getSystemPromptSnapshotStore: jest.fn(() => null),
+    getPromptSourceWatcher: jest.fn(() => ({
+      getRevision: jest.fn(() => 1),
+      setWatchedPaths: jest.fn(),
+    })),
+  } as unknown as AgentService
+
+  return {
+    request,
+    conversationId: 'conversation-1',
+    abortSignal: new AbortController().signal,
+    app: { vault: {} } as unknown as App,
+    settings,
+    agentService,
+    mcpManager: {} as McpManager,
+  }
+}
 
 function buildState({
   status,

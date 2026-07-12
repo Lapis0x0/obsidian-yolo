@@ -9,6 +9,7 @@ import { usePluginUpdatePrimaryCta } from '../hooks/usePluginUpdatePrimaryCta'
 import { useUpdateCheck } from '../hooks/useUpdateCheck'
 import type YoloPlugin from '../main'
 
+import { FloatingToast } from './common/FloatingToast'
 import { UpdateHistoryModal } from './modals/UpdateHistoryModal'
 import { UpdateChangelogSections } from './update/UpdateChangelogSections'
 import {
@@ -113,8 +114,9 @@ function UpdateToast() {
   ) : null
 
   return (
-    <div
+    <FloatingToast
       className={`yolo-update-toast${exiting ? ' yolo-update-toast--exiting' : ''}`}
+      exiting={exiting}
     >
       <div className="yolo-update-toast-header">
         <div className="yolo-update-toast-heading">
@@ -229,7 +231,7 @@ function UpdateToast() {
           )}
         </button>
       ) : null}
-    </div>
+    </FloatingToast>
   )
 }
 
@@ -240,7 +242,8 @@ function UpdateToast() {
  */
 export function mountUpdateToast(plugin: YoloPlugin): () => void {
   const container = document.createElement('div')
-  container.className = 'yolo-update-toast-root'
+  container.className =
+    'yolo-floating-toast-root is-bottom-left yolo-update-toast-root'
   document.body.appendChild(container)
   const root: Root = createRoot(container)
   root.render(

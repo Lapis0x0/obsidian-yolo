@@ -7,13 +7,20 @@ import {
   Plugin,
   TFile,
   TFolder,
+  type WorkspaceLeaf,
   getLanguage,
   normalizePath,
 } from 'obsidian'
 
 import { ChatView } from './ChatView'
+import {
+  type ActionToastController,
+  type ActionToastOptions,
+  mountActionToast,
+} from './components/ActionToast'
+import { AcknowledgementModal } from './components/modals/AcknowledgementModal'
 import { mountUpdateToast } from './components/UpdateToast'
-import { CHAT_VIEW_TYPE } from './constants'
+import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import type { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
 import type {
@@ -42,6 +49,12 @@ import {
 } from './core/background/backgroundActivityRegistry'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import type {
+  LearningNavigationHandler,
+  LearningNavigationTarget,
+} from './core/learning/learningNavigation'
+import type { ProjectEventBus } from './core/learning/projectEventBus'
+import { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
@@ -126,6 +139,7 @@ import { TabCompletionController } from './features/editor/tab-completion/tabCom
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
+import { LearningView } from './LearningView'
 import {
   YoloSettings,
   yoloSettingsSchema,
@@ -174,6 +188,7 @@ export default class YoloPlugin extends Plugin {
   private pluginUpdateListeners: (() => void)[] = []
   private pluginUpdateDownloadPromise: Promise<void> | null = null
   private updateToastCleanup: (() => void) | null = null
+  private actionToastController: ActionToastController | null = null
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -187,6 +202,7 @@ export default class YoloPlugin extends Plugin {
     null
   private isContinuationInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
+  private learningGenerationAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
   private diffReviewController: DiffReviewController | null = null
@@ -207,6 +223,10 @@ export default class YoloPlugin extends Plugin {
   private mcpCoordinator: McpCoordinator | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
+  private learningEventBus: ProjectEventBus | null = null
+  private learningSrsStore: LearningSrsStore | null = null
+  private learningNavigationHandler: LearningNavigationHandler | null = null
+  private pendingLearningNavigation: LearningNavigationTarget | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -289,6 +309,120 @@ export default class YoloPlugin extends Plugin {
       this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
     }
     return this.chatLeafSessionManager
+  }
+
+  /**
+   * Registers (or clears) the active LearningView's ProjectEventBus. The
+   * workspace component calls this on mount / unmount so plugin-level
+   * commands (e.g. mock replay) can reach the bus that's currently driving
+   * the on-screen graph.
+   */
+  setLearningEventBus(bus: ProjectEventBus | null): void {
+    this.learningEventBus = bus
+  }
+
+  setLearningNavigationHandler(
+    handler: LearningNavigationHandler | null,
+  ): void {
+    this.learningNavigationHandler = handler
+    this.flushLearningNavigation()
+  }
+
+  showActionToast(toast: ActionToastOptions): void {
+    this.actionToastController?.show(toast)
+  }
+
+  trackLearningGeneration(controller: AbortController): void {
+    this.learningGenerationAbortControllers.add(controller)
+  }
+
+  releaseLearningGeneration(controller: AbortController): void {
+    this.learningGenerationAbortControllers.delete(controller)
+  }
+
+  private flushLearningNavigation(): void {
+    if (!this.learningNavigationHandler || !this.pendingLearningNavigation) {
+      return
+    }
+    const target = this.pendingLearningNavigation
+    this.pendingLearningNavigation = null
+    this.learningNavigationHandler(target)
+  }
+
+  getLearningSrsStore(): LearningSrsStore {
+    if (!this.learningSrsStore) {
+      this.learningSrsStore = new LearningSrsStore(this.app)
+    }
+    return this.learningSrsStore
+  }
+
+  /**
+   * Opens the LearningView in the main workspace (new tab). Activates an
+   * existing leaf if one is already open.
+   */
+  async openLearningView(target?: LearningNavigationTarget): Promise<void> {
+    const leaf = await this.revealLearningView(target)
+
+    if (!this.settings.learningOptions.betaNoticeAcknowledged) {
+      new AcknowledgementModal(this.app, {
+        title: this.t(
+          'learning.betaNotice.title',
+          'Learning mode public beta notice',
+        ),
+        messages: [
+          this.t(
+            'learning.betaNotice.description',
+            'Learning mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some learning mode features will become part of paid plans in the future. Free users will still be able to use learning mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.',
+          ),
+        ],
+        centered: true,
+        confirmText: this.t(
+          'learning.betaNotice.confirm',
+          'I understand, enter learning mode',
+        ),
+        cancelText: this.t('learning.betaNotice.cancel', 'Not now'),
+        onConfirm: () => {
+          void this.acknowledgeLearningBetaNotice()
+        },
+        onDismiss: () => {
+          if (leaf.view.getViewType() === LEARNING_VIEW_TYPE) leaf.detach()
+        },
+      }).open()
+    }
+  }
+
+  private async acknowledgeLearningBetaNotice(): Promise<void> {
+    try {
+      await this.setSettings({
+        ...this.settings,
+        learningOptions: {
+          ...this.settings.learningOptions,
+          betaNoticeAcknowledged: true,
+        },
+      })
+    } catch (error: unknown) {
+      console.error(
+        'Failed to persist learning beta notice confirmation',
+        error,
+      )
+    }
+  }
+
+  private async revealLearningView(
+    target?: LearningNavigationTarget,
+  ): Promise<WorkspaceLeaf> {
+    if (target) this.pendingLearningNavigation = target
+    const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
+    if (existing) {
+      this.app.workspace.revealLeaf(existing)
+      this.flushLearningNavigation()
+      return existing
+    }
+    const leaf = this.app.workspace.getLeaf('tab')
+    await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
+    this.app.workspace.revealLeaf(leaf)
+    this.flushLearningNavigation()
+    return leaf
   }
 
   private getModelListCacheKey(
@@ -1196,20 +1330,27 @@ export default class YoloPlugin extends Plugin {
       nextActivityIds.add(id)
       registry.upsert({
         id,
-        kind: 'agent',
-        title: this.t(
-          'statusBar.agentStatusFallbackConversationTitle',
-          '运行中的对话',
-        ),
-        detail: summary.isWaitingApproval
-          ? this.t('statusBar.agentStatusWaitingApproval', '待审批')
-          : this.t('statusBar.agentStatusRunning', '运行中'),
+        kind: summary.activity?.kind ?? 'agent',
+        title:
+          summary.activity?.title ??
+          this.t(
+            'statusBar.agentStatusFallbackConversationTitle',
+            '运行中的对话',
+          ),
+        detail:
+          summary.activity?.detail ??
+          (summary.isWaitingApproval
+            ? this.t('statusBar.agentStatusWaitingApproval', '待审批')
+            : this.t('statusBar.agentStatusRunning', '运行中')),
         status: summary.isWaitingApproval ? 'waiting' : 'running',
         updatedAt: Date.now(),
-        action: {
-          type: 'open-agent-conversation',
-          conversationId: summary.conversationId,
-        },
+        action:
+          summary.activity?.action === 'open-learning-view'
+            ? { type: 'open-learning-view' }
+            : {
+                type: 'open-agent-conversation',
+                conversationId: summary.conversationId,
+              },
       })
     }
 
@@ -1299,9 +1440,25 @@ export default class YoloPlugin extends Plugin {
     const agentActivities = runningActivities.filter(
       (activity) => activity.kind === 'agent',
     )
+    const learningActivities = runningActivities.filter(
+      (activity) => activity.kind === 'learning-agent',
+    )
     const waitingApprovalCount = runningActivities.filter(
       (activity) => activity.status === 'waiting',
     ).length
+
+    if (
+      runningActivities.length > 0 &&
+      learningActivities.length === runningActivities.length
+    ) {
+      if (learningActivities.length === 1) {
+        return learningActivities[0].detail || learningActivities[0].title
+      }
+      return this.t(
+        'statusBar.learningTasksRunning',
+        '学习模式有 {count} 个任务正在运行',
+      ).replace('{count}', String(learningActivities.length))
+    }
 
     if (
       runningActivities.length > 0 &&
@@ -1529,6 +1686,10 @@ export default class YoloPlugin extends Plugin {
       }
       if (action.type === 'open-knowledge-settings') {
         this.openKnowledgeSettings()
+        return
+      }
+      if (action.type === 'open-learning-view') {
+        void this.openLearningView()
       }
     }
 
@@ -1870,6 +2031,10 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
+    this.registerView(
+      LEARNING_VIEW_TYPE,
+      (leaf) => new LearningView(leaf, this),
+    )
     this.startWebviewSelectionBridge()
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
@@ -1891,8 +2056,12 @@ export default class YoloPlugin extends Plugin {
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
     })
+    this.addRibbonIcon('graduation-cap', '打开学习模式', () => {
+      void this.openLearningView()
+    })
 
     this.setupBackgroundActivityStatusBar()
+    this.actionToastController = mountActionToast()
     this.updateToastCleanup = mountUpdateToast(this)
     // The toast is anchored to the window (not a chat view), so trigger the
     // check at load time rather than waiting for a chat view to open.
@@ -1962,6 +2131,14 @@ export default class YoloPlugin extends Plugin {
           openNewChat: true,
           forceNewLeaf: true,
         })
+      },
+    })
+
+    this.addCommand({
+      id: 'open-learning-mode',
+      name: '打开学习模式',
+      callback: () => {
+        void this.openLearningView()
       },
     })
 
@@ -2256,8 +2433,16 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    for (const controller of this.learningGenerationAbortControllers) {
+      controller.abort()
+    }
+    this.learningGenerationAbortControllers.clear()
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
+    this.actionToastController?.destroy()
+    this.actionToastController = null
+    this.learningNavigationHandler = null
+    this.pendingLearningNavigation = null
     this.closeSmartSpace()
 
     // Selection chat cleanup

@@ -71,6 +71,14 @@ export type AgentConversationState = {
   pendingCompactionAnchorMessageId?: string | null
   anchorMessageId?: string
   errorMessage?: string
+  activity?: AgentRunActivity
+}
+
+export type AgentRunActivity = {
+  kind: 'learning-agent'
+  title: string
+  detail?: string
+  action?: 'open-learning-view'
 }
 
 const createEmptyConversationState = (
@@ -122,6 +130,7 @@ export type AgentConversationRunSummary = {
    * (the run may have already finalized, leaving only the awaiting tool call).
    */
   isWaitingUserInput: boolean
+  activity?: AgentRunActivity
 }
 
 export type AgentConversationRunSummarySubscriber = (
@@ -687,6 +696,7 @@ export const buildAgentConversationRunSummary = (
     isQueueable: isRuntimeRunning && !isWaitingApproval,
     isWaitingApproval,
     isWaitingUserInput,
+    activity: state.activity,
   }
 }
 
@@ -2088,11 +2098,13 @@ export class AgentService {
     input,
     loopConfig,
     persistState,
+    activity,
   }: {
     conversationId: string
     input: AgentRuntimeRunInput
     loopConfig: AgentRuntimeLoopConfig
     persistState?: boolean
+    activity?: AgentRunActivity
   }): Promise<void> {
     if (this.droppedConversationIds.has(conversationId)) {
       return
@@ -2161,6 +2173,7 @@ export class AgentService {
       compaction: this.normalizeCompaction(input.compaction, input.messages),
       pendingCompactionAnchorMessageId: null,
       anchorMessageId: input.sourceUserMessageId ?? input.messages.at(-1)?.id,
+      activity,
     }
     this.recomputeConversationState(conversationId)
     let runtimeStateSignature = createRuntimeStateSignature(runEntry.state)
@@ -2543,6 +2556,7 @@ export class AgentService {
       anchorMessageId: runEntries.at(-1)?.state.anchorMessageId,
       errorMessage: runEntries.find((entry) => entry.state.errorMessage)?.state
         .errorMessage,
+      activity: runEntries.at(-1)?.state.activity,
     }
     this.publishConversationState(conversationId, publishMode)
   }
@@ -2694,6 +2708,7 @@ export class AgentService {
         state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
+      activity: state.activity,
     }
   }
 

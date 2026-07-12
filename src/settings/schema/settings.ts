@@ -27,6 +27,9 @@ export function normalizeYoloSettingsReferences(
     return true
   })
   const validChatModelIds = new Set(chatModels.map((model) => model.id))
+  const enabledChatModelIds = new Set(
+    chatModels.filter((model) => model.enable ?? true).map((model) => model.id),
+  )
   const validEmbeddingModelIds = new Set(
     embeddingModels.map((model) => model.id),
   )
@@ -59,17 +62,21 @@ export function normalizeYoloSettingsReferences(
     }
   })
   const validAssistantIds = new Set(assistants.map((assistant) => assistant.id))
+  const normalizedChatModelId =
+    normalizeModelReference(
+      settings.chatModelId,
+      validChatModelIds,
+      fallbackChatModelId,
+    ) ?? ''
+  const learningFallbackModelId = enabledChatModelIds.has(normalizedChatModelId)
+    ? normalizedChatModelId
+    : fallbackChatModelId
 
   const normalized: YoloSettings = {
     ...settings,
     chatModels,
     embeddingModels,
-    chatModelId:
-      normalizeModelReference(
-        settings.chatModelId,
-        validChatModelIds,
-        fallbackChatModelId,
-      ) ?? '',
+    chatModelId: normalizedChatModelId,
     chatTitleModelId:
       normalizeModelReference(
         settings.chatTitleModelId,
@@ -94,6 +101,15 @@ export function normalizeYoloSettingsReferences(
         validChatModelIds,
         fallbackChatModelId,
       ),
+    },
+    learningOptions: {
+      ...settings.learningOptions,
+      modelId:
+        normalizeModelReference(
+          settings.learningOptions.modelId,
+          enabledChatModelIds,
+          learningFallbackModelId,
+        ) || learningFallbackModelId,
     },
     assistants,
     currentAssistantId:
