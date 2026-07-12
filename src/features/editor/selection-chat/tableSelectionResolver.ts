@@ -30,11 +30,7 @@ export function resolveMarkdownTableSelectionFromTableElement(
     return null
   }
 
-  return resolveMarkdownTableSelectionFromCoordinates(
-    source,
-    sourceLine,
-    rect,
-  )
+  return resolveMarkdownTableSelectionFromCoordinates(source, sourceLine, rect)
 }
 
 export function resolveMarkdownTableSelectionFromCoordinates(

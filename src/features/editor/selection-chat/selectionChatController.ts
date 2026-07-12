@@ -40,9 +40,7 @@ import {
 import type { PdfSelectionResult } from './getPdfSelectionData'
 import { getPdfLeafContentEl } from './getPdfSelectionData'
 import { PdfSelectionManager } from './PdfSelectionManager'
-import {
-  resolveMarkdownTableSelectionFromTableElement,
-} from './tableSelectionResolver'
+import { resolveMarkdownTableSelectionFromTableElement } from './tableSelectionResolver'
 
 export type PendingSelectionRewrite = {
   editor: Editor

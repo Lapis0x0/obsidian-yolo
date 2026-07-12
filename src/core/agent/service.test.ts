@@ -1754,6 +1754,7 @@ describe('AgentService subagent approval routing', () => {
     expect(ok).toBe(true)
     expect(runtime.setToolCallResponse).toHaveBeenCalledWith(toolCallId, {
       status: ToolCallResponseStatus.Rejected,
+      reason: 'The user rejected this tool call.',
     })
     expect(mcpManager.callTool).not.toHaveBeenCalled()
     expect(resumeRun).toHaveBeenCalledTimes(1)

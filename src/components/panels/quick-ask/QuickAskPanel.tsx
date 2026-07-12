@@ -1690,9 +1690,12 @@ export function QuickAskPanel({
     [setSettings, settings],
   )
 
-  const handleMainInputChange = useCallback((content: SerializedEditorState) => {
-    latestEditorStateRef.current = content
-  }, [])
+  const handleMainInputChange = useCallback(
+    (content: SerializedEditorState) => {
+      latestEditorStateRef.current = content
+    },
+    [],
+  )
 
   // Handle Enter key / submit from MessageInputCore
   const handleEnter = useCallback(() => {
@@ -2392,201 +2395,202 @@ export function QuickAskPanel({
 
         {/* Toolbar: assistant / model / mode left, send right */}
         <div className="yolo-quick-ask-toolbar">
-        {/* Left: Assistant selector */}
-        <div className="yolo-quick-ask-toolbar-left">
-          <DropdownMenu.Root
-            open={isAssistantMenuOpen}
-            onOpenChange={setIsAssistantMenuOpen}
-          >
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                ref={assistantTriggerRef}
-                className="yolo-quick-ask-assistant-trigger"
-                onKeyDown={(event) => {
-                  if (!isAssistantMenuOpen) {
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      messageInputRef.current?.focus()
-                      return
-                    }
-                    if (
-                      event.key === 'ArrowRight' ||
-                      event.key === 'ArrowLeft'
-                    ) {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      modelTriggerRef.current?.focus()
-                      return
-                    }
-                  }
-                }}
-              >
-                {selectedAssistant && (
-                  <span className="yolo-quick-ask-assistant-icon">
-                    {renderAssistantIcon(selectedAssistant.icon, 14)}
-                  </span>
-                )}
-                <span className="yolo-quick-ask-assistant-name">
-                  {selectedAssistant?.name ||
-                    t('quickAsk.noAssistant', 'No Assistant')}
-                </span>
-                {isAssistantMenuOpen ? (
-                  <ChevronUp size={12} />
-                ) : (
-                  <ChevronDown size={12} />
-                )}
-              </button>
-            </DropdownMenu.Trigger>
-            <YoloDropdownContent
-              anchorRef={assistantTriggerRef}
-              variant="smart-space"
-              minWidth={200}
-              maxWidth={300}
-              side="top"
-              align="start"
-              sideOffset={8}
-              collisionPadding={8}
-              avoidCollisions={false}
-              onCloseAutoFocus={(e) => e.preventDefault()}
+          {/* Left: Assistant selector */}
+          <div className="yolo-quick-ask-toolbar-left">
+            <DropdownMenu.Root
+              open={isAssistantMenuOpen}
+              onOpenChange={setIsAssistantMenuOpen}
             >
-              <AssistantSelectMenu
-                assistants={assistants}
-                currentAssistantId={selectedAssistant?.id}
-                onSelect={(assistant) => {
-                  setSelectedAssistant(assistant)
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  ref={assistantTriggerRef}
+                  className="yolo-quick-ask-assistant-trigger"
+                  onKeyDown={(event) => {
+                    if (!isAssistantMenuOpen) {
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        messageInputRef.current?.focus()
+                        return
+                      }
+                      if (
+                        event.key === 'ArrowRight' ||
+                        event.key === 'ArrowLeft'
+                      ) {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        modelTriggerRef.current?.focus()
+                        return
+                      }
+                    }
+                  }}
+                >
+                  {selectedAssistant && (
+                    <span className="yolo-quick-ask-assistant-icon">
+                      {renderAssistantIcon(selectedAssistant.icon, 14)}
+                    </span>
+                  )}
+                  <span className="yolo-quick-ask-assistant-name">
+                    {selectedAssistant?.name ||
+                      t('quickAsk.noAssistant', 'No Assistant')}
+                  </span>
+                  {isAssistantMenuOpen ? (
+                    <ChevronUp size={12} />
+                  ) : (
+                    <ChevronDown size={12} />
+                  )}
+                </button>
+              </DropdownMenu.Trigger>
+              <YoloDropdownContent
+                anchorRef={assistantTriggerRef}
+                variant="smart-space"
+                minWidth={200}
+                maxWidth={300}
+                side="top"
+                align="start"
+                sideOffset={8}
+                collisionPadding={8}
+                avoidCollisions={false}
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
+                <AssistantSelectMenu
+                  assistants={assistants}
+                  currentAssistantId={selectedAssistant?.id}
+                  onSelect={(assistant) => {
+                    setSelectedAssistant(assistant)
+                    void setSettings({
+                      ...settings,
+                      quickAskAssistantId: assistant?.id,
+                    })
+                    setIsAssistantMenuOpen(false)
+                    requestAnimationFrame(() => {
+                      messageInputRef.current?.focus()
+                    })
+                  }}
+                  onClose={() => setIsAssistantMenuOpen(false)}
+                  compact
+                />
+              </YoloDropdownContent>
+            </DropdownMenu.Root>
+
+            <div className="yolo-quick-ask-model-select yolo-smart-space-model-select">
+              <ModelSelect
+                ref={modelTriggerRef}
+                modelId={
+                  settings.continuationOptions?.continuationModelId &&
+                  settings.chatModels.some(
+                    (m) =>
+                      m.id ===
+                      settings.continuationOptions?.continuationModelId,
+                  )
+                    ? settings.continuationOptions?.continuationModelId
+                    : settings.chatModelId
+                }
+                onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
+                onChange={(modelId) => {
                   void setSettings({
                     ...settings,
-                    quickAskAssistantId: assistant?.id,
-                  })
-                  setIsAssistantMenuOpen(false)
-                  requestAnimationFrame(() => {
-                    messageInputRef.current?.focus()
+                    continuationOptions: {
+                      ...settings.continuationOptions,
+                      continuationModelId: modelId,
+                    },
                   })
                 }}
-                onClose={() => setIsAssistantMenuOpen(false)}
-                compact
+                side="bottom"
+                align="start"
+                sideOffset={12}
+                alignOffset={-4}
+                popover={{
+                  variant: 'smart-space',
+                  maxHeight: 400,
+                  className: 'yolo-quick-ask-model-popover',
+                }}
+                onKeyDown={(event, isMenuOpen) => {
+                  if (isMenuOpen) {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setIsModelMenuOpen(false)
+                    }
+                    return
+                  }
+
+                  if (event.key === 'ArrowLeft') {
+                    event.preventDefault()
+                    assistantTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowRight') {
+                    event.preventDefault()
+                    modeTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    messageInputRef.current?.focus()
+                  }
+                }}
+                onModelSelected={() => {
+                  requestAnimationFrame(() => {
+                    modelTriggerRef.current?.focus({ preventScroll: true })
+                  })
+                }}
               />
-            </YoloDropdownContent>
-          </DropdownMenu.Root>
+            </div>
 
-          <div className="yolo-quick-ask-model-select yolo-smart-space-model-select">
-            <ModelSelect
-              ref={modelTriggerRef}
-              modelId={
-                settings.continuationOptions?.continuationModelId &&
-                settings.chatModels.some(
-                  (m) =>
-                    m.id === settings.continuationOptions?.continuationModelId,
-                )
-                  ? settings.continuationOptions?.continuationModelId
-                  : settings.chatModelId
+            <div className="yolo-quick-ask-mode-select">
+              <ModeSelect
+                ref={modeTriggerRef}
+                mode={mode}
+                onChange={handleModeChange}
+                triggerLabel={modeTriggerLabel}
+                onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
+                side="bottom"
+                align="start"
+                sideOffset={12}
+                alignOffset={-4}
+                onKeyDown={(event, isMenuOpen) => {
+                  if (isMenuOpen) {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setIsModeMenuOpen(false)
+                    }
+                    return
+                  }
+
+                  if (event.key === 'ArrowLeft') {
+                    event.preventDefault()
+                    modelTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowRight') {
+                    event.preventDefault()
+                    assistantTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    messageInputRef.current?.focus()
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Right: Send / stop */}
+          <div className="yolo-quick-ask-toolbar-right">
+            <SubmitButton
+              isGenerating={isStreaming}
+              onAbort={abortStream}
+              disabled={
+                isStreaming ||
+                (executionMode === 'edit' || executionMode === 'edit-direct'
+                  ? inputText.trim().length === 0
+                  : !canSubmitMainInput)
               }
-              onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
-              onChange={(modelId) => {
-                void setSettings({
-                  ...settings,
-                  continuationOptions: {
-                    ...settings.continuationOptions,
-                    continuationModelId: modelId,
-                  },
-                })
-              }}
-              side="bottom"
-              align="start"
-              sideOffset={12}
-              alignOffset={-4}
-              popover={{
-                variant: 'smart-space',
-                maxHeight: 400,
-                className: 'yolo-quick-ask-model-popover',
-              }}
-              onKeyDown={(event, isMenuOpen) => {
-                if (isMenuOpen) {
-                  if (event.key === 'Escape') {
-                    event.preventDefault()
-                    setIsModelMenuOpen(false)
-                  }
-                  return
-                }
-
-                if (event.key === 'ArrowLeft') {
-                  event.preventDefault()
-                  assistantTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowRight') {
-                  event.preventDefault()
-                  modeTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  messageInputRef.current?.focus()
-                }
-              }}
-              onModelSelected={() => {
-                requestAnimationFrame(() => {
-                  modelTriggerRef.current?.focus({ preventScroll: true })
-                })
-              }}
+              onClick={handleEnter}
             />
           </div>
-
-          <div className="yolo-quick-ask-mode-select">
-            <ModeSelect
-              ref={modeTriggerRef}
-              mode={mode}
-              onChange={handleModeChange}
-              triggerLabel={modeTriggerLabel}
-              onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
-              side="bottom"
-              align="start"
-              sideOffset={12}
-              alignOffset={-4}
-              onKeyDown={(event, isMenuOpen) => {
-                if (isMenuOpen) {
-                  if (event.key === 'Escape') {
-                    event.preventDefault()
-                    setIsModeMenuOpen(false)
-                  }
-                  return
-                }
-
-                if (event.key === 'ArrowLeft') {
-                  event.preventDefault()
-                  modelTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowRight') {
-                  event.preventDefault()
-                  assistantTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  messageInputRef.current?.focus()
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Right: Send / stop */}
-        <div className="yolo-quick-ask-toolbar-right">
-          <SubmitButton
-            isGenerating={isStreaming}
-            onAbort={abortStream}
-            disabled={
-              isStreaming ||
-              (executionMode === 'edit' || executionMode === 'edit-direct'
-                ? inputText.trim().length === 0
-                : !canSubmitMainInput)
-            }
-            onClick={handleEnter}
-          />
-        </div>
         </div>
       </div>
 
