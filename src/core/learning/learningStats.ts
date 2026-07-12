@@ -23,7 +23,6 @@ export type LearningProjectStats = {
   targetCards: number
   targetCardProgress: number
   estimatedRetention: number
-  memoryProgress: number
   dueCards: number
   lastStudiedAt: number | null
   createdAt: number
@@ -158,9 +157,6 @@ export async function loadLearningProjectStats({
     targetCardProgress:
       totalCards === 0 ? 0 : Math.round((targetCards / totalCards) * 100),
     estimatedRetention: Math.round(averageRetention * 100),
-    memoryProgress: Math.round(
-      Math.min(averageRetention / LEARNING_TARGET_RETENTION, 1) * 100,
-    ),
     dueCards,
     lastStudiedAt,
     createdAt,

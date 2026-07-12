@@ -233,8 +233,8 @@ export function HomeView({
               </div>
 
               <div className="yolo-learning-home-focus-progress">
-                <ProgressBar value={recentStats.memoryProgress} />
-                <span>{recentStats.memoryProgress}%</span>
+                <ProgressBar value={recentStats.targetCardProgress} />
+                <span>{recentStats.targetCardProgress}%</span>
               </div>
 
               <div className="yolo-learning-home-focus-action">
@@ -488,8 +488,8 @@ function ProjectCard({
       </div>
 
       <div className="yolo-learning-home-project-progress">
-        <ProgressBar value={stats?.memoryProgress ?? 0} />
-        <span>{stats ? `${stats.memoryProgress}%` : '—'}</span>
+        <ProgressBar value={stats?.targetCardProgress ?? 0} />
+        <span>{stats ? `${stats.targetCardProgress}%` : '—'}</span>
       </div>
 
       {stats?.nextAction && (
@@ -554,7 +554,7 @@ function resolveSortValue(
 ) {
   if (!stats) return Number.NEGATIVE_INFINITY
   if (sort === 'created') return stats.createdAt
-  if (sort === 'progress') return stats.memoryProgress
+  if (sort === 'progress') return stats.targetCardProgress
   return stats.lastActiveAt
 }
 

@@ -144,7 +144,6 @@ describe('loadLearningProjectStats', () => {
       targetCards: 1,
       targetCardProgress: 33,
       estimatedRetention: 45,
-      memoryProgress: 50,
       dueCards: 1,
       lastStudiedAt: new Date('2026-07-12T12:00:00.000Z').getTime(),
       createdAt: 100,
