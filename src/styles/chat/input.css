@@ -3618,6 +3618,25 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   font-weight: 500;
   color: color-mix(in srgb, var(--text-normal) 88%, transparent);
   line-height: 1.2;
+  transition:
+    color 0.25s ease,
+    text-shadow 0.25s ease;
+}
+
+.yolo-reasoning-popover__header-current.is-max {
+  color: #c084fc;
+  font-weight: 600;
+  text-shadow: none;
+}
+
+.theme-dark .yolo-reasoning-popover__header-title,
+.theme-dark .yolo-reasoning-popover__header-current,
+.theme-dark .yolo-reasoning-popover__scale-labels {
+  color: var(--text-normal);
+}
+
+.theme-dark .yolo-reasoning-popover__header-current.is-max {
+  color: #c084fc;
 }
 
 .yolo-reasoning-popover__header-current--up {
@@ -3632,12 +3651,12 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 @keyframes yolo-reasoning-current-slide-up {
   0% {
     opacity: 0;
-    filter: blur(4px);
+    filter: blur(2px);
     transform: translateY(7px);
   }
   55% {
     opacity: 1;
-    filter: blur(1px);
+    filter: blur(0.5px);
   }
   100% {
     opacity: 1;
@@ -3649,12 +3668,12 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 @keyframes yolo-reasoning-current-slide-down {
   0% {
     opacity: 0;
-    filter: blur(4px);
+    filter: blur(2px);
     transform: translateY(-7px);
   }
   55% {
     opacity: 1;
-    filter: blur(1px);
+    filter: blur(0.5px);
   }
   100% {
     opacity: 1;
@@ -3666,6 +3685,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 @media (prefers-reduced-motion: reduce) {
   .yolo-reasoning-popover__header-current {
     animation: none;
+  }
+
+  .yolo-reasoning-slider__spark-canvas {
+    display: none;
   }
 }
 
@@ -3706,6 +3729,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   background: var(--background-modifier-border);
   overflow: visible;
   pointer-events: none;
+  transition: background 0.28s ease;
 }
 
 .yolo-reasoning-slider__fill {
@@ -3723,6 +3747,31 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   border-radius: inherit;
   background: color-mix(in srgb, var(--text-muted) 10%, transparent);
   transition: width 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  z-index: 0;
+}
+
+.yolo-reasoning-slider__spark-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.yolo-reasoning-slider.is-max .yolo-reasoning-slider__spark-canvas {
+  opacity: 1;
+}
+
+.theme-dark .yolo-reasoning-slider__spark-canvas {
+  filter: brightness(1.4) saturate(1.12);
+}
+
+.yolo-reasoning-slider.is-dragging .yolo-reasoning-slider__fill {
+  transition: none;
 }
 
 .yolo-reasoning-slider__dot {
@@ -3742,10 +3791,15 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   transform: translate(-50%, -50%);
   transition:
     background-color 0.15s ease,
-    opacity 0.15s ease;
+    opacity 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 2;
 }
 
 .yolo-reasoning-slider__dot.active {
+  opacity: 0;
+}
+
+.yolo-reasoning-slider.is-max .yolo-reasoning-slider__dot {
   opacity: 0;
 }
 
@@ -3769,11 +3823,34 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
     0 2px 6px rgba(0, 0, 0, 0.12),
     0 0 0 1px rgba(255, 255, 255, 0.45) inset;
   transform: translate(-50%, -50%);
-  transition: left 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+  transition:
+    left 0.22s cubic-bezier(0.2, 0.9, 0.3, 1),
+    border-color 0.3s ease,
+    box-shadow 0.35s ease;
+  z-index: 3;
 }
 
-.yolo-reasoning-slider:hover .yolo-reasoning-slider__thumb,
+.yolo-reasoning-slider.is-max .yolo-reasoning-slider__thumb {
+  border-color: color-mix(
+    in srgb,
+    var(--background-modifier-border) 80%,
+    transparent
+  );
+  box-shadow: none;
+}
+
+.theme-dark .yolo-reasoning-slider__thumb,
+.theme-dark .yolo-reasoning-slider.is-max .yolo-reasoning-slider__thumb {
+  background: #f7f7f8;
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
 .yolo-reasoning-slider.is-dragging .yolo-reasoning-slider__thumb {
+  transition: none;
+}
+
+.yolo-reasoning-slider:not(.is-max):hover .yolo-reasoning-slider__thumb,
+.yolo-reasoning-slider:not(.is-max).is-dragging .yolo-reasoning-slider__thumb {
   box-shadow:
     0 2px 6px rgba(0, 0, 0, 0.12),
     0 0 0 2px color-mix(in srgb, var(--interactive-accent) 45%, transparent);

@@ -4,6 +4,8 @@ import { useLanguage } from '../../contexts/language-context'
 import { REASONING_LEVELS, ReasoningLevel } from '../../types/reasoning'
 import { getNodeDocument } from '../../utils/dom/window-context'
 
+import { ReasoningSparkCanvas } from './ReasoningSparkCanvas'
+
 type ReasoningOption = {
   value: ReasoningLevel
   labelKey: string
@@ -103,6 +105,7 @@ export function ReasoningSegmented({
   const { t } = useLanguage()
   const labelId = useId()
   const [isDragging, setIsDragging] = useState(false)
+  const [dragPosition, setDragPosition] = useState<number | null>(null)
   const fallbackRefs = useRef<Record<ReasoningLevel, HTMLButtonElement | null>>(
     Object.fromEntries(
       REASONING_LEVELS.map((level) => [level, null]),
@@ -132,18 +135,24 @@ export function ReasoningSegmented({
     [refs],
   )
 
-  const resolveLevelFromClientX = useCallback((clientX: number) => {
+  const resolvePointerFromClientX = useCallback((clientX: number) => {
     const rect = sliderRef.current?.getBoundingClientRect()
     if (!rect || rect.width <= 0) return null
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
     const maxIndex = REASONING_OPTIONS.length - 1
     const index = Math.min(maxIndex, Math.max(0, Math.round(ratio * maxIndex)))
-    return REASONING_OPTIONS[index].value
+    return {
+      level: REASONING_OPTIONS[index].value,
+      position: ratio * 100,
+    }
   }, [])
 
   const previewFromPointer = useCallback(
     (clientX: number) => {
-      const nextLevel = resolveLevelFromClientX(clientX)
+      const pointer = resolvePointerFromClientX(clientX)
+      if (!pointer) return
+      setDragPosition(pointer.position)
+      const nextLevel = pointer.level
       if (!nextLevel || nextLevel === value) return
       if (onPreviewChange) {
         onPreviewChange(nextLevel)
@@ -151,7 +160,7 @@ export function ReasoningSegmented({
       }
       onChange(nextLevel)
     },
-    [onChange, onPreviewChange, resolveLevelFromClientX, value],
+    [onChange, onPreviewChange, resolvePointerFromClientX, value],
   )
 
   const safeValue = REASONING_OPTIONS.some((opt) => opt.value === value)
@@ -162,12 +171,15 @@ export function ReasoningSegmented({
   )
   const getSliderPosition = (index: number) =>
     (index / (REASONING_OPTIONS.length - 1)) * 100
-  const selectedPosition = `${getSliderPosition(selectedIndex)}`
+  const selectedPosition = `${dragPosition ?? getSliderPosition(selectedIndex)}`
+  const isMax = safeValue === 'max'
 
   return (
     <div
       ref={sliderRef}
-      className={`yolo-reasoning-slider${isDragging ? ' is-dragging' : ''}`}
+      className={`yolo-reasoning-slider${isDragging ? ' is-dragging' : ''}${
+        isMax ? ' is-max' : ''
+      }`}
       role="radiogroup"
       aria-labelledby={labelId}
       style={
@@ -206,15 +218,18 @@ export function ReasoningSegmented({
       }}
       onPointerUp={(event) => {
         if (dragPointerIdRef.current !== event.pointerId) return
+        const pointer = resolvePointerFromClientX(event.clientX)
         dragPointerIdRef.current = null
         setIsDragging(false)
+        setDragPosition(null)
         event.currentTarget.releasePointerCapture(event.pointerId)
-        onChange(resolveLevelFromClientX(event.clientX) ?? value)
+        onChange(pointer?.level ?? value)
       }}
       onPointerCancel={(event) => {
         if (dragPointerIdRef.current !== event.pointerId) return
         dragPointerIdRef.current = null
         setIsDragging(false)
+        setDragPosition(null)
         event.currentTarget.releasePointerCapture(event.pointerId)
         onPreviewCancel?.()
       }}
@@ -231,6 +246,7 @@ export function ReasoningSegmented({
             } as React.CSSProperties
           }
         />
+        <ReasoningSparkCanvas active={isMax} />
         <div
           className="yolo-reasoning-slider__thumb"
           style={
