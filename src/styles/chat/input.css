@@ -340,6 +340,12 @@
   min-height: 0;
 }
 
+body.is-translucent
+  .workspace-leaf-content[data-type='yolo-chat-view']
+  > .view-content {
+  background-color: var(--background-primary);
+}
+
 body.is-mobile
   .workspace-leaf-content[data-type='yolo-chat-view']
   > .view-content.yolo-chat-view-content--keyboard-managed {
