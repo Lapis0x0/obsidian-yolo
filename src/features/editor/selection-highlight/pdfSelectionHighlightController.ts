@@ -25,9 +25,12 @@
 
 import type { App, TFile, WorkspaceLeaf } from 'obsidian'
 
-const HIGHLIGHT_NAME = 'yolo-pdf-selection'
+import {
+  type HighlightOwner,
+  shouldCreateSelectionHighlight,
+} from './selectionHighlightPolicy'
 
-export type HighlightOwner = 'chat' | 'quickask' | 'transient'
+const HIGHLIGHT_NAME = 'yolo-pdf-selection'
 
 type PdfHighlightEntry = {
   leaf: WorkspaceLeaf
@@ -213,6 +216,8 @@ export class PdfSelectionHighlightController {
     variant: 'sync' | 'pinned',
     owner: HighlightOwner,
   ): void {
+    if (!shouldCreateSelectionHighlight(owner)) return
+
     // For sync variant: remove any existing sync entry on the same leaf first.
     if (variant === 'sync') {
       for (const [existingId, entry] of this.entries) {
