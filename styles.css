@@ -16156,6 +16156,23 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   margin: 0;
 }
 
+.yolo-code-block-actions {
+  display: flex;
+  justify-content: flex-end;
+  font-size: var(--font-smallest);
+  margin-top: var(--size-4-3);
+  margin-right: calc(-1 * var(--size-4-2));
+  margin-bottom: calc(-1 * var(--size-4-2));
+}
+
+.yolo-code-block-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  font-size: var(--font-small);
+  color: var(--text-color) !important;
+}
+
 .yolo-code-block-obsidian-markdown {
   position: relative;
   padding: var(--size-4-3);
