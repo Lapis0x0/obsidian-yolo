@@ -1,8 +1,8 @@
 import cx from 'clsx'
-import { Sparkles, Upload, X } from 'lucide-react'
+import { Sparkles, X } from 'lucide-react'
 import { TFile } from 'obsidian'
 import type React from 'react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -13,6 +13,8 @@ import {
   validateReferenceFile,
   writeReferenceToStaging,
 } from '../../core/learning/generation/referenceStaging'
+
+import { LearningFileDropzone, LearningModal } from './LearningModal'
 
 const levelIds = ['beginner', 'familiar', 'experienced', 'advanced'] as const
 
@@ -45,9 +47,6 @@ export function Wizard({
   const [referenceFiles, setReferenceFiles] = useState<StagedReference[]>([])
   const [stagingDir, setStagingDir] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [isDragOver, setIsDragOver] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   const closeAndCleanup = () => {
     if (stagingDir) void cleanupStaging(app, stagingDir)
     onClose()
@@ -95,48 +94,12 @@ export function Wizard({
   }
 
   return (
-    <div className="yolo-learning-wizard-overlay">
-      <div
-        className="yolo-learning-wizard-backdrop"
-        onClick={closeAndCleanup}
-        aria-hidden
-      />
-      <div className="yolo-learning-wizard-dialog">
-        <div className="yolo-learning-wizard-header">
-          <div className="yolo-learning-wizard-title">
-            {t('learning.wizard.title', '新建学习项目')}
-          </div>
-          <button
-            type="button"
-            onClick={closeAndCleanup}
-            className="yolo-learning-wizard-close"
-            aria-label={t('common.close', '关闭')}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="yolo-learning-wizard-body yolo-learning-scrollbar-thin">
-          <StepOne
-            topic={topic}
-            setTopic={setTopic}
-            goal={goal}
-            setGoal={setGoal}
-            level={level}
-            setLevel={setLevel}
-            levels={levels}
-            referenceFiles={referenceFiles}
-            uploadError={uploadError}
-            isDragOver={isDragOver}
-            fileInputRef={fileInputRef}
-            setIsDragOver={setIsDragOver}
-            handleFiles={handleFiles}
-            removeReference={removeReference}
-            t={t}
-          />
-        </div>
-
-        <div className="yolo-learning-wizard-footer">
+    <LearningModal
+      title={t('learning.wizard.title', '新建学习项目')}
+      onClose={closeAndCleanup}
+      closeLabel={t('common.close', '关闭')}
+      footer={
+        <>
           <button
             type="button"
             onClick={closeAndCleanup}
@@ -160,9 +123,24 @@ export function Wizard({
             <Sparkles size={16} />
             {t('learning.wizard.createOutline', '创建并生成大纲')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <StepOne
+        topic={topic}
+        setTopic={setTopic}
+        goal={goal}
+        setGoal={setGoal}
+        level={level}
+        setLevel={setLevel}
+        levels={levels}
+        referenceFiles={referenceFiles}
+        uploadError={uploadError}
+        handleFiles={handleFiles}
+        removeReference={removeReference}
+        t={t}
+      />
+    </LearningModal>
   )
 }
 
@@ -176,9 +154,6 @@ function StepOne({
   levels,
   referenceFiles,
   uploadError,
-  isDragOver,
-  fileInputRef,
-  setIsDragOver,
   handleFiles,
   removeReference,
   t,
@@ -192,9 +167,6 @@ function StepOne({
   levels: { value: (typeof levelIds)[number]; label: string }[]
   referenceFiles: StagedReference[]
   uploadError: string | null
-  isDragOver: boolean
-  fileInputRef: React.RefObject<HTMLInputElement>
-  setIsDragOver: (value: boolean) => void
   handleFiles: (files: FileList | File[]) => Promise<void>
   removeReference: (ref: StagedReference) => Promise<void>
   t: (keyPath: string, fallback?: string) => string
@@ -300,49 +272,16 @@ function StepOne({
         hint={t('learning.wizard.referencesHint', '上传后 YOLO 会据此定制大纲')}
         optionalLabel={t('learning.wizard.optional', '（可选）')}
       >
-        <div
-          className={cx(
-            'yolo-learning-wizard-upload',
-            isDragOver && 'yolo-learning-wizard-upload-drag-over',
+        <LearningFileDropzone
+          accept=".pdf,.docx,.doc,.md,.markdown,.txt"
+          multiple
+          title={t('learning.wizard.uploadTitle', '拖拽文件到此处，或点击上传')}
+          hint={t(
+            'learning.wizard.uploadHint',
+            '支持 PDF、Word、Markdown，单个文件 ≤ 20MB',
           )}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setIsDragOver(true)
-          }}
-          onDragLeave={() => setIsDragOver(false)}
-          onDrop={(event) => {
-            event.preventDefault()
-            setIsDragOver(false)
-            void handleFiles(event.dataTransfer.files)
-          }}
-        >
-          <div className="yolo-learning-wizard-upload-icon">
-            <Upload size={18} />
-          </div>
-          <div className="yolo-learning-wizard-upload-copy">
-            <div className="yolo-learning-wizard-upload-title">
-              {t('learning.wizard.uploadTitle', '拖拽文件到此处，或点击上传')}
-            </div>
-            <div className="yolo-learning-wizard-upload-hint">
-              {t(
-                'learning.wizard.uploadHint',
-                '支持 PDF、Word、Markdown，单个文件 ≤ 20MB',
-              )}
-            </div>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept=".pdf,.docx,.doc,.md,.markdown,.txt"
-            className="yolo-learning-wizard-upload-input"
-            onChange={(event) => {
-              if (event.target.files) void handleFiles(event.target.files)
-              event.target.value = ''
-            }}
-          />
-        </div>
+          onFiles={handleFiles}
+        />
         {uploadError && (
           <div className="yolo-learning-wizard-upload-error">{uploadError}</div>
         )}

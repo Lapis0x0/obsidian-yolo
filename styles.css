@@ -23206,133 +23206,229 @@ button.yolo-learning-workspace-back svg {
   }
 }
 
-.yolo-anki-import-overlay {
-  position: fixed;
-  z-index: var(--layer-modal, 1000);
+/* Shared modal shell and file dropzone for Learning Mode flows. */
+
+.yolo-learning-modal-overlay {
+  position: absolute;
   inset: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in oklab, var(--background-primary) 40%, transparent);
-  padding: 20px;
+  padding: 16px;
+}
+
+.yolo-learning-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(
+    in oklab,
+    var(--yolo-foreground) 50%,
+    transparent
+  );
   backdrop-filter: blur(2px);
 }
 
-.yolo-anki-import-dialog {
+.yolo-learning-modal-dialog {
+  position: relative;
+  z-index: 1;
   display: flex;
-  width: min(620px, 100%);
-  max-height: min(760px, calc(100vh - 40px));
+  width: 720px;
+  max-width: 100%;
+  max-height: 90%;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--yolo-border);
   border-radius: var(--yolo-radius-xl);
-  background: var(--yolo-card);
-  box-shadow: 0 18px 48px
-    color-mix(in oklab, var(--yolo-foreground) 16%, transparent);
+  background-color: var(--yolo-card);
+  box-shadow:
+    0 25px 50px -12px color-mix(in oklab, var(--yolo-foreground) 25%, transparent),
+    0 8px 16px -8px color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
   color: var(--yolo-foreground);
 }
 
-.yolo-anki-import-header {
+.yolo-learning-modal-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--yolo-border);
-  padding: 16px 18px 14px;
+  padding: 16px 20px;
 }
 
-.yolo-anki-import-header h2,
-.yolo-anki-import-header p {
-  margin: 0;
+.yolo-learning-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--yolo-foreground);
 }
 
-.yolo-anki-import-header h2 {
-  font-size: 17px;
-  font-weight: 650;
-}
-
-.yolo-anki-import-header p {
-  margin-top: 4px;
+.yolo-learning-modal-subtitle {
+  margin: 4px 0 0;
   color: var(--yolo-muted-foreground);
   font-size: 12px;
   line-height: 1.45;
 }
 
-.yolo-anki-import-close {
+button.yolo-learning-modal-close {
+  --yolo-learning-button-height: 32px;
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
   display: inline-flex;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 32px;
+  height: 32px;
+  min-width: 0;
+  min-height: 0;
+  flex: 0 0 32px;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
-  border-radius: var(--yolo-radius-lg);
+  border: none;
+  border-radius: var(--yolo-radius-md);
   background: transparent;
+  box-sizing: border-box;
   color: var(--yolo-muted-foreground);
   cursor: pointer;
+  line-height: 0;
+  padding: 0;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
 }
 
-.yolo-anki-import-close:hover {
-  background: var(--yolo-muted);
+button.yolo-learning-modal-close:hover {
+  background-color: var(--yolo-secondary);
   color: var(--yolo-foreground);
 }
 
-.yolo-anki-import-close:disabled {
+button.yolo-learning-modal-close:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
-.yolo-anki-import-body {
-  min-height: 190px;
-  overflow: auto;
-  padding: 18px;
+button.yolo-learning-modal-close svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
-.yolo-anki-import-dropzone {
+.yolo-learning-modal-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.yolo-learning-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--yolo-border);
+  padding: 16px 20px;
+}
+
+.yolo-learning-file-dropzone-wrap {
+  width: 100%;
+}
+
+.yolo-learning-file-dropzone {
   display: flex;
   width: 100%;
-  min-height: 190px;
+  min-height: 150px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   border: 1px dashed var(--yolo-border);
-  border-radius: var(--yolo-radius-lg);
-  background: color-mix(in oklab, var(--yolo-muted) 45%, transparent);
+  border-radius: var(--yolo-radius-xl);
+  background-color: color-mix(in oklab, var(--yolo-surface) 50%, transparent);
+  padding: 32px 16px;
   color: var(--yolo-foreground);
+  font: inherit;
+  text-align: center;
   cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 
-.yolo-anki-import-dropzone:hover {
-  border-color: color-mix(
-    in oklab,
-    var(--yolo-foreground) 25%,
-    var(--yolo-border)
-  );
+.yolo-learning-file-dropzone:hover {
+  border-color: color-mix(in oklab, var(--yolo-primary) 50%, transparent);
+  background-color: var(--yolo-surface);
 }
 
-.yolo-anki-import-dropzone svg,
-.yolo-anki-import-dropzone span {
+.yolo-learning-file-dropzone.is-drag-over {
+  border-color: var(--yolo-primary);
+  background-color: color-mix(in oklab, var(--yolo-primary) 8%, transparent);
+}
+
+.yolo-learning-file-dropzone-icon {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: var(--yolo-secondary);
   color: var(--yolo-muted-foreground);
 }
 
-.yolo-anki-import-dropzone strong {
-  font-size: 13px;
-  font-weight: 600;
+.yolo-learning-file-dropzone-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.yolo-anki-import-dropzone span {
-  font-size: 11px;
+.yolo-learning-file-dropzone-copy strong {
+  color: var(--yolo-foreground);
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.yolo-anki-import-dropzone input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
+.yolo-learning-file-dropzone-copy small {
+  color: var(--yolo-muted-foreground);
+  font-size: 12px;
+}
+
+.yolo-learning-file-dropzone-input {
+  display: none;
+}
+
+.yolo-learning-modal-dialog button:focus-visible,
+.yolo-learning-modal-dialog input:focus-visible,
+.yolo-learning-modal-dialog textarea:focus-visible {
+  outline: 2px solid var(--yolo-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .yolo-learning-modal-overlay {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .yolo-learning-modal-dialog {
+    max-height: calc(100vh - 16px);
+  }
+
+  .yolo-learning-modal-footer {
+    flex-direction: column-reverse;
+  }
+
+  .yolo-learning-modal-footer button {
+    width: 100%;
+  }
+}
+
+.yolo-learning-modal-dialog.yolo-anki-import-dialog {
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+}
+
+.yolo-anki-import-body {
+  min-height: 190px;
+  padding: 18px;
 }
 
 .yolo-anki-import-progress {
@@ -23479,41 +23575,6 @@ button.yolo-learning-workspace-back svg {
   font-size: 11px;
 }
 
-.yolo-anki-import-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  border-top: 1px solid var(--yolo-border);
-  padding: 12px 18px;
-}
-
-.yolo-anki-import-primary,
-.yolo-anki-import-secondary {
-  border-radius: var(--yolo-radius-lg);
-  padding: 8px 13px;
-  font-size: 12px;
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.yolo-anki-import-primary {
-  border: 1px solid var(--yolo-primary);
-  background: var(--yolo-primary);
-  color: var(--yolo-primary-foreground);
-}
-
-.yolo-anki-import-secondary {
-  border: 1px solid var(--yolo-border);
-  background: var(--yolo-card);
-  color: var(--yolo-foreground);
-}
-
-.yolo-anki-import-dialog button:focus-visible,
-.yolo-anki-import-dialog input:focus-visible {
-  outline: 2px solid var(--yolo-ring);
-  outline-offset: 2px;
-}
-
 @keyframes yolo-anki-import-spin {
   to {
     transform: rotate(360deg);
@@ -23521,25 +23582,12 @@ button.yolo-learning-workspace-back svg {
 }
 
 @media (max-width: 520px) {
-  .yolo-anki-import-overlay {
-    align-items: stretch;
-    padding: 8px;
-  }
-
   .yolo-anki-import-dialog {
     max-height: calc(100vh - 16px);
   }
 
   .yolo-anki-import-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .yolo-anki-import-footer {
-    flex-direction: column-reverse;
-  }
-
-  .yolo-anki-import-footer button {
-    width: 100%;
   }
 }
 
@@ -23549,106 +23597,7 @@ button.yolo-learning-workspace-back svg {
   }
 }
 
-.yolo-anki-import-file-input {
-  display: none;
-}
-
 /* Learning Mode — project wizard. */
-
-.yolo-learning-wizard-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.yolo-learning-wizard-backdrop {
-  position: absolute;
-  inset: 0;
-  background-color: color-mix(
-    in oklab,
-    var(--yolo-foreground) 50%,
-    transparent
-  );
-  backdrop-filter: blur(2px);
-}
-
-.yolo-learning-wizard-dialog {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  width: 720px;
-  max-width: 100%;
-  max-height: 90%;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--yolo-border);
-  border-radius: var(--yolo-radius-xl);
-  background-color: var(--yolo-card);
-  box-shadow:
-    0 25px 50px -12px color-mix(in oklab, var(--yolo-foreground) 25%, transparent),
-    0 8px 16px -8px color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
-}
-
-.yolo-learning-wizard-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--yolo-border);
-  padding: 16px 20px;
-}
-
-.yolo-learning-wizard-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--yolo-foreground);
-}
-
-.yolo-learning-wizard-close {
-  --yolo-learning-button-height: 28px;
-  --yolo-learning-button-background: transparent;
-  --yolo-learning-button-color: var(--yolo-muted-foreground);
-  --yolo-learning-button-hover-background: var(--yolo-secondary);
-  --yolo-learning-button-hover-color: var(--yolo-foreground);
-
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--yolo-radius-md);
-  background: transparent;
-  color: var(--yolo-muted-foreground);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.yolo-learning-wizard-close:hover {
-  background-color: var(--yolo-secondary);
-  color: var(--yolo-foreground);
-}
-
-.yolo-learning-wizard-body {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 0;
-}
-
-.yolo-learning-wizard-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  border-top: 1px solid var(--yolo-border);
-  padding: 16px 20px;
-}
 
 .yolo-learning-wizard-cancel,
 .yolo-learning-wizard-primary {
@@ -23926,63 +23875,6 @@ button.yolo-learning-workspace-back svg {
   padding: 2px 6px;
   border-radius: var(--yolo-radius-sm);
   background-color: color-mix(in oklab, var(--yolo-muted) 30%, transparent);
-  color: var(--yolo-muted-foreground);
-}
-
-.yolo-learning-wizard-upload {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  border: 1px dashed var(--yolo-border);
-  border-radius: var(--yolo-radius-xl);
-  background-color: color-mix(in oklab, var(--yolo-surface) 50%, transparent);
-  padding: 32px 16px;
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease;
-}
-
-.yolo-learning-wizard-upload:hover {
-  border-color: color-mix(in oklab, var(--yolo-primary) 50%, transparent);
-  background-color: var(--yolo-surface);
-}
-
-.yolo-learning-wizard-upload-drag-over {
-  border-color: var(--yolo-primary);
-  background-color: color-mix(in oklab, var(--yolo-primary) 8%, transparent);
-}
-
-.yolo-learning-wizard-upload-input {
-  display: none;
-}
-
-.yolo-learning-wizard-upload-icon {
-  display: flex;
-  width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background-color: var(--yolo-secondary);
-  color: var(--yolo-muted-foreground);
-}
-
-.yolo-learning-wizard-upload-copy {
-  text-align: center;
-}
-
-.yolo-learning-wizard-upload-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--yolo-foreground);
-}
-
-.yolo-learning-wizard-upload-hint {
-  margin-top: 4px;
-  font-size: 12px;
   color: var(--yolo-muted-foreground);
 }
 

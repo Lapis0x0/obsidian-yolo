@@ -1,4 +1,4 @@
-import { AlertTriangle, FileArchive, Loader2, Upload, X } from 'lucide-react'
+import { AlertTriangle, FileArchive, Loader2 } from 'lucide-react'
 import { normalizePath } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
@@ -18,6 +18,7 @@ import {
   summarizeAnkiImport,
   validateAnkiImportFiles,
 } from './ankiImportUtils'
+import { LearningFileDropzone, LearningModal } from './LearningModal'
 
 type ImportState =
   | 'selecting'
@@ -66,9 +67,16 @@ export function AnkiImportModal({
     document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      abortCurrent()
     }
   }, [onClose, state])
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    },
+    [],
+  )
 
   const showError = (message: string, action: ErrorAction) => {
     setError(message)
@@ -200,209 +208,176 @@ export function AnkiImportModal({
   const summary = plan ? summarizeAnkiImport(plan) : null
   const busy =
     state === 'runtime' || state === 'parsing' || state === 'importing'
+  const closeModal = () => {
+    if (state === 'importing') return
+    abortCurrent()
+    onClose()
+  }
 
   return (
-    <div className="yolo-anki-import-overlay" role="presentation">
-      <section
-        className="yolo-anki-import-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="yolo-anki-import-title"
-      >
-        <header className="yolo-anki-import-header">
-          <div>
-            <h2 id="yolo-anki-import-title">
-              {t('learning.anki.title', 'Import from Anki')}
-            </h2>
-            <p>
-              {t(
-                'learning.anki.subtitle',
-                'Preview an APKG before adding it to Learning Center.',
-              )}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="yolo-anki-import-close"
-            disabled={state === 'importing'}
-            title={t('learning.anki.close', 'Close')}
-            aria-label={t('learning.anki.close', 'Close')}
-            onClick={() => {
-              abortCurrent()
-              onClose()
-            }}
-          >
-            <X size={17} aria-hidden />
-          </button>
-        </header>
-
-        <div className="yolo-anki-import-body" aria-live="polite">
-          {state === 'selecting' && (
-            <button
-              ref={chooseButtonRef}
-              type="button"
-              className="yolo-anki-import-dropzone"
-              autoFocus
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload size={22} aria-hidden />
-              <strong>
-                {t('learning.anki.chooseFile', 'Choose one .apkg file')}
-              </strong>
-              <span>
-                {t('learning.anki.fileLimit', 'Maximum file size: 200 MB')}
-              </span>
-            </button>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".apkg"
-            className="yolo-anki-import-file-input"
-            aria-label={t('learning.anki.chooseFile', 'Choose one .apkg file')}
-            onChange={(event) =>
-              selectFiles(Array.from(event.currentTarget.files ?? []))
-            }
-          />
-
-          {busy && (
-            <div className="yolo-anki-import-progress">
-              <Loader2 size={22} aria-hidden />
-              <strong>
-                {state === 'runtime'
-                  ? t(
-                      'learning.anki.preparingRuntime',
-                      'Preparing the Anki parser...',
-                    )
-                  : state === 'parsing'
-                    ? t(
-                        'learning.anki.parsing',
-                        'Reading cards and review history...',
-                      )
-                    : t(
-                        'learning.anki.importing',
-                        'Writing the learning project...',
-                      )}
-              </strong>
-              {file && <span>{file.name}</span>}
-            </div>
-          )}
-
-          {state === 'error' && (
-            <div className="yolo-anki-import-error" role="alert">
-              <AlertTriangle size={20} aria-hidden />
-              <div>
-                <strong>
-                  {t('learning.anki.errorTitle', 'Anki import stopped')}
-                </strong>
-                <p>{error}</p>
-              </div>
-            </div>
-          )}
-
-          {state === 'preview' && plan && summary && (
-            <div className="yolo-anki-import-preview">
-              <label className="yolo-anki-import-name">
-                <span>{t('learning.anki.projectName', 'Project name')}</span>
-                <input
-                  value={projectName}
-                  onChange={(event) =>
-                    setProjectName(event.currentTarget.value)
-                  }
-                  autoFocus
-                />
-              </label>
-              <div className="yolo-anki-import-summary">
-                <PreviewStat
-                  label={t('learning.anki.chapters', 'Chapters')}
-                  value={summary.chapterCount}
-                />
-                <PreviewStat
-                  label={t('learning.anki.cards', 'Cards')}
-                  value={summary.cardCount}
-                />
-                <PreviewStat
-                  label={t('learning.anki.history', 'Cards with valid history')}
-                  value={summary.historyCount}
-                />
-                <PreviewStat
-                  label={t('learning.anki.suspended', 'Suspended')}
-                  value={summary.suspendedCount}
-                />
-                <PreviewStat
-                  label={t('learning.anki.media', 'Media')}
-                  value={`${summary.mediaCount} · ${formatByteSize(summary.mediaBytes)}`}
-                />
-                <PreviewStat
-                  label={t('learning.anki.skipped', 'Warnings / skipped')}
-                  value={summary.warningCount}
-                />
-              </div>
-              <section className="yolo-anki-import-section">
-                <h3>{t('learning.anki.chapterPaths', 'Chapter paths')}</h3>
-                <ul>
-                  {summary.chapterPaths.map((path) => (
-                    <li key={path}>
-                      <FileArchive size={14} aria-hidden />
-                      {path}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-              <section className="yolo-anki-import-section">
-                <h3>
-                  {t('learning.anki.warnings', 'Warnings and skipped items')}
-                </h3>
-                {plan.warnings.length ? (
-                  <ul>
-                    {plan.warnings.map((warning, index) => (
-                      <li key={`${index}-${warning}`}>{warning}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>
-                    {t(
-                      'learning.anki.noWarnings',
-                      'No warnings or skipped items were reported.',
-                    )}
-                  </p>
-                )}
-              </section>
-            </div>
-          )}
-        </div>
-
-        <footer className="yolo-anki-import-footer">
-          {(state === 'preview' || state === 'error') && (
+    <LearningModal
+      title={t('learning.anki.title', 'Import from Anki')}
+      subtitle={t(
+        'learning.anki.subtitle',
+        'Preview an APKG before adding it to Learning Center.',
+      )}
+      onClose={closeModal}
+      closeLabel={t('learning.anki.close', 'Close')}
+      closeDisabled={state === 'importing'}
+      dialogClassName="yolo-anki-import-dialog"
+      bodyClassName="yolo-anki-import-body"
+      footer={
+        (state === 'preview' || state === 'error') && (
+          <>
             <button
               type="button"
-              className="yolo-anki-import-secondary"
+              className="yolo-learning-wizard-cancel"
               onClick={reselect}
             >
               {t('learning.anki.chooseAnother', 'Choose another file')}
             </button>
-          )}
-          {state === 'error' && errorAction === 'retry' && file && (
-            <button
-              type="button"
-              className="yolo-anki-import-primary"
-              onClick={() => (plan ? void importPlan() : void parseFile(file))}
-            >
-              {t('learning.anki.retry', 'Retry')}
-            </button>
-          )}
-          {state === 'preview' && (
-            <button
-              type="button"
-              className="yolo-anki-import-primary"
-              onClick={() => void importPlan()}
-            >
-              {t('learning.anki.import', 'Import project')}
-            </button>
-          )}
-        </footer>
-      </section>
-    </div>
+            {state === 'error' && errorAction === 'retry' && file && (
+              <button
+                type="button"
+                className="yolo-learning-wizard-primary"
+                onClick={() =>
+                  plan ? void importPlan() : void parseFile(file)
+                }
+              >
+                {t('learning.anki.retry', 'Retry')}
+              </button>
+            )}
+            {state === 'preview' && (
+              <button
+                type="button"
+                className="yolo-learning-wizard-primary"
+                onClick={() => void importPlan()}
+              >
+                {t('learning.anki.import', 'Import project')}
+              </button>
+            )}
+          </>
+        )
+      }
+    >
+      <div aria-live="polite">
+        {state === 'selecting' && (
+          <LearningFileDropzone
+            ref={fileInputRef}
+            buttonRef={chooseButtonRef}
+            autoFocus
+            accept=".apkg"
+            title={t('learning.anki.chooseFile', 'Choose one .apkg file')}
+            hint={t('learning.anki.fileLimit', 'Maximum file size: 200 MB')}
+            onFiles={selectFiles}
+          />
+        )}
+
+        {busy && (
+          <div className="yolo-anki-import-progress">
+            <Loader2 size={22} aria-hidden />
+            <strong>
+              {state === 'runtime'
+                ? t(
+                    'learning.anki.preparingRuntime',
+                    'Preparing the Anki parser...',
+                  )
+                : state === 'parsing'
+                  ? t(
+                      'learning.anki.parsing',
+                      'Reading cards and review history...',
+                    )
+                  : t(
+                      'learning.anki.importing',
+                      'Writing the learning project...',
+                    )}
+            </strong>
+            {file && <span>{file.name}</span>}
+          </div>
+        )}
+
+        {state === 'error' && (
+          <div className="yolo-anki-import-error" role="alert">
+            <AlertTriangle size={20} aria-hidden />
+            <div>
+              <strong>
+                {t('learning.anki.errorTitle', 'Anki import stopped')}
+              </strong>
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+
+        {state === 'preview' && plan && summary && (
+          <div className="yolo-anki-import-preview">
+            <label className="yolo-anki-import-name">
+              <span>{t('learning.anki.projectName', 'Project name')}</span>
+              <input
+                value={projectName}
+                onChange={(event) => setProjectName(event.currentTarget.value)}
+                autoFocus
+              />
+            </label>
+            <div className="yolo-anki-import-summary">
+              <PreviewStat
+                label={t('learning.anki.chapters', 'Chapters')}
+                value={summary.chapterCount}
+              />
+              <PreviewStat
+                label={t('learning.anki.cards', 'Cards')}
+                value={summary.cardCount}
+              />
+              <PreviewStat
+                label={t('learning.anki.history', 'Cards with valid history')}
+                value={summary.historyCount}
+              />
+              <PreviewStat
+                label={t('learning.anki.suspended', 'Suspended')}
+                value={summary.suspendedCount}
+              />
+              <PreviewStat
+                label={t('learning.anki.media', 'Media')}
+                value={`${summary.mediaCount} · ${formatByteSize(summary.mediaBytes)}`}
+              />
+              <PreviewStat
+                label={t('learning.anki.skipped', 'Warnings / skipped')}
+                value={summary.warningCount}
+              />
+            </div>
+            <section className="yolo-anki-import-section">
+              <h3>{t('learning.anki.chapterPaths', 'Chapter paths')}</h3>
+              <ul>
+                {summary.chapterPaths.map((path) => (
+                  <li key={path}>
+                    <FileArchive size={14} aria-hidden />
+                    {path}
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section className="yolo-anki-import-section">
+              <h3>
+                {t('learning.anki.warnings', 'Warnings and skipped items')}
+              </h3>
+              {plan.warnings.length ? (
+                <ul>
+                  {plan.warnings.map((warning, index) => (
+                    <li key={`${index}-${warning}`}>{warning}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>
+                  {t(
+                    'learning.anki.noWarnings',
+                    'No warnings or skipped items were reported.',
+                  )}
+                </p>
+              )}
+            </section>
+          </div>
+        )}
+      </div>
+    </LearningModal>
   )
 }
 

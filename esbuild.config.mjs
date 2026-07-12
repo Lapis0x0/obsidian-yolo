@@ -128,6 +128,11 @@ const inlineAnkiWorkerPlugin = {
           format: 'iife',
           platform: 'browser',
           target: 'es2020',
+          banner: {
+            // Electron workers expose Node's process object, which makes sql.js
+            // select its Node loader even though require is unavailable here.
+            js: 'const process = {};',
+          },
           external: [...nodeBuiltins],
           define: {
             'process.env.NODE_ENV': JSON.stringify(

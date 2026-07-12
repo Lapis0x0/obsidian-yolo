@@ -28,6 +28,7 @@
 @import './learning/primitives.css';
 @import './learning/shell.css';
 @import './learning/home.css';
+@import './learning/modal.css';
 @import './learning/anki-import.css';
 @import './learning/wizard.css';
 @import './learning/outline-builder.css';
