@@ -22220,6 +22220,7 @@ button.yolo-learning-workspace-back svg {
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
+  gap: 0;
   padding: 8px 4px 32px;
   box-sizing: border-box;
 }
@@ -22297,7 +22298,7 @@ button.yolo-learning-workspace-back svg {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
-  margin-top: 24px;
+  margin-top: 26px;
 }
 
 .yolo-learning-home-focus-card,
@@ -22448,7 +22449,7 @@ button.yolo-learning-workspace-back svg {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 18px;
+  margin-top: 26px;
 }
 
 .yolo-learning-home-mini-stat {
@@ -22628,7 +22629,7 @@ button.yolo-learning-workspace-back svg {
 }
 
 .yolo-learning-home-projects {
-  margin-top: 30px;
+  margin-top: 18px;
 }
 
 .yolo-learning-home-section-bar {
