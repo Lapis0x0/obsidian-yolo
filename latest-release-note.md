@@ -20,7 +20,7 @@
 - Unified the underlying input experience between Quick Ask and Chat, refreshed the Quick Ask layout, and updated its send button to match Chat's circular design.
 - Table selections are now recognized by cell boundaries and converted into structured Markdown subtables before being sent to the model. The input area also shows the selected row and column count (#442).
 - Model responses now follow Obsidian's interface font instead of the editor body font, preventing unsuitable typography under certain themes and Style Settings configurations. A CSS variable remains available for customization.
-- Code blocks now provide Apply actions at both the top and bottom, so changes can be applied after reading long content without scrolling back up (#448) (#449). Thanks @Lapis0x1 for the contribution.
+- Code blocks now provide Apply actions at both the top and bottom, so changes can be applied after reading long content without scrolling back up (#448) (#449).
 - Added support for **Max** reasoning strength.
 
 ### 🤖 Agent Improvements
@@ -61,7 +61,7 @@
 - 统一 Quick Ask 与 Chat 的底层输入体验，重新优化 Quick Ask 的布局，并将发送按钮统一为与 Chat 一致的圆形样式。
 - 修复 Obsidian 表格选区无法正确同步到 Chat 的问题。插件现在会按表格单元格识别选区，将其转换为结构化 Markdown 子表发送给模型，并在输入框中显示选中的行列数量 (#442)。
 - 模型回复正文现在默认跟随 Obsidian 界面字体，避免在部分主题或 Style Settings 配置下显示为不适合聊天界面的编辑器正文字体，同时保留 CSS 变量供自定义。
-- 代码块现在会在顶部和内容末尾同时显示“应用”按钮，阅读长内容后无需返回顶部即可应用修改 (#448) (#449)。感谢 @Lapis0x1 的贡献。
+- 代码块现在会在顶部和内容末尾同时显示“应用”按钮，阅读长内容后无需返回顶部即可应用修改 (#448) (#449)。
 - 新增支持 **Max** 推理强度。
 
 ### 🤖 Agent 优化
