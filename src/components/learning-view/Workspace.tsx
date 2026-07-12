@@ -1,10 +1,10 @@
 import { ChevronLeft } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useCallback, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { Project as VaultProject } from '../../core/learning/types'
 
-import { CardsView } from './CardsView'
+import { type CardMode, CardsView, cardModes } from './CardsView'
 import type { CardGenerationWorkspace } from './cardsWorkspace'
 import { ExercisesView } from './ExercisesView'
 import { OutlineView } from './OutlineView'
@@ -31,11 +31,21 @@ export function Workspace({
   cardGeneration: CardGenerationWorkspace | null
 }) {
   const { t } = useLanguage()
+  const [cardMode, setCardMode] = useState<CardMode>('浏览')
+  const [dueCardCount, setDueCardCount] = useState(0)
+  const handleDueCardCountChange = useCallback(
+    (count: number) => setDueCardCount(count),
+    [],
+  )
   const tabLabels: Record<TabKey, string> = {
     大纲: t('learning.tabs.outline', '大纲'),
     知识地图: t('learning.tabs.knowledgeMap', '知识地图'),
     卡片: t('learning.tabs.cards', '卡片'),
     习题: t('learning.tabs.exercises', '习题'),
+  }
+  const cardModeLabels: Record<CardMode, string> = {
+    浏览: t('learning.common.browse', '浏览'),
+    复习: t('learning.cards.review', '复习'),
   }
 
   return (
@@ -57,6 +67,16 @@ export function Workspace({
         <Pill tone="primary" className="yolo-learning-workspace-progress-pill">
           {t('learning.workspace.learned', '已学')} 0%
         </Pill>
+        {activeTab === '卡片' && (
+          <Segmented<CardMode>
+            options={cardModes}
+            value={cardMode}
+            onChange={setCardMode}
+            badges={{ 复习: dueCardCount }}
+            getLabel={(mode) => cardModeLabels[mode]}
+            className="yolo-learning-workspace-card-mode"
+          />
+        )}
         <div className="yolo-learning-workspace-header-spacer" />
         <Segmented
           options={tabs}
@@ -85,7 +105,13 @@ export function Workspace({
           ))}
         {activeTab === '知识地图' && knowledgeMap}
         {activeTab === '卡片' && (
-          <CardsView project={project} generation={cardGeneration} />
+          <CardsView
+            project={project}
+            generation={cardGeneration}
+            mode={cardMode}
+            onModeChange={setCardMode}
+            onDueCountChange={handleDueCardCountChange}
+          />
         )}
         {activeTab === '习题' && <ExercisesView project={project} />}
       </main>

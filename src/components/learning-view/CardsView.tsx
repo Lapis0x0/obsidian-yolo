@@ -75,7 +75,7 @@ import {
   mergeDiskAndPreviewCards,
 } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
-import { type Mastery, MasteryDot, Segmented, SelectMenu } from './primitives'
+import { type Mastery, MasteryDot, SelectMenu } from './primitives'
 import {
   getExtremeGradeThreshold,
   keyboardToGrade,
@@ -83,7 +83,8 @@ import {
   updateReviewQueue,
 } from './reviewInteractions'
 
-const cardModes = ['浏览', '复习'] as const
+export const cardModes = ['浏览', '复习'] as const
+export type CardMode = (typeof cardModes)[number]
 const masteryFilters = ['全部', '已掌握', '学习中', '未开始'] as const
 const TARGET_MEMORY_RETENTION = 0.9
 const MEMORY_RETENTION_HORIZON_MS = 30 * 24 * 60 * 60 * 1_000
@@ -290,11 +291,16 @@ function masteryText(
 export function CardsView({
   project,
   generation,
+  mode,
+  onModeChange,
+  onDueCountChange,
 }: {
   project: VaultProject | null
   generation: CardGenerationWorkspace | null
+  mode: CardMode
+  onModeChange: (mode: CardMode) => void
+  onDueCountChange: (count: number) => void
 }) {
-  const { t } = useLanguage()
   const {
     cards,
     loading,
@@ -307,24 +313,13 @@ export function CardsView({
     writing,
     setWriting,
   } = useProjectCards(project, generation)
-  const [mode, setMode] = useState<'浏览' | '复习'>('浏览')
-  const modeLabels: Record<(typeof cardModes)[number], string> = {
-    浏览: t('learning.common.browse', '浏览'),
-    复习: t('learning.cards.review', '复习'),
-  }
+
+  useEffect(() => {
+    onDueCountChange(dueCount)
+  }, [dueCount, onDueCountChange])
 
   return (
     <div className="yolo-learning-cards-view yolo-learning-scrollbar-thin">
-      <div className="yolo-learning-cards-topbar">
-        <Segmented
-          options={cardModes}
-          value={mode}
-          onChange={(nextMode) => setMode(nextMode)}
-          badges={{ 复习: dueCount }}
-          getLabel={(option) => modeLabels[option]}
-        />
-      </div>
-
       {mode === '浏览' ? (
         <BrowseMode
           project={project}
@@ -345,7 +340,7 @@ export function CardsView({
           now={now}
           todayIntroducedCount={todayIntroducedCount}
           onReviewed={applyReviewResult}
-          onExit={() => setMode('浏览')}
+          onExit={() => onModeChange('浏览')}
         />
       )}
     </div>

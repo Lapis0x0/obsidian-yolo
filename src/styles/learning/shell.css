@@ -41,6 +41,7 @@
 .yolo-learning-workspace-header {
   position: relative;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 12px;
   min-height: 48px;
@@ -118,6 +119,19 @@ button.yolo-learning-workspace-back svg {
 .yolo-learning-workspace-progress-pill {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.yolo-learning-workspace-card-mode {
+  box-sizing: border-box;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.yolo-learning-workspace-card-mode .yolo-learning-segmented-option {
+  --yolo-learning-button-height: 26px;
+
+  height: 26px;
+  padding: 3px 10px;
 }
 
 .yolo-learning-workspace-header-spacer {

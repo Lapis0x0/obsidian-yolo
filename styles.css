@@ -21718,28 +21718,39 @@ body.yolo-quick-ask-global-interaction * {
 .yolo-learning-select {
   position: relative;
   display: inline-flex;
+  min-width: 0;
+  max-width: min(240px, 100%);
 }
 
-.yolo-learning-select-input {
+.yolo-learning .yolo-learning-select-input {
+  min-width: 0;
+  max-width: 100%;
   height: 32px;
   cursor: pointer;
   appearance: none;
   border-radius: var(--yolo-radius-md);
   border: 1px solid var(--yolo-border);
   background-color: var(--yolo-surface);
+  box-shadow: none;
   padding: 0 32px 0 12px;
   font-size: 14px;
   color: var(--yolo-foreground);
   outline: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: background-color 150ms ease;
 }
 
-.yolo-learning-select-input:hover {
+.yolo-learning .yolo-learning-select-input:hover {
+  border-color: var(--yolo-border);
   background-color: var(--yolo-secondary);
+  box-shadow: none;
 }
 
-.yolo-learning-select-input:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--yolo-ring) 40%, transparent);
+.yolo-learning .yolo-learning-select-input:focus,
+.yolo-learning .yolo-learning-select-input:focus-visible {
+  border-color: var(--yolo-border);
+  box-shadow: none;
 }
 
 .yolo-learning-select-chevron {
@@ -21796,6 +21807,7 @@ body.yolo-quick-ask-global-interaction * {
 .yolo-learning-workspace-header {
   position: relative;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 12px;
   min-height: 48px;
@@ -21873,6 +21885,19 @@ button.yolo-learning-workspace-back svg {
 .yolo-learning-workspace-progress-pill {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.yolo-learning-workspace-card-mode {
+  box-sizing: border-box;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.yolo-learning-workspace-card-mode .yolo-learning-segmented-option {
+  --yolo-learning-button-height: 26px;
+
+  height: 26px;
+  padding: 3px 10px;
 }
 
 .yolo-learning-workspace-header-spacer {
@@ -24139,13 +24164,6 @@ body.yolo-learning-outline-global-resize * {
   min-height: 0;
   overflow-y: auto;
   padding-right: 12px;
-}
-
-.yolo-learning-cards-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .yolo-learning-cards-selected-point {
