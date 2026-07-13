@@ -10211,7 +10211,22 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 @container yolo-chat-conversation (max-width: 850px) {
   .yolo-message-navigator {
-    display: none;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 18px;
+  }
+
+  .yolo-message-navigator__rail {
+    width: 18px;
+    padding-inline: 2px;
+    opacity: 0;
+  }
+
+  .yolo-message-navigator__panel {
+    right: 8px;
+    width: min(300px, calc(100cqw - 28px), calc(100vw - 48px));
+    max-height: min(440px, calc(100% - var(--size-4-3) * 2));
   }
 }
 
