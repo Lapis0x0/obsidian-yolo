@@ -1719,6 +1719,9 @@ export type TranslationKeys = {
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
     learningTasksRunning?: string
+    learningReviewLabel?: string
+    learningReviewTitle?: string
+    learningReviewDetail?: string
     ragAutoUpdateRunning?: string
     ragAutoUpdateRunningDetail?: string
     ragAutoUpdateFailed?: string

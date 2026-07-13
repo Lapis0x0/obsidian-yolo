@@ -9,16 +9,14 @@ import {
   Sparkles,
   Target,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
-import {
-  type LearningProjectAction,
-  type LearningProjectStats,
-  loadLearningProjectStats,
+import type {
+  LearningProjectAction,
+  LearningProjectStats,
 } from '../../core/learning/learningStats'
+import type { LearningStatsSnapshot } from '../../core/learning/learningStatsService'
 import type {
   ProjectStatus,
   Project as VaultProject,
@@ -28,45 +26,32 @@ import { formatLearningText } from './i18n'
 import { Pill, ProgressBar, SelectMenu } from './primitives'
 
 type ProjectSort = 'recent' | 'created' | 'progress'
-type StatsLoadState = {
-  byProject: Map<string, LearningProjectStats>
-  failedProjectIds: Set<string>
-  loading: boolean
-}
 
 export function HomeView({
   projects,
+  statsSnapshot,
   onOpenProject,
   onStartReview,
   onNewProject,
   onImportAnki,
 }: {
-  projects: VaultProject[]
+  projects: readonly VaultProject[]
+  statsSnapshot: LearningStatsSnapshot
   onOpenProject: (id: string) => void
   onStartReview: (id: string) => void
   onNewProject: () => void
   onImportAnki: () => void
 }) {
-  const app = useApp()
-  const plugin = usePlugin()
   const { language, t } = useLanguage()
   const [sortValue, setSortValue] = useState<ProjectSort>('recent')
-  const [statsState, setStatsState] = useState<StatsLoadState>(() => ({
-    byProject: new Map(),
-    failedProjectIds: new Set(),
-    loading: true,
-  }))
-  const [refreshToken, setRefreshToken] = useState(0)
-  const loadGenerationRef = useRef(0)
   const sortOptions = [
     { value: 'recent', label: t('learning.home.sortRecent', '按最近活跃') },
     { value: 'created', label: t('learning.home.sortCreated', '按创建时间') },
     { value: 'progress', label: t('learning.home.sortProgress', '按进度') },
   ]
-  const statsByProject = statsState.byProject
-  const statsReady = !statsState.loading
-  const statsComplete = statsReady && statsState.failedProjectIds.size === 0
-  const totalDueCards = statsComplete
+  const statsByProject = statsSnapshot.byProject
+  const statsReady = !statsSnapshot.loading
+  const totalDueCards = statsReady
     ? projects.reduce(
         (total, project) =>
           total + (statsByProject.get(project.id)?.dueCards ?? 0),
@@ -108,75 +93,6 @@ export function HomeView({
       })
       .map(({ project }) => project)
   }, [projects, sortValue, statsByProject])
-
-  useEffect(() => {
-    const generation = loadGenerationRef.current + 1
-    loadGenerationRef.current = generation
-    const now = new Date()
-    const srsStore = plugin.getLearningSrsStore()
-    setStatsState((current) => ({
-      ...current,
-      failedProjectIds: new Set(),
-      loading: true,
-    }))
-
-    void Promise.allSettled(
-      projects.map(async (project) => ({
-        projectId: project.id,
-        stats: await loadLearningProjectStats({
-          app,
-          project,
-          srsStore,
-          now,
-        }),
-      })),
-    ).then((results) => {
-      if (loadGenerationRef.current !== generation) return
-      const nextStats = new Map<string, LearningProjectStats>()
-      const failedProjectIds = new Set<string>()
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          nextStats.set(result.value.projectId, result.value.stats)
-        } else {
-          failedProjectIds.add(projects[index].id)
-        }
-      })
-      setStatsState({
-        byProject: nextStats,
-        failedProjectIds,
-        loading: false,
-      })
-    })
-  }, [app, plugin, projects, refreshToken])
-
-  useEffect(() => {
-    const refresh = () => setRefreshToken((value) => value + 1)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refresh()
-    }
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!statsReady) return
-    const now = Date.now()
-    const nextDueAt = projects.reduce<number | null>((next, project) => {
-      const dueAt = statsByProject.get(project.id)?.nextDueAt ?? null
-      if (dueAt === null || dueAt <= now) return next
-      return next === null || dueAt < next ? dueAt : next
-    }, null)
-    if (nextDueAt === null) return
-    const timer = window.setTimeout(
-      () => setRefreshToken((value) => value + 1),
-      Math.min(Math.max(nextDueAt - now + 50, 1_000), 2_147_000_000),
-    )
-    return () => window.clearTimeout(timer)
-  }, [projects, statsByProject, statsReady])
 
   return (
     <div className="yolo-learning-home">
@@ -297,7 +213,7 @@ export function HomeView({
             </div>
           ) : (
             <FocusEmpty
-              loading={statsState.loading && projects.length > 0}
+              loading={statsSnapshot.loading && projects.length > 0}
               hasProjects={projects.length > 0}
               onNewProject={onNewProject}
               t={t}
@@ -342,7 +258,7 @@ export function HomeView({
             })}
             {dueProjects.length === 0 && (
               <div className="yolo-learning-home-due-empty">
-                {statsState.loading
+                {statsSnapshot.loading
                   ? t('learning.home.statsLoading', '正在更新学习数据')
                   : t('learning.home.reviewMetaEmpty', '暂无到期复习')}
               </div>
@@ -353,21 +269,21 @@ export function HomeView({
             <button
               type="button"
               className="yolo-learning-home-start-review"
-              disabled={statsState.loading || !firstDueProject}
+              disabled={statsSnapshot.loading || !firstDueProject}
               onClick={() => {
                 if (firstDueProject) onStartReview(firstDueProject.id)
               }}
             >
               {t('learning.home.startReview', '开始今日复习')}
             </button>
-            {statsState.failedProjectIds.size > 0 && (
+            {statsSnapshot.failedProjectIds.size > 0 && (
               <div className="yolo-learning-home-stats-error">
                 {formatLearningText(
                   t(
                     'learning.home.statsUnavailable',
                     '{count} 个项目统计不可用',
                   ),
-                  { count: statsState.failedProjectIds.size },
+                  { count: statsSnapshot.failedProjectIds.size },
                 )}
               </div>
             )}

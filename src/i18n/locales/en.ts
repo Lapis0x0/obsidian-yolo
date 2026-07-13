@@ -2311,14 +2311,16 @@ export const en: TranslationKeys = {
     agentStatusRunning: 'Running',
     agentStatusWaitingApproval: 'Awaiting approval',
     agentStatusFallbackConversationTitle: 'Running conversation',
-    backgroundStatusAriaLabel:
-      'Background task status, click to inspect details',
-    backgroundStatusPanelTitle: 'Background tasks',
-    backgroundStatusPanelEmpty: 'There are no running background tasks',
+    backgroundStatusAriaLabel: 'Activity and reminders, click for details',
+    backgroundStatusPanelTitle: 'Activity and reminders',
+    backgroundStatusPanelEmpty: 'There is no activity or reminder',
     backgroundTasksRunning:
       'There are currently {count} background tasks running',
     backgroundTasksNeedAttention: 'A background task needs attention',
     learningTasksRunning: 'Learning mode has {count} running tasks',
+    learningReviewLabel: 'YOLO Learning: {count} cards due today',
+    learningReviewTitle: 'YOLO Learning',
+    learningReviewDetail: '{count} cards to review',
     ragAutoUpdateRunning: 'Knowledge base updating in background',
     ragAutoUpdateRunningDetail:
       'Incrementally synchronizing the knowledge base index.',

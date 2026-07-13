@@ -134,6 +134,35 @@ describe('LearningSrsStore', () => {
     })
   })
 
+  it('notifies subscribers once after each successful project mutation', async () => {
+    const { app, adapter } = createApp()
+    const store = createStore(app)
+    const subscriber = jest.fn()
+    const unsubscribe = store.subscribe(subscriber)
+    const reviewedAt = new Date('2026-07-10T12:00:00.000Z')
+
+    await store.reviewCards(
+      'project',
+      ['aaaaaaaa', 'bbbbbbbb'],
+      'good',
+      reviewedAt,
+    )
+    await store.suspendCards('project', ['aaaaaaaa'])
+    await store.suspendCards('project', ['aaaaaaaa'])
+    adapter.write.mockRejectedValueOnce(new Error('write failed'))
+    await expect(
+      store.reviewCard('project', 'bbbbbbbb', 'easy', reviewedAt),
+    ).rejects.toThrow('write failed')
+
+    expect(subscriber).toHaveBeenCalledTimes(2)
+    expect(subscriber).toHaveBeenNthCalledWith(1, { projectSlug: 'project' })
+    expect(subscriber).toHaveBeenNthCalledWith(2, { projectSlug: 'project' })
+
+    unsubscribe()
+    await store.resumeCards('project', ['aaaaaaaa'])
+    expect(subscriber).toHaveBeenCalledTimes(2)
+  })
+
   it('preserves learning steps across store reloads', async () => {
     const { app } = createApp()
     const firstStore = createStore(app)

@@ -2211,17 +2211,18 @@ export const it: TranslationKeys = {
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
-    backgroundStatusAriaLabel:
-      'Stato delle attivita in background, clicca per vedere i dettagli',
-    backgroundStatusPanelTitle: 'Attivita in background',
-    backgroundStatusPanelEmpty:
-      'Non ci sono attivita in background in esecuzione',
+    backgroundStatusAriaLabel: 'Attivita e promemoria, clicca per i dettagli',
+    backgroundStatusPanelTitle: 'Attivita e promemoria',
+    backgroundStatusPanelEmpty: 'Non ci sono attivita o promemoria',
     backgroundTasksRunning:
       'Al momento ci sono {count} attivita in background in esecuzione',
     backgroundTasksNeedAttention:
       "Un'attivita in background richiede attenzione",
     learningTasksRunning:
       'La modalita apprendimento ha {count} attivita in esecuzione',
+    learningReviewLabel: 'YOLO Learning: oggi {count} carte da ripassare',
+    learningReviewTitle: 'YOLO Learning',
+    learningReviewDetail: '{count} carte da ripassare',
     ragAutoUpdateRunning: 'La knowledge base si sta aggiornando in background',
     ragAutoUpdateRunningDetail:
       "Sincronizzazione incrementale dell'indice della knowledge base in corso.",

@@ -10,6 +10,7 @@ import {
   type WorkspaceLeaf,
   getLanguage,
   normalizePath,
+  setIcon,
 } from 'obsidian'
 
 import { ChatView } from './ChatView'
@@ -47,12 +48,18 @@ import {
   BackgroundActivityAction,
   BackgroundActivityRegistry,
 } from './core/background/backgroundActivityRegistry'
+import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
 import type {
   LearningNavigationHandler,
   LearningNavigationTarget,
 } from './core/learning/learningNavigation'
+import {
+  LearningStatsService,
+  getTotalDueCards,
+} from './core/learning/learningStatsService'
+import type { LearningStatsSnapshot } from './core/learning/learningStatsService'
 import type { ProjectEventBus } from './core/learning/projectEventBus'
 import { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
@@ -69,6 +76,7 @@ import {
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
+import { getYoloLearningDir } from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -175,6 +183,9 @@ export type { PluginUpdateState } from './core/update/pluginUpdater'
 
 const STARTUP_GRACE_MS = 30 * 1000
 type TranslateFn = (keyPath: string, fallback?: string) => string
+type BackgroundStatusPanelAction =
+  | BackgroundActivityAction
+  | { type: 'open-learning-home' }
 
 export default class YoloPlugin extends Plugin {
   settings: YoloSettings
@@ -225,6 +236,7 @@ export default class YoloPlugin extends Plugin {
   private writeAssistController: WriteAssistController | null = null
   private learningEventBus: ProjectEventBus | null = null
   private learningSrsStore: LearningSrsStore | null = null
+  private learningStatsService: LearningStatsService | null = null
   private learningNavigationHandler: LearningNavigationHandler | null = null
   private pendingLearningNavigation: LearningNavigationTarget | null = null
   // Model list cache for provider model fetching
@@ -245,6 +257,7 @@ export default class YoloPlugin extends Plugin {
   private backgroundStatusPanelList: HTMLElement | null = null
   private backgroundStatusPanelEmpty: HTMLElement | null = null
   private latestBackgroundActivities = new Map<string, BackgroundActivity>()
+  private latestLearningStats: LearningStatsSnapshot | null = null
   private backgroundStatusPanelRenderVersion = 0
   private isUnloaded = false
   private backgroundStatusPanelItems = new Map<
@@ -254,6 +267,7 @@ export default class YoloPlugin extends Plugin {
       title: HTMLElement
       detail: HTMLElement
       indicator: HTMLElement
+      action?: BackgroundStatusPanelAction
     }
   >()
 
@@ -357,6 +371,17 @@ export default class YoloPlugin extends Plugin {
       )
     }
     return this.learningSrsStore
+  }
+
+  getLearningStatsService(): LearningStatsService {
+    if (!this.learningStatsService) {
+      this.learningStatsService = new LearningStatsService({
+        app: this.app,
+        getLearningBaseDir: () => getYoloLearningDir(this.settings),
+        srsStore: this.getLearningSrsStore(),
+      })
+    }
+    return this.learningStatsService
   }
 
   /**
@@ -1224,7 +1249,7 @@ export default class YoloPlugin extends Plugin {
     const panelHeader = document.createElement('div')
     panelHeader.className = 'yolo-background-activity-status-panel-header'
     panelHeader.setText(
-      this.t('statusBar.backgroundStatusPanelTitle', '后台任务'),
+      this.t('statusBar.backgroundStatusPanelTitle', '活动与提醒'),
     )
 
     const panelList = document.createElement('div')
@@ -1233,10 +1258,7 @@ export default class YoloPlugin extends Plugin {
     const panelEmpty = document.createElement('div')
     panelEmpty.className = 'yolo-background-activity-status-panel-empty'
     panelEmpty.setText(
-      this.t(
-        'statusBar.backgroundStatusPanelEmpty',
-        '当前没有正在运行的后台任务',
-      ),
+      this.t('statusBar.backgroundStatusPanelEmpty', '当前没有活动或提醒'),
     )
 
     panel.append(panelHeader, panelList, panelEmpty)
@@ -1282,8 +1304,15 @@ export default class YoloPlugin extends Plugin {
 
     const unsubscribeActivities =
       this.getBackgroundActivityRegistry().subscribe((activities) => {
-        this.updateBackgroundStatusBar(activities)
+        this.latestBackgroundActivities = new Map(activities)
+        this.updateBackgroundStatusBar()
       })
+    const unsubscribeLearningStats = this.getLearningStatsService().subscribe(
+      (snapshot) => {
+        this.latestLearningStats = snapshot
+        this.updateBackgroundStatusBar()
+      },
+    )
     let isActive = true
     let unsubscribeAgentSummaries: (() => void) | null = null
     void this.warmupAgentService()
@@ -1303,6 +1332,7 @@ export default class YoloPlugin extends Plugin {
     this.register(() => {
       isActive = false
       unsubscribeActivities()
+      unsubscribeLearningStats()
       unsubscribeAgentSummaries?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
@@ -1313,6 +1343,7 @@ export default class YoloPlugin extends Plugin {
       this.backgroundStatusPanelRenderVersion += 1
       this.backgroundStatusPanelItems.clear()
       this.latestBackgroundActivities.clear()
+      this.latestLearningStats = null
       this.backgroundActivityRegistry?.clear()
       this.backgroundActivityRegistry = null
     })
@@ -1368,9 +1399,7 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
-  private updateBackgroundStatusBar(
-    activities: Map<string, BackgroundActivity>,
-  ): void {
+  private updateBackgroundStatusBar(): void {
     if (
       !this.backgroundStatusBarItem ||
       !this.backgroundStatusBarRing ||
@@ -1378,16 +1407,17 @@ export default class YoloPlugin extends Plugin {
     ) {
       return
     }
+    this.backgroundStatusPanelRenderVersion += 1
 
-    this.latestBackgroundActivities = new Map(activities)
-    const visibleActivities = Array.from(activities.values()).filter(
-      (activity) =>
-        activity.status === 'running' ||
-        activity.status === 'waiting' ||
-        activity.status === 'failed',
+    const dueCards = this.latestLearningStats
+      ? getTotalDueCards(this.latestLearningStats)
+      : 0
+    const model = buildBackgroundStatusModel(
+      this.latestBackgroundActivities.values(),
+      dueCards,
     )
 
-    if (visibleActivities.length === 0) {
+    if (!model.visible) {
       this.clearBackgroundStatusPanelItems()
       this.closeBackgroundStatusPanel()
       this.backgroundStatusBarItem.hide()
@@ -1397,32 +1427,33 @@ export default class YoloPlugin extends Plugin {
       return
     }
 
-    const label = this.buildBackgroundStatusBarLabel(visibleActivities)
-    const statusBarTone = visibleActivities.some(
-      (activity) =>
-        activity.status === 'running' || activity.status === 'waiting',
-    )
-      ? visibleActivities.some((activity) => activity.status === 'waiting') &&
-        !visibleActivities.some((activity) => activity.status === 'running')
-        ? 'is-waiting'
-        : 'is-running'
-      : 'is-failed'
+    const label =
+      model.activities.length > 0
+        ? this.buildBackgroundStatusBarLabel(model.activities)
+        : this.t(
+            'statusBar.learningReviewLabel',
+            'YOLO Learning：今日有 {count} 张待复习卡片',
+          ).replace('{count}', String(dueCards))
 
     this.backgroundStatusBarLabel.setText(label)
     this.backgroundStatusBarItem.removeAttribute('title')
     this.backgroundStatusBarItem.setAttribute(
       'aria-label',
-      this.t(
-        'statusBar.backgroundStatusAriaLabel',
-        '后台任务状态，点击查看详情',
-      ),
+      this.t('statusBar.backgroundStatusAriaLabel', '活动与提醒，点击查看详情'),
     )
+    this.backgroundStatusBarRing.empty()
     this.backgroundStatusBarRing.classList.remove(
       'is-running',
       'is-waiting',
       'is-failed',
+      'is-review',
     )
-    this.backgroundStatusBarRing.classList.add(statusBarTone)
+    if (model.tone) {
+      this.backgroundStatusBarRing.classList.add(`is-${model.tone}`)
+    }
+    if (model.tone === 'review') {
+      setIcon(this.backgroundStatusBarRing, 'graduation-cap')
+    }
     this.backgroundStatusBarItem.show()
 
     if (this.isBackgroundStatusPanelOpen()) {
@@ -1554,41 +1585,48 @@ export default class YoloPlugin extends Plugin {
     }
 
     const renderVersion = ++this.backgroundStatusPanelRenderVersion
-    const activities = Array.from(this.latestBackgroundActivities.values())
-      .filter(
-        (activity) =>
-          activity.status === 'running' ||
-          activity.status === 'waiting' ||
-          activity.status === 'failed',
-      )
-      .sort((left, right) => {
-        const priority = (activity: BackgroundActivity) => {
-          if (activity.status === 'waiting') return 0
-          if (activity.status === 'running') return 1
-          if (activity.status === 'failed') return 2
-          return 3
-        }
-        const priorityDelta = priority(left) - priority(right)
-        if (priorityDelta !== 0) {
-          return priorityDelta
-        }
-        return left.id.localeCompare(right.id)
-      })
+    const dueCards = this.latestLearningStats
+      ? getTotalDueCards(this.latestLearningStats)
+      : 0
+    const model = buildBackgroundStatusModel(
+      this.latestBackgroundActivities.values(),
+      dueCards,
+    )
+    const activities = model.activities
 
-    if (activities.length === 0) {
+    if (!model.visible) {
       this.clearBackgroundStatusPanelItems()
       this.backgroundStatusPanelEmpty.hidden = false
       return false
     }
 
-    const chatManager = new ChatManager(this.app, this.settings)
-    const metadataList = await chatManager.listChats()
+    let metadataList: { id: string; title?: string }[] = []
+    if (
+      activities.some(
+        (activity) => activity.action?.type === 'open-agent-conversation',
+      )
+    ) {
+      try {
+        const chatManager = new ChatManager(this.app, this.settings)
+        metadataList = await chatManager.listChats()
+      } catch (error) {
+        console.error(
+          '[YOLO] Failed to load chat titles for status panel:',
+          error,
+        )
+      }
+    }
     if (
       renderVersion !== this.backgroundStatusPanelRenderVersion ||
       !this.backgroundStatusPanelList ||
       !this.backgroundStatusPanelEmpty
     ) {
-      return this.latestBackgroundActivities.size > 0
+      if (!this.backgroundStatusPanelList || !this.backgroundStatusPanelEmpty) {
+        return false
+      }
+      return this.isBackgroundStatusPanelOpen()
+        ? true
+        : this.renderBackgroundStatusPanel()
     }
 
     const metadataById = new Map<string, { title?: string }>(
@@ -1604,6 +1642,7 @@ export default class YoloPlugin extends Plugin {
       const itemRecord =
         this.backgroundStatusPanelItems.get(activity.id) ??
         this.createBackgroundStatusPanelItem(activity.id, activity.action)
+      itemRecord.action = activity.action
 
       if (itemRecord.title.getText() !== title) {
         itemRecord.title.setText(title)
@@ -1619,9 +1658,46 @@ export default class YoloPlugin extends Plugin {
         'is-running',
         'is-waiting',
         'is-failed',
+        'is-review',
       )
+      itemRecord.indicator.empty()
       itemRecord.indicator.classList.add(`is-${activity.status}`)
 
+      if (itemRecord.item !== insertBeforeNode) {
+        this.backgroundStatusPanelList.insertBefore(
+          itemRecord.item,
+          insertBeforeNode,
+        )
+      }
+      insertBeforeNode = itemRecord.item.nextSibling
+    }
+
+    if (model.showReviewReminder) {
+      const reminderId = 'reminder:learning-review'
+      nextActivityIds.add(reminderId)
+      const title = this.t('statusBar.learningReviewTitle', 'YOLO Learning')
+      const detail = this.t(
+        'statusBar.learningReviewDetail',
+        '{count} 张卡片待复习',
+      ).replace('{count}', String(dueCards))
+      const itemRecord =
+        this.backgroundStatusPanelItems.get(reminderId) ??
+        this.createBackgroundStatusPanelItem(reminderId, {
+          type: 'open-learning-home',
+        })
+      itemRecord.action = { type: 'open-learning-home' }
+      itemRecord.title.setText(title)
+      itemRecord.title.setAttribute('title', title)
+      itemRecord.detail.setText(detail)
+      itemRecord.detail.hidden = false
+      itemRecord.indicator.classList.remove(
+        'is-running',
+        'is-waiting',
+        'is-failed',
+      )
+      itemRecord.indicator.classList.add('is-review')
+      itemRecord.indicator.empty()
+      setIcon(itemRecord.indicator, 'graduation-cap')
       if (itemRecord.item !== insertBeforeNode) {
         this.backgroundStatusPanelList.insertBefore(
           itemRecord.item,
@@ -1645,12 +1721,13 @@ export default class YoloPlugin extends Plugin {
 
   private createBackgroundStatusPanelItem(
     activityId: string,
-    action?: BackgroundActivityAction,
+    action?: BackgroundStatusPanelAction,
   ): {
     item: HTMLElement
     title: HTMLElement
     detail: HTMLElement
     indicator: HTMLElement
+    action?: BackgroundStatusPanelAction
   } {
     const item = createDiv({
       cls: 'yolo-background-activity-status-panel-item',
@@ -1673,26 +1750,38 @@ export default class YoloPlugin extends Plugin {
     const indicator = row.createDiv({
       cls: 'yolo-background-activity-status-panel-item-indicator',
     })
+    const record = {
+      item,
+      title,
+      detail,
+      indicator,
+      action,
+    }
 
     const openAction = () => {
       this.closeBackgroundStatusPanel()
-      if (!action) {
+      const currentAction = record.action
+      if (!currentAction) {
         return
       }
-      if (action.type === 'open-agent-conversation') {
+      if (currentAction.type === 'open-agent-conversation') {
         void this.openChatView({
           placement: 'split',
-          initialConversationId: action.conversationId,
+          initialConversationId: currentAction.conversationId,
           forceNewLeaf: true,
         })
         return
       }
-      if (action.type === 'open-knowledge-settings') {
+      if (currentAction.type === 'open-knowledge-settings') {
         this.openKnowledgeSettings()
         return
       }
-      if (action.type === 'open-learning-view') {
+      if (currentAction.type === 'open-learning-view') {
         void this.openLearningView()
+        return
+      }
+      if (currentAction.type === 'open-learning-home') {
+        void this.openLearningView({ type: 'home' })
       }
     }
 
@@ -1709,12 +1798,6 @@ export default class YoloPlugin extends Plugin {
       }
     })
 
-    const record = {
-      item,
-      title,
-      detail,
-      indicator,
-    }
     this.backgroundStatusPanelItems.set(activityId, record)
     return record
   }
@@ -2004,6 +2087,9 @@ export default class YoloPlugin extends Plugin {
     // sub-second transient; the migration is idempotent so it always converges.
     this.app.workspace.onLayoutReady(() => {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
+    })
+    this.app.workspace.onLayoutReady(() => {
+      this.getLearningStatsService().start()
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2446,6 +2532,8 @@ export default class YoloPlugin extends Plugin {
     this.actionToastController = null
     this.learningNavigationHandler = null
     this.pendingLearningNavigation = null
+    this.learningStatsService?.dispose()
+    this.learningStatsService = null
     this.closeSmartSpace()
 
     // Selection chat cleanup
@@ -2711,6 +2799,7 @@ export default class YoloPlugin extends Plugin {
       new Notice(
         'YOLO: detected a `baseDir` change in data.json. Reloaded settings against the new path.',
       )
+      this.learningStatsService?.restart()
     }
 
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
@@ -2968,6 +3057,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     this.settings = normalizedSettings
+    if (yoloBaseDirChanged) this.learningStatsService?.restart()
     await this.persistPluginDirSettings(normalizedSettings)
     this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
     setLLMDebugCaptureEnabled(

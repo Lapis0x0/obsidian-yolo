@@ -15948,6 +15948,20 @@ button.yolo-llm-debug-modal-button:focus-visible {
   border-top-color: color-mix(in srgb, var(--color-red) 82%, white 8%);
 }
 
+.yolo-background-activity-status-bar-ring.is-review {
+  order: -1;
+  border: 0;
+  border-radius: 0;
+  color: var(--interactive-accent);
+  animation: none;
+}
+
+.yolo-background-activity-status-bar-ring.is-review svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
 .yolo-agent-status-bar-label,
 .yolo-background-activity-status-bar-label {
   min-width: 0;
@@ -16094,6 +16108,20 @@ button.yolo-llm-debug-modal-button:focus-visible {
 .yolo-background-activity-status-panel-item-indicator.is-failed {
   border-color: color-mix(in srgb, var(--color-red) 22%, transparent);
   border-top-color: color-mix(in srgb, var(--color-red) 82%, white 8%);
+}
+
+.yolo-background-activity-status-panel-item-indicator.is-review {
+  order: -1;
+  border: 0;
+  border-radius: 0;
+  color: var(--interactive-accent);
+  animation: none;
+}
+
+.yolo-background-activity-status-panel-item-indicator.is-review svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
 }
 
 input[type='text'].yolo-chat-list-dropdown-item-title-input {

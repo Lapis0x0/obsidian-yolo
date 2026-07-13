@@ -1,4 +1,3 @@
-import { TAbstractFile } from 'obsidian'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -10,12 +9,8 @@ import type {
   CardGenerationEvent,
   CardGenerationResult,
 } from '../../core/learning/generation/types'
+import type { LearningNavigationTarget } from '../../core/learning/learningNavigation'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
-import {
-  isPathUnderLearningBase,
-  scanProjects,
-} from '../../core/learning/projectScanner'
-import type { Project as VaultProject } from '../../core/learning/types'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 
 import { AnkiImportModal } from './AnkiImportModal'
@@ -30,8 +25,6 @@ import { OutlineBuilder } from './OutlineBuilder'
 import { type TabKey, tabs } from './tabs'
 import { type LearningWizardInput, Wizard } from './Wizard'
 import { Workspace } from './Workspace'
-
-const LEARNING_PROJECT_REFRESH_DEBOUNCE_MS = 200
 
 export function LearningWorkspace() {
   const app = useApp()
@@ -48,23 +41,22 @@ export function LearningWorkspace() {
   )
   const [activeTab, setActiveTab] = useState<TabKey>(tabs[0])
   const [cardMode, setCardMode] = useState<CardMode>('学习')
-  const [navigationTarget, setNavigationTarget] = useState<{
-    projectId: string
-    tab: '卡片'
-    cardMode: CardMode
-  } | null>(null)
+  const [navigationTarget, setNavigationTarget] =
+    useState<LearningNavigationTarget | null>(null)
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null)
   const [cardGeneration, setCardGeneration] =
     useState<CardGenerationWorkspace | null>(null)
-  const refreshTimerRef = useRef<number | null>(null)
-  const refreshGenerationRef = useRef(0)
   const activeProjectRef = useRef<{
     baseDir: string
     projectPath: string | null
   } | null>(null)
 
   const bus = useMemo(() => new ProjectEventBus(app), [app])
-  const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([])
+  const statsService = plugin.getLearningStatsService()
+  const [statsSnapshot, setStatsSnapshot] = useState(() =>
+    statsService.getSnapshot(),
+  )
+  const vaultProjects = statsSnapshot.projects
 
   useEffect(() => {
     plugin.setLearningEventBus(bus)
@@ -79,14 +71,22 @@ export function LearningWorkspace() {
   }, [plugin])
 
   useEffect(() => {
+    if (!navigationTarget) return
+    if (navigationTarget.type === 'home') {
+      setProjectId(null)
+      setSelectedPointId(null)
+      setWizardOpen(false)
+      setAnkiImportOpen(false)
+      setBuildingOutline(false)
+      setNavigationTarget(null)
+      return
+    }
     if (
-      !navigationTarget ||
       !vaultProjects.some(
         (project) => project.id === navigationTarget.projectId,
       )
-    ) {
+    )
       return
-    }
     setCardMode(navigationTarget.cardMode)
     setActiveTab(navigationTarget.tab)
     setProjectId(navigationTarget.projectId)
@@ -94,10 +94,12 @@ export function LearningWorkspace() {
   }, [navigationTarget, vaultProjects])
 
   useEffect(() => {
+    return statsService.subscribe(setStatsSnapshot)
+  }, [statsService])
+
+  useEffect(() => {
     let cancelled = false
     const run = async () => {
-      const generation = refreshGenerationRef.current + 1
-      refreshGenerationRef.current = generation
       try {
         await recoverAnkiImports({
           app,
@@ -107,18 +109,16 @@ export function LearningWorkspace() {
         console.error('[YOLO] Failed to recover Anki imports:', error)
       }
       if (cancelled) return
-      const { projects: scanned } = await scanProjects(app, baseDir)
+      await statsService.refreshAll()
       if (cancelled) return
       bus.startWatchingVault()
-      if (refreshGenerationRef.current !== generation) return
-      setVaultProjects(scanned)
     }
     void run()
     return () => {
       cancelled = true
       bus.stopWatchingVault()
     }
-  }, [app, bus, baseDir, plugin])
+  }, [app, baseDir, bus, plugin, statsService])
 
   useEffect(() => {
     const project = vaultProjects.find((item) => item.id === projectId)
@@ -148,41 +148,8 @@ export function LearningWorkspace() {
   }, [bus])
 
   const refreshProjects = useCallback(async () => {
-    const generation = refreshGenerationRef.current + 1
-    refreshGenerationRef.current = generation
-    const { projects: scanned } = await scanProjects(app, baseDir)
-    if (refreshGenerationRef.current === generation) setVaultProjects(scanned)
-    return scanned
-  }, [app, baseDir])
-
-  useEffect(() => {
-    const scheduleRefreshProjects = () => {
-      if (refreshTimerRef.current !== null) {
-        window.clearTimeout(refreshTimerRef.current)
-      }
-
-      refreshTimerRef.current = window.setTimeout(() => {
-        refreshTimerRef.current = null
-        void refreshProjects()
-      }, LEARNING_PROJECT_REFRESH_DEBOUNCE_MS)
-    }
-
-    const refreshIfLearningPath = (file: TAbstractFile) => {
-      if (isPathUnderLearningBase(file.path, baseDir)) scheduleRefreshProjects()
-    }
-    const refs = [
-      app.vault.on('create', refreshIfLearningPath),
-      app.vault.on('modify', refreshIfLearningPath),
-      app.vault.on('delete', refreshIfLearningPath),
-    ]
-    return () => {
-      for (const ref of refs) app.vault.offref(ref)
-      if (refreshTimerRef.current !== null) {
-        window.clearTimeout(refreshTimerRef.current)
-        refreshTimerRef.current = null
-      }
-    }
-  }, [app, baseDir, refreshProjects])
+    return (await statsService.refreshAll()).projects
+  }, [statsService])
 
   const knowledgeMap = (
     <KnowledgeGraph eventBus={bus} initialSnapshot={bus.getSnapshot()} />
@@ -290,6 +257,7 @@ export function LearningWorkspace() {
         ) : (
           <HomeView
             projects={vaultProjects}
+            statsSnapshot={statsSnapshot}
             onOpenProject={(id) => {
               const project = vaultProjects.find((item) => item.id === id)
               if (project?.kind === 'cards') {

@@ -38,6 +38,10 @@ export type SrsReplayEvent = {
   rating: 1 | 2 | 3 | 4
 }
 
+export type SrsProjectMutation = {
+  projectSlug: string
+}
+
 export function replaySrsEvents(
   events: readonly SrsReplayEvent[],
   introducedAt: Date,
@@ -71,11 +75,17 @@ export class LearningSrsStore {
   private readonly loadPromises = new Map<string, Promise<SrsProjectState>>()
   private writeQueue: Promise<void> = Promise.resolve()
   private managedDataQueue: Promise<void> = Promise.resolve()
-  private ensureDirectoryPromise: Promise<string> | null = null
+  private ensureDirectoryPromise: {
+    key: string
+    value: Promise<string>
+  } | null = null
   private rootPromise: { key: string; value: Promise<string> } | null = null
   private activeRoot: string | null = null
   private activeRootKey: string | null = null
   private rootGeneration = 0
+  private readonly mutationSubscribers = new Set<
+    (mutation: SrsProjectMutation) => void
+  >()
 
   constructor(app: App, getSettings: () => YoloSettingsLike | null) {
     this.app = app
@@ -114,6 +124,11 @@ export class LearningSrsStore {
     return this.enqueueWrite(() => this.enqueueManagedDataOperation(operation))
   }
 
+  subscribe(subscriber: (mutation: SrsProjectMutation) => void): () => void {
+    this.mutationSubscribers.add(subscriber)
+    return () => this.mutationSubscribers.delete(subscriber)
+  }
+
   initializeProjectState(
     projectSlug: string,
     state: SrsProjectState,
@@ -129,6 +144,7 @@ export class LearningSrsStore {
       if (options.activateCache !== false)
         this.cache.set(projectSlug, validated)
       else this.invalidateProject(projectSlug)
+      this.emitMutation(projectSlug)
     })
   }
 
@@ -146,9 +162,10 @@ export class LearningSrsStore {
   deleteProjectState(projectSlug: string): Promise<void> {
     return this.enqueueWrite(async () => {
       const filePath = await this.getProjectFilePath(projectSlug)
-      if (await this.app.vault.adapter.exists(filePath))
-        await this.app.vault.adapter.remove(filePath)
+      const existed = await this.app.vault.adapter.exists(filePath)
+      if (existed) await this.app.vault.adapter.remove(filePath)
       this.invalidateProject(projectSlug)
+      if (existed) this.emitMutation(projectSlug)
     })
   }
 
@@ -190,6 +207,7 @@ export class LearningSrsStore {
 
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
 
       return {
         card: structuredClone(nextCard),
@@ -226,6 +244,7 @@ export class LearningSrsStore {
       const nextState: SrsProjectState = { ...current, cards }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
     })
   }
 
@@ -286,6 +305,7 @@ export class LearningSrsStore {
       const nextState: SrsProjectState = { ...current, suspended }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
     })
   }
 
@@ -299,6 +319,7 @@ export class LearningSrsStore {
       const nextState: SrsProjectState = { ...current, suspended }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
     })
   }
 
@@ -332,6 +353,7 @@ export class LearningSrsStore {
       const nextState: SrsProjectState = { ...current, cards, suspended }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
     })
   }
 
@@ -357,6 +379,7 @@ export class LearningSrsStore {
       const nextState: SrsProjectState = { ...current, cards, suspended }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
     })
   }
 
@@ -367,6 +390,17 @@ export class LearningSrsStore {
       () => undefined,
     )
     return next
+  }
+
+  private emitMutation(projectSlug: string): void {
+    const mutation = { projectSlug }
+    for (const subscriber of this.mutationSubscribers) {
+      try {
+        subscriber(mutation)
+      } catch (error) {
+        console.error('[YOLO] Learning SRS mutation subscriber failed:', error)
+      }
+    }
   }
 
   private enqueueManagedDataOperation<R>(
@@ -447,14 +481,18 @@ export class LearningSrsStore {
   }
 
   private ensureDirectory(): Promise<string> {
-    if (!this.ensureDirectoryPromise) {
-      this.ensureDirectoryPromise = this.ensureDirectoryInternal().finally(
-        () => {
-          this.ensureDirectoryPromise = null
-        },
-      )
+    const key = getYoloJsonDbRootDir(this.getSettings())
+    let request = this.ensureDirectoryPromise
+    if (!request || request.key !== key) {
+      const value = this.ensureDirectoryInternal()
+      request = { key, value }
+      this.ensureDirectoryPromise = request
     }
-    return this.ensureDirectoryPromise
+    return request.value.finally(() => {
+      if (this.ensureDirectoryPromise === request) {
+        this.ensureDirectoryPromise = null
+      }
+    })
   }
 
   private async ensureDirectoryInternal(): Promise<string> {

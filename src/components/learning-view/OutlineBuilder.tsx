@@ -518,6 +518,7 @@ export function OutlineBuilder({
           dismissLabel: t('common.close', '关闭'),
           onAction: () =>
             plugin.openLearningView({
+              type: 'project',
               projectId: scaffold.projectPath,
               tab: '卡片',
               cardMode: canStartLearning ? '学习' : '浏览',
