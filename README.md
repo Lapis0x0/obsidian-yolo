@@ -25,7 +25,9 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/d8EHm48ppU"><b>Join the Discord community</b></a>
+  <a href="https://discord.gg/d8EHm48ppU">
+    <img src="https://img.shields.io/badge/Discord-Join_the_community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Join the Discord community">
+  </a>
 </p>
 
 ## What's New

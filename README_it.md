@@ -25,7 +25,9 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/d8EHm48ppU"><b>Unisciti alla community Discord</b></a>
+  <a href="https://discord.gg/d8EHm48ppU">
+    <img src="https://img.shields.io/badge/Discord-Unisciti_alla_community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Unisciti alla community Discord">
+  </a>
 </p>
 
 ## Novita recenti
