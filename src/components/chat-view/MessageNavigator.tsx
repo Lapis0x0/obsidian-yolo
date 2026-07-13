@@ -91,10 +91,7 @@ function MessageNavigator({
 
   return (
     <nav
-      className={cx(
-        'yolo-message-navigator',
-        isScrolling && 'is-scrolling',
-      )}
+      className={cx('yolo-message-navigator', isScrolling && 'is-scrolling')}
       onMouseEnter={scrollActiveItemIntoView}
     >
       <div className="yolo-message-navigator__rail">
