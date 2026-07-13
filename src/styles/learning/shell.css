@@ -24,9 +24,15 @@
   padding: 0;
 }
 
-.yolo-learning-page > .yolo-learning-home {
-  height: 100%;
+.yolo-learning-page.is-home {
+  box-sizing: border-box;
+  margin-right: -12px;
   overflow-y: auto;
+}
+
+.yolo-learning-page.is-home > .yolo-learning-home {
+  height: 100%;
+  overflow: visible;
 }
 
 /* ── Workspace header + body ────────────────────────────────────────────── */
