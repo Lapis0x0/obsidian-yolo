@@ -1,6 +1,8 @@
 import { TFile, TFolder } from 'obsidian'
 import type { App } from 'obsidian'
 
+import { LearningSrsStore } from '../srs/srsStore'
+
 import type { AnkiImportPlan } from './importPlan'
 import { commitAnkiImportPlan, recoverAnkiImports } from './importWriter'
 
@@ -57,6 +59,9 @@ const makePlan = (): AnkiImportPlan => ({
   cardCount: 1,
   warnings: [],
 })
+
+const createSrsStore = (app: App): LearningSrsStore =>
+  new LearningSrsStore(app, () => null)
 
 function createApp(failPath?: string) {
   const text = new Map<string, string>()
@@ -185,7 +190,11 @@ function createApp(failPath?: string) {
 describe('Anki import transaction', () => {
   it('commits cards, media and SRS before removing its journal', async () => {
     const { app, text, binary } = createApp()
-    const projectId = await commitAnkiImportPlan({ app, plan: makePlan() })
+    const projectId = await commitAnkiImportPlan({
+      app,
+      plan: makePlan(),
+      srsStore: createSrsStore(app),
+    })
     expect(projectId).toBe('Learning/Deck')
     expect(text.get('Learning/Deck/index.md')).toContain('kind: cards')
     expect(text.get('Learning/Deck/Deck/cards.md')).toContain(
@@ -204,7 +213,11 @@ describe('Anki import transaction', () => {
     )
     text.set('unrelated.md', 'keep')
     await expect(
-      commitAnkiImportPlan({ app, plan: makePlan() }),
+      commitAnkiImportPlan({
+        app,
+        plan: makePlan(),
+        srsStore: createSrsStore(app),
+      }),
     ).rejects.toThrow('injected write failure')
     expect(text.get('unrelated.md')).toBe('keep')
     expect(
@@ -237,7 +250,9 @@ describe('Anki import transaction', () => {
         createdFolders: ['Learning/Deck'],
       }),
     )
-    await expect(recoverAnkiImports({ app })).resolves.toEqual({
+    await expect(
+      recoverAnkiImports({ app, srsStore: createSrsStore(app) }),
+    ).resolves.toEqual({
       confirmed: [],
       rolledBack: ['Learning/Deck'],
     })

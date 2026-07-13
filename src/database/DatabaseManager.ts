@@ -64,7 +64,7 @@ export class DatabaseManager {
     } | null,
     pluginDir?: string,
   ): Promise<DatabaseManager> {
-    const dbPath = await ensureVectorDbPath(app, settings)
+    const dbPath = await ensureVectorDbPath(app, settings ?? null)
     const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
     let createdNewDatabase = false
     void pluginDir

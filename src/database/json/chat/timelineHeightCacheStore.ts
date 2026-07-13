@@ -48,7 +48,7 @@ const getTimelineHeightCacheDirPath = async (
   app: App,
   settings?: YoloSettingsLike | null,
 ) => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureJsonDbRootDir(app, settings ?? null)
   return normalizePath(`${rootDir}/${CHAT_DIR}/${TIMELINE_HEIGHT_CACHE_DIR}`)
 }
 

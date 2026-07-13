@@ -2,7 +2,14 @@ import { App, normalizePath } from 'obsidian'
 import { Rating, S_MIN, createEmptyCard, fsrs } from 'ts-fsrs'
 import type { Card, Grade, RecordLog } from 'ts-fsrs'
 
-import { ensureJsonDbRootDir } from '../../paths/yoloManagedData'
+import {
+  type YoloSettingsLike,
+  ensureLearningJsonDbRootDir,
+} from '../../paths/yoloManagedData'
+import {
+  YOLO_LEARNING_SRS_DIR_NAME,
+  getYoloJsonDbRootDir,
+} from '../../paths/yoloPaths'
 
 import type {
   CardScheduling,
@@ -13,7 +20,6 @@ import type {
 } from './srsTypes'
 
 const SRS_SCHEMA_VERSION = 2
-const SRS_DIR_NAME = 'learning-srs'
 const scheduler = fsrs()
 
 type FsrsCardCompat = {
@@ -60,13 +66,52 @@ const toStoredCard = (card: Card, introducedAt: string): SrsCardState => ({
 
 export class LearningSrsStore {
   private readonly app: App
+  private readonly getSettings: () => YoloSettingsLike | null
   private readonly cache = new Map<string, SrsProjectState>()
   private readonly loadPromises = new Map<string, Promise<SrsProjectState>>()
   private writeQueue: Promise<void> = Promise.resolve()
+  private managedDataQueue: Promise<void> = Promise.resolve()
   private ensureDirectoryPromise: Promise<string> | null = null
+  private rootPromise: { key: string; value: Promise<string> } | null = null
+  private activeRoot: string | null = null
+  private activeRootKey: string | null = null
+  private rootGeneration = 0
 
-  constructor(app: App) {
+  constructor(app: App, getSettings: () => YoloSettingsLike | null) {
     this.app = app
+    this.getSettings = getSettings
+  }
+
+  async getLearningDataRootDir(): Promise<string> {
+    const settings = this.getSettings()
+    const key = getYoloJsonDbRootDir(settings)
+    if (key === this.activeRootKey && this.activeRoot) return this.activeRoot
+    let request = this.rootPromise
+    if (!request || request.key !== key) {
+      const value = this.enqueueManagedDataOperation(() =>
+        ensureLearningJsonDbRootDir(this.app, settings),
+      )
+      request = { key, value }
+      this.rootPromise = request
+    }
+
+    try {
+      const root = await request.value
+      if (root !== this.activeRoot || key !== this.activeRootKey) {
+        this.activeRoot = root
+        this.activeRootKey = key
+        this.rootGeneration += 1
+        this.cache.clear()
+        this.loadPromises.clear()
+      }
+      return root
+    } finally {
+      if (this.rootPromise === request) this.rootPromise = null
+    }
+  }
+
+  runExclusive<R>(operation: () => Promise<R>): Promise<R> {
+    return this.enqueueWrite(() => this.enqueueManagedDataOperation(operation))
   }
 
   initializeProjectState(
@@ -324,10 +369,23 @@ export class LearningSrsStore {
     return next
   }
 
+  private enqueueManagedDataOperation<R>(
+    operation: () => Promise<R>,
+  ): Promise<R> {
+    const next = this.managedDataQueue.then(operation, operation)
+    this.managedDataQueue = next.then(
+      () => undefined,
+      () => undefined,
+    )
+    return next
+  }
+
   private async loadProjectState(
     projectSlug: string,
   ): Promise<SrsProjectState> {
     this.validateProjectSlug(projectSlug)
+    await this.getLearningDataRootDir()
+    const generation = this.rootGeneration
     const cached = this.cache.get(projectSlug)
     if (cached) return cached
 
@@ -337,7 +395,12 @@ export class LearningSrsStore {
     const load = this.readProjectState(projectSlug)
     this.loadPromises.set(projectSlug, load)
     try {
-      return await load
+      const state = await load
+      if (generation !== this.rootGeneration) {
+        return this.loadProjectState(projectSlug)
+      }
+      this.cache.set(projectSlug, state)
+      return state
     } finally {
       if (this.loadPromises.get(projectSlug) === load) {
         this.loadPromises.delete(projectSlug)
@@ -355,7 +418,6 @@ export class LearningSrsStore {
         cards: {},
         suspended: [],
       }
-      this.cache.set(projectSlug, empty)
       return empty
     }
 
@@ -368,7 +430,6 @@ export class LearningSrsStore {
     }
     const { state, migrated } = this.parseProjectState(parsed, filePath)
     if (migrated) await this.writeProjectState(projectSlug, state)
-    this.cache.set(projectSlug, state)
     return state
   }
 
@@ -397,11 +458,11 @@ export class LearningSrsStore {
   }
 
   private async ensureDirectoryInternal(): Promise<string> {
-    const root = await ensureJsonDbRootDir(this.app)
+    const root = await this.getLearningDataRootDir()
     if (!(await this.app.vault.adapter.exists(root))) {
       await this.app.vault.adapter.mkdir(root)
     }
-    const dir = normalizePath(`${root}/${SRS_DIR_NAME}`)
+    const dir = normalizePath(`${root}/${YOLO_LEARNING_SRS_DIR_NAME}`)
     if (!(await this.app.vault.adapter.exists(dir))) {
       await this.app.vault.adapter.mkdir(dir)
     }

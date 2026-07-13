@@ -351,7 +351,10 @@ export default class YoloPlugin extends Plugin {
 
   getLearningSrsStore(): LearningSrsStore {
     if (!this.learningSrsStore) {
-      this.learningSrsStore = new LearningSrsStore(this.app)
+      this.learningSrsStore = new LearningSrsStore(
+        this.app,
+        () => this.settings,
+      )
     }
     return this.learningSrsStore
   }
@@ -2683,7 +2686,13 @@ export default class YoloPlugin extends Plugin {
     const baseDirChanged =
       previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
 
-    this.settings = normalizedSettings
+    if (baseDirChanged && this.learningSrsStore) {
+      await this.learningSrsStore.runExclusive(async () => {
+        this.settings = normalizedSettings
+      })
+    } else {
+      this.settings = normalizedSettings
+    }
     this.currentSettingsMeta = incomingMeta
     this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
 
@@ -2932,11 +2941,19 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           return
         }
       }
-      const migrated = await relocateYoloManagedData({
-        app: this.app,
-        fromSettings: previousSettings,
-        toSettings: normalizedSettings,
-      })
+      const relocate = () =>
+        relocateYoloManagedData({
+          app: this.app,
+          fromSettings: previousSettings,
+          toSettings: normalizedSettings,
+        })
+      const migrated = this.learningSrsStore
+        ? await this.learningSrsStore.runExclusive(async () => {
+            const succeeded = await relocate()
+            if (succeeded) this.settings = normalizedSettings
+            return succeeded
+          })
+        : await relocate()
       if (!migrated) {
         new Notice(
           'Failed to move YOLO managed data. Keeping previous YOLO root folder.',

@@ -80,6 +80,10 @@ YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, wri
 
 ## Critical Implementation Details
 
+**YOLO Managed Paths**
+
+- Vault-managed files must resolve from `settings.yolo.baseDir`; never hardcode `YOLO` or call write-path helpers without current settings. Long-lived services must read current settings through a getter so base-directory changes take effect.
+
 **PGlite in Obsidian Browser Environment**
 
 - PGlite default `node:fs` path is unavailable in Obsidian.

@@ -1,14 +1,12 @@
 import { dump as dumpYaml } from 'js-yaml'
 import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
-import { ensureJsonDbRootDir } from '../../paths/yoloManagedData'
+import { YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME } from '../../paths/yoloPaths'
 import { parseCardFile } from '../cardFile'
 import { scanProject } from '../projectScanner'
 import { LearningSrsStore } from '../srs/srsStore'
 
 import type { AnkiImportPlan } from './importPlan'
-
-const JOURNAL_DIR = 'anki-import-journals'
 
 type ImportJournal = {
   version: 1
@@ -83,9 +81,12 @@ const ensureDir = async (app: App, path: string): Promise<void> => {
     await app.vault.adapter.mkdir(path)
 }
 
-const journalDirectory = async (app: App): Promise<string> => {
-  const root = await ensureJsonDbRootDir(app)
-  const dir = normalizePath(`${root}/${JOURNAL_DIR}`)
+const journalDirectory = async (
+  app: App,
+  srsStore: LearningSrsStore,
+): Promise<string> => {
+  const root = await srsStore.getLearningDataRootDir()
+  const dir = normalizePath(`${root}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}`)
   await ensureDir(app, dir)
   return dir
 }
@@ -175,12 +176,12 @@ const verify = async (
 export async function commitAnkiImportPlan({
   app,
   plan,
-  srsStore = new LearningSrsStore(app),
+  srsStore,
   signal,
 }: {
   app: App
   plan: AnkiImportPlan
-  srsStore?: LearningSrsStore
+  srsStore: LearningSrsStore
   signal?: AbortSignal
 }): Promise<string> {
   throwIfAborted(signal)
@@ -188,7 +189,7 @@ export async function commitAnkiImportPlan({
     throw new Error(`Import target already exists: ${plan.projectPath}`)
   await ensureDir(app, plan.baseDir)
   const journalPath = normalizePath(
-    `${await journalDirectory(app)}/${crypto.randomUUID()}.json`,
+    `${await journalDirectory(app, srsStore)}/${crypto.randomUUID()}.json`,
   )
   const journal: ImportJournal = {
     version: 1,
@@ -269,12 +270,12 @@ export async function commitAnkiImportPlan({
 
 export async function recoverAnkiImports({
   app,
-  srsStore = new LearningSrsStore(app),
+  srsStore,
 }: {
   app: App
-  srsStore?: LearningSrsStore
+  srsStore: LearningSrsStore
 }): Promise<{ confirmed: string[]; rolledBack: string[] }> {
-  const dir = await journalDirectory(app)
+  const dir = await journalDirectory(app, srsStore)
   const listing = await app.vault.adapter.list(dir)
   const confirmed: string[] = []
   const rolledBack: string[] = []

@@ -8,6 +8,8 @@ export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
 export const YOLO_VECTOR_DB_FILE_NAME = '.yolo_vector_db.tar.gz'
 export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
 export const YOLO_LEARNING_SUBDIR = 'learning'
+export const YOLO_LEARNING_SRS_DIR_NAME = 'learning-srs'
+export const YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME = 'anki-import-journals'
 // Fixed-name pointer file at vault root. Its content is a JSON object
 // { "dataPath": "<vault-relative path to .yolo_data.json>" } used to locate
 // the actual mirror file whose directory depends on `yolo.baseDir`.
