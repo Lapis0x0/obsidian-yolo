@@ -529,11 +529,6 @@
   opacity: 0;
   transform: translateY(-4px);
   border-left: 1px solid transparent;
-  transition:
-    opacity 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    padding 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 180ms ease;
 }
 
 .yolo-assistant-message-metadata-content .markdown-rendered {
@@ -562,7 +557,6 @@
   display: grid;
   grid-template-rows: 0fr;
   overflow: hidden;
-  transition: grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .yolo-assistant-message-metadata-preview {
