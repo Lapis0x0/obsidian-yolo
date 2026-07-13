@@ -16,7 +16,6 @@ import ollamaLogo from '../assets/provider-icons/ollama.svg'
 import openaiLogo from '../assets/provider-icons/openai.svg'
 import openrouterLogo from '../assets/provider-icons/openrouter.svg'
 import perplexityLogo from '../assets/provider-icons/perplexity.svg'
-import qwenLogo from '../assets/provider-icons/qwen.svg'
 import sambanovaLogo from '../assets/provider-icons/sambanova.svg'
 import siliconflowLogo from '../assets/provider-icons/siliconflow.svg'
 import stepfunLogo from '../assets/provider-icons/stepfun.svg'
@@ -129,13 +128,6 @@ export const PROVIDER_CATALOG: Record<
     tint: 'purple',
     category: 'cn',
     logo: moonshotLogo,
-  },
-  'qwen-oauth': {
-    monogram: '通义',
-    tint: 'indigo',
-    category: 'cn',
-    oauth: true,
-    logo: qwenLogo,
   },
   openrouter: {
     monogram: 'OR',
@@ -255,7 +247,6 @@ const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
   // China (cn)
   'deepseek',
   'moonshot',
-  'qwen-oauth',
   'zhipu',
   'doubao',
   'siliconflow',

@@ -214,7 +214,7 @@ describe('parseYoloSettings', () => {
     ).toBe('openai/gpt-5')
   })
 
-  it('migrates version 41 settings to include qwen oauth defaults', () => {
+  it('does not add retired qwen oauth defaults to version 41 settings', () => {
     const result = parseYoloSettings({
       version: 41,
       providers: [
@@ -234,22 +234,65 @@ describe('parseYoloSettings', () => {
       ],
     })
 
-    expect(result.providers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+    expect(
+      result.providers.some((provider) => provider.id === 'qwen-oauth'),
+    ).toBe(false)
+    expect(
+      result.chatModels.some((model) => model.providerId === 'qwen-oauth'),
+    ).toBe(false)
+  })
+
+  it('preserves existing qwen oauth settings as a custom provider', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
           id: 'qwen-oauth',
           presetType: 'qwen-oauth',
-        }),
-      ]),
-    )
-    expect(result.chatModels).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
+          apiType: 'openai-compatible',
+          baseUrl: 'https://example.com/v1',
+          apiKey: 'existing-token',
+          additionalSettings: { requestTransportMode: { desktop: 'node' } },
+          customHeaders: [{ key: 'X-Test', value: 'preserved' }],
+        },
+      ],
+      chatModels: [
+        {
           id: 'qwen-oauth/coder-model',
           providerId: 'qwen-oauth',
-        }),
-      ]),
-    )
+          model: 'coder-model',
+          name: 'Existing Qwen model',
+          enable: false,
+          temperature: 0.4,
+        },
+      ],
+      chatModelId: 'qwen-oauth/coder-model',
+      chatTitleModelId: 'qwen-oauth/coder-model',
+    })
+
+    expect(result.providers).toEqual([
+      {
+        id: 'qwen-oauth',
+        presetType: 'openai-compatible',
+        apiType: 'openai-compatible',
+        baseUrl: 'https://example.com/v1',
+        apiKey: 'existing-token',
+        additionalSettings: { requestTransportMode: { desktop: 'node' } },
+        customHeaders: [{ key: 'X-Test', value: 'preserved' }],
+      },
+    ])
+    expect(result.chatModels).toEqual([
+      expect.objectContaining({
+        id: 'qwen-oauth/coder-model',
+        providerId: 'qwen-oauth',
+        model: 'coder-model',
+        name: 'Existing Qwen model',
+        enable: false,
+        temperature: 0.4,
+      }),
+    ])
+    expect(result.chatModelId).toBe('qwen-oauth/coder-model')
+    expect(result.chatTitleModelId).toBe('qwen-oauth/coder-model')
   })
 
   it('migrates legacy rag auto update interval 24 hours to 0', () => {
