@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and FSRS-based learning with AI generation and Anki import.
+YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and FSRS-based learning with AI generation and Anki import.
 
 ## Commands
 
