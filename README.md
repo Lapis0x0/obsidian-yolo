@@ -26,6 +26,8 @@
 
 ## What's New
 
+- **`1.6`**: Introduces the new Learning Mode—turn any topic and reference materials into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map. Built-in FSRS spaced repetition and Anki `.apkg` import help turn knowledge into a sustainable review workflow.
+
 - **`1.5`**: Introduces a new Agent runtime that turns AI from Q&A into active collaboration—with full tool calling, MCP, Skills, desktop Bash, subagents, and web search—plus smarter long-session context and memory, refreshed hybrid RAG, focus/PDF awareness, and multi-window chat with background Agents.
 
 ## Highlights
@@ -99,7 +101,7 @@ If you use YOLO on mobile, you may still encounter unavailable features, inconsi
 - [x] Better and stronger Vault AI search
 - [x] Background Agent (long-running task automation)
 - [x] Multi-Agent orchestration (via subagents)
-- [ ] Learning Mode — a dedicated study view
+- [x] Learning Mode — a dedicated study view
 - [ ] Annotation Mode — real-time AI annotations and suggestions on notes
 - [ ] Built-in assistant — a corner-pinned helper for config/agents, with auto-compaction and scheduled tasks
 - [ ] Better AI whiteboard
