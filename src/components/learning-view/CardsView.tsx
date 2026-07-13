@@ -3321,22 +3321,22 @@ function ReviewMode({
   > = {
     again: {
       label: t('learning.cards.reviewAgain', '重来'),
-      hint: formatSchedulingHint(scheduling?.again, new Date()),
+      hint: formatSchedulingHint(scheduling?.again, new Date(), t),
       tone: 'danger',
     },
     hard: {
       label: t('learning.cards.reviewHard', '模糊'),
-      hint: formatSchedulingHint(scheduling?.hard, new Date()),
+      hint: formatSchedulingHint(scheduling?.hard, new Date(), t),
       tone: 'warning',
     },
     good: {
       label: t('learning.cards.reviewGood', '会了'),
-      hint: formatSchedulingHint(scheduling?.good, new Date()),
+      hint: formatSchedulingHint(scheduling?.good, new Date(), t),
       tone: 'success',
     },
     easy: {
       label: t('learning.cards.reviewEasy', '简单'),
-      hint: formatSchedulingHint(scheduling?.easy, new Date()),
+      hint: formatSchedulingHint(scheduling?.easy, new Date(), t),
       tone: 'easy',
     },
   }
@@ -3658,14 +3658,20 @@ function EvalBtn({
 function formatSchedulingHint(
   scheduling: CardScheduling | undefined,
   now: Date,
+  t: (keyPath: string, fallback?: string) => string,
 ): string {
   if (!scheduling) return '…'
   const minutes = Math.max(
     1,
     Math.round((scheduling.due.getTime() - now.getTime()) / 60_000),
   )
-  if (minutes < 60) return `${minutes} 分钟后`
+  if (minutes < 60)
+    return `${minutes} ${t('learning.cards.reviewMinuteUnit', '分钟')}`
   const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours} 小时后`
-  return `${Math.max(1, scheduling.scheduledDays)} 天后`
+  if (hours < 48)
+    return `${hours} ${t('learning.cards.reviewHourUnit', '小时')}`
+  return `${Math.max(1, scheduling.scheduledDays)} ${t(
+    'learning.cards.reviewDayUnit',
+    '天',
+  )}`
 }
