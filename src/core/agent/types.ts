@@ -14,6 +14,7 @@ import { McpManager } from '../mcp/mcpManager'
 
 import type { CitationRegistry } from './citationRegistry'
 import type { AutoContextCompactionChatOptions } from './compaction'
+import type { ToolCapabilityMode } from './tool-capability-prompt'
 
 export type AgentRunContext = {
   citationRegistry: CitationRegistry
@@ -79,7 +80,7 @@ export type AgentRuntimeRunInput = {
   }
   allowedSkillPaths?: string[]
   contextualInjections?: ContextualInjection[]
-  runtimeModePrompt?: string
+  toolCapabilityMode?: ToolCapabilityMode
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean

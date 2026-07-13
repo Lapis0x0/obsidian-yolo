@@ -2169,6 +2169,26 @@ describe('RequestContextBuilder system prompt freezing', () => {
     )
   })
 
+  it('always includes the authoritative tool policy', async () => {
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-tool-policy',
+      hasTools: false,
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain('Only use tools exposed in this request')
+    expect(systemContent).toContain(
+      'Never simulate unavailable tool calls or claim an action succeeded without a successful tool result',
+    )
+  })
+
   it('freezes memory in the system prompt for the conversation lifetime (create mode)', async () => {
     const store = new SystemPromptSnapshotStore()
     const builder = new RequestContextBuilder(makeApp(), baseSettings, {

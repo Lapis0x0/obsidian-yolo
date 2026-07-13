@@ -2124,7 +2124,8 @@ ${customInstruction}
     hasOnDemandTools: boolean,
   ): string {
     let section = `- Format your responses in Markdown.
-- Always reply in the same language as the user's message.`
+- Always reply in the same language as the user's message.
+- Only use tools exposed in this request. Never simulate unavailable tool calls or claim an action succeeded without a successful tool result.`
 
     if (hasTools) {
       section += `

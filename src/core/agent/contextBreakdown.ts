@@ -18,6 +18,10 @@ import {
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { McpManager } from '../mcp/mcpManager'
 
+import {
+  type ToolCapabilityMode,
+  buildToolCapabilityPrompt,
+} from './tool-capability-prompt'
 import { selectAllowedTools } from './tool-selection'
 
 /** Token breakdown for a single bucket in the context-usage popover. */
@@ -137,7 +141,7 @@ export const estimateContextBreakdown = async ({
   enableToolDisclosure,
   toolPreferences,
   contextualInjections,
-  runtimeModePrompt,
+  toolCapabilityMode,
 }: {
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
@@ -152,7 +156,7 @@ export const estimateContextBreakdown = async ({
   enableToolDisclosure?: boolean
   toolPreferences?: Record<string, AssistantToolPreference>
   contextualInjections?: ContextualInjection[]
-  runtimeModePrompt?: string
+  toolCapabilityMode?: ToolCapabilityMode
 }): Promise<ContextBreakdown> => {
   const availableTools = enableTools
     ? await mcpManager.listAvailableTools({
@@ -160,16 +164,25 @@ export const estimateContextBreakdown = async ({
         chatModelModalities: model.modalities,
       })
     : []
-  const { hasTools, hasMemoryTools, hasOnDemandTools, requestTools } =
-    await selectAllowedTools({
-      availableTools,
-      allowedToolNames,
-      toolPreferences,
-      apiType,
-      enableToolDisclosure,
-      jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-    })
+  const {
+    filteredTools,
+    hasTools,
+    hasMemoryTools,
+    hasOnDemandTools,
+    requestTools,
+  } = await selectAllowedTools({
+    availableTools,
+    allowedToolNames,
+    toolPreferences,
+    apiType,
+    enableToolDisclosure,
+    jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+  })
 
+  const runtimeModePrompt = buildToolCapabilityPrompt({
+    mode: toolCapabilityMode ?? 'agent',
+    toolNames: filteredTools.map((tool) => tool.name),
+  })
   const sections = await requestContextBuilder.generateRequestSections({
     messages,
     hasTools,

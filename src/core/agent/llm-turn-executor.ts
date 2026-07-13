@@ -33,6 +33,10 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 
 import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
+import {
+  type ToolCapabilityMode,
+  buildToolCapabilityPrompt,
+} from './tool-capability-prompt'
 import { selectAllowedTools } from './tool-selection'
 
 type AgentLlmTurnExecutorInput = {
@@ -64,7 +68,7 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   contextualInjections?: ContextualInjection[]
-  runtimeModePrompt?: string
+  toolCapabilityMode?: ToolCapabilityMode
   transientRequestMessages?: RequestMessage[]
   geminiTools?: {
     useWebSearch?: boolean
@@ -115,6 +119,7 @@ export class AgentLlmTurnExecutor {
         })
       : []
     const {
+      filteredTools,
       hasTools,
       hasMemoryTools,
       hasOnDemandTools,
@@ -128,6 +133,10 @@ export class AgentLlmTurnExecutor {
       jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
       settings: this.input.mcpManager.getSettingsSnapshot(),
     })
+    const runtimeModePrompt = buildToolCapabilityPrompt({
+      mode: this.input.toolCapabilityMode ?? 'agent',
+      toolNames: filteredTools.map((tool) => tool.name),
+    })
     const baseRequestMessages =
       await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
@@ -138,7 +147,7 @@ export class AgentLlmTurnExecutor {
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,
         contextualInjections: this.input.contextualInjections,
-        runtimeModePrompt: this.input.runtimeModePrompt,
+        runtimeModePrompt,
         systemPromptOverride: this.input.systemPromptOverride,
         // Real LLM request: freeze (or reuse) the per-conversation system prompt.
         systemPromptSnapshotMode: 'create',

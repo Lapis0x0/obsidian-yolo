@@ -210,7 +210,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     baseInjections: input.contextualInjections,
                     messages: conversationMessages,
                   }),
-                  runtimeModePrompt: input.runtimeModePrompt,
+                  toolCapabilityMode: input.toolCapabilityMode,
                   transientRequestMessages: autoContextCompactionNotice
                     ? [autoContextCompactionNotice]
                     : undefined,
@@ -370,7 +370,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                               baseInjections: input.contextualInjections,
                               messages: conversationMessages,
                             }),
-                            runtimeModePrompt: input.runtimeModePrompt,
+                            toolCapabilityMode: input.toolCapabilityMode,
                           })
                       } catch (error) {
                         console.warn(
@@ -550,7 +550,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       reasoningLevel: input.reasoningLevel,
       requestParams: input.requestParams,
       contextualInjections: input.contextualInjections,
-      runtimeModePrompt: input.runtimeModePrompt,
+      toolCapabilityMode: input.toolCapabilityMode,
       geminiTools: input.geminiTools,
       systemPromptOverride: input.systemPromptOverride,
       onAssistantMessage: (assistantMessage) => {

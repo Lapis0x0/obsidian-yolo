@@ -32,8 +32,7 @@ describe('resolveChatModeRuntime', () => {
     expect(runtime.toolPreferences).toBeUndefined()
     expect(runtime.toolServerPreferences).toBeUndefined()
     expect(runtime.bypassToolApproval).toBe(false)
-    expect(runtime.runtimeModePrompt).toContain('Ask mode')
-    expect(runtime.runtimeModePrompt).toContain('switch to Agent mode')
+    expect(runtime.toolCapabilityMode).toBe('ask')
   })
 
   it('keeps full tool set in agent mode with per-tool preferences', () => {
@@ -49,7 +48,7 @@ describe('resolveChatModeRuntime', () => {
       assistant.toolServerPreferences,
     )
     expect(runtime.bypassToolApproval).toBe(false)
-    expect(runtime.runtimeModePrompt).toBeUndefined()
+    expect(runtime.toolCapabilityMode).toBe('agent')
   })
 
   it('enables bypass only when agent mode and YOLO are combined', () => {
@@ -66,7 +65,7 @@ describe('resolveChatModeRuntime', () => {
       assistant.toolServerPreferences,
     )
     expect(runtime.bypassToolApproval).toBe(true)
-    expect(runtime.runtimeModePrompt).toBeUndefined()
+    expect(runtime.toolCapabilityMode).toBe('agent')
   })
 
   it('ignores YOLO outside agent mode', () => {

@@ -103,10 +103,11 @@ describe('AgentLlmTurnExecutor', () => {
       toolCalls: [],
     })
 
+    const generateRequestMessages = jest
+      .fn()
+      .mockResolvedValue([{ role: 'user', content: 'hello' }])
     const requestContextBuilder = {
-      generateRequestMessages: jest
-        .fn()
-        .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+      generateRequestMessages,
     } as unknown as RequestContextBuilder
 
     const mcpManager = createMockMcpManager()
@@ -130,6 +131,13 @@ describe('AgentLlmTurnExecutor', () => {
 
     await executor.run()
 
+    expect(generateRequestMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeModePrompt: expect.stringContaining(
+          'file editing, path operations, and terminal commands',
+        ),
+      }),
+    )
     expect(mockExecuteSingleTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         primaryRequestTimeoutMs: 20000,

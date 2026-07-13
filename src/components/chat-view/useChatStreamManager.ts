@@ -21,6 +21,7 @@ import {
   type AgentConversationState,
   buildAgentConversationRunSummary,
 } from '../../core/agent/service'
+import { buildToolCapabilityPrompt } from '../../core/agent/tool-capability-prompt'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { selectAllowedTools } from '../../core/agent/tool-selection'
 import type { AgentRuntimeRunInput } from '../../core/agent/types'
@@ -566,15 +567,24 @@ export function useChatStreamManager({
             chatModelModalities: effectiveModel.modalities,
           })
         : []
-      const { hasTools, hasMemoryTools, hasOnDemandTools, requestTools } =
-        await selectAllowedTools({
-          availableTools,
-          allowedToolNames: effectiveAllowedToolNames,
-          toolPreferences: chatModeRuntime.toolPreferences,
-          apiType: manualApiType,
-          enableToolDisclosure: settings.mcp.enableToolDisclosure,
-          jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-        })
+      const {
+        filteredTools,
+        hasTools,
+        hasMemoryTools,
+        hasOnDemandTools,
+        requestTools,
+      } = await selectAllowedTools({
+        availableTools,
+        allowedToolNames: effectiveAllowedToolNames,
+        toolPreferences: chatModeRuntime.toolPreferences,
+        apiType: manualApiType,
+        enableToolDisclosure: settings.mcp.enableToolDisclosure,
+        jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+      })
+      const runtimeModePrompt = buildToolCapabilityPrompt({
+        mode: chatModeRuntime.toolCapabilityMode,
+        toolNames: filteredTools.map((tool) => tool.name),
+      })
       const compactionPrefix =
         await requestContextBuilder.generateRequestMessages({
           messages,
@@ -585,7 +595,7 @@ export function useChatStreamManager({
           conversationId: currentConversationId,
           compaction: manualCompaction,
           contextualInjections: manualContextualInjections,
-          runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+          runtimeModePrompt,
           // Reuse the frozen snapshot; never create one outside the real request.
           systemPromptSnapshotMode: 'reuse',
         })
@@ -623,7 +633,7 @@ export function useChatStreamManager({
             allowedToolNames: effectiveAllowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
-            runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+            toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: manualContextualInjections,
           })
       } catch (error) {
@@ -810,7 +820,7 @@ export function useChatStreamManager({
           enableToolDisclosure: settings.mcp.enableToolDisclosure,
           toolPreferences: chatModeRuntime.toolPreferences,
           toolServerPreferences: chatModeRuntime.toolServerPreferences,
-          runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+          toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
           bypassToolApproval: chatModeRuntime.bypassToolApproval,
           blockedCommandPrefixes: settings.mcp.builtinToolOptions[
             TERMINAL_COMMAND_TOOL_NAME
@@ -1064,7 +1074,7 @@ export function useChatStreamManager({
         allowedToolNames: chatModeRuntime.allowedToolNames,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         toolPreferences: chatModeRuntime.toolPreferences,
-        runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+        toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
         contextualInjections: buildChatContextualInjections({
           app,
           includeFocusSync: resolveAssistantIncludeCurrentFileContent(
