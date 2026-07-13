@@ -1450,7 +1450,44 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 @container yolo-chat-conversation (max-width: 850px) {
   .yolo-message-navigator {
-    display: none;
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 0;
+    width: 18px;
+  }
+
+  .yolo-message-navigator__rail {
+    width: 18px;
+    padding-inline: 2px;
+    opacity: 0;
+  }
+
+  .yolo-message-navigator__bar {
+    width: 8px;
+    min-width: 8px;
+  }
+
+  .yolo-message-navigator__bar.is-active {
+    width: 12px;
+    min-width: 12px;
+  }
+
+  .yolo-message-navigator.is-scrolling .yolo-message-navigator__rail {
+    opacity: 0.65;
+  }
+
+  .yolo-message-navigator:hover .yolo-message-navigator__rail,
+  .yolo-message-navigator:focus-within .yolo-message-navigator__rail {
+    opacity: 0;
+    pointer-events: auto;
+  }
+
+  .yolo-message-navigator__panel {
+    right: auto;
+    left: 8px;
+    width: min(300px, calc(100cqw - 28px), calc(100vw - 48px));
+    max-height: min(440px, calc(100% - var(--size-4-3) * 2));
   }
 }
 

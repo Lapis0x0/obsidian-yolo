@@ -6419,6 +6419,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         activeMessageId={activeNavigatorMessageId}
         itemLabel={getMessageNavigatorItemLabel}
         onSelect={handleNavigateToUserMessage}
+        scrollContainerRef={chatMessagesRef}
       />
     ) : undefined
 
