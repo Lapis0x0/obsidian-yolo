@@ -36,6 +36,7 @@ import {
   getBuiltinToolDisplayIndex,
   getBuiltinToolUiMeta,
 } from '../../../core/agent/builtinToolUiMeta'
+import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
   buildDefaultBuiltinToolPreferences,
   buildServerToolTokenBudgets,
@@ -924,16 +925,8 @@ export function AgentsSectionContent({
   )
 
   const enabledVisibleToolsCount = useMemo(() => {
-    const enabled = new Set(getEnabledAssistantToolNames(draftAgent))
-    return visibleToolGroups.reduce(
-      (sum, group) =>
-        sum +
-        group.tools.filter((tool) =>
-          tool.toggleTargets.every((target) => enabled.has(target)),
-        ).length,
-      0,
-    )
-  }, [draftAgent, visibleToolGroups])
+    return countEnabledVisibleAssistantTools(draftAgent, availableTools)
+  }, [availableTools, draftAgent])
 
   const groupEnabledCounts = useMemo(() => {
     const enabled = new Set(getEnabledAssistantToolNames(draftAgent))

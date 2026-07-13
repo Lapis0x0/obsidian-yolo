@@ -8,7 +8,7 @@ import {
   Settings,
   Wrench,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -18,8 +18,9 @@ import {
   DEFAULT_ASSISTANT_ID,
   isDefaultAssistantId,
 } from '../../core/agent/default-assistant'
-import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
+import { countEnabledVisibleAssistantTools } from '../../core/agent/tool-display-count'
 import { Assistant } from '../../types/assistant.types'
+import type { McpTool } from '../../types/mcp.types'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
 import { YoloPopoverContent } from '../common/popover'
 import { AssistantsModal } from '../settings/modals/AssistantsModal'
@@ -42,8 +43,52 @@ export function AssistantSelector({
   const app = useApp()
   const plugin = usePlugin()
   const [open, setOpen] = useState(false)
+  const [availableTools, setAvailableTools] = useState<McpTool[]>([])
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const isControlled = typeof currentAssistantId === 'string'
+
+  useEffect(() => {
+    let mounted = true
+    let requestId = 0
+    let unsubscribe: (() => void) | undefined
+
+    void plugin
+      .getMcpManager()
+      .then((manager) => {
+        if (!mounted) {
+          return
+        }
+
+        const refreshAvailableTools = () => {
+          const currentRequestId = ++requestId
+          void manager
+            .listAvailableTools({ includeBuiltinTools: true })
+            .then((tools) => {
+              if (mounted && currentRequestId === requestId) {
+                setAvailableTools(tools)
+              }
+            })
+            .catch((error: unknown) => {
+              console.error(
+                'Failed to load available tools for agent selector',
+                error,
+              )
+            })
+        }
+
+        unsubscribe = manager.subscribeServersChange(refreshAvailableTools)
+        refreshAvailableTools()
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to initialize agent selector tools', error)
+      })
+
+    return () => {
+      mounted = false
+      requestId += 1
+      unsubscribe?.()
+    }
+  }, [plugin])
 
   const assistants = settings.assistants || []
   const resolvedCurrentAssistantId =
@@ -131,7 +176,7 @@ export function AssistantSelector({
       ? rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
       : rawModelId
     const toolCount = assistant.enableTools
-      ? getEnabledAssistantToolNames(assistant).length
+      ? countEnabledVisibleAssistantTools(assistant, availableTools)
       : 0
     return (
       <div className="yolo-assistant-selector-item-meta">
