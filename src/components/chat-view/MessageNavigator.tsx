@@ -1,5 +1,8 @@
 import cx from 'clsx'
-import { memo, useCallback, useEffect, useRef } from 'react'
+import type { RefObject } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+
+const SCROLL_INDICATOR_HIDE_DELAY_MS = 800
 
 export type MessageNavigatorAnchor = {
   id: string
@@ -12,6 +15,7 @@ type MessageNavigatorProps = {
   activeMessageId: string | null
   itemLabel: (index: number, label: string) => string
   onSelect: (messageId: string) => void
+  scrollContainerRef: RefObject<HTMLElement>
 }
 
 function MessageNavigator({
@@ -19,8 +23,12 @@ function MessageNavigator({
   activeMessageId,
   itemLabel,
   onSelect,
+  scrollContainerRef,
 }: MessageNavigatorProps) {
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const scrollIdleTimerRef = useRef<number | null>(null)
+  const isScrollingRef = useRef(false)
+  const [isScrolling, setIsScrolling] = useState(false)
 
   const scrollActiveItemIntoView = useCallback(() => {
     if (!activeMessageId) {
@@ -44,13 +52,49 @@ function MessageNavigator({
     scrollActiveItemIntoView()
   }, [scrollActiveItemIntoView])
 
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer) {
+      return
+    }
+
+    const handleScroll = () => {
+      if (!isScrollingRef.current) {
+        isScrollingRef.current = true
+        setIsScrolling(true)
+      }
+
+      if (scrollIdleTimerRef.current !== null) {
+        window.clearTimeout(scrollIdleTimerRef.current)
+      }
+      scrollIdleTimerRef.current = window.setTimeout(() => {
+        scrollIdleTimerRef.current = null
+        isScrollingRef.current = false
+        setIsScrolling(false)
+      }, SCROLL_INDICATOR_HIDE_DELAY_MS)
+    }
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      scrollContainer.removeEventListener('scroll', handleScroll)
+      if (scrollIdleTimerRef.current !== null) {
+        window.clearTimeout(scrollIdleTimerRef.current)
+        scrollIdleTimerRef.current = null
+      }
+      isScrollingRef.current = false
+    }
+  }, [scrollContainerRef])
+
   if (anchors.length === 0) {
     return null
   }
 
   return (
     <nav
-      className="yolo-message-navigator"
+      className={cx(
+        'yolo-message-navigator',
+        isScrolling && 'is-scrolling',
+      )}
       onMouseEnter={scrollActiveItemIntoView}
     >
       <div className="yolo-message-navigator__rail">
