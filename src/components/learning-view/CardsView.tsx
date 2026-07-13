@@ -318,12 +318,14 @@ export function CardsView({
   mode,
   onModeChange,
   onStudyCountChange,
+  projectPaused,
 }: {
   project: VaultProject | null
   generation: CardGenerationWorkspace | null
   mode: CardMode
   onModeChange: (mode: CardMode) => void
   onStudyCountChange: (count: number) => void
+  projectPaused: boolean
 }) {
   const {
     cards,
@@ -335,15 +337,19 @@ export function CardsView({
     refresh,
     writing,
     setWriting,
+    projectPaused: statePaused,
   } = useProjectCards(project, generation)
+  const schedulingPaused = projectPaused || statePaused
   const initialReviewQueue = useMemo(
     () =>
-      buildInitialReviewQueue(
-        cards.filter((card) => !card.preview && !card.suspended),
-        now,
-        todayIntroducedCount,
-      ),
-    [cards, now, todayIntroducedCount],
+      schedulingPaused
+        ? []
+        : buildInitialReviewQueue(
+            cards.filter((card) => !card.preview && !card.suspended),
+            now,
+            todayIntroducedCount,
+          ),
+    [cards, now, schedulingPaused, todayIntroducedCount],
   )
 
   useEffect(() => {
@@ -352,7 +358,7 @@ export function CardsView({
 
   return (
     <div className="yolo-learning-cards-view yolo-learning-scrollbar-thin">
-      {mode === '浏览' ? (
+      {mode === '浏览' || schedulingPaused ? (
         <BrowseMode
           project={project}
           cards={cards}
@@ -363,6 +369,7 @@ export function CardsView({
           refresh={refresh}
           writing={writing}
           setWriting={setWriting}
+          projectPaused={schedulingPaused}
         />
       ) : (
         <ReviewMode
@@ -391,11 +398,12 @@ function useProjectCards(
   const [writing, setWriting] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
   const [todayIntroducedCount, setTodayIntroducedCount] = useState(0)
+  const [projectPausedAt, setProjectPausedAt] = useState<string | null>(null)
   const loadGenerationRef = useRef(0)
   const introducedLoadGenerationRef = useRef(0)
   const introducedDayRef = useRef('')
   const prunedProjectRef = useRef<string | null>(null)
-  const { now, refreshNow } = useReviewClock(cards)
+  const { now, refreshNow } = useReviewClock(cards, projectPausedAt)
 
   useEffect(() => {
     let cancelled = false
@@ -405,6 +413,7 @@ function useProjectCards(
       if (!project) {
         setCards([])
         setTodayIntroducedCount(0)
+        setProjectPausedAt(null)
         setLoading(false)
         return
       }
@@ -537,6 +546,7 @@ function useProjectCards(
       }
       if (!cancelled && loadGenerationRef.current === loadGeneration) {
         setCards(nextCards)
+        setProjectPausedAt(projectState.pausedAt)
         setError(null)
         setTodayIntroducedCount(introducedCount)
         introducedDayRef.current = introducedDay
@@ -677,14 +687,20 @@ function useProjectCards(
     refresh: () => setRefreshToken((value) => value + 1),
     writing,
     setWriting,
+    projectPaused: projectPausedAt !== null,
   }
 }
 
-function useReviewClock(cards: Card[]): { now: Date; refreshNow: () => void } {
-  const [now, setNow] = useState(() => new Date())
+function useReviewClock(
+  cards: Card[],
+  pausedAt: string | null,
+): { now: Date; refreshNow: () => void } {
+  const [wallClockNow, setNow] = useState(() => new Date())
   const refreshNow = useCallback(() => setNow(new Date()), [])
+  const now = pausedAt ? new Date(pausedAt) : wallClockNow
 
   useEffect(() => {
+    if (pausedAt) return
     const nowMs = now.getTime()
     const futureDueTimes = cards
       .map((card) => (card.dueAt ? new Date(card.dueAt).getTime() : Number.NaN))
@@ -713,7 +729,7 @@ function useReviewClock(cards: Card[]): { now: Date; refreshNow: () => void } {
       document.removeEventListener('visibilitychange', onVisibilityChange)
       window.removeEventListener('focus', refreshNow)
     }
-  }, [cards, now, refreshNow])
+  }, [cards, now, pausedAt, refreshNow])
 
   return { now, refreshNow }
 }
@@ -733,6 +749,7 @@ function BrowseMode({
   refresh,
   writing,
   setWriting,
+  projectPaused,
 }: {
   project: VaultProject | null
   cards: Card[]
@@ -743,6 +760,7 @@ function BrowseMode({
   refresh: () => void
   writing: boolean
   setWriting: (writing: boolean) => void
+  projectPaused: boolean
 }) {
   const { t } = useLanguage()
   const app = useApp()
@@ -2198,6 +2216,7 @@ function BrowseMode({
                           selectedCardId={selectedCardId}
                           batchSelectedCardIds={batchSelectedCardIds}
                           batchSelectionCount={batchSelectedCards.length}
+                          quickReviewDisabled={projectPaused}
                           onCreate={() =>
                             void handleCreate(
                               chapter,
@@ -2318,6 +2337,7 @@ function KnowledgePointDropZone({
   selectedCardId,
   batchSelectedCardIds,
   batchSelectionCount,
+  quickReviewDisabled,
   onCreate,
   onDelete,
   onMenuOpen,
@@ -2337,6 +2357,7 @@ function KnowledgePointDropZone({
   selectedCardId: string | null
   batchSelectedCardIds: ReadonlySet<string>
   batchSelectionCount: number
+  quickReviewDisabled: boolean
   onCreate: () => void
   onDelete: (card: Card) => void
   onMenuOpen: (card: Card) => void
@@ -2402,6 +2423,7 @@ function KnowledgePointDropZone({
                 batchSelectedCardIds.has(card.id) ? batchSelectionCount : 1
               }
               menuDisabled={readonly}
+              reviewDisabled={quickReviewDisabled}
               onDelete={() => onDelete(card)}
               onForget={() => onQuickReview(card, 'again')}
               onMenuOpen={() => onMenuOpen(card)}
@@ -2430,6 +2452,7 @@ function SortableBrowseCard({
   disabled,
   menuCardCount,
   menuDisabled,
+  reviewDisabled,
   onDelete,
   onForget,
   onMenuOpen,
@@ -2448,6 +2471,7 @@ function SortableBrowseCard({
   disabled: boolean
   menuCardCount: number
   menuDisabled: boolean
+  reviewDisabled: boolean
   onDelete: () => void
   onForget: () => void
   onMenuOpen: () => void
@@ -2497,6 +2521,7 @@ function SortableBrowseCard({
           due={due}
           menuCardCount={menuCardCount}
           menuDisabled={menuDisabled}
+          reviewDisabled={reviewDisabled}
           onDelete={onDelete}
           onForget={onForget}
           onMenuOpen={onMenuOpen}
@@ -2516,6 +2541,7 @@ function BrowseCard({
   due,
   menuCardCount = 1,
   menuDisabled = false,
+  reviewDisabled = false,
   onDelete,
   onForget,
   onMenuOpen,
@@ -2529,6 +2555,7 @@ function BrowseCard({
   due: boolean
   menuCardCount?: number
   menuDisabled?: boolean
+  reviewDisabled?: boolean
   onDelete?: () => void
   onForget?: () => void
   onMenuOpen?: () => void
@@ -2710,7 +2737,7 @@ function BrowseCard({
             <button
               type="button"
               className="yolo-learning-card-menu-item"
-              disabled={menuDisabled}
+              disabled={menuDisabled || reviewDisabled}
               onClick={() => runMenuAction(onRemember)}
             >
               <CircleCheck size={15} />
@@ -2719,7 +2746,7 @@ function BrowseCard({
             <button
               type="button"
               className="yolo-learning-card-menu-item"
-              disabled={menuDisabled}
+              disabled={menuDisabled || reviewDisabled}
               onClick={() => runMenuAction(onForget)}
             >
               <RotateCcw size={15} />

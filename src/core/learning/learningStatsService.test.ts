@@ -30,6 +30,7 @@ function project(slug: string): Project {
 
 function stats(dueCards: number): LearningProjectStats {
   return {
+    paused: false,
     totalCards: dueCards,
     targetCards: 0,
     targetCardProgress: 0,
@@ -56,7 +57,9 @@ function createFixture(projects: Project[]) {
     },
   } as unknown as App
   let mutationSubscriber: ((mutation: SrsProjectMutation) => void) | null = null
+  const isProjectPaused = jest.fn(async () => false)
   const srsStore = {
+    isProjectPaused,
     subscribe: jest.fn((subscriber) => {
       mutationSubscriber = subscriber
       return () => {
@@ -68,6 +71,7 @@ function createFixture(projects: Project[]) {
 
   return {
     app,
+    isProjectPaused,
     scan,
     srsStore,
     emitMutation: (projectSlug: string) => {
@@ -100,6 +104,46 @@ describe('LearningStatsService', () => {
     expect(getTotalDueCards(snapshot)).toBe(4)
     expect(snapshot.failedProjectIds).toEqual(new Set(['Learning/broken']))
     expect(snapshot.loading).toBe(false)
+    service.dispose()
+    errorSpy.mockRestore()
+  })
+
+  it('excludes paused projects from the global due total', () => {
+    const active = stats(3)
+    const paused = { ...stats(5), paused: true }
+    expect(
+      getTotalDueCards({
+        projects: [],
+        byProject: new Map([
+          ['active', active],
+          ['paused', paused],
+        ]),
+        pausedProjectIds: new Set(['paused']),
+        failedProjectIds: new Set(),
+        loading: false,
+      }),
+    ).toBe(3)
+  })
+
+  it('retains pause state when project statistics fail', async () => {
+    const pausedProject = project('paused')
+    const fixture = createFixture([pausedProject])
+    fixture.isProjectPaused.mockResolvedValue(true)
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const service = new LearningStatsService({
+      app: fixture.app,
+      getLearningBaseDir: () => 'Learning',
+      srsStore: fixture.srsStore,
+      scan: fixture.scan,
+      loadProjectStats: jest.fn(async () => {
+        throw new Error('invalid cards')
+      }),
+    })
+
+    const snapshot = await service.refreshAll()
+
+    expect(snapshot.failedProjectIds).toEqual(new Set([pausedProject.id]))
+    expect(snapshot.pausedProjectIds).toEqual(new Set([pausedProject.id]))
     service.dispose()
     errorSpy.mockRestore()
   })

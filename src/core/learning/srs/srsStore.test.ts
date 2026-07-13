@@ -59,9 +59,11 @@ describe('LearningSrsStore', () => {
 
     baseDir = 'Config/Second'
     await expect(store.getProjectState('project')).resolves.toEqual({
-      version: 2,
+      version: 3,
       cards: {},
       suspended: [],
+      pausedAt: null,
+      lastStudiedAt: null,
     })
     await store.reviewCard('project', 'bbbbbbbb', 'good', reviewedAt)
 
@@ -92,6 +94,7 @@ describe('LearningSrsStore', () => {
     expect(Object.keys(state.cards).sort()).toEqual(['aaaaaaaa', 'bbbbbbbb'])
     expect(state.cards.aaaaaaaa.introducedAt).toBe(reviewedAt.toISOString())
     expect(state.cards.bbbbbbbb.introducedAt).toBe(reviewedAt.toISOString())
+    expect(state.lastStudiedAt).toBe(reviewedAt.toISOString())
   })
 
   it('reviews multiple cards in one project write', async () => {
@@ -110,6 +113,7 @@ describe('LearningSrsStore', () => {
     expect(Object.keys(state.cards).sort()).toEqual(['aaaaaaaa', 'bbbbbbbb'])
     expect(state.cards.aaaaaaaa.introducedAt).toBe(reviewedAt.toISOString())
     expect(state.cards.bbbbbbbb.introducedAt).toBe(reviewedAt.toISOString())
+    expect(state.lastStudiedAt).toBe(reviewedAt.toISOString())
     expect(adapter.write).toHaveBeenCalledTimes(1)
   })
 
@@ -128,9 +132,11 @@ describe('LearningSrsStore', () => {
     ).rejects.toThrow('write failed')
 
     await expect(store.getProjectState('project')).resolves.toEqual({
-      version: 2,
+      version: 3,
       cards: {},
       suspended: [],
+      pausedAt: null,
+      lastStudiedAt: null,
     })
   })
 
@@ -189,7 +195,7 @@ describe('LearningSrsStore', () => {
 
   it.each([
     ['damaged JSON', '{'],
-    ['unsupported version', JSON.stringify({ version: 3, cards: {} })],
+    ['unsupported version', JSON.stringify({ version: 4, cards: {} })],
   ])('rejects %s without overwriting the file', async (_, content) => {
     const path = 'YOLO/.yolo_json_db/learning-srs/project.json'
     const { app, adapter, files } = createApp({ [path]: content })
@@ -284,8 +290,10 @@ describe('LearningSrsStore', () => {
 
     await expect(store.getProjectState('project')).resolves.toEqual({
       ...state,
-      version: 2,
+      version: 3,
       suspended: [],
+      pausedAt: null,
+      lastStudiedAt: '2026-07-10T12:00:00.000Z',
     })
   })
 
@@ -335,14 +343,18 @@ describe('LearningSrsStore', () => {
     const store = createStore(app)
 
     await expect(store.getProjectState('project')).resolves.toEqual({
-      version: 2,
+      version: 3,
       cards: {},
       suspended: [],
+      pausedAt: null,
+      lastStudiedAt: null,
     })
     expect(JSON.parse(files.get(path)!)).toEqual({
-      version: 2,
+      version: 3,
       cards: {},
       suspended: [],
+      pausedAt: null,
+      lastStudiedAt: null,
     })
     expect(adapter.write).toHaveBeenCalledTimes(1)
 
@@ -355,9 +367,11 @@ describe('LearningSrsStore', () => {
       'migration failed',
     )
     await expect(failedStore.getProjectState('project')).resolves.toEqual({
-      version: 2,
+      version: 3,
       cards: {},
       suspended: [],
+      pausedAt: null,
+      lastStudiedAt: null,
     })
     expect(failed.adapter.read).toHaveBeenCalledTimes(2)
   })
@@ -435,9 +449,11 @@ describe('LearningSrsStore', () => {
     await expect(
       createStore(valid.app).getProjectState('project'),
     ).resolves.toEqual({
-      version: 2,
+      version: 3,
       cards: {},
       suspended: ['aaaaaaaa', 'bbbbbbbb'],
+      pausedAt: null,
+      lastStudiedAt: null,
     })
 
     for (const [suspended, message] of [
@@ -452,5 +468,241 @@ describe('LearningSrsStore', () => {
         createStore(invalid.app).getProjectState('project'),
       ).rejects.toThrow(message)
     }
+  })
+
+  it.each([1, 2] as const)(
+    'migrates v%s and derives the latest studied time from card reviews',
+    async (version) => {
+      const path = 'YOLO/.yolo_json_db/learning-srs/project.json'
+      const cards = {
+        aaaaaaaa: {
+          due: '2026-07-14T12:00:00.000Z',
+          stability: 1,
+          difficulty: 5,
+          elapsedDays: 1,
+          scheduledDays: 1,
+          learningSteps: 0,
+          reps: 1,
+          lapses: 0,
+          state: 2,
+          lastReview: '2026-07-10T12:00:00.000Z',
+          introducedAt: '2026-07-10T12:00:00.000Z',
+        },
+        bbbbbbbb: {
+          due: '2026-07-15T12:00:00.000Z',
+          stability: 1,
+          difficulty: 5,
+          elapsedDays: 1,
+          scheduledDays: 1,
+          learningSteps: 0,
+          reps: 1,
+          lapses: 0,
+          state: 2,
+          lastReview: '2026-07-12T12:00:00.000Z',
+          introducedAt: '2026-07-11T12:00:00.000Z',
+        },
+      }
+      const source = {
+        version,
+        cards,
+        ...(version === 2 ? { suspended: ['aaaaaaaa'] } : {}),
+      }
+      const { app, files } = createApp({ [path]: JSON.stringify(source) })
+
+      await expect(
+        createStore(app).getProjectState('project'),
+      ).resolves.toEqual({
+        version: 3,
+        cards,
+        suspended: version === 2 ? ['aaaaaaaa'] : [],
+        pausedAt: null,
+        lastStudiedAt: '2026-07-12T12:00:00.000Z',
+      })
+      expect(JSON.parse(files.get(path)!)).toEqual(
+        expect.objectContaining({
+          version: 3,
+          pausedAt: null,
+          lastStudiedAt: '2026-07-12T12:00:00.000Z',
+        }),
+      )
+    },
+  )
+
+  it('strictly validates v3 project timestamps', async () => {
+    const path = 'YOLO/.yolo_json_db/learning-srs/project.json'
+    for (const state of [
+      { version: 3, cards: {}, suspended: [], lastStudiedAt: null },
+      { version: 3, cards: {}, suspended: [], pausedAt: null },
+      {
+        version: 3,
+        cards: {},
+        suspended: [],
+        pausedAt: '2026-07-10',
+        lastStudiedAt: null,
+      },
+      {
+        version: 3,
+        cards: {},
+        suspended: [],
+        pausedAt: null,
+        lastStudiedAt: 123,
+      },
+    ]) {
+      const { app, adapter } = createApp({ [path]: JSON.stringify(state) })
+      await expect(createStore(app).getProjectState('project')).rejects.toThrow(
+        'SRS 日期字段',
+      )
+      expect(adapter.write).not.toHaveBeenCalled()
+    }
+  })
+
+  it('freezes effective scheduling and shifts every card timestamp on resume', async () => {
+    const { app } = createApp()
+    const store = createStore(app)
+    const reviewedAt = new Date('2026-07-10T12:00:00.000Z')
+    await store.reviewCard('project', 'aaaaaaaa', 'good', reviewedAt)
+    const before = await store.getProjectState('project')
+    const beforeCard = before.cards.aaaaaaaa
+
+    await store.pauseProject('project', new Date('2026-07-10T13:00:00.000Z'))
+    const effective = await store.getEffectiveProjectState(
+      'project',
+      new Date('2026-07-10T15:00:00.000Z'),
+    )
+    expect(effective.cards.aaaaaaaa).toEqual({
+      ...beforeCard,
+      due: new Date(
+        new Date(beforeCard.due).getTime() + 2 * 60 * 60 * 1000,
+      ).toISOString(),
+      lastReview: '2026-07-10T14:00:00.000Z',
+      introducedAt: '2026-07-10T14:00:00.000Z',
+    })
+    expect((await store.getProjectState('project')).cards.aaaaaaaa).toEqual(
+      beforeCard,
+    )
+
+    await store.resumeProject('project', new Date('2026-07-10T16:00:00.000Z'))
+    const resumed = await store.getProjectState('project')
+    expect(resumed.pausedAt).toBeNull()
+    expect(resumed.lastStudiedAt).toBe(reviewedAt.toISOString())
+    expect(resumed.cards.aaaaaaaa).toEqual({
+      ...beforeCard,
+      due: new Date(
+        new Date(beforeCard.due).getTime() + 3 * 60 * 60 * 1000,
+      ).toISOString(),
+      lastReview: '2026-07-10T15:00:00.000Z',
+      introducedAt: '2026-07-10T15:00:00.000Z',
+    })
+  })
+
+  it('makes repeated pause and resume calls idempotent', async () => {
+    const { app, adapter } = createApp()
+    const store = createStore(app)
+    await store.pauseProject('project', new Date('2026-07-10T12:00:00.000Z'))
+    await store.pauseProject('project', new Date('2026-07-11T12:00:00.000Z'))
+    expect((await store.getProjectState('project')).pausedAt).toBe(
+      '2026-07-10T12:00:00.000Z',
+    )
+    expect(adapter.write).toHaveBeenCalledTimes(1)
+
+    await store.resumeProject('project', new Date('2026-07-12T12:00:00.000Z'))
+    await store.resumeProject('project', new Date('2026-07-13T12:00:00.000Z'))
+    expect(await store.isProjectPaused('project')).toBe(false)
+    expect(adapter.write).toHaveBeenCalledTimes(2)
+  })
+
+  it('clamps a resume before the pause time to zero shift', async () => {
+    const { app } = createApp()
+    const store = createStore(app)
+    const reviewedAt = new Date('2026-07-10T12:00:00.000Z')
+    await store.reviewCard('project', 'aaaaaaaa', 'good', reviewedAt)
+    const before = (await store.getProjectState('project')).cards.aaaaaaaa
+    await store.pauseProject('project', new Date('2026-07-12T12:00:00.000Z'))
+    await store.resumeProject('project', new Date('2026-07-11T12:00:00.000Z'))
+
+    const resumed = await store.getProjectState('project')
+    expect(resumed.pausedAt).toBeNull()
+    expect(resumed.cards.aaaaaaaa).toEqual(before)
+    expect(resumed.lastStudiedAt).toBe(reviewedAt.toISOString())
+  })
+
+  it('rejects project scheduling and reviews and removes paused projects from queues', async () => {
+    const { app } = createApp()
+    const store = createStore(app)
+    const now = new Date('2026-07-10T12:00:00.000Z')
+    await store.reviewCard('project', 'aaaaaaaa', 'good', now)
+    await store.pauseProject('project', now)
+
+    await expect(
+      store.reviewCard('project', 'aaaaaaaa', 'good', now),
+    ).rejects.toThrow('暂停项目不能评分或计算排程')
+    await expect(
+      store.reviewCards('project', ['aaaaaaaa'], 'good', now),
+    ).rejects.toThrow('暂停项目不能评分或计算排程')
+    await expect(
+      store.getCardScheduling('project', 'aaaaaaaa', now),
+    ).rejects.toThrow('暂停项目不能评分或计算排程')
+    await expect(
+      store.getDueCardUuids('project', new Date('2030-01-01T00:00:00.000Z')),
+    ).resolves.toEqual(new Set())
+    await expect(store.getTodayIntroducedCount('project', now)).resolves.toBe(0)
+  })
+
+  it('does not expose failed pause or resume writes through the cache', async () => {
+    const { app, adapter } = createApp()
+    const store = createStore(app)
+    const pausedAt = new Date('2026-07-10T12:00:00.000Z')
+    adapter.write.mockRejectedValueOnce(new Error('pause failed'))
+    await expect(store.pauseProject('project', pausedAt)).rejects.toThrow(
+      'pause failed',
+    )
+    await expect(store.isProjectPaused('project')).resolves.toBe(false)
+
+    await store.reviewCard('project', 'aaaaaaaa', 'good', pausedAt)
+    await store.pauseProject('project', pausedAt)
+    const paused = await store.getProjectState('project')
+    adapter.write.mockRejectedValueOnce(new Error('resume failed'))
+    await expect(
+      store.resumeProject('project', new Date('2026-07-11T12:00:00.000Z')),
+    ).rejects.toThrow('resume failed')
+    await expect(store.getProjectState('project')).resolves.toEqual(paused)
+  })
+
+  it('orders concurrent pause, resume, and review mutations through the write queue', async () => {
+    const { app } = createApp()
+    const store = createStore(app)
+    const pausedAt = new Date('2026-07-10T12:00:00.000Z')
+    const pause = store.pauseProject('project', pausedAt)
+    const blockedReview = store.reviewCard(
+      'project',
+      'aaaaaaaa',
+      'good',
+      pausedAt,
+    )
+    await pause
+    await expect(blockedReview).rejects.toThrow('暂停项目')
+
+    const resumedAt = new Date('2026-07-11T12:00:00.000Z')
+    const reviewedAt = new Date('2026-07-11T13:00:00.000Z')
+    const resume = store.resumeProject('project', resumedAt)
+    const review = store.reviewCard('project', 'aaaaaaaa', 'good', reviewedAt)
+    await Promise.all([resume, review])
+    expect((await store.getProjectState('project')).lastStudiedAt).toBe(
+      reviewedAt.toISOString(),
+    )
+  })
+
+  it('keeps the latest real study time when reviews arrive out of order', async () => {
+    const { app } = createApp()
+    const store = createStore(app)
+    const latest = new Date('2026-07-11T12:00:00.000Z')
+    const earlier = new Date('2026-07-10T12:00:00.000Z')
+
+    await store.reviewCard('project', 'aaaaaaaa', 'good', latest)
+    await store.reviewCard('project', 'bbbbbbbb', 'good', earlier)
+
+    expect((await store.getProjectState('project')).lastStudiedAt).toBe(
+      latest.toISOString(),
+    )
   })
 })

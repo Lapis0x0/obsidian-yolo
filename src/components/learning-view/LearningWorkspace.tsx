@@ -87,11 +87,18 @@ export function LearningWorkspace() {
       )
     )
       return
-    setCardMode(navigationTarget.cardMode)
+    const targetPaused =
+      statsSnapshot.byProject.get(navigationTarget.projectId)?.paused ??
+      statsSnapshot.pausedProjectIds.has(navigationTarget.projectId)
+    setCardMode(
+      navigationTarget.cardMode === '学习' && targetPaused
+        ? '浏览'
+        : navigationTarget.cardMode,
+    )
     setActiveTab(navigationTarget.tab)
     setProjectId(navigationTarget.projectId)
     setNavigationTarget(null)
-  }, [navigationTarget, vaultProjects])
+  }, [navigationTarget, statsSnapshot.byProject, vaultProjects])
 
   useEffect(() => {
     return statsService.subscribe(setStatsSnapshot)
@@ -253,6 +260,10 @@ export function LearningWorkspace() {
             }
             cardMode={cardMode}
             onCardModeChange={setCardMode}
+            projectPaused={
+              statsSnapshot.byProject.get(projectId)?.paused ??
+              statsSnapshot.pausedProjectIds.has(projectId)
+            }
           />
         ) : (
           <HomeView
@@ -270,6 +281,11 @@ export function LearningWorkspace() {
               setProjectId(id)
             }}
             onStartReview={(id) => {
+              if (
+                statsSnapshot.byProject.get(id)?.paused ??
+                statsSnapshot.pausedProjectIds.has(id)
+              )
+                return
               setCardMode('学习')
               setActiveTab('卡片')
               setProjectId(id)

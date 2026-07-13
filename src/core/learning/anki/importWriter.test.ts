@@ -39,7 +39,7 @@ const makePlan = (): AnkiImportPlan => ({
     },
   ],
   srsState: {
-    version: 2,
+    version: 3,
     cards: {
       aaaaaaaa: {
         due: '2026-01-01T00:00:00.000Z',
@@ -55,6 +55,8 @@ const makePlan = (): AnkiImportPlan => ({
       },
     },
     suspended: [],
+    pausedAt: null,
+    lastStudiedAt: null,
   },
   cardCount: 1,
   warnings: [],

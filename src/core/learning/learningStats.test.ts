@@ -109,7 +109,7 @@ describe('loadLearningProjectStats', () => {
   it('calculates real card, due, retention, and activity statistics', async () => {
     const { app, project } = createFixture()
     const projectState = {
-      version: 1,
+      version: 3,
       cards: {
         aaaaaaaa: state(
           '2026-07-11T12:00:00.000Z',
@@ -127,9 +127,12 @@ describe('loadLearningProjectStats', () => {
           1,
         ),
       },
+      suspended: [],
+      pausedAt: null,
+      lastStudiedAt: '2026-07-12T11:00:00.000Z',
     }
     const srsStore = {
-      getProjectState: jest.fn(async () => projectState),
+      getEffectiveProjectState: jest.fn(async () => projectState),
       getCardRetrievability: jest.fn((card: SrsCardState) => card.stability),
     } as unknown as LearningSrsStore
 
@@ -141,14 +144,15 @@ describe('loadLearningProjectStats', () => {
     })
 
     expect(result).toEqual({
+      paused: false,
       totalCards: 3,
       targetCards: 1,
       targetCardProgress: 33,
       estimatedRetention: 45,
       dueCards: 1,
-      lastStudiedAt: new Date('2026-07-12T12:00:00.000Z').getTime(),
+      lastStudiedAt: new Date('2026-07-12T11:00:00.000Z').getTime(),
       createdAt: 100,
-      lastActiveAt: new Date('2026-07-12T12:00:00.000Z').getTime(),
+      lastActiveAt: new Date('2026-07-12T11:00:00.000Z').getTime(),
       nextDueAt: new Date('2026-07-15T12:00:00.000Z').getTime(),
       nextAction: {
         kind: 'review',
@@ -161,8 +165,8 @@ describe('loadLearningProjectStats', () => {
   it('selects the first knowledge point with unintroduced cards when no review is due', async () => {
     const { app, project } = createFixture()
     const srsStore = {
-      getProjectState: jest.fn(async () => ({
-        version: 1,
+      getEffectiveProjectState: jest.fn(async () => ({
+        version: 3,
         cards: {
           aaaaaaaa: state(
             '2026-07-15T12:00:00.000Z',
@@ -170,6 +174,9 @@ describe('loadLearningProjectStats', () => {
             0.9,
           ),
         },
+        suspended: [],
+        pausedAt: null,
+        lastStudiedAt: '2026-07-10T12:00:00.000Z',
       })),
       getCardRetrievability: jest.fn((card: SrsCardState) => card.stability),
     } as unknown as LearningSrsStore
@@ -192,7 +199,13 @@ describe('loadLearningProjectStats', () => {
     const { app, project, cards, content } = createFixture()
     content.set(cards.path, `${CARD_A}\n\n${CARD_A}`)
     const srsStore = {
-      getProjectState: jest.fn(async () => ({ version: 1, cards: {} })),
+      getEffectiveProjectState: jest.fn(async () => ({
+        version: 3,
+        cards: {},
+        suspended: [],
+        pausedAt: null,
+        lastStudiedAt: null,
+      })),
       getCardRetrievability: jest.fn(),
     } as unknown as LearningSrsStore
 
@@ -219,7 +232,13 @@ describe('loadLearningProjectStats', () => {
       '## Invalid <!--card:not-a-uuid kp:11111111-->\n\nfront\n\n---\n\nback',
     )
     const srsStore = {
-      getProjectState: jest.fn(async () => ({ version: 1, cards: {} })),
+      getEffectiveProjectState: jest.fn(async () => ({
+        version: 3,
+        cards: {},
+        suspended: [],
+        pausedAt: null,
+        lastStudiedAt: null,
+      })),
       getCardRetrievability: jest.fn(),
     } as unknown as LearningSrsStore
 
@@ -259,10 +278,12 @@ describe('loadLearningProjectStats', () => {
       knowledgePoints: [],
     }
     const srsStore = {
-      getProjectState: jest.fn(async () => ({
-        version: 2,
+      getEffectiveProjectState: jest.fn(async () => ({
+        version: 3,
         cards: {},
         suspended: ['bbbbbbbb'],
+        pausedAt: null,
+        lastStudiedAt: null,
       })),
       getCardRetrievability: jest.fn(),
     } as unknown as LearningSrsStore
@@ -286,8 +307,8 @@ describe('loadLearningProjectStats', () => {
   it('excludes suspended outline cards from counts and recommendations', async () => {
     const { app, project } = createFixture()
     const srsStore = {
-      getProjectState: jest.fn(async () => ({
-        version: 2,
+      getEffectiveProjectState: jest.fn(async () => ({
+        version: 3,
         cards: {
           aaaaaaaa: state(
             '2026-07-11T12:00:00.000Z',
@@ -296,6 +317,8 @@ describe('loadLearningProjectStats', () => {
           ),
         },
         suspended: ['aaaaaaaa', 'cccccccc'],
+        pausedAt: null,
+        lastStudiedAt: '2026-07-10T12:00:00.000Z',
       })),
       getCardRetrievability: jest.fn((card: SrsCardState) => card.stability),
     } as unknown as LearningSrsStore
@@ -314,5 +337,69 @@ describe('loadLearningProjectStats', () => {
       knowledgePointTitle: 'B',
       started: false,
     })
+  })
+
+  it('freezes paused project statistics while preserving real study time', async () => {
+    const { app, project } = createFixture()
+    const pausedAt = new Date('2026-07-12T12:00:00.000Z')
+    const lastStudiedAt = '2026-07-10T12:00:00.000Z'
+    const getEffectiveProjectState = jest.fn(
+      async (_projectSlug: string, at: Date) => {
+        const shiftMs = at.getTime() - pausedAt.getTime()
+        const shift = (value: string) =>
+          new Date(new Date(value).getTime() + shiftMs).toISOString()
+        return {
+          version: 3 as const,
+          cards: {
+            aaaaaaaa: state(
+              shift('2026-07-11T12:00:00.000Z'),
+              shift('2026-07-10T12:00:00.000Z'),
+              0.95,
+            ),
+            bbbbbbbb: state(
+              shift('2026-07-15T12:00:00.000Z'),
+              shift('2026-07-11T12:00:00.000Z'),
+              0.85,
+            ),
+          },
+          suspended: [],
+          pausedAt: pausedAt.toISOString(),
+          lastStudiedAt,
+        }
+      },
+    )
+    const srsStore = {
+      getEffectiveProjectState,
+      getCardRetrievability: jest.fn(
+        (card: SrsCardState, at: Date) =>
+          1 -
+          (at.getTime() - new Date(card.lastReview ?? 0).getTime()) /
+            (100 * 24 * 60 * 60 * 1_000),
+      ),
+    } as unknown as LearningSrsStore
+
+    const first = await loadLearningProjectStats({
+      app,
+      project,
+      srsStore,
+      now: pausedAt,
+    })
+    const later = await loadLearningProjectStats({
+      app,
+      project,
+      srsStore,
+      now: new Date('2026-08-12T12:00:00.000Z'),
+    })
+
+    expect(first).toEqual(later)
+    expect(first.paused).toBe(true)
+    expect(first.lastStudiedAt).toBe(new Date(lastStudiedAt).getTime())
+    expect(first.lastActiveAt).toBe(new Date(lastStudiedAt).getTime())
+    expect(first.nextDueAt).toBe(new Date('2026-07-15T12:00:00.000Z').getTime())
+    expect(getEffectiveProjectState).toHaveBeenNthCalledWith(
+      1,
+      project.slug,
+      pausedAt,
+    )
   })
 })

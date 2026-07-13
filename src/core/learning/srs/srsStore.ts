@@ -19,7 +19,7 @@ import type {
   SrsProjectState,
 } from './srsTypes'
 
-const SRS_SCHEMA_VERSION = 2
+const SRS_SCHEMA_VERSION = 3
 const scheduler = fsrs()
 
 type FsrsCardCompat = {
@@ -179,6 +179,55 @@ export class LearningSrsStore {
     return structuredClone(state)
   }
 
+  async getEffectiveProjectState(
+    projectSlug: string,
+    at: Date,
+  ): Promise<SrsProjectState> {
+    this.validateDate(at, '生效时间')
+    const state = await this.loadProjectState(projectSlug)
+    if (!state.pausedAt) return structuredClone(state)
+    return this.shiftProjectState(
+      state,
+      Math.max(0, at.getTime() - new Date(state.pausedAt).getTime()),
+    )
+  }
+
+  async isProjectPaused(projectSlug: string): Promise<boolean> {
+    return (await this.loadProjectState(projectSlug)).pausedAt !== null
+  }
+
+  pauseProject(projectSlug: string, pausedAt: Date): Promise<void> {
+    this.validateDate(pausedAt, '暂停时间')
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      if (current.pausedAt !== null) return
+      const nextState: SrsProjectState = {
+        ...current,
+        pausedAt: pausedAt.toISOString(),
+      }
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
+    })
+  }
+
+  resumeProject(projectSlug: string, resumedAt: Date): Promise<void> {
+    this.validateDate(resumedAt, '恢复时间')
+    return this.enqueueWrite(async () => {
+      const current = await this.loadProjectState(projectSlug)
+      if (current.pausedAt === null) return
+      const duration = Math.max(
+        0,
+        resumedAt.getTime() - new Date(current.pausedAt).getTime(),
+      )
+      const nextState = this.shiftProjectState(current, duration)
+      nextState.pausedAt = null
+      await this.writeProjectState(projectSlug, nextState)
+      this.cache.set(projectSlug, nextState)
+      this.emitMutation(projectSlug)
+    })
+  }
+
   reviewCard(
     projectSlug: string,
     cardUuid: string,
@@ -188,6 +237,7 @@ export class LearningSrsStore {
     this.validateCardUuid(cardUuid)
     return this.enqueueWrite(async () => {
       const current = await this.loadProjectState(projectSlug)
+      this.assertProjectNotPaused(current)
       this.assertNotSuspended(current, [cardUuid])
       const existing = current.cards[cardUuid]
       const introducedAt = existing?.introducedAt ?? reviewedAt.toISOString()
@@ -200,9 +250,12 @@ export class LearningSrsStore {
         introducedAt,
       )
       const nextState: SrsProjectState = {
-        version: SRS_SCHEMA_VERSION,
+        ...current,
         cards: { ...current.cards, [cardUuid]: nextCard },
-        suspended: current.suspended,
+        lastStudiedAt: this.latestTimestamp(
+          current.lastStudiedAt,
+          reviewedAt.toISOString(),
+        ),
       }
 
       await this.writeProjectState(projectSlug, nextState)
@@ -227,6 +280,7 @@ export class LearningSrsStore {
     if (uuids.size === 0) return Promise.resolve()
     return this.enqueueWrite(async () => {
       const current = await this.loadProjectState(projectSlug)
+      this.assertProjectNotPaused(current)
       this.assertNotSuspended(current, uuids)
       const cards = { ...current.cards }
       uuids.forEach((uuid) => {
@@ -241,7 +295,14 @@ export class LearningSrsStore {
           introducedAt,
         )
       })
-      const nextState: SrsProjectState = { ...current, cards }
+      const nextState: SrsProjectState = {
+        ...current,
+        cards,
+        lastStudiedAt: this.latestTimestamp(
+          current.lastStudiedAt,
+          reviewedAt.toISOString(),
+        ),
+      }
       await this.writeProjectState(projectSlug, nextState)
       this.cache.set(projectSlug, nextState)
       this.emitMutation(projectSlug)
@@ -255,6 +316,7 @@ export class LearningSrsStore {
   ): Promise<Record<ReviewRating, CardScheduling>> {
     this.validateCardUuid(cardUuid)
     const state = await this.loadProjectState(projectSlug)
+    this.assertProjectNotPaused(state)
     this.assertNotSuspended(state, [cardUuid])
     const card = state.cards[cardUuid]
       ? this.toFsrsCard(state.cards[cardUuid])
@@ -268,6 +330,7 @@ export class LearningSrsStore {
 
   async getDueCardUuids(projectSlug: string, now: Date): Promise<Set<string>> {
     const state = await this.loadProjectState(projectSlug)
+    if (state.pausedAt !== null) return new Set()
     return new Set(
       Object.entries(state.cards)
         .filter(
@@ -284,6 +347,7 @@ export class LearningSrsStore {
     now: Date,
   ): Promise<number> {
     const state = await this.loadProjectState(projectSlug)
+    if (state.pausedAt !== null) return 0
     const suspended = new Set(state.suspended)
     return Object.entries(state.cards).filter(
       ([uuid, card]) =>
@@ -451,6 +515,8 @@ export class LearningSrsStore {
         version: SRS_SCHEMA_VERSION,
         cards: {},
         suspended: [],
+        pausedAt: null,
+        lastStudiedAt: null,
       }
       return empty
     }
@@ -514,7 +580,11 @@ export class LearningSrsStore {
     if (!this.isRecord(value)) {
       throw new Error(`SRS 文件格式无效：${filePath}`)
     }
-    if (value.version !== 1 && value.version !== SRS_SCHEMA_VERSION) {
+    if (
+      value.version !== 1 &&
+      value.version !== 2 &&
+      value.version !== SRS_SCHEMA_VERSION
+    ) {
       throw new Error(`SRS 文件版本不受支持，需要迁移：${filePath}`)
     }
     if (!this.isRecord(value.cards)) {
@@ -527,7 +597,7 @@ export class LearningSrsStore {
       cards[uuid] = this.parseCardState(card, filePath, uuid)
     }
     let suspended: string[] = []
-    if (value.version === SRS_SCHEMA_VERSION) {
+    if (value.version === 2 || value.version === SRS_SCHEMA_VERSION) {
       if (!Array.isArray(value.suspended)) {
         throw new Error(`SRS 暂停卡片数据格式无效：${filePath}`)
       }
@@ -541,9 +611,33 @@ export class LearningSrsStore {
       }
       suspended = [...unique].sort()
     }
+    const pausedAt =
+      value.version === SRS_SCHEMA_VERSION
+        ? this.parseNullableProjectDate(value.pausedAt, 'pausedAt', filePath)
+        : null
+    const lastStudiedAt =
+      value.version === SRS_SCHEMA_VERSION
+        ? this.parseNullableProjectDate(
+            value.lastStudiedAt,
+            'lastStudiedAt',
+            filePath,
+          )
+        : this.deriveLastStudiedAt(cards)
     return {
-      state: { version: SRS_SCHEMA_VERSION, cards, suspended },
-      migrated: value.version === 1,
+      state: {
+        version: SRS_SCHEMA_VERSION,
+        cards,
+        suspended,
+        pausedAt,
+        lastStudiedAt,
+      },
+      migrated: value.version !== SRS_SCHEMA_VERSION,
+    }
+  }
+
+  private assertProjectNotPaused(state: SrsProjectState): void {
+    if (state.pausedAt !== null) {
+      throw new Error('暂停项目不能评分或计算排程')
     }
   }
 
@@ -700,6 +794,47 @@ export class LearningSrsStore {
     return toStoredCard(card, introducedAt)
   }
 
+  private shiftProjectState(
+    state: SrsProjectState,
+    durationMs: number,
+  ): SrsProjectState {
+    if (durationMs === 0) return structuredClone(state)
+    const cards = Object.fromEntries(
+      Object.entries(state.cards).map(([uuid, card]) => [
+        uuid,
+        {
+          ...card,
+          due: this.shiftIsoDate(card.due, durationMs),
+          ...(card.lastReview
+            ? { lastReview: this.shiftIsoDate(card.lastReview, durationMs) }
+            : {}),
+          introducedAt: this.shiftIsoDate(card.introducedAt, durationMs),
+        },
+      ]),
+    )
+    return { ...state, cards }
+  }
+
+  private shiftIsoDate(value: string, durationMs: number): string {
+    return new Date(new Date(value).getTime() + durationMs).toISOString()
+  }
+
+  private deriveLastStudiedAt(
+    cards: Record<string, SrsCardState>,
+  ): string | null {
+    let latest: string | null = null
+    for (const card of Object.values(cards)) {
+      if (card.lastReview && (latest === null || card.lastReview > latest)) {
+        latest = card.lastReview
+      }
+    }
+    return latest
+  }
+
+  private latestTimestamp(current: string | null, candidate: string): string {
+    return current === null || candidate > current ? candidate : current
+  }
+
   private toScheduling(
     repeated: RecordLog,
   ): Record<ReviewRating, CardScheduling> {
@@ -730,6 +865,21 @@ export class LearningSrsStore {
       )
     }
     return value
+  }
+
+  private parseNullableProjectDate(
+    value: unknown,
+    field: string,
+    filePath: string,
+  ): string | null {
+    if (value === null) return null
+    return this.parseDate(value, field, filePath, 'project')
+  }
+
+  private validateDate(value: Date, field: string): void {
+    if (Number.isNaN(value.getTime())) {
+      throw new Error(`无效的${field}`)
+    }
   }
 
   private parseNumber(

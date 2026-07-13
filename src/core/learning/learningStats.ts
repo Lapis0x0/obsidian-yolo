@@ -19,6 +19,7 @@ export type LearningProjectAction = {
 }
 
 export type LearningProjectStats = {
+  paused: boolean
   totalCards: number
   targetCards: number
   targetCardProgress: number
@@ -123,7 +124,10 @@ export async function loadLearningProjectStats({
     throw new CardFileFormatError(project.folderPath, projectScan.errors)
   }
 
-  const projectState = await srsStore.getProjectState(project.slug)
+  const projectState = await srsStore.getEffectiveProjectState(
+    project.slug,
+    now,
+  )
   const suspended = new Set(projectState.suspended ?? [])
   suspended.forEach((uuid) => cardUuids.delete(uuid))
   const horizon = new Date(now.getTime() + MEMORY_RETENTION_HORIZON_MS)
@@ -132,7 +136,6 @@ export async function loadLearningProjectStats({
   let targetCards = 0
   let dueCards = 0
   const dueCardEntries: { cardUuid: string; dueAt: number }[] = []
-  let lastStudiedAt: number | null = null
   let nextDueAt: number | null = null
 
   for (const cardUuid of cardUuids) {
@@ -148,14 +151,6 @@ export async function loadLearningProjectStats({
       dueCards += 1
       dueCardEntries.push({ cardUuid, dueAt })
     } else if (nextDueAt === null || dueAt < nextDueAt) nextDueAt = dueAt
-
-    const reviewedAt = resolveReviewedAt(state)
-    if (
-      reviewedAt !== null &&
-      (lastStudiedAt === null || reviewedAt > lastStudiedAt)
-    ) {
-      lastStudiedAt = reviewedAt
-    }
   }
 
   const totalCards = cardUuids.size
@@ -174,6 +169,10 @@ export async function loadLearningProjectStats({
     (latest, file) => Math.max(latest, file.stat.mtime),
     createdAt,
   )
+  const lastStudiedAt = resolveTimestamp(projectState.lastStudiedAt)
+  const pausedAt = resolveTimestamp(projectState.pausedAt)
+  const effectiveTimeShift =
+    pausedAt === null ? 0 : Math.max(0, nowMs - pausedAt)
   const nextAction = resolveNextAction({
     project,
     projectCards: projectState.cards,
@@ -184,6 +183,7 @@ export async function loadLearningProjectStats({
   })
 
   return {
+    paused: pausedAt !== null,
     totalCards,
     targetCards,
     targetCardProgress:
@@ -193,7 +193,7 @@ export async function loadLearningProjectStats({
     lastStudiedAt,
     createdAt,
     lastActiveAt: Math.max(lastModifiedAt, lastStudiedAt ?? 0),
-    nextDueAt,
+    nextDueAt: nextDueAt === null ? null : nextDueAt - effectiveTimeShift,
     nextAction,
   }
 }
@@ -289,8 +289,8 @@ function resolveNextAction({
   return null
 }
 
-function resolveReviewedAt(state: SrsCardState): number | null {
-  if (!state.lastReview) return null
-  const timestamp = new Date(state.lastReview).getTime()
+function resolveTimestamp(value: string | null): number | null {
+  if (!value) return null
+  const timestamp = new Date(value).getTime()
   return Number.isFinite(timestamp) ? timestamp : null
 }

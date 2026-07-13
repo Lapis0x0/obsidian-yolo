@@ -145,7 +145,19 @@ export async function buildAnkiImportPlan({
     projectPath,
     chapters,
     assets: [...assetBySource.values()],
-    srsState: { version: 2, cards: stateCards, suspended: suspended.sort() },
+    srsState: {
+      version: 3,
+      cards: stateCards,
+      suspended: suspended.sort(),
+      pausedAt: null,
+      lastStudiedAt: Object.values(stateCards).reduce<string | null>(
+        (latest, card) =>
+          card.lastReview && (!latest || card.lastReview > latest)
+            ? card.lastReview
+            : latest,
+        null,
+      ),
+    },
     cardCount: cards.length,
     warnings: parsed.warnings,
   }

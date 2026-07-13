@@ -254,6 +254,11 @@ describe('Anki APKG parser kernel', () => {
       Object.values(plan.srsState.cards).some((state) => state.reps > 0),
     ).toBe(true)
     expect(Object.keys(plan.srsState.cards)).toHaveLength(1)
+    expect(plan.srsState).toMatchObject({
+      version: 3,
+      pausedAt: null,
+      lastStudiedAt: new Date(10_000).toISOString(),
+    })
     expect(Object.isFrozen(plan)).toBe(true)
   })
 })

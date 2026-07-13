@@ -14,6 +14,7 @@ const MAX_TIMER_DELAY_MS = 2_147_000_000
 export type LearningStatsSnapshot = {
   projects: readonly Project[]
   byProject: ReadonlyMap<string, LearningProjectStats>
+  pausedProjectIds: ReadonlySet<string>
   failedProjectIds: ReadonlySet<string>
   loading: boolean
 }
@@ -32,13 +33,16 @@ type LearningStatsServiceOptions = {
 const createEmptySnapshot = (): LearningStatsSnapshot => ({
   projects: [],
   byProject: new Map(),
+  pausedProjectIds: new Set(),
   failedProjectIds: new Set(),
   loading: true,
 })
 
 export function getTotalDueCards(snapshot: LearningStatsSnapshot): number {
   let total = 0
-  for (const stats of snapshot.byProject.values()) total += stats.dueCards
+  for (const stats of snapshot.byProject.values()) {
+    if (!stats.paused) total += stats.dueCards
+  }
   return total
 }
 
@@ -117,6 +121,7 @@ export class LearningStatsService {
         this.publish({
           projects: this.snapshot.projects,
           byProject: new Map(),
+          pausedProjectIds: this.snapshot.pausedProjectIds,
           failedProjectIds: new Set(
             this.snapshot.projects.map((project) => project.id),
           ),
@@ -125,20 +130,29 @@ export class LearningStatsService {
         return
       }
 
-      const results = await Promise.allSettled(
-        projects.map(async (project) => ({
-          projectId: project.id,
-          stats: await this.loadProjectStats({
-            app: this.app,
-            project,
-            srsStore: this.srsStore,
-            now,
-          }),
-        })),
-      )
+      const [results, pausedResults] = await Promise.all([
+        Promise.allSettled(
+          projects.map(async (project) => ({
+            projectId: project.id,
+            stats: await this.loadProjectStats({
+              app: this.app,
+              project,
+              srsStore: this.srsStore,
+              now,
+            }),
+          })),
+        ),
+        Promise.allSettled(
+          projects.map(async (project) => ({
+            projectId: project.id,
+            paused: await this.srsStore.isProjectPaused(project.slug),
+          })),
+        ),
+      ])
       if (!this.isCurrent(generation)) return
 
       const byProject = new Map<string, LearningProjectStats>()
+      const pausedProjectIds = new Set<string>()
       const failedProjectIds = new Set<string>()
       results.forEach((result, index) => {
         if (result.status === 'fulfilled') {
@@ -151,7 +165,26 @@ export class LearningStatsService {
           )
         }
       })
-      this.publish({ projects, byProject, failedProjectIds, loading: false })
+      pausedResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          if (result.value.paused) pausedProjectIds.add(result.value.projectId)
+          return
+        }
+        if (this.snapshot.pausedProjectIds.has(projects[index].id)) {
+          pausedProjectIds.add(projects[index].id)
+        }
+        console.error(
+          `[YOLO] Failed to load learning pause state for ${projects[index].slug}:`,
+          result.reason,
+        )
+      })
+      this.publish({
+        projects,
+        byProject,
+        pausedProjectIds,
+        failedProjectIds,
+        loading: false,
+      })
     })
   }
 
@@ -171,29 +204,42 @@ export class LearningStatsService {
       if (!project) return
 
       const byProject = new Map(this.snapshot.byProject)
+      const pausedProjectIds = new Set(this.snapshot.pausedProjectIds)
       const failedProjectIds = new Set(this.snapshot.failedProjectIds)
-      try {
-        const stats = await this.loadProjectStats({
+      const [statsResult, pausedResult] = await Promise.allSettled([
+        this.loadProjectStats({
           app: this.app,
           project,
           srsStore: this.srsStore,
           now: this.now(),
-        })
-        if (!this.isCurrent(generation)) return
-        byProject.set(project.id, stats)
+        }),
+        this.srsStore.isProjectPaused(project.slug),
+      ])
+      if (!this.isCurrent(generation)) return
+      if (statsResult.status === 'fulfilled') {
+        byProject.set(project.id, statsResult.value)
         failedProjectIds.delete(project.id)
-      } catch (error) {
-        if (!this.isCurrent(generation)) return
+      } else {
         byProject.delete(project.id)
         failedProjectIds.add(project.id)
         console.error(
           `[YOLO] Failed to refresh learning statistics for ${project.slug}:`,
-          error,
+          statsResult.reason,
+        )
+      }
+      if (pausedResult.status === 'fulfilled') {
+        if (pausedResult.value) pausedProjectIds.add(project.id)
+        else pausedProjectIds.delete(project.id)
+      } else {
+        console.error(
+          `[YOLO] Failed to refresh learning pause state for ${project.slug}:`,
+          pausedResult.reason,
         )
       }
       this.publish({
         projects: this.snapshot.projects,
         byProject,
+        pausedProjectIds,
         failedProjectIds,
         loading: false,
       })
@@ -285,6 +331,7 @@ export class LearningStatsService {
     const now = this.now().getTime()
     let nextDueAt: number | null = null
     for (const stats of this.snapshot.byProject.values()) {
+      if (stats.paused) continue
       if (stats.nextDueAt === null || stats.nextDueAt <= now) continue
       if (nextDueAt === null || stats.nextDueAt < nextDueAt) {
         nextDueAt = stats.nextDueAt

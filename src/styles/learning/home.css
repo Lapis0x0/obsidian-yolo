@@ -495,9 +495,19 @@
   color: var(--yolo-foreground);
   text-align: left;
   cursor: pointer;
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease;
+}
+
+.yolo-learning-home-project-card.is-paused {
+  background-color: color-mix(
+    in oklab,
+    var(--yolo-card) 88%,
+    var(--yolo-muted)
+  );
 }
 
 .yolo-learning-home-project-card:hover {
@@ -603,6 +613,53 @@
 
 .yolo-learning-home-project-meta > span:nth-child(2) svg {
   color: var(--yolo-primary);
+}
+
+.yolo-learning-project-menu-list {
+  padding: 4px;
+}
+
+button.yolo-learning-project-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  padding: 6px 10px;
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  line-height: var(--line-height-tight);
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  box-shadow: none;
+}
+
+.yolo-learning-project-menu-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+button.yolo-learning-project-menu-item:hover,
+button.yolo-learning-project-menu-item:focus-visible {
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+}
+
+button.yolo-learning-project-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.yolo-learning-project-menu-item.is-danger,
+.yolo-learning-project-menu-item.is-danger svg {
+  color: var(--text-error);
 }
 
 .yolo-learning-home-add-card {

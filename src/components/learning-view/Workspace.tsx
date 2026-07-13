@@ -1,5 +1,5 @@
 import { ChevronLeft } from 'lucide-react'
-import { type ReactNode, useCallback, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { Project as VaultProject } from '../../core/learning/types'
@@ -22,6 +22,7 @@ export function Workspace({
   cardGeneration,
   cardMode,
   onCardModeChange,
+  projectPaused,
 }: {
   project: VaultProject | null
   onBack: () => void
@@ -33,6 +34,7 @@ export function Workspace({
   cardGeneration: CardGenerationWorkspace | null
   cardMode: CardMode
   onCardModeChange: (mode: CardMode) => void
+  projectPaused: boolean
 }) {
   const { t } = useLanguage()
   const [studyCardCount, setStudyCardCount] = useState(0)
@@ -52,6 +54,10 @@ export function Workspace({
   }
   const visibleTabs = project?.kind === 'cards' ? (['卡片'] as const) : tabs
 
+  useEffect(() => {
+    if (projectPaused && cardMode === '学习') onCardModeChange('浏览')
+  }, [cardMode, onCardModeChange, projectPaused])
+
   return (
     <div className="yolo-learning-workspace-shell">
       <header className="yolo-learning-workspace-header">
@@ -68,14 +74,20 @@ export function Workspace({
           {project?.topic ??
             t('learning.workspace.missingProject', '未找到项目')}
         </h1>
-        <Pill tone="primary" className="yolo-learning-workspace-progress-pill">
-          {t('learning.workspace.learned', '已学')} 0%
+        <Pill
+          tone={projectPaused ? 'neutral' : 'primary'}
+          className="yolo-learning-workspace-progress-pill"
+        >
+          {projectPaused
+            ? t('learning.home.statusPaused', '已暂停')
+            : `${t('learning.workspace.learned', '已学')} 0%`}
         </Pill>
         {activeTab === '卡片' && (
           <Segmented<CardMode>
             options={cardModes}
             value={cardMode}
             onChange={onCardModeChange}
+            disabledOptions={projectPaused ? ['学习'] : undefined}
             badges={{ 学习: studyCardCount }}
             getLabel={(mode) => cardModeLabels[mode]}
             className="yolo-learning-workspace-card-mode"
@@ -127,6 +139,7 @@ export function Workspace({
             mode={cardMode}
             onModeChange={onCardModeChange}
             onStudyCountChange={handleStudyCardCountChange}
+            projectPaused={projectPaused}
           />
         )}
         {activeTab === '习题' && <ExercisesView project={project} />}

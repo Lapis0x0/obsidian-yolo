@@ -1,17 +1,31 @@
+import * as Popover from '@radix-ui/react-popover'
 import {
   ArrowRight,
   CheckCircle2,
   Clock,
   Import,
+  PauseCircle,
   PlayCircle,
   Plus,
   RotateCcw,
   Sparkles,
   Target,
+  Trash2,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Notice, TFile, TFolder } from 'obsidian'
+import {
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import type {
   LearningProjectAction,
   LearningProjectStats,
@@ -21,6 +35,8 @@ import type {
   ProjectStatus,
   Project as VaultProject,
 } from '../../core/learning/types'
+import { YoloPopoverContent } from '../common/popover/YoloPopoverContent'
+import { ConfirmModal } from '../modals/ConfirmModal'
 
 import { formatLearningText } from './i18n'
 import { Pill, ProgressBar, SelectMenu } from './primitives'
@@ -42,19 +58,30 @@ export function HomeView({
   onNewProject: () => void
   onImportAnki: () => void
 }) {
+  const app = useApp()
+  const plugin = usePlugin()
   const { language, t } = useLanguage()
   const [sortValue, setSortValue] = useState<ProjectSort>('recent')
+  const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(
+    null,
+  )
   const sortOptions = [
     { value: 'recent', label: t('learning.home.sortRecent', '按最近活跃') },
     { value: 'created', label: t('learning.home.sortCreated', '按创建时间') },
     { value: 'progress', label: t('learning.home.sortProgress', '按进度') },
   ]
   const statsByProject = statsSnapshot.byProject
+  const isProjectPaused = (project: VaultProject) =>
+    statsByProject.get(project.id)?.paused ??
+    statsSnapshot.pausedProjectIds.has(project.id)
   const statsReady = !statsSnapshot.loading
   const totalDueCards = statsReady
     ? projects.reduce(
         (total, project) =>
-          total + (statsByProject.get(project.id)?.dueCards ?? 0),
+          total +
+          (isProjectPaused(project)
+            ? 0
+            : (statsByProject.get(project.id)?.dueCards ?? 0)),
         0,
       )
     : null
@@ -73,11 +100,14 @@ export function HomeView({
         .map(({ project }) => project),
     [projects, statsByProject],
   )
-  const recentProject = recentlyActiveProjects[0]
+  const activeProjects = recentlyActiveProjects.filter(
+    (project) => !isProjectPaused(project),
+  )
+  const recentProject = activeProjects[0]
   const recentStats = recentProject
     ? statsByProject.get(recentProject.id)
     : undefined
-  const dueProjects = recentlyActiveProjects.filter(
+  const dueProjects = activeProjects.filter(
     (project) => (statsByProject.get(project.id)?.dueCards ?? 0) > 0,
   )
   const firstDueProject = dueProjects[0]
@@ -93,6 +123,100 @@ export function HomeView({
       })
       .map(({ project }) => project)
   }, [projects, sortValue, statsByProject])
+
+  const setProjectPaused = async (project: VaultProject, paused: boolean) => {
+    setPendingProjectSlug(project.slug)
+    try {
+      const store = plugin.getLearningSrsStore()
+      if (paused) await store.pauseProject(project.slug, new Date())
+      else await store.resumeProject(project.slug, new Date())
+      new Notice(
+        paused
+          ? t('learning.home.pauseSuccess', '学习计划已暂停')
+          : t('learning.home.resumeSuccess', '学习计划已恢复'),
+      )
+    } catch (error) {
+      console.error(
+        '[YOLO] Failed to update learning project pause state:',
+        error,
+      )
+      new Notice(
+        paused
+          ? t('learning.home.pauseFailed', '暂停学习计划失败，请重试')
+          : t('learning.home.resumeFailed', '恢复学习计划失败，请重试'),
+      )
+    } finally {
+      setPendingProjectSlug(null)
+    }
+  }
+
+  const deleteProject = async (project: VaultProject, wasPaused: boolean) => {
+    setPendingProjectSlug(project.slug)
+    let projectTrashed = false
+    try {
+      const folder = app.vault.getAbstractFileByPath(project.folderPath)
+      if (!(folder instanceof TFolder)) {
+        throw new Error(
+          `Learning project folder not found: ${project.folderPath}`,
+        )
+      }
+      const store = plugin.getLearningSrsStore()
+      await store.pauseProject(project.slug, new Date())
+      const statePath = await store.getProjectStateFilePath(project.slug)
+      const stateFile = app.vault.getAbstractFileByPath(statePath)
+      const stateExists = await app.vault.adapter.exists(statePath)
+      await store.runExclusive(async () => {
+        await app.fileManager.trashFile(folder)
+        projectTrashed = true
+        if (stateFile instanceof TFile)
+          await app.fileManager.trashFile(stateFile)
+        else if (stateExists) {
+          const trashed = await app.vault.adapter.trashSystem(statePath)
+          if (!trashed) await app.vault.adapter.trashLocal(statePath)
+        }
+      })
+      new Notice(t('learning.home.deleteSuccess', '学习计划已移入回收站'))
+    } catch (error) {
+      console.error('[YOLO] Failed to delete learning project:', error)
+      if (!projectTrashed && !wasPaused) {
+        try {
+          await plugin
+            .getLearningSrsStore()
+            .resumeProject(project.slug, new Date())
+        } catch (resumeError) {
+          console.error(
+            '[YOLO] Failed to restore learning project pause state after delete failure:',
+            resumeError,
+          )
+        }
+      }
+      new Notice(
+        projectTrashed
+          ? t(
+              'learning.home.deleteStateFailed',
+              '学习计划已移入回收站，但复习数据未能一并移除',
+            )
+          : t('learning.home.deleteFailed', '删除学习计划失败，请重试'),
+      )
+    } finally {
+      setPendingProjectSlug(null)
+    }
+  }
+
+  const confirmDeleteProject = (project: VaultProject) => {
+    new ConfirmModal(app, {
+      title: t('learning.home.deleteConfirmTitle', '删除学习计划'),
+      message: formatLearningText(
+        t(
+          'learning.home.deleteConfirmMessage',
+          '确定要将“{project}”及其全部复习数据移入回收站吗？',
+        ),
+        { project: project.topic },
+      ),
+      ctaText: t('learning.home.deleteProject', '删除'),
+      onConfirm: () => void deleteProject(project, isProjectPaused(project)),
+    }).open()
+  }
 
   return (
     <div className="yolo-learning-home">
@@ -215,6 +339,9 @@ export function HomeView({
             <FocusEmpty
               loading={statsSnapshot.loading && projects.length > 0}
               hasProjects={projects.length > 0}
+              allPaused={
+                statsReady && projects.length > 0 && activeProjects.length === 0
+              }
               onNewProject={onNewProject}
               t={t}
             />
@@ -310,6 +437,11 @@ export function HomeView({
               key={project.id}
               project={project}
               onClick={() => onOpenProject(project.id)}
+              onPause={() => void setProjectPaused(project, true)}
+              onResume={() => void setProjectPaused(project, false)}
+              onDelete={() => confirmDeleteProject(project)}
+              pending={pendingProjectSlug === project.slug}
+              paused={isProjectPaused(project)}
               stats={statsByProject.get(project.id)}
               language={language}
               t={t}
@@ -364,11 +496,13 @@ function MiniStat({
 function FocusEmpty({
   loading,
   hasProjects,
+  allPaused,
   onNewProject,
   t,
 }: {
   loading: boolean
   hasProjects: boolean
+  allPaused: boolean
   onNewProject: () => void
   t: (keyPath: string, fallback?: string) => string
 }) {
@@ -377,9 +511,11 @@ function FocusEmpty({
       <span>
         {loading
           ? t('learning.home.statsLoading', '正在更新学习数据')
-          : hasProjects
-            ? t('learning.home.statsUnavailableEmpty', '暂时无法读取项目统计')
-            : t('learning.home.noProjects', '还没有学习计划')}
+          : allPaused
+            ? t('learning.home.allProjectsPaused', '所有学习计划均已暂停')
+            : hasProjects
+              ? t('learning.home.statsUnavailableEmpty', '暂时无法读取项目统计')
+              : t('learning.home.noProjects', '还没有学习计划')}
       </span>
       {!hasProjects && !loading && (
         <button type="button" onClick={onNewProject}>
@@ -393,67 +529,243 @@ function FocusEmpty({
 function ProjectCard({
   project,
   onClick,
+  onPause,
+  onResume,
+  onDelete,
+  pending,
+  paused,
   stats,
   language,
   t,
 }: {
   project: VaultProject
   onClick: () => void
+  onPause: () => void
+  onResume: () => void
+  onDelete: () => void
+  pending: boolean
+  paused: boolean
   stats?: LearningProjectStats
   language: 'en' | 'it' | 'zh'
   t: (keyPath: string, fallback?: string) => string
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const cardRef = useRef<HTMLButtonElement>(null)
+  const menuAnchorRef = useRef({
+    getBoundingClientRect: () => DOMRect.fromRect(),
+  })
+  const pressTimerRef = useRef<number | null>(null)
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null)
+  const suppressClickRef = useRef(false)
+  const suppressClickTimerRef = useRef<number | null>(null)
+  const suppressContextMenuUntilRef = useRef(0)
+  const clearPress = useCallback(() => {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+    pressStartRef.current = null
+  }, [])
+
+  const openMenuAt = useCallback((x: number, y: number) => {
+    menuAnchorRef.current = {
+      getBoundingClientRect: () => DOMRect.fromRect({ x, y }),
+    }
+    setMenuOpen(true)
+  }, [])
+
+  useEffect(() => {
+    const scroller = cardRef.current?.closest('.yolo-learning-page.is-home')
+    scroller?.addEventListener('scroll', clearPress, { passive: true })
+    return () => {
+      clearPress()
+      scroller?.removeEventListener('scroll', clearPress)
+      if (suppressClickTimerRef.current !== null) {
+        window.clearTimeout(suppressClickTimerRef.current)
+      }
+    }
+  }, [clearPress])
+
+  const suppressNextClick = () => {
+    suppressClickRef.current = true
+    if (suppressClickTimerRef.current !== null) {
+      window.clearTimeout(suppressClickTimerRef.current)
+    }
+    suppressClickTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = false
+      suppressClickTimerRef.current = null
+    }, 800)
+  }
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (
+      event.pointerType !== 'touch' ||
+      !event.isPrimary ||
+      event.button !== 0
+    ) {
+      return
+    }
+    clearPress()
+    pressStartRef.current = { x: event.clientX, y: event.clientY }
+    pressTimerRef.current = window.setTimeout(() => {
+      const start = pressStartRef.current
+      pressTimerRef.current = null
+      pressStartRef.current = null
+      if (!start) return
+      suppressNextClick()
+      suppressContextMenuUntilRef.current = Date.now() + 1_000
+      openMenuAt(start.x, start.y)
+    }, 420)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const start = pressStartRef.current
+    if (!start) return
+    if (
+      Math.abs(event.clientX - start.x) > 8 ||
+      Math.abs(event.clientY - start.y) > 8
+    ) {
+      clearPress()
+    }
+  }
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    if (Date.now() < suppressContextMenuUntilRef.current) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const keyboardTriggered = event.clientX === 0 && event.clientY === 0
+    openMenuAt(
+      keyboardTriggered ? rect.left + 16 : event.clientX,
+      keyboardTriggered ? rect.top + 16 : event.clientY,
+    )
+  }
+
+  const runMenuAction = (action: () => void) => {
+    setMenuOpen(false)
+    action()
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="yolo-learning-home-project-card"
-    >
-      <div className="yolo-learning-home-project-header">
-        <div className="yolo-learning-home-project-identity">
-          <h3>{project.topic}</h3>
-          <p>{project.goal}</p>
+    <Popover.Root open={menuOpen} onOpenChange={setMenuOpen}>
+      <Popover.Anchor virtualRef={menuAnchorRef} />
+      <button
+        ref={cardRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={(event) => {
+          if (suppressClickRef.current) {
+            event.preventDefault()
+            event.stopPropagation()
+            suppressClickRef.current = false
+            return
+          }
+          onClick()
+        }}
+        onContextMenu={handleContextMenu}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={clearPress}
+        onPointerCancel={clearPress}
+        className={`yolo-learning-home-project-card${paused ? ' is-paused' : ''}`}
+      >
+        <div className="yolo-learning-home-project-header">
+          <div className="yolo-learning-home-project-identity">
+            <h3>{project.topic}</h3>
+            <p>{project.goal}</p>
+          </div>
+          <Pill tone={paused ? 'neutral' : 'primary'}>
+            {paused
+              ? t('learning.home.statusPaused', '已暂停')
+              : projectStatusLabel(project.status, t)}
+          </Pill>
         </div>
-        <Pill tone="primary">{projectStatusLabel(project.status, t)}</Pill>
-      </div>
 
-      <div className="yolo-learning-home-project-progress">
-        <ProgressBar value={stats?.targetCardProgress ?? 0} />
-        <span>{stats ? `${stats.targetCardProgress}%` : '—'}</span>
-      </div>
+        <div className="yolo-learning-home-project-progress">
+          <ProgressBar value={stats?.targetCardProgress ?? 0} />
+          <span>{stats ? `${stats.targetCardProgress}%` : '—'}</span>
+        </div>
 
-      {stats?.nextAction && <ProjectAction action={stats.nextAction} t={t} />}
+        {stats?.nextAction && <ProjectAction action={stats.nextAction} t={t} />}
 
-      <div className="yolo-learning-home-project-meta">
-        <span>
-          <CheckCircle2 aria-hidden />
-          {stats
-            ? formatLearningText(
-                t('learning.home.targetCount', '达标 {completed}/{total}'),
-                {
-                  completed: stats.targetCards,
-                  total: stats.totalCards,
-                },
-              )
-            : '—'}
-        </span>
-        <span>
-          <RotateCcw aria-hidden />
-          {stats
-            ? formatLearningText(
-                t('learning.home.dueCount', '待复习 {count}'),
-                { count: stats.dueCards },
-              )
-            : '—'}
-        </span>
-        <span>
-          <Clock aria-hidden />
-          {stats
-            ? formatRelativeTime(stats.lastActiveAt, language)
-            : t('learning.home.statsLoadingShort', '更新中')}
-        </span>
-      </div>
-    </button>
+        <div className="yolo-learning-home-project-meta">
+          <span>
+            <CheckCircle2 aria-hidden />
+            {stats
+              ? formatLearningText(
+                  t('learning.home.targetCount', '达标 {completed}/{total}'),
+                  {
+                    completed: stats.targetCards,
+                    total: stats.totalCards,
+                  },
+                )
+              : '—'}
+          </span>
+          <span>
+            <RotateCcw aria-hidden />
+            {stats
+              ? formatLearningText(
+                  t('learning.home.dueCount', '待复习 {count}'),
+                  { count: stats.dueCards },
+                )
+              : '—'}
+          </span>
+          <span>
+            <Clock aria-hidden />
+            {stats
+              ? formatRelativeTime(stats.lastActiveAt, language)
+              : t('learning.home.statsLoadingShort', '更新中')}
+          </span>
+        </div>
+      </button>
+      <YoloPopoverContent
+        anchorRef={cardRef}
+        variant="default"
+        minWidth={172}
+        maxWidth={232}
+        sideOffset={4}
+        align="start"
+        collisionPadding={10}
+        className="yolo-learning-project-menu"
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="yolo-learning-project-menu-list" role="menu">
+          {paused ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="yolo-learning-project-menu-item"
+              disabled={pending}
+              onClick={() => runMenuAction(onResume)}
+            >
+              <PlayCircle size={15} aria-hidden />
+              <span>{t('learning.home.resumeProject', '恢复学习')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              className="yolo-learning-project-menu-item"
+              disabled={pending}
+              onClick={() => runMenuAction(onPause)}
+            >
+              <PauseCircle size={15} aria-hidden />
+              <span>{t('learning.home.pauseProject', '暂停学习')}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            className="yolo-learning-project-menu-item is-danger"
+            disabled={pending}
+            onClick={() => runMenuAction(onDelete)}
+          >
+            <Trash2 size={15} aria-hidden />
+            <span>{t('learning.home.deleteProject', '删除')}</span>
+          </button>
+        </div>
+      </YoloPopoverContent>
+    </Popover.Root>
   )
 }
 
