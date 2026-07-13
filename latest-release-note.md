@@ -1,79 +1,43 @@
-## 1.6.0 Learning Mode Public Beta ✨
+## 1.6.0.1 Learning Experience & Agent Reliability 🛠️
 
-### 🎓 Learning Mode
+### 🎓 Learning Improvements
 
-- Introducing the new **Learning Mode**: create a personalized learning project from a topic, current level, goals, and reference materials. YOLO can generate a structured outline, knowledge points, flashcards, and an interactive knowledge map.
-- New flashcard learning workspace with card browsing, editing, drag-and-drop organization, batch management, and progress tracking.
-- Built-in **FSRS spaced repetition** schedules reviews based on memory retention, with Again / Hard / Good / Easy ratings and daily review statistics.
-- Import existing **Anki `.apkg` packages**, including deck structure, Basic / reversed / Cloze cards, images, audio, review history, and suspended cards.
-- Learning Mode now supports a dedicated generation model shared by outlines, knowledge points, and flashcards.
-- Exercise Mode and conversational learning experiences are planned for future updates.
-- **Public beta notice**: Learning Mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some Learning Mode features may become part of paid plans in the future. Free users will still be able to use Learning Mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.
+- Learning plans now support pause, resume, and delete actions through right-click or long press. Pausing freezes the entire review schedule, so resuming does not create an extra overdue backlog.
+- Fixed Learning Mode to respect the custom YOLO folder. Existing review records and Anki import data are safely migrated to the configured directory, with leftover empty folders cleaned up automatically.
+- The status bar now shows today's due card count and updates in real time as reviews are completed.
+- Refined the Learning Center layout so the scrollbar reaches the right edge, and aligned the top badge count with the current learning queue.
+- Review rating buttons now use compact localized time units, preventing wrapped labels and inconsistent button heights on mobile.
 
-### ⚡ Conversation Performance
+### 🤖 Agent Accuracy
 
-- Improved typing performance in long conversations by avoiding repeated history and layout calculations while editing input (#420).
-- Chat history now renders the latest 6 turns by default and keeps up to 12 turns while browsing older messages, preventing rendered content from growing indefinitely (#420).
+- Agent now determines file editing, path operations, and terminal capabilities from its actual tool configuration, reducing invented tool calls and incorrect claims that an operation was completed.
+- Fixed Agent tool counts to exclude disabled MCP tools and unavailable tools, keeping the total consistent with the Agent configuration page.
 
-### 💬 Chat, Quick Ask & Editor
+### 💬 Chat & Providers
 
-- Unified the underlying input experience between Quick Ask and Chat, refreshed the Quick Ask layout, and updated its send button to match Chat's circular design.
-- Table selections are now recognized by cell boundaries and converted into structured Markdown subtables before being sent to the model. The input area also shows the selected row and column count (#442).
-- Model responses now follow Obsidian's interface font instead of the editor body font, preventing unsuitable typography under certain themes and Style Settings configurations. A CSS variable remains available for customization.
-- Code blocks now provide Apply actions at both the top and bottom, so changes can be applied after reading long content without scrolling back up (#448) (#449).
-- Added support for **Max** reasoning strength.
-
-### 🤖 Agent Improvements
-
-- Reorganized built-in Agent tools: file writing now belongs to the file-editing group, while file operations focus on deleting, moving, and creating folders, making permissions and tool purposes clearer.
-- Agent now detects repeated reads of the same file range. It warns the model first and automatically stops the run if identical reads continue, reducing loops and unnecessary token usage.
-- Agent now understands its accessible workspace scope in advance. When an operation goes out of bounds, both the Agent response and tool details explain the rejection and guide users to adjust workspace settings or task scope.
-
-### 📱 Mobile & Interface
-
-- Improved mobile chat history actions so they no longer depend on desktop-only hover controls.
-- Mobile text selection now consistently preserves the native system handles and menu, preventing selections from unexpectedly disappearing (#446).
-- Fixed black borders appearing around dialogs, setting tabs, and option cards on Android.
-- Fixed update dialogs occasionally showing only the version number without release notes. Release content is now retried when GitHub synchronization is delayed or the network is unstable.
-- Fixed visual ghosting while scrolling YOLO Chat with Obsidian's translucent window mode enabled (#445).
+- Thinking traces now open without an expansion animation, reducing CPU usage and interface lag when viewing very long reasoning content (#420).
+- Message navigation now remains available in narrow sidebars (#453) (#454). Thanks to @Lapis0x1 for the contribution.
+- Removed the discontinued Qwen OAuth login option so unavailable sign-in methods are no longer shown (#456).
 
 ---
 
-## 1.6.0 学习模式公开测试 ✨
+## 1.6.0.1 学习体验与 Agent 可靠性 🛠️
 
-### 🎓 学习模式
+### 🎓 学习体验优化
 
-- 新增全新的**学习模式**：可根据学习主题、当前水平、学习目标和参考资料创建个性化学习项目，由 YOLO 自动生成结构化大纲、知识点、闪卡和交互式知识地图。
-- 新增闪卡学习工作区，支持浏览、编辑、拖拽整理、批量管理卡片，并可直观查看学习进度。
-- 内置 **FSRS 间隔复习**，根据记忆保持率安排复习计划，支持“重来 / 困难 / 良好 / 简单”四档评分和每日复习统计。
-- 支持导入已有的 **Anki `.apkg` 卡包**，可保留牌组章节结构、Basic / reversed / Cloze 卡片、图片、音频、复习历史和暂停状态。
-- 学习模式可独立选择内容生成模型，并统一用于生成大纲、知识点和闪卡。
-- 习题模式与对话式学习体验将在后续版本中陆续推出。
-- **公开测试说明**：学习模式目前处于公开测试阶段，部分功能仍在持续完善，使用过程中可能出现不稳定或错误。未来，学习模式的部分功能将纳入付费方案。免费用户仍可继续使用，但可创建的学习项目数量等可能会受到限制。超出免费额度的已有项目可能转为只读，但不会被自动删除。
+- 学习计划现已支持通过右键或长按进行暂停、恢复和删除。暂停期间会冻结整个计划的复习进度，恢复后不会产生额外的逾期积压。
+- 修复学习模式未遵循自定义 YOLO 文件夹的问题。已有复习记录和 Anki 导入数据会安全迁移至用户设置的目录，并自动清理遗留的空文件夹。
+- 右下角状态栏现在会显示今日待复习卡片数量，并随复习进度实时更新。
+- 优化学习中心页面布局，使滚动条贴合视图右侧边缘；同时统一顶部徽标与当前学习队列的卡片数量。
+- 复习评分按钮改用更紧凑的多语言时间单位，避免移动端因文案换行导致按钮高度不一致。
 
-### ⚡ 对话性能
+### 🤖 Agent 准确性
 
-- 优化长对话输入性能，避免输入时重复计算历史消息和页面布局，在包含大量工具调用的对话中也能保持更加流畅的输入响应 (#420)。
-- 聊天历史默认仅渲染最近 6 轮，翻阅历史时最多保留 12 轮，并修复持续聊天导致渲染内容不断累积的问题 (#420)。
+- AI 现在会根据当前 Agent 的实际工具配置准确判断文件编辑、路径操作和终端能力，减少虚构工具调用或错误声称操作已完成的情况。
+- 修复 Agent 工具数量显示不准确的问题。停用的 MCP 和失效工具不再计入，工具数量现在与 Agent 配置页保持一致。
 
-### 💬 Chat、Quick Ask 与编辑体验
+### 💬 对话与服务渠道
 
-- 统一 Quick Ask 与 Chat 的底层输入体验，重新优化 Quick Ask 的布局，并将发送按钮统一为与 Chat 一致的圆形样式。
-- 修复 Obsidian 表格选区无法正确同步到 Chat 的问题。插件现在会按表格单元格识别选区，将其转换为结构化 Markdown 子表发送给模型，并在输入框中显示选中的行列数量 (#442)。
-- 模型回复正文现在默认跟随 Obsidian 界面字体，避免在部分主题或 Style Settings 配置下显示为不适合聊天界面的编辑器正文字体，同时保留 CSS 变量供自定义。
-- 代码块现在会在顶部和内容末尾同时显示“应用”按钮，阅读长内容后无需返回顶部即可应用修改 (#448) (#449)。
-- 新增支持 **Max** 推理强度。
-
-### 🤖 Agent 优化
-
-- 优化 Agent 内置工具分组：将“写入文件”归入文件编辑工作集；文件操作集现在专注于删除、移动和创建文件夹等路径操作，让工具权限和用途更加清晰。
-- 增强 Agent 防循环能力：当模型反复使用相同参数读取同一文件范围时，会先提示模型调整策略；若仍继续重复读取则自动中断，减少无意义的循环与 token 消耗。
-- Agent 现在会提前了解可访问的工作区范围。当文件操作超出范围时，Agent 回复和工具调用详情都会明确显示拒绝原因，并提示用户调整工作区设置或任务范围。
-
-### 📱 移动端与界面
-
-- 优化移动端聊天历史记录的操作体验，不再依赖需要悬停的桌面操作按钮，避免触控交互与桌面入口互相干扰。
-- 修复移动端选中文字时系统选区手柄和菜单可能突然消失的问题，现在始终保留系统原生选区体验 (#446)。
-- 修复安卓端弹窗、设置页顶部 Tab 和选项卡片边框异常显示为黑色的问题。
-- 修复新版本弹窗偶尔只显示版本号、没有更新内容的问题。当 GitHub 更新说明短暂未同步或网络不稳定时，现在会自动重试获取。
-- 修复开启 Obsidian 半透明窗口后，YOLO Chat 滚动时可能出现内容重影的问题 (#445)。
+- 取消思考记录的展开动画，降低打开超长思考内容时的 CPU 压力和界面卡顿 (#420)。
+- 支持在窄侧栏中使用消息导航 (#453) (#454)，感谢 @Lapis0x1 的贡献。
+- 移除已停止服务的 Qwen OAuth 登录渠道，避免继续展示不可用选项 (#456)。
