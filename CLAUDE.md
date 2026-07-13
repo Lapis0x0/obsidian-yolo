@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, writing assistance, and agent workflows. It integrates multiple LLM providers, vector search, and MCP (Model Context Protocol) servers.
+YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and learning. It integrates multiple LLM providers, vector search, MCP (Model Context Protocol) servers, AI-assisted learning content generation, FSRS-based review, and Anki import.
 
 ## Development Commands
 
@@ -31,17 +31,19 @@ YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, wri
 **Entry & UI**
 
 - `src/main.ts` - Plugin entry and lifecycle
-- `src/components/` - React UI (chat-view, apply-view, settings, modals, panels, common)
+- `src/LearningView.tsx` - Learning mode ItemView entry
+- `src/components/` - React UI (chat-view, learning-view, apply-view, settings, modals, panels, common)
 - `src/contexts/` - React context providers
 - `src/hooks/` - Custom React hooks
-- `src/settings/` - Settings tab UI + schema and migrations
+- `src/settings/` - Settings entry, Zod schema, and versioned migrations
 
 **Core**
 
 - `src/core/ai/` - Shared single-turn execution kernel (stream/non-stream, timeout fallback, tool-call aggregation)
-- `src/core/agent/` - Unified runtime entry with fast path + loop-worker orchestration, tool gateway, conversation service
+- `src/core/agent/` - Unified native agent runtime, loop-worker orchestration, tool gateway, conversation service, subagents, and background tasks
 - `src/core/llm/` - LLM provider clients and adapters
 - `src/core/auth/` - OAuth flows for ChatGPT / Gemini / Qwen and other auth providers
+- `src/core/learning/` - Markdown-backed learning projects, AI generation, FSRS state, project scanning, and recoverable Anki import
 - `src/core/rag/` - Embedding + vector retrieval orchestration
 - `src/core/mcp/` - MCP (Model Context Protocol) server management and tool execution
 - `src/core/skills/` - Skills system
@@ -52,19 +54,23 @@ YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, wri
 - `src/core/background/` - Background activities and tasks
 - `src/core/notifications/` - Notification coordination
 - `src/core/paths/` - Path resolution helpers
+- `src/core/project-instructions.ts` - Cascading Vault `AGENTS.md` / `CLAUDE.md` discovery for agent workspaces
 - `src/core/update/` - Update checking
 
 **Features & Support**
 
-- `src/features/` - Editor-facing behaviors. Includes: `inline-suggestion`, `tab-completion`, `smart-space`, `write-assist`, `quick-ask`, `selection-chat`, `selection-highlight`, `diff-review`
-- `src/database/` - PGlite + Drizzle schema/migrations/data access
+- `src/features/editor/` - Editor-facing behaviors such as inline suggestions, tab completion, Smart Space, Write Assist, Quick Ask, selection chat, and diff review
+- `src/features/chat/` - Chat-facing feature integrations
+- `src/features/config-transfer/` - Configuration import/export
+- `src/features/pdf-screenshot/` - PDF region capture and attachment flow
+- `src/database/` - PGlite/Drizzle vector storage plus Vault-backed JSON stores for conversations, attachments, snapshots, and caches
 - `src/utils/` - Prompt/response/diff/edit and utility helpers
 - `src/i18n/` - Localization resources (en, it, zh)
 - `src/constants/` - Shared constants
 
 **Runtime Profiles**
 
-- Quick Ask / Sidebar Chat / Agent Chat: 三者共用同一个 agent runtime（`AgentService.run` → `loop-worker` + `AgentToolGateway`），并通过 `resolveChatModeRuntime`（`src/components/chat-view/chat-runtime-profiles.ts`）统一解析 `loopConfig` / `allowedToolNames` / `toolPreferences`。Chat 模式套用 `CHAT_BLOCKED_TOOL_NAMES` 黑名单（屏蔽 fs 改写类工具）且不传 `toolPreferences`；Agent 模式传完整工具集与偏好。`maxAutoIterations` 默认 100。Quick Ask 与侧边栏在 runtime 层面无差异，仅 UI 形态不同。
+- Quick Ask / Sidebar Chat / Agent Chat: 三者共用 `AgentService.run` → `NativeAgentRuntime` → `loop-worker` / `AgentToolGateway` 执行链路，并通过 `resolveChatModeRuntime`（`src/components/chat-view/chat-runtime-profiles.ts`）统一解析运行配置与工具权限。Chat 模式屏蔽文件改写、终端命令和任务状态写入工具；Agent 模式使用完整工具集与用户偏好。Quick Ask 与侧边栏在 runtime 层面无差异，仅 UI 形态不同。
 - Smart Space / Write Assist: 低延迟编辑场景，直接复用 `src/core/ai/single-turn.ts`，不经过 agent runtime。
 
 **Legacy Removal**
@@ -83,11 +89,13 @@ YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, wri
 **YOLO Managed Paths**
 
 - Vault-managed files must resolve from `settings.yolo.baseDir`; never hardcode `YOLO` or call write-path helpers without current settings. Long-lived services must read current settings through a getter so base-directory changes take effect.
+- Learning Markdown is the content source of truth. Each card heading's embedded 8-character `cardUuid` is its stable SRS identity, while the project directory slug keys the project SRS file; preserve these identities or explicitly migrate state when renaming them.
+- FSRS state and recoverable Anki import journals are sidecar data under the configured JSON database directory; access them through `src/core/paths/` and `LearningSrsStore`, not direct paths.
 
 **PGlite in Obsidian Browser Environment**
 
 - PGlite default `node:fs` path is unavailable in Obsidian.
-- `DatabaseManager.ts` manually loads Postgres data/WASM/vector extension and passes them at init time.
+- `DatabaseManager.ts` lazily loads Postgres data/WASM/vector extension and passes them at init time.
 - Build config injects `process = {}` and `import.meta.url` compatibility behavior.
 
 **Database Schema Changes**
