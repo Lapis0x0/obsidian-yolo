@@ -92,6 +92,7 @@ import {
 import { formatLearningText } from './i18n'
 import { type Mastery, MasteryDot, SelectMenu } from './primitives'
 import {
+  buildInitialReviewQueue,
   getExtremeGradeThreshold,
   keyboardToGrade,
   resolveSwipeGrade,
@@ -316,19 +317,18 @@ export function CardsView({
   generation,
   mode,
   onModeChange,
-  onDueCountChange,
+  onStudyCountChange,
 }: {
   project: VaultProject | null
   generation: CardGenerationWorkspace | null
   mode: CardMode
   onModeChange: (mode: CardMode) => void
-  onDueCountChange: (count: number) => void
+  onStudyCountChange: (count: number) => void
 }) {
   const {
     cards,
     loading,
     now,
-    dueCount,
     todayIntroducedCount,
     applyReviewResult,
     error,
@@ -336,10 +336,19 @@ export function CardsView({
     writing,
     setWriting,
   } = useProjectCards(project, generation)
+  const initialReviewQueue = useMemo(
+    () =>
+      buildInitialReviewQueue(
+        cards.filter((card) => !card.preview && !card.suspended),
+        now,
+        todayIntroducedCount,
+      ),
+    [cards, now, todayIntroducedCount],
+  )
 
   useEffect(() => {
-    onDueCountChange(dueCount)
-  }, [dueCount, onDueCountChange])
+    if (mode === '浏览') onStudyCountChange(initialReviewQueue.length)
+  }, [initialReviewQueue.length, mode, onStudyCountChange])
 
   return (
     <div className="yolo-learning-cards-view yolo-learning-scrollbar-thin">
@@ -359,10 +368,9 @@ export function CardsView({
         <ReviewMode
           key={project?.slug}
           projectSlug={project?.slug ?? null}
-          cards={cards.filter((card) => !card.preview && !card.suspended)}
-          now={now}
-          todayIntroducedCount={todayIntroducedCount}
+          initialQueue={initialReviewQueue}
           onReviewed={applyReviewResult}
+          onQueueCountChange={onStudyCountChange}
           onExit={() => onModeChange('浏览')}
         />
       )}
@@ -659,16 +667,10 @@ function useProjectCards(
       })
   }, [now, plugin, project, t])
 
-  const dueCount = cards.filter(
-    (card) =>
-      !card.suspended && card.srsState && card.dueAt && isDue(card.dueAt, now),
-  ).length
-
   return {
     cards: mergedCards,
     loading,
     now,
-    dueCount,
     todayIntroducedCount,
     applyReviewResult,
     error,
@@ -3014,40 +3016,23 @@ const peekCenter = 'translate(0,0) rotate(0deg) scale(1)'
 
 function ReviewMode({
   projectSlug,
-  cards,
-  now,
-  todayIntroducedCount,
+  initialQueue,
   onReviewed,
+  onQueueCountChange,
   onExit,
 }: {
   projectSlug: string | null
-  cards: Card[]
-  now: Date
-  todayIntroducedCount: number
+  initialQueue: Card[]
   onReviewed: (
     cardUuid: string,
     state: SrsCardState,
     introduced: boolean,
   ) => void
+  onQueueCountChange: (count: number) => void
   onExit: () => void
 }) {
   const { t } = useLanguage()
   const plugin = usePlugin()
-  const initialQueue = useMemo(() => {
-    const due = cards
-      .filter((card) => card.srsState && card.dueAt && isDue(card.dueAt, now))
-      .sort(
-        (left, right) =>
-          new Date(left.dueAt ?? 0).getTime() -
-          new Date(right.dueAt ?? 0).getTime(),
-      )
-    const newCardLimit = Math.max(0, 20 - todayIntroducedCount)
-    const newCards = cards
-      .filter((card) => !card.srsState)
-      .slice(0, newCardLimit)
-    return [...due, ...newCards]
-  }, [cards, now, todayIntroducedCount])
-
   const [queue, setQueue] = useState<Card[]>(initialQueue)
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -3082,6 +3067,10 @@ function ReviewMode({
     setQueue(initialQueue)
     setIndex(0)
   }, [initialQueue])
+
+  useEffect(() => {
+    onQueueCountChange(queue.length)
+  }, [onQueueCountChange, queue.length])
 
   const card = queue[index]
   const nextCard = queue[index + 1]

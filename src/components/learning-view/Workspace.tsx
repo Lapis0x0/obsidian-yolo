@@ -35,9 +35,9 @@ export function Workspace({
   onCardModeChange: (mode: CardMode) => void
 }) {
   const { t } = useLanguage()
-  const [dueCardCount, setDueCardCount] = useState(0)
-  const handleDueCardCountChange = useCallback(
-    (count: number) => setDueCardCount(count),
+  const [studyCardCount, setStudyCardCount] = useState(0)
+  const handleStudyCardCountChange = useCallback(
+    (count: number) => setStudyCardCount(count),
     [],
   )
   const tabLabels: Record<TabKey, string> = {
@@ -76,7 +76,7 @@ export function Workspace({
             options={cardModes}
             value={cardMode}
             onChange={onCardModeChange}
-            badges={{ 学习: dueCardCount }}
+            badges={{ 学习: studyCardCount }}
             getLabel={(mode) => cardModeLabels[mode]}
             className="yolo-learning-workspace-card-mode"
           />
@@ -126,7 +126,7 @@ export function Workspace({
             generation={cardGeneration}
             mode={cardMode}
             onModeChange={onCardModeChange}
-            onDueCountChange={handleDueCardCountChange}
+            onStudyCountChange={handleStudyCardCountChange}
           />
         )}
         {activeTab === '习题' && <ExercisesView project={project} />}

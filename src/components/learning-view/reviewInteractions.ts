@@ -1,8 +1,32 @@
+import { isDue } from '../../core/learning/srs/masteryMapping'
 import type { ReviewRating } from '../../core/learning/srs/srsTypes'
 
 const DRAG_GRADE_THRESHOLD = 0.15
 const MOUSE_EXTREME_GRADE_THRESHOLD = 0.9
 const TOUCH_EXTREME_GRADE_THRESHOLD = 0.6
+const DAILY_NEW_CARD_LIMIT = 20
+
+type QueueCard = {
+  dueAt: string | null
+  srsState: object | null
+}
+
+export function buildInitialReviewQueue<T extends QueueCard>(
+  cards: T[],
+  now: Date,
+  todayIntroducedCount: number,
+): T[] {
+  const due = cards
+    .filter((card) => card.srsState && card.dueAt && isDue(card.dueAt, now))
+    .sort(
+      (left, right) =>
+        new Date(left.dueAt ?? 0).getTime() -
+        new Date(right.dueAt ?? 0).getTime(),
+    )
+  const newCardLimit = Math.max(0, DAILY_NEW_CARD_LIMIT - todayIntroducedCount)
+  const newCards = cards.filter((card) => !card.srsState).slice(0, newCardLimit)
+  return [...due, ...newCards]
+}
 
 export function getExtremeGradeThreshold(pointerType: string): number {
   return pointerType === 'touch' || pointerType === 'pen'

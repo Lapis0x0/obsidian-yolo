@@ -1,4 +1,5 @@
 import {
+  buildInitialReviewQueue,
   getExtremeGradeThreshold,
   keyboardToGrade,
   resolveSwipeGrade,
@@ -6,6 +7,29 @@ import {
 } from './reviewInteractions'
 
 describe('review card interactions', () => {
+  test('builds the study queue from due cards and the remaining daily new-card allowance', () => {
+    const now = new Date('2026-07-13T12:00:00.000Z')
+    const dueCards = Array.from({ length: 15 }, (_, index) => ({
+      id: `due-${index}`,
+      dueAt: '2026-07-13T11:00:00.000Z',
+      srsState: {},
+    }))
+    const newCards = Array.from({ length: 8 }, (_, index) => ({
+      id: `new-${index}`,
+      dueAt: null,
+      srsState: null,
+    }))
+
+    const queue = buildInitialReviewQueue([...dueCards, ...newCards], now, 17)
+
+    expect(queue).toHaveLength(18)
+    expect(queue.slice(15).map((card) => card.id)).toEqual([
+      'new-0',
+      'new-1',
+      'new-2',
+    ])
+  })
+
   test('maps horizontal drag distance onto the four ordered grades', () => {
     const cardWidth = 300
     const mouseThreshold = getExtremeGradeThreshold('mouse')
