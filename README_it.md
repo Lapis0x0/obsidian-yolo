@@ -24,6 +24,10 @@
   <a href="./README.md">English</a> | <a href="./README_zh-CN.md">简体中文</a> | <b>Italiano</b>
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/d8EHm48ppU"><b>Unisciti alla community Discord</b></a>
+</p>
+
 ## Novita recenti
 
 - **`1.6`**: Introduce la nuova Modalità di apprendimento: trasforma qualsiasi argomento e materiale di riferimento in un progetto di studio personalizzato con scalette strutturate, concetti chiave, flashcard e una mappa interattiva delle conoscenze. La ripetizione dilazionata FSRS integrata e l'importazione di pacchetti Anki `.apkg` aiutano a trasformare le conoscenze in un percorso di ripasso sostenibile.

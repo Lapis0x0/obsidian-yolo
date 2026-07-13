@@ -24,6 +24,10 @@
   <b>English</b> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_it.md">Italiano</a>
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/d8EHm48ppU"><b>Join the Discord community</b></a>
+</p>
+
 ## What's New
 
 - **`1.6`**: Introduces the new Learning Mode—turn any topic and reference materials into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map. Built-in FSRS spaced repetition and Anki `.apkg` import help turn knowledge into a sustainable review workflow.
