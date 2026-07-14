@@ -28,11 +28,13 @@ jobs:
           npm run build
 
       - name: Create release
+        id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           if gh release view "$tag" >/dev/null 2>&1; then
+            echo "created=false" >> "$GITHUB_OUTPUT"
             gh release upload "$tag" \
               main.js manifest.json styles.css \
               --clobber
@@ -41,4 +43,13 @@ jobs:
               --title="$tag" \
               --notes-file latest-release-note.md \
               main.js manifest.json styles.css
+            echo "created=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Notify Discord
+        if: steps.release.outputs.created == 'true'
+        env:
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+        run: node scripts/notify-discord-release.mjs
