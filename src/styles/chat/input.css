@@ -3299,8 +3299,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  min-height: 56px;
-  padding: 8px 10px !important;
+  padding: 6px 10px 6px 12px !important;
 }
 
 .yolo-chat-mode-select-item__icon {
