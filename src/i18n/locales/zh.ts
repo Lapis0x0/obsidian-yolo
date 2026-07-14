@@ -1872,6 +1872,13 @@ export const zh: TranslationKeys = {
       agentFullTitle: '让 AI 自主执行 · YOLO 模式',
       agentFullDescription: '自动放行工具调用，处理搜索、读写与多步骤任务',
     },
+    quickAccess: {
+      manage: '管理常用入口',
+      searchPlaceholder: '搜索 Skills 或快捷指令',
+      skills: 'Skills',
+      snippets: '快捷指令',
+      empty: '没有匹配项',
+    },
     compaction: {
       pendingTitle: '正在压缩上下文',
       dividerTitle: '从这里继续当前任务',

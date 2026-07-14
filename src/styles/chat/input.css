@@ -425,12 +425,240 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
   color: var(--text-normal);
 }
 
+.yolo-chat-empty-state-vault-name {
+  color: var(--interactive-accent);
+  font-weight: var(--font-semibold);
+}
+
 .yolo-chat-container--centered.yolo-chat-container--empty-state.yolo-chat-container--mobile-keyboard-managed {
   display: flex;
 }
 
 .yolo-chat-container--centered.yolo-chat-container--empty-state.yolo-chat-container--mobile-keyboard-managed::after {
   content: none;
+}
+
+.yolo-chat-quick-access {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--size-2-3);
+  width: 100%;
+  margin-top: var(--size-4-2);
+}
+
+.yolo-chat-quick-access-motion {
+  width: 100%;
+}
+
+button.yolo-chat-quick-access-entry,
+button.yolo-chat-quick-access-add {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none !important;
+  touch-action: none;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background-color 120ms ease,
+    opacity 120ms ease;
+}
+
+button.yolo-chat-quick-access-entry {
+  gap: var(--size-2-2);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--size-2-2) var(--size-4-3);
+  font-size: var(--font-ui-small);
+  line-height: 1;
+  cursor: grab;
+  white-space: nowrap;
+}
+
+button.yolo-chat-quick-access-entry span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.yolo-chat-quick-access-entry > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--interactive-accent);
+}
+
+button.yolo-chat-quick-access-entry:active,
+button.yolo-chat-quick-access-entry.is-dragging {
+  cursor: grabbing;
+}
+
+button.yolo-chat-quick-access-entry.is-dragging {
+  z-index: 2;
+  opacity: 0.72;
+}
+
+button.yolo-chat-quick-access-add {
+  width: 32px;
+  padding: 0;
+}
+
+@media (hover: hover) {
+  button.yolo-chat-quick-access-entry:hover,
+  button.yolo-chat-quick-access-add:hover {
+    border-color: var(--background-modifier-border-hover);
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+}
+
+button.yolo-chat-quick-access-entry:focus-visible,
+button.yolo-chat-quick-access-add:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 2px;
+}
+
+.yolo-chat-quick-access-picker {
+  padding: var(--size-2-3);
+}
+
+.yolo-chat-quick-access-picker-search {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-3);
+  margin: var(--size-2-2);
+  padding: 0 var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  background: var(--background-modifier-form-field);
+}
+
+.yolo-chat-quick-access-picker-search:focus-within {
+  border-color: var(--background-modifier-border-focus);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+
+.yolo-chat-quick-access-picker-search > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+
+.yolo-chat-quick-access-picker-search input {
+  width: 100%;
+  height: 34px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-chat-quick-access-picker-search input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.yolo-chat-quick-access-picker-list {
+  max-height: min(350px, 52vh);
+  overflow-y: auto;
+  padding: var(--size-2-2);
+}
+
+.yolo-chat-quick-access-picker-section +
+  .yolo-chat-quick-access-picker-section {
+  margin-top: var(--size-4-2);
+  padding-top: var(--size-4-2);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-chat-quick-access-picker-section__title {
+  padding: var(--size-2-2) var(--size-4-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+}
+
+button.yolo-chat-quick-access-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  width: 100%;
+  min-height: 42px;
+  padding: var(--size-2-3) var(--size-4-2);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none !important;
+  text-align: left;
+}
+
+button.yolo-chat-quick-access-picker-row:hover,
+button.yolo-chat-quick-access-picker-row:focus-visible {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-chat-quick-access-picker-row[data-selected='true'] {
+  color: var(--text-normal);
+}
+
+button.yolo-chat-quick-access-picker-row > svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  color: var(--interactive-accent);
+}
+
+.yolo-chat-quick-access-picker-row__text {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-chat-quick-access-picker-row__label {
+  overflow: hidden;
+  color: inherit;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-chat-quick-access-picker-row__description {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-chat-quick-access-picker-row__check {
+  display: inline-flex;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--interactive-accent);
+}
+
+.yolo-chat-quick-access-picker-empty {
+  padding: var(--size-4-4) var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  text-align: center;
 }
 
 .yolo-chat-container--sidebar > .yolo-chat-composer-wrapper,

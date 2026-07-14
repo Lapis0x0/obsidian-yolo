@@ -1870,6 +1870,13 @@ export const it: TranslationKeys = {
       agentFullDescription:
         'Approva automaticamente gli strumenti per ricerca, lettura/scrittura e task multi-step.',
     },
+    quickAccess: {
+      manage: 'Gestisci accessi rapidi',
+      searchPlaceholder: 'Cerca skill o comandi rapidi',
+      skills: 'Skill',
+      snippets: 'Comandi rapidi',
+      empty: 'Nessun risultato',
+    },
     compaction: {
       pendingTitle: 'Compattazione del contesto in corso',
       dividerTitle: "Da qui continua l'attivita corrente",

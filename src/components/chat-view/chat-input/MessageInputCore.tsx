@@ -72,6 +72,7 @@ import { classifyUploadFiles } from './utils/file-upload'
 
 export type MessageInputCoreRef = {
   focus: () => void
+  focusEnd: () => void
   insertText: (text: string) => void
   appendText: (text: string) => void
   replaceText: (text: string) => void
@@ -632,6 +633,12 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
       () => ({
         focus: () => {
           contentEditableRef.current?.focus()
+        },
+        focusEnd: () => {
+          const editor = editorRef.current
+          if (!editor) return
+          contentEditableRef.current?.focus()
+          editor.update(() => $getRoot().selectEnd(), { discrete: true })
         },
         insertText: (text: string) => {
           if (!editorRef.current) return

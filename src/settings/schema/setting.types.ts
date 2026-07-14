@@ -14,6 +14,7 @@ import {
 } from '../../types/mcp.types'
 import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS, ReasoningLevel } from '../../types/reasoning'
+import { DEFAULT_CHAT_QUICK_ACCESS_ENTRIES } from '../chatQuickAccess'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
@@ -448,6 +449,12 @@ export const yoloSettingsSchema = z.object({
       lastChatPlacement: z
         .enum(['sidebar', 'tab', 'split', 'window'])
         .optional(),
+      quickAccessEntries: resilientArraySchema(
+        z.discriminatedUnion('type', [
+          z.object({ type: z.literal('skill'), name: z.string().min(1) }),
+          z.object({ type: z.literal('snippet'), id: z.string().min(1) }),
+        ]),
+      ).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -472,6 +479,7 @@ export const yoloSettingsSchema = z.object({
       chatExportIncludeToolCalls: false,
       ribbonClickAction: 'sidebar',
       lastChatPlacement: undefined,
+      quickAccessEntries: DEFAULT_CHAT_QUICK_ACCESS_ENTRIES,
     }),
 
   notificationOptions: notificationOptionsSchema,

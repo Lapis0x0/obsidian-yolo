@@ -1991,6 +1991,13 @@ export const en: TranslationKeys = {
       agentFullDescription:
         'Auto-approve tool calls for search, read/write operations, and multi-step tasks.',
     },
+    quickAccess: {
+      manage: 'Manage quick access',
+      searchPlaceholder: 'Search skills or snippets',
+      skills: 'Skills',
+      snippets: 'Snippets',
+      empty: 'No matches',
+    },
     compaction: {
       pendingTitle: 'Compacting context',
       dividerTitle: 'Continue the current task from here',

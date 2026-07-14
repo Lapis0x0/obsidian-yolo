@@ -6505,6 +6505,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     groupedChatMessages.length === 0 &&
     !isCurrentConversationRunActive &&
     !isLoadingConversation
+  const workspaceTitleParts = t(
+    'chat.emptyState.workspaceTitle',
+    '今天想在 {vaultName} 中做点什么？',
+  ).split('{vaultName}')
+  const workspaceEmptyStateTitle = !isSidebarPlacement ? (
+    <>
+      {workspaceTitleParts[0]}
+      <span className="yolo-chat-empty-state-vault-name">
+        {app.vault.getName()}
+      </span>
+      {workspaceTitleParts.slice(1).join('{vaultName}')}
+    </>
+  ) : undefined
 
   return (
     <div
@@ -6553,14 +6566,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chat.emptyState.agentFullTitle',
             '让 AI 自主执行 · YOLO 模式',
           )}
-          emptyStateWorkspaceTitle={
-            isSidebarPlacement
-              ? undefined
-              : t(
-                  'chat.emptyState.workspaceTitle',
-                  '今天想在 {vaultName} 中做点什么？',
-                ).replace('{vaultName}', app.vault.getName())
-          }
+          emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
           emptyStateAskDescription={t(
             'chat.emptyState.askDescription',
             '适合提问、润色与改写，专注表达本身',
@@ -6747,6 +6753,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   }
                   onAbort={handleMainInputAbort}
                   contextUsage={mainInputContextUsage}
+                  showQuickAccess={showEmptyState && !isSidebarPlacement}
                 />
               </div>
             </>

@@ -1,4 +1,5 @@
 import { SerializedEditorState } from 'lexical'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { FilePlus2 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {
@@ -44,6 +45,7 @@ import {
   resolveChatInputEditorSeed,
 } from './chatInputDraft'
 import { ChatMode, ChatModeSelect } from './ChatModeSelect'
+import { ChatQuickAccess } from './ChatQuickAccess'
 import ChatSkillBadge from './ChatSkillBadge'
 import { FileUploadButton } from './FileUploadButton'
 import MentionableBadge from './MentionableBadge'
@@ -123,6 +125,7 @@ export type ChatUserInputProps = {
       | null
       | Promise<ContextBreakdownInputs | null>
   }
+  showQuickAccess?: boolean
 }
 
 const DEFAULT_INPUT_HEIGHT = 80
@@ -176,12 +179,14 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       canQueueWhileGenerating = true,
       onAbort,
       contextUsage,
+      showQuickAccess = false,
     },
     ref,
   ) => {
     const app = useApp()
     const { t } = useLanguage()
     const { settings, setSettings } = useSettings()
+    const reduceMotion = useReducedMotion()
     const mentionDisplayMode =
       settings.chatOptions.mentionDisplayMode ?? 'inline'
     const rememberedInputHeight = useMemo(() => {
@@ -237,6 +242,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => selectedSkills,
       [selectedSkills],
     )
+    const selectedSkillsRef = useRef(effectiveSelectedSkills)
+    selectedSkillsRef.current = effectiveSelectedSkills
     const enabledChatModels = useMemo(
       () => settings.chatModels.filter((model) => model.enable ?? true),
       [settings.chatModels],
@@ -675,6 +682,28 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       />
     )
 
+    const handleQuickAccessSkillSelect = (skill: {
+      name: string
+      description: string
+      path: string
+    }) => {
+      if (!setSelectedSkills) return
+      const currentSkills = selectedSkillsRef.current
+      if (currentSkills.some((selected) => selected.name === skill.name)) {
+        coreRef.current?.focus()
+        return
+      }
+      const nextSkills = [...currentSkills, skill]
+      selectedSkillsRef.current = nextSkills
+      setSelectedSkills(nextSkills)
+      requestAnimationFrame(() => coreRef.current?.focusEnd())
+    }
+
+    const handleQuickAccessSnippetSelect = (snippet: { content: string }) => {
+      coreRef.current?.insertText(snippet.content)
+      requestAnimationFrame(() => coreRef.current?.focus())
+    }
+
     return (
       <div
         className={`yolo-chat-user-input-wrapper${compact ? ' yolo-chat-user-input-wrapper--compact' : ''}`}
@@ -871,6 +900,29 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             </div>
           </div>
         )}
+        <AnimatePresence initial={false} mode="popLayout">
+          {showQuickAccess && !compact ? (
+            <motion.div
+              key="quick-access"
+              className="yolo-chat-quick-access-motion"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{
+                duration: reduceMotion ? 0 : 0.12,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+            >
+              <ChatQuickAccess
+                skills={availableSkills}
+                snippets={availableSnippets}
+                onSelectSkill={handleQuickAccessSkillSelect}
+                onSelectSnippet={handleQuickAccessSnippetSelect}
+                onPopoverOpenChange={onControlPopoverOpenChange}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
     )
   },

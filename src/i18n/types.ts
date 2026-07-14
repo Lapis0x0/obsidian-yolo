@@ -1428,6 +1428,13 @@ export type TranslationKeys = {
       agentFullTitle?: string
       agentFullDescription?: string
     }
+    quickAccess?: {
+      manage?: string
+      searchPlaceholder?: string
+      skills?: string
+      snippets?: string
+      empty?: string
+    }
     compaction?: {
       pendingTitle?: string
       dividerTitle?: string

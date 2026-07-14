@@ -4,6 +4,7 @@ import {
   Infinity as InfinityIcon,
   MessageCircle,
 } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { ReactNode, RefObject } from 'react'
 import type { FollowOutput } from 'react-virtuoso'
 
@@ -39,7 +40,7 @@ type ChatConversationPaneProps = {
   emptyStateAskTitle: string
   emptyStateAgentTitle: string
   emptyStateAgentFullTitle: string
-  emptyStateWorkspaceTitle?: string
+  emptyStateWorkspaceTitle?: ReactNode
   emptyStateAskDescription: string
   emptyStateAgentDescription: string
   emptyStateAgentFullDescription: string
@@ -97,6 +98,7 @@ export function ChatConversationPane({
   loadNewerLabel,
   bottomSpacerHeight,
 }: ChatConversationPaneProps) {
+  const reduceMotion = useReducedMotion()
   const showScrollToBottomButton =
     !showEmptyState &&
     groupedChatMessagesLength > 0 &&
@@ -133,10 +135,20 @@ export function ChatConversationPane({
         }
         containerClassName="yolo-chat-conversation-surface"
         overlaySlot={
-          showEmptyState || messageNavigatorContent ? (
-            <>
+          <>
+            <AnimatePresence initial={false}>
               {showEmptyState ? (
-                <div className="yolo-chat-empty-state-overlay">
+                <motion.div
+                  key="empty-state"
+                  className="yolo-chat-empty-state-overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{
+                    duration: reduceMotion ? 0 : 0.12,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                >
                   <div className="yolo-chat-empty-state-overlay-inner">
                     <div className="yolo-chat-empty-state">
                       <div
@@ -160,11 +172,11 @@ export function ChatConversationPane({
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ) : null}
-              {messageNavigatorContent}
-            </>
-          ) : undefined
+            </AnimatePresence>
+            {messageNavigatorContent}
+          </>
         }
         scrollContainerClassName="yolo-chat-messages"
         onVirtualizationChange={onTimelineVirtualizationChange}
@@ -179,7 +191,16 @@ export function ChatConversationPane({
         loadNewerLabel={loadNewerLabel}
         bottomSpacerHeight={bottomSpacerHeight}
       />
-      <div className="yolo-chat-footer">
+      <motion.div
+        layout="position"
+        className="yolo-chat-footer"
+        transition={{
+          layout: {
+            duration: reduceMotion ? 0 : 0.28,
+            ease: [0.22, 1, 0.36, 1],
+          },
+        }}
+      >
         {showScrollToBottomButton && (
           <div className="yolo-chat-floating-actions">
             <button
@@ -197,7 +218,7 @@ export function ChatConversationPane({
           </div>
         )}
         {footerContent}
-      </div>
+      </motion.div>
     </>
   )
 }
