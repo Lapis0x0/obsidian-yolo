@@ -39,5 +39,6 @@ jobs:
           else
             gh release create "$tag" \
               --title="$tag" \
+              --notes-file latest-release-note.md \
               main.js manifest.json styles.css
           fi
