@@ -9,9 +9,19 @@ jest.mock('./which', () => ({
   which: jest.fn().mockResolvedValue('/bin/bash'),
 }))
 
+const getSystemProxyBridgeUrlMock = jest.fn<Promise<string | null>, []>()
+
+jest.mock('./system-proxy-bridge', () => ({
+  getSystemProxyBridgeUrl: () => getSystemProxyBridgeUrlMock(),
+}))
+
 import { __test__ } from './shell-provider'
 
 describe('shell-provider', () => {
+  beforeEach(() => {
+    getSystemProxyBridgeUrlMock.mockReset()
+  })
+
   it('wraps POSIX commands with a done marker', () => {
     const provider = __test__.createPosixProvider('/bin/bash', {})
     const wrapped = provider.wrapCommand({
@@ -42,5 +52,72 @@ describe('shell-provider', () => {
       token: 'def456',
       exitCode: 1,
     })
+  })
+
+  it('adds the system proxy bridge to the shell environment', async () => {
+    getSystemProxyBridgeUrlMock.mockResolvedValue('http://127.0.0.1:45678')
+
+    const env = await __test__.withSystemProxyEnv({
+      PATH: '/usr/bin',
+      NO_PROXY: 'localhost',
+    })
+
+    expect(env).toEqual({
+      PATH: '/usr/bin',
+      NO_PROXY: 'localhost',
+      HTTP_PROXY: 'http://127.0.0.1:45678',
+      http_proxy: 'http://127.0.0.1:45678',
+      HTTPS_PROXY: 'http://127.0.0.1:45678',
+      https_proxy: 'http://127.0.0.1:45678',
+    })
+    expect(getSystemProxyBridgeUrlMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not replace an explicit proxy environment', async () => {
+    const originalEnv = {
+      PATH: '/usr/bin',
+      HTTPS_PROXY: 'http://user-proxy:8080',
+    }
+
+    const env = await __test__.withSystemProxyEnv(originalEnv)
+
+    expect(env).toBe(originalEnv)
+    expect(getSystemProxyBridgeUrlMock).not.toHaveBeenCalled()
+  })
+
+  it('recognizes lowercase explicit proxy variables on POSIX', async () => {
+    const originalEnv = {
+      PATH: '/usr/bin',
+      https_proxy: 'http://user-proxy:8080',
+    }
+
+    const env = await __test__.withSystemProxyEnv(originalEnv)
+
+    expect(env).toBe(originalEnv)
+    expect(getSystemProxyBridgeUrlMock).not.toHaveBeenCalled()
+  })
+
+  it('recognizes mixed-case explicit proxy variables on Windows', () => {
+    expect(
+      __test__.envHasExplicitProxy(
+        { Https_Proxy: 'http://user-proxy:8080' },
+        'win32',
+      ),
+    ).toBe(true)
+    expect(
+      __test__.envHasExplicitProxy(
+        { Https_Proxy: 'http://user-proxy:8080' },
+        'darwin',
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps the original environment when the bridge cannot start', async () => {
+    getSystemProxyBridgeUrlMock.mockResolvedValue(null)
+    const originalEnv = { PATH: '/usr/bin' }
+
+    const env = await __test__.withSystemProxyEnv(originalEnv)
+
+    expect(env).toBe(originalEnv)
   })
 })

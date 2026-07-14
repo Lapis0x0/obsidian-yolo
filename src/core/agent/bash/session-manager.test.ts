@@ -9,6 +9,10 @@ jest.mock('./which', () => ({
   which: jest.fn().mockResolvedValue('/bin/bash'),
 }))
 
+jest.mock('./system-proxy-bridge', () => ({
+  getSystemProxyBridgeUrl: jest.fn().mockResolvedValue(null),
+}))
+
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
 
 import {
