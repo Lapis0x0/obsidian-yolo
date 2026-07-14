@@ -5349,76 +5349,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleChatModeChange = useCallback(
     (nextMode: ChatMode) => {
-      const resolvedMode = nextMode
+      applyChatModeChange(nextMode)
+      void persistPreferredChatMode(nextMode)
 
       if (
-        resolvedMode === 'agent' &&
-        !settings.chatOptions.agentModeWarningConfirmed
-      ) {
-        new AcknowledgementModal(app, {
-          title: t(
-            'chatMode.warning.title',
-            'Please confirm before enabling Agent mode',
-          ),
-          messages: [
-            t(
-              'chatMode.warning.description',
-              'Agent can automatically invoke tools. Please review the following risks before continuing:',
-            ),
-          ],
-          items: [
-            t(
-              'chatMode.warning.permission',
-              'Strictly control tool-call permissions and grant only what is necessary.',
-            ),
-            t(
-              'chatMode.warning.cost',
-              'Agent tasks may consume significant model resources and incur higher costs.',
-            ),
-            t(
-              'chatMode.warning.backup',
-              'Back up important content in advance to avoid unintended changes.',
-            ),
-          ],
-          checkboxLabel: t(
-            'chatMode.warning.checkbox',
-            'I understand the risks above and accept responsibility for proceeding',
-          ),
-          cancelText: t('chatMode.warning.cancel', 'Cancel'),
-          confirmText: t(
-            'chatMode.warning.confirm',
-            'Continue and Enable Agent',
-          ),
-          confirmTone: 'warning',
-          onConfirm: () => {
-            applyChatModeChange('agent')
-            void persistPreferredChatMode('agent')
-            void (async () => {
-              try {
-                await setSettings({
-                  ...settings,
-                  chatOptions: {
-                    ...settings.chatOptions,
-                    agentModeWarningConfirmed: true,
-                  },
-                })
-              } catch (error: unknown) {
-                console.error(
-                  'Failed to persist agent mode warning confirmation',
-                  error,
-                )
-              }
-            })()
-          },
-        }).open()
-        return
-      }
-
-      applyChatModeChange(resolvedMode)
-      void persistPreferredChatMode(resolvedMode)
-
-      if (
-        isAgentChatMode(resolvedMode) &&
+        isAgentChatMode(nextMode) &&
         selectedAssistant?.modelId &&
         conversationModelId === settings.chatModelId
       ) {
@@ -5426,15 +5361,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
     },
     [
-      app,
       applyAssistantDefaultModel,
       applyChatModeChange,
       conversationModelId,
       selectedAssistant?.modelId,
       persistPreferredChatMode,
-      setSettings,
       settings,
-      t,
     ],
   )
 

@@ -2322,20 +2322,6 @@ export const it: TranslationKeys = {
     yolo: 'YOLO',
     yoloDesc:
       'Approva automaticamente le chiamate agli strumenti per task complessi',
-    warning: {
-      title: 'Conferma prima di abilitare la modalita Agent',
-      description:
-        "L'Agent puo invocare strumenti automaticamente. Prima di continuare, leggi i seguenti rischi:",
-      permission:
-        'Controlla rigorosamente i permessi di chiamata degli strumenti e concedi solo quelli necessari.',
-      cost: "Le attivita dell'Agent possono consumare molte risorse del modello e comportare costi piu elevati.",
-      backup:
-        'Esegui un backup dei contenuti importanti in anticipo per evitare modifiche indesiderate.',
-      checkbox:
-        'Ho compreso i rischi sopra indicati e accetto la responsabilita di procedere',
-      cancel: 'Annulla',
-      confirm: 'Continua e abilita Agent',
-    },
     fullAccessWarning: {
       title: 'Conferma prima di abilitare la Modalità YOLO',
       description:

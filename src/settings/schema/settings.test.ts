@@ -53,7 +53,6 @@ describe('parseYoloSettings', () => {
       chatInputHeight: undefined,
       chatApplyMode: 'review-required',
       chatMode: 'agent',
-      agentModeWarningConfirmed: false,
       reasoningLevelByModelId: {},
       chatExportIncludeThinking: false,
       chatExportIncludeToolCalls: false,

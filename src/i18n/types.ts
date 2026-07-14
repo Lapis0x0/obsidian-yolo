@@ -1806,16 +1806,6 @@ export type TranslationKeys = {
     agentFullDesc?: string
     yolo?: string
     yoloDesc?: string
-    warning?: {
-      title?: string
-      description?: string
-      permission?: string
-      cost?: string
-      backup?: string
-      checkbox?: string
-      cancel?: string
-      confirm?: string
-    }
     fullAccessWarning?: {
       title?: string
       description?: string

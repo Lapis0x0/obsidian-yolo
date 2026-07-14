@@ -413,8 +413,6 @@ export const yoloSettingsSchema = z.object({
       // Auto-approve tool calls (YOLO). Orthogonal to chatMode; only effective
       // in Agent mode.
       agentYoloEnabled: z.boolean().optional(),
-      // Whether the user has acknowledged the first-time agent mode warning
-      agentModeWarningConfirmed: z.boolean().optional(),
       // Whether the user has acknowledged the first-time full access (YOLO) warning
       fullAccessWarningConfirmed: z.boolean().optional(),
       // Persist preferred reasoning level per model id in Chat input
@@ -459,7 +457,6 @@ export const yoloSettingsSchema = z.object({
       chatApplyMode: 'review-required',
       chatTitlePrompt: '',
       chatMode: 'agent',
-      agentModeWarningConfirmed: false,
       fullAccessWarningConfirmed: false,
       reasoningLevelByModelId: {},
       autoContextCompactionEnabled: false,

@@ -2418,20 +2418,6 @@ export const en: TranslationKeys = {
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
     yolo: 'YOLO',
     yoloDesc: 'Auto-approve tool calls for complex tasks',
-    warning: {
-      title: 'Please confirm before enabling Agent mode',
-      description:
-        'Agent can automatically invoke tools. Please review the following risks before continuing:',
-      permission:
-        'Strictly control tool-call permissions and grant only what is necessary.',
-      cost: 'Agent tasks may consume significant model resources and incur higher costs.',
-      backup:
-        'Back up important content in advance to avoid unintended changes.',
-      checkbox:
-        'I understand the risks above and accept responsibility for proceeding',
-      cancel: 'Cancel',
-      confirm: 'Continue and Enable Agent',
-    },
     fullAccessWarning: {
       title: 'Please confirm before enabling YOLO Mode',
       description:
