@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
-import { ChatTimelineList } from './ChatTimelineList'
+import { ChatTimelineList, getVisibleUserMessageIds } from './ChatTimelineList'
 
 function makeUserItem(id: string): ChatTimelineItem {
   return {
@@ -91,6 +91,9 @@ describe('ChatTimelineList windowed timeline', () => {
 
     expect(html).toContain('Load earlier messages')
     expect(html).toContain('Load newer messages')
+    expect(html).toContain('role="status"')
+    expect(html).not.toContain('role="button"')
+    expect(html).not.toContain('tabindex="0"')
   })
 
   it('uses messageId for user scroll anchors', () => {
@@ -99,5 +102,46 @@ describe('ChatTimelineList windowed timeline', () => {
     })
 
     expect(html).toContain('data-yolo-user-anchor-id="user-anchor"')
+  })
+})
+
+describe('getVisibleUserMessageIds', () => {
+  const anchors = [
+    { messageId: 'first', top: -300 },
+    { messageId: 'second', top: 240 },
+    { messageId: 'third', top: 680 },
+  ]
+
+  it('keeps a turn visible while its assistant response intersects the viewport', () => {
+    expect(
+      getVisibleUserMessageIds({
+        anchors,
+        contentBottom: 900,
+        viewportTop: 0,
+        viewportBottom: 200,
+      }),
+    ).toEqual(['first'])
+  })
+
+  it('returns every turn crossed by the viewport', () => {
+    expect(
+      getVisibleUserMessageIds({
+        anchors,
+        contentBottom: 900,
+        viewportTop: 200,
+        viewportBottom: 300,
+      }),
+    ).toEqual(['first', 'second'])
+  })
+
+  it('does not extend the last turn beyond the rendered conversation content', () => {
+    expect(
+      getVisibleUserMessageIds({
+        anchors,
+        contentBottom: 900,
+        viewportTop: 910,
+        viewportBottom: 1000,
+      }),
+    ).toEqual([])
   })
 })

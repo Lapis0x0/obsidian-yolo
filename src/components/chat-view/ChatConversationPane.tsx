@@ -11,7 +11,10 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { isAgentChatMode } from './chat-input/ChatModeSelect'
-import type { ChatTimelineRenderVersion } from './ChatTimelineList'
+import type {
+  ChatTimelineRenderVersion,
+  UserMessageViewportState,
+} from './ChatTimelineList'
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
 import { SharedConversationSurface } from './SharedConversationSurface'
 
@@ -42,7 +45,7 @@ type ChatConversationPaneProps = {
   emptyStateAgentFullDescription: string
   footerContent: ReactNode
   onTimelineVirtualizationChange?: (isVirtualized: boolean) => void
-  onActiveUserMessageChange?: (messageId: string | null) => void
+  onUserMessageViewportChange?: (state: UserMessageViewportState) => void
   windowNavigationKey?: number
   windowNavigationTargetMessageId?: string | null
   messageNavigatorContent?: ReactNode
@@ -82,7 +85,7 @@ export function ChatConversationPane({
   emptyStateAgentFullDescription,
   footerContent,
   onTimelineVirtualizationChange,
-  onActiveUserMessageChange,
+  onUserMessageViewportChange,
   windowNavigationKey,
   windowNavigationTargetMessageId,
   messageNavigatorContent,
@@ -167,7 +170,7 @@ export function ChatConversationPane({
         }
         scrollContainerClassName="yolo-chat-messages"
         onVirtualizationChange={onTimelineVirtualizationChange}
-        onActiveUserMessageChange={onActiveUserMessageChange}
+        onUserMessageViewportChange={onUserMessageViewportChange}
         windowNavigationKey={windowNavigationKey}
         windowNavigationTargetMessageId={windowNavigationTargetMessageId}
         hasEarlierMessages={hasEarlierMessages}

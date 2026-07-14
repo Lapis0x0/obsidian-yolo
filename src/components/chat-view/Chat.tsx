@@ -101,6 +101,7 @@ import {
   serializeMentionable,
 } from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
+import { parseTagContents } from '../../utils/chat/parse-tag-content'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import {
@@ -163,7 +164,9 @@ import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 const MESSAGE_NAVIGATOR_MIN_ANCHORS = 7
-const MESSAGE_NAVIGATOR_LABEL_MAX_LENGTH = 90
+const MESSAGE_NAVIGATOR_USER_PREVIEW_MAX_LENGTH = 90
+const MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH = 180
+const MESSAGE_NAVIGATOR_PREVIEW_SOURCE_MAX_LENGTH = 360
 const MOBILE_KEYBOARD_MIN_INSET_PX = 80
 const MOBILE_CHAT_MIN_VIEWPORT_HEIGHT = 160
 const EMPTY_SELECTED_SKILLS: NonNullable<ChatUserInputProps['selectedSkills']> =
@@ -351,15 +354,61 @@ const getPromptContentText = (
     .join(' ')
 }
 
-const normalizeNavigatorLabel = (text: string, fallback: string): string => {
-  const normalized = text.replace(/\s+/g, ' ').trim()
+const normalizeNavigatorPreview = (
+  text: string,
+  maxLength: number,
+  fallback = '',
+): string => {
+  const normalized = text
+    .replace(/```(?:[A-Za-z0-9_-]+)?/g, ' ')
+    .replace(/!\[([^\]]*)]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)](?:\([^)]*\)|\[[^\]]*])/g, '$1')
+    .replace(/<\/?[A-Za-z][^>]*>/g, ' ')
+    .replace(/<([^>\n]+)>/g, '$1')
+    .replace(/(^|\n)\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)/g, '$1')
+    .replace(/[`*_~|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!normalized) {
     return fallback
   }
-  if (normalized.length <= MESSAGE_NAVIGATOR_LABEL_MAX_LENGTH) {
+  if (normalized.length <= maxLength) {
     return normalized
   }
-  return `${normalized.slice(0, MESSAGE_NAVIGATOR_LABEL_MAX_LENGTH - 1)}…`
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
+}
+
+const getNavigatorAssistantText = (
+  messages: AssistantToolMessageGroup,
+): string => {
+  const parts: string[] = []
+  let remainingLength = MESSAGE_NAVIGATOR_PREVIEW_SOURCE_MAX_LENGTH
+
+  for (const message of messages) {
+    if (remainingLength <= 0) {
+      break
+    }
+    if (message.role !== 'assistant') {
+      continue
+    }
+
+    const contentParts = /<(?:think|yolo_block)\b/i.test(message.content)
+      ? parseTagContents(message.content)
+          .filter((block) => block.type !== 'think')
+          .map((block) => block.content)
+      : [message.content]
+
+    for (const contentPart of contentParts) {
+      if (remainingLength <= 0) {
+        break
+      }
+      const previewPart = contentPart.slice(0, remainingLength)
+      parts.push(previewPart)
+      remainingLength -= previewPart.length
+    }
+  }
+
+  return parts.join(' ')
 }
 
 const isDelegateSubagentToolName = (name: string): boolean => {
@@ -1516,28 +1565,122 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     conversationId: currentConversationId,
     groupedChatMessages,
   })
+  const messageNavigatorUserPreviewCacheRef = useRef(
+    new WeakMap<ChatUserMessage, { emptyLabel: string; preview: string }>(),
+  )
+  const messageNavigatorAssistantPreviewCacheRef = useRef(
+    new WeakMap<
+      AssistantToolMessageGroup,
+      { activeBranchKey: string | null; preview: string }
+    >(),
+  )
+  const messageNavigatorAnchorCacheRef = useRef<
+    Map<string, MessageNavigatorAnchor>
+  >(new Map())
   const messageNavigatorAnchors = useMemo<MessageNavigatorAnchor[]>(() => {
     const emptyLabel = t('chat.messageNavigator.emptyMessage', '空消息')
+    const assistantTextByUserMessageId = new Map<string, string[]>()
+    let precedingUserMessageId: string | null = null
+
+    groupedChatMessages.forEach((messageOrGroup) => {
+      if (!Array.isArray(messageOrGroup)) {
+        precedingUserMessageId = messageOrGroup.id
+        return
+      }
+
+      const sourceUserMessageId =
+        getSourceUserMessageIdForGroup(messageOrGroup) ?? precedingUserMessageId
+      if (!sourceUserMessageId) {
+        return
+      }
+
+      const activeBranchKey =
+        activeBranchByUserMessageId.get(sourceUserMessageId) ?? null
+      const cachedPreview =
+        messageNavigatorAssistantPreviewCacheRef.current.get(messageOrGroup)
+      const assistantPreview =
+        cachedPreview?.activeBranchKey === activeBranchKey
+          ? cachedPreview.preview
+          : normalizeNavigatorPreview(
+              getNavigatorAssistantText(
+                getDisplayedAssistantToolMessages(
+                  messageOrGroup,
+                  activeBranchKey,
+                ),
+              ),
+              MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH,
+            )
+      if (cachedPreview?.activeBranchKey !== activeBranchKey) {
+        messageNavigatorAssistantPreviewCacheRef.current.set(messageOrGroup, {
+          activeBranchKey,
+          preview: assistantPreview,
+        })
+      }
+      if (!assistantPreview) {
+        return
+      }
+
+      const existingText = assistantTextByUserMessageId.get(sourceUserMessageId)
+      if (existingText) {
+        existingText.push(assistantPreview)
+      } else {
+        assistantTextByUserMessageId.set(sourceUserMessageId, [
+          assistantPreview,
+        ])
+      }
+    })
+
     let userMessageIndex = 0
-    return groupedChatMessages.flatMap((messageOrGroup) => {
+    const nextAnchorCache = new Map<string, MessageNavigatorAnchor>()
+    const anchors = groupedChatMessages.flatMap((messageOrGroup) => {
       if (Array.isArray(messageOrGroup)) {
         return []
       }
 
       userMessageIndex += 1
-      const editorText = messageOrGroup.content
-        ? editorStateToPlainText(messageOrGroup.content)
-        : ''
-      const promptText = getPromptContentText(messageOrGroup.promptContent)
-      return [
-        {
-          id: messageOrGroup.id,
-          index: userMessageIndex,
-          label: normalizeNavigatorLabel(editorText || promptText, emptyLabel),
-        },
-      ]
+      const cachedUserPreview =
+        messageNavigatorUserPreviewCacheRef.current.get(messageOrGroup)
+      const userPreview =
+        cachedUserPreview?.emptyLabel === emptyLabel
+          ? cachedUserPreview.preview
+          : normalizeNavigatorPreview(
+              (messageOrGroup.content
+                ? editorStateToPlainText(messageOrGroup.content)
+                : '') || getPromptContentText(messageOrGroup.promptContent),
+              MESSAGE_NAVIGATOR_USER_PREVIEW_MAX_LENGTH,
+              emptyLabel,
+            )
+      if (cachedUserPreview?.emptyLabel !== emptyLabel) {
+        messageNavigatorUserPreviewCacheRef.current.set(messageOrGroup, {
+          emptyLabel,
+          preview: userPreview,
+        })
+      }
+
+      const assistantPreview = normalizeNavigatorPreview(
+        assistantTextByUserMessageId.get(messageOrGroup.id)?.join(' ') ?? '',
+        MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH,
+      )
+      const previousAnchor = messageNavigatorAnchorCacheRef.current.get(
+        messageOrGroup.id,
+      )
+      const anchor =
+        previousAnchor?.index === userMessageIndex &&
+        previousAnchor.userPreview === userPreview &&
+        previousAnchor.assistantPreview === assistantPreview
+          ? previousAnchor
+          : {
+              id: messageOrGroup.id,
+              index: userMessageIndex,
+              userPreview,
+              assistantPreview,
+            }
+      nextAnchorCache.set(anchor.id, anchor)
+      return [anchor]
     })
-  }, [groupedChatMessages, t])
+    messageNavigatorAnchorCacheRef.current = nextAnchorCache
+    return anchors
+  }, [activeBranchByUserMessageId, groupedChatMessages, t])
 
   const displayedChatMessages = useMemo(() => {
     return groupedChatMessages.flatMap((messageOrGroup): ChatMessage[] => {
@@ -1700,9 +1843,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     useState<HTMLDivElement | null>(null)
   const [inputOverlayHeight, setInputOverlayHeight] = useState(0)
   const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
-  const [activeNavigatorMessageId, setActiveNavigatorMessageId] = useState<
-    string | null
-  >(null)
+  const [navigatorViewport, setNavigatorViewport] = useState<{
+    activeMessageId: string | null
+    visibleMessageIds: string[]
+  }>({ activeMessageId: null, visibleMessageIds: [] })
   const latexSelectionSyncFrameRef = useRef<number | null>(null)
   const chatSurfacePreset = getChatSurfacePreset('chat')
   const hasStreamingMessages = useMemo(
@@ -1737,7 +1881,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [forceScrollToBottom, resetToLatest])
   const handleNavigateToUserMessage = useCallback(
     (messageId: string) => {
-      setActiveNavigatorMessageId(messageId)
+      setNavigatorViewport((currentViewport) => ({
+        ...currentViewport,
+        activeMessageId: messageId,
+      }))
       stopAutoFollow()
       jumpToUserMessage(messageId)
     },
@@ -6416,10 +6563,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     messageNavigatorAnchors.length >= MESSAGE_NAVIGATOR_MIN_ANCHORS ? (
       <MessageNavigator
         anchors={messageNavigatorAnchors}
-        activeMessageId={activeNavigatorMessageId}
+        activeMessageId={navigatorViewport.activeMessageId}
+        visibleMessageIds={navigatorViewport.visibleMessageIds}
         itemLabel={getMessageNavigatorItemLabel}
         onSelect={handleNavigateToUserMessage}
-        scrollContainerRef={chatMessagesRef}
       />
     ) : undefined
 
@@ -6482,7 +6629,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             '自动放行工具调用，处理搜索、读写与多步骤任务',
           )}
           onTimelineVirtualizationChange={setTimelineIsVirtualized}
-          onActiveUserMessageChange={setActiveNavigatorMessageId}
+          onUserMessageViewportChange={setNavigatorViewport}
           windowNavigationKey={windowNavigationKey || undefined}
           windowNavigationTargetMessageId={windowNavigationTargetMessageId}
           messageNavigatorContent={messageNavigatorContent}

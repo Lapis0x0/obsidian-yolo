@@ -7,6 +7,7 @@ import {
   ChatTimelineList,
   type ChatTimelineRenderContext,
   type ChatTimelineRenderVersion,
+  type UserMessageViewportState,
 } from './ChatTimelineList'
 
 type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
@@ -27,7 +28,7 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
   overscanPx?: number
   atBottomThreshold?: number
   onVirtualizationChange?: (isVirtualized: boolean) => void
-  onActiveUserMessageChange?: (messageId: string | null) => void
+  onUserMessageViewportChange?: (state: UserMessageViewportState) => void
   windowNavigationKey?: number
   windowNavigationTargetMessageId?: string | null
   onRenderStateChange?: (state: {
@@ -65,7 +66,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
   overscanPx,
   atBottomThreshold,
   onVirtualizationChange,
-  onActiveUserMessageChange,
+  onUserMessageViewportChange,
   windowNavigationKey,
   windowNavigationTargetMessageId,
   onRenderStateChange,
@@ -99,7 +100,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
       overscanPx={overscanPx}
       atBottomThreshold={atBottomThreshold}
       onVirtualizationChange={onVirtualizationChange}
-      onActiveUserMessageChange={onActiveUserMessageChange}
+      onUserMessageViewportChange={onUserMessageViewportChange}
       windowNavigationKey={windowNavigationKey}
       windowNavigationTargetMessageId={windowNavigationTargetMessageId}
       onRenderStateChange={onRenderStateChange}

@@ -9945,27 +9945,29 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-message-navigator {
   position: absolute;
-  top: var(--size-4-3);
-  right: 22px;
-  bottom: var(--size-4-3);
+  top: 0;
+  bottom: 0;
+  left: 0;
   z-index: 3;
   display: flex;
+  width: 18px;
   align-items: center;
   pointer-events: none;
+  --yolo-message-navigator-preview-top: 50%;
 }
 
 .yolo-message-navigator__rail {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  max-height: 100%;
-  padding: 8px 3px;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  width: 44px;
+  max-height: calc(100% - var(--size-4-3) * 2);
+  padding-block: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
-  pointer-events: auto;
-  opacity: 1;
-  transition: opacity 120ms ease;
+  pointer-events: none;
 }
 
 .yolo-message-navigator__rail::-webkit-scrollbar {
@@ -9975,163 +9977,112 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 .yolo-message-navigator__bar {
   all: unset;
   box-sizing: border-box;
-  display: block;
-  width: 26px;
-  height: 3px;
-  min-width: 26px;
-  min-height: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted) 42%, transparent) !important;
-  background-color: color-mix(
-    in srgb,
-    var(--text-muted) 42%,
-    transparent
-  ) !important;
+  display: flex;
+  flex: 0 0 12px;
+  align-items: center;
+  width: 18px;
+  height: 12px;
+  padding-left: 2px;
+  border: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
   box-shadow: none !important;
-  outline: none;
-  opacity: 1;
+  pointer-events: auto;
   cursor: pointer;
-  transition:
-    background 140ms ease,
-    background-color 140ms ease,
-    opacity 140ms ease;
+  --yolo-message-navigator-wave: 0;
 }
 
-.yolo-message-navigator__bar:hover,
-.yolo-message-navigator__bar:focus-visible,
-.yolo-message-navigator__bar.is-active {
-  background: var(--text-normal) !important;
-  background-color: var(--text-normal) !important;
-  box-shadow: none !important;
-  opacity: 1;
+.yolo-message-navigator.is-interacting .yolo-message-navigator__bar {
+  width: 44px;
+}
+
+.yolo-message-navigator__bar-line {
+  display: block;
+  width: 36px;
+  height: 2px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 32%, transparent);
+  box-shadow: none;
+  transform: scaleX(calc(0.1667 + 0.8333 * var(--yolo-message-navigator-wave)));
+  transform-origin: left center;
+  transition:
+    transform 70ms linear,
+    background-color 120ms ease;
+}
+
+.yolo-message-navigator__bar.is-visible .yolo-message-navigator__bar-line {
+  background: color-mix(in srgb, var(--text-normal) 72%, transparent);
+}
+
+.yolo-message-navigator__bar:hover .yolo-message-navigator__bar-line,
+.yolo-message-navigator__bar:focus-visible .yolo-message-navigator__bar-line {
+  background: var(--text-normal);
 }
 
 .yolo-message-navigator__bar:focus-visible {
-  outline: 2px solid
-    color-mix(in srgb, var(--interactive-accent) 50%, transparent);
-  outline-offset: 3px;
+  outline: none;
 }
 
-.yolo-message-navigator__panel {
+.yolo-message-navigator__bar:focus-visible .yolo-message-navigator__bar-line {
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--interactive-accent) 42%, transparent);
+}
+
+.yolo-message-navigator__preview {
   position: absolute;
-  top: 50%;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  width: min(360px, calc(100vw - 96px));
-  max-height: min(440px, 100%);
-  padding: 9px;
+  top: clamp(
+    52px,
+    var(--yolo-message-navigator-preview-top),
+    calc(100% - 52px)
+  );
+  left: 44px;
+  width: min(320px, calc(100cqw - 56px), calc(100vw - 60px));
+  padding: 10px 12px;
   border: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 88%, transparent);
   border-radius: var(--radius-l);
-  background: color-mix(in srgb, var(--background-primary) 96%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 97%, transparent);
   box-shadow:
-    0 10px 28px rgb(0 0 0 / 0.08),
-    0 2px 8px rgb(0 0 0 / 0.05);
-  opacity: 0;
-  transform: translate(8px, -50%);
-  pointer-events: none;
-  transition:
-    opacity 140ms ease,
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.yolo-message-navigator:hover .yolo-message-navigator__rail,
-.yolo-message-navigator:focus-within .yolo-message-navigator__rail {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.yolo-message-navigator:hover .yolo-message-navigator__panel,
-.yolo-message-navigator:focus-within .yolo-message-navigator__panel {
-  opacity: 1;
-  transform: translate(0, -50%);
-  pointer-events: auto;
-}
-
-.yolo-message-navigator__items {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  margin-right: -6px;
-  padding-right: 6px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.yolo-message-navigator__items:hover,
-.yolo-message-navigator__items:focus-within {
-  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
-    transparent;
-}
-
-.yolo-message-navigator__items::-webkit-scrollbar {
-  width: 10px;
-}
-
-.yolo-message-navigator__items::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.yolo-message-navigator__items::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-  background-color: transparent;
-}
-
-.yolo-message-navigator__items:hover::-webkit-scrollbar-thumb,
-.yolo-message-navigator__items:focus-within::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--text-muted) 35%, transparent);
-}
-
-.yolo-message-navigator__item {
-  all: unset;
-  box-sizing: border-box;
-  display: block;
-  width: 100%;
-  min-height: 28px;
-  padding: 5px 10px;
-  border-radius: var(--radius-s);
-  background: transparent;
-  background-color: transparent;
-  border: 0;
-  box-shadow: none !important;
-  outline: none;
+    0 6px 18px rgb(0 0 0 / 0.055),
+    0 1px 3px rgb(0 0 0 / 0.035);
   color: var(--text-normal);
-  text-align: left;
-  cursor: pointer;
+  transform: translateY(-50%);
+  pointer-events: none;
+  animation: yolo-message-navigator-preview-enter 140ms
+    cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.yolo-message-navigator__preview-user {
   overflow: hidden;
-}
-
-.yolo-message-navigator__item:hover,
-.yolo-message-navigator__item:focus-visible,
-.yolo-message-navigator__item.is-active {
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-hover) 82%,
-    var(--background-primary)
-  );
-  color: var(--text-normal);
-}
-
-.yolo-message-navigator__item:focus-visible {
-  outline: 2px solid var(--background-modifier-border-focus);
-  outline-offset: -1px;
-}
-
-.yolo-message-navigator__item-label {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  color: inherit;
   font-size: var(--font-ui-small);
-  line-height: 1.35;
+  font-weight: var(--font-semibold);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.yolo-message-navigator__preview-assistant {
+  display: -webkit-box;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+@keyframes yolo-message-navigator-preview-enter {
+  from {
+    opacity: 0;
+    transform: translate(-4px, -50%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
 }
 
 .yolo-chat-history-window-sentinel {
@@ -10151,18 +10102,8 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   line-height: 1.4;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
-}
-
-.yolo-chat-history-window-sentinel__button:hover {
-  color: var(--text-normal);
-}
-
-.yolo-chat-history-window-sentinel__button:focus-visible {
-  outline: 2px solid var(--background-modifier-border-focus);
-  outline-offset: 3px;
-  border-radius: var(--radius-s);
 }
 
 .yolo-chat-history-window-sentinel__dots {
@@ -10203,46 +10144,13 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
   }
 }
 
-@container yolo-chat-conversation (max-width: 850px) {
-  .yolo-message-navigator {
-    top: 0;
-    right: auto;
-    bottom: 0;
-    left: 0;
-    width: 18px;
+@media (prefers-reduced-motion: reduce) {
+  .yolo-message-navigator__bar-line {
+    transition: none;
   }
 
-  .yolo-message-navigator__rail {
-    width: 18px;
-    padding-inline: 2px;
-    opacity: 0;
-  }
-
-  .yolo-message-navigator__bar {
-    width: 8px;
-    min-width: 8px;
-  }
-
-  .yolo-message-navigator__bar.is-active {
-    width: 12px;
-    min-width: 12px;
-  }
-
-  .yolo-message-navigator.is-scrolling .yolo-message-navigator__rail {
-    opacity: 0.65;
-  }
-
-  .yolo-message-navigator:hover .yolo-message-navigator__rail,
-  .yolo-message-navigator:focus-within .yolo-message-navigator__rail {
-    opacity: 0;
-    pointer-events: auto;
-  }
-
-  .yolo-message-navigator__panel {
-    right: auto;
-    left: 8px;
-    width: min(300px, calc(100cqw - 28px), calc(100vw - 48px));
-    max-height: min(440px, calc(100% - var(--size-4-3) * 2));
+  .yolo-message-navigator__preview {
+    animation: none;
   }
 }
 
