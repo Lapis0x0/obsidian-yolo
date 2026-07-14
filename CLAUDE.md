@@ -54,6 +54,8 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - Do not directly set `element.style.cursor` or `element.style.userSelect`; use `setCssProps`.
 - Every `eslint-disable` directive must include a reason.
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the plugin.
+- When styling native controls (`button`, `input`, etc.), assume Obsidian core and theme styles apply globally: use component-scoped `element.yolo-*` selectors, explicitly reset affected properties, and verify computed styles. Use `!important` only for a confirmed host-style collision.
+
 
 ## Style Conventions
 
