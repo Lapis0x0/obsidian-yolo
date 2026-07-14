@@ -4,6 +4,7 @@ import {
   type GroupedChatMessage,
   createChatHistoryWindowSelector,
   getEarlierWindow,
+  getHistoryWindowForRender,
   getNavigationWindowForTurn,
   getNewerWindow,
   getWindowAfterTurnCountChange,
@@ -90,6 +91,32 @@ describe('history window movement', () => {
       startTurnIndex: 12,
       endTurnIndex: 23,
     })
+  })
+})
+
+describe('getHistoryWindowForRender', () => {
+  it('includes a newly appended turn before the synchronization effect runs', () => {
+    expect(
+      getHistoryWindowForRender({
+        currentWindow: { startTurnIndex: 18, endTurnIndex: 23 },
+        conversationId: 'conversation-1',
+        previousConversationId: 'conversation-1',
+        previousTotalTurns: 24,
+        totalTurns: 25,
+      }),
+    ).toEqual({ startTurnIndex: 19, endTurnIndex: 24 })
+  })
+
+  it('keeps the newer-message boundary when browsing older turns', () => {
+    expect(
+      getHistoryWindowForRender({
+        currentWindow: { startTurnIndex: 6, endTurnIndex: 17 },
+        conversationId: 'conversation-1',
+        previousConversationId: 'conversation-1',
+        previousTotalTurns: 24,
+        totalTurns: 25,
+      }),
+    ).toEqual({ startTurnIndex: 6, endTurnIndex: 17 })
   })
 })
 

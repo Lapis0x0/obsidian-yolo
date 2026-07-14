@@ -49,6 +49,68 @@ const EMPTY_ASSISTANT_GROUP_BOUNDARY_MESSAGE_IDS: readonly string[] = []
 const getGroupId = (messages: AssistantToolMessageGroup): string =>
   messages.at(0)?.id ?? 'assistant-group'
 
+export function findAssistantGroupRenderKeyForRunAnchor({
+  groupedChatMessages,
+  anchorMessageId,
+}: {
+  groupedChatMessages: GroupedChatMessage[]
+  anchorMessageId?: string
+}): string | null {
+  if (!anchorMessageId) {
+    return null
+  }
+
+  let sourceMatchedGroupId: string | null = null
+  for (const messageOrGroup of groupedChatMessages) {
+    if (!Array.isArray(messageOrGroup)) {
+      continue
+    }
+
+    const hasMatchingSource = messageOrGroup.some(
+      (message) =>
+        message.role !== 'external_agent_result' &&
+        message.role !== 'subagent_result' &&
+        message.role !== 'terminal_command_result' &&
+        message.metadata?.sourceUserMessageId === anchorMessageId,
+    )
+    if (hasMatchingSource) {
+      sourceMatchedGroupId = getGroupId(messageOrGroup)
+    }
+  }
+  if (sourceMatchedGroupId) {
+    return sourceMatchedGroupId
+  }
+
+  let isWithinAnchoredTurn = false
+  let positionalGroupId: string | null = null
+  for (const messageOrGroup of groupedChatMessages) {
+    if (!Array.isArray(messageOrGroup)) {
+      if (messageOrGroup.id === anchorMessageId) {
+        isWithinAnchoredTurn = true
+        positionalGroupId = null
+      } else if (isWithinAnchoredTurn) {
+        break
+      }
+      continue
+    }
+
+    if (!isWithinAnchoredTurn) {
+      continue
+    }
+
+    const onlyMessage = messageOrGroup.length === 1 ? messageOrGroup[0] : null
+    if (
+      onlyMessage?.role === 'subagent_result' ||
+      onlyMessage?.role === 'terminal_command_result'
+    ) {
+      continue
+    }
+    positionalGroupId = getGroupId(messageOrGroup)
+  }
+
+  return positionalGroupId
+}
+
 const getGroupRevision = (
   messageIds: readonly string[],
   revisionsById: ReadonlyMap<string, number>,

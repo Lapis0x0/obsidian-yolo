@@ -362,6 +362,11 @@ export function useChatStreamManager({
           summary !== null && isRunSummaryActive(summary),
       )
       if (activeSummaries.length > 0) {
+        const anchorMessageIds = new Set(
+          activeSummaries.flatMap((summary) =>
+            summary.anchorMessageId ? [summary.anchorMessageId] : [],
+          ),
+        )
         const hasWaitingApproval = activeSummaries.some(
           (summary) => summary.isWaitingApproval,
         )
@@ -370,6 +375,10 @@ export function useChatStreamManager({
         )
         setCurrentConversationRunSummary({
           conversationId: currentConversationId,
+          anchorMessageId:
+            anchorMessageIds.size === 1
+              ? anchorMessageIds.values().next().value
+              : undefined,
           status: 'running',
           isRunning: activeSummaries.some((summary) => summary.isRunning),
           isActive: true,

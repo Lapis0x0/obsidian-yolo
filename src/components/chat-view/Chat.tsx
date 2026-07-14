@@ -156,6 +156,7 @@ import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import { useChatStreamManager } from './useChatStreamManager'
 import {
+  findAssistantGroupRenderKeyForRunAnchor,
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
@@ -5813,15 +5814,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     updateHistoricalUserMessage,
   })
 
-  const lastAssistantGroupRenderKey = useMemo(() => {
-    for (let i = stableChatTimelineItems.length - 1; i >= 0; i--) {
-      const item = stableChatTimelineItems[i]
-      if (item.kind === 'assistant-group') {
-        return item.renderKey
-      }
-    }
-    return null
-  }, [stableChatTimelineItems])
+  const runSummaryAssistantGroupRenderKey = useMemo(
+    () =>
+      findAssistantGroupRenderKeyForRunAnchor({
+        groupedChatMessages,
+        anchorMessageId: currentConversationRunSummary.anchorMessageId,
+      }),
+    [currentConversationRunSummary.anchorMessageId, groupedChatMessages],
+  )
 
   // 后台任务结果在渲染上会接回对应 tool card，且 subagent/terminal result
   // standalone group 会被 timeline 过滤掉；因此必须在过滤前的 grouped
@@ -5902,7 +5902,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             messages={messageOrGroup}
             conversationId={currentConversationId}
             conversationRunSummary={
-              timelineItem.renderKey === lastAssistantGroupRenderKey
+              timelineItem.renderKey === runSummaryAssistantGroupRenderKey
                 ? currentConversationRunSummary
                 : undefined
             }
@@ -6316,7 +6316,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       handleUserMessageSubmit,
       inputMessage.id,
       isCurrentConversationRunActive,
-      lastAssistantGroupRenderKey,
+      runSummaryAssistantGroupRenderKey,
       latestCompactionState?.triggerToolCallId,
       messageModelMap,
       messageReasoningMap,
@@ -6370,8 +6370,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const shouldSuppressCompactionAnchorFooter =
           containsCompactionAnchor &&
           Boolean(latestCompactionState?.triggerToolCallId)
-        const isLastGroup =
-          timelineItem.renderKey === lastAssistantGroupRenderKey
+        const isRunSummaryGroup =
+          timelineItem.renderKey === runSummaryAssistantGroupRenderKey
         const isEditingGroup =
           editingAssistantMessageId !== null &&
           timelineItem.messageIds.includes(editingAssistantMessageId)
@@ -6400,12 +6400,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           pendingCompactionAnchorMessageId ?? '',
           shouldHidePendingAssistantPlaceholders,
           undoingEditSummaryTarget ?? '',
-          isLastGroup,
-          isLastGroup ? currentConversationRunSummary.status : '',
-          isLastGroup ? currentConversationRunSummary.isRunning : '',
-          isLastGroup ? currentConversationRunSummary.isWaitingApproval : '',
-          isLastGroup ? currentConversationRunSummary.isWaitingUserInput : '',
-          isLastGroup ? currentConversationRunSummary.isAbortable : '',
+          isRunSummaryGroup,
+          isRunSummaryGroup ? currentConversationRunSummary.status : '',
+          isRunSummaryGroup ? currentConversationRunSummary.isRunning : '',
+          isRunSummaryGroup
+            ? currentConversationRunSummary.isWaitingApproval
+            : '',
+          isRunSummaryGroup
+            ? currentConversationRunSummary.isWaitingUserInput
+            : '',
+          isRunSummaryGroup ? currentConversationRunSummary.isAbortable : '',
         ].join('|')
       }
 
@@ -6466,7 +6470,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       focusedMessageId,
       foregroundAgentVisualTurnPlan,
       isCurrentConversationRunActive,
-      lastAssistantGroupRenderKey,
+      runSummaryAssistantGroupRenderKey,
       latestCompactionState?.triggerToolCallId,
       messageModelMap,
       messageReasoningMap,
@@ -6551,8 +6555,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           hasNewerMessages={hasNewerMessages}
           onLoadEarlier={loadEarlier}
           onLoadNewer={loadNewer}
-          loadEarlierLabel={t('chat.loadEarlierMessages', '正在加载更早消息')}
-          loadNewerLabel={t('chat.loadNewerMessages', '正在加载更新消息')}
           onForceScrollToBottom={handleForceScrollToBottom}
           hasStreamingMessages={hasStreamingMessages}
           scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}

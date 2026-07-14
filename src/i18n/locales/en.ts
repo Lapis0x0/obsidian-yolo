@@ -1887,8 +1887,6 @@ export const en: TranslationKeys = {
     newChat: 'New chat',
     untitledConversation: 'New chat',
     continueResponse: 'Continue response',
-    loadEarlierMessages: 'Loading earlier messages',
-    loadNewerMessages: 'Loading newer messages',
     messageNavigator: {
       title: 'Message navigator',
       itemAriaLabel: 'Jump to message {index}: {label}',

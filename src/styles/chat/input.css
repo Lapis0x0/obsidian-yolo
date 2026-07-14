@@ -575,8 +575,8 @@ button.yolo-chat-quick-access-add:focus-visible {
   padding: var(--size-2-2);
 }
 
-.yolo-chat-quick-access-picker-section +
-  .yolo-chat-quick-access-picker-section {
+.yolo-chat-quick-access-picker-section
+  + .yolo-chat-quick-access-picker-section {
   margin-top: var(--size-4-2);
   padding-top: var(--size-4-2);
   border-top: 1px solid var(--background-modifier-border);
@@ -1626,56 +1626,10 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-history-window-sentinel {
-  display: flex;
-  justify-content: center;
-  padding: var(--size-4-2) 0;
-}
-
-.yolo-chat-history-window-sentinel__button {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 2px;
-  padding: 0;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: 1.4;
-  cursor: default;
-  user-select: none;
-}
-
-.yolo-chat-history-window-sentinel__dots {
-  display: inline-flex;
-  width: 1.1em;
-}
-
-.yolo-chat-history-window-sentinel__dots span {
-  display: inline-block;
-  animation: yolo-chat-history-window-dot-bounce 900ms ease-in-out infinite;
-}
-
-.yolo-chat-history-window-sentinel__dots span:nth-child(2) {
-  animation-delay: 120ms;
-}
-
-.yolo-chat-history-window-sentinel__dots span:nth-child(3) {
-  animation-delay: 240ms;
-}
-
-@keyframes yolo-chat-history-window-dot-bounce {
-  0%,
-  80%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.45;
-  }
-
-  40% {
-    transform: translateY(-3px);
-    opacity: 1;
-  }
+  flex: 0 0 1px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 @media (max-width: 768px) {

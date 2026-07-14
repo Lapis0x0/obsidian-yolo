@@ -102,6 +102,8 @@ export type AgentConversationStateFeedSubscriber = (
 
 export type AgentConversationRunSummary = {
   conversationId: string
+  /** User message that owns the currently active visual turn. */
+  anchorMessageId?: string
   status: AgentRunStatus
   isRunning: boolean
   /**
@@ -686,9 +688,20 @@ export const buildAgentConversationRunSummary = (
   const hasRunningToolCall = hasRunningMainToolCall(state.messages)
   const isRuntimeRunning = state.status === 'running'
   const isActive = isRuntimeRunning || isWaitingApproval || hasRunningToolCall
+  let anchorMessageId = state.anchorMessageId
+  if (!anchorMessageId && isActive) {
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index]
+      if (message.role === 'user') {
+        anchorMessageId = message.id
+        break
+      }
+    }
+  }
 
   return {
     conversationId: state.conversationId,
+    anchorMessageId,
     status: state.status,
     isRunning: isRuntimeRunning && !isWaitingApproval,
     isActive,

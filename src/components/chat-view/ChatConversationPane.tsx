@@ -54,8 +54,6 @@ type ChatConversationPaneProps = {
   hasNewerMessages?: boolean
   onLoadEarlier?: () => void
   onLoadNewer?: () => void
-  loadEarlierLabel?: string
-  loadNewerLabel?: string
   bottomSpacerHeight?: number
 }
 
@@ -94,8 +92,6 @@ export function ChatConversationPane({
   hasNewerMessages,
   onLoadEarlier,
   onLoadNewer,
-  loadEarlierLabel,
-  loadNewerLabel,
   bottomSpacerHeight,
 }: ChatConversationPaneProps) {
   const reduceMotion = useReducedMotion()
@@ -122,6 +118,7 @@ export function ChatConversationPane({
     <>
       <InstallationIncompleteBanner />
       <SharedConversationSurface
+        key={`${currentConversationId}:${groupedChatMessagesLength > 0 ? 'ready' : 'empty'}`}
         items={chatTimelineItems}
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
@@ -187,8 +184,6 @@ export function ChatConversationPane({
         hasNewerMessages={hasNewerMessages}
         onLoadEarlier={onLoadEarlier}
         onLoadNewer={onLoadNewer}
-        loadEarlierLabel={loadEarlierLabel}
-        loadNewerLabel={loadNewerLabel}
         bottomSpacerHeight={bottomSpacerHeight}
       />
       <motion.div

@@ -82,18 +82,18 @@ describe('ChatTimelineList windowed timeline', () => {
     expect(html).not.toContain('yolo-chat-timeline-bottom-spacer')
   })
 
-  it('renders load sentinels for unloaded history edges', () => {
+  it('renders only a non-visual sentinel for unloaded earlier history', () => {
     const html = renderList({
       items: [makeUserItem('a')],
       hasEarlierMessages: true,
       hasNewerMessages: true,
     })
 
-    expect(html).toContain('Load earlier messages')
-    expect(html).toContain('Load newer messages')
-    expect(html).toContain('role="status"')
-    expect(html).not.toContain('role="button"')
-    expect(html).not.toContain('tabindex="0"')
+    expect(html).toContain('yolo-chat-history-window-sentinel')
+    expect(html).toContain('aria-hidden="true"')
+    expect(html).not.toContain('Load earlier messages')
+    expect(html).not.toContain('Load newer messages')
+    expect(html).not.toContain('role="status"')
   })
 
   it('uses messageId for user scroll anchors', () => {

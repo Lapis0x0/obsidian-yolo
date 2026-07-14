@@ -127,8 +127,6 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   hasNewerMessages?: boolean
   onLoadEarlier?: () => void
   onLoadNewer?: () => void
-  loadEarlierLabel?: string
-  loadNewerLabel?: string
   /**
    * Additional bottom spacer height (px). Used to keep the last item from
    * being visually obscured by an absolute-positioned overlay (e.g. todo
@@ -152,28 +150,17 @@ function TimelineBottomSpacer({ height }: { height: number }) {
   )
 }
 
-function TimelineLoadMoreIndicator({
-  label,
+function TimelineLoadMoreSentinel({
   elementRef,
 }: {
-  label: string
   elementRef?: RefObject<HTMLDivElement>
 }) {
   return (
-    <div className="yolo-chat-history-window-sentinel">
-      <div
-        ref={elementRef}
-        role="status"
-        className="yolo-chat-history-window-sentinel__button"
-      >
-        <span>{label}</span>
-        <span className="yolo-chat-history-window-sentinel__dots" aria-hidden>
-          <span>.</span>
-          <span>.</span>
-          <span>.</span>
-        </span>
-      </div>
-    </div>
+    <div
+      ref={elementRef}
+      aria-hidden
+      className="yolo-chat-history-window-sentinel"
+    />
   )
 }
 
@@ -354,8 +341,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   hasNewerMessages = false,
   onLoadEarlier,
   onLoadNewer,
-  loadEarlierLabel = 'Load earlier messages',
-  loadNewerLabel = 'Load newer messages',
   bottomSpacerHeight = 0,
 }: ChatTimelineListProps<TItem>) {
   void overscanPx
@@ -734,10 +719,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       style={scrollContainerStyle}
     >
       {hasEarlierMessages && onLoadEarlier ? (
-        <TimelineLoadMoreIndicator
-          elementRef={earlierSentinelRef}
-          label={loadEarlierLabel}
-        />
+        <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
       ) : null}
       {items.map((item, index) => (
         <TimelineRow
@@ -748,9 +730,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
           renderVersion={resolveRenderVersion(item, index)}
         />
       ))}
-      {hasNewerMessages && onLoadNewer ? (
-        <TimelineLoadMoreIndicator label={loadNewerLabel} />
-      ) : null}
       <TimelineBottomSpacer height={safeSpacerHeight} />
     </div>
   )

@@ -970,6 +970,7 @@ describe('AgentService main activity summary', () => {
     })
 
     expect(service.getConversationRunSummary('conv-live')).toMatchObject({
+      anchorMessageId: 'u1',
       isRunning: true,
       isActive: true,
       isAbortable: true,
@@ -990,6 +991,7 @@ describe('AgentService main activity summary', () => {
       makeToolMessage(ToolCallResponseStatus.PendingApproval),
     ])
     expect(service.getConversationRunSummary('conv-pending')).toMatchObject({
+      anchorMessageId: 'u1',
       isActive: true,
       isAbortable: true,
       isQueueable: false,
@@ -1002,6 +1004,7 @@ describe('AgentService main activity summary', () => {
       makeToolMessage(ToolCallResponseStatus.AwaitingUserInput),
     ])
     expect(service.getConversationRunSummary('conv-awaiting')).toMatchObject({
+      anchorMessageId: 'u1',
       isActive: true,
       isAbortable: true,
       isQueueable: false,

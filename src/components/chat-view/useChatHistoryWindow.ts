@@ -216,6 +216,34 @@ export function getWindowAfterTurnCountChange(
   }
 }
 
+export function getHistoryWindowForRender({
+  currentWindow,
+  conversationId,
+  previousConversationId,
+  previousTotalTurns,
+  totalTurns,
+}: {
+  currentWindow: ChatHistoryWindow
+  conversationId: string
+  previousConversationId: string
+  previousTotalTurns: number
+  totalTurns: number
+}): ChatHistoryWindow {
+  if (previousConversationId !== conversationId) {
+    return getLatestWindow(totalTurns)
+  }
+
+  if (previousTotalTurns !== totalTurns) {
+    return getWindowAfterTurnCountChange(
+      currentWindow,
+      previousTotalTurns,
+      totalTurns,
+    )
+  }
+
+  return currentWindow
+}
+
 export function getEarlierWindow(
   currentWindow: ChatHistoryWindow,
   totalTurns: number,
@@ -333,9 +361,16 @@ export function useChatHistoryWindow({
     [totalTurns, userMessageTurnIndices],
   )
 
+  const renderedWindow = getHistoryWindowForRender({
+    currentWindow: window,
+    conversationId,
+    previousConversationId: previousConversationIdRef.current,
+    previousTotalTurns: previousTotalTurnsRef.current,
+    totalTurns,
+  })
   const normalizedWindow = useMemo(
-    () => normalizeWindow(window, totalTurns),
-    [totalTurns, window],
+    () => normalizeWindow(renderedWindow, totalTurns),
+    [renderedWindow, totalTurns],
   )
   const startRange = turnRanges[normalizedWindow.startTurnIndex]
   const endRange = turnRanges[normalizedWindow.endTurnIndex]

@@ -1776,8 +1776,6 @@ export const zh: TranslationKeys = {
     newChat: '新建聊天',
     untitledConversation: '新对话',
     continueResponse: '继续生成',
-    loadEarlierMessages: '正在加载更早消息',
-    loadNewerMessages: '正在加载更新消息',
     messageNavigator: {
       title: '消息导航',
       itemAriaLabel: '跳转到第 {index} 条消息：{label}',

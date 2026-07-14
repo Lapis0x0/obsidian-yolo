@@ -1335,8 +1335,6 @@ export type TranslationKeys = {
     newChat: string
     untitledConversation?: string
     continueResponse?: string
-    loadEarlierMessages?: string
-    loadNewerMessages?: string
     messageNavigator?: {
       title?: string
       itemAriaLabel?: string
