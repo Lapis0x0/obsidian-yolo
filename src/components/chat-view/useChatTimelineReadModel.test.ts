@@ -11,7 +11,7 @@ import type {
 
 import {
   EMPTY_CHAT_TIMELINE_READ_MODEL,
-  findAssistantGroupRenderKeyForRunAnchor,
+  findAssistantGroupIdForRunAnchor,
   materializeChatTimelineReadModel,
 } from './useChatTimelineReadModel'
 
@@ -107,7 +107,7 @@ describe('materializeChatTimelineReadModel', () => {
   })
 })
 
-describe('findAssistantGroupRenderKeyForRunAnchor', () => {
+describe('findAssistantGroupIdForRunAnchor', () => {
   it('does not bind a new run to the previous completed assistant group', () => {
     const previousUser = makeUserMessage('user-1')
     const previousAssistant: ChatAssistantMessage = {
@@ -125,7 +125,7 @@ describe('findAssistantGroupRenderKeyForRunAnchor', () => {
     })
 
     expect(
-      findAssistantGroupRenderKeyForRunAnchor({
+      findAssistantGroupIdForRunAnchor({
         groupedChatMessages: readModel.groupedChatMessages,
         anchorMessageId: currentUser.id,
       }),
@@ -164,13 +164,13 @@ describe('findAssistantGroupRenderKeyForRunAnchor', () => {
     })
 
     expect(
-      findAssistantGroupRenderKeyForRunAnchor({
+      findAssistantGroupIdForRunAnchor({
         groupedChatMessages: streamingModel.groupedChatMessages,
         anchorMessageId: user.id,
       }),
     ).toBe(assistant.id)
     expect(
-      findAssistantGroupRenderKeyForRunAnchor({
+      findAssistantGroupIdForRunAnchor({
         groupedChatMessages: toolModel.groupedChatMessages,
         anchorMessageId: user.id,
       }),

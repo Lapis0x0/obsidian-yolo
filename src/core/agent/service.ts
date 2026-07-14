@@ -2166,13 +2166,26 @@ export class AgentService {
       drainPendingUserMessages: () => {
         const queue = this.pendingUserMessagesByKey.get(runKey)
         if (!queue || queue.length === 0) {
-          return []
+          return null
         }
+        const sourceUserMessageId = queue.at(-1)?.id
+        if (!sourceUserMessageId) {
+          return null
+        }
+
         this.pendingUserMessagesByKey.delete(runKey)
-        // Notify so the UI removes the "queued" bubble immediately; the
-        // injected messages will materialize in the runtime snapshot next.
-        this.notifyConversationSubscribers(conversationId)
-        return queue
+        const currentRunEntry = this.runEntriesByKey.get(runKey)
+        if (currentRunEntry?.runToken === runToken) {
+          currentRunEntry.sourceUserMessageId = sourceUserMessageId
+          currentRunEntry.state = {
+            ...currentRunEntry.state,
+            anchorMessageId: sourceUserMessageId,
+          }
+        }
+        // Remove the queued bubble and switch run-summary ownership before the
+        // runtime snapshot materializes the injected messages.
+        this.recomputeConversationState(conversationId)
+        return { messages: queue, sourceUserMessageId }
       },
     }
     // Clear the continuation latch now that the new run is actually starting.

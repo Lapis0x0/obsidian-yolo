@@ -134,6 +134,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     let pendingToolMessageId: string | null = null
     let pendingToolCallCount = 0
     let currentDebugTraceId: string | undefined
+    let currentSourceUserMessageId = input.sourceUserMessageId
     // Per-turn cache-warm prefix + tools the executor actually sent, plus the
     // `this.messages` boundary before this turn's LLM request. The compaction
     // bypass reuses these to build a byte-identical out-of-band request.
@@ -164,9 +165,10 @@ export class NativeAgentRuntime implements AgentRuntime {
                 }
 
                 if (input.drainPendingUserMessages) {
-                  const injected = input.drainPendingUserMessages()
-                  if (injected.length > 0) {
-                    for (const injectedMessage of injected) {
+                  const drained = input.drainPendingUserMessages()
+                  if (drained) {
+                    currentSourceUserMessageId = drained.sourceUserMessageId
+                    for (const injectedMessage of drained.messages) {
                       this.messages.push(injectedMessage)
                     }
                     this.notifySubscribers()
@@ -193,7 +195,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   conversationId: input.conversationId,
                   messages: conversationMessages,
                   branchId: input.branchId,
-                  sourceUserMessageId: input.sourceUserMessageId,
+                  sourceUserMessageId: currentSourceUserMessageId,
                   branchLabel: input.branchLabel,
                   compaction: this.compactionState,
                   enableTools: this.loopConfig.enableTools,
@@ -255,7 +257,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   toolCallRequests,
                   conversationId: input.conversationId,
                   branchId: input.branchId,
-                  sourceUserMessageId: input.sourceUserMessageId,
+                  sourceUserMessageId: currentSourceUserMessageId,
                   branchModelId: input.model.id,
                   branchLabel:
                     input.branchLabel ??

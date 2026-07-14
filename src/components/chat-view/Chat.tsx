@@ -156,7 +156,7 @@ import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import { useChatStreamManager } from './useChatStreamManager'
 import {
-  findAssistantGroupRenderKeyForRunAnchor,
+  findAssistantGroupIdForRunAnchor,
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
@@ -5814,9 +5814,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     updateHistoricalUserMessage,
   })
 
-  const runSummaryAssistantGroupRenderKey = useMemo(
+  const runSummaryAssistantGroupId = useMemo(
     () =>
-      findAssistantGroupRenderKeyForRunAnchor({
+      findAssistantGroupIdForRunAnchor({
         groupedChatMessages,
         anchorMessageId: currentConversationRunSummary.anchorMessageId,
       }),
@@ -5902,7 +5902,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             messages={messageOrGroup}
             conversationId={currentConversationId}
             conversationRunSummary={
-              timelineItem.renderKey === runSummaryAssistantGroupRenderKey
+              timelineItem.groupId === runSummaryAssistantGroupId
                 ? currentConversationRunSummary
                 : undefined
             }
@@ -6316,7 +6316,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       handleUserMessageSubmit,
       inputMessage.id,
       isCurrentConversationRunActive,
-      runSummaryAssistantGroupRenderKey,
+      runSummaryAssistantGroupId,
       latestCompactionState?.triggerToolCallId,
       messageModelMap,
       messageReasoningMap,
@@ -6371,7 +6371,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           containsCompactionAnchor &&
           Boolean(latestCompactionState?.triggerToolCallId)
         const isRunSummaryGroup =
-          timelineItem.renderKey === runSummaryAssistantGroupRenderKey
+          timelineItem.groupId === runSummaryAssistantGroupId
         const isEditingGroup =
           editingAssistantMessageId !== null &&
           timelineItem.messageIds.includes(editingAssistantMessageId)
@@ -6470,7 +6470,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       focusedMessageId,
       foregroundAgentVisualTurnPlan,
       isCurrentConversationRunActive,
-      runSummaryAssistantGroupRenderKey,
+      runSummaryAssistantGroupId,
       latestCompactionState?.triggerToolCallId,
       messageModelMap,
       messageReasoningMap,

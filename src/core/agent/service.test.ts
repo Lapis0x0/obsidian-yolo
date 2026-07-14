@@ -1401,9 +1401,15 @@ describe('AgentService mid-run user message queue', () => {
 
     const captured = runtime.getRunInput()
     expect(captured?.drainPendingUserMessages).toBeDefined()
-    const drained = captured?.drainPendingUserMessages?.() ?? []
-    expect(drained).toEqual([queued])
+    const drained = captured?.drainPendingUserMessages?.()
+    expect(drained).toEqual({
+      messages: [queued],
+      sourceUserMessageId: queued.id,
+    })
     expect(service.peekPendingUserMessages('conv-drain')).toEqual([])
+    expect(
+      service.getConversationRunSummary('conv-drain').anchorMessageId,
+    ).toBe(queued.id)
 
     runtime.resolveRun()
     await runPromise
@@ -1557,6 +1563,14 @@ describe('AgentService mid-run user message queue', () => {
     expect(secondInput?.drainPendingUserMessages).toBeDefined()
     // The queue is preserved for the new run's drain to pick up.
     expect(service.peekPendingUserMessages('conv-cont')).toEqual([queued])
+
+    expect(secondInput?.drainPendingUserMessages?.()).toEqual({
+      messages: [queued],
+      sourceUserMessageId: queued.id,
+    })
+    expect(service.getConversationRunSummary('conv-cont').anchorMessageId).toBe(
+      queued.id,
+    )
 
     secondRuntime.resolveRun()
   })

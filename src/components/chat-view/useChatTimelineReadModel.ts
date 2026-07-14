@@ -49,7 +49,7 @@ const EMPTY_ASSISTANT_GROUP_BOUNDARY_MESSAGE_IDS: readonly string[] = []
 const getGroupId = (messages: AssistantToolMessageGroup): string =>
   messages.at(0)?.id ?? 'assistant-group'
 
-export function findAssistantGroupRenderKeyForRunAnchor({
+export function findAssistantGroupIdForRunAnchor({
   groupedChatMessages,
   anchorMessageId,
 }: {

@@ -242,4 +242,97 @@ describe('AssistantToolMessageGroupItem', () => {
       }),
     )
   })
+
+  it('hides the footer while the owning foreground run is active', () => {
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-1',
+      content: 'tool calls are complete',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+      },
+    }
+
+    const html = renderToStaticMarkup(
+      <AssistantToolMessageGroupItem
+        messages={[assistantMessage]}
+        conversationId="conversation-1"
+        conversationRunSummary={{
+          conversationId: 'conversation-1',
+          anchorMessageId: 'user-1',
+          status: 'running',
+          isRunning: true,
+          isActive: true,
+          isAbortable: true,
+          isQueueable: true,
+          isWaitingApproval: false,
+          isWaitingUserInput: false,
+        }}
+        showRetryAction={true}
+        isApplying={false}
+        activeApplyRequestKey={null}
+        onApply={() => {}}
+        onToolMessageUpdate={() => {}}
+        onEditStart={() => {}}
+        onEditCancel={() => {}}
+        onEditSave={() => {}}
+        onDeleteGroup={() => {}}
+        onRetryGroup={() => {}}
+        onBranchGroup={() => {}}
+        onQuoteAssistantSelection={() => {}}
+        onOpenEditSummaryFile={() => {}}
+      />,
+    )
+
+    expect(html).not.toContain('yolo-assistant-message-footer')
+    expect(mockedAssistantToolMessageGroupActions).not.toHaveBeenCalled()
+  })
+
+  it('shows the footer for a completed branch while another branch is active', () => {
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-1',
+      content: 'branch complete',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchRunStatus: 'completed',
+      },
+    }
+
+    const html = renderToStaticMarkup(
+      <AssistantToolMessageGroupItem
+        messages={[assistantMessage]}
+        conversationId="conversation-1"
+        conversationRunSummary={{
+          conversationId: 'conversation-1',
+          anchorMessageId: 'user-1',
+          status: 'running',
+          isRunning: true,
+          isActive: true,
+          isAbortable: true,
+          isQueueable: true,
+          isWaitingApproval: false,
+          isWaitingUserInput: false,
+        }}
+        showRetryAction={true}
+        isApplying={false}
+        activeApplyRequestKey={null}
+        onApply={() => {}}
+        onToolMessageUpdate={() => {}}
+        onEditStart={() => {}}
+        onEditCancel={() => {}}
+        onEditSave={() => {}}
+        onDeleteGroup={() => {}}
+        onRetryGroup={() => {}}
+        onBranchGroup={() => {}}
+        onQuoteAssistantSelection={() => {}}
+        onOpenEditSummaryFile={() => {}}
+      />,
+    )
+
+    expect(html).toContain('yolo-assistant-message-footer')
+    expect(mockedAssistantToolMessageGroupActions).toHaveBeenCalledTimes(1)
+  })
 })

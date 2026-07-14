@@ -381,7 +381,7 @@ export const buildChatTimelineItems = ({
           ...item,
           id: firstMessageId,
           renderKey: `${item.id}-slice-${sliceIndex}`,
-          groupId: firstMessageId,
+          groupId: item.groupId,
           messageIds: currentSlice.map((message) => message.id),
           revision: getGroupRevision(currentSlice, revisionsById),
           isPinnedForRender:

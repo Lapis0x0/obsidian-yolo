@@ -37,6 +37,7 @@ export type ChatTimelineUserMessageItem = ChatTimelineBaseItem & {
 
 export type ChatTimelineAssistantGroupItem = ChatTimelineBaseItem & {
   kind: 'assistant-group'
+  /** Stable logical group identity shared by all rendered slices. */
   groupId: string
   messageIds: string[]
   revision: number
