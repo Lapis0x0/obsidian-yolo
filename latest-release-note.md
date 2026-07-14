@@ -1,43 +1,41 @@
-## 1.6.0.1 Learning Experience & Agent Reliability 🛠️
+## 1.6.0.2 Chat Polish & Workflow Reliability 🛠️
 
-### 🎓 Learning Improvements
+### 💬 Chat & Navigation
 
-- Learning plans now support pause, resume, and delete actions through right-click or long press. Pausing freezes the entire review schedule, so resuming does not create an extra overdue backlog.
-- Fixed Learning Mode to respect the custom YOLO folder. Existing review records and Anki import data are safely migrated to the configured directory, with leftover empty folders cleaned up automatically.
-- The status bar now shows today's due card count and updates in real time as reviews are completed.
-- Refined the Learning Center layout so the scrollbar reaches the right edge, and aligned the top badge count with the current learning queue.
-- Review rating buttons now use compact localized time units, preventing wrapped labels and inconsistent button heights on mobile.
+- Redesigned desktop message navigation as a smooth waveform track on the left, with visible-turn indicators and hover previews for user messages and model responses. Also fixed older history failing to load automatically after switching to a conversation that was too short to scroll.
+- Reworked the standalone Chat empty state with searchable, drag-and-drop quick access to frequently used Skills and snippets.
+- Fixed content jumping when sending a new message, flashing history-loading indicators, and historical conversations occasionally opening to a blank screen after restart.
+- Fixed the response footer appearing before the model had finished generating or running tools.
 
-### 🤖 Agent Accuracy
+### 🤖 Agent & Input
 
-- Agent now determines file editing, path operations, and terminal capabilities from its actual tool configuration, reducing invented tool calls and incorrect claims that an operation was completed.
-- Fixed Agent tool counts to exclude disabled MCP tools and unavailable tools, keeping the total consistent with the Agent configuration page.
+- Agent terminal commands such as Git, curl, and npm now automatically follow the system proxy across platforms, including PAC routing, without requiring manual proxy environment variables (#460).
+- Skills and snippets in the chat input menu now open submenus on hover like the reference menu, and redundant tooltips have been removed.
+- Aligned the Ask and Agent options in the chat mode menu so both rows use consistent height and text positioning.
+- Removed the risk confirmation shown the first time Agent mode is enabled.
 
-### 💬 Chat & Providers
+### 🎓 Learning Experience
 
-- Thinking traces now open without an expansion animation, reducing CPU usage and interface lag when viewing very long reasoning content (#420).
-- Message navigation now remains available in narrow sidebars (#453) (#454). Thanks to @Lapis0x1 for the contribution.
-- Removed the discontinued Qwen OAuth login option so unavailable sign-in methods are no longer shown (#456).
+- Fixed flashcard review shortcuts remaining active after the Learning view lost focus, preventing accidental card flips or ratings while typing elsewhere.
 
 ---
 
-## 1.6.0.1 学习体验与 Agent 可靠性 🛠️
+## 1.6.0.2 对话体验与工作流可靠性 🛠️
 
-### 🎓 学习体验优化
+### 💬 对话与导航
 
-- 学习计划现已支持通过右键或长按进行暂停、恢复和删除。暂停期间会冻结整个计划的复习进度，恢复后不会产生额外的逾期积压。
-- 修复学习模式未遵循自定义 YOLO 文件夹的问题。已有复习记录和 Anki 导入数据会安全迁移至用户设置的目录，并自动清理遗留的空文件夹。
-- 右下角状态栏现在会显示今日待复习卡片数量，并随复习进度实时更新。
-- 优化学习中心页面布局，使滚动条贴合视图右侧边缘；同时统一顶部徽标与当前学习队列的卡片数量。
-- 复习评分按钮改用更紧凑的多语言时间单位，避免移动端因文案换行导致按钮高度不一致。
+- 桌面端消息导航升级为流畅的左侧波形轨道，可直观看到当前可见的对话轮次，并在悬停时预览用户消息与模型回复。同时修复切换到内容过短、无法滚动的对话后，更早历史无法自动加载的问题。
+- 重新设计独立 Chat 的空会话界面，新增可搜索、拖拽排序的常用 Skills 与快捷指令。
+- 修复发送新消息时内容上下跳动、历史加载提示闪现，以及重启后打开历史对话偶尔白屏的问题。
+- 修复模型仍在生成或执行工具时，底部信息栏提前出现的问题。
 
-### 🤖 Agent 准确性
+### 🤖 Agent 与输入体验
 
-- AI 现在会根据当前 Agent 的实际工具配置准确判断文件编辑、路径操作和终端能力，减少虚构工具调用或错误声称操作已完成的情况。
-- 修复 Agent 工具数量显示不准确的问题。停用的 MCP 和失效工具不再计入，工具数量现在与 Agent 配置页保持一致。
+- Agent 终端中的 Git、curl、npm 等命令现在可跨平台自动遵循系统代理，并支持 PAC 分流，无需手动配置代理环境变量 (#460)。
+- 聊天输入菜单中的 Skills 与快捷指令现在可像引用菜单一样悬停展开子菜单，并移除了多余的悬浮提示。
+- 统一聊天模式菜单中 Ask 与 Agent 选项的高度和文字对齐。
+- 移除首次启用 Agent 模式时的风险确认提示。
 
-### 💬 对话与服务渠道
+### 🎓 学习体验
 
-- 取消思考记录的展开动画，降低打开超长思考内容时的 CPU 压力和界面卡顿 (#420)。
-- 支持在窄侧栏中使用消息导航 (#453) (#454)，感谢 @Lapis0x1 的贡献。
-- 移除已停止服务的 Qwen OAuth 登录渠道，避免继续展示不可用选项 (#456)。
+- 修复学习界面失去焦点后卡片复习快捷键仍会响应的问题，切换到其他编辑区输入时不再误触发卡片翻面或评分。
