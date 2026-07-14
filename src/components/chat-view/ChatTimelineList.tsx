@@ -350,11 +350,13 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     null,
   )
   const lastAtBottomStateRef = useRef<boolean | null>(null)
+  const lastScrollTopRef = useRef<number | null>(null)
   const earlierSentinelRef = useRef<HTMLDivElement>(null)
   const renderItemRef = useRef(renderItem)
   renderItemRef.current = renderItem
   const initialBottomKeyRef = useRef<string | null>(null)
   const pendingAnchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
+  const suppressFollowForWindowLoadRef = useRef(false)
   const loadInFlightRef = useRef(false)
   const lastUserMessageViewportRef = useRef<UserMessageViewportState | null>(
     null,
@@ -380,6 +382,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     }
 
     pendingAnchorSnapshotRef.current = getVisibleAnchorSnapshot(scrollerElement)
+    suppressFollowForWindowLoadRef.current = true
   }, [scrollerElement])
 
   const handleLoadEarlier = useCallback(() => {
@@ -498,6 +501,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
 
     initialBottomKeyRef.current = timelineKey
     scrollElementToBottom(scrollerElement)
+    lastScrollTopRef.current = scrollerElement.scrollTop
   }, [conversationId, items.length, scrollerElement])
 
   useLayoutEffect(() => {
@@ -518,6 +522,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
 
     const afterTop = anchor.getBoundingClientRect().top
     scrollerElement.scrollTop += afterTop - snapshot.top
+    lastScrollTopRef.current = scrollerElement.scrollTop
     scheduleUserMessageViewport()
   }, [items, scheduleUserMessageViewport, scrollerElement])
 
@@ -549,6 +554,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     )
     if (!targetAnchor) {
       scrollerElement.scrollTop = 0
+      lastScrollTopRef.current = scrollerElement.scrollTop
       appliedWindowNavigationKeyRef.current = windowNavigationKey
       pendingWindowNavigationRef.current = null
       scheduleUserMessageViewport()
@@ -567,6 +573,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     )
 
     scrollerElement.scrollTop = Math.min(desiredScrollTop, maxScrollTop)
+    lastScrollTopRef.current = scrollerElement.scrollTop
     appliedWindowNavigationKeyRef.current = windowNavigationKey
     pendingWindowNavigationRef.current = null
     scheduleUserMessageViewport()
@@ -580,6 +587,10 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
 
   useLayoutEffect(() => {
     if (!scrollerElement || !followOutput) {
+      return
+    }
+    if (suppressFollowForWindowLoadRef.current) {
+      suppressFollowForWindowLoadRef.current = false
       return
     }
     if (
@@ -604,6 +615,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       scrollerElement,
       output === 'smooth' ? 'smooth' : 'auto',
     )
+    lastScrollTopRef.current = scrollerElement.scrollTop
   }, [
     atBottomThreshold,
     bottomSpacerHeight,
@@ -639,6 +651,12 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     }
 
     const handleScroll = () => {
+      const previousScrollTop = lastScrollTopRef.current
+      const currentScrollTop = scrollerElement.scrollTop
+      lastScrollTopRef.current = currentScrollTop
+      const isScrollingTowardNewer =
+        previousScrollTop !== null && currentScrollTop > previousScrollTop
+
       emitAtBottomState()
       scheduleUserMessageViewport()
       if (Date.now() < suppressLoadMoreUntilRef.current) {
@@ -653,6 +671,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       if (
         hasNewerMessages &&
         onLoadNewer &&
+        isScrollingTowardNewer &&
         distanceToBottom <= loadMoreThreshold
       ) {
         handleLoadNewer()
@@ -662,7 +681,9 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     scrollerElement.addEventListener('scroll', handleScroll, {
       passive: true,
     })
-    handleScroll()
+    lastScrollTopRef.current = scrollerElement.scrollTop
+    emitAtBottomState()
+    scheduleUserMessageViewport()
 
     if (typeof ResizeObserver === 'undefined') {
       return () => {
