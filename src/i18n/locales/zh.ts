@@ -1862,6 +1862,7 @@ export const zh: TranslationKeys = {
       createSnippetsFile: '点击创建 snippets.md',
     },
     emptyState: {
+      workspaceTitle: '今天想在 {vaultName} 中做点什么？',
       askTitle: '先想清楚，再落笔',
       askDescription: '适合提问、润色与改写，专注表达本身',
       chatTitle: '先想清楚，再落笔',

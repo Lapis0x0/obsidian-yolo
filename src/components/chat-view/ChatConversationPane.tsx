@@ -21,11 +21,10 @@ import { SharedConversationSurface } from './SharedConversationSurface'
 type ChatConversationPaneProps = {
   chatMode: ChatMode
   yoloEnabled: boolean
+  showEmptyState: boolean
   groupedChatMessagesLength: number
-  isCurrentConversationRunActive: boolean
   isAutoFollowEnabled: boolean
   currentConversationId: string
-  isRestoringConversation?: boolean
   chatTimelineItems: ChatTimelineItem[]
   chatMessagesRef: RefObject<HTMLDivElement>
   renderChatTimelineItem: (timelineItem: ChatTimelineItem) => ReactNode
@@ -40,6 +39,7 @@ type ChatConversationPaneProps = {
   emptyStateAskTitle: string
   emptyStateAgentTitle: string
   emptyStateAgentFullTitle: string
+  emptyStateWorkspaceTitle?: string
   emptyStateAskDescription: string
   emptyStateAgentDescription: string
   emptyStateAgentFullDescription: string
@@ -61,11 +61,10 @@ type ChatConversationPaneProps = {
 export function ChatConversationPane({
   chatMode,
   yoloEnabled,
+  showEmptyState,
   groupedChatMessagesLength,
-  isCurrentConversationRunActive,
   isAutoFollowEnabled,
   currentConversationId,
-  isRestoringConversation = false,
   chatTimelineItems,
   chatMessagesRef,
   renderChatTimelineItem,
@@ -80,6 +79,7 @@ export function ChatConversationPane({
   emptyStateAskTitle,
   emptyStateAgentTitle,
   emptyStateAgentFullTitle,
+  emptyStateWorkspaceTitle,
   emptyStateAskDescription,
   emptyStateAgentDescription,
   emptyStateAgentFullDescription,
@@ -97,21 +97,19 @@ export function ChatConversationPane({
   loadNewerLabel,
   bottomSpacerHeight,
 }: ChatConversationPaneProps) {
-  const showEmptyState =
-    groupedChatMessagesLength === 0 &&
-    !isCurrentConversationRunActive &&
-    !isRestoringConversation
   const showScrollToBottomButton =
     !showEmptyState &&
     groupedChatMessagesLength > 0 &&
     (!isAutoFollowEnabled || hasNewerMessages)
 
   const isYoloAgent = isAgentChatMode(chatMode) && yoloEnabled
-  const emptyStateTitle = isYoloAgent
-    ? emptyStateAgentFullTitle
-    : isAgentChatMode(chatMode)
-      ? emptyStateAgentTitle
-      : emptyStateAskTitle
+  const emptyStateTitle =
+    emptyStateWorkspaceTitle ??
+    (isYoloAgent
+      ? emptyStateAgentFullTitle
+      : isAgentChatMode(chatMode)
+        ? emptyStateAgentTitle
+        : emptyStateAskTitle)
   const emptyStateDescription = isYoloAgent
     ? emptyStateAgentFullDescription
     : isAgentChatMode(chatMode)

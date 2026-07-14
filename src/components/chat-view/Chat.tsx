@@ -6501,11 +6501,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onSelect={handleNavigateToUserMessage}
       />
     ) : undefined
+  const showEmptyState =
+    groupedChatMessages.length === 0 &&
+    !isCurrentConversationRunActive &&
+    !isLoadingConversation
 
   return (
     <div
       ref={handleContainerRef}
-      className={containerClassName}
+      className={`${containerClassName}${
+        showEmptyState ? ' yolo-chat-container--empty-state' : ''
+      }`}
       style={containerStyle}
     >
       {header}
@@ -6517,11 +6523,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <ChatConversationPane
           chatMode={chatMode}
           yoloEnabled={yoloEnabled}
+          showEmptyState={showEmptyState}
           groupedChatMessagesLength={groupedChatMessages.length}
-          isCurrentConversationRunActive={isCurrentConversationRunActive}
           isAutoFollowEnabled={isAutoFollowEnabled}
           currentConversationId={currentConversationId}
-          isRestoringConversation={isLoadingConversation}
           chatTimelineItems={stableChatTimelineItems}
           timelineRenderVersion={chatTimelineRenderVersion}
           chatMessagesRef={chatMessagesRef}
@@ -6548,6 +6553,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chat.emptyState.agentFullTitle',
             '让 AI 自主执行 · YOLO 模式',
           )}
+          emptyStateWorkspaceTitle={
+            isSidebarPlacement
+              ? undefined
+              : t(
+                  'chat.emptyState.workspaceTitle',
+                  '今天想在 {vaultName} 中做点什么？',
+                ).replace('{vaultName}', app.vault.getName())
+          }
           emptyStateAskDescription={t(
             'chat.emptyState.askDescription',
             '适合提问、润色与改写，专注表达本身',

@@ -366,6 +366,73 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
   --yolo-chat-host-inline-padding: var(--size-4-3);
 }
 
+.yolo-chat-container--centered.yolo-chat-container--empty-state {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 3fr) auto minmax(0, 7fr);
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-chat-header {
+  grid-row: 1;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-installation-incomplete-banner {
+  grid-row: 2;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-chat-conversation-surface {
+  grid-row: 3;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-chat-footer {
+  grid-row: 4;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state::after {
+  content: '';
+  grid-row: 5;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-overlay {
+  align-items: flex-end;
+  padding-bottom: calc(var(--size-4-6) + var(--size-2-2));
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state {
+  width: min(720px, calc(100% - var(--size-4-4)));
+  padding: 0;
+  background: transparent;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-icon,
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-description {
+  display: none;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  .yolo-chat-empty-state-title {
+  margin: 0;
+  font-size: clamp(22px, 2.4vw, 32px);
+  font-weight: var(--font-normal);
+  line-height: 1.25;
+  color: var(--text-normal);
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state.yolo-chat-container--mobile-keyboard-managed {
+  display: flex;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state.yolo-chat-container--mobile-keyboard-managed::after {
+  content: none;
+}
+
 .yolo-chat-container--sidebar > .yolo-chat-composer-wrapper,
 .yolo-chat-container--sidebar > .yolo-chat-footer,
 .yolo-chat-container--sidebar > .yolo-chat-user-input-files,

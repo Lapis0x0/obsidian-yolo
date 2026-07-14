@@ -1856,6 +1856,7 @@ export const it: TranslationKeys = {
       createSnippetsFile: 'Clicca per creare snippets.md',
     },
     emptyState: {
+      workspaceTitle: 'Cosa vuoi fare oggi in {vaultName}?',
       askTitle: 'Pensa prima, poi scrivi',
       askDescription:
         "Ideale per domande, revisione e riscrittura, con focus sull'espressione.",

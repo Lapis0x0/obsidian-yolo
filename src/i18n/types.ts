@@ -1418,6 +1418,7 @@ export type TranslationKeys = {
       createSnippetsFile?: string
     }
     emptyState?: {
+      workspaceTitle?: string
       askTitle?: string
       askDescription?: string
       chatTitle?: string

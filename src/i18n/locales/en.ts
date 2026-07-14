@@ -1977,6 +1977,7 @@ export const en: TranslationKeys = {
       createSnippetsFile: 'Click to create snippets.md',
     },
     emptyState: {
+      workspaceTitle: 'What would you like to do in {vaultName} today?',
       askTitle: 'Think first, then write',
       askDescription:
         'Great for questions, polishing, and rewriting with focus on expression.',
