@@ -12,7 +12,5 @@ export const DEFAULT_CHAT_QUICK_ACCESS_ENTRIES: ChatQuickAccessEntry[] = [
 export function getChatQuickAccessEntryKey(
   entry: ChatQuickAccessEntry,
 ): string {
-  return entry.type === 'skill'
-    ? `skill:${entry.name}`
-    : `snippet:${entry.id}`
+  return entry.type === 'skill' ? `skill:${entry.name}` : `snippet:${entry.id}`
 }

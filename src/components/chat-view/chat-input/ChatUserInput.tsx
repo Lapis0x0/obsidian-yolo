@@ -1,5 +1,5 @@
-import { SerializedEditorState } from 'lexical'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { SerializedEditorState } from 'lexical'
 import { FilePlus2 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {

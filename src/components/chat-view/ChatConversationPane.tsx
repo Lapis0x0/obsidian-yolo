@@ -1,10 +1,10 @@
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ArrowDown,
   Bot,
   Infinity as InfinityIcon,
   MessageCircle,
 } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { ReactNode, RefObject } from 'react'
 import type { FollowOutput } from 'react-virtuoso'
 

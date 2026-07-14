@@ -123,8 +123,7 @@ export function ChatQuickAccess({
   )
 
   const entries: ChatQuickAccessEntry[] =
-    settings.chatOptions.quickAccessEntries ??
-    DEFAULT_CHAT_QUICK_ACCESS_ENTRIES
+    settings.chatOptions.quickAccessEntries ?? DEFAULT_CHAT_QUICK_ACCESS_ENTRIES
 
   const skillByName = useMemo(
     () => new Map(skills.map((skill) => [skill.name, skill] as const)),
