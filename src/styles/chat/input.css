@@ -3330,6 +3330,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
 .yolo-chat-mode-select-item__label {
   font-size: 12px;
   font-weight: 500;
+  line-height: 18px;
   color: var(--text-normal);
 }
 
@@ -3352,6 +3353,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
  * switch while the outer row keeps the same popover-item sizing as before. */
 button.yolo-chat-mode-select-item {
   width: 100%;
+  height: auto;
   text-align: left;
   font: inherit;
   color: inherit;
