@@ -368,7 +368,7 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-chat-container--centered.yolo-chat-container--empty-state {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 3fr) auto minmax(0, 7fr);
+  grid-template-rows: auto auto minmax(0, 3fr) auto minmax(0, 5fr);
 }
 
 .yolo-chat-container--centered.yolo-chat-container--empty-state
