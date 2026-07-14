@@ -44,6 +44,7 @@ import {
 import type {
   CSSProperties,
   PointerEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -3084,6 +3085,7 @@ function ReviewMode({
   } | null>(null)
   const dragCardWidthRef = useRef(300)
   const dragExtremeGradeThresholdRef = useRef(getExtremeGradeThreshold('mouse'))
+  const reviewRootRef = useRef<HTMLDivElement>(null)
   const activeCardRef = useRef<HTMLDivElement>(null)
   const timersRef = useRef<number[]>([])
   const hasStartedRef = useRef(false)
@@ -3105,6 +3107,25 @@ function ReviewMode({
   const remainingAfter = queue.length - index - 1
   const busy = phase !== 'idle' || submitting
   const progress = done ? 100 : ((index + 1) / queue.length) * 100
+
+  useLayoutEffect(() => {
+    reviewRootRef.current?.focus({ preventScroll: true })
+  }, [done])
+
+  const handleReviewPointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const target = event.target as Element
+      if (
+        target.closest?.(
+          'button, input, textarea, select, a, [contenteditable="true"]',
+        )
+      ) {
+        return
+      }
+      reviewRootRef.current?.focus({ preventScroll: true })
+    },
+    [],
+  )
 
   const clearTimers = useCallback(() => {
     for (const id of timersRef.current) {
@@ -3241,8 +3262,15 @@ function ReviewMode({
 
   useEffect(() => () => clearTimers(), [clearTimers])
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
+  const handleReviewKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const target = event.target as Element
+      if (
+        target.closest?.('input, textarea, select, [contenteditable="true"]') ||
+        (event.code === 'Space' && target.closest?.('button, a'))
+      ) {
+        return
+      }
       if (busy) return
       if (event.code === 'Escape') {
         event.preventDefault()
@@ -3264,10 +3292,9 @@ function ReviewMode({
         resetDrag()
         void commitGrade(grade)
       }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [busy, done, onExit, commitGrade, resetDrag])
+    },
+    [busy, done, onExit, commitGrade, resetDrag],
+  )
 
   const handlePointerDown = (event: PointerEvent) => {
     if (
@@ -3371,7 +3398,13 @@ function ReviewMode({
 
   if (queue.length === 0) {
     return (
-      <div className="yolo-learning-cards-review-done">
+      <div
+        ref={reviewRootRef}
+        className="yolo-learning-cards-review-done"
+        tabIndex={-1}
+        onKeyDown={handleReviewKeyDown}
+        onPointerDownCapture={handleReviewPointerDown}
+      >
         <p className="yolo-learning-cards-review-done-title">
           {t('learning.cards.noReviewCards', '暂无到期卡片')}
         </p>
@@ -3400,7 +3433,13 @@ function ReviewMode({
 
   if (done) {
     return (
-      <div className="yolo-learning-cards-review-done">
+      <div
+        ref={reviewRootRef}
+        className="yolo-learning-cards-review-done"
+        tabIndex={-1}
+        onKeyDown={handleReviewKeyDown}
+        onPointerDownCapture={handleReviewPointerDown}
+      >
         <p className="yolo-learning-cards-review-done-title">
           {t('learning.cards.reviewDone', '本轮复习完成')}
         </p>
@@ -3422,7 +3461,13 @@ function ReviewMode({
   }
 
   return (
-    <div className="yolo-learning-cards-review">
+    <div
+      ref={reviewRootRef}
+      className="yolo-learning-cards-review"
+      tabIndex={-1}
+      onKeyDown={handleReviewKeyDown}
+      onPointerDownCapture={handleReviewPointerDown}
+    >
       <div className="yolo-learning-cards-review-stats">
         <span className="yolo-learning-cards-review-count">
           {index + 1}{' '}
