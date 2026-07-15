@@ -334,7 +334,7 @@ describe('AgentLlmTurnExecutor', () => {
     )
   })
 
-  it('appends continuation deltas to the interrupted assistant message', async () => {
+  it('appends continuation content while preserving the original reasoning', async () => {
     const provider = new MockProvider()
     const interruptedMessage: ChatAssistantMessage = {
       role: 'assistant',
@@ -419,7 +419,7 @@ describe('AgentLlmTurnExecutor', () => {
       expect.objectContaining({
         id: interruptedMessage.id,
         content: 'Hello world',
-        reasoning: 'Initial thought. Continued thought.',
+        reasoning: 'Initial thought. ',
         toolCallRequests: undefined,
         metadata: expect.objectContaining({ generationState: 'completed' }),
       }),

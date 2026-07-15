@@ -212,6 +212,7 @@ export class AgentLlmTurnExecutor {
     }
     const initialContent = assistantMessage.content
     const initialReasoning = assistantMessage.reasoning ?? ''
+    const preserveInitialReasoning = Boolean(resumedMessage)
     this.input.onAssistantMessage(assistantMessage)
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
@@ -247,7 +248,7 @@ export class AgentLlmTurnExecutor {
           if (contentDelta) {
             assistantMessage.content += contentDelta
           }
-          if (reasoningDelta) {
+          if (reasoningDelta && !preserveInitialReasoning) {
             assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
           }
           if (toolCalls && toolCalls.length > 0) {
@@ -320,6 +321,7 @@ export class AgentLlmTurnExecutor {
       assistantMessage.content += turnResult.content
     }
     if (
+      !preserveInitialReasoning &&
       (assistantMessage.reasoning ?? '') === initialReasoning &&
       turnResult.reasoning
     ) {
