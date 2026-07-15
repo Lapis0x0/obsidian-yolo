@@ -218,7 +218,11 @@ export const ModelSelect = forwardRef<
           minWidth={popover?.minWidth}
           maxWidth={popover?.maxWidth}
           maxHeight={popover?.maxHeight}
-          className={popover?.className}
+          className={
+            popover?.className
+              ? `yolo-model-select-popover ${popover.className}`
+              : 'yolo-model-select-popover'
+          }
           side={side}
           sideOffset={sideOffset}
           align={align}

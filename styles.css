@@ -15696,6 +15696,18 @@ button.yolo-llm-debug-modal-button:focus-visible {
   padding: var(--size-4-1) 0;
 }
 
+/* Shared across ModelSelect variants: let the scroll region shrink with the
+   viewport-clamped popover instead of being clipped by the outer surface. */
+
+.yolo-model-select-popover {
+  display: flex;
+  flex-direction: column;
+}
+
+.yolo-model-select-popover > .yolo-model-select-list {
+  min-height: 0;
+}
+
 /* default 变体下的 group-label / separator / list / item 样式集中在这里。
    --smart-space 变体的同名元素样式集中在 src/styles/panels/smart-space.css。
    两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */
