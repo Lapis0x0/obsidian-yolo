@@ -38,26 +38,10 @@
 
 ## Highlights
 
-### 🤖 Modalità Agent
-
-La modalità Agent di YOLO permette ai LLM di andare oltre le semplici "macchine Q&A" — possono realmente operare sul tuo Vault.
-
-| Tool Calling + MCP | Skills Personalizzati |
+| Un'esperienza Agent completa e multipiattaforma | Trasforma la conoscenza del Vault in padronanza duratura |
 |:--:|:--:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Agent Skills](./assets/agentskills.gif) |
-| Configura liberamente le catene di strumenti per permettere agli Agent di leggere, scrivere, modificare e organizzare i tuoi file direttamente | Incapsula esperienze e SOP in skill riutilizzabili, invoca con una singola frase — lascia che l'Agent funzioni come te |
-
-| Chat Multi-Finestra | Quick Ask |
-|:--:|:--:|
-| ![Chat Window](./assets/chatwindow.gif) | ![Quick Ask](./assets/Quickask.gif) |
-| Gestisci in parallelo task e contesti diversi su più finestre di chat, rendendo il multitasking più naturale | Attivalo con un carattere (predefinito `@`) per un assistente inline che supporta Q&A, modifica e continuazione, rendendo l'editing dei documenti senza interruzioni |
-
-### 🧠 Q&A Knowledge Base + ✍️ Smart Space
-
-| Q&A Knowledge Base | Smart Space |
-|:--:|:--:|
-| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) |
-| Trasforma l'intero Vault nella knowledge base dell'AI: con RAG, YOLO risponde usando il contesto reale dei tuoi appunti invece di output generici | Richiamalo ovunque per continuare liberamente il tuo flusso creativo con una generazione di contenuti fluida |
+| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
+| Non si limita a rispondere. YOLO comprende e gestisce direttamente il tuo Vault, utilizza strumenti e server MCP e applica le Skills per completare il lavoro secondo il tuo metodo. | Trasforma argomenti e materiali in un sistema di apprendimento personale, poi usa flashcard e ripassi basati su FSRS per convertire gli appunti salvati in conoscenze durature. |
 
 ## Funzionalità
 
@@ -65,13 +49,15 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
 
 | Funzionalità | Descrizione |
 |--------------|-------------|
-| 💬 Chat Sidebar | Conversazione seamless con LLM, iniezione di contesto, prompt preimpostati, parsing smart di Markdown |
+| 🔌 Supporto per Agent esterni | Collega client MCP come Hermes e OpenClaw alla ricerca nel Vault di YOLO oppure delega attività a un Agent YOLO configurato |
+| ⚡ Quick Ask e Smart Space | Chiedi, modifica e continua a scrivere senza lasciare l'editor |
+| 🔎 Vault RAG | Cerca nell'intero Vault per ottenere risposte fondate sui tuoi appunti |
+| 🪟 Chat Multi-Finestra | Gestisci in parallelo attività e contesti diversi in finestre di chat indipendenti |
 | 🧠 Sistema di memoria | Permette a YOLO di ricordare preferenze, abitudini e contesto a lungo termine per conversazioni piu coerenti |
 | 🪡 Cursor Chat | Aggiunta contesto con un click, conversazione a portata di mano |
 | ⌨️ Completamento Tab | Completamento AI in tempo reale per una scrittura più fluida e naturale |
 | 🎛️ Supporto Multi-Modello | OpenAI, Claude, Gemini, DeepSeek e altri modelli mainstream, liberamente commutabili |
 | 🌍 i18n | Supporto nativo multi-lingua |
-| 🧩 Funzionalità Sperimentali | Learning Mode, sub-Agents, esplora workflow personalizzati |
 
 ## Quick Start
 

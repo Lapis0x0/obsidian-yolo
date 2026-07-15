@@ -28,6 +28,11 @@
   QQ 群: <code>793057867</code>
 </p>
 
+<p align="center">
+  <strong>微信群</strong><br>
+  <img src="./assets/wechat-group.png" width="260" alt="YOLO 微信群二维码">
+</p>
+
 ## 最近更新
 
 - **`1.6`**：推出全新的学习模式，可根据学习主题、目标和参考资料生成个性化学习项目，包括结构化大纲、知识点、闪卡与交互式知识地图；并通过 FSRS 间隔复习和 Anki 卡包导入，将知识整理、学习与长期复习串成完整工作流
@@ -36,26 +41,10 @@
 
 ## Highlights
 
-### 🤖 Agent 模式
-
-YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正操作你的 Vault。
-
-| 工具调用 + MCP | 自定义 Skills |
+| 跨端可用的完整 Agent 体验 | 让 Vault 里的知识真正被你掌握 |
 |:-:|:-:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Agent Skills](./assets/agentskills.gif) |
-| 自由配置工具链，让 Agent 直接读写、编辑、整理你的文件 | 将经验与 SOP 封装为可复用技能，一句话调用，让 Agent 按你的方式工作 |
-
-| 独立 Chat 窗口 | Quick Ask |
-|:-:|:-:|
-| ![Chat Window](./assets/chatwindow.gif) | ![Quick Ask](./assets/Quickask.gif) |
-| 多窗口并行处理不同任务与上下文，让多线程协作更自然 | 通过触发字符（默认 `@`）唤起内联助手，支持问答、编辑、续写三种模式，让文档编辑无缝高效 |
-
-### 🧠 知识库问答 + ✍️ Smart Space
-
-| 知识库问答 | Smart Space |
-|:-:|:-:|
-| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) |
-| 将整个 Vault 变成 AI 知识库，基于 RAG 检索增强生成，回答更贴合你的笔记上下文与知识体系 | 随时随地召唤，自由接力你的创意，享受流畅的内容生成体验 |
+| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
+| 不止回答问题。YOLO 能理解并操作你的 Vault，调用工具与 MCP，并通过 Skills 按你的方式完成任务。 | 把主题与资料转化为专属学习内容，再用闪卡与 FSRS 持续复习，让知识从被收藏走向真正掌握。 |
 
 ## Features
 
@@ -63,13 +52,15 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 
 | 特性 | 说明 |
 |------|------|
-| 💬 侧边栏对话 | 与大模型无缝对话，支持上下文注入、预设 prompt、Markdown 智能解析 |
+| 🔌 外部 Agent 支持 | 通过 MCP，让 Hermes、OpenClaw 等外部 Agent 使用 YOLO 的 Vault 搜索，或派遣已配置的 YOLO Agent 执行任务 |
+| ⚡ Quick Ask 与 Smart Space | 无需离开编辑器即可提问、修改和续写内容 |
+| 🔎 Vault RAG | 检索整个 Vault，让回答建立在你自己的笔记之上 |
+| 🪟 多窗口对话 | 在独立对话窗口中并行处理不同任务与上下文 |
 | 🧠 记忆系统 | 让 YOLO 记住你的偏好、习惯与长期上下文，让连续对话更稳定、更懂你 |
 | 🪡 Cursor Chat | 一键添加上下文，触手可得的对话体验 |
 | ⌨️ Tab 补全 | 实时 AI 智能补全，让写作更加流畅自然 |
 | 🎛️ 多模型支持 | OpenAI、Claude、Gemini、DeepSeek 等主流模型，自由切换 |
 | 🌍 i18n 国际化 | 原生多语言支持 |
-| 🧩 实验性特性 | Learning Mode、子 Agent 等，探索个性化工作流 |
 
 
 ## Quick Start
