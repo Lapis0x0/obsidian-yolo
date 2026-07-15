@@ -25,12 +25,7 @@
 </p>
 
 <p align="center">
-  QQ 群: <code>793057867</code>
-</p>
-
-<p align="center">
-  <strong>微信群</strong><br>
-  <img src="./assets/wechat-group.png" width="260" alt="YOLO 微信群二维码">
+  QQ 群: <code>793057867</code> | <a href="./assets/wechat-group.png">微信群</a>
 </p>
 
 ## 最近更新
