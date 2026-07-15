@@ -76,6 +76,13 @@ export type TranslationKeys = {
     chatList?: {
       searchPlaceholder?: string
       empty?: string
+      noAutomatedTasks?: string
+      historySections?: string
+      myConversations?: string
+      automatedTasks?: string
+      automatedTaskSources?: string
+      allSources?: string
+      externalAgent?: string
       current?: string
       pinConversation?: string
       unpinConversation?: string

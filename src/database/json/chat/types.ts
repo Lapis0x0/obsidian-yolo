@@ -6,6 +6,12 @@ import { ConversationOverrideSettings } from '../../../types/conversation-settin
 
 export const CHAT_SCHEMA_VERSION = 1
 
+export type ChatConversationOrigin = 'user' | 'external-agent'
+
+export const getChatConversationOrigin = (
+  conversation: Pick<ChatConversation, 'origin'>,
+): ChatConversationOrigin => conversation.origin ?? 'user'
+
 export type ChatConversation = {
   id: string
   title: string
@@ -24,6 +30,7 @@ export type ChatConversation = {
   assistantGroupBoundaryMessageIds?: string[]
   reasoningLevel?: string
   compaction?: ChatConversationCompactionLike | null
+  origin?: ChatConversationOrigin
 }
 
 export type ChatConversationMetadata = {
@@ -33,4 +40,5 @@ export type ChatConversationMetadata = {
   schemaVersion: number
   isPinned?: boolean
   pinnedAt?: number
+  origin?: ChatConversationOrigin
 }

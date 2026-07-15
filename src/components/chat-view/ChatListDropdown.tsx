@@ -14,7 +14,10 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import type { ChatConversationMetadata } from '../../database/json/chat/types'
+import {
+  type ChatConversationMetadata,
+  getChatConversationOrigin,
+} from '../../database/json/chat/types'
 import { getConversationDisplayTitle } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
 import type { SerializedChatMessage } from '../../types/chat'
@@ -22,10 +25,16 @@ import type { ContentPart } from '../../types/llm/request'
 import { getNodeWindow } from '../../utils/dom/window-context'
 import { YoloPopoverContent } from '../common/popover'
 
+import {
+  type AutomatedConversationOrigin,
+  type AutomatedOriginFilter,
+  type ChatHistorySection,
+  partitionChatHistory,
+} from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
-/** Non-pinned conversations beyond this count collapse into the archive group. */
-const RECENT_CHAT_LIMIT = 50
+let rememberedHistorySection: ChatHistorySection = 'user'
+let rememberedAutomatedOriginFilter: AutomatedOriginFilter = 'all'
 
 function TitleInput({
   value,
@@ -78,6 +87,7 @@ function ChatListItem({
   isEditing,
   isUpdatingTitle,
   isPinned,
+  canPin,
   isRetrying,
   onMouseEnter,
   onMouseLeave,
@@ -92,6 +102,7 @@ function ChatListItem({
   onToggleMoreMenu,
   onCloseMoreMenu,
   onLongPress,
+  onContextMenu,
   isContextMenuOpen,
   isMobile,
 }: {
@@ -104,6 +115,7 @@ function ChatListItem({
   isEditing: boolean
   isUpdatingTitle: boolean
   isPinned: boolean
+  canPin: boolean
   isRetrying: boolean
   onMouseEnter: () => void
   onMouseLeave: () => void
@@ -118,6 +130,11 @@ function ChatListItem({
   onToggleMoreMenu: () => void
   onCloseMoreMenu: () => void
   onLongPress?: (cardEl: HTMLElement) => void
+  onContextMenu?: (
+    cardEl: HTMLElement,
+    clientX: number,
+    clientY: number,
+  ) => void
   isContextMenuOpen?: boolean
   isMobile?: boolean
 }) {
@@ -209,8 +226,9 @@ function ChatListItem({
   return (
     <li
       ref={itemRef}
+      tabIndex={-1}
       onMouseDown={(e) => {
-        if (isMobile) {
+        if (isMobile || e.button !== 0) {
           return
         }
         if (e.target instanceof Element && e.target.closest('button')) {
@@ -218,6 +236,23 @@ function ChatListItem({
         }
         onSelect()
       }}
+      onContextMenu={
+        isMobile
+          ? undefined
+          : (e) => {
+              if (
+                isEditing ||
+                !itemRef.current ||
+                (e.target instanceof Element &&
+                  e.target.closest('button, input'))
+              ) {
+                return
+              }
+              e.preventDefault()
+              e.stopPropagation()
+              onContextMenu?.(itemRef.current, e.clientX, e.clientY)
+            }
+      }
       onPointerDown={isMobile ? handlePointerDown : undefined}
       onPointerMove={isMobile ? handlePointerMove : undefined}
       onPointerUp={isMobile ? handlePointerUp : undefined}
@@ -322,19 +357,21 @@ function ChatListItem({
             >
               <Trash2 />
             </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onCloseMoreMenu()
-                onTogglePinned()
-              }}
-              className={`clickable-icon yolo-chat-list-pin-button${
-                isPinned ? ' is-pinned' : ''
-              }`}
-            >
-              <Star />
-            </button>
+            {canPin ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCloseMoreMenu()
+                  onTogglePinned()
+                }}
+                className={`clickable-icon yolo-chat-list-pin-button${
+                  isPinned ? ' is-pinned' : ''
+                }`}
+              >
+                <Star />
+              </button>
+            ) : null}
             {!isEditing ? (
               <div
                 className={`yolo-chat-list-inline-actions${
@@ -486,6 +523,11 @@ export function ChatListDropdown({
     useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeSection, setActiveSection] = useState<ChatHistorySection>(
+    rememberedHistorySection,
+  )
+  const [automatedOriginFilter, setAutomatedOriginFilter] =
+    useState<AutomatedOriginFilter>(rememberedAutomatedOriginFilter)
   const [showArchived, setShowArchived] = useState(false)
   const [isHoveringArchiveRow, setIsHoveringArchiveRow] = useState(false)
   const [updatingTitleIds, setUpdatingTitleIds] = useState<Set<string>>(
@@ -506,6 +548,8 @@ export function ChatListDropdown({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+  const contextMenuAnchorRef = useRef<HTMLElement | null>(null)
   const searchCacheRef = useRef<
     Map<string, { updatedAt: number; text: string }>
   >(new Map())
@@ -517,6 +561,46 @@ export function ChatListDropdown({
     [searchQuery],
   )
 
+  const userChatList = useMemo(
+    () => chatList.filter((chat) => getChatConversationOrigin(chat) === 'user'),
+    [chatList],
+  )
+  const automatedChatList = useMemo(
+    () => chatList.filter((chat) => getChatConversationOrigin(chat) !== 'user'),
+    [chatList],
+  )
+  const automatedOrigins = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          automatedChatList.map(
+            (chat) =>
+              getChatConversationOrigin(chat) as AutomatedConversationOrigin,
+          ),
+        ),
+      ),
+    [automatedChatList],
+  )
+  const sectionChatList =
+    activeSection === 'user' ? userChatList : automatedChatList
+  const scopedChatList = useMemo(() => {
+    if (activeSection === 'user') return userChatList
+    if (automatedOriginFilter === 'all') return automatedChatList
+    return automatedChatList.filter(
+      (chat) => getChatConversationOrigin(chat) === automatedOriginFilter,
+    )
+  }, [activeSection, automatedChatList, automatedOriginFilter, userChatList])
+
+  useEffect(() => {
+    if (
+      automatedOriginFilter !== 'all' &&
+      !automatedOrigins.includes(automatedOriginFilter)
+    ) {
+      rememberedAutomatedOriginFilter = 'all'
+      setAutomatedOriginFilter('all')
+    }
+  }, [automatedOriginFilter, automatedOrigins])
+
   const untitledFallback = t('chat.untitledConversation', 'New chat')
   const getDisplayTitle = useCallback(
     (chat: ChatConversationMetadata) =>
@@ -527,19 +611,20 @@ export function ChatListDropdown({
   const titleMatches = useMemo(() => {
     if (!normalizedQuery) return new Set<string>()
     const matches = new Set<string>()
-    chatList.forEach((chat) => {
+    scopedChatList.forEach((chat) => {
       if (getDisplayTitle(chat).toLowerCase().includes(normalizedQuery)) {
         matches.add(chat.id)
       }
     })
     return matches
-  }, [chatList, normalizedQuery, getDisplayTitle])
+  }, [getDisplayTitle, normalizedQuery, scopedChatList])
 
   const pinnedSortedChatList = useMemo(() => {
-    if (chatList.length === 0) return chatList
-    return [...chatList].sort((a, b) => {
-      const aPinned = a.isPinned ? 1 : 0
-      const bPinned = b.isPinned ? 1 : 0
+    if (sectionChatList.length === 0) return sectionChatList
+    const canPin = activeSection === 'user'
+    return [...sectionChatList].sort((a, b) => {
+      const aPinned = canPin && a.isPinned ? 1 : 0
+      const bPinned = canPin && b.isPinned ? 1 : 0
       if (aPinned !== bPinned) {
         return bPinned - aPinned
       }
@@ -552,14 +637,14 @@ export function ChatListDropdown({
       }
       return b.updatedAt - a.updatedAt
     })
-  }, [chatList])
+  }, [activeSection, sectionChatList])
 
   const filteredChatList = useMemo(() => {
-    if (!normalizedQuery) return chatList
-    return chatList.filter(
+    if (!normalizedQuery) return scopedChatList
+    return scopedChatList.filter(
       (chat) => titleMatches.has(chat.id) || contentMatches.has(chat.id),
     )
-  }, [chatList, contentMatches, normalizedQuery, titleMatches])
+  }, [contentMatches, normalizedQuery, scopedChatList, titleMatches])
 
   const baseDisplayChatList = useMemo(() => {
     if (normalizedQuery) return filteredChatList
@@ -569,43 +654,20 @@ export function ChatListDropdown({
   const shouldUseArchive = normalizedQuery.length === 0
 
   const { activeChatList, archivedChatList } = useMemo(() => {
-    if (!shouldUseArchive) {
-      return {
-        activeChatList: baseDisplayChatList,
-        archivedChatList: [] as ChatConversationMetadata[],
-      }
-    }
-
-    const pinnedChats: ChatConversationMetadata[] = []
-    const nonPinnedChats: ChatConversationMetadata[] = []
-    baseDisplayChatList.forEach((chat) => {
-      if (chat.isPinned) {
-        pinnedChats.push(chat)
-      } else {
-        nonPinnedChats.push(chat)
-      }
+    return partitionChatHistory({
+      chatList: baseDisplayChatList,
+      currentConversationId,
+      section: activeSection,
+      originFilter: automatedOriginFilter,
+      useArchive: shouldUseArchive,
     })
-
-    const activeNonPinnedChats = nonPinnedChats.slice(0, RECENT_CHAT_LIMIT)
-    const archivedNonPinnedChats = nonPinnedChats.slice(RECENT_CHAT_LIMIT)
-    const currentArchivedIndex = archivedNonPinnedChats.findIndex(
-      (chat) => chat.id === currentConversationId,
-    )
-    if (currentArchivedIndex !== -1) {
-      const [currentConversation] = archivedNonPinnedChats.splice(
-        currentArchivedIndex,
-        1,
-      )
-      if (currentConversation) {
-        activeNonPinnedChats.push(currentConversation)
-      }
-    }
-
-    return {
-      activeChatList: [...pinnedChats, ...activeNonPinnedChats],
-      archivedChatList: archivedNonPinnedChats,
-    }
-  }, [baseDisplayChatList, currentConversationId, shouldUseArchive])
+  }, [
+    activeSection,
+    automatedOriginFilter,
+    baseDisplayChatList,
+    currentConversationId,
+    shouldUseArchive,
+  ])
 
   const renderedChatList = useMemo(() => {
     if (!shouldUseArchive) return activeChatList
@@ -628,6 +690,8 @@ export function ChatListDropdown({
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
+        setActiveSection(rememberedHistorySection)
+        setAutomatedOriginFilter(rememberedAutomatedOriginFilter)
         const nextFocusedConversationId =
           pinnedSortedChatList.find((chat) => chat.id === currentConversationId)
             ?.id ??
@@ -657,29 +721,88 @@ export function ChatListDropdown({
     [clearContentMatches, currentConversationId, pinnedSortedChatList],
   )
 
-  const handleLongPress = useCallback((chatId: string, cardEl: HTMLElement) => {
-    const contentEl = contentRef.current
-    if (!contentEl) {
-      return
+  const openContextMenu = useCallback(
+    (
+      chatId: string,
+      cardEl: HTMLElement,
+      pointer?: { clientX: number; clientY: number },
+    ) => {
+      const contentEl = contentRef.current
+      if (!contentEl) {
+        return
+      }
+      const contentRect = contentEl.getBoundingClientRect()
+      const cardRect = cardEl.getBoundingClientRect()
+      const menuWidth = 176
+      const menuHeight = 168
+      const maxLeft = Math.max(8, contentRect.width - menuWidth - 8)
+      const maxTop = Math.max(8, contentRect.height - menuHeight - 8)
+      const anchorLeft = (pointer?.clientX ?? cardRect.left) - contentRect.left
+      const anchorTop =
+        (pointer?.clientY ?? cardRect.bottom + 6) - contentRect.top
+      const left = Math.min(Math.max(8, anchorLeft), maxLeft)
+      let top = Math.min(Math.max(8, anchorTop), maxTop)
+      if (!pointer && anchorTop + menuHeight > contentRect.height) {
+        top = Math.min(
+          Math.max(8, cardRect.top - contentRect.top - menuHeight - 6),
+          maxTop,
+        )
+      }
+      setMoreMenuConversationId(null)
+      setFocusedConversationId(chatId)
+      contextMenuAnchorRef.current = cardEl
+      setMenuPosition({ top, left })
+      setActiveMenuId(chatId)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (activeMenuId !== null) {
+      contextMenuRef.current?.focus({ preventScroll: true })
     }
-    const contentRect = contentEl.getBoundingClientRect()
-    const cardRect = cardEl.getBoundingClientRect()
-    const menuWidth = 176
-    const menuHeight = 168
-    let top = cardRect.bottom - contentRect.top + 6
-    const maxLeft = Math.max(8, contentRect.width - menuWidth - 8)
-    const left = Math.min(
-      Math.max(8, cardRect.left - contentRect.left),
-      maxLeft,
-    )
-    if (top + menuHeight > contentRect.height) {
-      top = cardRect.top - contentRect.top - 6
-    }
-    setMoreMenuConversationId(null)
-    setFocusedConversationId(chatId)
-    setMenuPosition({ top, left })
-    setActiveMenuId(chatId)
-  }, [])
+  }, [activeMenuId])
+
+  const handleContextMenuKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const menu = contextMenuRef.current
+      if (!menu) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        setActiveMenuId(null)
+        setMenuPosition(null)
+        contextMenuAnchorRef.current?.focus({ preventScroll: true })
+        return
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+        e.stopPropagation()
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      const items = Array.from(
+        menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+      )
+      if (items.length === 0) return
+      const currentIndex = items.findIndex(
+        (item) => item === menu.ownerDocument.activeElement,
+      )
+      let nextIndex = 0
+      if (e.key === 'End') {
+        nextIndex = items.length - 1
+      } else if (e.key === 'ArrowUp') {
+        nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1
+      } else if (e.key === 'ArrowDown') {
+        nextIndex =
+          currentIndex === -1 || currentIndex === items.length - 1
+            ? 0
+            : currentIndex + 1
+      }
+      items[nextIndex]?.focus({ preventScroll: true })
+    },
+    [],
+  )
 
   const syncPopoverWidth = useCallback(() => {
     const content = contentRef.current
@@ -742,7 +865,7 @@ export function ChatListDropdown({
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         const nextMatches = new Set<string>()
-        for (const chat of chatList) {
+        for (const chat of scopedChatList) {
           if (titleMatches.has(chat.id)) continue
           const cached = searchCacheRef.current.get(chat.id)
           if (cached && cached.updatedAt === chat.updatedAt) {
@@ -776,11 +899,11 @@ export function ChatListDropdown({
       searchIdRef.current += 1
     }
   }, [
-    chatList,
     chatManager,
     clearContentMatches,
     normalizedQuery,
     open,
+    scopedChatList,
     titleMatches,
   ])
 
@@ -825,7 +948,8 @@ export function ChatListDropdown({
       const target = e.target
       if (
         target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLButtonElement
       ) {
         return
       }
@@ -905,6 +1029,102 @@ export function ChatListDropdown({
             />
           </div>
         </div>
+        <div
+          className="yolo-chat-list-section-tabs"
+          role="group"
+          aria-label={t(
+            'sidebar.chatList.historySections',
+            'Conversation categories',
+          )}
+        >
+          <button
+            type="button"
+            aria-pressed={activeSection === 'user'}
+            className={`yolo-chat-list-section-tab${
+              activeSection === 'user' ? ' is-active' : ''
+            }`}
+            onClick={() => {
+              rememberedHistorySection = 'user'
+              setActiveSection('user')
+              setShowArchived(false)
+              setMoreMenuConversationId(null)
+              setActiveMenuId(null)
+              setMenuPosition(null)
+            }}
+          >
+            <span>
+              {t('sidebar.chatList.myConversations', 'My conversations')}
+            </span>
+            <span className="yolo-chat-list-section-count">
+              {userChatList.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-pressed={activeSection === 'automated'}
+            className={`yolo-chat-list-section-tab${
+              activeSection === 'automated' ? ' is-active' : ''
+            }`}
+            onClick={() => {
+              rememberedHistorySection = 'automated'
+              setActiveSection('automated')
+              setShowArchived(false)
+              setMoreMenuConversationId(null)
+              setActiveMenuId(null)
+              setMenuPosition(null)
+            }}
+          >
+            <span>
+              {t('sidebar.chatList.automatedTasks', 'Automated tasks')}
+            </span>
+            <span className="yolo-chat-list-section-count">
+              {automatedChatList.length}
+            </span>
+          </button>
+        </div>
+        {activeSection === 'automated' && automatedOrigins.length > 1 ? (
+          <div
+            className="yolo-chat-list-origin-filters"
+            aria-label={t(
+              'sidebar.chatList.automatedTaskSources',
+              'Automated task sources',
+            )}
+          >
+            <button
+              type="button"
+              className={`yolo-chat-list-origin-filter${
+                automatedOriginFilter === 'all' ? ' is-active' : ''
+              }`}
+              aria-pressed={automatedOriginFilter === 'all'}
+              onClick={() => {
+                rememberedAutomatedOriginFilter = 'all'
+                setAutomatedOriginFilter('all')
+                setShowArchived(false)
+              }}
+            >
+              {t('sidebar.chatList.allSources', 'All')}
+            </button>
+            {automatedOrigins.map((origin) => (
+              <button
+                key={origin}
+                type="button"
+                className={`yolo-chat-list-origin-filter${
+                  automatedOriginFilter === origin ? ' is-active' : ''
+                }`}
+                aria-pressed={automatedOriginFilter === origin}
+                onClick={() => {
+                  rememberedAutomatedOriginFilter = origin
+                  setAutomatedOriginFilter(origin)
+                  setShowArchived(false)
+                }}
+              >
+                {origin === 'external-agent'
+                  ? t('sidebar.chatList.externalAgent', 'External Agent')
+                  : origin}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <ul
           ref={listRef}
           className="yolo-model-select-list"
@@ -926,9 +1146,11 @@ export function ChatListDropdown({
             setMenuPosition(null)
           }}
         >
-          {chatList.length === 0 ? (
+          {scopedChatList.length === 0 ? (
             <li className="yolo-chat-list-dropdown-empty">
-              {t('sidebar.chatList.empty', 'No conversations')}
+              {activeSection === 'user'
+                ? t('sidebar.chatList.empty', 'No conversations')
+                : t('sidebar.chatList.noAutomatedTasks', 'No automated tasks')}
             </li>
           ) : filteredChatList.length === 0 ? (
             <li className="yolo-chat-list-dropdown-empty">
@@ -944,7 +1166,9 @@ export function ChatListDropdown({
                   runSummary={runSummariesByConversationId.get(chat.id)}
                   isCurrent={chat.id === currentConversationId}
                   isFocused={
-                    focusedConversationId === chat.id && !isHoveringArchiveRow
+                    focusedConversationId === chat.id &&
+                    !isHoveringArchiveRow &&
+                    activeMenuId === null
                   }
                   shouldScrollIntoView={
                     scrollIntoViewConversationId === chat.id
@@ -952,6 +1176,7 @@ export function ChatListDropdown({
                   isEditing={editingId === chat.id}
                   isUpdatingTitle={updatingTitleIds.has(chat.id)}
                   isPinned={Boolean(chat.isPinned)}
+                  canPin={activeSection === 'user'}
                   isRetrying={retryingConversationIds.has(chat.id)}
                   isMoreMenuOpen={moreMenuConversationId === chat.id}
                   isContextMenuOpen={activeMenuId === chat.id}
@@ -1082,7 +1307,13 @@ export function ChatListDropdown({
                     if (!isMobile) {
                       return
                     }
-                    handleLongPress(chat.id, cardEl)
+                    openContextMenu(chat.id, cardEl)
+                  }}
+                  onContextMenu={(cardEl, clientX, clientY) => {
+                    if (isMobile) {
+                      return
+                    }
+                    openContextMenu(chat.id, cardEl, { clientX, clientY })
                   }}
                 />
               ))}
@@ -1114,35 +1345,44 @@ export function ChatListDropdown({
             </>
           )}
         </ul>
-        {isMobile && activeMenuChat && menuPosition ? (
+        {activeMenuChat && menuPosition ? (
           <div
+            ref={contextMenuRef}
             className="yolo-chat-list-ctx-menu is-open"
             style={{ top: menuPosition.top, left: menuPosition.left }}
+            role="menu"
+            tabIndex={-1}
+            aria-label={t('sidebar.chatList.moreActions', 'More actions')}
+            onKeyDown={handleContextMenuKeyDown}
           >
+            {activeSection === 'user' ? (
+              <button
+                type="button"
+                role="menuitem"
+                data-act="pin"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveMenuId(null)
+                  setMenuPosition(null)
+                  setMoreMenuConversationId(null)
+                  void Promise.resolve(onTogglePinned(activeMenuChat.id)).catch(
+                    (error) => {
+                      console.error('Failed to toggle pin', error)
+                    },
+                  )
+                }}
+              >
+                <Star size={16} />
+                <span>
+                  {activeMenuChat.isPinned
+                    ? t('sidebar.chatList.unpinConversation', 'Unpin')
+                    : t('sidebar.chatList.pinConversation', 'Pin')}
+                </span>
+              </button>
+            ) : null}
             <button
               type="button"
-              data-act="pin"
-              onClick={(e) => {
-                e.stopPropagation()
-                setActiveMenuId(null)
-                setMenuPosition(null)
-                setMoreMenuConversationId(null)
-                void Promise.resolve(onTogglePinned(activeMenuChat.id)).catch(
-                  (error) => {
-                    console.error('Failed to toggle pin', error)
-                  },
-                )
-              }}
-            >
-              <Star size={16} />
-              <span>
-                {activeMenuChat.isPinned
-                  ? t('sidebar.chatList.unpinConversation', 'Unpin')
-                  : t('sidebar.chatList.pinConversation', 'Pin')}
-              </span>
-            </button>
-            <button
-              type="button"
+              role="menuitem"
               data-act="rename"
               onClick={(e) => {
                 e.stopPropagation()
@@ -1157,6 +1397,7 @@ export function ChatListDropdown({
             </button>
             <button
               type="button"
+              role="menuitem"
               data-act="retitle"
               disabled={retryingConversationIds.has(activeMenuChat.id)}
               onClick={(e) => {
@@ -1200,6 +1441,7 @@ export function ChatListDropdown({
             </button>
             <button
               type="button"
+              role="menuitem"
               data-act="export"
               onClick={(e) => {
                 e.stopPropagation()
@@ -1224,6 +1466,7 @@ export function ChatListDropdown({
             <hr />
             <button
               type="button"
+              role="menuitem"
               data-act="delete"
               className="danger"
               onClick={(e) => {

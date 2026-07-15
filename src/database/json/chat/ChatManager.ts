@@ -14,6 +14,7 @@ import {
   CHAT_SCHEMA_VERSION,
   ChatConversation,
   ChatConversationMetadata,
+  getChatConversationOrigin,
 } from './types'
 
 export class ChatManager extends AbstractJsonRepository<
@@ -60,6 +61,7 @@ export class ChatManager extends AbstractJsonRepository<
         schemaVersion: CHAT_SCHEMA_VERSION,
         title: '',
         updatedAt: 0,
+        origin: 'user',
       }
     }
 
@@ -78,6 +80,7 @@ export class ChatManager extends AbstractJsonRepository<
       schemaVersion: CHAT_SCHEMA_VERSION,
       title,
       updatedAt,
+      origin: 'user',
     }
   }
 
@@ -109,6 +112,7 @@ export class ChatManager extends AbstractJsonRepository<
       updatedAt: now,
       schemaVersion: CHAT_SCHEMA_VERSION,
       ...initialData,
+      origin: getChatConversationOrigin(initialData),
     }
 
     await this.create(newChat)
@@ -128,7 +132,10 @@ export class ChatManager extends AbstractJsonRepository<
   public async updateChat(
     id: string,
     updates: Partial<
-      Omit<ChatConversation, 'id' | 'createdAt' | 'updatedAt' | 'schemaVersion'>
+      Omit<
+        ChatConversation,
+        'id' | 'createdAt' | 'updatedAt' | 'schemaVersion' | 'origin'
+      >
     >,
     options?: {
       touchUpdatedAt?: boolean
@@ -258,7 +265,7 @@ export class ChatManager extends AbstractJsonRepository<
   private toMetadata(
     source: Pick<
       ChatConversation,
-      'id' | 'title' | 'updatedAt' | 'schemaVersion'
+      'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin'
     > & { isPinned?: boolean; pinnedAt?: number },
   ): ChatConversationMetadata {
     return {
@@ -268,6 +275,7 @@ export class ChatManager extends AbstractJsonRepository<
       schemaVersion: source.schemaVersion,
       isPinned: source.isPinned ?? false,
       pinnedAt: source.pinnedAt,
+      origin: getChatConversationOrigin(source),
     }
   }
 
@@ -279,12 +287,16 @@ export class ChatManager extends AbstractJsonRepository<
       // Drop garbage entries (e.g. a hand-corrupted index with a non-string
       // id) at the source so downstream id handling stays safe.
       if (!item || typeof item.id !== 'string' || item.id.length === 0) return
+      const normalizedItem = {
+        ...item,
+        origin: getChatConversationOrigin(item),
+      }
       const existing = map.get(item.id)
       if (!existing) {
-        map.set(item.id, item)
+        map.set(item.id, normalizedItem)
         return
       }
-      const preferred = this.pickPreferredIndexEntry(existing, item)
+      const preferred = this.pickPreferredIndexEntry(existing, normalizedItem)
       map.set(item.id, preferred)
     })
     return Array.from(map.values())
@@ -325,6 +337,7 @@ export class ChatManager extends AbstractJsonRepository<
       schemaVersion: chat.schemaVersion,
       isPinned: chat.isPinned ?? false,
       pinnedAt: chat.pinnedAt,
+      origin: getChatConversationOrigin(chat),
     }
     if (targetIndex === -1) {
       normalized.push(entry)

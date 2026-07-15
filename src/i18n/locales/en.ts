@@ -69,6 +69,13 @@ export const en: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
+      noAutomatedTasks: 'No automated tasks',
+      historySections: 'Conversation categories',
+      myConversations: 'My conversations',
+      automatedTasks: 'Automated tasks',
+      automatedTaskSources: 'Automated task sources',
+      allSources: 'All',
+      externalAgent: 'External Agent',
       current: 'Current',
       pinConversation: 'Pin',
       unpinConversation: 'Unpin',

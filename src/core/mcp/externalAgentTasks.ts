@@ -308,6 +308,14 @@ export class ExternalAgentTaskService {
       mcpManager: await this.options.getMcpManager(),
     })
 
+    await new ChatManager(this.options.app, settings).createChat({
+      id: conversationId,
+      title: buildConversationTitle(normalizedPrompt),
+      messages: [],
+      assistantId: resolvedAssistantId,
+      origin: 'external-agent',
+    })
+
     agentService.replaceConversationMessages(
       conversationId,
       resolved.input.messages,
@@ -315,13 +323,6 @@ export class ExternalAgentTaskService {
       { persistState: true },
     )
     await agentService.flushConversationPersistence(conversationId)
-    await new ChatManager(this.options.app, settings).updateChat(
-      conversationId,
-      {
-        title: buildConversationTitle(normalizedPrompt),
-        assistantId: resolvedAssistantId,
-      },
-    )
 
     const now = Date.now()
     const task: ExternalAgentTask = {

@@ -1,11 +1,16 @@
 import type { App } from 'obsidian'
 
+import { ChatManager } from '../../database/json/chat/ChatManager'
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import * as agentApi from '../agent/agent-api'
+import type { AgentService } from '../agent/service'
 
 import {
   type ExternalAgentTask,
+  ExternalAgentTaskService,
   ExternalAgentTaskStore,
 } from './externalAgentTasks'
+import type { McpManager } from './mcpManager'
 
 const TASK_PATH = 'YOLO/.yolo_json_db/external-agent-tasks.json'
 
@@ -31,7 +36,7 @@ const createHarness = () => {
   const app = { vault: { adapter } } as unknown as App
   const settings = { yolo: { baseDir: 'YOLO' } } as YoloSettings
   const store = new ExternalAgentTaskStore(app, () => settings)
-  return { adapter, files, store }
+  return { adapter, app, files, settings, store }
 }
 
 const makeTask = (
@@ -96,6 +101,60 @@ describe('ExternalAgentTaskStore', () => {
       expect(files.get(TASK_PATH)).toBe('{broken')
     } finally {
       consoleSpy.mockRestore()
+    }
+  })
+})
+
+describe('ExternalAgentTaskService', () => {
+  it('creates the conversation with an immutable external-agent origin', async () => {
+    const { app, settings } = createHarness()
+    settings.assistants = [
+      {
+        id: 'assistant-1',
+        name: 'Assistant 1',
+      },
+    ] as YoloSettings['assistants']
+    settings.currentAssistantId = 'assistant-1'
+    const createChatSpy = jest
+      .spyOn(ChatManager.prototype, 'createChat')
+      .mockResolvedValue({} as never)
+    const resolveSpy = jest
+      .spyOn(agentApi, 'resolveAgentApiRunInput')
+      .mockResolvedValue({
+        input: { messages: [] },
+        sourceUserMessageId: 'user-1',
+        loopConfig: {},
+        activity: {},
+      } as never)
+    const flushConversationPersistence = jest.fn().mockResolvedValue(undefined)
+    const agentService = {
+      replaceConversationMessages: jest.fn(),
+      flushConversationPersistence,
+      subscribe: jest.fn().mockReturnValue(jest.fn()),
+      run: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AgentService
+    const service = new ExternalAgentTaskService({
+      app,
+      getSettings: () => settings,
+      getAgentService: async () => agentService,
+      getMcpManager: async () => ({}) as McpManager,
+      openConversation: async () => undefined,
+    })
+
+    try {
+      await service.start({ prompt: 'Summarize the project' })
+
+      expect(createChatSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Summarize the project',
+          assistantId: 'assistant-1',
+          origin: 'external-agent',
+        }),
+      )
+      expect(flushConversationPersistence).toHaveBeenCalled()
+    } finally {
+      createChatSpy.mockRestore()
+      resolveSpy.mockRestore()
     }
   })
 })

@@ -69,6 +69,13 @@ export const zh: TranslationKeys = {
     chatList: {
       searchPlaceholder: '搜索聊天记录',
       empty: '暂无聊天记录',
+      noAutomatedTasks: '暂无自动任务',
+      historySections: '会话分类',
+      myConversations: '我的对话',
+      automatedTasks: '自动任务',
+      automatedTaskSources: '自动任务来源',
+      allSources: '全部',
+      externalAgent: '外部 Agent',
       current: '当前',
       pinConversation: '置顶',
       unpinConversation: '取消置顶',

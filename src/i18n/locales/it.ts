@@ -66,6 +66,13 @@ export const it: TranslationKeys = {
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
+      noAutomatedTasks: 'Nessuna attività automatica',
+      historySections: 'Categorie di conversazioni',
+      myConversations: 'Le mie conversazioni',
+      automatedTasks: 'Attività automatiche',
+      automatedTaskSources: 'Origini delle attività automatiche',
+      allSources: 'Tutte',
+      externalAgent: 'Agent esterno',
       current: 'Attuale',
       pinConversation: 'Fissa',
       unpinConversation: 'Rimuovi fissaggio',
