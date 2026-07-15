@@ -2793,6 +2793,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         setConversationOverrides(conversation.overrides ?? null)
         const loadedAssistantId =
+          conversation.assistantId ??
           conversationAssistantIdRef.current.get(conversationId) ??
           settings.currentAssistantId ??
           settings.assistants[0]?.id ??

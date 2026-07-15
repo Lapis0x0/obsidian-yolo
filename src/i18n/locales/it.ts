@@ -923,6 +923,16 @@ export const it: TranslationKeys = {
         'Uso finestra di contesto (%)',
       autoContextCompactionThresholdRatioPercentDesc:
         'Attiva quando prompt_tokens diviso per la finestra massima del modello di chat raggiunge questa percentuale. Richiede max context sul modello.',
+      mcpServerBlockTitle: 'Accesso per agenti esterni',
+      mcpServerEnabled: 'Consenti accesso agli agenti esterni',
+      mcpServerDesc:
+        'Consenti agli agenti esterni di cercare nel Vault tramite MCP e delegare attivita agli agenti YOLO configurati.',
+      mcpServerDesktopOnly: 'Il servizio MCP e disponibile solo su desktop.',
+      mcpServerClientConfig: 'Configurazione connessione MCP',
+      mcpServerCopyConfig: 'Copia',
+      mcpServerError: 'Avvio non riuscito',
+      mcpServerConfigCopied: 'Configurazione MCP copiata.',
+      mcpServerCopyFailed: 'Impossibile copiare la configurazione MCP.',
     },
     terminalCommand: {
       openSettings: 'Configura comando terminale',

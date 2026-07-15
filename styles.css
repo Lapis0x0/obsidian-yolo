@@ -1,4 +1,4 @@
-/* @yolo-version: 1.6.0.1 */
+/* @yolo-version: 1.6.0.2 */
 
 /* Settings */
 
@@ -4687,6 +4687,51 @@ button.yolo-assistant-selector-footer-btn:hover {
   font-weight: var(--font-semibold);
   color: var(--text-normal);
   margin-bottom: var(--size-4-2);
+}
+
+.yolo-agent-mcp-config-card.setting-item {
+  display: block;
+}
+
+.yolo-agent-mcp-config-title {
+  min-width: 0;
+}
+
+.yolo-agent-mcp-config-json-wrap {
+  position: relative;
+}
+
+.yolo-agent-mcp-config-json {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: var(--size-4-2) 0 0;
+  padding: var(--size-4-2);
+  padding-right: calc(var(--size-4-8) + var(--size-4-2));
+  overflow-x: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-normal);
+  white-space: pre;
+}
+
+button.yolo-agent-mcp-config-copy {
+  position: absolute;
+  top: var(--size-4-3);
+  right: var(--size-4-2);
+  z-index: 1;
+  margin: 0;
+}
+
+.yolo-agent-mcp-config-json code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
 }
 
 .yolo-agent-block-head-title-row {

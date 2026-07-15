@@ -4,6 +4,7 @@ import {
   Editor,
   MarkdownView,
   Notice,
+  Platform,
   Plugin,
   TFile,
   TFolder,
@@ -59,6 +60,10 @@ import type { ProjectEventBus } from './core/learning/projectEventBus'
 import { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
+import type {
+  LocalMcpServerRuntime,
+  LocalMcpServerState,
+} from './core/mcp/localMcpServerConfig'
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -227,6 +232,8 @@ export default class YoloPlugin extends Plugin {
   private ragCoordinator: RagCoordinator | null = null
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
+  private localMcpServer: LocalMcpServerRuntime | null = null
+  private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
   private learningEventBus: ProjectEventBus | null = null
@@ -938,6 +945,49 @@ export default class YoloPlugin extends Plugin {
       })
     }
     return this.mcpCoordinator
+  }
+
+  private async initializeLocalMcpServer(): Promise<void> {
+    if (!Platform.isDesktop || this.localMcpServer) return
+    const { DesktopLocalMcpServer } = await import(
+      './core/mcp/desktopLocalMcpServer'
+    )
+    const runtime = new DesktopLocalMcpServer({
+      app: this.app,
+      getSettings: () => this.settings,
+      getAgentService: () => this.warmupAgentService(),
+      getMcpManager: () => this.getMcpManager(),
+      getRagEngine: () => this.getRAGEngine(),
+      openConversation: (conversationId) =>
+        this.openChatView({ initialConversationId: conversationId }),
+    })
+    this.localMcpServer = runtime
+    this.localMcpSettingsUnsubscribe = this.addSettingsChangeListener(
+      (settings) => {
+        void runtime.updateSettings(settings)
+      },
+    )
+    await runtime.initialize()
+    await runtime.updateSettings(this.settings)
+  }
+
+  getLocalMcpServerState(): LocalMcpServerState {
+    return (
+      this.localMcpServer?.getState() ?? {
+        status: 'stopped',
+        url: '',
+      }
+    )
+  }
+
+  subscribeLocalMcpServerState(
+    listener: (state: LocalMcpServerState) => void,
+  ): () => void {
+    if (!this.localMcpServer) {
+      listener(this.getLocalMcpServerState())
+      return () => undefined
+    }
+    return this.localMcpServer.subscribe(listener)
   }
 
   private startWebviewSelectionBridge(): void {
@@ -2031,6 +2081,9 @@ export default class YoloPlugin extends Plugin {
     await this.migrateLegacyVaultMirrorIfNeeded()
     this.warnIfInstallationIncomplete()
     this.syncOAuthRuntimesFromSettings()
+    await this.initializeLocalMcpServer().catch((error) => {
+      console.error('[YOLO] Failed to initialize local MCP server', error)
+    })
 
     // Prune stale image cache entries (>30 days) on startup
     void pruneImageCache(this.app, 30, this.settings)
@@ -2535,6 +2588,10 @@ export default class YoloPlugin extends Plugin {
     this.dbManager = null
 
     // McpManager cleanup
+    this.localMcpSettingsUnsubscribe?.()
+    this.localMcpSettingsUnsubscribe = null
+    void this.localMcpServer?.close()
+    this.localMcpServer = null
     this.mcpCoordinator?.cleanup()
     this.mcpCoordinator = null
     this.mcpManager = null

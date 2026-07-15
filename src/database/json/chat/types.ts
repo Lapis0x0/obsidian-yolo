@@ -18,6 +18,7 @@ export type ChatConversation = {
   // Optional per-conversation overrides (temperature, top_p, stream)
   overrides?: ConversationOverrideSettings | null
   conversationModelId?: string
+  assistantId?: string
   messageModelMap?: Record<string, string>
   activeBranchByUserMessageId?: Record<string, string>
   assistantGroupBoundaryMessageIds?: string[]

@@ -986,6 +986,7 @@ export class AgentService {
   private summarySubscribers = new Set<AgentConversationRunSummarySubscriber>()
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private persistenceChains = new Map<string, Promise<void>>()
   private pendingScheduledConversationPublishes = new Map<
     string,
     PendingScheduledConversationPublish
@@ -2723,6 +2724,56 @@ export class AgentService {
     this.persistTimers.delete(conversationId)
   }
 
+  async flushConversationPersistence(conversationId: string): Promise<void> {
+    if (!this.options.persistConversationMessages) {
+      return
+    }
+    const entry = this.conversationEntries.get(conversationId)
+    if (!entry || !entry.persistState) {
+      return
+    }
+
+    this.cancelPersistTimer(conversationId)
+    await this.enqueueConversationPersistence(this.cloneState(entry.state))
+  }
+
+  private enqueueConversationPersistence(
+    state: AgentConversationState,
+    touchUpdatedAt?: boolean,
+  ): Promise<void> {
+    const persist = this.options.persistConversationMessages
+    if (!persist) {
+      return Promise.resolve()
+    }
+
+    const previous = this.persistenceChains.get(state.conversationId)
+    const next = (previous ?? Promise.resolve()).then(
+      () =>
+        persist({
+          conversationId: state.conversationId,
+          messages: state.messages,
+          compaction: [...(state.compaction ?? [])],
+          status: state.status,
+          touchUpdatedAt,
+        }),
+      () =>
+        persist({
+          conversationId: state.conversationId,
+          messages: state.messages,
+          compaction: [...(state.compaction ?? [])],
+          status: state.status,
+          touchUpdatedAt,
+        }),
+    )
+    const tracked = next.finally(() => {
+      if (this.persistenceChains.get(state.conversationId) === tracked) {
+        this.persistenceChains.delete(state.conversationId)
+      }
+    })
+    this.persistenceChains.set(state.conversationId, tracked)
+    return tracked
+  }
+
   private cloneState(state: AgentConversationState): AgentConversationState {
     return {
       conversationId: state.conversationId,
@@ -2783,21 +2834,15 @@ export class AgentService {
 
     const timer = setTimeout(() => {
       this.persistTimers.delete(state.conversationId)
-      void this.options
-        .persistConversationMessages?.({
-          conversationId: state.conversationId,
-          messages: state.messages,
-          compaction: [...(state.compaction ?? [])],
-          status: state.status,
-          touchUpdatedAt,
-        })
-        .catch((error) => {
+      void this.enqueueConversationPersistence(state, touchUpdatedAt).catch(
+        (error) => {
           console.error('[YOLO] Failed to persist agent conversation state', {
             conversationId: state.conversationId,
             status: state.status,
             error,
           })
-        })
+        },
+      )
     }, delayMs)
 
     this.persistTimers.set(state.conversationId, timer)

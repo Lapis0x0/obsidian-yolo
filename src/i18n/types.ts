@@ -468,6 +468,15 @@ export type TranslationKeys = {
       autoContextCompactionThresholdTokensDesc?: string
       autoContextCompactionThresholdRatioPercent?: string
       autoContextCompactionThresholdRatioPercentDesc?: string
+      mcpServerBlockTitle?: string
+      mcpServerDesc?: string
+      mcpServerDesktopOnly?: string
+      mcpServerEnabled?: string
+      mcpServerClientConfig?: string
+      mcpServerCopyConfig?: string
+      mcpServerError?: string
+      mcpServerConfigCopied?: string
+      mcpServerCopyFailed?: string
       jsSandboxExtTitle?: string
       jsSandboxAllowFetch?: string
       jsSandboxAllowFetchDesc?: string

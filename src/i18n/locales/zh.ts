@@ -876,6 +876,16 @@ export const zh: TranslationKeys = {
       autoContextCompactionThresholdRatioPercent: '上下文窗口占用（%）',
       autoContextCompactionThresholdRatioPercentDesc:
         '当 prompt_tokens 除以当前聊天模型配置的最大上下文窗口达到该比例时触发（需在模型中填写 max context）。',
+      mcpServerBlockTitle: '外部 Agent 接入',
+      mcpServerEnabled: '允许外部 Agent 访问',
+      mcpServerDesc:
+        '允许外部 Agent 通过 MCP 搜索 Vault，并向已配置的 YOLO Agent 委派任务。',
+      mcpServerDesktopOnly: 'MCP 服务仅支持桌面端。',
+      mcpServerClientConfig: 'MCP 连接配置',
+      mcpServerCopyConfig: '复制',
+      mcpServerError: '启动失败',
+      mcpServerConfigCopied: '已复制 MCP 配置。',
+      mcpServerCopyFailed: '复制 MCP 配置失败。',
       jsSandboxExtTitle: '扩展能力',
       jsSandboxAllowFetch: '允许网络请求',
       jsSandboxAllowFetchDesc:

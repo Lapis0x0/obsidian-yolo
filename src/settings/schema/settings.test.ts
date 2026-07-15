@@ -1,3 +1,5 @@
+import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConfig'
+
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
@@ -82,6 +84,24 @@ describe('parseYoloSettings', () => {
     expect(result.continuationOptions.smartSpaceQuickActions).toBeUndefined()
 
     expect(result.assistants).toEqual([])
+  })
+
+  it('defaults local MCP server settings without a schema migration', () => {
+    const result = parseYoloSettings({
+      version: 75,
+      mcp: {
+        servers: [],
+        builtinToolOptions: {},
+        enableToolDisclosure: false,
+      },
+    })
+
+    expect(result.version).toBe(75)
+    expect(result.mcp.localServer).toEqual({
+      enabled: false,
+      port: DEFAULT_LOCAL_MCP_SERVER_PORT,
+      token: '',
+    })
   })
 
   it('migrates applyModelId to chatTitleModelId for legacy settings', () => {

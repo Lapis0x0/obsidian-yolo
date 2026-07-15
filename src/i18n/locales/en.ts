@@ -939,6 +939,16 @@ export const en: TranslationKeys = {
       autoContextCompactionThresholdRatioPercent: 'Context window usage (%)',
       autoContextCompactionThresholdRatioPercentDesc:
         "Trigger when prompt_tokens divided by the chat model's max context window reaches this percentage. Requires max context tokens on the model.",
+      mcpServerBlockTitle: 'External agent access',
+      mcpServerEnabled: 'Allow external agent access',
+      mcpServerDesc:
+        'Allow external agents to search the Vault through MCP and delegate tasks to configured YOLO agents.',
+      mcpServerDesktopOnly: 'The MCP service is available on desktop only.',
+      mcpServerClientConfig: 'MCP connection configuration',
+      mcpServerCopyConfig: 'Copy',
+      mcpServerError: 'Failed to start',
+      mcpServerConfigCopied: 'MCP configuration copied.',
+      mcpServerCopyFailed: 'Failed to copy MCP configuration.',
       jsSandboxExtTitle: 'Extension capabilities',
       jsSandboxAllowFetch: 'Allow Network Fetch',
       jsSandboxAllowFetchDesc:

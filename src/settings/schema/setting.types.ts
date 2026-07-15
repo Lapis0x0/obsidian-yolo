@@ -4,6 +4,7 @@ import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_CHAT_TITLE_MODEL_ID,
 } from '../../constants'
+import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConfig'
 import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
@@ -349,11 +350,32 @@ export const yoloSettingsSchema = z.object({
       servers: resilientArraySchema(mcpServerConfigSchema),
       builtinToolOptions: mcpServerToolOptionsSchema.catch({}),
       enableToolDisclosure: z.boolean().catch(false),
+      localServer: z
+        .object({
+          enabled: z.boolean().catch(false),
+          port: z
+            .number()
+            .int()
+            .min(1024)
+            .max(65535)
+            .catch(DEFAULT_LOCAL_MCP_SERVER_PORT),
+          token: z.string().catch(''),
+        })
+        .catch({
+          enabled: false,
+          port: DEFAULT_LOCAL_MCP_SERVER_PORT,
+          token: '',
+        }),
     })
     .catch({
       servers: [],
       builtinToolOptions: {},
       enableToolDisclosure: false,
+      localServer: {
+        enabled: false,
+        port: DEFAULT_LOCAL_MCP_SERVER_PORT,
+        token: '',
+      },
     }),
 
   // JS sandbox (js_eval) capability configuration is global; execution

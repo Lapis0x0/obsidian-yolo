@@ -952,6 +952,38 @@ describe('AgentService dropConversation', () => {
   })
 })
 
+describe('AgentService conversation persistence flush', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  it('persists the latest conversation state before returning', async () => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const service = new AgentService({ persistConversationMessages })
+    const message = makeUserMessage('u-flush', 'persist me')
+
+    service.replaceConversationMessages('conv-flush', [message], [], {
+      persistState: true,
+    })
+    await service.flushConversationPersistence('conv-flush')
+
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+    expect(persistConversationMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-flush',
+        messages: [message],
+      }),
+    )
+    jest.runOnlyPendingTimers()
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('AgentService main activity summary', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
