@@ -35,6 +35,10 @@ export function splitDiscordMarkdown(
   return chunks
 }
 
+export function getEnglishReleaseNotes(markdown) {
+  return markdown.split(/^[ \t]*---[ \t]*$/m, 1)[0].trim()
+}
+
 function requireEnvironmentVariable(name) {
   const value = process.env[name]?.trim()
   if (!value) {
@@ -107,7 +111,9 @@ export async function notifyDiscordRelease() {
   const releaseUrl = requireEnvironmentVariable('RELEASE_URL')
   const releaseNotesPath =
     process.env.RELEASE_NOTES_PATH?.trim() || 'latest-release-note.md'
-  const releaseNotes = await readFile(releaseNotesPath, 'utf8')
+  const releaseNotes = getEnglishReleaseNotes(
+    await readFile(releaseNotesPath, 'utf8'),
+  )
   const chunks = splitDiscordMarkdown(releaseNotes)
   if (chunks.length === 0) {
     throw new Error('Release notes are empty')
