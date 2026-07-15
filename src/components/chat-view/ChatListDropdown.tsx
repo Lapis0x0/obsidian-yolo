@@ -26,15 +26,15 @@ import { getNodeWindow } from '../../utils/dom/window-context'
 import { YoloPopoverContent } from '../common/popover'
 
 import {
-  type AutomatedConversationOrigin,
-  type AutomatedOriginFilter,
   type ChatHistorySection,
+  type TaskConversationOrigin,
+  type TaskOriginFilter,
   partitionChatHistory,
 } from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
 let rememberedHistorySection: ChatHistorySection = 'user'
-let rememberedAutomatedOriginFilter: AutomatedOriginFilter = 'all'
+let rememberedTaskOriginFilter: TaskOriginFilter = 'all'
 
 function TitleInput({
   value,
@@ -526,8 +526,9 @@ export function ChatListDropdown({
   const [activeSection, setActiveSection] = useState<ChatHistorySection>(
     rememberedHistorySection,
   )
-  const [automatedOriginFilter, setAutomatedOriginFilter] =
-    useState<AutomatedOriginFilter>(rememberedAutomatedOriginFilter)
+  const [taskOriginFilter, setTaskOriginFilter] = useState<TaskOriginFilter>(
+    rememberedTaskOriginFilter,
+  )
   const [showArchived, setShowArchived] = useState(false)
   const [isHoveringArchiveRow, setIsHoveringArchiveRow] = useState(false)
   const [updatingTitleIds, setUpdatingTitleIds] = useState<Set<string>>(
@@ -565,41 +566,36 @@ export function ChatListDropdown({
     () => chatList.filter((chat) => getChatConversationOrigin(chat) === 'user'),
     [chatList],
   )
-  const automatedChatList = useMemo(
+  const taskChatList = useMemo(
     () => chatList.filter((chat) => getChatConversationOrigin(chat) !== 'user'),
     [chatList],
   )
-  const automatedOrigins = useMemo(
+  const taskOrigins = useMemo(
     () =>
       Array.from(
         new Set(
-          automatedChatList.map(
-            (chat) =>
-              getChatConversationOrigin(chat) as AutomatedConversationOrigin,
+          taskChatList.map(
+            (chat) => getChatConversationOrigin(chat) as TaskConversationOrigin,
           ),
         ),
       ),
-    [automatedChatList],
+    [taskChatList],
   )
-  const sectionChatList =
-    activeSection === 'user' ? userChatList : automatedChatList
+  const sectionChatList = activeSection === 'user' ? userChatList : taskChatList
   const scopedChatList = useMemo(() => {
     if (activeSection === 'user') return userChatList
-    if (automatedOriginFilter === 'all') return automatedChatList
-    return automatedChatList.filter(
-      (chat) => getChatConversationOrigin(chat) === automatedOriginFilter,
+    if (taskOriginFilter === 'all') return taskChatList
+    return taskChatList.filter(
+      (chat) => getChatConversationOrigin(chat) === taskOriginFilter,
     )
-  }, [activeSection, automatedChatList, automatedOriginFilter, userChatList])
+  }, [activeSection, taskChatList, taskOriginFilter, userChatList])
 
   useEffect(() => {
-    if (
-      automatedOriginFilter !== 'all' &&
-      !automatedOrigins.includes(automatedOriginFilter)
-    ) {
-      rememberedAutomatedOriginFilter = 'all'
-      setAutomatedOriginFilter('all')
+    if (taskOriginFilter !== 'all' && !taskOrigins.includes(taskOriginFilter)) {
+      rememberedTaskOriginFilter = 'all'
+      setTaskOriginFilter('all')
     }
-  }, [automatedOriginFilter, automatedOrigins])
+  }, [taskOriginFilter, taskOrigins])
 
   const untitledFallback = t('chat.untitledConversation', 'New chat')
   const getDisplayTitle = useCallback(
@@ -658,12 +654,12 @@ export function ChatListDropdown({
       chatList: baseDisplayChatList,
       currentConversationId,
       section: activeSection,
-      originFilter: automatedOriginFilter,
+      originFilter: taskOriginFilter,
       useArchive: shouldUseArchive,
     })
   }, [
     activeSection,
-    automatedOriginFilter,
+    taskOriginFilter,
     baseDisplayChatList,
     currentConversationId,
     shouldUseArchive,
@@ -691,7 +687,7 @@ export function ChatListDropdown({
     (nextOpen: boolean) => {
       if (nextOpen) {
         setActiveSection(rememberedHistorySection)
-        setAutomatedOriginFilter(rememberedAutomatedOriginFilter)
+        setTaskOriginFilter(rememberedTaskOriginFilter)
         const nextFocusedConversationId =
           pinnedSortedChatList.find((chat) => chat.id === currentConversationId)
             ?.id ??
@@ -1061,13 +1057,13 @@ export function ChatListDropdown({
           </button>
           <button
             type="button"
-            aria-pressed={activeSection === 'automated'}
+            aria-pressed={activeSection === 'task'}
             className={`yolo-chat-list-section-tab${
-              activeSection === 'automated' ? ' is-active' : ''
+              activeSection === 'task' ? ' is-active' : ''
             }`}
             onClick={() => {
-              rememberedHistorySection = 'automated'
-              setActiveSection('automated')
+              rememberedHistorySection = 'task'
+              setActiveSection('task')
               setShowArchived(false)
               setMoreMenuConversationId(null)
               setActiveMenuId(null)
@@ -1075,46 +1071,46 @@ export function ChatListDropdown({
             }}
           >
             <span>
-              {t('sidebar.chatList.automatedTasks', 'Automated tasks')}
+              {t('sidebar.chatList.taskConversations', 'Task conversations')}
             </span>
             <span className="yolo-chat-list-section-count">
-              {automatedChatList.length}
+              {taskChatList.length}
             </span>
           </button>
         </div>
-        {activeSection === 'automated' && automatedOrigins.length > 1 ? (
+        {activeSection === 'task' && taskOrigins.length > 1 ? (
           <div
             className="yolo-chat-list-origin-filters"
             aria-label={t(
-              'sidebar.chatList.automatedTaskSources',
-              'Automated task sources',
+              'sidebar.chatList.taskConversationSources',
+              'Task conversation sources',
             )}
           >
             <button
               type="button"
               className={`yolo-chat-list-origin-filter${
-                automatedOriginFilter === 'all' ? ' is-active' : ''
+                taskOriginFilter === 'all' ? ' is-active' : ''
               }`}
-              aria-pressed={automatedOriginFilter === 'all'}
+              aria-pressed={taskOriginFilter === 'all'}
               onClick={() => {
-                rememberedAutomatedOriginFilter = 'all'
-                setAutomatedOriginFilter('all')
+                rememberedTaskOriginFilter = 'all'
+                setTaskOriginFilter('all')
                 setShowArchived(false)
               }}
             >
               {t('sidebar.chatList.allSources', 'All')}
             </button>
-            {automatedOrigins.map((origin) => (
+            {taskOrigins.map((origin) => (
               <button
                 key={origin}
                 type="button"
                 className={`yolo-chat-list-origin-filter${
-                  automatedOriginFilter === origin ? ' is-active' : ''
+                  taskOriginFilter === origin ? ' is-active' : ''
                 }`}
-                aria-pressed={automatedOriginFilter === origin}
+                aria-pressed={taskOriginFilter === origin}
                 onClick={() => {
-                  rememberedAutomatedOriginFilter = origin
-                  setAutomatedOriginFilter(origin)
+                  rememberedTaskOriginFilter = origin
+                  setTaskOriginFilter(origin)
                   setShowArchived(false)
                 }}
               >
@@ -1150,7 +1146,10 @@ export function ChatListDropdown({
             <li className="yolo-chat-list-dropdown-empty">
               {activeSection === 'user'
                 ? t('sidebar.chatList.empty', 'No conversations')
-                : t('sidebar.chatList.noAutomatedTasks', 'No automated tasks')}
+                : t(
+                    'sidebar.chatList.noTaskConversations',
+                    'No task conversations',
+                  )}
             </li>
           ) : filteredChatList.length === 0 ? (
             <li className="yolo-chat-list-dropdown-empty">

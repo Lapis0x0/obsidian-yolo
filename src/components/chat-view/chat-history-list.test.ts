@@ -19,7 +19,7 @@ const makeChat = (
 })
 
 describe('partitionChatHistory', () => {
-  it('applies the automated origin filter after the shared archive boundary', () => {
+  it('applies the task origin filter after the shared archive boundary', () => {
     const futureOrigin = 'scheduled-task' as ChatConversationOrigin
     const chats = [
       makeChat('scheduled-6', futureOrigin),
@@ -33,7 +33,7 @@ describe('partitionChatHistory', () => {
     const result = partitionChatHistory({
       chatList: chats,
       currentConversationId: '',
-      section: 'automated',
+      section: 'task',
       originFilter: 'external-agent',
       useArchive: true,
       recentLimit: 3,
@@ -47,16 +47,16 @@ describe('partitionChatHistory', () => {
   })
 
   it('keeps pins exclusive to user history and surfaces the current archive item', () => {
-    const automated = [
+    const taskChats = [
       makeChat('external-3', 'external-agent'),
       makeChat('external-2', 'external-agent'),
       makeChat('external-1', 'external-agent', true),
     ]
 
     const withoutCurrent = partitionChatHistory({
-      chatList: automated,
+      chatList: taskChats,
       currentConversationId: '',
-      section: 'automated',
+      section: 'task',
       originFilter: 'all',
       useArchive: true,
       recentLimit: 2,
@@ -71,9 +71,9 @@ describe('partitionChatHistory', () => {
     ])
 
     const withCurrent = partitionChatHistory({
-      chatList: automated,
+      chatList: taskChats,
       currentConversationId: 'external-1',
-      section: 'automated',
+      section: 'task',
       originFilter: 'all',
       useArchive: true,
       recentLimit: 2,

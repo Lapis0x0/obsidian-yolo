@@ -4,12 +4,9 @@ import {
   getChatConversationOrigin,
 } from '../../database/json/chat/types'
 
-export type ChatHistorySection = 'user' | 'automated'
-export type AutomatedConversationOrigin = Exclude<
-  ChatConversationOrigin,
-  'user'
->
-export type AutomatedOriginFilter = 'all' | AutomatedConversationOrigin
+export type ChatHistorySection = 'user' | 'task'
+export type TaskConversationOrigin = Exclude<ChatConversationOrigin, 'user'>
+export type TaskOriginFilter = 'all' | TaskConversationOrigin
 
 export function partitionChatHistory({
   chatList,
@@ -22,7 +19,7 @@ export function partitionChatHistory({
   chatList: ChatConversationMetadata[]
   currentConversationId: string
   section: ChatHistorySection
-  originFilter: AutomatedOriginFilter
+  originFilter: TaskOriginFilter
   useArchive: boolean
   recentLimit?: number
 }): {
