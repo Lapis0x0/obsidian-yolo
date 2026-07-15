@@ -4,6 +4,7 @@ export const it: TranslationKeys = {
   commands: {
     openChat: 'Apri chat',
     openChatSidebar: 'Apri chat (barra laterale)',
+    openLearningMode: 'Apri modalità di apprendimento',
     newChatCurrentView: 'Nuova chat',
     openYoloNewChat: 'YOLO: Apri finestra chat',
     openNewChatTab: 'Apri nuova chat (nuova scheda)',

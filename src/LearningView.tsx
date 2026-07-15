@@ -56,7 +56,7 @@ export class LearningView extends ItemView {
   }
 
   getDisplayText(): string {
-    return '学习模式'
+    return this.plugin.t('learning.wizard.modeLabel', 'Learning mode')
   }
 
   async onOpen(): Promise<void> {

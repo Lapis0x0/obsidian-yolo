@@ -2104,9 +2104,13 @@ export default class YoloPlugin extends Plugin {
     this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
     })
-    this.addRibbonIcon('graduation-cap', '打开学习模式', () => {
-      void this.openLearningView()
-    })
+    this.addRibbonIcon(
+      'graduation-cap',
+      this.t('commands.openLearningMode'),
+      () => {
+        void this.openLearningView()
+      },
+    )
 
     this.setupBackgroundActivityStatusBar()
     this.actionToastController = mountActionToast()
@@ -2184,7 +2188,7 @@ export default class YoloPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-learning-mode',
-      name: '打开学习模式',
+      name: this.t('commands.openLearningMode'),
       callback: () => {
         void this.openLearningView()
       },
