@@ -2194,7 +2194,6 @@ export const zh: TranslationKeys = {
     agentStatusRunning: '运行中',
     agentStatusWaitingApproval: '待审批',
     agentStatusFallbackConversationTitle: '运行中的对话',
-    backgroundStatusAriaLabel: '活动与提醒，点击查看详情',
     backgroundStatusPanelTitle: '活动与提醒',
     backgroundStatusPanelEmpty: '当前没有活动或提醒',
     backgroundTasksRunning: '当前有 {count} 个后台任务正在运行',

@@ -1446,10 +1446,6 @@ export default class YoloPlugin extends Plugin {
 
     this.backgroundStatusBarLabel.setText(label)
     this.backgroundStatusBarItem.removeAttribute('title')
-    this.backgroundStatusBarItem.setAttribute(
-      'aria-label',
-      this.t('statusBar.backgroundStatusAriaLabel', '活动与提醒，点击查看详情'),
-    )
     this.backgroundStatusBarRing.empty()
     this.backgroundStatusBarRing.classList.remove(
       'is-running',

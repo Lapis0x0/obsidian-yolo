@@ -14208,7 +14208,7 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   grid-template-areas:
     'header header'
     'body action';
-  align-items: end;
+  align-items: start;
   row-gap: 4px;
   column-gap: 12px;
   margin-top: var(--size-4-1);
@@ -14260,6 +14260,7 @@ button.yolo-assistant-error-card-continue {
   justify-content: center;
   flex: 0 0 auto;
   gap: 4px;
+  height: auto;
   min-height: 24px;
   margin-inline-start: 0;
   padding: 2px 6px;

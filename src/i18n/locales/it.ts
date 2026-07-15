@@ -2240,7 +2240,6 @@ export const it: TranslationKeys = {
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
-    backgroundStatusAriaLabel: 'Attivita e promemoria, clicca per i dettagli',
     backgroundStatusPanelTitle: 'Attivita e promemoria',
     backgroundStatusPanelEmpty: 'Non ci sono attivita o promemoria',
     backgroundTasksRunning:
