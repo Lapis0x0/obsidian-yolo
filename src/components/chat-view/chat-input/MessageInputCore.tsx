@@ -74,6 +74,7 @@ export type MessageInputCoreRef = {
   focus: () => void
   focusEnd: () => void
   insertText: (text: string) => void
+  insertSkill: (skill: ChatSelectedSkill) => void
   appendText: (text: string) => void
   replaceText: (text: string) => void
   submit: () => void
@@ -662,6 +663,30 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
           )
 
           // Focus the editor after inserting
+          contentEditableRef.current?.focus()
+        },
+        insertSkill: (skill: ChatSelectedSkill) => {
+          if (!editorRef.current) return
+
+          editorRef.current.update(
+            () => {
+              const skillNode = $createSkillNode(skill.name, skill)
+              const spacer = $createTextNode(' ')
+              const selection = $getSelection()
+              if ($isRangeSelection(selection)) {
+                selection.insertNodes([skillNode, spacer])
+              } else {
+                const root = $getRoot()
+                root.selectEnd()
+                const newSelection = $getSelection()
+                if ($isRangeSelection(newSelection)) {
+                  newSelection.insertNodes([skillNode, spacer])
+                }
+              }
+            },
+            { discrete: true },
+          )
+
           contentEditableRef.current?.focus()
         },
         appendText: (text: string) => {

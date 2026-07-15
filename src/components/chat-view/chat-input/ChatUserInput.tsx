@@ -696,7 +696,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       const nextSkills = [...currentSkills, skill]
       selectedSkillsRef.current = nextSkills
       setSelectedSkills(nextSkills)
-      requestAnimationFrame(() => coreRef.current?.focusEnd())
+      coreRef.current?.insertSkill(skill)
     }
 
     const handleQuickAccessSnippetSelect = (snippet: { content: string }) => {
