@@ -334,6 +334,160 @@ describe('AgentLlmTurnExecutor', () => {
     )
   })
 
+  it('appends continuation deltas to the interrupted assistant message', async () => {
+    const provider = new MockProvider()
+    const interruptedMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-interrupted',
+      content: 'Hello',
+      reasoning: 'Initial thought. ',
+      toolCallRequests: [
+        {
+          id: 'partial-tool',
+          name: 'fs_read',
+          arguments: createPartialToolCallArguments('{"path"'),
+        },
+      ],
+      metadata: {
+        model: TEST_MODEL,
+        generationState: 'error',
+        errorMessage: 'Premature close',
+        sourceUserMessageId: 'user-1',
+      },
+    }
+    mockExecuteSingleTurn.mockImplementation(async ({ onStreamDelta }) => {
+      onStreamDelta?.({
+        contentDelta: ' world',
+        reasoningDelta: 'Continued thought.',
+        chunk: {
+          id: 'stream-continue',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [{ finish_reason: null, delta: {} }],
+        },
+      })
+      return {
+        content: ' world',
+        reasoning: 'Continued thought.',
+        annotations: undefined,
+        usage: undefined,
+        toolCalls: [],
+      }
+    })
+
+    const observed: ChatAssistantMessage[] = []
+    const executor = new AgentLlmTurnExecutor({
+      providerClient: provider,
+      model: TEST_MODEL,
+      requestContextBuilder: {
+        generateRequestMessages: jest
+          .fn()
+          .mockResolvedValue([{ role: 'user', content: 'continue' }]),
+      } as unknown as RequestContextBuilder,
+      mcpManager: createMockMcpManager(),
+      conversationId: 'conv-1',
+      messages: [],
+      sourceUserMessageId: 'user-1',
+      enableTools: false,
+      includeBuiltinTools: false,
+      resumeAssistantMessage: interruptedMessage,
+      onAssistantMessage: (message) => {
+        observed.push({
+          ...message,
+          metadata: message.metadata ? { ...message.metadata } : undefined,
+          toolCallRequests: message.toolCallRequests
+            ? [...message.toolCallRequests]
+            : undefined,
+        })
+      },
+    })
+
+    const result = await executor.run()
+
+    expect(observed[0]).toEqual(
+      expect.objectContaining({
+        id: interruptedMessage.id,
+        content: 'Hello',
+        toolCallRequests: undefined,
+        metadata: expect.objectContaining({
+          generationState: 'streaming',
+          errorMessage: undefined,
+        }),
+      }),
+    )
+    expect(result.assistantMessage).toEqual(
+      expect.objectContaining({
+        id: interruptedMessage.id,
+        content: 'Hello world',
+        reasoning: 'Initial thought. Continued thought.',
+        toolCallRequests: undefined,
+        metadata: expect.objectContaining({ generationState: 'completed' }),
+      }),
+    )
+  })
+
+  it('keeps cumulative continuation text when the resumed stream fails again', async () => {
+    const provider = new MockProvider()
+    mockExecuteSingleTurn.mockImplementation(async ({ onStreamDelta }) => {
+      onStreamDelta?.({
+        contentDelta: ' more',
+        reasoningDelta: '',
+        chunk: {
+          id: 'stream-failed-again',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [{ finish_reason: null, delta: {} }],
+        },
+      })
+      throw new Error('socket hang up')
+    })
+
+    const observed: ChatAssistantMessage[] = []
+    const executor = new AgentLlmTurnExecutor({
+      providerClient: provider,
+      model: TEST_MODEL,
+      requestContextBuilder: {
+        generateRequestMessages: jest
+          .fn()
+          .mockResolvedValue([{ role: 'user', content: 'continue' }]),
+      } as unknown as RequestContextBuilder,
+      mcpManager: createMockMcpManager(),
+      conversationId: 'conv-1',
+      messages: [],
+      sourceUserMessageId: 'user-1',
+      enableTools: false,
+      includeBuiltinTools: false,
+      resumeAssistantMessage: {
+        role: 'assistant',
+        id: 'assistant-interrupted',
+        content: 'partial',
+        metadata: {
+          model: TEST_MODEL,
+          generationState: 'error',
+          errorMessage: 'Premature close',
+        },
+      },
+      onAssistantMessage: (message) => {
+        observed.push({
+          ...message,
+          metadata: message.metadata ? { ...message.metadata } : undefined,
+        })
+      },
+    })
+
+    await expect(executor.run()).rejects.toThrow('socket hang up')
+    expect(observed.at(-1)).toEqual(
+      expect.objectContaining({
+        id: 'assistant-interrupted',
+        content: 'partial more',
+        metadata: expect.objectContaining({
+          generationState: 'error',
+          errorMessage: 'socket hang up',
+        }),
+      }),
+    )
+  })
+
   it('includes nested cause details in assistant error messages', async () => {
     const provider = new MockProvider()
     const requestContextBuilder = {

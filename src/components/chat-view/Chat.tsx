@@ -139,6 +139,7 @@ import { getChatSurfacePreset } from './chat-surface-presets'
 import { ChatConversationPane } from './ChatConversationPane'
 import { ChatListDropdown } from './ChatListDropdown'
 import {
+  buildAssistantErrorContinuation,
   buildRetrySubmissionMessages,
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
@@ -1545,6 +1546,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [activeBranchByUserMessageId, setActiveBranchByUserMessageId] =
     useState<Map<string, string>>(new Map())
   const submitMutationPendingRef = useRef(false)
+  const assistantContinuationPendingRef = useRef(false)
 
   const chatTimelineReadModel = useChatTimelineReadModel({
     messages: chatMessages,
@@ -1552,6 +1554,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
   const groupedChatMessages = chatTimelineReadModel.groupedChatMessages
   const groupedChatMessagesRef = useLatestRef(groupedChatMessages)
+  const continuableErrorMessageIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
+      const message = chatMessages[index]
+      if (message.role === 'user') {
+        break
+      }
+      if (
+        message.role === 'assistant' &&
+        buildAssistantErrorContinuation({
+          sourceMessages: chatMessages,
+          groupedChatMessages,
+          assistantMessageId: message.id,
+          activeBranchByUserMessageId,
+        })
+      ) {
+        ids.add(message.id)
+      }
+    }
+    return ids
+  }, [activeBranchByUserMessageId, chatMessages, groupedChatMessages])
   const {
     windowedGroupedChatMessages,
     hasEarlierMessages,
@@ -3921,6 +3944,58 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleAssistantErrorContinue = useCallback(
+    (assistantMessageId: string) => {
+      if (assistantContinuationPendingRef.current) {
+        return
+      }
+      const payload = buildAssistantErrorContinuation({
+        sourceMessages: chatMessagesStateRef.current,
+        groupedChatMessages: groupedChatMessagesRef.current,
+        assistantMessageId,
+        activeBranchByUserMessageId: activeBranchByUserMessageIdRef.current,
+      })
+      if (!payload) {
+        new Notice(
+          t('chat.regenerateFailed', 'Failed to regenerate this reply'),
+        )
+        return
+      }
+
+      forceScrollToBottom()
+      assistantContinuationPendingRef.current = true
+      submitChatMutation.mutate(
+        {
+          chatMessages: payload.inputChatMessages,
+          requestMessages: payload.requestChatMessages,
+          conversationId: currentConversationId,
+          reasoningLevel: resolveReasoningLevelForMessages(
+            payload.requestChatMessages,
+          ),
+          assistantContinuation: {
+            assistantMessageId: payload.assistantMessageId,
+            sourceUserMessageId: payload.sourceUserMessageId,
+            modelId: payload.modelId,
+            branchId: payload.branchId,
+            branchLabel: payload.branchLabel,
+          },
+        },
+        {
+          onSettled: () => {
+            assistantContinuationPendingRef.current = false
+          },
+        },
+      )
+    },
+    [
+      currentConversationId,
+      forceScrollToBottom,
+      resolveReasoningLevelForMessages,
+      submitChatMutation,
+      t,
+    ],
+  )
+
   const applyMutation = useMutation({
     mutationFn: async ({
       blockToApply,
@@ -5796,6 +5871,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     handleApply,
     handleAssistantGroupActiveBranchChange,
     handleAssistantGroupEditStart,
+    handleAssistantErrorContinue,
     handleAssistantMessageEditCancel,
     handleAssistantMessageEditSave,
     handleAssistantMessageGroupBranch,
@@ -5911,6 +5987,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               sourceUserMessageId ?? '',
             )}
             sourceUserMessageId={sourceUserMessageId}
+            continuableErrorMessageIds={continuableErrorMessageIds}
             suppressFooter={
               shouldSuppressCompactionAnchorFooter ||
               foregroundAgentFooter?.suppress === true
@@ -5977,6 +6054,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               timelineHandlersRef.current.handleAssistantMessageGroupRetry(
                 ...args,
               )
+            }
+            onContinueError={(...args) =>
+              timelineHandlersRef.current.handleAssistantErrorContinue(...args)
             }
             onBranchGroup={(...args) =>
               timelineHandlersRef.current.handleAssistantMessageGroupBranch(
@@ -6290,6 +6370,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       compactionDividerTitle,
       conversationAssistantId,
       conversationModelId,
+      continuableErrorMessageIds,
       currentConversationId,
       editingAssistantMessageId,
       enteringCompactionDividerAnchorMessageId,

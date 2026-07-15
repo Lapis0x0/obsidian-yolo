@@ -50,6 +50,9 @@ import {
   AgentWorkerOutbound,
 } from './types'
 
+export const ASSISTANT_CONTINUATION_PROMPT =
+  'The previous assistant response was interrupted before completion. Resume the same task exactly where it stopped. Do not repeat, revise, summarize, or acknowledge content already produced. Continue using tools if needed.'
+
 export class NativeAgentRuntime implements AgentRuntime {
   private subscribers: AgentRuntimeSubscribe[] = []
   private messages: ChatMessage[] = []
@@ -86,7 +89,30 @@ export class NativeAgentRuntime implements AgentRuntime {
   }
 
   async run(input: AgentRuntimeRunInput): Promise<void> {
-    const requestMessages = input.requestMessages ?? input.messages
+    const inputRequestMessages = input.requestMessages ?? input.messages
+    const resumeAssistantMessage = input.continueAssistantMessageId
+      ? inputRequestMessages.find(
+          (message): message is ChatAssistantMessage =>
+            message.role === 'assistant' &&
+            message.id === input.continueAssistantMessageId,
+        )
+      : undefined
+    if (input.continueAssistantMessageId && !resumeAssistantMessage) {
+      throw new Error('Interrupted assistant message is no longer available.')
+    }
+    const requestMessages = resumeAssistantMessage
+      ? inputRequestMessages.map((message) =>
+          message.id === resumeAssistantMessage.id &&
+          message.role === 'assistant'
+            ? { ...message, toolCallRequests: undefined }
+            : message,
+        )
+      : inputRequestMessages
+    const ongoingRequestMessages = resumeAssistantMessage
+      ? requestMessages.filter(
+          (message) => message.id !== resumeAssistantMessage.id,
+        )
+      : requestMessages
     this.compactionState = normalizeChatConversationCompactionState(
       input.compaction,
     )
@@ -101,7 +127,12 @@ export class NativeAgentRuntime implements AgentRuntime {
 
     if (this.shouldUseSingleTurnFastPath()) {
       try {
-        await this.runSingleTurnFastPath(input, abortSignal)
+        await this.runSingleTurnFastPath(
+          input,
+          abortSignal,
+          requestMessages,
+          resumeAssistantMessage,
+        )
       } finally {
         if (this.runAbortController === localAbortController) {
           this.runAbortController = null
@@ -148,6 +179,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     let repeatedReadCallGuardState = createRepeatedReadCallGuardState()
     let repeatedToolFailureGuardState = createRepeatedToolFailureGuardState()
     const promptedAutoCompactionAssistantMessageIds = new Set<string>()
+    let pendingResumeAssistantMessage = resumeAssistantMessage
 
     const runCompletion = new Promise<void>((resolve, reject) => {
       const handleWorkerMessage = (message: AgentWorkerOutbound): void => {
@@ -175,8 +207,12 @@ export class NativeAgentRuntime implements AgentRuntime {
                   }
                 }
 
+                const resumedMessageForTurn = pendingResumeAssistantMessage
+                pendingResumeAssistantMessage = undefined
                 const conversationMessages = [
-                  ...requestMessages,
+                  ...(resumedMessageForTurn
+                    ? requestMessages
+                    : ongoingRequestMessages),
                   ...this.messages,
                 ]
                 const autoContextCompactionNotice =
@@ -186,7 +222,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                     promptedAssistantMessageIds:
                       promptedAutoCompactionAssistantMessageIds,
                   })
-
                 const llmTurnExecutor = new AgentLlmTurnExecutor({
                   providerClient: input.providerClient,
                   model: input.model,
@@ -214,8 +249,26 @@ export class NativeAgentRuntime implements AgentRuntime {
                   }),
                   toolCapabilityMode: input.toolCapabilityMode,
                   transientRequestMessages: autoContextCompactionNotice
-                    ? [autoContextCompactionNotice]
-                    : undefined,
+                    ? [
+                        autoContextCompactionNotice,
+                        ...(resumedMessageForTurn
+                          ? [
+                              {
+                                role: 'user' as const,
+                                content: ASSISTANT_CONTINUATION_PROMPT,
+                              },
+                            ]
+                          : []),
+                      ]
+                    : resumedMessageForTurn
+                      ? [
+                          {
+                            role: 'user' as const,
+                            content: ASSISTANT_CONTINUATION_PROMPT,
+                          },
+                        ]
+                      : undefined,
+                  resumeAssistantMessage: resumedMessageForTurn,
                   geminiTools: input.geminiTools,
                   systemPromptOverride: input.systemPromptOverride,
                   onAssistantMessage: (assistantMessage) => {
@@ -277,7 +330,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                       toolMessage: initialToolMessage,
                       conversationId: input.conversationId,
                       conversationMessages: [
-                        ...requestMessages,
+                        ...ongoingRequestMessages,
                         ...this.messages,
                       ],
                       conversationCompaction: this.compactionState,
@@ -312,7 +365,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   this.notifySubscribers()
 
                   const conversationMessages = [
-                    ...requestMessages,
+                    ...ongoingRequestMessages,
                     ...this.messages,
                   ]
 
@@ -531,6 +584,8 @@ export class NativeAgentRuntime implements AgentRuntime {
   private async runSingleTurnFastPath(
     input: AgentRuntimeRunInput,
     abortSignal: AbortSignal,
+    requestMessages: ChatMessage[],
+    resumeAssistantMessage?: ChatAssistantMessage,
   ): Promise<void> {
     const llmTurnExecutor = new AgentLlmTurnExecutor({
       providerClient: input.providerClient,
@@ -538,10 +593,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       requestContextBuilder: input.requestContextBuilder,
       mcpManager: input.mcpManager,
       conversationId: input.conversationId,
-      messages: [
-        ...(input.requestMessages ?? input.messages),
-        ...this.messages,
-      ],
+      messages: [...requestMessages, ...this.messages],
       enableTools: false,
       includeBuiltinTools: false,
       apiType: input.apiType,
@@ -555,6 +607,15 @@ export class NativeAgentRuntime implements AgentRuntime {
       toolCapabilityMode: input.toolCapabilityMode,
       geminiTools: input.geminiTools,
       systemPromptOverride: input.systemPromptOverride,
+      transientRequestMessages: resumeAssistantMessage
+        ? [
+            {
+              role: 'user',
+              content: ASSISTANT_CONTINUATION_PROMPT,
+            },
+          ]
+        : undefined,
+      resumeAssistantMessage,
       onAssistantMessage: (assistantMessage) => {
         this.upsertAssistantMessage(assistantMessage)
         this.notifySubscribers()

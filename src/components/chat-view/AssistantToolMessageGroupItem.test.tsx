@@ -113,6 +113,42 @@ describe('AssistantToolMessageGroupItem', () => {
     expect(html).toContain('400 Reasoning is mandatory for this endpoint.')
   })
 
+  it('renders Continue in the error card for an eligible partial response', () => {
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-continue',
+      content: 'partial response',
+      metadata: {
+        generationState: 'error',
+        errorMessage: 'Premature close',
+      },
+    }
+
+    const html = renderToStaticMarkup(
+      <AssistantToolMessageGroupItem
+        messages={[assistantMessage]}
+        conversationId="conversation-1"
+        continuableErrorMessageIds={new Set([assistantMessage.id])}
+        onContinueError={() => {}}
+        isApplying={false}
+        activeApplyRequestKey={null}
+        onApply={() => {}}
+        onToolMessageUpdate={() => {}}
+        onEditStart={() => {}}
+        onEditCancel={() => {}}
+        onEditSave={() => {}}
+        onDeleteGroup={() => {}}
+        onRetryGroup={() => {}}
+        onBranchGroup={() => {}}
+        onQuoteAssistantSelection={() => {}}
+        onOpenEditSummaryFile={() => {}}
+      />,
+    )
+
+    expect(html).toContain('Continue response')
+    expect(html).toContain('yolo-assistant-error-card-continue')
+  })
+
   it('renders structured LLM response format errors as user-facing text', () => {
     const error = new LLMResponseFormatError({
       adapter: 'Kimi',

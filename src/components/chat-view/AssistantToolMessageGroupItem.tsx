@@ -230,6 +230,8 @@ export type AssistantToolMessageGroupItemProps = {
   onEditSave: (messageId: string, replacementMessages: ChatMessage[]) => void
   onDeleteGroup: (messageIds: string[]) => void
   onRetryGroup: (messageIds: string[]) => void
+  continuableErrorMessageIds?: ReadonlySet<string>
+  onContinueError?: (assistantMessageId: string) => void
   onBranchGroup: (messageIds: string[]) => void
   onActiveBranchChange?: (
     sourceUserMessageId: string,
@@ -279,6 +281,8 @@ function AssistantToolMessageGroupItem({
   onEditSave,
   onDeleteGroup,
   onRetryGroup,
+  continuableErrorMessageIds,
+  onContinueError,
   onBranchGroup,
   onActiveBranchChange,
   onQuoteAssistantSelection,
@@ -740,6 +744,13 @@ function AssistantToolMessageGroupItem({
                     message.metadata.errorMessage && (
                       <AssistantErrorCard
                         errorMessage={message.metadata.errorMessage}
+                        onContinue={
+                          continuableErrorMessageIds?.has(message.id) &&
+                          onContinueError &&
+                          !isRunActive
+                            ? () => onContinueError(message.id)
+                            : undefined
+                        }
                       />
                     )}
                 </div>

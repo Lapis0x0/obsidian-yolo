@@ -7,11 +7,137 @@ import type {
 } from '../../types/chat'
 
 import {
+  buildAssistantErrorContinuation,
   buildRetrySubmissionMessages,
   getDisplayedAssistantToolMessages,
 } from './chatRetry'
 
 describe('chatRetry', () => {
+  it('builds a continuation payload for the latest partial error', () => {
+    const userMessage: ChatUserMessage = {
+      role: 'user',
+      id: 'user-1',
+      content: 'question' as unknown as ChatUserMessage['content'],
+      promptContent: null,
+      mentionables: [],
+    }
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-1',
+      content: 'partial answer',
+      metadata: {
+        generationState: 'error',
+        errorMessage: 'Premature close',
+        model: {
+          id: 'model-1',
+          model: 'model-1',
+          providerId: 'provider-1',
+        },
+      },
+    }
+
+    expect(
+      buildAssistantErrorContinuation({
+        sourceMessages: [userMessage, assistantMessage],
+        groupedChatMessages: [userMessage, [assistantMessage]],
+        assistantMessageId: assistantMessage.id,
+        activeBranchByUserMessageId: new Map(),
+      }),
+    ).toEqual({
+      assistantMessageId: 'assistant-1',
+      sourceUserMessageId: 'user-1',
+      modelId: 'model-1',
+      branchId: undefined,
+      branchLabel: undefined,
+      inputChatMessages: [userMessage, assistantMessage],
+      requestChatMessages: [userMessage, assistantMessage],
+    })
+  })
+
+  it('rejects a partial error that already has a later user turn', () => {
+    const firstUser = {
+      role: 'user' as const,
+      id: 'user-1',
+      content: null,
+      promptContent: null,
+      mentionables: [],
+    }
+    const failedAssistant: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-1',
+      content: 'partial',
+      metadata: {
+        generationState: 'error',
+        sourceUserMessageId: 'user-1',
+        branchModelId: 'model-1',
+      },
+    }
+    const secondUser = {
+      ...firstUser,
+      id: 'user-2',
+    }
+
+    expect(
+      buildAssistantErrorContinuation({
+        sourceMessages: [firstUser, failedAssistant, secondUser],
+        groupedChatMessages: [firstUser, [failedAssistant], secondUser],
+        assistantMessageId: failedAssistant.id,
+        activeBranchByUserMessageId: new Map(),
+      }),
+    ).toBeNull()
+  })
+
+  it('only continues the active branch at the end of the turn', () => {
+    const userMessage: ChatUserMessage = {
+      role: 'user',
+      id: 'user-1',
+      content: null,
+      promptContent: null,
+      mentionables: [],
+    }
+    const completedBranch: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-a',
+      content: 'complete',
+      metadata: {
+        generationState: 'completed',
+        sourceUserMessageId: 'user-1',
+        branchId: 'branch-a',
+        branchModelId: 'model-a',
+      },
+    }
+    const failedBranch: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-b',
+      content: 'partial',
+      metadata: {
+        generationState: 'error',
+        sourceUserMessageId: 'user-1',
+        branchId: 'branch-b',
+        branchModelId: 'model-b',
+      },
+    }
+    const group: AssistantToolMessageGroup = [completedBranch, failedBranch]
+
+    expect(
+      buildAssistantErrorContinuation({
+        sourceMessages: [userMessage, ...group],
+        groupedChatMessages: [userMessage, group],
+        assistantMessageId: failedBranch.id,
+        activeBranchByUserMessageId: new Map([['user-1', 'branch-a']]),
+      }),
+    ).toBeNull()
+
+    expect(
+      buildAssistantErrorContinuation({
+        sourceMessages: [userMessage, ...group],
+        groupedChatMessages: [userMessage, group],
+        assistantMessageId: failedBranch.id,
+        activeBranchByUserMessageId: new Map([['user-1', 'branch-b']]),
+      })?.modelId,
+    ).toBe('model-b')
+  })
+
   it('builds branch retry payload without removing sibling model replies', () => {
     const userMessage: ChatUserMessage = {
       role: 'user',

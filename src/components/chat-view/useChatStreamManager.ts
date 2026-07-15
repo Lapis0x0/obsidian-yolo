@@ -105,6 +105,14 @@ type BranchRetryTarget = {
   branchLabel?: string
 }
 
+type AssistantErrorContinuationRunTarget = {
+  assistantMessageId: string
+  sourceUserMessageId: string
+  modelId: string
+  branchId?: string
+  branchLabel?: string
+}
+
 const AUTO_CONTEXT_COMPACT_TOOL_FQN = getToolName(
   getLocalFileToolServerName(),
   CONTEXT_COMPACT_TOOL_NAME,
@@ -171,6 +179,7 @@ export type UseChatStreamManager = {
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
       branchTarget?: BranchRetryTarget
+      assistantContinuation?: AssistantErrorContinuationRunTarget
       compactionOverride?: ChatConversationCompactionState
     }
   >
@@ -690,6 +699,7 @@ export function useChatStreamManager({
       reasoningLevel,
       modelIds,
       branchTarget,
+      assistantContinuation,
       compactionOverride,
     }: {
       chatMessages: ChatMessage[]
@@ -698,6 +708,7 @@ export function useChatStreamManager({
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
       branchTarget?: BranchRetryTarget
+      assistantContinuation?: AssistantErrorContinuationRunTarget
       compactionOverride?: ChatConversationCompactionState
     }) => {
       const lastMessage = chatMessages.at(-1)
@@ -727,11 +738,13 @@ export function useChatStreamManager({
 
         const requestedModelId =
           modelId || selectedAssistant?.modelId || settings.chatModelId
-        const targetModelIds = branchTarget?.branchModelId?.trim()
-          ? [branchTarget.branchModelId]
-          : modelIds && modelIds.length > 0
-            ? modelIds
-            : [requestedModelId]
+        const targetModelIds = assistantContinuation?.modelId
+          ? [assistantContinuation.modelId]
+          : branchTarget?.branchModelId?.trim()
+            ? [branchTarget.branchModelId]
+            : modelIds && modelIds.length > 0
+              ? modelIds
+              : [requestedModelId]
 
         const resolveClientForModelId = (
           requestedId: string,
@@ -757,7 +770,13 @@ export function useChatStreamManager({
           }
         }
 
-        const resolvedClient = resolveClientForModelId(targetModelIds[0])
+        const resolvedClient = assistantContinuation
+          ? getChatModelClient({
+              settings,
+              modelId: assistantContinuation.modelId,
+              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+            })
+          : resolveClientForModelId(targetModelIds[0])
 
         const currentProvider = settings.providers.find(
           (provider) => provider.id === resolvedClient.model.providerId,
@@ -851,9 +870,23 @@ export function useChatStreamManager({
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,
           },
+          sourceUserMessageId: assistantContinuation?.sourceUserMessageId,
+          continueAssistantMessageId: assistantContinuation?.assistantMessageId,
         }
 
-        if (branchTarget && requestLastMessage?.role === 'user') {
+        const effectiveBranchTarget = assistantContinuation?.branchId
+          ? {
+              branchId: assistantContinuation.branchId,
+              sourceUserMessageId: assistantContinuation.sourceUserMessageId,
+              branchModelId: assistantContinuation.modelId,
+              branchLabel: assistantContinuation.branchLabel,
+            }
+          : branchTarget
+
+        if (
+          effectiveBranchTarget &&
+          (assistantContinuation || requestLastMessage?.role === 'user')
+        ) {
           const branchRunMessages = requestMessages ?? chatMessages
           baseConversationMessagesRef.current = chatMessages
           plugin
@@ -878,10 +911,10 @@ export function useChatStreamManager({
               conversationId,
               autoContextCompaction:
                 buildAutoContextCompactionInput(effectiveModel),
-              branchId: branchTarget.branchId,
-              sourceUserMessageId: branchTarget.sourceUserMessageId,
+              branchId: effectiveBranchTarget.branchId,
+              sourceUserMessageId: effectiveBranchTarget.sourceUserMessageId,
               branchLabel:
-                branchTarget.branchLabel ??
+                effectiveBranchTarget.branchLabel ??
                 effectiveModel.name ??
                 effectiveModel.model ??
                 effectiveModel.id,
@@ -1002,7 +1035,8 @@ export function useChatStreamManager({
       if (
         error instanceof LLMAPIKeyNotSetException ||
         error instanceof LLMAPIKeyInvalidException ||
-        error instanceof LLMBaseUrlNotSetException
+        error instanceof LLMBaseUrlNotSetException ||
+        error instanceof LLMModelNotFoundException
       ) {
         new ErrorModal(app, 'Error', error.message, error.rawError?.message, {
           showSettingsButton: true,

@@ -49,6 +49,7 @@ type AgentLlmTurnExecutorInput = {
   branchId?: string
   sourceUserMessageId?: string
   branchLabel?: string
+  resumeAssistantMessage?: ChatAssistantMessage
   compaction?: ChatConversationCompactionLike | null
   enableTools: boolean
   includeBuiltinTools: boolean
@@ -163,7 +164,7 @@ export class AgentLlmTurnExecutor {
     const deliveryMode = this.input.requestParams?.deliveryMode ?? 'incremental'
     const executionMode =
       this.input.providerClient.resolveResponseExecutionMode(deliveryMode)
-    const assistantMessageId = uuidv4()
+    const assistantMessageId = this.input.resumeAssistantMessage?.id ?? uuidv4()
     const debugTrace = isLLMDebugCaptureEnabled()
       ? createLLMDebugTrace({
           assistantMessageId,
@@ -179,22 +180,38 @@ export class AgentLlmTurnExecutor {
         traceId: debugTrace.id,
       })
     }
+    const resumedMessage = this.input.resumeAssistantMessage
     const assistantMessage: ChatAssistantMessage = {
-      role: 'assistant',
-      id: assistantMessageId,
-      content: '',
+      ...(resumedMessage ?? {
+        role: 'assistant' as const,
+        id: assistantMessageId,
+        content: '',
+      }),
+      toolCallRequests: undefined,
       metadata: {
+        ...resumedMessage?.metadata,
         model,
+        usage: undefined,
+        durationMs: undefined,
         generationState: 'streaming',
-        ...(debugTrace ? { llmDebugTraceId: debugTrace.id } : {}),
+        errorMessage: undefined,
+        llmDebugTraceId: debugTrace?.id,
         branchConversationId: this.input.conversationId,
-        sourceUserMessageId: this.input.sourceUserMessageId,
-        branchId: this.input.branchId,
+        sourceUserMessageId:
+          this.input.sourceUserMessageId ??
+          resumedMessage?.metadata?.sourceUserMessageId,
+        branchId: this.input.branchId ?? resumedMessage?.metadata?.branchId,
         branchModelId: model.id,
         branchLabel:
-          this.input.branchLabel ?? model.name ?? model.model ?? model.id,
+          this.input.branchLabel ??
+          resumedMessage?.metadata?.branchLabel ??
+          model.name ??
+          model.model ??
+          model.id,
       },
     }
+    const initialContent = assistantMessage.content
+    const initialReasoning = assistantMessage.reasoning ?? ''
     this.input.onAssistantMessage(assistantMessage)
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
@@ -299,14 +316,29 @@ export class AgentLlmTurnExecutor {
       throw error
     }
 
-    if (!assistantMessage.content && turnResult.content) {
-      assistantMessage.content = turnResult.content
+    if (assistantMessage.content === initialContent && turnResult.content) {
+      assistantMessage.content += turnResult.content
     }
-    if (!assistantMessage.reasoning && turnResult.reasoning) {
-      assistantMessage.reasoning = turnResult.reasoning
+    if (
+      (assistantMessage.reasoning ?? '') === initialReasoning &&
+      turnResult.reasoning
+    ) {
+      assistantMessage.reasoning = `${initialReasoning}${turnResult.reasoning}`
     }
 
-    assistantMessage.annotations = turnResult.annotations
+    if (turnResult.annotations?.length) {
+      const existingAnnotations = assistantMessage.annotations ?? []
+      assistantMessage.annotations = [
+        ...existingAnnotations,
+        ...turnResult.annotations.filter(
+          (incoming) =>
+            !existingAnnotations.some(
+              (existing) =>
+                existing.url_citation.url === incoming.url_citation.url,
+            ),
+        ),
+      ]
+    }
     assistantMessage.metadata = {
       ...assistantMessage.metadata,
       usage: turnResult.usage ?? assistantMessage.metadata?.usage,

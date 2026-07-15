@@ -50,6 +50,8 @@ export type AgentRuntimeRunInput = {
   branchId?: string
   sourceUserMessageId?: string
   branchLabel?: string
+  /** Resume an interrupted assistant message during the first LLM turn. */
+  continueAssistantMessageId?: string
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   compaction?: ChatConversationCompactionLike | null

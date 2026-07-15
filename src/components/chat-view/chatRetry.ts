@@ -8,6 +8,16 @@ import type {
 
 type AssistantOrToolMessage = ChatAssistantMessage | ChatToolMessage
 
+export type AssistantErrorContinuationTarget = {
+  assistantMessageId: string
+  sourceUserMessageId: string
+  modelId: string
+  branchId?: string
+  branchLabel?: string
+  inputChatMessages: ChatMessage[]
+  requestChatMessages: ChatMessage[]
+}
+
 const isAssistantOrToolMessage = (
   message: ChatMessage,
 ): message is AssistantOrToolMessage => {
@@ -98,6 +108,75 @@ export const getDisplayedAssistantToolMessages = (
     groupedBranches[0] ??
     messages
   )
+}
+
+export const buildAssistantErrorContinuation = ({
+  sourceMessages,
+  groupedChatMessages,
+  assistantMessageId,
+  activeBranchByUserMessageId,
+}: {
+  sourceMessages: ChatMessage[]
+  groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
+  assistantMessageId: string
+  activeBranchByUserMessageId: ReadonlyMap<string, string>
+}): AssistantErrorContinuationTarget | null => {
+  const target = sourceMessages.find(
+    (message): message is ChatAssistantMessage =>
+      message.role === 'assistant' && message.id === assistantMessageId,
+  )
+  const modelId = target?.metadata?.model?.id ?? target?.metadata?.branchModelId
+
+  if (
+    !target ||
+    target.metadata?.generationState !== 'error' ||
+    target.content.trim().length === 0 ||
+    !modelId
+  ) {
+    return null
+  }
+
+  let lastUserMessageId: string | undefined
+  for (let index = sourceMessages.length - 1; index >= 0; index -= 1) {
+    if (sourceMessages[index].role === 'user') {
+      lastUserMessageId = sourceMessages[index].id
+      break
+    }
+  }
+  const sourceUserMessageId =
+    target.metadata?.sourceUserMessageId ??
+    (target.metadata?.branchId ? undefined : lastUserMessageId)
+  if (!sourceUserMessageId || lastUserMessageId !== sourceUserMessageId) {
+    return null
+  }
+
+  const requestChatMessages = groupedChatMessages.flatMap(
+    (messageOrGroup): ChatMessage[] => {
+      if (!Array.isArray(messageOrGroup)) {
+        return [messageOrGroup]
+      }
+      const groupSourceUserMessageId =
+        getSourceUserMessageIdForGroup(messageOrGroup) ?? ''
+      return getDisplayedAssistantToolMessages(
+        messageOrGroup,
+        activeBranchByUserMessageId.get(groupSourceUserMessageId),
+      )
+    },
+  )
+
+  if (requestChatMessages.at(-1)?.id !== target.id) {
+    return null
+  }
+
+  return {
+    assistantMessageId: target.id,
+    sourceUserMessageId,
+    modelId,
+    branchId: target.metadata?.branchId,
+    branchLabel: target.metadata?.branchLabel,
+    inputChatMessages: sourceMessages,
+    requestChatMessages,
+  }
 }
 
 export const buildRetrySubmissionMessages = ({

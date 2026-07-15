@@ -14203,11 +14203,16 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
 }
 
 .yolo-assistant-error-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'header header'
+    'body action';
+  align-items: end;
+  row-gap: 4px;
+  column-gap: 12px;
   margin-top: var(--size-4-1);
-  padding: 8px 12px 10px;
+  padding: 8px 12px;
   border: 1px solid
     color-mix(in srgb, var(--color-red) 28%, var(--background-modifier-border));
   border-radius: var(--radius-l);
@@ -14219,7 +14224,8 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
 }
 
 .yolo-assistant-error-card-header {
-  display: inline-flex;
+  grid-area: header;
+  display: flex;
   align-items: center;
   gap: 6px;
   color: var(--text-normal);
@@ -14228,17 +14234,56 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   font-weight: var(--font-medium);
 }
 
+.yolo-assistant-error-card-header > span {
+  min-width: 0;
+}
+
 .yolo-assistant-error-card-header svg {
   flex: 0 0 auto;
   color: var(--color-red);
 }
 
 .yolo-assistant-error-card-body {
+  grid-area: body;
+  min-width: 0;
   color: var(--text-muted);
   font-size: calc(var(--font-ui-small) * 0.96);
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+button.yolo-assistant-error-card-continue {
+  grid-area: action;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  min-height: 24px;
+  margin-inline-start: 0;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.2;
+  cursor: pointer;
+  transition: none;
+}
+
+button.yolo-assistant-error-card-continue:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+button.yolo-assistant-error-card-continue:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
 }
 
 .yolo-assistant-tool-running-preview {

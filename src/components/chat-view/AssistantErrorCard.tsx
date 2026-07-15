@@ -1,4 +1,4 @@
-import { CircleAlert } from 'lucide-react'
+import { ArrowRight, CircleAlert } from 'lucide-react'
 import { memo } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -145,8 +145,10 @@ const formatResponseFormatError = (
 
 const AssistantErrorCard = memo(function AssistantErrorCard({
   errorMessage,
+  onContinue,
 }: {
   errorMessage: string
+  onContinue?: () => void
 }) {
   const { t } = useLanguage()
   const displayErrorMessage = formatResponseFormatError(errorMessage, t)
@@ -160,6 +162,16 @@ const AssistantErrorCard = memo(function AssistantErrorCard({
       <div className="yolo-assistant-error-card-body">
         {displayErrorMessage}
       </div>
+      {onContinue && (
+        <button
+          type="button"
+          className="yolo-assistant-error-card-continue"
+          onClick={onContinue}
+        >
+          <span>{t('chat.continueResponse', 'Continue response')}</span>
+          <ArrowRight size={13} />
+        </button>
+      )}
     </div>
   )
 })
