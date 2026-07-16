@@ -2033,6 +2033,28 @@ describe('RequestContextBuilder system prompt freezing', () => {
     )
   })
 
+  it('requires Obsidian-compatible math delimiters', async () => {
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-math-format',
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain(
+      'use Obsidian-compatible LaTeX delimiters: $...$ for inline math and $$...$$ for display math',
+    )
+    expect(systemContent).toContain(
+      'Put opening and closing $$ delimiters on separate lines.',
+    )
+    expect(systemContent).toContain('Do not use \\(...\\) or \\[...\\].')
+  })
+
   it('describes the active workspace scope in the system prompt', async () => {
     const settings = {
       ...baseSettings,

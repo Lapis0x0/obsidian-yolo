@@ -14,9 +14,8 @@ import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantSelectionQuoteButton from './AssistantSelectionQuoteButton'
 import MarkdownCodeComponent from './MarkdownCodeComponent'
 import MarkdownReferenceBlock from './MarkdownReferenceBlock'
-import { ObsidianMarkdown } from './ObsidianMarkdown'
-import StreamingMarkdown from './StreamingMarkdown'
 import { getToolDisplayInfo, getToolLabels } from './ToolMessage'
+import TransitioningMarkdown from './TransitioningMarkdown'
 
 function hasRenderableAssistantContent(blocks: ParsedTagContent[]): boolean {
   return blocks.some((block) => {
@@ -164,20 +163,18 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
 
   const renderedContent = (
     <>
-      {blocks.map((block) => {
-        const MarkdownRenderer =
-          generationState === 'streaming' ? StreamingMarkdown : ObsidianMarkdown
+      {blocks.map((block, blockIndex) => {
         const blockKey =
           block.type === 'string' || block.type === 'think'
-            ? `${block.type}-${block.content.slice(0, 64)}`
+            ? `${block.type}-${blockIndex}`
             : `${block.type}-${block.filename ?? ''}-${block.startLine ?? ''}-${block.endLine ?? ''}-${block.content.slice(0, 64)}`
 
         return block.type === 'string' ? (
           <div key={blockKey}>
-            <MarkdownRenderer
+            <TransitioningMarkdown
               content={block.content}
               scale="sm"
-              animateIncrementalText={generationState === 'streaming'}
+              generationState={generationState}
               citationSources={sources}
             />
           </div>

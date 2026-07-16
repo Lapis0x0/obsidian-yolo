@@ -4,8 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import DotLoader from '../common/DotLoader'
 
-import { ObsidianMarkdown } from './ObsidianMarkdown'
-import StreamingMarkdown from './StreamingMarkdown'
+import TransitioningMarkdown from './TransitioningMarkdown'
 
 type ReasoningStage = 'requesting' | 'thinking' | 'settled'
 
@@ -25,9 +24,6 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   }>
 }) {
   const { t } = useLanguage()
-  const EffectiveMarkdownComponent =
-    MarkdownComponent ??
-    (generationState === 'streaming' ? StreamingMarkdown : ObsidianMarkdown)
   const [isExpanded, setIsExpanded] = useState(false)
   const hasUserInteracted = useRef(false)
 
@@ -172,11 +168,19 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       </div>
       <div className="yolo-assistant-message-metadata-body">
         <div className="yolo-assistant-message-metadata-content">
-          <EffectiveMarkdownComponent
-            content={reasoning}
-            scale="xs"
-            animateIncrementalText={generationState === 'streaming'}
-          />
+          {MarkdownComponent ? (
+            <MarkdownComponent
+              content={reasoning}
+              scale="xs"
+              animateIncrementalText={generationState === 'streaming'}
+            />
+          ) : (
+            <TransitioningMarkdown
+              content={reasoning}
+              scale="xs"
+              generationState={generationState}
+            />
+          )}
         </div>
       </div>
     </div>

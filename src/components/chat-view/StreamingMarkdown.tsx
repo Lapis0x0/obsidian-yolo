@@ -1,6 +1,11 @@
 import { Keymap } from 'obsidian'
 import {
+  Children,
+  type ComponentPropsWithoutRef,
   type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+  isValidElement,
   memo,
   useCallback,
   useEffect,
@@ -9,10 +14,17 @@ import {
 } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 
 import { useApp } from '../../contexts/app-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
+
+import {
+  normalizeDisplayMathDelimiters,
+  preserveUnclosedMathSource,
+  renderStreamingMath,
+} from './streamingMath'
 
 type StreamingMarkdownProps = {
   content: string
@@ -97,6 +109,91 @@ function getNextRevealIndex(
   }
 
   return baseNextIndex
+}
+
+type ElementWithClassName = ReactElement<{ className?: string }>
+
+function hasMathClass(className: string | undefined, name: string): boolean {
+  return className?.split(/\s+/).includes(name) ?? false
+}
+
+function getTextContent(children: ReactNode): string {
+  return Children.toArray(children)
+    .map((child) =>
+      typeof child === 'string' || typeof child === 'number'
+        ? String(child)
+        : '',
+    )
+    .join('')
+}
+
+const StreamingMath = memo(function StreamingMath({
+  source,
+  display,
+}: {
+  source: string
+  display: boolean
+}) {
+  const setContainer = useCallback(
+    (container: HTMLElement | null) => {
+      if (container) {
+        renderStreamingMath(container, source, display)
+      }
+    },
+    [display, source],
+  )
+  const rawSource = display ? `$$\n${source}\n$$` : `$${source}$`
+
+  return display ? (
+    <div
+      ref={setContainer}
+      className="yolo-streaming-math yolo-streaming-math-display"
+    >
+      {rawSource}
+    </div>
+  ) : (
+    <span
+      ref={setContainer}
+      className="yolo-streaming-math yolo-streaming-math-inline"
+    >
+      {rawSource}
+    </span>
+  )
+})
+
+function StreamingCode({
+  className,
+  children,
+  ...props
+}: ComponentPropsWithoutRef<'code'>) {
+  if (
+    hasMathClass(className, 'math-inline') ||
+    hasMathClass(className, 'math-display')
+  ) {
+    return (
+      <StreamingMath
+        source={getTextContent(children).replace(/\n$/, '')}
+        display={hasMathClass(className, 'math-display')}
+      />
+    )
+  }
+
+  return (
+    <code {...props} className={className}>
+      {children}
+    </code>
+  )
+}
+
+function StreamingPre({ children, ...props }: ComponentPropsWithoutRef<'pre'>) {
+  const child = isValidElement(children)
+    ? (children as ElementWithClassName)
+    : null
+  if (hasMathClass(child?.props.className, 'math-display')) {
+    return <>{children}</>
+  }
+
+  return <pre {...props}>{children}</pre>
 }
 
 const StreamingMarkdown = memo(function StreamingMarkdown({
@@ -230,10 +327,12 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
       className={`markdown-rendered yolo-markdown-rendered yolo-streaming-markdown yolo-scale-${scale}`}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath, preserveUnclosedMathSource]}
         skipHtml
         urlTransform={transformCitationUrl}
         components={{
+          code: StreamingCode,
+          pre: StreamingPre,
           a: ({ href, children, ...props }) => {
             if (!href) {
               return <a {...props}>{children}</a>
@@ -278,7 +377,7 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
           },
         }}
       >
-        {displayedContent}
+        {normalizeDisplayMathDelimiters(displayedContent)}
       </ReactMarkdown>
     </div>
   )

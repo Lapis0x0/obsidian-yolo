@@ -9,11 +9,7 @@ jest.mock('../../contexts/language-context', () => ({
   }),
 }))
 
-jest.mock('./ObsidianMarkdown', () => ({
-  ObsidianMarkdown: ({ content }: { content: string }) => <>{content}</>,
-}))
-
-jest.mock('./StreamingMarkdown', () => ({
+jest.mock('./TransitioningMarkdown', () => ({
   __esModule: true,
   default: ({ content }: { content: string }) => <>{content}</>,
 }))

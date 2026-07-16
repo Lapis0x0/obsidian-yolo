@@ -15438,6 +15438,29 @@ button.yolo-llm-debug-modal-button:focus-visible {
   text-decoration: underline;
 }
 
+.yolo-markdown-handoff {
+  position: relative;
+  min-width: 0;
+}
+
+.yolo-markdown-handoff.is-pending > .yolo-markdown-handoff-final {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.yolo-markdown-handoff.is-complete > .yolo-markdown-handoff-fallback {
+  display: none;
+}
+
+.yolo-streaming-math-pending {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /*
  * Wide content inside chat-panel markdown — tables, code blocks — must not
  * push the chat panel itself wider than the viewport. Scoped to

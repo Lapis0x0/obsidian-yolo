@@ -2124,6 +2124,7 @@ ${customInstruction}
     hasOnDemandTools: boolean,
   ): string {
     let section = `- Format your responses in Markdown.
+- When writing mathematical notation, use Obsidian-compatible LaTeX delimiters: $...$ for inline math and $$...$$ for display math. Put opening and closing $$ delimiters on separate lines. Do not use \\(...\\) or \\[...\\].
 - Always reply in the same language as the user's message.
 - Only use tools exposed in this request. Never simulate unavailable tool calls or claim an action succeeded without a successful tool result.`
 
