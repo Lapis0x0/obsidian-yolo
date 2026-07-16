@@ -4,9 +4,10 @@
   "description": "AI chat with note context, smart writing assistance, and one-click edits for your vault.",
   "main": "main.js",
   "scripts": {
-    "dev": "concurrently -n app,styles -c blue,magenta \"npm:dev:app\" \"npm:styles:watch\"",
+    "dev": "concurrently --kill-others-on-fail -n app,styles,sync -c blue,magenta,yellow \"npm:dev:app\" \"npm:styles:watch\" \"npm:dev:sync\"",
     "ob": "osascript -e 'quit app \"Obsidian\"' >/dev/null 2>&1 || true && sleep 1 && open -a Obsidian --args --remote-debugging-port=9222 && npm run dev",
     "dev:app": "node esbuild.config.mjs",
+    "dev:sync": "node scripts/sync-dev-artifacts.mjs",
     "build": "tsc -noEmit -skipLibCheck && npm run styles:build && node esbuild.config.mjs production",
     "styles:build": "postcss src/styles/index.css -o styles.css",
     "styles:watch": "postcss src/styles/index.css -o styles.css -w",
