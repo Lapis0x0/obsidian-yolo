@@ -172,6 +172,7 @@ type QuickAskPanelPropsBase = {
   autoSend?: boolean
   initialAssistantId?: string
   onClose: () => void
+  messageInputRef?: React.RefObject<MessageInputCoreRef>
   containerRef?: React.RefObject<HTMLDivElement>
   onOverlayStateChange?: (isOverlayActive: boolean) => void
   onDragOffset?: (offsetX: number, offsetY: number) => void
@@ -209,6 +210,7 @@ export function QuickAskPanel({
   autoSend,
   initialAssistantId,
   onClose,
+  messageInputRef: externalMessageInputRef,
   containerRef,
   onOverlayStateChange,
   onDragOffset,
@@ -346,7 +348,8 @@ export function QuickAskPanel({
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const inputRowRef = useRef<HTMLDivElement | null>(null)
-  const messageInputRef = useRef<MessageInputCoreRef>(null)
+  const internalMessageInputRef = useRef<MessageInputCoreRef>(null)
+  const messageInputRef = externalMessageInputRef ?? internalMessageInputRef
   const latestEditorStateRef = useRef<SerializedEditorState | null>(null)
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatAreaRef = useRef<HTMLDivElement>(null)
@@ -698,8 +701,8 @@ export function QuickAskPanel({
   ])
 
   // Arrow keys focus assistant trigger; Enter on the trigger will open the menu
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const handlePanelKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (isAssistantMenuOpen || isModelMenuOpen || isModeMenuOpen) return
       const active = document.activeElement
       if (
@@ -714,10 +717,9 @@ export function QuickAskPanel({
       event.preventDefault()
       event.stopPropagation()
       assistantTriggerRef.current?.focus()
-    }
-    window.addEventListener('keydown', handleKeyDown, true)
-    return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen])
+    },
+    [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen],
+  )
 
   // When focus在助手按钮但菜单未展开时，ArrowUp 将焦点送回输入框（兜底）
   useEffect(() => {
@@ -2279,6 +2281,7 @@ export function QuickAskPanel({
     <div
       className={`yolo-quick-ask-panel ${hasMessages ? 'has-messages' : ''} ${isResizedEmptyState ? 'is-resized-empty' : ''} ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
       ref={containerRef ?? undefined}
+      onKeyDown={handlePanelKeyDown}
       style={
         panelSize
           ? {

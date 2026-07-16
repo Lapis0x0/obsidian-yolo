@@ -22,6 +22,7 @@ import {
   clearDynamicStyleClass,
   updateDynamicStyleClass,
 } from '../../../utils/dom/dynamicStyleManager'
+import type { MessageInputCoreRef } from '../../chat-view/chat-input/MessageInputCore'
 
 import { QuickAskPanel } from './QuickAskPanel'
 
@@ -71,6 +72,8 @@ export class QuickAskOverlay {
   private dockAnimationTimeout: number | null = null
   private containerRef: React.RefObject<HTMLDivElement> =
     React.createRef<HTMLDivElement>()
+  private messageInputRef: React.RefObject<MessageInputCoreRef> =
+    React.createRef<MessageInputCoreRef>()
   private hasBlockingOverlay = false
   private hasUserDragged = false
   private isDockedTopRight = false
@@ -178,6 +181,20 @@ export class QuickAskOverlay {
     return false
   }
 
+  static focusCurrentInput(): boolean {
+    const instance = QuickAskOverlay.currentInstance
+    if (!instance || instance.isClosing) return false
+
+    if (instance.messageInputRef.current) {
+      instance.messageInputRef.current.focus()
+    } else {
+      window.requestAnimationFrame(() => {
+        instance.messageInputRef.current?.focus()
+      })
+    }
+    return true
+  }
+
   private closeWithAnimation = () => {
     if (this.isClosing) return
     this.isClosing = true
@@ -247,6 +264,7 @@ export class QuickAskOverlay {
                         autoSend={this.options.autoSend}
                         initialAssistantId={this.options.initialAssistantId}
                         onClose={this.closeWithAnimation}
+                        messageInputRef={this.messageInputRef}
                         containerRef={this.containerRef}
                         onOverlayStateChange={this.handleOverlayStateChange}
                         onDragOffset={this.handleDragOffset}
@@ -269,6 +287,7 @@ export class QuickAskOverlay {
                         autoSend={this.options.autoSend}
                         initialAssistantId={this.options.initialAssistantId}
                         onClose={this.closeWithAnimation}
+                        messageInputRef={this.messageInputRef}
                         containerRef={this.containerRef}
                         onOverlayStateChange={this.handleOverlayStateChange}
                         onDragOffset={this.handleDragOffset}

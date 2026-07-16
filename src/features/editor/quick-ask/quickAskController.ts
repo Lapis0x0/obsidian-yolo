@@ -127,6 +127,12 @@ export class QuickAskController {
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
+  private focusExistingQuickAsk(): boolean {
+    return (
+      this.quickAskWidgetState !== null && QuickAskOverlay.focusCurrentInput()
+    )
+  }
+
   close(restoreFocus = true) {
     // Destroy PDF instance if present
     if (this.pdfQuickAskInstance) {
@@ -171,7 +177,13 @@ export class QuickAskController {
   }
 
   show(editor: Editor, view: EditorView) {
-    this.showWithOptions(editor, view)
+    if (this.focusExistingQuickAsk()) return
+
+    void this.showWithOptionsAfterWarmup(editor, view, undefined, true).catch(
+      (error: unknown) => {
+        console.error('[YOLO] Failed to open Quick Ask:', error)
+      },
+    )
   }
 
   showWithAutoSend(
@@ -210,8 +222,11 @@ export class QuickAskController {
     editor: Editor,
     view: EditorView,
     options?: QuickAskShowOptions,
+    focusExisting = false,
   ): Promise<void> {
     await this.deps.plugin.warmupAgentService()
+
+    if (focusExisting && this.focusExistingQuickAsk()) return
 
     const selection = view.state.selection.main
     const pos = selection.head
