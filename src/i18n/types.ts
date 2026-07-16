@@ -10,6 +10,7 @@ export type TranslationKeys = {
     openChat: string
     openChatSidebar: string
     openLearningMode: string
+    learningModeLabel: string
     newChatCurrentView: string
     openYoloNewChat: string
     openNewChatTab: string

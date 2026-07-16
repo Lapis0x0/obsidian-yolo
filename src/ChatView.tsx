@@ -30,6 +30,7 @@ import {
   MentionableImage,
   MentionableWebSelection,
 } from './types/mentionable'
+import { YOLO_ICON_ID } from './yoloIcon'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
@@ -68,7 +69,7 @@ export class ChatView extends ItemView {
   }
 
   getIcon() {
-    return 'wand-sparkles'
+    return YOLO_ICON_ID
   }
 
   getDisplayText() {

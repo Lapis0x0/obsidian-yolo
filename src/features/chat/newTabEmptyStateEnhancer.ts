@@ -1,11 +1,13 @@
-import { Notice, WorkspaceLeaf } from 'obsidian'
+import { Notice, WorkspaceLeaf, setIcon } from 'obsidian'
 
 import { ChatView } from '../../ChatView'
 import { CHAT_VIEW_TYPE } from '../../constants'
 import type YoloPlugin from '../../main'
+import { YOLO_ICON_ID } from '../../yoloIcon'
 
 const EMPTY_VIEW_TYPE = 'empty'
 const ACTION_MARKER_ATTR = 'data-yolo-empty-tab-action'
+const ICON_ONLY_CLASS = 'yolo-new-tab-action--icon-only'
 
 export class NewTabEmptyStateEnhancer {
   private observer: MutationObserver | null = null
@@ -63,12 +65,15 @@ export class NewTabEmptyStateEnhancer {
         continue
       }
 
-      if (actionList.querySelector(`[${ACTION_MARKER_ATTR}]`)) {
+      const existingAction = actionList.querySelector(`[${ACTION_MARKER_ATTR}]`)
+      if (existingAction instanceof HTMLElement) {
+        this.updateActionPresentation(existingAction)
         continue
       }
 
       const action = this.createActionElement(actionList, leaf)
       actionList.appendChild(action)
+      this.updateActionPresentation(action)
     }
   }
 
@@ -93,7 +98,21 @@ export class NewTabEmptyStateEnhancer {
     action.removeAttribute('target')
     action.removeAttribute('rel')
     action.setAttribute(ACTION_MARKER_ATTR, 'true')
-    action.textContent = this.plugin.t('commands.openYoloNewChat')
+    action.classList.add('yolo-new-tab-action')
+
+    const label = this.plugin.t('commands.openYoloNewChat')
+    const icon = document.createElement('span')
+    icon.className = 'yolo-new-tab-action-icon'
+    icon.setAttribute('aria-hidden', 'true')
+    setIcon(icon, YOLO_ICON_ID)
+
+    const labelElement = document.createElement('span')
+    labelElement.className = 'yolo-new-tab-action-label'
+    labelElement.textContent = label
+
+    action.replaceChildren(icon, labelElement)
+    action.setAttribute('aria-label', label)
+    action.setAttribute('title', label)
 
     this.plugin.registerDomEvent(action, 'click', (event) => {
       event.preventDefault()
@@ -102,6 +121,14 @@ export class NewTabEmptyStateEnhancer {
     })
 
     return action
+  }
+
+  private updateActionPresentation(action: HTMLElement): void {
+    const fontSize = Number.parseFloat(getComputedStyle(action).fontSize)
+    action.classList.toggle(
+      ICON_ONLY_CLASS,
+      Number.isFinite(fontSize) && fontSize === 0,
+    )
   }
 
   private async openChatInLeaf(leaf: WorkspaceLeaf): Promise<void> {

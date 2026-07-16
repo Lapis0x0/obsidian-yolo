@@ -1,0 +1,19 @@
+.yolo-new-tab-action-icon {
+  display: none;
+  width: 20px;
+  height: 20px;
+}
+
+.yolo-new-tab-action--icon-only .yolo-new-tab-action-icon {
+  display: block;
+}
+
+.yolo-new-tab-action--icon-only .yolo-new-tab-action-label {
+  display: none;
+}
+
+.yolo-new-tab-action-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

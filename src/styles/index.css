@@ -14,6 +14,7 @@
 
 @import './action-toast.css';
 @import './acknowledgement-modal.css';
+@import './yolo-icon.css';
 @import './chat/input.css';
 @import './chat/message.css';
 @import './chat/popover.css';
@@ -21,6 +22,7 @@
 @import './chat/subagent-card.css';
 @import './chat/todo-list-panel.css';
 @import './chat/ask-user-question-panel.css';
+@import './chat/new-tab-action.css';
 
 @import './panels/smart-space.css';
 @import './panels/quick-ask.css';

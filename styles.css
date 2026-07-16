@@ -1,4 +1,4 @@
-/* @yolo-version: 1.6.0.2 */
+/* @yolo-version: 1.6.0.3 */
 
 /* Settings */
 
@@ -8783,6 +8783,14 @@ button.yolo-agent-chip--more:hover {
 .yolo-acknowledgement-modal--centered .modal-title,
 .yolo-acknowledgement-modal--centered .yolo-acknowledgement-modal-messages {
   text-align: center;
+}
+
+svg.svg-icon.yolo-orbit {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 8.333;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .yolo-chat-header {
@@ -19482,6 +19490,26 @@ button.yolo-todo-panel__icon-button svg {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-normal);
+}
+
+.yolo-new-tab-action-icon {
+  display: none;
+  width: 20px;
+  height: 20px;
+}
+
+.yolo-new-tab-action--icon-only .yolo-new-tab-action-icon {
+  display: block;
+}
+
+.yolo-new-tab-action--icon-only .yolo-new-tab-action-label {
+  display: none;
+}
+
+.yolo-new-tab-action-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* Custom continue inline panel */

@@ -5,6 +5,7 @@ export const it: TranslationKeys = {
     openChat: 'Apri chat',
     openChatSidebar: 'Apri chat (barra laterale)',
     openLearningMode: 'Apri modalità di apprendimento',
+    learningModeLabel: 'YOLO: Modalità di apprendimento',
     newChatCurrentView: 'Nuova chat',
     openYoloNewChat: 'YOLO: Apri finestra chat',
     openNewChatTab: 'Apri nuova chat (nuova scheda)',

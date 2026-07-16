@@ -9,6 +9,7 @@ import {
   TFile,
   TFolder,
   type WorkspaceLeaf,
+  addIcon,
   getLanguage,
   normalizePath,
   setIcon,
@@ -170,6 +171,7 @@ import { stableStringify } from './utils/json/stableStringify'
 import { applyKnownMaxContextTokensToChatModels } from './utils/llm/model-capability-registry'
 import { getMentionableBlockData } from './utils/obsidian'
 import { ensureBufferByteLengthCompat } from './utils/runtime/ensureBufferByteLengthCompat'
+import { YOLO_ICON_ID, YOLO_ICON_SVG } from './yoloIcon'
 
 export type {
   YoloAgentApi,
@@ -2070,6 +2072,7 @@ export default class YoloPlugin extends Plugin {
     this.isUnloaded = false
     ensureBufferByteLengthCompat()
     clearRequestTransportMemory()
+    addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
 
     await this.loadSettings()
     await loadLocale(this.resolveObsidianLanguage())
@@ -2150,12 +2153,12 @@ export default class YoloPlugin extends Plugin {
     )
 
     // This creates an icon in the left ribbon.
-    this.addRibbonIcon('wand-sparkles', this.t('commands.openChat'), () => {
+    this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
     })
     this.addRibbonIcon(
       'graduation-cap',
-      this.t('commands.openLearningMode'),
+      this.t('commands.learningModeLabel'),
       () => {
         void this.openLearningView()
       },

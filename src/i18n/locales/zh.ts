@@ -5,6 +5,7 @@ export const zh: TranslationKeys = {
     openChat: '打开聊天',
     openChatSidebar: '打开聊天（侧栏）',
     openLearningMode: '打开学习模式',
+    learningModeLabel: 'YOLO：学习模式',
     newChatCurrentView: '新建聊天',
     openYoloNewChat: 'YOLO:打开聊天窗口',
     openNewChatTab: '在新标签页打开新对话',
