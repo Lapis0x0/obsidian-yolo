@@ -58,6 +58,7 @@ describe('ChatTimelineList windowed timeline', () => {
     expect(html).toContain('data-key="m-0"')
     expect(html).toContain('data-key="m-11"')
     expect(html).not.toContain('mock-virtuoso')
+    expect(html).toContain('yolo-chat-timeline-content')
   })
 
   it('renders a spacer div at the tail', () => {

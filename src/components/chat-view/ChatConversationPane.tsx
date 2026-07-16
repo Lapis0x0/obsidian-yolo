@@ -6,7 +6,6 @@ import {
   MessageCircle,
 } from 'lucide-react'
 import type { ReactNode, RefObject } from 'react'
-import type { FollowOutput } from 'react-virtuoso'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
@@ -28,10 +27,10 @@ type ChatConversationPaneProps = {
   currentConversationId: string
   chatTimelineItems: ChatTimelineItem[]
   chatMessagesRef: RefObject<HTMLDivElement>
+  onScrollContainerChange: (element: HTMLElement | null) => void
+  onContentElementChange: (element: HTMLElement | null) => void
   renderChatTimelineItem: (timelineItem: ChatTimelineItem) => ReactNode
   timelineRenderVersion?: ChatTimelineRenderVersion<ChatTimelineItem>
-  followOutput: FollowOutput
-  onAtBottomStateChange: (atBottom: boolean) => void
   editingAssistantMessageId: string | null
   onForceScrollToBottom: () => void
   hasStreamingMessages: boolean
@@ -66,10 +65,10 @@ export function ChatConversationPane({
   currentConversationId,
   chatTimelineItems,
   chatMessagesRef,
+  onScrollContainerChange,
+  onContentElementChange,
   renderChatTimelineItem,
   timelineRenderVersion,
-  followOutput,
-  onAtBottomStateChange,
   editingAssistantMessageId,
   onForceScrollToBottom,
   hasStreamingMessages,
@@ -122,11 +121,11 @@ export function ChatConversationPane({
         items={chatTimelineItems}
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
+        onScrollContainerChange={onScrollContainerChange}
+        onContentElementChange={onContentElementChange}
         renderItem={renderChatTimelineItem}
         renderVersion={timelineRenderVersion}
         forceRenderItemIds={['bottom-anchor']}
-        followOutput={followOutput}
-        onAtBottomStateChange={onAtBottomStateChange}
         virtualizationThreshold={
           editingAssistantMessageId ? chatTimelineItems.length : undefined
         }
@@ -175,7 +174,7 @@ export function ChatConversationPane({
             {messageNavigatorContent}
           </>
         }
-        scrollContainerClassName="yolo-chat-messages"
+        scrollContainerClassName={`yolo-chat-messages${isAutoFollowEnabled ? ' yolo-chat-messages--following' : ''}`}
         onVirtualizationChange={onTimelineVirtualizationChange}
         onUserMessageViewportChange={onUserMessageViewportChange}
         windowNavigationKey={windowNavigationKey}

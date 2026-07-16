@@ -1,5 +1,4 @@
 import type { CSSProperties, ReactNode, RefObject } from 'react'
-import type { FollowOutput } from 'react-virtuoso'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
@@ -15,18 +14,16 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
   conversationId?: string
   scrollContainerRef: RefObject<HTMLElement>
   onScrollContainerChange?: (element: HTMLElement | null) => void
+  onContentElementChange?: (element: HTMLElement | null) => void
   renderItem: (
     item: TItem,
     index: number,
     context?: ChatTimelineRenderContext,
   ) => ReactNode
   renderVersion?: ChatTimelineRenderVersion<TItem>
-  followOutput?: FollowOutput
-  onAtBottomStateChange?: (atBottom: boolean) => void
   virtualizationThreshold?: number
   forceRenderItemIds?: string[]
   overscanPx?: number
-  atBottomThreshold?: number
   onVirtualizationChange?: (isVirtualized: boolean) => void
   onUserMessageViewportChange?: (state: UserMessageViewportState) => void
   windowNavigationKey?: number
@@ -55,14 +52,12 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
   conversationId,
   scrollContainerRef,
   onScrollContainerChange,
+  onContentElementChange,
   renderItem,
   renderVersion,
-  followOutput,
-  onAtBottomStateChange,
   virtualizationThreshold,
   forceRenderItemIds,
   overscanPx,
-  atBottomThreshold,
   onVirtualizationChange,
   onUserMessageViewportChange,
   windowNavigationKey,
@@ -87,14 +82,12 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
       conversationId={conversationId}
       scrollContainerRef={scrollContainerRef}
       onScrollContainerChange={onScrollContainerChange}
+      onContentElementChange={onContentElementChange}
       renderItem={renderItem}
       renderVersion={renderVersion}
-      followOutput={followOutput}
-      onAtBottomStateChange={onAtBottomStateChange}
       virtualizationThreshold={virtualizationThreshold}
       forceRenderItemIds={forceRenderItemIds}
       overscanPx={overscanPx}
-      atBottomThreshold={atBottomThreshold}
       onVirtualizationChange={onVirtualizationChange}
       onUserMessageViewportChange={onUserMessageViewportChange}
       windowNavigationKey={windowNavigationKey}

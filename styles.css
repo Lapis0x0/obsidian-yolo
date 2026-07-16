@@ -10245,14 +10245,26 @@ button.yolo-chat-quick-access-picker-row > svg {
   gap: var(--size-4-1);
   padding-block: var(--size-4-1);
   margin-block: calc(var(--size-4-1) * -1);
+}
 
-  /* Bottom spacer reserving scroll space for the input overlay (todo panel /
+.yolo-chat-messages.yolo-chat-messages--following {
+    overflow-anchor: none;
+  }
+
+.yolo-chat-messages  > .yolo-chat-timeline-content {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    min-width: 0;
+    gap: inherit;
+  }
+
+/* Bottom spacer reserving scroll space for the input overlay (todo panel /
    * queued bubbles). Must keep its inline `height` regardless of flex
    * pressure — without flex-shrink:0, an over-full message list would
    * collapse the spacer back to 0 and re-introduce the occlusion bug. */
-}
 
-.yolo-chat-messages  > .yolo-chat-timeline-bottom-spacer {
+.yolo-chat-messages  > .yolo-chat-timeline-content > .yolo-chat-timeline-bottom-spacer {
     flex: 0 0 auto;
   }
 
@@ -21944,7 +21956,6 @@ button.yolo-todo-panel__icon-button svg {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  overflow-anchor: none;
   padding: 12px;
   display: flex;
   flex-direction: column;

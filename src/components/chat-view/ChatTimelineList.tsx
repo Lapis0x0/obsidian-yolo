@@ -7,15 +7,12 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { FollowOutput } from 'react-virtuoso'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
-const DEFAULT_AT_BOTTOM_THRESHOLD = 24
 const MIN_LOAD_MORE_THRESHOLD_PX = 240
 const MAX_LOAD_MORE_THRESHOLD_PX = 720
 const LOAD_MORE_VIEWPORT_RATIO = 0.45
-const DEFAULT_TIMELINE_KEY = 'timeline'
 
 export type ChatTimelineRenderContext = {
   mode: 'full'
@@ -100,6 +97,7 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   conversationId?: string
   scrollContainerRef: RefObject<HTMLElement>
   onScrollContainerChange?: (element: HTMLElement | null) => void
+  onContentElementChange?: (element: HTMLElement | null) => void
   renderItem: (
     item: TItem,
     index: number,
@@ -116,9 +114,6 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   }) => void
   scrollContainerClassName?: string
   scrollContainerStyle?: CSSProperties
-  followOutput?: FollowOutput
-  atBottomThreshold?: number
-  onAtBottomStateChange?: (atBottom: boolean) => void
   onVirtualizationChange?: (isVirtualized: boolean) => void
   onUserMessageViewportChange?: (state: UserMessageViewportState) => void
   windowNavigationKey?: number
@@ -169,28 +164,6 @@ function setScrollContainerRef(
   element: HTMLElement | null,
 ) {
   ;(ref as { current: HTMLElement | null }).current = element
-}
-
-const resolveFollowOutput = (
-  followOutput: FollowOutput | undefined,
-  isAtBottom: boolean,
-) => {
-  if (typeof followOutput === 'function') {
-    return followOutput(isAtBottom)
-  }
-  return followOutput
-}
-
-const scrollElementToBottom = (
-  element: HTMLElement,
-  behavior: ScrollBehavior = 'auto',
-) => {
-  const top = Math.max(0, element.scrollHeight - element.clientHeight)
-  if (typeof element.scrollTo === 'function') {
-    element.scrollTo({ top, behavior })
-    return
-  }
-  element.scrollTop = top
 }
 
 const getLoadMoreThreshold = (element: HTMLElement) =>
@@ -319,9 +292,9 @@ const getUserAnchorElement = (
 
 export function ChatTimelineList<TItem extends ChatTimelineItem>({
   items,
-  conversationId,
   scrollContainerRef,
   onScrollContainerChange,
+  onContentElementChange,
   renderItem,
   renderVersion,
   overscanPx,
@@ -330,9 +303,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   onRenderStateChange,
   scrollContainerClassName,
   scrollContainerStyle,
-  followOutput,
-  atBottomThreshold = DEFAULT_AT_BOTTOM_THRESHOLD,
-  onAtBottomStateChange,
   onVirtualizationChange,
   onUserMessageViewportChange,
   windowNavigationKey,
@@ -349,14 +319,11 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(
     null,
   )
-  const lastAtBottomStateRef = useRef<boolean | null>(null)
   const lastScrollTopRef = useRef<number | null>(null)
   const earlierSentinelRef = useRef<HTMLDivElement>(null)
   const renderItemRef = useRef(renderItem)
   renderItemRef.current = renderItem
-  const initialBottomKeyRef = useRef<string | null>(null)
   const pendingAnchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
-  const suppressFollowForWindowLoadRef = useRef(false)
   const loadInFlightRef = useRef(false)
   const lastUserMessageViewportRef = useRef<UserMessageViewportState | null>(
     null,
@@ -367,9 +334,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     key: number
     targetMessageId: string | null | undefined
   } | null>(null)
-  const suppressFollowWindowNavigationKeyRef = useRef<number | undefined>(
-    undefined,
-  )
   const suppressLoadMoreUntilRef = useRef(0)
 
   useLayoutEffect(() => {
@@ -382,7 +346,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     }
 
     pendingAnchorSnapshotRef.current = getVisibleAnchorSnapshot(scrollerElement)
-    suppressFollowForWindowLoadRef.current = true
   }, [scrollerElement])
 
   const handleLoadEarlier = useCallback(() => {
@@ -490,21 +453,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   )
 
   useLayoutEffect(() => {
-    if (!scrollerElement || items.length === 0) {
-      return
-    }
-
-    const timelineKey = conversationId ?? DEFAULT_TIMELINE_KEY
-    if (initialBottomKeyRef.current === timelineKey) {
-      return
-    }
-
-    initialBottomKeyRef.current = timelineKey
-    scrollElementToBottom(scrollerElement)
-    lastScrollTopRef.current = scrollerElement.scrollTop
-  }, [conversationId, items.length, scrollerElement])
-
-  useLayoutEffect(() => {
     loadInFlightRef.current = false
     const snapshot = pendingAnchorSnapshotRef.current
     if (!snapshot || !scrollerElement) {
@@ -539,7 +487,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         key: windowNavigationKey,
         targetMessageId: windowNavigationTargetMessageId,
       }
-      suppressFollowWindowNavigationKeyRef.current = windowNavigationKey
       suppressLoadMoreUntilRef.current = Date.now() + 300
     }
 
@@ -585,69 +532,9 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     windowNavigationTargetMessageId,
   ])
 
-  useLayoutEffect(() => {
-    if (!scrollerElement || !followOutput) {
-      return
-    }
-    if (suppressFollowForWindowLoadRef.current) {
-      suppressFollowForWindowLoadRef.current = false
-      return
-    }
-    if (
-      windowNavigationKey !== undefined &&
-      suppressFollowWindowNavigationKeyRef.current === windowNavigationKey
-    ) {
-      suppressFollowWindowNavigationKeyRef.current = undefined
-      return
-    }
-
-    const distanceToBottom =
-      scrollerElement.scrollHeight -
-      scrollerElement.scrollTop -
-      scrollerElement.clientHeight
-    const isAtBottom = distanceToBottom <= atBottomThreshold
-    const output = resolveFollowOutput(followOutput, isAtBottom)
-    if (output === false) {
-      return
-    }
-
-    scrollElementToBottom(
-      scrollerElement,
-      output === 'smooth' ? 'smooth' : 'auto',
-    )
-    lastScrollTopRef.current = scrollerElement.scrollTop
-  }, [
-    atBottomThreshold,
-    bottomSpacerHeight,
-    followOutput,
-    items,
-    scrollerElement,
-    windowNavigationKey,
-  ])
-
   useEffect(() => {
     if (!scrollerElement) {
-      lastAtBottomStateRef.current = null
       return
-    }
-
-    const emitAtBottomState = () => {
-      if (!onAtBottomStateChange) {
-        return
-      }
-
-      const distanceToBottom =
-        scrollerElement.scrollHeight -
-        scrollerElement.scrollTop -
-        scrollerElement.clientHeight
-      const atBottom = distanceToBottom <= atBottomThreshold
-
-      if (lastAtBottomStateRef.current === atBottom) {
-        return
-      }
-
-      lastAtBottomStateRef.current = atBottom
-      onAtBottomStateChange(atBottom)
     }
 
     const handleScroll = () => {
@@ -657,7 +544,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       const isScrollingTowardNewer =
         previousScrollTop !== null && currentScrollTop > previousScrollTop
 
-      emitAtBottomState()
       scheduleUserMessageViewport()
       if (Date.now() < suppressLoadMoreUntilRef.current) {
         return
@@ -682,7 +568,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       passive: true,
     })
     lastScrollTopRef.current = scrollerElement.scrollTop
-    emitAtBottomState()
     scheduleUserMessageViewport()
 
     if (typeof ResizeObserver === 'undefined') {
@@ -692,7 +577,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     }
 
     const observer = new ResizeObserver(() => {
-      emitAtBottomState()
       scheduleUserMessageViewport()
     })
     observer.observe(scrollerElement)
@@ -702,10 +586,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       scrollerElement.removeEventListener('scroll', handleScroll)
     }
   }, [
-    atBottomThreshold,
     handleLoadNewer,
     hasNewerMessages,
-    onAtBottomStateChange,
     onLoadNewer,
     scheduleUserMessageViewport,
     scrollerElement,
@@ -739,19 +621,21 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       className={scrollContainerClassName}
       style={scrollContainerStyle}
     >
-      {hasEarlierMessages && onLoadEarlier ? (
-        <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
-      ) : null}
-      {items.map((item, index) => (
-        <TimelineRow
-          key={item.renderKey}
-          item={item}
-          index={index}
-          renderItemRef={renderItemRef}
-          renderVersion={resolveRenderVersion(item, index)}
-        />
-      ))}
-      <TimelineBottomSpacer height={safeSpacerHeight} />
+      <div ref={onContentElementChange} className="yolo-chat-timeline-content">
+        {hasEarlierMessages && onLoadEarlier ? (
+          <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
+        ) : null}
+        {items.map((item, index) => (
+          <TimelineRow
+            key={item.renderKey}
+            item={item}
+            index={index}
+            renderItemRef={renderItemRef}
+            renderVersion={resolveRenderVersion(item, index)}
+          />
+        ))}
+        <TimelineBottomSpacer height={safeSpacerHeight} />
+      </div>
     </div>
   )
 }

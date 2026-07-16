@@ -356,8 +356,8 @@ export function QuickAskPanel({
   const [chatAreaElement, setChatAreaElement] = useState<HTMLElement | null>(
     null,
   )
-  const bottomAnchorRef = useRef<HTMLDivElement>(null)
-  const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
+  const [chatContentElement, setChatContentElement] =
+    useState<HTMLElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
   const autoSendRef = useRef(false)
@@ -656,19 +656,11 @@ export function QuickAskPanel({
       sourceFilePath,
     ])
 
-  const {
-    autoScrollToBottom,
-    followOutput,
-    onAtBottomStateChange,
-    forceScrollToBottom,
-    isAutoFollowEnabled,
-  } = useAutoScroll({
+  const { forceScrollToBottom, isAutoFollowEnabled } = useAutoScroll({
     scrollContainerRef: chatAreaRef,
     scrollContainerElement: chatAreaElement,
-    bottomAnchorRef,
-    isStreaming,
-    contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
-    followFromReactCommitsOnly: !timelineIsVirtualized,
+    contentElement: chatContentElement,
+    followKey: conversationId,
   })
 
   useEffect(() => {
@@ -1759,8 +1751,8 @@ export function QuickAskPanel({
   const quickAskChatShellClassName = 'yolo-quick-ask-chat-shell'
   const quickAskChatAreaClassName = useMemo(
     () =>
-      `yolo-chat-messages yolo-quick-ask-chat-area yolo-quick-ask-chat-area--shared${hideScrollbarWhileFollowing ? ' yolo-quick-ask-chat-area--hide-scrollbar' : ''}`,
-    [hideScrollbarWhileFollowing],
+      `yolo-chat-messages yolo-quick-ask-chat-area yolo-quick-ask-chat-area--shared${isAutoFollowEnabled ? ' yolo-chat-messages--following' : ''}${hideScrollbarWhileFollowing ? ' yolo-quick-ask-chat-area--hide-scrollbar' : ''}`,
+    [hideScrollbarWhileFollowing, isAutoFollowEnabled],
   )
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
     for (
@@ -1776,25 +1768,6 @@ export function QuickAskPanel({
 
     return null
   }, [stableQuickAskTimelineItems])
-  useLayoutEffect(() => {
-    if (timelineIsVirtualized) {
-      return
-    }
-
-    if (chatMessages.length === 0 || !isStreaming) {
-      return
-    }
-
-    autoScrollToBottom()
-  }, [
-    activeStreamingMessageId,
-    autoScrollToBottom,
-    chatMessages,
-    isAutoFollowEnabled,
-    isStreaming,
-    timelineIsVirtualized,
-  ])
-
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2189,13 +2162,7 @@ export function QuickAskPanel({
       }
 
       if (timelineItem.kind === 'bottom-anchor') {
-        return (
-          <div
-            ref={bottomAnchorRef}
-            className="yolo-chat-bottom-anchor"
-            aria-hidden="true"
-          />
-        )
+        return <div className="yolo-chat-bottom-anchor" aria-hidden="true" />
       }
 
       return null
@@ -2323,18 +2290,16 @@ export function QuickAskPanel({
           conversationId={conversationId}
           scrollContainerRef={chatAreaRef}
           onScrollContainerChange={setChatAreaElement}
+          onContentElementChange={setChatContentElement}
           containerClassName={quickAskChatShellClassName}
           renderItem={renderQuickAskTimelineItem}
           renderVersion={quickAskTimelineRenderVersion}
           forceRenderItemIds={['bottom-anchor']}
-          followOutput={followOutput}
-          onAtBottomStateChange={onAtBottomStateChange}
           virtualizationThreshold={
             focusedUserMessageId
               ? stableQuickAskTimelineItems.length
               : undefined
           }
-          onVirtualizationChange={setTimelineIsVirtualized}
           scrollContainerClassName={quickAskChatAreaClassName}
         />
       )}

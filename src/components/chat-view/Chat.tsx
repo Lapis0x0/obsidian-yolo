@@ -1857,7 +1857,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
   const chatMessagesRef = useRef<HTMLDivElement>(null)
-  const bottomAnchorRef = useRef<HTMLDivElement>(null)
+  const [chatMessagesElement, setChatMessagesElement] =
+    useState<HTMLElement | null>(null)
+  const [chatContentElement, setChatContentElement] =
+    useState<HTMLElement | null>(null)
   // Callback-ref + state for the overlay element. A plain useRef with a
   // mount-once effect would lose its observation when the chat view unmounts
   // (e.g. switching to the composer view and back), since the new overlay
@@ -1866,7 +1869,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [inputOverlayElement, setInputOverlayElement] =
     useState<HTMLDivElement | null>(null)
   const [inputOverlayHeight, setInputOverlayHeight] = useState(0)
-  const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
   const [navigatorViewport, setNavigatorViewport] = useState<{
     activeMessageId: string | null
     visibleMessageIds: string[]
@@ -1885,17 +1887,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const {
     autoScrollToBottom,
-    notifyContentFlushed,
     forceScrollToBottom,
     stopAutoFollow,
     isAutoFollowEnabled,
-    followOutput,
-    onAtBottomStateChange,
   } = useAutoScroll({
     scrollContainerRef: chatMessagesRef,
-    bottomAnchorRef,
-    isStreaming: hasStreamingMessages,
-    contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
+    scrollContainerElement: chatMessagesElement,
+    contentElement: chatContentElement,
+    followKey: currentConversationId,
   })
   const handleForceScrollToBottom = useCallback(() => {
     resetToLatest()
@@ -1975,22 +1974,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
     }
   }, [inputOverlayElement])
-
-  // When the overlay height changes (todo expand/collapse, queued bubbles
-  // appear/disappear), the scroll geometry shifts. If we are in auto-follow,
-  // re-anchor to the new bottom so the metadata bar stays visible above the
-  // overlay; otherwise leave the user's reading position alone.
-  useEffect(() => {
-    if (!isAutoFollowEnabled) {
-      return
-    }
-    notifyContentFlushed()
-  }, [
-    inputOverlayHeight,
-    isAutoFollowEnabled,
-    mobileKeyboardViewportHeight,
-    notifyContentFlushed,
-  ])
 
   const {
     abortConversationRun,
@@ -6348,13 +6331,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
       }
 
-      return (
-        <div
-          ref={bottomAnchorRef}
-          className="yolo-chat-bottom-anchor"
-          aria-hidden="true"
-        />
-      )
+      return <div className="yolo-chat-bottom-anchor" aria-hidden="true" />
     },
     [
       activeApplyRequestKey,
@@ -6629,9 +6606,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           chatTimelineItems={stableChatTimelineItems}
           timelineRenderVersion={chatTimelineRenderVersion}
           chatMessagesRef={chatMessagesRef}
+          onScrollContainerChange={setChatMessagesElement}
+          onContentElementChange={setChatContentElement}
           renderChatTimelineItem={renderChatTimelineItem}
-          followOutput={followOutput}
-          onAtBottomStateChange={onAtBottomStateChange}
           editingAssistantMessageId={editingAssistantMessageId}
           hasEarlierMessages={hasEarlierMessages}
           hasNewerMessages={hasNewerMessages}
@@ -6663,7 +6640,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             'chat.emptyState.agentFullDescription',
             '自动放行工具调用，处理搜索、读写与多步骤任务',
           )}
-          onTimelineVirtualizationChange={setTimelineIsVirtualized}
           onUserMessageViewportChange={setNavigatorViewport}
           windowNavigationKey={windowNavigationKey || undefined}
           windowNavigationTargetMessageId={windowNavigationTargetMessageId}
