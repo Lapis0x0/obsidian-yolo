@@ -52,13 +52,14 @@ import type {
   LearningNavigationHandler,
   LearningNavigationTarget,
 } from './core/learning/learningNavigation'
-import {
+import { LearningRuntime } from './core/learning/learningRuntime'
+import { getTotalDueCards } from './core/learning/learningStatsService'
+import type {
   LearningStatsService,
-  getTotalDueCards,
+  LearningStatsSnapshot,
 } from './core/learning/learningStatsService'
-import type { LearningStatsSnapshot } from './core/learning/learningStatsService'
 import type { ProjectEventBus } from './core/learning/projectEventBus'
-import { LearningSrsStore } from './core/learning/srs/srsStore'
+import type { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type {
@@ -226,7 +227,6 @@ export default class YoloPlugin extends Plugin {
     null
   private isContinuationInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
-  private learningGenerationAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
   private diffReviewController: DiffReviewController | null = null
@@ -251,11 +251,7 @@ export default class YoloPlugin extends Plugin {
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
-  private learningEventBus: ProjectEventBus | null = null
-  private learningSrsStore: LearningSrsStore | null = null
-  private learningStatsService: LearningStatsService | null = null
-  private learningNavigationHandler: LearningNavigationHandler | null = null
-  private pendingLearningNavigation: LearningNavigationTarget | null = null
+  private learningRuntime: LearningRuntime | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -349,14 +345,13 @@ export default class YoloPlugin extends Plugin {
    * the on-screen graph.
    */
   setLearningEventBus(bus: ProjectEventBus | null): void {
-    this.learningEventBus = bus
+    this.getLearningRuntime().setEventBus(bus)
   }
 
   setLearningNavigationHandler(
     handler: LearningNavigationHandler | null,
   ): void {
-    this.learningNavigationHandler = handler
-    this.flushLearningNavigation()
+    this.getLearningRuntime().setNavigationHandler(handler)
   }
 
   showActionToast(toast: ActionToastOptions): void {
@@ -364,41 +359,30 @@ export default class YoloPlugin extends Plugin {
   }
 
   trackLearningGeneration(controller: AbortController): void {
-    this.learningGenerationAbortControllers.add(controller)
+    this.getLearningRuntime().trackGeneration(controller)
   }
 
   releaseLearningGeneration(controller: AbortController): void {
-    this.learningGenerationAbortControllers.delete(controller)
-  }
-
-  private flushLearningNavigation(): void {
-    if (!this.learningNavigationHandler || !this.pendingLearningNavigation) {
-      return
-    }
-    const target = this.pendingLearningNavigation
-    this.pendingLearningNavigation = null
-    this.learningNavigationHandler(target)
+    this.getLearningRuntime().releaseGeneration(controller)
   }
 
   getLearningSrsStore(): LearningSrsStore {
-    if (!this.learningSrsStore) {
-      this.learningSrsStore = new LearningSrsStore(
-        this.app,
-        () => this.settings,
-      )
-    }
-    return this.learningSrsStore
+    return this.getLearningRuntime().getSrsStore()
   }
 
   getLearningStatsService(): LearningStatsService {
-    if (!this.learningStatsService) {
-      this.learningStatsService = new LearningStatsService({
+    return this.getLearningRuntime().getStatsService()
+  }
+
+  private getLearningRuntime(): LearningRuntime {
+    if (!this.learningRuntime) {
+      this.learningRuntime = new LearningRuntime({
         app: this.app,
+        getSettings: () => this.settings,
         getLearningBaseDir: () => getYoloLearningDir(this.settings),
-        srsStore: this.getLearningSrsStore(),
       })
     }
-    return this.learningStatsService
+    return this.learningRuntime
   }
 
   /**
@@ -456,17 +440,17 @@ export default class YoloPlugin extends Plugin {
   private async revealLearningView(
     target?: LearningNavigationTarget,
   ): Promise<WorkspaceLeaf> {
-    if (target) this.pendingLearningNavigation = target
+    if (target) this.getLearningRuntime().queueNavigation(target)
     const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
     if (existing) {
       this.app.workspace.revealLeaf(existing)
-      this.flushLearningNavigation()
+      this.getLearningRuntime().flushNavigation()
       return existing
     }
     const leaf = this.app.workspace.getLeaf('tab')
     await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
     this.app.workspace.revealLeaf(leaf)
-    this.flushLearningNavigation()
+    this.getLearningRuntime().flushNavigation()
     return leaf
   }
 
@@ -2127,7 +2111,7 @@ export default class YoloPlugin extends Plugin {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
     })
     this.app.workspace.onLayoutReady(() => {
-      this.getLearningStatsService().start()
+      this.getLearningRuntime().startStats()
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2568,18 +2552,11 @@ export default class YoloPlugin extends Plugin {
     this.moduleManager = null
     this.moduleRuntime?.dispose()
     this.moduleRuntime = null
-    for (const controller of this.learningGenerationAbortControllers) {
-      controller.abort()
-    }
-    this.learningGenerationAbortControllers.clear()
+    this.learningRuntime?.dispose()
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
     this.actionToastController?.destroy()
     this.actionToastController = null
-    this.learningNavigationHandler = null
-    this.pendingLearningNavigation = null
-    this.learningStatsService?.dispose()
-    this.learningStatsService = null
     this.closeSmartSpace()
 
     // Selection chat cleanup
@@ -2824,8 +2801,8 @@ export default class YoloPlugin extends Plugin {
     const baseDirChanged =
       previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
 
-    if (baseDirChanged && this.learningSrsStore) {
-      await this.learningSrsStore.runExclusive(async () => {
+    if (baseDirChanged && this.learningRuntime) {
+      await this.learningRuntime.runExclusiveIfSrsInitialized(async () => {
         this.settings = normalizedSettings
       })
     } else {
@@ -2849,7 +2826,7 @@ export default class YoloPlugin extends Plugin {
       new Notice(
         'YOLO: detected a `baseDir` change in data.json. Reloaded settings against the new path.',
       )
-      this.learningStatsService?.restart()
+      this.learningRuntime?.restartStats()
     }
 
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
@@ -3086,8 +3063,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           fromSettings: previousSettings,
           toSettings: normalizedSettings,
         })
-      const migrated = this.learningSrsStore
-        ? await this.learningSrsStore.runExclusive(async () => {
+      const migrated = this.learningRuntime
+        ? await this.learningRuntime.runExclusiveIfSrsInitialized(async () => {
             const succeeded = await relocate()
             if (succeeded) this.settings = normalizedSettings
             return succeeded
@@ -3107,7 +3084,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     this.settings = normalizedSettings
-    if (yoloBaseDirChanged) this.learningStatsService?.restart()
+    if (yoloBaseDirChanged) this.learningRuntime?.restartStats()
     await this.persistPluginDirSettings(normalizedSettings)
     this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
     setLLMDebugCaptureEnabled(
