@@ -1,5 +1,3 @@
-import type { App } from 'obsidian'
-
 import {
   type LearningProjectStats,
   loadLearningProjectStats,
@@ -23,8 +21,6 @@ export type LearningStatsSnapshot = {
 type LearningStatsSubscriber = (snapshot: LearningStatsSnapshot) => void
 
 type LearningStatsServiceOptions = {
-  /** Retained only for the separately App-backed loadLearningProjectStats. */
-  app: App
   vault: LearningVaultReadApi
   getLearningBaseDir: () => string
   srsStore: LearningSrsStore
@@ -50,7 +46,6 @@ export function getTotalDueCards(snapshot: LearningStatsSnapshot): number {
 }
 
 export class LearningStatsService {
-  private readonly app: App
   private readonly vault: LearningVaultReadApi
   private readonly getLearningBaseDir: () => string
   private readonly srsStore: LearningSrsStore
@@ -69,7 +64,6 @@ export class LearningStatsService {
   private nextDueTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor({
-    app,
     vault,
     getLearningBaseDir,
     srsStore,
@@ -77,7 +71,6 @@ export class LearningStatsService {
     loadProjectStats = loadLearningProjectStats,
     now = () => new Date(),
   }: LearningStatsServiceOptions) {
-    this.app = app
     this.vault = vault
     this.getLearningBaseDir = getLearningBaseDir
     this.srsStore = srsStore
@@ -141,7 +134,7 @@ export class LearningStatsService {
           projects.map(async (project) => ({
             projectId: project.id,
             stats: await this.loadProjectStats({
-              app: this.app,
+              vault: this.vault,
               project,
               srsStore: this.srsStore,
               now,
@@ -214,7 +207,7 @@ export class LearningStatsService {
       const failedProjectIds = new Set(this.snapshot.failedProjectIds)
       const [statsResult, pausedResult] = await Promise.allSettled([
         this.loadProjectStats({
-          app: this.app,
+          vault: this.vault,
           project,
           srsStore: this.srsStore,
           now: this.now(),

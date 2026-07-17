@@ -7,6 +7,8 @@ import {
   parseCardFile,
   scanProjectCards,
 } from './cardFile'
+import { createObsidianLearningVaultReadApi } from './obsidianLearningVaultReadApi'
+import { createObsidianLearningVaultWriteApi } from './obsidianLearningVaultWriteApi'
 
 const A = '## A <!--card:aaaaaaaa kp:11111111-->\n\nfront A\n\n---\n\nback A'
 const B = '## B <!--card:bbbbbbbb kp:22222222-->\n\nfront B\n\n---\n\nback B'
@@ -58,8 +60,12 @@ function createApp(initialFiles: Record<string, string>) {
       delete: deleteFile,
     },
   } as unknown as App
+  const vaultReadApi = createObsidianLearningVaultReadApi(app)
+  const vaultWriteApi = createObsidianLearningVaultWriteApi(app)
   return {
     app,
+    vaultReadApi,
+    vaultWriteApi,
     adapter,
     files,
     fileObjects,
@@ -120,11 +126,11 @@ describe('cardFile', () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/b/cards.md'
     const directB = '## B <!--card:bbbbbbbb-->\n\nfront B\n\n---\n\nback B'
-    const { app, files } = createApp({
+    const { vaultReadApi, vaultWriteApi, files } = createApp({
       [sourcePath]: `${DIRECT_A}\n`,
       [targetPath]: `${directB}\n`,
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     const created = await store.createChapterCard('p', sourcePath, '第一章', {
       front: 'new front',
@@ -213,12 +219,12 @@ describe('cardFile', () => {
   })
 
   it('scans project UUIDs and detects duplicates across files', async () => {
-    const { app } = createApp({
+    const { vaultReadApi } = createApp({
       'p/a/cards.md': `${A}\n`,
       'p/b/cards.md': `${A}\n\n${B}\n`,
       'other/cards.md': B,
     })
-    const result = await scanProjectCards(app, 'p')
+    const result = await scanProjectCards(vaultReadApi, 'p')
 
     expect(result.uuids).toEqual(new Set(['aaaaaaaa', 'bbbbbbbb']))
     expect(result.duplicateUuids).toEqual(new Set(['aaaaaaaa']))
@@ -226,12 +232,12 @@ describe('cardFile', () => {
   })
 
   it('detects UUID collisions across chapter-direct card files', async () => {
-    const { app } = createApp({
+    const { vaultReadApi } = createApp({
       'p/a/cards.md': `${DIRECT_A}\n`,
       'p/b/cards.md': `${DIRECT_A}\n`,
     })
 
-    const result = await scanProjectCards(app, 'p')
+    const result = await scanProjectCards(vaultReadApi, 'p')
 
     expect(result.uuids).toEqual(new Set(['aaaaaaaa']))
     expect(result.duplicateUuids).toEqual(new Set(['aaaaaaaa']))
@@ -241,10 +247,13 @@ describe('cardFile', () => {
   it('includes expected card paths and marks read failures incomplete', async () => {
     const expectedPath = 'p/expected/cards.md'
     const missingPath = 'p/missing/cards.md'
-    const { app, cachedRead } = createApp({ [expectedPath]: `${A}\n` })
+    const { vaultReadApi, cachedRead } = createApp({ [expectedPath]: `${A}\n` })
     cachedRead.mockRejectedValueOnce(new Error('read failed'))
 
-    const failed = await scanProjectCards(app, 'p', [expectedPath, missingPath])
+    const failed = await scanProjectCards(vaultReadApi, 'p', [
+      expectedPath,
+      missingPath,
+    ])
     expect(failed.complete).toBe(false)
     expect(failed.errors).toEqual([
       expect.objectContaining({ path: expectedPath, message: 'read failed' }),
@@ -253,7 +262,7 @@ describe('cardFile', () => {
     cachedRead.mockImplementation(async (file: TFile) =>
       file.path === expectedPath ? `${A}\n` : '',
     )
-    const succeeded = await scanProjectCards(app, 'p', [
+    const succeeded = await scanProjectCards(vaultReadApi, 'p', [
       expectedPath,
       missingPath,
     ])
@@ -266,8 +275,10 @@ describe('cardFile', () => {
     const note = '### 说明\n\ninterlude'
     const preserved = `---\ntitle: Cards\n---\n\nprefix\n\n${note}\n\n`
     const original = `${preserved}${A}\n\n${B}\n`
-    const { app, files } = createApp({ [path]: original })
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, files } = createApp({
+      [path]: original,
+    })
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.reorderCard(path, 'aaaaaaaa', 1)
     const reordered = files.get(path) ?? ''
@@ -297,8 +308,10 @@ describe('cardFile', () => {
 
   it('rejects the reserved side separator inside edited content', async () => {
     const path = 'p/a/cards.md'
-    const { app, files, modify } = createApp({ [path]: `${A}\n` })
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, files, modify } = createApp({
+      [path]: `${A}\n`,
+    })
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await expect(
       store.updateCard(path, 'aaaaaaaa', {
@@ -312,10 +325,10 @@ describe('cardFile', () => {
 
   it('deletes multiple cards in one file write', async () => {
     const path = 'p/a/cards.md'
-    const { app, files, modify } = createApp({
+    const { vaultReadApi, vaultWriteApi, files, modify } = createApp({
       [path]: `---\ntitle: Cards\n---\n\n${A}\n\n${B}\n`,
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.deleteCards(path, ['aaaaaaaa', 'bbbbbbbb'])
 
@@ -325,8 +338,9 @@ describe('cardFile', () => {
 
   it('creates a missing cards.md through Vault with canonical frontmatter', async () => {
     const path = 'p/new/cards.md'
-    const { app, adapter, files, create, modify } = createApp({})
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, adapter, files, create, modify } =
+      createApp({})
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.createCard('p', path, '第一章', '11111111')
 
@@ -341,8 +355,9 @@ describe('cardFile', () => {
 
   it('detects a concurrent file creation before Vault.create', async () => {
     const path = 'p/new/cards.md'
-    const { app, create, fileObjects, files } = createApp({})
-    const store = new LearningCardFileStore(app)
+    const { app, vaultReadApi, vaultWriteApi, create, fileObjects, files } =
+      createApp({})
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
     const getAbstractFileByPath = jest.fn(() => {
       if (getAbstractFileByPath.mock.calls.length === 3) {
         const concurrent = new TFile()
@@ -364,8 +379,10 @@ describe('cardFile', () => {
 
   it('moves within one file while preserving UUID and changing kp', async () => {
     const path = 'p/a/cards.md'
-    const { app, files } = createApp({ [path]: `${A}\n\n${B}\n` })
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, files } = createApp({
+      [path]: `${A}\n\n${B}\n`,
+    })
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.moveCard({
       sourcePath: path,
@@ -385,11 +402,11 @@ describe('cardFile', () => {
   it('moves across files target-first and resumes an intermediate duplicate', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/b/cards.md'
-    const { app, adapter, files, modify } = createApp({
+    const { vaultReadApi, vaultWriteApi, adapter, files, modify } = createApp({
       [sourcePath]: `${A}\n`,
       [targetPath]: `${B}\n`,
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
     await store.moveCard({
       sourcePath,
       targetPath,
@@ -423,12 +440,12 @@ describe('cardFile', () => {
     const targetPath = 'p/c/cards.md'
     const C =
       '## C <!--card:cccccccc kp:33333333-->\n\nfront C\n\n---\n\nback C'
-    const { app, files } = createApp({
+    const { vaultReadApi, vaultWriteApi, files } = createApp({
       [firstPath]: `${A}\n`,
       [secondPath]: `${B}\n`,
       [targetPath]: `${C}\n`,
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.moveCards({
       cards: [
@@ -454,11 +471,11 @@ describe('cardFile', () => {
     const targetPath = 'p/b/cards.md'
     const fencedBack = 'before\n\n```md\n## example heading\n```\n\nafter'
     const fencedCard = `## Fenced <!--card:aaaaaaaa kp:11111111-->\n\nfront\n\n---\n\n${fencedBack}`
-    const { app, files } = createApp({
+    const { vaultReadApi, vaultWriteApi, files } = createApp({
       [sourcePath]: `${fencedCard}\n`,
       [targetPath]: `${B}\n`,
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.moveCard({
       sourcePath,
@@ -481,10 +498,11 @@ describe('cardFile', () => {
   it('creates a missing move target with canonical frontmatter', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/new/cards.md'
-    const { app, adapter, files, create, modify } = createApp({
-      [sourcePath]: `${A}\n`,
-    })
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, adapter, files, create, modify } =
+      createApp({
+        [sourcePath]: `${A}\n`,
+      })
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await store.moveCard({
       sourcePath,
@@ -504,8 +522,10 @@ describe('cardFile', () => {
 
   it('requires a chapter title when a cross-file target is missing', async () => {
     const sourcePath = 'p/a/cards.md'
-    const { app, create } = createApp({ [sourcePath]: `${A}\n` })
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, create } = createApp({
+      [sourcePath]: `${A}\n`,
+    })
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await expect(
       store.moveCard({
@@ -521,7 +541,7 @@ describe('cardFile', () => {
   it('rolls back target when source deletion fails', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/b/cards.md'
-    const { app, modify, files } = createApp({
+    const { vaultReadApi, vaultWriteApi, modify, files } = createApp({
       [sourcePath]: `${A}\n`,
       [targetPath]: `${B}\n`,
     })
@@ -529,7 +549,7 @@ describe('cardFile', () => {
       if (file.path === sourcePath) throw new Error('source failed')
       files.set(file.path, content)
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await expect(
       store.moveCard({
@@ -546,11 +566,12 @@ describe('cardFile', () => {
   it('deletes a newly created target when source deletion fails', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/new/cards.md'
-    const { app, files, modify, create, deleteFile } = createApp({
-      [sourcePath]: `${A}\n`,
-    })
+    const { vaultReadApi, vaultWriteApi, files, modify, create, deleteFile } =
+      createApp({
+        [sourcePath]: `${A}\n`,
+      })
     modify.mockRejectedValueOnce(new Error('source failed'))
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await expect(
       store.moveCard({
@@ -570,16 +591,17 @@ describe('cardFile', () => {
   it('does not delete a newly created target changed before rollback', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/new/cards.md'
-    const { app, files, modify, deleteFile } = createApp({
-      [sourcePath]: `${A}\n`,
-    })
+    const { vaultReadApi, vaultWriteApi, files, modify, deleteFile } =
+      createApp({
+        [sourcePath]: `${A}\n`,
+      })
     modify.mockImplementation(async (file: TFile) => {
       if (file.path === sourcePath) {
         files.set(targetPath, `${files.get(targetPath)}external\n`)
         throw new Error('source failed')
       }
     })
-    const store = new LearningCardFileStore(app)
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
 
     await expect(
       store.moveCard({
@@ -597,10 +619,11 @@ describe('cardFile', () => {
 
   it('detects full-content CAS changes before writing', async () => {
     const path = 'p/a/cards.md'
-    const { app, adapter, read, files, modify } = createApp({
-      [path]: `${A}\n`,
-    })
-    const store = new LearningCardFileStore(app)
+    const { vaultReadApi, vaultWriteApi, adapter, read, files, modify } =
+      createApp({
+        [path]: `${A}\n`,
+      })
+    const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
     let reads = 0
     read.mockImplementation(async () => {
       reads += 1

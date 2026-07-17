@@ -1,7 +1,8 @@
-import { TFile } from 'obsidian'
-import type { App } from 'obsidian'
-
 import { loadLearningProjectStats } from './learningStats'
+import type {
+  LearningVaultFile,
+  LearningVaultReadApi,
+} from './learningVaultReadApi'
 import type { LearningSrsStore } from './srs/srsStore'
 import type { SrsCardState } from './srs/srsTypes'
 import type { Project } from './types'
@@ -13,13 +14,17 @@ const CARD_B =
 const CARD_C =
   '## C <!--card:cccccccc kp:22222222-->\n\nfront C\n\n---\n\nback C'
 
-function makeFile(path: string, ctime: number, mtime: number) {
-  const file = new TFile()
-  file.path = path
-  file.name = path.split('/').at(-1) ?? ''
-  file.stat = { ctime, mtime, size: 0 }
-  return file
-}
+const makeFile = (
+  path: string,
+  ctime: number,
+  mtime: number,
+): LearningVaultFile => ({
+  kind: 'file',
+  path,
+  name: path.split('/').at(-1) ?? '',
+  ctime,
+  mtime,
+})
 
 function createFixture() {
   const index = makeFile('learning/test/index.md', 100, 200)
@@ -29,13 +34,16 @@ function createFixture() {
     [cards.path, cards],
   ])
   const content = new Map([[cards.path, `${CARD_A}\n\n${CARD_B}\n\n${CARD_C}`]])
-  const app = {
-    vault: {
-      cachedRead: jest.fn(async (file: TFile) => content.get(file.path) ?? ''),
-      getAbstractFileByPath: (path: string) => files.get(path) ?? null,
-      getMarkdownFiles: () => [...files.values()],
-    },
-  } as unknown as App
+  const vault = {
+    getEntry: (path: string) => files.get(path) ?? null,
+    listChildren: () => [],
+    listMarkdownFiles: () => [...files.values()],
+    readText: jest.fn(async (path: string) => content.get(path) ?? ''),
+    onCreate: () => () => undefined,
+    onModify: () => () => undefined,
+    onDelete: () => () => undefined,
+    onRename: () => () => undefined,
+  } satisfies LearningVaultReadApi
   const project: Project = {
     kind: 'outline',
     id: 'learning/test',
@@ -82,7 +90,7 @@ function createFixture() {
       },
     ],
   }
-  return { app, project, cards, content, files }
+  return { vault, project, cards, content, files }
 }
 
 function state(
@@ -107,7 +115,7 @@ function state(
 
 describe('loadLearningProjectStats', () => {
   it('calculates real card, due, retention, and activity statistics', async () => {
-    const { app, project } = createFixture()
+    const { vault, project } = createFixture()
     const projectState = {
       version: 3,
       cards: {
@@ -137,7 +145,7 @@ describe('loadLearningProjectStats', () => {
     } as unknown as LearningSrsStore
 
     const result = await loadLearningProjectStats({
-      app,
+      vault,
       project,
       srsStore,
       now: new Date('2026-07-12T12:00:00.000Z'),
@@ -163,7 +171,7 @@ describe('loadLearningProjectStats', () => {
   })
 
   it('selects the first knowledge point with unintroduced cards when no review is due', async () => {
-    const { app, project } = createFixture()
+    const { vault, project } = createFixture()
     const srsStore = {
       getEffectiveProjectState: jest.fn(async () => ({
         version: 3,
@@ -182,7 +190,7 @@ describe('loadLearningProjectStats', () => {
     } as unknown as LearningSrsStore
 
     const result = await loadLearningProjectStats({
-      app,
+      vault,
       project,
       srsStore,
       now: new Date('2026-07-12T12:00:00.000Z'),
@@ -196,7 +204,7 @@ describe('loadLearningProjectStats', () => {
   })
 
   it('rejects duplicate card UUIDs across chapter files', async () => {
-    const { app, project, cards, content } = createFixture()
+    const { vault, project, cards, content } = createFixture()
     content.set(cards.path, `${CARD_A}\n\n${CARD_A}`)
     const srsStore = {
       getEffectiveProjectState: jest.fn(async () => ({
@@ -211,7 +219,7 @@ describe('loadLearningProjectStats', () => {
 
     await expect(
       loadLearningProjectStats({
-        app,
+        vault,
         project,
         srsStore,
         now: new Date('2026-07-12T12:00:00.000Z'),
@@ -224,7 +232,7 @@ describe('loadLearningProjectStats', () => {
   })
 
   it('validates cards files outside declared chapter folders', async () => {
-    const { app, project, content, files } = createFixture()
+    const { vault, project, content, files } = createFixture()
     const unexpected = makeFile('learning/test/orphan/cards.md', 150, 300)
     files.set(unexpected.path, unexpected)
     content.set(
@@ -244,7 +252,7 @@ describe('loadLearningProjectStats', () => {
 
     await expect(
       loadLearningProjectStats({
-        app,
+        vault,
         project,
         srsStore,
         now: new Date('2026-07-12T12:00:00.000Z'),
@@ -257,7 +265,7 @@ describe('loadLearningProjectStats', () => {
   })
 
   it('loads chapter-direct cards projects without knowledge points', async () => {
-    const { app, project, cards, content } = createFixture()
+    const { vault, project, cards, content } = createFixture()
     content.set(
       cards.path,
       '## A <!--card:aaaaaaaa-->\n\nfront A\n\n---\n\nback A\n\n## B <!--card:bbbbbbbb-->\n\nfront B\n\n---\n\nback B',
@@ -289,7 +297,7 @@ describe('loadLearningProjectStats', () => {
     } as unknown as LearningSrsStore
 
     const result = await loadLearningProjectStats({
-      app,
+      vault,
       project: cardsProject,
       srsStore,
       now: new Date('2026-07-12T12:00:00.000Z'),
@@ -305,7 +313,7 @@ describe('loadLearningProjectStats', () => {
   })
 
   it('excludes suspended outline cards from counts and recommendations', async () => {
-    const { app, project } = createFixture()
+    const { vault, project } = createFixture()
     const srsStore = {
       getEffectiveProjectState: jest.fn(async () => ({
         version: 3,
@@ -324,7 +332,7 @@ describe('loadLearningProjectStats', () => {
     } as unknown as LearningSrsStore
 
     const result = await loadLearningProjectStats({
-      app,
+      vault,
       project,
       srsStore,
       now: new Date('2026-07-12T12:00:00.000Z'),
@@ -340,7 +348,7 @@ describe('loadLearningProjectStats', () => {
   })
 
   it('freezes paused project statistics while preserving real study time', async () => {
-    const { app, project } = createFixture()
+    const { vault, project } = createFixture()
     const pausedAt = new Date('2026-07-12T12:00:00.000Z')
     const lastStudiedAt = '2026-07-10T12:00:00.000Z'
     const getEffectiveProjectState = jest.fn(
@@ -379,13 +387,13 @@ describe('loadLearningProjectStats', () => {
     } as unknown as LearningSrsStore
 
     const first = await loadLearningProjectStats({
-      app,
+      vault,
       project,
       srsStore,
       now: pausedAt,
     })
     const later = await loadLearningProjectStats({
-      app,
+      vault,
       project,
       srsStore,
       now: new Date('2026-08-12T12:00:00.000Z'),

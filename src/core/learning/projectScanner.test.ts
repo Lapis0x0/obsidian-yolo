@@ -8,6 +8,7 @@ const file = (name: string, path: string, mtime = 1): LearningVaultEntry => ({
   kind: 'file',
   name,
   path,
+  ctime: 0,
   mtime,
 })
 const folder = (name: string, path: string): LearningVaultEntry => ({
@@ -29,6 +30,11 @@ function createVault(
   return {
     getEntry: (path) => entries.get(path) ?? null,
     listChildren: (path) => children[path] ?? [],
+    listMarkdownFiles: () =>
+      [...entries.values()].filter(
+        (entry): entry is Extract<LearningVaultEntry, { kind: 'file' }> =>
+          entry.kind === 'file' && entry.name.endsWith('.md'),
+      ),
     readText: async (path) => contents[path] ?? '',
     onCreate: () => () => undefined,
     onModify: () => () => undefined,

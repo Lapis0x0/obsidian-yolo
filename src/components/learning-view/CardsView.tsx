@@ -30,7 +30,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { Notice, TFile, normalizePath } from 'obsidian'
+import { Notice } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -53,7 +53,6 @@ import {
   CardFileConflictError,
   type CardFileError,
   CardFileFormatError,
-  getLearningCardFileStore,
   parseCardFile,
   scanProjectCards,
 } from '../../core/learning/cardFile'
@@ -389,7 +388,7 @@ function useProjectCards(
   generation: CardGenerationWorkspace | null,
 ) {
   const host = useLearningUiHost()
-  const app = host.app
+  const vault = host.vault
   const { t } = useLearningLanguage()
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
@@ -433,15 +432,13 @@ function useProjectCards(
         project.chapters.map((chapter) => [chapter.id, chapter]),
       )
       for (const chapter of project.chapters) {
-        const file = app.vault.getAbstractFileByPath(
-          normalizePath(
-            project.kind === 'cards'
-              ? (chapter as VaultCardChapter).cardsFilePath
-              : `${chapter.folderPath}/cards.md`,
-          ),
-        )
-        if (!(file instanceof TFile)) continue
-        const content = await app.vault.cachedRead(file)
+        const filePath =
+          project.kind === 'cards'
+            ? (chapter as VaultCardChapter).cardsFilePath
+            : `${chapter.folderPath}/cards.md`
+        const file = vault.getEntry(filePath)
+        if (file?.kind !== 'file') continue
+        const content = await vault.readText(file.path)
         const parsedFile =
           project.kind === 'cards'
             ? parseCardFile(content, {
@@ -515,7 +512,7 @@ function useProjectCards(
         }
       }
       const projectScan = await scanProjectCards(
-        app,
+        vault,
         project.folderPath,
         project.chapters.map((chapter) =>
           project.kind === 'cards'
@@ -582,7 +579,7 @@ function useProjectCards(
     return () => {
       cancelled = true
     }
-  }, [app, generation, host, project, refreshToken, t, writing])
+  }, [generation, host, project, refreshToken, t, vault, writing])
 
   const previewCards = useMemo(() => {
     if (!project || generation?.projectId !== project.id) return []
@@ -762,8 +759,7 @@ function BrowseMode({
 }) {
   const { t } = useLearningLanguage()
   const host = useLearningUiHost()
-  const app = host.app
-  const fileStore = getLearningCardFileStore(app)
+  const fileStore = host.cardFileStore
   const [chapterFilter, setChapterFilter] = useState('all')
   const [pointFilter, setPointFilter] = useState('all')
   const [mastery, setMastery] =
@@ -1494,7 +1490,7 @@ function BrowseMode({
       key: newCardDraftKeyRef.current,
       chapter,
       point,
-      filePath: normalizePath(`${chapter.folderPath}/cards.md`),
+      filePath: `${chapter.folderPath}/cards.md`,
     })
     setInspectorClosing(false)
   }
@@ -1866,7 +1862,7 @@ function BrowseMode({
                 sourcePath: card.filePath,
                 cardUuid: card.id,
               })),
-              targetPath: normalizePath(`${chapter.folderPath}/cards.md`),
+              targetPath: `${chapter.folderPath}/cards.md`,
               kpUuid: targetKpUuid,
               targetIndex,
               targetChapterTitle: chapter.title,

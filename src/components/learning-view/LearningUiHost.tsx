@@ -1,6 +1,7 @@
 import type { App } from 'obsidian'
 import React, { type ReactNode, createContext, useContext } from 'react'
 
+import type { LearningCardFileStore } from '../../core/learning/cardFile'
 import type { LearningGenerationAgent } from '../../core/learning/generation/host'
 import type {
   LearningNavigationHandler,
@@ -31,12 +32,14 @@ export type LearningActionToast = {
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- This public host boundary is intentionally extensible.
 export interface LearningUiHost {
-  readonly app: App & LearningVaultReadApi
+  readonly app: App
+  readonly vault: LearningVaultReadApi
   readonly settings: LearningSettings
   readonly locale: LearningLocale
   readonly t: (keyPath: string, fallback?: string) => string
   readonly srsStore: LearningSrsStore
   readonly statsService: LearningStatsService
+  readonly cardFileStore: LearningCardFileStore
   readonly generationAgent: LearningGenerationAgent
   readonly isGenerationDebugEnabled: () => boolean
   readonly runtimeIdentity: {

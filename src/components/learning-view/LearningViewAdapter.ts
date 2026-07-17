@@ -4,6 +4,7 @@ import type {
   YoloAgentEvent,
   YoloAgentRunRequest,
 } from '../../core/agent/agent-api'
+import { LearningCardFileStore } from '../../core/learning/cardFile'
 import type {
   LearningGenerationAgentEvent,
   LearningGenerationAgentRequest,
@@ -11,6 +12,7 @@ import type {
   LearningGenerationMessage,
 } from '../../core/learning/generation/host'
 import { createObsidianLearningVaultReadApi } from '../../core/learning/obsidianLearningVaultReadApi'
+import { createObsidianLearningVaultWriteApi } from '../../core/learning/obsidianLearningVaultWriteApi'
 import { isLLMDebugCaptureEnabled } from '../../core/llm/debugCapture'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
@@ -152,12 +154,14 @@ async function* streamGenerationAgent(
 }
 
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
-  const app = Object.assign(
-    plugin.app,
-    createObsidianLearningVaultReadApi(plugin.app),
+  const vaultReadApi = createObsidianLearningVaultReadApi(plugin.app)
+  const cardFileStore = new LearningCardFileStore(
+    vaultReadApi,
+    createObsidianLearningVaultWriteApi(plugin.app),
   )
   return {
-    app,
+    app: plugin.app,
+    vault: vaultReadApi,
     get settings() {
       return mapSettings(plugin)
     },
@@ -169,6 +173,7 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
     get statsService() {
       return plugin.getLearningStatsService()
     },
+    cardFileStore,
     generationAgent: {
       stream: (request) => streamGenerationAgent(plugin, request),
     },

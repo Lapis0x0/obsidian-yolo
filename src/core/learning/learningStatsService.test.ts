@@ -1,5 +1,3 @@
-import type { App, EventRef } from 'obsidian'
-
 import type { LearningProjectStats } from './learningStats'
 import { LearningStatsService, getTotalDueCards } from './learningStatsService'
 import type { LearningVaultReadApi } from './learningVaultReadApi'
@@ -46,17 +44,6 @@ function stats(dueCards: number): LearningProjectStats {
 }
 
 function createFixture(projects: Project[]) {
-  const refs = new Set<EventRef>()
-  const app = {
-    vault: {
-      on: jest.fn((_name: string, _callback: unknown) => {
-        const ref = {} as EventRef
-        refs.add(ref)
-        return ref
-      }),
-      offref: jest.fn((ref: EventRef) => refs.delete(ref)),
-    },
-  } as unknown as App
   let mutationSubscriber: ((mutation: SrsProjectMutation) => void) | null = null
   const isProjectPaused = jest.fn(async () => false)
   const srsStore = {
@@ -87,7 +74,6 @@ function createFixture(projects: Project[]) {
   } as unknown as LearningVaultReadApi
 
   return {
-    app,
     isProjectPaused,
     scan,
     srsStore,
@@ -109,7 +95,6 @@ describe('LearningStatsService', () => {
     const fixture = createFixture(projects)
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const service = new LearningStatsService({
-      app: fixture.app,
       vault: fixture.vault,
       getLearningBaseDir: () => 'Learning',
       srsStore: fixture.srsStore,
@@ -152,7 +137,6 @@ describe('LearningStatsService', () => {
     fixture.isProjectPaused.mockResolvedValue(true)
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const service = new LearningStatsService({
-      app: fixture.app,
       vault: fixture.vault,
       getLearningBaseDir: () => 'Learning',
       srsStore: fixture.srsStore,
@@ -182,7 +166,6 @@ describe('LearningStatsService', () => {
         stats(dueBySlug.get(item.slug) ?? 0),
     )
     const service = new LearningStatsService({
-      app: fixture.app,
       vault: fixture.vault,
       getLearningBaseDir: () => 'Learning',
       srsStore: fixture.srsStore,
@@ -216,7 +199,6 @@ describe('LearningStatsService', () => {
     const oldLoadStarted = deferred<boolean>()
     const oldLoad = deferred<LearningProjectStats>()
     const service = new LearningStatsService({
-      app: fixture.app,
       vault: fixture.vault,
       getLearningBaseDir: () => baseDir,
       srsStore: fixture.srsStore,

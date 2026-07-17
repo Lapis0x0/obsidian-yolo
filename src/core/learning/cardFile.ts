@@ -1,9 +1,13 @@
 import { dump as dumpYaml } from 'js-yaml'
-import { TFile, normalizePath } from 'obsidian'
-import type { App } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import { formatCardBody, parseCardBody } from './cardFormat'
+import type { LearningVaultReadApi } from './learningVaultReadApi'
+import { normalizeLearningVaultPath } from './learningVaultReadApi'
+import type {
+  LearningVaultFileSnapshot,
+  LearningVaultWriteApi,
+} from './learningVaultWriteApi'
 
 const UUID_RE = /^[0-9a-f]{8}$/
 const LINKED_CARD_HEADING_RE =
@@ -177,14 +181,14 @@ export function parseCardFile(
 }
 
 export async function scanProjectCards(
-  app: App,
+  vault: LearningVaultReadApi,
   projectPath: string,
   expectedCardPaths?: Iterable<string>,
 ): Promise<ProjectCardScanResult> {
-  const root = normalizePath(projectPath.replace(/\/$/, ''))
+  const root = normalizeLearningVaultPath(projectPath.replace(/\/$/, ''))
   const prefix = `${root}/`
-  const discoveredFiles = app.vault
-    .getMarkdownFiles()
+  const discoveredFiles = vault
+    .listMarkdownFiles()
     .filter(
       (file) =>
         file.name === 'cards.md' &&
@@ -192,9 +196,9 @@ export async function scanProjectCards(
     )
   const filesByPath = new Map(discoveredFiles.map((file) => [file.path, file]))
   for (const expectedPath of expectedCardPaths ?? []) {
-    const path = normalizePath(expectedPath)
-    const abstractFile = app.vault.getAbstractFileByPath(path)
-    if (abstractFile instanceof TFile) filesByPath.set(path, abstractFile)
+    const path = normalizeLearningVaultPath(expectedPath)
+    const entry = vault.getEntry(path)
+    if (entry?.kind === 'file') filesByPath.set(path, entry)
   }
   const uuids = new Set<string>()
   const duplicateUuids = new Set<string>()
@@ -202,7 +206,7 @@ export async function scanProjectCards(
 
   for (const file of filesByPath.values()) {
     try {
-      const content = await app.vault.cachedRead(file)
+      const content = await vault.readText(file.path)
       const parsed = parseCardFile(content, {
         mode: detectCardFileMode(content),
         path: file.path,
@@ -236,7 +240,10 @@ export async function scanProjectCards(
 export class LearningCardFileStore {
   private writeQueue: Promise<void> = Promise.resolve()
 
-  constructor(private readonly app: App) {}
+  constructor(
+    private readonly vault: LearningVaultReadApi,
+    private readonly writer: LearningVaultWriteApi,
+  ) {}
 
   createCard(
     projectPath: string,
@@ -281,7 +288,7 @@ export class LearningCardFileStore {
   ): Promise<CardBlock> {
     return this.enqueueWrite(async () => {
       if (mode === 'knowledge-linked') validateUuid(kpUuid ?? '', '知识点')
-      const scan = await scanProjectCards(this.app, projectPath, [filePath])
+      const scan = await scanProjectCards(this.vault, projectPath, [filePath])
       if (!scan.complete)
         throw new CardFileFormatError(projectPath, scan.errors)
       let cardUuid = createUuid()
@@ -577,7 +584,7 @@ export class LearningCardFileStore {
         path: string
         before: CardFileSnapshot
         after: string
-        file: TFile
+        file: LearningVaultFileSnapshot
       }> = []
       try {
         for (const path of orderedPaths) {
@@ -594,7 +601,7 @@ export class LearningCardFileStore {
             if (entry.before.file) {
               await this.casWrite(
                 entry.path,
-                { file: entry.file, content: entry.after },
+                { file: entry.file, content: entry.file.content },
                 entry.before.content,
               )
             } else {
@@ -733,9 +740,12 @@ export class LearningCardFileStore {
       if (!target) {
         try {
           if (targetSnapshot.file) {
+            if (!writtenTargetFile) {
+              throw new CardFileConflictError(input.targetPath)
+            }
             await this.casWrite(
               input.targetPath,
-              { file: targetSnapshot.file, content: targetAfterInsert },
+              { file: writtenTargetFile, content: writtenTargetFile.content },
               targetSnapshot.content,
             )
           } else {
@@ -768,52 +778,40 @@ export class LearningCardFileStore {
   }
 
   private async readSnapshot(path: string): Promise<CardFileSnapshot> {
-    const normalized = normalizePath(path)
-    const abstractFile = this.app.vault.getAbstractFileByPath(normalized)
-    if (!abstractFile) return { file: null, content: '' }
-    if (!(abstractFile instanceof TFile)) {
-      throw new Error(`cards.md 路径不是文件：${normalized}`)
-    }
-    return {
-      file: abstractFile,
-      content: await this.app.vault.read(abstractFile),
-    }
+    const file = await this.writer.readTextSnapshot(path)
+    return file ? { file, content: file.content } : { file: null, content: '' }
   }
 
   private async casWrite(
     path: string,
     expected: CardFileSnapshot,
     next: string,
-  ): Promise<TFile> {
-    const normalized = normalizePath(path)
-    const currentFile = this.app.vault.getAbstractFileByPath(normalized)
+  ): Promise<LearningVaultFileSnapshot> {
     if (!expected.file) {
-      if (currentFile) throw new CardFileConflictError(normalized)
-      return this.app.vault.create(normalized, next)
+      const created = await this.writer.createTextIfAbsent(path, next)
+      if (!created) throw new CardFileConflictError(path)
+      return created
     }
-    if (currentFile !== expected.file)
-      throw new CardFileConflictError(normalized)
-    const current = await this.app.vault.read(expected.file)
-    if (current !== expected.content)
-      throw new CardFileConflictError(normalized)
-    await this.app.vault.modify(expected.file, next)
-    return expected.file
+    const updated = await this.writer.replaceTextIfUnchanged(
+      expected.file,
+      next,
+    )
+    if (!updated) throw new CardFileConflictError(path)
+    return updated
   }
 
   private async casDeleteCreatedFile(
     path: string,
-    expectedFile: TFile | null,
+    expectedFile: LearningVaultFileSnapshot | null,
     expectedContent: string,
   ): Promise<void> {
-    const normalized = normalizePath(path)
-    const currentFile = this.app.vault.getAbstractFileByPath(normalized)
-    if (!expectedFile || currentFile !== expectedFile) {
-      throw new CardFileConflictError(normalized)
+    if (
+      !expectedFile ||
+      expectedFile.content !== expectedContent ||
+      !(await this.writer.deleteCreatedTextIfUnchanged(expectedFile))
+    ) {
+      throw new CardFileConflictError(path)
     }
-    const current = await this.app.vault.read(expectedFile)
-    if (current !== expectedContent) throw new CardFileConflictError(normalized)
-    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Transaction rollback must restore the original absent-file state.
-    await this.app.vault.delete(expectedFile)
   }
 
   private enqueueWrite<R>(operation: () => Promise<R>): Promise<R> {
@@ -827,18 +825,8 @@ export class LearningCardFileStore {
 }
 
 type CardFileSnapshot = {
-  file: TFile | null
+  file: LearningVaultFileSnapshot | null
   content: string
-}
-
-const storesByApp = new WeakMap<App, LearningCardFileStore>()
-
-export function getLearningCardFileStore(app: App): LearningCardFileStore {
-  const existing = storesByApp.get(app)
-  if (existing) return existing
-  const store = new LearningCardFileStore(app)
-  storesByApp.set(app, store)
-  return store
 }
 
 function insertCard(

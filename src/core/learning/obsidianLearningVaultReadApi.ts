@@ -6,7 +6,11 @@ import {
   type LearningVaultReadApi,
   type LearningVaultRenameListener,
   isLearningVaultPathInScope,
+  normalizeLearningVaultPath,
 } from './learningVaultReadApi'
+
+const normalizeVaultPath = (path: string) =>
+  normalizePath(normalizeLearningVaultPath(path))
 
 const describeEntry = (entry: TFile | TFolder): LearningVaultEntry =>
   entry instanceof TFile
@@ -14,7 +18,8 @@ const describeEntry = (entry: TFile | TFolder): LearningVaultEntry =>
         kind: 'file',
         path: entry.path,
         name: entry.name,
-        mtime: entry.stat.mtime,
+        ctime: entry.stat?.ctime ?? 0,
+        mtime: entry.stat?.mtime ?? 0,
       }
     : { kind: 'folder', path: entry.path, name: entry.name }
 
@@ -26,7 +31,7 @@ export function createObsidianLearningVaultReadApi(
     scopePath: string,
     listener: LearningVaultEntryListener,
   ): (() => void) => {
-    const normalizedScope = normalizePath(scopePath)
+    const normalizedScope = normalizeVaultPath(scopePath)
     const handler = (entry: TFile | TFolder) => {
       if (!(entry instanceof TFile || entry instanceof TFolder)) return
       if (!isLearningVaultPathInScope(entry.path, normalizedScope)) return
@@ -43,17 +48,29 @@ export function createObsidianLearningVaultReadApi(
 
   return {
     getEntry: (path) => {
-      const entry = app.vault.getAbstractFileByPath(normalizePath(path))
+      const entry = app.vault.getAbstractFileByPath(normalizeVaultPath(path))
       return entry instanceof TFile || entry instanceof TFolder
         ? describeEntry(entry)
         : null
     },
     listChildren: (folderPath) => {
-      const entry = app.vault.getAbstractFileByPath(normalizePath(folderPath))
+      const entry = app.vault.getAbstractFileByPath(
+        normalizeVaultPath(folderPath),
+      )
       return entry instanceof TFolder ? entry.children.map(describeEntry) : []
     },
+    listMarkdownFiles: () =>
+      app.vault.getMarkdownFiles().map((file) => ({
+        kind: 'file' as const,
+        path: file.path,
+        name: file.name,
+        ctime: file.stat?.ctime ?? 0,
+        mtime: file.stat?.mtime ?? 0,
+      })),
     readText: async (filePath) => {
-      const entry = app.vault.getAbstractFileByPath(normalizePath(filePath))
+      const entry = app.vault.getAbstractFileByPath(
+        normalizeVaultPath(filePath),
+      )
       if (!(entry instanceof TFile)) {
         throw new Error(`Learning vault file not found: ${filePath}`)
       }
@@ -63,7 +80,7 @@ export function createObsidianLearningVaultReadApi(
     onModify: (scopePath, listener) => subscribe('modify', scopePath, listener),
     onDelete: (scopePath, listener) => subscribe('delete', scopePath, listener),
     onRename: (scopePath, listener: LearningVaultRenameListener) => {
-      const normalizedScope = normalizePath(scopePath)
+      const normalizedScope = normalizeVaultPath(scopePath)
       const ref = app.vault.on('rename', (entry, oldPath) => {
         if (!(entry instanceof TFile || entry instanceof TFolder)) return
         if (

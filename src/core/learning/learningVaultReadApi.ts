@@ -2,6 +2,7 @@ export type LearningVaultFile = {
   readonly kind: 'file'
   readonly path: string
   readonly name: string
+  readonly ctime: number
   readonly mtime: number
 }
 
@@ -23,6 +24,7 @@ export type LearningVaultRenameListener = (
 export type LearningVaultReadApi = {
   getEntry(path: string): LearningVaultEntry | null
   listChildren(folderPath: string): readonly LearningVaultEntry[]
+  listMarkdownFiles(): readonly LearningVaultFile[]
   readText(filePath: string): Promise<string>
   onCreate(scopePath: string, listener: LearningVaultEntryListener): () => void
   onModify(scopePath: string, listener: LearningVaultEntryListener): () => void

@@ -1,10 +1,10 @@
-import { App, TFile, normalizePath } from 'obsidian'
-
 import {
   CardFileFormatError,
   parseCardFile,
   scanProjectCards,
 } from './cardFile'
+import type { LearningVaultReadApi } from './learningVaultReadApi'
+import { normalizeLearningVaultPath } from './learningVaultReadApi'
 import type { LearningSrsStore } from './srs/srsStore'
 import type { SrsCardState } from './srs/srsTypes'
 import type { CardChapter, Project } from './types'
@@ -33,12 +33,12 @@ export type LearningProjectStats = {
 }
 
 export async function loadLearningProjectStats({
-  app,
+  vault,
   project,
   srsStore,
   now,
 }: {
-  app: App
+  vault: LearningVaultReadApi
   project: Project
   srsStore: LearningSrsStore
   now: Date
@@ -51,21 +51,21 @@ export async function loadLearningProjectStats({
   )
 
   for (const chapter of project.chapters) {
-    const path = normalizePath(
+    const path = normalizeLearningVaultPath(
       project.kind === 'cards'
         ? (chapter as CardChapter).cardsFilePath
         : `${chapter.folderPath}/cards.md`,
     )
-    const file = app.vault.getAbstractFileByPath(path)
-    if (!(file instanceof TFile)) continue
+    const file = vault.getEntry(path)
+    if (file?.kind !== 'file') continue
 
     const parsed =
       project.kind === 'cards'
-        ? parseCardFile(await app.vault.cachedRead(file), {
+        ? parseCardFile(await vault.readText(file.path), {
             mode: 'chapter-direct',
             path: file.path,
           })
-        : parseCardFile(await app.vault.cachedRead(file), file.path)
+        : parseCardFile(await vault.readText(file.path), file.path)
     if (!parsed.complete)
       throw new CardFileFormatError(file.path, parsed.errors)
 
@@ -112,7 +112,7 @@ export async function loadLearningProjectStats({
   }
 
   const projectScan = await scanProjectCards(
-    app,
+    vault,
     project.folderPath,
     project.chapters.map((chapter) =>
       project.kind === 'cards'
@@ -156,17 +156,17 @@ export async function loadLearningProjectStats({
   const totalCards = cardUuids.size
   const averageRetention =
     totalCards === 0 ? 0 : retrievabilityTotal / totalCards
-  const projectFiles = app.vault
-    .getMarkdownFiles()
+  const projectFiles = vault
+    .listMarkdownFiles()
     .filter(
       (file) =>
         file.path === project.indexFilePath ||
         file.path.startsWith(`${project.folderPath}/`),
     )
-  const indexFile = app.vault.getAbstractFileByPath(project.indexFilePath)
-  const createdAt = indexFile instanceof TFile ? indexFile.stat.ctime : 0
+  const indexFile = vault.getEntry(project.indexFilePath)
+  const createdAt = indexFile?.kind === 'file' ? indexFile.ctime : 0
   const lastModifiedAt = projectFiles.reduce(
-    (latest, file) => Math.max(latest, file.stat.mtime),
+    (latest, file) => Math.max(latest, file.mtime),
     createdAt,
   )
   const lastStudiedAt = resolveTimestamp(projectState.lastStudiedAt)

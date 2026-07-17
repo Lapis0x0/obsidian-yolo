@@ -26,6 +26,7 @@ import { Workspace } from './Workspace'
 export function LearningWorkspace() {
   const host = useLearningUiHost()
   const app = host.app
+  const vault = host.vault
   const [settings, setSettings] = useState(() => host.settings)
   const baseDir = settings.learningBaseDir
 
@@ -48,7 +49,7 @@ export function LearningWorkspace() {
     projectPath: string | null
   } | null>(null)
 
-  const bus = useMemo(() => new ProjectEventBus(app), [app])
+  const bus = useMemo(() => new ProjectEventBus(vault), [vault])
   const statsService = host.statsService
   const [statsSnapshot, setStatsSnapshot] = useState(() =>
     statsService.getSnapshot(),

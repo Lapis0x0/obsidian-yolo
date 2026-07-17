@@ -39,7 +39,6 @@ export class LearningRuntime {
     createSrsStore = () => new LearningSrsStore(app, getSettings),
     createStatsService = (srsStore) =>
       new LearningStatsService({
-        app,
         vault: createObsidianLearningVaultReadApi(app),
         getLearningBaseDir,
         srsStore,
