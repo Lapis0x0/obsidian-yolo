@@ -5,6 +5,7 @@ import {
   type ModuleArtifactFile,
   type ModuleStore,
   assertModuleId,
+  collectModuleManifestFiles,
   normalizeModuleArtifactFilePath,
 } from './moduleStore'
 import type { YoloModuleAssetsV1 } from './types'
@@ -119,19 +120,25 @@ export class ModuleAssetsCapabilityProvider
       if (!artifact) {
         throw new Error(`Module "${moduleId}" has no installed artifact`)
       }
-      const { manifest } = artifact
+      const { manifest, variant } = artifact
       if (manifest.id !== moduleId) {
         throw new Error(
           `Module "${moduleId}" installed artifact identity mismatch`,
         )
       }
+      collectModuleManifestFiles(manifest)
       const canonicalPath = canonicalize(normalizedPath)
-      const file = manifest.files.find(
+      const file = variant.files.find(
         (candidate) => canonicalize(candidate.path) === canonicalPath,
       )
       if (!file || !isAssetFile(file)) {
         throw new Error(
           `Module "${moduleId}" asset "${normalizedPath}" is not declared as style, worker, or wasm`,
+        )
+      }
+      if (file.storage === 'device') {
+        throw new Error(
+          `Device-stored module artifact "${file.path}" is unsupported`,
         )
       }
       return Object.freeze({ moduleId, version: manifest.version, file })
@@ -219,7 +226,11 @@ function normalizeAssetRequestPath(path: string): string {
   }
   const normalized = normalizeModuleArtifactFilePath(path)
   const canonicalPath = canonicalize(normalized)
-  if (canonicalPath === 'module.json' || canonicalPath === 'ready.json') {
+  if (
+    canonicalPath === 'module.json' ||
+    canonicalPath === 'ready.json' ||
+    /^ready\.(?:desktop|mobile)\.[a-f0-9]{64}\.json$/.test(canonicalPath)
+  ) {
     throw new Error('Module artifact metadata is not available as an asset')
   }
   return normalized

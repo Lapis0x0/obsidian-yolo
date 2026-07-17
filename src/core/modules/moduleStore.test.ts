@@ -5,7 +5,48 @@ import {
   ModuleStore,
   parseModuleArtifactManifest,
   resolveModulePluginDir,
+  selectModuleManifestVariant,
 } from './moduleStore'
+
+const releaseUrl = (name: string): string =>
+  `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v1.0.0/${name}`
+
+function artifactFile(
+  overrides: Partial<{
+    role: 'entry' | 'style' | 'worker' | 'wasm' | 'model' | 'data'
+    name: string
+    path: string
+    byteSize: number
+    sha256: string
+    url: string
+    storage: 'module' | 'device'
+  }> = {},
+) {
+  const name = overrides.name ?? 'entry.js'
+  return {
+    role: 'entry' as const,
+    name,
+    path: 'entry.js',
+    byteSize: 3,
+    sha256: 'a'.repeat(64),
+    url: releaseUrl(name),
+    storage: 'module' as const,
+    ...overrides,
+  }
+}
+
+function artifactManifest(overrides: Record<string, unknown> = {}) {
+  const entry = artifactFile()
+  return {
+    schemaVersion: 1,
+    id: 'learning',
+    version: '1.0.0',
+    hostApi: '^1.0.0',
+    dataSchemas: { learning: { readMin: 0, readMax: 2, write: 2 } },
+    variants: [{ platform: 'desktop', entry: 'entry.js', files: [entry] }],
+    ...overrides,
+  }
+}
 
 describe('ModuleStore', () => {
   it('prefers manifest.dir and falls back to the configured plugins directory', () => {
@@ -35,9 +76,9 @@ describe('ModuleStore', () => {
     })
 
     await expect(store.readBundledIndexBytes()).resolves.toEqual(index)
-    await expect(store.readReadyMarkerBytes('notes', '1.2.0')).resolves.toEqual(
-      ready,
-    )
+    await expect(
+      store.readReadyMarkerBytes('notes', '1.2.0', 'mobile', 'a'.repeat(64)),
+    ).resolves.toEqual(ready)
     await expect(store.readManifestBytes('notes', '1.2.0')).resolves.toEqual(
       manifest,
     )
@@ -50,7 +91,7 @@ describe('ModuleStore', () => {
     )
     expect(readBinary).toHaveBeenNthCalledWith(
       2,
-      '.config/plugins/yolo/modules/notes/1.2.0/ready.json',
+      `.config/plugins/yolo/modules/notes/1.2.0/ready.mobile.${'a'.repeat(64)}.json`,
     )
     expect(readBinary).toHaveBeenNthCalledWith(
       3,
@@ -91,63 +132,166 @@ describe('ModuleStore', () => {
     expect(readBinary).not.toHaveBeenCalled()
   })
 
-  it('requires a complete, bounded file closure with reserved metadata paths', () => {
-    const entry = {
-      role: 'entry' as const,
-      path: 'entry.js',
-      byteSize: 3,
-      sha256: 'a'.repeat(64),
+  it('parses and deterministically selects a complete platform closure', () => {
+    const desktop = artifactFile()
+    const mobile = artifactFile({ name: 'mobile.js', path: 'mobile.js' })
+    const manifest = parseModuleArtifactManifest(
+      artifactManifest({
+        variants: [
+          { platform: 'mobile', entry: 'mobile.js', files: [mobile] },
+          { platform: 'desktop', entry: 'entry.js', files: [desktop] },
+        ],
+      }),
+    )
+
+    expect(selectModuleManifestVariant(manifest, 'desktop')).toMatchObject({
+      platform: 'desktop',
+      entry: 'entry.js',
+      files: [desktop],
+    })
+    expect(selectModuleManifestVariant(manifest, 'mobile')).toMatchObject({
+      platform: 'mobile',
+      entry: 'mobile.js',
+    })
+    expect(Object.keys(manifest)).toEqual([
+      'schemaVersion',
+      'id',
+      'version',
+      'hostApi',
+      'dataSchemas',
+      'variants',
+    ])
+  })
+
+  it('strictly rejects old/unknown fields and invalid release metadata', () => {
+    expect(() =>
+      parseModuleArtifactManifest({
+        ...artifactManifest(),
+        entry: artifactFile(),
+        files: [artifactFile()],
+      }),
+    ).toThrow('unknown field')
+    expect(() =>
+      parseModuleArtifactManifest(artifactManifest({ hostApi: 'latest' })),
+    ).toThrow('manifest is invalid')
+    expect(() =>
+      parseModuleArtifactManifest(
+        artifactManifest({
+          dataSchemas: { learning: { readMin: 2, readMax: 1, write: 1 } },
+        }),
+      ),
+    ).toThrow('data schema')
+    expect(() =>
+      parseModuleArtifactManifest(
+        artifactManifest({
+          variants: [
+            {
+              platform: 'desktop',
+              entry: 'entry.js',
+              files: [artifactFile({ url: 'http://github.com/bad' })],
+            },
+          ],
+        }),
+      ),
+    ).toThrow('URL')
+  })
+
+  it('rejects duplicate variants and case, Unicode, name, and entry aliases', () => {
+    const desktop = {
+      platform: 'desktop',
+      entry: 'entry.js',
+      files: [artifactFile()],
     }
-    expect(
-      parseModuleArtifactManifest({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        hostApi: 1,
-        entry,
-        files: [entry],
-      }),
-    ).toMatchObject({ id: 'learning', files: [entry] })
     expect(() =>
-      parseModuleArtifactManifest({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        hostApi: 1,
-        entry: { ...entry, path: 'module.json' },
-        files: [{ ...entry, path: 'module.json' }],
-      }),
-    ).toThrow('reserved')
+      parseModuleArtifactManifest(
+        artifactManifest({ variants: [desktop, desktop] }),
+      ),
+    ).toThrow('Duplicate module platform')
     expect(() =>
-      parseModuleArtifactManifest({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        hostApi: 1,
-        entry: { ...entry, path: 'MODULE.JSON' },
-        files: [{ ...entry, path: 'MODULE.JSON' }],
-      }),
+      parseModuleArtifactManifest(
+        artifactManifest({
+          variants: [
+            {
+              ...desktop,
+              files: [
+                artifactFile(),
+                artifactFile({
+                  role: 'data',
+                  name: 'other.dat',
+                  path: 'ENTRY.JS',
+                  url: releaseUrl('other.dat'),
+                }),
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toThrow('Duplicate module file path')
+    expect(() =>
+      parseModuleArtifactManifest(
+        artifactManifest({
+          variants: [
+            {
+              ...desktop,
+              files: [artifactFile({ path: 'e\u0301ntry.js' })],
+            },
+          ],
+        }),
+      ),
+    ).toThrow('canonical')
+    expect(() =>
+      parseModuleArtifactManifest(
+        artifactManifest({ variants: [{ ...desktop, entry: 'other.js' }] }),
+      ),
+    ).toThrow('does not match')
+  })
+
+  it('requires bounded safe file trees with reserved metadata paths', () => {
+    const entry = artifactFile()
+    expect(() =>
+      parseModuleArtifactManifest(
+        artifactManifest({
+          variants: [
+            {
+              platform: 'desktop',
+              entry: 'module.json',
+              files: [{ ...entry, path: 'module.json' }],
+            },
+          ],
+        }),
+      ),
     ).toThrow('reserved')
     const deepPath = `${Array.from({ length: 17 }, (_, index) => `d${index}`).join('/')}/entry.js`
     expect(() =>
-      parseModuleArtifactManifest({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        hostApi: 1,
-        entry: { ...entry, path: deepPath },
-        files: [{ ...entry, path: deepPath }],
-      }),
+      parseModuleArtifactManifest(
+        artifactManifest({
+          variants: [
+            {
+              platform: 'desktop',
+              entry: deepPath,
+              files: [{ ...entry, path: deepPath }],
+            },
+          ],
+        }),
+      ),
     ).toThrow('depth limit')
     expect(() =>
-      parseModuleArtifactManifest({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        hostApi: 1,
-        entry: { ...entry, byteSize: MAX_MODULE_ARTIFACT_FILE_BYTES + 1 },
-        files: [{ ...entry, byteSize: MAX_MODULE_ARTIFACT_FILE_BYTES + 1 }],
-      }),
+      parseModuleArtifactManifest(
+        artifactManifest({
+          variants: [
+            {
+              platform: 'desktop',
+              entry: 'entry.js',
+              files: [
+                {
+                  ...entry,
+                  byteSize: MAX_MODULE_ARTIFACT_FILE_BYTES + 1,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
     ).toThrow('file is invalid')
   })
 })

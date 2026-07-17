@@ -2,24 +2,56 @@
   "schemaVersion": 1,
   "id": "learning",
   "version": "0.1.0",
-  "hostApi": 1,
-  "entry": {
-    "path": "entry.js",
-    "byteSize": 2291,
-    "sha256": "e5c81de6fc81ad77aa80e096ae7f4d8a13cfeba37af624e54da3066be1607810"
-  },
-  "files": [
+  "hostApi": "^1.0.0",
+  "dataSchemas": {},
+  "variants": [
     {
-      "role": "entry",
-      "path": "entry.js",
-      "byteSize": 2291,
-      "sha256": "e5c81de6fc81ad77aa80e096ae7f4d8a13cfeba37af624e54da3066be1607810"
+      "platform": "desktop",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 2291,
+          "sha256": "e5c81de6fc81ad77aa80e096ae7f4d8a13cfeba37af624e54da3066be1607810",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js",
+          "storage": "module"
+        },
+        {
+          "role": "style",
+          "name": "style.css",
+          "path": "style.css",
+          "byteSize": 121,
+          "sha256": "6217379a83626ddc9d7a4f64babc8eb08aac88ea86387653fd4b6ea00ec32a03",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/style.css",
+          "storage": "module"
+        }
+      ]
     },
     {
-      "role": "style",
-      "path": "style.css",
-      "byteSize": 121,
-      "sha256": "6217379a83626ddc9d7a4f64babc8eb08aac88ea86387653fd4b6ea00ec32a03"
+      "platform": "mobile",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 2291,
+          "sha256": "e5c81de6fc81ad77aa80e096ae7f4d8a13cfeba37af624e54da3066be1607810",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js",
+          "storage": "module"
+        },
+        {
+          "role": "style",
+          "name": "style.css",
+          "path": "style.css",
+          "byteSize": 121,
+          "sha256": "6217379a83626ddc9d7a4f64babc8eb08aac88ea86387653fd4b6ea00ec32a03",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/style.css",
+          "storage": "module"
+        }
+      ]
     }
   ]
 }

@@ -25,11 +25,15 @@ function file(
   path: string,
   content: Uint8Array,
 ): ModuleArtifactFile {
+  const name = path.split('/').at(-1)!
   return Object.freeze({
     role,
+    name,
     path,
     byteSize: content.byteLength,
     sha256: toHex(fixtureDigest(content)),
+    url: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v2.1.0/${name}`,
+    storage: 'module',
   })
 }
 
@@ -57,14 +61,17 @@ function createHarness(
     schemaVersion: 1,
     id: 'learning',
     version: '2.1.0',
-    hostApi: 1,
-    entry: Object.freeze({
-      path: files[0].path,
-      byteSize: files[0].byteSize,
-      sha256: files[0].sha256,
-    }),
-    files: Object.freeze(files),
+    hostApi: '^1.0.0',
+    dataSchemas: Object.freeze({}),
+    variants: Object.freeze([
+      Object.freeze({
+        platform: 'desktop' as const,
+        entry: files[0].path,
+        files: Object.freeze(files),
+      }),
+    ]),
   })
+  const variant = manifest.variants[0]
   const readEntryBytes =
     overrides.readEntryBytes ??
     jest.fn(async (_moduleId: string, _version: string, path: string) => {
@@ -86,6 +93,7 @@ function createHarness(
     store: { readEntryBytes },
     getVerifiedArtifact: async () => ({
       manifest,
+      variant,
       entryBytes: contents['entry.js'],
     }),
     urlApi: { createObjectURL, revokeObjectURL },
@@ -99,6 +107,7 @@ function createHarness(
     createObjectURL,
     lifecycle,
     manifest,
+    variant,
     readEntryBytes,
     revokeObjectURL,
   }
@@ -112,6 +121,7 @@ describe('ModuleAssetsCapabilityProvider', () => {
       store: { readEntryBytes: harness.readEntryBytes },
       getVerifiedArtifact: () => ({
         manifest: harness.manifest,
+        variant: harness.variant,
         entryBytes: encoder.encode('entry'),
       }),
       subtleCrypto,
@@ -186,6 +196,35 @@ describe('ModuleAssetsCapabilityProvider', () => {
     expect(harness.createObjectURL).not.toHaveBeenCalled()
   })
 
+  it('fails closed instead of reading device-stored artifacts from the module store', async () => {
+    const harness = createHarness()
+    const lifecycle = new ModuleLifecycleScope()
+    const variant = {
+      ...harness.variant,
+      files: harness.variant.files.map((candidate) =>
+        candidate.path === 'runtime.wasm'
+          ? { ...candidate, storage: 'device' as const }
+          : candidate,
+      ),
+    }
+    const activation = new ModuleAssetsCapabilityProvider({
+      store: { readEntryBytes: harness.readEntryBytes },
+      getVerifiedArtifact: () => ({
+        manifest: harness.manifest,
+        variant,
+        entryBytes: encoder.encode('entry'),
+      }),
+      subtleCrypto,
+    }).create('learning', lifecycle)
+    activation.activate()
+
+    await expect(
+      activation.api.readArrayBuffer('runtime.wasm'),
+    ).rejects.toThrow('Device-stored module artifact')
+    expect(harness.readEntryBytes).not.toHaveBeenCalled()
+    lifecycle.dispose()
+  })
+
   it('creates role-typed Blob URLs and revokes all of them on dispose', async () => {
     const harness = createHarness()
 
@@ -258,6 +297,7 @@ describe('ModuleAssetsCapabilityProvider', () => {
       store: { readEntryBytes: harness.readEntryBytes },
       getVerifiedArtifact: () => ({
         manifest: { ...harness.manifest, id: 'other' },
+        variant: harness.variant,
         entryBytes: encoder.encode('entry'),
       }),
       subtleCrypto,

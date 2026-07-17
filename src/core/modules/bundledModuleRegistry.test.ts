@@ -15,9 +15,30 @@ const artifactManifest = (
   schemaVersion: 1,
   id,
   version,
-  hostApi: 1,
-  entry: { path: 'entry.js', byteSize, sha256 },
-  files: [{ role: 'entry', path: 'entry.js', byteSize, sha256 }],
+  hostApi: '^1.0.0',
+  dataSchemas: {},
+  variants: ['desktop', 'mobile'].map((platform) => ({
+    platform,
+    entry: 'entry.js',
+    files: [
+      {
+        role: 'entry',
+        name: 'entry.js',
+        path: 'entry.js',
+        byteSize,
+        sha256,
+        url: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-${id}-v${version}/entry.js`,
+        storage: 'module',
+      },
+    ],
+  })),
+})
+
+const descriptorMetadata = (id: string, version: string) => ({
+  hostApi: '^1.0.0',
+  dataSchemas: {},
+  platforms: ['desktop', 'mobile'],
+  manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-${id}-v${version}/module.json`,
 })
 
 const index = {
@@ -28,6 +49,7 @@ const index = {
       version: '0.1.0',
       name: 'Learning',
       description: 'Learn from notes',
+      ...descriptorMetadata('learning', '0.1.0'),
       manifest: {
         byteSize: encode(
           artifactManifest('learning', '0.1.0', 3, 'a'.repeat(64)),
@@ -40,6 +62,7 @@ const index = {
       version: '1.0.0',
       name: 'Second',
       description: '',
+      ...descriptorMetadata('second', '1.0.0'),
       manifest: {
         byteSize: encode(artifactManifest('second', '1.0.0', 3, 'a'.repeat(64)))
           .byteLength,
@@ -69,13 +92,15 @@ describe('BundledModuleRegistry', () => {
     }))
     const store = {
       readBundledIndexBytes: jest.fn(async () => encode(index)),
-      readReadyMarkerBytes: jest.fn(async (id: string, version: string) =>
-        encode({
-          schemaVersion: 1,
-          id,
-          version,
-          manifestSha256: 'c'.repeat(64),
-        }),
+      readReadyMarkerBytes: jest.fn(
+        async (id: string, version: string, platform: string) =>
+          encode({
+            schemaVersion: 1,
+            id,
+            version,
+            platform,
+            manifestSha256: 'c'.repeat(64),
+          }),
       ),
       readManifestBytes: jest.fn(async (id: string, version: string) =>
         encode(artifactManifest(id, version, 3, 'a'.repeat(64))),
@@ -84,11 +109,13 @@ describe('BundledModuleRegistry', () => {
       listVersionFiles: jest.fn(async () => [
         'entry.js',
         'module.json',
-        'ready.json',
+        `ready.desktop.${'c'.repeat(64)}.json`,
+        `ready.mobile.${'c'.repeat(64)}.json`,
       ]),
     }
     const registry = new BundledModuleRegistry({
       store,
+      platform: 'desktop',
       loader: { load },
       runtime: { activate },
       subtleCrypto: subtleCrypto(0xaa),
@@ -128,17 +155,27 @@ describe('BundledModuleRegistry', () => {
     const registry = new BundledModuleRegistry({
       store: {
         readBundledIndexBytes: async () => encode(index),
-        readReadyMarkerBytes: async (id: string, version: string) =>
+        readReadyMarkerBytes: async (
+          id: string,
+          version: string,
+          platform: string,
+        ) =>
           encode({
             schemaVersion: 1,
             id,
             version,
+            platform,
             manifestSha256: 'c'.repeat(64),
           }),
         readManifestBytes: async (id: string, version: string) =>
           encode(artifactManifest(id, version, 1, 'b'.repeat(64))),
         readEntryBytes: async () => new Uint8Array([1]),
-        listVersionFiles: async () => ['entry.js', 'module.json', 'ready.json'],
+        listVersionFiles: async () => [
+          'entry.js',
+          'module.json',
+          `ready.desktop.${'c'.repeat(64)}.json`,
+          `ready.mobile.${'c'.repeat(64)}.json`,
+        ],
       },
       loader: {
         load: async (entry) => ({
@@ -146,6 +183,7 @@ describe('BundledModuleRegistry', () => {
           activate: () => undefined,
         }),
       },
+      platform: 'desktop',
       runtime: {
         activate: async (definition) => {
           if (definition.id === 'learning') {
@@ -170,6 +208,82 @@ describe('BundledModuleRegistry', () => {
     expect(registry.getVerifiedArtifact('second')?.manifest.id).toBe('second')
   })
 
+  it('activates the current mobile platform from a shared immutable closure', async () => {
+    const load = jest.fn(async (entry: { id: string }) => ({
+      id: entry.id,
+      activate: () => undefined,
+    }))
+    const registry = new BundledModuleRegistry({
+      platform: 'mobile',
+      store: {
+        readBundledIndexBytes: async () => encode(index),
+        readReadyMarkerBytes: async (
+          id: string,
+          version: string,
+          platform: string,
+        ) =>
+          encode({
+            schemaVersion: 1,
+            id,
+            version,
+            platform,
+            manifestSha256: 'c'.repeat(64),
+          }),
+        readManifestBytes: async (id: string, version: string) =>
+          encode(artifactManifest(id, version, 3, 'a'.repeat(64))),
+        readEntryBytes: async () => new Uint8Array([1, 2, 3]),
+        listVersionFiles: async () => [
+          'entry.js',
+          'module.json',
+          `ready.desktop.${'c'.repeat(64)}.json`,
+          `ready.mobile.${'c'.repeat(64)}.json`,
+        ],
+      },
+      loader: { load },
+      runtime: { activate: async () => undefined },
+      subtleCrypto: subtleCrypto(0xaa),
+    })
+
+    await registry.activateAll()
+
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(registry.getVerifiedArtifact('learning')?.variant.platform).toBe(
+      'mobile',
+    )
+  })
+
+  it('reports a bundled module unsupported on the runtime platform without verification', async () => {
+    const desktopOnly = {
+      ...index,
+      modules: [{ ...index.modules[0], platforms: ['desktop'] }],
+    }
+    const readManifestBytes = jest.fn()
+    const registry = new BundledModuleRegistry({
+      platform: 'mobile',
+      store: {
+        readBundledIndexBytes: async () => encode(desktopOnly),
+        readReadyMarkerBytes: jest.fn(),
+        readManifestBytes,
+        readEntryBytes: jest.fn(),
+        listVersionFiles: jest.fn(),
+      },
+      loader: { load: jest.fn() },
+      runtime: { activate: jest.fn() },
+      subtleCrypto: subtleCrypto(0xaa),
+    })
+
+    await registry.activateAll()
+
+    await expect(registry.installedStateSource.load()).resolves.toEqual([
+      {
+        id: 'learning',
+        version: '0.1.0',
+        error: 'Bundled module "learning" does not support mobile',
+      },
+    ])
+    expect(readManifestBytes).not.toHaveBeenCalled()
+  })
+
   it('rejects malformed or duplicate descriptors', () => {
     expect(() =>
       parseBundledModuleIndex({ schemaVersion: 2, modules: [] }),
@@ -186,5 +300,46 @@ describe('BundledModuleRegistry', () => {
         modules: [{ ...index.modules[0], id: '../learning' }],
       }),
     ).toThrow('path segment')
+  })
+
+  it('strictly rejects unknown root and nested fields', () => {
+    expect(() =>
+      parseBundledModuleIndex({ ...index, unexpected: true }),
+    ).toThrow('fields are invalid')
+    expect(() =>
+      parseBundledModuleIndex({
+        ...index,
+        modules: [{ ...index.modules[0], unexpected: true }],
+      }),
+    ).toThrow('fields are invalid')
+    expect(() =>
+      parseBundledModuleIndex({
+        ...index,
+        modules: [
+          {
+            ...index.modules[0],
+            manifest: { ...index.modules[0].manifest, unexpected: true },
+          },
+        ],
+      }),
+    ).toThrow('fields are invalid')
+    expect(() =>
+      parseBundledModuleIndex({
+        ...index,
+        modules: [
+          {
+            ...index.modules[0],
+            dataSchemas: {
+              learning: {
+                readMin: 0,
+                readMax: 1,
+                write: 1,
+                unexpected: true,
+              },
+            },
+          },
+        ],
+      }),
+    ).toThrow('fields are invalid')
   })
 })

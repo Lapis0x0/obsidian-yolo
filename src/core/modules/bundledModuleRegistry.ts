@@ -5,7 +5,13 @@ import {
 } from './moduleArtifactVerifier'
 import type { ModuleLoader } from './moduleLoader'
 import type { ModuleRuntime } from './moduleRuntime'
-import { assertModuleId, assertModulePathSegment } from './moduleStore'
+import {
+  type ModuleArtifactDataSchemas,
+  type ModuleArtifactPlatform,
+  assertModuleId,
+  assertModulePathSegment,
+  isModuleHostApiRange,
+} from './moduleStore'
 import type {
   InstalledModuleState,
   InstalledModuleStateSource,
@@ -18,6 +24,10 @@ export type BundledModuleDescriptor = Readonly<{
   version: string
   name: string
   description: string
+  hostApi: string
+  dataSchemas: ModuleArtifactDataSchemas
+  platforms: readonly ModuleArtifactPlatform[]
+  manifestUrl: string
   manifest: Readonly<{
     byteSize: number
     sha256: string
@@ -35,6 +45,7 @@ export type BundledModuleRegistryOptions = {
   }
   loader: Pick<ModuleLoader, 'load'>
   runtime: Pick<ModuleRuntime, 'activate'>
+  platform: ModuleArtifactPlatform
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   reportActivationError?: (moduleId: string, error: unknown) => void
 }
@@ -46,22 +57,29 @@ type ActivationState = Readonly<{
 }>
 
 export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
-  if (!value || typeof value !== 'object') {
-    throw new Error('Bundled module index is invalid')
-  }
-  const candidate = value as {
-    schemaVersion?: unknown
-    modules?: unknown
-  }
+  const candidate = asPlainObject(value, 'Bundled module index')
+  assertKeys(candidate, ['schemaVersion', 'modules'], 'Bundled module index')
   if (candidate.schemaVersion !== 1 || !Array.isArray(candidate.modules)) {
     throw new Error('Bundled module index is invalid')
   }
   const ids = new Set<string>()
   const modules = candidate.modules.map((value) => {
-    if (!value || typeof value !== 'object') {
-      throw new Error('Bundled module descriptor is invalid')
-    }
-    const descriptor = value as Record<string, unknown>
+    const descriptor = asPlainObject(value, 'Bundled module descriptor')
+    assertKeys(
+      descriptor,
+      [
+        'id',
+        'version',
+        'name',
+        'description',
+        'hostApi',
+        'dataSchemas',
+        'platforms',
+        'manifestUrl',
+        'manifest',
+      ],
+      'Bundled module descriptor',
+    )
     if (typeof descriptor.id !== 'string') {
       throw new Error('Bundled module id must be a string')
     }
@@ -83,11 +101,33 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
     if (typeof descriptor.description !== 'string') {
       throw new Error('Bundled module description must be a string')
     }
-    const manifest = descriptor.manifest as
-      | { byteSize?: unknown; sha256?: unknown }
-      | undefined
     if (
-      !manifest ||
+      !isModuleHostApiRange(descriptor.hostApi) ||
+      !Array.isArray(descriptor.platforms) ||
+      descriptor.platforms.length === 0 ||
+      descriptor.platforms.length > 2 ||
+      descriptor.platforms.some(
+        (platform) => platform !== 'desktop' && platform !== 'mobile',
+      ) ||
+      new Set(descriptor.platforms).size !== descriptor.platforms.length ||
+      typeof descriptor.manifestUrl !== 'string' ||
+      !/^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]+\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(
+        descriptor.manifestUrl,
+      )
+    ) {
+      throw new Error('Bundled module compatibility metadata is invalid')
+    }
+    const dataSchemas = parseDataSchemas(descriptor.dataSchemas)
+    const manifest = asPlainObject(
+      descriptor.manifest,
+      'Bundled module manifest metadata',
+    )
+    assertKeys(
+      manifest,
+      ['byteSize', 'sha256'],
+      'Bundled module manifest metadata',
+    )
+    if (
       !Number.isSafeInteger(manifest.byteSize) ||
       (manifest.byteSize as number) < 0 ||
       typeof manifest.sha256 !== 'string' ||
@@ -100,6 +140,12 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
       version,
       name: descriptor.name,
       description: descriptor.description,
+      hostApi: descriptor.hostApi,
+      dataSchemas,
+      platforms: Object.freeze(
+        [...descriptor.platforms].sort(),
+      ) as readonly ModuleArtifactPlatform[],
+      manifestUrl: descriptor.manifestUrl,
       manifest: Object.freeze({
         byteSize: manifest.byteSize as number,
         sha256: manifest.sha256.toLowerCase(),
@@ -129,6 +175,9 @@ export class BundledModuleRegistry {
   private readonly subtleCrypto: Pick<SubtleCrypto, 'digest'>
 
   constructor(private readonly options: BundledModuleRegistryOptions) {
+    if (options.platform !== 'desktop' && options.platform !== 'mobile') {
+      throw new Error('Bundled module runtime platform is invalid')
+    }
     const subtleCrypto = options.subtleCrypto ?? globalThis.crypto?.subtle
     if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
     this.subtleCrypto = subtleCrypto
@@ -196,18 +245,32 @@ export class BundledModuleRegistry {
     this.states.set(module.id, Object.freeze({ version: module.version }))
     this.verifiedArtifacts.delete(module.id)
     try {
+      if (!module.platforms.includes(this.options.platform)) {
+        throw new Error(
+          `Bundled module "${module.id}" does not support ${this.options.platform}`,
+        )
+      }
       const artifact = await verifyInstalledModuleArtifact(
         this.options.store,
-        module,
+        {
+          id: module.id,
+          version: module.version,
+          hostApi: module.hostApi,
+          dataSchemas: module.dataSchemas,
+          platform: this.options.platform,
+          manifestUrl: module.manifestUrl,
+          manifest: module.manifest,
+        },
         this.subtleCrypto,
       )
       this.verifiedArtifacts.set(module.id, artifact)
-      const { manifest, entryBytes } = artifact
+      const { manifest, variant, entryBytes } = artifact
+      const entry = variant.files.find((file) => file.role === 'entry')!
       const definition = await this.options.loader.load(
         {
           id: manifest.id,
-          byteSize: manifest.entry.byteSize,
-          sha256: manifest.entry.sha256,
+          byteSize: entry.byteSize,
+          sha256: entry.sha256,
         },
         entryBytes,
       )
@@ -236,4 +299,70 @@ export class BundledModuleRegistry {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function assertKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  label: string,
+): void {
+  const actual = Object.keys(value)
+  if (
+    actual.length !== keys.length ||
+    actual.some((key) => !keys.includes(key))
+  ) {
+    throw new Error(`${label} fields are invalid`)
+  }
+}
+
+function asPlainObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`)
+  }
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${label} must be a plain object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function parseDataSchemas(value: unknown): ModuleArtifactDataSchemas {
+  const schemas = asPlainObject(value, 'Bundled module dataSchemas')
+  const result = Object.create(null) as Record<
+    string,
+    { readMin: number; readMax: number; write: number }
+  >
+  for (const [namespace, candidate] of Object.entries(schemas)) {
+    if (
+      !/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/.test(namespace) ||
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate)
+    ) {
+      throw new Error('Bundled module dataSchemas is invalid')
+    }
+    const schema = asPlainObject(candidate, 'Bundled module data schema')
+    assertKeys(
+      schema,
+      ['readMin', 'readMax', 'write'],
+      'Bundled module data schema',
+    )
+    if (
+      !Number.isSafeInteger(schema.readMin) ||
+      (schema.readMin as number) < 0 ||
+      !Number.isSafeInteger(schema.readMax) ||
+      (schema.readMax as number) < (schema.readMin as number) ||
+      !Number.isSafeInteger(schema.write) ||
+      (schema.write as number) < (schema.readMin as number) ||
+      (schema.write as number) > (schema.readMax as number)
+    ) {
+      throw new Error('Bundled module dataSchemas is invalid')
+    }
+    result[namespace] = Object.freeze({
+      readMin: schema.readMin as number,
+      readMax: schema.readMax as number,
+      write: schema.write as number,
+    })
+  }
+  return Object.freeze(result)
 }

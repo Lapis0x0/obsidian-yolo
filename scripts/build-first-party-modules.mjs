@@ -5,6 +5,8 @@ import path from 'node:path'
 import esbuild from 'esbuild'
 
 const runtimeSymbol = 'yolo.module.host-runtime.v1'
+const hostApi = '^1.0.0'
+const artifactPlatforms = ['desktop', 'mobile']
 const moduleDefinitions = [
   {
     id: 'host-api-conformance',
@@ -74,6 +76,10 @@ await writeFile(
             version: moduleDefinition.version,
             name: moduleDefinition.bundled.name,
             description: moduleDefinition.bundled.description,
+            hostApi: result.hostApi,
+            dataSchemas: result.dataSchemas,
+            platforms: artifactPlatforms,
+            manifestUrl: result.manifestUrl,
             manifest: result.manifest,
           }
         }),
@@ -123,17 +129,24 @@ async function buildModule({ id, version, assets = [] }) {
       describeArtifactFile(artifactDir, asset.role, asset.path),
     ),
   )
+  const releaseRoot = `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-${id}-v${version}`
+  const files = [entryFile, ...assetFiles].map((file) => ({
+    ...file,
+    url: `${releaseRoot}/${file.name}`,
+    storage: 'module',
+  }))
+  const dataSchemas = {}
   const manifest = {
     schemaVersion: 1,
     id,
     version,
-    hostApi: 1,
-    entry: {
-      path: entryFile.path,
-      byteSize: entryFile.byteSize,
-      sha256: entryFile.sha256,
-    },
-    files: [entryFile, ...assetFiles],
+    hostApi,
+    dataSchemas,
+    variants: artifactPlatforms.map((platform) => ({
+      platform,
+      entry: entryFile.path,
+      files,
+    })),
   }
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
   const manifestMetadata = {
@@ -141,26 +154,40 @@ async function buildModule({ id, version, assets = [] }) {
     sha256: createHash('sha256').update(manifestBytes).digest('hex'),
   }
   await writeFile(path.join(artifactDir, 'module.json'), manifestBytes)
-  await writeFile(
-    path.join(artifactDir, 'ready.json'),
-    `${JSON.stringify(
-      {
-        schemaVersion: 1,
-        id,
-        version,
-        manifestSha256: manifestMetadata.sha256,
-      },
-      null,
-      2,
-    )}\n`,
+  await Promise.all(
+    artifactPlatforms.map((platform) =>
+      writeFile(
+        path.join(
+          artifactDir,
+          `ready.${platform}.${manifestMetadata.sha256}.json`,
+        ),
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            id,
+            version,
+            platform,
+            manifestSha256: manifestMetadata.sha256,
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+    ),
   )
-  return { manifest: manifestMetadata }
+  return {
+    hostApi,
+    dataSchemas,
+    manifestUrl: `${releaseRoot}/module.json`,
+    manifest: manifestMetadata,
+  }
 }
 
 async function describeArtifactFile(artifactDir, role, relativePath) {
   const bytes = await readFile(path.join(artifactDir, relativePath))
   return {
     role,
+    name: path.basename(relativePath),
     path: relativePath,
     byteSize: bytes.byteLength,
     sha256: createHash('sha256').update(bytes).digest('hex'),

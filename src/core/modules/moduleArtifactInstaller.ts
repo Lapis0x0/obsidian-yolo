@@ -2,24 +2,28 @@ import { type DataAdapter, normalizePath } from 'obsidian'
 
 import {
   type ModuleArtifactDescriptor,
+  collectInstallableModuleFiles,
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
 import { verifyModuleBytes } from './moduleIntegrity'
 import {
   MAX_MODULE_MANIFEST_BYTES,
+  type ModuleArtifactFile,
   type ModuleArtifactManifest,
   type ModuleStore,
   assertModuleId,
   assertModulePathSegment,
+  isModuleHostApiRange,
+  moduleReadyMarkerFileName,
   normalizeModuleArtifactFilePath,
   parseModuleArtifactManifest,
   parseModuleReadyMarker,
+  selectModuleManifestVariant,
 } from './moduleStore'
 
 export type ModuleArtifactDownloadRequest = Readonly<{
-  moduleId: string
-  version: string
-  path: string
+  url: string
+  byteSize: number
 }>
 
 export type ModuleArtifactInstallerOptions = {
@@ -89,9 +93,8 @@ export class ModuleArtifactInstaller {
     await ensureDir(adapter, stagingDir)
     try {
       const manifestBytes = await this.options.download({
-        moduleId: descriptor.id,
-        version: descriptor.version,
-        path: 'module.json',
+        url: descriptor.manifestUrl,
+        byteSize: descriptor.manifest.byteSize,
       })
       await verifyModuleBytes(
         manifestBytes,
@@ -104,18 +107,21 @@ export class ModuleArtifactInstaller {
           new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes),
         ),
       )
-      if (
-        manifest.id !== descriptor.id ||
-        manifest.version !== descriptor.version
-      ) {
-        throw new Error(`Module "${descriptor.id}" manifest identity mismatch`)
+      if (!manifestMatchesDescriptor(manifest, descriptor)) {
+        throw new Error(
+          `Module "${descriptor.id}" manifest descriptor mismatch`,
+        )
       }
+      selectModuleManifestVariant(manifest, descriptor.platform)
+      const files = collectInstallableModuleFiles(
+        manifest,
+        descriptor.manifestUrl,
+      )
 
-      for (const file of manifest.files) {
+      for (const file of files) {
         const bytes = await this.options.download({
-          moduleId: descriptor.id,
-          version: descriptor.version,
-          path: file.path,
+          url: file.url,
+          byteSize: file.byteSize,
         })
         await verifyModuleBytes(
           bytes,
@@ -131,25 +137,26 @@ export class ModuleArtifactInstaller {
         normalizePath(`${stagingDir}/module.json`),
         toArrayBuffer(manifestBytes),
       )
-      const readyBytes = new TextEncoder().encode(
-        `${JSON.stringify({
-          schemaVersion: 1,
-          id: descriptor.id,
-          version: descriptor.version,
-          manifestSha256: descriptor.manifest.sha256,
-        })}\n`,
-      )
-      await adapter.writeBinary(
-        normalizePath(`${stagingDir}/ready.json`),
-        toArrayBuffer(readyBytes),
-      )
-      await verifyStaging(
+      await verifyStagingArtifacts(
         adapter,
         stagingDir,
         descriptor,
-        manifest,
+        files,
         this.subtleCrypto,
       )
+      for (const markerVariant of manifest.variants) {
+        const readyBytes = createReadyMarkerBytes(
+          descriptor,
+          markerVariant.platform,
+        )
+        await adapter.writeBinary(
+          normalizePath(
+            `${stagingDir}/${moduleReadyMarkerFileName(markerVariant.platform, descriptor.manifest.sha256)}`,
+          ),
+          toArrayBuffer(readyBytes),
+        )
+      }
+      await verifyStagingMarkers(adapter, stagingDir, descriptor, manifest)
 
       if (await adapter.exists(targetDir)) {
         throw new Error(
@@ -183,26 +190,13 @@ export class ModuleArtifactInstaller {
   }
 }
 
-async function verifyStaging(
+async function verifyStagingArtifacts(
   adapter: DataAdapter,
   stagingDir: string,
   descriptor: ModuleArtifactDescriptor,
-  manifest: ModuleArtifactManifest,
+  files: readonly ModuleArtifactFile[],
   subtleCrypto: Pick<SubtleCrypto, 'digest'>,
 ): Promise<void> {
-  const readyBytes = new Uint8Array(
-    await adapter.readBinary(normalizePath(`${stagingDir}/ready.json`)),
-  )
-  const marker = parseModuleReadyMarker(
-    JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readyBytes)),
-  )
-  if (
-    marker.id !== descriptor.id ||
-    marker.version !== descriptor.version ||
-    marker.manifestSha256 !== descriptor.manifest.sha256
-  ) {
-    throw new Error(`Module "${descriptor.id}" staging marker mismatch`)
-  }
   const manifestBytes = new Uint8Array(
     await adapter.readBinary(normalizePath(`${stagingDir}/module.json`)),
   )
@@ -212,7 +206,7 @@ async function verifyStaging(
     `Module "${descriptor.id}" staged manifest`,
     subtleCrypto,
   )
-  for (const file of manifest.files) {
+  for (const file of files) {
     const bytes = new Uint8Array(
       await adapter.readBinary(normalizePath(`${stagingDir}/${file.path}`)),
     )
@@ -225,6 +219,49 @@ async function verifyStaging(
   }
 }
 
+async function verifyStagingMarkers(
+  adapter: DataAdapter,
+  stagingDir: string,
+  descriptor: ModuleArtifactDescriptor,
+  manifest: ModuleArtifactManifest,
+): Promise<void> {
+  for (const variant of manifest.variants) {
+    const readyBytes = new Uint8Array(
+      await adapter.readBinary(
+        normalizePath(
+          `${stagingDir}/${moduleReadyMarkerFileName(variant.platform, descriptor.manifest.sha256)}`,
+        ),
+      ),
+    )
+    const marker = parseModuleReadyMarker(
+      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readyBytes)),
+    )
+    if (
+      marker.id !== descriptor.id ||
+      marker.version !== descriptor.version ||
+      marker.platform !== variant.platform ||
+      marker.manifestSha256 !== descriptor.manifest.sha256
+    ) {
+      throw new Error(`Module "${descriptor.id}" staging marker mismatch`)
+    }
+  }
+}
+
+function createReadyMarkerBytes(
+  descriptor: ModuleArtifactDescriptor,
+  platform: 'desktop' | 'mobile',
+): Uint8Array {
+  return new TextEncoder().encode(
+    `${JSON.stringify({
+      schemaVersion: 1,
+      id: descriptor.id,
+      version: descriptor.version,
+      platform,
+      manifestSha256: descriptor.manifest.sha256,
+    })}\n`,
+  )
+}
+
 function snapshotDescriptor(
   descriptor: ModuleArtifactDescriptor,
 ): ModuleArtifactDescriptor {
@@ -233,6 +270,14 @@ function snapshotDescriptor(
   }
   assertModuleId(descriptor.id, 'Module id')
   assertModulePathSegment(descriptor.version, 'Module version')
+  if (
+    !isModuleHostApiRange(descriptor.hostApi) ||
+    (descriptor.platform !== 'desktop' && descriptor.platform !== 'mobile') ||
+    !isReleaseUrl(descriptor.manifestUrl)
+  ) {
+    throw new Error('Module artifact descriptor is invalid')
+  }
+  const dataSchemas = snapshotDataSchemas(descriptor.dataSchemas)
   const byteSize = descriptor.manifest?.byteSize
   const sha256 = descriptor.manifest?.sha256
   if (
@@ -247,8 +292,77 @@ function snapshotDescriptor(
   return Object.freeze({
     id: descriptor.id,
     version: descriptor.version,
+    hostApi: descriptor.hostApi,
+    dataSchemas,
+    platform: descriptor.platform,
+    manifestUrl: descriptor.manifestUrl,
     manifest: Object.freeze({ byteSize, sha256: sha256.toLowerCase() }),
   })
+}
+
+function snapshotDataSchemas(
+  schemas: ModuleArtifactDescriptor['dataSchemas'],
+): ModuleArtifactDescriptor['dataSchemas'] {
+  if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
+    throw new Error('Module artifact descriptor dataSchemas is invalid')
+  }
+  const result = Object.create(null) as Record<
+    string,
+    { readMin: number; readMax: number; write: number }
+  >
+  for (const [namespace, schema] of Object.entries(schemas)) {
+    if (
+      !/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/.test(namespace) ||
+      !schema ||
+      typeof schema !== 'object' ||
+      Object.keys(schema).length !== 3 ||
+      !Number.isSafeInteger(schema.readMin) ||
+      schema.readMin < 0 ||
+      !Number.isSafeInteger(schema.readMax) ||
+      schema.readMax < schema.readMin ||
+      !Number.isSafeInteger(schema.write) ||
+      schema.write < schema.readMin ||
+      schema.write > schema.readMax
+    ) {
+      throw new Error('Module artifact descriptor dataSchemas is invalid')
+    }
+    result[namespace] = Object.freeze({
+      readMin: schema.readMin,
+      readMax: schema.readMax,
+      write: schema.write,
+    })
+  }
+  return Object.freeze(result)
+}
+
+function manifestMatchesDescriptor(
+  manifest: ModuleArtifactManifest,
+  descriptor: ModuleArtifactDescriptor,
+): boolean {
+  const actualSchemas = Object.entries(manifest.dataSchemas)
+  return (
+    manifest.id === descriptor.id &&
+    manifest.version === descriptor.version &&
+    manifest.hostApi === descriptor.hostApi &&
+    actualSchemas.length === Object.keys(descriptor.dataSchemas).length &&
+    actualSchemas.every(([namespace, schema]) => {
+      const expected = descriptor.dataSchemas[namespace]
+      return (
+        expected?.readMin === schema.readMin &&
+        expected.readMax === schema.readMax &&
+        expected.write === schema.write
+      )
+    })
+  )
+}
+
+function isReleaseUrl(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]+\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(
+      value,
+    )
+  )
 }
 
 async function ensureParentDirs(

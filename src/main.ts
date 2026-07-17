@@ -86,6 +86,7 @@ import {
   ObsidianModuleVaultCapabilityProvider,
   createObsidianModuleConfigBackendFactory,
   parseModuleArtifactManifest,
+  selectModuleManifestVariant,
 } from './core/modules'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
@@ -3678,6 +3679,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     if (process.env.NODE_ENV === 'development') {
       registry = new BundledModuleRegistry({
         store,
+        platform: Platform.isDesktop ? 'desktop' : 'mobile',
         loader: new ModuleLoader({
           executor: new DomBlobModuleScriptExecutor(),
         }),
@@ -3726,10 +3728,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       if (manifest.id !== moduleId || manifest.version !== version) {
         throw new Error('Conformance module manifest identity mismatch')
       }
+      const variant = selectModuleManifestVariant(
+        manifest,
+        Platform.isDesktop ? 'desktop' : 'mobile',
+      )
+      const entry = variant.files.find((file) => file.role === 'entry')!
       const entryBytes = await store.readEntryBytes(
         manifest.id,
         manifest.version,
-        manifest.entry.path,
+        entry.path,
       )
       if (!this.moduleRuntime) throw new Error('Module runtime is unavailable')
       const definition = await new ModuleLoader({
@@ -3737,8 +3744,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       }).load(
         {
           id: manifest.id,
-          byteSize: manifest.entry.byteSize,
-          sha256: manifest.entry.sha256,
+          byteSize: entry.byteSize,
+          sha256: entry.sha256,
         },
         entryBytes,
       )

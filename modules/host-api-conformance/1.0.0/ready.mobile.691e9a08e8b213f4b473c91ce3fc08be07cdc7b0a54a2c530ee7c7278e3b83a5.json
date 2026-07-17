@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "host-api-conformance",
+  "version": "1.0.0",
+  "platform": "mobile",
+  "manifestSha256": "691e9a08e8b213f4b473c91ce3fc08be07cdc7b0a54a2c530ee7c7278e3b83a5"
+}

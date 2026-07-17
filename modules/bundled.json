@@ -6,9 +6,16 @@
       "version": "0.1.0",
       "name": "Learning module preview",
       "description": "Read-only module boundary preview for existing Learning data.",
+      "hostApi": "^1.0.0",
+      "dataSchemas": {},
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/module.json",
       "manifest": {
-        "byteSize": 583,
-        "sha256": "1685c36c63402659c0ba12fd6c68eef45aa9571441aa585cda95cfafe0e94e98"
+        "byteSize": 1784,
+        "sha256": "d75ce756a6c8fbe889f15986964c966d07557e45df1d78a60a3e49f8b6b85988"
       }
     }
   ]

@@ -8,10 +8,22 @@ import * as path from 'node:path'
 import {
   parseModuleArtifactManifest,
   parseModuleReadyMarker,
+  selectModuleManifestVariant,
 } from './moduleStore'
 
 describe('host API conformance artifact boundary', () => {
   const artifactDir = path.resolve('modules/host-api-conformance/1.0.0')
+
+  const readyFileName = (
+    directory: string,
+    platform: 'desktop' | 'mobile',
+  ): string => {
+    const matches = readdirSync(directory).filter((name) =>
+      new RegExp(`^ready\\.${platform}\\.[a-f0-9]{64}\\.json$`).test(name),
+    )
+    expect(matches).toHaveLength(1)
+    return matches[0]
+  }
 
   it('records the exact entry byte size and SHA-256', () => {
     const manifestBytes = readFileSync(path.join(artifactDir, 'module.json'))
@@ -19,19 +31,39 @@ describe('host API conformance artifact boundary', () => {
       JSON.parse(manifestBytes.toString('utf8')),
     )
     const ready = parseModuleReadyMarker(
-      JSON.parse(readFileSync(path.join(artifactDir, 'ready.json'), 'utf8')),
+      JSON.parse(
+        readFileSync(
+          path.join(artifactDir, readyFileName(artifactDir, 'desktop')),
+          'utf8',
+        ),
+      ),
     )
-    const entry = readFileSync(path.join(artifactDir, manifest.entry.path))
+    const variant = selectModuleManifestVariant(manifest, 'desktop')
+    const mobileVariant = selectModuleManifestVariant(manifest, 'mobile')
+    const entryFile = variant.files.find((file) => file.role === 'entry')!
+    const entry = readFileSync(path.join(artifactDir, entryFile.path))
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('host-api-conformance')
     expect(manifest.version).toBe('1.0.0')
     expect(ready).toMatchObject({
       id: manifest.id,
       version: manifest.version,
+      platform: 'desktop',
       manifestSha256: createHash('sha256').update(manifestBytes).digest('hex'),
     })
-    expect(manifest.entry.byteSize).toBe(entry.byteLength)
-    expect(manifest.entry.sha256).toBe(
+    expect(mobileVariant.files).toEqual(variant.files)
+    expect(
+      parseModuleReadyMarker(
+        JSON.parse(
+          readFileSync(
+            path.join(artifactDir, readyFileName(artifactDir, 'mobile')),
+            'utf8',
+          ),
+        ),
+      ).platform,
+    ).toBe('mobile')
+    expect(entryFile.byteSize).toBe(entry.byteLength)
+    expect(entryFile.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),
     )
     expect(source).toContain('yolo.module.host-runtime.v1')
@@ -65,10 +97,17 @@ describe('host API conformance artifact boundary', () => {
       JSON.parse(manifestBytes.toString('utf8')),
     )
     const ready = parseModuleReadyMarker(
-      JSON.parse(readFileSync(path.join(learningDir, 'ready.json'), 'utf8')),
+      JSON.parse(
+        readFileSync(
+          path.join(learningDir, readyFileName(learningDir, 'desktop')),
+          'utf8',
+        ),
+      ),
     )
-    const entry = readFileSync(path.join(learningDir, manifest.entry.path))
-    const style = manifest.files.find((file) => file.role === 'style')
+    const variant = selectModuleManifestVariant(manifest, 'desktop')
+    const entryFile = variant.files.find((file) => file.role === 'entry')!
+    const entry = readFileSync(path.join(learningDir, entryFile.path))
+    const style = variant.files.find((file) => file.role === 'style')
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('learning')
     expect(manifest.version).toBe('0.1.0')
@@ -77,21 +116,36 @@ describe('host API conformance artifact boundary', () => {
       sha256: createHash('sha256').update(manifestBytes).digest('hex'),
     })
     expect(ready.manifestSha256).toBe(bundled.modules[0]?.manifest.sha256)
-    expect(manifest.entry.byteSize).toBe(entry.byteLength)
-    expect(manifest.entry.sha256).toBe(
+    expect(entryFile.byteSize).toBe(entry.byteLength)
+    expect(entryFile.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),
     )
-    expect(manifest.files.map(({ role, path }) => ({ role, path }))).toEqual([
+    expect(variant.files.map(({ role, path }) => ({ role, path }))).toEqual([
       { role: 'entry', path: 'entry.js' },
       { role: 'style', path: 'style.css' },
     ])
     expect(readdirSync(learningDir).sort()).toEqual([
       'entry.js',
       'module.json',
-      'ready.json',
+      `ready.desktop.${bundled.modules[0]?.manifest.sha256}.json`,
+      `ready.mobile.${bundled.modules[0]?.manifest.sha256}.json`,
       'style.css',
     ])
+    expect(readdirSync(learningDir)).not.toContain('ready.json')
     expect(style).toBeDefined()
+    expect(manifest.hostApi).toBe('^1.0.0')
+    expect(manifest.variants.map(({ platform }) => platform)).toEqual([
+      'desktop',
+      'mobile',
+    ])
+    expect(variant.files.every((file) => file.storage === 'module')).toBe(true)
+    expect(
+      variant.files.every((file) =>
+        file.url.startsWith(
+          'https://github.com/Lapis0x0/obsidian-yolo/releases/download/',
+        ),
+      ),
+    ).toBe(true)
     const styleBytes = readFileSync(path.join(learningDir, style!.path))
     expect(style!.byteSize).toBe(styleBytes.byteLength)
     expect(style!.sha256).toBe(

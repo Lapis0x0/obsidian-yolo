@@ -10,26 +10,44 @@ export type ModuleArtifactManifest = Readonly<{
   schemaVersion: 1
   id: string
   version: string
-  hostApi: 1
-  entry: Readonly<{
-    path: string
-    byteSize: number
-    sha256: string
-  }>
+  hostApi: string
+  dataSchemas: ModuleArtifactDataSchemas
+  variants: readonly ModuleArtifactVariant[]
+}>
+
+export type ModuleArtifactPlatform = 'desktop' | 'mobile'
+
+export type ModuleArtifactDataSchema = Readonly<{
+  readMin: number
+  readMax: number
+  write: number
+}>
+
+export type ModuleArtifactDataSchemas = Readonly<
+  Record<string, ModuleArtifactDataSchema>
+>
+
+export type ModuleArtifactVariant = Readonly<{
+  platform: ModuleArtifactPlatform
+  entry: string
   files: readonly ModuleArtifactFile[]
 }>
 
 export type ModuleArtifactFile = Readonly<{
-  role: 'entry' | 'style' | 'worker' | 'wasm' | 'data'
+  role: 'entry' | 'style' | 'worker' | 'wasm' | 'model' | 'data'
+  name: string
   path: string
   byteSize: number
   sha256: string
+  url: string
+  storage: 'module' | 'device'
 }>
 
 export type ModuleReadyMarker = Readonly<{
   schemaVersion: 1
   id: string
   version: string
+  platform: ModuleArtifactPlatform
   manifestSha256: string
 }>
 
@@ -38,57 +56,230 @@ export const MAX_MODULE_ARTIFACT_TOTAL_BYTES = 128 * 1024 * 1024
 export const MAX_MODULE_MANIFEST_BYTES = 1024 * 1024
 const MAX_MODULE_VERSION_TREE_ENTRIES = 256
 const MAX_MODULE_VERSION_TREE_DEPTH = 16
+const MAX_MODULE_ARTIFACT_FILES = 64
+const MAX_MODULE_SCHEMA_NAMESPACES = 32
+const MAX_SEMVER_RANGE_LENGTH = 512
+const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
+const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
+const DANGEROUS_NAMESPACES = new Set(['__proto__', 'prototype', 'constructor'])
+const RELEASE_URL =
+  /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/releases\/download\/([A-Za-z0-9._+-]+)\/([A-Za-z0-9][A-Za-z0-9._+-]*)$/
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
 export function parseModuleArtifactManifest(
   value: unknown,
 ): ModuleArtifactManifest {
-  const manifest = value as Partial<ModuleArtifactManifest> | null
+  const manifest = asPlainObject(value, 'Module artifact manifest')
+  assertExactKeys(
+    manifest,
+    ['schemaVersion', 'id', 'version', 'hostApi', 'dataSchemas', 'variants'],
+    'Module artifact manifest',
+  )
   if (
-    !manifest ||
     manifest.schemaVersion !== 1 ||
     typeof manifest.id !== 'string' ||
-    !manifest.id ||
     typeof manifest.version !== 'string' ||
-    !manifest.version ||
-    manifest.hostApi !== 1 ||
-    !Array.isArray(manifest.files) ||
-    manifest.files.length === 0 ||
-    manifest.files.length > 64
+    !isModuleHostApiRange(manifest.hostApi) ||
+    !Array.isArray(manifest.variants) ||
+    manifest.variants.length === 0 ||
+    manifest.variants.length > 2
   ) {
     throw new Error('Module artifact manifest is invalid')
   }
   assertModuleId(manifest.id, 'Module id')
   assertModulePathSegment(manifest.version, 'Module version')
-  const paths = new Set<string>()
+  if (!SEMVER.test(manifest.version)) {
+    throw new Error('Module version must be semantic')
+  }
+  const dataSchemas = parseModuleArtifactDataSchemas(manifest.dataSchemas)
+  const platforms = new Set<ModuleArtifactPlatform>()
+  const variants = manifest.variants.map((value, index) => {
+    const variant = asPlainObject(value, `Module artifact variant ${index}`)
+    assertExactKeys(
+      variant,
+      ['platform', 'entry', 'files'],
+      `Module artifact variant ${index}`,
+    )
+    if (
+      (variant.platform !== 'desktop' && variant.platform !== 'mobile') ||
+      typeof variant.entry !== 'string' ||
+      !Array.isArray(variant.files) ||
+      variant.files.length === 0 ||
+      variant.files.length > MAX_MODULE_ARTIFACT_FILES
+    ) {
+      throw new Error(`Module artifact variant ${index} is invalid`)
+    }
+    if (platforms.has(variant.platform)) {
+      throw new Error(`Duplicate module platform variant "${variant.platform}"`)
+    }
+    platforms.add(variant.platform)
+    assertCanonicalManifestPath(variant.entry)
+    const entry = normalizeModuleArtifactFilePath(variant.entry)
+    const files = parseVariantFiles(variant.files)
+    const entryFiles = files.filter((file) => file.role === 'entry')
+    if (entryFiles.length !== 1) {
+      throw new Error('Module artifact variant must declare one entry file')
+    }
+    if (entryFiles[0].path !== entry) {
+      throw new Error(
+        'Module artifact entry does not match its file declaration',
+      )
+    }
+    return Object.freeze({
+      platform: variant.platform,
+      entry,
+      files,
+    })
+  })
+  return Object.freeze({
+    schemaVersion: 1,
+    id: manifest.id,
+    version: manifest.version,
+    hostApi: manifest.hostApi,
+    dataSchemas,
+    variants: Object.freeze(variants),
+  })
+}
+
+export function selectModuleManifestVariant(
+  manifest: ModuleArtifactManifest,
+  platform: ModuleArtifactPlatform,
+): ModuleArtifactVariant {
+  if (platform !== 'desktop' && platform !== 'mobile') {
+    throw new Error('Module artifact platform is invalid')
+  }
+  const variant = manifest.variants.find(
+    (candidate) => candidate.platform === platform,
+  )
+  if (!variant) {
+    throw new Error(
+      `Module "${manifest.id}" has no artifact variant for ${platform}`,
+    )
+  }
+  return variant
+}
+
+export function collectModuleManifestFiles(
+  manifest: ModuleArtifactManifest,
+): readonly ModuleArtifactFile[] {
+  const filesByPath = new Map<string, ModuleArtifactFile>()
   const directoryPaths = new Set<string>()
   let totalByteSize = 0
-  const files = manifest.files.map((value) => {
-    const file = value as Partial<ModuleArtifactFile> | null
+  for (const variant of manifest.variants) {
+    for (const file of variant.files) {
+      if (file.storage === 'device') {
+        throw new Error(
+          `Device-stored module artifact "${file.path}" is unsupported`,
+        )
+      }
+      const key = canonicalArtifactPath(file.path)
+      const existing = filesByPath.get(key)
+      if (existing) {
+        if (!sameArtifactFile(existing, file)) {
+          throw new Error(
+            `Conflicting module artifact file path "${file.path}" across platform variants`,
+          )
+        }
+        continue
+      }
+      filesByPath.set(key, file)
+      totalByteSize += file.byteSize
+      if (totalByteSize > MAX_MODULE_ARTIFACT_TOTAL_BYTES) {
+        throw new Error('Module artifact files exceed the total size limit')
+      }
+      const parts = key.split('/')
+      for (let index = 1; index < parts.length; index += 1) {
+        directoryPaths.add(parts.slice(0, index).join('/'))
+      }
+      if (
+        filesByPath.size + directoryPaths.size + 1 + manifest.variants.length >
+        MAX_MODULE_VERSION_TREE_ENTRIES
+      ) {
+        throw new Error('Module artifact file tree exceeds the entry limit')
+      }
+    }
+  }
+  for (const path of filesByPath.keys()) {
+    if (directoryPaths.has(path)) {
+      throw new Error(`Module artifact file path "${path}" aliases a directory`)
+    }
+  }
+  return Object.freeze([...filesByPath.values()])
+}
+
+function sameArtifactFile(
+  left: ModuleArtifactFile,
+  right: ModuleArtifactFile,
+): boolean {
+  return (
+    left.role === right.role &&
+    left.name === right.name &&
+    left.path === right.path &&
+    left.byteSize === right.byteSize &&
+    left.sha256 === right.sha256 &&
+    left.url === right.url &&
+    left.storage === right.storage
+  )
+}
+
+function parseVariantFiles(
+  values: readonly unknown[],
+): readonly ModuleArtifactFile[] {
+  const paths = new Set<string>()
+  const names = new Set<string>()
+  const directoryPaths = new Set<string>()
+  let totalByteSize = 0
+  const files = values.map((value, index) => {
+    const file = asPlainObject(value, `Module artifact file ${index}`)
+    assertExactKeys(
+      file,
+      ['role', 'name', 'path', 'byteSize', 'sha256', 'url', 'storage'],
+      `Module artifact file ${index}`,
+    )
     if (
-      !file ||
       (file.role !== 'entry' &&
         file.role !== 'style' &&
         file.role !== 'worker' &&
         file.role !== 'wasm' &&
+        file.role !== 'model' &&
         file.role !== 'data') ||
+      typeof file.name !== 'string' ||
       typeof file.path !== 'string' ||
       !Number.isSafeInteger(file.byteSize) ||
-      (file.byteSize ?? -1) < 0 ||
-      (file.byteSize ?? 0) > MAX_MODULE_ARTIFACT_FILE_BYTES ||
+      (file.byteSize as number) < 0 ||
+      (file.byteSize as number) > MAX_MODULE_ARTIFACT_FILE_BYTES ||
       typeof file.sha256 !== 'string' ||
-      !/^[a-fA-F0-9]{64}$/.test(file.sha256)
+      !/^[a-fA-F0-9]{64}$/.test(file.sha256) ||
+      typeof file.url !== 'string' ||
+      (file.storage !== 'module' && file.storage !== 'device')
     ) {
       throw new Error('Module artifact file is invalid')
     }
+    assertModulePathSegment(file.name, 'Module artifact file name')
+    const releaseMatch = RELEASE_URL.exec(file.url)
+    if (!releaseMatch || releaseMatch[4] !== file.name) {
+      throw new Error('Module artifact file URL is invalid')
+    }
+    assertCanonicalManifestPath(file.path)
     const path = normalizeModuleArtifactFilePath(file.path)
-    const canonicalPath = path.toLowerCase()
-    if (canonicalPath === 'module.json' || canonicalPath === 'ready.json') {
+    const canonicalPath = canonicalArtifactPath(path)
+    const canonicalName = canonicalArtifactPath(file.name)
+    if (
+      canonicalPath === 'module.json' ||
+      canonicalPath === 'ready.json' ||
+      /^ready\.(?:desktop|mobile)\.[a-f0-9]{64}\.json$/.test(canonicalPath)
+    ) {
       throw new Error(`Module artifact file path "${path}" is reserved`)
     }
     if (paths.has(canonicalPath)) {
       throw new Error(`Duplicate module file path "${path}"`)
     }
     paths.add(canonicalPath)
+    if (names.has(canonicalName)) {
+      throw new Error(`Duplicate module file name "${file.name}"`)
+    }
+    names.add(canonicalName)
     const parts = canonicalPath.split('/')
     if (parts.length - 1 > MAX_MODULE_VERSION_TREE_DEPTH) {
       throw new Error('Module artifact file path exceeds the depth limit')
@@ -108,51 +299,36 @@ export function parseModuleArtifactManifest(
     }
     return Object.freeze({
       role: file.role,
+      name: file.name,
       path,
       byteSize: file.byteSize as number,
       sha256: file.sha256.toLowerCase(),
+      url: file.url,
+      storage: file.storage,
     })
   })
-  const entryFiles = files.filter((file) => file.role === 'entry')
-  const declaredEntry = manifest.entry as
-    | Partial<ModuleArtifactManifest['entry']>
-    | undefined
-  if (
-    entryFiles.length !== 1 ||
-    !declaredEntry ||
-    typeof declaredEntry.path !== 'string'
-  ) {
-    throw new Error('Module artifact manifest must declare one entry file')
+  for (const filePath of paths) {
+    if (directoryPaths.has(filePath)) {
+      throw new Error(
+        `Module artifact file path "${filePath}" aliases a directory`,
+      )
+    }
   }
-  const entry = entryFiles[0]
-  if (
-    normalizeModuleArtifactFilePath(declaredEntry.path) !== entry.path ||
-    declaredEntry.byteSize !== entry.byteSize ||
-    declaredEntry.sha256?.toLowerCase() !== entry.sha256
-  ) {
-    throw new Error('Module artifact entry does not match its file declaration')
-  }
-  return Object.freeze({
-    schemaVersion: 1,
-    id: manifest.id,
-    version: manifest.version,
-    hostApi: 1,
-    entry: Object.freeze({
-      path: entry.path,
-      byteSize: entry.byteSize,
-      sha256: entry.sha256,
-    }),
-    files: Object.freeze(files),
-  })
+  return Object.freeze(files)
 }
 
 export function parseModuleReadyMarker(value: unknown): ModuleReadyMarker {
-  const marker = value as Partial<ModuleReadyMarker> | null
+  const marker = asPlainObject(value, 'Module ready marker')
+  assertExactKeys(
+    marker,
+    ['schemaVersion', 'id', 'version', 'platform', 'manifestSha256'],
+    'Module ready marker',
+  )
   if (
-    !marker ||
     marker.schemaVersion !== 1 ||
     typeof marker.id !== 'string' ||
     typeof marker.version !== 'string' ||
+    (marker.platform !== 'desktop' && marker.platform !== 'mobile') ||
     typeof marker.manifestSha256 !== 'string' ||
     !/^[a-fA-F0-9]{64}$/.test(marker.manifestSha256)
   ) {
@@ -164,12 +340,163 @@ export function parseModuleReadyMarker(value: unknown): ModuleReadyMarker {
     schemaVersion: 1,
     id: marker.id,
     version: marker.version,
+    platform: marker.platform,
     manifestSha256: marker.manifestSha256.toLowerCase(),
   })
 }
 
+export function moduleReadyMarkerFileName(
+  platform: ModuleArtifactPlatform,
+  manifestSha256: string,
+): string {
+  if (
+    (platform !== 'desktop' && platform !== 'mobile') ||
+    !/^[a-fA-F0-9]{64}$/.test(manifestSha256)
+  ) {
+    throw new Error('Module ready marker identity is invalid')
+  }
+  return `ready.${platform}.${manifestSha256.toLowerCase()}.json`
+}
+
+export function moduleArtifactReleaseParent(url: string): string | null {
+  const match = RELEASE_URL.exec(url)
+  return match
+    ? `${match[1].toLowerCase()}/${match[2].toLowerCase()}/${match[3]}`
+    : null
+}
+
+function parseModuleArtifactDataSchemas(
+  value: unknown,
+): ModuleArtifactDataSchemas {
+  const schemas = asPlainObject(value, 'Module artifact dataSchemas')
+  const entries = Object.entries(schemas)
+  if (entries.length > MAX_MODULE_SCHEMA_NAMESPACES) {
+    throw new Error('Module artifact dataSchemas is invalid')
+  }
+  const parsed = Object.create(null) as Record<string, ModuleArtifactDataSchema>
+  for (const [namespace, value] of entries) {
+    if (
+      !SCHEMA_NAMESPACE.test(namespace) ||
+      DANGEROUS_NAMESPACES.has(namespace)
+    ) {
+      throw new Error(`Module artifact data schema "${namespace}" is invalid`)
+    }
+    const schema = asPlainObject(
+      value,
+      `Module artifact data schema "${namespace}"`,
+    )
+    assertExactKeys(
+      schema,
+      ['readMin', 'readMax', 'write'],
+      `Module artifact data schema "${namespace}"`,
+    )
+    if (
+      !isSchemaVersion(schema.readMin) ||
+      !isSchemaVersion(schema.readMax) ||
+      !isSchemaVersion(schema.write) ||
+      schema.readMin > schema.readMax ||
+      schema.write < schema.readMin ||
+      schema.write > schema.readMax
+    ) {
+      throw new Error(`Module artifact data schema "${namespace}" is invalid`)
+    }
+    parsed[namespace] = Object.freeze({
+      readMin: schema.readMin,
+      readMax: schema.readMax,
+      write: schema.write,
+    })
+  }
+  return Object.freeze(parsed)
+}
+
 function normalizePortablePath(path: string): string {
   return normalizePath(path.replace(/\\/g, '/'))
+}
+
+function asPlainObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`)
+  }
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${label} must be a plain object`)
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (
+      typeof key !== 'string' ||
+      !descriptor ||
+      !('value' in descriptor) ||
+      !descriptor.enumerable
+    ) {
+      throw new Error(`${label} must contain only own data fields`)
+    }
+  }
+  return value as Record<string, unknown>
+}
+
+function assertExactKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+): void {
+  const keys = Object.keys(value)
+  const unknown = keys.find((key) => !allowed.includes(key))
+  const missing = allowed.find((key) => !keys.includes(key))
+  if (unknown) throw new Error(`${label} has unknown field "${unknown}"`)
+  if (missing) throw new Error(`${label} is missing field "${missing}"`)
+}
+
+function canonicalArtifactPath(value: string): string {
+  return value.normalize('NFKC').toLowerCase()
+}
+
+function assertCanonicalManifestPath(value: string): void {
+  if (value.includes('\\') || value.normalize('NFKC') !== value) {
+    throw new Error('Module artifact file path must be canonical')
+  }
+}
+
+function isSchemaVersion(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+export function isModuleHostApiRange(value: unknown): value is string {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > MAX_SEMVER_RANGE_LENGTH ||
+    value.trim() !== value
+  ) {
+    return false
+  }
+  const alternatives = value.split('||')
+  if (alternatives.length > 8) return false
+  return alternatives.every((alternative) => {
+    const text = alternative.trim()
+    if (!text) return false
+    const hyphen = /^(\S+)\s+-\s+(\S+)$/.exec(text)
+    if (hyphen) return SEMVER.test(hyphen[1]) && SEMVER.test(hyphen[2])
+    const tokens = text.split(/\s+/)
+    return (
+      tokens.length <= 16 &&
+      tokens.every((token) => {
+        if (token === '*' || /^[xX]$/.test(token)) return true
+        const shorthand = /^[~^](.+)$/.exec(token)
+        if (shorthand) return SEMVER.test(shorthand[1])
+        if (
+          /^(0|[1-9]\d*)\.(?:[xX*]|0|[1-9]\d*)(?:\.(?:[xX*]|0|[1-9]\d*))?$/.test(
+            token,
+          ) &&
+          (/[xX*]/.test(token) || token.split('.').length === 2)
+        ) {
+          return true
+        }
+        const comparator = /^(?:<=|>=|<|>|=)?(.+)$/.exec(token)
+        return Boolean(comparator && SEMVER.test(comparator[1]))
+      })
+    )
+  })
 }
 
 export function assertModulePathSegment(value: string, label: string): void {
@@ -194,8 +521,8 @@ export function assertModulePathSegment(value: string, label: string): void {
 
 export function assertModuleId(value: string, label: string): void {
   assertModulePathSegment(value, label)
-  if (value !== value.toLowerCase()) {
-    throw new Error(`${label} must use lowercase characters`)
+  if (!MODULE_ID.test(value)) {
+    throw new Error(`${label} must use a safe lowercase module id`)
   }
 }
 
@@ -250,11 +577,13 @@ export class ModuleStore {
   async readReadyMarkerBytes(
     moduleId: string,
     version: string,
+    platform: ModuleArtifactPlatform,
+    manifestSha256: string,
   ): Promise<Uint8Array> {
     assertModuleId(moduleId, 'Module id')
     assertModulePathSegment(version, 'Module version')
     return await this.readBytes(
-      `${this.pluginDir}/modules/${moduleId}/${version}/ready.json`,
+      `${this.pluginDir}/modules/${moduleId}/${version}/${moduleReadyMarkerFileName(platform, manifestSha256)}`,
     )
   }
 

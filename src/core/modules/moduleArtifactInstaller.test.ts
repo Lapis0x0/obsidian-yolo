@@ -105,24 +105,27 @@ class MemoryAdapter {
 function createArtifact() {
   const entryBytes = encode('yolo.registerModule({ id: "learning" })')
   const entrySha256 = hash(entryBytes)
+  const releaseRoot =
+    'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0'
+  const file = {
+    role: 'entry',
+    name: 'entry.js',
+    path: 'entry.js',
+    byteSize: entryBytes.byteLength,
+    sha256: entrySha256,
+    url: `${releaseRoot}/entry.js`,
+    storage: 'module',
+  }
   const manifestBytes = encode(
     `${JSON.stringify({
       schemaVersion: 1,
       id: 'learning',
       version: '0.1.0',
-      hostApi: 1,
-      entry: {
-        path: 'entry.js',
-        byteSize: entryBytes.byteLength,
-        sha256: entrySha256,
-      },
-      files: [
-        {
-          role: 'entry',
-          path: 'entry.js',
-          byteSize: entryBytes.byteLength,
-          sha256: entrySha256,
-        },
+      hostApi: '^1.0.0',
+      dataSchemas: { learning: { readMin: 0, readMax: 1, write: 1 } },
+      variants: [
+        { platform: 'desktop', entry: 'entry.js', files: [file] },
+        { platform: 'mobile', entry: 'entry.js', files: [file] },
       ],
     })}\n`,
   )
@@ -132,6 +135,10 @@ function createArtifact() {
     descriptor: {
       id: 'learning',
       version: '0.1.0',
+      hostApi: '^1.0.0',
+      dataSchemas: { learning: { readMin: 0, readMax: 1, write: 1 } },
+      platform: 'desktop' as const,
+      manifestUrl: `${releaseRoot}/module.json`,
       manifest: {
         byteSize: manifestBytes.byteLength,
         sha256: hash(manifestBytes),
@@ -140,9 +147,16 @@ function createArtifact() {
   }
 }
 
+function readyPath(
+  artifact: ReturnType<typeof createArtifact>,
+  platform: 'desktop' | 'mobile' = 'desktop',
+): string {
+  return `plugin/modules/learning/0.1.0/ready.${platform}.${artifact.descriptor.manifest.sha256}.json`
+}
+
 function createInstaller(
   adapter: MemoryAdapter,
-  download: (path: string) => Promise<Uint8Array>,
+  download: (url: string) => Promise<Uint8Array>,
 ) {
   const dataAdapter = adapter as unknown as DataAdapter
   const store = new ModuleStore({
@@ -153,7 +167,7 @@ function createInstaller(
   return new ModuleArtifactInstaller({
     adapter: dataAdapter,
     store,
-    download: (request) => download(request.path),
+    download: (request) => download(request.url),
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
   })
 }
@@ -162,10 +176,10 @@ describe('ModuleArtifactInstaller', () => {
   it('stages, verifies, promotes, and reuses an immutable version', async () => {
     const artifact = createArtifact()
     const adapter = new MemoryAdapter()
-    const download = jest.fn(async (path: string) => {
-      if (path === 'module.json') return artifact.manifestBytes
-      if (path === 'entry.js') return artifact.entryBytes
-      throw new Error(`Unexpected download: ${path}`)
+    const download = jest.fn(async (url: string) => {
+      if (url === artifact.descriptor.manifestUrl) return artifact.manifestBytes
+      if (url.endsWith('/entry.js')) return artifact.entryBytes
+      throw new Error(`Unexpected download: ${url}`)
     })
     const installer = createInstaller(adapter, download)
 
@@ -175,8 +189,10 @@ describe('ModuleArtifactInstaller', () => {
         version: '0.1.0',
       },
     )
+    expect(adapter.files.has(readyPath(artifact))).toBe(true)
+    expect(adapter.files.has(readyPath(artifact, 'mobile'))).toBe(true)
     expect(adapter.files.has('plugin/modules/learning/0.1.0/ready.json')).toBe(
-      true,
+      false,
     )
     expect(adapter.files.has('plugin/modules/learning/0.1.0/entry.js')).toBe(
       true,
@@ -192,8 +208,10 @@ describe('ModuleArtifactInstaller', () => {
   it('removes staging and leaves no ready version after a hash mismatch', async () => {
     const artifact = createArtifact()
     const adapter = new MemoryAdapter()
-    const installer = createInstaller(adapter, async (path) =>
-      path === 'module.json' ? artifact.manifestBytes : encode('damaged'),
+    const installer = createInstaller(adapter, async (url) =>
+      url === artifact.descriptor.manifestUrl
+        ? artifact.manifestBytes
+        : encode('damaged'),
     )
 
     await expect(installer.install(artifact.descriptor)).rejects.toThrow(
@@ -208,15 +226,17 @@ describe('ModuleArtifactInstaller', () => {
   it('never replaces an immutable version after a transient read failure', async () => {
     const artifact = createArtifact()
     const adapter = new MemoryAdapter()
-    const validDownload = jest.fn(async (path: string) =>
-      path === 'module.json' ? artifact.manifestBytes : artifact.entryBytes,
+    const validDownload = jest.fn(async (url: string) =>
+      url === artifact.descriptor.manifestUrl
+        ? artifact.manifestBytes
+        : artifact.entryBytes,
     )
     const installer = createInstaller(adapter, validDownload)
     await installer.install(artifact.descriptor)
 
     const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
     const original = new Uint8Array(await adapter.readBinary(entryPath))
-    adapter.failReadOnce = 'plugin/modules/learning/0.1.0/ready.json'
+    adapter.failReadOnce = readyPath(artifact)
 
     await expect(installer.install(artifact.descriptor)).rejects.toThrow(
       'version directory exists but is invalid',
@@ -225,5 +245,179 @@ describe('ModuleArtifactInstaller', () => {
       original,
     )
     expect(validDownload).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses manifest-fixed URLs and rejects descriptor compatibility drift', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const requested: string[] = []
+    const installer = createInstaller(adapter, async (url) => {
+      requested.push(url)
+      return url === artifact.descriptor.manifestUrl
+        ? artifact.manifestBytes
+        : artifact.entryBytes
+    })
+
+    await installer.install(artifact.descriptor)
+    expect(requested).toEqual([
+      artifact.descriptor.manifestUrl,
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js',
+    ])
+
+    const otherAdapter = new MemoryAdapter()
+    const mismatched = createInstaller(
+      otherAdapter,
+      async () => artifact.manifestBytes,
+    )
+    await expect(
+      mismatched.install({ ...artifact.descriptor, hostApi: '^2.0.0' }),
+    ).rejects.toThrow('descriptor mismatch')
+    expect([...adapter.files.keys()].includes(readyPath(artifact))).toBe(true)
+    const ready = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(await adapter.readBinary(readyPath(artifact))),
+      ),
+    ) as { platform: string }
+    expect(ready.platform).toBe('desktop')
+  })
+
+  it('installs and verifies the immutable union for both platform variants', async () => {
+    const artifact = createArtifact()
+    const manifest = JSON.parse(
+      new TextDecoder().decode(artifact.manifestBytes),
+    ) as {
+      variants: Array<{
+        platform: string
+        entry: string
+        files: Array<Record<string, unknown>>
+      }>
+    }
+    const mobileBytes = encode('mobile entry')
+    manifest.variants[1] = {
+      platform: 'mobile',
+      entry: 'mobile.js',
+      files: [
+        {
+          role: 'entry',
+          name: 'mobile.js',
+          path: 'mobile.js',
+          byteSize: mobileBytes.byteLength,
+          sha256: hash(mobileBytes),
+          url: artifact.descriptor.manifestUrl.replace(
+            'module.json',
+            'mobile.js',
+          ),
+          storage: 'module',
+        },
+      ],
+    }
+    const manifestBytes = encode(`${JSON.stringify(manifest)}\n`)
+    const descriptor = {
+      ...artifact.descriptor,
+      manifest: {
+        byteSize: manifestBytes.byteLength,
+        sha256: hash(manifestBytes),
+      },
+    }
+    const adapter = new MemoryAdapter()
+    const download = jest.fn(async (url: string) => {
+      if (url === descriptor.manifestUrl) return manifestBytes
+      return url.endsWith('/mobile.js') ? mobileBytes : artifact.entryBytes
+    })
+    const installer = createInstaller(adapter, download)
+
+    await installer.install(descriptor)
+    expect(download).toHaveBeenCalledTimes(3)
+    expect(adapter.files.has('plugin/modules/learning/0.1.0/entry.js')).toBe(
+      true,
+    )
+    expect(adapter.files.has('plugin/modules/learning/0.1.0/mobile.js')).toBe(
+      true,
+    )
+    expect(adapter.files.has(readyPath({ ...artifact, descriptor }))).toBe(true)
+    expect(
+      adapter.files.has(readyPath({ ...artifact, descriptor }, 'mobile')),
+    ).toBe(true)
+
+    await installer.install({ ...descriptor, platform: 'mobile' })
+    expect(download).toHaveBeenCalledTimes(3)
+  })
+
+  it('rejects conflicting duplicate paths across platform variants', async () => {
+    const artifact = createArtifact()
+    const manifest = JSON.parse(
+      new TextDecoder().decode(artifact.manifestBytes),
+    ) as { variants: Array<{ files: Array<{ sha256: string }> }> }
+    manifest.variants[1].files[0].sha256 = 'b'.repeat(64)
+    const manifestBytes = encode(`${JSON.stringify(manifest)}\n`)
+    const adapter = new MemoryAdapter()
+    const download = jest.fn(async () => manifestBytes)
+
+    await expect(
+      createInstaller(adapter, download).install({
+        ...artifact.descriptor,
+        manifest: {
+          byteSize: manifestBytes.byteLength,
+          sha256: hash(manifestBytes),
+        },
+      }),
+    ).rejects.toThrow('Conflicting module artifact file path')
+    expect(download).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects cross-release and device-stored selected files before file download', async () => {
+    const artifact = createArtifact()
+    const manifest = JSON.parse(
+      new TextDecoder().decode(artifact.manifestBytes),
+    ) as {
+      variants: Array<{
+        files: Array<{ url: string; storage: 'module' | 'device' }>
+      }>
+    }
+    const installManifest = async (
+      mutate: (
+        file: (typeof manifest.variants)[number]['files'][number],
+      ) => void,
+    ) => {
+      const changed = structuredClone(manifest)
+      for (const variant of changed.variants) mutate(variant.files[0])
+      const manifestBytes = encode(`${JSON.stringify(changed)}\n`)
+      const descriptor = {
+        ...artifact.descriptor,
+        manifest: {
+          byteSize: manifestBytes.byteLength,
+          sha256: hash(manifestBytes),
+        },
+      }
+      const adapter = new MemoryAdapter()
+      const download = jest.fn(async () => manifestBytes)
+      return {
+        adapter,
+        download,
+        installing: createInstaller(adapter, download).install(descriptor),
+      }
+    }
+
+    const crossRelease = await installManifest((file) => {
+      file.url =
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/download/other-tag/entry.js'
+    })
+    await expect(crossRelease.installing).rejects.toThrow(
+      'does not belong to the manifest GitHub Release',
+    )
+    expect(crossRelease.download).toHaveBeenCalledTimes(1)
+
+    const device = await installManifest((file) => {
+      file.storage = 'device'
+    })
+    await expect(device.installing).rejects.toThrow(
+      'Device-stored module artifact "entry.js" is unsupported',
+    )
+    expect(device.download).toHaveBeenCalledTimes(1)
+    expect(
+      [...device.adapter.files.keys()].some((path) =>
+        path.endsWith('entry.js'),
+      ),
+    ).toBe(false)
   })
 })

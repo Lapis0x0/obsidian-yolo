@@ -43,6 +43,7 @@ export {
 export { sha256Hex, verifyModuleBytes } from './moduleIntegrity'
 export {
   verifyInstalledModuleArtifact,
+  collectInstallableModuleFiles,
   type ModuleArtifactDescriptor,
   type ModuleArtifactReadStore,
   type VerifiedModuleArtifact,
@@ -116,9 +117,18 @@ export {
 } from './officialModuleCatalogClient'
 export {
   ModuleStore,
+  collectModuleManifestFiles,
+  isModuleHostApiRange,
+  moduleArtifactReleaseParent,
+  moduleReadyMarkerFileName,
   parseModuleArtifactManifest,
   parseModuleReadyMarker,
+  selectModuleManifestVariant,
+  type ModuleArtifactDataSchema,
+  type ModuleArtifactDataSchemas,
   type ModuleArtifactFile,
+  type ModuleArtifactPlatform,
+  type ModuleArtifactVariant,
   type ModuleStoreOptions,
   type ModuleArtifactManifest,
   type ModuleReadyMarker,
