@@ -1041,7 +1041,7 @@ export const zh: TranslationKeys = {
       pickerTitle: '添加提供商',
       pickerSearchPlaceholder: '搜索提供商 · 按 Enter 键搜索',
       pickerCustomLabel: '自定义提供商',
-      pickerCustomDesc: '手动填写 Base URL 与 API Key',
+      pickerCustomDesc: 'Base URL + API Key',
       pickerEmpty: '没有匹配的提供商',
       categoryAll: '全部',
       categoryMain: '国际',

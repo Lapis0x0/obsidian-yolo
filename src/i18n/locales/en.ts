@@ -1112,7 +1112,7 @@ export const en: TranslationKeys = {
       pickerTitle: 'Add provider',
       pickerSearchPlaceholder: 'Search providers · press Enter',
       pickerCustomLabel: 'Custom provider',
-      pickerCustomDesc: 'Manually enter base URL and API key',
+      pickerCustomDesc: 'Base URL + API key',
       pickerEmpty: 'No matching providers',
       categoryAll: 'All',
       categoryMain: 'International',

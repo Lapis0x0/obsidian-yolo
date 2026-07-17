@@ -1027,7 +1027,7 @@ export const it: TranslationKeys = {
       pickerTitle: 'Aggiungi provider',
       pickerSearchPlaceholder: 'Cerca provider · premi Invio',
       pickerCustomLabel: 'Provider personalizzato',
-      pickerCustomDesc: 'Inserisci manualmente base URL e API key',
+      pickerCustomDesc: 'URL base + chiave API',
       pickerEmpty: 'Nessun provider corrispondente',
       categoryAll: 'Tutti',
       categoryMain: 'Internazionale',
