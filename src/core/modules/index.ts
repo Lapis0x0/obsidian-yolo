@@ -74,5 +74,7 @@ export type {
   YoloModuleVaultEventV1,
   YoloModuleVaultFileV1,
   YoloModuleVaultFolderV1,
+  YoloModuleVaultTextSnapshotV1,
   YoloModuleVaultV1,
+  YoloModuleVaultWrittenFileV1,
 } from './types'

@@ -5,8 +5,29 @@ import type {
   YoloModuleVaultEntryV1,
   YoloModuleVaultEventV1,
   YoloModuleVaultFileV1,
+  YoloModuleVaultTextSnapshotV1,
   YoloModuleVaultV1,
 } from './types'
+
+type AppVaultWriteState = {
+  readonly active: Map<symbol, readonly string[]>
+  readonly pending: PendingVaultOperation[]
+}
+
+type PendingVaultOperation = {
+  readonly paths: readonly string[]
+  start(): void
+}
+
+type VaultSnapshotRecord = {
+  readonly path: string
+  readonly file: TFile
+  readonly content: string
+  readonly creationReceipt?: symbol
+}
+
+const appVaultWriteStates = new WeakMap<App, AppVaultWriteState>()
+const processMismatch = new Error('Module vault process mismatch')
 
 export type ModuleVaultCapabilityActivationV1 = Readonly<{
   api: YoloModuleVaultV1
@@ -84,6 +105,21 @@ const UNAVAILABLE_MODULE_VAULT_API: YoloModuleVaultV1 = Object.freeze({
   exists: () => Promise.reject(new Error('Module vault is unavailable')),
   readText: () => Promise.reject(new Error('Module vault is unavailable')),
   readBinary: () => Promise.reject(new Error('Module vault is unavailable')),
+  ensureFolder: () => Promise.reject(new Error('Module vault is unavailable')),
+  createFolder: () => Promise.reject(new Error('Module vault is unavailable')),
+  createText: () => Promise.reject(new Error('Module vault is unavailable')),
+  createBinary: () => Promise.reject(new Error('Module vault is unavailable')),
+  writeText: () => Promise.reject(new Error('Module vault is unavailable')),
+  renamePath: () => Promise.reject(new Error('Module vault is unavailable')),
+  trashPath: () => Promise.reject(new Error('Module vault is unavailable')),
+  readTextSnapshot: () =>
+    Promise.reject(new Error('Module vault is unavailable')),
+  createTextIfAbsent: () =>
+    Promise.reject(new Error('Module vault is unavailable')),
+  replaceTextIfUnchanged: () =>
+    Promise.reject(new Error('Module vault is unavailable')),
+  revertOwnedCreatedTextIfUnchanged: () =>
+    Promise.reject(new Error('Module vault is unavailable')),
   subscribe: () => unavailable(),
 })
 
@@ -98,12 +134,19 @@ function createObsidianModuleVaultCapability({
   lifecycle: ModuleLifecycleScope
   reportListenerError: (moduleId: string, error: unknown) => void
 }): ModuleVaultCapabilityActivationV1 {
+  const writeState = getAppVaultWriteState(app)
+  const snapshotRecords = new WeakMap<
+    YoloModuleVaultTextSnapshotV1,
+    VaultSnapshotRecord
+  >()
+  const activeCreationReceipts = new Set<symbol>()
   const subscriptionCleanups = new Set<() => void>()
   let disposed = false
   let deactivating = false
   let activationComplete = false
   lifecycle.add(() => {
     disposed = true
+    activeCreationReceipts.clear()
     const errors: unknown[] = []
     for (const cleanup of subscriptionCleanups) {
       try {
@@ -148,6 +191,26 @@ function createObsidianModuleVaultCapability({
     } catch (error) {
       reportError(error)
     }
+  }
+  const createSnapshot = (
+    file: TFile,
+    content: string,
+    creationReceipt?: symbol,
+  ): YoloModuleVaultTextSnapshotV1 => {
+    const snapshot = Object.freeze({ path: file.path, content })
+    snapshotRecords.set(snapshot, {
+      path: file.path,
+      file,
+      content,
+      creationReceipt,
+    })
+    return snapshot
+  }
+  const getSnapshotRecord = (
+    snapshot: YoloModuleVaultTextSnapshotV1,
+  ): VaultSnapshotRecord | null => {
+    if (!snapshot || typeof snapshot !== 'object') return null
+    return snapshotRecords.get(snapshot) ?? null
   }
 
   const api: YoloModuleVaultV1 = Object.freeze({
@@ -194,6 +257,196 @@ function createObsidianModuleVaultCapability({
       }
       const bytes = await app.vault.readBinary(entry)
       return bytes.slice(0)
+    },
+    ensureFolder: async (folderPath) => {
+      assertAvailable()
+      await ensureVaultFolder(
+        app,
+        writeState,
+        normalizeModuleVaultPath(folderPath, true),
+        assertAvailable,
+      )
+    },
+    createFolder: async (folderPath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(folderPath)
+      await serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        assertManagedParentFolder(app, path)
+        await app.vault.createFolder(path)
+      })
+    },
+    createText: async (filePath, content) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(filePath)
+      requireString(content, 'Module vault text content')
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        assertManagedParentFolder(app, path)
+        const file = await app.vault.create(path, content)
+        return freezeWrittenFile(file)
+      })
+    },
+    createBinary: async (filePath, content) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(filePath)
+      if (!(content instanceof ArrayBuffer)) {
+        throw new TypeError(
+          'Module vault binary content must be an ArrayBuffer',
+        )
+      }
+      const bytes = content.slice(0)
+      await serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        assertManagedParentFolder(app, path)
+        await app.vault.createBinary(path, bytes)
+      })
+    },
+    writeText: async (filePath, content) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(filePath)
+      requireString(content, 'Module vault text content')
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        const entry = app.vault.getAbstractFileByPath(path)
+        if (!(entry instanceof TFile)) {
+          throw new Error(`Module vault file not found: ${path}`)
+        }
+        await app.vault.modify(entry, content)
+        return freezeWrittenFile(entry)
+      })
+    },
+    renamePath: async (oldPath, newPath) => {
+      assertAvailable()
+      const sourcePath = normalizeModuleVaultPath(oldPath)
+      const destinationPath = normalizeModuleVaultPath(newPath)
+      if (sourcePath === destinationPath) return
+      await serializeVaultPaths(
+        writeState,
+        [sourcePath, destinationPath],
+        async () => {
+          assertAvailable()
+          const entry = app.vault.getAbstractFileByPath(sourcePath)
+          if (!(entry instanceof TFile)) {
+            throw new Error(`Module vault file not found: ${sourcePath}`)
+          }
+          if (app.vault.getAbstractFileByPath(destinationPath)) {
+            throw new Error(
+              `Module vault destination already exists: ${destinationPath}`,
+            )
+          }
+          assertManagedParentFolder(app, destinationPath)
+          await app.fileManager.renameFile(entry, destinationPath)
+        },
+      )
+    },
+    trashPath: async (rawPath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(rawPath)
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        const entry = app.vault.getAbstractFileByPath(path)
+        if (!isVaultEntry(entry)) return false
+        await app.fileManager.trashFile(entry)
+        return true
+      })
+    },
+    readTextSnapshot: async (filePath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(filePath)
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        const entry = app.vault.getAbstractFileByPath(path)
+        if (!entry) return null
+        if (!(entry instanceof TFile)) {
+          throw new Error(`Module vault path is not a file: ${path}`)
+        }
+        return createSnapshot(entry, await app.vault.read(entry))
+      })
+    },
+    createTextIfAbsent: async (filePath, content) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(filePath)
+      requireString(content, 'Module vault text content')
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        if (app.vault.getAbstractFileByPath(path)) return null
+        assertManagedParentFolder(app, path)
+        const file = await app.vault.create(path, content)
+        const creationReceipt = Symbol(path)
+        activeCreationReceipts.add(creationReceipt)
+        return createSnapshot(file, content, creationReceipt)
+      })
+    },
+    replaceTextIfUnchanged: async (expected, content) => {
+      assertAvailable()
+      requireString(content, 'Module vault text content')
+      const record = getSnapshotRecord(expected)
+      if (!record) return null
+      return serializeVaultPaths(writeState, [record.path], async () => {
+        assertAvailable()
+        if (!isCurrentSnapshot(app, record)) return null
+        try {
+          await app.vault.process(record.file, (current) => {
+            if (current !== record.content) throw processMismatch
+            return content
+          })
+        } catch (error) {
+          if (error === processMismatch) return null
+          throw error
+        }
+        if (!isCurrentSnapshot(app, record)) return null
+        const creationReceipt =
+          record.creationReceipt &&
+          activeCreationReceipts.has(record.creationReceipt)
+            ? record.creationReceipt
+            : undefined
+        return createSnapshot(record.file, content, creationReceipt)
+      })
+    },
+    revertOwnedCreatedTextIfUnchanged: async (
+      created,
+      expected,
+      fallbackContent,
+    ) => {
+      assertAvailable()
+      requireString(fallbackContent, 'Module vault fallback content')
+      const createdRecord = getSnapshotRecord(created)
+      const expectedRecord = getSnapshotRecord(expected)
+      if (
+        !createdRecord?.creationReceipt ||
+        !activeCreationReceipts.has(createdRecord.creationReceipt) ||
+        !expectedRecord ||
+        createdRecord.creationReceipt !== expectedRecord.creationReceipt ||
+        createdRecord.file !== expectedRecord.file ||
+        createdRecord.path !== expectedRecord.path
+      ) {
+        return null
+      }
+      const creationReceipt = createdRecord.creationReceipt
+      return serializeVaultPaths(
+        writeState,
+        [expectedRecord.path],
+        async () => {
+          assertAvailable()
+          if (!activeCreationReceipts.has(creationReceipt)) return null
+          if (!isCurrentSnapshot(app, expectedRecord)) return null
+          try {
+            await app.vault.process(expectedRecord.file, (current) => {
+              if (current !== expectedRecord.content) throw processMismatch
+              return fallbackContent
+            })
+          } catch (error) {
+            if (error === processMismatch) return null
+            throw error
+          }
+          activeCreationReceipts.delete(creationReceipt)
+          if (!isCurrentSnapshot(app, expectedRecord)) {
+            return null
+          }
+          return createSnapshot(expectedRecord.file, fallbackContent)
+        },
+      )
     },
     subscribe: (scopePath, listener) => {
       assertAvailable()
@@ -386,6 +639,137 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
     value !== null &&
     typeof (value as PromiseLike<unknown>).then === 'function'
   )
+}
+
+function getAppVaultWriteState(app: App): AppVaultWriteState {
+  let state = appVaultWriteStates.get(app)
+  if (!state) {
+    state = { active: new Map(), pending: [] }
+    appVaultWriteStates.set(app, state)
+  }
+  return state
+}
+
+function serializeVaultPaths<R>(
+  state: AppVaultWriteState,
+  paths: readonly string[],
+  operation: () => Promise<R>,
+): Promise<R> {
+  const orderedPaths = [...new Set(paths)].sort()
+  return new Promise<R>((resolve, reject) => {
+    const token = Symbol('module-vault-operation')
+    const request: PendingVaultOperation = {
+      paths: orderedPaths,
+      start: () => {
+        state.active.set(token, orderedPaths)
+        void Promise.resolve()
+          .then(operation)
+          .then(resolve, reject)
+          .finally(() => {
+            state.active.delete(token)
+            drainVaultOperations(state)
+          })
+      },
+    }
+    state.pending.push(request)
+    drainVaultOperations(state)
+  })
+}
+
+function drainVaultOperations(state: AppVaultWriteState): void {
+  let index = 0
+  while (index < state.pending.length) {
+    const request = state.pending[index]
+    const conflictsWithActive = [...state.active.values()].some((paths) =>
+      vaultPathSetsConflict(request.paths, paths),
+    )
+    const conflictsWithEarlier = state.pending
+      .slice(0, index)
+      .some((earlier) => vaultPathSetsConflict(request.paths, earlier.paths))
+    if (conflictsWithActive || conflictsWithEarlier) {
+      index += 1
+      continue
+    }
+    state.pending.splice(index, 1)
+    request.start()
+  }
+}
+
+function vaultPathSetsConflict(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return left.some((leftPath) =>
+    right.some((rightPath) => vaultPathsConflict(leftPath, rightPath)),
+  )
+}
+
+function vaultPathsConflict(left: string, right: string): boolean {
+  return (
+    left === right ||
+    left.startsWith(`${right}/`) ||
+    right.startsWith(`${left}/`)
+  )
+}
+
+async function ensureVaultFolder(
+  app: App,
+  state: AppVaultWriteState,
+  path: string,
+  assertAvailable: () => void,
+): Promise<void> {
+  if (path === '') return
+  const segments = path.split('/')
+  for (let index = 1; index <= segments.length; index += 1) {
+    assertAvailable()
+    const currentPath = segments.slice(0, index).join('/')
+    await serializeVaultPaths(state, [currentPath], async () => {
+      assertAvailable()
+      const existing = app.vault.getAbstractFileByPath(currentPath)
+      if (existing instanceof TFolder) return
+      if (existing) {
+        throw new Error(`Module vault path is not a folder: ${currentPath}`)
+      }
+      try {
+        await app.vault.createFolder(currentPath)
+      } catch (error) {
+        if (
+          !(app.vault.getAbstractFileByPath(currentPath) instanceof TFolder)
+        ) {
+          throw error
+        }
+      }
+    })
+  }
+}
+
+function assertManagedParentFolder(app: App, path: string): void {
+  const separator = path.lastIndexOf('/')
+  if (separator < 0) return
+  const parentPath = path.slice(0, separator)
+  if (!(app.vault.getAbstractFileByPath(parentPath) instanceof TFolder)) {
+    throw new Error(`Module vault parent folder not found: ${parentPath}`)
+  }
+}
+
+function freezeWrittenFile(file: TFile): Readonly<{
+  path: string
+  mtime: number
+}> {
+  return Object.freeze({ path: file.path, mtime: file.stat?.mtime ?? 0 })
+}
+
+function isCurrentSnapshot(app: App, record: VaultSnapshotRecord): boolean {
+  return (
+    record.file.path === record.path &&
+    app.vault.getAbstractFileByPath(record.path) === record.file
+  )
+}
+
+function requireString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`${label} must be a string`)
+  }
 }
 
 function unavailable(): never {

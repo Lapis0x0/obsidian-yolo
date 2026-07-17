@@ -79,6 +79,16 @@ export type YoloModuleVaultEventV1 =
       oldPath: string
     }>
 
+export type YoloModuleVaultWrittenFileV1 = Readonly<{
+  path: string
+  mtime: number
+}>
+
+export type YoloModuleVaultTextSnapshotV1 = Readonly<{
+  path: string
+  content: string
+}>
+
 export type YoloModuleVaultV1 = {
   getEntry(path: string): YoloModuleVaultEntryV1 | null
   listChildren(folderPath: string): readonly YoloModuleVaultEntryV1[]
@@ -86,6 +96,35 @@ export type YoloModuleVaultV1 = {
   exists(path: string): Promise<boolean>
   readText(filePath: string): Promise<string>
   readBinary(filePath: string): Promise<ArrayBuffer>
+  ensureFolder(folderPath: string): Promise<void>
+  createFolder(folderPath: string): Promise<void>
+  createText(
+    filePath: string,
+    content: string,
+  ): Promise<YoloModuleVaultWrittenFileV1>
+  createBinary(filePath: string, content: ArrayBuffer): Promise<void>
+  writeText(
+    filePath: string,
+    content: string,
+  ): Promise<YoloModuleVaultWrittenFileV1>
+  renamePath(oldPath: string, newPath: string): Promise<void>
+  trashPath(path: string): Promise<boolean>
+  readTextSnapshot(
+    filePath: string,
+  ): Promise<YoloModuleVaultTextSnapshotV1 | null>
+  createTextIfAbsent(
+    filePath: string,
+    content: string,
+  ): Promise<YoloModuleVaultTextSnapshotV1 | null>
+  replaceTextIfUnchanged(
+    expected: YoloModuleVaultTextSnapshotV1,
+    content: string,
+  ): Promise<YoloModuleVaultTextSnapshotV1 | null>
+  revertOwnedCreatedTextIfUnchanged(
+    created: YoloModuleVaultTextSnapshotV1,
+    expected: YoloModuleVaultTextSnapshotV1,
+    fallbackContent: string,
+  ): Promise<YoloModuleVaultTextSnapshotV1 | null>
   subscribe(
     scopePath: string,
     listener: (event: YoloModuleVaultEventV1) => void | Promise<void>,
