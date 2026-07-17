@@ -370,146 +370,6 @@ function GeminiOAuthPanel({
   )
 }
 
-function QwenOAuthPanel({
-  plugin,
-  provider,
-}: {
-  plugin: YoloPlugin
-  provider: LLMProvider
-}) {
-  const { t } = useLanguage()
-  const [loading, setLoading] = useState(true)
-  const [connected, setConnected] = useState(false)
-  const [resourceUrl, setResourceUrl] = useState<string | null>(null)
-  const [expiresAt, setExpiresAt] = useState<number | null>(null)
-  const [isConnecting, setIsConnecting] = useState(false)
-
-  const refreshStatus = useCallback(async () => {
-    setLoading(true)
-    try {
-      const status = await plugin.getQwenOAuthStatus(provider.id)
-      setConnected(status.connected)
-      setResourceUrl(status.resourceUrl ?? null)
-      setExpiresAt(status.expiresAt ?? null)
-    } catch (error) {
-      console.error('[YOLO] Failed to load Qwen OAuth status:', error)
-      setConnected(false)
-      setResourceUrl(null)
-      setExpiresAt(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [plugin, provider.id])
-
-  useEffect(() => {
-    void refreshStatus()
-    return () => {
-      plugin
-        .getQwenOAuthService(provider.id)
-        .cancelPendingBrowserAuthorization()
-    }
-  }, [plugin, provider.id, refreshStatus])
-
-  const handleConnect = () => {
-    const execute = async () => {
-      setIsConnecting(true)
-      const service = plugin.getQwenOAuthService(provider.id)
-      const authorization = await service.beginBrowserAuthorization()
-      window.open(
-        authorization.authorizationUrl,
-        '_blank',
-        'noopener,noreferrer',
-      )
-      new Notice('已打开 Qwen OAuth 登录页面，请在浏览器中完成授权。', 8000)
-      await authorization.complete
-      new Notice('Qwen OAuth 连接成功')
-      await refreshStatus()
-    }
-
-    void execute()
-      .catch((error: unknown) => {
-        console.error('[YOLO] Failed to connect Qwen OAuth:', error)
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Failed to connect Qwen OAuth.'
-        new Notice(message)
-      })
-      .finally(() => {
-        setIsConnecting(false)
-      })
-  }
-
-  const handleDisconnect = () => {
-    const execute = async () => {
-      plugin
-        .getQwenOAuthService(provider.id)
-        .cancelPendingBrowserAuthorization()
-      await plugin.disconnectQwenOAuthAccount(provider.id)
-      new Notice('Qwen OAuth 已断开')
-      await refreshStatus()
-    }
-
-    void execute().catch((error: unknown) => {
-      console.error('[YOLO] Failed to disconnect Qwen OAuth:', error)
-      new Notice('Failed to disconnect Qwen OAuth.')
-    })
-  }
-
-  return (
-    <div className="yolo-models-subsection">
-      <div className="yolo-models-subsection-header">
-        <span>{t('settings.providers.qwenOAuthTitle', 'Qwen OAuth')}</span>
-        {!connected ? (
-          <button
-            type="button"
-            onClick={handleConnect}
-            className="yolo-add-model-btn"
-            disabled={isConnecting || !Platform.isDesktop}
-          >
-            {isConnecting
-              ? t('settings.providers.qwenOAuthConnecting', 'Connecting...')
-              : t('settings.providers.qwenOAuthConnect', 'Connect')}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleDisconnect}
-            className="yolo-add-model-btn yolo-chatgpt-oauth-disconnect-btn"
-            disabled={isConnecting}
-          >
-            {t('settings.providers.qwenOAuthDisconnect', 'Disconnect')}
-          </button>
-        )}
-      </div>
-      <div className="yolo-no-models">
-        {!Platform.isDesktop && !connected
-          ? t(
-              'settings.providers.oauthDesktopOnly',
-              'OAuth login is only available on desktop. Please connect on desktop first.',
-            )
-          : loading
-            ? t(
-                'settings.providers.qwenOAuthLoadingStatus',
-                'Loading Qwen OAuth status...',
-              )
-            : connected
-              ? `${t('settings.providers.qwenOAuthConnected', 'Connected')}${resourceUrl ? ` · ${resourceUrl}` : ''}${expiresAt ? ` · ${t('settings.providers.qwenOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
-              : t(
-                  'settings.providers.qwenOAuthDisconnectedHelp',
-                  'Not connected. Connect to use models from your Qwen account.',
-                )}
-      </div>
-      <div className="yolo-chatgpt-oauth-note">
-        {t(
-          'settings.providers.qwenOAuthStreamingNotice',
-          'Qwen OAuth supports streaming; using Obsidian requestUrl may buffer output, while desktop Node fetch can provide real-time streaming.',
-        )}
-      </div>
-    </div>
-  )
-}
-
 function ProviderSectionItem({
   provider,
   app,
@@ -534,7 +394,6 @@ function ProviderSectionItem({
 }: ProviderSectionItemProps) {
   const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
   const isGeminiOAuth = provider.presetType === 'gemini-oauth'
-  const isQwenOAuth = provider.presetType === 'qwen-oauth'
   const displayBaseUrl = getProviderDisplayBaseUrl(provider)
   const chatModelsLabel = `${chatModels.length} ${t('settings.providers.chatModels').replace(/^个/, '')}`
   const embeddingModelsLabel = `${embeddingModels.length} ${t('settings.providers.embeddingModels').replace(/^个/, '')}`
@@ -705,9 +564,6 @@ function ProviderSectionItem({
           )}
           {isGeminiOAuth && (
             <GeminiOAuthPanel plugin={plugin} provider={provider} />
-          )}
-          {isQwenOAuth && (
-            <QwenOAuthPanel plugin={plugin} provider={provider} />
           )}
           <ChatModelsTable
             provider={provider}
@@ -1413,14 +1269,6 @@ export function ProvidersAndModelsSection({
           await plugin.disconnectGeminiOAuthAccount(provider.id)
           plugin.clearGeminiOAuthRuntime(provider.id)
         }
-        if (provider.presetType === 'qwen-oauth') {
-          plugin
-            .getQwenOAuthService(provider.id)
-            .cancelPendingBrowserAuthorization()
-          await plugin.disconnectQwenOAuthAccount(provider.id)
-          plugin.clearQwenOAuthRuntime(provider.id)
-        }
-
         if (associatedEmbeddingModels.length > 0) {
           const vectorManager = await plugin.tryGetVectorManager()
 

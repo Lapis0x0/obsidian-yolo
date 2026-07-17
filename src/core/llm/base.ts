@@ -10,12 +10,40 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import { parseCustomParameterValue } from '../../utils/custom-parameters'
+import {
+  getResponseStreamingMode,
+  providerSupportsTransportModeSelection,
+} from '../../utils/llm/provider-config'
+
+import { resolveRequestTransportMode } from './requestTransport'
+import {
+  ResponseDeliveryMode,
+  ResponseExecutionMode,
+  resolveResponseExecutionMode,
+} from './responseDeliveryMode'
 
 // TODO: do these really have to be class? why not just function?
 export abstract class BaseLLMProvider<P extends LLMProvider> {
   protected readonly provider: P
   constructor(provider: P) {
     this.provider = provider
+  }
+
+  resolveResponseExecutionMode(
+    deliveryMode: ResponseDeliveryMode,
+  ): ResponseExecutionMode {
+    const transportMode = providerSupportsTransportModeSelection(this.provider)
+      ? resolveRequestTransportMode({
+          additionalSettings: this.provider.additionalSettings,
+          hasCustomBaseUrl: Boolean(this.provider.baseUrl?.trim()),
+        })
+      : undefined
+
+    return resolveResponseExecutionMode({
+      deliveryMode,
+      transportMode,
+      streamingMode: getResponseStreamingMode(this.provider.additionalSettings),
+    })
   }
 
   abstract generateResponse(

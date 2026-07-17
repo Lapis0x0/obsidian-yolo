@@ -4,6 +4,7 @@ import {
 } from '../snippets/templates'
 
 import {
+  YOLO_OBSIDIAN_CLI_TEMPLATE,
   YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE,
   YOLO_SKILL_CREATOR_TEMPLATE,
   getSkillsPathAwareTemplate,
@@ -42,6 +43,14 @@ const BUILTIN_SKILLS: BuiltinLiteSkill[] = [
     mode: 'lazy',
     path: 'builtin://skills/snippet-creator.md',
     content: YOLO_SNIPPET_CREATOR_TEMPLATE,
+  },
+  {
+    name: 'obsidian-cli',
+    description:
+      'Drive Obsidian via the official CLI through terminal_command. Use when the user asks for Obsidian CLI, or when native fs_* / js_eval tools cannot cover Obsidian-specific operations (backlinks, properties, daily notes, command palette, plugin reload, tasks/tags, version history, etc.).',
+    mode: 'lazy',
+    path: 'builtin://skills/obsidian-cli.md',
+    content: YOLO_OBSIDIAN_CLI_TEMPLATE,
   },
 ]
 

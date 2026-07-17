@@ -98,6 +98,7 @@ export type MenuRenderFn<TOption extends MenuOption> = (
   itemProps: {
     selectedIndex: number | null
     selectOptionAndCleanUp: (option: TOption) => void
+    setActiveDescendantId: (id: string | null) => void
     setHighlightedIndex: (index: number) => void
     options: TOption[]
   },
@@ -329,7 +330,7 @@ export function LexicalMenu<TOption extends MenuOption>({
   const customKeyHandlersRef = useRef<CustomKeyHandlers | undefined>(
     customKeyHandlers,
   )
-  useEffect(() => {
+  useLayoutEffect(() => {
     customKeyHandlersRef.current = customKeyHandlers
   }, [customKeyHandlers])
 
@@ -344,18 +345,27 @@ export function LexicalMenu<TOption extends MenuOption>({
     return Math.min(options.length - 1, Math.max(0, normalizedIndex))
   }, [getDefaultHighlightedIndex, options])
 
-  const updateSelectedIndex = useCallback(
-    (index: number) => {
-      const rootElem = editor.getRootElement()
-      if (rootElem !== null) {
-        rootElem.setAttribute(
-          'aria-activedescendant',
-          `typeahead-item-${index}`,
-        )
-        setHighlightedIndex(index)
+  const setActiveDescendantId = useCallback(
+    (id: string | null) => {
+      const rootElement = editor.getRootElement()
+      if (rootElement !== null) {
+        if (id === null) {
+          rootElement.removeAttribute('aria-activedescendant')
+        } else {
+          rootElement.setAttribute('aria-activedescendant', id)
+        }
       }
     },
     [editor],
+  )
+
+  const updateSelectedIndex = useCallback(
+    (index: number) => {
+      if (editor.getRootElement() === null) return
+      setActiveDescendantId(`typeahead-item-${index}`)
+      setHighlightedIndex(index)
+    },
+    [editor, setActiveDescendantId],
   )
 
   useEffect(() => {
@@ -605,9 +615,16 @@ export function LexicalMenu<TOption extends MenuOption>({
       options,
       selectOptionAndCleanUp,
       selectedIndex,
-      setHighlightedIndex,
+      setActiveDescendantId,
+      setHighlightedIndex: updateSelectedIndex,
     }),
-    [selectOptionAndCleanUp, selectedIndex, options],
+    [
+      options,
+      selectOptionAndCleanUp,
+      selectedIndex,
+      setActiveDescendantId,
+      updateSelectedIndex,
+    ],
   )
 
   return menuRenderFn(
@@ -668,7 +685,6 @@ export function useMenuAnchorRef(
         containerDiv.className = className
       }
       containerDiv.classList.add('yolo-typeahead-menu')
-      containerDiv.setAttribute('aria-label', 'Typeahead menu')
       containerDiv.setAttribute('id', 'typeahead-menu')
       containerDiv.setAttribute('role', 'listbox')
       // defer append to reposition() so we can choose the correct parent

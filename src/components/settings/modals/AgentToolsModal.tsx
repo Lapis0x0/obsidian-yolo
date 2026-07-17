@@ -12,6 +12,7 @@ import {
   BUILTIN_TOOL_CATEGORY_I18N,
   BUILTIN_TOOL_CATEGORY_ORDER,
   BuiltinToolCategory,
+  FILE_EDIT_GROUP_TOOL_NAME,
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
@@ -23,7 +24,8 @@ import {
 import { DELEGATE_SUBAGENT_TOOL_SHORT_NAME } from '../../../core/agent/subagent/constants'
 import { JS_SANDBOX_TOOL_NAME } from '../../../core/mcp/jsSandboxTool'
 import {
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   TERMINAL_COMMAND_TOOL_NAME,
   getLocalFileTools,
@@ -44,7 +46,10 @@ type AgentToolsModalProps = {
   plugin: YoloPlugin
 }
 
-const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
+const PATH_FS_TOOL_NAME_SET = new Set<string>(
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
+)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -98,7 +103,8 @@ function AgentToolsModalContent({
     const tools = getLocalFileTools()
       .filter(
         (tool) =>
-          !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !PATH_FS_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
@@ -118,7 +124,24 @@ function AgentToolsModalContent({
         }
       })
 
-    const splitToolEnabled = LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.every(
+    const editSplitToolEnabled = LOCAL_FS_EDIT_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[FILE_EDIT_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
+    if (!fileEditMeta) {
+      throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
+    }
+    const fileEditTool = {
+      id: FILE_EDIT_GROUP_TOOL_NAME,
+      label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
+      description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
+      enabled: editSplitToolEnabled,
+      hasSettings: false,
+    }
+
+    const splitToolEnabled = LOCAL_FS_PATH_OPERATION_TOOL_NAMES.every(
       (toolName) =>
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
@@ -169,7 +192,13 @@ function AgentToolsModalContent({
       hasSettings: true,
     }
 
-    const allTools = [...tools, fileOpsTool, memoryOpsTool, webOpsTool]
+    const allTools = [
+      ...tools,
+      fileEditTool,
+      fileOpsTool,
+      memoryOpsTool,
+      webOpsTool,
+    ]
 
     const byCategory = new Map<BuiltinToolCategory, typeof allTools>()
     for (const category of BUILTIN_TOOL_CATEGORY_ORDER) {
@@ -197,16 +226,18 @@ function AgentToolsModalContent({
 
   const handleToggleBuiltinTool = (toolName: string, enabled: boolean) => {
     const targets =
-      toolName === FILE_OPS_GROUP_TOOL_NAME
-        ? [FILE_OPS_GROUP_TOOL_NAME, ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES]
-        : toolName === MEMORY_OPS_GROUP_TOOL_NAME
-          ? [
-              MEMORY_OPS_GROUP_TOOL_NAME,
-              ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-            ]
-          : toolName === WEB_OPS_GROUP_TOOL_NAME
-            ? [WEB_OPS_GROUP_TOOL_NAME, ...WEB_OPS_SPLIT_ACTION_TOOL_NAMES]
-            : [toolName]
+      toolName === FILE_EDIT_GROUP_TOOL_NAME
+        ? [FILE_EDIT_GROUP_TOOL_NAME, ...LOCAL_FS_EDIT_TOOL_NAMES]
+        : toolName === FILE_OPS_GROUP_TOOL_NAME
+          ? [FILE_OPS_GROUP_TOOL_NAME, ...LOCAL_FS_PATH_OPERATION_TOOL_NAMES]
+          : toolName === MEMORY_OPS_GROUP_TOOL_NAME
+            ? [
+                MEMORY_OPS_GROUP_TOOL_NAME,
+                ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+              ]
+            : toolName === WEB_OPS_GROUP_TOOL_NAME
+              ? [WEB_OPS_GROUP_TOOL_NAME, ...WEB_OPS_SPLIT_ACTION_TOOL_NAMES]
+              : [toolName]
     const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
     for (const target of targets) {
       nextBuiltinToolOptions[target] = {

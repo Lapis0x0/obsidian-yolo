@@ -28,4 +28,17 @@ describe('builtin skills', () => {
     expect(outputFormat).not.toBeUndefined()
     expect(outputFormat?.content).toContain('<yolo_block>')
   })
+
+  it('exposes obsidian-cli as a lazy builtin skill', () => {
+    const builtin = getBuiltinLiteSkillByName({ name: 'obsidian-cli' })
+
+    expect(builtin).not.toBeNull()
+    expect(builtin?.mode).toBe('lazy')
+    expect(builtin?.content).toContain('obsidian-cli')
+    expect(builtin?.content).toContain('<resolved-cli> version')
+    expect(builtin?.content).toContain(
+      '/Applications/Obsidian.app/Contents/MacOS/obsidian',
+    )
+    expect(builtin?.content).toContain('terminal_command')
+  })
 })

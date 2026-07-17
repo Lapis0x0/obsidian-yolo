@@ -199,4 +199,14 @@ describe('findPathOutsideScope', () => {
       ),
     ).toBeNull()
   })
+
+  it('exempts browser:// paths from workspace scope', () => {
+    expect(
+      findPathOutsideScope(
+        'fs_read',
+        { paths: ['browser://page_ab12cd34_ef56gh78'] },
+        scope({ include: ['Notes'] }),
+      ),
+    ).toBeNull()
+  })
 })

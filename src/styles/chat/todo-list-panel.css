@@ -1,6 +1,6 @@
 /* 任务清单面板：作为 .yolo-chat-input-overlay 的子项，浮在输入框上方，可折叠。
  * 定位与层级由 .yolo-chat-input-overlay 统一负责，本组件只关心自身样式。
- * 布局：header（摘要+折叠按钮） → body（列表）
+ * 布局：header（折叠摘要按钮+关闭按钮） → body（列表）
  * 折叠动画：grid-template-rows 0fr ↔ 1fr，无需测量高度
  */
 
@@ -28,23 +28,67 @@
   }
 }
 
-/* 选择器写成 `button.yolo-todo-panel__header` 是为了对抗 Obsidian
+/* 选择器写成 `button.yolo-todo-panel__toggle` 是为了对抗 Obsidian
  * `app.css` 里的 `button:not(.clickable-icon) { box-shadow: var(--input-shadow) }`
  * ——必须保持等同或更高特异度，否则会画出一条贴在 header 底部的投影线。 */
-button.yolo-todo-panel__header {
+.yolo-todo-panel__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px 22px;
+  align-items: center;
+  column-gap: 2px;
+  width: 100%;
+  padding-right: var(--size-2-2);
+  box-sizing: border-box;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+button.yolo-todo-panel__toggle {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
   width: 100%;
+  min-width: 0;
+  min-height: 0;
   padding: var(--size-2-2) var(--size-4-2);
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+  box-sizing: border-box;
+  appearance: none;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
   outline: 0;
   cursor: pointer;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: inherit;
+  font-size: inherit;
+  line-height: 1.4;
   text-align: left;
+}
+
+button.yolo-todo-panel__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  box-sizing: border-box;
+  appearance: none;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: var(--radius-s);
+  box-shadow: none !important;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 0;
+}
+
+button.yolo-todo-panel__toggle svg,
+button.yolo-todo-panel__icon-button svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .yolo-todo-panel__header-icon {

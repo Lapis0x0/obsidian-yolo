@@ -24,6 +24,7 @@ import {
   SUBAGENT_MAX_AUTO_ITERATIONS,
 } from './constants'
 import type { SubagentParentContext } from './parent-context'
+import { subagentRuntimeRegistry } from './runtime-registry'
 import { subagentTaskRegistry } from './task-registry'
 import { filterAllowedToolsForSubagent } from './tool-filter'
 import type {
@@ -60,6 +61,85 @@ function countToolUses(messages: ChatMessage[]): number {
     )
   }, 0)
 }
+
+/**
+ * True when the subagent's last `tool` message still has a tool call awaiting
+ * user approval (or the equivalent `ask_user_question` paused state). The
+ * runtime returns from `run()` in this case (loop-worker emits `done` when
+ * `hasPendingTools=true`), but the work is NOT actually complete — we should
+ * wait for `approveToolCall` / `rejectToolCall` to resolve it and then
+ * continue, instead of pushing a (false) completion to the parent.
+ */
+function hasUnresolvedApproval(messages: ChatMessage[]): boolean {
+  const last = messages.at(-1)
+  if (!last || last.role !== 'tool') return false
+  return last.toolCalls.some(
+    (toolCall) =>
+      toolCall.response.status === ToolCallResponseStatus.PendingApproval ||
+      toolCall.response.status === ToolCallResponseStatus.AwaitingUserInput,
+  )
+}
+
+/**
+ * A paused parallel tool batch may contain a mixture of calls that are still
+ * awaiting a decision and calls that the user already approved but are still
+ * executing. The subagent must not continue until every call in that batch
+ * has reached a terminal response.
+ */
+export function hasUnsettledApprovalBatch(messages: ChatMessage[]): boolean {
+  const last = messages.at(-1)
+  if (!last || last.role !== 'tool') return false
+  return last.toolCalls.some(
+    (toolCall) =>
+      toolCall.response.status === ToolCallResponseStatus.PendingApproval ||
+      toolCall.response.status === ToolCallResponseStatus.AwaitingUserInput ||
+      toolCall.response.status === ToolCallResponseStatus.Running,
+  )
+}
+
+/**
+ * NativeAgentRuntime keeps assistant/tool messages in its own transcript
+ * across repeated `run()` calls. A continuation must therefore reuse only
+ * the original request-message prefix; feeding the runtime snapshot back as
+ * `input.messages` would append the same transcript twice on the next LLM
+ * request and produce an invalid assistant/tool sequence.
+ */
+export function buildSubagentContinuationInput(
+  input: AgentRuntimeRunInput,
+): AgentRuntimeRunInput {
+  return {
+    ...input,
+    requestMessages: input.requestMessages ?? input.messages,
+  }
+}
+
+/**
+ * Auto-reject every still-pending tool call on the runtime's last tool
+ * message. Used as the 5-minute timeout fallback so a paused subagent does
+ * not stall forever if the user never gets around to approving. The error
+ * text is intentionally explicit so the model has enough context to decide
+ * whether to retry differently or surface the situation to the user.
+ *
+ * Exported for unit tests; production callers should let the runner's
+ * approval gate trigger this on its `setTimeout`.
+ */
+export function autoRejectPendingApprovals(runtime: NativeAgentRuntime): void {
+  const snapshot = runtime.getSnapshot()
+  const last = snapshot.messages.at(-1)
+  if (!last || last.role !== 'tool') return
+  for (const toolCall of last.toolCalls) {
+    if (toolCall.response.status === ToolCallResponseStatus.PendingApproval) {
+      runtime.setToolCallResponse(toolCall.request.id, {
+        status: ToolCallResponseStatus.Error,
+        error:
+          'Tool approval timed out: the user did not respond within 5 minutes, so this call was auto-rejected. Try a different approach or summarise the situation in your final reply so the user can take over.',
+      })
+    }
+  }
+}
+
+/** Auto-reject window for paused subagent tool calls. */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
 
 function extractLastAssistantText(messages: ChatMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -199,6 +279,7 @@ async function runChildAgent(
     mcpManager: parent.mcpManager,
     allowedToolNames: childAllowedToolNames,
     toolPreferences: parent.toolPreferences,
+    toolServerPreferences: parent.toolServerPreferences,
     workspaceScope: parent.workspaceScope,
     allowedSkillPaths: parent.allowedSkillPaths,
     enableToolDisclosure: parent.enableToolDisclosure,
@@ -238,8 +319,79 @@ async function runChildAgent(
     }
   })
 
+  // While the runtime is paused on a PendingApproval tool call, this promise
+  // gates the next loop iteration. Resolved by `resumeRun` (called from
+  // `AgentService.approveToolCall` / `rejectToolCall` after they patch the
+  // runtime's tool call response). Recreated for each pause so multiple
+  // sequential approvals work.
+  let approvalResolver: (() => void) | null = null
+  const wakeApprovalGate = (): void => {
+    if (approvalResolver) {
+      approvalResolver()
+      approvalResolver = null
+    }
+  }
+  const resumeRun = async (): Promise<void> => {
+    if (!hasUnsettledApprovalBatch(runtime.getSnapshot().messages)) {
+      wakeApprovalGate()
+    }
+  }
+
+  // If the user aborts the whole subagent while it's paused on approval, wake
+  // the loop so it can exit promptly.
+  const abortListener = () => {
+    wakeApprovalGate()
+  }
+  abortController.signal.addEventListener('abort', abortListener, {
+    once: true,
+  })
+
+  subagentRuntimeRegistry.register({
+    taskId: record.taskId,
+    runtime,
+    mcpManager: parent.mcpManager,
+    parentConversationId: record.conversationId,
+    parentToolCallId,
+    resumeRun,
+  })
+
   try {
-    await runtime.run(runInput)
+    let nextRunInput: AgentRuntimeRunInput = runInput
+    while (true) {
+      await runtime.run(nextRunInput)
+      const snapshotAfterRun = runtime.getSnapshot()
+      if (
+        abortController.signal.aborted ||
+        !hasUnresolvedApproval(snapshotAfterRun.messages)
+      ) {
+        break
+      }
+      // Subagent paused on a tool that needs the user's approval. Wait for
+      // the SubagentCard's approval block to resolve it, then resume with
+      // the patched messages as the continuation input.
+      const timeoutHandle = setTimeout(() => {
+        // 5-minute fallback: if the user has not approved/rejected, mark every
+        // still-pending tool call as Error with a structured message so the
+        // model can read "why it failed" and try a different approach. We
+        // reject the whole batch (rather than just one) because we cannot
+        // know which call the user was on the fence about, and the model's
+        // best move is usually to abandon the batch and re-plan.
+        autoRejectPendingApprovals(runtime)
+        void resumeRun()
+      }, APPROVAL_TIMEOUT_MS)
+      try {
+        await new Promise<void>((resolve) => {
+          approvalResolver = resolve
+        })
+      } finally {
+        clearTimeout(timeoutHandle)
+      }
+      if (abortController.signal.aborted) {
+        break
+      }
+      nextRunInput = buildSubagentContinuationInput(runInput)
+    }
+
     const snapshot = runtime.getSnapshot()
     const finalMessages = snapshot.messages
     const content = extractLastAssistantText(finalMessages)
@@ -303,6 +455,13 @@ async function runChildAgent(
         modelName: childModel.model.name ?? childModel.model.model,
       },
     })
+  } finally {
+    subagentRuntimeRegistry.unregister(record.taskId)
+    abortController.signal.removeEventListener('abort', abortListener)
+    // Defensive: if the loop is still sleeping in `await new Promise(...)`,
+    // ensure the gate is resolved so we don't leak the promise on the
+    // exception path either.
+    wakeApprovalGate()
   }
 
   unsubscribe()

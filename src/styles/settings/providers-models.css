@@ -57,8 +57,14 @@
 }
 
 .yolo-settings-card.setting-item {
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 45%, transparent) !important;
+  --yolo-settings-card-border: color-mix(
+    in srgb,
+    var(--background-modifier-border) 45%,
+    transparent
+  );
+
+  border: 1px solid !important;
+  border-color: var(--yolo-settings-card-border) !important;
   background: color-mix(
     in srgb,
     var(--background-primary) 72%,
@@ -814,4 +820,55 @@
   .setting-item:not(.yolo-settings-kv-entry)
   .setting-item-description {
   margin-top: 6px;
+}
+
+.yolo-provider-field-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch !important;
+  gap: 8px;
+}
+
+.yolo-provider-field-header {
+  display: flex;
+  align-items: center;
+}
+
+.yolo-provider-field-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yolo-provider-field-input {
+  width: 100%;
+}
+
+.yolo-provider-field-help {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+}
+
+.yolo-provider-api-url-preview {
+  display: flex;
+  gap: 3px;
+  align-items: baseline;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+}
+
+.yolo-provider-api-url-preview-label {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+
+.yolo-provider-api-url-preview-url {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-faint);
+  font-family: var(--font-monospace);
 }

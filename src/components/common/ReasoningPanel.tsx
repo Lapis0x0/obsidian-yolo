@@ -83,7 +83,9 @@ export function ReasoningPanel({
         </span>
         <span
           key={safeDraftValue}
-          className={`yolo-reasoning-popover__header-current ${currentMotionClass}`}
+          className={`yolo-reasoning-popover__header-current ${currentMotionClass}${
+            safeDraftValue === 'max' ? ' is-max' : ''
+          }`}
         >
           {currentLabel}
         </span>

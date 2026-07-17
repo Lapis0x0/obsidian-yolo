@@ -3,11 +3,13 @@ import type { AssistantToolPreference } from '../../types/assistant.types'
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
+import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLoadToolSchemasTool,
   getLocalFileToolServerName,
@@ -15,11 +17,15 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 
+import { FILE_EDIT_GROUP_TOOL_NAME } from './builtinToolUiMeta'
 import {
   formatSubagentModelOption,
   resolveSubagentModelConfig,
 } from './subagent/model-config'
-import { getAssistantToolDisclosureMode } from './tool-preferences'
+import {
+  buildServerToolTokenBudgets,
+  getAssistantToolDisclosureMode,
+} from './tool-preferences'
 import { buildToolStub } from './tool-stub'
 
 const LOCAL_MEMORY_TOOL_NAMES = new Set([
@@ -50,15 +56,27 @@ export const expandAllowedToolNames = (
 
   const expanded = new Set<string>(toolNames)
   const localServer = getLocalFileToolServerName()
+  const localFileEditTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}${FILE_EDIT_GROUP_TOOL_NAME}`
   const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
   const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
+  const hasFileEditGroup =
+    expanded.has(localFileEditTool) || expanded.has(FILE_EDIT_GROUP_TOOL_NAME)
   const hasFileOpsGroup =
     expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
   const hasMemoryOpsGroup =
     expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
 
+  if (hasFileEditGroup) {
+    for (const splitToolName of LOCAL_FS_EDIT_TOOL_NAMES) {
+      expanded.add(
+        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
+      )
+      expanded.add(splitToolName)
+    }
+  }
+
   if (hasFileOpsGroup) {
-    for (const splitToolName of LOCAL_FS_SPLIT_ACTION_TOOL_NAMES) {
+    for (const splitToolName of LOCAL_FS_PATH_OPERATION_TOOL_NAMES) {
       expanded.add(
         `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
       )
@@ -104,6 +122,24 @@ const isToolAllowed = ({
   return allowedToolNames.has(toolName)
 }
 
+const groupToolsByServer = (
+  tools: readonly McpTool[],
+): Map<string, McpTool[]> => {
+  const serverTools = new Map<string, McpTool[]>()
+  for (const tool of tools) {
+    let serverName: string
+    try {
+      serverName = parseToolName(tool.name).serverName
+    } catch {
+      continue
+    }
+    const bucket = serverTools.get(serverName) ?? []
+    bucket.push(tool)
+    serverTools.set(serverName, bucket)
+  }
+  return serverTools
+}
+
 export const buildRequestTools = (
   toolDefinitions: McpTool[],
 ): RequestTool[] | undefined => {
@@ -128,7 +164,7 @@ export const buildRequestTools = (
  * Rewrite tools whose schema depends on global settings. Currently only
  * `js_eval`, whose description and `timeoutMs` input bound both name the
  * exact `settings.jsSandbox` values in effect (network / vault read / $db /
- * external scripts + per-call timeout cap).
+ * external scripts / browser page reads + per-call timeout cap).
  *
  * The tool list from `listAvailableTools` is cached and settings-agnostic —
  * this is the single bridge that rebuilds the live tool spec. Every consumer
@@ -198,7 +234,7 @@ function applySubagentModelSchema(
   }
 }
 
-export const selectAllowedTools = ({
+export const selectAllowedTools = async ({
   availableTools,
   allowedToolNames,
   toolPreferences,
@@ -206,6 +242,7 @@ export const selectAllowedTools = ({
   enableToolDisclosure = true,
   jsSandboxSettings = {},
   settings,
+  serverToolTokenBudgets,
 }: {
   availableTools: McpTool[]
   allowedToolNames?: string[]
@@ -214,12 +251,15 @@ export const selectAllowedTools = ({
   enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
   settings?: YoloSettings
-}): {
+  serverToolTokenBudgets?: ReadonlyMap<string, number>
+}): Promise<{
   filteredTools: McpTool[]
   hasTools: boolean
   hasMemoryTools: boolean
+  hasOnDemandTools: boolean
   requestTools: RequestTool[] | undefined
-} => {
+  serverToolTokenBudgets: ReadonlyMap<string, number>
+}> => {
   const normalizedAllowedToolNames = expandAllowedToolNames(allowedToolNames)
 
   const baseFiltered = applyDynamicToolDescriptions(
@@ -237,6 +277,12 @@ export const selectAllowedTools = ({
       ? [...normalizedAllowedToolNames]
       : undefined,
   }
+  const resolvedServerToolTokenBudgets =
+    serverToolTokenBudgets ??
+    (await buildServerToolTokenBudgets(
+      groupToolsByServer(baseFiltered),
+      estimateJsonTokens,
+    ))
 
   // Per-tool disclosure decisions for the filtered (non-loader) tools.
   // Computed up front so the loader injection can ask "does any surviving
@@ -247,6 +293,7 @@ export const selectAllowedTools = ({
       tool.name,
       getAssistantToolDisclosureMode(assistantLike, tool.name, {
         enableToolDisclosure,
+        serverToolTokenBudgets: resolvedServerToolTokenBudgets,
       }),
     )
   }
@@ -288,7 +335,9 @@ export const selectAllowedTools = ({
     hasMemoryTools: filteredTools.some((tool) =>
       isMemoryToolAvailable(tool.name),
     ),
+    hasOnDemandTools: hasOnDemand,
     requestTools: buildRequestTools(requestToolDefinitions),
+    serverToolTokenBudgets: resolvedServerToolTokenBudgets,
   }
 }
 

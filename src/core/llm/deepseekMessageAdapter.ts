@@ -14,12 +14,15 @@ import {
   OpenAIMessageAdapter,
   normalizeOpenAICompatUsage,
 } from './openaiMessageAdapter'
+import { requireResponseChoicesArray } from './responseFormatError'
 
 /**
  * Adapter for DeepSeek's API that extends OpenAIMessageAdapter to handle the additional
  * 'reasoning_content' field in DeepSeek's response format while maintaining OpenAI compatibility.
  */
 export class DeepSeekMessageAdapter extends OpenAIMessageAdapter {
+  protected override readonly adapterName = 'DeepSeek'
+
   protected parseRequestMessage(
     message: RequestMessage,
   ): ChatCompletionMessageParam {
@@ -39,9 +42,16 @@ export class DeepSeekMessageAdapter extends OpenAIMessageAdapter {
   protected parseNonStreamingResponse(
     response: ChatCompletion,
   ): LLMResponseNonStreaming {
+    const choices = requireResponseChoicesArray<
+      ChatCompletion['choices'][number]
+    >(response, {
+      adapter: this.adapterName,
+      stage: 'non-streaming response',
+    })
+
     return {
       id: response.id,
-      choices: response.choices.map((choice) => ({
+      choices: choices.map((choice) => ({
         finish_reason: choice.finish_reason,
         message: {
           content: choice.message.content,
@@ -63,9 +73,16 @@ export class DeepSeekMessageAdapter extends OpenAIMessageAdapter {
   protected parseStreamingResponseChunk(
     chunk: ChatCompletionChunk,
   ): LLMResponseStreaming {
+    const choices = requireResponseChoicesArray<
+      ChatCompletionChunk['choices'][number]
+    >(chunk, {
+      adapter: this.adapterName,
+      stage: 'streaming response chunk',
+    })
+
     return {
       id: chunk.id,
-      choices: chunk.choices.map((choice) => ({
+      choices: choices.map((choice) => ({
         finish_reason: choice.finish_reason ?? null,
         delta: {
           content: choice.delta.content ?? null,

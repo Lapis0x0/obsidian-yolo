@@ -7,6 +7,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  FILE_EDIT_GROUP_TOOL_NAME,
   FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
@@ -16,7 +17,8 @@ import {
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import {
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
+  LOCAL_FS_EDIT_TOOL_NAMES,
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
@@ -37,13 +39,17 @@ import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
+import { AgentMcpServerSection } from './AgentMcpServerSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
   app: App
 }
 
-const SPLIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_SPLIT_ACTION_TOOL_NAMES)
+const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
+const PATH_FS_TOOL_NAME_SET = new Set<string>(
+  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
+)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -56,9 +62,11 @@ export function AgentSection({ app }: AgentSectionProps) {
   const assistants = settings.assistants || []
   const [mcpManager, setMcpManager] = useState<McpManager | null>(null)
   const [mcpServers, setMcpServers] = useState<McpServerState[]>([])
+  const [mcpManagerLoading, setMcpManagerLoading] = useState(true)
 
   useEffect(() => {
     let isMounted = true
+    setMcpManagerLoading(true)
     void plugin
       .getMcpManager()
       .then((manager) => {
@@ -67,8 +75,12 @@ export function AgentSection({ app }: AgentSectionProps) {
         }
         setMcpManager(manager)
         setMcpServers(manager.getServers())
+        setMcpManagerLoading(false)
       })
       .catch((error: unknown) => {
+        if (isMounted) {
+          setMcpManagerLoading(false)
+        }
         console.error(
           'Failed to initialize MCP manager in Agent section',
           error,
@@ -209,7 +221,8 @@ export function AgentSection({ app }: AgentSectionProps) {
     const tools = getLocalFileTools()
       .filter(
         (tool) =>
-          !SPLIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
+          !PATH_FS_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
@@ -222,7 +235,22 @@ export function AgentSection({ app }: AgentSectionProps) {
         }
       })
 
-    const splitToolEnabled = LOCAL_FS_SPLIT_ACTION_TOOL_NAMES.every(
+    const editSplitToolEnabled = LOCAL_FS_EDIT_TOOL_NAMES.every(
+      (toolName) =>
+        !(toolOptions[toolName]?.disabled ?? false) &&
+        !(toolOptions[FILE_EDIT_GROUP_TOOL_NAME]?.disabled ?? false),
+    )
+    const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
+    if (!fileEditMeta) {
+      throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
+    }
+    const fileEditTool = {
+      id: FILE_EDIT_GROUP_TOOL_NAME,
+      label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
+      enabled: editSplitToolEnabled,
+    }
+
+    const splitToolEnabled = LOCAL_FS_PATH_OPERATION_TOOL_NAMES.every(
       (toolName) =>
         !(toolOptions[toolName]?.disabled ?? false) &&
         !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
@@ -269,10 +297,12 @@ export function AgentSection({ app }: AgentSectionProps) {
 
     const fsReadIndex = tools.findIndex((tool) => tool.id === 'fs_read')
     if (fsReadIndex >= 0) {
-      tools.splice(fsReadIndex, 0, fileOpsTool)
-      tools.splice(fsReadIndex + 1, 0, memoryOpsTool)
-      tools.splice(fsReadIndex + 2, 0, webOpsTool)
+      tools.splice(fsReadIndex, 0, fileEditTool)
+      tools.splice(fsReadIndex + 1, 0, fileOpsTool)
+      tools.splice(fsReadIndex + 2, 0, memoryOpsTool)
+      tools.splice(fsReadIndex + 3, 0, webOpsTool)
     } else {
+      tools.push(fileEditTool)
       tools.push(fileOpsTool)
       tools.push(memoryOpsTool)
       tools.push(webOpsTool)
@@ -309,6 +339,32 @@ export function AgentSection({ app }: AgentSectionProps) {
   )
     .replace('{count}', String(builtinTools.length + mcpTools.length))
     .replace('{enabled}', String(enabledToolsCount))
+
+  const enabledConfiguredMcpServerCount = settings.mcp.servers.filter(
+    (server) => server.enabled,
+  ).length
+  const mcpLoadingCount = mcpManagerLoading
+    ? enabledConfiguredMcpServerCount
+    : mcpServers.filter(
+        (server) => server.status === McpServerStatus.Connecting,
+      ).length
+  const mcpErrorCount = mcpServers.filter(
+    (server) => server.status === McpServerStatus.Error,
+  ).length
+  const mcpToolStatusLabels = [
+    mcpLoadingCount > 0
+      ? t('settings.agent.mcpLoadingStatus', 'Loading {count} MCP...').replace(
+          '{count}',
+          String(mcpLoadingCount),
+        )
+      : null,
+    mcpErrorCount > 0
+      ? t(
+          'settings.agent.mcpErrorStatus',
+          '{count} MCP failed to connect',
+        ).replace('{count}', String(mcpErrorCount))
+      : null,
+  ].filter((label): label is string => Boolean(label))
 
   const mcpCountLabel = t(
     'settings.agent.mcpServerCount',
@@ -368,7 +424,14 @@ export function AgentSection({ app }: AgentSectionProps) {
                 {t('settings.agent.manageTools', 'Manage tools')}
               </button>
             </div>
-            <div className="yolo-agent-cap-count">{toolsCountLabel}</div>
+            <div className="yolo-agent-cap-count">
+              <span>{toolsCountLabel}</span>
+              {mcpToolStatusLabels.map((label) => (
+                <span key={label} className="yolo-agent-cap-status">
+                  {label}
+                </span>
+              ))}
+            </div>
             <div className="yolo-agent-cap-tags">
               {visibleToolTags.map((tool) => (
                 <span
@@ -617,6 +680,12 @@ export function AgentSection({ app }: AgentSectionProps) {
             {t('settings.agent.autoContextCompactionBlockTitle')}
           </div>
           <AgentAutoContextCompactionSection />
+        </div>
+        <div className="yolo-agent-sub-card">
+          <div className="yolo-agent-sub-card-head">
+            {t('settings.agent.mcpServerBlockTitle')}
+          </div>
+          <AgentMcpServerSection />
         </div>
       </section>
 

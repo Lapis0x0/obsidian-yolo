@@ -127,6 +127,12 @@ export class QuickAskController {
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
+  private focusExistingQuickAsk(): boolean {
+    return (
+      this.quickAskWidgetState !== null && QuickAskOverlay.focusCurrentInput()
+    )
+  }
+
   close(restoreFocus = true) {
     // Destroy PDF instance if present
     if (this.pdfQuickAskInstance) {
@@ -171,7 +177,13 @@ export class QuickAskController {
   }
 
   show(editor: Editor, view: EditorView) {
-    this.showWithOptions(editor, view)
+    if (this.focusExistingQuickAsk()) return
+
+    void this.showWithOptionsAfterWarmup(editor, view, undefined, true).catch(
+      (error: unknown) => {
+        console.error('[YOLO] Failed to open Quick Ask:', error)
+      },
+    )
   }
 
   showWithAutoSend(
@@ -199,6 +211,23 @@ export class QuickAskController {
     view: EditorView,
     options?: QuickAskShowOptions,
   ) {
+    void this.showWithOptionsAfterWarmup(editor, view, options).catch(
+      (error: unknown) => {
+        console.error('[YOLO] Failed to open Quick Ask:', error)
+      },
+    )
+  }
+
+  private async showWithOptionsAfterWarmup(
+    editor: Editor,
+    view: EditorView,
+    options?: QuickAskShowOptions,
+    focusExisting = false,
+  ): Promise<void> {
+    await this.deps.plugin.warmupAgentService()
+
+    if (focusExisting && this.focusExistingQuickAsk()) return
+
     const selection = view.state.selection.main
     const pos = selection.head
     const selectionAnchor =
@@ -249,7 +278,7 @@ export class QuickAskController {
         !this.quickAskWidgetState || this.quickAskWidgetState.view === view
 
       if (isCurrentView) {
-        // Owned-highlight teardown — also runs on panel-initiated close paths
+        // Owned-highlight teardown â€” also runs on panel-initiated close paths
         // (Escape, submit + auto-close, edit?review). controller.close() does
         // the same thing for externally-triggered closes; both paths must
         // clear the highlight, otherwise the selection stays painted (and the
@@ -330,9 +359,29 @@ export class QuickAskController {
     autoSend?: boolean
     initialAssistantId?: string
   }): void {
+    void this.showFromPdfAfterWarmup(args).catch((error: unknown) => {
+      console.error('[YOLO] Failed to open Quick Ask from PDF:', error)
+    })
+  }
+
+  private async showFromPdfAfterWarmup(args: {
+    leaf: WorkspaceLeaf
+    range: Range
+    file: TFile
+    pageNumber: number
+    contextText?: string
+    initialMentionables?: Mentionable[]
+    initialPrompt?: string
+    initialMode?: QuickAskLaunchMode
+    initialInput?: string
+    autoSend?: boolean
+    initialAssistantId?: string
+  }): Promise<void> {
+    await this.deps.plugin.warmupAgentService()
+
     const hostEl = getPdfLeafContentEl(args.leaf)
     if (!hostEl) {
-      // PDF leaf DOM not in expected shape — refuse to mount rather than
+      // PDF leaf DOM not in expected shape â€” refuse to mount rather than
       // falling back to document.body (would float in wrong coordinate space).
       return
     }

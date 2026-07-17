@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 
 import { shellEnvSync } from 'shell-env'
 
+import { getSystemProxyBridgeUrl } from './system-proxy-bridge'
 import { which } from './which'
 
 export type ShellProviderFlavor = 'posix' | 'powershell'
@@ -29,6 +30,46 @@ export type ShellProvider = {
 }
 
 const DONE_PREFIX = '__YOLO_DONE_'
+
+const UPPERCASE_PROXY_ENV_KEYS = new Set([
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+])
+const POSIX_PROXY_ENV_KEYS = new Set([
+  ...UPPERCASE_PROXY_ENV_KEYS,
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+])
+
+const envHasExplicitProxy = (
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): boolean =>
+  Object.entries(env).some(([key, value]) => {
+    if (!value?.trim()) return false
+    return platform === 'win32'
+      ? UPPERCASE_PROXY_ENV_KEYS.has(key.toUpperCase())
+      : POSIX_PROXY_ENV_KEYS.has(key)
+  })
+
+const withSystemProxyEnv = async (
+  env: NodeJS.ProcessEnv,
+): Promise<NodeJS.ProcessEnv> => {
+  if (envHasExplicitProxy(env)) return env
+
+  const bridgeUrl = await getSystemProxyBridgeUrl()
+  if (!bridgeUrl) return env
+
+  return {
+    ...env,
+    HTTP_PROXY: bridgeUrl,
+    http_proxy: bridgeUrl,
+    HTTPS_PROXY: bridgeUrl,
+    https_proxy: bridgeUrl,
+  }
+}
 
 const quotePosix = (value: string): string => {
   return `'${value.replace(/'/g, `'\\''`)}'`
@@ -125,7 +166,7 @@ const resolveFirstAvailable = async (
 }
 
 export const resolveShellProvider = async (): Promise<ShellProvider> => {
-  const env = shellEnvSync()
+  const env = await withSystemProxyEnv(shellEnvSync())
 
   if (process.platform === 'win32') {
     const binary = await resolveFirstAvailable(
@@ -153,5 +194,7 @@ export const resolveShellProvider = async (): Promise<ShellProvider> => {
 export const __test__ = {
   createPosixProvider,
   createPowerShellProvider,
+  envHasExplicitProxy,
   parseDoneMarkerLine,
+  withSystemProxyEnv,
 }

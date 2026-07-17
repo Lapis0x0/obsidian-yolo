@@ -102,6 +102,17 @@ describe('which — Windows', () => {
     expect(result).toBe(candidate)
   })
 
+  it('命令名已带扩展名时不重复追加 PATHEXT', async () => {
+    const dir = '/fake/powershell'
+    const candidate = path.join(dir, 'pwsh.exe')
+    mockExisting.add(candidate)
+    const result = await which('pwsh.exe', {
+      PATH: dir,
+      PATHEXT: '.COM;.EXE;.BAT;.CMD',
+    })
+    expect(result).toBe(candidate)
+  })
+
   it('无任何变体的 PATH — 返回 null', async () => {
     const result = await which('codex', { PATHEXT: '.EXE' })
     expect(result).toBeNull()

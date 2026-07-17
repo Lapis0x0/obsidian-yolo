@@ -3,7 +3,10 @@
   Agent-native AI assistant for Obsidian — chat, write, knowledge base, and orchestration, all in one place.
 </p>
 
-<p align="center"><a href="https://github.com/Lapis0x0/obsidian-yolo/stargazers">
+<p align="center"><a href="https://github.com/Lapis0x0/obsidian-yolo/commits/main">
+    <img src="https://img.shields.io/github/last-commit/Lapis0x0/obsidian-yolo/main?style=flat-square&color=6c5ce7" alt="Last Commit">
+  </a>
+  <a href="https://github.com/Lapis0x0/obsidian-yolo/stargazers">
     <img src="https://img.shields.io/github/stars/Lapis0x0/obsidian-yolo?style=flat-square&color=6c5ce7" alt="GitHub Stars">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/releases/latest">
@@ -21,32 +24,24 @@
   <b>English</b> | <a href="./README_zh-CN.md">简体中文</a> | <a href="./README_it.md">Italiano</a>
 </p>
 
+<p align="center">
+  <a href="https://discord.gg/d8EHm48ppU">
+    <img src="https://img.shields.io/badge/Discord-Join_the_community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Join the Discord community">
+  </a>
+</p>
+
 ## What's New
+
+- **`1.6`**: Introduces the new Learning Mode—turn any topic and reference materials into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map. Built-in FSRS spaced repetition and Anki `.apkg` import help turn knowledge into a sustainable review workflow.
 
 - **`1.5`**: Introduces a new Agent runtime that turns AI from Q&A into active collaboration—with full tool calling, MCP, Skills, desktop Bash, subagents, and web search—plus smarter long-session context and memory, refreshed hybrid RAG, focus/PDF awareness, and multi-window chat with background Agents.
 
 ## Highlights
 
-### 🤖 Agent Mode
-
-YOLO's Agent mode lets LLMs go beyond just "Q&A machines" — they can actually operate on your Vault.
-
-| Tool Calling + MCP | Custom Skills |
+| A Complete Agent Experience, Across Devices | Turn Vault Knowledge into Lasting Mastery |
 |:--:|:--:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Agent Skills](./assets/agentskills.gif) |
-| Freely configure toolchains so Agents can read, write, edit, and organize your files directly | Encapsulate experience and SOPs into reusable skills, invoke with a single sentence — let the Agent work your way |
-
-| Multi-Window Chat | Quick Ask |
-|:--:|:--:|
-| ![Chat Window](./assets/chatwindow.gif) | ![Quick Ask](./assets/Quickask.gif) |
-| Handle different tasks and contexts in parallel across multiple chat windows, making multitasking feel more natural | Trigger with a character (default `@`) to open an inline assistant for Q&A, editing, and continuation, making document editing seamless |
-
-### 🧠 Knowledge Base Q&A + ✍️ Smart Space
-
-| Knowledge Base Q&A | Smart Space |
-|:--:|:--:|
-| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) |
-| Turn your entire Vault into the AI's knowledge base, powered by RAG to answer with context from your notes instead of generic output | Summon anywhere to freely continue your creative flow with smooth content generation |
+| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
+| Go beyond answers. YOLO understands and works directly with your Vault, calls tools and MCP servers, and uses Skills to get real work done your way. | Turn topics and source material into a personal learning system, then use flashcards and FSRS-powered review to move from saved notes to lasting knowledge. |
 
 ## Features
 
@@ -54,13 +49,15 @@ Beyond the core capabilities above, YOLO also provides:
 
 | Feature | Description |
 |---------|-------------|
-| 💬 Sidebar Chat | Seamless LLM conversation with context injection, preset prompts, Markdown smart parsing |
+| 🔌 External Agent Support | Connect MCP clients such as Hermes and OpenClaw to YOLO's Vault search, or delegate tasks to a configured YOLO Agent |
+| ⚡ Quick Ask & Smart Space | Ask, edit, and continue writing without leaving the editor |
+| 🔎 Vault RAG | Retrieve across your Vault for answers grounded in your own notes |
+| 🪟 Multi-Window Chat | Run different tasks and contexts in parallel across independent chat windows |
 | 🧠 Memory System | Lets YOLO remember preferences, habits, and long-term context for more consistent conversations |
 | 🪡 Cursor Chat | One-click context addition, conversation at your fingertips |
 | ⌨️ Tab Completion | Real-time AI-powered completion for smoother, more natural writing |
 | 🎛️ Multi-Model Support | OpenAI, Claude, Gemini, DeepSeek and other mainstream models, freely switch |
 | 🌍 i18n | Native multi-language support |
-| 🧩 Experimental Features | Learning Mode, sub-Agents, explore personalized workflows |
 
 ## Quick Start
 
@@ -94,17 +91,35 @@ If you use YOLO on mobile, you may still encounter unavailable features, inconsi
 ## Roadmap
 
 - [x] Better and stronger Vault AI search
-- [ ] Background Agent (long-running task automation)
-- [ ] Cron scheduled tasks
-- [ ] Multi-Agent orchestration
-- [ ] Learning Mode
+- [x] Background Agent (long-running task automation)
+- [x] Multi-Agent orchestration (via subagents)
+- [x] Learning Mode — a dedicated study view
+- [ ] Annotation Mode — real-time AI annotations and suggestions on notes
+- [ ] Built-in assistant — a corner-pinned helper for config/agents, with auto-compaction and scheduled tasks
 - [ ] Better AI whiteboard
+- [ ] Voice input & meeting notes
+
+## Feedback & Issues
+
+Hit a bug, something confusing, or have an idea? Open an issue:
+
+🐛 [Report a bug](https://github.com/Lapis0x0/obsidian-yolo/issues/new?template=bug_report.yml) · ✨ [Request a feature](https://github.com/Lapis0x0/obsidian-yolo/issues/new?template=feature_request.yml)
+
+What helps:
+
+- Bug reports with a clear reproduction (Obsidian version, OS, plugin version, what you did, what happened)
+- "I tried X and got Y" reports — UX papercuts, confusing wording, broken docs, outdated translations
+- Concrete feature ideas tied to a real use case ("when I do A, I want B because C")
+
+Please search existing issues first to avoid duplicates.
 
 ## Contributing
 
 All forms of contribution are welcome — bug reports, documentation improvements, feature enhancements.
 
 **Please open an issue first to discuss feasibility and implementation for major features.**
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: what we welcome, AI-assisted PR policy, size guidelines, and dev setup.
 
 ## Acknowledgments
 

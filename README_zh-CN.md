@@ -3,7 +3,10 @@
   Agent-native AI assistant for Obsidian — 对话、写作、知识库、编排，一站式搞定。
 </p>
 
-<p align="center"><a href="https://github.com/Lapis0x0/obsidian-yolo/stargazers">
+<p align="center"><a href="https://github.com/Lapis0x0/obsidian-yolo/commits/main">
+    <img src="https://img.shields.io/github/last-commit/Lapis0x0/obsidian-yolo/main?style=flat-square&color=6c5ce7" alt="Last Commit">
+  </a>
+  <a href="https://github.com/Lapis0x0/obsidian-yolo/stargazers">
     <img src="https://img.shields.io/github/stars/Lapis0x0/obsidian-yolo?style=flat-square&color=6c5ce7" alt="GitHub Stars">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/releases/latest">
@@ -22,35 +25,21 @@
 </p>
 
 <p align="center">
-  QQ 群: <code>793057867</code>
+  QQ 群: <code>793057867</code> | <a href="./assets/wechat-group.png">微信群</a>
 </p>
 
 ## 最近更新
+
+- **`1.6`**：推出全新的学习模式，可根据学习主题、目标和参考资料生成个性化学习项目，包括结构化大纲、知识点、闪卡与交互式知识地图；并通过 FSRS 间隔复习和 Anki 卡包导入，将知识整理、学习与长期复习串成完整工作流
 
 - **`1.5`**：引入全新 Agent 运行时，让 AI 从「问答」升级为「协作」，完整支持工具调用、MCP、Skills、桌面 Bash、子 Agent 与联网搜索；同时带来长会话上下文与记忆、混合检索 RAG、焦点同步与 PDF 感知，以及多窗口对话与后台 Agent
 
 ## Highlights
 
-### 🤖 Agent 模式
-
-YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正操作你的 Vault。
-
-| 工具调用 + MCP | 自定义 Skills |
+| 跨端可用的完整 Agent 体验 | 让 Vault 里的知识真正被你掌握 |
 |:-:|:-:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Agent Skills](./assets/agentskills.gif) |
-| 自由配置工具链，让 Agent 直接读写、编辑、整理你的文件 | 将经验与 SOP 封装为可复用技能，一句话调用，让 Agent 按你的方式工作 |
-
-| 独立 Chat 窗口 | Quick Ask |
-|:-:|:-:|
-| ![Chat Window](./assets/chatwindow.gif) | ![Quick Ask](./assets/Quickask.gif) |
-| 多窗口并行处理不同任务与上下文，让多线程协作更自然 | 通过触发字符（默认 `@`）唤起内联助手，支持问答、编辑、续写三种模式，让文档编辑无缝高效 |
-
-### 🧠 知识库问答 + ✍️ Smart Space
-
-| 知识库问答 | Smart Space |
-|:-:|:-:|
-| ![RAG Vault](./assets/ragvault.gif) | ![Smart Space](./assets/Smartspace.gif) |
-| 将整个 Vault 变成 AI 知识库，基于 RAG 检索增强生成，回答更贴合你的笔记上下文与知识体系 | 随时随地召唤，自由接力你的创意，享受流畅的内容生成体验 |
+| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
+| 不止回答问题。YOLO 能理解并操作你的 Vault，调用工具与 MCP，并通过 Skills 按你的方式完成任务。 | 把主题与资料转化为专属学习内容，再用闪卡与 FSRS 持续复习，让知识从被收藏走向真正掌握。 |
 
 ## Features
 
@@ -58,13 +47,15 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 
 | 特性 | 说明 |
 |------|------|
-| 💬 侧边栏对话 | 与大模型无缝对话，支持上下文注入、预设 prompt、Markdown 智能解析 |
+| 🔌 外部 Agent 支持 | 通过 MCP，让 Hermes、OpenClaw 等外部 Agent 使用 YOLO 的 Vault 搜索，或派遣已配置的 YOLO Agent 执行任务 |
+| ⚡ Quick Ask 与 Smart Space | 无需离开编辑器即可提问、修改和续写内容 |
+| 🔎 Vault RAG | 检索整个 Vault，让回答建立在你自己的笔记之上 |
+| 🪟 多窗口对话 | 在独立对话窗口中并行处理不同任务与上下文 |
 | 🧠 记忆系统 | 让 YOLO 记住你的偏好、习惯与长期上下文，让连续对话更稳定、更懂你 |
 | 🪡 Cursor Chat | 一键添加上下文，触手可得的对话体验 |
 | ⌨️ Tab 补全 | 实时 AI 智能补全，让写作更加流畅自然 |
 | 🎛️ 多模型支持 | OpenAI、Claude、Gemini、DeepSeek 等主流模型，自由切换 |
 | 🌍 i18n 国际化 | 原生多语言支持 |
-| 🧩 实验性特性 | Learning Mode、子 Agent 等，探索个性化工作流 |
 
 
 ## Quick Start
@@ -100,12 +91,29 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 
 ## Roadmap
 
-- [x] 更好，更强的 Vault AI 搜索 
-- [ ] 后台 Agent（长程任务自动执行）
-- [ ] Cron 定时任务
-- [ ] 多 Agent 协同编排
-- [ ] 学习模式
+- [x] 更好，更强的 Vault AI 搜索
+- [x] 后台 Agent（长程任务自动执行）
+- [x] 多 Agent 协同编排（通过 subagent 实现）
+- [x] 学习模式 —— 一个专用的学习视图
+- [ ] 批注模式 —— 对笔记进行实时的 AI 评注与建议
+- [ ] 内置助手 —— 右下角常驻，统管配置与 agent，支持自动压缩与定时任务
 - [ ] 更好的 AI 白板
+- [ ] 语音输入与会议纪要
+
+
+## 反馈与 Issue
+
+遇到 bug、有困惑或新想法,欢迎开 issue:
+
+🐛 [报告 bug](https://github.com/Lapis0x0/obsidian-yolo/issues/new?template=bug_report_zh.yml) · ✨ [提出想法](https://github.com/Lapis0x0/obsidian-yolo/issues/new?template=feature_request_zh.yml)
+
+这样的反馈最有帮助:
+
+- 带清晰复现步骤的 bug(Obsidian 版本、操作系统、插件版本、操作过程、实际现象)
+- "我做了 X 结果是 Y" 类问题——交互细节、文案混乱、文档过时、翻译错漏
+- 有具体使用场景的功能想法("我在做 A 时希望能 B,因为 C")
+
+提交前请先搜一下已有 issue,避免重复。
 
 
 ## Contributing
@@ -113,6 +121,8 @@ YOLO 的 Agent 模式让大模型不再只是"问答机器"——它可以真正
 欢迎各种形式的贡献——Bug 报告、文档改进、功能增强都可以。
 
 **重大功能请先开 issue 讨论可行性和实现方案。**
+
+详细规则请看 [CONTRIBUTING_zh-CN.md](./CONTRIBUTING_zh-CN.md)：什么样的贡献会被欢迎、AI 辅助 PR 的要求、PR 体量参考、开发环境搭建。
 
 
 ## Acknowledgments

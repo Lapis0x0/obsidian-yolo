@@ -1,90 +1,45 @@
 # Repository Guidelines
 
-## Project Overview
+YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and FSRS-based learning with AI generation and Anki import.
 
-YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, writing assistance, and agent workflows. It integrates multiple LLM providers, vector search, and MCP (Model Context Protocol) servers.
+## Commands
 
-## Development Commands
+- `npm run dev` - Watch app and styles; `npm run build` - production build with type checking
+- `npm run type:check` - TypeScript only; `npm run lint:check` / `npm run lint:fix` - Prettier and ESLint
+- `npm test` - Full Jest suite; `npm test -- <test-file>` - one test file. For serial debugging, use `npx jest <test-file> --runInBand`, not `npm test -- ... --runInBand`
+- `npm run styles:build` - Regenerate `styles.css` from `src/styles/**`
+- `npx drizzle-kit generate --name <name>` then `npm run migrate:compile` - Generate and compile database migrations
 
-**Development & Build**
+## Architecture
 
-- `npm run dev` - Start app watch + styles watch in parallel
-- `npm run dev:app` - Start esbuild watch mode only
-- `npm run build` - Production build with type checking (`tsc -noEmit -skipLibCheck`)
-- `npm run styles:build` - Build `styles.css` from `src/styles/index.css`
-- `npm run styles:watch` - Watch `src/styles/**` and rebuild `styles.css`
-- `npm run type:check` - Type check without emitting files
-- `npm test` - Run Jest tests
-
-**Code Quality**
-
-- `npm run lint:check` - Run Prettier and ESLint checks
-- `npm run lint:fix` - Auto-fix Prettier and ESLint issues
-
-**Database**
-
-- `npx drizzle-kit generate --name <migration-name>` - Generate migration after schema changes
-- `npm run migrate:compile` - Compile drizzle migrations to `src/database/migrations.json`
-
-## Architecture (High Level)
-
-**Entry & UI**
-
-- `src/main.ts` - Plugin entry and lifecycle
-- `src/components/` - React UI (chat-view, apply-view, settings, modals, panels, common)
-- `src/contexts/` - React context providers
-- `src/hooks/` - Custom React hooks
-- `src/settings/` - Settings tab UI + schema and migrations
-
-**Core**
-
-- `src/core/ai/` - Shared single-turn execution kernel (stream/non-stream, timeout fallback, tool-call aggregation)
-- `src/core/agent/` - Unified runtime entry with fast path + loop-worker orchestration, tool gateway, conversation service
-- `src/core/llm/` - LLM provider clients and adapters
-- `src/core/auth/` - OAuth flows for ChatGPT / Gemini / Qwen and other auth providers
-- `src/core/rag/` - Embedding + vector retrieval orchestration
-- `src/core/mcp/` - MCP (Model Context Protocol) server management and tool execution
-- `src/core/skills/` - Skills system
-- `src/core/memory/` - Memory / conversation management
-- `src/core/edits/` - Edit and diff operations
-- `src/core/search/` - In-vault search
-- `src/core/web-search/` - Web search integration
-- `src/core/background/` - Background activities and tasks
-- `src/core/notifications/` - Notification coordination
-- `src/core/paths/` - Path resolution helpers
-- `src/core/update/` - Update checking
-
-**Features & Support**
-
-- `src/features/` - Editor-facing behaviors. Includes: `inline-suggestion`, `tab-completion`, `smart-space`, `write-assist`, `quick-ask`, `selection-chat`, `selection-highlight`, `diff-review`
-- `src/database/` - PGlite + Drizzle schema/migrations/data access
-- `src/utils/` - Prompt/response/diff/edit and utility helpers
-- `src/i18n/` - Localization resources (en, it, zh)
-- `src/constants/` - Shared constants
-
-**Runtime Profiles**
-
-- Quick Ask / Sidebar Chat / Agent Chat: 三者共用同一个 agent runtime（`AgentService.run` → `loop-worker` + `AgentToolGateway`），并通过 `resolveChatModeRuntime`（`src/components/chat-view/chat-runtime-profiles.ts`）统一解析 `loopConfig` / `allowedToolNames` / `toolPreferences`。Chat 模式套用 `CHAT_BLOCKED_TOOL_NAMES` 黑名单（屏蔽 fs 改写类工具）且不传 `toolPreferences`；Agent 模式传完整工具集与偏好。`maxAutoIterations` 默认 100。Quick Ask 与侧边栏在 runtime 层面无差异，仅 UI 形态不同。
-- Smart Space / Write Assist: 低延迟编辑场景，直接复用 `src/core/ai/single-turn.ts`，不经过 agent runtime。
-
-**Legacy Removal**
-
-- `src/utils/chat/responseGenerator.ts` has been removed; avoid reintroducing duplicated orchestration logic.
+- `src/main.ts` owns plugin lifecycle; `src/ChatView.tsx` and `src/LearningView.tsx` are the main ItemView entries, backed by `src/components/chat-view/` and `src/components/learning-view/`.
+- `src/core/agent/` contains the shared native agent runtime, loop worker, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat all run through `AgentService.run` → `NativeAgentRuntime` → `loop-worker` / `AgentToolGateway`, with permissions resolved by `resolveChatModeRuntime`. Ask mode filters the built-in local file mutation, terminal, and task-state writing tools; Agent mode uses the full configured tool set. Quick Ask and Sidebar Chat share the same runtime profile but differ in UI and session behavior.
+- `src/core/ai/single-turn.ts` is the low-latency execution path used by Smart Space and Write Assist; do not route these features through the agent runtime.
+- `src/core/learning/` owns Markdown-backed learning projects, generation, scanning, FSRS state, and recoverable Anki import.
+- `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own model/provider integration and retrieval/tool capabilities.
+- `src/features/editor/` contains editor behaviors; `src/features/chat/`, `config-transfer/`, and `pdf-screenshot/` contain cross-cutting feature integrations.
+- `src/database/` combines PGlite/Drizzle vector storage with Vault-backed JSON stores for conversations, attachments, snapshots, and caches. `src/settings/` owns the Zod settings schema and versioned migrations.
+- `src/core/project-instructions.ts` cascades Vault `AGENTS.md` / `CLAUDE.md` files into agent workspace instructions.
+- `src/utils/chat/responseGenerator.ts` has been removed; do not reintroduce a parallel orchestration path.
 
 ## Build & Style System
 
-- `esbuild.config.mjs` uses custom plugins (including PGlite asset copy and browser shims).
-- `src/styles/index.css` is the modular style source entry.
-- `styles.css` is generated artifact; do not edit directly.
-- For CSS changes: edit `src/styles/**`, then run `npm run styles:build`.
+- `esbuild.config.mjs` includes PGlite asset handling and browser shims.
+- `styles.css` is generated. Edit `src/styles/**`, then run `npm run styles:build`.
 
 ## Critical Implementation Details
+
+**YOLO Managed Paths**
+
+- Vault-managed files must resolve from `settings.yolo.baseDir`; never hardcode `YOLO` or call write-path helpers without current settings. Long-lived services must read current settings through a getter so base-directory changes take effect.
+- Learning Markdown is the content source of truth. Each card heading's embedded 8-character `cardUuid` is its stable SRS identity, while the project directory slug keys the project SRS file; preserve these identities or explicitly migrate state when renaming them.
+- FSRS state and recoverable Anki import journals are sidecar data under the configured JSON database directory; access them through `src/core/paths/` and `LearningSrsStore`, not direct paths.
 
 **PGlite in Obsidian Browser Environment**
 
 - PGlite default `node:fs` path is unavailable in Obsidian.
-- `DatabaseManager.ts` manually loads Postgres data/WASM/vector extension and passes them at init time.
-- Build config injects `process = {}` and `import.meta.url` compatibility behavior.
+- `DatabaseManager.ts` lazily loads Postgres data/WASM/vector extension and passes them at init time.
+- Build config supplies the required `process` and `import.meta.url` compatibility behavior.
 
 **Database Schema Changes**
 
@@ -93,61 +48,14 @@ YOLO (You Orchestrate, LLM Operates) is an Obsidian plugin for AI chat, RAG, wri
 3. Review generated files in `drizzle/`
 4. Run `npm run migrate:compile` to update `src/database/migrations.json`
 
-**Working Branch**
+## Obsidian Constraints
 
-- Main branch: `main`
+- React event handlers that call async functions must use `void` wrappers.
+- Do not directly set `element.style.cursor` or `element.style.userSelect`; use `setCssProps`.
+- Every `eslint-disable` directive must include a reason.
+- Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the plugin.
+- When styling native controls (`button`, `input`, etc.), assume Obsidian core and theme styles apply globally: use component-scoped `element.yolo-*` selectors, explicitly reset affected properties, and verify computed styles. Use `!important` only for a confirmed host-style collision.
 
-## Coding Conventions
-
-- TypeScript + React (`react-jsx`), 2-space indent, single quotes.
-- Prefer strict types; avoid `any` (use `unknown` / structured types).
-- Components: PascalCase; hooks: `use*` camelCase.
-- Before commit: at least run `npm run type:check` and relevant checks.
-
-## Obsidian-Specific Standards
-
-**Promise Handling in React**
-
-- Event handlers calling async functions must use `void` wrappers.
-
-```tsx
-onClick={() => void handleAsync()}
-onDragEnd={(event) => void handleDragEnd(event)}
-```
-
-**DOM Style Manipulation**
-
-- Do not directly set `element.style.cursor` / `element.style.userSelect`.
-- Use `setCssProps` instead.
-
-```tsx
-document.body.setCssProps({
-  '--my-cursor': 'grabbing',
-  '--my-user-select': 'none',
-})
-```
-
-**ESLint Directives**
-
-- Disallow bare `eslint-disable`; always include reason.
-
-```ts
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Legacy API requires any
-```
-
-**Error Handling**
-
-- Narrow `unknown` errors before stringify/rethrow.
-
-```ts
-if (error instanceof Error) throw error
-throw new Error(typeof error === 'string' ? error : JSON.stringify(error))
-```
-
-**Mobile Compatibility**
-
-- Desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local server, child process, stream adapter, etc.) must NOT be statically imported at the top level.
-- They must be lazy-loaded inside desktop-only branches via `await import(...)`.
 
 ## Style Conventions
 
@@ -155,12 +63,6 @@ throw new Error(typeof error === 'string' ? error : JSON.stringify(error))
 - Styles are organized by **responsibility**, not "first caller". See [`src/styles/README.md`](src/styles/README.md).
 - Before writing/modifying popovers or dropdowns, read the header comments in [`src/styles/popover/surface.css`](src/styles/popover/surface.css) (variant ownership, visual/size separation, checklist for new popovers).
 
-## Testing
+## Verification
 
-- Jest + ts-jest (`src/**/*.test.ts(x)`, mocks in `__mocks__/`).
-- For normal code changes: run `npm run type:check`; for logic changes add/run tests.
-
-## Git & PR Notes
-
-- Preferred base branch for PRs: `main` (unless explicitly targeting another branch).
-- For style-related PRs, ensure `styles.css` is regenerated from `src/styles/**`.
+- Run `npm run type:check` for code changes and add/run relevant tests for logic changes. For CSS changes, regenerate `styles.css`.

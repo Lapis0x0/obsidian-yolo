@@ -1,150 +1,188 @@
-# Contributing to Obsidian Next Composer
+# Contributing to YOLO
 
-We welcome contributions to Obsidian Next Composer! This document will guide you through the process of contributing to the project.
+Thanks for your interest in contributing! This document covers what we welcome, how to land a PR, and the few rules that exist to keep review tractable.
 
-## Development Workflow
+> 中文版：[CONTRIBUTING_zh-CN.md](./CONTRIBUTING_zh-CN.md)
 
-1. Clone the repository to your Obsidian vault's plugins directory:
+---
 
-   ```
-   git clone https://github.com/glowingjade/obsidian-smart-composer.git /path/to/your/vault/.obsidian/plugins/obsidian-smart-composer
-   ```
+## TL;DR
 
-2. Navigate to the plugin directory:
+- **Open an issue first** for changes identified below as needing prior discussion. We'd rather discuss the direction than reject finished code.
+- **You can use AI to help write code.** You just need to understand what you changed, why, and where things could go wrong — enough to defend the PR yourself.
+- **PRs over ~2,000 lines of net change that are highly disruptive must have a linked issue.** This applies to AI-generated work too.
+- Run `npm run type:check && npm run lint:check && npm test` before opening the PR.
 
-   ```
-   cd /path/to/your/vault/.obsidian/plugins/obsidian-smart-composer
-   ```
+---
 
-3. Run the following commands to install dependencies and start the development server:
+## What we welcome (and what we don't)
 
-   ```
-   npm install
-   npm run dev
-   ```
+Review bandwidth is limited, so contributions land faster when they fit the project's direction. The categories below are a rough guide, not a hard rulebook.
 
-4. Start making changes to the plugin code. To test your changes:
+### 🟢 Welcome — go ahead, no prior discussion needed
 
-   - Reload Obsidian manually, or
-   - Use the [Hot Reload plugin](https://github.com/pjeby/hot-reload) for automatic reloading during development
+- Bug fixes with a clear reproduction
+- Documentation, README, and translation improvements
+- Small UX polish (copy, spacing, keyboard shortcuts, accessibility)
+- Test coverage for existing behavior
+- Performance improvements with measurements
+- Adding a new model to an existing provider
 
-5. To check if everything is building correctly, set the `logLevel: debug` in `esbuild.config.mjs`. This will provide more detailed output during the build process, helping you identify any issues.
+### 🟡 Please open an issue first
 
-### CSS Style Workflow
+These need alignment before you write code, otherwise the PR is likely to get reshaped or closed:
 
-- Style source files live in `src/styles/**` and are organized by module.
-- Root `styles.css` is a generated artifact and should not be edited directly.
-- Rebuild styles with `npm run styles:build` (or watch with `npm run styles:watch`).
-- For style-related PRs, ensure `npm run styles:build` and `npm run type:check` both pass before submission.
+- New LLM providers, MCP integrations, or built-in tools
+- New built-in skills or major skill-system changes
+- Changes to Agent runtime, RAG retrieval, or core chat flow
+- New settings, especially anything that needs a settings migration
+- UI restructuring (new panels, layout changes, theme system changes)
+- Anything touching how user data is stored or migrated
 
-## Database Development
+### 🔴 Please don't open a PR for these without talking to the owner first
 
-We use PGlite and Drizzle ORM for database management in this project. This section will guide you through working with the database schema and making changes.
+These are areas where the maintainer has a specific direction in mind, and unsolicited PRs are usually closed:
 
-### Libraries
+- Items on the README Roadmap (Learning Mode, Annotation Mode, the built-in assistant, the AI whiteboard, voice input / meeting notes)
+- Renames or refactors of core architecture (`src/core/agent/`, `src/core/ai/`, `src/core/llm/`)
+- Anything described as "experimental" in the codebase
 
-1. **PGlite**: A lightweight PostgreSQL implementation that runs in various JavaScript environments, allowing use of PostgreSQL syntax without a full database server. [Learn more](https://pglite.dev/docs/)
+If you're unsure which bucket your idea falls into, just open an issue and ask.
 
-2. **Drizzle ORM**: A TypeScript ORM providing type-safe database interactions with a SQL-like query API, supporting multiple database dialects. [Learn more](https://orm.drizzle.team/docs/overview)
+---
 
-### Updating the Database Schema
+## On AI-generated code
 
-To update the database schema:
+Most people use AI to write code now, including the maintainer. Using AI is fine. **What's not fine is opening a PR you can't explain.**
 
-1. Modify the existing schema as needed in the `src/database/schema.ts` file.
-2. After making changes, run the following command to generate migration files:
+The bar is simple:
 
-   ```
-   npx drizzle-kit generate --name <migration-name>
-   ```
+- You should be able to describe what changed, why this approach, and what could break — in your own words, without re-prompting an LLM mid-review.
+- If a reviewer asks "why did you do it this way?", "what does this branch handle?", or "did you check X edge case?", you should have an answer.
+- AI sometimes writes code that's better than what a human would write. That's fine. AI also sometimes confidently writes code that doesn't make sense in this codebase. The PR author is responsible for catching the second case before submitting.
 
-3. Review the generated migration files in the `drizzle` directory.
-4. Compile the migration files into a single JSON file by running:
+The PR template asks you to disclose AI usage. **This is informational, not gatekeeping** — be honest about it. PRs marked as AI-assisted aren't reviewed differently; PRs that fail the "can the author defend it?" test get closed regardless of who wrote them.
 
-   ```
-   npm run migrate:compile
-   ```
+### What might get PRs closed quickly
 
-   This will create or update the `src/database/migrations.json` file. Note that migration files in the 'drizzle' directory won't affect the project until they are compiled into this JSON file, which is used in the actual migration process.
+- Net change > 2,000 lines that is highly disruptive and hasn't been discussed in a linked issue
+- Author can't explain a non-trivial part of the diff during review
+- "I asked the AI to fix it again" iteration loops with no human reasoning visible
+- Sweeping refactors, file moves, or stylistic rewrites mixed into a feature PR
 
-### Handling Migration Files
+---
 
-We recommend creating a single migration file for each change. To squash multiple changes into a single migration file after finalizing your schema.ts:
+## PR size guide
 
-1. Delete the newly created migration files in the `drizzle` directory.
-2. Delete the new snapshot.json files in the `drizzle/meta` directory.
-3. Remove new entries in `drizzle/meta/_journal.json`.
-4. Run the migration generation command again to create a final, consolidated migration file:
+Smaller PRs land faster. Use this as a self-check:
 
-   ```
-   npx drizzle-kit generate --name <migration-name>
-   ```
+| Size | Net diff | Notes |
+|------|----------|-------|
+| **S** | < 100 lines | Quick fixes, docs, small polish. Usually merged same-day if green. |
+| **M** | 100–500 lines | Most feature work. Should be focused on one thing. |
+| **L** | 500–2,000 lines | Needs a clear scope and ideally a linked issue. |
+| **XL** | > 2,000 lines | Highly disruptive changes must have a linked issue with the design discussed and agreed. |
 
-This process ensures a clean and organized migration history.
+---
 
-### Debugging Database Issues
+## Development setup
 
-When debugging database-related issues in Obsidian's developer console, you can use the "Store as global variable" feature to interact with the database directly:
+Clone into your Obsidian vault's plugins directory so you can test in a real Obsidian environment:
 
-1. Look for the console message "Next composer database initialized." 
-2. Right-click on this DatabaseManager object and select "Store as global variable" (it will be stored as `tempN`)
-3. You can then run SQL queries directly using the stored variable. For example:
+```bash
+git clone https://github.com/Lapis0x0/obsidian-yolo.git \
+  /path/to/your/vault/.obsidian/plugins/obsidian-yolo
+cd /path/to/your/vault/.obsidian/plugins/obsidian-yolo
+npm install
+npm run dev
+```
 
-   ```javascript
+Then enable the plugin in Obsidian. Use the [Hot Reload plugin](https://github.com/pjeby/hot-reload) for automatic reloads during development, or reload Obsidian manually (`Cmd/Ctrl + R` in the dev console).
+
+### Common scripts
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Watch mode for code + styles |
+| `npm run build` | Production build (includes type check) |
+| `npm run type:check` | Type check without emitting |
+| `npm run lint:check` / `lint:fix` | Prettier + ESLint |
+| `npm test` | Jest tests |
+| `npm run styles:build` | Rebuild `styles.css` from `src/styles/**` |
+
+### Style/CSS changes
+
+`styles.css` at the repo root is **generated** — don't edit it directly. Edit files under `src/styles/**` and rebuild with `npm run styles:build`. All CSS classes use the `yolo-` prefix.
+
+For popovers/dropdowns, read the comment header in `src/styles/popover/surface.css` first.
+
+---
+
+## Database schema changes
+
+YOLO uses PGlite + Drizzle ORM. If your change touches the schema:
+
+1. Edit `src/database/schema.ts`.
+2. Generate a migration: `npx drizzle-kit generate --name <migration-name>`
+3. Review the generated files under `drizzle/`.
+4. Compile migrations into the bundle: `npm run migrate:compile` — this updates `src/database/migrations.json`, which is what actually runs at startup. **Migration files in `drizzle/` have no effect until compiled.**
+
+Prefer one migration file per logical change. If you've generated several while iterating, squash them before submitting:
+
+1. Delete the new migration files in `drizzle/`.
+2. Delete the new snapshot files in `drizzle/meta/`.
+3. Remove the new entries from `drizzle/meta/_journal.json`.
+4. Re-run `npx drizzle-kit generate --name <final-name>` to produce a single consolidated file.
+5. Run `npm run migrate:compile` again.
+
+### Debugging the database in Obsidian
+
+In the Obsidian developer console:
+
+1. Find the log message `Next composer database initialized.`
+2. Right-click the `DatabaseManager` object in the log → **Store as global variable** (it'll be saved as `temp1` or similar).
+3. Run queries directly:
+   ```js
    await temp1.pgClient.query(`
      SELECT table_schema, table_name
      FROM information_schema.tables
      WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
        AND table_type = 'BASE TABLE'
      ORDER BY table_schema, table_name;
-   `);
+   `)
    ```
-4. should call `await temp1.save()` to save the database to disk
+4. Call `await temp1.save()` to persist changes to disk.
 
-This method allows you to inspect database tables, run queries, and debug database-related issues directly in the console.
+---
 
-## Sending a Pull Request
+## Before opening a PR
 
-Before starting work on a significant change, please first discuss the proposed changes by either:
-1. Opening a new issue
-2. Starting a discussion in GitHub Discussions
+1. Branch from `main`.
+2. Run the checks:
+   ```bash
+   npm run type:check
+   npm run lint:check
+   npm test
+   ```
+3. If you changed CSS, run `npm run styles:build` and commit the regenerated `styles.css`.
+4. If you fixed a bug or added behavior worth pinning down, add a test.
+5. Fill in the PR template honestly — including the AI usage disclosure and linked issue if applicable.
 
-This helps avoid duplicate work and ensures your contribution aligns with the project's direction.
+---
 
-The core team is monitoring for pull requests. We will review your pull request and either merge it, request changes to it, or close it with an explanation.
+## Review expectations
 
-**Before submitting a pull request**, please make sure the following is done:
+- The maintainer reviews PRs as time allows. Expect anywhere from a day to a couple of weeks for a first response, longer for large changes.
+- You can summon the review bot by mentioning `@Lapis0x1` in a comment — its replies count as Lapis0x0's.
 
-1. Fork the repository and create your branch from `main`.
-2. Run `npm install` in the repository root.
-3. If you've fixed a bug or added code that should be tested, add tests!
-4. Ensure the test suite passes (`npm test`).
-5. Check for type errors (`npm run type:check`).
-6. Check for linting errors (`npm run lint:check`).
-7. You can fix linting errors automatically with `npm run lint:fix`.
-
-## Development Issues and Solutions
-
-For common development issues, their solutions, and other helpful information for contributors, please refer to the following resources:
-
-1. [DEVELOPMENT.md](./DEVELOPMENT.md): Contains detailed information about the development process, common issues, and their solutions.
-2. [Issue Tracker](https://github.com/glowingjade/obsidian-smart-composer/issues): Check our issue tracker for detailed problem descriptions and solutions.
-3. [GitHub Discussions](https://github.com/glowingjade/obsidian-smart-composer/discussions): Join our community discussions for interactive problem-solving and knowledge sharing.
-
-We encourage contributors to review these resources before starting development and to help keep them updated with new findings.
-
-### Known Issue: Memory Leak During Plugin Reloading
-
-A memory leak has been identified when reloading the plugin. This may not be critical for end-users who typically don't reload the plugin frequently, but it can become problematic for developers who reload often during the development process. If you experience Obsidian becoming unresponsive or slow after reloading the plugin multiple times, it may be due to this memory leak. We are actively investigating the root cause and working on potential fixes. Any reports or fixes in this area are appreciated.
+---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). By contributing to this project, you agree that your contributions will be licensed under the MIT License. Please make sure you understand and comply with the terms of this license before submitting any contributions.
+YOLO is [MIT licensed](LICENSE). By submitting a PR you agree your contribution is released under the same license.
 
-## Deployment (Maintainers Only)
+---
 
-For maintainers with repository write access, deployments are handled through git tags. To deploy a new version:
+## Maintainer notes
 
-1. Create and push a new tag: `git tag <version-number> && git push origin <version-number>`
-
-Github workflow will automatically build, release and create a pull request to bump versions in versions.json, manifest.json and package.json. The pull request needs to be manually reviewed and merged by a maintainer.
+For maintainers with write access, releases are tag-driven: `git tag <version> && git push origin <version>` triggers the workflow that builds, releases, and opens a version-bump PR for `manifest.json` / `versions.json` / `package.json`.

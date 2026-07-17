@@ -190,7 +190,7 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
       const visibleLeaf =
         markdownLeaves.find((leaf) => {
           const el = (leaf.view as { containerEl?: HTMLElement }).containerEl
-          return el ? el.isShown() : true
+          return el ? isElementVisible(el) : true
         }) ?? markdownLeaves[0]
       return visibleLeaf?.view instanceof MarkdownView ? visibleLeaf.view : null
     })()
@@ -223,6 +223,14 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
       <Import size={12} />
     </ActionIconButton>
   )
+}
+
+function isElementVisible(el: HTMLElement): boolean {
+  const maybeIsShown = (el as HTMLElement & { isShown?: unknown }).isShown
+  if (typeof maybeIsShown === 'function') {
+    return maybeIsShown.call(el) as boolean
+  }
+  return el.offsetParent !== null || el.getClientRects().length > 0
 }
 
 export default function AssistantToolMessageGroupActions({

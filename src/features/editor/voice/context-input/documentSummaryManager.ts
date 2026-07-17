@@ -293,7 +293,7 @@ Rules:
         providerClient,
         model,
         request,
-        stream: false,
+        deliveryMode: 'buffered',
         primaryRequestTimeoutMs:
           settings.continuationOptions?.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled: false,

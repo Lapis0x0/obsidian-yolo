@@ -203,9 +203,34 @@ describe('ChatManager', () => {
       const result = await manager.listChats()
 
       expect(result[0].title).toBe('Cached title')
+      expect(result[0].origin).toBe('user')
       expect(adapter.read).not.toHaveBeenCalledWith(
         `${CHATS_DIR}/v1_${idA}.json`,
       )
+    })
+
+    test('persists an explicit conversation origin in the chat index', async () => {
+      const { app, files } = createFakeFs({})
+      const manager = new ChatManager(app)
+
+      const conversation = await manager.createChat({
+        id: idA,
+        title: 'External task',
+        origin: 'external-agent',
+      })
+      const result = await manager.listChats()
+
+      expect(conversation.origin).toBe('external-agent')
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        id: idA,
+        origin: 'external-agent',
+      })
+      expect(
+        JSON.parse(files.get(`${CHATS_DIR}/chat_index.json`) as string),
+      ).toEqual([
+        expect.objectContaining({ id: idA, origin: 'external-agent' }),
+      ])
     })
 
     test('surfaces a placeholder instead of rejecting on a corrupt file', async () => {

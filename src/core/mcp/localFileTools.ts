@@ -1,6 +1,8 @@
 import {
   App,
   FileSystemAdapter,
+  Platform,
+  type TAbstractFile,
   TFile,
   TFolder,
   normalizePath,
@@ -19,6 +21,7 @@ import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallResponseStatus,
   type ToolEditSummary,
+  type ToolFsReadOperationSummary,
 } from '../../types/tool-call.types'
 import { uint8ArrayToBase64 } from '../../utils/base64'
 import {
@@ -34,6 +37,10 @@ import {
   chatModelSupportsVision,
 } from '../../utils/llm/model-modalities'
 import {
+  type OfficeDocumentKind,
+  parseOfficeDocument,
+} from '../../utils/office'
+import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
   extractPdfText,
@@ -46,12 +53,23 @@ import type { SubagentParentContext } from '../agent/subagent/parent-context'
 import type { TodoItem } from '../agent/todos-from-messages'
 import type { AgentRunContext } from '../agent/types'
 import {
+  BROWSER_READ_PATH_PREFIX,
   BUILTIN_SKILL_PATH_PREFIX,
   buildAllowedSkillPathSet,
   findPathOutsideScope,
   isPathAllowedByScope,
   normalizeSkillPathForExemption,
 } from '../agent/workspaceScope'
+import {
+  BROWSER_PAGE_ID_PATTERN,
+  findWebviewHandleByPageId,
+} from '../browser/activeWebviewProbe'
+import {
+  BrowserReadFailure,
+  type BrowserReadFormat,
+  readActiveWebviewHtml,
+  readActiveWebviewPage,
+} from '../browser/activeWebviewReader'
 import {
   type TextEditOperation,
   type TextEditPlan,
@@ -88,6 +106,12 @@ import {
   getJsSandboxSettings,
 } from './jsSandboxSettings'
 import {
+  JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_MIN_KB,
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+  JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,
   JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
@@ -95,10 +119,13 @@ import {
   JS_SANDBOX_FETCH_MIN_CONCURRENT,
   JS_SANDBOX_FETCH_MIN_RESPONSE_KB,
   JS_SANDBOX_TOOL_NAME,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
   JS_SANDBOX_VAULT_READ_MIN_KB,
-  JsSandboxProxyHandlers,
+  type JsSandboxBrowserReadHtmlResult,
+  type JsSandboxProxyHandlers,
+  type JsSandboxVaultListEntry,
   callJsSandboxTool,
   getJsSandboxTool,
 } from './jsSandboxTool'
@@ -109,6 +136,7 @@ export { recoverLikelyEscapedBackslashSequences }
 const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 export const TERMINAL_COMMAND_TOOL_NAME = 'terminal_command'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
+const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
 // fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES 是"快照阈值"
 // （超过则跳过 undo/review 快照），本常量是"绝对拒绝上限"（超过才真正拒绝编辑）。
 const MAX_EDIT_FILE_SIZE_BYTES = 16 * 1024 * 1024
@@ -119,6 +147,8 @@ const MAX_READ_MAX_LINES = 2000
 const MAX_READ_LINE_INDEX = 1_000_000
 const MAX_RAG_SNIPPET_CHARS = 500
 const RAG_FETCH_LIMIT_MAX = 300
+const BROWSER_READ_PATH_USAGE =
+  'browser:// paths only read open Obsidian web pages by page_id copied exactly from <browser_context> (browser://page_<8 lowercase base36>_<8 lowercase base36>). Do not append URL paths to a page_id and do not use browser:// to open or fetch internet URLs. For internet access, use web_search or web_scrape when available; if those tools are unavailable, tell the user.'
 
 const getContextPrunableToolCallIds = (
   messages: ChatMessage[] | undefined,
@@ -209,6 +239,7 @@ type FsReadOperation =
   | {
       type: 'full'
       modality?: FsReadModality
+      format?: BrowserReadFormat
     }
   | {
       type: 'lines'
@@ -216,12 +247,24 @@ type FsReadOperation =
       endLine?: number
       maxLines: number
       modality?: FsReadModality
+      format?: BrowserReadFormat
     }
 type ContextPruneMode = 'selected' | 'all'
 type FsFileOpAction = 'write' | 'delete' | 'create_dir' | 'move'
 
+function getOfficeDocumentKindFromExtension(
+  extension: string | undefined,
+): OfficeDocumentKind | null {
+  const normalized = extension?.toLowerCase()
+  if (normalized === 'docx' || normalized === 'pptx' || normalized === 'xlsx') {
+    return normalized
+  }
+  return null
+}
+
 type LocalToolCallResultMetadata = {
   editSummary?: ToolEditSummary
+  fsReadOperation?: ToolFsReadOperationSummary
   appliedAt?: number
   truncated?: { totalBytes: number; omittedBytes: number }
 }
@@ -283,6 +326,14 @@ const LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION = {
 export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
   LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION,
 ) as Array<keyof typeof LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION>
+
+export const LOCAL_FS_EDIT_TOOL_NAMES = ['fs_edit', 'fs_write'] as const
+
+export const LOCAL_FS_PATH_OPERATION_TOOL_NAMES = [
+  'fs_delete',
+  'fs_create_dir',
+  'fs_move',
+] as const
 
 export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
   'memory_add',
@@ -453,7 +504,89 @@ const normalizeFsReadPath = (path: string): string => {
   if (trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX)) {
     return trimmed
   }
+  if (trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
+    parseBrowserReadPageId(trimmed)
+    return trimmed
+  }
   return validateVaultPath(trimmed)
+}
+
+export const isBrowserReadPath = (path: string): boolean =>
+  path.trim().startsWith(BROWSER_READ_PATH_PREFIX)
+
+export const parseBrowserReadPageId = (path: string): string => {
+  const trimmed = path.trim()
+  if (!trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
+    throw new Error('Not a browser read path.')
+  }
+  const pageId = trimmed.slice(BROWSER_READ_PATH_PREFIX.length).trim()
+  if (!BROWSER_PAGE_ID_PATTERN.test(pageId)) {
+    throw new Error(BROWSER_READ_PATH_USAGE)
+  }
+  return pageId
+}
+
+const normalizeBrowserReadPageId = (value: string): string => {
+  const trimmed = value.trim()
+  if (trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
+    return parseBrowserReadPageId(trimmed)
+  }
+  if (!BROWSER_PAGE_ID_PATTERN.test(trimmed)) {
+    throw new Error(BROWSER_READ_PATH_USAGE)
+  }
+  return trimmed
+}
+
+type FsReadLineSliceResult = {
+  outputContent: string
+  rawSelected: string
+  totalLines: number
+  returnedStartLine: number | null
+  returnedEndLine: number | null
+  hasMoreBelow: boolean
+  nextStartLine: number | null
+}
+
+const sliceLinesForFsReadOperation = (
+  lines: string[],
+  operation: FsReadOperation,
+): FsReadLineSliceResult => {
+  const totalLines = lines.length
+  if (operation.type === 'full') {
+    const outputContent = lines
+      .map((line, index) => `${index + 1}|${line}`)
+      .join('\n')
+    return {
+      outputContent,
+      rawSelected: lines.join('\n'),
+      totalLines,
+      returnedStartLine: totalLines > 0 ? 1 : null,
+      returnedEndLine: totalLines > 0 ? totalLines : null,
+      hasMoreBelow: false,
+      nextStartLine: null,
+    }
+  }
+
+  const startIndex = Math.min(Math.max(operation.startLine - 1, 0), totalLines)
+  const endExclusive = Math.min(
+    totalLines,
+    operation.endLine ?? startIndex + operation.maxLines,
+  )
+  const selectedLines = lines.slice(startIndex, endExclusive)
+  const outputContent = selectedLines
+    .map((line, index) => `${startIndex + index + 1}|${line}`)
+    .join('\n')
+  const returnedCount = selectedLines.length
+  const hasMoreBelow = endExclusive < totalLines
+  return {
+    outputContent,
+    rawSelected: selectedLines.join('\n'),
+    totalLines,
+    returnedStartLine: returnedCount > 0 ? startIndex + 1 : null,
+    returnedEndLine: returnedCount > 0 ? startIndex + returnedCount : null,
+    hasMoreBelow,
+    nextStartLine: hasMoreBelow ? endExclusive + 1 : null,
+  }
 }
 
 export function getLocalFileToolServerName(): string {
@@ -633,7 +766,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_read',
       description:
-        'Read vault files and skill instructions. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Prefer lines for targeted reads. Skill paths from <available_skills> may use builtin:// prefixes.',
+        'Read vault files, skill instructions, or open Obsidian web pages. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Prefer lines for targeted reads. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -642,12 +775,12 @@ export function getLocalFileTools(options?: {
             items: {
               type: 'string',
             },
-            description: `Vault-relative file paths or skill paths (including builtin://). Max ${MAX_BATCH_READ_FILES} items.`,
+            description: `Vault-relative file paths, skill paths (builtin://), or browser://<page_id> copied exactly from <browser_context>. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
           },
           operation: {
             type: 'object',
             description:
-              'Read strategy. full: whole file. lines: targeted range (PDFs use page numbers).',
+              'Read strategy. Omit for full. full: whole file/page. lines: targeted range (PDFs use page numbers). format applies only to browser:// paths.',
             properties: {
               type: {
                 type: 'string',
@@ -657,21 +790,28 @@ export function getLocalFileTools(options?: {
                 type: 'integer',
                 description: `Start line/page (1-based). Defaults to ${DEFAULT_READ_START_LINE}.`,
               },
-              maxLines: {
-                type: 'integer',
-                description: `Max lines when endLine unset. Defaults to ${DEFAULT_READ_MAX_LINES} for text files (range 1-${MAX_READ_MAX_LINES}). Ignored for PDFs — PDFs default to a single page (startLine) when endLine is unset.`,
-              },
               endLine: {
                 type: 'integer',
                 description:
                   'Inclusive end line/page. If set, maxLines is ignored.',
+              },
+              maxLines: {
+                type: 'integer',
+                description:
+                  'Max lines/pages in the range when endLine is unset.',
+              },
+              format: {
+                type: 'string',
+                enum: ['readable', 'key_visible_info'],
+                description:
+                  'Browser pages only. key_visible_info (default): compact visible headings, text blocks, tables, code, and formulas — prefer for long pages. readable: fuller Markdown-like text.',
               },
               ...(modalitySchema ? { modality: modalitySchema } : {}),
             },
             required: ['type'],
           },
         },
-        required: ['paths', 'operation'],
+        required: ['paths'],
       },
     },
     {
@@ -723,7 +863,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_edit',
       description:
-        'Apply a single targeted text edit within an existing file. Prefer this tool when modifying content in an existing file. Two ways to locate the edit, choose exactly one: for an exact-text edit, provide oldText (the text to find, which must match the file exactly once) and newText; for a line-range edit, provide startLine and endLine (1-based inclusive) and newText. Do not provide both oldText and startLine/endLine. To make several edits in the same file, emit multiple fs_edit calls — the system automatically merges edits targeting the same file into one atomic review and write, so earlier edits cannot invalidate later ones.',
+        'Apply one targeted text edit to an existing file. You must provide path, newText, and exactly one locator: oldText for exact-text replacement, or startLine+endLine for line-range replacement. Do not call fs_edit with only path and newText. Do not provide both oldText and startLine/endLine. Use fs_write to create a new file, fill an empty file, or overwrite full file content. To make several edits in the same file, emit multiple fs_edit calls — the system automatically merges edits targeting the same file into one atomic review and write, so earlier edits cannot invalidate later ones.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -731,14 +871,15 @@ export function getLocalFileTools(options?: {
             type: 'string',
             description: 'Vault-relative file path.',
           },
+          newText: {
+            type: 'string',
+            description:
+              'Replacement text. This is not a standalone write request; it is only valid together with oldText or startLine+endLine.',
+          },
           oldText: {
             type: 'string',
             description:
               'Exact-text mode: the existing text to find and replace. Must match the file exactly once. Do not combine with startLine/endLine.',
-          },
-          newText: {
-            type: 'string',
-            description: 'Replacement text. Required in both modes.',
           },
           startLine: {
             type: 'integer',
@@ -971,9 +1112,11 @@ export function getLocalFileTools(options?: {
       description:
         'Run a command in the local OS shell. Desktop-only. ' +
         'Uses PowerShell on Windows and a POSIX shell on macOS/Linux. ' +
-        'Use for terminal-style inspection or local commands. ' +
-        'Arguments: command starts a command; background=true returns a session_id ' +
-        'when the command keeps running; session_id polls or continues an existing ' +
+        'Use for terminal-style inspection or local CLI commands. ' +
+        'By default, command runs as a one-shot process and completes when that process exits; ' +
+        'it does not keep shell state between calls. ' +
+        'Use background=true to create a persistent session for long-running or interactive commands; ' +
+        'session_id polls or continues an existing ' +
         'session; input sends stdin to that session; kill=true terminates it. ' +
         'Results separate stdout and stderr. ' +
         'Use tail_lines or tail_bytes when polling verbose sessions to inspect recent logs only. ' +
@@ -1309,6 +1452,95 @@ const resolveFolderByPath = (
   }
 
   return { folder: abstractFile, normalizedPath }
+}
+
+type CollectedVaultListEntry =
+  | {
+      kind: 'file'
+      node: TFile
+      path: string
+    }
+  | {
+      kind: 'dir'
+      node: TFolder
+      path: string
+    }
+
+const getAbstractFileName = (file: TAbstractFile): string => {
+  if (file.name) {
+    return file.name
+  }
+  return file.path.split('/').pop() ?? file.path
+}
+
+// Breadth-first walk collecting child dirs and files. Output order is not
+// significant here: the only caller re-sorts by path, and exceeding maxResults
+// is a hard error (the partial collection is discarded), so no intermediate
+// sort is needed.
+const collectVaultChildEntries = ({
+  folder,
+  depth,
+  maxResults,
+}: {
+  folder: TFolder
+  depth: number
+  maxResults: number
+}): CollectedVaultListEntry[] => {
+  const entries: CollectedVaultListEntry[] = []
+  const queue: Array<{ folder: TFolder; level: number }> = [
+    { folder, level: 1 },
+  ]
+  let queueIndex = 0
+
+  while (queueIndex < queue.length && entries.length < maxResults) {
+    const current = queue[queueIndex]
+    queueIndex++
+    const { folder: currentFolder, level } = current
+
+    for (const child of currentFolder.children) {
+      if (entries.length >= maxResults) break
+
+      if (child instanceof TFolder) {
+        entries.push({ kind: 'dir', node: child, path: child.path })
+        if (level < depth) {
+          queue.push({ folder: child, level: level + 1 })
+        }
+        continue
+      }
+
+      if (child instanceof TFile) {
+        entries.push({ kind: 'file', node: child, path: child.path })
+      }
+    }
+  }
+
+  return entries
+}
+
+const toJsSandboxVaultListEntry = (
+  entry: CollectedVaultListEntry,
+): JsSandboxVaultListEntry => {
+  if (entry.kind === 'dir') {
+    return {
+      kind: 'dir',
+      path: entry.path,
+      name: getAbstractFileName(entry.node),
+    }
+  }
+
+  const stat = entry.node.stat as
+    | {
+        size?: number
+        mtime?: number
+      }
+    | undefined
+  return {
+    kind: 'file',
+    path: entry.path,
+    name: getAbstractFileName(entry.node),
+    size: typeof stat?.size === 'number' ? stat.size : 0,
+    mtime: typeof stat?.mtime === 'number' ? stat.mtime : 0,
+  }
 }
 
 /**
@@ -1907,6 +2139,25 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
 }
 
 const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
+  const topLevelOperationKeys = [
+    'type',
+    'startLine',
+    'endLine',
+    'maxLines',
+    'format',
+    'modality',
+  ]
+  const hasTopLevelOperationKey = topLevelOperationKeys.some(
+    (key) => args[key] !== undefined,
+  )
+
+  if (
+    (args.operation === undefined || args.operation === null) &&
+    !hasTopLevelOperationKey
+  ) {
+    return { type: 'full' }
+  }
+
   const parsedOperation = coerceOperationObject(args.operation)
   const type = asOptionalString(parsedOperation.type).trim().toLowerCase()
 
@@ -1946,8 +2197,31 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
     }
   }
 
+  let format: BrowserReadFormat | undefined
+  const rawFormatValue = parsedOperation.format
+  if (rawFormatValue !== undefined && rawFormatValue !== null) {
+    if (typeof rawFormatValue !== 'string') {
+      throw new Error(
+        "operation.format must be 'readable' or 'key_visible_info' (or omitted).",
+      )
+    }
+    const normalizedFormat = rawFormatValue.trim().toLowerCase()
+    if (normalizedFormat === '') {
+      // Empty string is treated as "not provided".
+    } else if (
+      normalizedFormat === 'readable' ||
+      normalizedFormat === 'key_visible_info'
+    ) {
+      format = normalizedFormat
+    } else {
+      throw new Error(
+        "operation.format must be 'readable' or 'key_visible_info' (or omitted).",
+      )
+    }
+  }
+
   if (type === 'full') {
-    return { type: 'full', modality }
+    return { type: 'full', modality, format }
   }
 
   if (type === 'lines') {
@@ -1992,6 +2266,7 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
       endLine,
       maxLines,
       modality,
+      format,
     }
   }
 
@@ -2845,6 +3120,11 @@ export async function callLocalFileTool({
               wikilinks?: Array<{ link: string; path: string }>
               effectiveModality?: 'text' | 'image' | 'pdf'
               warning?: string
+              url?: string
+              title?: string
+              loading?: boolean
+              redactions?: Array<{ kind: string; count: number }>
+              partial?: { reason: string; message: string }
             }
           | {
               path: string
@@ -2896,55 +3176,99 @@ export async function callLocalFileTool({
 
             const content = skillDocument.content
             const lines = content.length === 0 ? [] : content.split('\n')
-            const totalLines = lines.length
-            let outputContent = ''
-            let returnedStartLine: number | null = null
-            let returnedEndLine: number | null = null
-            let hasMoreBelow = false
-            let nextStartLine: number | null = null
-
-            if (operation.type === 'full') {
-              outputContent = lines
-                .map((line, index) => `${index + 1}|${line}`)
-                .join('\n')
-              returnedStartLine = totalLines > 0 ? 1 : null
-              returnedEndLine = totalLines > 0 ? totalLines : null
-            } else {
-              const startIndex = Math.min(
-                Math.max(operation.startLine - 1, 0),
-                totalLines,
-              )
-              const endExclusive = Math.min(
-                totalLines,
-                operation.endLine ?? startIndex + operation.maxLines,
-              )
-              const selectedLines = lines.slice(startIndex, endExclusive)
-              outputContent = selectedLines
-                .map((line, index) => `${startIndex + index + 1}|${line}`)
-                .join('\n')
-              const returnedCount = selectedLines.length
-              returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
-              returnedEndLine =
-                returnedCount > 0 ? startIndex + returnedCount : null
-              hasMoreBelow = endExclusive < totalLines
-              nextStartLine = hasMoreBelow ? endExclusive + 1 : null
-            }
+            const sliced = sliceLinesForFsReadOperation(lines, operation)
 
             results.push({
               path,
               ok: true,
-              totalLines,
+              totalLines: sliced.totalLines,
               returnedRange:
                 operation.type === 'lines'
                   ? {
-                      startLine: returnedStartLine,
-                      endLine: returnedEndLine,
+                      startLine: sliced.returnedStartLine,
+                      endLine: sliced.returnedEndLine,
                     }
                   : undefined,
-              hasMoreBelow,
-              nextStartLine,
-              content: outputContent,
+              hasMoreBelow: sliced.hasMoreBelow,
+              nextStartLine: sliced.nextStartLine,
+              content: sliced.outputContent,
             })
+            continue
+          }
+
+          if (isBrowserReadPath(path)) {
+            if (Platform.isMobile) {
+              results.push({
+                path,
+                ok: false,
+                error: 'Reading open web pages via fs_read is desktop-only.',
+              })
+              continue
+            }
+
+            const pageId = parseBrowserReadPageId(path)
+            const handle = findWebviewHandleByPageId(app, pageId)
+            if (!handle) {
+              results.push({
+                path,
+                ok: false,
+                error: `No open web page with page_id "${pageId}" was found. The tab may have been closed or replaced.`,
+              })
+              continue
+            }
+
+            const format = operation.format ?? 'key_visible_info'
+            try {
+              const browserResult = await readActiveWebviewPage(handle, {
+                format,
+                signal,
+              })
+              if (!browserResult) {
+                results.push({
+                  path,
+                  ok: false,
+                  error:
+                    'Webview is present but has no loaded page (URL empty or about:blank). Navigate to a URL first.',
+                })
+                continue
+              }
+
+              const text = browserResult.text ?? ''
+              const lines = text.length === 0 ? [] : text.split('\n')
+              const sliced = sliceLinesForFsReadOperation(lines, operation)
+              results.push({
+                path,
+                ok: true,
+                totalLines: sliced.totalLines,
+                returnedRange:
+                  operation.type === 'lines'
+                    ? {
+                        startLine: sliced.returnedStartLine,
+                        endLine: sliced.returnedEndLine,
+                      }
+                    : undefined,
+                hasMoreBelow: sliced.hasMoreBelow,
+                nextStartLine: sliced.nextStartLine,
+                content: sliced.outputContent,
+                url: browserResult.url,
+                title: browserResult.title,
+                loading: browserResult.loading,
+                redactions: browserResult.redactions,
+                ...(browserResult.partial
+                  ? { partial: browserResult.partial }
+                  : {}),
+              })
+            } catch (error) {
+              if (error instanceof BrowserReadFailure) {
+                results.push({
+                  path,
+                  ok: false,
+                  error: `${error.code}: ${error.message}`,
+                })
+                continue
+              }
+              throw error
+            }
             continue
           }
 
@@ -3399,6 +3723,54 @@ export async function callLocalFileTool({
             continue
           }
 
+          const officeKind = getOfficeDocumentKindFromExtension(file.extension)
+          if (officeKind) {
+            if (file.stat.size > OFFICE_READ_MAX_BYTES) {
+              results.push({
+                path,
+                ok: false,
+                error: `Office document too large (${file.stat.size} bytes).`,
+              })
+              continue
+            }
+
+            try {
+              const rawBuf = await app.vault.readBinary(file)
+              const parsed = await parseOfficeDocument(rawBuf, officeKind)
+              const content = parsed.markdown
+              const lines = content.length === 0 ? [] : content.split('\n')
+              const sliced = sliceLinesForFsReadOperation(lines, operation)
+
+              results.push({
+                path,
+                ok: true,
+                totalLines: sliced.totalLines,
+                returnedRange:
+                  operation.type === 'lines'
+                    ? {
+                        startLine: sliced.returnedStartLine,
+                        endLine: sliced.returnedEndLine,
+                      }
+                    : undefined,
+                hasMoreBelow: sliced.hasMoreBelow,
+                nextStartLine: sliced.nextStartLine,
+                content: sliced.outputContent,
+              })
+            } catch (error) {
+              results.push({
+                path,
+                ok: false,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : typeof error === 'string'
+                      ? error
+                      : JSON.stringify(error),
+              })
+            }
+            continue
+          }
+
           if (file.stat.size > MAX_FILE_SIZE_BYTES) {
             results.push({
               path,
@@ -3411,45 +3783,9 @@ export async function callLocalFileTool({
           const rawContent = await app.vault.read(file)
           const content = rawContent
           const lines = content.length === 0 ? [] : content.split('\n')
-          const totalLines = lines.length
-
-          let outputContent = ''
-          let rawSelected = ''
-          let returnedStartLine: number | null = null
-          let returnedEndLine: number | null = null
-          let returnedCount = 0
-          let hasMoreBelow = false
-          let nextStartLine: number | null = null
-
-          if (operation.type === 'full') {
-            outputContent = lines
-              .map((line, index) => `${index + 1}|${line}`)
-              .join('\n')
-            rawSelected = content
-            returnedCount = totalLines
-            returnedStartLine = totalLines > 0 ? 1 : null
-            returnedEndLine = totalLines > 0 ? totalLines : null
-          } else {
-            const startIndex = Math.min(
-              Math.max(operation.startLine - 1, 0),
-              totalLines,
-            )
-            const endExclusive = Math.min(
-              totalLines,
-              operation.endLine ?? startIndex + operation.maxLines,
-            )
-            const selectedLines = lines.slice(startIndex, endExclusive)
-            outputContent = selectedLines
-              .map((line, index) => `${startIndex + index + 1}|${line}`)
-              .join('\n')
-            rawSelected = selectedLines.join('\n')
-            returnedCount = selectedLines.length
-            returnedStartLine = returnedCount > 0 ? startIndex + 1 : null
-            returnedEndLine =
-              returnedCount > 0 ? startIndex + returnedCount : null
-            hasMoreBelow = endExclusive < totalLines
-            nextStartLine = hasMoreBelow ? endExclusive + 1 : null
-          }
+          const sliced = sliceLinesForFsReadOperation(lines, operation)
+          const outputContent = sliced.outputContent
+          const rawSelected = sliced.rawSelected
 
           const wikilinks =
             path.endsWith('.md') && rawSelected.length > 0
@@ -3459,16 +3795,16 @@ export async function callLocalFileTool({
           results.push({
             path,
             ok: true,
-            totalLines,
+            totalLines: sliced.totalLines,
             returnedRange:
               operation.type === 'lines'
                 ? {
-                    startLine: returnedStartLine,
-                    endLine: returnedEndLine,
+                    startLine: sliced.returnedStartLine,
+                    endLine: sliced.returnedEndLine,
                   }
                 : undefined,
-            hasMoreBelow,
-            nextStartLine,
+            hasMoreBelow: sliced.hasMoreBelow,
+            nextStartLine: sliced.nextStartLine,
             content: outputContent,
             ...(wikilinks.length > 0 ? { wikilinks } : {}),
           })
@@ -3528,10 +3864,37 @@ export async function callLocalFileTool({
             ? perFileAttachmentParts.flatMap((p) => p.parts)
             : undefined
 
+        const firstReadableResult = results[0]?.ok ? results[0] : undefined
+        const isPdf =
+          typeof firstReadableResult?.path === 'string' &&
+          firstReadableResult.path.toLowerCase().endsWith('.pdf')
+        const fsReadOperation: ToolFsReadOperationSummary | undefined = (() => {
+          if (!firstReadableResult) {
+            return undefined
+          }
+          if (operation.type === 'full') {
+            return { type: 'full', isPdf }
+          }
+          const returnedRange = firstReadableResult.returnedRange
+          if (
+            typeof returnedRange?.startLine !== 'number' ||
+            typeof returnedRange.endLine !== 'number'
+          ) {
+            return undefined
+          }
+          return {
+            type: 'lines',
+            startLine: returnedRange.startLine,
+            endLine: returnedRange.endLine,
+            isPdf,
+          }
+        })()
+
         return {
           status: ToolCallResponseStatus.Success,
           text: textResult,
           contentParts,
+          metadata: fsReadOperation ? { fsReadOperation } : undefined,
         }
       }
 
@@ -4555,11 +4918,6 @@ function executeTodoWrite({
   }
 }
 
-const JS_SANDBOX_DB_DEFAULT_MAX_LIMIT = 20
-const JS_SANDBOX_DB_HARD_MAX_LIMIT = 100
-const JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES = 500
-const JS_SANDBOX_DB_FIND_MAX_FILE_BYTES = 256 * 1024
-
 const MIME_TYPES_BY_EXT: Record<string, string> = {
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -4588,10 +4946,15 @@ const MIME_TYPES_BY_EXT: Record<string, string> = {
   woff2: 'font/woff2',
 }
 
-function guessMimeTypeFromExtension(extension: string | undefined): string {
-  if (!extension) return 'application/octet-stream'
+function inferMimeType(path: string): string {
+  const name = path.split('/').pop() ?? path
+  const dotIndex = name.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === name.length - 1) {
+    return 'application/octet-stream'
+  }
   return (
-    MIME_TYPES_BY_EXT[extension.toLowerCase()] ?? 'application/octet-stream'
+    MIME_TYPES_BY_EXT[name.slice(dotIndex + 1).toLowerCase()] ??
+    'application/octet-stream'
   )
 }
 
@@ -4672,14 +5035,14 @@ function assertJsSandboxFetchAllowed(
   }
 }
 
-function buildJsSandboxProxyHandlers(
+export function buildJsSandboxProxyHandlers(
   app: App,
   config: JsSandboxSettings,
   getRagEngine?: () => Promise<RAGEngine>,
 ): JsSandboxProxyHandlers {
   const handlers: JsSandboxProxyHandlers = {}
 
-  if (config.allowVaultRead) {
+  if (config.allowVaultRead || config.allowDbQuery) {
     const configuredVaultKb =
       typeof config.vaultReadMaxKb === 'number' &&
       Number.isFinite(config.vaultReadMaxKb)
@@ -4690,7 +5053,33 @@ function buildJsSandboxProxyHandlers(
       Math.max(JS_SANDBOX_VAULT_READ_MIN_KB, configuredVaultKb),
     )
     const vaultReadMaxBytes = vaultReadMaxKb * 1024
-    handlers.vaultReadConfig = { maxKb: vaultReadMaxKb }
+
+    if (config.allowVaultRead) {
+      handlers.vaultList = async (
+        path?: string,
+        options?: Record<string, unknown>,
+      ) => {
+        const { folder, normalizedPath } = resolveFolderByPath(app, path)
+        const recursive = options?.recursive === true
+        // The list crosses the sandbox/host boundary as one array. Keep a hard
+        // fuse for pathological vaults while leaving normal large-vault stats
+        // practical inside the JS execution.
+        const entries = collectVaultChildEntries({
+          folder,
+          depth: recursive ? Number.POSITIVE_INFINITY : 1,
+          maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
+        })
+        if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
+          throw new Error(
+            `vault.list refused: more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries under "${normalizedPath || '/'}"; pass a narrower path.`,
+          )
+        }
+        return entries
+          .map(toJsSandboxVaultListEntry)
+          .sort((a, b) => a.path.localeCompare(b.path))
+      }
+    }
+
     handlers.vaultReadText = async (path: string) => {
       const normalized = normalizePath(path)
       const file = app.vault.getAbstractFileByPath(normalized)
@@ -4725,40 +5114,78 @@ function buildJsSandboxProxyHandlers(
       }
     }
 
-    handlers.vaultReadBinary = async (path: string) => {
-      const normalized = normalizePath(path)
-      const file = app.vault.getAbstractFileByPath(normalized)
-      // Same contract as readText: null only for "file does not exist".
-      if (file === null) {
+    if (config.allowVaultRead) {
+      handlers.vaultReadBinary = async (path: string) => {
+        const normalized = normalizePath(path)
+        const file = app.vault.getAbstractFileByPath(normalized)
+        // Same contract as readText: null only for "file does not exist".
+        if (file === null) {
+          return null
+        }
+        if (!(file instanceof TFile)) {
+          throw new Error(`vault.readBinary: "${path}" is a folder, not a file`)
+        }
+        const buffer = await app.vault.readBinary(file).catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error)
+          throw new Error(`vault.readBinary: ${reason}`)
+        })
+        const bytes = new Uint8Array(buffer)
+        if (bytes.length > vaultReadMaxBytes) {
+          // Binary truncation would yield an invalid file; refuse instead so
+          // the model gets a clear signal rather than corrupted base64.
+          throw new Error(
+            `vault.readBinary refused: file is ${bytes.length} bytes, vaultReadMaxKb cap is ${vaultReadMaxKb} KB`,
+          )
+        }
+        // Convert in 32KB chunks to avoid `String.fromCharCode(...arr)` blowing the call-stack on large files.
+        let binary = ''
+        const chunkSize = 0x8000
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
+          binary += String.fromCharCode.apply(null, Array.from(chunk))
+        }
+        const base64 = btoa(binary)
+        return {
+          base64,
+          mimeType: inferMimeType(path),
+          byteLength: bytes.length,
+        }
+      }
+    }
+  }
+
+  if (config.allowBrowserRead) {
+    const configuredBrowserKb =
+      typeof config.browserReadMaxKb === 'number' &&
+      Number.isFinite(config.browserReadMaxKb)
+        ? Math.floor(config.browserReadMaxKb)
+        : JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB
+    const browserReadMaxKb = Math.min(
+      JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+      Math.max(JS_SANDBOX_BROWSER_READ_MIN_KB, configuredBrowserKb),
+    )
+    const browserReadMaxBytes = browserReadMaxKb * 1024
+    handlers.browserReadHtml = async (
+      rawPageId: string,
+    ): Promise<JsSandboxBrowserReadHtmlResult | null> => {
+      if (Platform.isMobile) {
+        throw new Error('browser.readHtml is desktop-only.')
+      }
+      const pageId = normalizeBrowserReadPageId(rawPageId)
+      const handle = findWebviewHandleByPageId(app, pageId)
+      if (!handle) {
         return null
       }
-      if (!(file instanceof TFile)) {
-        throw new Error(`vault.readBinary: "${path}" is a folder, not a file`)
-      }
-      const buffer = await app.vault.readBinary(file).catch((error) => {
+      try {
+        return await readActiveWebviewHtml(handle, {
+          maxBytes: browserReadMaxBytes,
+        })
+      } catch (error) {
+        if (error instanceof BrowserReadFailure) {
+          throw new Error(`browser.readHtml: ${error.message}`)
+        }
         const reason = error instanceof Error ? error.message : String(error)
-        throw new Error(`vault.readBinary: ${reason}`)
-      })
-      const bytes = new Uint8Array(buffer)
-      if (bytes.length > vaultReadMaxBytes) {
-        // Binary truncation would yield an invalid file; refuse instead so
-        // the model gets a clear signal rather than corrupted base64.
-        throw new Error(
-          `vault.readBinary refused: file is ${bytes.length} bytes, vaultReadMaxKb cap is ${vaultReadMaxKb} KB`,
-        )
-      }
-      // Convert in 32KB chunks to avoid `String.fromCharCode(...arr)` blowing the call-stack on large files.
-      let binary = ''
-      const chunkSize = 0x8000
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
-        binary += String.fromCharCode.apply(null, Array.from(chunk))
-      }
-      const base64 = btoa(binary)
-      return {
-        base64,
-        mimeType: guessMimeTypeFromExtension(file.extension),
-        byteLength: bytes.length,
+        throw new Error(`browser.readHtml: ${reason}`)
       }
     }
   }
@@ -4831,20 +5258,23 @@ function buildJsSandboxProxyHandlers(
       Number.isFinite(config.dbQueryMaxLimit) &&
       config.dbQueryMaxLimit > 0
         ? Math.min(
-            JS_SANDBOX_DB_HARD_MAX_LIMIT,
+            JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
             Math.floor(config.dbQueryMaxLimit),
           )
-        : JS_SANDBOX_DB_DEFAULT_MAX_LIMIT
+        : JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT
 
     const clampLimit = (raw: unknown): number => {
       if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
-        return Math.min(10, configuredLimit)
+        return Math.min(
+          JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+          configuredLimit,
+        )
       }
       return Math.min(configuredLimit, Math.floor(raw))
     }
 
     handlers.dbQuery = async (
-      method: 'search' | 'find' | 'get',
+      method: 'search',
       params: Record<string, unknown>,
     ) => {
       if (method === 'search') {
@@ -4853,68 +5283,6 @@ function buildJsSandboxProxyHandlers(
         const limit = clampLimit(params.limit)
         const results = await engine.processQuery({ query, limit })
         return results
-      }
-
-      if (method === 'find') {
-        const keywordRaw =
-          typeof params.keyword === 'string' ? params.keyword : ''
-        const keyword = keywordRaw.trim()
-        if (!keyword) return []
-        const needle = keyword.toLowerCase()
-        const limit = clampLimit(params.limit)
-
-        const files = app.vault.getMarkdownFiles()
-        const matches: Array<{ path: string; excerpt: string }> = []
-        let scanned = 0
-        for (const file of files) {
-          if (matches.length >= limit) break
-          if (scanned >= JS_SANDBOX_DB_FIND_MAX_SCANNED_FILES) break
-          if (file.stat.size > JS_SANDBOX_DB_FIND_MAX_FILE_BYTES) continue
-          scanned++
-          let text: string
-          try {
-            const vault = app.vault as {
-              cachedRead?: (f: TFile) => Promise<string>
-              read: (f: TFile) => Promise<string>
-            }
-            text = vault.cachedRead
-              ? await vault.cachedRead(file)
-              : await vault.read(file)
-          } catch {
-            continue
-          }
-          const hitIndex = text.toLowerCase().indexOf(needle)
-          if (hitIndex < 0) continue
-          const start = Math.max(0, hitIndex - 60)
-          const end = Math.min(text.length, hitIndex + needle.length + 60)
-          const excerpt =
-            (start > 0 ? '…' : '') +
-            text.slice(start, end).replace(/\s+/g, ' ').trim() +
-            (end < text.length ? '…' : '')
-          matches.push({ path: file.path, excerpt })
-        }
-        return matches
-      }
-
-      if (method === 'get') {
-        const path = typeof params.path === 'string' ? params.path : ''
-        if (!path) return null
-        const file = app.vault.getAbstractFileByPath(normalizePath(path))
-        if (!(file instanceof TFile)) return null
-        try {
-          const vault = app.vault as {
-            cachedRead?: (f: TFile) => Promise<string>
-            read: (f: TFile) => Promise<string>
-          }
-          const content = vault.cachedRead
-            ? await vault.cachedRead(file)
-            : await vault.read(file)
-          const frontmatter =
-            app.metadataCache.getFileCache(file)?.frontmatter ?? {}
-          return { content, frontmatter }
-        } catch {
-          return null
-        }
       }
 
       throw new Error(`unknown db method: ${method}`)

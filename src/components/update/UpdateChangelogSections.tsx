@@ -1,22 +1,57 @@
-import { Fragment } from 'react'
+import type { ReactNode } from 'react'
 
 import type { ChangelogSection } from '../../core/update/updateChecker'
 
+function renderInlineMarkdown(text: string, allowBold = true): ReactNode[] {
+  const nodes: ReactNode[] = []
+  let cursor = 0
+  let key = 0
+
+  while (cursor < text.length) {
+    const codeStart = text.indexOf('`', cursor)
+    const boldStart = allowBold ? text.indexOf('**', cursor) : -1
+    const starts = [codeStart, boldStart].filter((index) => index >= 0)
+    const start = starts.length ? Math.min(...starts) : -1
+
+    if (start < 0) {
+      nodes.push(text.slice(cursor))
+      break
+    }
+    if (start > cursor) nodes.push(text.slice(cursor, start))
+
+    if (start === codeStart) {
+      const end = text.indexOf('`', start + 1)
+      if (end < 0) {
+        nodes.push(text.slice(start))
+        break
+      }
+      nodes.push(
+        <code key={key++} className="yolo-update-toast-code">
+          {text.slice(start + 1, end)}
+        </code>,
+      )
+      cursor = end + 1
+      continue
+    }
+
+    const end = text.indexOf('**', start + 2)
+    if (end < 0) {
+      nodes.push(text.slice(start))
+      break
+    }
+    nodes.push(
+      <strong key={key++} className="yolo-update-toast-strong">
+        {renderInlineMarkdown(text.slice(start + 2, end), false)}
+      </strong>,
+    )
+    cursor = end + 2
+  }
+
+  return nodes
+}
+
 function InlineText({ text }: { text: string }) {
-  const parts = text.split(/(`[^`]+`)/g)
-  return (
-    <>
-      {parts.map((part, index) =>
-        part.length > 1 && part.startsWith('`') && part.endsWith('`') ? (
-          <code key={index} className="yolo-update-toast-code">
-            {part.slice(1, -1)}
-          </code>
-        ) : (
-          <Fragment key={index}>{part}</Fragment>
-        ),
-      )}
-    </>
-  )
+  return <>{renderInlineMarkdown(text)}</>
 }
 
 type UpdateChangelogSectionsProps = {

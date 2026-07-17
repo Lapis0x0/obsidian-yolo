@@ -14,6 +14,11 @@ export async function runBash(params: RunBashParams): Promise<RunBashResult> {
 
 export async function killAllBashSessions(): Promise<void> {
   if (!Platform.isDesktop) return
-  const { killAllBashSessions: killAll } = await import('./session-manager')
+  const [{ killAllBashSessions: killAll }, { stopSystemProxyBridge }] =
+    await Promise.all([
+      import('./session-manager'),
+      import('./system-proxy-bridge'),
+    ])
   killAll()
+  await stopSystemProxyBridge()
 }

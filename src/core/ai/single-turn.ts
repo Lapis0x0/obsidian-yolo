@@ -13,6 +13,7 @@ import {
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import {
+  type ToolCallArgumentDiagnostics,
   type ToolCallArguments,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
@@ -24,8 +25,11 @@ import {
   runWithLLMDebugTrace,
 } from '../llm/debugCapture'
 import { applyLightweightRequestPolicy } from '../llm/lightweight-request-policy'
+import { ModelRequestTimeoutError } from '../llm/requestPolicy'
+import { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import { isLocalFsWriteToolName } from '../mcp/localFileTools'
 
+import { markRequestErrorNonRetryable } from './requestRetry'
 import {
   ToolCallAccumulator,
   createCanonicalToolEventsFromDeltas,
@@ -44,6 +48,7 @@ export type SingleTurnExecutionResult = {
     arguments?: ToolCallArguments
     metadata?: {
       thoughtSignature?: string
+      argumentDiagnostics?: ToolCallArgumentDiagnostics
     }
   }[]
 }
@@ -54,6 +59,7 @@ type StreamedToolCall = {
   type?: 'function'
   metadata?: {
     thoughtSignature?: string
+    argumentDiagnostics?: ToolCallArgumentDiagnostics
   }
   function?: {
     name?: string
@@ -73,7 +79,7 @@ type SingleTurnExecutionInput = {
    */
   tool_choice?: RequestToolChoice
   signal?: AbortSignal
-  stream?: boolean
+  deliveryMode?: ResponseDeliveryMode
   primaryRequestTimeoutMs?: number
   streamFallbackRecoveryEnabled?: boolean
   geminiTools?: {
@@ -98,6 +104,8 @@ type SingleTurnExecutionInput = {
 }
 
 const DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS = DEFAULT_MODEL_REQUEST_TIMEOUT_MS
+const TOOL_ARGUMENT_RETRY_HINT =
+  'The previous streaming response produced empty or placeholder tool-call arguments. Retry with complete, valid JSON tool_call arguments. Keep each tool_call argument object small; prefer narrower file edits or smaller parameter payloads instead of sending huge file contents in one call.'
 
 const normalizeToolName = (toolName: string): string => {
   if (!toolName.includes('__')) {
@@ -214,13 +222,28 @@ const hasInvalidWriteToolArguments = (
   })
 }
 
+const hasSuspiciousEmptyToolArguments = (
+  toolCalls: SingleTurnExecutionResult['toolCalls'],
+): boolean => {
+  return toolCalls.some((toolCall) => {
+    const args = toolCall.arguments
+    if (!args) {
+      return true
+    }
+    if (args.kind === 'partial') {
+      return args.rawText.trim().length === 0
+    }
+    return Object.keys(args.value).length === 0
+  })
+}
+
 const logStreamingRecoverTriggered = ({
   reason,
   finishReason,
   toolCalls,
   error,
 }: {
-  reason: 'invalid_write_args' | 'stream_protocol_error'
+  reason: 'empty_tool_args' | 'invalid_write_args' | 'stream_protocol_error'
   finishReason?: string | null
   toolCalls?: SingleTurnExecutionResult['toolCalls']
   error?: string
@@ -240,7 +263,7 @@ export async function executeSingleTurn({
   tools,
   tool_choice,
   signal,
-  stream = true,
+  deliveryMode = 'incremental',
   primaryRequestTimeoutMs = DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS,
   streamFallbackRecoveryEnabled = true,
   geminiTools,
@@ -277,9 +300,37 @@ export async function executeSingleTurn({
       durationMs: Date.now() - lightweightStartedAt,
     })
   }
+  const executionMode =
+    providerClient.resolveResponseExecutionMode(deliveryMode)
   const withDebugTrace = <T>(run: () => Promise<T>): Promise<T> =>
     runWithLLMDebugTrace(debugTraceId, run)
-  const runNonStreaming = async (): Promise<SingleTurnExecutionResult> => {
+  const createRequestWithSystemHint = (
+    systemHint: string | undefined,
+  ): LLMRequestBase => {
+    if (!systemHint) {
+      return request
+    }
+    const [firstMessage, ...restMessages] = request.messages
+    if (firstMessage?.role === 'system') {
+      return {
+        ...request,
+        messages: [
+          {
+            ...firstMessage,
+            content: `${firstMessage.content}\n\n${systemHint}`,
+          },
+          ...restMessages,
+        ],
+      }
+    }
+    return {
+      ...request,
+      messages: [{ role: 'system', content: systemHint }, ...request.messages],
+    }
+  }
+  const runNonStreaming = async (options?: {
+    systemHint?: string
+  }): Promise<SingleTurnExecutionResult> => {
     const requestController = new AbortController()
     const handleRequestAbort = () => requestController.abort()
     if (signal?.aborted) {
@@ -294,7 +345,7 @@ export async function executeSingleTurn({
         providerClient.generateResponse(
           effectiveModel,
           {
-            ...request,
+            ...createRequestWithSystemHint(options?.systemHint),
             tools,
             tool_choice: resolvedToolChoice,
             stream: false,
@@ -327,6 +378,7 @@ export async function executeSingleTurn({
                 name,
                 arguments: createToolCallArguments(
                   toolCall.function?.arguments,
+                  { allowPartial: true },
                 ),
                 metadata: toolCall.metadata,
               }
@@ -340,15 +392,30 @@ export async function executeSingleTurn({
     }
   }
 
-  if (!stream) {
+  if (executionMode === 'non-streaming') {
     return runNonStreaming()
   }
 
+  const isBufferedStreaming = executionMode === 'buffered-streaming'
   const streamController = new AbortController()
   bindLLMDebugTraceToSignal(debugTraceId, streamController.signal)
-  const handleAbort = () => streamController.abort()
-  if (signal?.aborted) {
+  let rejectBufferedInterruption: ((error: Error) => void) | undefined
+  const bufferedInterruption = new Promise<never>((_, reject) => {
+    rejectBufferedInterruption = reject
+  })
+  const createAbortError = (): Error => {
+    const error = new Error('Aborted')
+    error.name = 'AbortError'
+    return error
+  }
+  const handleAbort = () => {
     streamController.abort()
+    if (isBufferedStreaming) {
+      rejectBufferedInterruption?.(createAbortError())
+    }
+  }
+  if (signal?.aborted) {
+    handleAbort()
   } else {
     signal?.addEventListener('abort', handleAbort, { once: true })
   }
@@ -376,9 +443,14 @@ export async function executeSingleTurn({
     timeoutId = setTimeout(() => {
       timedOut = true
       streamController.abort()
+      if (isBufferedStreaming) {
+        rejectBufferedInterruption?.(
+          new ModelRequestTimeoutError(primaryRequestTimeoutMs),
+        )
+      }
     }, primaryRequestTimeoutMs)
 
-    await withDebugTrace(async () => {
+    const consumeStream = withDebugTrace(async () => {
       const streamIterator = await providerClient.streamResponse(
         effectiveModel,
         {
@@ -397,7 +469,9 @@ export async function executeSingleTurn({
       for await (const chunk of streamIterator) {
         if (!hasReceivedFirstChunk) {
           hasReceivedFirstChunk = true
-          clearTimeoutId()
+          if (!isBufferedStreaming) {
+            clearTimeoutId()
+          }
         }
         if (signal?.aborted) {
           break
@@ -451,17 +525,22 @@ export async function executeSingleTurn({
 
         const streamedToolCallList = toolCallAccumulator.getSnapshots()
 
-        onStreamDelta?.({
-          contentDelta,
-          reasoningDelta,
-          chunk,
-          toolCalls:
-            streamedToolCallList.length > 0
-              ? streamedToolCallList.sort((a, b) => a.index - b.index)
-              : undefined,
-        })
+        if (!isBufferedStreaming) {
+          onStreamDelta?.({
+            contentDelta,
+            reasoningDelta,
+            chunk,
+            toolCalls:
+              streamedToolCallList.length > 0
+                ? streamedToolCallList.sort((a, b) => a.index - b.index)
+                : undefined,
+          })
+        }
       }
     })
+    await (isBufferedStreaming
+      ? Promise.race([consumeStream, bufferedInterruption])
+      : consumeStream)
 
     const streamEndedAt = Date.now()
     toolCallAccumulator.sealOpenCalls('stream_end', streamEndedAt)
@@ -474,19 +553,36 @@ export async function executeSingleTurn({
         if (!name) {
           return null
         }
+        const shouldAttachDiagnostics =
+          Boolean(toolCall.metadata) ||
+          toolCall.diagnostics.parseState !== 'valid' ||
+          toolCall.diagnostics.rawArgsLength === 0
         return {
           id: toolCall.id,
           name,
-          arguments:
-            toolCall.function?.arguments?.kind === 'complete'
-              ? toolCall.function.arguments
-              : undefined,
-          metadata: toolCall.metadata,
+          arguments: toolCall.function?.arguments,
+          metadata: shouldAttachDiagnostics
+            ? {
+                ...toolCall.metadata,
+                argumentDiagnostics: {
+                  ...toolCall.diagnostics,
+                  finishReason,
+                  timedOut,
+                  aborted: signal?.aborted ?? false,
+                  deliveryMode,
+                },
+              }
+            : undefined,
         }
       })
       .filter((toolCall): toolCall is NonNullable<typeof toolCall> =>
         Boolean(toolCall),
       )
+
+    const hasInvalidWriteArgs =
+      hasInvalidWriteToolArguments(streamedToolCallList)
+    const hasEmptyToolArgs =
+      hasSuspiciousEmptyToolArguments(streamedToolCallList)
 
     let finalToolCalls: SingleTurnExecutionResult['toolCalls'] =
       streamedToolCallList
@@ -495,16 +591,22 @@ export async function executeSingleTurn({
     let finalProviderMetadata: ProviderMetadata | undefined = providerMetadata
 
     if (
+      !isBufferedStreaming &&
       streamFallbackRecoveryEnabled &&
-      hasInvalidWriteToolArguments(streamedToolCallList)
+      (hasInvalidWriteArgs || hasEmptyToolArgs)
     ) {
+      const recoveryReason = hasEmptyToolArgs
+        ? 'empty_tool_args'
+        : 'invalid_write_args'
       logStreamingRecoverTriggered({
-        reason: 'invalid_write_args',
+        reason: recoveryReason,
         finishReason,
         toolCalls: streamedToolCallList,
       })
       try {
-        const nonStreamingResult = await runNonStreaming()
+        const nonStreamingResult = await runNonStreaming({
+          systemHint: hasEmptyToolArgs ? TOOL_ARGUMENT_RETRY_HINT : undefined,
+        })
         if (nonStreamingResult.toolCalls.length > 0) {
           finalToolCalls = nonStreamingResult.toolCalls
           finalFinishReason = nonStreamingResult.finishReason
@@ -515,6 +617,24 @@ export async function executeSingleTurn({
         // Preserve invalid tool calls so they can surface as explicit errors
         // instead of silently disappearing from the conversation.
       }
+    }
+
+    // Guard against silent failures: if the stream completed without
+    // producing any content, reasoning, or tool calls, the response is
+    // effectively empty.  This typically indicates a misconfigured base URL
+    // (e.g. missing `/v1`) where the proxy returns a valid but contentless
+    // SSE stream.  Throw so the agent layer can surface an error message
+    // instead of showing the user a blank bubble.
+    if (
+      !content &&
+      !reasoning &&
+      finalToolCalls.length === 0 &&
+      !finalFinishReason &&
+      !signal?.aborted
+    ) {
+      throw new Error(
+        'No content received from the model — verify the API base URL (e.g. the `/v1` suffix) and that the endpoint returns a non-empty SSE stream.',
+      )
     }
 
     logLightweightIfNeeded(usage, 'single-turn:stream')
@@ -528,6 +648,9 @@ export async function executeSingleTurn({
       toolCalls: finalToolCalls,
     }
   } catch (error) {
+    if (isBufferedStreaming) {
+      throw markRequestErrorNonRetryable(error)
+    }
     const message =
       error instanceof Error ? error.message : String(error ?? 'Unknown error')
     const shouldFallback =

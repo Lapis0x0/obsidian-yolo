@@ -1,6 +1,7 @@
 import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
+  createPartialToolCallArguments,
 } from '../../types/tool-call.types'
 import { McpManager } from '../mcp/mcpManager'
 
@@ -12,6 +13,44 @@ describe('AgentToolGateway', () => {
   it('auto executes tools with full access', () => {
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['server__tool_a'],
+      toolPreferences: {
+        server__tool_a: {
+          enabled: true,
+        },
+      },
+      toolServerPreferences: {
+        server: { approvalMode: 'full_access' },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        { id: 'tool-1', name: 'server__tool_a', arguments: emptyArgs },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'server__tool_a',
+      conversationId: 'conv-1',
+      requestArgs: {},
+      requireAutoExecution: true,
+    })
+  })
+
+  it('ignores per-tool full access for third-party MCP tools without server approval', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(false),
       getJsSandboxSettings: jest.fn().mockReturnValue({}),
     } as unknown as McpManager
 
@@ -33,7 +72,7 @@ describe('AgentToolGateway', () => {
     })
 
     expect(message.toolCalls[0]?.response.status).toBe(
-      ToolCallResponseStatus.Running,
+      ToolCallResponseStatus.PendingApproval,
     )
     // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
     const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
@@ -41,7 +80,7 @@ describe('AgentToolGateway', () => {
       requestToolName: 'server__tool_a',
       conversationId: 'conv-1',
       requestArgs: {},
-      requireAutoExecution: true,
+      requireAutoExecution: false,
     })
   })
 
@@ -151,6 +190,205 @@ describe('AgentToolGateway', () => {
       requestArgs: {},
       requireAutoExecution: false,
     })
+  })
+
+  it('rejects malformed local write arguments before execution', async () => {
+    const callTool = jest.fn()
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      callTool,
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_write'],
+      toolPreferences: {
+        yolo_local__fs_write: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_write',
+          arguments: createPartialToolCallArguments(
+            '{"path":"note.md","content":',
+          ),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Error,
+      error: expect.stringContaining('Tool argument parsing failed'),
+    })
+    const response = message.toolCalls[0]?.response
+    if (response?.status !== ToolCallResponseStatus.Error) {
+      throw new Error('expected error')
+    }
+    expect(response.error).toContain('Provided parameter names: content, path')
+    expect(response.error).toContain('Required parameter names: path, content')
+    expect(response.error).toContain('Raw args length:')
+    expect(response.error).toContain('finishReason:')
+
+    const executed = await gateway.executeAutoToolCalls({
+      toolMessage: message,
+      conversationId: 'conv-1',
+    })
+
+    expect(executed.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Error,
+    )
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('repairs incomplete local write JSON before execution', async () => {
+    const callTool = jest.fn().mockResolvedValue({
+      status: ToolCallResponseStatus.Success,
+      data: { type: 'text', text: 'ok' },
+    })
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      callTool,
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_write'],
+      toolPreferences: {
+        yolo_local__fs_write: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_write',
+          arguments: createPartialToolCallArguments(
+            '{"path":"note.md","content":"hello"',
+          ),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    expect(message.toolCalls[0]?.request.arguments?.kind).toBe('complete')
+
+    const executed = await gateway.executeAutoToolCalls({
+      toolMessage: message,
+      conversationId: 'conv-1',
+    })
+
+    expect(executed.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Success,
+    )
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(callTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: { path: 'note.md', content: 'hello' },
+      }),
+    )
+  })
+
+  it('rejects local write repair that would close an unterminated content string', async () => {
+    const callTool = jest.fn()
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      callTool,
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_write'],
+      toolPreferences: {
+        yolo_local__fs_write: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_write',
+          arguments: createPartialToolCallArguments(
+            '{"path":"note.md","content":"half written',
+          ),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    const response = message.toolCalls[0]?.response
+    expect(response?.status).toBe(ToolCallResponseStatus.Error)
+    if (response?.status !== ToolCallResponseStatus.Error) {
+      throw new Error('expected error')
+    }
+    expect(response.error).toContain('unterminated string')
+    expect(response.error).toContain('file content was truncated')
+
+    const executed = await gateway.executeAutoToolCalls({
+      toolMessage: message,
+      conversationId: 'conv-1',
+    })
+
+    expect(executed.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Error,
+    )
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  it('reports missing fs_edit locator fields before execution', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_edit'],
+      toolPreferences: {
+        yolo_local__fs_edit: {
+          enabled: true,
+          approvalMode: 'full_access',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_edit',
+          arguments: createCompleteToolCallArguments({
+            value: { path: 'note.md', newText: 'x' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    const response = message.toolCalls[0]?.response
+    expect(response?.status).toBe(ToolCallResponseStatus.Error)
+    if (response?.status !== ToolCallResponseStatus.Error) {
+      throw new Error('expected error')
+    }
+    expect(response.error).toContain('startLine must be an integer')
+    expect(response.error).toContain('endLine must be an integer')
+    expect(response.error).toContain('"path":"note.md"')
   })
 
   it('auto executes read-only terminal commands even when terminal_command requires approval', () => {
@@ -577,7 +815,10 @@ describe('AgentToolGateway', () => {
     })
   })
 
-  it('does not leave approval-required subagent child calls pending', () => {
+  it('routes approval-required subagent child calls to PendingApproval (parent UI)', () => {
+    // Subagent approval requests bubble up to the SubagentCard's inline
+    // approval block in the parent conversation. See
+    // `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(false),
       getJsSandboxSettings: jest.fn().mockReturnValue({}),
@@ -601,11 +842,9 @@ describe('AgentToolGateway', () => {
       conversationId: 'subagent-task',
     })
 
-    const response = message.toolCalls[0]?.response
-    expect(response?.status).toBe(ToolCallResponseStatus.Error)
-    if (response?.status === ToolCallResponseStatus.Error) {
-      expect(response.error).toContain('Subagents cannot pause')
-    }
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.PendingApproval,
+    )
   })
 
   it('runs fs_edit immediately when approval mode requires review', async () => {
@@ -630,7 +869,17 @@ describe('AgentToolGateway', () => {
 
     const message = gateway.createToolMessage({
       toolCallRequests: [
-        { id: 'tool-1', name: 'yolo_local__fs_edit', arguments: emptyArgs },
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_edit',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'note.md',
+              oldText: 'before',
+              newText: 'after',
+            },
+          }),
+        },
       ],
       conversationId: 'conv-1',
     })
@@ -649,7 +898,11 @@ describe('AgentToolGateway', () => {
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'yolo_local__fs_edit',
-        args: {},
+        args: {
+          path: 'note.md',
+          oldText: 'before',
+          newText: 'after',
+        },
         id: 'tool-1',
         conversationId: 'conv-1',
         conversationMessages: undefined,
@@ -660,7 +913,10 @@ describe('AgentToolGateway', () => {
     )
   })
 
-  it('does not open fs_edit review in subagent child runs without automatic permission', () => {
+  it('opens fs_edit review for subagent child runs (same as parent flow)', () => {
+    // After the approval-routing refactor, subagent fs_edit calls go through
+    // the same review (inline diff) path as parent calls when the tool is in
+    // require_approval mode. The user's approval target is the SubagentCard.
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(false),
       getJsSandboxSettings: jest.fn().mockReturnValue({}),
@@ -679,13 +935,23 @@ describe('AgentToolGateway', () => {
 
     const message = gateway.createToolMessage({
       toolCallRequests: [
-        { id: 'tool-1', name: 'yolo_local__fs_edit', arguments: emptyArgs },
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_edit',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'note.md',
+              oldText: 'before',
+              newText: 'after',
+            },
+          }),
+        },
       ],
       conversationId: 'subagent-task',
     })
 
     expect(message.toolCalls[0]?.response.status).toBe(
-      ToolCallResponseStatus.Error,
+      ToolCallResponseStatus.Running,
     )
   })
 
@@ -827,12 +1093,48 @@ describe('AgentToolGateway', () => {
       conversationId: 'conv-1',
     })
 
-    expect(message.toolCalls[0]?.response.status).toBe(
-      ToolCallResponseStatus.Rejected,
-    )
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason: 'Tool "server__tool_b" is not available in this workspace.',
+    })
     // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
     const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
     expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+  })
+
+  it('explains workspace scope path rejections', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn(),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_read'],
+      workspaceScope: {
+        enabled: true,
+        include: ['Notes'],
+        exclude: [],
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: { paths: ['Private/secret.md'] },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Path "Private/secret.md" is outside this agent\'s workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.',
+    })
   })
 
   describe('on-demand harness', () => {
@@ -901,6 +1203,38 @@ describe('AgentToolGateway', () => {
       if (response?.status === ToolCallResponseStatus.Error) {
         expect(response.error).toContain('load_tool_schemas')
       }
+    })
+
+    it('does not require disclosure for lightweight servers in auto mode', async () => {
+      const mcpManager = mcpManagerWithRealTool()
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['server__tool_a'],
+        toolPreferences: {
+          server__tool_a: {
+            enabled: true,
+            approvalMode: 'full_access',
+          },
+        },
+      })
+      const toolMessage = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'server__tool_a',
+            arguments: createCompleteToolCallArguments({
+              value: { value: 'hello' },
+            }),
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+      const result = await gateway.executeAutoToolCalls({
+        toolMessage,
+        conversationId: 'conv-1',
+        conversationMessages: [],
+      })
+      const response = result.toolCalls[0]?.response
+      expect(response?.status).toBe(ToolCallResponseStatus.Success)
     })
 
     it('rejects on-demand tool calls with arguments that violate the real schema', async () => {

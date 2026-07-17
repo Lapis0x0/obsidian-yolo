@@ -5,6 +5,7 @@ import {
   shouldHideNativeSelection,
   shouldPaintPersistedHighlight,
 } from './selectionHighlightController'
+import { shouldCreateSelectionHighlight } from './selectionHighlightPolicy'
 
 function selection(from: number, to: number): EditorSelection {
   return EditorSelection.create([EditorSelection.range(from, to)])
@@ -95,5 +96,22 @@ describe('shouldPaintPersistedHighlight', () => {
     expect(shouldPaintPersistedHighlight(payload, selection(0, 5), false)).toBe(
       true,
     )
+  })
+})
+
+describe('shouldCreateSelectionHighlight', () => {
+  it('keeps all highlight owners on desktop', () => {
+    expect(shouldCreateSelectionHighlight('chat', false)).toBe(true)
+    expect(shouldCreateSelectionHighlight('quickask', false)).toBe(true)
+    expect(shouldCreateSelectionHighlight('transient', false)).toBe(true)
+  })
+
+  it('disables persisted selection owners on mobile', () => {
+    expect(shouldCreateSelectionHighlight('chat', true)).toBe(false)
+    expect(shouldCreateSelectionHighlight('quickask', true)).toBe(false)
+  })
+
+  it('keeps transient result highlights on mobile', () => {
+    expect(shouldCreateSelectionHighlight('transient', true)).toBe(true)
   })
 })

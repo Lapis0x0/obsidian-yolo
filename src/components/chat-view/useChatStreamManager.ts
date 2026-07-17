@@ -1,5 +1,5 @@
 import { UseMutationResult, useMutation } from '@tanstack/react-query'
-import { TFile } from 'obsidian'
+import { Platform, TFile } from 'obsidian'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -21,6 +21,7 @@ import {
   type AgentConversationState,
   buildAgentConversationRunSummary,
 } from '../../core/agent/service'
+import { buildToolCapabilityPrompt } from '../../core/agent/tool-capability-prompt'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { selectAllowedTools } from '../../core/agent/tool-selection'
 import type { AgentRuntimeRunInput } from '../../core/agent/types'
@@ -32,7 +33,7 @@ import {
 } from '../../core/llm/exception'
 import { getChatModelClient } from '../../core/llm/manager'
 import type { AutoPromotedTransportMode } from '../../core/llm/requestTransport'
-import { shouldUseStreamingForProvider } from '../../core/llm/streamingPolicy'
+import type { ResponseDeliveryMode } from '../../core/llm/responseDeliveryMode'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import {
   TERMINAL_COMMAND_TOOL_NAME,
@@ -81,6 +82,7 @@ type UseChatStreamManagerParams = {
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
+  yoloEnabled: boolean
   currentFileOverride?: TFile | null
   currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
   assistantIdOverride?: string
@@ -100,6 +102,14 @@ type BranchRetryTarget = {
   branchId: string
   sourceUserMessageId: string
   branchModelId?: string
+  branchLabel?: string
+}
+
+type AssistantErrorContinuationRunTarget = {
+  assistantMessageId: string
+  sourceUserMessageId: string
+  modelId: string
+  branchId?: string
   branchLabel?: string
 }
 
@@ -169,6 +179,7 @@ export type UseChatStreamManager = {
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
       branchTarget?: BranchRetryTarget
+      assistantContinuation?: AssistantErrorContinuationRunTarget
       compactionOverride?: ChatConversationCompactionState
     }
   >
@@ -179,29 +190,41 @@ const isRunSummaryActive = (summary: AgentConversationRunSummary): boolean => {
 }
 
 /**
- * Sidebar Chat focus sync → current-file-pointer injection.
- * Returns an empty array when the user has disabled focus sync or no file
- * is active.
+ * Sidebar Chat contextual injections.
  */
 const buildChatContextualInjections = ({
-  includeCurrentFileContent,
+  app,
+  includeFocusSync,
   currentFile,
   currentFileViewState,
 }: {
-  includeCurrentFileContent: boolean
+  app: import('obsidian').App
+  includeFocusSync: boolean
   currentFile: TFile | null | undefined
   currentFileViewState?: import('../../types/mentionable').CurrentFileViewState
 }): ContextualInjection[] => {
-  if (!includeCurrentFileContent || !currentFile) {
-    return []
+  const injections: ContextualInjection[] = []
+
+  if (!includeFocusSync) {
+    return injections
   }
-  return [
-    {
+
+  if (currentFile) {
+    injections.push({
       type: 'current-file-pointer',
       file: currentFile,
       viewState: currentFileViewState,
-    },
-  ]
+    })
+  }
+
+  if (!Platform.isMobile) {
+    injections.push({
+      type: 'browser-context',
+      app,
+    })
+  }
+
+  return injections
 }
 
 const annotateBranchMessages = (
@@ -259,6 +282,7 @@ export function useChatStreamManager({
   conversationOverrides,
   modelId,
   chatMode,
+  yoloEnabled,
   currentFileOverride,
   currentFileViewState,
   assistantIdOverride,
@@ -347,6 +371,11 @@ export function useChatStreamManager({
           summary !== null && isRunSummaryActive(summary),
       )
       if (activeSummaries.length > 0) {
+        const anchorMessageIds = new Set(
+          activeSummaries.flatMap((summary) =>
+            summary.anchorMessageId ? [summary.anchorMessageId] : [],
+          ),
+        )
         const hasWaitingApproval = activeSummaries.some(
           (summary) => summary.isWaitingApproval,
         )
@@ -355,6 +384,10 @@ export function useChatStreamManager({
         )
         setCurrentConversationRunSummary({
           conversationId: currentConversationId,
+          anchorMessageId:
+            anchorMessageIds.size === 1
+              ? anchorMessageIds.values().next().value
+              : undefined,
           status: 'running',
           isRunning: activeSummaries.some((summary) => summary.isRunning),
           isActive: true,
@@ -502,6 +535,7 @@ export function useChatStreamManager({
       const chatModeRuntime = enableAutoContextCompactionTool(
         resolveChatModeRuntime({
           mode: chatMode,
+          yoloEnabled,
           assistant: selectedAssistant,
           assistantEnabledToolNames:
             getEnabledAssistantToolNames(selectedAssistant),
@@ -517,7 +551,8 @@ export function useChatStreamManager({
       )
       const manualApiType = manualProvider?.apiType ?? null
       const manualContextualInjections = buildChatContextualInjections({
-        includeCurrentFileContent: resolveAssistantIncludeCurrentFileContent(
+        app,
+        includeFocusSync: resolveAssistantIncludeCurrentFileContent(
           selectedAssistant,
           settings,
         ),
@@ -550,7 +585,13 @@ export function useChatStreamManager({
             chatModelModalities: effectiveModel.modalities,
           })
         : []
-      const { hasTools, hasMemoryTools, requestTools } = selectAllowedTools({
+      const {
+        filteredTools,
+        hasTools,
+        hasMemoryTools,
+        hasOnDemandTools,
+        requestTools,
+      } = await selectAllowedTools({
         availableTools,
         allowedToolNames: effectiveAllowedToolNames,
         toolPreferences: chatModeRuntime.toolPreferences,
@@ -558,16 +599,21 @@ export function useChatStreamManager({
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
       })
+      const runtimeModePrompt = buildToolCapabilityPrompt({
+        mode: chatModeRuntime.toolCapabilityMode,
+        toolNames: filteredTools.map((tool) => tool.name),
+      })
       const compactionPrefix =
         await requestContextBuilder.generateRequestMessages({
           messages,
           hasTools,
           hasMemoryTools,
+          hasOnDemandTools,
           model: effectiveModel,
           conversationId: currentConversationId,
           compaction: manualCompaction,
           contextualInjections: manualContextualInjections,
-          runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+          runtimeModePrompt,
           // Reuse the frozen snapshot; never create one outside the real request.
           systemPromptSnapshotMode: 'reuse',
         })
@@ -605,7 +651,7 @@ export function useChatStreamManager({
             allowedToolNames: effectiveAllowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
-            runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+            toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: manualContextualInjections,
           })
       } catch (error) {
@@ -633,6 +679,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      yoloEnabled,
       currentConversationId,
       currentFileOverride,
       currentFileViewState,
@@ -652,6 +699,7 @@ export function useChatStreamManager({
       reasoningLevel,
       modelIds,
       branchTarget,
+      assistantContinuation,
       compactionOverride,
     }: {
       chatMessages: ChatMessage[]
@@ -660,6 +708,7 @@ export function useChatStreamManager({
       reasoningLevel?: ReasoningLevel
       modelIds?: string[]
       branchTarget?: BranchRetryTarget
+      assistantContinuation?: AssistantErrorContinuationRunTarget
       compactionOverride?: ChatConversationCompactionState
     }) => {
       const lastMessage = chatMessages.at(-1)
@@ -689,11 +738,13 @@ export function useChatStreamManager({
 
         const requestedModelId =
           modelId || selectedAssistant?.modelId || settings.chatModelId
-        const targetModelIds = branchTarget?.branchModelId?.trim()
-          ? [branchTarget.branchModelId]
-          : modelIds && modelIds.length > 0
-            ? modelIds
-            : [requestedModelId]
+        const targetModelIds = assistantContinuation?.modelId
+          ? [assistantContinuation.modelId]
+          : branchTarget?.branchModelId?.trim()
+            ? [branchTarget.branchModelId]
+            : modelIds && modelIds.length > 0
+              ? modelIds
+              : [requestedModelId]
 
         const resolveClientForModelId = (
           requestedId: string,
@@ -719,15 +770,19 @@ export function useChatStreamManager({
           }
         }
 
-        const resolvedClient = resolveClientForModelId(targetModelIds[0])
+        const resolvedClient = assistantContinuation
+          ? getChatModelClient({
+              settings,
+              modelId: assistantContinuation.modelId,
+              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+            })
+          : resolveClientForModelId(targetModelIds[0])
 
         const currentProvider = settings.providers.find(
           (provider) => provider.id === resolvedClient.model.providerId,
         )
-        const shouldStreamResponse = shouldUseStreamingForProvider({
-          requestedStream: conversationOverrides?.stream ?? true,
-          provider: currentProvider,
-        })
+        const deliveryMode: ResponseDeliveryMode =
+          conversationOverrides?.stream === false ? 'buffered' : 'incremental'
 
         const modelTemperature = resolvedClient.model.temperature
         const modelTopP = resolvedClient.model.topP
@@ -750,6 +805,7 @@ export function useChatStreamManager({
         const chatModeRuntime = enableAutoContextCompactionTool(
           resolveChatModeRuntime({
             mode: chatMode,
+            yoloEnabled,
             assistant: selectedAssistant,
             assistantEnabledToolNames:
               getEnabledAssistantToolNames(selectedAssistant),
@@ -770,7 +826,7 @@ export function useChatStreamManager({
               }
             : undefined
         const requestParams = {
-          stream: shouldStreamResponse,
+          deliveryMode,
           temperature: conversationOverrides?.temperature ?? modelTemperature,
           top_p: conversationOverrides?.top_p ?? modelTopP,
           max_tokens: modelMaxTokens,
@@ -791,7 +847,8 @@ export function useChatStreamManager({
           allowedToolNames: chatModeRuntime.allowedToolNames,
           enableToolDisclosure: settings.mcp.enableToolDisclosure,
           toolPreferences: chatModeRuntime.toolPreferences,
-          runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+          toolServerPreferences: chatModeRuntime.toolServerPreferences,
+          toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
           bypassToolApproval: chatModeRuntime.bypassToolApproval,
           blockedCommandPrefixes: settings.mcp.builtinToolOptions[
             TERMINAL_COMMAND_TOOL_NAME
@@ -801,11 +858,11 @@ export function useChatStreamManager({
           allowedSkillPaths,
           requestParams,
           contextualInjections: buildChatContextualInjections({
-            includeCurrentFileContent:
-              resolveAssistantIncludeCurrentFileContent(
-                selectedAssistant,
-                settings,
-              ),
+            app,
+            includeFocusSync: resolveAssistantIncludeCurrentFileContent(
+              selectedAssistant,
+              settings,
+            ),
             currentFile: currentFileOverride,
             currentFileViewState,
           }),
@@ -813,9 +870,23 @@ export function useChatStreamManager({
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,
           },
+          sourceUserMessageId: assistantContinuation?.sourceUserMessageId,
+          continueAssistantMessageId: assistantContinuation?.assistantMessageId,
         }
 
-        if (branchTarget && requestLastMessage?.role === 'user') {
+        const effectiveBranchTarget = assistantContinuation?.branchId
+          ? {
+              branchId: assistantContinuation.branchId,
+              sourceUserMessageId: assistantContinuation.sourceUserMessageId,
+              branchModelId: assistantContinuation.modelId,
+              branchLabel: assistantContinuation.branchLabel,
+            }
+          : branchTarget
+
+        if (
+          effectiveBranchTarget &&
+          (assistantContinuation || requestLastMessage?.role === 'user')
+        ) {
           const branchRunMessages = requestMessages ?? chatMessages
           baseConversationMessagesRef.current = chatMessages
           plugin
@@ -840,10 +911,10 @@ export function useChatStreamManager({
               conversationId,
               autoContextCompaction:
                 buildAutoContextCompactionInput(effectiveModel),
-              branchId: branchTarget.branchId,
-              sourceUserMessageId: branchTarget.sourceUserMessageId,
+              branchId: effectiveBranchTarget.branchId,
+              sourceUserMessageId: effectiveBranchTarget.sourceUserMessageId,
               branchLabel:
-                branchTarget.branchLabel ??
+                effectiveBranchTarget.branchLabel ??
                 effectiveModel.name ??
                 effectiveModel.model ??
                 effectiveModel.id,
@@ -885,10 +956,6 @@ export function useChatStreamManager({
               (provider) =>
                 provider.id === branchResolvedClient.model.providerId,
             )
-            const branchShouldStream = shouldUseStreamingForProvider({
-              requestedStream: conversationOverrides?.stream ?? true,
-              provider: branchProvider,
-            })
             const branchAbortController = new AbortController()
             const branchModel = branchResolvedClient.model
             const branchLabel =
@@ -914,7 +981,6 @@ export function useChatStreamManager({
                 abortSignal: branchAbortController.signal,
                 requestParams: {
                   ...requestParams,
-                  stream: branchShouldStream,
                   temperature:
                     conversationOverrides?.temperature ??
                     branchResolvedClient.model.temperature,
@@ -969,7 +1035,8 @@ export function useChatStreamManager({
       if (
         error instanceof LLMAPIKeyNotSetException ||
         error instanceof LLMAPIKeyInvalidException ||
-        error instanceof LLMBaseUrlNotSetException
+        error instanceof LLMBaseUrlNotSetException ||
+        error instanceof LLMModelNotFoundException
       ) {
         new ErrorModal(app, 'Error', error.message, error.rawError?.message, {
           showSettingsButton: true,
@@ -1027,6 +1094,7 @@ export function useChatStreamManager({
       const effectiveModel = resolvedClient.model
       const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
+        yoloEnabled,
         assistant: selectedAssistant,
         assistantEnabledToolNames:
           getEnabledAssistantToolNames(selectedAssistant),
@@ -1049,9 +1117,10 @@ export function useChatStreamManager({
         allowedToolNames: chatModeRuntime.allowedToolNames,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         toolPreferences: chatModeRuntime.toolPreferences,
-        runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+        toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
         contextualInjections: buildChatContextualInjections({
-          includeCurrentFileContent: resolveAssistantIncludeCurrentFileContent(
+          app,
+          includeFocusSync: resolveAssistantIncludeCurrentFileContent(
             selectedAssistant,
             settings,
           ),
@@ -1064,6 +1133,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      yoloEnabled,
       compaction,
       currentConversationId,
       currentFileOverride,

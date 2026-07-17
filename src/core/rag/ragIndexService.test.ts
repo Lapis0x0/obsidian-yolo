@@ -1,3 +1,4 @@
+import { DatabaseSaveFailedError } from '../../database/exception'
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 
 import { RagIndexBusyError, RagIndexService } from './ragIndexService'
@@ -276,6 +277,45 @@ describe('RagIndexService', () => {
       failureKind: 'permanent',
       retryPolicy: 'transient',
     })
+  })
+
+  it('records DatabaseSaveFailedError as a permanent failure (no retry)', async () => {
+    // #408: dumpDataDir OOM previously got swallowed and the run reported
+    // 100% complete on a database that was never flushed. After the fix
+    // VectorManager re-throws on the success path, surfacing here as a
+    // DatabaseSaveFailedError. We classify it permanent so the run lands
+    // on `failed` (not auto-retried) and the user sees real feedback.
+    const oom = new RangeError('Array buffer allocation failed')
+    const saveError = new DatabaseSaveFailedError(oom)
+    const updateVaultIndex = jest.fn().mockRejectedValue(saveError)
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+
+    await expect(
+      service.runIndex({
+        mode: 'sync',
+        scope: { kind: 'all' },
+        trigger: 'manual',
+        retryPolicy: 'transient',
+      }),
+    ).rejects.toBeInstanceOf(DatabaseSaveFailedError)
+
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'failed',
+      failureKind: 'permanent',
+      retryPolicy: 'transient',
+    })
+    expect(updateVaultIndex).toHaveBeenCalledTimes(1)
   })
 
   it('restores scheduled manual retries', async () => {

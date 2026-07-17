@@ -9,13 +9,24 @@ jest.mock('./which', () => ({
   which: jest.fn().mockResolvedValue('/bin/bash'),
 }))
 
+jest.mock('./system-proxy-bridge', () => ({
+  getSystemProxyBridgeUrl: jest.fn().mockResolvedValue(null),
+}))
+
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
 
-import { killAllBashSessions, runBash } from './session-manager'
+import {
+  killAllBashSessions,
+  runBash,
+  sessionManagerTimings,
+} from './session-manager'
 
 describe('terminal command session-manager', () => {
+  const originalIdleWaitMs = sessionManagerTimings.idleWaitMs
+
   afterEach(() => {
     jest.useRealTimers()
+    sessionManagerTimings.idleWaitMs = originalIdleWaitMs
     killAllBashSessions()
   })
 
@@ -98,10 +109,29 @@ describe('terminal command session-manager', () => {
     expect(polled.stdout).toBe('line-18\nline-19\nline-20\n')
   })
 
-  it('keeps the final session snapshot available for later tail polling', async () => {
+  it('runs consecutive one-shot commands without sharing a busy session', async () => {
+    const first = await runBash({
+      command: `sh -c 'printf ready; sleep 0.2'`,
+      cwd: '/tmp',
+      timeoutSeconds: 2,
+    })
+    const second = await runBash({
+      command: 'printf next',
+      cwd: '/tmp',
+      timeoutSeconds: 2,
+    })
+
+    expect(first.state).toBe('completed')
+    expect(first.stdout).toBe('ready')
+    expect(second.state).toBe('completed')
+    expect(second.stdout).toBe('next')
+  })
+
+  it('keeps the final session snapshot available for later tail polling in explicit session mode', async () => {
     const completed = await runBash({
       command: `printf 'one\\ntwo\\nthree\\n'`,
       cwd: '/tmp',
+      background: true,
       timeoutSeconds: 2,
     })
     expect(completed.state).toBe('completed')
@@ -116,7 +146,7 @@ describe('terminal command session-manager', () => {
     expect(polled.stdout).toBe('two\nthree\n')
   })
 
-  it('keeps shell state across shared foreground commands', async () => {
+  it('does not keep shell state across default one-shot commands', async () => {
     await runBash({
       command: 'cd /tmp',
       cwd: '/tmp',
@@ -124,6 +154,26 @@ describe('terminal command session-manager', () => {
     })
     const result = await runBash({
       command: 'pwd',
+      cwd: '/',
+      timeoutSeconds: 2,
+    })
+
+    expect(result.state).toBe('completed')
+    expect(result.stdout.trim()).toBe('/')
+  })
+
+  it('keeps shell state when explicitly reusing a session', async () => {
+    const started = await runBash({
+      command: 'cd /tmp',
+      cwd: '/',
+      background: true,
+      timeoutSeconds: 2,
+    })
+    expect(started.session_id).toBeDefined()
+
+    const result = await runBash({
+      command: 'pwd',
+      sessionId: started.session_id,
       timeoutSeconds: 2,
     })
 
@@ -132,6 +182,8 @@ describe('terminal command session-manager', () => {
   })
 
   it('emits a background waiting event with separated output after idle', async () => {
+    sessionManagerTimings.idleWaitMs = 100
+
     const subscriber = jest.fn()
     const unsubscribe = backgroundTaskCompletionBus.subscribe(subscriber)
 
@@ -151,7 +203,7 @@ describe('terminal command session-manager', () => {
     const result = await resultPromise
     expect(result.state).toBe('background')
 
-    await new Promise((resolve) => setTimeout(resolve, 10_500))
+    await new Promise((resolve) => setTimeout(resolve, 500))
     expect(subscriber).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'terminal_command_waiting',
@@ -165,5 +217,5 @@ describe('terminal command session-manager', () => {
     )
 
     unsubscribe()
-  }, 20_000)
+  })
 })

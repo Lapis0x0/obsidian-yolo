@@ -1,5 +1,5 @@
 import cx from 'clsx'
-import { Check, ChevronDown, Circle, ListTodo, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Circle, ListTodo, Loader2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -23,6 +23,8 @@ type Props = {
   queuedMessageCount?: number
 }
 
+const MISSING_TODO_SERIES_DISMISS_KEY = '__missing_todo_series__'
+
 export function TodoListPanel({ messages, queuedMessageCount = 0 }: Props) {
   const todos = useMemo(() => deriveTodosFromMessages(messages), [messages])
   const seriesStartId = useMemo(
@@ -42,6 +44,9 @@ export function TodoListPanel({ messages, queuedMessageCount = 0 }: Props) {
   // this component per conversation via `key={conversationId}`, so this
   // initial value also resets on conversation switch.
   const [expanded, setExpanded] = useState(false)
+  const [dismissedSeriesStartId, setDismissedSeriesStartId] = useState<
+    string | null
+  >(null)
 
   // Auto-expand only when a brand-new todo series starts WHILE the panel is
   // mounted — i.e. the user is watching the agent plan in real time.
@@ -78,7 +83,10 @@ export function TodoListPanel({ messages, queuedMessageCount = 0 }: Props) {
     previousQueuedCountRef.current = queuedMessageCount
   }, [queuedMessageCount])
 
-  if (todos.length === 0) return null
+  const dismissKey = seriesStartId ?? MISSING_TODO_SERIES_DISMISS_KEY
+  if (todos.length === 0 || dismissedSeriesStartId === dismissKey) {
+    return null
+  }
 
   const total = todos.length
   const done = todos.filter((item) => item.status === 'completed').length
@@ -90,6 +98,7 @@ export function TodoListPanel({ messages, queuedMessageCount = 0 }: Props) {
   const collapseLabel = expanded
     ? t('chat.todoPanel.collapse', '收起')
     : t('chat.todoPanel.expand', '展开')
+  const closeLabel = t('common.close', '关闭')
 
   return (
     <div
@@ -98,21 +107,42 @@ export function TodoListPanel({ messages, queuedMessageCount = 0 }: Props) {
         expanded ? 'yolo-todo-panel--expanded' : 'yolo-todo-panel--collapsed',
       )}
     >
-      <button
-        type="button"
-        className="yolo-todo-panel__header"
-        onClick={() => setExpanded((value) => !value)}
-        aria-expanded={expanded}
-        aria-label={collapseLabel}
-      >
-        <ListTodo
-          className="yolo-todo-panel__header-icon"
-          size={14}
-          aria-hidden
-        />
-        <span className="yolo-todo-panel__summary">{summary}</span>
-        <ChevronDown className="yolo-todo-panel__caret" size={14} aria-hidden />
-      </button>
+      <div className="yolo-todo-panel__header">
+        <button
+          type="button"
+          className="yolo-todo-panel__toggle"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+        >
+          <ListTodo
+            className="yolo-todo-panel__header-icon"
+            size={14}
+            aria-hidden
+          />
+          <span className="yolo-todo-panel__summary">{summary}</span>
+        </button>
+        <button
+          type="button"
+          className="yolo-todo-panel__icon-button yolo-todo-panel__caret-button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+        >
+          <ChevronDown
+            className="yolo-todo-panel__caret"
+            size={14}
+            aria-hidden
+          />
+          <span className="yolo-sr-only">{collapseLabel}</span>
+        </button>
+        <button
+          type="button"
+          className="yolo-todo-panel__icon-button yolo-todo-panel__close"
+          onClick={() => setDismissedSeriesStartId(dismissKey)}
+        >
+          <X size={14} strokeWidth={2} aria-hidden />
+          <span className="yolo-sr-only">{closeLabel}</span>
+        </button>
+      </div>
       <div className="yolo-todo-panel__body">
         <div className="yolo-todo-panel__body-inner">
           <ol className="yolo-todo-panel__list">

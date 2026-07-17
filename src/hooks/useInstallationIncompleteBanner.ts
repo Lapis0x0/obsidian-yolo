@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { usePlugin } from '../contexts/plugin-context'
+import type { InstallationIncompleteDetail } from '../core/update/installationIntegrity'
 
 export function useInstallationIncompleteBanner(): {
-  detail: {
-    bakedVersion: string
-    manifestVersion: string
-  } | null
+  detail: InstallationIncompleteDetail | null
   dismissed: boolean
   dismiss: () => void
 } {

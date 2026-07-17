@@ -185,95 +185,65 @@ describe('createDiffBlocks', () => {
 })
 
 describe('createInlineDiffLines', () => {
-  it('prefers whole-line replacement for cross-language rewrites', () => {
-    const [line] = createInlineDiffLines(
-      [
-        'Mode Variety: Covering single-player campaign, multiplayer PvP, and large-scale battle royale (Warzone).',
-      ],
-      ['模式多样性：包括单人剧情、多人对战以及大型大逃杀（Warzone）。'],
+  it('represents a single-line edit as a removed line followed by an added line', () => {
+    const lines = createInlineDiffLines(
+      ['Alpha beta gamma'],
+      ['Alpha beta delta'],
     )
 
-    expect(line).toEqual({
-      type: 'modified',
-      tokens: [
-        {
-          type: 'del',
-          text: 'Mode Variety: Covering single-player campaign, multiplayer PvP, and large-scale battle royale (Warzone).',
-        },
-        {
-          type: 'add',
-          text: '模式多样性：包括单人剧情、多人对战以及大型大逃杀（Warzone）。',
-        },
-      ],
-    })
+    expect(lines).toEqual([
+      { type: 'removed', tokens: [{ type: 'del', text: 'Alpha beta gamma' }] },
+      { type: 'added', tokens: [{ type: 'add', text: 'Alpha beta delta' }] },
+    ])
   })
 
-  it('keeps sentence anchors while diffing changed sentence bodies', () => {
-    const [line] = createInlineDiffLines(
-      ['Intro sentence. Keep this part. Closing note.'],
-      ['Intro sentence. Replace this part. Closing note.'],
+  it('keeps unchanged lines and only marks the changed lines within a block', () => {
+    const lines = createInlineDiffLines(
+      ['keep', 'old', 'tail'],
+      ['keep', 'new', 'tail'],
     )
 
-    expect(line).toEqual({
-      type: 'modified',
-      tokens: [
-        { type: 'same', text: 'Intro sentence. ' },
-        { type: 'del', text: 'Keep' },
-        { type: 'add', text: 'Replace' },
-        { type: 'same', text: ' this part. Closing note.' },
-      ],
-    })
+    expect(lines).toEqual([
+      { type: 'unchanged', tokens: [{ type: 'same', text: 'keep' }] },
+      { type: 'removed', tokens: [{ type: 'del', text: 'old' }] },
+      { type: 'added', tokens: [{ type: 'add', text: 'new' }] },
+      { type: 'unchanged', tokens: [{ type: 'same', text: 'tail' }] },
+    ])
   })
 
-  it('shows fine-grained inline replacements for chinese wording edits', () => {
-    const [line] = createInlineDiffLines(
+  it('marks pure insertions as added lines', () => {
+    const lines = createInlineDiffLines([], ['first', 'second'])
+
+    expect(lines).toEqual([
+      { type: 'added', tokens: [{ type: 'add', text: 'first' }] },
+      { type: 'added', tokens: [{ type: 'add', text: 'second' }] },
+    ])
+  })
+
+  it('marks pure deletions as removed lines', () => {
+    const lines = createInlineDiffLines(['first', 'second'], [])
+
+    expect(lines).toEqual([
+      { type: 'removed', tokens: [{ type: 'del', text: 'first' }] },
+      { type: 'removed', tokens: [{ type: 'del', text: 'second' }] },
+    ])
+  })
+
+  it('replaces rewritten lines whole instead of producing intra-line token diffs', () => {
+    const lines = createInlineDiffLines(
       ['今天去公园散步，然后买咖啡。'],
       ['今天去公园慢跑，然后买热咖啡。'],
     )
 
-    expect(line).toEqual({
-      type: 'modified',
-      tokens: [
-        { type: 'same', text: '今天去公园' },
-        { type: 'del', text: '散步' },
-        { type: 'add', text: '慢跑' },
-        { type: 'same', text: '，然后买' },
-        { type: 'add', text: '热' },
-        { type: 'same', text: '咖啡。' },
-      ],
-    })
-  })
-
-  it('uses segmenter-aware word diff for cjk lines with clear token boundaries', () => {
-    const [line] = createInlineDiffLines(
-      ['请先打开设置面板，然后保存当前草稿。'],
-      ['请先打开偏好设置面板，然后保存当前草稿。'],
-    )
-
-    expect(line).toEqual({
-      type: 'modified',
-      tokens: [
-        { type: 'same', text: '请先打开' },
-        { type: 'add', text: '偏好' },
-        { type: 'same', text: '设置面板，然后保存当前草稿。' },
-      ],
-    })
-  })
-
-  it('splits long chinese additions into smaller punctuation-based change tokens', () => {
-    const [line] = createInlineDiffLines(
-      ['原神获得成功。'],
-      ['原神获得成功。世界观让提瓦特大陆更加丰满。提瓦特大陆值得长期探索。'],
-    )
-
-    expect(line).toEqual({
-      type: 'modified',
-      tokens: [
-        { type: 'same', text: '原神获得成功' },
-        { type: 'add', text: '。世界观让提瓦特大陆更加丰满。' },
-        { type: 'add', text: '提瓦特大陆值得长期探索' },
-        { type: 'same', text: '。' },
-      ],
-    })
+    expect(lines).toEqual([
+      {
+        type: 'removed',
+        tokens: [{ type: 'del', text: '今天去公园散步，然后买咖啡。' }],
+      },
+      {
+        type: 'added',
+        tokens: [{ type: 'add', text: '今天去公园慢跑，然后买热咖啡。' }],
+      },
+    ])
   })
 })

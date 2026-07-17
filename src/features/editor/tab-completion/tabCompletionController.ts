@@ -2,6 +2,7 @@ import type { Extension, Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
+import { isRequestErrorNonRetryable } from '../../../core/ai/requestRetry'
 import { executeSingleTurn } from '../../../core/ai/single-turn'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
@@ -103,20 +104,6 @@ const buildTabCompletionConstraints = (
   return [presetConstraint, trimmedCustom].filter(Boolean).join('\n')
 }
 
-const extractAfterContext = (window: string): string => {
-  if (!window) return ''
-  return window
-}
-
-const extractBeforeContext = (window: string): string => {
-  if (!window) return ''
-  const lastParagraphBreak = window.lastIndexOf('\n\n')
-  if (lastParagraphBreak !== -1 && lastParagraphBreak + 2 < window.length) {
-    return window.slice(lastParagraphBreak + 2)
-  }
-  return window
-}
-
 const extractMaskedContext = (
   doc: Text,
   cursorOffset: number,
@@ -124,18 +111,33 @@ const extractMaskedContext = (
   maxAfterChars: number,
 ): { before: string; after: string } => {
   const beforeStart = Math.max(0, cursorOffset - maxBeforeChars)
-  const beforeWindow = doc.sliceString(beforeStart, cursorOffset)
-  const before = extractBeforeContext(beforeWindow)
+  const before = doc.sliceString(beforeStart, cursorOffset)
 
   if (maxAfterChars <= 0) {
     return { before, after: '' }
   }
 
   const afterEnd = Math.min(doc.length, cursorOffset + maxAfterChars)
-  const afterWindow = doc.sliceString(cursorOffset, afterEnd)
-  const after = extractAfterContext(afterWindow)
+  const after = doc.sliceString(cursorOffset, afterEnd)
 
   return { before, after }
+}
+
+const buildTabCompletionUserMessage = (
+  fileTitle: string,
+  before: string,
+  after: string,
+): string => {
+  const titleSection = fileTitle ? `File title:\n${fileTitle}\n\n` : ''
+  return (
+    titleSection +
+    'This is an inline completion request. The <mask/> is the cursor position between <text_before_cursor> and <text_after_cursor>.\n' +
+    'The final document text will be: <text_before_cursor> + your output + <text_after_cursor>.\n' +
+    'Continue exactly from the end of <text_before_cursor>. Return only the text to insert at <mask/>.\n\n' +
+    `<text_before_cursor>\n${before}\n</text_before_cursor>\n` +
+    `${MASK_TAG}\n` +
+    `<text_after_cursor>\n${after}\n</text_after_cursor>`
+  )
 }
 
 export class TabCompletionController {
@@ -404,7 +406,6 @@ export class TabCompletionController {
       })
 
       const fileTitle = this.deps.getActiveFileTitle()
-      const titleSection = fileTitle ? `File title: ${fileTitle}\n\n` : ''
       const baseSystemPrompt =
         settings.continuationOptions?.tabCompletionSystemPrompt ??
         DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT
@@ -422,8 +423,6 @@ export class TabCompletionController {
         combinedConstraints,
       )
 
-      const contextWithMask = `${before}${MASK_TAG}${after}`
-
       const requestMessages: RequestMessage[] = [
         {
           role: 'system' as const,
@@ -431,7 +430,7 @@ export class TabCompletionController {
         },
         {
           role: 'user' as const,
-          content: `${titleSection}${contextWithMask}`,
+          content: buildTabCompletionUserMessage(fileTitle, before, after),
         },
       ]
 
@@ -522,7 +521,7 @@ export class TabCompletionController {
               providerClient,
               model,
               request: baseRequest,
-              stream: true,
+              deliveryMode: 'incremental',
               purpose: 'lightweight',
               signal: controller.signal,
               onStreamDelta: ({ contentDelta }) => {
@@ -569,7 +568,11 @@ export class TabCompletionController {
 
           const aborted =
             controller.signal.aborted || error?.name === 'AbortError'
-          if (attempt < attempts - 1 && aborted) {
+          if (
+            attempt < attempts - 1 &&
+            aborted &&
+            !isRequestErrorNonRetryable(error)
+          ) {
             this.deps.removeAbortController(controller)
             this.tabCompletionAbortController = null
             continue

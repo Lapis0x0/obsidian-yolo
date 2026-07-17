@@ -130,6 +130,9 @@ function mentionablesToMarkdownLines(
       case 'url':
         lines.push(`<${m.url}>`)
         break
+      case 'web-selection':
+        lines.push(`Web selection: [${m.title || m.url}](${m.url})`)
+        break
       case 'assistant-quote':
         lines.push('Assistant quote')
         break
@@ -138,6 +141,12 @@ function mentionablesToMarkdownLines(
         break
       case 'pdf':
         lines.push(`PDF: ${m.name}`)
+        break
+      case 'office':
+        lines.push(`${m.kind.toUpperCase()}: ${m.name}`)
+        break
+      case 'text-attachment':
+        lines.push(`${m.kind.toUpperCase()}: ${m.name}`)
         break
       case 'model':
         lines.push(`Model: ${m.name}`)

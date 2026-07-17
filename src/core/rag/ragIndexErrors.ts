@@ -1,3 +1,4 @@
+import { DatabaseSaveFailedError } from '../../database/exception'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -71,6 +72,14 @@ export const classifyRagIndexError = (error: unknown): RagIndexFailureKind => {
     error instanceof LLMAPIKeyInvalidException ||
     error instanceof LLMBaseUrlNotSetException
   ) {
+    return 'permanent'
+  }
+
+  // dumpDataDir OOM (#408) and similar persistence failures: classify as
+  // permanent so the run records as `failed` and the user sees actionable
+  // feedback. Retrying immediately wouldn't help — the snapshot is just as
+  // big — and we don't want to thrash an OOM condition with auto-retries.
+  if (error instanceof DatabaseSaveFailedError) {
     return 'permanent'
   }
 

@@ -1,4 +1,4 @@
-import type { TFile } from 'obsidian'
+import type { App, TFile } from 'obsidian'
 
 import type { TodoItem } from '../../../core/agent/todos-from-messages'
 import type { CurrentFileViewState } from '../../../types/mentionable'
@@ -41,7 +41,23 @@ export type TodoListInjection = {
   todos: ReadonlyArray<TodoItem>
 }
 
+/**
+ * Browser context injection. Emitted when focus sync is enabled and the user's
+ * most-recent root-split leaf is a supported `<webview>` host (core Web Viewer
+ * or .url WebView Opener).
+ *
+ * The app reference is captured at build time, but the active webview is
+ * resolved lazily only when the injection is rendered. This avoids touching
+ * webview DOM while the user is merely browsing or while context previews are
+ * being prepared.
+ */
+export type BrowserContextInjection = {
+  type: 'browser-context'
+  app: App
+}
+
 export type ContextualInjection =
   | CurrentFilePointerInjection
   | EditorSnapshotInjection
   | TodoListInjection
+  | BrowserContextInjection

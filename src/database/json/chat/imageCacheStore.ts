@@ -61,7 +61,7 @@ const getCacheDirPath = async (
   app: App,
   settings?: YoloSettingsLike | null,
 ): Promise<string> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureJsonDbRootDir(app, settings ?? null)
   return normalizePath(path.join(rootDir, CHAT_DIR, IMAGE_CACHE_DIR))
 }
 

@@ -19,6 +19,13 @@ export default function PlainTextPastePlugin() {
         const clipboardData = event.clipboardData
         if (!clipboardData) return false
 
+        if (
+          clipboardData.files.length > 0 ||
+          Array.from(clipboardData.items).some((item) => item.kind === 'file')
+        ) {
+          return false
+        }
+
         // 内部 Lexical 复制：让默认处理器走 application/x-lexical-editor 通道，保留 mention/skill 节点
         if (clipboardData.types.includes('application/x-lexical-editor')) {
           return false

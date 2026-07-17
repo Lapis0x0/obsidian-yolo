@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import {
+  ChatAssistantMessage,
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
   ChatMessage,
@@ -41,6 +42,11 @@ import {
   type SubagentParentContext,
   buildSubagentParentContext,
 } from './subagent/parent-context'
+import {
+  type SubagentRuntimeEntry,
+  subagentRuntimeRegistry,
+} from './subagent/runtime-registry'
+import { subagentTaskRegistry } from './subagent/task-registry'
 import type { SubagentTaskRecord } from './subagent/types'
 import { SystemPromptSnapshotStore } from './systemPromptSnapshotStore'
 import {
@@ -65,7 +71,26 @@ export type AgentConversationState = {
   pendingCompactionAnchorMessageId?: string | null
   anchorMessageId?: string
   errorMessage?: string
+  activity?: AgentRunActivity
 }
+
+export type AgentRunActivity = {
+  kind: 'learning-agent'
+  title: string
+  detail?: string
+  action?: 'open-learning-view'
+}
+
+const createEmptyConversationState = (
+  conversationId: string,
+  status: AgentRunStatus = 'idle',
+): AgentConversationState => ({
+  conversationId,
+  status,
+  messages: [],
+  compaction: [],
+  pendingCompactionAnchorMessageId: null,
+})
 
 export type AgentConversationStateSubscriber = (
   state: AgentConversationState,
@@ -77,6 +102,8 @@ export type AgentConversationStateFeedSubscriber = (
 
 export type AgentConversationRunSummary = {
   conversationId: string
+  /** User message that owns the currently active visual turn. */
+  anchorMessageId?: string
   status: AgentRunStatus
   isRunning: boolean
   /**
@@ -105,6 +132,7 @@ export type AgentConversationRunSummary = {
    * (the run may have already finalized, leaving only the awaiting tool call).
    */
   isWaitingUserInput: boolean
+  activity?: AgentRunActivity
 }
 
 export type AgentConversationRunSummarySubscriber = (
@@ -146,6 +174,39 @@ type AgentRunEntry = {
   lastRunContext: AgentRunContext | null
 }
 
+type ConversationPublishMode = 'immediate' | 'scheduled'
+
+type PendingScheduledConversationPublish = {
+  rafId: number | null
+  timeoutId: ReturnType<typeof setTimeout>
+}
+
+type RuntimeMessageSignature = {
+  role: ChatMessage['role']
+  id: string
+  ref: ChatMessage
+  content?: string
+  reasoning?: string
+  generationState?: NonNullable<
+    ChatAssistantMessage['metadata']
+  >['generationState']
+  assistantMetadataKey?: string
+  assistantAnnotationsKey?: string
+  assistantToolCallRequestsKey?: string
+  toolResponseStatusKey?: string
+  taskStatus?: string
+}
+
+type RuntimeStateSignature = {
+  status: AgentRunStatus
+  runId?: number
+  anchorMessageId?: string
+  errorMessage?: string
+  pendingCompactionAnchorMessageId?: string | null
+  compactionKey: string
+  messages: RuntimeMessageSignature[]
+}
+
 type AgentServiceOptions = {
   getSettings?: () => YoloSettings
   persistConversationMessages?: (payload: {
@@ -183,7 +244,7 @@ function buildSubagentResultMessage(
     usage: result?.usage,
     prompt: result?.prompt ?? record.prompt,
     modelName: result?.modelName,
-    transcript: result?.transcript,
+    transcript: result?.transcript ?? record.liveTranscript,
     delegateAssistantMessageId:
       record.source.type === 'llm_tool_call'
         ? record.source.assistantMessageId
@@ -294,6 +355,188 @@ const reconcileAssistantGenerationState = (
 
     return message
   })
+}
+
+const stringifySignaturePart = (value: unknown): string =>
+  value === undefined ? '' : JSON.stringify(value)
+
+const createRuntimeMessageSignature = (
+  message: ChatMessage,
+): RuntimeMessageSignature => {
+  if (message.role === 'assistant') {
+    return {
+      role: message.role,
+      id: message.id,
+      ref: message,
+      content: message.content,
+      reasoning: message.reasoning,
+      generationState: message.metadata?.generationState,
+      assistantMetadataKey: stringifySignaturePart(message.metadata),
+      assistantAnnotationsKey: stringifySignaturePart(message.annotations),
+      assistantToolCallRequestsKey: stringifySignaturePart(
+        message.toolCallRequests,
+      ),
+    }
+  }
+
+  if (message.role === 'tool') {
+    return {
+      role: message.role,
+      id: message.id,
+      ref: message,
+      toolResponseStatusKey: message.toolCalls
+        .map((toolCall) => `${toolCall.request.id}:${toolCall.response.status}`)
+        .join('|'),
+    }
+  }
+
+  if (
+    message.role === 'terminal_command_result' ||
+    message.role === 'subagent_result' ||
+    message.role === 'external_agent_result'
+  ) {
+    return {
+      role: message.role,
+      id: message.id,
+      ref: message,
+      taskStatus: message.status,
+    }
+  }
+
+  return {
+    role: message.role,
+    id: message.id,
+    ref: message,
+  }
+}
+
+const createRuntimeStateSignature = (
+  state: AgentConversationState,
+): RuntimeStateSignature => ({
+  status: state.status,
+  runId: state.runId,
+  anchorMessageId: state.anchorMessageId,
+  errorMessage: state.errorMessage,
+  pendingCompactionAnchorMessageId: state.pendingCompactionAnchorMessageId,
+  compactionKey: stringifySignaturePart(state.compaction ?? []),
+  messages: state.messages.map(createRuntimeMessageSignature),
+})
+
+const getRuntimeSnapshotPublishMode = (
+  previousState: RuntimeStateSignature,
+  nextState: RuntimeStateSignature,
+): ConversationPublishMode => {
+  if (
+    previousState.status !== nextState.status ||
+    previousState.runId !== nextState.runId ||
+    previousState.anchorMessageId !== nextState.anchorMessageId ||
+    previousState.errorMessage !== nextState.errorMessage ||
+    previousState.pendingCompactionAnchorMessageId !==
+      nextState.pendingCompactionAnchorMessageId ||
+    previousState.compactionKey !== nextState.compactionKey ||
+    previousState.messages.length !== nextState.messages.length
+  ) {
+    return 'immediate'
+  }
+
+  let displayOnlyAssistantChanges = 0
+
+  for (let index = 0; index < previousState.messages.length; index += 1) {
+    const previousMessage = previousState.messages[index]
+    const nextMessage = nextState.messages[index]
+    if (!nextMessage) {
+      return 'immediate'
+    }
+    if (
+      previousMessage.role === nextMessage.role &&
+      previousMessage.id === nextMessage.id &&
+      previousMessage.ref === nextMessage.ref &&
+      previousMessage.content === nextMessage.content &&
+      previousMessage.reasoning === nextMessage.reasoning &&
+      previousMessage.generationState === nextMessage.generationState &&
+      previousMessage.assistantMetadataKey ===
+        nextMessage.assistantMetadataKey &&
+      previousMessage.assistantAnnotationsKey ===
+        nextMessage.assistantAnnotationsKey &&
+      previousMessage.assistantToolCallRequestsKey ===
+        nextMessage.assistantToolCallRequestsKey &&
+      previousMessage.toolResponseStatusKey ===
+        nextMessage.toolResponseStatusKey &&
+      previousMessage.taskStatus === nextMessage.taskStatus
+    ) {
+      continue
+    }
+    if (
+      previousMessage.role !== 'assistant' ||
+      nextMessage.role !== 'assistant'
+    ) {
+      return 'immediate'
+    }
+
+    if (
+      previousMessage.id !== nextMessage.id ||
+      previousMessage.generationState !== 'streaming' ||
+      nextMessage.generationState !== 'streaming' ||
+      (previousMessage.content === nextMessage.content &&
+        previousMessage.reasoning === nextMessage.reasoning) ||
+      previousMessage.assistantAnnotationsKey !==
+        nextMessage.assistantAnnotationsKey ||
+      previousMessage.assistantToolCallRequestsKey !==
+        nextMessage.assistantToolCallRequestsKey ||
+      previousMessage.assistantMetadataKey !== nextMessage.assistantMetadataKey
+    ) {
+      return 'immediate'
+    }
+
+    displayOnlyAssistantChanges += 1
+    if (displayOnlyAssistantChanges > 1) {
+      return 'immediate'
+    }
+  }
+
+  return displayOnlyAssistantChanges === 1 ? 'scheduled' : 'immediate'
+}
+
+const cloneMessageForSnapshot = (message: ChatMessage): ChatMessage => {
+  if (message.role === 'assistant') {
+    return {
+      ...message,
+      metadata: message.metadata ? { ...message.metadata } : undefined,
+      annotations: message.annotations ? [...message.annotations] : undefined,
+      toolCallRequests: message.toolCallRequests?.map((request) => ({
+        ...request,
+      })),
+    }
+  }
+
+  if (message.role === 'tool') {
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) => ({
+        request: { ...toolCall.request },
+        response: { ...toolCall.response },
+      })),
+      metadata: message.metadata ? { ...message.metadata } : undefined,
+    }
+  }
+
+  if (message.role === 'user') {
+    return {
+      ...message,
+      mentionables: [...message.mentionables],
+      selectedSkills: message.selectedSkills
+        ? [...message.selectedSkills]
+        : undefined,
+      selectedModelIds: message.selectedModelIds
+        ? [...message.selectedModelIds]
+        : undefined,
+    }
+  }
+
+  return {
+    ...message,
+    metadata: message.metadata ? { ...message.metadata } : undefined,
+  }
 }
 
 const abortVisibleMessages = (messages: ChatMessage[]): ChatMessage[] => {
@@ -445,9 +688,20 @@ export const buildAgentConversationRunSummary = (
   const hasRunningToolCall = hasRunningMainToolCall(state.messages)
   const isRuntimeRunning = state.status === 'running'
   const isActive = isRuntimeRunning || isWaitingApproval || hasRunningToolCall
+  let anchorMessageId = state.anchorMessageId
+  if (!anchorMessageId && isActive) {
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index]
+      if (message.role === 'user') {
+        anchorMessageId = message.id
+        break
+      }
+    }
+  }
 
   return {
     conversationId: state.conversationId,
+    anchorMessageId,
     status: state.status,
     isRunning: isRuntimeRunning && !isWaitingApproval,
     isActive,
@@ -455,6 +709,7 @@ export const buildAgentConversationRunSummary = (
     isQueueable: isRuntimeRunning && !isWaitingApproval,
     isWaitingApproval,
     isWaitingUserInput,
+    activity: state.activity,
   }
 }
 
@@ -731,6 +986,12 @@ export class AgentService {
   private summarySubscribers = new Set<AgentConversationRunSummarySubscriber>()
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private persistenceChains = new Map<string, Promise<void>>()
+  private pendingScheduledConversationPublishes = new Map<
+    string,
+    PendingScheduledConversationPublish
+  >()
+  private droppedConversationIds = new Set<string>()
   /** pending background task results per conversation (queued while streaming) */
   private pendingBackgroundTaskResults = new Map<
     string,
@@ -783,6 +1044,53 @@ export class AgentService {
    */
   evictSystemPromptSnapshot(conversationId: string): void {
     this.systemPromptSnapshotStore.evict(conversationId)
+  }
+
+  dropConversation(conversationId: string): void {
+    this.droppedConversationIds.add(conversationId)
+    this.evictSystemPromptSnapshot(conversationId)
+    this.cancelScheduledConversationPublish(conversationId)
+    this.cancelPersistTimer(conversationId)
+
+    const entry = this.conversationEntries.get(conversationId)
+    const droppedState: AgentConversationState | null = entry
+      ? createEmptyConversationState(conversationId, 'aborted')
+      : null
+    const subscribers = entry ? [...entry.subscribers] : []
+
+    this.abortRegisteredForegroundToolAbortersForConversation(conversationId)
+    for (const runEntry of this.runEntriesForConversation(conversationId)) {
+      this.abortRuntimeToolCalls(runEntry)
+      runEntry.runtime?.abort()
+      this.runEntriesByKey.delete(getRunKey(conversationId, runEntry.branchId))
+    }
+
+    const runKeyPrefix = `${conversationId}::`
+    for (const key of [...this.pendingUserMessagesByKey.keys()]) {
+      if (key.startsWith(runKeyPrefix)) {
+        this.pendingUserMessagesByKey.delete(key)
+      }
+    }
+    for (const key of [...this.continuationScheduledByKey]) {
+      if (key.startsWith(runKeyPrefix)) {
+        this.continuationScheduledByKey.delete(key)
+      }
+    }
+
+    this.autoRunScheduled.delete(conversationId)
+    this.pendingBackgroundTaskResults.delete(conversationId)
+    this.conversationEntries.delete(conversationId)
+
+    if (droppedState) {
+      const state = this.cloneState(droppedState)
+      for (const subscriber of subscribers) {
+        subscriber(state)
+      }
+      for (const subscriber of this.stateFeedSubscribers) {
+        subscriber(state)
+      }
+    }
+    this.notifyRunSummarySubscribers()
   }
 
   /**
@@ -844,6 +1152,31 @@ export class AgentService {
   }
 
   /**
+   * Atomically remove one message while it is still waiting in the mid-run
+   * queue. Returns the removed message, or null when the runtime has already
+   * drained it at an LLM request boundary.
+   */
+  removePendingUserMessage(
+    conversationId: string,
+    messageId: string,
+    branchId?: string,
+  ): ChatUserMessage | null {
+    const runKey = getRunKey(conversationId, branchId ?? DEFAULT_BRANCH_ID)
+    const queue = this.pendingUserMessagesByKey.get(runKey)
+    if (!queue) return null
+
+    const index = queue.findIndex((message) => message.id === messageId)
+    if (index === -1) return null
+
+    const [removed] = queue.splice(index, 1)
+    if (queue.length === 0) {
+      this.pendingUserMessagesByKey.delete(runKey)
+    }
+    this.notifyConversationSubscribers(conversationId)
+    return removed ?? null
+  }
+
+  /**
    * Subscribe to abort events that carry the queued user messages dropped at
    * abort time, so the UI can restore them into the input box.
    */
@@ -881,6 +1214,10 @@ export class AgentService {
 
   private handleBackgroundTaskCompleted(event: BackgroundTaskEvent): void {
     const { conversationId } = event
+    if (this.droppedConversationIds.has(conversationId)) {
+      this.compactCompletedBackgroundTaskRecord(event)
+      return
+    }
     const isRunning = this.isRunning(conversationId)
     const autoRunPending = this.autoRunScheduled.has(conversationId)
 
@@ -905,6 +1242,7 @@ export class AgentService {
     entry.baseMessages = nextMessages
     entry.state = { ...entry.state, messages: nextMessages }
     this.notifyConversationSubscribers(conversationId)
+    this.compactCompletedBackgroundTaskRecord(event)
   }
 
   private buildBackgroundTaskResultMessage(
@@ -939,7 +1277,19 @@ export class AgentService {
     entry.state = { ...entry.state, messages: nextMessages }
     this.notifyConversationSubscribers(conversationId)
 
+    for (const event of queue) {
+      this.compactCompletedBackgroundTaskRecord(event)
+    }
+
     return appended
+  }
+
+  private compactCompletedBackgroundTaskRecord(
+    event: BackgroundTaskEvent,
+  ): void {
+    if (event.kind === 'subagent') {
+      subagentTaskRegistry.compactCompleted(event.taskId)
+    }
   }
 
   hasPendingBackgroundTaskResults(conversationId: string): boolean {
@@ -959,6 +1309,17 @@ export class AgentService {
     callback: AgentConversationStateSubscriber,
     options?: { emitCurrent?: boolean },
   ): () => void {
+    if (this.droppedConversationIds.has(conversationId)) {
+      if (options?.emitCurrent ?? true) {
+        callback(
+          this.cloneState(
+            createEmptyConversationState(conversationId, 'aborted'),
+          ),
+        )
+      }
+      return () => undefined
+    }
+
     const entry = this.getOrCreateConversationEntry(conversationId)
     entry.subscribers.add(callback)
 
@@ -972,6 +1333,15 @@ export class AgentService {
   }
 
   getState(conversationId: string): AgentConversationState {
+    const entry = this.conversationEntries.get(conversationId)
+    if (entry) {
+      return this.cloneState(entry.state)
+    }
+    if (this.droppedConversationIds.has(conversationId)) {
+      return this.cloneState(
+        createEmptyConversationState(conversationId, 'aborted'),
+      )
+    }
     return this.cloneState(
       this.getOrCreateConversationEntry(conversationId).state,
     )
@@ -980,7 +1350,11 @@ export class AgentService {
   getConversationRunSummary(
     conversationId: string,
   ): AgentConversationRunSummary {
-    const state = this.getOrCreateConversationEntry(conversationId).state
+    const state =
+      this.conversationEntries.get(conversationId)?.state ??
+      (this.droppedConversationIds.has(conversationId)
+        ? createEmptyConversationState(conversationId, 'aborted')
+        : this.getOrCreateConversationEntry(conversationId).state)
     return buildAgentConversationRunSummary(state)
   }
 
@@ -1027,9 +1401,8 @@ export class AgentService {
   }
 
   isRunning(conversationId: string): boolean {
-    return (
-      this.getOrCreateConversationEntry(conversationId).state.status ===
-      'running'
+    return this.runEntriesForConversation(conversationId).some(
+      (entry) => entry.state.status === 'running',
     )
   }
 
@@ -1068,6 +1441,9 @@ export class AgentService {
       reason?: AgentReplaceConversationMessagesReason
     },
   ): void {
+    if (this.droppedConversationIds.has(conversationId)) {
+      return
+    }
     const entry = this.getOrCreateConversationEntry(conversationId)
     if (typeof options?.persistState === 'boolean') {
       entry.persistState = options.persistState
@@ -1093,9 +1469,9 @@ export class AgentService {
     conversationId: string,
   ): SubagentParentContext | undefined {
     const recovery =
-      this.getOrCreateConversationEntry(
+      this.conversationEntries.get(
         conversationId,
-      ).pendingApprovalRecoveryContext
+      )?.pendingApprovalRecoveryContext
     if (!recovery) {
       return undefined
     }
@@ -1114,6 +1490,18 @@ export class AgentService {
     toolCallId: string
     allowForConversation?: boolean
   }): Promise<boolean> {
+    // If this toolCallId belongs to a running subagent, route the approval
+    // into that subagent's runtime instead of the parent conversation.
+    // See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
+    const subagentEntry = subagentRuntimeRegistry.findByToolCallId(toolCallId)
+    if (subagentEntry) {
+      return this.approveSubagentToolCall(
+        subagentEntry,
+        toolCallId,
+        allowForConversation,
+      )
+    }
+
     const located = this.findToolCall(conversationId, toolCallId)
     if (!located) {
       return false
@@ -1420,13 +1808,130 @@ export class AgentService {
     conversationId: string
     toolCallId: string
   }): boolean {
+    const subagentEntry = subagentRuntimeRegistry.findByToolCallId(toolCallId)
+    if (subagentEntry) {
+      return this.rejectSubagentToolCall(subagentEntry, toolCallId)
+    }
+
     return Boolean(
       this.updateToolCallResponse({
         conversationId,
         toolCallId,
-        response: { status: ToolCallResponseStatus.Rejected },
+        response: {
+          status: ToolCallResponseStatus.Rejected,
+          reason: 'The user rejected this tool call.',
+        },
       }),
     )
+  }
+
+  /**
+   * Approve a tool call that belongs to a running subagent. Executes the tool
+   * via `mcpManager.callTool` (using the parent conversation as the approval
+   * scope so per-conversation allows persist there), patches the result back
+   * into the subagent's runtime, then resumes the subagent's loop.
+   *
+   * Mirrors the parent-conversation flow in `approveToolCall` but targets the
+   * subagent runtime in `subagentRuntimeRegistry` instead of restarting the
+   * parent run.
+   */
+  private async approveSubagentToolCall(
+    entry: SubagentRuntimeEntry,
+    toolCallId: string,
+    allowForConversation: boolean,
+  ): Promise<boolean> {
+    const located = entry.runtime.findToolCall(toolCallId)
+    if (!located) {
+      return false
+    }
+    if (
+      located.toolCall.response.status !==
+      ToolCallResponseStatus.PendingApproval
+    ) {
+      return false
+    }
+
+    const { request } = located.toolCall
+
+    // Subagents use `DEFAULT_BLOCKED_PREFIXES` (the runtime does not pass a
+    // custom blockedCommandPrefixes through `runner.ts`), so re-check with
+    // the same default here for consistency with the parent path.
+    if (isBlockedTerminalCommandRequest(request, undefined)) {
+      entry.runtime.setToolCallResponse(toolCallId, {
+        status: ToolCallResponseStatus.Error,
+        error:
+          'Terminal command rejected because it matches a blocked command prefix.',
+      })
+      await entry.resumeRun()
+      return true
+    }
+
+    if (allowForConversation) {
+      // Scope the per-conversation allow to the parent conversation so the
+      // user's "allow for this chat" decision applies uniformly to both the
+      // parent and any subagents it dispatches.
+      entry.mcpManager.allowToolForConversation(
+        request.name,
+        entry.parentConversationId,
+        getToolCallArgumentsObject(request.arguments),
+      )
+    }
+
+    entry.runtime.setToolCallResponse(toolCallId, {
+      status: ToolCallResponseStatus.Running,
+    })
+
+    const toolArgs = getToolCallArgumentsObject(request.arguments)
+    let result: ToolCallResponse
+    try {
+      result = await entry.mcpManager.callTool({
+        name: request.name,
+        args: toolArgs,
+        id: request.id,
+        conversationId: entry.parentConversationId,
+        conversationMessages: entry.runtime.getMessages(),
+        roundId: located.toolMessage.id,
+      })
+    } catch (error) {
+      result = {
+        status: ToolCallResponseStatus.Error,
+        error: formatErrorMessageWithCauses(error),
+      }
+    }
+
+    entry.runtime.setToolCallResponse(toolCallId, result)
+    await entry.resumeRun()
+    return true
+  }
+
+  /**
+   * Reject a subagent tool call. Patches the runtime and wakes the subagent
+   * loop — the model will see a `Rejected` tool result on next continuation
+   * and decide how to proceed (retry differently, give up, etc.).
+   */
+  private rejectSubagentToolCall(
+    entry: SubagentRuntimeEntry,
+    toolCallId: string,
+  ): boolean {
+    const located = entry.runtime.findToolCall(toolCallId)
+    if (!located) {
+      return false
+    }
+    if (
+      located.toolCall.response.status !==
+      ToolCallResponseStatus.PendingApproval
+    ) {
+      return false
+    }
+
+    const patched = entry.runtime.setToolCallResponse(toolCallId, {
+      status: ToolCallResponseStatus.Rejected,
+      reason: 'The user rejected this tool call.',
+    })
+    if (patched) {
+      void entry.resumeRun()
+    }
+    return patched
   }
 
   abortToolCall({
@@ -1503,6 +2008,27 @@ export class AgentService {
       }
     }
     return aborted
+  }
+
+  private abortRegisteredForegroundToolAbortersForConversation(
+    conversationId: string,
+  ): void {
+    const aborters =
+      this.foregroundToolAbortersByConversation.get(conversationId)
+    if (!aborters) {
+      return
+    }
+    this.foregroundToolAbortersByConversation.delete(conversationId)
+    for (const abort of aborters.values()) {
+      try {
+        abort()
+      } catch (error) {
+        console.warn('[YOLO] Failed to abort foreground tool call', {
+          conversationId,
+          error,
+        })
+      }
+    }
   }
 
   private abortRuntimeToolCalls(runEntry: AgentRunEntry): void {
@@ -1586,12 +2112,17 @@ export class AgentService {
     input,
     loopConfig,
     persistState,
+    activity,
   }: {
     conversationId: string
     input: AgentRuntimeRunInput
     loopConfig: AgentRuntimeLoopConfig
     persistState?: boolean
+    activity?: AgentRunActivity
   }): Promise<void> {
+    if (this.droppedConversationIds.has(conversationId)) {
+      return
+    }
     const conversationEntry = this.getOrCreateConversationEntry(conversationId)
     if (typeof persistState === 'boolean') {
       conversationEntry.persistState = persistState
@@ -1636,13 +2167,26 @@ export class AgentService {
       drainPendingUserMessages: () => {
         const queue = this.pendingUserMessagesByKey.get(runKey)
         if (!queue || queue.length === 0) {
-          return []
+          return null
         }
+        const sourceUserMessageId = queue.at(-1)?.id
+        if (!sourceUserMessageId) {
+          return null
+        }
+
         this.pendingUserMessagesByKey.delete(runKey)
-        // Notify so the UI removes the "queued" bubble immediately; the
-        // injected messages will materialize in the runtime snapshot next.
-        this.notifyConversationSubscribers(conversationId)
-        return queue
+        const currentRunEntry = this.runEntriesByKey.get(runKey)
+        if (currentRunEntry?.runToken === runToken) {
+          currentRunEntry.sourceUserMessageId = sourceUserMessageId
+          currentRunEntry.state = {
+            ...currentRunEntry.state,
+            anchorMessageId: sourceUserMessageId,
+          }
+        }
+        // Remove the queued bubble and switch run-summary ownership before the
+        // runtime snapshot materializes the injected messages.
+        this.recomputeConversationState(conversationId)
+        return { messages: queue, sourceUserMessageId }
       },
     }
     // Clear the continuation latch now that the new run is actually starting.
@@ -1656,22 +2200,25 @@ export class AgentService {
       compaction: this.normalizeCompaction(input.compaction, input.messages),
       pendingCompactionAnchorMessageId: null,
       anchorMessageId: input.sourceUserMessageId ?? input.messages.at(-1)?.id,
+      activity,
     }
     this.recomputeConversationState(conversationId)
+    let runtimeStateSignature = createRuntimeStateSignature(runEntry.state)
 
     const unsubscribe = runtime.subscribe((snapshot) => {
       const currentRunEntry = this.runEntriesByKey.get(runKey)
       if (!currentRunEntry || currentRunEntry.runToken !== runToken) {
         return
       }
+      const previousRunState = currentRunEntry.state
       const mergedMessages = mergeVisibleMessages(
-        currentRunEntry.state.messages,
+        previousRunState.messages,
         input.messages,
-        currentRunEntry.state.anchorMessageId,
+        previousRunState.anchorMessageId,
         snapshot.messages,
       )
-      currentRunEntry.state = {
-        ...currentRunEntry.state,
+      const nextRunState = {
+        ...previousRunState,
         messages: mergedMessages,
         compaction: this.normalizeCompaction(
           snapshot.compaction,
@@ -1683,7 +2230,15 @@ export class AgentService {
             mergedMessages,
           ),
       }
-      this.recomputeConversationState(conversationId)
+      const nextRuntimeStateSignature =
+        createRuntimeStateSignature(nextRunState)
+      const publishMode = getRuntimeSnapshotPublishMode(
+        runtimeStateSignature,
+        nextRuntimeStateSignature,
+      )
+      runtimeStateSignature = nextRuntimeStateSignature
+      currentRunEntry.state = nextRunState
+      this.recomputeConversationState(conversationId, publishMode)
     })
 
     try {
@@ -1965,13 +2520,16 @@ export class AgentService {
     )
   }
 
-  private recomputeConversationState(conversationId: string): void {
+  private recomputeConversationState(
+    conversationId: string,
+    publishMode: ConversationPublishMode = 'immediate',
+  ): void {
     const conversationEntry = this.getOrCreateConversationEntry(conversationId)
     const runEntries = this.runEntriesForConversation(conversationId)
     const hasActiveRuns = runEntries.length > 0
 
     if (!hasActiveRuns) {
-      this.notifyConversationSubscribers(conversationId)
+      this.publishConversationState(conversationId, publishMode)
       return
     }
 
@@ -2025,8 +2583,9 @@ export class AgentService {
       anchorMessageId: runEntries.at(-1)?.state.anchorMessageId,
       errorMessage: runEntries.find((entry) => entry.state.errorMessage)?.state
         .errorMessage,
+      activity: runEntries.at(-1)?.state.activity,
     }
-    this.notifyConversationSubscribers(conversationId)
+    this.publishConversationState(conversationId, publishMode)
   }
 
   private finalizeSettledConversationRuns(conversationId: string): void {
@@ -2036,7 +2595,12 @@ export class AgentService {
       return
     }
 
-    const conversationEntry = this.getOrCreateConversationEntry(conversationId)
+    const conversationEntry = this.conversationEntries.get(conversationId)
+    if (!conversationEntry) {
+      this.autoRunScheduled.delete(conversationId)
+      this.pendingBackgroundTaskResults.delete(conversationId)
+      return
+    }
     if (runEntries.length > 0) {
       conversationEntry.baseMessages = [...conversationEntry.state.messages]
       const defaultBranchEntry =
@@ -2077,6 +2641,7 @@ export class AgentService {
     conversationId: string,
     persistReason: AgentReplaceConversationMessagesReason = 'mutation',
   ): void {
+    this.cancelScheduledConversationPublish(conversationId)
     const entry = this.getOrCreateConversationEntry(conversationId)
     const state = this.cloneState(entry.state)
     for (const subscriber of entry.subscribers) {
@@ -2089,17 +2654,138 @@ export class AgentService {
     this.notifyRunSummarySubscribers()
   }
 
+  private publishConversationState(
+    conversationId: string,
+    publishMode: ConversationPublishMode,
+  ): void {
+    if (publishMode === 'scheduled') {
+      this.scheduleConversationPublish(conversationId)
+      return
+    }
+    this.notifyConversationSubscribers(conversationId)
+  }
+
+  private scheduleConversationPublish(conversationId: string): void {
+    if (this.pendingScheduledConversationPublishes.has(conversationId)) {
+      return
+    }
+
+    let rafId: number | null = null
+    const publish = () => {
+      const pending =
+        this.pendingScheduledConversationPublishes.get(conversationId)
+      if (!pending) {
+        return
+      }
+      if (
+        pending.rafId !== null &&
+        typeof globalThis.cancelAnimationFrame === 'function'
+      ) {
+        globalThis.cancelAnimationFrame(pending.rafId)
+      }
+      clearTimeout(pending.timeoutId)
+      this.pendingScheduledConversationPublishes.delete(conversationId)
+      this.notifyConversationSubscribers(conversationId)
+    }
+
+    if (typeof globalThis.requestAnimationFrame === 'function') {
+      rafId = globalThis.requestAnimationFrame(publish)
+    }
+    const timeoutId = setTimeout(publish, 16)
+
+    this.pendingScheduledConversationPublishes.set(conversationId, {
+      rafId,
+      timeoutId,
+    })
+  }
+
+  private cancelScheduledConversationPublish(conversationId: string): void {
+    const pending =
+      this.pendingScheduledConversationPublishes.get(conversationId)
+    if (!pending) {
+      return
+    }
+    if (
+      pending.rafId !== null &&
+      typeof globalThis.cancelAnimationFrame === 'function'
+    ) {
+      globalThis.cancelAnimationFrame(pending.rafId)
+    }
+    clearTimeout(pending.timeoutId)
+    this.pendingScheduledConversationPublishes.delete(conversationId)
+  }
+
+  private cancelPersistTimer(conversationId: string): void {
+    const timer = this.persistTimers.get(conversationId)
+    if (!timer) {
+      return
+    }
+    clearTimeout(timer)
+    this.persistTimers.delete(conversationId)
+  }
+
+  async flushConversationPersistence(conversationId: string): Promise<void> {
+    if (!this.options.persistConversationMessages) {
+      return
+    }
+    const entry = this.conversationEntries.get(conversationId)
+    if (!entry || !entry.persistState) {
+      return
+    }
+
+    this.cancelPersistTimer(conversationId)
+    await this.enqueueConversationPersistence(this.cloneState(entry.state))
+  }
+
+  private enqueueConversationPersistence(
+    state: AgentConversationState,
+    touchUpdatedAt?: boolean,
+  ): Promise<void> {
+    const persist = this.options.persistConversationMessages
+    if (!persist) {
+      return Promise.resolve()
+    }
+
+    const previous = this.persistenceChains.get(state.conversationId)
+    const next = (previous ?? Promise.resolve()).then(
+      () =>
+        persist({
+          conversationId: state.conversationId,
+          messages: state.messages,
+          compaction: [...(state.compaction ?? [])],
+          status: state.status,
+          touchUpdatedAt,
+        }),
+      () =>
+        persist({
+          conversationId: state.conversationId,
+          messages: state.messages,
+          compaction: [...(state.compaction ?? [])],
+          status: state.status,
+          touchUpdatedAt,
+        }),
+    )
+    const tracked = next.finally(() => {
+      if (this.persistenceChains.get(state.conversationId) === tracked) {
+        this.persistenceChains.delete(state.conversationId)
+      }
+    })
+    this.persistenceChains.set(state.conversationId, tracked)
+    return tracked
+  }
+
   private cloneState(state: AgentConversationState): AgentConversationState {
     return {
       conversationId: state.conversationId,
       status: state.status,
       runId: state.runId,
-      messages: [...state.messages],
+      messages: state.messages.map(cloneMessageForSnapshot),
       compaction: [...(state.compaction ?? [])],
       pendingCompactionAnchorMessageId:
         state.pendingCompactionAnchorMessageId ?? null,
       errorMessage: state.errorMessage,
       anchorMessageId: state.anchorMessageId,
+      activity: state.activity,
     }
   }
 
@@ -2132,11 +2818,7 @@ export class AgentService {
       return
     }
 
-    const existingTimer = this.persistTimers.get(state.conversationId)
-    if (existingTimer) {
-      clearTimeout(existingTimer)
-      this.persistTimers.delete(state.conversationId)
-    }
+    this.cancelPersistTimer(state.conversationId)
 
     const delayMs =
       state.status === 'completed' ||
@@ -2152,21 +2834,15 @@ export class AgentService {
 
     const timer = setTimeout(() => {
       this.persistTimers.delete(state.conversationId)
-      void this.options
-        .persistConversationMessages?.({
-          conversationId: state.conversationId,
-          messages: state.messages,
-          compaction: [...(state.compaction ?? [])],
-          status: state.status,
-          touchUpdatedAt,
-        })
-        .catch((error) => {
+      void this.enqueueConversationPersistence(state, touchUpdatedAt).catch(
+        (error) => {
           console.error('[YOLO] Failed to persist agent conversation state', {
             conversationId: state.conversationId,
             status: state.status,
             error,
           })
-        })
+        },
+      )
     }, delayMs)
 
     this.persistTimers.set(state.conversationId, timer)

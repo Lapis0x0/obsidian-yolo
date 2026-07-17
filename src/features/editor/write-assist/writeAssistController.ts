@@ -166,7 +166,7 @@ export class WriteAssistController {
         model,
         request: rewriteRequestBase,
         signal: controller.signal,
-        stream: streamPreference,
+        deliveryMode: streamPreference ? 'incremental' : 'buffered',
         primaryRequestTimeoutMs:
           settings.continuationOptions.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled:
@@ -539,7 +539,7 @@ export class WriteAssistController {
         model,
         request: baseRequest,
         signal: controller.signal,
-        stream: streamPreference,
+        deliveryMode: streamPreference ? 'incremental' : 'buffered',
         primaryRequestTimeoutMs:
           settings.continuationOptions.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled:

@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 export type SimpleSelectOption = {
   value: string
@@ -45,6 +45,7 @@ export function SimpleSelect({
   contentClassName,
 }: SimpleSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
   const flattenedOptions = useMemo(() => {
     if (groupedOptions && groupedOptions.length > 0) {
       return groupedOptions.flatMap((group) => group.options)
@@ -59,6 +60,8 @@ export function SimpleSelect({
   return (
     <DropdownMenu.Root open={isOpen} onOpenChange={(open) => setIsOpen(open)}>
       <DropdownMenu.Trigger
+        ref={triggerRef}
+        type="button"
         className="yolo-simple-select__trigger"
         disabled={disabled}
       >
@@ -70,7 +73,9 @@ export function SimpleSelect({
         </div>
       </DropdownMenu.Trigger>
 
-      <DropdownMenu.Portal>
+      <DropdownMenu.Portal
+        container={triggerRef.current?.ownerDocument?.body ?? undefined}
+      >
         <DropdownMenu.Content
           className={
             contentClassName

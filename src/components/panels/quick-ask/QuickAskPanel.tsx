@@ -1,19 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-  $getRoot,
-  $nodesOfType,
-  LexicalEditor,
-  SerializedEditorState,
-} from 'lexical'
-import {
-  ChevronDown,
-  ChevronUp,
-  RotateCcw,
-  Send,
-  Square,
-  X,
-} from 'lucide-react'
+import { SerializedEditorState } from 'lexical'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Editor, Notice, TFile } from 'obsidian'
 import React, {
   useCallback,
@@ -44,6 +32,7 @@ import type {
 import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAskController'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../../hooks/useChatHistory'
+import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import YoloPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
@@ -51,39 +40,40 @@ import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatMessage,
+  ChatSelectedSkill,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../../types/chat'
 import type { ChatTimelineItem } from '../../../types/chat-timeline'
-import {
-  Mentionable,
-  MentionableBlock,
-  SerializedMentionable,
-} from '../../../types/mentionable'
+import { Mentionable, MentionableBlock } from '../../../types/mentionable'
+import type { ToolCallResponse } from '../../../types/tool-call.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
 import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
-  deserializeMentionable,
   getMentionableKey,
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
-import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { RequestContextBuilder } from '../../../utils/chat/requestContextBuilder'
 import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { readTFileContent } from '../../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../../utils/prompt/timeContext'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
-import LexicalContentEditable from '../../chat-view/chat-input/LexicalContentEditable'
+import MessageInputCore, {
+  type MessageInputCoreRef,
+} from '../../chat-view/chat-input/MessageInputCore'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
-import { MentionNode } from '../../chat-view/chat-input/plugins/mention/MentionNode'
-import { NodeMutations } from '../../chat-view/chat-input/plugins/on-mutation/OnMutationPlugin'
+import { SubmitButton } from '../../chat-view/chat-input/SubmitButton'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
 import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'
 import { useAutoScroll } from '../../chat-view/useAutoScroll'
+import {
+  useChatTimelineReadModel,
+  useStableChatTimelineItems,
+} from '../../chat-view/useChatTimelineReadModel'
 import UserMessageItem from '../../chat-view/UserMessageItem'
 import { YoloDropdownContent } from '../../common/popover'
 
@@ -92,6 +82,25 @@ import { ModeSelect, QuickAskMode } from './ModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
 type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
+
+const quickAskRenderVersionObjectIds = new WeakMap<object, number>()
+let nextQuickAskRenderVersionObjectId = 1
+
+function getQuickAskRenderVersionObjectId(
+  value: object | null | undefined,
+): number {
+  if (!value) {
+    return 0
+  }
+  const existing = quickAskRenderVersionObjectIds.get(value)
+  if (existing !== undefined) {
+    return existing
+  }
+  const id = nextQuickAskRenderVersionObjectId
+  nextQuickAskRenderVersionObjectId += 1
+  quickAskRenderVersionObjectIds.set(value, id)
+  return id
+}
 
 function normalizeQuickAskVisibleMode(
   mode?: QuickAskLaunchMode | null,
@@ -163,6 +172,7 @@ type QuickAskPanelPropsBase = {
   autoSend?: boolean
   initialAssistantId?: string
   onClose: () => void
+  messageInputRef?: React.RefObject<MessageInputCoreRef>
   containerRef?: React.RefObject<HTMLDivElement>
   onOverlayStateChange?: (isOverlayActive: boolean) => void
   onDragOffset?: (offsetX: number, offsetY: number) => void
@@ -200,6 +210,7 @@ export function QuickAskPanel({
   autoSend,
   initialAssistantId,
   onClose,
+  messageInputRef: externalMessageInputRef,
   containerRef,
   onOverlayStateChange,
   onDragOffset,
@@ -250,6 +261,7 @@ export function QuickAskPanel({
   const [conversationId] = useState(() => uuidv4())
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
+  const [selectedSkills, setSelectedSkills] = useState<ChatSelectedSkill[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   // While the LLM is streaming, flip the QuickAsk-owned selection highlight
   // into a "pending" shimmer so users get visible feedback that AI is working
@@ -289,9 +301,29 @@ export function QuickAskPanel({
       characters: t('common.characters', 'chars'),
       words: t('common.words', 'words'),
       wordsCharacters: t('common.wordsCharacters', 'words/chars'),
+      rows: t('common.rows', 'rows'),
+      columns: t('common.columns', 'columns'),
     }),
     [t],
   )
+  const initialSerializedEditorState = useMemo(() => {
+    if (autoSend) return null
+    if (!initialInput && (initialMentionables?.length ?? 0) === 0) {
+      return null
+    }
+    return createQuickAskEditorState({
+      prompt: initialInput ?? '',
+      mentionables: initialMentionables ?? [],
+      mentionableUnitLabels,
+    })
+  }, [autoSend, initialInput, initialMentionables, mentionableUnitLabels])
+
+  useEffect(() => {
+    if (initialSerializedEditorState) {
+      latestEditorStateRef.current = initialSerializedEditorState
+    }
+  }, [initialSerializedEditorState])
+
   const [mode, setMode] = useState<QuickAskMode>(() =>
     normalizeQuickAskVisibleMode(
       initialMode ?? settings.continuationOptions?.quickAskMode,
@@ -316,19 +348,19 @@ export function QuickAskPanel({
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const inputRowRef = useRef<HTMLDivElement | null>(null)
-  const contentEditableRef = useRef<HTMLDivElement>(null)
+  const internalMessageInputRef = useRef<MessageInputCoreRef>(null)
+  const messageInputRef = externalMessageInputRef ?? internalMessageInputRef
+  const latestEditorStateRef = useRef<SerializedEditorState | null>(null)
   const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
-  const lexicalEditorRef = useRef<LexicalEditor | null>(null)
   const chatAreaRef = useRef<HTMLDivElement>(null)
   const [chatAreaElement, setChatAreaElement] = useState<HTMLElement | null>(
     null,
   )
-  const bottomAnchorRef = useRef<HTMLDivElement>(null)
-  const [timelineIsVirtualized, setTimelineIsVirtualized] = useState(false)
+  const [chatContentElement, setChatContentElement] =
+    useState<HTMLElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
   const autoSendRef = useRef(false)
-  const hasAppliedInitialInputRef = useRef(false)
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
@@ -475,40 +507,38 @@ export function QuickAskPanel({
     return t('quickAsk.statusModifying', 'Modifying...')
   }, [runStatus, t])
 
-  const hasStreamingAssistantPlaceholder = useMemo(
-    () =>
-      chatMessages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.metadata?.generationState === 'streaming',
-      ),
-    [chatMessages],
-  )
-  const hasVisibleAssistantOrToolMessages = useMemo(
-    () =>
-      chatMessages.some((message) => {
-        if (message.role === 'tool') {
-          return true
-        }
-
-        if (message.role !== 'assistant') {
-          return false
-        }
-
-        return (
-          message.content.trim().length > 0 ||
-          Boolean(message.reasoning?.trim().length) ||
-          Boolean(message.toolCallRequests?.length)
-        )
-      }),
-    [chatMessages],
-  )
-
   const shouldShowInlineRunStatus =
     isStreaming &&
     !!runStatusLabel &&
-    ((executionMode !== 'agent' && executionMode !== 'ask') ||
-      (!hasStreamingAssistantPlaceholder && !hasVisibleAssistantOrToolMessages))
+    executionMode !== 'agent' &&
+    executionMode !== 'ask'
+
+  const allSkillEntries = useLiteSkillEntries(app, { settings })
+  const availableSkills = useMemo(() => {
+    if (!selectedAssistant) {
+      return []
+    }
+
+    const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
+    return allSkillEntries.filter((skill) =>
+      isSkillEnabledForAssistant({
+        assistant: selectedAssistant,
+        skillName: skill.name,
+        disabledSkillNames,
+        defaultLoadMode: skill.mode,
+      }),
+    )
+  }, [allSkillEntries, selectedAssistant, settings])
+
+  const enabledChatModels = useMemo(
+    () => settings.chatModels.filter((chatModel) => chatModel.enable ?? true),
+    [settings.chatModels],
+  )
+
+  const canSubmitMainInput =
+    inputText.trim().length > 0 ||
+    mentionables.length > 0 ||
+    selectedSkills.length > 0
 
   const noop = useCallback(() => {}, [])
   const handleOpenEditSummaryFile = useCallback(
@@ -542,73 +572,20 @@ export function QuickAskPanel({
     }
   }, [])
 
-  // Handle mention node mutations to track mentionables
-  const handleMentionNodeMutation = useCallback(
-    (mutations: NodeMutations<MentionNode>) => {
-      const destroyedMentionableKeys: string[] = []
-      const addedMentionables: SerializedMentionable[] = []
-      const selectionMentionableKey = selectionMentionable
-        ? getMentionableKey(serializeMentionable(selectionMentionable))
-        : null
-
-      mutations.forEach((mutation) => {
-        const mentionable = mutation.node.getMentionable()
-        const mentionableKey = getMentionableKey(mentionable)
-
-        if (mutation.mutation === 'destroyed') {
-          const nodeWithSameMentionable = lexicalEditorRef.current?.read(() =>
-            $nodesOfType(MentionNode).find(
-              (node) =>
-                getMentionableKey(node.getMentionable()) === mentionableKey,
-            ),
-          )
-
-          if (!nodeWithSameMentionable) {
-            // remove mentionable only if it's not present in the editor state
-            destroyedMentionableKeys.push(mentionableKey)
-          }
-        } else if (mutation.mutation === 'created') {
-          if (
-            mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            ) ||
-            addedMentionables.some(
-              (m) => getMentionableKey(m) === mentionableKey,
-            )
-          ) {
-            // do nothing if mentionable is already added
-            return
-          }
-
-          addedMentionables.push(mentionable)
-        }
-      })
-
-      setMentionables((prev) =>
-        prev
-          .filter(
-            (m) =>
-              !destroyedMentionableKeys.includes(
-                getMentionableKey(serializeMentionable(m)),
-              ),
-          )
-          .concat(
-            addedMentionables
-              .map((m) => deserializeMentionable(m, app))
-              .filter((v): v is Mentionable => !!v),
-          ),
-      )
-
-      if (
-        selectionMentionableKey &&
-        destroyedMentionableKeys.includes(selectionMentionableKey)
-      ) {
-        setActiveSelectionScope(null)
-      }
-    },
-    [app, mentionables, selectionMentionable],
-  )
+  // Clear selection scope when its mentionable is removed from the input.
+  useEffect(() => {
+    if (!selectionMentionable) return
+    const selectionKey = getMentionableKey(
+      serializeMentionable(selectionMentionable),
+    )
+    const stillPresent = mentionables.some(
+      (mentionable) =>
+        getMentionableKey(serializeMentionable(mentionable)) === selectionKey,
+    )
+    if (!stillPresent) {
+      setActiveSelectionScope(null)
+    }
+  }, [mentionables, selectionMentionable])
 
   // System prompt is intentionally minimal: Quick Ask's "current editor scene"
   // (file path/title, cursor context, selection) is injected via the agent
@@ -679,19 +656,11 @@ export function QuickAskPanel({
       sourceFilePath,
     ])
 
-  const {
-    autoScrollToBottom,
-    followOutput,
-    onAtBottomStateChange,
-    forceScrollToBottom,
-    isAutoFollowEnabled,
-  } = useAutoScroll({
+  const { forceScrollToBottom, isAutoFollowEnabled } = useAutoScroll({
     scrollContainerRef: chatAreaRef,
     scrollContainerElement: chatAreaElement,
-    bottomAnchorRef,
-    isStreaming,
-    contentFollowMode: timelineIsVirtualized ? 'explicit' : 'observer',
-    followFromReactCommitsOnly: !timelineIsVirtualized,
+    contentElement: chatContentElement,
+    followKey: conversationId,
   })
 
   useEffect(() => {
@@ -724,15 +693,15 @@ export function QuickAskPanel({
   ])
 
   // Arrow keys focus assistant trigger; Enter on the trigger will open the menu
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const handlePanelKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (isAssistantMenuOpen || isModelMenuOpen || isModeMenuOpen) return
       const active = document.activeElement
       if (
         (active && assistantTriggerRef.current?.contains(active)) ||
         (active && modelTriggerRef.current?.contains(active)) ||
         (active && modeTriggerRef.current?.contains(active)) ||
-        (active && contentEditableRef.current?.contains(active))
+        (active && inputRowRef.current?.contains(active))
       ) {
         return
       }
@@ -740,10 +709,9 @@ export function QuickAskPanel({
       event.preventDefault()
       event.stopPropagation()
       assistantTriggerRef.current?.focus()
-    }
-    window.addEventListener('keydown', handleKeyDown, true)
-    return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen])
+    },
+    [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen],
+  )
 
   // When focus在助手按钮但菜单未展开时，ArrowUp 将焦点送回输入框（兜底）
   useEffect(() => {
@@ -754,7 +722,7 @@ export function QuickAskPanel({
       if (active !== assistantTriggerRef.current) return
       event.preventDefault()
       event.stopPropagation()
-      contentEditableRef.current?.focus()
+      messageInputRef.current?.focus()
     }
     window.addEventListener('keydown', handleArrowUpBack, true)
     return () => window.removeEventListener('keydown', handleArrowUpBack, true)
@@ -769,7 +737,7 @@ export function QuickAskPanel({
       event.stopPropagation()
       setIsAssistantMenuOpen(false)
       requestAnimationFrame(() => {
-        contentEditableRef.current?.focus()
+        messageInputRef.current?.focus()
       })
     }
     window.addEventListener('keydown', handleMenuEscape, true)
@@ -977,6 +945,7 @@ export function QuickAskPanel({
       options?: {
         baseMessages?: ChatMessage[]
         userMessageId?: string
+        selectedSkillsOverride?: ChatSelectedSkill[]
       },
     ) => {
       if (isStreaming) return
@@ -991,24 +960,27 @@ export function QuickAskPanel({
         return
       }
 
+      const resolvedMentionables = mentionablesOverride ?? mentionables
+      const resolvedSelectedSkills =
+        options?.selectedSkillsOverride ?? selectedSkills
+
       // Extract text from editor state
       const textContent = editorStateToPlainText(editorState)
-      if (!textContent.trim()) return
+      if (
+        !textContent.trim() &&
+        resolvedMentionables.length === 0 &&
+        resolvedSelectedSkills.length === 0
+      ) {
+        return
+      }
 
       setIsStreaming(true)
       setRunStatus('requesting')
       setInputText('')
       forceScrollToBottom()
 
-      // Clear the lexical editor
-      lexicalEditorRef.current?.update(() => {
-        const root = lexicalEditorRef.current?.getEditorState().read(() => {
-          return $getRoot()
-        })
-        if (root) {
-          root.clear()
-        }
-      })
+      messageInputRef.current?.replaceText('')
+      latestEditorStateRef.current = null
 
       // 新用户回合进入对话:在此固定当前时间(与侧边栏 Chat 同一机制)。
       const userMessage: ChatUserMessage = stampUserMessageTimeContext(
@@ -1017,13 +989,15 @@ export function QuickAskPanel({
           content: editorState,
           promptContent: null,
           id: options?.userMessageId ?? uuidv4(),
-          mentionables: mentionablesOverride ?? mentionables,
+          mentionables: resolvedMentionables,
+          selectedSkills: resolvedSelectedSkills,
         },
         resolveAssistantTimeContextEnabled(selectedAssistant, settings),
       )
 
-      // Clear mentionables after creating the message
+      // Clear mentionables / skills after creating the message
       setMentionables([])
+      setSelectedSkills([])
 
       const newMessages: ChatMessage[] = [
         ...(options?.baseMessages ?? chatMessages),
@@ -1136,13 +1110,14 @@ export function QuickAskPanel({
             allowedToolNames: chatModeRuntime.allowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
+            toolServerPreferences: chatModeRuntime.toolServerPreferences,
             allowedSkillPaths,
-            runtimeModePrompt: chatModeRuntime.runtimeModePrompt,
+            toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: editorSnapshotInjection
               ? [editorSnapshotInjection]
               : [],
             requestParams: {
-              stream: true,
+              deliveryMode: 'incremental',
               primaryRequestTimeoutMs:
                 settings.continuationOptions.primaryRequestTimeoutMs,
               streamFallbackRecoveryEnabled:
@@ -1188,6 +1163,7 @@ export function QuickAskPanel({
       getMcpManager,
       isStreaming,
       mentionables,
+      selectedSkills,
       executionMode,
       forceScrollToBottom,
       model,
@@ -1208,6 +1184,33 @@ export function QuickAskPanel({
         prev.map((message) =>
           message.id === toolMessage.id ? toolMessage : message,
         ),
+      )
+    },
+    [],
+  )
+
+  const handleToolCallResponseUpdate = useCallback(
+    (toolMessageId: string, toolCallId: string, response: ToolCallResponse) => {
+      setChatMessages((prev) =>
+        prev.map((message) => {
+          if (message.id !== toolMessageId || message.role !== 'tool') {
+            return message
+          }
+
+          let didChange = false
+          const nextToolCalls = message.toolCalls.map((toolCall) => {
+            if (toolCall.request.id !== toolCallId) {
+              return toolCall
+            }
+            if (toolCall.response === response) {
+              return toolCall
+            }
+            didChange = true
+            return { ...toolCall, response }
+          })
+
+          return didChange ? { ...message, toolCalls: nextToolCalls } : message
+        }),
       )
     },
     [],
@@ -1379,41 +1382,6 @@ export function QuickAskPanel({
     [activeApplyRequestKey, app, isApplying, plugin, resolveEditTargetFile],
   )
 
-  useEffect(() => {
-    if (
-      autoSend ||
-      hasAppliedInitialInputRef.current ||
-      (!initialInput && (initialMentionables?.length ?? 0) === 0)
-    ) {
-      return
-    }
-
-    let cancelled = false
-    const applyInitialState = () => {
-      if (cancelled || hasAppliedInitialInputRef.current) return
-      const editor = lexicalEditorRef.current
-      if (!editor) {
-        requestAnimationFrame(applyInitialState)
-        return
-      }
-
-      hasAppliedInitialInputRef.current = true
-      const editorState = createQuickAskEditorState({
-        prompt: initialInput ?? '',
-        mentionables: initialMentionables ?? [],
-        mentionableUnitLabels,
-      })
-      editor.setEditorState(editor.parseEditorState(editorState))
-      // setEditorState 会重置选区并让 contentEditable 失焦，这里把焦点/光标拿回来
-      editor.focus(undefined, { defaultSelection: 'rootEnd' })
-    }
-
-    requestAnimationFrame(applyInitialState)
-    return () => {
-      cancelled = true
-    }
-  }, [autoSend, initialInput, initialMentionables, mentionableUnitLabels])
-
   // Submit edit mode - generate a text edit plan and open ApplyView
   const submitEditMode = useCallback(
     async (instruction: string) => {
@@ -1441,16 +1409,10 @@ export function QuickAskPanel({
       setIsStreaming(true)
       setRunStatus('requesting')
 
-      // Clear the lexical editor
-      lexicalEditorRef.current?.update(() => {
-        const root = lexicalEditorRef.current?.getEditorState().read(() => {
-          return $getRoot()
-        })
-        if (root) {
-          root.clear()
-        }
-      })
+      messageInputRef.current?.replaceText('')
+      latestEditorStateRef.current = null
       setInputText('')
+      setSelectedSkills([])
 
       let closedForReview = false
       try {
@@ -1574,16 +1536,10 @@ export function QuickAskPanel({
       setIsStreaming(true)
       setRunStatus('requesting')
 
-      // Clear the lexical editor
-      lexicalEditorRef.current?.update(() => {
-        const root = lexicalEditorRef.current?.getEditorState().read(() => {
-          return $getRoot()
-        })
-        if (root) {
-          root.clear()
-        }
-      })
+      messageInputRef.current?.replaceText('')
+      latestEditorStateRef.current = null
       setInputText('')
+      setSelectedSkills([])
 
       try {
         const scopedToSelection =
@@ -1677,45 +1633,30 @@ export function QuickAskPanel({
     const prompt = initialPrompt?.trim()
     if (!prompt) return
 
-    let cancelled = false
-    const tryAutoSend = () => {
-      if (cancelled || autoSendRef.current) return
-      const editor = lexicalEditorRef.current
-      if (!editor) {
-        requestAnimationFrame(tryAutoSend)
-        return
-      }
+    autoSendRef.current = true
 
-      autoSendRef.current = true
-
-      if (executionMode === 'edit') {
-        void submitEditMode(prompt)
-        return
-      }
-
-      if (executionMode === 'edit-direct') {
-        void submitEditDirect(prompt)
-        return
-      }
-
-      const mentionablesToInsert = initialMentionables ?? []
-      if (mentionablesToInsert.length > 0) {
-        setMentionables(mentionablesToInsert)
-      }
-
-      const editorState = createQuickAskEditorState({
-        prompt,
-        mentionables: mentionablesToInsert,
-        mentionableUnitLabels,
-      })
-      editor.setEditorState(editor.parseEditorState(editorState))
-      void submitMessage(editorState, mentionablesToInsert)
+    if (executionMode === 'edit') {
+      void submitEditMode(prompt)
+      return
     }
 
-    requestAnimationFrame(tryAutoSend)
-    return () => {
-      cancelled = true
+    if (executionMode === 'edit-direct') {
+      void submitEditDirect(prompt)
+      return
     }
+
+    const mentionablesToInsert = initialMentionables ?? []
+    if (mentionablesToInsert.length > 0) {
+      setMentionables(mentionablesToInsert)
+    }
+
+    const editorState = createQuickAskEditorState({
+      prompt,
+      mentionables: mentionablesToInsert,
+      mentionableUnitLabels,
+    })
+    latestEditorStateRef.current = editorState
+    void submitMessage(editorState, mentionablesToInsert)
   }, [
     autoSend,
     initialMentionables,
@@ -1743,52 +1684,36 @@ export function QuickAskPanel({
     [setSettings, settings],
   )
 
-  // Handle Enter key
-  const handleEnter = useCallback(
-    (event: KeyboardEvent) => {
-      if (event.shiftKey) return // Allow Shift+Enter for newline
-
-      const lexicalEditor = lexicalEditorRef.current
-      if (lexicalEditor) {
-        const editorState = lexicalEditor.getEditorState().toJSON()
-        const textContent = editorStateToPlainText(editorState)
-
-        if (executionMode === 'edit') {
-          void submitEditMode(textContent)
-        } else if (executionMode === 'edit-direct') {
-          void submitEditDirect(textContent)
-        } else {
-          void submitMessage(editorState)
-        }
-      }
+  const handleMainInputChange = useCallback(
+    (content: SerializedEditorState) => {
+      latestEditorStateRef.current = content
     },
-    [executionMode, submitEditMode, submitEditDirect, submitMessage],
+    [],
   )
 
-  // Clear conversation
-  const clearConversation = useCallback(() => {
-    // Abort any in-flight run first: clearing starts a new topic under the same
-    // conversationId, and a still-running loop would otherwise re-create the
-    // snapshot we are about to evict on its next iteration.
-    abortStream()
-    setChatMessages([])
-    // New topic under the same conversationId, so drop the frozen system prompt
-    // to re-snapshot against the current memory / config on the next message.
-    plugin.getAgentService().evictSystemPromptSnapshot(conversationId)
-    new Notice(t('quickAsk.cleared', 'Conversation cleared'))
-    // Re-enable follow mode after clearing.
-    forceScrollToBottom()
-    // Focus input after clearing
-    setTimeout(() => {
-      contentEditableRef.current?.focus()
-    }, 0)
-  }, [abortStream, conversationId, plugin, forceScrollToBottom, t])
+  // Handle Enter key / submit from MessageInputCore
+  const handleEnter = useCallback(() => {
+    const editorState = latestEditorStateRef.current
+    if (!editorState) return
+
+    const textContent = editorStateToPlainText(editorState)
+
+    if (executionMode === 'edit') {
+      void submitEditMode(textContent)
+    } else if (executionMode === 'edit-direct') {
+      void submitEditDirect(textContent)
+    } else {
+      void submitMessage(editorState)
+    }
+  }, [executionMode, submitEditMode, submitEditDirect, submitMessage])
 
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
   const isResizedEmptyState = !hasMessages && !!panelSize?.height
-  const groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[] =
-    useMemo(() => groupAssistantAndToolMessages(chatMessages), [chatMessages])
+  const chatTimelineReadModel = useChatTimelineReadModel({
+    messages: chatMessages,
+  })
+  const groupedChatMessages = chatTimelineReadModel.groupedChatMessages
   const activeStreamingMessageId = useMemo(() => {
     for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
       const message = chatMessages[index]
@@ -1806,50 +1731,43 @@ export function QuickAskPanel({
     () =>
       buildMessageTimelineItems({
         groupedChatMessages,
+        revisionsById: chatTimelineReadModel.revisionsById,
         activeEditableMessageId: focusedUserMessageId,
         activeStreamingMessageId,
         includeBottomAnchor: true,
       }),
-    [activeStreamingMessageId, focusedUserMessageId, groupedChatMessages],
+    [
+      activeStreamingMessageId,
+      chatTimelineReadModel.revisionsById,
+      focusedUserMessageId,
+      groupedChatMessages,
+    ],
+  )
+  const stableQuickAskTimelineItems = useStableChatTimelineItems(
+    quickAskTimelineItems,
   )
   const hideScrollbarWhileFollowing =
     isStreaming && isAutoFollowEnabled && hasMessages
   const quickAskChatShellClassName = 'yolo-quick-ask-chat-shell'
   const quickAskChatAreaClassName = useMemo(
     () =>
-      `yolo-chat-messages yolo-quick-ask-chat-area yolo-quick-ask-chat-area--shared${hideScrollbarWhileFollowing ? ' yolo-quick-ask-chat-area--hide-scrollbar' : ''}`,
-    [hideScrollbarWhileFollowing],
+      `yolo-chat-messages yolo-quick-ask-chat-area yolo-quick-ask-chat-area--shared${isAutoFollowEnabled ? ' yolo-chat-messages--following' : ''}${hideScrollbarWhileFollowing ? ' yolo-quick-ask-chat-area--hide-scrollbar' : ''}`,
+    [hideScrollbarWhileFollowing, isAutoFollowEnabled],
   )
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
-    for (let index = quickAskTimelineItems.length - 1; index >= 0; index -= 1) {
-      const candidate = quickAskTimelineItems[index]
+    for (
+      let index = stableQuickAskTimelineItems.length - 1;
+      index >= 0;
+      index -= 1
+    ) {
+      const candidate = stableQuickAskTimelineItems[index]
       if (candidate.kind === 'assistant-group') {
         return candidate.renderKey
       }
     }
 
     return null
-  }, [quickAskTimelineItems])
-
-  useLayoutEffect(() => {
-    if (timelineIsVirtualized) {
-      return
-    }
-
-    if (chatMessages.length === 0 || !isStreaming) {
-      return
-    }
-
-    autoScrollToBottom()
-  }, [
-    activeStreamingMessageId,
-    autoScrollToBottom,
-    chatMessages,
-    isAutoFollowEnabled,
-    isStreaming,
-    timelineIsVirtualized,
-  ])
-
+  }, [stableQuickAskTimelineItems])
   // Global key handling to match palette UX (Esc closes, even when dropdown is open)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2052,9 +1970,19 @@ export function QuickAskPanel({
   const renderQuickAskTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem) => {
       if (timelineItem.kind === 'assistant-group') {
+        const messages = timelineItem.messageIds
+          .map((messageId) => chatTimelineReadModel.messagesById.get(messageId))
+          .filter(
+            (message): message is AssistantToolMessageGroup[number] =>
+              message !== undefined && message.role !== 'user',
+          )
+        if (messages.length === 0) {
+          return null
+        }
+
         return (
           <AssistantToolMessageGroupItem
-            messages={timelineItem.messages}
+            messages={messages}
             conversationId={conversationId}
             suppressFooter={
               isStreaming &&
@@ -2085,6 +2013,7 @@ export function QuickAskPanel({
             activeApplyRequestKey={activeApplyRequestKey}
             onApply={handleApply}
             onToolMessageUpdate={handleToolMessageUpdate}
+            onToolCallResponseUpdate={handleToolCallResponseUpdate}
             onEditStart={noop}
             onEditCancel={noop}
             onEditSave={noop}
@@ -2102,7 +2031,12 @@ export function QuickAskPanel({
       }
 
       if (timelineItem.kind === 'user-message') {
-        const messageOrGroup = timelineItem.message
+        const messageOrGroup = chatTimelineReadModel.messagesById.get(
+          timelineItem.messageId,
+        )
+        if (!messageOrGroup || messageOrGroup.role !== 'user') {
+          return null
+        }
         const groupedMessageIndex = groupedChatMessages.findIndex(
           (candidate) =>
             !Array.isArray(candidate) && candidate.id === messageOrGroup.id,
@@ -2143,7 +2077,8 @@ export function QuickAskPanel({
               onSubmit={(content) => {
                 if (
                   editorStateToPlainText(content).trim() === '' &&
-                  messageOrGroup.mentionables.length === 0
+                  messageOrGroup.mentionables.length === 0 &&
+                  (messageOrGroup.selectedSkills?.length ?? 0) === 0
                 ) {
                   return
                 }
@@ -2157,10 +2092,11 @@ export function QuickAskPanel({
                 void submitMessage(content, messageOrGroup.mentionables, {
                   baseMessages,
                   userMessageId: messageOrGroup.id,
+                  selectedSkillsOverride: messageOrGroup.selectedSkills ?? [],
                 })
                 setFocusedUserMessageId(null)
                 requestAnimationFrame(() => {
-                  contentEditableRef.current?.focus()
+                  messageInputRef.current?.focus()
                 })
               }}
               onFocus={() => {
@@ -2173,6 +2109,19 @@ export function QuickAskPanel({
                       ? {
                           ...message,
                           mentionables,
+                          promptContent: null,
+                        }
+                      : message,
+                  ),
+                )
+              }}
+              onSelectedSkillsChange={(skills) => {
+                setChatMessages((prev) =>
+                  prev.map((message) =>
+                    message.role === 'user' && message.id === messageOrGroup.id
+                      ? {
+                          ...message,
+                          selectedSkills: skills,
                           promptContent: null,
                         }
                       : message,
@@ -2213,19 +2162,14 @@ export function QuickAskPanel({
       }
 
       if (timelineItem.kind === 'bottom-anchor') {
-        return (
-          <div
-            ref={bottomAnchorRef}
-            className="yolo-chat-bottom-anchor"
-            aria-hidden="true"
-          />
-        )
+        return <div className="yolo-chat-bottom-anchor" aria-hidden="true" />
       }
 
       return null
     },
     [
       activeApplyRequestKey,
+      chatTimelineReadModel.messagesById,
       conversationId,
       focusedUserMessageId,
       groupedChatMessages,
@@ -2247,10 +2191,64 @@ export function QuickAskPanel({
     ],
   )
 
+  const quickAskTimelineRenderVersion = useCallback(
+    (timelineItem: ChatTimelineItem): string => {
+      if (timelineItem.kind === 'assistant-group') {
+        return [
+          'assistant',
+          timelineItem.revision,
+          conversationId,
+          isStreaming &&
+            timelineItem.renderKey === latestTimelineAssistantToolGroupKey,
+          quickAskSurfacePreset.assistantActions.showInlineInfo,
+          quickAskSurfacePreset.assistantActions.showRetryAction,
+          quickAskSurfacePreset.assistantActions.showInsertAction,
+          quickAskSurfacePreset.assistantActions.showCopyAction,
+          quickAskSurfacePreset.assistantActions.showBranchAction,
+          quickAskSurfacePreset.assistantActions.showEditAction,
+          quickAskSurfacePreset.assistantActions.showDeleteAction,
+          quickAskSurfacePreset.assistantActions.showQuoteAction,
+          isApplying,
+          activeApplyRequestKey ?? '',
+        ].join('|')
+      }
+
+      if (timelineItem.kind === 'user-message') {
+        return [
+          'user',
+          timelineItem.revision,
+          focusedUserMessageId === timelineItem.messageId,
+          settings.continuationOptions?.continuationModelId ?? '',
+          settings.chatModelId,
+          getQuickAskRenderVersionObjectId(settings.chatModels),
+          selectedAssistant?.id ?? '',
+          mode,
+          quickAskSurfacePreset.userMessage.showReasoningSelect,
+          quickAskSurfacePreset.userMessage.allowAgentModeOption,
+        ].join('|')
+      }
+
+      return timelineItem.renderKey
+    },
+    [
+      activeApplyRequestKey,
+      conversationId,
+      focusedUserMessageId,
+      isApplying,
+      isStreaming,
+      latestTimelineAssistantToolGroupKey,
+      mode,
+      quickAskSurfacePreset,
+      selectedAssistant?.id,
+      settings,
+    ],
+  )
+
   return (
     <div
       className={`yolo-quick-ask-panel ${hasMessages ? 'has-messages' : ''} ${isResizedEmptyState ? 'is-resized-empty' : ''} ${isDragging ? 'is-dragging' : ''} ${isResizing ? 'is-resizing' : ''}`}
       ref={containerRef ?? undefined}
+      onKeyDown={handlePanelKeyDown}
       style={
         panelSize
           ? {
@@ -2266,14 +2264,16 @@ export function QuickAskPanel({
           : undefined
       }
     >
-      <button
-        type="button"
-        className="yolo-quick-ask-close-button"
-        onClick={onClose}
-        aria-label={t('quickAsk.close', 'Close')}
-      >
-        <X size={14} />
-      </button>
+      <div className="yolo-quick-ask-header-actions">
+        <button
+          type="button"
+          className="yolo-quick-ask-header-button"
+          onClick={onClose}
+          aria-label={t('quickAsk.close', 'Close')}
+        >
+          <X size={14} />
+        </button>
+      </div>
 
       <div
         ref={dragHandleRef}
@@ -2283,39 +2283,72 @@ export function QuickAskPanel({
         <div className="yolo-quick-ask-drag-indicator" />
       </div>
 
-      {/* Top: Input row */}
-      {(!isStreaming || shouldShowInlineRunStatus) && (
+      {/* Chat area - only shown when there are messages */}
+      {hasMessages && (
+        <SharedConversationSurface
+          items={stableQuickAskTimelineItems}
+          conversationId={conversationId}
+          scrollContainerRef={chatAreaRef}
+          onScrollContainerChange={setChatAreaElement}
+          onContentElementChange={setChatContentElement}
+          containerClassName={quickAskChatShellClassName}
+          renderItem={renderQuickAskTimelineItem}
+          renderVersion={quickAskTimelineRenderVersion}
+          forceRenderItemIds={['bottom-anchor']}
+          virtualizationThreshold={
+            focusedUserMessageId
+              ? stableQuickAskTimelineItems.length
+              : undefined
+          }
+          scrollContainerClassName={quickAskChatAreaClassName}
+        />
+      )}
+
+      {/* Composer: input + toolbar stay glued together in both empty and chat layouts */}
+      <div className="yolo-quick-ask-composer">
+        {/* Keep mounted during streaming (disabled keep-alive) */}
         <div className="yolo-quick-ask-input-row" ref={inputRowRef}>
           <div
             className={`yolo-quick-ask-input ${isStreaming ? 'is-disabled' : ''}`}
           >
-            {!isStreaming && (
-              <LexicalContentEditable
-                editorRef={lexicalEditorRef}
-                contentEditableRef={contentEditableRef}
-                onTextContentChange={setInputText}
-                onEnter={handleEnter}
-                onKeyDown={(event) => {
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault()
-                    assistantTriggerRef.current?.focus()
-                  }
-                }}
-                onMentionMenuToggle={(open) => {
-                  setIsMentionMenuOpen(open)
-                  if (open) updateMentionMenuPlacement()
-                }}
-                onMentionNodeMutation={handleMentionNodeMutation}
-                mentionMenuPlacement={mentionMenuPlacement}
-                autoFocus
-                contentClassName="yolo-obsidian-textarea yolo-content-editable yolo-quick-ask-content-editable"
-              />
-            )}
-            {inputText.length === 0 && !isStreaming && (
-              <div className="yolo-quick-ask-input-placeholder">
-                {t('quickAsk.inputPlaceholder', 'Ask a question...')}
-              </div>
-            )}
+            <MessageInputCore
+              ref={messageInputRef}
+              initialSerializedEditorState={initialSerializedEditorState}
+              onChange={handleMainInputChange}
+              onTextContentChange={setInputText}
+              onEnter={handleEnter}
+              autoFocus
+              disabled={isStreaming}
+              enableSkills
+              enableAttachments={false}
+              mentionables={mentionables}
+              setMentionables={setMentionables}
+              selectedSkills={selectedSkills}
+              setSelectedSkills={setSelectedSkills}
+              mentionDisplayMode="inline"
+              contentClassName="yolo-obsidian-textarea yolo-content-editable yolo-quick-ask-content-editable"
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  assistantTriggerRef.current?.focus()
+                }
+              }}
+              onMentionMenuToggle={(open) => {
+                setIsMentionMenuOpen(open)
+                if (open) updateMentionMenuPlacement()
+              }}
+              mentionMenuPlacement={mentionMenuPlacement}
+              models={enabledChatModels}
+              skills={availableSkills}
+            />
+            {inputText.length === 0 &&
+              mentionables.length === 0 &&
+              selectedSkills.length === 0 &&
+              !isStreaming && (
+                <div className="yolo-quick-ask-input-placeholder">
+                  {t('quickAsk.inputPlaceholder', 'Ask a question...')}
+                </div>
+              )}
             {shouldShowInlineRunStatus && (
               <div className="yolo-quick-ask-run-status" aria-live="polite">
                 <span
@@ -2327,260 +2360,205 @@ export function QuickAskPanel({
             )}
           </div>
         </div>
-      )}
 
-      {/* Chat area - only shown when there are messages */}
-      {hasMessages && (
-        <SharedConversationSurface
-          items={quickAskTimelineItems}
-          conversationId={conversationId}
-          scrollContainerRef={chatAreaRef}
-          onScrollContainerChange={setChatAreaElement}
-          containerClassName={quickAskChatShellClassName}
-          renderItem={renderQuickAskTimelineItem}
-          forceRenderItemIds={['bottom-anchor']}
-          followOutput={followOutput}
-          onAtBottomStateChange={onAtBottomStateChange}
-          virtualizationThreshold={
-            focusedUserMessageId ? quickAskTimelineItems.length : undefined
-          }
-          onVirtualizationChange={setTimelineIsVirtualized}
-          scrollContainerClassName={quickAskChatAreaClassName}
-        />
-      )}
-
-      {/* Bottom toolbar (Cursor style): assistant selector left, actions right */}
-      <div className="yolo-quick-ask-toolbar">
-        {/* Left: Assistant selector */}
-        <div className="yolo-quick-ask-toolbar-left">
-          <DropdownMenu.Root
-            open={isAssistantMenuOpen}
-            onOpenChange={setIsAssistantMenuOpen}
-          >
-            <DropdownMenu.Trigger asChild>
-              <button
-                type="button"
-                ref={assistantTriggerRef}
-                className="yolo-quick-ask-assistant-trigger"
-                onKeyDown={(event) => {
-                  if (!isAssistantMenuOpen) {
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      contentEditableRef.current?.focus()
-                      return
-                    }
-                    if (
-                      event.key === 'ArrowRight' ||
-                      event.key === 'ArrowLeft'
-                    ) {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      modelTriggerRef.current?.focus()
-                      return
-                    }
-                  }
-                }}
-              >
-                {selectedAssistant && (
-                  <span className="yolo-quick-ask-assistant-icon">
-                    {renderAssistantIcon(selectedAssistant.icon, 14)}
-                  </span>
-                )}
-                <span className="yolo-quick-ask-assistant-name">
-                  {selectedAssistant?.name ||
-                    t('quickAsk.noAssistant', 'No Assistant')}
-                </span>
-                {isAssistantMenuOpen ? (
-                  <ChevronUp size={12} />
-                ) : (
-                  <ChevronDown size={12} />
-                )}
-              </button>
-            </DropdownMenu.Trigger>
-            <YoloDropdownContent
-              anchorRef={assistantTriggerRef}
-              variant="smart-space"
-              minWidth={200}
-              maxWidth={300}
-              side="top"
-              align="start"
-              sideOffset={8}
-              collisionPadding={8}
-              avoidCollisions={false}
-              onCloseAutoFocus={(e) => e.preventDefault()}
+        {/* Toolbar: assistant / model / mode left, send right */}
+        <div className="yolo-quick-ask-toolbar">
+          {/* Left: Assistant selector */}
+          <div className="yolo-quick-ask-toolbar-left">
+            <DropdownMenu.Root
+              open={isAssistantMenuOpen}
+              onOpenChange={setIsAssistantMenuOpen}
             >
-              <AssistantSelectMenu
-                assistants={assistants}
-                currentAssistantId={selectedAssistant?.id}
-                onSelect={(assistant) => {
-                  setSelectedAssistant(assistant)
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  ref={assistantTriggerRef}
+                  className="yolo-quick-ask-assistant-trigger"
+                  onKeyDown={(event) => {
+                    if (!isAssistantMenuOpen) {
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        messageInputRef.current?.focus()
+                        return
+                      }
+                      if (
+                        event.key === 'ArrowRight' ||
+                        event.key === 'ArrowLeft'
+                      ) {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        modelTriggerRef.current?.focus()
+                        return
+                      }
+                    }
+                  }}
+                >
+                  {selectedAssistant && (
+                    <span className="yolo-quick-ask-assistant-icon">
+                      {renderAssistantIcon(selectedAssistant.icon, 14)}
+                    </span>
+                  )}
+                  <span className="yolo-quick-ask-assistant-name">
+                    {selectedAssistant?.name ||
+                      t('quickAsk.noAssistant', 'No Assistant')}
+                  </span>
+                  {isAssistantMenuOpen ? (
+                    <ChevronUp size={12} />
+                  ) : (
+                    <ChevronDown size={12} />
+                  )}
+                </button>
+              </DropdownMenu.Trigger>
+              <YoloDropdownContent
+                anchorRef={assistantTriggerRef}
+                variant="smart-space"
+                minWidth={200}
+                maxWidth={300}
+                side="top"
+                align="start"
+                sideOffset={8}
+                collisionPadding={8}
+                avoidCollisions={false}
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
+                <AssistantSelectMenu
+                  assistants={assistants}
+                  currentAssistantId={selectedAssistant?.id}
+                  onSelect={(assistant) => {
+                    setSelectedAssistant(assistant)
+                    void setSettings({
+                      ...settings,
+                      quickAskAssistantId: assistant?.id,
+                    })
+                    setIsAssistantMenuOpen(false)
+                    requestAnimationFrame(() => {
+                      messageInputRef.current?.focus()
+                    })
+                  }}
+                  onClose={() => setIsAssistantMenuOpen(false)}
+                  compact
+                />
+              </YoloDropdownContent>
+            </DropdownMenu.Root>
+
+            <div className="yolo-quick-ask-model-select yolo-smart-space-model-select">
+              <ModelSelect
+                ref={modelTriggerRef}
+                modelId={
+                  settings.continuationOptions?.continuationModelId &&
+                  settings.chatModels.some(
+                    (m) =>
+                      m.id ===
+                      settings.continuationOptions?.continuationModelId,
+                  )
+                    ? settings.continuationOptions?.continuationModelId
+                    : settings.chatModelId
+                }
+                onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
+                onChange={(modelId) => {
                   void setSettings({
                     ...settings,
-                    quickAskAssistantId: assistant?.id,
-                  })
-                  setIsAssistantMenuOpen(false)
-                  requestAnimationFrame(() => {
-                    contentEditableRef.current?.focus()
+                    continuationOptions: {
+                      ...settings.continuationOptions,
+                      continuationModelId: modelId,
+                    },
                   })
                 }}
-                onClose={() => setIsAssistantMenuOpen(false)}
-                compact
+                side="bottom"
+                align="start"
+                sideOffset={12}
+                alignOffset={-4}
+                popover={{
+                  variant: 'smart-space',
+                  maxHeight: 400,
+                  className: 'yolo-quick-ask-model-popover',
+                }}
+                onKeyDown={(event, isMenuOpen) => {
+                  if (isMenuOpen) {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setIsModelMenuOpen(false)
+                    }
+                    return
+                  }
+
+                  if (event.key === 'ArrowLeft') {
+                    event.preventDefault()
+                    assistantTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowRight') {
+                    event.preventDefault()
+                    modeTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    messageInputRef.current?.focus()
+                  }
+                }}
+                onModelSelected={() => {
+                  requestAnimationFrame(() => {
+                    modelTriggerRef.current?.focus({ preventScroll: true })
+                  })
+                }}
               />
-            </YoloDropdownContent>
-          </DropdownMenu.Root>
+            </div>
 
-          <div className="yolo-quick-ask-model-select yolo-smart-space-model-select">
-            <ModelSelect
-              ref={modelTriggerRef}
-              modelId={
-                settings.continuationOptions?.continuationModelId &&
-                settings.chatModels.some(
-                  (m) =>
-                    m.id === settings.continuationOptions?.continuationModelId,
-                )
-                  ? settings.continuationOptions?.continuationModelId
-                  : settings.chatModelId
+            <div className="yolo-quick-ask-mode-select">
+              <ModeSelect
+                ref={modeTriggerRef}
+                mode={mode}
+                onChange={handleModeChange}
+                triggerLabel={modeTriggerLabel}
+                onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
+                side="bottom"
+                align="start"
+                sideOffset={12}
+                alignOffset={-4}
+                onKeyDown={(event, isMenuOpen) => {
+                  if (isMenuOpen) {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setIsModeMenuOpen(false)
+                    }
+                    return
+                  }
+
+                  if (event.key === 'ArrowLeft') {
+                    event.preventDefault()
+                    modelTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowRight') {
+                    event.preventDefault()
+                    assistantTriggerRef.current?.focus()
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    messageInputRef.current?.focus()
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Right: Send / stop */}
+          <div className="yolo-quick-ask-toolbar-right">
+            <SubmitButton
+              isGenerating={isStreaming}
+              onAbort={abortStream}
+              disabled={
+                isStreaming ||
+                (executionMode === 'edit' || executionMode === 'edit-direct'
+                  ? inputText.trim().length === 0
+                  : !canSubmitMainInput)
               }
-              onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
-              onChange={(modelId) => {
-                void setSettings({
-                  ...settings,
-                  continuationOptions: {
-                    ...settings.continuationOptions,
-                    continuationModelId: modelId,
-                  },
-                })
-              }}
-              side="bottom"
-              align="start"
-              sideOffset={12}
-              alignOffset={-4}
-              popover={{
-                variant: 'smart-space',
-                maxHeight: 400,
-                className: 'yolo-quick-ask-model-popover',
-              }}
-              onKeyDown={(event, isMenuOpen) => {
-                if (isMenuOpen) {
-                  if (event.key === 'Escape') {
-                    event.preventDefault()
-                    setIsModelMenuOpen(false)
-                  }
-                  return
-                }
-
-                if (event.key === 'ArrowLeft') {
-                  event.preventDefault()
-                  assistantTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowRight') {
-                  event.preventDefault()
-                  modeTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  contentEditableRef.current?.focus()
-                }
-              }}
-              onModelSelected={() => {
-                requestAnimationFrame(() => {
-                  modelTriggerRef.current?.focus({ preventScroll: true })
-                })
-              }}
+              onClick={handleEnter}
             />
           </div>
-
-          <div className="yolo-quick-ask-mode-select">
-            <ModeSelect
-              ref={modeTriggerRef}
-              mode={mode}
-              onChange={handleModeChange}
-              triggerLabel={modeTriggerLabel}
-              onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
-              side="bottom"
-              align="start"
-              sideOffset={12}
-              alignOffset={-4}
-              onKeyDown={(event, isMenuOpen) => {
-                if (isMenuOpen) {
-                  if (event.key === 'Escape') {
-                    event.preventDefault()
-                    setIsModeMenuOpen(false)
-                  }
-                  return
-                }
-
-                if (event.key === 'ArrowLeft') {
-                  event.preventDefault()
-                  modelTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowRight') {
-                  event.preventDefault()
-                  assistantTriggerRef.current?.focus()
-                  return
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  contentEditableRef.current?.focus()
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Right: Action buttons */}
-        <div className="yolo-quick-ask-toolbar-right">
-          {/* Clear conversation button - only shown when there are messages */}
-          {hasMessages && (
-            <button
-              type="button"
-              className="yolo-quick-ask-toolbar-button"
-              onClick={clearConversation}
-              aria-label={t('quickAsk.clear', 'Clear conversation')}
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-
-          {/* Send/Stop button */}
-          {isStreaming ? (
-            <button
-              type="button"
-              className="yolo-quick-ask-send-button stop"
-              onClick={abortStream}
-              aria-label={t('quickAsk.stop', 'Stop')}
-            >
-              <Square size={14} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="yolo-quick-ask-send-button"
-              onClick={() => {
-                const lexicalEditor = lexicalEditorRef.current
-                if (lexicalEditor) {
-                  const editorState = lexicalEditor.getEditorState().toJSON()
-                  const textContent = editorStateToPlainText(editorState)
-
-                  if (executionMode === 'edit') {
-                    void submitEditMode(textContent)
-                  } else if (executionMode === 'edit-direct') {
-                    void submitEditDirect(textContent)
-                  } else {
-                    void submitMessage(editorState)
-                  }
-                }
-              }}
-              disabled={inputText.trim().length === 0}
-              aria-label={t('quickAsk.send', 'Send')}
-            >
-              <Send size={14} />
-            </button>
-          )}
         </div>
       </div>
 

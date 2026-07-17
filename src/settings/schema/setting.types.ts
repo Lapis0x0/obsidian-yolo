@@ -4,6 +4,7 @@ import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_CHAT_TITLE_MODEL_ID,
 } from '../../constants'
+import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConfig'
 import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
@@ -15,6 +16,7 @@ import {
 } from '../../types/mcp.types'
 import { llmProviderSchema } from '../../types/provider.types'
 import { REASONING_LEVELS, ReasoningLevel } from '../../types/reasoning'
+import { DEFAULT_CHAT_QUICK_ACCESS_ENTRIES } from '../chatQuickAccess'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
@@ -53,6 +55,13 @@ const ragOptionsSchema = z.object({
    */
   embeddingConcurrency: z.number().catch(10),
   excludePatterns: z.array(z.string()).catch([]),
+  /**
+   * When true, the plugin's YOLO base directory (resolved dynamically from
+   * `yolo.baseDir`) is excluded from indexing on top of `excludePatterns`.
+   * The UI surfaces this as a removable chip in the exclude folder list;
+   * deleting that chip flips this flag to false and persists the choice.
+   */
+  excludeYoloBaseDir: z.boolean().catch(true),
   includePatterns: z.array(z.string()).catch([]),
   /** When true, index `.pdf` files for RAG (text extraction). */
   indexPdf: z.boolean().catch(true),
@@ -262,14 +271,16 @@ export const jsSandboxSettingsSchema = z.object({
   // Maximum size (in KB) returned by $vault.readText / $vault.readBinary.
   // Files exceeding this are truncated (text) or refused (binary).
   vaultReadMaxKb: z.number().optional(),
+  allowBrowserRead: z.boolean().optional(),
+  // Maximum size (in KB) returned by $browser.readHtml. Pages exceeding
+  // this are refused so callers do not silently receive partial HTML.
+  browserReadMaxKb: z.number().optional(),
   allowExternalScripts: z.boolean().optional(),
   // Execution timeout cap, in milliseconds. The LLM may pass a smaller
   // timeoutMs in its tool args, but the host clamps the effective value
   // to this cap. Undefined means use the built-in default.
   timeoutMs: z.number().optional(),
-  // Maximum rows returned by $db.search / $db.find. The LLM may request a
-  // smaller limit per call but never larger. Undefined falls back to a
-  // built-in default.
+  // Maximum rows returned by $db.search (knowledge-base RAG/vector search).
   dbQueryMaxLimit: z.number().optional(),
   // Maximum size (in KB) of the tool's serialized JSON result returned to
   // the model. Output above this is truncated with a prefix. Undefined
@@ -305,7 +316,7 @@ const tabCompletionTriggerSchema = z
  * pattern: one outer list, no two-layer split, drag to reorder, gear to
  * edit. The pre-list shape (`selectedAsrApiFormat + asrProviderProfiles`,
  * which existed briefly during feature development on this branch) is
- * converted into list entries by the v69→v70 migration.
+ * converted into list entries by the v75→v76 migration.
  */
 export const ASR_API_FORMATS = [
   'openai-compatible-transcription',
@@ -431,7 +442,7 @@ export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = 'YOLO/read_aloud'
  * IMPORTANT: this schema must keep `.catch` defaults on every field so
  * partial / older blobs survive load. The legacy `OpenAiCompatibleTranscriptionProfile`
  * and `OpenAiCompatibleChatAudioAsrProfile` shapes have been removed —
- * the v69→v70 migration converts them into entries of this schema.
+ * the v75→v76 migration converts them into entries of this schema.
  */
 const asrConfigSchema = z
   .object({
@@ -822,7 +833,7 @@ export const yoloSettingsSchema = z.object({
   embeddingModels: resilientArraySchema(embeddingModelSchema),
 
   chatModelId: z.string().catch(''), // model for default chat feature
-  chatTitleModelId: z.string().catch(''), // model for automatic conversation naming and compact summaries
+  chatTitleModelId: z.string().catch(''), // model for automatic conversation naming
   embeddingModelId: z.string().catch(''), // model for embedding
 
   // System Prompt
@@ -838,6 +849,9 @@ export const yoloSettingsSchema = z.object({
   // 更新提示:同版本第二次关闭后记录被静音的版本号,只有出现更高版本才会再次提示。
   mutedUpdateVersion: z.string().catch(''),
 
+  /** 检测到新版本时在后台自动下载 release 文件；安装仍需用户确认。 */
+  pluginUpdateAutoDownloadEnabled: z.boolean().catch(true),
+
   // RAG Options
   ragOptions: ragOptionsSchema.catch({
     enabled: true,
@@ -847,6 +861,7 @@ export const yoloSettingsSchema = z.object({
     limit: 10,
     embeddingConcurrency: 10,
     excludePatterns: [],
+    excludeYoloBaseDir: true,
     includePatterns: [],
     indexPdf: true,
     autoUpdateEnabled: true,
@@ -860,17 +875,36 @@ export const yoloSettingsSchema = z.object({
       servers: resilientArraySchema(mcpServerConfigSchema),
       builtinToolOptions: mcpServerToolOptionsSchema.catch({}),
       enableToolDisclosure: z.boolean().catch(false),
+      localServer: z
+        .object({
+          enabled: z.boolean().catch(false),
+          port: z
+            .number()
+            .int()
+            .min(1024)
+            .max(65535)
+            .catch(DEFAULT_LOCAL_MCP_SERVER_PORT),
+          token: z.string().catch(''),
+        })
+        .catch({
+          enabled: false,
+          port: DEFAULT_LOCAL_MCP_SERVER_PORT,
+          token: '',
+        }),
     })
     .catch({
       servers: [],
       builtinToolOptions: {},
       enableToolDisclosure: false,
+      localServer: {
+        enabled: false,
+        port: DEFAULT_LOCAL_MCP_SERVER_PORT,
+        token: '',
+      },
     }),
 
-  // JS sandbox (js_eval) configuration. Global because the capability surface
-  // (network / vault read / $db / external scripts) is sensitive enough that
-  // we don't want it implicitly varying per agent — toggling any extension
-  // capability forces approval for every agent that has js_eval enabled.
+  // JS sandbox (js_eval) capability configuration is global; execution
+  // approval remains a per-agent tool preference.
   jsSandbox: jsSandboxSettingsSchema.catch({}),
 
   // Web search configuration (built-in agent tool)
@@ -922,11 +956,12 @@ export const yoloSettingsSchema = z.object({
       chatInputHeight: z.number().int().min(80).max(520).optional(),
       chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
-      // Chat mode (ask/agent/agent-full)
-      chatMode: z.enum(['ask', 'agent', 'agent-full']).optional(),
-      // Whether the user has acknowledged the first-time agent mode warning
-      agentModeWarningConfirmed: z.boolean().optional(),
-      // Whether the user has acknowledged the first-time full access warning
+      // Chat mode (ask/agent)
+      chatMode: z.enum(['ask', 'agent']).optional(),
+      // Auto-approve tool calls (YOLO). Orthogonal to chatMode; only effective
+      // in Agent mode.
+      agentYoloEnabled: z.boolean().optional(),
+      // Whether the user has acknowledged the first-time full access (YOLO) warning
       fullAccessWarningConfirmed: z.boolean().optional(),
       // Persist preferred reasoning level per model id in Chat input
       reasoningLevelByModelId: z
@@ -961,6 +996,12 @@ export const yoloSettingsSchema = z.object({
       lastChatPlacement: z
         .enum(['sidebar', 'tab', 'split', 'window'])
         .optional(),
+      quickAccessEntries: resilientArraySchema(
+        z.discriminatedUnion('type', [
+          z.object({ type: z.literal('skill'), name: z.string().min(1) }),
+          z.object({ type: z.literal('snippet'), id: z.string().min(1) }),
+        ]),
+      ).optional(),
     })
     .catch({
       includeCurrentFileContent: true,
@@ -970,12 +1011,11 @@ export const yoloSettingsSchema = z.object({
       chatApplyMode: 'review-required',
       chatTitlePrompt: '',
       chatMode: 'agent',
-      agentModeWarningConfirmed: false,
       fullAccessWarningConfirmed: false,
       reasoningLevelByModelId: {},
       autoContextCompactionEnabled: false,
       autoContextCompactionThresholdMode: 'tokens',
-      autoContextCompactionThresholdTokens: 24000,
+      autoContextCompactionThresholdTokens: 100000,
       autoContextCompactionThresholdRatio: 0.8,
       chatFontScale: undefined,
       imageReadingEnabled: true,
@@ -986,9 +1026,20 @@ export const yoloSettingsSchema = z.object({
       chatExportIncludeToolCalls: false,
       ribbonClickAction: 'sidebar',
       lastChatPlacement: undefined,
+      quickAccessEntries: DEFAULT_CHAT_QUICK_ACCESS_ENTRIES,
     }),
 
   notificationOptions: notificationOptionsSchema,
+
+  learningOptions: z
+    .object({
+      modelId: z.string().catch(''),
+      betaNoticeAcknowledged: z.boolean().catch(false),
+    })
+    .catch({
+      modelId: '',
+      betaNoticeAcknowledged: false,
+    }),
 
   // Continuation (续写) options
   continuationOptions: z

@@ -40,6 +40,25 @@ describe('normalizeMcpServerParameters', () => {
     })
   })
 
+  it('normalizes streamable-http type aliases from third-party MCP configs', () => {
+    const result = normalizeMcpServerParameters({
+      value: {
+        mcpServers: {
+          机器人消息: {
+            type: 'streamable-http',
+            url: 'https://mcp-gw.dingtalk.com/server/demo?key=token',
+          },
+        },
+      },
+      serverName: 'dingtalk',
+    })
+
+    expect(result).toEqual({
+      transport: 'http',
+      url: 'https://mcp-gw.dingtalk.com/server/demo?key=token',
+    })
+  })
+
   it('extracts parameters from mcpServers wrapper by server name', () => {
     const result = normalizeMcpServerParameters({
       value: {

@@ -1,6 +1,9 @@
 import { App, normalizePath } from 'obsidian'
 
 import {
+  DEFAULT_YOLO_BASE_DIR,
+  YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME,
+  YOLO_LEARNING_SRS_DIR_NAME,
   getLegacyJsonDbRootDir,
   getLegacyVectorDbPath,
   getYoloBaseDir,
@@ -10,11 +13,31 @@ import {
   getYoloVectorDbPath,
 } from './yoloPaths'
 
-type YoloSettingsLike = {
+export type YoloSettingsLike = {
   yolo?: {
     baseDir?: string
   }
 }
+
+type TextTransform = (
+  content: string,
+  sourcePath: string,
+  targetPath: string,
+) => string
+
+type LearningMigrationFile = {
+  sourcePath: string
+  targetPath: string
+}
+
+type LearningMigrationManifest = {
+  version: 1
+  sourceRoot: string
+  targetRoot: string
+  files: LearningMigrationFile[]
+}
+
+const LEARNING_PATH_MIGRATION_MARKER = '.learning-path-migration-v1'
 
 export const YOLO_DATA_META_KEY = '__meta'
 
@@ -102,6 +125,16 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
   }
 }
 
+const removeDirIfEmpty = async (app: App, path: string): Promise<void> => {
+  if (!(await app.vault.adapter.exists(path))) return
+  const stat = await app.vault.adapter.stat(path)
+  if (stat?.type !== 'folder') return
+  const listing = await app.vault.adapter.list(path)
+  if (listing.files.length === 0 && listing.folders.length === 0) {
+    await app.vault.adapter.rmdir(path, false)
+  }
+}
+
 const copyJsonDirectory = async (
   app: App,
   sourceDir: string,
@@ -155,6 +188,44 @@ const mergeJsonDirectory = async (
   await removePathIfExists(app, sourceDir)
 }
 
+const copyTextDirectoryReplacing = async (
+  app: App,
+  sourceDir: string,
+  targetDir: string,
+  transform: TextTransform = (content) => content,
+): Promise<LearningMigrationFile[]> => {
+  await ensureDir(app, targetDir)
+  const listing = await app.vault.adapter.list(sourceDir)
+  const copied: LearningMigrationFile[] = []
+
+  for (const filePath of listing.files) {
+    const relativePath = filePath.slice(sourceDir.length + 1)
+    const targetPath = normalizePath(`${targetDir}/${relativePath}`)
+    await ensureParentDir(app, targetPath)
+    const content = transform(
+      await app.vault.adapter.read(filePath),
+      filePath,
+      targetPath,
+    )
+    await app.vault.adapter.write(targetPath, content)
+    copied.push({ sourcePath: filePath, targetPath })
+  }
+
+  for (const folderPath of listing.folders) {
+    const relativePath = folderPath.slice(sourceDir.length + 1)
+    copied.push(
+      ...(await copyTextDirectoryReplacing(
+        app,
+        folderPath,
+        normalizePath(`${targetDir}/${relativePath}`),
+        transform,
+      )),
+    )
+  }
+
+  return copied
+}
+
 const cleanupJsonDirectory = async (
   app: App,
   rootDir: string,
@@ -170,6 +241,21 @@ const cleanupJsonDirectory = async (
     await cleanupJsonDirectory(app, folderPath)
   }
   await removePathIfExists(app, rootDir)
+}
+
+const cleanupDirectoryStrict = async (
+  app: App,
+  rootDir: string,
+): Promise<void> => {
+  if (!(await app.vault.adapter.exists(rootDir))) return
+  const listing = await app.vault.adapter.list(rootDir)
+  for (const filePath of listing.files) {
+    await app.vault.adapter.remove(filePath)
+  }
+  for (const folderPath of listing.folders) {
+    await cleanupDirectoryStrict(app, folderPath)
+  }
+  await app.vault.adapter.rmdir(rootDir, false)
 }
 
 const migrateJsonDirectory = async (
@@ -229,9 +315,13 @@ const findFirstExistingPath = async (
   return null
 }
 
+/**
+ * Settings are required at write boundaries so vault data can never silently
+ * fall back to the default YOLO root when a caller forgets user configuration.
+ */
 export const ensureJsonDbRootDir = async (
   app: App,
-  settings?: YoloSettingsLike | null,
+  settings: YoloSettingsLike | null,
 ): Promise<string> => {
   await ensureDir(app, getYoloBaseDir(settings))
   const targetDir = getYoloJsonDbRootDir(settings)
@@ -256,9 +346,161 @@ export const ensureJsonDbRootDir = async (
   }
 }
 
+const rewriteAnkiJournalSrsPath = (
+  content: string,
+  sourceRoot: string,
+  targetRoot: string,
+): string => {
+  try {
+    const journal = JSON.parse(content) as Record<string, unknown>
+    const sourcePrefix = `${sourceRoot}/${YOLO_LEARNING_SRS_DIR_NAME}/`
+    if (
+      typeof journal.srsPath === 'string' &&
+      journal.srsPath.startsWith(sourcePrefix)
+    ) {
+      journal.srsPath = `${targetRoot}/${YOLO_LEARNING_SRS_DIR_NAME}/${journal.srsPath.slice(sourcePrefix.length)}`
+      return JSON.stringify(journal, null, 2)
+    }
+  } catch {
+    // Recovery will report malformed journals; migration must preserve them.
+  }
+  return content
+}
+
+const parseLearningMigrationManifest = (
+  content: string,
+  sourceRoot: string,
+  targetRoot: string,
+): LearningMigrationManifest => {
+  const value = JSON.parse(content) as Partial<LearningMigrationManifest>
+  const sourcePrefixes = [
+    `${sourceRoot}/${YOLO_LEARNING_SRS_DIR_NAME}/`,
+    `${sourceRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}/`,
+  ]
+  if (
+    value.version !== 1 ||
+    value.sourceRoot !== sourceRoot ||
+    value.targetRoot !== targetRoot ||
+    !Array.isArray(value.files) ||
+    value.files.some(
+      (file) =>
+        !file ||
+        typeof file.sourcePath !== 'string' ||
+        typeof file.targetPath !== 'string' ||
+        !sourcePrefixes.some((prefix) => file.sourcePath.startsWith(prefix)) ||
+        !file.targetPath.startsWith(`${targetRoot}/`),
+    )
+  ) {
+    throw new Error(`Invalid learning path migration marker: ${targetRoot}`)
+  }
+  return value as LearningMigrationManifest
+}
+
+const restoreMissingMigrationTargets = async (
+  app: App,
+  manifest: LearningMigrationManifest,
+): Promise<void> => {
+  const journalPrefix = `${manifest.sourceRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}/`
+  for (const file of manifest.files) {
+    if (await app.vault.adapter.exists(file.targetPath)) continue
+    if (!(await app.vault.adapter.exists(file.sourcePath))) {
+      throw new Error(
+        `Learning migration lost both source and target: ${file.targetPath}`,
+      )
+    }
+    await ensureParentDir(app, file.targetPath)
+    const sourceContent = await app.vault.adapter.read(file.sourcePath)
+    const content = file.sourcePath.startsWith(journalPrefix)
+      ? rewriteAnkiJournalSrsPath(
+          sourceContent,
+          manifest.sourceRoot,
+          manifest.targetRoot,
+        )
+      : sourceContent
+    await app.vault.adapter.write(file.targetPath, content)
+  }
+}
+
+export const ensureLearningJsonDbRootDir = async (
+  app: App,
+  settings: YoloSettingsLike | null,
+): Promise<string> => {
+  const sourceBaseDir = DEFAULT_YOLO_BASE_DIR
+  const sourceRoot = getYoloJsonDbRootDir({
+    yolo: { baseDir: sourceBaseDir },
+  })
+  const requestedTargetRoot = getYoloJsonDbRootDir(settings)
+  if (requestedTargetRoot.startsWith(`${sourceRoot}/`)) {
+    throw new Error(
+      `YOLO base directory cannot be nested inside managed data: ${requestedTargetRoot}`,
+    )
+  }
+  const targetRoot = await ensureJsonDbRootDir(app, settings)
+  if (sourceRoot === targetRoot) return targetRoot
+
+  await ensureDir(app, targetRoot)
+  const markerPath = normalizePath(
+    `${targetRoot}/${LEARNING_PATH_MIGRATION_MARKER}`,
+  )
+  const sourceSrsDir = normalizePath(
+    `${sourceRoot}/${YOLO_LEARNING_SRS_DIR_NAME}`,
+  )
+  const sourceJournalDir = normalizePath(
+    `${sourceRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}`,
+  )
+  const hasSourceSrs = await app.vault.adapter.exists(sourceSrsDir)
+  const hasSourceJournals = await app.vault.adapter.exists(sourceJournalDir)
+  const migrationPending = await app.vault.adapter.exists(markerPath)
+  let manifest: LearningMigrationManifest
+
+  if ((hasSourceSrs || hasSourceJournals) && !migrationPending) {
+    const files: LearningMigrationFile[] = []
+    if (hasSourceSrs) {
+      files.push(
+        ...(await copyTextDirectoryReplacing(
+          app,
+          sourceSrsDir,
+          normalizePath(`${targetRoot}/${YOLO_LEARNING_SRS_DIR_NAME}`),
+        )),
+      )
+    }
+    if (hasSourceJournals) {
+      files.push(
+        ...(await copyTextDirectoryReplacing(
+          app,
+          sourceJournalDir,
+          normalizePath(`${targetRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}`),
+          (content) =>
+            rewriteAnkiJournalSrsPath(content, sourceRoot, targetRoot),
+        )),
+      )
+    }
+    manifest = { version: 1, sourceRoot, targetRoot, files }
+    await app.vault.adapter.write(markerPath, JSON.stringify(manifest, null, 2))
+  } else if (migrationPending) {
+    manifest = parseLearningMigrationManifest(
+      await app.vault.adapter.read(markerPath),
+      sourceRoot,
+      targetRoot,
+    )
+  } else {
+    return targetRoot
+  }
+
+  await restoreMissingMigrationTargets(app, manifest)
+  if (hasSourceSrs) await cleanupDirectoryStrict(app, sourceSrsDir)
+  if (hasSourceJournals) await cleanupDirectoryStrict(app, sourceJournalDir)
+  await removeDirIfEmpty(app, sourceRoot)
+  await removeDirIfEmpty(app, sourceBaseDir)
+  if (await app.vault.adapter.exists(markerPath)) {
+    await app.vault.adapter.remove(markerPath)
+  }
+  return targetRoot
+}
+
 export const ensureVectorDbPath = async (
   app: App,
-  settings?: YoloSettingsLike | null,
+  settings: YoloSettingsLike | null,
 ): Promise<string> => {
   await ensureDir(app, getYoloBaseDir(settings))
   const targetPath = getYoloVectorDbPath(settings)
@@ -391,17 +633,20 @@ export const relocateYoloManagedData = async ({
   fromSettings?: YoloSettingsLike | null
   toSettings?: YoloSettingsLike | null
 }): Promise<boolean> => {
-  await ensureDir(app, getYoloBaseDir(toSettings))
-  const sourceJsonCandidates = [
-    getYoloJsonDbRootDir(fromSettings),
-    getLegacyJsonDbRootDir(),
-  ]
-  const sourceVectorCandidates = [
-    getYoloVectorDbPath(fromSettings),
-    getLegacyVectorDbPath(),
-  ]
+  const currentJsonDir = getYoloJsonDbRootDir(fromSettings)
+  const currentVectorPath = getYoloVectorDbPath(fromSettings)
   const targetJsonDir = getYoloJsonDbRootDir(toSettings)
   const targetVectorPath = getYoloVectorDbPath(toSettings)
+  if (targetJsonDir.startsWith(`${currentJsonDir}/`)) {
+    console.warn(
+      `[YOLO] Refusing to relocate managed data into its own source tree: "${targetJsonDir}".`,
+    )
+    return false
+  }
+
+  await ensureDir(app, getYoloBaseDir(toSettings))
+  const sourceJsonCandidates = [currentJsonDir, getLegacyJsonDbRootDir()]
+  const sourceVectorCandidates = [currentVectorPath, getLegacyVectorDbPath()]
 
   const jsonSucceeded = await relocateJsonDbRootDir({
     app,

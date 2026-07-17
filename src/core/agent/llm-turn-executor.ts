@@ -25,6 +25,7 @@ import {
   registerLLMDebugTraceForTurn,
   updateLLMDebugTrace,
 } from '../llm/debugCapture'
+import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import {
   LOCAL_FILE_TOOL_SHORT_NAMES,
   getLocalFileToolServerName,
@@ -32,6 +33,10 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 
 import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
+import {
+  type ToolCapabilityMode,
+  buildToolCapabilityPrompt,
+} from './tool-capability-prompt'
 import { selectAllowedTools } from './tool-selection'
 
 type AgentLlmTurnExecutorInput = {
@@ -44,6 +49,7 @@ type AgentLlmTurnExecutorInput = {
   branchId?: string
   sourceUserMessageId?: string
   branchLabel?: string
+  resumeAssistantMessage?: ChatAssistantMessage
   compaction?: ChatConversationCompactionLike | null
   enableTools: boolean
   includeBuiltinTools: boolean
@@ -55,7 +61,7 @@ type AgentLlmTurnExecutorInput = {
   abortSignal?: AbortSignal
   reasoningLevel?: ReasoningLevel
   requestParams?: {
-    stream?: boolean
+    deliveryMode?: ResponseDeliveryMode
     temperature?: number
     top_p?: number
     max_tokens?: number
@@ -63,7 +69,7 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   contextualInjections?: ContextualInjection[]
-  runtimeModePrompt?: string
+  toolCapabilityMode?: ToolCapabilityMode
   transientRequestMessages?: RequestMessage[]
   geminiTools?: {
     useWebSearch?: boolean
@@ -114,10 +120,12 @@ export class AgentLlmTurnExecutor {
         })
       : []
     const {
+      filteredTools,
       hasTools,
       hasMemoryTools,
+      hasOnDemandTools,
       requestTools: tools,
-    } = selectAllowedTools({
+    } = await selectAllowedTools({
       availableTools,
       allowedToolNames: this.input.allowedToolNames,
       toolPreferences: this.input.toolPreferences,
@@ -126,16 +134,21 @@ export class AgentLlmTurnExecutor {
       jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
       settings: this.input.mcpManager.getSettingsSnapshot(),
     })
+    const runtimeModePrompt = buildToolCapabilityPrompt({
+      mode: this.input.toolCapabilityMode ?? 'agent',
+      toolNames: filteredTools.map((tool) => tool.name),
+    })
     const baseRequestMessages =
       await this.input.requestContextBuilder.generateRequestMessages({
         messages: this.input.messages,
         hasTools,
         hasMemoryTools,
+        hasOnDemandTools,
         model: this.input.model,
         conversationId: this.input.conversationId,
         compaction: this.input.compaction,
         contextualInjections: this.input.contextualInjections,
-        runtimeModePrompt: this.input.runtimeModePrompt,
+        runtimeModePrompt,
         systemPromptOverride: this.input.systemPromptOverride,
         // Real LLM request: freeze (or reuse) the per-conversation system prompt.
         systemPromptSnapshotMode: 'create',
@@ -148,15 +161,16 @@ export class AgentLlmTurnExecutor {
 
     const responseStart = Date.now()
     const model = this.input.model
-    const assistantMessageId = uuidv4()
+    const deliveryMode = this.input.requestParams?.deliveryMode ?? 'incremental'
+    const executionMode =
+      this.input.providerClient.resolveResponseExecutionMode(deliveryMode)
+    const assistantMessageId = this.input.resumeAssistantMessage?.id ?? uuidv4()
     const debugTrace = isLLMDebugCaptureEnabled()
       ? createLLMDebugTrace({
           assistantMessageId,
           model,
           requestKind:
-            this.input.requestParams?.stream === false
-              ? 'non-streaming'
-              : 'streaming',
+            executionMode === 'non-streaming' ? 'non-streaming' : 'streaming',
         })
       : null
     if (debugTrace && this.input.sourceUserMessageId) {
@@ -166,22 +180,39 @@ export class AgentLlmTurnExecutor {
         traceId: debugTrace.id,
       })
     }
+    const resumedMessage = this.input.resumeAssistantMessage
     const assistantMessage: ChatAssistantMessage = {
-      role: 'assistant',
-      id: assistantMessageId,
-      content: '',
+      ...(resumedMessage ?? {
+        role: 'assistant' as const,
+        id: assistantMessageId,
+        content: '',
+      }),
+      toolCallRequests: undefined,
       metadata: {
+        ...resumedMessage?.metadata,
         model,
+        usage: undefined,
+        durationMs: undefined,
         generationState: 'streaming',
-        ...(debugTrace ? { llmDebugTraceId: debugTrace.id } : {}),
+        errorMessage: undefined,
+        llmDebugTraceId: debugTrace?.id,
         branchConversationId: this.input.conversationId,
-        sourceUserMessageId: this.input.sourceUserMessageId,
-        branchId: this.input.branchId,
+        sourceUserMessageId:
+          this.input.sourceUserMessageId ??
+          resumedMessage?.metadata?.sourceUserMessageId,
+        branchId: this.input.branchId ?? resumedMessage?.metadata?.branchId,
         branchModelId: model.id,
         branchLabel:
-          this.input.branchLabel ?? model.name ?? model.model ?? model.id,
+          this.input.branchLabel ??
+          resumedMessage?.metadata?.branchLabel ??
+          model.name ??
+          model.model ??
+          model.id,
       },
     }
+    const initialContent = assistantMessage.content
+    const initialReasoning = assistantMessage.reasoning ?? ''
+    const preserveInitialReasoning = Boolean(resumedMessage)
     this.input.onAssistantMessage(assistantMessage)
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
@@ -206,7 +237,7 @@ export class AgentLlmTurnExecutor {
         },
         tools,
         signal: this.input.abortSignal,
-        stream: this.input.requestParams?.stream ?? true,
+        deliveryMode,
         primaryRequestTimeoutMs:
           this.input.requestParams?.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled:
@@ -217,7 +248,7 @@ export class AgentLlmTurnExecutor {
           if (contentDelta) {
             assistantMessage.content += contentDelta
           }
-          if (reasoningDelta) {
+          if (reasoningDelta && !preserveInitialReasoning) {
             assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
           }
           if (toolCalls && toolCalls.length > 0) {
@@ -286,14 +317,30 @@ export class AgentLlmTurnExecutor {
       throw error
     }
 
-    if (!this.input.requestParams?.stream) {
-      assistantMessage.content = turnResult.content
-      assistantMessage.reasoning = turnResult.reasoning
-    } else if (!assistantMessage.content && turnResult.content) {
-      assistantMessage.content = turnResult.content
+    if (assistantMessage.content === initialContent && turnResult.content) {
+      assistantMessage.content += turnResult.content
+    }
+    if (
+      !preserveInitialReasoning &&
+      (assistantMessage.reasoning ?? '') === initialReasoning &&
+      turnResult.reasoning
+    ) {
+      assistantMessage.reasoning = `${initialReasoning}${turnResult.reasoning}`
     }
 
-    assistantMessage.annotations = turnResult.annotations
+    if (turnResult.annotations?.length) {
+      const existingAnnotations = assistantMessage.annotations ?? []
+      assistantMessage.annotations = [
+        ...existingAnnotations,
+        ...turnResult.annotations.filter(
+          (incoming) =>
+            !existingAnnotations.some(
+              (existing) =>
+                existing.url_citation.url === incoming.url_citation.url,
+            ),
+        ),
+      ]
+    }
     assistantMessage.metadata = {
       ...assistantMessage.metadata,
       usage: turnResult.usage ?? assistantMessage.metadata?.usage,

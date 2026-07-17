@@ -1,10 +1,16 @@
 export type Language = 'en' | 'zh' | 'it'
 
+type TranslationBranch = {
+  [key: string]: string | TranslationBranch
+}
+
 export type TranslationKeys = {
   // Commands
   commands: {
     openChat: string
     openChatSidebar: string
+    openLearningMode: string
+    learningModeLabel: string
     newChatCurrentView: string
     openYoloNewChat: string
     openNewChatTab: string
@@ -56,6 +62,8 @@ export type TranslationKeys = {
     characters: string
     words: string
     wordsCharacters: string
+    rows?: string
+    columns?: string
     // additions
     default?: string
     modelDefault?: string
@@ -74,7 +82,16 @@ export type TranslationKeys = {
     chatList?: {
       searchPlaceholder?: string
       empty?: string
+      noTaskConversations?: string
+      historySections?: string
+      myConversations?: string
+      taskConversations?: string
+      taskConversationSources?: string
+      allSources?: string
+      externalAgent?: string
       current?: string
+      pinConversation?: string
+      unpinConversation?: string
       retryTitle?: string
       archived?: string
       hideArchived?: string
@@ -129,6 +146,8 @@ export type TranslationKeys = {
     mentionContextLabel?: string
   }
 
+  learning?: TranslationBranch
+
   // Settings
   settings: {
     title: string
@@ -139,12 +158,15 @@ export type TranslationKeys = {
       knowledge: string
       tools: string
       agent: string
+      learning: string
       others: string
     }
     supportYolo: {
       name: string
       desc: string
       buyMeACoffee: string
+      reportBug: string
+      featureRequest: string
     }
     defaults: {
       title: string
@@ -164,6 +186,11 @@ export type TranslationKeys = {
       chatTitlePromptDesc: string
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
+    }
+    learning: {
+      generationTitle: string
+      generationModel: string
+      generationModelDesc: string
     }
     chatPreferences: {
       title: string
@@ -214,6 +241,8 @@ export type TranslationKeys = {
       tools?: string
       toolsCount?: string
       toolsCountWithEnabled?: string
+      mcpLoadingStatus?: string
+      mcpErrorStatus?: string
       skills?: string
       skillsCount?: string
       skillsCountWithEnabled?: string
@@ -326,6 +355,8 @@ export type TranslationKeys = {
       fsEditReviewToggleDesc?: string
       safetyControls?: string
       safetyControlsDesc?: string
+      builtinFsEditOpsLabel?: string
+      builtinFsEditOpsDesc?: string
       builtinFsFileOpsLabel?: string
       builtinFsFileOpsDesc?: string
       builtinMemoryOpsLabel?: string
@@ -393,8 +424,10 @@ export type TranslationKeys = {
       toolApproval?: string
       toolApprovalFullAccess?: string
       toolApprovalRequire?: string
-      toolApprovalForced?: string
+      toolDisclosureAuto?: string
+      toolDisclosureAutoSelect?: string
       toolDisclosureAlways?: string
+      toolDisclosureMixed?: string
       toolDisclosureOnDemand?: string
       editorEnabled?: string
       editorDisabled?: string
@@ -449,6 +482,15 @@ export type TranslationKeys = {
       autoContextCompactionThresholdTokensDesc?: string
       autoContextCompactionThresholdRatioPercent?: string
       autoContextCompactionThresholdRatioPercentDesc?: string
+      mcpServerBlockTitle?: string
+      mcpServerDesc?: string
+      mcpServerDesktopOnly?: string
+      mcpServerEnabled?: string
+      mcpServerClientConfig?: string
+      mcpServerCopyConfig?: string
+      mcpServerError?: string
+      mcpServerConfigCopied?: string
+      mcpServerCopyFailed?: string
       jsSandboxExtTitle?: string
       jsSandboxAllowFetch?: string
       jsSandboxAllowFetchDesc?: string
@@ -463,6 +505,12 @@ export type TranslationKeys = {
       jsSandboxAllowVaultRead?: string
       jsSandboxAllowVaultReadDesc?: string
       jsSandboxAllowVaultReadConfirm?: string
+      jsSandboxAllowBrowserRead?: string
+      jsSandboxAllowBrowserReadDesc?: string
+      jsSandboxAllowBrowserReadRisk?: string
+      jsSandboxAllowBrowserReadConfirm?: string
+      jsSandboxBrowserReadMaxKb?: string
+      jsSandboxBrowserReadMaxKbDesc?: string
       jsSandboxAllowDbQuery?: string
       jsSandboxAllowDbQueryDesc?: string
       jsSandboxAllowDbQueryConfirm?: string
@@ -471,7 +519,6 @@ export type TranslationKeys = {
       jsSandboxAllowExternalScriptsRisk?: string
       jsSandboxAllowExternalScriptsConfirm?: string
       jsSandboxConfirmEnableTitle?: string
-      jsExecApprovalForced?: string
       jsSandboxTimeoutMs?: string
       jsSandboxTimeoutMsDesc?: string
       jsSandboxOutputMaxKb?: string
@@ -614,6 +661,7 @@ export type TranslationKeys = {
       baseUrl: string
       baseUrlDesc: string
       baseUrlPlaceholder: string
+      apiUrlPreviewLabel: string
       noStainlessHeaders: string
       noStainlessHeadersDesc: string
       useObsidianRequestUrl: string
@@ -624,6 +672,11 @@ export type TranslationKeys = {
       requestTransportModeBrowser: string
       requestTransportModeObsidian: string
       requestTransportModeNode: string
+      responseStreamingMode: string
+      responseStreamingModeDesc: string
+      responseStreamingModeAuto: string
+      responseStreamingModeStreaming: string
+      responseStreamingModeNonStreaming: string
       promptCaching: string
       promptCachingDesc: string
       customHeaders: string
@@ -652,15 +705,6 @@ export type TranslationKeys = {
       geminiOAuthDisconnectedHelp?: string
       geminiOAuthProject?: string
       geminiOAuthStreamingNotice?: string
-      qwenOAuthTitle?: string
-      qwenOAuthConnect?: string
-      qwenOAuthDisconnect?: string
-      qwenOAuthConnecting?: string
-      qwenOAuthLoadingStatus?: string
-      qwenOAuthConnected?: string
-      qwenOAuthExpires?: string
-      qwenOAuthDisconnectedHelp?: string
-      qwenOAuthStreamingNotice?: string
     }
     tts?: {
       title?: string
@@ -1192,6 +1236,9 @@ export type TranslationKeys = {
     }
     etc: {
       title: string
+      pluginAutoUpdate?: string
+      pluginAutoUpdateDesc?: string
+      pluginAutoUpdateDescUnavailable?: string
       exportConfig?: string
       exportConfigDesc?: string
       export?: string
@@ -1799,8 +1846,6 @@ export type TranslationKeys = {
     newChat: string
     untitledConversation?: string
     continueResponse?: string
-    loadEarlierMessages?: string
-    loadNewerMessages?: string
     messageNavigator?: {
       title?: string
       itemAriaLabel?: string
@@ -1835,7 +1880,13 @@ export type TranslationKeys = {
     selectModel: string
     uploadImage: string
     uploadFile?: string
+    dropFilesHint?: string
     imageUnsupportedByModel?: string
+    unsupportedFileType?: string
+    processImagesFailed?: string
+    readPdfFailed?: string
+    readOfficeFailed?: string
+    readTextAttachmentFailed?: string
     addContext: string
     applyChanges: string
     copyMessage: string
@@ -1876,6 +1927,7 @@ export type TranslationKeys = {
       createSnippetsFile?: string
     }
     emptyState?: {
+      workspaceTitle?: string
       askTitle?: string
       askDescription?: string
       chatTitle?: string
@@ -1884,6 +1936,13 @@ export type TranslationKeys = {
       agentDescription?: string
       agentFullTitle?: string
       agentFullDescription?: string
+    }
+    quickAccess?: {
+      manage?: string
+      searchPlaceholder?: string
+      skills?: string
+      snippets?: string
+      empty?: string
     }
     compaction?: {
       pendingTitle?: string
@@ -1975,6 +2034,20 @@ export type TranslationKeys = {
     }
     errorCard?: {
       title?: string
+      responseFormat?: {
+        responseNotObject?: string
+        missingChoices?: string
+        invalidChoices?: string
+        stage?: string
+        expected?: string
+        expectedChoicesArray?: string
+        responseFields?: string
+        upstreamError?: string
+        errorType?: string
+        errorCode?: string
+        upstreamMessage?: string
+        responsePreview?: string
+      }
     }
     showMore?: string
     showLess?: string
@@ -1995,6 +2068,7 @@ export type TranslationKeys = {
         fs_search?: string
         fs_read?: string
         fs_edit?: string
+        fs_edit_ops?: string
         fs_file_ops?: string
         memory_add?: string
         memory_update?: string
@@ -2027,6 +2101,7 @@ export type TranslationKeys = {
       noParameters?: string
       result?: string
       error?: string
+      rejectionReason?: string
       allow?: string
       reject?: string
       abort?: string
@@ -2069,6 +2144,15 @@ export type TranslationKeys = {
       statusFailed?: string
       toolUseCount?: string
       tokenCount?: string
+      approval?: {
+        heading?: string
+        headingMulti?: string
+        approve?: string
+        reject?: string
+        approveAll?: string
+        rejectAll?: string
+        viewDetails?: string
+      }
     }
     // conversation settings popover
     conversationSettings?: {
@@ -2137,11 +2221,14 @@ export type TranslationKeys = {
     agentStatusRunning?: string
     agentStatusWaitingApproval?: string
     agentStatusFallbackConversationTitle?: string
-    backgroundStatusAriaLabel?: string
     backgroundStatusPanelTitle?: string
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
+    learningTasksRunning?: string
+    learningReviewLabel?: string
+    learningReviewTitle?: string
+    learningReviewDetail?: string
     ragAutoUpdateRunning?: string
     ragAutoUpdateRunningDetail?: string
     ragAutoUpdateFailed?: string
@@ -2233,16 +2320,8 @@ export type TranslationKeys = {
     agentDesc?: string
     agentFull?: string
     agentFullDesc?: string
-    warning?: {
-      title?: string
-      description?: string
-      permission?: string
-      cost?: string
-      backup?: string
-      checkbox?: string
-      cancel?: string
-      confirm?: string
-    }
+    yolo?: string
+    yoloDesc?: string
     fullAccessWarning?: {
       title?: string
       description?: string
@@ -2267,13 +2346,15 @@ export type TranslationKeys = {
     low?: string
     medium?: string
     high?: string
-    extraHigh?: string
+    xhigh?: string
+    max?: string
     offDesc?: string
     autoDesc?: string
     lowDesc?: string
     mediumDesc?: string
     highDesc?: string
-    extraHighDesc?: string
+    xhighDesc?: string
+    maxDesc?: string
   }
 
   // Config import / export
@@ -2285,6 +2366,8 @@ export type TranslationKeys = {
       selectNone: string
       sensitive: string
       redactedOption: string
+      confirmUnredactedTitle: string
+      confirmUnredacted: string
       submit: string
       cancel: string
       noticeAtLeastOne: string
@@ -2324,7 +2407,6 @@ export type TranslationKeys = {
       errorInvalidFormatVersion: string
       errorInvalidSettingsVersion: string
       errorFileFromNewerVersion: string
-      errorFileFromOlderVersion: string
       errorEmptyKeys: string
       errorMissingData: string
       errorTampered: string
@@ -2332,7 +2414,6 @@ export type TranslationKeys = {
       errorVaultParseFailed: string
       errorVaultMissingVersion: string
       errorVaultFromNewerVersion: string
-      errorVaultFromOlderVersion: string
       errorVaultEmpty: string
       errorApplyVersionMismatch: string
       errorApplySchema: string
@@ -2370,8 +2451,8 @@ export type TranslationKeys = {
     dismiss: string
     languageEnglish: string
     languageChinese: string
-    muteThisVersion: string
     viewHistory?: string
+    skipVersion?: string
     historyTitle?: string
     historyLoading?: string
     historyError?: string
@@ -2381,6 +2462,19 @@ export type TranslationKeys = {
     historyNext?: string
     installationIncompleteTitle: string
     installationIncompleteMeta: string
+    installationIncompleteSuspects: string
     installationIncompleteNotes: string
+    tryRepair: string
+    repairing: string
+    repairAndReload: string
+    downloadUpdate: string
+    downloading: string
+    installAndReload: string
+    applying: string
+    downloadFailed: string
+    installFailed: string
+    viewOnGitHub: string
+    updateInCommunityPlugins: string
+    manualInstallOnGitHub: string
   }
 }

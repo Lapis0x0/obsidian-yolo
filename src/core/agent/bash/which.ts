@@ -49,9 +49,13 @@ export async function which(
         .filter(Boolean)
     : ['']
 
+  const nameExt = path.extname(name)
+  const candidateNames =
+    isWindows && nameExt ? [name] : pathext.map((ext) => name + ext)
+
   for (const dir of pathDirs) {
-    for (const ext of pathext) {
-      const candidate = path.join(dir, name + ext)
+    for (const candidateName of candidateNames) {
+      const candidate = path.join(dir, candidateName)
       try {
         await access(candidate, constants.X_OK)
         return candidate

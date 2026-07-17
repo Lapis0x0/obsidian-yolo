@@ -11,6 +11,8 @@ import { OpenAIMessageAdapter } from './openaiMessageAdapter'
  * from streaming requests, preventing errors when using Mistral models.
  */
 export class MistralMessageAdapter extends OpenAIMessageAdapter {
+  protected override readonly adapterName = 'Mistral'
+
   protected override buildChatCompletionCreateParams(params: {
     request: LLMRequest
     stream: true

@@ -35,9 +35,12 @@ export type MentionableBlockData = {
   pageNumber?: number // 1-indexed; present when selection originates from a PDF view
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
   highlightId?: string // runtime-only; links this mention to its visual highlight; not persisted
+  contentFormat?: 'markdown-table'
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
+  tableRowCount?: number
+  tableColumnCount?: number
 }
 export type MentionableBlock = MentionableBlockData & {
   type: 'block'
@@ -54,6 +57,17 @@ export type MentionableAssistantQuote = {
 export type MentionableUrl = {
   type: 'url'
   url: string
+}
+export type MentionableWebSelection = {
+  type: 'web-selection'
+  content: string
+  url: string
+  title: string
+  pageId?: string
+  source?: 'web-selection-sync' | 'web-selection-pinned'
+  contentHash?: string
+  contentCount?: number
+  contentUnit?: 'characters' | 'words' | 'wordsCharacters'
 }
 export type MentionableImage = {
   type: 'image'
@@ -74,6 +88,29 @@ export type MentionablePDF = {
   data?: string
   pageCount?: number
 }
+export type MentionableOffice = {
+  type: 'office'
+  name: string
+  kind: 'docx' | 'pptx' | 'xlsx'
+  rawData: string
+  extractedText: string
+}
+export type TextAttachmentKind =
+  | 'txt'
+  | 'md'
+  | 'csv'
+  | 'tsv'
+  | 'json'
+  | 'yaml'
+  | 'yml'
+  | 'xml'
+  | 'log'
+export type MentionableTextAttachment = {
+  type: 'text-attachment'
+  name: string
+  kind: TextAttachmentKind
+  content: string
+}
 export type MentionableModel = {
   type: 'model'
   modelId: string
@@ -86,8 +123,11 @@ export type Mentionable =
   | MentionableBlock
   | MentionableAssistantQuote
   | MentionableUrl
+  | MentionableWebSelection
   | MentionableImage
   | MentionablePDF
+  | MentionableOffice
+  | MentionableTextAttachment
   | MentionableModel
 export type SerializedMentionableFile = {
   type: 'file'
@@ -105,9 +145,12 @@ export type SerializedMentionableBlock = {
   endLine: number
   pageNumber?: number
   source?: 'selection' | 'selection-sync' | 'selection-pinned'
+  contentFormat?: 'markdown-table'
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
+  tableRowCount?: number
+  tableColumnCount?: number
 }
 export type SerializedMentionableAssistantQuote = {
   type: 'assistant-quote'
@@ -119,8 +162,11 @@ export type SerializedMentionableAssistantQuote = {
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
 }
 export type SerializedMentionableUrl = MentionableUrl
+export type SerializedMentionableWebSelection = MentionableWebSelection
 export type SerializedMentionableImage = MentionableImage
 export type SerializedMentionablePDF = MentionablePDF
+export type SerializedMentionableOffice = MentionableOffice
+export type SerializedMentionableTextAttachment = MentionableTextAttachment
 export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
@@ -128,6 +174,9 @@ export type SerializedMentionable =
   | SerializedMentionableBlock
   | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl
+  | SerializedMentionableWebSelection
   | SerializedMentionableImage
   | SerializedMentionablePDF
+  | SerializedMentionableOffice
+  | SerializedMentionableTextAttachment
   | SerializedMentionableModel

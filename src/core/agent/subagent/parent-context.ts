@@ -1,5 +1,6 @@
 import type {
   AssistantToolPreference,
+  AssistantToolServerPreference,
   AssistantWorkspaceScope,
 } from '../../../types/assistant.types'
 import type { ChatModel } from '../../../types/chat-model.types'
@@ -20,18 +21,12 @@ export type SubagentParentContext = {
   conversationId: string
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
+  toolServerPreferences?: Record<string, AssistantToolServerPreference>
   workspaceScope?: AssistantWorkspaceScope
   allowedSkillPaths?: string[]
   enableToolDisclosure?: boolean
   reasoningLevel?: ReasoningLevel
-  requestParams?: {
-    stream?: boolean
-    temperature?: number
-    top_p?: number
-    max_tokens?: number
-    primaryRequestTimeoutMs?: number
-    streamFallbackRecoveryEnabled?: boolean
-  }
+  requestParams?: AgentRuntimeRunInput['requestParams']
   loopConfig: AgentRuntimeLoopConfig
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
@@ -50,6 +45,7 @@ export function buildSubagentParentContext(
     conversationId: input.conversationId,
     allowedToolNames: input.allowedToolNames,
     toolPreferences: input.toolPreferences,
+    toolServerPreferences: input.toolServerPreferences,
     workspaceScope: input.workspaceScope,
     allowedSkillPaths: input.allowedSkillPaths,
     enableToolDisclosure: input.enableToolDisclosure,

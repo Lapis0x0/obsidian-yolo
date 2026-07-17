@@ -2,6 +2,7 @@ import { LLMRequest } from '../../types/llm/request'
 import { createCompleteToolCallArguments } from '../../types/tool-call.types'
 
 import { KimiMessageAdapter } from './kimiMessageAdapter'
+import { LLMResponseFormatError } from './responseFormatError'
 
 class TestKimiMessageAdapter extends KimiMessageAdapter {
   buildParams(request: LLMRequest) {
@@ -16,6 +17,10 @@ class TestKimiMessageAdapter extends KimiMessageAdapter {
       request,
       stream: false,
     })
+  }
+
+  parseNonStreaming(raw: unknown) {
+    return this.parseNonStreamingResponse(raw as never)
   }
 }
 
@@ -152,5 +157,28 @@ describe('KimiMessageAdapter', () => {
         reasoning_content: 'thinking',
       },
     ])
+  })
+
+  it('uses the Kimi adapter name for inherited response format errors', () => {
+    let caught: unknown
+    try {
+      adapter.parseNonStreaming({
+        error: {
+          message: 'bad response',
+        },
+      })
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(LLMResponseFormatError)
+    expect((caught as LLMResponseFormatError).payload).toMatchObject({
+      adapter: 'Kimi',
+      stage: 'non-streaming response',
+      problem: { type: 'missing_choices' },
+      upstreamError: {
+        message: 'bad response',
+      },
+    })
   })
 })

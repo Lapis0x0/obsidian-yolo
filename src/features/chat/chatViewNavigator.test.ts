@@ -1,6 +1,7 @@
 import { TFile } from 'obsidian'
 import type { WorkspaceLeaf } from 'obsidian'
 
+import { CHAT_VIEW_TYPE } from '../../constants'
 import type YoloPlugin from '../../main'
 
 import { ChatViewNavigator } from './chatViewNavigator'
@@ -48,6 +49,7 @@ describe('ChatViewNavigator', () => {
       touchLeafInteracted?: jest.Mock
       revealLeaf?: jest.Mock
       getRightLeaf?: () => WorkspaceLeaf
+      getLeaf?: jest.Mock
     } = {},
   ) => {
     const sessionManager = {
@@ -55,15 +57,23 @@ describe('ChatViewNavigator', () => {
       setPendingPayload: overrides.setPendingPayload ?? jest.fn(),
       registerLeaf: overrides.registerLeaf ?? jest.fn(),
       touchLeafInteracted: overrides.touchLeafInteracted ?? jest.fn(),
+      getLeafPlacement: jest.fn(() => 'sidebar'),
+      inferLeafPlacement: jest.fn(() => 'sidebar'),
     }
 
     const workspace = {
       revealLeaf:
         overrides.revealLeaf ?? jest.fn().mockResolvedValue(undefined),
+      getActiveViewOfType: jest.fn(() => null),
       getRightLeaf:
         overrides.getRightLeaf ??
         (() => {
           throw new Error('getRightLeaf should not be called in this test')
+        }),
+      getLeaf:
+        overrides.getLeaf ??
+        jest.fn(() => {
+          throw new Error('getLeaf should not be called in this test')
         }),
     }
 
@@ -71,6 +81,12 @@ describe('ChatViewNavigator', () => {
       app: {
         workspace,
       },
+      settings: {
+        chatOptions: {
+          lastChatPlacement: 'sidebar',
+        },
+      },
+      setSettings: jest.fn().mockResolvedValue(undefined),
       getChatLeafSessionManager: () => sessionManager,
     } as unknown as YoloPlugin
   }
@@ -189,5 +205,68 @@ describe('ChatViewNavigator', () => {
       }),
     )
     expect(registerLeaf).toHaveBeenCalledWith(newLeaf, 'sidebar')
+  })
+
+  it('stores the initial conversation id in view state when creating a chat leaf', async () => {
+    const setViewState = jest.fn().mockImplementation(function setViewState() {
+      this.view = new (MockChatView as unknown as new () => object)()
+      return Promise.resolve()
+    })
+    const newLeaf = {
+      setViewState,
+    } as unknown as WorkspaceLeaf
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => null,
+      revealLeaf: jest.fn().mockResolvedValue(undefined),
+      getRightLeaf: () => newLeaf,
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await navigator.openChatView({
+      placement: 'sidebar',
+      initialConversationId: 'conversation-1',
+    })
+
+    expect(setViewState).toHaveBeenCalledWith({
+      type: CHAT_VIEW_TYPE,
+      active: true,
+      state: {
+        currentConversationId: 'conversation-1',
+      },
+    })
+  })
+
+  it('asks Obsidian for a split leaf when opening a new split chat', async () => {
+    const setViewState = jest.fn().mockImplementation(function setViewState() {
+      this.view = new (MockChatView as unknown as new () => object)()
+      return Promise.resolve()
+    })
+    const newLeaf = {
+      setViewState,
+    } as unknown as WorkspaceLeaf
+    const getLeaf = jest.fn(() => newLeaf)
+    const setPendingPayload = jest.fn()
+    const registerLeaf = jest.fn()
+    const plugin = createPlugin({
+      resolveTargetLeaf: () => null,
+      setPendingPayload,
+      registerLeaf,
+      revealLeaf: jest.fn().mockResolvedValue(undefined),
+      getLeaf,
+    })
+
+    const navigator = new ChatViewNavigator({ plugin })
+
+    await navigator.openChatInSplit(true)
+
+    expect(getLeaf).toHaveBeenCalledWith('split')
+    expect(setPendingPayload).toHaveBeenCalledWith(
+      newLeaf,
+      expect.objectContaining({
+        placement: 'split',
+      }),
+    )
+    expect(registerLeaf).toHaveBeenCalledWith(newLeaf, 'split')
   })
 })

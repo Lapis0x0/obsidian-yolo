@@ -1,3 +1,5 @@
+import { FILE_EDIT_GROUP_TOOL_NAME } from '../../core/agent/builtinToolUiMeta'
+import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
@@ -8,13 +10,17 @@ import { isAgentChatMode } from './chat-input/ChatModeSelect'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,
-  'enableTools' | 'includeBuiltinTools' | 'toolPreferences'
+  | 'enableTools'
+  | 'includeBuiltinTools'
+  | 'toolPreferences'
+  | 'toolServerPreferences'
 >
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
 
 export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
   getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
+  getToolName(getLocalFileToolServerName(), FILE_EDIT_GROUP_TOOL_NAME),
   getToolName(getLocalFileToolServerName(), 'fs_edit'),
   getToolName(getLocalFileToolServerName(), 'fs_write'),
   getToolName(getLocalFileToolServerName(), 'fs_delete'),
@@ -28,18 +34,25 @@ export type ChatModeRuntime = {
   loopConfig: AgentRuntimeLoopConfig
   allowedToolNames: string[] | undefined
   toolPreferences: Assistant['toolPreferences']
+  toolServerPreferences: Assistant['toolServerPreferences']
   bypassToolApproval: boolean
-  runtimeModePrompt?: string
+  toolCapabilityMode: ToolCapabilityMode
 }
 
 export type ChatModeRuntimeInput = {
   mode: ChatMode
+  /**
+   * Auto-approve tool calls (YOLO). Orthogonal to `mode`; only takes effect in
+   * Agent mode.
+   */
+  yoloEnabled?: boolean
   assistant?: AssistantRuntimeOptions | null
   assistantEnabledToolNames: string[]
 }
 
 export function resolveChatModeRuntime({
   mode,
+  yoloEnabled = false,
   assistant,
   assistantEnabledToolNames,
 }: ChatModeRuntimeInput): ChatModeRuntime {
@@ -64,11 +77,10 @@ export function resolveChatModeRuntime({
     },
     allowedToolNames,
     toolPreferences: isAgentMode ? assistant?.toolPreferences : undefined,
-    bypassToolApproval: mode === 'agent-full',
-    runtimeModePrompt: isAgentMode
-      ? undefined
-      : `<runtime_mode>
-You are currently in Ask mode. Some action tools are unavailable in this mode, including file modification, terminal command execution, and task-state writing tools. If the user asks you to use these capabilities, explain that they need to switch to Agent mode.
-</runtime_mode>`,
+    toolServerPreferences: isAgentMode
+      ? assistant?.toolServerPreferences
+      : undefined,
+    bypassToolApproval: isAgentMode && yoloEnabled,
+    toolCapabilityMode: isAgentMode ? 'agent' : 'ask',
   }
 }

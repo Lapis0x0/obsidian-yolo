@@ -8,10 +8,13 @@ export type BackgroundActivityAction =
   | {
       type: 'open-knowledge-settings'
     }
+  | {
+      type: 'open-learning-view'
+    }
 
 export type BackgroundActivity = {
   id: string
-  kind: 'agent' | 'rag-index'
+  kind: 'agent' | 'learning-agent' | 'rag-index'
   title: string
   detail?: string
   status: BackgroundActivityStatus

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ItemView, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
+import type { ViewStateResult } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
@@ -24,12 +25,19 @@ import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionMana
 import { getConversationDisplayTitle } from './hooks/useChatHistory'
 import YoloPlugin from './main'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
-import { MentionableBlockData, MentionableImage } from './types/mentionable'
+import {
+  MentionableBlockData,
+  MentionableImage,
+  MentionableWebSelection,
+} from './types/mentionable'
+import { YOLO_ICON_ID } from './yoloIcon'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
   private root: Root | null = null
   private initialChatProps?: ChatProps
+  private restoredConversationId?: string
+  private restoredConversationTitle?: string
   private chatRef: React.RefObject<ChatRef> = React.createRef()
   // host DOM 重建追踪：Windows 上 Obsidian pop-out 会销毁旧 view-content
   // 并新建一个空的，需要检测并把 React tree 迁移到新 host。
@@ -45,6 +53,9 @@ export class ChatView extends ItemView {
   private rebuildScheduled = false
   private rebuildRafId: number | null = null
   private isClosed = false
+  private isApplyingPersistedViewState = false
+  private pendingRestoredConversationId?: string
+  private restoredConversationLoadPromise: Promise<void> | null = null
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -58,15 +69,61 @@ export class ChatView extends ItemView {
   }
 
   getIcon() {
-    return 'wand-sparkles'
+    return YOLO_ICON_ID
   }
 
   getDisplayText() {
     return this.displayTitle
   }
 
+  getState(): Record<string, unknown> {
+    const state = { ...super.getState() }
+    const summary = this.plugin
+      .getChatLeafSessionManager()
+      .getLeafSummary(this.leaf)
+    const currentConversationId = this.resolvePersistableConversationId(summary)
+    const currentConversationTitle =
+      summary?.currentConversationTitle ?? this.restoredConversationTitle
+
+    if (currentConversationId) {
+      state.currentConversationId = currentConversationId
+    } else {
+      delete state.currentConversationId
+    }
+
+    if (currentConversationId && currentConversationTitle) {
+      state.currentConversationTitle = currentConversationTitle
+    } else {
+      delete state.currentConversationTitle
+    }
+
+    return state
+  }
+
+  async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    await super.setState(state, result)
+
+    this.restoredConversationId = this.readStringStateValue(
+      state,
+      'currentConversationId',
+    )
+    this.restoredConversationTitle = this.readStringStateValue(
+      state,
+      'currentConversationTitle',
+    )
+
+    if (this.restoredConversationTitle) {
+      this.updateDisplayTitle(this.restoredConversationTitle)
+    }
+
+    if (!this.isApplyingPersistedViewState && this.restoredConversationId) {
+      this.scheduleRestoredConversationLoad()
+    }
+  }
+
   async onOpen(): Promise<void> {
     this.isClosed = false
+    await this.plugin.warmupAgentService()
     const manager = this.plugin.getChatLeafSessionManager()
     const pendingPayload = manager.consumePendingPayload(this.leaf)
     const placement =
@@ -79,6 +136,7 @@ export class ChatView extends ItemView {
 
     await this.render()
     await this.applyDeferredPayload(pendingPayload)
+    this.scheduleRestoredConversationLoad()
 
     this.initialChatProps = undefined
 
@@ -114,6 +172,8 @@ export class ChatView extends ItemView {
 
   onClose(): Promise<void> {
     this.isClosed = true
+    this.runtimeSnapshot =
+      this.chatRef.current?.getRuntimeSnapshot() ?? this.runtimeSnapshot
     if (this.rebuildRafId !== null) {
       window.cancelAnimationFrame(this.rebuildRafId)
       this.rebuildRafId = null
@@ -124,6 +184,8 @@ export class ChatView extends ItemView {
     this.hostObserver = null
     this.windowMigratedDisposer?.()
     this.windowMigratedDisposer = null
+    this.pendingRestoredConversationId = undefined
+    this.restoredConversationLoadPromise = null
     this.root?.unmount()
     this.root = null
     this.mountedHost = null
@@ -154,6 +216,8 @@ export class ChatView extends ItemView {
   private async rebuild(): Promise<void> {
     const newHost = this.containerEl.children[1] as HTMLElement | undefined
     if (!newHost) return
+    this.runtimeSnapshot =
+      this.chatRef.current?.getRuntimeSnapshot() ?? this.runtimeSnapshot
     this.root?.unmount()
     this.root = createRoot(newHost)
     this.mountedHost = newHost
@@ -230,9 +294,13 @@ export class ChatView extends ItemView {
                                   const manager =
                                     this.plugin.getChatLeafSessionManager()
                                   manager.updateLeafSummary(this.leaf, context)
+                                  this.updateRestoredConversationFromContext(
+                                    context,
+                                  )
                                   this.updateDisplayTitle(
                                     context.currentConversationTitle,
                                   )
+                                  void this.persistLeafViewState(context)
                                 }}
                                 onRuntimeSnapshotChange={(snapshot) => {
                                   this.runtimeSnapshot = snapshot
@@ -300,6 +368,11 @@ export class ChatView extends ItemView {
     this.chatRef.current?.syncSelectionToInput(selectedBlock)
   }
 
+  syncWebSelectionToInput(selection: MentionableWebSelection) {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.syncWebSelectionToInput(selection)
+  }
+
   clearSelectionFromChat() {
     this.chatRef.current?.clearSelectionFromChat()
   }
@@ -360,18 +433,155 @@ export class ChatView extends ItemView {
   private getInitialChatProps(
     payload?: PendingChatOpenPayload,
   ): ChatProps | undefined {
-    if (!payload) {
-      return undefined
-    }
+    const initialConversationId =
+      payload?.initialConversationId ?? this.restoredConversationId
 
-    if (!payload.selectedBlock && !payload.initialConversationId) {
+    if (!payload?.selectedBlock && !initialConversationId) {
       return undefined
     }
 
     return {
-      selectedBlock: payload.selectedBlock,
-      initialConversationId: payload.initialConversationId,
+      selectedBlock: payload?.selectedBlock,
+      initialConversationId,
     }
+  }
+
+  private readStringStateValue(
+    state: unknown,
+    key: string,
+  ): string | undefined {
+    if (typeof state !== 'object' || state === null) {
+      return undefined
+    }
+
+    const value = (state as Record<string, unknown>)[key]
+    return typeof value === 'string' && value.length > 0 ? value : undefined
+  }
+
+  private resolvePersistableConversationId(summary?: {
+    currentConversationId?: string
+    currentConversationPersisted?: boolean
+  }): string | undefined {
+    if (!summary) {
+      return this.restoredConversationId
+    }
+
+    if (summary.currentConversationPersisted) {
+      return summary.currentConversationId
+    }
+
+    if (summary.currentConversationId === this.restoredConversationId) {
+      return this.restoredConversationId
+    }
+
+    return undefined
+  }
+
+  private updateRestoredConversationFromContext(context: {
+    currentConversationId?: string
+    currentConversationPersisted?: boolean
+    currentConversationTitle?: string
+  }): void {
+    if (context.currentConversationPersisted) {
+      this.restoredConversationId = context.currentConversationId
+      this.restoredConversationTitle = context.currentConversationTitle
+      return
+    }
+
+    if (this.pendingRestoredConversationId) {
+      return
+    }
+
+    if (context.currentConversationId !== this.restoredConversationId) {
+      this.restoredConversationId = undefined
+      this.restoredConversationTitle = context.currentConversationTitle
+    }
+  }
+
+  private scheduleRestoredConversationLoad(): void {
+    const conversationId = this.restoredConversationId
+    if (!conversationId || this.isApplyingPersistedViewState || this.isClosed) {
+      return
+    }
+
+    if (
+      this.pendingRestoredConversationId === conversationId &&
+      this.restoredConversationLoadPromise
+    ) {
+      return
+    }
+
+    this.pendingRestoredConversationId = conversationId
+    const loadPromise = this.loadRestoredConversation(conversationId).finally(
+      () => {
+        if (this.pendingRestoredConversationId === conversationId) {
+          this.pendingRestoredConversationId = undefined
+        }
+        if (this.restoredConversationLoadPromise === loadPromise) {
+          this.restoredConversationLoadPromise = null
+        }
+      },
+    )
+    this.restoredConversationLoadPromise = loadPromise
+  }
+
+  private async loadRestoredConversation(
+    conversationId: string,
+  ): Promise<void> {
+    const chatRef = await this.waitForChatRef()
+    if (!chatRef || this.isClosed) {
+      return
+    }
+
+    await chatRef.loadConversation(conversationId)
+  }
+
+  private async persistLeafViewState(context: {
+    currentConversationId?: string
+    currentConversationPersisted?: boolean
+    currentConversationTitle?: string
+  }): Promise<void> {
+    const currentConversationId = this.resolvePersistableConversationId(context)
+    const currentViewState = this.leaf.getViewState()
+    const currentState = currentViewState.state ?? {}
+    const nextState = { ...currentState }
+
+    if (currentConversationId) {
+      nextState.currentConversationId = currentConversationId
+      if (context.currentConversationTitle) {
+        nextState.currentConversationTitle = context.currentConversationTitle
+      } else {
+        delete nextState.currentConversationTitle
+      }
+    } else {
+      delete nextState.currentConversationId
+      delete nextState.currentConversationTitle
+    }
+
+    const alreadySynced =
+      currentState.currentConversationId === nextState.currentConversationId &&
+      currentState.currentConversationTitle ===
+        nextState.currentConversationTitle
+
+    if (alreadySynced) {
+      this.plugin.app.workspace.requestSaveLayout()
+      return
+    }
+
+    try {
+      this.isApplyingPersistedViewState = true
+      await this.leaf.setViewState({
+        ...currentViewState,
+        type: CHAT_VIEW_TYPE,
+        state: nextState,
+      })
+    } catch (error) {
+      console.error('[YOLO] Failed to persist chat view state', error)
+    } finally {
+      this.isApplyingPersistedViewState = false
+    }
+
+    this.plugin.app.workspace.requestSaveLayout()
   }
 
   private async applyDeferredPayload(

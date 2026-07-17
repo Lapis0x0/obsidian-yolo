@@ -83,3 +83,106 @@ export function resolveProviderDisplayBaseUrl(
 
   return resolveProviderBaseUrl(provider)
 }
+
+export function resolveDeepSeekAnthropicBaseUrl(
+  baseUrl: string | undefined,
+): string {
+  const normalized = (baseUrl?.trim() || 'https://api.deepseek.com')
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/, '')
+
+  try {
+    const url = new URL(normalized)
+    const path = url.pathname.replace(/\/+$/, '')
+    if (url.hostname === 'api.deepseek.com' && path === '') {
+      return `${normalized}/anthropic`
+    }
+  } catch {
+    // Keep malformed/custom values intact; the request layer will surface the
+    // actual connection error instead of a preview-time guess.
+  }
+
+  return normalized
+}
+
+export function normalizeGeminiProviderBaseUrl(raw: string): string {
+  const trimmed = raw.replace(/\/+$/, '')
+  try {
+    const url = new URL(trimmed)
+    // Gemini requests append /v1beta explicitly.
+    url.pathname = url.pathname.replace(/\/?(v1beta|v1alpha1|v1)(\/)?$/, '')
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return trimmed.replace(/\/?(v1beta|v1alpha1|v1)(\/)?$/, '')
+  }
+}
+
+function joinEndpoint(baseUrl: string, endpoint: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`
+}
+
+function resolveOpenAICompatibleRequestBaseUrl(
+  provider: Pick<
+    LLMProvider,
+    'presetType' | 'apiType' | 'baseUrl' | 'additionalSettings'
+  >,
+): string | undefined {
+  const baseUrl = resolveProviderBaseUrl(provider)
+  if (!baseUrl) {
+    return undefined
+  }
+
+  if (
+    provider.presetType === 'ollama' ||
+    provider.presetType === 'lm-studio' ||
+    provider.presetType === 'morph'
+  ) {
+    return joinEndpoint(baseUrl, 'v1')
+  }
+
+  return baseUrl
+}
+
+export function resolveProviderPrimaryRequestUrl(
+  provider: Pick<
+    LLMProvider,
+    'presetType' | 'apiType' | 'baseUrl' | 'additionalSettings'
+  >,
+): string | undefined {
+  switch (provider.apiType) {
+    case 'openai-compatible': {
+      const baseUrl = resolveOpenAICompatibleRequestBaseUrl(provider)
+      return baseUrl ? joinEndpoint(baseUrl, 'chat/completions') : undefined
+    }
+    case 'openai-responses': {
+      const baseUrl = resolveProviderBaseUrl(provider)
+      return baseUrl ? joinEndpoint(baseUrl, 'responses') : undefined
+    }
+    case 'anthropic': {
+      const baseUrl =
+        provider.presetType === 'deepseek'
+          ? resolveDeepSeekAnthropicBaseUrl(provider.baseUrl)
+          : (
+              provider.baseUrl?.trim() ||
+              getDefaultBaseUrlForPreset(provider.presetType) ||
+              'https://api.anthropic.com'
+            )
+              .replace(/\/+$/, '')
+              .replace(/\/v1$/, '')
+      return joinEndpoint(baseUrl, 'v1/messages')
+    }
+    case 'gemini': {
+      const baseUrl = normalizeGeminiProviderBaseUrl(
+        provider.baseUrl?.trim() ||
+          getDefaultBaseUrlForPreset(provider.presetType) ||
+          'https://generativelanguage.googleapis.com',
+      )
+      return joinEndpoint(
+        baseUrl,
+        'v1beta/models/{model}:streamGenerateContent',
+      )
+    }
+    case 'amazon-bedrock':
+      return undefined
+  }
+}

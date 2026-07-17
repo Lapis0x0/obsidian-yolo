@@ -21,6 +21,8 @@ import { OpenAIMessageAdapter } from './openaiMessageAdapter'
  * accepted, which is exactly the failure mode the docs warn about.
  */
 export class XiaomimimoMessageAdapter extends OpenAIMessageAdapter {
+  protected override readonly adapterName = 'Xiaomi MiMo'
+
   protected parseRequestMessage(
     message: RequestMessage,
   ): ChatCompletionMessageParam {

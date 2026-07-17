@@ -4,15 +4,9 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import DotLoader from '../common/DotLoader'
 
-import { ObsidianMarkdown } from './ObsidianMarkdown'
-import StreamingMarkdown from './StreamingMarkdown'
+import TransitioningMarkdown from './TransitioningMarkdown'
 
-type ReasoningStage =
-  | 'requesting'
-  | 'thinking'
-  | 'generating'
-  | 'error'
-  | 'settled'
+type ReasoningStage = 'requesting' | 'thinking' | 'settled'
 
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoning,
@@ -30,9 +24,6 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   }>
 }) {
   const { t } = useLanguage()
-  const EffectiveMarkdownComponent =
-    MarkdownComponent ??
-    (generationState === 'streaming' ? StreamingMarkdown : ObsidianMarkdown)
   const [isExpanded, setIsExpanded] = useState(false)
   const hasUserInteracted = useRef(false)
 
@@ -53,14 +44,8 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     if (isStreaming && !hasAnswerContent && hasReasoningText) {
       return 'thinking'
     }
-    if (isStreaming && hasAnswerContent) {
-      return 'generating'
-    }
-    if (generationState === 'error') {
-      return 'error'
-    }
     return 'settled'
-  }, [generationState, hasAnswerContent, hasReasoningText, isStreaming])
+  }, [hasAnswerContent, hasReasoningText, isStreaming])
 
   const stageLabel = useMemo(() => {
     if (stage === 'requesting') {
@@ -68,12 +53,6 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     }
     if (stage === 'thinking') {
       return t('quickAsk.statusThinking', 'Thinking...')
-    }
-    if (stage === 'generating') {
-      return t('quickAsk.statusGenerating', 'Generating...')
-    }
-    if (stage === 'error') {
-      return t('quickAsk.error', 'Failed to generate response')
     }
     return t('chat.reasoning', 'Reasoning')
   }, [stage, t])
@@ -101,9 +80,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     return previewLine.replace(/^[-*#>\s`]+/, '').slice(0, 120)
   }, [reasoning])
   const showPreview =
-    reasoningPreview.length > 0 &&
-    !showBody &&
-    (stage === 'thinking' || (stage === 'generating' && showActivity))
+    reasoningPreview.length > 0 && !showBody && stage === 'thinking'
 
   useEffect(() => {
     if (!isStreaming) {
@@ -191,11 +168,19 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       </div>
       <div className="yolo-assistant-message-metadata-body">
         <div className="yolo-assistant-message-metadata-content">
-          <EffectiveMarkdownComponent
-            content={reasoning}
-            scale="xs"
-            animateIncrementalText={generationState === 'streaming'}
-          />
+          {MarkdownComponent ? (
+            <MarkdownComponent
+              content={reasoning}
+              scale="xs"
+              animateIncrementalText={generationState === 'streaming'}
+            />
+          ) : (
+            <TransitioningMarkdown
+              content={reasoning}
+              scale="xs"
+              generationState={generationState}
+            />
+          )}
         </div>
       </div>
     </div>

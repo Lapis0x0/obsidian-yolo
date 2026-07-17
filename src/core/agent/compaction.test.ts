@@ -6,6 +6,7 @@ import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../types/tool-call.types'
+import { markRequestErrorNonRetryable } from '../ai/requestRetry'
 import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
 
@@ -26,7 +27,7 @@ const mockedExecuteSingleTurn = executeSingleTurn as jest.MockedFunction<
   typeof executeSingleTurn
 >
 
-const fakeProviderClient = {} as BaseLLMProvider<LLMProvider>
+const fakeProviderClient = {} as unknown as BaseLLMProvider<LLMProvider>
 const fakeModel = {
   providerId: 'provider',
   id: 'model-id',
@@ -76,11 +77,11 @@ describe('createConversationCompactionSummary', () => {
     const call = mockedExecuteSingleTurn.mock.calls[0][0]
     // Prefix is reused byte-for-byte at the head of the request.
     expect(call.request.messages.slice(0, prefix.length)).toEqual(prefix)
-    // Tools forwarded, tool calls forbidden, standard purpose, non-streaming.
+    // Tools forwarded, tool calls forbidden, standard purpose, buffered delivery.
     expect(call.tools).toBe(tools)
     expect(call.tool_choice).toBe('none')
     expect(call.purpose).toBe('standard')
-    expect(call.stream).toBe(false)
+    expect(call.deliveryMode).toBe('buffered')
     // Tail message is the compaction instruction.
     const tail = call.request.messages.at(-1)
     expect(tail?.role).toBe('user')
@@ -109,6 +110,20 @@ describe('createConversationCompactionSummary', () => {
       prefix.length + turnMessages.length + 1,
     )
     expect(call.request.messages[prefix.length]).toEqual(turnMessages[0])
+  })
+
+  it('does not retry a buffered request classified as non-retryable', async () => {
+    const error = markRequestErrorNonRetryable(new Error('buffered failure'))
+    mockedExecuteSingleTurn.mockRejectedValueOnce(error)
+
+    await expect(
+      createConversationCompactionSummary({
+        providerClient: fakeProviderClient,
+        model: fakeModel,
+        requestMessages: prefix,
+      }),
+    ).rejects.toBe(error)
+    expect(mockedExecuteSingleTurn).toHaveBeenCalledTimes(1)
   })
 
   it('injects focusInstruction into the instruction message', async () => {

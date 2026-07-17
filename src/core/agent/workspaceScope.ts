@@ -3,6 +3,7 @@ import { normalizePath } from 'obsidian'
 import { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 export const BUILTIN_SKILL_PATH_PREFIX = 'builtin://'
+export const BROWSER_READ_PATH_PREFIX = 'browser://'
 
 const normalize = (raw: string): string =>
   raw.replace(/^\/+/, '').replace(/\/+$/, '')
@@ -90,7 +91,10 @@ export function collectToolCallPaths(
  */
 export function normalizeSkillPathForExemption(path: string): string {
   const trimmed = path.trim()
-  if (trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX)) {
+  if (
+    trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX) ||
+    trimmed.startsWith(BROWSER_READ_PATH_PREFIX)
+  ) {
     return trimmed
   }
   return normalizePath(trimmed)
@@ -111,6 +115,13 @@ export function findPathOutsideScope(
   if (!scope?.enabled) return null
   const paths = collectToolCallPaths(toolName, args)
   for (const path of paths) {
+    const trimmed = path.trim()
+    if (
+      trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX) ||
+      trimmed.startsWith(BROWSER_READ_PATH_PREFIX)
+    ) {
+      continue
+    }
     if (options?.exemptPaths?.has(normalizeSkillPathForExemption(path))) {
       continue
     }

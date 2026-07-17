@@ -5,6 +5,7 @@ import {
 
 import { RequestMessage } from '../../types/llm/request'
 import { LLMProvider } from '../../types/provider.types'
+import { resolveDeepSeekAnthropicBaseUrl } from '../../utils/llm/provider-base-url'
 
 import { AnthropicProvider } from './anthropic'
 
@@ -13,26 +14,7 @@ import { AnthropicProvider } from './anthropic'
 // signature 真实性，只要 thinking block 存在即可，这里沿用占位符。
 const PLACEHOLDER_SIGNATURE = 'c2lnbmF0dXJlX3BsYWNlaG9sZGVy'
 
-export const resolveDeepSeekAnthropicBaseUrl = (
-  baseUrl: string | undefined,
-): string => {
-  const normalized = (baseUrl?.trim() || 'https://api.deepseek.com')
-    .replace(/\/+$/, '')
-    .replace(/\/v1$/, '')
-
-  try {
-    const url = new URL(normalized)
-    const path = url.pathname.replace(/\/+$/, '')
-    if (url.hostname === 'api.deepseek.com' && path === '') {
-      return `${normalized}/anthropic`
-    }
-  } catch {
-    // Keep malformed/custom values intact; the request layer will surface the
-    // actual connection error instead of a migration-time guess.
-  }
-
-  return normalized
-}
+export { resolveDeepSeekAnthropicBaseUrl }
 
 export class DeepSeekAnthropicProvider extends AnthropicProvider {
   constructor(

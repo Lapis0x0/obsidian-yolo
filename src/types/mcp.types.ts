@@ -91,6 +91,7 @@ type McpServerInputRecord = Record<string, unknown>
 
 const MCP_PARAMETER_KEYS = new Set([
   'transport',
+  'type',
   'command',
   'url',
   'args',
@@ -99,12 +100,44 @@ const MCP_PARAMETER_KEYS = new Set([
   'cwd',
 ])
 
+const MCP_TRANSPORT_TYPE_ALIASES = new Map<
+  string,
+  'stdio' | 'http' | 'sse' | 'ws'
+>([
+  ['stdio', 'stdio'],
+  ['http', 'http'],
+  ['streamable-http', 'http'],
+  ['sse', 'sse'],
+  ['ws', 'ws'],
+  ['websocket', 'ws'],
+])
+
 function isRecord(value: unknown): value is McpServerInputRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 function hasParameterLikeFields(value: McpServerInputRecord): boolean {
   return Object.keys(value).some((key) => MCP_PARAMETER_KEYS.has(key))
+}
+
+function normalizeMcpServerParameterRecord(
+  value: McpServerInputRecord,
+): McpServerInputRecord {
+  const normalized: McpServerInputRecord = { ...value }
+  delete normalized.id
+  delete normalized.name
+
+  if (!('transport' in normalized) && typeof normalized.type === 'string') {
+    const transport = MCP_TRANSPORT_TYPE_ALIASES.get(
+      normalized.type.trim().toLowerCase(),
+    )
+    if (transport) {
+      normalized.transport = transport
+    }
+  }
+
+  delete normalized.type
+  return normalized
 }
 
 function normalizeSingleMcpServerParameters(
@@ -119,9 +152,7 @@ function normalizeSingleMcpServerParameters(
   }
 
   if (hasParameterLikeFields(value)) {
-    const normalized: McpServerInputRecord = { ...value }
-    delete normalized.id
-    delete normalized.name
+    const normalized = normalizeMcpServerParameterRecord(value)
     return mcpServerParametersSchema.parse(normalized)
   }
 

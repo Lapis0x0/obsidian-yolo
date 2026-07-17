@@ -11,6 +11,21 @@ export type ToolCallArguments =
       rawText?: string
     }
 
+export type ToolCallArgumentDiagnostics = {
+  streamState?: 'open' | 'sealed' | 'aborted'
+  parseState?: 'not_attempted' | 'valid' | 'invalid' | 'repaired'
+  sealReason?: 'explicit_done' | 'stream_end' | 'turn_handoff'
+  rawArgsLength?: number
+  rawArgsHead?: string
+  finishReason?: string | null
+  timedOut?: boolean
+  aborted?: boolean
+  deliveryMode?: string
+  parseError?: string
+  repairApplied?: boolean
+  repairActions?: string[]
+}
+
 export const isToolCallArgumentsRecord = (
   value: unknown,
 ): value is Record<string, unknown> => {
@@ -85,12 +100,25 @@ export type ToolEditSummary = {
   undoStatus: ToolEditUndoStatus
 }
 
+export type ToolFsReadOperationSummary =
+  | {
+      type: 'full'
+      isPdf: boolean
+    }
+  | {
+      type: 'lines'
+      startLine: number
+      endLine: number
+      isPdf: boolean
+    }
+
 export type ToolCallRequest = {
   id: string
   name: string
   arguments?: ToolCallArguments
   metadata?: {
     thoughtSignature?: string
+    argumentDiagnostics?: ToolCallArgumentDiagnostics
   }
 }
 
@@ -98,9 +126,12 @@ export type ToolCallResponse =
   | {
       status:
         | ToolCallResponseStatus.PendingApproval
-        | ToolCallResponseStatus.Rejected
         | ToolCallResponseStatus.Running
         | ToolCallResponseStatus.AwaitingUserInput
+    }
+  | {
+      status: ToolCallResponseStatus.Rejected
+      reason?: string
     }
   | {
       status: ToolCallResponseStatus.Success
@@ -110,6 +141,7 @@ export type ToolCallResponse =
         contentParts?: ContentPart[]
         metadata?: {
           editSummary?: ToolEditSummary
+          fsReadOperation?: ToolFsReadOperationSummary
           appliedAt?: number
           truncated?: { totalBytes: number; omittedBytes: number }
         }

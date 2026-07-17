@@ -82,7 +82,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private static readonly DEFAULT_MAX_TOKENS = 8192
 
   /**
-   * max_tokens must cover thinking tokens too. For bounded levels (low/medium/high/extra-high)
+   * max_tokens must cover thinking tokens too. For bounded levels (low through max)
    * add the budget from REASONING_META on top of DEFAULT_MAX_TOKENS so visible output isn't truncated.
    */
   private static resolveMaxTokens(

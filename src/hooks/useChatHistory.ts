@@ -7,12 +7,12 @@ import { editorStateToPlainText } from '../components/chat-view/chat-input/utils
 import {
   DEFAULT_CHAT_TITLE_PROMPT,
   DEFAULT_UNTITLED_CONVERSATION_TITLE,
-  LEGACY_UNTITLED_CONVERSATION_TITLES,
 } from '../constants'
 import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
 import { usePlugin } from '../contexts/plugin-context'
 import { useSettings } from '../contexts/settings-context'
+import { isRequestErrorNonRetryable } from '../core/ai/requestRetry'
 import { executeSingleTurn } from '../core/ai/single-turn'
 import {
   createLLMDebugTrace,
@@ -39,15 +39,16 @@ import { ConversationOverrideSettings } from '../types/conversation-settings.typ
 import { Mentionable } from '../types/mentionable'
 import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
+  getConversationDisplayTitle,
+  isUntitledConversationTitle,
+} from '../utils/chat/conversationTitle'
+import {
   deserializeMentionable,
   serializeMentionable,
 } from '../utils/chat/mentionable'
 
 import { useChatManager } from './useJsonManagers'
 
-const LEGACY_UNTITLED_TITLE_SET = new Set<string>(
-  LEGACY_UNTITLED_CONVERSATION_TITLES,
-)
 const AUTO_TITLE_TIMEOUT_MS = 10000
 const AUTO_TITLE_MAX_RETRIES = 2
 const AUTO_TITLE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
@@ -55,17 +56,7 @@ const AUTO_TITLE_WAIT_CONVERSATION_RETRIES = 15
 const AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS = 200
 const CHAT_HISTORY_UPDATED_EVENT = 'yolo:chat-history-updated'
 
-export const isUntitledConversationTitle = (
-  title: string | null | undefined,
-): boolean => {
-  const normalized = title?.trim() ?? ''
-  return normalized.length === 0 || LEGACY_UNTITLED_TITLE_SET.has(normalized)
-}
-
-export const getConversationDisplayTitle = (
-  title: string | null | undefined,
-  fallback: string,
-): string => (isUntitledConversationTitle(title) ? fallback : title!.trim())
+export { getConversationDisplayTitle, isUntitledConversationTitle }
 
 const formatSelectedSkillsForTitleInput = (
   selectedSkills: ChatSelectedSkill[],
@@ -122,6 +113,7 @@ type UseChatHistory = {
   getConversationById: (id: string) => Promise<{
     messages: ChatMessage[]
     overrides: ConversationOverrideSettings | null | undefined
+    assistantId?: string
     conversationModelId?: string
     messageModelMap?: Record<string, string>
     activeBranchByUserMessageId?: Record<string, string>
@@ -384,7 +376,7 @@ export function useChatHistory(): UseChatHistory {
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await chatManager.deleteChat(id)
-      plugin.getAgentService().evictSystemPromptSnapshot(id)
+      plugin.getAgentService().dropConversation(id)
       emitChatHistoryUpdated()
       await fetchChatList()
     },
@@ -412,6 +404,7 @@ export function useChatHistory(): UseChatHistory {
     ): Promise<{
       messages: ChatMessage[]
       overrides: ConversationOverrideSettings | null | undefined
+      assistantId?: string
       conversationModelId?: string
       messageModelMap?: Record<string, string>
       activeBranchByUserMessageId?: Record<string, string>
@@ -428,6 +421,7 @@ export function useChatHistory(): UseChatHistory {
       return {
         messages,
         overrides: conversation.overrides,
+        assistantId: conversation.assistantId,
         conversationModelId: conversation.conversationModelId,
         messageModelMap: conversation.messageModelMap,
         activeBranchByUserMessageId: conversation.activeBranchByUserMessageId,
@@ -650,7 +644,7 @@ export function useChatHistory(): UseChatHistory {
                   ],
                   reasoningLevel: 'off',
                 },
-                stream: false,
+                deliveryMode: 'buffered',
                 purpose: 'lightweight',
                 signal: controller.signal,
                 debugTraceId: debugTrace?.id,
@@ -684,7 +678,10 @@ export function useChatHistory(): UseChatHistory {
             return nextTitle || null
           } catch (error) {
             lastGenerationError = error
-            if (retryCount < AUTO_TITLE_MAX_RETRIES) {
+            if (
+              retryCount < AUTO_TITLE_MAX_RETRIES &&
+              !isRequestErrorNonRetryable(error)
+            ) {
               const backoffMs = 300 * (retryCount + 1)
               await new Promise((resolve) => setTimeout(resolve, backoffMs))
               return attemptGenerateTitle(retryCount + 1)

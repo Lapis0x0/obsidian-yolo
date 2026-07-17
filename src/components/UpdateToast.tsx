@@ -5,9 +5,11 @@ import { Root, createRoot } from 'react-dom/client'
 import { LanguageProvider, useLanguage } from '../contexts/language-context'
 import { PluginProvider, usePlugin } from '../contexts/plugin-context'
 import { parseChangelog } from '../core/update/updateChecker'
+import { usePluginUpdatePrimaryCta } from '../hooks/usePluginUpdatePrimaryCta'
 import { useUpdateCheck } from '../hooks/useUpdateCheck'
 import type YoloPlugin from '../main'
 
+import { FloatingToast } from './common/FloatingToast'
 import { UpdateHistoryModal } from './modals/UpdateHistoryModal'
 import { UpdateChangelogSections } from './update/UpdateChangelogSections'
 import {
@@ -20,7 +22,19 @@ function UpdateToast() {
   const { language, t } = useLanguage()
   const plugin = usePlugin()
   const { app } = plugin
-  const { result, dismissVersion } = useUpdateCheck()
+  const { result, muteUpdateVersion } = useUpdateCheck()
+  const {
+    primaryCta,
+    hasSelfUpdate,
+    isSelfUpdateError,
+    showCommunityPluginsFallback,
+    showDownloadProgress,
+    downloadProgress,
+    releaseUrl,
+    openCommunityPlugins,
+  } = usePluginUpdatePrimaryCta({
+    onOpenCommunityPlugins: () => setHiddenForSession(true),
+  })
 
   const [exiting, setExiting] = useState(false)
   const [hiddenForSession, setHiddenForSession] = useState(false)
@@ -36,18 +50,16 @@ function UpdateToast() {
     }
   }, [latestVersion, language, result])
 
-  // Closing plays the exit animation first, then persists the dismissal state
-  // (which unmounts the card). Timer-driven rather than onAnimationEnd so it still fires under
+  // Closing plays the exit animation first, then hides for this session only.
+  // Use "Skip this version" in the header to persist a mute across launches.
+  // Timer-driven rather than onAnimationEnd so it still fires under
   // prefers-reduced-motion (where the animation is disabled). Keep in sync with
   // the 160ms exit duration in input.css.
   useEffect(() => {
     if (!exiting || !result) return
-    const id = window.setTimeout(
-      () => dismissVersion(result.latestVersion),
-      160,
-    )
+    const id = window.setTimeout(() => setHiddenForSession(true), 160)
     return () => window.clearTimeout(id)
-  }, [dismissVersion, exiting, result])
+  }, [exiting, result])
 
   const releaseNotes = result?.releaseNotes
   // The header (title + subtitle) tracks the UI's default language; only the
@@ -76,9 +88,7 @@ function UpdateToast() {
   const hasBilingual = hasBilingualReleaseNotes(releaseNotes)
   const separator = lang === 'zh' ? '：' : ': '
 
-  const closeLabel = plugin.isUpdateVersionSoftDismissed(result.latestVersion)
-    ? t('update.muteThisVersion', "Don't notify for this version")
-    : t('update.dismiss', 'Dismiss')
+  const closeLabel = t('update.dismiss', 'Dismiss')
 
   const langToggle = hasBilingual ? (
     <div
@@ -104,8 +114,9 @@ function UpdateToast() {
   ) : null
 
   return (
-    <div
+    <FloatingToast
       className={`yolo-update-toast${exiting ? ' yolo-update-toast--exiting' : ''}`}
+      exiting={exiting}
     >
       <div className="yolo-update-toast-header">
         <div className="yolo-update-toast-heading">
@@ -121,16 +132,27 @@ function UpdateToast() {
             <div className="yolo-update-toast-subtitle">{subtitle}</div>
           ) : null}
         </div>
-        {langToggle}
-        <button
-          type="button"
-          className="yolo-update-toast-icon-button"
-          onClick={() => setExiting(true)}
-          aria-label={closeLabel}
-          title={closeLabel}
-        >
-          <X size={14} strokeWidth={1.8} />
-        </button>
+        <div className="yolo-update-toast-header-actions">
+          <button
+            type="button"
+            className="yolo-update-toast-skip-btn"
+            title={t('update.skipVersion', "Don't remind me for this version")}
+            onClick={() => {
+              muteUpdateVersion(result.latestVersion)
+            }}
+          >
+            {t('update.skipVersion', "Don't remind me for this version")}
+          </button>
+          <button
+            type="button"
+            className="yolo-update-toast-icon-button"
+            onClick={() => setExiting(true)}
+            aria-label={closeLabel}
+            title={closeLabel}
+          >
+            <X size={14} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
 
       <div className="yolo-update-toast-divider" />
@@ -139,40 +161,77 @@ function UpdateToast() {
         <UpdateChangelogSections sections={sections} separator={separator} />
       </div>
 
+      {showDownloadProgress ? (
+        <div className="yolo-update-toast-progress" aria-hidden="true">
+          <div
+            className="yolo-update-toast-progress-fill"
+            style={{ width: `${downloadProgress}%` }}
+          />
+        </div>
+      ) : null}
+
       <div className="yolo-update-toast-footer">
-        <button
-          type="button"
-          className="yolo-update-toast-history-btn"
-          title={t('update.viewHistory', 'View release history')}
-          onClick={() => {
-            setHiddenForSession(true)
-            new UpdateHistoryModal(
-              app,
-              plugin,
-              t('update.historyTitle', 'Release history'),
-            ).open()
-          }}
-        >
-          {t('update.viewHistory', 'View release history')}
-        </button>
-        <button
-          type="button"
-          className="yolo-update-toast-cta"
-          title={t('update.viewDetails', 'Check for updates')}
-          onClick={() => {
-            // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-            app.setting.open()
-            // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-            app.setting.openTabById('community-plugins')
-            // Opening Obsidian's update flow is only an attempt to update; it
-            // may fail or require another try, so do not mute this version.
-            setHiddenForSession(true)
-          }}
-        >
-          {t('update.goUpdate', 'Update')}
-        </button>
+        <div className="yolo-update-toast-footer-start">
+          {langToggle}
+          <button
+            type="button"
+            className="yolo-update-toast-history-btn"
+            title={t('update.viewHistory', 'View release history')}
+            onClick={() => {
+              setHiddenForSession(true)
+              new UpdateHistoryModal(
+                app,
+                plugin,
+                t('update.historyTitle', 'Release history'),
+              ).open()
+            }}
+          >
+            {t('update.viewHistory', 'View release history')}
+          </button>
+        </div>
+        <div className="yolo-update-toast-footer-actions">
+          {showCommunityPluginsFallback && hasSelfUpdate ? (
+            <button
+              type="button"
+              className="yolo-update-toast-secondary-btn"
+              title={t(
+                'update.updateInCommunityPlugins',
+                'Update in community plugins',
+              )}
+              onClick={openCommunityPlugins}
+            >
+              {t(
+                'update.updateInCommunityPlugins',
+                'Update in community plugins',
+              )}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={`yolo-update-toast-cta${primaryCta.disabled ? ' is-disabled' : ''}`}
+            title={primaryCta.label}
+            disabled={primaryCta.disabled}
+            onClick={primaryCta.onClick}
+          >
+            {primaryCta.label}
+          </button>
+        </div>
       </div>
-    </div>
+      {isSelfUpdateError && releaseUrl ? (
+        <button
+          type="button"
+          className="yolo-update-toast-manual-link"
+          onClick={() => {
+            window.open(releaseUrl)
+          }}
+        >
+          {t(
+            'update.manualInstallOnGitHub',
+            "Can't update? Install manually from GitHub",
+          )}
+        </button>
+      ) : null}
+    </FloatingToast>
   )
 }
 
@@ -183,7 +242,8 @@ function UpdateToast() {
  */
 export function mountUpdateToast(plugin: YoloPlugin): () => void {
   const container = document.createElement('div')
-  container.className = 'yolo-update-toast-root'
+  container.className =
+    'yolo-floating-toast-root is-bottom-left yolo-update-toast-root'
   document.body.appendChild(container)
   const root: Root = createRoot(container)
   root.render(

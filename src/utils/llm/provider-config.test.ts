@@ -1,7 +1,10 @@
 import { EmbeddingModel } from '../../types/embedding-model.types'
 import { LLMProvider } from '../../types/provider.types'
 
-import { reconcileEmbeddingModelsForProviderUpdate } from './provider-config'
+import {
+  getResponseStreamingMode,
+  reconcileEmbeddingModelsForProviderUpdate,
+} from './provider-config'
 
 const createEmbeddingModels = (): EmbeddingModel[] => [
   {
@@ -73,4 +76,22 @@ describe('reconcileEmbeddingModelsForProviderUpdate', () => {
       },
     ])
   })
+})
+
+describe('getResponseStreamingMode', () => {
+  it.each(['auto', 'streaming', 'non-streaming'] as const)(
+    'returns valid response streaming mode %s',
+    (mode) => {
+      expect(getResponseStreamingMode({ responseStreamingMode: mode })).toBe(
+        mode,
+      )
+    },
+  )
+
+  it.each([undefined, {}, { responseStreamingMode: 'invalid' }] as const)(
+    'defaults missing or invalid response streaming mode to auto',
+    (additionalSettings) => {
+      expect(getResponseStreamingMode(additionalSettings)).toBe('auto')
+    },
+  )
 })

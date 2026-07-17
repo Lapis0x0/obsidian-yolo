@@ -1,63 +1,92 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FollowOutput } from 'react-virtuoso'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
-const PROGRAMMATIC_SCROLL_LOCK_MS = 180
-const USER_SCROLL_INTENT_WINDOW_MS = 280
-const NEAR_BOTTOM_THRESHOLD = 24
-const REATTACH_BOTTOM_THRESHOLD = 96
-const FOLLOW_MAX_FRAMES = 6
-const FOLLOW_SETTLE_THRESHOLD_PX = 2
+const AT_BOTTOM_THRESHOLD_PX = 24
+const SCROLL_POSITION_EPSILON_PX = 1
 
 type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
   scrollContainerElement?: HTMLElement | null
-  bottomAnchorRef?: React.RefObject<HTMLElement>
-  isStreaming?: boolean
-  contentFollowMode?: 'observer' | 'explicit'
-  /**
-   * When true (observer mode only): do not follow on DOM MutationObserver / bottom-anchor
-   * IntersectionObserver — caller must invoke `autoScrollToBottom()` from useLayoutEffect on
-   * each streaming React commit. Avoids duplicate follow sources that cause scrollbar jitter
-   * in surfaces like Quick Ask where both fired on every token.
-   */
-  followFromReactCommitsOnly?: boolean
+  contentElement?: HTMLElement | null
+  followKey?: string
+}
+
+type ScrollTransitionInput = {
+  isFollowing: boolean
+  previousScrollTop: number
+  currentScrollTop: number
+  distanceToBottom: number
+  allowReattach: boolean
+  isLayoutAdjustment?: boolean
+}
+
+export const resolveAutoFollowFromScroll = ({
+  isFollowing,
+  previousScrollTop,
+  currentScrollTop,
+  distanceToBottom,
+  allowReattach,
+  isLayoutAdjustment = false,
+}: ScrollTransitionInput): boolean => {
+  if (isLayoutAdjustment) {
+    return isFollowing
+  }
+
+  if (currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX) {
+    return false
+  }
+
+  if (
+    currentScrollTop > previousScrollTop + SCROLL_POSITION_EPSILON_PX &&
+    allowReattach &&
+    distanceToBottom <= AT_BOTTOM_THRESHOLD_PX
+  ) {
+    return true
+  }
+
+  return isFollowing
+}
+
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  const element = target as HTMLElement | null
+  if (!element || typeof element.closest !== 'function') {
+    return false
+  }
+
+  return (
+    element.isContentEditable ||
+    element.closest('input, textarea, select, [contenteditable="true"]') !==
+      null
+  )
 }
 
 export function useAutoScroll({
   scrollContainerRef,
   scrollContainerElement: scrollContainerElementOverride,
-  bottomAnchorRef,
-  isStreaming = false,
-  contentFollowMode = 'observer',
-  followFromReactCommitsOnly = false,
+  contentElement,
+  followKey,
 }: UseAutoScrollProps) {
   const scrollContainerElement =
     scrollContainerElementOverride ?? scrollContainerRef.current
-  const bottomAnchorElement = bottomAnchorRef?.current ?? null
   const autoFollowRef = useRef(true)
   const [autoFollowState, setAutoFollowState] = useState(true)
-  const programmaticScrollLockUntilRef = useRef<number>(0)
-  const lastUserScrollIntentRef = useRef<number>(0)
-  const lastObservedScrollTopRef = useRef<number>(0)
-  const lastTouchYRef = useRef<number | null>(null)
+  const lastObservedScrollTopRef = useRef(0)
+  const lastMaxScrollTopRef = useRef(0)
   const followFrameRef = useRef<number | null>(null)
-  const followRemainingFramesRef = useRef<number>(0)
-  const followForceRef = useRef(false)
+  const reattachIntentFrameRef = useRef<number | null>(null)
+  const hasReattachIntentRef = useRef(false)
+  const pointerDownRef = useRef(false)
+  const pointerMomentumRef = useRef(false)
+  const programmaticScrollTargetRef = useRef<number | null>(null)
 
   const getScrollContainer = useCallback(() => {
     return scrollContainerElementOverride ?? scrollContainerRef.current
   }, [scrollContainerElementOverride, scrollContainerRef])
-
-  const markUserScrollIntent = useCallback(() => {
-    lastUserScrollIntentRef.current = Date.now()
-  }, [])
-
-  const hasRecentUserScrollIntent = useCallback(() => {
-    return (
-      Date.now() - lastUserScrollIntentRef.current <
-      USER_SCROLL_INTENT_WINDOW_MS
-    )
-  }, [])
 
   const updateAutoFollow = useCallback((nextValue: boolean) => {
     autoFollowRef.current = nextValue
@@ -66,29 +95,38 @@ export function useAutoScroll({
     )
   }, [])
 
-  const stopAutoFollow = useCallback(() => {
-    programmaticScrollLockUntilRef.current = 0
+  const cancelScheduledFollow = useCallback(() => {
     if (followFrameRef.current !== null) {
       cancelAnimationFrame(followFrameRef.current)
       followFrameRef.current = null
     }
-    followRemainingFramesRef.current = 0
-    followForceRef.current = false
-    updateAutoFollow(false)
-  }, [updateAutoFollow])
+  }, [])
 
-  const getDistanceToBottom = useCallback(() => {
-    const scrollContainer = getScrollContainer()
-    if (!scrollContainer) {
-      return 0
+  const clearReattachIntent = useCallback(() => {
+    hasReattachIntentRef.current = false
+    if (reattachIntentFrameRef.current !== null) {
+      cancelAnimationFrame(reattachIntentFrameRef.current)
+      reattachIntentFrameRef.current = null
+    }
+  }, [])
+
+  const markReattachIntent = useCallback(() => {
+    hasReattachIntentRef.current = true
+    if (reattachIntentFrameRef.current !== null) {
+      return
     }
 
-    return (
-      scrollContainer.scrollHeight -
-      scrollContainer.scrollTop -
-      scrollContainer.clientHeight
-    )
-  }, [getScrollContainer])
+    reattachIntentFrameRef.current = requestAnimationFrame(() => {
+      reattachIntentFrameRef.current = null
+      hasReattachIntentRef.current = false
+    })
+  }, [])
+
+  const stopAutoFollow = useCallback(() => {
+    cancelScheduledFollow()
+    programmaticScrollTargetRef.current = null
+    updateAutoFollow(false)
+  }, [cancelScheduledFollow, updateAutoFollow])
 
   const scrollToBottom = useCallback(() => {
     const scrollContainer = getScrollContainer()
@@ -100,220 +138,225 @@ export function useAutoScroll({
       0,
       scrollContainer.scrollHeight - scrollContainer.clientHeight,
     )
-
-    if (Math.abs(scrollContainer.scrollTop - targetScrollTop) > 1) {
-      programmaticScrollLockUntilRef.current =
-        Date.now() + PROGRAMMATIC_SCROLL_LOCK_MS
-      scrollContainer.scrollTop = targetScrollTop
+    if (
+      Math.abs(scrollContainer.scrollTop - targetScrollTop) <=
+      SCROLL_POSITION_EPSILON_PX
+    ) {
+      programmaticScrollTargetRef.current = null
+      lastObservedScrollTopRef.current = scrollContainer.scrollTop
+      lastMaxScrollTopRef.current = targetScrollTop
+      return
     }
+
+    programmaticScrollTargetRef.current = targetScrollTop
+    scrollContainer.scrollTop = targetScrollTop
+    lastObservedScrollTopRef.current = scrollContainer.scrollTop
+    lastMaxScrollTopRef.current = targetScrollTop
   }, [getScrollContainer])
 
-  const scheduleFollowFrame = useCallback(() => {
-    if (followFrameRef.current !== null) {
+  const scheduleFollow = useCallback(() => {
+    if (!autoFollowRef.current || followFrameRef.current !== null) {
       return
     }
 
     followFrameRef.current = requestAnimationFrame(() => {
       followFrameRef.current = null
-      const shouldFollow = followForceRef.current || autoFollowRef.current
-      if (!shouldFollow) {
-        followRemainingFramesRef.current = 0
-        followForceRef.current = false
-        return
+      if (autoFollowRef.current) {
+        scrollToBottom()
       }
-
-      scrollToBottom()
-      const settled =
-        Math.abs(getDistanceToBottom()) <= FOLLOW_SETTLE_THRESHOLD_PX
-      if (settled) {
-        followRemainingFramesRef.current = 0
-        followForceRef.current = false
-        return
-      }
-
-      if (followRemainingFramesRef.current > 0) {
-        followRemainingFramesRef.current -= 1
-        scheduleFollowFrame()
-        return
-      }
-
-      followForceRef.current = false
     })
-  }, [getDistanceToBottom, scrollToBottom])
+  }, [scrollToBottom])
 
-  const requestFollow = useCallback(
-    (options?: { force?: boolean }) => {
-      const force = options?.force ?? false
-      if (!force && !autoFollowRef.current) {
-        return
-      }
+  const forceScrollToBottom = useCallback(() => {
+    updateAutoFollow(true)
+    cancelScheduledFollow()
+    scrollToBottom()
+    scheduleFollow()
+  }, [cancelScheduledFollow, scheduleFollow, scrollToBottom, updateAutoFollow])
 
-      followForceRef.current = followForceRef.current || force
-      followRemainingFramesRef.current = Math.max(
-        followRemainingFramesRef.current,
-        FOLLOW_MAX_FRAMES,
-      )
-      scheduleFollowFrame()
-    },
-    [scheduleFollowFrame],
-  )
-
-  const syncFollowToBottom = useCallback(
-    (options?: { force?: boolean }) => {
-      const force = options?.force ?? false
-      if (!force && !autoFollowRef.current) {
-        return
-      }
-
-      scrollToBottom()
-
-      if (Math.abs(getDistanceToBottom()) <= FOLLOW_SETTLE_THRESHOLD_PX) {
-        followRemainingFramesRef.current = 0
-        if (!force) {
-          followForceRef.current = false
-        }
-        return
-      }
-
-      requestFollow({ force })
-    },
-    [getDistanceToBottom, requestFollow, scrollToBottom],
-  )
-
-  const handleAtBottomStateChange = useCallback(
-    (atBottom: boolean) => {
-      if (atBottom) {
-        updateAutoFollow(true)
-        requestFollow()
-        return
-      }
-
-      if (hasRecentUserScrollIntent()) {
-        updateAutoFollow(false)
-      }
-    },
-    [hasRecentUserScrollIntent, requestFollow, updateAutoFollow],
-  )
-
-  const followOutput: FollowOutput = useCallback((isAtBottom: boolean) => {
-    if (followForceRef.current) {
-      return 'auto'
+  useLayoutEffect(() => {
+    if (!scrollContainerElement || !contentElement) {
+      return
     }
 
-    return autoFollowRef.current || isAtBottom ? 'auto' : false
-  }, [])
+    updateAutoFollow(true)
+    cancelScheduledFollow()
+    scrollToBottom()
+  }, [
+    cancelScheduledFollow,
+    contentElement,
+    followKey,
+    scrollContainerElement,
+    scrollToBottom,
+    updateAutoFollow,
+  ])
 
   useEffect(() => {
-    if (!scrollContainerElement) return
+    if (!scrollContainerElement) {
+      return
+    }
 
     lastObservedScrollTopRef.current = scrollContainerElement.scrollTop
+    lastMaxScrollTopRef.current = Math.max(
+      0,
+      scrollContainerElement.scrollHeight - scrollContainerElement.clientHeight,
+    )
 
     const handleScroll = () => {
       const currentScrollTop = scrollContainerElement.scrollTop
-      const scrolledUp = currentScrollTop < lastObservedScrollTopRef.current
-      const scrolledDown = currentScrollTop > lastObservedScrollTopRef.current
+      const previousScrollTop = lastObservedScrollTopRef.current
+      const previousMaxScrollTop = lastMaxScrollTopRef.current
+      const currentMaxScrollTop = Math.max(
+        0,
+        scrollContainerElement.scrollHeight -
+          scrollContainerElement.clientHeight,
+      )
       lastObservedScrollTopRef.current = currentScrollTop
+      lastMaxScrollTopRef.current = currentMaxScrollTop
 
-      const userIntent = hasRecentUserScrollIntent()
-      const withinProgrammaticLock =
-        Date.now() < programmaticScrollLockUntilRef.current
-      // User scroll-up must always exit auto-follow, even during programmatic-scroll lock.
-      // Streaming calls scrollToBottom every frame and resets the lock, which otherwise blocked
-      // handleScroll from ever seeing "scrolled up" while the user tried to read above.
-      if (userIntent && scrolledUp) {
-        updateAutoFollow(false)
-        return
-      }
-
-      if (withinProgrammaticLock) {
-        return
-      }
-
-      if (!userIntent) {
-        if (!scrolledDown || autoFollowRef.current) {
-          return
-        }
-      }
-
-      const distanceToBottom = getDistanceToBottom()
-      const nearBottom = distanceToBottom <= NEAR_BOTTOM_THRESHOLD
-      const withinReattachRange = distanceToBottom <= REATTACH_BOTTOM_THRESHOLD
+      const programmaticTarget = programmaticScrollTargetRef.current
       if (
-        nearBottom ||
-        (!autoFollowRef.current && scrolledDown && withinReattachRange)
+        programmaticTarget !== null &&
+        Math.abs(currentScrollTop - programmaticTarget) <=
+          SCROLL_POSITION_EPSILON_PX
       ) {
+        programmaticScrollTargetRef.current = null
+        return
+      }
+      programmaticScrollTargetRef.current = null
+
+      if (
+        'onscrollend' in scrollContainerElement &&
+        (pointerDownRef.current || hasReattachIntentRef.current)
+      ) {
+        pointerMomentumRef.current = true
+      }
+
+      const distanceToBottom = currentMaxScrollTop - currentScrollTop
+      const wasAtBottomBefore =
+        previousMaxScrollTop - previousScrollTop <= AT_BOTTOM_THRESHOLD_PX
+      const isAtBottom = distanceToBottom <= SCROLL_POSITION_EPSILON_PX
+      const maxScrollTopShrank =
+        currentMaxScrollTop < previousMaxScrollTop - SCROLL_POSITION_EPSILON_PX
+      const isLayoutAdjustment =
+        currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX &&
+        wasAtBottomBefore &&
+        isAtBottom &&
+        maxScrollTopShrank
+      const nextAutoFollow = resolveAutoFollowFromScroll({
+        isFollowing: autoFollowRef.current,
+        previousScrollTop,
+        currentScrollTop,
+        distanceToBottom,
+        allowReattach:
+          pointerDownRef.current ||
+          pointerMomentumRef.current ||
+          hasReattachIntentRef.current,
+        isLayoutAdjustment,
+      })
+
+      if (!pointerDownRef.current && !pointerMomentumRef.current) {
+        clearReattachIntent()
+      }
+
+      if (!nextAutoFollow) {
+        stopAutoFollow()
+        return
+      }
+
+      if (!autoFollowRef.current) {
         updateAutoFollow(true)
-        requestFollow()
+        scheduleFollow()
       }
     }
 
     const handleWheel = (event: WheelEvent) => {
-      markUserScrollIntent()
-      if (event.deltaY < 0) {
-        stopAutoFollow()
+      if (event.deltaY > 0) {
+        markReattachIntent()
       }
     }
 
-    const handleTouchStart = (event: TouchEvent) => {
-      lastTouchYRef.current = event.touches[0]?.clientY ?? null
+    const handlePointerDown = () => {
+      pointerDownRef.current = true
+      pointerMomentumRef.current = false
     }
 
-    const handleTouchMove = (event: TouchEvent) => {
-      markUserScrollIntent()
-      const currentTouchY = event.touches[0]?.clientY ?? null
-      if (currentTouchY === null) {
-        lastTouchYRef.current = null
+    const handlePointerEnd = () => {
+      pointerDownRef.current = false
+      clearReattachIntent()
+    }
+
+    const handlePointerCancel = () => {
+      pointerDownRef.current = false
+      markReattachIntent()
+    }
+
+    const handleScrollEnd = () => {
+      if (!pointerDownRef.current) {
+        pointerMomentumRef.current = false
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target)) {
         return
       }
 
-      const lastTouchY = lastTouchYRef.current
-      lastTouchYRef.current = currentTouchY
-      if (lastTouchY !== null && currentTouchY > lastTouchY) {
-        stopAutoFollow()
+      const scrollsUp =
+        event.key === 'ArrowUp' ||
+        event.key === 'PageUp' ||
+        event.key === 'Home' ||
+        (event.key === ' ' && event.shiftKey)
+      const scrollsDown =
+        event.key === 'ArrowDown' ||
+        event.key === 'PageDown' ||
+        event.key === 'End' ||
+        (event.key === ' ' && !event.shiftKey)
+      if (!scrollsUp && scrollsDown) {
+        markReattachIntent()
       }
-    }
-
-    const resetTouchTracking = () => {
-      lastTouchYRef.current = null
     }
 
     scrollContainerElement.addEventListener('wheel', handleWheel, {
       passive: true,
     })
-    scrollContainerElement.addEventListener('touchstart', handleTouchStart, {
+    scrollContainerElement.addEventListener('pointerdown', handlePointerDown)
+    scrollContainerElement.ownerDocument.addEventListener(
+      'pointerup',
+      handlePointerEnd,
+    )
+    scrollContainerElement.ownerDocument.addEventListener(
+      'pointercancel',
+      handlePointerCancel,
+    )
+    scrollContainerElement.addEventListener('keydown', handleKeyDown)
+    scrollContainerElement.addEventListener('scroll', handleScroll, {
       passive: true,
     })
-    scrollContainerElement.addEventListener('touchmove', handleTouchMove, {
-      passive: true,
-    })
-    scrollContainerElement.addEventListener('touchend', resetTouchTracking, {
-      passive: true,
-    })
-    scrollContainerElement.addEventListener('touchcancel', resetTouchTracking, {
-      passive: true,
-    })
-    scrollContainerElement.addEventListener('pointerdown', markUserScrollIntent)
-    scrollContainerElement.addEventListener('scroll', handleScroll)
+    scrollContainerElement.addEventListener('scrollend', handleScrollEnd)
+
     return () => {
       scrollContainerElement.removeEventListener('wheel', handleWheel)
-      scrollContainerElement.removeEventListener('touchstart', handleTouchStart)
-      scrollContainerElement.removeEventListener('touchmove', handleTouchMove)
-      scrollContainerElement.removeEventListener('touchend', resetTouchTracking)
-      scrollContainerElement.removeEventListener(
-        'touchcancel',
-        resetTouchTracking,
-      )
       scrollContainerElement.removeEventListener(
         'pointerdown',
-        markUserScrollIntent,
+        handlePointerDown,
+      )
+      scrollContainerElement.ownerDocument.removeEventListener(
+        'pointerup',
+        handlePointerEnd,
+      )
+      scrollContainerElement.removeEventListener('keydown', handleKeyDown)
+      scrollContainerElement.ownerDocument.removeEventListener(
+        'pointercancel',
+        handlePointerCancel,
       )
       scrollContainerElement.removeEventListener('scroll', handleScroll)
+      scrollContainerElement.removeEventListener('scrollend', handleScrollEnd)
     }
   }, [
-    hasRecentUserScrollIntent,
-    getDistanceToBottom,
-    markUserScrollIntent,
-    requestFollow,
+    clearReattachIntent,
+    markReattachIntent,
+    scheduleFollow,
     scrollContainerElement,
     stopAutoFollow,
     updateAutoFollow,
@@ -321,176 +364,39 @@ export function useAutoScroll({
 
   useEffect(() => {
     if (
-      contentFollowMode !== 'observer' ||
-      !isStreaming ||
-      !autoFollowState ||
-      !scrollContainerElement
-    ) {
-      return
-    }
-
-    requestFollow()
-  }, [
-    autoFollowState,
-    contentFollowMode,
-    isStreaming,
-    requestFollow,
-    scrollContainerElement,
-  ])
-
-  useEffect(() => {
-    // Content-driven follow (DOM mutations + CSS transitions/animations) exists solely to
-    // keep up with streaming output as it grows at the bottom. Outside of streaming these
-    // signals pick up unrelated noise — Obsidian's async markdown rendering (embeds,
-    // transclusions, MathJax, image loads), theme transitions, or even selection-induced
-    // character-data changes — and would otherwise yank the user back to the bottom while
-    // they read or try to select history. Gate the whole block on `isStreaming`.
-    if (
-      contentFollowMode !== 'observer' ||
-      !isStreaming ||
-      !scrollContainerElement
-    ) {
-      return
-    }
-
-    const handleAnimatedLayoutChange = () => {
-      syncFollowToBottom()
-    }
-
-    scrollContainerElement.addEventListener(
-      'transitionend',
-      handleAnimatedLayoutChange,
-    )
-    scrollContainerElement.addEventListener(
-      'animationend',
-      handleAnimatedLayoutChange,
-    )
-
-    if (followFromReactCommitsOnly || typeof MutationObserver === 'undefined') {
-      return () => {
-        scrollContainerElement.removeEventListener(
-          'transitionend',
-          handleAnimatedLayoutChange,
-        )
-        scrollContainerElement.removeEventListener(
-          'animationend',
-          handleAnimatedLayoutChange,
-        )
-      }
-    }
-
-    const observer = new MutationObserver(() => {
-      requestFollow()
-    })
-
-    observer.observe(scrollContainerElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
-
-    return () => {
-      observer.disconnect()
-      scrollContainerElement.removeEventListener(
-        'transitionend',
-        handleAnimatedLayoutChange,
-      )
-      scrollContainerElement.removeEventListener(
-        'animationend',
-        handleAnimatedLayoutChange,
-      )
-    }
-  }, [
-    contentFollowMode,
-    followFromReactCommitsOnly,
-    isStreaming,
-    requestFollow,
-    scrollContainerElement,
-    syncFollowToBottom,
-  ])
-
-  useEffect(() => {
-    if (followFromReactCommitsOnly) {
-      return
-    }
-
-    if (
       !scrollContainerElement ||
-      !bottomAnchorElement ||
-      typeof IntersectionObserver === 'undefined'
+      !contentElement ||
+      typeof ResizeObserver === 'undefined'
     ) {
       return
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0]
-        const hasRecentIntent =
-          Date.now() - lastUserScrollIntentRef.current <
-          USER_SCROLL_INTENT_WINDOW_MS
-
-        if (entry.isIntersecting && !autoFollowRef.current && hasRecentIntent) {
-          updateAutoFollow(true)
-          return
-        }
-
-        if (!entry.isIntersecting && autoFollowRef.current) {
-          requestFollow()
-        }
-      },
-      {
-        root: scrollContainerElement,
-        // threshold 1 + tiny bottom anchor caused subpixel flicker and follow thrash; any visibility is enough
-        threshold: 0,
-      },
-    )
-
-    observer.observe(bottomAnchorElement)
+    const observer = new ResizeObserver(() => {
+      if (autoFollowRef.current) {
+        scrollToBottom()
+      }
+    })
+    observer.observe(scrollContainerElement)
+    observer.observe(contentElement)
 
     return () => {
       observer.disconnect()
     }
-  }, [
-    bottomAnchorElement,
-    followFromReactCommitsOnly,
-    requestFollow,
-    scrollContainerElement,
-    updateAutoFollow,
-  ])
+  }, [contentElement, scrollContainerElement, scrollToBottom])
 
-  useEffect(() => {
-    return () => {
-      if (followFrameRef.current !== null) {
-        cancelAnimationFrame(followFrameRef.current)
-        followFrameRef.current = null
-      }
-      followRemainingFramesRef.current = 0
-      followForceRef.current = false
-    }
-  }, [])
-
-  // Auto-scrolls to bottom only if the scroll position is near the bottom
-  const autoScrollToBottom = useCallback(() => {
-    requestFollow()
-  }, [requestFollow])
-
-  const notifyContentFlushed = useCallback(() => {
-    syncFollowToBottom()
-  }, [syncFollowToBottom])
-
-  // Forces scroll to bottom regardless of current position
-  const forceScrollToBottom = useCallback(() => {
-    updateAutoFollow(true)
-    syncFollowToBottom({ force: true })
-  }, [syncFollowToBottom, updateAutoFollow])
+  useEffect(
+    () => () => {
+      cancelScheduledFollow()
+      clearReattachIntent()
+      programmaticScrollTargetRef.current = null
+    },
+    [cancelScheduledFollow, clearReattachIntent],
+  )
 
   return {
-    autoScrollToBottom,
-    notifyContentFlushed,
+    autoScrollToBottom: scheduleFollow,
     forceScrollToBottom,
     stopAutoFollow,
     isAutoFollowEnabled: autoFollowState,
-    followOutput,
-    onAtBottomStateChange: handleAtBottomStateChange,
   }
 }

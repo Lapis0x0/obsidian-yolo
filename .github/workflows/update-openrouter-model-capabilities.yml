@@ -1,0 +1,96 @@
+name: Update OpenRouter model capabilities
+
+on:
+  schedule:
+    - cron: '17 2 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: update-openrouter-model-capabilities
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPDATE_BRANCH: automation/update-openrouter-model-capabilities
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update snapshot
+        run: npm run models:update:openrouter
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if git diff --quiet -- src/utils/llm/openrouter-model-capabilities.ts; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate update
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          npm run type:check
+          npm test -- src/utils/llm/model-capability-registry.test.ts
+          git diff --check
+
+      - name: Commit and push update
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name 'Lapis0x1'
+          git config user.email 'Lapis0x1@users.noreply.github.com'
+
+          if git ls-remote --exit-code --heads origin "$UPDATE_BRANCH" >/dev/null; then
+            git fetch origin "$UPDATE_BRANCH:refs/remotes/origin/$UPDATE_BRANCH"
+          fi
+
+          git switch -c "$UPDATE_BRANCH"
+          git add src/utils/llm/openrouter-model-capabilities.ts
+          git commit -m 'chore: 更新 OpenRouter 模型能力快照'
+          git push --force-with-lease origin "HEAD:$UPDATE_BRANCH"
+
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+        run: |
+          existing_pr="$(
+            gh pr list \
+              --base main \
+              --head "$UPDATE_BRANCH" \
+              --state open \
+              --json url \
+              --jq '.[0].url'
+          )"
+
+          if [[ -n "$existing_pr" ]]; then
+            echo "Updated existing pull request: $existing_pr"
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$UPDATE_BRANCH" \
+            --title 'chore: 更新 OpenRouter 模型能力快照' \
+            --body $'自动同步 OpenRouter `/api/v1/models` 的上下文长度和文本/视觉输入模态。\n\n由每月定时工作流生成。\n\n<!-- auto-triage: skip -->'

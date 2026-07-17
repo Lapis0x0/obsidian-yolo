@@ -610,6 +610,81 @@ describe('RequestContextBuilder generateRequestMessages', () => {
 
   const emptyArgs = createCompleteToolCallArguments({ value: {} })
 
+  it('includes a rejection reason in the model tool result', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'user-1',
+          content: null,
+          promptContent: 'read the file',
+          mentionables: [],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant-1',
+          content: '',
+          toolCallRequests: [
+            {
+              id: 'read-1',
+              name: 'yolo_local__fs_read',
+              arguments: emptyArgs,
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          id: 'tool-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'read-1',
+                name: 'yolo_local__fs_read',
+                arguments: emptyArgs,
+              },
+              response: {
+                status: ToolCallResponseStatus.Rejected,
+                reason:
+                  'Path "Private/secret.md" is outside this agent\'s workspace scope.',
+              },
+            },
+          ],
+        },
+      ],
+      hasTools: true,
+      hasMemoryTools: false,
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-1',
+      systemPromptSnapshotMode: 'create',
+    })
+
+    expect(
+      requestMessages.find(
+        (message) =>
+          message.role === 'tool' && message.tool_call.id === 'read-1',
+      ),
+    ).toMatchObject({
+      content:
+        'Tool call read-1 was rejected: Path "Private/secret.md" is outside this agent\'s workspace scope.',
+    })
+  })
+
   it('hides pruned tool results from future request context', async () => {
     const app = {
       vault: {
@@ -1934,6 +2009,206 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
   afterAll(() => {
     memMock.mockResolvedValue({ global: null, assistant: null })
+  })
+
+  it('does not include skill loading guidance in generic tool instructions', async () => {
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+
+    memMock.mockResolvedValue({ global: null, assistant: null })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-no-skills',
+      hasTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain('You have access to tools')
+    expect(systemContent).not.toContain(
+      'If available skills are listed, use yolo_local__fs_read',
+    )
+  })
+
+  it('requires Obsidian-compatible math delimiters', async () => {
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-math-format',
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain(
+      'use Obsidian-compatible LaTeX delimiters: $...$ for inline math and $$...$$ for display math',
+    )
+    expect(systemContent).toContain(
+      'Put opening and closing $$ delimiters on separate lines.',
+    )
+    expect(systemContent).toContain('Do not use \\(...\\) or \\[...\\].')
+  })
+
+  it('describes the active workspace scope in the system prompt', async () => {
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'agent-1',
+      assistants: [
+        {
+          id: 'agent-1',
+          name: 'Scoped agent',
+          systemPrompt: '',
+          workspaceScope: {
+            enabled: true,
+            include: ['Notes', 'Projects'],
+            exclude: ['Notes/Private'],
+          },
+        },
+      ],
+    } as unknown as YoloSettings
+    const builder = new RequestContextBuilder(makeApp(), settings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-workspace-scope',
+      hasTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain(`<workspace_scope>
+- Included paths: Notes, Projects
+- Excluded paths: Notes/Private`)
+    expect(systemContent).toContain(
+      'If the task requires an out-of-scope path, tell the user about the workspace restriction.',
+    )
+  })
+
+  it('describes exclude-only scope as allowing all other vault paths', async () => {
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'agent-1',
+      assistants: [
+        {
+          id: 'agent-1',
+          name: 'Scoped agent',
+          systemPrompt: '',
+          workspaceScope: {
+            enabled: true,
+            include: [],
+            exclude: ['Private'],
+          },
+        },
+      ],
+    } as unknown as YoloSettings
+    const builder = new RequestContextBuilder(makeApp(), settings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-workspace-exclude-only',
+      hasTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain('- Included paths: all vault paths')
+    expect(systemContent).toContain('- Excluded paths: Private')
+  })
+
+  it('omits an enabled but unrestricted workspace scope', async () => {
+    const settings = {
+      ...baseSettings,
+      currentAssistantId: 'agent-1',
+      assistants: [
+        {
+          id: 'agent-1',
+          name: 'Unrestricted agent',
+          systemPrompt: '',
+          workspaceScope: {
+            enabled: true,
+            include: [],
+            exclude: [],
+          },
+        },
+      ],
+    } as unknown as YoloSettings
+    const builder = new RequestContextBuilder(makeApp(), settings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-workspace-unrestricted',
+      hasTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+
+    expect(getSystemContent(messages)).not.toContain('<workspace_scope>')
+  })
+
+  it('refreshes the frozen prompt when on-demand tool availability changes', async () => {
+    const store = new SystemPromptSnapshotStore()
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+      systemPromptSnapshotStore: store,
+    })
+
+    memMock.mockResolvedValue({ global: null, assistant: null })
+
+    const withoutOnDemand = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-on-demand',
+      hasTools: true,
+      hasOnDemandTools: false,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(withoutOnDemand)).not.toContain('ON-DEMAND')
+
+    const withOnDemand = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-on-demand',
+      hasTools: true,
+      hasOnDemandTools: true,
+      systemPromptSnapshotMode: 'create',
+    })
+    expect(getSystemContent(withOnDemand)).toContain(
+      'Some tools are ON-DEMAND stubs',
+    )
+  })
+
+  it('always includes the authoritative tool policy', async () => {
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-tool-policy',
+      hasTools: false,
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain('Only use tools exposed in this request')
+    expect(systemContent).toContain(
+      'Never simulate unavailable tool calls or claim an action succeeded without a successful tool result',
+    )
   })
 
   it('freezes memory in the system prompt for the conversation lifetime (create mode)', async () => {

@@ -1,5 +1,5 @@
 # vscode
-.vscode 
+.vscode
 
 # Intellij
 *.iml
@@ -8,7 +8,7 @@
 # npm
 node_modules
 vendor/
-runtime/
+/runtime/
 
 # Don't include the compiled files in the repo.
 # They should be uploaded to GitHub releases instead.
@@ -39,3 +39,5 @@ Reference/
 .claude/
 scripts/bench-tool-disclosure/
 .cursorignore
+.yolo-update-staging/
+supabase/

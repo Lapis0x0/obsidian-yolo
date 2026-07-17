@@ -3,6 +3,7 @@ import { App, Stat } from 'obsidian'
 import {
   YOLO_DATA_META_KEY,
   ensureJsonDbRootDir,
+  ensureLearningJsonDbRootDir,
   ensureVectorDbPath,
   extractYoloDataMeta,
   readVaultDataJson,
@@ -19,6 +20,7 @@ class MockAdapter {
   private readonly files = new Map<string, string | ArrayBuffer>()
   private readonly folders = new Set<string>()
   private failWriteBinaryPaths = new Set<string>()
+  private failRemovePaths = new Set<string>()
 
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.folders.has(path)
@@ -87,6 +89,9 @@ class MockAdapter {
   }
 
   async remove(path: string): Promise<void> {
+    if (this.failRemovePaths.has(path)) {
+      throw new Error(`Mock remove failure: ${path}`)
+    }
     if (this.folders.has(path)) {
       throw new Error(`Cannot remove directory as file: ${path}`)
     }
@@ -144,6 +149,14 @@ class MockAdapter {
     this.failWriteBinaryPaths.add(path)
   }
 
+  failRemove(path: string): void {
+    this.failRemovePaths.add(path)
+  }
+
+  allowRemove(path: string): void {
+    this.failRemovePaths.delete(path)
+  }
+
   private async ensureParent(path: string): Promise<void> {
     const slashIndex = path.lastIndexOf('/')
     if (slashIndex <= 0) {
@@ -171,6 +184,130 @@ describe('yoloManagedData', () => {
 
     expect(rootDir).toBe('Config/YOLO/.yolo_json_db')
     await expect(adapter.exists('Config/YOLO')).resolves.toBe(true)
+  })
+
+  test('moves misplaced learning data to the configured root and overwrites stale targets', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const sourceRoot = 'YOLO/.yolo_json_db'
+    const targetRoot = 'Config/YOLO/.yolo_json_db'
+    await adapter.write(
+      `${sourceRoot}/learning-srs/project.json`,
+      '{"state":"current"}',
+    )
+    await adapter.write(
+      `${targetRoot}/learning-srs/project.json`,
+      '{"state":"stale"}',
+    )
+    await adapter.write(
+      `${targetRoot}/learning-srs/target-only.json`,
+      '{"state":"preserved"}',
+    )
+    await adapter.write(
+      `${sourceRoot}/anki-import-journals/run.json`,
+      JSON.stringify({
+        version: 1,
+        srsPath: `${sourceRoot}/learning-srs/project.json`,
+      }),
+    )
+
+    await expect(
+      ensureLearningJsonDbRootDir(app, {
+        yolo: { baseDir: 'Config/YOLO' },
+      }),
+    ).resolves.toBe(targetRoot)
+
+    await expect(
+      adapter.read(`${targetRoot}/learning-srs/project.json`),
+    ).resolves.toBe('{"state":"current"}')
+    await expect(
+      adapter.read(`${targetRoot}/learning-srs/target-only.json`),
+    ).resolves.toBe('{"state":"preserved"}')
+    await expect(
+      adapter.read(`${targetRoot}/anki-import-journals/run.json`),
+    ).resolves.toContain('Config/YOLO/.yolo_json_db/learning-srs/project.json')
+    await expect(adapter.exists(sourceRoot)).resolves.toBe(false)
+    await expect(adapter.exists('YOLO')).resolves.toBe(false)
+  })
+
+  test('preserves a default YOLO root that contains unrelated data', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write(
+      'YOLO/.yolo_json_db/learning-srs/project.json',
+      '{"state":"current"}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/chat.json',
+      '{"title":"keep"}',
+    )
+
+    await ensureLearningJsonDbRootDir(app, {
+      yolo: { baseDir: 'Config/YOLO' },
+    })
+
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/learning-srs'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.read('YOLO/.yolo_json_db/chats/chat.json'),
+    ).resolves.toBe('{"title":"keep"}')
+    await expect(adapter.exists('YOLO/.yolo_json_db')).resolves.toBe(true)
+    await expect(adapter.exists('YOLO')).resolves.toBe(true)
+  })
+
+  test('resumes cleanup without recopying stale source data after interruption', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const sourcePath = 'YOLO/.yolo_json_db/learning-srs/project.json'
+    const targetPath = 'Config/YOLO/.yolo_json_db/learning-srs/project.json'
+    const markerPath = 'Config/YOLO/.yolo_json_db/.learning-path-migration-v1'
+    await adapter.write(sourcePath, '{"state":"source"}')
+    adapter.failRemove(sourcePath)
+
+    await expect(
+      ensureLearningJsonDbRootDir(app, {
+        yolo: { baseDir: 'Config/YOLO' },
+      }),
+    ).rejects.toThrow('Mock remove failure')
+    await expect(adapter.read(targetPath)).resolves.toBe('{"state":"source"}')
+    await expect(adapter.exists(markerPath)).resolves.toBe(true)
+
+    await adapter.write(targetPath, '{"state":"newer-target"}')
+    adapter.allowRemove(sourcePath)
+    await ensureLearningJsonDbRootDir(app, {
+      yolo: { baseDir: 'Config/YOLO' },
+    })
+
+    await expect(adapter.read(targetPath)).resolves.toBe(
+      '{"state":"newer-target"}',
+    )
+    await expect(adapter.exists(sourcePath)).resolves.toBe(false)
+    await expect(adapter.exists(markerPath)).resolves.toBe(false)
+  })
+
+  test('restores a missing migration target before deleting its source', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const sourcePath = 'YOLO/.yolo_json_db/learning-srs/project.json'
+    const targetPath = 'Config/YOLO/.yolo_json_db/learning-srs/project.json'
+    await adapter.write(sourcePath, '{"state":"source"}')
+    adapter.failRemove(sourcePath)
+
+    await expect(
+      ensureLearningJsonDbRootDir(app, {
+        yolo: { baseDir: 'Config/YOLO' },
+      }),
+    ).rejects.toThrow('Mock remove failure')
+    await adapter.remove(targetPath)
+    adapter.allowRemove(sourcePath)
+
+    await ensureLearningJsonDbRootDir(app, {
+      yolo: { baseDir: 'Config/YOLO' },
+    })
+
+    await expect(adapter.read(targetPath)).resolves.toBe('{"state":"source"}')
+    await expect(adapter.exists(sourcePath)).resolves.toBe(false)
   })
 
   test('migrates legacy chat storage into YOLO root', async () => {
@@ -269,6 +406,24 @@ describe('yoloManagedData', () => {
     await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
       false,
     )
+  })
+
+  test('rejects a configured root nested inside the default managed-data tree', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+
+    await expect(
+      ensureLearningJsonDbRootDir(app, {
+        yolo: { baseDir: 'YOLO/.yolo_json_db/custom' },
+      }),
+    ).rejects.toThrow('cannot be nested inside managed data')
+    await expect(
+      relocateYoloManagedData({
+        app,
+        fromSettings: { yolo: { baseDir: 'YOLO' } },
+        toSettings: { yolo: { baseDir: 'YOLO/.yolo_json_db/custom' } },
+      }),
+    ).resolves.toBe(false)
   })
 
   test('merges legacy chat storage into existing target dir', async () => {

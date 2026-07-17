@@ -28,22 +28,15 @@ describe('applyDeepSeekCapabilities', () => {
     expect(run(v4Model, 'auto')).toEqual({})
   })
 
-  it.each(['low', 'medium', 'high'] as const)(
-    'maps %s to reasoning_effort=high',
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
+    'passes %s through as reasoning_effort',
     (level) => {
       expect(run(v4Model, level)).toEqual({
         thinking: { type: 'enabled' },
-        reasoning_effort: 'high',
+        reasoning_effort: level,
       })
     },
   )
-
-  it('maps extra-high to reasoning_effort=max', () => {
-    expect(run(v4Model, 'extra-high')).toEqual({
-      thinking: { type: 'enabled' },
-      reasoning_effort: 'max',
-    })
-  })
 
   it('skips legacy deepseek-reasoner regardless of level', () => {
     expect(run(reasonerModel, 'off')).toEqual({})

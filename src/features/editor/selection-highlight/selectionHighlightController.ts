@@ -7,8 +7,12 @@ import {
   ViewUpdate,
   layer,
 } from '@codemirror/view'
+import { Platform } from 'obsidian'
 
-import type { HighlightOwner } from './pdfSelectionHighlightController'
+import {
+  type HighlightOwner,
+  shouldCreateSelectionHighlight,
+} from './selectionHighlightPolicy'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Internal types
@@ -219,7 +223,9 @@ export class SelectionHighlightController {
   // ── Public API ───────────────────────────────────────────────────────────────
 
   createExtension(): Extension {
-    this._ensurePointerTracking()
+    if (!Platform.isMobile) {
+      this._ensurePointerTracking()
+    }
 
     return [
       selectionHighlightField,
@@ -352,6 +358,7 @@ export class SelectionHighlightController {
     owner: HighlightOwner,
     options?: { autoClearMs?: number; visual?: HighlightVisual },
   ): void {
+    if (!shouldCreateSelectionHighlight(owner)) return
     if (location.from >= location.to) return
 
     if (variant === 'sync') {

@@ -5,6 +5,8 @@ import { RequestMessage } from '../../types/llm/request'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
 
 export class KimiMessageAdapter extends OpenAIMessageAdapter {
+  protected override readonly adapterName = 'Kimi'
+
   protected parseRequestMessage(
     message: RequestMessage,
   ): ChatCompletionMessageParam {

@@ -2,7 +2,6 @@ import type { ApplyViewState } from '../../../types/apply-view.types'
 import {
   type DiffBlock,
   type InlineDiffLine,
-  type InlineDiffToken,
   createDiffBlocks,
   createLineDiffBlocks,
 } from '../../../utils/chat/diff'
@@ -244,20 +243,11 @@ function inlineLinesToText(
   variant: 'original' | 'modified',
 ): string {
   return lines
-    .map((line) => inlineTokensToText(line.tokens, variant))
-    .join('\n')
-}
-
-function inlineTokensToText(
-  tokens: InlineDiffToken[],
-  variant: 'original' | 'modified',
-): string {
-  return tokens
-    .filter((token) =>
-      variant === 'original' ? token.type !== 'add' : token.type !== 'del',
+    .filter((line) =>
+      variant === 'original' ? line.type !== 'added' : line.type !== 'removed',
     )
-    .map((token) => token.text)
-    .join('')
+    .map((line) => line.tokens.map((token) => token.text).join(''))
+    .join('\n')
 }
 
 function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {

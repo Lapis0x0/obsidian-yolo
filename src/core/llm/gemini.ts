@@ -37,6 +37,7 @@ import {
 } from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
 import { createObsidianFetch } from '../../utils/llm/obsidian-fetch'
+import { normalizeGeminiProviderBaseUrl } from '../../utils/llm/provider-base-url'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { BaseLLMProvider } from './base'
@@ -224,7 +225,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
           : { thinkingBudget: 0, includeThoughts: false }
       } else if (isGemini3) {
         generationConfig.thinkingConfig = {
-          thinkingLevel: level === 'extra-high' ? 'high' : level,
+          thinkingLevel: level,
           includeThoughts: true,
         }
       } else {
@@ -1193,16 +1194,7 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
   }
 
   private static normalizeBaseUrl(raw: string): string {
-    const trimmed = raw.replace(/\/+$/, '')
-    try {
-      const url = new URL(trimmed)
-      // Avoid double version segments since we always append /v1beta ourselves.
-      url.pathname = url.pathname.replace(/\/?(v1beta|v1alpha1|v1)(\/)?$/, '')
-      return url.toString().replace(/\/+$/, '')
-    } catch {
-      // Fallback for non-standard schemes: just strip trailing version pieces.
-      return trimmed.replace(/\/?(v1beta|v1alpha1|v1)(\/)?$/, '')
-    }
+    return normalizeGeminiProviderBaseUrl(raw)
   }
 
   private static normalizeModelPath(model: string): string {

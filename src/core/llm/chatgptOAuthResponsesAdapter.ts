@@ -33,6 +33,7 @@ import {
 import { getToolCallArgumentsText } from '../../types/tool-call.types'
 
 type ChatGPTOAuthRequest = ResponseCreateParams & Record<string, unknown>
+export type ChatGPTOAuthRequestProfile = 'responses' | 'codex'
 
 type StreamState = {
   toolIndexByItemId: Map<string, number>
@@ -346,7 +347,9 @@ const getFinishReason = (
 export class ChatGPTOAuthResponsesAdapter {
   buildRequest(
     request: LLMRequestNonStreaming | LLMRequestStreaming,
+    options?: { profile?: ChatGPTOAuthRequestProfile },
   ): ChatGPTOAuthRequest {
+    const isCodexProfile = options?.profile === 'codex'
     const instructions = toInstructions(request.messages)
     const body: ChatGPTOAuthRequest = {
       model: request.model,
@@ -356,12 +359,15 @@ export class ChatGPTOAuthResponsesAdapter {
       ),
       tools: toTools(request.tools),
       tool_choice: toToolChoice(request.tool_choice),
-      max_output_tokens: request.max_tokens,
-      temperature: request.temperature,
-      top_p: request.top_p,
       parallel_tool_calls: true,
       stream: request.stream === true,
       store: false,
+    }
+
+    if (!isCodexProfile) {
+      body.max_output_tokens = request.max_tokens
+      body.temperature = request.temperature
+      body.top_p = request.top_p
     }
 
     const requestRecord = request as Record<string, unknown>
@@ -394,7 +400,11 @@ export class ChatGPTOAuthResponsesAdapter {
         key === 'max_tokens' ||
         key === 'reasoning_effort' ||
         key === 'reasoningLevel' ||
-        key === 'stream'
+        key === 'stream' ||
+        (isCodexProfile &&
+          (key === 'max_output_tokens' ||
+            key === 'temperature' ||
+            key === 'top_p'))
       ) {
         continue
       }

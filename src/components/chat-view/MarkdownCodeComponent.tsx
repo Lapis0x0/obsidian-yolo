@@ -223,34 +223,32 @@ export default function MarkdownCodeComponent({
               </>
             )}
           </button>
-          <button
-            type="button"
-            className="clickable-icon yolo-code-block-header-button"
-            onClick={
-              parsedPlan && isApplying && !isBlockApplying
-                ? undefined
-                : () => {
-                    if (!parsedPlan) {
-                      return
+          {parsedPlan && (
+            <button
+              type="button"
+              className="clickable-icon yolo-code-block-header-button"
+              onClick={
+                isApplying && !isBlockApplying
+                  ? undefined
+                  : () => {
+                      onApply(codeContent, applyRequestKey, filename)
                     }
-                    onApply(codeContent, applyRequestKey, filename)
-                  }
-            }
-            aria-disabled={parsedPlan ? isApplying && !isBlockApplying : true}
-            hidden={!parsedPlan}
-          >
-            {isBlockApplying ? (
-              <>
-                <Loader2 className="yolo-spinner" size={14} />
-                <span>{t('chat.codeBlock.stopApplying', 'Stop apply')}</span>
-              </>
-            ) : (
-              <>
-                <Play size={10} />
-                <span>{t('chat.codeBlock.apply', 'Apply')}</span>
-              </>
-            )}
-          </button>
+              }
+              aria-disabled={isApplying && !isBlockApplying}
+            >
+              {isBlockApplying ? (
+                <>
+                  <Loader2 className="yolo-spinner" size={14} />
+                  <span>{t('chat.codeBlock.stopApplying', 'Stop apply')}</span>
+                </>
+              ) : (
+                <>
+                  <Play size={10} />
+                  <span>{t('chat.codeBlock.apply', 'Apply')}</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
       <div
@@ -290,6 +288,36 @@ export default function MarkdownCodeComponent({
             }`}
           >
             <ObsidianMarkdown content={renderedPreviewContent} scale="sm" />
+            {parsedPlan && (
+              <div className="yolo-code-block-actions">
+                <button
+                  type="button"
+                  className="clickable-icon yolo-code-block-action-button"
+                  onClick={
+                    isApplying && !isBlockApplying
+                      ? undefined
+                      : () => {
+                          onApply(codeContent, applyRequestKey, filename)
+                        }
+                  }
+                  aria-disabled={isApplying && !isBlockApplying}
+                >
+                  {isBlockApplying ? (
+                    <>
+                      <Loader2 className="yolo-spinner" size={14} />
+                      <span>
+                        {t('chat.codeBlock.stopApplying', 'Stop apply')}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Play size={10} />
+                      <span>{t('chat.codeBlock.apply', 'Apply')}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

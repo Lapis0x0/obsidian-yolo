@@ -1,10 +1,13 @@
 import {
   Cpu,
   FileIcon,
+  FileSpreadsheet,
   FileText,
   FolderClosedIcon,
+  Globe,
   ImageIcon,
   LinkIcon,
+  Presentation,
   Quote,
   TextSelect,
 } from 'lucide-react'
@@ -23,9 +26,17 @@ export const getMentionableIcon = (mentionable: Mentionable) => {
       return Quote
     case 'url':
       return LinkIcon
+    case 'web-selection':
+      return Globe
     case 'image':
       return ImageIcon
     case 'pdf':
+      return FileText
+    case 'office':
+      if (mentionable.kind === 'xlsx') return FileSpreadsheet
+      if (mentionable.kind === 'pptx') return Presentation
+      return FileText
+    case 'text-attachment':
       return FileText
     case 'model':
       return Cpu

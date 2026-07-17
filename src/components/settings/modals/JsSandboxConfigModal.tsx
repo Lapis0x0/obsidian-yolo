@@ -15,6 +15,9 @@ import {
   normalizeJsSandboxConfig,
 } from '../../../core/mcp/jsSandboxSettings'
 import {
+  JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_MIN_KB,
   JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES,
   JS_SANDBOX_DEFAULT_TIMEOUT_MS,
   JS_SANDBOX_HARD_MAX_OUTPUT_BYTES,
@@ -41,6 +44,7 @@ type CapKey =
   | 'allowFetch'
   | 'allowVaultRead'
   | 'allowDbQuery'
+  | 'allowBrowserRead'
   | 'allowExternalScripts'
 
 export class JsSandboxConfigModal extends ReactModal<JsSandboxConfigModalProps> {
@@ -120,13 +124,6 @@ function JsSandboxConfigModalContent({
               {t('settings.agent.jsSandboxExtTitle', 'Extension capabilities')}
             </h3>
           </div>
-          <span className="yolo-js-exec-risk-pill">
-            <TriangleAlert size={13} />
-            {t(
-              'settings.agent.jsExecApprovalForced',
-              'Forced approval when enabled',
-            )}
-          </span>
         </div>
 
         <div className="yolo-js-exec-cap-list">
@@ -138,7 +135,7 @@ function JsSandboxConfigModalContent({
             )}
             description={t(
               'settings.agent.jsSandboxAllowDbQueryDesc',
-              'Let scripts query the knowledge base with semantic search, keyword search and path lookup. This capability is not constrained by the agent directory scope.',
+              'Let scripts query indexed vault content with semantic search and read Markdown/text content by known path. This capability is not constrained by the agent directory scope.',
             )}
             enabled={Boolean(config.allowDbQuery)}
             onToggle={(v) =>
@@ -147,7 +144,7 @@ function JsSandboxConfigModalContent({
                 v,
                 t(
                   'settings.agent.jsSandboxAllowDbQueryConfirm',
-                  'Enabling knowledge base query lets AI-generated scripts search your vault index and retrieve file contents. Continue?',
+                  'Enabling knowledge base query lets AI-generated scripts search indexed content and read Markdown/text content by known path. Continue?',
                 ),
               )
             }
@@ -157,11 +154,11 @@ function JsSandboxConfigModalContent({
                 className="yolo-js-exec-setting yolo-js-exec-textarea-header"
                 name={t(
                   'settings.agent.jsSandboxDbMaxLimit',
-                  'Max rows per query',
+                  'Max semantic rows',
                 )}
                 desc={t(
                   'settings.agent.jsSandboxDbMaxLimitDesc',
-                  'Upper bound on knowledge base results returned per query. Range 1–100.',
+                  'Upper bound on semantic search results. Path reads are not affected. Range 1–100.',
                 )}
               >
                 <ObsidianTextInput
@@ -192,7 +189,7 @@ function JsSandboxConfigModalContent({
             )}
             description={t(
               'settings.agent.jsSandboxAllowVaultReadDesc',
-              'Let scripts read any vault file by path. This capability is not constrained by the agent directory scope. Risk: scripts could pass note contents to external services.',
+              'Let scripts list vault paths and read any vault file by path. This capability is not constrained by the agent directory scope. Risk: scripts could pass note contents to external services.',
             )}
             enabled={Boolean(config.allowVaultRead)}
             onToggle={(v) =>
@@ -201,7 +198,7 @@ function JsSandboxConfigModalContent({
                 v,
                 t(
                   'settings.agent.jsSandboxAllowVaultReadConfirm',
-                  "Enabling vault read lets AI-generated scripts read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
+                  "Enabling vault read lets AI-generated scripts list vault paths and read any file in the vault by path. This data passes through the LLM context. Only enable if you trust this agent's scripts. Continue?",
                 ),
               )
             }
@@ -235,6 +232,67 @@ function JsSandboxConfigModalContent({
                       vaultReadMaxKb: Math.min(
                         JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
                         Math.max(JS_SANDBOX_VAULT_READ_MIN_KB, parsed),
+                      ),
+                    })
+                  }}
+                />
+              </ObsidianSetting>
+            </div>
+          </CapabilityCard>
+
+          <CapabilityCard
+            icon={<Globe2 size={17} />}
+            title={t(
+              'settings.agent.jsSandboxAllowBrowserRead',
+              'Allow Open Web Page Read',
+            )}
+            description={t(
+              'settings.agent.jsSandboxAllowBrowserReadDesc',
+              'Let scripts read the full HTML of web pages already open in Obsidian by page ID. This can include logged-in or private page content.',
+            )}
+            riskWarning={t(
+              'settings.agent.jsSandboxAllowBrowserReadRisk',
+              'Risk: scripts can read the full page DOM from pages you have opened in Obsidian, including hidden fields, embedded state, and private or logged-in content. Only enable for agents you fully trust.',
+            )}
+            enabled={Boolean(config.allowBrowserRead)}
+            onToggle={(v) =>
+              handleCapToggle(
+                'allowBrowserRead',
+                v,
+                t(
+                  'settings.agent.jsSandboxAllowBrowserReadConfirm',
+                  'Enabling open web page read lets AI-generated scripts read full HTML from web pages already open in Obsidian by page ID. This content passes through the LLM context. Continue?',
+                ),
+              )
+            }
+          >
+            <div className="yolo-js-exec-nested">
+              <ObsidianSetting
+                className="yolo-js-exec-setting yolo-js-exec-textarea-header"
+                name={t(
+                  'settings.agent.jsSandboxBrowserReadMaxKb',
+                  'Max page HTML size (KB)',
+                )}
+                desc={t(
+                  'settings.agent.jsSandboxBrowserReadMaxKbDesc',
+                  'Per-call full HTML limit. Larger pages are refused instead of shortened. Range 1–1048576 KB. Leave blank to use the default.',
+                )}
+              >
+                <ObsidianTextInput
+                  type="number"
+                  value={String(config.browserReadMaxKb ?? '')}
+                  placeholder={String(JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB)}
+                  onChange={(raw) => {
+                    const parsed = Number.parseInt(raw, 10)
+                    if (!Number.isFinite(parsed) || parsed <= 0) {
+                      update({ ...config, browserReadMaxKb: undefined })
+                      return
+                    }
+                    update({
+                      ...config,
+                      browserReadMaxKb: Math.min(
+                        JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+                        Math.max(JS_SANDBOX_BROWSER_READ_MIN_KB, parsed),
                       ),
                     })
                   }}

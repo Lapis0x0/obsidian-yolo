@@ -51,6 +51,14 @@ export type AssistantToolPreference = z.infer<
   typeof assistantToolPreferenceSchema
 >
 
+export const assistantToolServerPreferenceSchema = z.object({
+  approvalMode: assistantToolApprovalModeSchema.optional(),
+})
+
+export type AssistantToolServerPreference = z.infer<
+  typeof assistantToolServerPreferenceSchema
+>
+
 export const assistantWorkspaceScopeSchema = z.object({
   enabled: z.boolean().default(false),
   include: z.array(z.string()).default([]),
@@ -75,6 +83,9 @@ export const assistantSchema = z.object({
   enabledToolNames: z.array(z.string()).optional(),
   toolPreferences: z
     .record(z.string(), assistantToolPreferenceSchema)
+    .optional(),
+  toolServerPreferences: z
+    .record(z.string(), assistantToolServerPreferenceSchema)
     .optional(),
   // Legacy: per-assistant enabled skill list, keyed by canonical skill name.
   enabledSkills: z.array(z.string()).optional(),

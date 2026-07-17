@@ -1,12 +1,20 @@
 import type {
   AssistantToolMessageGroup,
+  ChatAssistantMessage,
   ChatSubagentResultMessage,
   ChatTerminalCommandResultMessage,
   ChatToolMessage,
 } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
-import { buildMessageTimelineItems } from './timeline'
+import { buildChatTimelineItems, buildMessageTimelineItems } from './timeline'
+
+const makeAssistantMessage = (id: string): ChatAssistantMessage => ({
+  role: 'assistant',
+  id,
+  content: id,
+  metadata: { generationState: 'completed' },
+})
 
 function makeToolMessage({
   id,
@@ -112,5 +120,53 @@ describe('buildMessageTimelineItems', () => {
 
     expect(largePayloadEstimate).toBe(smallPayloadEstimate)
     expect(largePayloadEstimate).toBeLessThan(1000)
+  })
+})
+
+describe('buildChatTimelineItems', () => {
+  it('keeps the logical group id when creating the default render slice', () => {
+    const assistant = makeAssistantMessage('assistant-1')
+
+    const items = buildChatTimelineItems({
+      groupedChatMessages: [[assistant]],
+      compactionDividerAnchorMessageIds: [],
+      latestCompaction: null,
+    })
+    const assistantItem = items.find((item) => item.kind === 'assistant-group')
+
+    expect(assistantItem).toMatchObject({
+      groupId: assistant.id,
+      renderKey: `${assistant.id}-slice-0`,
+      messageIds: [assistant.id],
+    })
+  })
+
+  it('shares one logical group id across compaction render slices', () => {
+    const firstAssistant = makeAssistantMessage('assistant-1')
+    const tool = makeToolMessage({
+      id: 'tool-1',
+      toolCallCount: 1,
+      responseText: 'ok',
+    })
+    const secondAssistant = makeAssistantMessage('assistant-2')
+
+    const items = buildChatTimelineItems({
+      groupedChatMessages: [[firstAssistant, tool, secondAssistant]],
+      compactionDividerAnchorMessageIds: [tool.id],
+      latestCompaction: null,
+    })
+    const assistantItems = items.filter(
+      (item) => item.kind === 'assistant-group',
+    )
+
+    expect(assistantItems).toHaveLength(2)
+    expect(assistantItems.map((item) => item.groupId)).toEqual([
+      firstAssistant.id,
+      firstAssistant.id,
+    ])
+    expect(assistantItems.map((item) => item.renderKey)).toEqual([
+      `${firstAssistant.id}-slice-0`,
+      `${firstAssistant.id}-slice-1`,
+    ])
   })
 })

@@ -58,6 +58,20 @@ describe('loop decisions', () => {
     })
   })
 
+  it('stops when tool results force repeated read termination', () => {
+    const result = decideAfterToolResult({
+      forceStopReason: 'repeated_read_call',
+      hasPendingTools: false,
+      iteration: 2,
+      maxIterations: 6,
+    })
+
+    expect(result).toEqual({
+      type: 'done',
+      reason: 'repeated_read_call',
+    })
+  })
+
   it('stops on max iterations when tool results do not force stop', () => {
     const result = decideAfterToolResult({
       hasPendingTools: false,

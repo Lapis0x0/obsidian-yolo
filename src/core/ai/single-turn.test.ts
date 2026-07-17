@@ -10,9 +10,13 @@ import {
   LLMResponseStreaming,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
-import { createCompleteToolCallArguments } from '../../types/tool-call.types'
+import {
+  createCompleteToolCallArguments,
+  createPartialToolCallArguments,
+} from '../../types/tool-call.types'
 import { BaseLLMProvider } from '../llm/base'
 
+import { isRequestErrorNonRetryable } from './requestRetry'
 import { executeSingleTurn } from './single-turn'
 
 class MockProvider extends BaseLLMProvider<LLMProvider> {
@@ -25,11 +29,12 @@ class MockProvider extends BaseLLMProvider<LLMProvider> {
     [ChatModel, LLMRequestStreaming, LLMOptions?]
   >()
 
-  constructor() {
+  constructor(provider: Partial<LLMProvider> = {}) {
     super({
       presetType: 'openai',
       apiType: 'openai-responses',
       id: 'provider-1',
+      ...provider,
     })
   }
 
@@ -120,7 +125,7 @@ describe('executeSingleTurn', () => {
         ...TEST_REQUEST,
         reasoningLevel: 'off',
       },
-      stream: false,
+      deliveryMode: 'buffered',
       purpose: 'lightweight',
       geminiTools: { useWebSearch: true, useUrlContext: true },
     })
@@ -210,7 +215,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).not.toHaveBeenCalled()
@@ -273,7 +278,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).not.toHaveBeenCalled()
@@ -355,7 +360,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).not.toHaveBeenCalled()
@@ -401,7 +406,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
@@ -425,13 +430,59 @@ describe('executeSingleTurn', () => {
         providerClient: provider,
         model: TEST_MODEL,
         request: TEST_REQUEST,
-        stream: true,
+        deliveryMode: 'incremental',
         streamFallbackRecoveryEnabled: false,
       }),
     ).rejects.toThrow('unexpected EOF')
 
     expect(provider.generateResponseMock).not.toHaveBeenCalled()
     expect(consoleWarnSpy).not.toHaveBeenCalled()
+  })
+
+  it('preserves malformed non-streaming tool arguments as raw text', async () => {
+    const provider = new MockProvider()
+    provider.generateResponseMock.mockResolvedValue({
+      id: 'non-stream-malformed',
+      model: TEST_MODEL.model,
+      object: 'chat.completion',
+      choices: [
+        {
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'tool-malformed',
+                type: 'function',
+                function: {
+                  name: 'yolo_local__fs_write',
+                  arguments: '{"path":"note.md","content":',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      deliveryMode: 'buffered',
+    })
+
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-malformed',
+        name: 'yolo_local__fs_write',
+        arguments: createPartialToolCallArguments(
+          '{"path":"note.md","content":',
+        ),
+        metadata: undefined,
+      },
+    ])
   })
 
   it('falls back to non-stream when streamed local write arguments are invalid', async () => {
@@ -504,7 +555,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
@@ -529,6 +580,95 @@ describe('executeSingleTurn', () => {
         reason: 'invalid_write_args',
         finishReason: 'tool_calls',
         toolNames: ['yolo_local__fs_edit'],
+      }),
+    )
+  })
+
+  it('falls back once with a system hint when streamed tool arguments are empty placeholders', async () => {
+    const provider = new MockProvider()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-empty-tool-args',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'stop',
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'tool-empty',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_read',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]),
+    )
+    provider.generateResponseMock.mockResolvedValue({
+      id: 'non-stream-empty-retry',
+      model: TEST_MODEL.model,
+      object: 'chat.completion',
+      choices: [
+        {
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'tool-valid',
+                type: 'function',
+                function: {
+                  name: 'yolo_local__fs_read',
+                  arguments: '{"paths":["note.md"]}',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      deliveryMode: 'incremental',
+    })
+
+    expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
+    const retryRequest = provider.generateResponseMock.mock.calls[0]?.[1]
+    expect(retryRequest?.messages[0]).toMatchObject({
+      role: 'system',
+      content: expect.stringContaining('empty or placeholder tool-call'),
+    })
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'tool-valid',
+        name: 'yolo_local__fs_read',
+        arguments: completeArgs(
+          {
+            paths: ['note.md'],
+          },
+          '{"paths":["note.md"]}',
+        ),
+        metadata: undefined,
+      },
+    ])
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[YOLO] Streaming tool-call recovery triggered.',
+      expect.objectContaining({
+        reason: 'empty_tool_args',
+        finishReason: 'stop',
+        toolNames: ['yolo_local__fs_read'],
       }),
     )
   })
@@ -578,7 +718,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
       streamFallbackRecoveryEnabled: false,
     })
 
@@ -670,7 +810,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
@@ -762,7 +902,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
@@ -829,7 +969,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
@@ -920,7 +1060,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).toHaveBeenCalledTimes(1)
@@ -987,7 +1127,7 @@ describe('executeSingleTurn', () => {
       providerClient: provider,
       model: TEST_MODEL,
       request: TEST_REQUEST,
-      stream: true,
+      deliveryMode: 'incremental',
     })
 
     expect(provider.generateResponseMock).not.toHaveBeenCalled()
@@ -1007,5 +1147,215 @@ describe('executeSingleTurn', () => {
         metadata: undefined,
       },
     ])
+  })
+
+  it('throws when the stream completes without any content, reasoning, tool calls, or finish reason', async () => {
+    const provider = new MockProvider()
+    // Simulate a misconfigured base URL where the proxy returns an empty SSE
+    // stream (zero chunks). Without the guard this would silently return an
+    // empty result and surface as a blank assistant bubble.
+    provider.streamResponseMock.mockResolvedValue(toAsyncIterable([]))
+
+    await expect(
+      executeSingleTurn({
+        providerClient: provider,
+        model: TEST_MODEL,
+        request: TEST_REQUEST,
+        deliveryMode: 'incremental',
+      }),
+    ).rejects.toThrow(/No content received from the model/)
+
+    // Must not silently fall back to non-stream — the empty-stream symptom
+    // would reproduce there too, so retrying it just hides the real cause.
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when the stream is empty but provides a finish_reason', async () => {
+    const provider = new MockProvider()
+    // A legitimate empty completion: the model chose to stop without emitting
+    // tokens but did report a terminal finish_reason. This must NOT trip the
+    // empty-stream guard.
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'stream-empty-stop',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'stop',
+              delta: {},
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      deliveryMode: 'incremental',
+    })
+
+    expect(result.content).toBe('')
+    expect(result.finishReason).toBe('stop')
+    expect(result.toolCalls).toEqual([])
+  })
+
+  it('uses one buffered SSE request for Obsidian transport and publishes only the final result', async () => {
+    const provider = new MockProvider({
+      additionalSettings: { requestTransportMode: 'obsidian' },
+    })
+    const onStreamDelta = jest.fn()
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'buffered-1',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: null,
+              delta: { content: 'hello ', reasoning: 'think ' },
+            },
+          ],
+        },
+        {
+          id: 'buffered-2',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'stop',
+              delta: { content: 'world', reasoning: 'done' },
+            },
+          ],
+          usage: {
+            prompt_tokens: 1,
+            completion_tokens: 2,
+            total_tokens: 3,
+          },
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      deliveryMode: 'incremental',
+      onStreamDelta,
+    })
+
+    expect(provider.streamResponseMock).toHaveBeenCalledTimes(1)
+    expect(provider.streamResponseMock.mock.calls[0][1].stream).toBe(true)
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    expect(onStreamDelta).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      content: 'hello world',
+      reasoning: 'think done',
+      finishReason: 'stop',
+      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    })
+  })
+
+  it('does not replay a failed Obsidian buffered request with non-streaming', async () => {
+    const provider = new MockProvider({
+      additionalSettings: { requestTransportMode: 'obsidian' },
+    })
+    provider.streamResponseMock.mockRejectedValue(new Error('unexpected EOF'))
+
+    let caught: unknown
+    try {
+      await executeSingleTurn({
+        providerClient: provider,
+        model: TEST_MODEL,
+        request: TEST_REQUEST,
+        deliveryMode: 'incremental',
+      })
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(Error)
+    expect((caught as Error).message).toBe('unexpected EOF')
+    expect(isRequestErrorNonRetryable(caught)).toBe(true)
+    expect(provider.streamResponseMock).toHaveBeenCalledTimes(1)
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+  })
+
+  it('does not replay invalid write-tool arguments from an Obsidian buffered request', async () => {
+    const provider = new MockProvider({
+      additionalSettings: { requestTransportMode: 'obsidian' },
+    })
+    provider.streamResponseMock.mockResolvedValue(
+      toAsyncIterable([
+        {
+          id: 'buffered-tool',
+          model: TEST_MODEL.model,
+          object: 'chat.completion.chunk',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'write-1',
+                    type: 'function',
+                    function: {
+                      name: 'yolo_local__fs_write',
+                      arguments: '{"path":"note.md"}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]),
+    )
+
+    const result = await executeSingleTurn({
+      providerClient: provider,
+      model: TEST_MODEL,
+      request: TEST_REQUEST,
+      deliveryMode: 'incremental',
+    })
+
+    expect(result.toolCalls).toHaveLength(1)
+    expect(provider.streamResponseMock).toHaveBeenCalledTimes(1)
+    expect(provider.generateResponseMock).not.toHaveBeenCalled()
+  })
+
+  it('times out an Obsidian buffered request without replaying it', async () => {
+    jest.useFakeTimers()
+    try {
+      const provider = new MockProvider({
+        additionalSettings: { requestTransportMode: 'obsidian' },
+      })
+      provider.streamResponseMock.mockImplementation(
+        () => new Promise<AsyncIterable<LLMResponseStreaming>>(() => undefined),
+      )
+
+      const requestPromise = executeSingleTurn({
+        providerClient: provider,
+        model: TEST_MODEL,
+        request: TEST_REQUEST,
+        deliveryMode: 'incremental',
+        primaryRequestTimeoutMs: 25,
+      }).catch((error: unknown) => error)
+      await jest.advanceTimersByTimeAsync(25)
+
+      const caught = await requestPromise
+      expect(caught).toBeInstanceOf(Error)
+      expect((caught as Error).name).toBe('ModelRequestTimeoutError')
+      expect(isRequestErrorNonRetryable(caught)).toBe(true)
+      expect(provider.streamResponseMock).toHaveBeenCalledTimes(1)
+      expect(provider.generateResponseMock).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })

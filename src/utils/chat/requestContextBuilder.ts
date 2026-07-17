@@ -29,6 +29,7 @@ import {
 } from '../../core/skills/skillPolicy'
 import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
@@ -50,7 +51,10 @@ import type {
   MentionableFile,
   MentionableFolder,
   MentionableImage,
+  MentionableOffice,
   MentionablePDF,
+  MentionableTextAttachment,
+  MentionableWebSelection,
 } from '../../types/mentionable'
 import type { ToolCallRequest } from '../../types/tool-call.types'
 import {
@@ -99,6 +103,16 @@ const USER_SELECTED_SKILLS_BLOCK_RE =
 
 const stripUserSelectedSkillsFromString = (text: string): string =>
   text.replace(USER_SELECTED_SKILLS_BLOCK_RE, '')
+
+const escapeXmlAttr = (raw: string): string =>
+  raw
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+const escapeXmlText = (raw: string): string =>
+  raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /** Stable signature for the `<previously-loaded-tools>` compaction disclosure
  * message. The disclosure is built by `buildCompactionDisclosureInjection` and
@@ -284,30 +298,47 @@ export function stripUnsupportedImages(
 }
 
 /**
- * Render the canonical `## Attached PDFs` text block for a single PDF. Used
- * both for legacy text-only mentionables (their persisted `data`) and for the
- * non-native-model fallback path (`prepareDocumentsForModel`). One template,
- * one place to evolve.
+ * Render the canonical `<document>` block for an attached document mentionable
+ * (PDF text fallback or Office docs). Native PDF modality goes through the
+ * `document` content part path and skips this helper. All attached documents
+ * are tagged `source="user-attachment"` so the model knows the content is
+ * user-uploaded and is not addressable by `fs_read`.
  */
-function renderAttachedPdfBlock({
+function renderAttachedDocumentBlock({
   name,
+  kind,
   text,
   pageCount,
   truncated,
 }: {
   name: string
+  kind:
+    | 'pdf'
+    | 'docx'
+    | 'pptx'
+    | 'xlsx'
+    | 'txt'
+    | 'md'
+    | 'csv'
+    | 'tsv'
+    | 'json'
+    | 'yaml'
+    | 'yml'
+    | 'xml'
+    | 'log'
   text: string
   pageCount?: number
   /** Set when the fallback extractor itself had to truncate (FALLBACK_MAX_PAGES). */
   truncated?: boolean
 }): string {
-  const meta =
-    pageCount !== undefined
-      ? ` (${pageCount} pages${truncated ? ', truncated' : ''})`
-      : truncated
-        ? ' (truncated)'
-        : ''
-  return `## Attached PDFs\n### ${name}${meta}\n\n${text}\n\n`
+  const attrs = [
+    `name="${escapeXmlAttr(name)}"`,
+    `type="${kind}"`,
+    'source="user-attachment"',
+  ]
+  if (pageCount !== undefined) attrs.push(`pages="${pageCount}"`)
+  if (truncated) attrs.push('truncated="true"')
+  return `<document ${attrs.join(' ')}>\n${text}\n</document>\n\n`
 }
 
 /**
@@ -358,8 +389,9 @@ export async function prepareDocumentsForModel(
           .join('\n\n')
         transformed.push({
           type: 'text',
-          text: renderAttachedPdfBlock({
+          text: renderAttachedDocumentBlock({
             name: part.name,
+            kind: 'pdf',
             text,
             pageCount: part.pageCount ?? pages.length,
           }),
@@ -523,6 +555,7 @@ export class RequestContextBuilder {
     messages: ChatMessage[]
     hasTools?: boolean
     hasMemoryTools?: boolean
+    hasOnDemandTools?: boolean
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
@@ -546,6 +579,7 @@ export class RequestContextBuilder {
     messages,
     hasTools = false,
     hasMemoryTools = false,
+    hasOnDemandTools = false,
     model: _model,
     conversationId,
     compaction,
@@ -557,6 +591,7 @@ export class RequestContextBuilder {
     messages: ChatMessage[]
     hasTools?: boolean
     hasMemoryTools?: boolean
+    hasOnDemandTools?: boolean
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
@@ -652,6 +687,7 @@ export class RequestContextBuilder {
           conversationId,
           hasTools,
           hasMemoryTools,
+          hasOnDemandTools,
           compaction,
           runtimeModePrompt,
           mode: systemPromptSnapshotMode,
@@ -705,6 +741,7 @@ export class RequestContextBuilder {
     messages: ChatMessage[]
     hasTools?: boolean
     hasMemoryTools?: boolean
+    hasOnDemandTools?: boolean
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
@@ -1016,22 +1053,60 @@ export class RequestContextBuilder {
     const pdfs = message.mentionables.filter(
       (m): m is MentionablePDF => m.type === 'pdf',
     )
+    const offices = message.mentionables.filter(
+      (m): m is MentionableOffice => m.type === 'office',
+    )
+    const textAttachments = message.mentionables.filter(
+      (m): m is MentionableTextAttachment => m.type === 'text-attachment',
+    )
+    const webSelections = message.mentionables.filter(
+      (m): m is MentionableWebSelection => m.type === 'web-selection',
+    )
     const blockPrompt = blocks
-      .map(({ file, content, startLine, pageNumber }) => {
-        const pageTag = pageNumber !== undefined ? ` (page ${pageNumber})` : ''
-        const header = `${file.path}${pageTag}`
-        if (pageNumber !== undefined) {
-          // PDF block: skip line numbering (startLine/endLine are 0)
-          return `\`\`\`${header}\n${content}\n\`\`\`\n`
-        }
-        const numberedContent = this.addLineNumbersToContent({
-          content,
-          startLine,
-        })
-        return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
-      })
+      .map(
+        ({ file, content, startLine, endLine, pageNumber, contentFormat }) => {
+          const pageTag =
+            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+          const header = `${file.path}${pageTag}`
+          if (pageNumber !== undefined) {
+            // PDF block: skip line numbering (startLine/endLine are 0)
+            return `\`\`\`${header}\n${content}\n\`\`\`\n`
+          }
+          if (contentFormat === 'markdown-table') {
+            const lineTag =
+              startLine === endLine
+                ? `line ${startLine}`
+                : `lines ${startLine}-${endLine}`
+            return `${file.path} (${lineTag}, table selection)\n\n\`\`\`md\n${content}\n\`\`\`\n`
+          }
+          const numberedContent = this.addLineNumbersToContent({
+            content,
+            startLine,
+          })
+          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
+        },
+      )
       .join('')
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
+    const webSelectionPrompt = this.buildWebSelectionPrompt(webSelections)
+    const officePrompt = offices
+      .map((doc) =>
+        renderAttachedDocumentBlock({
+          name: doc.name,
+          kind: doc.kind,
+          text: doc.extractedText,
+        }),
+      )
+      .join('')
+    const textAttachmentPrompt = textAttachments
+      .map((doc) =>
+        renderAttachedDocumentBlock({
+          name: doc.name,
+          kind: doc.kind,
+          text: doc.content,
+        }),
+      )
+      .join('')
     const {
       documentParts: pdfDocumentParts,
       legacyText: legacyPdfFallbackText,
@@ -1040,7 +1115,7 @@ export class RequestContextBuilder {
     const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
       message.selectedSkills,
     )
-    const textContent = `${blockPrompt}${assistantQuotePrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`
+    const textContent = `${blockPrompt}${assistantQuotePrompt}${webSelectionPrompt}${officePrompt}${textAttachmentPrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`
     if (imageParts.length === 0 && pdfDocumentParts.length === 0) {
       return withTimeContext(textContent)
     }
@@ -1063,6 +1138,9 @@ export class RequestContextBuilder {
           mentionable.type === 'file' ||
           mentionable.type === 'folder' ||
           mentionable.type === 'url' ||
+          mentionable.type === 'web-selection' ||
+          mentionable.type === 'office' ||
+          mentionable.type === 'text-attachment' ||
           mentionable.type === 'assistant-quote',
       )
     )
@@ -1227,7 +1305,9 @@ ${message.annotations
           toolMessages.push({
             role: 'tool',
             tool_call: toolCall.request,
-            content: `Tool call ${toolCall.request.id} is rejected`,
+            content: toolCall.response.reason
+              ? `Tool call ${toolCall.request.id} was rejected: ${toolCall.response.reason}`
+              : `Tool call ${toolCall.request.id} is rejected`,
           })
           break
         case ToolCallResponseStatus.Success: {
@@ -1406,22 +1486,60 @@ ${message.annotations
     const pdfs = mentionables.filter(
       (m): m is MentionablePDF => m.type === 'pdf',
     )
+    const offices = mentionables.filter(
+      (m): m is MentionableOffice => m.type === 'office',
+    )
+    const textAttachments = mentionables.filter(
+      (m): m is MentionableTextAttachment => m.type === 'text-attachment',
+    )
+    const webSelections = mentionables.filter(
+      (m): m is MentionableWebSelection => m.type === 'web-selection',
+    )
     const blockPrompt = blocks
-      .map(({ file, content, startLine, pageNumber }) => {
-        const pageTag = pageNumber !== undefined ? ` (page ${pageNumber})` : ''
-        const header = `${file.path}${pageTag}`
-        if (pageNumber !== undefined) {
-          // PDF block: skip line numbering (startLine/endLine are 0)
-          return `\`\`\`${header}\n${content}\n\`\`\`\n`
-        }
-        const numberedContent = this.addLineNumbersToContent({
-          content,
-          startLine,
-        })
-        return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
-      })
+      .map(
+        ({ file, content, startLine, endLine, pageNumber, contentFormat }) => {
+          const pageTag =
+            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
+          const header = `${file.path}${pageTag}`
+          if (pageNumber !== undefined) {
+            // PDF block: skip line numbering (startLine/endLine are 0)
+            return `\`\`\`${header}\n${content}\n\`\`\`\n`
+          }
+          if (contentFormat === 'markdown-table') {
+            const lineTag =
+              startLine === endLine
+                ? `line ${startLine}`
+                : `lines ${startLine}-${endLine}`
+            return `${file.path} (${lineTag}, table selection)\n\n\`\`\`md\n${content}\n\`\`\`\n`
+          }
+          const numberedContent = this.addLineNumbersToContent({
+            content,
+            startLine,
+          })
+          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
+        },
+      )
       .join('')
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
+    const webSelectionPrompt = this.buildWebSelectionPrompt(webSelections)
+    const officePrompt = offices
+      .map((doc) =>
+        renderAttachedDocumentBlock({
+          name: doc.name,
+          kind: doc.kind,
+          text: doc.extractedText,
+        }),
+      )
+      .join('')
+    const textAttachmentPrompt = textAttachments
+      .map((doc) =>
+        renderAttachedDocumentBlock({
+          name: doc.name,
+          kind: doc.kind,
+          text: doc.content,
+        }),
+      )
+      .join('')
     const {
       documentParts: pdfDocumentParts,
       legacyText: legacyPdfFallbackText,
@@ -1468,9 +1586,25 @@ ${message.annotations
       ...pdfDocumentParts,
       {
         type: 'text',
-        text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`,
+        text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${webSelectionPrompt}${officePrompt}${textAttachmentPrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`,
       },
     ]
+  }
+
+  private buildWebSelectionPrompt(
+    selections: MentionableWebSelection[],
+  ): string {
+    if (selections.length === 0) {
+      return ''
+    }
+
+    return `## Selected web page snippets
+${selections
+  .map((selection) => {
+    const title = selection.title.trim() || selection.url
+    return `<web_selection url="${escapeXmlAttr(selection.url)}" title="${escapeXmlAttr(title)}">\n${escapeXmlText(selection.content)}\n</web_selection>`
+  })
+  .join('\n\n')}\n\n`
   }
 
   private buildAssistantQuotePrompt(
@@ -1494,9 +1628,9 @@ ${quotes
    *   • `documentParts`: native `document` content parts for new uploads that
    *     carry raw bytes. Pass-through for adapters that advertise the `pdf`
    *     modality; `prepareDocumentsForModel` converts to text otherwise.
-   *   • `legacyText`: a `## Attached PDFs` block for legacy mentionables that
-   *     only have the pre-extracted `data` text (serialized before native PDF
-   *     support landed). Empty string when there are no legacy items.
+   *   • `legacyText`: an `<document type="pdf">` block for legacy mentionables
+   *     that only have the pre-extracted `data` text (serialized before native
+   *     PDF support landed). Empty string when there are no legacy items.
    */
   private buildPdfAttachments(pdfs: MentionablePDF[]): {
     documentParts: ContentPart[]
@@ -1516,8 +1650,9 @@ ${quotes
         })
       } else if (pdf.data) {
         legacyBlocks.push(
-          renderAttachedPdfBlock({
+          renderAttachedDocumentBlock({
             name: pdf.name,
+            kind: 'pdf',
             text: pdf.data,
             pageCount: pdf.pageCount,
           }),
@@ -1527,7 +1662,7 @@ ${quotes
 
     return {
       documentParts,
-      // Already includes the `## Attached PDFs` header per block; join into one.
+      // Each block is a self-contained `<document>` element; join into one.
       legacyText: legacyBlocks.join(''),
     }
   }
@@ -1598,6 +1733,7 @@ ${entries}
     conversationId,
     hasTools,
     hasMemoryTools,
+    hasOnDemandTools,
     compaction,
     runtimeModePrompt,
     mode,
@@ -1605,6 +1741,7 @@ ${entries}
     conversationId: string
     hasTools: boolean
     hasMemoryTools: boolean
+    hasOnDemandTools: boolean
     compaction?: ChatConversationCompactionLike | null
     runtimeModePrompt?: string
     mode: SystemPromptSnapshotMode
@@ -1613,6 +1750,7 @@ ${entries}
       const systemSections = await this.buildSystemPromptSections(
         hasTools,
         hasMemoryTools,
+        hasOnDemandTools,
         runtimeModePrompt,
       )
       const systemContent = systemSections
@@ -1632,6 +1770,7 @@ ${entries}
     const fingerprint = this.computeSystemPromptFingerprint(
       hasTools,
       hasMemoryTools,
+      hasOnDemandTools,
       compaction,
       runtimeModePrompt,
     )
@@ -1651,6 +1790,7 @@ ${entries}
   private computeSystemPromptFingerprint(
     hasTools: boolean,
     hasMemoryTools: boolean,
+    hasOnDemandTools: boolean,
     compaction?: ChatConversationCompactionLike | null,
     runtimeModePrompt?: string,
   ): string {
@@ -1680,6 +1820,7 @@ ${entries}
     return stableStringify({
       hasTools,
       hasMemoryTools,
+      hasOnDemandTools,
       runtimeModePrompt: runtimeModePrompt?.trim() ?? '',
       includeSkills: this.includeSkills,
       systemPrompt: this.settings.systemPrompt ?? '',
@@ -1728,6 +1869,7 @@ ${entries}
   private async buildSystemPromptSections(
     hasTools: boolean,
     hasMemoryTools: boolean,
+    hasOnDemandTools: boolean,
     runtimeModePrompt?: string,
   ): Promise<SystemPromptSections> {
     const sections: SystemPromptSections = []
@@ -1740,7 +1882,10 @@ ${entries}
       await this.buildCustomInstructionsSubsections(hasMemoryTools)
     sections.push(...customInstructionSubsections)
 
-    const baseBehaviorContent = this.buildDefaultBehaviorSection(hasTools)
+    const baseBehaviorContent = this.buildDefaultBehaviorSection(
+      hasTools,
+      hasOnDemandTools,
+    )
     if (baseBehaviorContent) {
       sections.push({
         bucket: 'system',
@@ -1758,6 +1903,17 @@ ${entries}
       })
     }
 
+    const workspaceScopeContent = this.buildWorkspaceScopeSection(
+      currentAssistant?.workspaceScope,
+    )
+    if (workspaceScopeContent) {
+      sections.push({
+        bucket: 'rules',
+        id: 'rules.workspace-scope',
+        content: workspaceScopeContent,
+      })
+    }
+
     const projectInstructionsContent = await getProjectInstructionsSection(
       this.app,
       currentAssistant?.enableProjectInstructions === true,
@@ -1772,6 +1928,25 @@ ${entries}
     }
 
     return sections
+  }
+
+  private buildWorkspaceScopeSection(
+    scope: AssistantWorkspaceScope | undefined,
+  ): string {
+    if (!scope?.enabled) return ''
+
+    const include = scope.include.map((path) => path.trim()).filter(Boolean)
+    const exclude = scope.exclude.map((path) => path.trim()).filter(Boolean)
+    if (include.length === 0 && exclude.length === 0) return ''
+
+    return `<workspace_scope>
+- Included paths: ${include.length > 0 ? include.join(', ') : 'all vault paths'}
+- Excluded paths: ${exclude.length > 0 ? exclude.join(', ') : 'none'}
+- All file paths must be vault-relative.
+- Each listed folder includes itself and all descendants.
+- Excluded paths take precedence over included paths.
+- Do not attempt to access paths outside this scope. If the task requires an out-of-scope path, tell the user about the workspace restriction.
+</workspace_scope>`
   }
 
   /**
@@ -1944,17 +2119,27 @@ ${customInstruction}
     return sections
   }
 
-  private buildDefaultBehaviorSection(hasTools: boolean): string {
+  private buildDefaultBehaviorSection(
+    hasTools: boolean,
+    hasOnDemandTools: boolean,
+  ): string {
     let section = `- Format your responses in Markdown.
-- Always reply in the same language as the user's message.`
+- When writing mathematical notation, use Obsidian-compatible LaTeX delimiters: $...$ for inline math and $$...$$ for display math. Put opening and closing $$ delimiters on separate lines. Do not use \\(...\\) or \\[...\\].
+- Always reply in the same language as the user's message.
+- Only use tools exposed in this request. Never simulate unavailable tool calls or claim an action succeeded without a successful tool result.`
 
     if (hasTools) {
       section += `
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
 - Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
-- If available skills are listed, use yolo_local__fs_read on the listed path to load the full skill only when it is relevant to the current task.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
+      if (hasOnDemandTools) {
+        section += `
+- Some tools are ON-DEMAND stubs. Do not call an ON-DEMAND tool until its full schema has been disclosed.
+- Before calling one, call yolo_local__load_tool_schemas with {"servers":["<server-name>"]}, where "<server-name>" is the prefix before "__" in the tool name.
+- After yolo_local__load_tool_schemas returns, call the target tool using the returned schema. If a <previously-loaded-tools> block lists the tool, treat it as already disclosed.`
+      }
     }
 
     return section

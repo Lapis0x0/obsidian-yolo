@@ -1,5 +1,6 @@
 import type { ContentPart, RequestMessage } from '../../../types/llm/request'
 
+import { renderBrowserContextInjection } from './browserContext'
 import {
   type CurrentFilePointerRenderContext,
   renderCurrentFilePointerInjection,
@@ -9,12 +10,14 @@ import { renderTodoListInjection } from './todoListContext'
 import type { ContextualInjection } from './types'
 
 export type {
+  BrowserContextInjection,
   ContextualInjection,
   CurrentFilePointerInjection,
   EditorSnapshotInjection,
   EditorSnapshotSelection,
   TodoListInjection,
 } from './types'
+export { renderBrowserContextInjection } from './browserContext'
 export { renderCurrentFilePointerInjection } from './currentFilePointerContext'
 export { renderEditorSnapshotInjection } from './editorSnapshotContext'
 export { renderTodoListInjection } from './todoListContext'
@@ -32,6 +35,8 @@ export async function renderContextualInjection(
       return renderEditorSnapshotInjection(injection)
     case 'todo-list':
       return renderTodoListInjection(injection)
+    case 'browser-context':
+      return renderBrowserContextInjection(injection)
   }
 }
 

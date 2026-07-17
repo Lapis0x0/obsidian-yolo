@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import {
   AssistantToolPreference,
+  AssistantToolServerPreference,
   AssistantWorkspaceScope,
 } from '../../types/assistant.types'
 import {
@@ -21,8 +22,15 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
+  createPartialToolCallArguments,
   getToolCallArgumentsObject,
+  getToolCallArgumentsText,
 } from '../../types/tool-call.types'
+import {
+  parseAndRepairToolArguments,
+  parseAndRepairToolArgumentsText,
+} from '../../utils/chat/tool-argument-parser'
+import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
 import {
   ASK_USER_QUESTION_TOOL_NAME,
@@ -30,6 +38,7 @@ import {
   TERMINAL_COMMAND_TOOL_NAME,
   getLocalFileToolServerName,
   isAskUserQuestionToolName,
+  isLocalFsWriteToolName,
   validateAskUserQuestionArgs,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
@@ -47,11 +56,15 @@ import {
   extractLoadedDeferredToolNames,
 } from './tool-disclosure'
 import {
+  buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
   isAssistantToolEnabled,
 } from './tool-preferences'
-import { isLoadToolSchemasToolName } from './tool-selection'
+import {
+  expandAllowedToolNames,
+  isLoadToolSchemasToolName,
+} from './tool-selection'
 import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
 import type { AgentRunContext } from './types'
 import {
@@ -64,10 +77,183 @@ type McpToolCallParamsWithDebug = McpToolCallParams & {
   debugTraceId?: string
 }
 
+const getTypeName = (value: unknown): string => {
+  if (Array.isArray(value)) return 'array'
+  return typeof value
+}
+
+const requireStringField = ({
+  args,
+  field,
+  errors,
+}: {
+  args: Record<string, unknown>
+  field: string
+  errors: string[]
+}): void => {
+  if (typeof args[field] !== 'string') {
+    errors.push(
+      `${field} must be a string; received ${getTypeName(args[field])}.`,
+    )
+  }
+}
+
+const requireIntegerField = ({
+  args,
+  field,
+  errors,
+}: {
+  args: Record<string, unknown>
+  field: string
+  errors: string[]
+}): void => {
+  if (typeof args[field] !== 'number' || !Number.isInteger(args[field])) {
+    errors.push(
+      `${field} must be an integer; received ${getTypeName(args[field])}.`,
+    )
+  }
+}
+
+const validateLocalWriteArgs = ({
+  toolName,
+  args,
+}: {
+  toolName: string
+  args: Record<string, unknown>
+}): string[] => {
+  const errors: string[] = []
+
+  switch (toolName) {
+    case 'fs_write':
+      requireStringField({ args, field: 'path', errors })
+      requireStringField({ args, field: 'content', errors })
+      break
+    case 'fs_edit': {
+      requireStringField({ args, field: 'path', errors })
+      requireStringField({ args, field: 'newText', errors })
+      const hasOldText = typeof args.oldText === 'string'
+      const hasStartLine = args.startLine !== undefined
+      const hasEndLine = args.endLine !== undefined
+      if (hasOldText && (hasStartLine || hasEndLine)) {
+        errors.push(
+          'Use exactly one edit locator: oldText, or startLine with endLine; do not combine them.',
+        )
+      } else if (!hasOldText) {
+        requireIntegerField({ args, field: 'startLine', errors })
+        requireIntegerField({ args, field: 'endLine', errors })
+      }
+      break
+    }
+    case 'fs_delete':
+    case 'fs_create_dir':
+      requireStringField({ args, field: 'path', errors })
+      break
+    case 'fs_move':
+      requireStringField({ args, field: 'oldPath', errors })
+      requireStringField({ args, field: 'newPath', errors })
+      break
+  }
+
+  return errors
+}
+
+const getRequiredLocalWriteArgumentNames = (toolName: string): string[] => {
+  switch (toolName) {
+    case 'fs_write':
+      return ['path', 'content']
+    case 'fs_edit':
+      return ['path', 'newText', 'oldText or startLine/endLine']
+    case 'fs_delete':
+    case 'fs_create_dir':
+      return ['path']
+    case 'fs_move':
+      return ['oldPath', 'newPath']
+    default:
+      return []
+  }
+}
+
+const getToolCallDiagnostics = (request: ToolCallRequest) =>
+  request.metadata?.argumentDiagnostics
+
+const getLocalWriteToolShortName = (toolCallName: string): string | null => {
+  try {
+    const parsed = parseToolName(toolCallName)
+    if (parsed.serverName !== getLocalFileToolServerName()) return null
+    return isLocalFsWriteToolName(parsed.toolName) ? parsed.toolName : null
+  } catch {
+    return null
+  }
+}
+
+const hasUnsafeStringCompletionRepair = (repairActions: string[]): boolean => {
+  return repairActions.includes('closed unterminated string')
+}
+
+const formatToolArgumentDiagnostics = ({
+  request,
+  title,
+  parseError,
+  providedParameterNames,
+  requiredParameterNames,
+  validationErrors,
+  repairActions,
+}: {
+  request: ToolCallRequest
+  title: string
+  parseError?: string
+  providedParameterNames?: string[]
+  requiredParameterNames?: string[]
+  validationErrors?: string[]
+  repairActions?: string[]
+}): string => {
+  const diagnostics = getToolCallDiagnostics(request)
+  const rawArguments = getToolCallArgumentsText(request.arguments) ?? ''
+  const rawArgsLength = diagnostics?.rawArgsLength ?? rawArguments.length
+  const rawArgsHead =
+    (diagnostics?.rawArgsHead ?? rawArguments.slice(0, 240)) || '<empty>'
+  const providedNames =
+    providedParameterNames && providedParameterNames.length > 0
+      ? providedParameterNames
+      : getToolCallArgumentsObject(request.arguments)
+        ? Object.keys(
+            getToolCallArgumentsObject(request.arguments) ?? {},
+          ).sort()
+        : []
+  const requiredNames = requiredParameterNames ?? []
+  const repairSummary = repairActions?.length
+    ? repairActions.join('; ')
+    : diagnostics?.repairActions?.length
+      ? diagnostics.repairActions.join('; ')
+      : diagnostics?.repairApplied
+        ? 'repair applied'
+        : 'none'
+
+  return [
+    `${title}: "${request.name}" arguments are not executable.`,
+    ...(parseError ? [`Parse error: ${parseError}`] : []),
+    ...(validationErrors?.length
+      ? ['Validation errors:', ...validationErrors.map((error) => `- ${error}`)]
+      : []),
+    `Provided parameter names: ${providedNames.length > 0 ? providedNames.join(', ') : '<none>'}.`,
+    `Required parameter names: ${requiredNames.length > 0 ? requiredNames.join(', ') : '<unknown>'}.`,
+    `Raw args length: ${rawArgsLength}.`,
+    `Raw args head: ${rawArgsHead}`,
+    `finishReason: ${diagnostics?.finishReason ?? '<unknown>'}.`,
+    `streamState: ${diagnostics?.streamState ?? '<unknown>'}; parseState: ${diagnostics?.parseState ?? '<unknown>'}; sealReason: ${diagnostics?.sealReason ?? '<unknown>'}.`,
+    `repair: ${repairSummary}.`,
+    'Retry by calling the tool again with a smaller, complete JSON object. Do not include huge file contents in one tool call when a narrower edit is possible.',
+  ].join('\n')
+}
+
 export class AgentToolGateway {
   private readonly toolsEnabled: boolean
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
+  private readonly toolServerPreferences?: Record<
+    string,
+    AssistantToolServerPreference
+  >
   private readonly enableToolDisclosure: boolean
   private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillPaths?: readonly string[]
@@ -83,6 +269,10 @@ export class AgentToolGateway {
     string,
     AjvValidateFunction | null
   >()
+  private serverToolTokenBudgets: ReadonlyMap<string, number> | null = null
+  private serverToolTokenBudgetsPromise: Promise<
+    ReadonlyMap<string, number>
+  > | null = null
 
   constructor(
     private readonly mcpManager: McpManager,
@@ -90,6 +280,7 @@ export class AgentToolGateway {
       toolsEnabled?: boolean
       allowedToolNames?: string[]
       toolPreferences?: Record<string, AssistantToolPreference>
+      toolServerPreferences?: Record<string, AssistantToolServerPreference>
       enableToolDisclosure?: boolean
       workspaceScope?: AssistantWorkspaceScope
       allowedSkillPaths?: string[]
@@ -104,9 +295,10 @@ export class AgentToolGateway {
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
     this.allowedToolNames = options?.allowedToolNames
-      ? new Set(options.allowedToolNames)
+      ? expandAllowedToolNames(options.allowedToolNames)
       : undefined
     this.toolPreferences = options?.toolPreferences
+    this.toolServerPreferences = options?.toolServerPreferences
     this.enableToolDisclosure = options?.enableToolDisclosure ?? true
     this.workspaceScope = options?.workspaceScope
     this.allowedSkillPaths = options?.allowedSkillPaths
@@ -125,13 +317,59 @@ export class AgentToolGateway {
     this.ajv = new Ajv({ allErrors: true, useDefaults: false })
   }
 
-  private isOnDemandToolName(toolName: string): boolean {
+  private async getServerToolTokenBudgets(): Promise<
+    ReadonlyMap<string, number>
+  > {
+    if (this.serverToolTokenBudgets) {
+      return this.serverToolTokenBudgets
+    }
+    if (!this.serverToolTokenBudgetsPromise) {
+      this.serverToolTokenBudgetsPromise = (async () => {
+        const availableTools = await this.mcpManager.listAvailableTools({
+          includeBuiltinTools: true,
+        })
+        const serverToolsMap = new Map<string, McpTool[]>()
+        for (const tool of availableTools) {
+          if (!this.isToolAllowed(tool.name)) {
+            continue
+          }
+          let serverName: string
+          try {
+            serverName = parseToolName(tool.name).serverName
+          } catch {
+            continue
+          }
+          const bucket = serverToolsMap.get(serverName) ?? []
+          bucket.push(tool)
+          serverToolsMap.set(serverName, bucket)
+        }
+        const budgets = await buildServerToolTokenBudgets(
+          serverToolsMap,
+          estimateJsonTokens,
+        )
+        this.serverToolTokenBudgets = budgets
+        return budgets
+      })()
+    }
+    return this.serverToolTokenBudgetsPromise
+  }
+
+  private async isOnDemandToolName(toolName: string): Promise<boolean> {
     if (!this.enableToolDisclosure) {
       return false
     }
     if (isLoadToolSchemasToolName(toolName)) {
       return false
     }
+    try {
+      const { serverName } = parseToolName(toolName)
+      if (serverName === getLocalFileToolServerName()) {
+        return false
+      }
+    } catch {
+      return false
+    }
+    const serverToolTokenBudgets = await this.getServerToolTokenBudgets()
     return (
       getAssistantToolDisclosureMode(
         {
@@ -141,6 +379,7 @@ export class AgentToolGateway {
             : undefined,
         },
         toolName,
+        { serverToolTokenBudgets },
       ) === 'on_demand'
     )
   }
@@ -204,7 +443,7 @@ export class AgentToolGateway {
     | { ok: true; request: ToolCallRequest }
     | { ok: false; response: ToolCallResponse }
   > {
-    if (!this.isOnDemandToolName(request.name)) {
+    if (!(await this.isOnDemandToolName(request.name))) {
       return { ok: true, request }
     }
 
@@ -303,22 +542,151 @@ export class AgentToolGateway {
     return { ok: true, request: normalizedRequest }
   }
 
-  private isRequestPathAllowed(request: ToolCallRequest): boolean {
-    if (!this.workspaceScope?.enabled) return true
+  private findRequestPathOutsideScope(request: ToolCallRequest): string | null {
+    if (!this.workspaceScope?.enabled) return null
     try {
       const parsed = parseToolName(request.name)
-      if (parsed.serverName !== getLocalFileToolServerName()) return true
+      if (parsed.serverName !== getLocalFileToolServerName()) return null
       const args = getToolCallArgumentsObject(request.arguments)
-      return (
-        findPathOutsideScope(parsed.toolName, args, this.workspaceScope, {
-          exemptPaths: this.allowedSkillPaths
-            ? buildAllowedSkillPathSet(this.allowedSkillPaths)
-            : undefined,
-        }) === null
-      )
+      return findPathOutsideScope(parsed.toolName, args, this.workspaceScope, {
+        exemptPaths: this.allowedSkillPaths
+          ? buildAllowedSkillPathSet(this.allowedSkillPaths)
+          : undefined,
+      })
     } catch {
-      return true
+      return null
     }
+  }
+
+  private prepareFinalToolCallRequest(
+    request: ToolCallRequest,
+  ):
+    | { ok: true; request: ToolCallRequest }
+    | { ok: false; request: ToolCallRequest; response: ToolCallResponse } {
+    if (!request.arguments || request.arguments.kind === 'complete') {
+      return { ok: true, request }
+    }
+
+    const parsed = parseAndRepairToolArguments(request.arguments)
+    const localWriteToolName = getLocalWriteToolShortName(request.name)
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        request,
+        response: {
+          status: ToolCallResponseStatus.Error,
+          error: formatToolArgumentDiagnostics({
+            request,
+            title: 'Tool argument parsing failed',
+            parseError: parsed.error,
+            providedParameterNames: parsed.providedParameterNames,
+            requiredParameterNames: localWriteToolName
+              ? getRequiredLocalWriteArgumentNames(localWriteToolName)
+              : undefined,
+            repairActions: parsed.repairActions,
+          }),
+        },
+      }
+    }
+
+    if (
+      localWriteToolName &&
+      parsed.repairApplied &&
+      hasUnsafeStringCompletionRepair(parsed.repairActions)
+    ) {
+      return {
+        ok: false,
+        request,
+        response: {
+          status: ToolCallResponseStatus.Error,
+          error: formatToolArgumentDiagnostics({
+            request,
+            title: 'Tool argument parsing failed',
+            parseError:
+              'Repair would close an unterminated string in a local write tool. This likely means file content was truncated, so the tool was not executed.',
+            providedParameterNames: Object.keys(parsed.value).sort(),
+            requiredParameterNames:
+              getRequiredLocalWriteArgumentNames(localWriteToolName),
+            repairActions: parsed.repairActions,
+          }),
+        },
+      }
+    }
+
+    return {
+      ok: true,
+      request: {
+        ...request,
+        arguments: parsed.arguments,
+        metadata: {
+          ...request.metadata,
+          argumentDiagnostics: {
+            ...request.metadata?.argumentDiagnostics,
+            parseState: parsed.repairApplied ? 'repaired' : 'valid',
+            rawArgsLength:
+              request.metadata?.argumentDiagnostics?.rawArgsLength ??
+              getToolCallArgumentsText(request.arguments)?.length ??
+              0,
+            rawArgsHead:
+              request.metadata?.argumentDiagnostics?.rawArgsHead ??
+              getToolCallArgumentsText(request.arguments)?.slice(0, 240) ??
+              '',
+            repairApplied: parsed.repairApplied,
+            repairActions: parsed.repairActions,
+          },
+        },
+      },
+    }
+  }
+
+  private getLocalWriteArgumentError(request: ToolCallRequest): string | null {
+    const localWriteToolName = getLocalWriteToolShortName(request.name)
+    if (!localWriteToolName) return null
+    const toolName = localWriteToolName
+
+    if (!request.arguments) {
+      return formatToolArgumentDiagnostics({
+        request: {
+          ...request,
+          arguments: createPartialToolCallArguments(''),
+        },
+        title: 'Tool argument parsing failed',
+        parseError: 'Missing arguments. Expected a JSON object.',
+        requiredParameterNames: getRequiredLocalWriteArgumentNames(toolName),
+      })
+    }
+
+    if (request.arguments.kind === 'partial') {
+      const parsed = parseAndRepairToolArgumentsText(request.arguments.rawText)
+      return formatToolArgumentDiagnostics({
+        request,
+        title: 'Tool argument parsing failed',
+        parseError: parsed.ok
+          ? 'Arguments were still marked partial after parsing.'
+          : parsed.error,
+        providedParameterNames: parsed.ok
+          ? Object.keys(parsed.value).sort()
+          : parsed.providedParameterNames,
+        requiredParameterNames: getRequiredLocalWriteArgumentNames(toolName),
+        repairActions: parsed.repairActions,
+      })
+    }
+
+    const validationErrors = validateLocalWriteArgs({
+      toolName,
+      args: request.arguments.value,
+    })
+    if (validationErrors.length === 0) {
+      return null
+    }
+
+    return formatToolArgumentDiagnostics({
+      request,
+      title: 'Tool argument validation failed',
+      providedParameterNames: Object.keys(request.arguments.value).sort(),
+      requiredParameterNames: getRequiredLocalWriteArgumentNames(toolName),
+      validationErrors,
+    })
   }
 
   createToolMessage({
@@ -336,11 +704,17 @@ export class AgentToolGateway {
     branchModelId?: string
     branchLabel?: string
   }): ChatToolMessage {
+    const preparedRequests = toolCallRequests.map((request) =>
+      this.prepareFinalToolCallRequest(request),
+    )
+    const normalizedToolCallRequests = preparedRequests.map(
+      (prepared) => prepared.request,
+    )
     // ask_user_question is exclusive within a single LLM turn. Detect this
     // up-front so we can force all sibling outcomes accordingly before falling
     // back to the per-tool routing for non-ask cases.
     const askIndices: number[] = []
-    toolCallRequests.forEach((request, index) => {
+    normalizedToolCallRequests.forEach((request, index) => {
       if (isAskUserQuestionToolName(request.name)) {
         askIndices.push(index)
       }
@@ -358,21 +732,27 @@ export class AgentToolGateway {
         branchModelId,
         branchLabel,
       },
-      toolCalls: toolCallRequests.map((request, index) => ({
-        request,
-        response: this.resolveInitialResponse({
+      toolCalls: preparedRequests.map((prepared, index) => {
+        const request = prepared.request
+        return {
           request,
-          conversationId,
-          isAskRequest:
-            hasAsk && index === firstAskIndex
-              ? 'primary-ask'
-              : hasAsk && askIndices.includes(index)
-                ? 'duplicate-ask'
-                : hasAsk
-                  ? 'ask-sibling'
-                  : 'normal',
-        }),
-      })),
+          response:
+            prepared.ok === false
+              ? prepared.response
+              : this.resolveInitialResponse({
+                  request,
+                  conversationId,
+                  isAskRequest:
+                    hasAsk && index === firstAskIndex
+                      ? 'primary-ask'
+                      : hasAsk && askIndices.includes(index)
+                        ? 'duplicate-ask'
+                        : hasAsk
+                          ? 'ask-sibling'
+                          : 'normal',
+                }),
+        }
+      }),
     }
   }
 
@@ -398,11 +778,27 @@ export class AgentToolGateway {
       }
     }
 
-    if (
-      !this.isToolAllowed(request.name) ||
-      !this.isRequestPathAllowed(request)
-    ) {
-      return { status: ToolCallResponseStatus.Rejected }
+    if (!this.isToolAllowed(request.name)) {
+      return {
+        status: ToolCallResponseStatus.Rejected,
+        reason: `Tool "${request.name}" is not available in this workspace.`,
+      }
+    }
+
+    const pathOutsideScope = this.findRequestPathOutsideScope(request)
+    if (pathOutsideScope !== null) {
+      return {
+        status: ToolCallResponseStatus.Rejected,
+        reason: `Path "${pathOutsideScope}" is outside this agent's workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.`,
+      }
+    }
+
+    const localWriteArgumentError = this.getLocalWriteArgumentError(request)
+    if (localWriteArgumentError) {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: localWriteArgumentError,
+      }
     }
 
     if (
@@ -433,14 +829,6 @@ export class AgentToolGateway {
 
     if (this.shouldAutoExecuteTool({ request, conversationId })) {
       return { status: ToolCallResponseStatus.Running }
-    }
-
-    if (this.isSubagentChildRun) {
-      return {
-        status: ToolCallResponseStatus.Error,
-        error:
-          'Subagents cannot pause for interactive tool approval. This tool can run inside a subagent only when the parent agent already has permission to execute it automatically.',
-      }
     }
 
     return this.shouldUseFsEditReview(request.name)
@@ -1074,12 +1462,12 @@ export class AgentToolGateway {
     const approvalMode = getAssistantToolApprovalMode(
       {
         toolPreferences: this.toolPreferences,
+        toolServerPreferences: this.toolServerPreferences,
         enabledToolNames: this.allowedToolNames
           ? [...this.allowedToolNames]
           : undefined,
       },
       request.name,
-      { jsSandboxSettings: this.mcpManager.getJsSandboxSettings() },
     )
     const requireAutoExecution =
       approvalMode === 'full_access' ||
@@ -1160,12 +1548,12 @@ export class AgentToolGateway {
         getAssistantToolApprovalMode(
           {
             toolPreferences: this.toolPreferences,
+            toolServerPreferences: this.toolServerPreferences,
             enabledToolNames: this.allowedToolNames
               ? [...this.allowedToolNames]
               : undefined,
           },
           toolName,
-          { jsSandboxSettings: this.mcpManager.getJsSandboxSettings() },
         ) === 'require_approval'
       )
     } catch {

@@ -1,0 +1,59 @@
+.yolo-acknowledgement-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-acknowledgement-modal-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  color: var(--text-normal);
+  line-height: var(--line-height-normal);
+}
+
+.yolo-acknowledgement-modal-messages p {
+  margin: 0;
+}
+
+.yolo-acknowledgement-modal-list {
+  margin: 0;
+  padding-left: var(--size-4-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  line-height: var(--line-height-normal);
+}
+
+.yolo-acknowledgement-modal-list li::marker {
+  color: var(--text-muted);
+}
+
+.yolo-acknowledgement-modal-item-title {
+  font-weight: var(--font-semibold);
+}
+
+.yolo-acknowledgement-modal-checkbox {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: center;
+}
+
+.yolo-acknowledgement-modal-checkbox input[type='checkbox'] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.yolo-acknowledgement-modal-actions {
+  margin-top: var(--size-4-1);
+}
+
+.yolo-acknowledgement-modal-confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.yolo-acknowledgement-modal--centered .modal-title,
+.yolo-acknowledgement-modal--centered .yolo-acknowledgement-modal-messages {
+  text-align: center;
+}

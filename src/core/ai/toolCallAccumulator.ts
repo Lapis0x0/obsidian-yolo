@@ -4,7 +4,7 @@ import {
   createCompleteToolCallArguments,
   createPartialToolCallArguments,
 } from '../../types/tool-call.types'
-import { parseJsonObjectText } from '../../utils/chat/tool-arguments'
+import { parseAndRepairToolArgumentsText } from '../../utils/chat/tool-argument-parser'
 
 export type CanonicalToolEvent =
   | {
@@ -49,7 +49,7 @@ export type CanonicalToolEvent =
 
 type AssemblyKind = 'none' | 'append_text'
 type StreamState = 'open' | 'sealed' | 'aborted'
-type ParseState = 'not_attempted' | 'valid' | 'invalid'
+type ParseState = 'not_attempted' | 'valid' | 'invalid' | 'repaired'
 type ExecState = 'blocked' | 'ready' | 'running' | 'done' | 'failed'
 
 type ToolCallRecord = {
@@ -66,6 +66,7 @@ type ToolCallRecord = {
   rawArgsText: string
   parsedArgs?: Record<string, unknown>
   parseError?: string
+  repairActions?: string[]
   streamState: StreamState
   parseState: ParseState
   execState: ExecState
@@ -88,6 +89,16 @@ export type AccumulatedToolCallSnapshot = {
   streamState: StreamState
   parseState: ParseState
   handoffReady: boolean
+  diagnostics: {
+    streamState: StreamState
+    parseState: ParseState
+    sealReason?: 'explicit_done' | 'stream_end' | 'turn_handoff'
+    rawArgsLength: number
+    rawArgsHead: string
+    parseError?: string
+    repairApplied?: boolean
+    repairActions?: string[]
+  }
 }
 
 const getCallKey = (index: number): string => `index:${index}`
@@ -122,16 +133,18 @@ const finalizeParse = (record: ToolCallRecord): void => {
     return
   }
 
-  const parsed = parseJsonObjectText(record.rawArgsText)
-  if (parsed) {
-    record.parsedArgs = parsed
+  const parsed = parseAndRepairToolArgumentsText(record.rawArgsText)
+  if (parsed.ok) {
+    record.parsedArgs = parsed.value
     record.parseError = undefined
-    record.parseState = 'valid'
+    record.repairActions = parsed.repairActions
+    record.parseState = parsed.repairApplied ? 'repaired' : 'valid'
     return
   }
 
   record.parsedArgs = undefined
-  record.parseError = 'Invalid JSON object'
+  record.parseError = parsed.error
+  record.repairActions = parsed.repairActions
   record.parseState = 'invalid'
   record.execState = 'blocked'
 }
@@ -150,7 +163,10 @@ export class ToolCallAccumulator {
         return
       }
       for (const record of this.records.values()) {
-        if (record.streamState === 'sealed' && record.parseState === 'valid') {
+        if (
+          record.streamState === 'sealed' &&
+          (record.parseState === 'valid' || record.parseState === 'repaired')
+        ) {
           record.handoffReady = true
           record.execState = 'ready'
           record.updatedAt = event.receivedAt
@@ -263,6 +279,16 @@ export class ToolCallAccumulator {
         streamState: record.streamState,
         parseState: record.parseState,
         handoffReady: record.handoffReady,
+        diagnostics: {
+          streamState: record.streamState,
+          parseState: record.parseState,
+          sealReason: record.sealReason,
+          rawArgsLength: record.rawArgsText.length,
+          rawArgsHead: record.rawArgsText.slice(0, 240),
+          parseError: record.parseError,
+          repairApplied: record.parseState === 'repaired',
+          repairActions: record.repairActions,
+        },
       }))
   }
 
@@ -270,8 +296,13 @@ export class ToolCallAccumulator {
     record: ToolCallRecord,
   ): ToolCallArguments | undefined {
     if (record.streamState === 'sealed') {
-      if (record.parseState !== 'valid' || !isRecord(record.parsedArgs)) {
-        return undefined
+      if (
+        (record.parseState !== 'valid' && record.parseState !== 'repaired') ||
+        !isRecord(record.parsedArgs)
+      ) {
+        return record.rawArgsText.length > 0
+          ? createPartialToolCallArguments(record.rawArgsText)
+          : undefined
       }
       return createCompleteToolCallArguments({
         value: record.parsedArgs,

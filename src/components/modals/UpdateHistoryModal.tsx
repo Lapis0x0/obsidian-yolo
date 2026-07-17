@@ -11,6 +11,7 @@ import {
   normalizePluginVersion,
   parseChangelog,
 } from '../../core/update/updateChecker'
+import { usePluginUpdatePrimaryCta } from '../../hooks/usePluginUpdatePrimaryCta'
 import YoloPlugin from '../../main'
 import { ReactModal } from '../common/ReactModal'
 import { UpdateChangelogSections } from '../update/UpdateChangelogSections'
@@ -44,6 +45,18 @@ function UpdateHistoryModalComponent({
   onClose,
 }: UpdateHistoryModalComponentProps & { onClose: () => void }) {
   const { language, t } = useLanguage()
+  const {
+    primaryCta,
+    hasSelfUpdate,
+    isSelfUpdateError,
+    showCommunityPluginsFallback,
+    showDownloadProgress,
+    downloadProgress,
+    releaseUrl,
+    openCommunityPlugins,
+  } = usePluginUpdatePrimaryCta({
+    onOpenCommunityPlugins: onClose,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [entries, setEntries] = useState<ReleaseHistoryEntry[]>([])
@@ -160,15 +173,6 @@ function UpdateHistoryModalComponent({
     String(page + 1),
   )
 
-  const openCommunityPluginUpdate = () => {
-    const { app } = plugin
-    // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-    app.setting.open()
-    // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-    app.setting.openTabById('community-plugins')
-    onClose()
-  }
-
   const langToggle = hasBilingual ? (
     <div
       className="yolo-update-toast-lang"
@@ -266,6 +270,14 @@ function UpdateHistoryModalComponent({
               )
             })}
           </div>
+          {showDownloadProgress ? (
+            <div className="yolo-update-toast-progress" aria-hidden="true">
+              <div
+                className="yolo-update-toast-progress-fill"
+                style={{ width: `${downloadProgress}%` }}
+              />
+            </div>
+          ) : null}
           <div className="yolo-update-history-footer">
             {showPagination ? (
               <div className="yolo-update-history-pagination">
@@ -296,15 +308,48 @@ function UpdateHistoryModalComponent({
                 </button>
               </div>
             ) : null}
+            <div className="yolo-update-history-footer-actions">
+              {showCommunityPluginsFallback && hasSelfUpdate ? (
+                <button
+                  type="button"
+                  className="yolo-update-toast-secondary-btn"
+                  title={t(
+                    'update.updateInCommunityPlugins',
+                    'Update in community plugins',
+                  )}
+                  onClick={openCommunityPlugins}
+                >
+                  {t(
+                    'update.updateInCommunityPlugins',
+                    'Update in community plugins',
+                  )}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`yolo-update-toast-cta yolo-update-history-update-btn${primaryCta.disabled ? ' is-disabled' : ''}`}
+                title={primaryCta.label}
+                disabled={primaryCta.disabled}
+                onClick={primaryCta.onClick}
+              >
+                {primaryCta.label}
+              </button>
+            </div>
+          </div>
+          {isSelfUpdateError && releaseUrl ? (
             <button
               type="button"
-              className="yolo-update-toast-cta yolo-update-history-update-btn"
-              title={t('update.viewDetails', 'Check for updates')}
-              onClick={openCommunityPluginUpdate}
+              className="yolo-update-toast-manual-link"
+              onClick={() => {
+                window.open(releaseUrl)
+              }}
             >
-              {t('update.goUpdate', 'Update')}
+              {t(
+                'update.manualInstallOnGitHub',
+                "Can't update? Install manually from GitHub",
+              )}
             </button>
-          </div>
+          ) : null}
         </>
       )}
     </div>

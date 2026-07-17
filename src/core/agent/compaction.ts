@@ -12,6 +12,7 @@ import type { LLMProvider } from '../../types/provider.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
+import { isRequestErrorNonRetryable } from '../ai/requestRetry'
 import { executeSingleTurn } from '../ai/single-turn'
 import type { BaseLLMProvider } from '../llm/base'
 
@@ -78,7 +79,7 @@ export const resolveAutoContextCompactionChatOptions = (chatOptions: {
     autoContextCompactionThresholdMode:
       chatOptions.autoContextCompactionThresholdMode ?? 'tokens',
     autoContextCompactionThresholdTokens:
-      chatOptions.autoContextCompactionThresholdTokens ?? 24000,
+      chatOptions.autoContextCompactionThresholdTokens ?? 100000,
     autoContextCompactionThresholdRatio:
       chatOptions.autoContextCompactionThresholdRatio ?? 0.8,
   }
@@ -604,7 +605,7 @@ export const createConversationCompactionSummary = async ({
       // Keep the tools block in the cache prefix but forbid calls. Only sent
       // when tools exist — some providers reject tool_choice without tools.
       tool_choice: tools && tools.length > 0 ? 'none' : undefined,
-      stream: false,
+      deliveryMode: 'buffered',
       purpose: 'standard',
       debugTraceId,
     })
@@ -623,6 +624,9 @@ export const createConversationCompactionSummary = async ({
   try {
     summary = await runCompaction()
   } catch (firstError) {
+    if (isRequestErrorNonRetryable(firstError)) {
+      throw firstError
+    }
     console.warn(
       '[YOLO][Compact] summary generation failed; retrying once',
       firstError,

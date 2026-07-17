@@ -52,6 +52,24 @@ jest.mock('../agent/subagent/runner', () => ({
   }),
 }))
 
+jest.mock('../browser/activeWebviewProbe', () => ({
+  BROWSER_PAGE_ID_PATTERN: /^page_[a-z0-9]{8}_[a-z0-9]{8}$/,
+  findWebviewHandleByPageId: jest.fn(),
+}))
+
+jest.mock('../browser/activeWebviewReader', () => ({
+  BrowserReadFailure: class BrowserReadFailure extends Error {
+    code: string
+    constructor(code: string, message: string) {
+      super(message)
+      this.code = code
+      this.name = 'BrowserReadFailure'
+    }
+  },
+  readActiveWebviewPage: jest.fn(),
+  readActiveWebviewHtml: jest.fn(),
+}))
+
 import { App, TFile, TFolder } from 'obsidian'
 import { PDFDocument } from 'pdf-lib'
 
@@ -66,12 +84,26 @@ import { extractPdfText } from '../../utils/pdf/extractPdfText'
 import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import { PdfSliceError, slicePdfPages } from '../../utils/pdf/slicePdfPages'
 import { runSubagent } from '../agent/subagent/runner'
+import { findWebviewHandleByPageId } from '../browser/activeWebviewProbe'
+import {
+  readActiveWebviewHtml,
+  readActiveWebviewPage,
+} from '../browser/activeWebviewReader'
 import type { RAGEngine } from '../rag/ragEngine'
 
+import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 import {
+  JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
+  formatJsSandboxToolText,
+} from './jsSandboxTool'
+import {
+  buildJsSandboxProxyHandlers,
   callLocalFileTool,
   getLocalFileTools,
   isLocalFsWriteToolName,
+  parseBrowserReadPageId,
   parseLocalFsActionFromToolArgs,
   recoverLikelyEscapedBackslashSequences,
 } from './localFileTools'
@@ -95,6 +127,297 @@ describe('recoverLikelyEscapedBackslashSequences', () => {
     const recovered = recoverLikelyEscapedBackslashSequences(input)
 
     expect(recovered).toBe(input)
+  })
+})
+
+describe('js sandbox vault list handler', () => {
+  const basename = (path: string) => path.split('/').pop() ?? path
+
+  const makeFile = (path: string, size = 10, mtime = 1000): TFile =>
+    Object.assign(new TFile(), {
+      path,
+      name: basename(path),
+      stat: { size, mtime },
+    })
+
+  const makeFolder = (
+    path: string,
+    children: Array<TFile | TFolder> = [],
+  ): TFolder =>
+    Object.assign(new TFolder(), {
+      path,
+      name: path ? basename(path) : '',
+      children,
+    })
+
+  const makeApp = (root: TFolder, entries: Array<TFile | TFolder>): App => {
+    const byPath = new Map(entries.map((entry) => [entry.path, entry]))
+    return {
+      vault: {
+        getRoot: jest.fn().mockReturnValue(root),
+        getAbstractFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) => byPath.get(path) ?? null),
+        cachedRead: jest
+          .fn()
+          .mockImplementation((file: TFile) => `content:${file.path}`),
+      },
+    } as unknown as App
+  }
+
+  const getVaultList = (app: App) => {
+    const handlers = buildJsSandboxProxyHandlers(app, {
+      allowVaultRead: true,
+    })
+    if (!handlers.vaultList) {
+      throw new Error('expected vaultList handler')
+    }
+    return handlers.vaultList
+  }
+
+  it('lists direct child dirs and files by default', async () => {
+    const nested = makeFile('a/nested.md', 20, 2000)
+    const folder = makeFolder('a', [nested])
+    const file = makeFile('b.md', 30, 3000)
+    const root = makeFolder('', [file, folder])
+    const list = getVaultList(makeApp(root, [folder, nested, file]))
+
+    await expect(list()).resolves.toEqual([
+      { kind: 'dir', path: 'a', name: 'a' },
+      {
+        kind: 'file',
+        path: 'b.md',
+        name: 'b.md',
+        size: 30,
+        mtime: 3000,
+      },
+    ])
+  })
+
+  it('lists the whole subtree when recursive is true', async () => {
+    const nested = makeFile('a/nested.md', 20, 2000)
+    const folder = makeFolder('a', [nested])
+    const file = makeFile('b.md', 30, 3000)
+    const root = makeFolder('', [file, folder])
+    const list = getVaultList(makeApp(root, [folder, nested, file]))
+
+    await expect(list('/', { recursive: true })).resolves.toEqual([
+      { kind: 'dir', path: 'a', name: 'a' },
+      {
+        kind: 'file',
+        path: 'a/nested.md',
+        name: 'nested.md',
+        size: 20,
+        mtime: 2000,
+      },
+      {
+        kind: 'file',
+        path: 'b.md',
+        name: 'b.md',
+        size: 30,
+        mtime: 3000,
+      },
+    ])
+  })
+
+  it('rejects missing folders, file targets, and invalid paths', async () => {
+    const file = makeFile('b.md')
+    const root = makeFolder('', [file])
+    const list = getVaultList(makeApp(root, [file]))
+
+    await expect(list('missing')).rejects.toThrow('Folder not found: missing')
+    await expect(list('b.md')).rejects.toThrow('Path is not a folder: b.md')
+    await expect(list('../outside')).rejects.toThrow(
+      'Path must be a vault-relative path.',
+    )
+  })
+
+  it('refuses pathological vault lists above the hard entry cap', async () => {
+    const files = Array.from(
+      { length: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1 },
+      (_, index) => makeFile(`f-${index}.md`),
+    )
+    const root = makeFolder('', files)
+    const list = getVaultList(makeApp(root, files))
+
+    await expect(list()).rejects.toThrow(
+      `more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries`,
+    )
+  })
+
+  it('does not expose the handler when vault read is disabled', () => {
+    const root = makeFolder('')
+    const handlers = buildJsSandboxProxyHandlers(makeApp(root, []), {})
+
+    expect(handlers.vaultList).toBeUndefined()
+    expect(handlers.vaultReadText).toBeUndefined()
+    expect(handlers.vaultReadBinary).toBeUndefined()
+  })
+
+  it('exposes only known-path text reads when db query is enabled', async () => {
+    const file = makeFile('notes/a.md')
+    const root = makeFolder('', [file])
+    const handlers = buildJsSandboxProxyHandlers(makeApp(root, [file]), {
+      allowDbQuery: true,
+    })
+
+    expect(handlers.vaultList).toBeUndefined()
+    expect(handlers.vaultReadBinary).toBeUndefined()
+    if (!handlers.vaultReadText) {
+      throw new Error('expected vaultReadText handler')
+    }
+    await expect(handlers.vaultReadText('notes/a.md')).resolves.toBe(
+      'content:notes/a.md',
+    )
+  })
+})
+
+describe('js sandbox browser page HTML handler', () => {
+  const pageId = 'page_abcdefgh_12345678'
+  const app = {} as App
+  const handle = { pageId, webview: {} }
+
+  beforeEach(() => {
+    jest.mocked(findWebviewHandleByPageId).mockReset()
+    jest.mocked(readActiveWebviewHtml).mockReset()
+  })
+
+  it('does not expose the handler when browser read is disabled', () => {
+    const handlers = buildJsSandboxProxyHandlers(app, {})
+
+    expect(handlers.browserReadHtml).toBeUndefined()
+  })
+
+  it('reads full HTML from an open page by page id', async () => {
+    jest.mocked(findWebviewHandleByPageId).mockReturnValue(handle as never)
+    jest.mocked(readActiveWebviewHtml).mockResolvedValue({
+      url: 'https://example.com',
+      title: 'Example',
+      html: '<html><body>ok</body></html>',
+      byteLength: 28,
+    })
+    const handlers = buildJsSandboxProxyHandlers(app, {
+      allowBrowserRead: true,
+    })
+
+    await expect(handlers.browserReadHtml?.(pageId)).resolves.toEqual(
+      expect.objectContaining({
+        title: 'Example',
+        html: '<html><body>ok</body></html>',
+      }),
+    )
+    expect(findWebviewHandleByPageId).toHaveBeenCalledWith(app, pageId)
+    expect(readActiveWebviewHtml).toHaveBeenCalledWith(handle, {
+      maxBytes: JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB * 1024,
+    })
+  })
+
+  it('accepts fs_read-style browser:// page paths', async () => {
+    jest.mocked(findWebviewHandleByPageId).mockReturnValue(handle as never)
+    jest.mocked(readActiveWebviewHtml).mockResolvedValue(null)
+    const handlers = buildJsSandboxProxyHandlers(app, {
+      allowBrowserRead: true,
+    })
+
+    await expect(
+      handlers.browserReadHtml?.(`browser://${pageId}`),
+    ).resolves.toBeNull()
+    expect(findWebviewHandleByPageId).toHaveBeenCalledWith(app, pageId)
+  })
+
+  it('rejects URLs instead of treating them as browser pages', async () => {
+    const handlers = buildJsSandboxProxyHandlers(app, {
+      allowBrowserRead: true,
+    })
+
+    await expect(
+      handlers.browserReadHtml?.('browser://https://example.com/article'),
+    ).rejects.toThrow('browser:// paths only read open Obsidian web pages')
+    expect(findWebviewHandleByPageId).not.toHaveBeenCalled()
+  })
+})
+
+describe('js sandbox tool description', () => {
+  it('mentions vault list only when vault read is enabled', () => {
+    expect(buildJsSandboxToolDescription({})).not.toContain('$vault.list')
+
+    const description = buildJsSandboxToolDescription({
+      allowVaultRead: true,
+    })
+    expect(description).toContain('$vault.list')
+    expect(description).toContain('do NOT return the full list')
+  })
+
+  it('describes db search and known-path text reads without keyword lookup', () => {
+    const description = buildJsSandboxToolDescription({
+      allowDbQuery: true,
+    })
+
+    expect(description).toContain('$db.search')
+    expect(description).toContain('$vault.readText')
+    expect(description).toContain(
+      `clamped to ${JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT}`,
+    )
+    expect(description).not.toContain('$db.get')
+    expect(description).not.toContain('$db.find')
+  })
+
+  it('mentions browser HTML reads only when browser read is enabled', () => {
+    expect(buildJsSandboxToolDescription({})).not.toContain('$browser.readHtml')
+
+    const description = buildJsSandboxToolDescription({
+      allowBrowserRead: true,
+    })
+    expect(description).toContain('$browser.readHtml')
+    expect(description).toContain('document.documentElement.outerHTML')
+    expect(description).toContain('$utils.html.extract')
+    expect(description).toContain('$utils.html.select')
+  })
+
+  it('describes HTML parsing only once when fetch and browser read are both enabled', () => {
+    const description = buildJsSandboxToolDescription({
+      allowFetch: true,
+      allowBrowserRead: true,
+    })
+
+    const htmlExtractMentions =
+      description.match(/\$utils\.html\.extract/g) ?? []
+    expect(htmlExtractMentions).toHaveLength(1)
+  })
+
+  it('does not duplicate vault readText guidance when db query and vault read are both enabled', () => {
+    const description = buildJsSandboxToolDescription({
+      allowDbQuery: true,
+      allowVaultRead: true,
+    })
+
+    const readTextMentions = description.match(/\$vault\.readText/g) ?? []
+    expect(readTextMentions).toHaveLength(1)
+    expect(description).not.toContain('$db.get')
+    expect(description).not.toContain('$db.find')
+  })
+})
+
+describe('js sandbox tool output formatting', () => {
+  it('keeps JSON output compact', () => {
+    expect(
+      formatJsSandboxToolText('{"items":[{"path":"a.md","count":2}]}'),
+    ).toBe('{"items":[{"path":"a.md","count":2}]}')
+  })
+
+  it('keeps truncated output envelope compact', () => {
+    const text = formatJsSandboxToolText(
+      JSON.stringify({ items: Array.from({ length: 400 }, (_, i) => i) }),
+      { maxBytes: 1024 },
+    )
+
+    expect(text).not.toContain('\n')
+    expect(JSON.parse(text)).toEqual(
+      expect.objectContaining({
+        truncated: true,
+        warning: expect.any(String),
+      }),
+    )
   })
 })
 
@@ -683,6 +1006,250 @@ describe('local fs tool action helpers', () => {
       totalLines: 3,
     })
     expect(payload.results[0].returnedRange).toBeUndefined()
+    expect(result.metadata?.fsReadOperation).toEqual({
+      type: 'full',
+      isPdf: false,
+    })
+  })
+
+  it('defaults fs_read to full operation when operation is omitted', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const read = jest.fn().mockResolvedValue(['one', 'two'].join('\n'))
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          read,
+        },
+      } as unknown as App,
+      toolCallId: 'read-call-default-full',
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      toolCallId: string | null
+      requestedOperation: { type: string; modality: string }
+      results: Array<{
+        ok: boolean
+        content: string
+        totalLines: number
+        returnedRange?: { startLine: number | null; endLine: number | null }
+      }>
+    }
+    expect(payload.toolCallId).toBe('read-call-default-full')
+    expect(payload.requestedOperation).toMatchObject({
+      type: 'full',
+    })
+    expect(payload.requestedOperation.modality).toBeUndefined()
+    expect(payload.results[0]).toMatchObject({
+      ok: true,
+      content: ['1|one', '2|two'].join('\n'),
+      totalLines: 2,
+    })
+    expect(payload.results[0].returnedRange).toBeUndefined()
+  })
+
+  describe('fs_read browser:// paths', () => {
+    const pagePath = 'browser://page_ab12cd34_ef56gh78'
+    const mockHandle = {
+      pageId: 'page_ab12cd34_ef56gh78',
+      webview: {},
+    }
+
+    beforeEach(() => {
+      jest.mocked(findWebviewHandleByPageId).mockReset()
+      jest.mocked(readActiveWebviewPage).mockReset()
+    })
+
+    it('reads an open web page with readable format and line pagination', async () => {
+      jest
+        .mocked(findWebviewHandleByPageId)
+        .mockReturnValue(mockHandle as never)
+      jest.mocked(readActiveWebviewPage).mockResolvedValue({
+        source: 'core_webviewer',
+        sourceViewType: 'webviewer',
+        url: 'https://example.com/article',
+        title: 'Article',
+        format: 'readable',
+        loading: false,
+        capturedAt: Date.now(),
+        text: ['Intro', 'Body line', 'Tail'].join('\n'),
+        redactions: [],
+      })
+
+      const result = await callLocalFileTool({
+        app: {
+          vault: { getFileByPath: jest.fn().mockReturnValue(null) },
+        } as unknown as App,
+        toolName: 'fs_read',
+        args: {
+          paths: [pagePath],
+          operation: {
+            type: 'lines',
+            startLine: 2,
+            maxLines: 1,
+            format: 'readable',
+          },
+        },
+      })
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      if (result.status !== ToolCallResponseStatus.Success) {
+        throw new Error('expected success')
+      }
+      const payload = JSON.parse(result.text) as {
+        results: Array<{
+          ok: boolean
+          path: string
+          content: string
+          url?: string
+          title?: string
+          returnedRange?: { startLine: number; endLine: number }
+          hasMoreBelow: boolean
+          nextStartLine: number | null
+        }>
+      }
+      expect(readActiveWebviewPage).toHaveBeenCalledWith(
+        mockHandle,
+        expect.objectContaining({ format: 'readable' }),
+      )
+      expect(payload.results[0]).toMatchObject({
+        ok: true,
+        path: pagePath,
+        content: '2|Body line',
+        url: 'https://example.com/article',
+        title: 'Article',
+        returnedRange: { startLine: 2, endLine: 2 },
+        hasMoreBelow: true,
+        nextStartLine: 3,
+      })
+    })
+
+    it('defaults browser reads to key_visible_info format', async () => {
+      jest
+        .mocked(findWebviewHandleByPageId)
+        .mockReturnValue(mockHandle as never)
+      jest.mocked(readActiveWebviewPage).mockResolvedValue({
+        source: 'core_webviewer',
+        sourceViewType: 'webviewer',
+        url: 'https://example.com',
+        title: 'X',
+        format: 'key_visible_info',
+        loading: false,
+        capturedAt: Date.now(),
+        text: 'Visible summary',
+        redactions: [],
+      })
+
+      const result = await callLocalFileTool({
+        app: {
+          vault: { getFileByPath: jest.fn().mockReturnValue(null) },
+        } as unknown as App,
+        toolName: 'fs_read',
+        args: {
+          paths: [pagePath],
+          operation: {
+            type: 'full',
+          },
+        },
+      })
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      expect(readActiveWebviewPage).toHaveBeenCalledWith(
+        mockHandle,
+        expect.objectContaining({ format: 'key_visible_info' }),
+      )
+    })
+
+    it('supports key_visible_info format for browser paths', async () => {
+      jest
+        .mocked(findWebviewHandleByPageId)
+        .mockReturnValue(mockHandle as never)
+      jest.mocked(readActiveWebviewPage).mockResolvedValue({
+        source: 'core_webviewer',
+        sourceViewType: 'webviewer',
+        url: 'https://example.com',
+        title: 'X',
+        format: 'key_visible_info',
+        loading: false,
+        capturedAt: Date.now(),
+        text: 'Formula: E = mc^2',
+        redactions: [],
+      })
+
+      const result = await callLocalFileTool({
+        app: {
+          vault: { getFileByPath: jest.fn().mockReturnValue(null) },
+        } as unknown as App,
+        toolName: 'fs_read',
+        args: {
+          paths: [pagePath],
+          operation: {
+            type: 'full',
+            format: 'key_visible_info',
+          },
+        },
+      })
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      expect(readActiveWebviewPage).toHaveBeenCalledWith(
+        mockHandle,
+        expect.objectContaining({ format: 'key_visible_info' }),
+      )
+    })
+
+    it('returns an error when the target web page tab is missing', async () => {
+      jest.mocked(findWebviewHandleByPageId).mockReturnValue(null)
+
+      const result = await callLocalFileTool({
+        app: {
+          vault: { getFileByPath: jest.fn().mockReturnValue(null) },
+        } as unknown as App,
+        toolName: 'fs_read',
+        args: {
+          paths: [pagePath],
+          operation: { type: 'full' },
+        },
+      })
+
+      expect(result.status).toBe(ToolCallResponseStatus.Success)
+      if (result.status !== ToolCallResponseStatus.Success) {
+        throw new Error('expected success')
+      }
+      const payload = JSON.parse(result.text) as {
+        results: Array<{ ok: boolean; error?: string }>
+      }
+      expect(payload.results[0]).toMatchObject({
+        ok: false,
+        error: expect.stringContaining('No open web page'),
+      })
+    })
+
+    it('rejects browser:// internet URLs with tool guidance', () => {
+      expect(() =>
+        parseBrowserReadPageId('browser://https://example.com/article'),
+      ).toThrow(/browser:\/\/ paths only read open Obsidian web pages/)
+      expect(() =>
+        parseBrowserReadPageId('browser://https://example.com/article'),
+      ).toThrow(/use web_search or web_scrape/)
+    })
+
+    it('rejects page_id paths with appended URL segments', () => {
+      expect(() =>
+        parseBrowserReadPageId('browser://page_ab12cd34_ef56gh78/abcd'),
+      ).toThrow(/Do not append URL paths to a page_id/)
+    })
   })
 
   it('reads allowed hidden-directory skills through the skill registry', async () => {
@@ -960,6 +1527,12 @@ describe('local fs tool action helpers', () => {
       returnedRange: { startLine: 2, endLine: 3 },
       hasMoreBelow: true,
       nextStartLine: 4,
+    })
+    expect(result.metadata?.fsReadOperation).toEqual({
+      type: 'lines',
+      startLine: 2,
+      endLine: 3,
+      isPdf: false,
     })
   })
 

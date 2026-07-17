@@ -12,6 +12,7 @@ import type { RequestMessage, RequestTool } from '../../types/llm/request'
 import type { ReasoningLevel } from '../../types/reasoning'
 import {
   ToolCallRequest,
+  ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
 import { runWithLLMDebugTrace } from '../llm/debugCapture'
@@ -29,6 +30,10 @@ import {
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
 import {
+  applyRepeatedReadCallGuard,
+  createRepeatedReadCallGuardState,
+} from './repeated-read-call-guard'
+import {
   applyRepeatedToolFailureGuard,
   createRepeatedToolFailureGuardState,
 } from './repeated-tool-failure-guard'
@@ -44,6 +49,9 @@ import {
   AgentRuntimeSubscribe,
   AgentWorkerOutbound,
 } from './types'
+
+export const ASSISTANT_CONTINUATION_PROMPT =
+  'The previous assistant response was interrupted before completion. Resume the same task exactly where it stopped. Do not repeat, revise, summarize, or acknowledge content already produced. Continue using tools if needed.'
 
 export class NativeAgentRuntime implements AgentRuntime {
   private subscribers: AgentRuntimeSubscribe[] = []
@@ -81,7 +89,30 @@ export class NativeAgentRuntime implements AgentRuntime {
   }
 
   async run(input: AgentRuntimeRunInput): Promise<void> {
-    const requestMessages = input.requestMessages ?? input.messages
+    const inputRequestMessages = input.requestMessages ?? input.messages
+    const resumeAssistantMessage = input.continueAssistantMessageId
+      ? inputRequestMessages.find(
+          (message): message is ChatAssistantMessage =>
+            message.role === 'assistant' &&
+            message.id === input.continueAssistantMessageId,
+        )
+      : undefined
+    if (input.continueAssistantMessageId && !resumeAssistantMessage) {
+      throw new Error('Interrupted assistant message is no longer available.')
+    }
+    const requestMessages = resumeAssistantMessage
+      ? inputRequestMessages.map((message) =>
+          message.id === resumeAssistantMessage.id &&
+          message.role === 'assistant'
+            ? { ...message, toolCallRequests: undefined }
+            : message,
+        )
+      : inputRequestMessages
+    const ongoingRequestMessages = resumeAssistantMessage
+      ? requestMessages.filter(
+          (message) => message.id !== resumeAssistantMessage.id,
+        )
+      : requestMessages
     this.compactionState = normalizeChatConversationCompactionState(
       input.compaction,
     )
@@ -96,7 +127,12 @@ export class NativeAgentRuntime implements AgentRuntime {
 
     if (this.shouldUseSingleTurnFastPath()) {
       try {
-        await this.runSingleTurnFastPath(input, abortSignal)
+        await this.runSingleTurnFastPath(
+          input,
+          abortSignal,
+          requestMessages,
+          resumeAssistantMessage,
+        )
       } finally {
         if (this.runAbortController === localAbortController) {
           this.runAbortController = null
@@ -110,6 +146,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       allowedToolNames: input.allowedToolNames,
       enableToolDisclosure: input.enableToolDisclosure,
       toolPreferences: input.toolPreferences,
+      toolServerPreferences: input.toolServerPreferences,
       workspaceScope: input.workspaceScope,
       allowedSkillPaths: input.allowedSkillPaths,
       apiType: input.apiType,
@@ -128,6 +165,7 @@ export class NativeAgentRuntime implements AgentRuntime {
     let pendingToolMessageId: string | null = null
     let pendingToolCallCount = 0
     let currentDebugTraceId: string | undefined
+    let currentSourceUserMessageId = input.sourceUserMessageId
     // Per-turn cache-warm prefix + tools the executor actually sent, plus the
     // `this.messages` boundary before this turn's LLM request. The compaction
     // bypass reuses these to build a byte-identical out-of-band request.
@@ -138,8 +176,10 @@ export class NativeAgentRuntime implements AgentRuntime {
     let runSettled = false
     let workerTaskQueue = Promise.resolve()
     let abortListener: (() => void) | null = null
+    let repeatedReadCallGuardState = createRepeatedReadCallGuardState()
     let repeatedToolFailureGuardState = createRepeatedToolFailureGuardState()
     const promptedAutoCompactionAssistantMessageIds = new Set<string>()
+    let pendingResumeAssistantMessage = resumeAssistantMessage
 
     const runCompletion = new Promise<void>((resolve, reject) => {
       const handleWorkerMessage = (message: AgentWorkerOutbound): void => {
@@ -157,17 +197,22 @@ export class NativeAgentRuntime implements AgentRuntime {
                 }
 
                 if (input.drainPendingUserMessages) {
-                  const injected = input.drainPendingUserMessages()
-                  if (injected.length > 0) {
-                    for (const injectedMessage of injected) {
+                  const drained = input.drainPendingUserMessages()
+                  if (drained) {
+                    currentSourceUserMessageId = drained.sourceUserMessageId
+                    for (const injectedMessage of drained.messages) {
                       this.messages.push(injectedMessage)
                     }
                     this.notifySubscribers()
                   }
                 }
 
+                const resumedMessageForTurn = pendingResumeAssistantMessage
+                pendingResumeAssistantMessage = undefined
                 const conversationMessages = [
-                  ...requestMessages,
+                  ...(resumedMessageForTurn
+                    ? requestMessages
+                    : ongoingRequestMessages),
                   ...this.messages,
                 ]
                 const autoContextCompactionNotice =
@@ -177,7 +222,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                     promptedAssistantMessageIds:
                       promptedAutoCompactionAssistantMessageIds,
                   })
-
                 const llmTurnExecutor = new AgentLlmTurnExecutor({
                   providerClient: input.providerClient,
                   model: input.model,
@@ -186,7 +230,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   conversationId: input.conversationId,
                   messages: conversationMessages,
                   branchId: input.branchId,
-                  sourceUserMessageId: input.sourceUserMessageId,
+                  sourceUserMessageId: currentSourceUserMessageId,
                   branchLabel: input.branchLabel,
                   compaction: this.compactionState,
                   enableTools: this.loopConfig.enableTools,
@@ -203,10 +247,28 @@ export class NativeAgentRuntime implements AgentRuntime {
                     baseInjections: input.contextualInjections,
                     messages: conversationMessages,
                   }),
-                  runtimeModePrompt: input.runtimeModePrompt,
+                  toolCapabilityMode: input.toolCapabilityMode,
                   transientRequestMessages: autoContextCompactionNotice
-                    ? [autoContextCompactionNotice]
-                    : undefined,
+                    ? [
+                        autoContextCompactionNotice,
+                        ...(resumedMessageForTurn
+                          ? [
+                              {
+                                role: 'user' as const,
+                                content: ASSISTANT_CONTINUATION_PROMPT,
+                              },
+                            ]
+                          : []),
+                      ]
+                    : resumedMessageForTurn
+                      ? [
+                          {
+                            role: 'user' as const,
+                            content: ASSISTANT_CONTINUATION_PROMPT,
+                          },
+                        ]
+                      : undefined,
+                  resumeAssistantMessage: resumedMessageForTurn,
                   geminiTools: input.geminiTools,
                   systemPromptOverride: input.systemPromptOverride,
                   onAssistantMessage: (assistantMessage) => {
@@ -248,7 +310,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   toolCallRequests,
                   conversationId: input.conversationId,
                   branchId: input.branchId,
-                  sourceUserMessageId: input.sourceUserMessageId,
+                  sourceUserMessageId: currentSourceUserMessageId,
                   branchModelId: input.model.id,
                   branchLabel:
                     input.branchLabel ??
@@ -268,7 +330,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                       toolMessage: initialToolMessage,
                       conversationId: input.conversationId,
                       conversationMessages: [
-                        ...requestMessages,
+                        ...ongoingRequestMessages,
                         ...this.messages,
                       ],
                       conversationCompaction: this.compactionState,
@@ -277,12 +339,21 @@ export class NativeAgentRuntime implements AgentRuntime {
                       debugTraceId: currentDebugTraceId,
                     }),
                 )
+                const readGuardedToolResult = applyRepeatedReadCallGuard({
+                  state: repeatedReadCallGuardState,
+                  toolMessage: completedToolMessage,
+                })
+                repeatedReadCallGuardState = readGuardedToolResult.state
+
                 const guardedToolResult = applyRepeatedToolFailureGuard({
                   state: repeatedToolFailureGuardState,
-                  toolMessage: completedToolMessage,
+                  toolMessage: readGuardedToolResult.toolMessage,
                 })
                 repeatedToolFailureGuardState = guardedToolResult.state
                 const guardedToolMessage = guardedToolResult.toolMessage
+                const forceStopReason =
+                  readGuardedToolResult.forceStopReason ??
+                  guardedToolResult.forceStopReason
 
                 this.replaceToolMessage(guardedToolMessage)
                 this.notifySubscribers()
@@ -294,7 +365,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   this.notifySubscribers()
 
                   const conversationMessages = [
-                    ...requestMessages,
+                    ...ongoingRequestMessages,
                     ...this.messages,
                   ]
 
@@ -354,7 +425,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                               baseInjections: input.contextualInjections,
                               messages: conversationMessages,
                             }),
-                            runtimeModePrompt: input.runtimeModePrompt,
+                            toolCapabilityMode: input.toolCapabilityMode,
                           })
                       } catch (error) {
                         console.warn(
@@ -401,7 +472,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     type: 'tool_result',
                     runId,
                     hasPendingTools: false,
-                    forceStopReason: guardedToolResult.forceStopReason,
+                    forceStopReason,
                   })
                   return
                 }
@@ -411,7 +482,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   runId,
                   hasPendingTools:
                     toolGateway.hasPendingToolCalls(guardedToolMessage),
-                  forceStopReason: guardedToolResult.forceStopReason,
+                  forceStopReason,
                 })
                 return
               }
@@ -513,6 +584,8 @@ export class NativeAgentRuntime implements AgentRuntime {
   private async runSingleTurnFastPath(
     input: AgentRuntimeRunInput,
     abortSignal: AbortSignal,
+    requestMessages: ChatMessage[],
+    resumeAssistantMessage?: ChatAssistantMessage,
   ): Promise<void> {
     const llmTurnExecutor = new AgentLlmTurnExecutor({
       providerClient: input.providerClient,
@@ -520,10 +593,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       requestContextBuilder: input.requestContextBuilder,
       mcpManager: input.mcpManager,
       conversationId: input.conversationId,
-      messages: [
-        ...(input.requestMessages ?? input.messages),
-        ...this.messages,
-      ],
+      messages: [...requestMessages, ...this.messages],
       enableTools: false,
       includeBuiltinTools: false,
       apiType: input.apiType,
@@ -534,9 +604,18 @@ export class NativeAgentRuntime implements AgentRuntime {
       reasoningLevel: input.reasoningLevel,
       requestParams: input.requestParams,
       contextualInjections: input.contextualInjections,
-      runtimeModePrompt: input.runtimeModePrompt,
+      toolCapabilityMode: input.toolCapabilityMode,
       geminiTools: input.geminiTools,
       systemPromptOverride: input.systemPromptOverride,
+      transientRequestMessages: resumeAssistantMessage
+        ? [
+            {
+              role: 'user',
+              content: ASSISTANT_CONTINUATION_PROMPT,
+            },
+          ]
+        : undefined,
+      resumeAssistantMessage,
       onAssistantMessage: (assistantMessage) => {
         this.upsertAssistantMessage(assistantMessage)
         this.notifySubscribers()
@@ -619,6 +698,56 @@ export class NativeAgentRuntime implements AgentRuntime {
           : toolCall,
       ),
     }
+  }
+
+  /**
+   * Locate a `tool` message that contains the given `toolCallId`. Returns the
+   * containing message and the tool call entry for read access. Used by the
+   * subagent approval routing path to bridge service-level approve/reject
+   * actions back into a child runtime.
+   */
+  findToolCall(toolCallId: string): {
+    toolMessage: ChatToolMessage
+    toolCall: { request: ToolCallRequest; response: ToolCallResponse }
+  } | null {
+    for (const message of this.messages) {
+      if (message.role !== 'tool') continue
+      const toolCall = message.toolCalls.find(
+        (entry) => entry.request.id === toolCallId,
+      )
+      if (toolCall) {
+        return { toolMessage: message, toolCall }
+      }
+    }
+    return null
+  }
+
+  /**
+   * Replace the response on a single tool call inside this runtime's messages.
+   * Notifies subscribers so the SubagentCard / parent UI re-renders.
+   *
+   * Used by the subagent approval routing path:
+   *   - approve: flip PendingApproval → Running → Success/Error
+   *   - reject: flip PendingApproval → Rejected
+   *   - timeout: flip PendingApproval → Rejected with structured error
+   */
+  setToolCallResponse(toolCallId: string, response: ToolCallResponse): boolean {
+    let didPatch = false
+    this.messages = this.messages.map((message) => {
+      if (message.role !== 'tool') return message
+      let messageUpdated = false
+      const nextToolCalls = message.toolCalls.map((toolCall) => {
+        if (toolCall.request.id !== toolCallId) return toolCall
+        didPatch = true
+        messageUpdated = true
+        return { ...toolCall, response }
+      })
+      return messageUpdated ? { ...message, toolCalls: nextToolCalls } : message
+    })
+    if (didPatch) {
+      this.notifySubscribers()
+    }
+    return didPatch
   }
 
   private mergeAbortSignals(

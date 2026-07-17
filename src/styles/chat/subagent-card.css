@@ -2,16 +2,26 @@
 
 .yolo-subagent-card {
   display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
-  margin: var(--size-4-2) 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--size-2-2);
+  margin: var(--size-4-2) 0 var(--size-4-4);
   border: 0;
   border-radius: 0;
   background: transparent;
   overflow: visible;
 }
 
+.yolo-subagent-card__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
 button.yolo-subagent-card__main {
+  all: unset;
+  box-sizing: border-box;
   appearance: none;
   display: flex;
   align-items: flex-start;
@@ -51,6 +61,54 @@ button.yolo-subagent-card__main:focus-visible {
 .yolo-subagent-card__icon svg {
   width: 14px;
   height: 14px;
+}
+
+.yolo-dotm-square-4 {
+  --yolo-dotm-square-4-dot-size: 2px;
+  --yolo-dotm-square-4-gap: 1px;
+  --yolo-dotm-square-4-cycle: 1.35s;
+  --yolo-dotm-square-4-opacity-base: 0.16;
+  --yolo-dotm-square-4-opacity-mid: 0.48;
+  --yolo-dotm-square-4-opacity-peak: 0.96;
+  display: inline-grid;
+  grid-template-columns: repeat(5, var(--yolo-dotm-square-4-dot-size));
+  grid-template-rows: repeat(5, var(--yolo-dotm-square-4-dot-size));
+  gap: var(--yolo-dotm-square-4-gap);
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+}
+
+.yolo-dotm-square-4__dot {
+  width: var(--yolo-dotm-square-4-dot-size);
+  height: var(--yolo-dotm-square-4-dot-size);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: var(--yolo-dotm-square-4-opacity-base);
+}
+
+.yolo-dotm-square-4__dot--outer {
+  animation: yolo-dotm-square-4-ring var(--yolo-dotm-square-4-cycle) linear
+    infinite;
+  animation-delay: calc(
+    var(--yolo-dotm-square-4-order) * -0.0625 * var(--yolo-dotm-square-4-cycle)
+  );
+}
+
+.yolo-dotm-square-4__dot--middle {
+  animation: yolo-dotm-square-4-ring var(--yolo-dotm-square-4-cycle) linear
+    infinite;
+  animation-delay: calc(
+    var(--yolo-dotm-square-4-order) * -0.125 * var(--yolo-dotm-square-4-cycle)
+  );
+}
+
+.yolo-dotm-square-4__dot--inactive {
+  visibility: hidden;
+  opacity: 0;
+  animation: none;
 }
 
 .yolo-subagent-card--running .yolo-subagent-card__icon {
@@ -132,6 +190,45 @@ button.yolo-subagent-card__abort-btn:focus-visible {
   background-color: var(--background-modifier-hover);
   box-shadow: none;
   color: var(--text-normal);
+}
+
+@keyframes yolo-dotm-square-4-ring {
+  0%,
+  100% {
+    opacity: calc(0.5 * var(--yolo-dotm-square-4-opacity-base));
+  }
+
+  10% {
+    opacity: var(--yolo-dotm-square-4-opacity-peak);
+  }
+
+  20% {
+    opacity: calc(
+      0.45 * var(--yolo-dotm-square-4-opacity-peak) + 0.45 *
+        var(--yolo-dotm-square-4-opacity-mid) + 0.1 *
+        var(--yolo-dotm-square-4-opacity-base)
+    );
+  }
+
+  30% {
+    opacity: calc(
+      0.2 * var(--yolo-dotm-square-4-opacity-peak) + 0.4 *
+        var(--yolo-dotm-square-4-opacity-mid) + 0.4 *
+        var(--yolo-dotm-square-4-opacity-base)
+    );
+  }
+
+  40% {
+    opacity: calc(0.875 * var(--yolo-dotm-square-4-opacity-base));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-dotm-square-4__dot--outer,
+  .yolo-dotm-square-4__dot--middle {
+    animation: none;
+    opacity: 0.72;
+  }
 }
 
 /* ── 详情弹窗 ── */
@@ -246,4 +343,142 @@ button.yolo-subagent-card__abort-btn:focus-visible {
 
 .yolo-subagent-detail-body .yolo-assistant-tool-message-group {
   margin: 0;
+}
+
+/* ── 紧凑审批列表（沿用 SubagentCard 的行式视觉） ── */
+
+.yolo-subagent-approval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  margin-left: calc(var(--size-2-3) + 16px);
+  min-width: 0;
+}
+
+.yolo-subagent-approval__items {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.yolo-subagent-approval__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  min-height: 24px;
+  min-width: 0;
+}
+
+.yolo-subagent-approval__item-text {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-subagent-approval__item-label {
+  flex-shrink: 0;
+  font-size: var(--font-ui-smaller);
+  font-family: var(--font-monospace);
+  color: var(--text-normal);
+}
+
+.yolo-subagent-approval__item-detail {
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-subagent-approval__item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  flex-shrink: 0;
+}
+
+button.yolo-subagent-approval__btn,
+button.yolo-subagent-approval__bulk-btn {
+  all: unset;
+  box-sizing: border-box;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 var(--size-2-3);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.yolo-subagent-approval__btn {
+  color: var(--text-muted);
+}
+
+button.yolo-subagent-approval__btn:hover,
+button.yolo-subagent-approval__btn:focus-visible {
+  background: var(--background-modifier-hover);
+}
+
+button.yolo-subagent-approval__btn:focus-visible,
+button.yolo-subagent-approval__bulk-btn:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+  outline-offset: -2px;
+}
+
+button.yolo-subagent-approval__btn--primary {
+  color: var(--text-accent);
+}
+
+button.yolo-subagent-approval__btn--primary:hover,
+button.yolo-subagent-approval__btn--primary:focus-visible {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent-hover);
+}
+
+button.yolo-subagent-approval__btn--ghost {
+  color: var(--text-muted);
+}
+
+button.yolo-subagent-approval__btn--ghost:hover,
+button.yolo-subagent-approval__btn--ghost:focus-visible {
+  color: var(--text-normal);
+}
+
+.yolo-subagent-approval__bulk {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-2-2);
+  padding-top: var(--size-2-1);
+}
+
+button.yolo-subagent-approval__bulk-btn {
+  color: var(--text-muted);
+}
+
+button.yolo-subagent-approval__bulk-btn--primary {
+  color: var(--text-accent);
+}
+
+button.yolo-subagent-approval__bulk-btn--primary:hover,
+button.yolo-subagent-approval__bulk-btn--primary:focus-visible {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent-hover);
+}
+
+button.yolo-subagent-approval__bulk-btn--ghost {
+  color: var(--text-muted);
+}
+
+button.yolo-subagent-approval__bulk-btn--ghost:hover,
+button.yolo-subagent-approval__bulk-btn--ghost:focus-visible {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }

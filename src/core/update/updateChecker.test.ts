@@ -1,13 +1,345 @@
+import { type RequestUrlResponse, requestUrl } from 'obsidian'
+
 import {
+  buildReleaseAssets,
+  checkForUpdate,
   compareVersions,
   normalizePluginVersion,
   parseChangelog,
+  parseLatestVersionFromVersionsJson,
+  parseReleaseAssets,
+  parseReleaseNoteVersion,
   splitReleaseNotesByLanguage,
 } from './updateChecker'
+
+const mockedRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>
+
+function createRequestUrlResponse(text: string): RequestUrlResponse {
+  let json: unknown = null
+  try {
+    json = JSON.parse(text) as unknown
+  } catch {
+    json = null
+  }
+
+  return {
+    status: 200,
+    headers: {},
+    arrayBuffer: new ArrayBuffer(0),
+    json,
+    text,
+  }
+}
+
+describe('parseLatestVersionFromVersionsJson', () => {
+  it('returns the highest normalized version key', () => {
+    expect(
+      parseLatestVersionFromVersionsJson(
+        JSON.stringify({
+          '1.5.9': '1.8.0',
+          '1.5.12.4': '1.8.0',
+          v1: 'ignored',
+          '1.5.12.5': '1.8.0',
+          next: 'ignored',
+        }),
+      ),
+    ).toBe('1.5.12.5')
+  })
+
+  it('returns null for invalid JSON or non-object payloads', () => {
+    expect(parseLatestVersionFromVersionsJson('not-json')).toBeNull()
+    expect(parseLatestVersionFromVersionsJson('[]')).toBeNull()
+  })
+})
+
+describe('checkForUpdate', () => {
+  beforeEach(() => {
+    mockedRequestUrl.mockReset()
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+    jest.restoreAllMocks()
+  })
+
+  it('checks versions.json and latest-release-note.md for release metadata', async () => {
+    const releaseNote = [
+      '## 1.5.12.5 Update Toast Notes ✨',
+      '',
+      '### ✨ New',
+      '',
+      '- **Release notes**: The toast can render the latest notes.',
+      '',
+      '---',
+      '',
+      '## 1.5.12.5 更新提示说明 ✨',
+      '',
+      '### ✨ 新增',
+      '',
+      '- **更新说明**：更新提示可以渲染最新说明。',
+    ].join('\n')
+
+    mockedRequestUrl
+      .mockResolvedValueOnce(
+        createRequestUrlResponse(
+          JSON.stringify({
+            '1.5.12.4': '1.8.0',
+            '1.5.12.5': '1.8.0',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(createRequestUrlResponse(releaseNote))
+
+    await expect(checkForUpdate('1.5.12.4')).resolves.toEqual({
+      hasUpdate: true,
+      latestVersion: '1.5.12.5',
+      releaseNotes: {
+        en: [
+          '## 1.5.12.5 Update Toast Notes ✨',
+          '',
+          '### ✨ New',
+          '',
+          '- **Release notes**: The toast can render the latest notes.',
+        ].join('\n'),
+        zh: [
+          '## 1.5.12.5 更新提示说明 ✨',
+          '',
+          '### ✨ 新增',
+          '',
+          '- **更新说明**：更新提示可以渲染最新说明。',
+        ].join('\n'),
+      },
+      releaseUrl:
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.5.12.5',
+      assets: buildReleaseAssets('1.5.12.5'),
+    })
+    expect(mockedRequestUrl).toHaveBeenNthCalledWith(1, {
+      url: 'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/versions.json',
+      method: 'GET',
+    })
+    expect(mockedRequestUrl).toHaveBeenNthCalledWith(2, {
+      url: 'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/latest-release-note.md',
+      method: 'GET',
+    })
+  })
+
+  it('does not fetch latest-release-note.md when there is no update', async () => {
+    mockedRequestUrl.mockResolvedValue(
+      createRequestUrlResponse(
+        JSON.stringify({
+          '1.5.12.4': '1.8.0',
+          '1.5.12.5': '1.8.0',
+        }),
+      ),
+    )
+
+    await expect(checkForUpdate('1.5.12.5')).resolves.toEqual({
+      hasUpdate: false,
+      latestVersion: '1.5.12.5',
+      releaseNotes: { en: null, zh: null },
+      releaseUrl:
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.5.12.5',
+      assets: buildReleaseAssets('1.5.12.5'),
+    })
+    expect(mockedRequestUrl).toHaveBeenCalledTimes(1)
+    expect(mockedRequestUrl).toHaveBeenCalledWith({
+      url: 'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/versions.json',
+      method: 'GET',
+    })
+  })
+
+  it('ignores latest-release-note.md when its heading version does not match latestVersion', async () => {
+    jest.useFakeTimers()
+    mockedRequestUrl
+      .mockResolvedValueOnce(
+        createRequestUrlResponse(
+          JSON.stringify({
+            '1.5.12.4': '1.8.0',
+            '1.5.12.5': '1.8.0',
+          }),
+        ),
+      )
+      .mockResolvedValue(
+        createRequestUrlResponse('## 1.5.12.4 Old Notes\n\n- stale'),
+      )
+
+    const result = checkForUpdate('1.5.12.4')
+    await jest.advanceTimersByTimeAsync(800)
+    await jest.advanceTimersByTimeAsync(2000)
+
+    await expect(result).resolves.toEqual({
+      hasUpdate: true,
+      latestVersion: '1.5.12.5',
+      releaseNotes: { en: null, zh: null },
+      releaseUrl:
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.5.12.5',
+      assets: buildReleaseAssets('1.5.12.5'),
+    })
+    expect(console.warn).toHaveBeenCalledWith(
+      '[YOLO] Plugin update release note fetch failed after 3 attempts: latest-release-note.md version 1.5.12.4 does not match 1.5.12.5.',
+    )
+    expect(mockedRequestUrl).toHaveBeenCalledTimes(4)
+  })
+
+  it('retries latest-release-note.md when the first fetch is stale', async () => {
+    jest.useFakeTimers()
+    const staleReleaseNote = '## 1.5.12.4 Old Notes\n\n- stale'
+    const freshReleaseNote = [
+      '## 1.5.12.5 Fresh Notes ✨',
+      '',
+      '### ✨ New',
+      '',
+      '- **Retry works**: The fresh release note is rendered.',
+    ].join('\n')
+
+    mockedRequestUrl
+      .mockResolvedValueOnce(
+        createRequestUrlResponse(
+          JSON.stringify({
+            '1.5.12.4': '1.8.0',
+            '1.5.12.5': '1.8.0',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(createRequestUrlResponse(staleReleaseNote))
+      .mockResolvedValueOnce(createRequestUrlResponse(freshReleaseNote))
+
+    const result = checkForUpdate('1.5.12.4')
+    await jest.advanceTimersByTimeAsync(800)
+
+    await expect(result).resolves.toEqual({
+      hasUpdate: true,
+      latestVersion: '1.5.12.5',
+      releaseNotes: {
+        en: freshReleaseNote,
+        zh: null,
+      },
+      releaseUrl:
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.5.12.5',
+      assets: buildReleaseAssets('1.5.12.5'),
+    })
+    expect(console.warn).not.toHaveBeenCalled()
+    expect(mockedRequestUrl).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns null when versions.json cannot be fetched', async () => {
+    mockedRequestUrl.mockRejectedValue(new Error('Request failed, status 403'))
+
+    await expect(checkForUpdate('1.5.12.4')).resolves.toBeNull()
+    expect(console.warn).toHaveBeenCalledWith(
+      '[YOLO] Plugin update check failed: Request failed, status 403',
+    )
+  })
+})
+
+describe('parseReleaseAssets', () => {
+  it('returns URLs and sizes when all three release assets are present', () => {
+    const result = parseReleaseAssets([
+      {
+        name: 'main.js',
+        browser_download_url: 'https://github.com/example/main.js',
+        size: 12345,
+      },
+      {
+        name: 'manifest.json',
+        browser_download_url: 'https://github.com/example/manifest.json',
+        size: 256,
+      },
+      {
+        name: 'styles.css',
+        browser_download_url: 'https://github.com/example/styles.css',
+        size: 4096,
+      },
+    ])
+    expect(result).toEqual({
+      mainJs: { url: 'https://github.com/example/main.js', size: 12345 },
+      manifestJson: {
+        url: 'https://github.com/example/manifest.json',
+        size: 256,
+      },
+      stylesCss: { url: 'https://github.com/example/styles.css', size: 4096 },
+    })
+  })
+
+  it('defaults missing size to 0', () => {
+    const result = parseReleaseAssets([
+      {
+        name: 'main.js',
+        browser_download_url: 'https://github.com/example/main.js',
+      },
+      {
+        name: 'manifest.json',
+        browser_download_url: 'https://github.com/example/manifest.json',
+      },
+      {
+        name: 'styles.css',
+        browser_download_url: 'https://github.com/example/styles.css',
+      },
+    ])
+    expect(result?.mainJs.size).toBe(0)
+  })
+
+  it('returns null when a required asset is missing', () => {
+    expect(
+      parseReleaseAssets([
+        {
+          name: 'main.js',
+          browser_download_url: 'https://github.com/example/main.js',
+        },
+      ]),
+    ).toBeNull()
+  })
+
+  it('returns null for non-array input', () => {
+    expect(parseReleaseAssets(undefined)).toBeNull()
+  })
+})
+
+describe('buildReleaseAssets', () => {
+  it('builds deterministic release asset URLs for a version', () => {
+    expect(buildReleaseAssets('v1.5.12.2')).toEqual({
+      mainJs: {
+        url: 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.5.12.2/main.js',
+        size: 0,
+      },
+      manifestJson: {
+        url: 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.5.12.2/manifest.json',
+        size: 0,
+      },
+      stylesCss: {
+        url: 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.5.12.2/styles.css',
+        size: 0,
+      },
+    })
+  })
+
+  it('returns null for an empty version', () => {
+    expect(buildReleaseAssets('')).toBeNull()
+  })
+})
 
 describe('normalizePluginVersion', () => {
   it('strips v prefix and trims whitespace', () => {
     expect(normalizePluginVersion(' v1.5.11.1 ')).toBe('1.5.11.1')
+  })
+})
+
+describe('parseReleaseNoteVersion', () => {
+  it('extracts the version from the first markdown heading', () => {
+    expect(
+      parseReleaseNoteVersion('Intro\n\n## v1.5.12.5 Update Notes ✨'),
+    ).toBe('1.5.12.5')
+  })
+
+  it('returns null when no heading starts with a version', () => {
+    expect(parseReleaseNoteVersion('## Update Notes')).toBeNull()
+  })
+
+  it('does not skip a non-version first heading', () => {
+    expect(
+      parseReleaseNoteVersion('## Update Notes\n\n## 1.5.12.5 Real Version'),
+    ).toBeNull()
   })
 })
 

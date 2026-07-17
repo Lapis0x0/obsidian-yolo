@@ -4,9 +4,14 @@ import type {
 } from '../../settings/schema/setting.types'
 
 import {
+  JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+  JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
   JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,
   JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   resolveJsSandboxOutputMaxBytes,
 } from './jsSandboxTool'
@@ -21,9 +26,9 @@ export type { JsSandboxSettings } from '../../settings/schema/setting.types'
 
 /**
  * Single source of truth for the global JS sandbox configuration. Every
- * consumer (LLM-facing description, capability gate, proxy handler, approval
- * mode resolver) reads through this helper so the model's view of `js_eval`
- * cannot drift from what the host actually executes.
+ * consumer (LLM-facing description, capability gate, proxy handler) reads
+ * through this helper so the model's view of `js_eval` cannot drift from what
+ * the host actually executes.
  *
  * Always returns a normalized view (see normalizeJsSandboxConfig) so any
  * legacy persisted state — e.g. `allowExternalScripts=true` saved before
@@ -53,18 +58,18 @@ export function normalizeJsSandboxConfig(
   return { ...config, allowFetch: true }
 }
 
-/**
- * Whether any extension capability (network / vault read / $db / external
- * scripts) is enabled. When true the host forces `require_approval` for
- * every agent that has `js_eval` enabled.
- */
-export function hasAnyJsSandboxCapEnabled(s: JsSandboxSettings): boolean {
-  return Boolean(
-    s.allowFetch ||
-      s.allowVaultRead ||
-      s.allowDbQuery ||
-      s.allowExternalScripts,
-  )
+function resolveVaultReadDescriptionMaxKb(s: JsSandboxSettings): number {
+  return typeof s.vaultReadMaxKb === 'number' && s.vaultReadMaxKb > 0
+    ? s.vaultReadMaxKb
+    : JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB
+}
+
+function describeVaultReadText(vaultCapKb: number): string {
+  return `await $vault.readText(path) -> string|null (path is vault-relative, NOT absolute under $vault.adapter.basePath; null only if the file is missing; folder paths and read failures throw; text above ${vaultCapKb} KB is truncated)`
+}
+
+function describeHtmlParsingUtils(): string {
+  return 'HTML parsing: await $utils.html.extract(html,{baseUrl?,maxTextChars?,maxItems?})->{title,lang,text,meta,headings:[{level,text}],links:[{text,href}],images:[{alt,src}]} (baseUrl resolves relative href/src); await $utils.html.select(html,cssSelector,{baseUrl?,limit?,includeHtml?})->[{tag,text,attrs,html?}]'
 }
 
 /**
@@ -77,14 +82,13 @@ export function hasAnyJsSandboxCapEnabled(s: JsSandboxSettings): boolean {
  */
 export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
   const enabled: string[] = []
+  const htmlParsingEnabled =
+    s.allowFetch || s.allowExternalScripts || s.allowBrowserRead
 
   if (s.allowVaultRead) {
-    const vaultCapKb =
-      typeof s.vaultReadMaxKb === 'number' && s.vaultReadMaxKb > 0
-        ? s.vaultReadMaxKb
-        : JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB
+    const vaultCapKb = resolveVaultReadDescriptionMaxKb(s)
     enabled.push(
-      `await $vault.readText(path) -> string|null (path is vault-relative, NOT absolute under $vault.adapter.basePath; null only if the file is missing; folder paths and read failures throw; text above ${vaultCapKb} KB is truncated); await $vault.readBinary(path) -> {base64,mimeType,byteLength}|null (same path/null/throw semantics; files above ${vaultCapKb} KB are refused; for Blob: \`new Blob([Uint8Array.from(atob(base64), c=>c.charCodeAt(0))], {type:mimeType})\`)`,
+      `await $vault.list(path?, {recursive?: boolean}) -> Array<{kind:"dir"|"file",path,name,size?,mtime?}> (path defaults to "/", if provided path must be a string, direct children unless recursive true; hard safety cap ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries; aggregate in JS, do NOT return the full list). ${describeVaultReadText(vaultCapKb)}; await $vault.readBinary(path) -> {base64,mimeType,byteLength}|null (same path/null/throw semantics; files above ${vaultCapKb} KB are refused; for Blob: \`new Blob([Uint8Array.from(atob(base64), c=>c.charCodeAt(0))], {type:mimeType})\`)`,
     )
   }
 
@@ -105,9 +109,20 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
     enabled.push(
       `Network: fetch/XMLHttpRequest/WebSocket are browser-native (CORS/CSP apply). For cross-origin reads: \`const data = await (await $fetch(url, {method?,headers?,body?,contentType?})).text()\`. Host-routed, ${fetchCapKb} KB cap, max ${fetchMaxConcurrent} concurrent calls per execution (excess throw)`,
     )
+  }
+
+  if (s.allowBrowserRead) {
+    const browserCapKb =
+      typeof s.browserReadMaxKb === 'number' && s.browserReadMaxKb > 0
+        ? s.browserReadMaxKb
+        : JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB
     enabled.push(
-      'HTML parsing: await $utils.html.extract(html,{baseUrl?,maxTextChars?,maxItems?})->{title,lang,text,meta,headings:[{level,text}],links:[{text,href}],images:[{alt,src}]} (baseUrl resolves relative href/src); await $utils.html.select(html,cssSelector,{baseUrl?,limit?,includeHtml?})->[{tag,text,attrs,html?}]',
+      `Browser page HTML: await $browser.readHtml(pageId) -> {url,title,html,byteLength}|null (pageId must be copied exactly from <browser_context>; reads document.documentElement.outerHTML from an already-open Obsidian web page; does not open or fetch URLs; returns null if the page is no longer open; pages above ${browserCapKb} KB are refused; return aggregates or small excerpts unless the user explicitly needs raw HTML).`,
     )
+  }
+
+  if (htmlParsingEnabled) {
+    enabled.push(describeHtmlParsingUtils())
   }
 
   if (s.allowDbQuery) {
@@ -115,13 +130,24 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
       typeof s.dbQueryMaxLimit === 'number' &&
       Number.isFinite(s.dbQueryMaxLimit) &&
       s.dbQueryMaxLimit > 0
-        ? Math.min(100, Math.floor(s.dbQueryMaxLimit))
-        : 20
+        ? Math.min(
+            JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
+            Math.floor(s.dbQueryMaxLimit),
+          )
+        : JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT
+    const dbDefaultLimit = Math.min(
+      JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+      dbLimit,
+    )
+    const vaultCapKb = resolveVaultReadDescriptionMaxKb(s)
+    const textReadHint = s.allowVaultRead
+      ? 'For full content of a known result path, use the vault text reader described above.'
+      : `${describeVaultReadText(vaultCapKb)} (available for full Markdown/text reads by known result path).`
     const binaryHint = s.allowVaultRead
       ? 'Do not use $db for images/PDF/audio/binary; use $vault.readBinary(path) for those.'
       : 'Do not use $db for images/PDF/audio/binary — those are out of scope.'
     enabled.push(
-      `Text only, markdown-focused. await $db.search(query, limit?) -> [{path,content,similarity,...}] (RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; up to ${dbLimit} results; throws when the vault has no index). await $db.find(keyword, limit?) -> [{path,excerpt}] (best-effort case-insensitive keyword scan over markdown files only; scans up to 500 files, skips files larger than 256 KB; returns [] for empty keyword, no match, or read failures — does not throw). await $db.get(path) -> {content,frontmatter}|null (null if the path is missing, points to a folder, or the read fails — null does NOT necessarily mean missing). ${binaryHint}`,
+      `Text only, markdown-focused. await $db.search(query, limit?) -> [{path,content,similarity,...}] (knowledge-base RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; default ${dbDefaultLimit} results, requested limit is clamped to ${dbLimit}; throws when the vault has no index). ${textReadHint} ${binaryHint}`,
     )
   }
 
@@ -151,7 +177,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
   // exhaustive scans over a known date/path set).
   const vaultVsDbLine =
     s.allowVaultRead && s.allowDbQuery
-      ? ' $vault vs $db: use $vault.readText(path) for exact bytes at known paths (raw text, missing-file checks, exhaustive scans); use $db.find/$db.search to discover files by keyword/similarity. Compose: $db locates, $vault reads.'
+      ? ' $vault vs $db: use the vault APIs for exact path-based scans (raw text, missing-file checks, exhaustive scans); use $db.search to discover files by similarity.'
       : ''
 
   const outputCapBytes = resolveJsSandboxOutputMaxBytes(s.outputMaxKb)

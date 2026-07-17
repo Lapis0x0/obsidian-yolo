@@ -1,20 +1,36 @@
-import { ChatModel } from '../../types/chat-model.types'
+import type { ChatModel } from '../../types/chat-model.types'
+import type {
+  LLMRequestNonStreaming,
+  LLMRequestStreaming,
+} from '../../types/llm/request'
+import type {
+  LLMResponseNonStreaming,
+  LLMResponseStreaming,
+} from '../../types/llm/response'
+import type { LLMProvider } from '../../types/provider.types'
 
 import { BaseLLMProvider } from './base'
 
 // Concrete subclass purely for exercising the protected helper.
-class TestProvider extends BaseLLMProvider<never> {
-  generateResponse(): any {
+class TestProvider extends BaseLLMProvider<LLMProvider> {
+  generateResponse(
+    _model: ChatModel,
+    _request: LLMRequestNonStreaming,
+  ): Promise<LLMResponseNonStreaming> {
     throw new Error('not used')
   }
 
-  streamResponse(): any {
+  streamResponse(
+    _model: ChatModel,
+    _request: LLMRequestStreaming,
+  ): Promise<AsyncIterable<LLMResponseStreaming>> {
     throw new Error('not used')
   }
 
-  getEmbedding(): any {
+  getEmbedding(): Promise<number[]> {
     throw new Error('not used')
   }
+
   public exposeApplyCustomModelParameters<T extends Record<string, unknown>>(
     model: ChatModel,
     request: T,
@@ -33,7 +49,57 @@ const makeModel = (
     customParameters,
   }) as ChatModel
 
-const provider = new TestProvider(null as never)
+const makeProvider = (
+  additionalSettings?: Record<string, unknown>,
+): LLMProvider => ({
+  id: 'p',
+  presetType: 'openai-compatible',
+  apiType: 'openai-compatible',
+  baseUrl: 'https://example.com/v1',
+  additionalSettings,
+})
+
+const provider = new TestProvider(makeProvider())
+
+describe('resolveResponseExecutionMode', () => {
+  it('passes non-streaming provider mode through even when transport is obsidian', () => {
+    const provider = new TestProvider(
+      makeProvider({
+        requestTransportMode: 'obsidian',
+        responseStreamingMode: 'non-streaming',
+      }),
+    )
+
+    expect(provider.resolveResponseExecutionMode('incremental')).toBe(
+      'non-streaming',
+    )
+  })
+
+  it('keeps auto provider mode on the existing obsidian buffered-streaming path', () => {
+    const provider = new TestProvider(
+      makeProvider({
+        requestTransportMode: 'obsidian',
+      }),
+    )
+
+    expect(provider.resolveResponseExecutionMode('incremental')).toBe(
+      'buffered-streaming',
+    )
+  })
+
+  it('treats invalid provider streaming mode values as auto', () => {
+    const provider = new TestProvider(
+      makeProvider({
+        requestTransportMode: 'obsidian',
+        responseStreamingMode: 'invalid',
+      }),
+    )
+
+    expect(provider.resolveResponseExecutionMode('incremental')).toBe(
+      'buffered-streaming',
+    )
+  })
+})
 
 describe('applyCustomModelParameters', () => {
   it('returns request as-is when no custom parameters configured', () => {

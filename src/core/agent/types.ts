@@ -2,6 +2,7 @@ import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
   ChatMessage,
+  ChatUserMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
 import { LLMProvider, LLMProviderApiType } from '../../types/provider.types'
@@ -9,10 +10,12 @@ import { ReasoningLevel } from '../../types/reasoning'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
+import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import { McpManager } from '../mcp/mcpManager'
 
 import type { CitationRegistry } from './citationRegistry'
 import type { AutoContextCompactionChatOptions } from './compaction'
+import type { ToolCapabilityMode } from './tool-capability-prompt'
 
 export type AgentRunContext = {
   citationRegistry: CitationRegistry
@@ -25,6 +28,11 @@ export type AgentRuntimeSnapshot = {
 }
 
 export type AgentRuntimeSubscribe = (snapshot: AgentRuntimeSnapshot) => void
+
+export type AgentPendingUserMessageDrain = {
+  messages: ChatUserMessage[]
+  sourceUserMessageId: string
+}
 
 export type AgentRuntimeRunInput = {
   providerClient: BaseLLMProvider<LLMProvider>
@@ -42,13 +50,15 @@ export type AgentRuntimeRunInput = {
   branchId?: string
   sourceUserMessageId?: string
   branchLabel?: string
+  /** Resume an interrupted assistant message during the first LLM turn. */
+  continueAssistantMessageId?: string
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
   compaction?: ChatConversationCompactionLike | null
   abortSignal?: AbortSignal
   reasoningLevel?: ReasoningLevel
   requestParams?: {
-    stream?: boolean
+    deliveryMode?: ResponseDeliveryMode
     temperature?: number
     top_p?: number
     max_tokens?: number
@@ -65,6 +75,12 @@ export type AgentRuntimeRunInput = {
       disclosureMode?: 'always' | 'on_demand'
     }
   >
+  toolServerPreferences?: Record<
+    string,
+    {
+      approvalMode?: 'full_access' | 'require_approval'
+    }
+  >
   workspaceScope?: {
     enabled: boolean
     include: string[]
@@ -72,7 +88,7 @@ export type AgentRuntimeRunInput = {
   }
   allowedSkillPaths?: string[]
   contextualInjections?: ContextualInjection[]
-  runtimeModePrompt?: string
+  toolCapabilityMode?: ToolCapabilityMode
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
@@ -84,12 +100,13 @@ export type AgentRuntimeRunInput = {
   /**
    * Optional hook called at every `llm_request` boundary inside the runtime
    * loop. Returns user messages that should be merged into the response stream
-   * before the next LLM turn. Used to inject mid-run user messages enqueued by
-   * the service layer. Returning an empty array is a no-op.
+   * before the next LLM turn together with the visual-turn anchor they create.
+   * Used to inject mid-run user messages enqueued by the service layer.
+   * Returning null is a no-op.
    *
    * Not invoked by the single-turn fast path (single LLM call, no boundary).
    */
-  drainPendingUserMessages?: () => ChatMessage[]
+  drainPendingUserMessages?: () => AgentPendingUserMessageDrain | null
   /**
    * Per-run side-channel for state that flows down to tool execution but isn't
    * part of the LLM-visible message stream (e.g. the citation registry that
@@ -131,7 +148,7 @@ export type AgentWorkerInbound =
       type: 'tool_result'
       runId: string
       hasPendingTools: boolean
-      forceStopReason?: 'repeated_tool_failure'
+      forceStopReason?: 'repeated_tool_failure' | 'repeated_read_call'
     }
   | {
       type: 'abort'
@@ -155,6 +172,7 @@ export type AgentWorkerOutbound =
         | 'completed'
         | 'max_iterations'
         | 'repeated_tool_failure'
+        | 'repeated_read_call'
         | 'aborted'
     }
   | {

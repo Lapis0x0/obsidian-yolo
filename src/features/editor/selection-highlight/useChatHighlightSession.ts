@@ -50,16 +50,6 @@ function collectSelectionHighlightIds(
   return ids
 }
 
-function collectStickyHighlightIds(mentionables: Mentionable[]): Set<string> {
-  const ids = new Set<string>()
-  for (const m of mentionables) {
-    if (m.type !== 'block') continue
-    if (m.source !== 'selection-pinned') continue
-    if (m.highlightId) ids.add(m.highlightId)
-  }
-  return ids
-}
-
 function dispatchReconcile(activeIds: Set<string>): void {
   selectionHighlightController.reconcileActiveIds(activeIds)
   pdfSelectionHighlightController.reconcileActiveIds(activeIds)
@@ -67,12 +57,12 @@ function dispatchReconcile(activeIds: Set<string>): void {
 
 export type UseChatHighlightSessionResult = {
   /**
-   * Promote the current input / in-place-edit pinned highlight ids into the
-   * sticky set.  Call synchronously right before clearing the input on send
-   * so sent mentions keep their editor highlight until the next editor
-   * interaction.
+   * Promote the selection highlight ids from the user message being submitted
+   * into the sticky set.  Call synchronously right before clearing the input
+   * on send so sent mentions keep their editor highlight until the next editor
+   * interaction, without making unsent mentions sticky.
    */
-  commitSentPinnedHighlights: () => void
+  commitSentSelectionHighlights: (mentionables: Mentionable[]) => void
   /** Drop committed sticky ids when their mention is deleted. */
   releaseHighlightIds: (ids: Iterable<string>) => void
 }
@@ -93,17 +83,18 @@ export type UseChatHighlightSessionResult = {
  *   still sits in those surfaces, its highlight id is kept alive via
  *   `liveIds` alone — deleting the mention reconciles immediately.
  *
- * - Pinned ids enter the session-scoped sticky set only when the chat calls
- *   `commitSentPinnedHighlights` on send.  That is what lets a highlight
- *   survive after the mention leaves the input box without treating an
- *   in-input pinned mention as already sticky (which would block deletion).
+ * - Selection ids enter the session-scoped sticky set only when the chat calls
+ *   `commitSentSelectionHighlights` with the message being submitted.  That is
+ *   what lets a highlight survive after the mention leaves the input box
+ *   without treating an unsent mention as already sticky (which would block
+ *   deletion).
  *
  * - First `pointerdown` / `focusin` on any markdown / pdf workspace leaf
- *   outside the chat view container resets the sticky set to the current
- *   pinned ids and reconciles immediately.  This drops every previously
- *   committed pinned highlight, while keeping any live mention that still
- *   sits in the input box.  The next pinned mention the user creates begins a
- *   fresh sticky cycle — the lifecycle is loop-shaped, not one-shot.
+ *   outside the chat view container clears sticky ids and reconciles
+ *   immediately.  This drops every previously committed highlight, while
+ *   keeping any live mention that still sits in the input box.  The next sent
+ *   mention begins a fresh sticky cycle — the lifecycle is loop-shaped, not
+ *   one-shot.
  *
  * - `releaseHighlightIds` removes explicit ids from sticky when a mention is
  *   deleted from history (e.g. delete-from-all), so committed highlights do
@@ -136,18 +127,6 @@ export function useChatHighlightSession({
     return ids
   }, [inputMentionables, focusedHistoricalMentionables])
 
-  const stickyCandidateIds = useMemo(() => {
-    const ids = collectStickyHighlightIds(inputMentionables)
-    if (focusedHistoricalMentionables) {
-      for (const id of collectStickyHighlightIds(
-        focusedHistoricalMentionables,
-      )) {
-        ids.add(id)
-      }
-    }
-    return ids
-  }, [inputMentionables, focusedHistoricalMentionables])
-
   const liveIdsKey = useMemo(
     () => Array.from(liveIds).sort().join('|'),
     [liveIds],
@@ -155,20 +134,21 @@ export function useChatHighlightSession({
 
   const stickyIdsRef = useRef<Set<string>>(new Set())
   const liveIdsRef = useRef<Set<string>>(liveIds)
-  const stickyCandidateIdsRef = useRef<Set<string>>(stickyCandidateIds)
   liveIdsRef.current = liveIds
-  stickyCandidateIdsRef.current = stickyCandidateIds
 
   const reconcileCurrent = useCallback(() => {
     dispatchReconcile(new Set([...stickyIdsRef.current, ...liveIdsRef.current]))
   }, [])
 
-  const commitSentPinnedHighlights = useCallback(() => {
-    for (const id of stickyCandidateIdsRef.current) {
-      stickyIdsRef.current.add(id)
-    }
-    reconcileCurrent()
-  }, [reconcileCurrent])
+  const commitSentSelectionHighlights = useCallback(
+    (mentionables: Mentionable[]) => {
+      for (const id of collectSelectionHighlightIds(mentionables)) {
+        stickyIdsRef.current.add(id)
+      }
+      reconcileCurrent()
+    },
+    [reconcileCurrent],
+  )
 
   const releaseHighlightIds = useCallback(
     (ids: Iterable<string>) => {
@@ -216,10 +196,9 @@ export function useChatHighlightSession({
       const container = containerRef.current
       if (container && container.contains(target)) return
       if (!target.closest(EDITOR_LEAF_SELECTOR)) return
-      // Reset sticky to the current pinned ids.  Sync selections still render
-      // through liveIds, but disappear as soon as their mention is removed.
-      const pinnedOnly = new Set(stickyCandidateIdsRef.current)
-      stickyIdsRef.current = pinnedOnly
+      // Returning to a real editor ends the sent-message sticky cycle.  Live
+      // input / in-place-edit mentions still render through liveIds.
+      stickyIdsRef.current = new Set()
       reconcileCurrent()
     }
     document.addEventListener('pointerdown', handle, true)
@@ -239,5 +218,5 @@ export function useChatHighlightSession({
     }
   }, [])
 
-  return { commitSentPinnedHighlights, releaseHighlightIds }
+  return { commitSentSelectionHighlights, releaseHighlightIds }
 }

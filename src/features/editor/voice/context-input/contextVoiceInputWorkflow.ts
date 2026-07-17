@@ -1441,7 +1441,7 @@ export class ContextVoiceInputWorkflow {
       model,
       request,
       signal: combinedSignal,
-      stream: false,
+      deliveryMode: 'buffered',
       primaryRequestTimeoutMs:
         settings.continuationOptions?.primaryRequestTimeoutMs,
       streamFallbackRecoveryEnabled: false,

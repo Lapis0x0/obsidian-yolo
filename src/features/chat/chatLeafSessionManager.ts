@@ -27,6 +27,7 @@ export type PendingChatOpenPayload = {
 
 type ChatLeafSummary = {
   currentConversationId?: string
+  currentConversationPersisted?: boolean
   currentConversationTitle?: string
   currentModelId?: string
   currentOverrides?: ConversationOverrideSettings

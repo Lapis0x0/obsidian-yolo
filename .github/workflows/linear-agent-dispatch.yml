@@ -1,0 +1,153 @@
+name: Linear Public Agent Dispatch
+
+on:
+  repository_dispatch:
+    types: [linear-public-agent]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Manual test command for Codex'
+        required: false
+        type: string
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Restore Codex config
+        env:
+          YOLO_CODEX_CONFIG_TOML: ${{ secrets.YOLO_CODEX_CONFIG_TOML }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.codex"
+          test -n "$YOLO_CODEX_CONFIG_TOML"
+          printf '%s\n' "$YOLO_CODEX_CONFIG_TOML" > "$HOME/.codex/config.toml"
+          chmod 600 "$HOME/.codex/config.toml"
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          npm install -g @openai/codex@0.139.0
+          codex --version
+          gh --version | head -1
+
+      - name: Configure Linear MCP
+        run: |
+          set -euo pipefail
+          codex mcp remove linear >/dev/null 2>&1 || true
+          codex mcp add linear \
+            --url https://mcp.linear.app/mcp \
+            --bearer-token-env-var LINEAR_MCP_TOKEN
+
+      - name: Configure GitHub identity
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "lapis0x0-bot"
+          git config --global user.email "lapis0x0-bot@users.noreply.github.com"
+          gh auth setup-git
+          gh auth status
+
+      - name: Build prompt
+        env:
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          cp .github/prompts/linear-public-agent.md /tmp/yolo-linear-agent-prompt.md
+          {
+            printf '\n\n<linear-agent-payload>\n'
+            jq -n \
+              --arg event_name "${{ github.event_name }}" \
+              --arg repository "${{ github.repository }}" \
+              --arg manual_command "${{ inputs.command || '' }}" \
+              --argjson payload "$PAYLOAD" \
+              '{
+                event_name: $event_name,
+                repository: $repository,
+                manualCommand: $manual_command,
+                payload: $payload
+              }'
+            printf '\n</linear-agent-payload>\n'
+          } >> /tmp/yolo-linear-agent-prompt.md
+
+      - name: Run Codex public agent
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+          LINEAR_MCP_TOKEN: ${{ secrets.LINEAR_MCP_TOKEN }}
+        run: |
+          set -euo pipefail
+          codex exec \
+            --model gpt-5.5 \
+            --sandbox danger-full-access \
+            --cd "$GITHUB_WORKSPACE" \
+            - < /tmp/yolo-linear-agent-prompt.md
+
+      - name: Post Linear agent response
+        env:
+          CALLBACK_TOKEN: ${{ secrets.LINEAR_AGENT_CALLBACK_TOKEN }}
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          if [[ ! -s /tmp/linear-agent-response.md ]]; then
+            echo "No Linear response file found; skipping callback."
+            exit 0
+          fi
+
+          jq -n \
+            --arg mode "public" \
+            --arg agent_session_id "$(jq -r '.agentSessionId // empty' <<<"$PAYLOAD")" \
+            --rawfile body /tmp/linear-agent-response.md \
+            '{mode: $mode, agentSessionId: $agent_session_id, body: $body}' \
+            > /tmp/linear-agent-callback.json
+
+          test -n "$(jq -r '.agentSessionId' /tmp/linear-agent-callback.json)"
+          curl -fsS \
+            -H "Authorization: Bearer $CALLBACK_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/linear-agent-callback.json \
+            https://yolo-linear-agent.shizhiyun.workers.dev/linear/agent/callback
+          touch /tmp/linear-agent-response-posted
+
+      - name: Post Linear failure notice
+        if: ${{ failure() }}
+        env:
+          CALLBACK_TOKEN: ${{ secrets.LINEAR_AGENT_CALLBACK_TOKEN }}
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ -f /tmp/linear-agent-response-posted ]]; then
+            echo "Linear response was already posted; skipping failure callback."
+            exit 0
+          fi
+
+          agent_session_id="$(jq -r '.agentSessionId // empty' <<<"$PAYLOAD")"
+          test -n "$agent_session_id"
+
+          jq -n \
+            --arg mode "public" \
+            --arg agent_session_id "$agent_session_id" \
+            --arg body "执行失败了。GitHub Actions run: $RUN_URL" \
+            '{mode: $mode, agentSessionId: $agent_session_id, body: $body}' \
+            > /tmp/linear-agent-failure-callback.json
+
+          if ! curl -fsS \
+            -H "Authorization: Bearer $CALLBACK_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/linear-agent-failure-callback.json \
+            https://yolo-linear-agent.shizhiyun.workers.dev/linear/agent/callback; then
+            echo "Failed to post Linear failure notice."
+          fi

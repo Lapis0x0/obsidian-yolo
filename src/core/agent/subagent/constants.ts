@@ -17,10 +17,18 @@ Guidelines:
 - If information is insufficient, state the gaps and uncertainty explicitly.
 - Prefer focused research, inspection, summarization, or second-opinion work within the task boundary.`
 
-/** Tools blocked for every child subagent run (runtime-enforced). */
+/**
+ * Baseline tools blocked for every child subagent run regardless of settings:
+ * `delegate_subagent` (no recursive subagent dispatch) and `ask_user_question`
+ * (no UI surface to render the prompt). These are runtime-enforced.
+ *
+ * Tools that merely require approval (`js_eval` with high-risk caps, `fs_edit`
+ * in review mode, etc.) are NOT blocked here — their approval requests are
+ * routed to the parent conversation's UI (the SubagentCard renders an inline
+ * approval block). See `docs/plans/2026-06-18-subagent-tool-approval-routing.md`.
+ */
 export const SUBAGENT_BLOCKED_TOOL_SHORT_NAMES: readonly string[] = [
   DELEGATE_SUBAGENT_TOOL_SHORT_NAME,
-  'terminal_command',
   'ask_user_question',
 ]
 

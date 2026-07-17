@@ -18,7 +18,6 @@ import {
   useState,
 } from 'react'
 import type { JSX as ReactJSX } from 'react/jsx-runtime'
-import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../../../contexts/language-context'
 import {
@@ -26,6 +25,10 @@ import {
   humanizeSkillName,
 } from '../../../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../../../core/snippets/snippetsManager'
+import {
+  CascadingTypeaheadItemProps,
+  useCascadingTypeaheadMenu,
+} from '../shared/CascadingTypeaheadMenu'
 import { MenuOption } from '../shared/LexicalMenu'
 import {
   LexicalTypeaheadMenuPlugin,
@@ -124,18 +127,12 @@ class SkillTypeaheadOption extends MenuOption {
 }
 
 function SkillTypeaheadMenuItem({
-  index,
+  id,
   isSelected,
   onClick,
   onMouseEnter,
   option,
-}: {
-  index: number
-  isSelected: boolean
-  onClick: () => void
-  onMouseEnter: () => void
-  option: SkillTypeaheadOption
-}) {
+}: CascadingTypeaheadItemProps<SkillTypeaheadOption>) {
   let iconNode: ReactNode = null
   switch (option.payload.kind) {
     case 'back':
@@ -189,7 +186,7 @@ function SkillTypeaheadMenuItem({
       ref={(el) => option.setRefElement(el)}
       role="option"
       aria-selected={isSelected}
-      id={`typeahead-item-${index}`}
+      id={id}
       onMouseDown={(event) => event.preventDefault()}
       onMouseEnter={onMouseEnter}
       onClick={onClick}
@@ -325,23 +322,54 @@ export default function SkillSlashPlugin({
     [snippets],
   )
 
+  const getSubOptionsForEntry = useCallback(
+    (entryType: SlashEntryType, query: string): SkillTypeaheadOption[] => {
+      if (entryType === 'skill') {
+        return filterSkills(query).map(
+          (skill) =>
+            new SkillTypeaheadOption({
+              kind: 'skill',
+              skill,
+              isSelected: selectedSkillNameSet.has(skill.name),
+            }),
+        )
+      }
+
+      if (snippets.length === 0) {
+        return [
+          new SkillTypeaheadOption({
+            kind: 'create-snippets-file',
+            label: createSnippetsLabel,
+          }),
+        ]
+      }
+
+      return filterSnippets(query).map(
+        (snippet) =>
+          new SkillTypeaheadOption({
+            kind: 'snippet',
+            snippet,
+          }),
+      )
+    },
+    [
+      createSnippetsLabel,
+      filterSkills,
+      filterSnippets,
+      selectedSkillNameSet,
+      snippets.length,
+    ],
+  )
+
   const options = useMemo(() => {
     if (queryString == null) {
       return [] as SkillTypeaheadOption[]
     }
 
     if (menuScope === 'skill') {
-      const skillOptions = filterSkills(normalizedQuery).map(
-        (skill) =>
-          new SkillTypeaheadOption({
-            kind: 'skill',
-            skill,
-            isSelected: selectedSkillNameSet.has(skill.name),
-          }),
-      )
       return [
         new SkillTypeaheadOption({ kind: 'back', label: backLabel }),
-        ...skillOptions,
+        ...getSubOptionsForEntry('skill', normalizedQuery),
       ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT + 1)
     }
 
@@ -353,22 +381,12 @@ export default function SkillSlashPlugin({
       if (snippets.length === 0) {
         return [
           new SkillTypeaheadOption({ kind: 'back', label: backLabel }),
-          new SkillTypeaheadOption({
-            kind: 'create-snippets-file',
-            label: createSnippetsLabel,
-          }),
+          ...getSubOptionsForEntry('snippet', normalizedQuery),
         ]
       }
-      const snippetOptions = filterSnippets(normalizedQuery).map(
-        (snippet) =>
-          new SkillTypeaheadOption({
-            kind: 'snippet',
-            snippet,
-          }),
-      )
       return [
         new SkillTypeaheadOption({ kind: 'back', label: backLabel }),
-        ...snippetOptions,
+        ...getSubOptionsForEntry('snippet', normalizedQuery),
       ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT + 1)
     }
 
@@ -477,9 +495,7 @@ export default function SkillSlashPlugin({
   }, [
     backLabel,
     compactCommand,
-    createSnippetsLabel,
-    filterSkills,
-    filterSnippets,
+    getSubOptionsForEntry,
     menuScope,
     normalizedQuery,
     queryString,
@@ -489,6 +505,26 @@ export default function SkillSlashPlugin({
     skills,
     snippets,
   ])
+
+  const getCascadeEntryKey = useCallback(
+    (option: SkillTypeaheadOption): SlashEntryType | null =>
+      option.payload.kind === 'entry' ? option.payload.entryType : null,
+    [],
+  )
+
+  const getCascadeSubOptions = useCallback(
+    (entry: SlashEntryType) =>
+      getSubOptionsForEntry(entry, '').slice(0, SUGGESTION_LIST_LENGTH_LIMIT),
+    [getSubOptionsForEntry],
+  )
+
+  const cascadingMenu = useCascadingTypeaheadMenu({
+    enabled: !normalizedQuery && menuScope === 'root',
+    getEntryKey: getCascadeEntryKey,
+    getSubOptions: getCascadeSubOptions,
+    options,
+    placement,
+  })
 
   const onSelectOption = useCallback(
     (
@@ -634,44 +670,25 @@ export default function SkillSlashPlugin({
       commandPriority={COMMAND_PRIORITY_NORMAL}
       getDefaultHighlightedIndex={getDefaultHighlightedIndex}
       onOpen={() => onMenuOpenChange?.(true)}
-      onClose={() => onMenuOpenChange?.(false)}
-      menuRenderFn={(
-        anchorElementRef,
-        { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex },
-      ) =>
-        anchorElementRef.current && options.length
-          ? createPortal(
-              <div
-                className="yolo-smart-space-mention-popover"
-                data-placement={placement}
-              >
-                <div className="yolo-popover-surface yolo-popover-surface--smart-space yolo-smart-space-mention-dropdown">
-                  <div
-                    className="yolo-smart-space-mention-list"
-                    role="listbox"
-                    aria-label={skillEntryLabel}
-                  >
-                    {options.map((option, index) => (
-                      <SkillTypeaheadMenuItem
-                        key={option.key}
-                        index={index}
-                        isSelected={selectedIndex === index}
-                        onClick={() => {
-                          setHighlightedIndex(index)
-                          selectOptionAndCleanUp(option)
-                        }}
-                        onMouseEnter={() => {
-                          setHighlightedIndex(index)
-                        }}
-                        option={option}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>,
-              menuContainerRef?.current ?? anchorElementRef.current,
-            )
-          : null
+      onClose={() => {
+        onMenuOpenChange?.(false)
+        cascadingMenu.reset()
+      }}
+      customKeyHandlers={cascadingMenu.customKeyHandlers}
+      menuRenderFn={(anchorElementRef, itemProps) =>
+        cascadingMenu.renderMenu({
+          anchorElementRef,
+          itemProps,
+          menuContainer: menuContainerRef?.current,
+          renderItem: (
+            props: CascadingTypeaheadItemProps<SkillTypeaheadOption>,
+          ) => (
+            <SkillTypeaheadMenuItem
+              {...props}
+              key={`${props.id}:${props.option.key}`}
+            />
+          ),
+        })
       }
     />
   )

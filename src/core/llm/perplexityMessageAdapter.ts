@@ -13,6 +13,7 @@ import {
   OpenAIMessageAdapter,
   normalizeOpenAICompatUsage,
 } from './openaiMessageAdapter'
+import { requireResponseChoicesArray } from './responseFormatError'
 
 /**
  * Adapter for Perplexity's API that extends OpenAIMessageAdapter to handle the additional
@@ -29,9 +30,17 @@ type PerplexityChatCompletionChunk = ChatCompletionChunk & {
 }
 
 export class PerplexityMessageAdapter extends OpenAIMessageAdapter {
+  protected override readonly adapterName = 'Perplexity'
+
   protected parseNonStreamingResponse(
     response: ChatCompletion,
   ): LLMResponseNonStreaming {
+    const choices = requireResponseChoicesArray<
+      ChatCompletion['choices'][number]
+    >(response, {
+      adapter: this.adapterName,
+      stage: 'non-streaming response',
+    })
     const annotations: Annotation[] | undefined = (
       response as unknown as PerplexityChatCompletion
     ).citations?.map((url) => ({
@@ -41,7 +50,7 @@ export class PerplexityMessageAdapter extends OpenAIMessageAdapter {
 
     return {
       id: response.id,
-      choices: response.choices.map((choice) => ({
+      choices: choices.map((choice) => ({
         finish_reason: choice.finish_reason,
         message: {
           content: choice.message.content,
@@ -61,6 +70,12 @@ export class PerplexityMessageAdapter extends OpenAIMessageAdapter {
   protected parseStreamingResponseChunk(
     chunk: ChatCompletionChunk,
   ): LLMResponseStreaming {
+    const choices = requireResponseChoicesArray<
+      ChatCompletionChunk['choices'][number]
+    >(chunk, {
+      adapter: this.adapterName,
+      stage: 'streaming response chunk',
+    })
     const annotations: Annotation[] | undefined = (
       chunk as unknown as PerplexityChatCompletionChunk
     ).citations?.map((url) => ({
@@ -70,7 +85,7 @@ export class PerplexityMessageAdapter extends OpenAIMessageAdapter {
 
     return {
       id: chunk.id,
-      choices: chunk.choices.map((choice) => ({
+      choices: choices.map((choice) => ({
         finish_reason: choice.finish_reason ?? null,
         delta: {
           content: choice.delta.content ?? null,

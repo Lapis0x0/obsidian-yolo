@@ -163,3 +163,48 @@ describe('getMentionableKey – block with pageNumber', () => {
     expect(keyWithPage).not.toBe(keyWithoutPage)
   })
 })
+
+describe('web selection mentionables', () => {
+  test('round-trips through serialize → deserialize', () => {
+    const original: Mentionable = {
+      type: 'web-selection',
+      content: 'Selected web text',
+      url: 'https://example.com/article',
+      title: 'Example Article',
+      pageId: 'page_abcdefgh_1234abcd',
+      source: 'web-selection-sync',
+    }
+
+    const serialized = serializeMentionable(original)
+    expect(serialized.type).toBe('web-selection')
+
+    const restored = deserializeMentionable(serialized, makeMockApp() as any)
+
+    expect(restored).not.toBeNull()
+    expect(restored?.type).toBe('web-selection')
+    if (restored?.type === 'web-selection') {
+      expect(restored.content).toBe('Selected web text')
+      expect(restored.url).toBe('https://example.com/article')
+      expect(restored.title).toBe('Example Article')
+      expect(restored.source).toBe('web-selection-sync')
+      expect(restored.contentHash).toBeDefined()
+    }
+  })
+
+  test('keys are based on URL and selected content', () => {
+    const serialized = serializeMentionable({
+      type: 'web-selection',
+      content: 'same selected text',
+      url: 'https://example.com/article',
+      title: 'Example Article',
+      source: 'web-selection-sync',
+    })
+
+    expect(serialized.type).toBe('web-selection')
+    if (serialized.type === 'web-selection') {
+      expect(getMentionableKey(serialized)).toBe(
+        `web-selection:https://example.com/article:${serialized.contentHash}`,
+      )
+    }
+  })
+})

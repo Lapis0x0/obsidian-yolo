@@ -11,7 +11,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
-import { ChatTimelineList } from './ChatTimelineList'
+import { ChatTimelineList, getVisibleUserMessageIds } from './ChatTimelineList'
 
 function makeUserItem(id: string): ChatTimelineItem {
   return {
@@ -19,15 +19,9 @@ function makeUserItem(id: string): ChatTimelineItem {
     id,
     renderKey: id,
     estimatedHeight: 80,
-    message: {
-      role: 'user',
-      id,
-      content: {},
-      mentionables: [],
-      reasoningLevel: 'none',
-      timestamp: 0,
-    },
-  } as unknown as ChatTimelineItem
+    messageId: id,
+    revision: 1,
+  }
 }
 
 function renderList(props: {
@@ -64,6 +58,7 @@ describe('ChatTimelineList windowed timeline', () => {
     expect(html).toContain('data-key="m-0"')
     expect(html).toContain('data-key="m-11"')
     expect(html).not.toContain('mock-virtuoso')
+    expect(html).toContain('yolo-chat-timeline-content')
   })
 
   it('renders a spacer div at the tail', () => {
@@ -88,14 +83,66 @@ describe('ChatTimelineList windowed timeline', () => {
     expect(html).not.toContain('yolo-chat-timeline-bottom-spacer')
   })
 
-  it('renders load sentinels for unloaded history edges', () => {
+  it('renders only a non-visual sentinel for unloaded earlier history', () => {
     const html = renderList({
       items: [makeUserItem('a')],
       hasEarlierMessages: true,
       hasNewerMessages: true,
     })
 
-    expect(html).toContain('Load earlier messages')
-    expect(html).toContain('Load newer messages')
+    expect(html).toContain('yolo-chat-history-window-sentinel')
+    expect(html).toContain('aria-hidden="true"')
+    expect(html).not.toContain('Load earlier messages')
+    expect(html).not.toContain('Load newer messages')
+    expect(html).not.toContain('role="status"')
+  })
+
+  it('uses messageId for user scroll anchors', () => {
+    const html = renderList({
+      items: [makeUserItem('user-anchor')],
+    })
+
+    expect(html).toContain('data-yolo-user-anchor-id="user-anchor"')
+  })
+})
+
+describe('getVisibleUserMessageIds', () => {
+  const anchors = [
+    { messageId: 'first', top: -300 },
+    { messageId: 'second', top: 240 },
+    { messageId: 'third', top: 680 },
+  ]
+
+  it('keeps a turn visible while its assistant response intersects the viewport', () => {
+    expect(
+      getVisibleUserMessageIds({
+        anchors,
+        contentBottom: 900,
+        viewportTop: 0,
+        viewportBottom: 200,
+      }),
+    ).toEqual(['first'])
+  })
+
+  it('returns every turn crossed by the viewport', () => {
+    expect(
+      getVisibleUserMessageIds({
+        anchors,
+        contentBottom: 900,
+        viewportTop: 200,
+        viewportBottom: 300,
+      }),
+    ).toEqual(['first', 'second'])
+  })
+
+  it('does not extend the last turn beyond the rendered conversation content', () => {
+    expect(
+      getVisibleUserMessageIds({
+        anchors,
+        contentBottom: 900,
+        viewportTop: 910,
+        viewportBottom: 1000,
+      }),
+    ).toEqual([])
   })
 })

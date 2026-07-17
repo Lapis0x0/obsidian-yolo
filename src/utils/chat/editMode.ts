@@ -1,5 +1,6 @@
 import { TFile } from 'obsidian'
 
+import { executeSingleTurn } from '../../core/ai/single-turn'
 import { TextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { BaseLLMProvider } from '../../core/llm/base'
@@ -76,15 +77,18 @@ export async function generateEditPlan({
     }),
   })
 
-  const response = await providerClient.generateResponse(model, {
-    model: model.model,
-    messages: requestMessages,
-    stream: false,
+  const response = await executeSingleTurn({
+    providerClient,
+    model,
+    request: {
+      model: model.model,
+      messages: requestMessages,
+    },
+    deliveryMode: 'buffered',
   })
 
-  const message = response.choices[0]?.message
-  const rawContent = `${message?.content ?? ''}`.trim()
-  const rawReasoning = `${message?.reasoning ?? ''}`.trim()
+  const rawContent = response.content.trim()
+  const rawReasoning = response.reasoning?.trim() ?? ''
 
   return parseEditPlan(rawContent) ?? parseEditPlan(rawReasoning)
 }

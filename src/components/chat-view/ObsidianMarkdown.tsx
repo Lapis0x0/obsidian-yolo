@@ -1,5 +1,12 @@
 import { App, Keymap, MarkdownRenderer, finishRenderMath } from 'obsidian'
-import { memo, useCallback, useEffect, useRef } from 'react'
+import {
+  type ReactNode,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useChatView } from '../../contexts/chat-view-context'
@@ -17,6 +24,7 @@ type ObsidianMarkdownProps = {
   scale?: 'xs' | 'sm' | 'base'
   animateIncrementalText?: boolean
   citationSources?: CitationSource[]
+  initialFallback?: ReactNode
 }
 
 // Strict scheme match so we don't collide with web-search citation URLs like
@@ -173,6 +181,7 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
   scale = 'base',
   animateIncrementalText = false,
   citationSources,
+  initialFallback,
 }: ObsidianMarkdownProps) {
   const app = useApp()
   const chatView = useChatView()
@@ -181,6 +190,10 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
   const renderTokenRef = useRef(0)
   const citationSourcesRef = useRef(citationSources)
   citationSourcesRef.current = citationSources
+  const hasInitialFallback = initialFallback !== undefined
+  const [initialRenderComplete, setInitialRenderComplete] = useState(
+    () => !hasInitialFallback,
+  )
 
   const renderMarkdown = useCallback(async () => {
     const containerEl = containerRef.current
@@ -198,8 +211,9 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
     // Two-phase render kicks in for static messages with LaTeX. Streaming
     // messages re-render very frequently and don't benefit from a fast first
     // pass — they go straight to single-pass real rendering.
+    const hasLatex = LATEX_DELIMITER_PATTERN.test(renderContent)
     const useTwoPhase =
-      !animateIncrementalText && LATEX_DELIMITER_PATTERN.test(renderContent)
+      !animateIncrementalText && !hasInitialFallback && hasLatex
 
     const swapInto = (
       staging: HTMLDivElement,
@@ -280,15 +294,23 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
     // measured height (e.g. 68px for a long bubble) gets persisted into the
     // height cache, poisoning future scroll-space estimates.
     //
-    // Gated on `useTwoPhase`: messages without LaTeX have nothing of ours
+    // Gated on `hasLatex`: messages without LaTeX have nothing of ours
     // queued, so flushing is pointless — and Obsidian's `finishRenderMath`
     // touches its MathJax bundle without checking whether it's been
     // lazy-loaded yet, throwing `MathJax is not defined` when called before
     // any math has rendered (common right after plugin/app startup).
-    if (useTwoPhase) {
+    if (hasLatex) {
       await finishRenderMath()
     }
-  }, [animateIncrementalText, app, content, chatView])
+
+    if (
+      hasInitialFallback &&
+      renderToken === renderTokenRef.current &&
+      containerRef.current
+    ) {
+      setInitialRenderComplete(true)
+    }
+  }, [animateIncrementalText, app, chatView, content, hasInitialFallback])
 
   useEffect(() => {
     void renderMarkdown()
@@ -325,11 +347,30 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
     }
   }, [])
 
-  return (
+  const renderedMarkdown = (
     <div
       ref={containerRef}
-      className={`markdown-rendered yolo-markdown-rendered yolo-scale-${scale}`}
+      className={`markdown-rendered yolo-markdown-rendered yolo-scale-${scale}${hasInitialFallback ? ' yolo-markdown-handoff-final' : ''}`}
+      aria-hidden={hasInitialFallback && !initialRenderComplete}
     />
+  )
+
+  if (!hasInitialFallback) {
+    return renderedMarkdown
+  }
+
+  return (
+    <div
+      className={`yolo-markdown-handoff ${initialRenderComplete ? 'is-complete' : 'is-pending'}`}
+    >
+      <div
+        className="yolo-markdown-handoff-fallback"
+        aria-hidden={initialRenderComplete}
+      >
+        {initialFallback}
+      </div>
+      {renderedMarkdown}
+    </div>
   )
 })
 
