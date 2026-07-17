@@ -34,7 +34,9 @@ export function Wizard({
   onClose: () => void
   onComplete: (input: LearningWizardInput) => void
 }) {
-  const app = useLearningUiHost().app
+  const host = useLearningUiHost()
+  const app = host.app
+  const writer = host.vaultWriter
   const { t } = useLearningLanguage()
   const levels = levelIds.map((id) => ({
     value: id,
@@ -47,7 +49,7 @@ export function Wizard({
   const [stagingDir, setStagingDir] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const closeAndCleanup = () => {
-    if (stagingDir) void cleanupStaging(app, stagingDir)
+    if (stagingDir) void cleanupStaging(writer, stagingDir)
     onClose()
   }
 
@@ -58,7 +60,7 @@ export function Wizard({
 
     let dir = stagingDir
     if (!dir) {
-      dir = await createStagingDir(app, learningBaseDir, crypto.randomUUID())
+      dir = await createStagingDir(writer, learningBaseDir, crypto.randomUUID())
       setStagingDir(dir)
     }
 
@@ -70,7 +72,7 @@ export function Wizard({
         continue
       }
       const ref = await writeReferenceToStaging(
-        app,
+        writer,
         dir,
         file.name,
         await file.arrayBuffer(),

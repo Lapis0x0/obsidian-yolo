@@ -20,6 +20,14 @@ function createVault(initial: Record<string, string> = {}) {
     entries.delete(file.path)
     contents.delete(file.path)
   })
+  const createBinary = jest.fn(async (path: string) => createFile(path))
+  const mkdir = jest.fn(async () => undefined)
+  const list = jest.fn(async () => ({
+    files: ['p/one.md', 'p/two.pdf'],
+    folders: ['p/nested'],
+  }))
+  const rename = jest.fn(async () => undefined)
+  const rmdir = jest.fn(async () => undefined)
 
   const app = {
     vault: {
@@ -28,8 +36,10 @@ function createVault(initial: Record<string, string> = {}) {
       ),
       read: jest.fn(async (file: TFile) => contents.get(file.path) ?? ''),
       create,
+      createBinary,
       modify,
       delete: deleteFile,
+      adapter: { mkdir, list, rename, rmdir },
     },
   } as unknown as App
   return {
@@ -39,6 +49,11 @@ function createVault(initial: Record<string, string> = {}) {
     create,
     modify,
     deleteFile,
+    createBinary,
+    mkdir,
+    list,
+    rename,
+    rmdir,
   }
 }
 
@@ -46,10 +61,51 @@ function createFile(path: string): TFile {
   const file = new TFile()
   file.path = path
   file.name = path.split('/').at(-1) ?? ''
+  file.stat = { ctime: 100, mtime: 123, size: 0 }
   return file
 }
 
 describe('Obsidian Learning vault write adapter', () => {
+  it('provides normalized path operations through Vault and DataAdapter', async () => {
+    const { api, createBinary, mkdir, rename, rmdir } = createVault()
+    const content = new ArrayBuffer(2)
+
+    await api.ensureFolder('/p//nested/')
+    await expect(api.listChildNames('/p/')).resolves.toEqual([
+      'one.md',
+      'two.pdf',
+      'nested',
+    ])
+    await expect(api.listChildFilePaths('/p/')).resolves.toEqual([
+      'p/one.md',
+      'p/two.pdf',
+    ])
+    await api.createBinary('/p//binary.pdf/', content)
+    await api.renamePath('/p//one.md', '/p//renamed.md/')
+    await api.removeTree('/p//nested/')
+
+    expect(mkdir).toHaveBeenCalledWith('p/nested')
+    expect(createBinary).toHaveBeenCalledWith('p/binary.pdf', content)
+    expect(rename).toHaveBeenCalledWith('p/one.md', 'p/renamed.md')
+    expect(rmdir).toHaveBeenCalledWith('p/nested', true)
+  })
+
+  it('creates and writes text by path with the resulting mtime', async () => {
+    const { api, contents } = createVault({ 'p/existing.md': 'before' })
+
+    await expect(api.createText('/p//new.md/', 'new')).resolves.toEqual({
+      path: 'p/new.md',
+      mtime: 123,
+    })
+    await expect(api.writeText('/p//existing.md/', 'after')).resolves.toEqual({
+      path: 'p/existing.md',
+      mtime: 123,
+    })
+
+    expect(contents.get('p/new.md')).toBe('new')
+    expect(contents.get('p/existing.md')).toBe('after')
+  })
+
   it('creates only when absent and normalizes paths inside the adapter', async () => {
     const { api, contents, create } = createVault()
 

@@ -268,7 +268,7 @@ export function OutlineBuilder({
     let projectRefPath: string | undefined
     try {
       scaffold = await createProjectScaffold({
-        app: host.app,
+        writer: host.vaultWriter,
         baseDir,
         topic: resolvedProjectName,
         goal: projectGoal,
@@ -276,7 +276,7 @@ export function OutlineBuilder({
       })
       if (stagingDir && referenceFiles && referenceFiles.length > 0) {
         projectRefPath = await moveStagingToProject(
-          host.app,
+          host.vaultWriter,
           stagingDir,
           scaffold.projectPath,
         )
@@ -370,7 +370,8 @@ export function OutlineBuilder({
                     draftedPoints[completedCount] ??
                     draftKnowledgePoint(point.title)
                   const knowledgePoint = await appendKnowledgePointDraft({
-                    app: host.app,
+                    vault: host.vault,
+                    writer: host.vaultWriter,
                     projectPath: scaffold.projectPath,
                     chapter: target,
                     point,
@@ -437,7 +438,8 @@ export function OutlineBuilder({
         return
       }
       await markProjectStudying({
-        app: host.app,
+        vault: host.vault,
+        writer: host.vaultWriter,
         indexPath: scaffold.indexPath,
       })
       eventBus.emitSynthetic({

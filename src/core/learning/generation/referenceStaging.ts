@@ -1,4 +1,5 @@
-import { App, normalizePath } from 'obsidian'
+import { normalizeLearningVaultPath } from '../learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../learningVaultWriteApi'
 
 export type StagedReference = {
   name: string
@@ -20,59 +21,57 @@ export function validateReferenceFile(file: File): string | null {
 }
 
 export async function createStagingDir(
-  app: App,
+  writer: LearningVaultWriteApi,
   learningBaseDir: string,
   tempId: string,
 ): Promise<string> {
-  const stagingPath = normalizePath(`${learningBaseDir}/_staging/${tempId}`)
-  await ensureFolder(app, stagingPath)
+  const stagingPath = joinVaultPath(learningBaseDir, '_staging', tempId)
+  await writer.ensureFolder(stagingPath)
   return stagingPath
 }
 
 export async function writeReferenceToStaging(
-  app: App,
+  writer: LearningVaultWriteApi,
   stagingDir: string,
   fileName: string,
   content: ArrayBuffer,
 ): Promise<StagedReference> {
-  const vaultPath = normalizePath(`${stagingDir}/${fileName}`)
-  await app.vault.createBinary(vaultPath, content)
+  const vaultPath = joinVaultPath(stagingDir, fileName)
+  await writer.createBinary(vaultPath, content)
   return { name: fileName, vaultPath }
 }
 
 export async function moveStagingToProject(
-  app: App,
+  writer: LearningVaultWriteApi,
   stagingDir: string,
   projectPath: string,
 ): Promise<string> {
-  const refPath = normalizePath(`${projectPath}/ref`)
-  await ensureFolder(app, refPath)
+  const refPath = joinVaultPath(projectPath, 'ref')
+  await writer.ensureFolder(refPath)
 
-  const listed = await app.vault.adapter.list(stagingDir)
-  for (const filePath of listed.files) {
+  const files = await writer.listChildFilePaths(stagingDir)
+  for (const filePath of files) {
     const fileName = filePath.split('/').at(-1)
     if (!fileName) continue
-    const destPath = normalizePath(`${refPath}/${fileName}`)
-    await app.vault.adapter.rename(filePath, destPath)
+    const destPath = joinVaultPath(refPath, fileName)
+    await writer.renamePath(filePath, destPath)
   }
 
-  await app.vault.adapter.rmdir(stagingDir, true)
+  await writer.removeTree(stagingDir)
 
   return refPath
 }
 
 export async function cleanupStaging(
-  app: App,
+  writer: LearningVaultWriteApi,
   stagingDir: string,
 ): Promise<void> {
   try {
-    await app.vault.adapter.rmdir(stagingDir, true)
+    await writer.removeTree(stagingDir)
   } catch {
     return
   }
 }
 
-async function ensureFolder(app: App, folderPath: string): Promise<void> {
-  if (app.vault.getAbstractFileByPath(folderPath)) return
-  await app.vault.adapter.mkdir(folderPath)
-}
+const joinVaultPath = (...parts: string[]) =>
+  normalizeLearningVaultPath(parts.join('/'))

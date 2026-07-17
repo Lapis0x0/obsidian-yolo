@@ -1,6 +1,11 @@
 import { dump as dumpYaml } from 'js-yaml'
-import { App, TFile, normalizePath } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
+
+import {
+  type LearningVaultReadApi,
+  normalizeLearningVaultPath,
+} from '../learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../learningVaultWriteApi'
 
 import { createUniqueSlug } from './slug'
 import type {
@@ -10,7 +15,7 @@ import type {
 } from './types'
 
 export type WriteProjectOptions = {
-  app: App
+  writer: LearningVaultWriteApi
   baseDir: string
   topic: string
   goal: string
@@ -48,27 +53,27 @@ export type WrittenKnowledgePoint = {
 }
 
 export async function createProjectScaffold({
-  app,
+  writer,
   baseDir,
   topic,
   goal,
   chapters,
 }: {
-  app: App
+  writer: LearningVaultWriteApi
   baseDir: string
   topic: string
   goal: string
   chapters: OutlineChapter[]
 }): Promise<ProjectScaffold> {
-  const normalizedBaseDir = normalizePath(baseDir.replace(/\/$/, ''))
-  await ensureFolder(app, normalizedBaseDir)
+  const normalizedBaseDir = normalizeLearningVaultPath(baseDir)
+  await writer.ensureFolder(normalizedBaseDir)
 
   const projectSlug = createUniqueSlug(
     topic,
-    await listExistingChildNames(app, normalizedBaseDir),
+    await writer.listChildNames(normalizedBaseDir),
   )
-  const projectPath = normalizePath(`${normalizedBaseDir}/${projectSlug}`)
-  await ensureFolder(app, projectPath)
+  const projectPath = joinVaultPath(normalizedBaseDir, projectSlug)
+  await writer.ensureFolder(projectPath)
 
   const chapterSlugs: string[] = []
   const targets: ChapterWriteTarget[] = []
@@ -78,11 +83,11 @@ export async function createProjectScaffold({
     const orderedTitle = `${chapterNumber}-${chapter.title}`
     const chapterSlug = createUniqueSlug(orderedTitle, chapterSlugs)
     chapterSlugs.push(chapterSlug)
-    const chapterPath = normalizePath(`${projectPath}/${chapterSlug}`)
-    const knowledgePath = normalizePath(`${chapterPath}/knowledge.md`)
-    const cardsPath = normalizePath(`${chapterPath}/cards.md`)
-    await ensureFolder(app, chapterPath)
-    await app.vault.create(
+    const chapterPath = joinVaultPath(projectPath, chapterSlug)
+    const knowledgePath = joinVaultPath(chapterPath, 'knowledge.md')
+    const cardsPath = joinVaultPath(chapterPath, 'cards.md')
+    await writer.ensureFolder(chapterPath)
+    await writer.createText(
       knowledgePath,
       buildMarkdown({ title: chapter.title }, ''),
     )
@@ -96,8 +101,8 @@ export async function createProjectScaffold({
     })
   }
 
-  const indexPath = normalizePath(`${projectPath}/index.md`)
-  await app.vault.create(
+  const indexPath = joinVaultPath(projectPath, 'index.md')
+  await writer.createText(
     indexPath,
     buildProjectIndexMarkdown({
       topic,
@@ -116,26 +121,31 @@ export async function createProjectScaffold({
 }
 
 export async function appendKnowledgePointDraft({
-  app,
+  vault,
+  writer,
   projectPath,
   chapter,
   point,
   uuid = createKnowledgePointUuid(),
 }: {
-  app: App
+  vault: LearningVaultReadApi
+  writer: LearningVaultWriteApi
   projectPath: string
   chapter: ChapterWriteTarget
   point: KnowledgePointDraft
   uuid?: string
 }): Promise<WrittenKnowledgePoint> {
-  const knowledgeFile = app.vault.getAbstractFileByPath(chapter.knowledgePath)
-  if (!(knowledgeFile instanceof TFile)) {
+  const knowledgeFile = vault.getEntry(chapter.knowledgePath)
+  if (knowledgeFile?.kind !== 'file') {
     throw new Error(`Knowledge file not found: ${chapter.knowledgePath}`)
   }
 
-  const existing = await app.vault.cachedRead(knowledgeFile)
+  const existing = await vault.readText(chapter.knowledgePath)
   const block = `## ${point.title} <!--kp:${uuid}-->\n\n${point.body.trim()}`
-  await app.vault.modify(knowledgeFile, `${existing.trimEnd()}\n\n${block}\n`)
+  const written = await writer.writeText(
+    chapter.knowledgePath,
+    `${existing.trimEnd()}\n\n${block}\n`,
+  )
 
   return {
     id: `${chapter.chapterPath}/${uuid}`,
@@ -147,7 +157,7 @@ export async function appendKnowledgePointDraft({
     relations: [],
     hasCards: false,
     hasExercises: false,
-    mtime: knowledgeFile.stat.mtime,
+    mtime: written.mtime,
   }
 }
 
@@ -156,39 +166,41 @@ export function createKnowledgePointUuid(): string {
 }
 
 export async function markProjectStudying({
-  app,
+  vault,
+  writer,
   indexPath,
 }: {
-  app: App
+  vault: LearningVaultReadApi
+  writer: LearningVaultWriteApi
   indexPath: string
 }): Promise<void> {
-  const indexFile = app.vault.getAbstractFileByPath(indexPath)
-  if (!(indexFile instanceof TFile)) {
+  const indexFile = vault.getEntry(indexPath)
+  if (indexFile?.kind !== 'file') {
     throw new Error(`Project index not found: ${indexPath}`)
   }
-  const existing = await app.vault.cachedRead(indexFile)
-  await app.vault.modify(
-    indexFile,
+  const existing = await vault.readText(indexPath)
+  await writer.writeText(
+    indexPath,
     existing.replace(/^status: building$/m, 'status: studying'),
   )
 }
 
 export async function writeProject({
-  app,
+  writer,
   baseDir,
   topic,
   goal,
   chapters,
 }: WriteProjectOptions): Promise<{ projectPath: string; projectSlug: string }> {
-  const normalizedBaseDir = normalizePath(baseDir.replace(/\/$/, ''))
-  await ensureFolder(app, normalizedBaseDir)
+  const normalizedBaseDir = normalizeLearningVaultPath(baseDir)
+  await writer.ensureFolder(normalizedBaseDir)
 
   const projectSlug = createUniqueSlug(
     topic,
-    await listExistingChildNames(app, normalizedBaseDir),
+    await writer.listChildNames(normalizedBaseDir),
   )
-  const projectPath = normalizePath(`${normalizedBaseDir}/${projectSlug}`)
-  await ensureFolder(app, projectPath)
+  const projectPath = joinVaultPath(normalizedBaseDir, projectSlug)
+  await writer.ensureFolder(projectPath)
 
   const successfulChapters = chapters.filter((chapter) => !chapter.error)
   const chapterSlugs: string[] = []
@@ -199,8 +211,8 @@ export async function writeProject({
     chapterSlugs.push(createUniqueSlug(orderedTitle, chapterSlugs))
   }
 
-  await app.vault.create(
-    normalizePath(`${projectPath}/index.md`),
+  await writer.createText(
+    joinVaultPath(projectPath, 'index.md'),
     buildProjectIndexMarkdown({
       topic,
       goal,
@@ -213,10 +225,10 @@ export async function writeProject({
   for (let i = 0; i < successfulChapters.length; i += 1) {
     const chapter = successfulChapters[i]
     const chapterSlug = chapterSlugs[i]
-    const chapterPath = normalizePath(`${projectPath}/${chapterSlug}`)
-    await ensureFolder(app, chapterPath)
-    await app.vault.create(
-      normalizePath(`${chapterPath}/knowledge.md`),
+    const chapterPath = joinVaultPath(projectPath, chapterSlug)
+    await writer.ensureFolder(chapterPath)
+    await writer.createText(
+      joinVaultPath(chapterPath, 'knowledge.md'),
       buildMarkdown(
         { title: chapter.chapterTitle },
         buildKnowledgeBody(chapter.knowledgePoints),
@@ -227,20 +239,8 @@ export async function writeProject({
   return { projectPath, projectSlug }
 }
 
-async function listExistingChildNames(
-  app: App,
-  folderPath: string,
-): Promise<string[]> {
-  const listed = await app.vault.adapter.list(folderPath)
-  return [...listed.files, ...listed.folders]
-    .map((path) => path.split('/').at(-1))
-    .filter((name): name is string => Boolean(name))
-}
-
-async function ensureFolder(app: App, folderPath: string): Promise<void> {
-  if (app.vault.getAbstractFileByPath(folderPath)) return
-  await app.vault.adapter.mkdir(folderPath)
-}
+const joinVaultPath = (...parts: string[]) =>
+  normalizeLearningVaultPath(parts.join('/'))
 
 function buildMarkdown(
   frontmatter: Record<string, unknown>,

@@ -9,6 +9,7 @@ import type {
 } from '../../core/learning/learningNavigation'
 import type { LearningStatsService } from '../../core/learning/learningStatsService'
 import type { LearningVaultReadApi } from '../../core/learning/learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../../core/learning/learningVaultWriteApi'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type { LearningSrsStore } from '../../core/learning/srs/srsStore'
 
@@ -34,6 +35,7 @@ export type LearningActionToast = {
 export interface LearningUiHost {
   readonly app: App
   readonly vault: LearningVaultReadApi
+  readonly vaultWriter: LearningVaultWriteApi
   readonly settings: LearningSettings
   readonly locale: LearningLocale
   readonly t: (keyPath: string, fallback?: string) => string

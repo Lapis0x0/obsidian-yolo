@@ -155,13 +155,12 @@ async function* streamGenerationAgent(
 
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
   const vaultReadApi = createObsidianLearningVaultReadApi(plugin.app)
-  const cardFileStore = new LearningCardFileStore(
-    vaultReadApi,
-    createObsidianLearningVaultWriteApi(plugin.app),
-  )
+  const vaultWriteApi = createObsidianLearningVaultWriteApi(plugin.app)
+  const cardFileStore = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
   return {
     app: plugin.app,
     vault: vaultReadApi,
+    vaultWriter: vaultWriteApi,
     get settings() {
       return mapSettings(plugin)
     },

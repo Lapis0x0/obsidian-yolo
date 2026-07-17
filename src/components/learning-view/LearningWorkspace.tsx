@@ -181,7 +181,7 @@ export function LearningWorkspace() {
               referenceFiles={wizardInput.referenceFiles}
               onCancel={() => {
                 if (wizardInput.stagingDir) {
-                  void cleanupStaging(app, wizardInput.stagingDir)
+                  void cleanupStaging(host.vaultWriter, wizardInput.stagingDir)
                 }
                 setBuildingOutline(false)
               }}
