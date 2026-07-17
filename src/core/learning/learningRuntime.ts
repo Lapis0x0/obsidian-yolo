@@ -9,6 +9,7 @@ import type {
 import { LearningStatsService } from './learningStatsService'
 import { createObsidianLearningVaultReadApi } from './obsidianLearningVaultReadApi'
 import type { ProjectEventBus } from './projectEventBus'
+import { ObsidianLearningSrsStorage } from './srs/obsidianLearningSrsStorage'
 import { LearningSrsStore } from './srs/srsStore'
 
 type LearningRuntimeOptions = {
@@ -36,7 +37,8 @@ export class LearningRuntime {
     app,
     getSettings,
     getLearningBaseDir,
-    createSrsStore = () => new LearningSrsStore(app, getSettings),
+    createSrsStore = () =>
+      new LearningSrsStore(new ObsidianLearningSrsStorage(app, getSettings)),
     createStatsService = (srsStore) =>
       new LearningStatsService({
         vault: createObsidianLearningVaultReadApi(app),

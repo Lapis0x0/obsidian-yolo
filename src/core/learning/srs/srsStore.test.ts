@@ -1,5 +1,6 @@
 import type { App } from 'obsidian'
 
+import { ObsidianLearningSrsStorage } from './obsidianLearningSrsStorage'
 import { LearningSrsStore } from './srsStore'
 
 function createApp(initialFiles: Record<string, string> = {}) {
@@ -26,14 +27,16 @@ function createApp(initialFiles: Record<string, string> = {}) {
 }
 
 const createStore = (app: App): LearningSrsStore =>
-  new LearningSrsStore(app, () => null)
+  new LearningSrsStore(new ObsidianLearningSrsStorage(app, () => null))
 
 describe('LearningSrsStore', () => {
   it('stores project state under the configured YOLO root', async () => {
     const { app, files } = createApp()
-    const store = new LearningSrsStore(app, () => ({
-      yolo: { baseDir: 'Config/YOLO' },
-    }))
+    const store = new LearningSrsStore(
+      new ObsidianLearningSrsStorage(app, () => ({
+        yolo: { baseDir: 'Config/YOLO' },
+      })),
+    )
 
     await store.reviewCard(
       'project',
@@ -53,7 +56,9 @@ describe('LearningSrsStore', () => {
   it('invalidates cached project state when the configured root changes', async () => {
     const { app, files } = createApp()
     let baseDir = 'Config/First'
-    const store = new LearningSrsStore(app, () => ({ yolo: { baseDir } }))
+    const store = new LearningSrsStore(
+      new ObsidianLearningSrsStorage(app, () => ({ yolo: { baseDir } })),
+    )
     const reviewedAt = new Date('2026-07-10T12:00:00.000Z')
     await store.reviewCard('project', 'aaaaaaaa', 'good', reviewedAt)
 

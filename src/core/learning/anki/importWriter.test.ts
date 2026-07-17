@@ -1,6 +1,7 @@
 import { TFile, TFolder } from 'obsidian'
 import type { App } from 'obsidian'
 
+import { ObsidianLearningSrsStorage } from '../srs/obsidianLearningSrsStorage'
 import { LearningSrsStore } from '../srs/srsStore'
 
 import type { AnkiImportPlan } from './importPlan'
@@ -63,7 +64,7 @@ const makePlan = (): AnkiImportPlan => ({
 })
 
 const createSrsStore = (app: App): LearningSrsStore =>
-  new LearningSrsStore(app, () => null)
+  new LearningSrsStore(new ObsidianLearningSrsStorage(app, () => null))
 
 function createApp(failPath?: string) {
   const text = new Map<string, string>()
