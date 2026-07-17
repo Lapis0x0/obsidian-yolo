@@ -10,6 +10,7 @@ import type {
   LearningGenerationCapability,
   LearningGenerationMessage,
 } from '../../core/learning/generation/host'
+import { createObsidianLearningVaultReadApi } from '../../core/learning/obsidianLearningVaultReadApi'
 import { isLLMDebugCaptureEnabled } from '../../core/llm/debugCapture'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
@@ -151,8 +152,12 @@ async function* streamGenerationAgent(
 }
 
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
+  const app = Object.assign(
+    plugin.app,
+    createObsidianLearningVaultReadApi(plugin.app),
+  )
   return {
-    app: plugin.app,
+    app,
     get settings() {
       return mapSettings(plugin)
     },

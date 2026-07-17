@@ -1,5 +1,4 @@
-import { App, TAbstractFile, TFile, TFolder } from 'obsidian'
-
+import type { LearningVaultReadApi } from './learningVaultReadApi'
 import {
   isPathUnderLearningBase,
   scanProject,
@@ -82,7 +81,7 @@ export class ProjectEventBus {
   private disposed = false
   private vaultEventCleanups: Array<() => void> = []
 
-  constructor(private readonly app: App) {}
+  constructor(private readonly vault: LearningVaultReadApi) {}
 
   getSnapshot(): OutlineProject | null {
     return this.snapshot
@@ -127,13 +126,13 @@ export class ProjectEventBus {
   }): Promise<void> {
     if (!this.activeProjectPath) return
 
-    const folder = this.app.vault.getAbstractFileByPath(this.activeProjectPath)
-    if (!(folder instanceof TFolder)) {
+    const folder = this.vault.getEntry(this.activeProjectPath)
+    if (folder?.kind !== 'folder') {
       this.snapshot = null
       return
     }
 
-    const next = await scanProject(this.app, folder)
+    const next = await scanProject(this.vault, folder.path)
     if (!next || next.kind !== 'outline') {
       this.snapshot = null
       return
@@ -172,7 +171,7 @@ export class ProjectEventBus {
   startWatchingVault(): void {
     this.stopWatchingVault()
 
-    const handler = (file: TAbstractFile) => {
+    const handler = (file: { path: string }) => {
       if (this.disposed) return
       if (!this.activeBaseDir) return
       if (!isPathUnderLearningBase(file.path, this.activeBaseDir)) return
@@ -186,7 +185,7 @@ export class ProjectEventBus {
       this.scheduleRefresh()
     }
 
-    const renameHandler = (file: TAbstractFile, oldPath: string) => {
+    const renameHandler = (file: { path: string }, oldPath: string) => {
       if (this.disposed) return
       if (!this.activeBaseDir) return
       const oldUnder = isPathUnderLearningBase(oldPath, this.activeBaseDir)
@@ -195,16 +194,11 @@ export class ProjectEventBus {
       this.scheduleRefresh()
     }
 
-    const onCreate = this.app.vault.on('create', handler)
-    const onModify = this.app.vault.on('modify', handler)
-    const onDelete = this.app.vault.on('delete', handler)
-    const onRename = this.app.vault.on('rename', renameHandler)
-
     this.vaultEventCleanups = [
-      () => this.app.vault.offref(onCreate),
-      () => this.app.vault.offref(onModify),
-      () => this.app.vault.offref(onDelete),
-      () => this.app.vault.offref(onRename),
+      this.vault.onCreate(this.activeBaseDir ?? '', handler),
+      this.vault.onModify(this.activeBaseDir ?? '', handler),
+      this.vault.onDelete(this.activeBaseDir ?? '', handler),
+      this.vault.onRename(this.activeBaseDir ?? '', renameHandler),
     ]
   }
 
@@ -432,5 +426,3 @@ function relationKey(relation: Relation): string {
 
 // Re-export scanProjects so consumers can find both APIs through the bus module.
 export { scanProjects }
-// Silence unused-import warning if TFile becomes unused after refactors.
-void TFile

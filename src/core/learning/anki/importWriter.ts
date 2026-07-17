@@ -3,6 +3,7 @@ import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import { YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME } from '../../paths/yoloPaths'
 import { parseCardFile } from '../cardFile'
+import { createObsidianLearningVaultReadApi } from '../obsidianLearningVaultReadApi'
 import { scanProject } from '../projectScanner'
 import { LearningSrsStore } from '../srs/srsStore'
 
@@ -139,7 +140,10 @@ const verify = async (
   srsStore: LearningSrsStore,
 ): Promise<void> => {
   const folder = app.vault.getAbstractFileByPath(plan.projectPath)
-  if (!(folder instanceof TFolder) || !(await scanProject(app, folder)))
+  if (
+    !(folder instanceof TFolder) ||
+    !(await scanProject(createObsidianLearningVaultReadApi(app), folder.path))
+  )
     throw new Error('Imported Anki project cannot be scanned')
   const uuids = new Set<string>()
   for (const chapter of plan.chapters) {

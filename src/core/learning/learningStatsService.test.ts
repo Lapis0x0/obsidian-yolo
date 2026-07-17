@@ -2,6 +2,7 @@ import type { App, EventRef } from 'obsidian'
 
 import type { LearningProjectStats } from './learningStats'
 import { LearningStatsService, getTotalDueCards } from './learningStatsService'
+import type { LearningVaultReadApi } from './learningVaultReadApi'
 import type { LearningSrsStore, SrsProjectMutation } from './srs/srsStore'
 import type { Project } from './types'
 
@@ -68,12 +69,31 @@ function createFixture(projects: Project[]) {
     }),
   } as unknown as LearningSrsStore
   const scan = jest.fn(async () => ({ projects }))
+  const vaultDisposers: jest.Mock[] = []
+  const subscribeVault = () => {
+    const dispose = jest.fn()
+    vaultDisposers.push(dispose)
+    return dispose
+  }
+  const onCreate = jest.fn(subscribeVault)
+  const onModify = jest.fn(subscribeVault)
+  const onDelete = jest.fn(subscribeVault)
+  const onRename = jest.fn(subscribeVault)
+  const vault = {
+    onCreate,
+    onModify,
+    onDelete,
+    onRename,
+  } as unknown as LearningVaultReadApi
 
   return {
     app,
     isProjectPaused,
     scan,
     srsStore,
+    vault,
+    vaultDisposers,
+    onCreate,
     emitMutation: (projectSlug: string) => {
       const subscriber = mutationSubscriber as
         | ((mutation: SrsProjectMutation) => void)
@@ -90,6 +110,7 @@ describe('LearningStatsService', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const service = new LearningStatsService({
       app: fixture.app,
+      vault: fixture.vault,
       getLearningBaseDir: () => 'Learning',
       srsStore: fixture.srsStore,
       scan: fixture.scan,
@@ -132,6 +153,7 @@ describe('LearningStatsService', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const service = new LearningStatsService({
       app: fixture.app,
+      vault: fixture.vault,
       getLearningBaseDir: () => 'Learning',
       srsStore: fixture.srsStore,
       scan: fixture.scan,
@@ -161,6 +183,7 @@ describe('LearningStatsService', () => {
     )
     const service = new LearningStatsService({
       app: fixture.app,
+      vault: fixture.vault,
       getLearningBaseDir: () => 'Learning',
       srsStore: fixture.srsStore,
       scan: fixture.scan,
@@ -194,9 +217,10 @@ describe('LearningStatsService', () => {
     const oldLoad = deferred<LearningProjectStats>()
     const service = new LearningStatsService({
       app: fixture.app,
+      vault: fixture.vault,
       getLearningBaseDir: () => baseDir,
       srsStore: fixture.srsStore,
-      scan: jest.fn(async (_app, dir) => ({
+      scan: jest.fn(async (_vault, dir) => ({
         projects: dir === 'Old' ? [oldProject] : [newProject],
       })),
       loadProjectStats: jest.fn(async ({ project: item }) => {
@@ -227,6 +251,19 @@ describe('LearningStatsService', () => {
       'new',
     ])
     expect(getTotalDueCards(service.getSnapshot())).toBe(7)
+    expect(fixture.onCreate).toHaveBeenNthCalledWith(
+      1,
+      'Old',
+      expect.any(Function),
+    )
+    expect(fixture.onCreate).toHaveBeenNthCalledWith(
+      2,
+      'New',
+      expect.any(Function),
+    )
+    for (const dispose of fixture.vaultDisposers.slice(0, 4)) {
+      expect(dispose).toHaveBeenCalledTimes(1)
+    }
     service.dispose()
   })
 })

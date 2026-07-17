@@ -7,6 +7,7 @@ import type {
   LearningNavigationTarget,
 } from './learningNavigation'
 import { LearningStatsService } from './learningStatsService'
+import { createObsidianLearningVaultReadApi } from './obsidianLearningVaultReadApi'
 import type { ProjectEventBus } from './projectEventBus'
 import { LearningSrsStore } from './srs/srsStore'
 
@@ -37,7 +38,12 @@ export class LearningRuntime {
     getLearningBaseDir,
     createSrsStore = () => new LearningSrsStore(app, getSettings),
     createStatsService = (srsStore) =>
-      new LearningStatsService({ app, getLearningBaseDir, srsStore }),
+      new LearningStatsService({
+        app,
+        vault: createObsidianLearningVaultReadApi(app),
+        getLearningBaseDir,
+        srsStore,
+      }),
   }: LearningRuntimeOptions) {
     this.createSrsStore = createSrsStore
     this.createStatsService = createStatsService

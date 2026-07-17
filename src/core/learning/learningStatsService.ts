@@ -1,9 +1,10 @@
-import type { App, EventRef, TAbstractFile } from 'obsidian'
+import type { App } from 'obsidian'
 
 import {
   type LearningProjectStats,
   loadLearningProjectStats,
 } from './learningStats'
+import type { LearningVaultReadApi } from './learningVaultReadApi'
 import { isPathUnderLearningBase, scanProjects } from './projectScanner'
 import type { LearningSrsStore } from './srs/srsStore'
 import type { Project } from './types'
@@ -22,7 +23,9 @@ export type LearningStatsSnapshot = {
 type LearningStatsSubscriber = (snapshot: LearningStatsSnapshot) => void
 
 type LearningStatsServiceOptions = {
+  /** Retained only for the separately App-backed loadLearningProjectStats. */
   app: App
+  vault: LearningVaultReadApi
   getLearningBaseDir: () => string
   srsStore: LearningSrsStore
   scan?: typeof scanProjects
@@ -48,6 +51,7 @@ export function getTotalDueCards(snapshot: LearningStatsSnapshot): number {
 
 export class LearningStatsService {
   private readonly app: App
+  private readonly vault: LearningVaultReadApi
   private readonly getLearningBaseDir: () => string
   private readonly srsStore: LearningSrsStore
   private readonly scan: typeof scanProjects
@@ -59,13 +63,14 @@ export class LearningStatsService {
   private disposed = false
   private generation = 0
   private operationQueue: Promise<void> = Promise.resolve()
-  private vaultRefs: EventRef[] = []
+  private vaultEventCleanups: Array<() => void> = []
   private unsubscribeSrs: (() => void) | null = null
   private vaultRefreshTimer: ReturnType<typeof setTimeout> | null = null
   private nextDueTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor({
     app,
+    vault,
     getLearningBaseDir,
     srsStore,
     scan = scanProjects,
@@ -73,6 +78,7 @@ export class LearningStatsService {
     now = () => new Date(),
   }: LearningStatsServiceOptions) {
     this.app = app
+    this.vault = vault
     this.getLearningBaseDir = getLearningBaseDir
     this.srsStore = srsStore
     this.scan = scan
@@ -113,7 +119,7 @@ export class LearningStatsService {
       const now = this.now()
       let projects: readonly Project[]
       try {
-        projects = (await this.scan(this.app, this.getLearningBaseDir()))
+        projects = (await this.scan(this.vault, this.getLearningBaseDir()))
           .projects
       } catch (error) {
         console.error('[YOLO] Failed to scan learning projects:', error)
@@ -258,16 +264,16 @@ export class LearningStatsService {
     this.started = true
     this.generation += 1
     const baseDir = this.getLearningBaseDir()
-    const refreshIfLearningPath = (file: TAbstractFile) => {
+    const refreshIfLearningPath = (file: { path: string }) => {
       if (isPathUnderLearningBase(file.path, baseDir)) {
         this.scheduleVaultRefresh()
       }
     }
-    this.vaultRefs = [
-      this.app.vault.on('create', refreshIfLearningPath),
-      this.app.vault.on('modify', refreshIfLearningPath),
-      this.app.vault.on('delete', refreshIfLearningPath),
-      this.app.vault.on('rename', (file, oldPath) => {
+    this.vaultEventCleanups = [
+      this.vault.onCreate(baseDir, refreshIfLearningPath),
+      this.vault.onModify(baseDir, refreshIfLearningPath),
+      this.vault.onDelete(baseDir, refreshIfLearningPath),
+      this.vault.onRename(baseDir, (file, oldPath) => {
         if (
           isPathUnderLearningBase(file.path, baseDir) ||
           isPathUnderLearningBase(oldPath, baseDir)
@@ -291,8 +297,8 @@ export class LearningStatsService {
     this.started = false
     this.generation += 1
     this.operationQueue = Promise.resolve()
-    for (const ref of this.vaultRefs) this.app.vault.offref(ref)
-    this.vaultRefs = []
+    for (const cleanup of this.vaultEventCleanups) cleanup()
+    this.vaultEventCleanups = []
     this.unsubscribeSrs?.()
     this.unsubscribeSrs = null
     if (typeof window !== 'undefined') {

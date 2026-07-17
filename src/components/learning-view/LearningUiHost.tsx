@@ -7,6 +7,7 @@ import type {
   LearningNavigationTarget,
 } from '../../core/learning/learningNavigation'
 import type { LearningStatsService } from '../../core/learning/learningStatsService'
+import type { LearningVaultReadApi } from '../../core/learning/learningVaultReadApi'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type { LearningSrsStore } from '../../core/learning/srs/srsStore'
 
@@ -30,7 +31,7 @@ export type LearningActionToast = {
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- This public host boundary is intentionally extensible.
 export interface LearningUiHost {
-  readonly app: App
+  readonly app: App & LearningVaultReadApi
   readonly settings: LearningSettings
   readonly locale: LearningLocale
   readonly t: (keyPath: string, fallback?: string) => string
