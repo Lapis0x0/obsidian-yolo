@@ -1,0 +1,278 @@
+import type {
+  BackgroundActivity,
+  BackgroundActivityBatchSink,
+} from '../background/backgroundActivityRegistry'
+
+import type { ModuleLifecycleScope } from './lifecycleScope'
+import type {
+  YoloModuleBackgroundActivityV1,
+  YoloModuleBackgroundV1,
+  YoloModuleCapabilitiesV1,
+} from './types'
+
+export type ModuleHostCapabilityProviderV1 = {
+  create(
+    moduleId: string,
+    lifecycle: ModuleLifecycleScope,
+  ): ModuleHostCapabilityActivationV1
+}
+
+export type ModuleHostCapabilityActivationV1 = Readonly<{
+  capabilities: YoloModuleCapabilitiesV1
+  commit(): void
+  activate(): void
+}>
+
+class ModuleBackgroundCleanupError extends Error {
+  constructor(readonly errors: unknown[]) {
+    super('Module background cleanup reported errors')
+    this.name = 'ModuleBackgroundCleanupError'
+  }
+}
+
+type CoreModuleHostCapabilityProviderOptions = {
+  backgroundActivities: BackgroundActivityBatchSink
+  now?: () => number
+  reportCallbackError?: (moduleId: string, error: unknown) => void
+}
+
+export class CoreModuleHostCapabilityProvider
+  implements ModuleHostCapabilityProviderV1
+{
+  private readonly backgroundActivities: BackgroundActivityBatchSink
+  private readonly now: () => number
+  private readonly reportCallbackError: (
+    moduleId: string,
+    error: unknown,
+  ) => void
+
+  constructor({
+    backgroundActivities,
+    now = Date.now,
+    reportCallbackError = (moduleId, error) => {
+      console.error(
+        `[YOLO] Module "${moduleId}" background callback failed`,
+        error,
+      )
+    },
+  }: CoreModuleHostCapabilityProviderOptions) {
+    this.backgroundActivities = backgroundActivities
+    this.now = now
+    this.reportCallbackError = reportCallbackError
+  }
+
+  create(
+    moduleId: string,
+    lifecycle: ModuleLifecycleScope,
+  ): ModuleHostCapabilityActivationV1 {
+    const background = createModuleBackgroundCapability({
+      moduleId,
+      lifecycle,
+      sink: this.backgroundActivities,
+      now: this.now,
+      reportCallbackError: this.reportCallbackError,
+    })
+    return Object.freeze({
+      capabilities: Object.freeze({ background: background.api }),
+      commit: () => background.commit(),
+      activate: () => background.activate(),
+    })
+  }
+}
+
+function createModuleBackgroundCapability({
+  moduleId,
+  lifecycle,
+  sink,
+  now,
+  reportCallbackError,
+}: {
+  moduleId: string
+  lifecycle: ModuleLifecycleScope
+  sink: BackgroundActivityBatchSink
+  now: () => number
+  reportCallbackError: (moduleId: string, error: unknown) => void
+}): {
+  api: YoloModuleBackgroundV1
+  commit(): void
+  activate(): void
+} {
+  const staged = new Map<string, BackgroundActivity>()
+  const publishedIds = new Set<string>()
+  const callbackTokens = new Map<string, object>()
+  let active = true
+  let committed = false
+  let activationComplete = false
+  lifecycle.add(() => {
+    active = false
+    staged.clear()
+    callbackTokens.clear()
+    const errors: unknown[] = []
+    for (const id of publishedIds) {
+      try {
+        sink.remove(id)
+        publishedIds.delete(id)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    if (errors.length > 0) throw new ModuleBackgroundCleanupError(errors)
+  })
+
+  const resolveId = (localId: string): string => {
+    requireText(localId, 'Background activity id')
+    return `module:${JSON.stringify([moduleId, localId])}`
+  }
+  const assertActive = (): void => {
+    if (!active) throw new Error(`Module "${moduleId}" is no longer active`)
+  }
+  const reportError = (error: unknown): void => {
+    try {
+      reportCallbackError(moduleId, error)
+    } catch {
+      // Error reporting must not let module callbacks escape the host boundary.
+    }
+  }
+
+  const api = Object.freeze({
+    upsert: (activity: YoloModuleBackgroundActivityV1) => {
+      assertActive()
+      const declaration = snapshotActivity(activity)
+      validateActivity(declaration)
+      const id = resolveId(declaration.id)
+      const onOpen = declaration.onOpen
+      const callbackToken = onOpen ? {} : null
+      if (callbackToken) callbackTokens.set(id, callbackToken)
+      else callbackTokens.delete(id)
+      const mapped: BackgroundActivity = {
+        id,
+        kind: `module:${moduleId}`,
+        title: declaration.title,
+        ...(declaration.detail !== undefined
+          ? { detail: declaration.detail }
+          : {}),
+        ...(declaration.summary !== undefined
+          ? { summary: declaration.summary }
+          : {}),
+        ...(declaration.icon !== undefined ? { icon: declaration.icon } : {}),
+        status: declaration.status,
+        updatedAt: now(),
+        ...(onOpen
+          ? {
+              action: {
+                type: 'callback',
+                run: () => {
+                  if (
+                    !active ||
+                    !activationComplete ||
+                    callbackTokens.get(id) !== callbackToken
+                  )
+                    return
+                  try {
+                    const result = onOpen()
+                    if (isThenable(result)) {
+                      void Promise.resolve(result).catch((error: unknown) => {
+                        reportError(error)
+                      })
+                    }
+                  } catch (error) {
+                    reportError(error)
+                  }
+                },
+              } as const,
+            }
+          : {}),
+      }
+      if (!committed) {
+        staged.set(id, mapped)
+        return
+      }
+      publishedIds.add(id)
+      sink.upsert(mapped)
+    },
+    remove: (localId: string) => {
+      assertActive()
+      const id = resolveId(localId)
+      callbackTokens.delete(id)
+      if (!committed) {
+        staged.delete(id)
+        return
+      }
+      sink.remove(id)
+      publishedIds.delete(id)
+    },
+  })
+  return {
+    api,
+    commit: () => {
+      assertActive()
+      if (committed)
+        throw new Error('Module capabilities are already committed')
+      committed = true
+      for (const id of staged.keys()) publishedIds.add(id)
+      if (staged.size > 0) sink.upsertAll([...staged.values()])
+      staged.clear()
+    },
+    activate: () => {
+      assertActive()
+      if (!committed) throw new Error('Module capabilities are not committed')
+      activationComplete = true
+    },
+  }
+}
+
+function snapshotActivity(
+  activity: YoloModuleBackgroundActivityV1,
+): YoloModuleBackgroundActivityV1 {
+  if (!activity || typeof activity !== 'object') {
+    throw new TypeError('Background activity must be an object')
+  }
+  const id = activity.id
+  const title = activity.title
+  const detail = activity.detail
+  const summary = activity.summary
+  const icon = activity.icon
+  const status = activity.status
+  const onOpen = activity.onOpen
+  return { id, title, detail, summary, icon, status, onOpen }
+}
+
+function validateActivity(activity: YoloModuleBackgroundActivityV1): void {
+  requireText(activity.title, 'Background activity title')
+  requireOptionalString(activity.detail, 'Background activity detail')
+  requireOptionalString(activity.summary, 'Background activity summary')
+  if (activity.icon !== undefined) {
+    requireText(activity.icon, 'Background activity icon')
+  }
+  if (
+    activity.status !== 'running' &&
+    activity.status !== 'waiting' &&
+    activity.status !== 'failed' &&
+    activity.status !== 'reminder'
+  ) {
+    throw new Error('Background activity status is invalid')
+  }
+  if (activity.onOpen !== undefined && typeof activity.onOpen !== 'function') {
+    throw new TypeError('Background activity onOpen must be a function')
+  }
+}
+
+function requireOptionalString(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'string') {
+    throw new TypeError(`${label} must be a string`)
+  }
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as PromiseLike<unknown>).then === 'function'
+  )
+}
+
+function requireText(value: string, label: string): void {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${label} must be a non-empty string`)
+  }
+}

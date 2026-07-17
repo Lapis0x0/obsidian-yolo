@@ -65,6 +65,7 @@ import type {
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
+  CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   EMPTY_INSTALLED_MODULE_STATE_SOURCE,
   EMPTY_MODULE_CATALOG_SOURCE,
@@ -3603,6 +3604,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       )
       this.moduleRuntime ??= new ModuleRuntime(
         new ObsidianModuleContributionRegistrar(this),
+        new CoreModuleHostCapabilityProvider({
+          backgroundActivities: this.getBackgroundActivityRegistry(),
+        }),
       )
       const definition = await new ModuleLoader({
         executor: new DomBlobModuleScriptExecutor(),

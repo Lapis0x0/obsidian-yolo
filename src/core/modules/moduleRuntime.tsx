@@ -4,6 +4,7 @@ import { type Root, createRoot } from 'react-dom/client'
 
 import type { StagedModuleContributions } from './contributionStager'
 import { ModuleContributionStager } from './contributionStager'
+import type { ModuleHostCapabilityProviderV1 } from './hostCapabilities'
 import { ModuleLifecycleScope } from './lifecycleScope'
 import { installYoloModuleRuntimeBridge } from './runtimeBridge'
 import type { YoloModuleDefinition, YoloModuleViewV1 } from './types'
@@ -132,7 +133,10 @@ export class ModuleRuntime {
   private readonly removeRuntimeBridge: () => void
   private disposed = false
 
-  constructor(private readonly registrar: ModuleContributionRegistrar) {
+  constructor(
+    private readonly registrar: ModuleContributionRegistrar,
+    private readonly capabilityProvider: ModuleHostCapabilityProviderV1,
+  ) {
     this.removeRuntimeBridge = installYoloModuleRuntimeBridge()
   }
 
@@ -145,16 +149,31 @@ export class ModuleRuntime {
     const stager = new ModuleContributionStager()
     this.pending.set(definition.id, { lifecycle, stager })
     try {
+      const capabilityActivation = this.capabilityProvider.create(
+        definition.id,
+        lifecycle,
+      )
       await definition.activate({
         version: 1,
         lifecycle,
         workspace: stager.workspace,
+        background: capabilityActivation.capabilities.background,
       })
       if (this.disposed) {
         throw new Error('Module runtime was disposed during activation')
       }
-      const contributions = stager.finish()
+      const contributions = stager.finish({ allowEmpty: true })
+      capabilityActivation.commit()
+      if (this.disposed) {
+        throw new Error('Module runtime was disposed during capability commit')
+      }
       this.registrar.commit(definition.id, contributions, lifecycle)
+      if (this.disposed) {
+        throw new Error(
+          'Module runtime was disposed during contribution commit',
+        )
+      }
+      capabilityActivation.activate()
       this.scopes.set(definition.id, lifecycle)
     } catch (error) {
       stager.close()

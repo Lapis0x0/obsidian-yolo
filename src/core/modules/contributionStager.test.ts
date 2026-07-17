@@ -41,4 +41,9 @@ describe('ModuleContributionStager', () => {
       'no workspace contributions',
     )
   })
+
+  it('allows capability-only activation when explicitly requested', () => {
+    const stager = new ModuleContributionStager()
+    expect(stager.finish({ allowEmpty: true })).toEqual({})
+  })
 })

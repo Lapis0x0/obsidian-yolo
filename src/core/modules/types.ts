@@ -24,11 +24,37 @@ export type YoloModuleWorkspaceV1 = {
   registerRibbonAction(action: YoloModuleRibbonActionV1): void
 }
 
+export type YoloModuleBackgroundActivityStatusV1 =
+  | 'running'
+  | 'waiting'
+  | 'failed'
+  | 'reminder'
+
+export type YoloModuleBackgroundActivityV1 = Readonly<{
+  id: string
+  title: string
+  detail?: string
+  summary?: string
+  icon?: string
+  status: YoloModuleBackgroundActivityStatusV1
+  onOpen?: () => void | Promise<void>
+}>
+
+export type YoloModuleBackgroundV1 = {
+  upsert(activity: YoloModuleBackgroundActivityV1): void
+  remove(id: string): void
+}
+
+export type YoloModuleCapabilitiesV1 = Readonly<{
+  background: YoloModuleBackgroundV1
+}>
+
 export type YoloHostApiV1 = Readonly<{
   version: 1
   lifecycle: YoloModuleLifecycle
   workspace: YoloModuleWorkspaceV1
-}>
+}> &
+  YoloModuleCapabilitiesV1
 
 export type YoloModuleDefinition = {
   id: string

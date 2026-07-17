@@ -5,6 +5,11 @@ export {
 } from './contributionStager'
 export { ModuleLoader, type ModuleLoaderOptions } from './moduleLoader'
 export {
+  CoreModuleHostCapabilityProvider,
+  type ModuleHostCapabilityActivationV1,
+  type ModuleHostCapabilityProviderV1,
+} from './hostCapabilities'
+export {
   EMPTY_INSTALLED_MODULE_STATE_SOURCE,
   EMPTY_MODULE_CATALOG_SOURCE,
   ModuleManager,
@@ -49,6 +54,10 @@ export type {
   YoloModuleDefinition,
   YoloModuleEntry,
   YoloHostApiV1,
+  YoloModuleBackgroundActivityStatusV1,
+  YoloModuleBackgroundActivityV1,
+  YoloModuleBackgroundV1,
+  YoloModuleCapabilitiesV1,
   YoloModuleLifecycle,
   YoloModuleRibbonActionV1,
   YoloModuleRuntimeRegistration,

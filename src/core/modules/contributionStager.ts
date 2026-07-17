@@ -47,10 +47,10 @@ export class ModuleContributionStager {
     },
   }
 
-  finish(): StagedModuleContributions {
+  finish(options: { allowEmpty?: boolean } = {}): StagedModuleContributions {
     this.assertOpen()
     this.finished = true
-    if (!this.view && !this.ribbonAction) {
+    if (!options.allowEmpty && !this.view && !this.ribbonAction) {
       throw new Error('Module activation declared no workspace contributions')
     }
     return Object.freeze({

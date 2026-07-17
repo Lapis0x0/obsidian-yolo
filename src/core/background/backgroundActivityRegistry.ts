@@ -37,8 +37,12 @@ export type BackgroundActivitySink = {
   remove(id: string): void
 }
 
+export type BackgroundActivityBatchSink = BackgroundActivitySink & {
+  upsertAll(activities: Iterable<BackgroundActivity>): void
+}
+
 export type BackgroundActivitySubscriber = (
-  activities: Map<string, BackgroundActivity>,
+  activities: ReadonlyMap<string, BackgroundActivity>,
 ) => void
 
 export class BackgroundActivityRegistry {
@@ -47,7 +51,7 @@ export class BackgroundActivityRegistry {
 
   subscribe(subscriber: BackgroundActivitySubscriber): () => void {
     this.subscribers.add(subscriber)
-    subscriber(new Map(this.activities))
+    this.notifySubscriber(subscriber)
     return () => {
       this.subscribers.delete(subscriber)
     }
@@ -56,6 +60,15 @@ export class BackgroundActivityRegistry {
   upsert(activity: BackgroundActivity): void {
     this.activities.set(activity.id, activity)
     this.emit()
+  }
+
+  upsertAll(activities: Iterable<BackgroundActivity>): void {
+    let changed = false
+    for (const activity of activities) {
+      this.activities.set(activity.id, activity)
+      changed = true
+    }
+    if (changed) this.emit()
   }
 
   remove(id: string): void {
@@ -74,9 +87,16 @@ export class BackgroundActivityRegistry {
   }
 
   private emit(): void {
-    const snapshot = new Map(this.activities)
     for (const subscriber of this.subscribers) {
-      subscriber(snapshot)
+      this.notifySubscriber(subscriber)
+    }
+  }
+
+  private notifySubscriber(subscriber: BackgroundActivitySubscriber): void {
+    try {
+      subscriber(new Map(this.activities))
+    } catch (error) {
+      console.error('[YOLO] Background activity subscriber failed', error)
     }
   }
 }
