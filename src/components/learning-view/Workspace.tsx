@@ -1,12 +1,12 @@
 import { ChevronLeft } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import type { Project as VaultProject } from '../../core/learning/types'
 
 import { type CardMode, CardsView, cardModes } from './CardsView'
 import type { CardGenerationWorkspace } from './cardsWorkspace'
 import { ExercisesView } from './ExercisesView'
+import { useLearningLanguage } from './LearningUiHost'
 import { OutlineView } from './OutlineView'
 import { Pill, Segmented } from './primitives'
 import { type TabKey, tabs } from './tabs'
@@ -36,7 +36,7 @@ export function Workspace({
   onCardModeChange: (mode: CardMode) => void
   projectPaused: boolean
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const [studyCardCount, setStudyCardCount] = useState(0)
   const handleStudyCardCountChange = useCallback(
     (count: number) => setStudyCardCount(count),

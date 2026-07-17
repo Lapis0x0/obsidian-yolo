@@ -17,7 +17,6 @@ import {
   useState,
 } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type {
   LearningEvent,
@@ -26,6 +25,7 @@ import type {
 } from '../../core/learning/types'
 
 import { formatLearningText } from './i18n'
+import { useLearningLanguage } from './LearningUiHost'
 
 /**
  * KnowledgeGraph — a force-directed knowledge graph that *grows* in response
@@ -159,7 +159,7 @@ export function KnowledgeGraph({
   eventBus,
   initialSnapshot,
 }: KnowledgeGraphProps) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
 

@@ -12,7 +12,6 @@ import {
 } from './components/learning-view/LearningViewAdapter'
 import { LearningWorkspace } from './components/learning-view/LearningWorkspace'
 import { LEARNING_VIEW_TYPE } from './constants'
-import { LanguageProvider } from './contexts/language-context'
 
 /**
  * LearningView
@@ -141,11 +140,9 @@ export class LearningView extends ItemView {
 
     this.root.render(
       <LearningUiHostProvider host={this.learningHost}>
-        <LanguageProvider>
-          <React.StrictMode>
-            <LearningWorkspace />
-          </React.StrictMode>
-        </LanguageProvider>
+        <React.StrictMode>
+          <LearningWorkspace />
+        </React.StrictMode>
       </LearningUiHostProvider>,
     )
     return Promise.resolve()

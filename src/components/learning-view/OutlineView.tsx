@@ -19,7 +19,6 @@ import {
   useState,
 } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type {
   Chapter as VaultChapter,
@@ -29,7 +28,7 @@ import type {
 import { openMarkdownFile } from '../../utils/obsidian'
 
 import { formatLearningText } from './i18n'
-import { useLearningUiHost } from './LearningUiHost'
+import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 import { MasteryDot, Pill } from './primitives'
 
 const OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY = 'yolo-learning-outline-sidebar-width'
@@ -79,7 +78,7 @@ export function OutlineView({
   selectedPointId: string | null
   onSelectPoint: (id: string) => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const sidebarResizeStartRef = useRef<{
     x: number
     width: number

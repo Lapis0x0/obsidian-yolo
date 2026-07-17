@@ -9,13 +9,30 @@ import type {
 import type { LearningStatsService } from '../../core/learning/learningStatsService'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import type { LearningSrsStore } from '../../core/learning/srs/srsStore'
-import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { ActionToastOptions } from '../ActionToast'
+
+export type LearningLocale = 'en' | 'it' | 'zh'
+
+export type LearningSettings = {
+  learningBaseDir: string
+  generationModelId: string
+  fallbackModelId: string
+}
+
+export type LearningActionToast = {
+  id: string
+  tone: 'success' | 'warning' | 'error'
+  title: string
+  message: string
+  actionLabel: string
+  dismissLabel: string
+  onAction: () => void | Promise<void>
+}
 
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- This public host boundary is intentionally extensible.
 export interface LearningUiHost {
   readonly app: App
-  readonly settings: YoloSettings
+  readonly settings: LearningSettings
+  readonly locale: LearningLocale
   readonly t: (keyPath: string, fallback?: string) => string
   readonly srsStore: LearningSrsStore
   readonly statsService: LearningStatsService
@@ -24,14 +41,13 @@ export interface LearningUiHost {
     pluginId: string
     pluginDir?: string
   }
-  setSettings(settings: YoloSettings): void | Promise<void>
-  subscribeSettings(listener: (settings: YoloSettings) => void): () => void
+  subscribeSettings(listener: (settings: LearningSettings) => void): () => void
   setEventBus(bus: ProjectEventBus | null): void
   setNavigationHandler(handler: LearningNavigationHandler | null): void
   openLearningView(target?: LearningNavigationTarget): Promise<void>
   trackGeneration(controller: AbortController): void
   releaseGeneration(controller: AbortController): void
-  showActionToast(toast: ActionToastOptions): void
+  showActionToast(toast: LearningActionToast): void
 }
 
 const LearningUiHostContext = createContext<LearningUiHost | null>(null)
@@ -58,4 +74,12 @@ export function useLearningUiHost(): LearningUiHost {
     )
   }
   return host
+}
+
+export function useLearningLanguage(): {
+  locale: LearningLocale
+  t: LearningUiHost['t']
+} {
+  const { locale, t } = useLearningUiHost()
+  return { locale, t }
 }

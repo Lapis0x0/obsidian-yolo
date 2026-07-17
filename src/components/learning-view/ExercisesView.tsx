@@ -3,12 +3,11 @@ import { ArrowRight, Check, RotateCcw, X } from 'lucide-react'
 import { TFile, normalizePath } from 'obsidian'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type { Project as VaultProject } from '../../core/learning/types'
 
 import { formatLearningText } from './i18n'
-import { useLearningUiHost } from './LearningUiHost'
+import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 import { Pill, Segmented, SelectMenu } from './primitives'
 
 type Exercise = {
@@ -24,7 +23,7 @@ type Exercise = {
 type PracticeScope = { kind: 'global' } | { kind: 'chapter'; chapterId: string }
 
 export function ExercisesView({ project }: { project: VaultProject | null }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const { exercises, loading } = useProjectExercises(project)
   const practiceCount = exercises.filter(
     (exercise) => !exercise.practiced,
@@ -152,7 +151,7 @@ function BrowseMode({
   loading: boolean
   onPracticeChapter: (chapterId: string) => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const [chapterFilter, setChapterFilter] = useState('全部章节')
   const [statusFilter, setStatusFilter] = useState('全部状态')
 
@@ -244,7 +243,7 @@ function ChapterExerciseCard({
   chapterIndex: number
   onPracticeChapter: () => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const practiced = chapter.exercises.filter(
     (exercise) => exercise.practiced,
   ).length
@@ -327,7 +326,7 @@ function PracticeMode({
   scope: PracticeScope
   onExit: () => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const queue = useMemo(() => {
     if (scope.kind === 'chapter') {
       return exercises.filter(

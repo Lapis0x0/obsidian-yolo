@@ -1,9 +1,16 @@
+import { getLanguage } from 'obsidian'
+
 import type { LearningGenerationCapability } from '../../core/learning/generation/host'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
+import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 
-import type { LearningUiHost } from './LearningUiHost'
+import type {
+  LearningLocale,
+  LearningSettings,
+  LearningUiHost,
+} from './LearningUiHost'
 
 const localFileToolName = (name: string) =>
   getToolName(getLocalFileToolServerName(), name)
@@ -24,12 +31,28 @@ const TOOL_NAMES_BY_CAPABILITY: Record<LearningGenerationCapability, string[]> =
 
 export type LearningViewPluginAdapter = YoloPlugin
 
+const mapSettings = (plugin: YoloPlugin): LearningSettings => ({
+  learningBaseDir: getYoloLearningDir(plugin.settings),
+  generationModelId: plugin.settings.learningOptions.modelId,
+  fallbackModelId: plugin.settings.chatModelId,
+})
+
+const resolveLocale = (): LearningLocale => {
+  const language = String(getLanguage() ?? '')
+    .trim()
+    .toLowerCase()
+  if (language.startsWith('zh')) return 'zh'
+  if (language.startsWith('it')) return 'it'
+  return 'en'
+}
+
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
   return {
     app: plugin.app,
     get settings() {
-      return plugin.settings
+      return mapSettings(plugin)
     },
+    locale: resolveLocale(),
     t: (keyPath, fallback) => plugin.t(keyPath, fallback),
     get srsStore() {
       return plugin.getLearningSrsStore()
@@ -48,8 +71,8 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
       pluginId: plugin.manifest.id,
       pluginDir: plugin.manifest.dir,
     },
-    setSettings: (settings) => plugin.setSettings(settings),
-    subscribeSettings: (listener) => plugin.addSettingsChangeListener(listener),
+    subscribeSettings: (listener) =>
+      plugin.addSettingsChangeListener(() => listener(mapSettings(plugin))),
     setEventBus: (bus) => plugin.setLearningEventBus(bus),
     setNavigationHandler: (handler) =>
       plugin.setLearningNavigationHandler(handler),

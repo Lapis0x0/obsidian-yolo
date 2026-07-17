@@ -30,7 +30,6 @@ import { Notice } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import { generateCardsParallel } from '../../core/learning/generation/cardGenerator'
 import {
   type ChapterDebugData,
@@ -57,13 +56,12 @@ import type {
   OutlineChapter,
 } from '../../core/learning/generation/types'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
-import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import { summarizeCardGeneration } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
 import { createLearningGenerationHost } from './learningGenerationHost'
-import { useLearningUiHost } from './LearningUiHost'
+import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
 type OutlineWaitingStage = 'preparing' | 'structuring'
@@ -112,7 +110,7 @@ export function OutlineBuilder({
     failed: boolean,
   ) => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const host = useLearningUiHost()
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [projectName, setProjectName] = useState('')
@@ -136,7 +134,7 @@ export function OutlineBuilder({
       ? { enabled: true, include: [stagingDir], exclude: [] }
       : undefined
   const learningModelId =
-    host.settings.learningOptions.modelId || host.settings.chatModelId
+    host.settings.generationModelId || host.settings.fallbackModelId
   const generationHost = createLearningGenerationHost(host)
 
   const createChapter = (chapter: OutlineChapter): EditableChapter => ({
@@ -264,7 +262,7 @@ export function OutlineBuilder({
     setPhase('knowledge')
     setError(null)
 
-    const baseDir = getYoloLearningDir(host.settings)
+    const baseDir = host.settings.learningBaseDir
     const resolvedProjectName = projectName || topic
     let scaffold: Awaited<ReturnType<typeof createProjectScaffold>>
     let projectRefPath: string | undefined

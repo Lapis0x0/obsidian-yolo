@@ -4,7 +4,6 @@ import { TFile } from 'obsidian'
 import type React from 'react'
 import { useState } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import {
   type StagedReference,
   cleanupStaging,
@@ -14,7 +13,7 @@ import {
 } from '../../core/learning/generation/referenceStaging'
 
 import { LearningFileDropzone, LearningModal } from './LearningModal'
-import { useLearningUiHost } from './LearningUiHost'
+import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 
 const levelIds = ['beginner', 'familiar', 'experienced', 'advanced'] as const
 
@@ -36,7 +35,7 @@ export function Wizard({
   onComplete: (input: LearningWizardInput) => void
 }) {
   const app = useLearningUiHost().app
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const levels = levelIds.map((id) => ({
     value: id,
     label: t(`learning.wizard.levels.${id}`, id),

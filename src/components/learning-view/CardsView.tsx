@@ -49,7 +49,6 @@ import type {
 } from 'react'
 import { createPortal } from 'react-dom'
 
-import { useLanguage } from '../../contexts/language-context'
 import {
   CardFileConflictError,
   type CardFileError,
@@ -89,7 +88,7 @@ import {
   mergeDiskAndPreviewCards,
 } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
-import { useLearningUiHost } from './LearningUiHost'
+import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 import { type Mastery, MasteryDot, SelectMenu } from './primitives'
 import {
   buildInitialReviewQueue,
@@ -391,7 +390,7 @@ function useProjectCards(
 ) {
   const host = useLearningUiHost()
   const app = host.app
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<CardWorkspaceError | null>(null)
@@ -761,7 +760,7 @@ function BrowseMode({
   setWriting: (writing: boolean) => void
   projectPaused: boolean
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const host = useLearningUiHost()
   const app = host.app
   const fileStore = getLearningCardFileStore(app)
@@ -2365,7 +2364,7 @@ function KnowledgePointDropZone({
   ) => void
   onSelect: (card: Card, event: ReactMouseEvent<HTMLButtonElement>) => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const { setNodeRef } = useDroppable({
     id: `kp:${point.uuid}`,
     disabled: readonly || mastery !== '全部',
@@ -2561,7 +2560,7 @@ function BrowseCard({
   onRemember?: () => void
   selected: boolean
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleteArmed, setDeleteArmed] = useState(false)
   const cardRef = useRef<HTMLElement>(null)
@@ -2810,7 +2809,7 @@ const CardInspector = forwardRef<
   },
   ref,
 ) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const [front, setFront] = useState(card.front)
   const [back, setBack] = useState(card.back)
   const [saveStatus, setSaveStatus] = useState<CardSaveStatus>('idle')
@@ -3055,7 +3054,7 @@ function ReviewMode({
   onQueueCountChange: (count: number) => void
   onExit: () => void
 }) {
-  const { t } = useLanguage()
+  const { t } = useLearningLanguage()
   const host = useLearningUiHost()
   const [queue, setQueue] = useState<Card[]>(initialQueue)
   const [index, setIndex] = useState(0)

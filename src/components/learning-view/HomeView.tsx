@@ -23,7 +23,6 @@ import {
   useState,
 } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
 import type {
   LearningProjectAction,
   LearningProjectStats,
@@ -37,7 +36,7 @@ import { YoloPopoverContent } from '../common/popover/YoloPopoverContent'
 import { ConfirmModal } from '../modals/ConfirmModal'
 
 import { formatLearningText } from './i18n'
-import { useLearningUiHost } from './LearningUiHost'
+import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 import { Pill, ProgressBar, SelectMenu } from './primitives'
 
 type ProjectSort = 'recent' | 'created' | 'progress'
@@ -59,7 +58,7 @@ export function HomeView({
 }) {
   const host = useLearningUiHost()
   const app = host.app
-  const { language, t } = useLanguage()
+  const { locale, t } = useLearningLanguage()
   const [sortValue, setSortValue] = useState<ProjectSort>('recent')
   const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(
     null,
@@ -440,7 +439,7 @@ export function HomeView({
               pending={pendingProjectSlug === project.slug}
               paused={isProjectPaused(project)}
               stats={statsByProject.get(project.id)}
-              language={language}
+              locale={locale}
               t={t}
             />
           ))}
@@ -532,7 +531,7 @@ function ProjectCard({
   pending,
   paused,
   stats,
-  language,
+  locale,
   t,
 }: {
   project: VaultProject
@@ -543,7 +542,7 @@ function ProjectCard({
   pending: boolean
   paused: boolean
   stats?: LearningProjectStats
-  language: 'en' | 'it' | 'zh'
+  locale: 'en' | 'it' | 'zh'
   t: (keyPath: string, fallback?: string) => string
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -710,7 +709,7 @@ function ProjectCard({
           <span>
             <Clock aria-hidden />
             {stats
-              ? formatRelativeTime(stats.lastActiveAt, language)
+              ? formatRelativeTime(stats.lastActiveAt, locale)
               : t('learning.home.statsLoadingShort', '更新中')}
           </span>
         </div>
@@ -831,12 +830,14 @@ function formatProjectActionTitle(
   return formatLearningText(template, { point: action.knowledgePointTitle })
 }
 
-function formatRelativeTime(timestamp: number, language: 'en' | 'it' | 'zh') {
+function formatRelativeTime(timestamp: number, locale: 'en' | 'it' | 'zh') {
   if (timestamp <= 0) return '—'
-  const locale =
-    language === 'zh' ? 'zh-CN' : language === 'it' ? 'it-IT' : 'en-US'
+  const intlLocale =
+    locale === 'zh' ? 'zh-CN' : locale === 'it' ? 'it-IT' : 'en-US'
   const elapsed = Date.now() - timestamp
-  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  const formatter = new Intl.RelativeTimeFormat(intlLocale, {
+    numeric: 'auto',
+  })
   const minute = 60_000
   const hour = 60 * minute
   const day = 24 * hour
@@ -848,7 +849,7 @@ function formatRelativeTime(timestamp: number, language: 'en' | 'it' | 'zh') {
     return formatter.format(-Math.floor(elapsed / hour), 'hour')
   if (elapsed < 7 * day)
     return formatter.format(-Math.floor(elapsed / day), 'day')
-  return new Intl.DateTimeFormat(locale, {
+  return new Intl.DateTimeFormat(intlLocale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

@@ -8,7 +8,6 @@ import type {
 } from '../../core/learning/generation/types'
 import type { LearningNavigationTarget } from '../../core/learning/learningNavigation'
 import { ProjectEventBus } from '../../core/learning/projectEventBus'
-import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 
 import { AnkiImportModal } from './AnkiImportModal'
 import type { CardMode } from './CardsView'
@@ -28,7 +27,7 @@ export function LearningWorkspace() {
   const host = useLearningUiHost()
   const app = host.app
   const [settings, setSettings] = useState(() => host.settings)
-  const baseDir = useMemo(() => getYoloLearningDir(settings), [settings])
+  const baseDir = settings.learningBaseDir
 
   const [projectId, setProjectId] = useState<string | null>(null)
   const [wizardOpen, setWizardOpen] = useState(false)
