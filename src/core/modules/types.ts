@@ -117,6 +117,43 @@ export type YoloModulePathsV1 = {
   subscribe(listener: () => void): ModuleDisposer
 }
 
+export type YoloModuleConfirmOptionsV1 = Readonly<{
+  title: string
+  message: string
+  ctaText?: string
+  cancelText?: string
+}>
+
+export type YoloModuleMarkdownRendererV1 = {
+  render(
+    markdown: string,
+    container: HTMLElement,
+    sourcePath: string,
+  ): Promise<void>
+  unload(): void
+}
+
+export type YoloModuleHoverLinkOptionsV1 = Readonly<{
+  event: MouseEvent
+  targetEl: HTMLElement
+  linktext: string
+  sourcePath: string
+}>
+
+export type YoloModuleUiV1 = {
+  notice(message: string): void
+  confirm(options: YoloModuleConfirmOptionsV1): Promise<boolean>
+  createMarkdownRenderer(): YoloModuleMarkdownRendererV1
+  htmlToMarkdown(html: string): string
+  isModEvent(event: MouseEvent): boolean
+  openLink(
+    linktext: string,
+    sourcePath: string,
+    newLeaf?: boolean,
+  ): Promise<void>
+  hoverLink(options: YoloModuleHoverLinkOptionsV1): void
+}
+
 export type YoloModuleVaultFileV1 = Readonly<{
   kind: 'file'
   path: string
@@ -202,6 +239,7 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   agent: YoloModuleAgentV1
   background: YoloModuleBackgroundV1
   paths: YoloModulePathsV1
+  ui: YoloModuleUiV1
   vault: YoloModuleVaultV1
 }>
 

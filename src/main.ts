@@ -22,6 +22,7 @@ import {
   mountActionToast,
 } from './components/ActionToast'
 import { AcknowledgementModal } from './components/modals/AcknowledgementModal'
+import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
@@ -77,6 +78,7 @@ import {
   ModuleRuntime,
   ModuleStore,
   ObsidianModuleContributionRegistrar,
+  ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
   parseModuleArtifactManifest,
 } from './core/modules'
@@ -3605,6 +3607,16 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           reportCallbackError: (moduleId, error) => {
             console.error(
               `[YOLO] Module "${moduleId}" managed-path callback failed`,
+              error,
+            )
+          },
+        }),
+        ui: new ObsidianModuleUiCapabilityProvider({
+          app: this.app,
+          createConfirmModal: (app, options) => new ConfirmModal(app, options),
+          reportCleanupError: (moduleId, error) => {
+            console.error(
+              `[YOLO] Module "${moduleId}" UI cleanup failed`,
               error,
             )
           },

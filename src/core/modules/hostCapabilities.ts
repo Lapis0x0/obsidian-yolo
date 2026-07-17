@@ -13,6 +13,10 @@ import {
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
 } from './modulePaths'
 import {
+  type ModuleUiCapabilityProviderV1,
+  UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
+} from './moduleUi'
+import {
   type ModuleVaultCapabilityProviderV1,
   UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
 } from './moduleVault'
@@ -46,6 +50,7 @@ type CoreModuleHostCapabilityProviderOptions = {
   agent?: ModuleAgentCapabilityProviderV1
   backgroundActivities: BackgroundActivityBatchSink
   paths?: ModulePathsCapabilityProviderV1
+  ui?: ModuleUiCapabilityProviderV1
   vault?: ModuleVaultCapabilityProviderV1
   now?: () => number
   reportCallbackError?: (moduleId: string, error: unknown) => void
@@ -58,6 +63,7 @@ export class CoreModuleHostCapabilityProvider
   private readonly backgroundActivities: BackgroundActivityBatchSink
   private readonly now: () => number
   private readonly paths: ModulePathsCapabilityProviderV1
+  private readonly ui: ModuleUiCapabilityProviderV1
   private readonly reportCallbackError: (
     moduleId: string,
     error: unknown,
@@ -68,6 +74,7 @@ export class CoreModuleHostCapabilityProvider
     agent = UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
     backgroundActivities,
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
+    ui = UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
     vault = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
     now = Date.now,
     reportCallbackError = (moduleId, error) => {
@@ -80,6 +87,7 @@ export class CoreModuleHostCapabilityProvider
     this.agent = agent
     this.backgroundActivities = backgroundActivities
     this.paths = paths
+    this.ui = ui
     this.vault = vault
     this.now = now
     this.reportCallbackError = reportCallbackError
@@ -98,12 +106,14 @@ export class CoreModuleHostCapabilityProvider
       reportCallbackError: this.reportCallbackError,
     })
     const paths = this.paths.create(moduleId, lifecycle)
+    const ui = this.ui.create(moduleId, lifecycle)
     const vault = this.vault.create(moduleId, lifecycle)
     return Object.freeze({
       capabilities: Object.freeze({
         agent: agent.api,
         background: background.api,
         paths: paths.api,
+        ui: ui.api,
         vault: vault.api,
       }),
       commit: () => background.commit(),
@@ -111,6 +121,7 @@ export class CoreModuleHostCapabilityProvider
         agent.activate()
         background.activate()
         paths.activate()
+        ui.activate()
         vault.activate()
       },
     })

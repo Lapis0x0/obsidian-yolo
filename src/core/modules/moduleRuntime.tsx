@@ -199,6 +199,7 @@ export class ModuleRuntime {
         agent: capabilityActivation.capabilities.agent,
         background: capabilityActivation.capabilities.background,
         paths: capabilityActivation.capabilities.paths,
+        ui: capabilityActivation.capabilities.ui,
         vault: capabilityActivation.capabilities.vault,
       })
       if (this.disposed) {

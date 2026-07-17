@@ -38,6 +38,15 @@ export {
   type ModulePathsCapabilityProviderV1,
 } from './modulePaths'
 export {
+  ObsidianModuleUiCapabilityProvider,
+  UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
+  type ModuleUiCapabilityActivationV1,
+  type ModuleUiCapabilityProviderV1,
+  type ModuleConfirmModal,
+  type ModuleConfirmModalFactory,
+  type ObsidianModuleUiCapabilityProviderOptions,
+} from './moduleUi'
+export {
   ObsidianModuleVaultCapabilityProvider,
   UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
   normalizeModuleVaultPath,
@@ -111,6 +120,10 @@ export type {
   YoloModuleOpenViewOptionsV1,
   YoloModulePathsSnapshotV1,
   YoloModulePathsV1,
+  YoloModuleConfirmOptionsV1,
+  YoloModuleHoverLinkOptionsV1,
+  YoloModuleMarkdownRendererV1,
+  YoloModuleUiV1,
   YoloModuleRibbonActionV1,
   YoloModuleRuntimeRegistration,
   YoloModuleViewV1,
