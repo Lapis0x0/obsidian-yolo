@@ -95,6 +95,26 @@ export {
   type ModuleManagerOptions,
 } from './moduleManager'
 export {
+  findCompatibleUpdate,
+  parseOfficialModuleCatalog,
+  selectInitialCompatibleVersion,
+  type OfficialModuleCatalogModule,
+  type OfficialModuleCatalogParserOptions,
+  type OfficialModuleCatalogV1,
+  type OfficialModuleCatalogVersion,
+  type OfficialModuleCompatibility,
+  type OfficialModuleDataSchema,
+  type OfficialModulePlatform,
+} from './officialModuleCatalog'
+export {
+  OFFICIAL_MODULE_CATALOG_URL,
+  OFFICIAL_MODULE_RELEASE_REPOSITORIES,
+  OfficialModuleCatalogClient,
+  OfficialModuleCatalogUnavailableError,
+  type OfficialModuleCatalogClientOptions,
+  type OfficialModuleCatalogRequest,
+} from './officialModuleCatalogClient'
+export {
   ModuleStore,
   parseModuleArtifactManifest,
   parseModuleReadyMarker,
