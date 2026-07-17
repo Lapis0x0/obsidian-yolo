@@ -5,15 +5,21 @@
   "hostApi": 1,
   "entry": {
     "path": "entry.js",
-    "byteSize": 1997,
-    "sha256": "f2a9ee9850ddc1b90a7609485b8ecaf7ee26803e4bb7cf11a748b3efdea5bc5e"
+    "byteSize": 2291,
+    "sha256": "e5c81de6fc81ad77aa80e096ae7f4d8a13cfeba37af624e54da3066be1607810"
   },
   "files": [
     {
       "role": "entry",
       "path": "entry.js",
-      "byteSize": 1997,
-      "sha256": "f2a9ee9850ddc1b90a7609485b8ecaf7ee26803e4bb7cf11a748b3efdea5bc5e"
+      "byteSize": 2291,
+      "sha256": "e5c81de6fc81ad77aa80e096ae7f4d8a13cfeba37af624e54da3066be1607810"
+    },
+    {
+      "role": "style",
+      "path": "style.css",
+      "byteSize": 121,
+      "sha256": "6217379a83626ddc9d7a4f64babc8eb08aac88ea86387653fd4b6ea00ec32a03"
     }
   ]
 }

@@ -7,8 +7,8 @@
       "name": "Learning module preview",
       "description": "Read-only module boundary preview for existing Learning data.",
       "manifest": {
-        "byteSize": 414,
-        "sha256": "38e7d9b4711626f19ed58e9e0e1a1d2816d9ffe81e6bfcc21ec834a693126eed"
+        "byteSize": 583,
+        "sha256": "1685c36c63402659c0ba12fd6c68eef45aa9571441aa585cda95cfafe0e94e98"
       }
     }
   ]

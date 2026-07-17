@@ -1,7 +1,7 @@
 // eslint-disable-next-line import/no-nodejs-modules -- artifact integrity test runs only in Jest/Node
 import { createHash } from 'node:crypto'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test reads generated build files
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test resolves repository fixtures
 import * as path from 'node:path'
 
@@ -68,6 +68,7 @@ describe('host API conformance artifact boundary', () => {
       JSON.parse(readFileSync(path.join(learningDir, 'ready.json'), 'utf8')),
     )
     const entry = readFileSync(path.join(learningDir, manifest.entry.path))
+    const style = manifest.files.find((file) => file.role === 'style')
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('learning')
     expect(manifest.version).toBe('0.1.0')
@@ -79,6 +80,25 @@ describe('host API conformance artifact boundary', () => {
     expect(manifest.entry.byteSize).toBe(entry.byteLength)
     expect(manifest.entry.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),
+    )
+    expect(manifest.files.map(({ role, path }) => ({ role, path }))).toEqual([
+      { role: 'entry', path: 'entry.js' },
+      { role: 'style', path: 'style.css' },
+    ])
+    expect(readdirSync(learningDir).sort()).toEqual([
+      'entry.js',
+      'module.json',
+      'ready.json',
+      'style.css',
+    ])
+    expect(style).toBeDefined()
+    const styleBytes = readFileSync(path.join(learningDir, style!.path))
+    expect(style!.byteSize).toBe(styleBytes.byteLength)
+    expect(style!.sha256).toBe(
+      createHash('sha256').update(styleBytes).digest('hex'),
+    )
+    expect(styleBytes.toString('utf8')).toContain(
+      '.yolo-learning-module-preview',
     )
     expect(source).toContain('yolo.module.host-runtime.v1')
     expect(source).toContain('yolo-learning-module-preview')

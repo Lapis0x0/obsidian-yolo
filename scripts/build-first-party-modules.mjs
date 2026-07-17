@@ -13,6 +13,13 @@ const moduleDefinitions = [
   {
     id: 'learning',
     version: '0.1.0',
+    assets: [
+      {
+        role: 'style',
+        source: 'style.css',
+        path: 'style.css',
+      },
+    ],
     bundled: {
       name: 'Learning module preview',
       description:
@@ -76,7 +83,7 @@ await writeFile(
   )}\n`,
 )
 
-async function buildModule({ id, version }) {
+async function buildModule({ id, version, assets = [] }) {
   const sourceDir = path.resolve('modules', id, 'src')
   const artifactDir = path.resolve('modules', id, version)
   const entryPath = path.join(artifactDir, 'entry.js')
@@ -95,13 +102,27 @@ async function buildModule({ id, version }) {
     legalComments: 'none',
   })
 
-  const entry = await readFile(entryPath)
-  const entryFile = {
-    role: 'entry',
-    path: 'entry.js',
-    byteSize: entry.byteLength,
-    sha256: createHash('sha256').update(entry).digest('hex'),
-  }
+  await Promise.all(
+    assets.map(async (asset) => {
+      if (asset.role !== 'style') {
+        throw new Error(`Unsupported module asset role: ${asset.role}`)
+      }
+      await esbuild.build({
+        entryPoints: [path.join(sourceDir, asset.source)],
+        outfile: path.join(artifactDir, asset.path),
+        bundle: true,
+        minify: true,
+        legalComments: 'none',
+      })
+    }),
+  )
+
+  const entryFile = await describeArtifactFile(artifactDir, 'entry', 'entry.js')
+  const assetFiles = await Promise.all(
+    assets.map((asset) =>
+      describeArtifactFile(artifactDir, asset.role, asset.path),
+    ),
+  )
   const manifest = {
     schemaVersion: 1,
     id,
@@ -112,7 +133,7 @@ async function buildModule({ id, version }) {
       byteSize: entryFile.byteSize,
       sha256: entryFile.sha256,
     },
-    files: [entryFile],
+    files: [entryFile, ...assetFiles],
   }
   const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
   const manifestMetadata = {
@@ -134,4 +155,14 @@ async function buildModule({ id, version }) {
     )}\n`,
   )
   return { manifest: manifestMetadata }
+}
+
+async function describeArtifactFile(artifactDir, role, relativePath) {
+  const bytes = await readFile(path.join(artifactDir, relativePath))
+  return {
+    role,
+    path: relativePath,
+    byteSize: bytes.byteLength,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  }
 }

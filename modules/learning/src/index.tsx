@@ -4,6 +4,7 @@ const MODULE_ID = 'learning'
 const VIEW_TYPE = 'yolo-learning-module-preview'
 
 function LearningModulePreview({ host }: { host: YoloModuleHostApiV1 }) {
+  const styleText = useModuleStyle(host)
   const [contentRoot, setContentRoot] = useState(
     () => host.paths.getSnapshot().contentRoot,
   )
@@ -16,12 +17,34 @@ function LearningModulePreview({ host }: { host: YoloModuleHostApiV1 }) {
   }, [host])
 
   return (
-    <LearningContentPreview
-      key={contentRoot}
-      host={host}
-      contentRoot={contentRoot}
-    />
+    <>
+      {styleText ? <style>{styleText}</style> : null}
+      <LearningContentPreview
+        key={contentRoot}
+        host={host}
+        contentRoot={contentRoot}
+      />
+    </>
   )
+}
+
+function useModuleStyle(host: YoloModuleHostApiV1): string {
+  const [styleText, setStyleText] = useState('')
+  useEffect(() => {
+    let active = true
+    void host.assets
+      .readText('style.css')
+      .then((css) => {
+        if (active) setStyleText(css)
+      })
+      .catch((error) => {
+        console.error('Learning module style failed to load', error)
+      })
+    return () => {
+      active = false
+    }
+  }, [host])
+  return styleText
 }
 
 function LearningContentPreview({
@@ -43,7 +66,7 @@ function LearningContentPreview({
   }, [contentRoot, host])
 
   return (
-    <main data-yolo-module={MODULE_ID}>
+    <main className="yolo-learning-module-preview" data-yolo-module={MODULE_ID}>
       <h2>Learning module preview</h2>
       <p>This view is running from an independently loaded module artifact.</p>
       <dl>
