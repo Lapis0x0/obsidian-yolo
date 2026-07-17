@@ -1,9 +1,11 @@
-import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
-import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
 import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
-import type { LearningGenerationHost } from './host'
+import type {
+  LearningGenerationActivity,
+  LearningGenerationHost,
+  LearningWorkspaceScope,
+} from './host'
 import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
 import type {
   ChapterGenerationResult,
@@ -20,10 +22,10 @@ export type GenerateKnowledgePointsForChapterOptions = {
   chapterTitle: string
   chapterContract: string
   level: string
-  workspaceScope?: AssistantWorkspaceScope
+  workspaceScope?: LearningWorkspaceScope
   referenceDir?: string
   abortSignal?: AbortSignal
-  activity?: AgentRunActivity
+  activity?: LearningGenerationActivity
   onProgress?: (delta: string, fullText: string) => void
   onKnowledgePointTitle?: (title: string) => void | Promise<void>
   onKnowledgePoint?: (point: KnowledgePointDraft) => void | Promise<void>
@@ -79,8 +81,6 @@ export async function generateKnowledgePointsForChapter({
       referenceDir,
     }),
     modelId,
-    mode: 'agent',
-    yolo: true,
     systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
     capability: workspaceScope?.enabled ? 'readonly-vault' : 'none',
     workspaceScope,
@@ -135,7 +135,7 @@ export type GenerateKnowledgePointsParallelOptions = {
   projectTopic: string
   chapters: OutlineChapter[]
   level: string
-  workspaceScope?: AssistantWorkspaceScope
+  workspaceScope?: LearningWorkspaceScope
   referenceDir?: string
   abortSignal?: AbortSignal
   onChapterProgress?: (progress: GenerationProgress) => void

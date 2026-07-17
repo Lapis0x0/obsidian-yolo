@@ -1,8 +1,9 @@
-import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
-import type { AgentRunActivity } from '../../agent/service'
-
 import { PhaseDebugCollector, emitPhaseDebugLog } from './debugLog'
-import type { LearningGenerationHost } from './host'
+import type {
+  LearningGenerationActivity,
+  LearningGenerationHost,
+  LearningWorkspaceScope,
+} from './host'
 import { OUTLINE_GENERATOR_PROMPT } from './prompts'
 import type { Outline, OutlineChapter } from './types'
 
@@ -14,9 +15,9 @@ export type GenerateOutlineOptions = {
   goal: string
   referencesBlock?: string
   referenceFiles?: { name: string; vaultPath: string }[]
-  workspaceScope?: AssistantWorkspaceScope
+  workspaceScope?: LearningWorkspaceScope
   abortSignal?: AbortSignal
-  activity?: AgentRunActivity
+  activity?: LearningGenerationActivity
   onProgress?: (delta: string, fullText: string) => void
   onOutline?: (outline: Outline) => void
 }
@@ -54,8 +55,6 @@ export async function generateOutline({
       referenceFiles,
     }),
     modelId,
-    mode: 'agent',
-    yolo: true,
     systemPromptOverride: OUTLINE_GENERATOR_PROMPT,
     capability: workspaceScope?.enabled ? 'readonly-vault' : 'none',
     workspaceScope,
@@ -87,7 +86,7 @@ export async function generateOutline({
   const finalText = completedText || accumulated
   if (!abortSignal?.aborted) {
     const collected = debug.finalize()
-    emitPhaseDebugLog({
+    emitPhaseDebugLog(host, {
       label: 'outline-generator',
       startedAt: collected.startedAt,
       completedAt: collected.completedAt,

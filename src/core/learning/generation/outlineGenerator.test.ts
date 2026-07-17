@@ -1,8 +1,9 @@
 import type { App } from 'obsidian'
 
-import type { YoloAgentEvent } from '../../agent/agent-api'
-
-import type { LearningGenerationHost } from './host'
+import type {
+  LearningGenerationAgentEvent,
+  LearningGenerationHost,
+} from './host'
 import { generateOutline } from './outlineGenerator'
 import type { Outline } from './types'
 
@@ -117,10 +118,13 @@ function createHost(
 ): LearningGenerationHost {
   return {
     app: {} as App,
+    isDebugEnabled: () => false,
     agent: {
       stream: (request: unknown) => {
         onRequest?.(request)
-        return streamEvents(events) as AsyncIterable<YoloAgentEvent>
+        return streamEvents(
+          events,
+        ) as AsyncIterable<LearningGenerationAgentEvent>
       },
     },
   }

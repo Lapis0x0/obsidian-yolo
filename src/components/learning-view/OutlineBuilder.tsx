@@ -35,6 +35,7 @@ import {
   type ChapterDebugData,
   emitChaptersDebugLog,
 } from '../../core/learning/generation/debugLog'
+import type { LearningWorkspaceScope } from '../../core/learning/generation/host'
 import { generateKnowledgePointsForChapter } from '../../core/learning/generation/knowledgePointGenerator'
 import { generateOutline } from '../../core/learning/generation/outlineGenerator'
 import {
@@ -56,7 +57,6 @@ import type {
   OutlineChapter,
 } from '../../core/learning/generation/types'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
-import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import { summarizeCardGeneration } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
@@ -129,7 +129,7 @@ export function OutlineBuilder({
       activationConstraint: { distance: 6 },
     }),
   )
-  const workspaceScope: AssistantWorkspaceScope | undefined =
+  const workspaceScope: LearningWorkspaceScope | undefined =
     stagingDir && referenceFiles && referenceFiles.length > 0
       ? { enabled: true, include: [stagingDir], exclude: [] }
       : undefined
@@ -293,7 +293,7 @@ export function OutlineBuilder({
     }
 
     try {
-      const knowledgeWorkspaceScope: AssistantWorkspaceScope | undefined =
+      const knowledgeWorkspaceScope: LearningWorkspaceScope | undefined =
         projectRefPath
           ? { enabled: true, include: [projectRefPath], exclude: [] }
           : workspaceScope
@@ -413,7 +413,7 @@ export function OutlineBuilder({
         host.releaseGeneration(controller)
         return
       }
-      emitChaptersDebugLog(chapterDebugData)
+      emitChaptersDebugLog(generationHost, chapterDebugData)
       const failedKnowledgeChapters = knowledgeResults.filter(
         (result) => result.error,
       )

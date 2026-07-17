@@ -37,6 +37,7 @@ export interface LearningUiHost {
   readonly srsStore: LearningSrsStore
   readonly statsService: LearningStatsService
   readonly generationAgent: LearningGenerationAgent
+  readonly isGenerationDebugEnabled: () => boolean
   readonly runtimeIdentity: {
     pluginId: string
     pluginDir?: string

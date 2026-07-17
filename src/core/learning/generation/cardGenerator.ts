@@ -2,10 +2,6 @@ import { dump as dumpYaml } from 'js-yaml'
 import { App, TFile, normalizePath } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
-import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
-import type { ChatAssistantMessage, ChatUserMessage } from '../../../types/chat'
-import { buildAgentApiUserMessage } from '../../agent/agent-api'
-import type { AgentRunActivity } from '../../agent/service'
 import { formatCardBody, parseCardBody } from '../cardFormat'
 
 import {
@@ -13,7 +9,14 @@ import {
   PhaseDebugCollector,
   emitChaptersDebugLog,
 } from './debugLog'
-import type { LearningGenerationHost } from './host'
+import type {
+  LearningGenerationActivity,
+  LearningGenerationAssistantMessage,
+  LearningGenerationHost,
+  LearningGenerationMessage,
+  LearningGenerationUserMessage,
+  LearningWorkspaceScope,
+} from './host'
 import { CARD_GENERATOR_PROMPT, buildCardPrompt } from './prompts'
 import type {
   CardDraft,
@@ -59,9 +62,9 @@ export type GenerateCardsForChapterOptions = {
   cardsPath: string
   level: string
   usedCardUuids: Set<string>
-  workspaceScope?: AssistantWorkspaceScope
+  workspaceScope?: LearningWorkspaceScope
   abortSignal?: AbortSignal
-  activity?: AgentRunActivity
+  activity?: LearningGenerationActivity
   onProgress?: (delta: string, fullText: string) => void
   runId: string
   projectId: string
@@ -133,9 +136,7 @@ export async function generateCardsForChapter({
     })
   })
   const runStream = async (
-    request:
-      | { prompt: string }
-      | { messages: Array<ChatUserMessage | ChatAssistantMessage> },
+    request: { prompt: string } | { messages: LearningGenerationMessage[] },
     consumeCards = false,
   ): Promise<{ text: string; error?: Error }> => {
     let accumulated = ''
@@ -143,8 +144,6 @@ export async function generateCardsForChapter({
     const stream = host.agent.stream({
       ...request,
       modelId,
-      mode: 'agent',
-      yolo: true,
       systemPromptOverride: CARD_GENERATOR_PROMPT,
       capability: 'edit-vault',
       workspaceScope: cardWorkspaceScope,
@@ -175,11 +174,11 @@ export async function generateCardsForChapter({
     return { text: completedText || accumulated }
   }
 
-  const firstUserMessage: ChatUserMessage = buildAgentApiUserMessage({
+  const firstUserMessage: LearningGenerationUserMessage = {
+    role: 'user',
     id: `card-gen-${chapterIndex}-req-1`,
     promptContent: prompt,
-    mentionables: [],
-  })
+  }
   const firstRun = await runStream({ messages: [firstUserMessage] }, true)
   const firstOutput = firstRun.text
   throwIfAborted(abortSignal)
@@ -216,20 +215,20 @@ export async function generateCardsForChapter({
   )
 
   if (validation.invalid.length > 0 && !abortSignal?.aborted) {
-    const firstAssistantMessage: ChatAssistantMessage = {
+    const firstAssistantMessage: LearningGenerationAssistantMessage = {
       role: 'assistant',
       id: `card-gen-${chapterIndex}-resp-1`,
       content: firstOutput,
     }
-    const retryUserMessage: ChatUserMessage = buildAgentApiUserMessage({
+    const retryUserMessage: LearningGenerationUserMessage = {
+      role: 'user',
       id: `card-gen-${chapterIndex}-req-2`,
       promptContent: buildValidationRetryPrompt(
         validation.invalid,
         validKpUuids,
         cardsPath,
       ),
-      mentionables: [],
-    })
+    }
     try {
       const retryRun = await runStream({
         messages: [firstUserMessage, firstAssistantMessage, retryUserMessage],
@@ -321,9 +320,9 @@ export type GenerateCardsParallelOptions = {
   projectPath: string
   chapters: CardGenerationChapter[]
   level: string
-  workspaceScope?: AssistantWorkspaceScope
+  workspaceScope?: LearningWorkspaceScope
   abortSignal?: AbortSignal
-  activity?: AgentRunActivity
+  activity?: LearningGenerationActivity
   onChapterProgress?: (progress: GenerationProgress) => void
   runId?: string
   projectId?: string
@@ -429,7 +428,7 @@ export async function generateCardsParallel({
 
   const results = await Promise.all(tasks)
   if (!abortSignal?.aborted) {
-    emitChaptersDebugLog(chapterDebugData, 'card-generator', 'cards')
+    emitChaptersDebugLog(host, chapterDebugData, 'card-generator', 'cards')
   }
   return results
 }
@@ -531,9 +530,9 @@ export function validateWrittenCards(
 }
 
 function buildCardWorkspaceScope(
-  workspaceScope: AssistantWorkspaceScope | undefined,
+  workspaceScope: LearningWorkspaceScope | undefined,
   cardsPath: string,
-): AssistantWorkspaceScope {
+): LearningWorkspaceScope {
   const include = workspaceScope?.enabled ? workspaceScope.include : []
   return {
     enabled: true,

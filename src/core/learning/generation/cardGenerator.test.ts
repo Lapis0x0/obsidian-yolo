@@ -140,6 +140,7 @@ describe('generateCardsForChapter streaming', () => {
       } as unknown as App
       const host: LearningGenerationHost = {
         app,
+        isDebugEnabled: () => false,
         agent: {
           stream: stream as LearningGenerationHost['agent']['stream'],
         },

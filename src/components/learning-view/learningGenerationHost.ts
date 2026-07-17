@@ -8,5 +8,6 @@ export function createLearningGenerationHost(
   return {
     app: host.app,
     agent: host.generationAgent,
+    isDebugEnabled: host.isGenerationDebugEnabled,
   }
 }

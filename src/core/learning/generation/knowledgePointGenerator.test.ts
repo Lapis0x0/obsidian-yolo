@@ -11,6 +11,7 @@ describe('generateKnowledgePointsForChapter', () => {
     })
     const host: LearningGenerationHost = {
       app: {} as App,
+      isDebugEnabled: () => false,
       agent: { stream: stream as LearningGenerationHost['agent']['stream'] },
     }
 

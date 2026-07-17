@@ -1,24 +1,74 @@
 import type { App } from 'obsidian'
 
-import type { YoloAgentEvent, YoloAgentRunRequest } from '../../agent/agent-api'
-
 export type LearningGenerationCapability =
   | 'none'
   | 'readonly-vault'
   | 'edit-vault'
 
-export type LearningGenerationAgentRequest = Omit<
-  YoloAgentRunRequest,
-  'tools'
-> & {
-  capability: LearningGenerationCapability
+export type LearningWorkspaceScope = {
+  enabled: boolean
+  include: string[]
+  exclude: string[]
 }
 
+export type LearningGenerationActivity = {
+  kind: 'learning-agent'
+  title: string
+  detail?: string
+  action?: 'open-learning-view'
+}
+
+export type LearningGenerationUserMessage = {
+  role: 'user'
+  id: string
+  promptContent: string
+}
+
+export type LearningGenerationAssistantMessage = {
+  role: 'assistant'
+  id: string
+  content: string
+}
+
+export type LearningGenerationMessage =
+  | LearningGenerationUserMessage
+  | LearningGenerationAssistantMessage
+
+export type LearningGenerationAgentRequest = {
+  prompt?: string
+  messages?: LearningGenerationMessage[]
+  modelId?: string
+  systemPromptOverride: string
+  capability: LearningGenerationCapability
+  workspaceScope?: LearningWorkspaceScope
+  activity?: LearningGenerationActivity
+  abortSignal?: AbortSignal
+}
+
+export type LearningGenerationAgentEvent =
+  | { type: 'text'; text: string; delta: string }
+  | {
+      type: 'tool'
+      name: string
+      status:
+        | 'pending'
+        | 'running'
+        | 'completed'
+        | 'error'
+        | 'awaiting_approval'
+      arguments?: Record<string, unknown>
+    }
+  | { type: 'completed'; text: string }
+  | { type: 'error'; message: string }
+
 export type LearningGenerationAgent = {
-  stream(request: LearningGenerationAgentRequest): AsyncIterable<YoloAgentEvent>
+  stream(
+    request: LearningGenerationAgentRequest,
+  ): AsyncIterable<LearningGenerationAgentEvent>
 }
 
 export type LearningGenerationHost = {
   app: App
   agent: LearningGenerationAgent
+  isDebugEnabled(): boolean
 }

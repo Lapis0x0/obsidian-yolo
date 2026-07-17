@@ -1,5 +1,7 @@
-import type { YoloAgentEvent } from '../../agent/agent-api'
-import { isLLMDebugCaptureEnabled } from '../../llm/debugCapture'
+import type {
+  LearningGenerationAgentEvent,
+  LearningGenerationHost,
+} from './host'
 
 export type ToolCallRecord = {
   name: string
@@ -46,7 +48,7 @@ export class PhaseDebugCollector {
     this.startedAt = Date.now()
   }
 
-  recordToolCall(event: YoloAgentEvent & { type: 'tool' }): void {
+  recordToolCall(event: LearningGenerationAgentEvent & { type: 'tool' }): void {
     if (event.status !== 'completed' && event.status !== 'error') return
     this.toolCalls.push({
       name: event.name,
@@ -64,8 +66,11 @@ export class PhaseDebugCollector {
   }
 }
 
-export function emitPhaseDebugLog(data: PhaseDebugData): void {
-  if (!isLLMDebugCaptureEnabled()) return
+export function emitPhaseDebugLog(
+  host: LearningGenerationHost,
+  data: PhaseDebugData,
+): void {
+  if (!host.isDebugEnabled()) return
 
   const durationMs = data.completedAt - data.startedAt
   const durationStr = `${(durationMs / 1000).toFixed(1)}s`
@@ -94,11 +99,12 @@ export function emitPhaseDebugLog(data: PhaseDebugData): void {
 }
 
 export function emitChaptersDebugLog(
+  host: LearningGenerationHost,
   chapters: ChapterDebugData[],
   phaseLabel = 'kp-generator',
   countLabel = 'pts',
 ): void {
-  if (!isLLMDebugCaptureEnabled()) return
+  if (!host.isDebugEnabled()) return
   if (chapters.length === 0) return
 
   const sorted = [...chapters].sort((a, b) => a.chapterIndex - b.chapterIndex)

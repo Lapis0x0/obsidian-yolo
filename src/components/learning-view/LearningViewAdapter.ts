@@ -1,10 +1,21 @@
 import { getLanguage } from 'obsidian'
 
-import type { LearningGenerationCapability } from '../../core/learning/generation/host'
+import type {
+  YoloAgentEvent,
+  YoloAgentRunRequest,
+} from '../../core/agent/agent-api'
+import type {
+  LearningGenerationAgentEvent,
+  LearningGenerationAgentRequest,
+  LearningGenerationCapability,
+  LearningGenerationMessage,
+} from '../../core/learning/generation/host'
+import { isLLMDebugCaptureEnabled } from '../../core/llm/debugCapture'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
+import type { ChatAssistantMessage, ChatUserMessage } from '../../types/chat'
 
 import type {
   LearningLocale,
@@ -46,6 +57,99 @@ const resolveLocale = (): LearningLocale => {
   return 'en'
 }
 
+const mapGenerationMessage = (
+  message: LearningGenerationMessage,
+): ChatUserMessage | ChatAssistantMessage => {
+  if (message.role === 'user') {
+    return {
+      role: 'user',
+      id: message.id,
+      content: null,
+      promptContent: message.promptContent,
+      mentionables: [],
+    }
+  }
+  return {
+    role: 'assistant',
+    id: message.id,
+    content: message.content,
+  }
+}
+
+const mapGenerationRequest = (
+  request: LearningGenerationAgentRequest,
+): YoloAgentRunRequest => ({
+  ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
+  ...(request.messages
+    ? { messages: request.messages.map(mapGenerationMessage) }
+    : {}),
+  ...(request.modelId !== undefined ? { modelId: request.modelId } : {}),
+  mode: 'agent',
+  yolo: true,
+  systemPromptOverride: request.systemPromptOverride,
+  tools: {
+    allowedToolNames: TOOL_NAMES_BY_CAPABILITY[request.capability],
+  },
+  ...(request.workspaceScope
+    ? {
+        workspaceScope: {
+          enabled: request.workspaceScope.enabled,
+          include: [...request.workspaceScope.include],
+          exclude: [...request.workspaceScope.exclude],
+        },
+      }
+    : {}),
+  ...(request.activity
+    ? {
+        activity: {
+          kind: request.activity.kind,
+          title: request.activity.title,
+          ...(request.activity.detail !== undefined
+            ? { detail: request.activity.detail }
+            : {}),
+          ...(request.activity.action !== undefined
+            ? { action: request.activity.action }
+            : {}),
+        },
+      }
+    : {}),
+  ...(request.abortSignal ? { abortSignal: request.abortSignal } : {}),
+})
+
+const mapGenerationEvent = (
+  event: YoloAgentEvent,
+): LearningGenerationAgentEvent | null => {
+  switch (event.type) {
+    case 'text':
+      return { type: 'text', text: event.text, delta: event.delta }
+    case 'tool':
+      return {
+        type: 'tool',
+        name: event.name,
+        status: event.status,
+        ...(event.arguments ? { arguments: event.arguments } : {}),
+      }
+    case 'completed':
+      return { type: 'completed', text: event.text }
+    case 'error':
+      return { type: 'error', message: event.message }
+    case 'state':
+      return null
+  }
+}
+
+async function* streamGenerationAgent(
+  plugin: YoloPlugin,
+  request: LearningGenerationAgentRequest,
+): AsyncIterable<LearningGenerationAgentEvent> {
+  for await (const event of plugin.agent.stream(
+    mapGenerationRequest(request),
+  )) {
+    const mapped = mapGenerationEvent(event)
+    if (mapped) yield mapped
+  }
+}
+
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
   return {
     app: plugin.app,
@@ -61,12 +165,9 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
       return plugin.getLearningStatsService()
     },
     generationAgent: {
-      stream: ({ capability, ...request }) =>
-        plugin.agent.stream({
-          ...request,
-          tools: { allowedToolNames: TOOL_NAMES_BY_CAPABILITY[capability] },
-        }),
+      stream: (request) => streamGenerationAgent(plugin, request),
     },
+    isGenerationDebugEnabled: isLLMDebugCaptureEnabled,
     runtimeIdentity: {
       pluginId: plugin.manifest.id,
       pluginDir: plugin.manifest.dir,
