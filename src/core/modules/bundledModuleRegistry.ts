@@ -1,5 +1,6 @@
 import {
   type ModuleArtifactReadStore,
+  type VerifiedModuleArtifact,
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
 import type { ModuleLoader } from './moduleLoader'
@@ -124,6 +125,7 @@ export class BundledModuleRegistry {
   private indexPromise: Promise<BundledModuleIndex> | null = null
   private activationPromise: Promise<void> | null = null
   private readonly states = new Map<string, ActivationState>()
+  private readonly verifiedArtifacts = new Map<string, VerifiedModuleArtifact>()
   private readonly subtleCrypto: Pick<SubtleCrypto, 'digest'>
 
   constructor(private readonly options: BundledModuleRegistryOptions) {
@@ -135,6 +137,10 @@ export class BundledModuleRegistry {
   activateAll(): Promise<void> {
     this.activationPromise ??= this.activateAllOnce()
     return this.activationPromise
+  }
+
+  getVerifiedArtifact(moduleId: string): VerifiedModuleArtifact | undefined {
+    return this.verifiedArtifacts.get(moduleId)
   }
 
   private async loadIndex(): Promise<BundledModuleIndex> {
@@ -188,12 +194,15 @@ export class BundledModuleRegistry {
 
   private async activateOne(module: BundledModuleDescriptor): Promise<void> {
     this.states.set(module.id, Object.freeze({ version: module.version }))
+    this.verifiedArtifacts.delete(module.id)
     try {
-      const { manifest, entryBytes } = await verifyInstalledModuleArtifact(
+      const artifact = await verifyInstalledModuleArtifact(
         this.options.store,
         module,
         this.subtleCrypto,
       )
+      this.verifiedArtifacts.set(module.id, artifact)
+      const { manifest, entryBytes } = artifact
       const definition = await this.options.loader.load(
         {
           id: manifest.id,
@@ -208,6 +217,7 @@ export class BundledModuleRegistry {
         Object.freeze({ version: module.version, active: true }),
       )
     } catch (error) {
+      this.verifiedArtifacts.delete(module.id)
       this.states.set(
         module.id,
         Object.freeze({

@@ -9,6 +9,10 @@ import {
   UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
 } from './moduleAgent'
 import {
+  type ModuleAssetsCapabilityProviderV1,
+  UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
+} from './moduleAssets'
+import {
   type ModulePathsCapabilityProviderV1,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
 } from './modulePaths'
@@ -48,6 +52,7 @@ class ModuleBackgroundCleanupError extends Error {
 
 type CoreModuleHostCapabilityProviderOptions = {
   agent?: ModuleAgentCapabilityProviderV1
+  assets?: ModuleAssetsCapabilityProviderV1
   backgroundActivities: BackgroundActivityBatchSink
   paths?: ModulePathsCapabilityProviderV1
   ui?: ModuleUiCapabilityProviderV1
@@ -60,6 +65,7 @@ export class CoreModuleHostCapabilityProvider
   implements ModuleHostCapabilityProviderV1
 {
   private readonly agent: ModuleAgentCapabilityProviderV1
+  private readonly assets: ModuleAssetsCapabilityProviderV1
   private readonly backgroundActivities: BackgroundActivityBatchSink
   private readonly now: () => number
   private readonly paths: ModulePathsCapabilityProviderV1
@@ -72,6 +78,7 @@ export class CoreModuleHostCapabilityProvider
 
   constructor({
     agent = UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
+    assets = UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
     backgroundActivities,
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
     ui = UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
@@ -85,6 +92,7 @@ export class CoreModuleHostCapabilityProvider
     },
   }: CoreModuleHostCapabilityProviderOptions) {
     this.agent = agent
+    this.assets = assets
     this.backgroundActivities = backgroundActivities
     this.paths = paths
     this.ui = ui
@@ -98,6 +106,7 @@ export class CoreModuleHostCapabilityProvider
     lifecycle: ModuleLifecycleScope,
   ): ModuleHostCapabilityActivationV1 {
     const agent = this.agent.create(moduleId, lifecycle)
+    const assets = this.assets.create(moduleId, lifecycle)
     const background = createModuleBackgroundCapability({
       moduleId,
       lifecycle,
@@ -111,6 +120,7 @@ export class CoreModuleHostCapabilityProvider
     return Object.freeze({
       capabilities: Object.freeze({
         agent: agent.api,
+        assets: assets.api,
         background: background.api,
         paths: paths.api,
         ui: ui.api,
@@ -119,6 +129,7 @@ export class CoreModuleHostCapabilityProvider
       commit: () => background.commit(),
       activate: () => {
         agent.activate()
+        assets.activate()
         background.activate()
         paths.activate()
         ui.activate()

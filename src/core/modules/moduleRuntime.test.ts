@@ -18,6 +18,48 @@ const createRuntime = (
   )
 
 describe('ModuleRuntime', () => {
+  it('injects assets and activates them only after module activation commits', async () => {
+    let assetsActive = false
+    const readText = jest.fn(async () => {
+      if (!assetsActive) throw new Error('assets are not active')
+      return 'body {}'
+    })
+    const runtime = new ModuleRuntime(
+      { commit: jest.fn() },
+      new CoreModuleHostCapabilityProvider({
+        assets: {
+          create: () => ({
+            api: {
+              readText,
+              readArrayBuffer: async () => new ArrayBuffer(0),
+              createBlobUrl: async () => 'blob:test',
+            },
+            activate: () => {
+              assetsActive = true
+            },
+          }),
+        },
+        backgroundActivities: new BackgroundActivityRegistry(),
+      }),
+    )
+    let moduleAssets!: Parameters<
+      Parameters<ModuleRuntime['activate']>[0]['activate']
+    >[0]['assets']
+
+    await runtime.activate({
+      id: 'asset-module',
+      activate: async (host) => {
+        moduleAssets = host.assets
+        await expect(host.assets.readText('theme.css')).rejects.toThrow(
+          'assets are not active',
+        )
+      },
+    })
+
+    await expect(moduleAssets.readText('theme.css')).resolves.toBe('body {}')
+    runtime.dispose()
+  })
+
   it('does not commit declarations when module activation fails', async () => {
     const commit = jest.fn()
     const registrar: ModuleContributionRegistrar = { commit }

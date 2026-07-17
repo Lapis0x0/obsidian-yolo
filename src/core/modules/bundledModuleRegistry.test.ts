@@ -58,7 +58,11 @@ describe('BundledModuleRegistry', () => {
   })
 
   it('publishes catalog and activation-backed installed states', async () => {
-    const activate = jest.fn(async () => undefined)
+    const activate = jest.fn(async (definition: { id: string }) => {
+      expect(registry.getVerifiedArtifact(definition.id)?.manifest.id).toBe(
+        definition.id,
+      )
+    })
     const load = jest.fn(async (entry: { id: string }) => ({
       id: entry.id,
       activate: () => undefined,
@@ -106,6 +110,12 @@ describe('BundledModuleRegistry', () => {
       { id: 'second', version: '1.0.0', active: true },
     ])
     expect(activate).toHaveBeenCalledTimes(2)
+    expect(registry.getVerifiedArtifact('learning')).toEqual(
+      expect.objectContaining({
+        manifest: expect.objectContaining({ id: 'learning' }),
+      }),
+    )
+    expect(registry.getVerifiedArtifact('missing')).toBeUndefined()
     expect(store.readBundledIndexBytes).toHaveBeenCalledTimes(1)
     await registry.activateAll()
     expect(activate).toHaveBeenCalledTimes(2)
@@ -131,25 +141,33 @@ describe('BundledModuleRegistry', () => {
         listVersionFiles: async () => ['entry.js', 'module.json', 'ready.json'],
       },
       loader: {
-        load: async (entry) => {
-          if (entry.id === 'learning') throw new Error('entry is damaged')
-          return { id: entry.id, activate: () => undefined }
+        load: async (entry) => ({
+          id: entry.id,
+          activate: () => undefined,
+        }),
+      },
+      runtime: {
+        activate: async (definition) => {
+          if (definition.id === 'learning') {
+            throw new Error('activation failed')
+          }
         },
       },
-      runtime: { activate: async () => undefined },
       reportActivationError,
       subtleCrypto: subtleCrypto(0xbb),
     })
 
     await expect(registry.activateAll()).resolves.toBeUndefined()
     await expect(registry.installedStateSource.load()).resolves.toEqual([
-      { id: 'learning', version: '0.1.0', error: 'entry is damaged' },
+      { id: 'learning', version: '0.1.0', error: 'activation failed' },
       { id: 'second', version: '1.0.0', active: true },
     ])
     expect(reportActivationError).toHaveBeenCalledWith(
       'learning',
-      expect.objectContaining({ message: 'entry is damaged' }),
+      expect.objectContaining({ message: 'activation failed' }),
     )
+    expect(registry.getVerifiedArtifact('learning')).toBeUndefined()
+    expect(registry.getVerifiedArtifact('second')?.manifest.id).toBe('second')
   })
 
   it('rejects malformed or duplicate descriptors', () => {

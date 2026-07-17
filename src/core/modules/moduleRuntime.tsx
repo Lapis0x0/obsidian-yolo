@@ -197,6 +197,7 @@ export class ModuleRuntime {
         lifecycle,
         workspace,
         agent: capabilityActivation.capabilities.agent,
+        assets: capabilityActivation.capabilities.assets,
         background: capabilityActivation.capabilities.background,
         paths: capabilityActivation.capabilities.paths,
         ui: capabilityActivation.capabilities.ui,

@@ -73,6 +73,7 @@ import {
   EMPTY_INSTALLED_MODULE_STATE_SOURCE,
   EMPTY_MODULE_CATALOG_SOURCE,
   ManagedModulePathsCapabilityProvider,
+  ModuleAssetsCapabilityProvider,
   ModuleLoader,
   ModuleManager,
   ModuleRuntime,
@@ -3593,6 +3594,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       manifest: this.manifest,
       configDir: this.app.vault.configDir,
     })
+    let registry: BundledModuleRegistry | null = null
     const runtime = new ModuleRuntime(
       new ObsidianModuleContributionRegistrar(this),
       new CoreModuleHostCapabilityProvider({
@@ -3601,6 +3603,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             await this.warmupAgentService()
             return this.getAgentApi()
           },
+        }),
+        assets: new ModuleAssetsCapabilityProvider({
+          store,
+          getVerifiedArtifact: (moduleId) =>
+            registry?.getVerifiedArtifact(moduleId),
         }),
         backgroundActivities: this.getBackgroundActivityRegistry(),
         paths: new ManagedModulePathsCapabilityProvider({
@@ -3629,7 +3636,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     )
     this.moduleRuntime = runtime
     if (process.env.NODE_ENV === 'development') {
-      const registry = new BundledModuleRegistry({
+      registry = new BundledModuleRegistry({
         store,
         loader: new ModuleLoader({
           executor: new DomBlobModuleScriptExecutor(),

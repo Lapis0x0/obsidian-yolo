@@ -7,22 +7,24 @@ import {
   assertModuleId,
   normalizeModuleArtifactFilePath,
 } from './moduleStore'
+import type { YoloModuleAssetsV1 } from './types'
 
 export type ModuleAssetRole = Extract<
   ModuleArtifactFile['role'],
   'style' | 'worker' | 'wasm'
 >
 
-export type ModuleAssetsV1 = Readonly<{
-  readText(path: string): Promise<string>
-  readArrayBuffer(path: string): Promise<ArrayBuffer>
-  createBlobUrl(path: string): Promise<string>
-}>
-
 export type ModuleAssetsCapabilityActivationV1 = Readonly<{
-  api: ModuleAssetsV1
+  api: YoloModuleAssetsV1
   activate(): void
 }>
+
+export type ModuleAssetsCapabilityProviderV1 = {
+  create(
+    moduleId: string,
+    lifecycle: ModuleLifecycleScope,
+  ): ModuleAssetsCapabilityActivationV1
+}
 
 export type ModuleAssetsCapabilityProviderOptions = Readonly<{
   store: Pick<ModuleStore, 'readEntryBytes'>
@@ -49,8 +51,26 @@ const ASSET_ROLES = new Set<ModuleArtifactFile['role']>([
   'wasm',
 ])
 
+const unavailable = async (): Promise<never> => {
+  throw new Error('Module assets capability is unavailable')
+}
+
+export const UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER: ModuleAssetsCapabilityProviderV1 =
+  Object.freeze({
+    create: () => ({
+      api: Object.freeze({
+        readText: unavailable,
+        readArrayBuffer: unavailable,
+        createBlobUrl: unavailable,
+      }),
+      activate: () => undefined,
+    }),
+  })
+
 /** Exposes only non-executable-entry assets from the verified active artifact. */
-export class ModuleAssetsCapabilityProvider {
+export class ModuleAssetsCapabilityProvider
+  implements ModuleAssetsCapabilityProviderV1
+{
   private readonly subtleCrypto: Pick<SubtleCrypto, 'digest'>
 
   constructor(private readonly options: ModuleAssetsCapabilityProviderOptions) {
@@ -135,7 +155,7 @@ export class ModuleAssetsCapabilityProvider {
       return { ...asset, bytes }
     }
 
-    const api: ModuleAssetsV1 = Object.freeze({
+    const api: YoloModuleAssetsV1 = Object.freeze({
       readText: async (path) => {
         const asset = await read(path)
         if (asset.file.role === 'wasm') {

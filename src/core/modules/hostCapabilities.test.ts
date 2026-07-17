@@ -7,6 +7,32 @@ import { CoreModuleHostCapabilityProvider } from './hostCapabilities'
 import { ModuleLifecycleScope } from './lifecycleScope'
 
 describe('CoreModuleHostCapabilityProvider', () => {
+  it('creates and activates module assets with the owning lifecycle', async () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const api = Object.freeze({
+      readText: jest.fn(async () => 'asset'),
+      readArrayBuffer: jest.fn(async () => new ArrayBuffer(0)),
+      createBlobUrl: jest.fn(async () => 'blob:asset'),
+    })
+    const activateAssets = jest.fn()
+    const createAssets = jest.fn(() => ({ api, activate: activateAssets }))
+    const activation = new CoreModuleHostCapabilityProvider({
+      assets: { create: createAssets },
+      backgroundActivities: new BackgroundActivityRegistry(),
+    }).create('asset-module', lifecycle)
+
+    expect(createAssets).toHaveBeenCalledWith('asset-module', lifecycle)
+    expect(activation.capabilities.assets).toBe(api)
+    activation.commit()
+    activation.activate()
+
+    expect(activateAssets).toHaveBeenCalledTimes(1)
+    await expect(
+      activation.capabilities.assets.readText('theme.css'),
+    ).resolves.toBe('asset')
+    lifecycle.dispose()
+  })
+
   it('stages, namespaces, and cleans up only the owning module', () => {
     const registry = new BackgroundActivityRegistry()
     let latest: ReadonlyMap<string, BackgroundActivity> = new Map()

@@ -19,6 +19,15 @@ export {
   type ModuleAgentCapabilityProviderV1,
 } from './moduleAgent'
 export {
+  ModuleAssetsCapabilityProvider,
+  ModuleAssetsCleanupError,
+  UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
+  type ModuleAssetRole,
+  type ModuleAssetsCapabilityActivationV1,
+  type ModuleAssetsCapabilityProviderOptions,
+  type ModuleAssetsCapabilityProviderV1,
+} from './moduleAssets'
+export {
   ModuleArtifactInstaller,
   type ModuleArtifactDownloadRequest,
   type ModuleArtifactInstallerOptions,
@@ -114,6 +123,7 @@ export type {
   YoloModuleAgentMessageV1,
   YoloModuleAgentRequestV1,
   YoloModuleAgentV1,
+  YoloModuleAssetsV1,
   YoloModuleCapabilitiesV1,
   YoloModuleCommandV1,
   YoloModuleLifecycle,

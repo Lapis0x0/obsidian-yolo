@@ -123,6 +123,12 @@ export type YoloModulePathsV1 = {
   subscribe(listener: () => void): ModuleDisposer
 }
 
+export type YoloModuleAssetsV1 = Readonly<{
+  readText(path: string): Promise<string>
+  readArrayBuffer(path: string): Promise<ArrayBuffer>
+  createBlobUrl(path: string): Promise<string>
+}>
+
 export type YoloModuleConfirmOptionsV1 = Readonly<{
   title: string
   message: string
@@ -243,6 +249,7 @@ export type YoloModuleVaultV1 = {
 
 export type YoloModuleCapabilitiesV1 = Readonly<{
   agent: YoloModuleAgentV1
+  assets: YoloModuleAssetsV1
   background: YoloModuleBackgroundV1
   paths: YoloModulePathsV1
   ui: YoloModuleUiV1
