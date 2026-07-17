@@ -1,4 +1,5 @@
 import type {
+  YoloModuleCommandV1,
   YoloModuleRibbonActionV1,
   YoloModuleViewV1,
   YoloModuleWorkspaceV1,
@@ -6,12 +7,13 @@ import type {
 
 type YoloModuleWorkspaceContributionsV1 = Pick<
   YoloModuleWorkspaceV1,
-  'registerView' | 'registerRibbonAction'
+  'registerView' | 'registerRibbonAction' | 'registerCommand'
 >
 
 export type StagedModuleContributions = Readonly<{
   view?: YoloModuleViewV1
   ribbonAction?: YoloModuleRibbonActionV1
+  commands?: readonly YoloModuleCommandV1[]
 }>
 
 function requireText(value: string, label: string): void {
@@ -24,6 +26,7 @@ function requireText(value: string, label: string): void {
 export class ModuleContributionStager {
   private view: YoloModuleViewV1 | undefined
   private ribbonAction: YoloModuleRibbonActionV1 | undefined
+  private readonly commands = new Map<string, YoloModuleCommandV1>()
   private finished = false
 
   readonly workspace: YoloModuleWorkspaceContributionsV1 = {
@@ -50,17 +53,42 @@ export class ModuleContributionStager {
       }
       this.ribbonAction = Object.freeze({ ...action })
     },
+    registerCommand: (command) => {
+      this.assertOpen()
+      requireText(command?.id, 'Module command id')
+      requireText(command?.name, 'Module command name')
+      if (!/^[a-z0-9][a-z0-9:_-]*$/.test(command.id)) {
+        throw new Error('Module command id is invalid')
+      }
+      if (this.commands.has(command.id)) {
+        throw new Error(
+          `Module command id "${command.id}" is already registered`,
+        )
+      }
+      if (typeof command?.callback !== 'function') {
+        throw new Error('Module command callback must be a function')
+      }
+      this.commands.set(command.id, Object.freeze({ ...command }))
+    },
   }
 
   finish(options: { allowEmpty?: boolean } = {}): StagedModuleContributions {
     this.assertOpen()
     this.finished = true
-    if (!options.allowEmpty && !this.view && !this.ribbonAction) {
+    if (
+      !options.allowEmpty &&
+      !this.view &&
+      !this.ribbonAction &&
+      this.commands.size === 0
+    ) {
       throw new Error('Module activation declared no workspace contributions')
     }
     return Object.freeze({
       ...(this.view ? { view: this.view } : {}),
       ...(this.ribbonAction ? { ribbonAction: this.ribbonAction } : {}),
+      ...(this.commands.size > 0
+        ? { commands: Object.freeze([...this.commands.values()]) }
+        : {}),
     })
   }
 

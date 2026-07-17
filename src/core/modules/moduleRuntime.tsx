@@ -161,6 +161,7 @@ export class ModuleRuntime {
     const workspace: YoloModuleWorkspaceV1 = Object.freeze({
       registerView: stager.workspace.registerView,
       registerRibbonAction: stager.workspace.registerRibbonAction,
+      registerCommand: stager.workspace.registerCommand,
       openView: (options) => {
         if (!workspaceActive) {
           return Promise.reject(
@@ -285,6 +286,38 @@ export class ObsidianModuleContributionRegistrar
       throw new Error(`Module view type "${view.type}" is already registered`)
     }
 
+    for (const command of contributions.commands ?? []) {
+      const commandId = `module:${moduleId}:${command.id}`
+      let commandActive = true
+      this.plugin.addCommand({
+        id: commandId,
+        name: command.name,
+        callback: () => {
+          if (!commandActive) return
+          try {
+            const result = command.callback()
+            if (isThenable(result)) {
+              void Promise.resolve(result).catch((error: unknown) => {
+                console.error(
+                  `[YOLO] Module "${moduleId}" command "${command.id}" failed`,
+                  error,
+                )
+              })
+            }
+          } catch (error) {
+            console.error(
+              `[YOLO] Module "${moduleId}" command "${command.id}" failed`,
+              error,
+            )
+          }
+        },
+      })
+      lifecycle.add(() => {
+        commandActive = false
+        this.plugin.removeCommand(commandId)
+      })
+    }
+
     if (contributions.ribbonAction) {
       const action = contributions.ribbonAction
       const ribbon = this.plugin.addRibbonIcon(
@@ -402,4 +435,12 @@ function assertModuleWorkspaceActive(
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as PromiseLike<unknown>).then === 'function'
+  )
 }

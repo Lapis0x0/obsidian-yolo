@@ -46,4 +46,42 @@ describe('ModuleContributionStager', () => {
     const stager = new ModuleContributionStager()
     expect(stager.finish({ allowEmpty: true })).toEqual({})
   })
+
+  it('stages multiple uniquely named module commands', () => {
+    const stager = new ModuleContributionStager()
+    const first = { id: 'open', name: 'Open module', callback: jest.fn() }
+    const second = {
+      id: 'refresh',
+      name: 'Refresh module',
+      callback: jest.fn(),
+    }
+
+    stager.workspace.registerCommand(first)
+    stager.workspace.registerCommand(second)
+
+    expect(stager.finish()).toEqual({ commands: [first, second] })
+  })
+
+  it('rejects duplicate and unsafe command ids', () => {
+    const stager = new ModuleContributionStager()
+    stager.workspace.registerCommand({
+      id: 'open',
+      name: 'Open module',
+      callback: jest.fn(),
+    })
+    expect(() =>
+      stager.workspace.registerCommand({
+        id: 'open',
+        name: 'Duplicate',
+        callback: jest.fn(),
+      }),
+    ).toThrow('already registered')
+    expect(() =>
+      new ModuleContributionStager().workspace.registerCommand({
+        id: '../open',
+        name: 'Unsafe',
+        callback: jest.fn(),
+      }),
+    ).toThrow('id is invalid')
+  })
 })

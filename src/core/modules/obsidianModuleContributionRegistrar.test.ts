@@ -148,4 +148,73 @@ describe('ObsidianModuleContributionRegistrar', () => {
       'has no registered view',
     )
   })
+
+  it('namespaces, removes, and revokes module commands', () => {
+    const callback = jest.fn()
+    const addCommand = jest.fn()
+    const removeCommand = jest.fn()
+    const lifecycle = new ModuleLifecycleScope()
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: { workspace: {} },
+      manifest: { id: 'yolo' },
+      addCommand,
+      removeCommand,
+    } as unknown as Plugin)
+
+    registrar.commit(
+      'learning',
+      {
+        commands: [{ id: 'open', name: 'Open Learning', callback }],
+      },
+      lifecycle,
+    )
+    const declaration = addCommand.mock.calls[0]?.[0] as
+      | { id: string; callback: () => void }
+      | undefined
+    expect(declaration?.id).toBe('module:learning:open')
+    declaration?.callback()
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    lifecycle.dispose()
+    declaration?.callback()
+    expect(callback).toHaveBeenCalledTimes(1)
+    expect(removeCommand).toHaveBeenCalledWith('module:learning:open')
+  })
+
+  it('isolates synchronous and asynchronous command failures', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation()
+    const addCommand = jest.fn()
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: { workspace: {} },
+      manifest: { id: 'yolo' },
+      addCommand,
+      removeCommand: jest.fn(),
+    } as unknown as Plugin)
+    registrar.commit(
+      'learning',
+      {
+        commands: [
+          {
+            id: 'sync',
+            name: 'Sync failure',
+            callback: () => {
+              throw new Error('sync failed')
+            },
+          },
+          {
+            id: 'async',
+            name: 'Async failure',
+            callback: () => Promise.reject(new Error('async failed')),
+          },
+        ],
+      },
+      new ModuleLifecycleScope(),
+    )
+
+    expect(() => addCommand.mock.calls[0]?.[0].callback()).not.toThrow()
+    addCommand.mock.calls[1]?.[0].callback()
+    await Promise.resolve()
+    expect(consoleError).toHaveBeenCalledTimes(2)
+    consoleError.mockRestore()
+  })
 })

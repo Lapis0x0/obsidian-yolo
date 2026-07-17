@@ -103,5 +103,10 @@ yolo.registerModule({
         })
       },
     })
+    host.workspace.registerCommand({
+      id: 'open-preview',
+      name: 'Open Learning module preview',
+      callback: () => host.workspace.openView(),
+    })
   },
 })

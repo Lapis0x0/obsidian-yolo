@@ -19,6 +19,12 @@ export type YoloModuleRibbonActionV1 = Readonly<{
   onClick(): void
 }>
 
+export type YoloModuleCommandV1 = Readonly<{
+  id: string
+  name: string
+  callback(): void | Promise<void>
+}>
+
 export type YoloModuleOpenViewOptionsV1 = Readonly<{
   newLeaf?: boolean
 }>
@@ -26,6 +32,7 @@ export type YoloModuleOpenViewOptionsV1 = Readonly<{
 export type YoloModuleWorkspaceV1 = {
   registerView(view: YoloModuleViewV1): void
   registerRibbonAction(action: YoloModuleRibbonActionV1): void
+  registerCommand(command: YoloModuleCommandV1): void
   openView(options?: YoloModuleOpenViewOptionsV1): Promise<void>
 }
 

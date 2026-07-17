@@ -85,6 +85,7 @@ describe('host API conformance artifact boundary', () => {
     expect(source).toContain('.paths.getSnapshot')
     expect(source).toContain('.vault.listChildren')
     expect(source).toContain('.vault.subscribe')
+    expect(source).toContain('.workspace.registerCommand')
     expect(source).not.toContain('react.production.min')
     expect(source).not.toContain('LearningViewAdapter')
     expect(source).not.toContain('YoloPlugin')

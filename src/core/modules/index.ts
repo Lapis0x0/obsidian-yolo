@@ -106,6 +106,7 @@ export type {
   YoloModuleAgentRequestV1,
   YoloModuleAgentV1,
   YoloModuleCapabilitiesV1,
+  YoloModuleCommandV1,
   YoloModuleLifecycle,
   YoloModuleOpenViewOptionsV1,
   YoloModulePathsSnapshotV1,
