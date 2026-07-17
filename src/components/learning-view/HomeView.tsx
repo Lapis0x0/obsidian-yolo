@@ -25,7 +25,6 @@ import {
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import type {
   LearningProjectAction,
   LearningProjectStats,
@@ -39,6 +38,7 @@ import { YoloPopoverContent } from '../common/popover/YoloPopoverContent'
 import { ConfirmModal } from '../modals/ConfirmModal'
 
 import { formatLearningText } from './i18n'
+import { useLearningUiHost } from './LearningUiHost'
 import { Pill, ProgressBar, SelectMenu } from './primitives'
 
 type ProjectSort = 'recent' | 'created' | 'progress'
@@ -59,7 +59,7 @@ export function HomeView({
   onImportAnki: () => void
 }) {
   const app = useApp()
-  const plugin = usePlugin()
+  const host = useLearningUiHost()
   const { language, t } = useLanguage()
   const [sortValue, setSortValue] = useState<ProjectSort>('recent')
   const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(
@@ -127,7 +127,7 @@ export function HomeView({
   const setProjectPaused = async (project: VaultProject, paused: boolean) => {
     setPendingProjectSlug(project.slug)
     try {
-      const store = plugin.getLearningSrsStore()
+      const store = host.srsStore
       if (paused) await store.pauseProject(project.slug, new Date())
       else await store.resumeProject(project.slug, new Date())
       new Notice(
@@ -160,7 +160,7 @@ export function HomeView({
           `Learning project folder not found: ${project.folderPath}`,
         )
       }
-      const store = plugin.getLearningSrsStore()
+      const store = host.srsStore
       await store.pauseProject(project.slug, new Date())
       const statePath = await store.getProjectStateFilePath(project.slug)
       const stateFile = app.vault.getAbstractFileByPath(statePath)
@@ -180,9 +180,7 @@ export function HomeView({
       console.error('[YOLO] Failed to delete learning project:', error)
       if (!projectTrashed && !wasPaused) {
         try {
-          await plugin
-            .getLearningSrsStore()
-            .resumeProject(project.slug, new Date())
+          await host.srsStore.resumeProject(project.slug, new Date())
         } catch (resumeError) {
           console.error(
             '[YOLO] Failed to restore learning project pause state after delete failure:',

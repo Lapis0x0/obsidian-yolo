@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import {
   commitAnkiImportPlan,
   prepareAnkiImport,
@@ -19,6 +18,7 @@ import {
   validateAnkiImportFiles,
 } from './ankiImportUtils'
 import { LearningFileDropzone, LearningModal } from './LearningModal'
+import { useLearningUiHost } from './LearningUiHost'
 
 type ImportState =
   | 'selecting'
@@ -40,7 +40,7 @@ export function AnkiImportModal({
   onImported: (projectPath: string) => void | Promise<void>
 }) {
   const app = useApp()
-  const plugin = usePlugin()
+  const host = useLearningUiHost()
   const { t } = useLanguage()
   const [state, setState] = useState<ImportState>('selecting')
   const [file, setFile] = useState<File | null>(null)
@@ -94,9 +94,9 @@ export function AnkiImportModal({
     try {
       const runtime = new AnkiSqliteRuntimeManager({
         app,
-        pluginId: plugin.manifest.id,
-        pluginDir: plugin.manifest.dir
-          ? normalizePath(plugin.manifest.dir)
+        pluginId: host.runtimeIdentity.pluginId,
+        pluginDir: host.runtimeIdentity.pluginDir
+          ? normalizePath(host.runtimeIdentity.pluginDir)
           : undefined,
       })
       const status = await runtime.getStatus()
@@ -176,7 +176,7 @@ export function AnkiImportModal({
       const projectPath = await commitAnkiImportPlan({
         app,
         plan: renamed,
-        srsStore: plugin.getLearningSrsStore(),
+        srsStore: host.srsStore,
         signal: controller.signal,
       })
       onClose()

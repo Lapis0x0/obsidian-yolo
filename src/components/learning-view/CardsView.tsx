@@ -51,7 +51,6 @@ import { createPortal } from 'react-dom'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import {
   CardFileConflictError,
   type CardFileError,
@@ -91,6 +90,7 @@ import {
   mergeDiskAndPreviewCards,
 } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
+import { useLearningUiHost } from './LearningUiHost'
 import { type Mastery, MasteryDot, SelectMenu } from './primitives'
 import {
   buildInitialReviewQueue,
@@ -391,7 +391,7 @@ function useProjectCards(
   generation: CardGenerationWorkspace | null,
 ) {
   const app = useApp()
-  const plugin = usePlugin()
+  const host = useLearningUiHost()
   const { t } = useLanguage()
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
@@ -421,7 +421,7 @@ function useProjectCards(
       setLoading(true)
       const now = new Date()
       let introducedDay = localDayKey(now)
-      const srsStore = plugin.getLearningSrsStore()
+      const srsStore = host.srsStore
       const [projectState, initialIntroducedCount] = await Promise.all([
         srsStore.getProjectState(project.slug),
         srsStore.getTodayIntroducedCount(project.slug, now),
@@ -584,7 +584,7 @@ function useProjectCards(
     return () => {
       cancelled = true
     }
-  }, [app, generation, plugin, project, refreshToken, t, writing])
+  }, [app, generation, host, project, refreshToken, t, writing])
 
   const previewCards = useMemo(() => {
     if (!project || generation?.projectId !== project.id) return []
@@ -662,8 +662,7 @@ function useProjectCards(
     if (introducedDayRef.current === day) return
     const generation = introducedLoadGenerationRef.current + 1
     introducedLoadGenerationRef.current = generation
-    void plugin
-      .getLearningSrsStore()
+    void host.srsStore
       .getTodayIntroducedCount(project.slug, now)
       .then((count) => {
         if (introducedLoadGenerationRef.current !== generation) return
@@ -676,7 +675,7 @@ function useProjectCards(
           t('learning.cards.srsLoadFailed', '复习数据加载失败，请重试'),
         )
       })
-  }, [now, plugin, project, t])
+  }, [host, now, project, t])
 
   return {
     cards: mergedCards,
@@ -765,7 +764,7 @@ function BrowseMode({
 }) {
   const { t } = useLanguage()
   const app = useApp()
-  const plugin = usePlugin()
+  const host = useLearningUiHost()
   const fileStore = getLearningCardFileStore(app)
   const [chapterFilter, setChapterFilter] = useState('all')
   const [pointFilter, setPointFilter] = useState('all')
@@ -1307,7 +1306,7 @@ function BrowseMode({
   }, [dragContainers, inspectorOpen])
   const chapterMemoryRetention = useMemo(() => {
     const totals = new Map<string, { count: number; retrievability: number }>()
-    const srsStore = plugin.getLearningSrsStore()
+    const srsStore = host.srsStore
     const horizon = new Date(now.getTime() + MEMORY_RETENTION_HORIZON_MS)
     cards.forEach((card) => {
       if (card.preview) return
@@ -1330,7 +1329,7 @@ function BrowseMode({
         total.retrievability / total.count,
       ]),
     )
-  }, [cards, now, plugin])
+  }, [cards, host, now])
 
   const withWrite = async (operation: () => Promise<void>) => {
     if (writeDisabled) return false
@@ -1562,7 +1561,7 @@ function BrowseMode({
         )
       }
       try {
-        await plugin.getLearningSrsStore().removeCards(
+        await host.srsStore.removeCards(
           project.slug,
           persistedCards.map((card) => card.id),
         )
@@ -1592,9 +1591,7 @@ function BrowseMode({
     if (cardIds.length === 0) return
     setWriting(true)
     try {
-      await plugin
-        .getLearningSrsStore()
-        .reviewCards(project.slug, cardIds, rating, new Date())
+      await host.srsStore.reviewCards(project.slug, cardIds, rating, new Date())
       refresh()
     } catch (reviewError) {
       console.error('[YOLO] Failed to update card review state:', reviewError)
@@ -1617,7 +1614,7 @@ function BrowseMode({
     if (cardIds.length === 0) return
     setWriting(true)
     try {
-      const store = plugin.getLearningSrsStore()
+      const store = host.srsStore
       if (suspended) await store.suspendCards(project.slug, cardIds)
       else await store.resumeCards(project.slug, cardIds)
       refresh()
@@ -3060,7 +3057,7 @@ function ReviewMode({
   onExit: () => void
 }) {
   const { t } = useLanguage()
-  const plugin = usePlugin()
+  const host = useLearningUiHost()
   const [queue, setQueue] = useState<Card[]>(initialQueue)
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -3153,9 +3150,11 @@ function ReviewMode({
     schedulingRequestGenerationRef.current = generation
     const loadScheduling = async () => {
       try {
-        const scheduling = await plugin
-          .getLearningSrsStore()
-          .getCardScheduling(projectSlug, card.id, new Date())
+        const scheduling = await host.srsStore.getCardScheduling(
+          projectSlug,
+          card.id,
+          new Date(),
+        )
         if (
           !cancelled &&
           schedulingRequestGenerationRef.current === generation
@@ -3181,7 +3180,7 @@ function ReviewMode({
     return () => {
       cancelled = true
     }
-  }, [card, plugin, projectSlug, t])
+  }, [card, host, projectSlug, t])
 
   const commitGrade = useCallback(
     async (grade: ReviewGrade) => {
@@ -3194,9 +3193,12 @@ function ReviewMode({
       const introduced = card.srsState === null
       let result
       try {
-        result = await plugin
-          .getLearningSrsStore()
-          .reviewCard(projectSlug, card.id, grade, new Date())
+        result = await host.srsStore.reviewCard(
+          projectSlug,
+          card.id,
+          grade,
+          new Date(),
+        )
       } catch {
         setSubmitting(false)
         setSubmittingGrade(null)
@@ -3252,7 +3254,7 @@ function ReviewMode({
       done,
       onReviewed,
       phase,
-      plugin,
+      host,
       projectSlug,
       resetDrag,
       submitting,

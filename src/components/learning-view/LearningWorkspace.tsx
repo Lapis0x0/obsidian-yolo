@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import { recoverAnkiImports } from '../../core/learning/anki/importService'
 import { cleanupStaging } from '../../core/learning/generation/referenceStaging'
@@ -21,6 +20,7 @@ import {
 } from './cardsWorkspace'
 import { HomeView } from './HomeView'
 import { KnowledgeGraph } from './KnowledgeGraph'
+import { useLearningUiHost } from './LearningUiHost'
 import { OutlineBuilder } from './OutlineBuilder'
 import { type TabKey, tabs } from './tabs'
 import { type LearningWizardInput, Wizard } from './Wizard'
@@ -28,7 +28,7 @@ import { Workspace } from './Workspace'
 
 export function LearningWorkspace() {
   const app = useApp()
-  const plugin = usePlugin()
+  const host = useLearningUiHost()
   const { settings } = useSettings()
   const baseDir = useMemo(() => getYoloLearningDir(settings), [settings])
 
@@ -52,23 +52,23 @@ export function LearningWorkspace() {
   } | null>(null)
 
   const bus = useMemo(() => new ProjectEventBus(app), [app])
-  const statsService = plugin.getLearningStatsService()
+  const statsService = host.statsService
   const [statsSnapshot, setStatsSnapshot] = useState(() =>
     statsService.getSnapshot(),
   )
   const vaultProjects = statsSnapshot.projects
 
   useEffect(() => {
-    plugin.setLearningEventBus(bus)
+    host.setEventBus(bus)
     return () => {
-      plugin.setLearningEventBus(null)
+      host.setEventBus(null)
     }
-  }, [bus, plugin])
+  }, [bus, host])
 
   useEffect(() => {
-    plugin.setLearningNavigationHandler(setNavigationTarget)
-    return () => plugin.setLearningNavigationHandler(null)
-  }, [plugin])
+    host.setNavigationHandler(setNavigationTarget)
+    return () => host.setNavigationHandler(null)
+  }, [host])
 
   useEffect(() => {
     if (!navigationTarget) return
@@ -110,7 +110,7 @@ export function LearningWorkspace() {
       try {
         await recoverAnkiImports({
           app,
-          srsStore: plugin.getLearningSrsStore(),
+          srsStore: host.srsStore,
         })
       } catch (error) {
         console.error('[YOLO] Failed to recover Anki imports:', error)
@@ -125,7 +125,7 @@ export function LearningWorkspace() {
       cancelled = true
       bus.stopWatchingVault()
     }
-  }, [app, baseDir, bus, plugin, statsService])
+  }, [app, baseDir, bus, host, statsService])
 
   useEffect(() => {
     const project = vaultProjects.find((item) => item.id === projectId)
@@ -170,7 +170,6 @@ export function LearningWorkspace() {
         {buildingOutline ? (
           wizardInput && (
             <OutlineBuilder
-              plugin={plugin}
               eventBus={bus}
               topic={wizardInput.topic}
               level={wizardInput.level}

@@ -58,12 +58,12 @@ import type {
 } from '../../core/learning/generation/types'
 import type { ProjectEventBus } from '../../core/learning/projectEventBus'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
-import type YoloPlugin from '../../main'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import { summarizeCardGeneration } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
 import { createLearningGenerationHost } from './learningGenerationHost'
+import { useLearningUiHost } from './LearningUiHost'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
 type OutlineWaitingStage = 'preparing' | 'structuring'
@@ -74,7 +74,6 @@ type EditableChapter = OutlineChapter & {
 }
 
 export function OutlineBuilder({
-  plugin,
   eventBus,
   topic,
   level,
@@ -90,7 +89,6 @@ export function OutlineBuilder({
   onChapterSettled,
   onCardGenerationFinished,
 }: {
-  plugin: YoloPlugin
   eventBus: ProjectEventBus
   topic: string
   level: string
@@ -115,6 +113,7 @@ export function OutlineBuilder({
   ) => void
 }) {
   const { t } = useLanguage()
+  const host = useLearningUiHost()
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [projectName, setProjectName] = useState('')
   const [projectGoal, setProjectGoal] = useState('')
@@ -137,8 +136,8 @@ export function OutlineBuilder({
       ? { enabled: true, include: [stagingDir], exclude: [] }
       : undefined
   const learningModelId =
-    plugin.settings.learningOptions.modelId || plugin.settings.chatModelId
-  const generationHost = createLearningGenerationHost(plugin)
+    host.settings.learningOptions.modelId || host.settings.chatModelId
+  const generationHost = createLearningGenerationHost(host)
 
   const createChapter = (chapter: OutlineChapter): EditableChapter => ({
     ...chapter,
@@ -260,18 +259,18 @@ export function OutlineBuilder({
       return
     }
     const controller = new AbortController()
-    plugin.trackLearningGeneration(controller)
+    host.trackGeneration(controller)
     abortRef.current = controller
     setPhase('knowledge')
     setError(null)
 
-    const baseDir = getYoloLearningDir(plugin.settings)
+    const baseDir = getYoloLearningDir(host.settings)
     const resolvedProjectName = projectName || topic
     let scaffold: Awaited<ReturnType<typeof createProjectScaffold>>
     let projectRefPath: string | undefined
     try {
       scaffold = await createProjectScaffold({
-        app: plugin.app,
+        app: host.app,
         baseDir,
         topic: resolvedProjectName,
         goal: projectGoal,
@@ -279,7 +278,7 @@ export function OutlineBuilder({
       })
       if (stagingDir && referenceFiles && referenceFiles.length > 0) {
         projectRefPath = await moveStagingToProject(
-          plugin.app,
+          host.app,
           stagingDir,
           scaffold.projectPath,
         )
@@ -288,7 +287,7 @@ export function OutlineBuilder({
       abortOnUnmountRef.current = false
       await onProjectStarted(scaffold.projectPath)
     } catch (err: unknown) {
-      plugin.releaseLearningGeneration(controller)
+      host.releaseGeneration(controller)
       if (controller.signal.aborted) return
       setError(err instanceof Error ? err.message : String(err))
       setPhase('error')
@@ -373,7 +372,7 @@ export function OutlineBuilder({
                     draftedPoints[completedCount] ??
                     draftKnowledgePoint(point.title)
                   const knowledgePoint = await appendKnowledgePointDraft({
-                    app: plugin.app,
+                    app: host.app,
                     projectPath: scaffold.projectPath,
                     chapter: target,
                     point,
@@ -413,7 +412,7 @@ export function OutlineBuilder({
         }),
       )
       if (controller.signal.aborted) {
-        plugin.releaseLearningGeneration(controller)
+        host.releaseGeneration(controller)
         return
       }
       emitChaptersDebugLog(chapterDebugData)
@@ -428,7 +427,7 @@ export function OutlineBuilder({
         })
         await eventBus.refreshSnapshot({ emitInitial: false })
         if (controller.signal.aborted) {
-          plugin.releaseLearningGeneration(controller)
+          host.releaseGeneration(controller)
           return
         }
         new Notice(
@@ -436,11 +435,11 @@ export function OutlineBuilder({
             .map((result) => result.chapterTitle)
             .join('、')}`,
         )
-        plugin.releaseLearningGeneration(controller)
+        host.releaseGeneration(controller)
         return
       }
       await markProjectStudying({
-        app: plugin.app,
+        app: host.app,
         indexPath: scaffold.indexPath,
       })
       eventBus.emitSynthetic({
@@ -450,7 +449,7 @@ export function OutlineBuilder({
       })
       await eventBus.refreshSnapshot({ emitInitial: false })
       if (controller.signal.aborted) {
-        plugin.releaseLearningGeneration(controller)
+        host.releaseGeneration(controller)
         return
       }
       onComplete(scaffold.projectPath)
@@ -504,7 +503,7 @@ export function OutlineBuilder({
                   '未能生成学习卡片，请查看章节状态。',
                 )
 
-        plugin.showActionToast({
+        host.showActionToast({
           id: `learning-card-generation:${scaffold.projectPath}`,
           tone:
             summary.outcome === 'success'
@@ -519,7 +518,7 @@ export function OutlineBuilder({
             : t('learning.cards.viewGenerationDetails', '查看详情'),
           dismissLabel: t('common.close', '关闭'),
           onAction: () =>
-            plugin.openLearningView({
+            host.openLearningView({
               type: 'project',
               projectId: scaffold.projectPath,
               tab: '卡片',
@@ -568,9 +567,9 @@ export function OutlineBuilder({
           console.error('[YOLO] Card generation failed:', error)
           showGenerationResult([])
         })
-        .finally(() => plugin.releaseLearningGeneration(controller))
+        .finally(() => host.releaseGeneration(controller))
     } catch (err: unknown) {
-      plugin.releaseLearningGeneration(controller)
+      host.releaseGeneration(controller)
       if (!controller.signal.aborted) {
         console.error(
           '[YOLO] Failed to finalize generated learning project:',

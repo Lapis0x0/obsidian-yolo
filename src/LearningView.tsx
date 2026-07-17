@@ -3,18 +3,21 @@ import { ItemView, WorkspaceLeaf } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
 
+import {
+  type LearningUiHost,
+  LearningUiHostProvider,
+} from './components/learning-view/LearningUiHost'
+import {
+  type LearningViewPluginAdapter,
+  createLearningUiHost,
+} from './components/learning-view/LearningViewAdapter'
 import { LearningWorkspace } from './components/learning-view/LearningWorkspace'
 import { LEARNING_VIEW_TYPE } from './constants'
 import { AppProvider } from './contexts/app-context'
 import { DarkModeProvider } from './contexts/dark-mode-context'
-import { DatabaseProvider } from './contexts/database-context'
 import { DialogContainerProvider } from './contexts/dialog-container-context'
 import { LanguageProvider } from './contexts/language-context'
-import { McpProvider } from './contexts/mcp-context'
-import { PluginProvider } from './contexts/plugin-context'
-import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
-import YoloPlugin from './main'
 
 /**
  * LearningView
@@ -39,12 +42,11 @@ export class LearningView extends ItemView {
   private rebuildScheduled = false
   private rebuildRafId: number | null = null
   private isClosed = false
+  private readonly learningHost: LearningUiHost
 
-  constructor(
-    leaf: WorkspaceLeaf,
-    private plugin: YoloPlugin,
-  ) {
+  constructor(leaf: WorkspaceLeaf, plugin: LearningViewPluginAdapter) {
     super(leaf)
+    this.learningHost = createLearningUiHost(plugin)
   }
 
   getViewType(): string {
@@ -56,7 +58,7 @@ export class LearningView extends ItemView {
   }
 
   getDisplayText(): string {
-    return this.plugin.t('learning.wizard.modeLabel', 'Learning mode')
+    return this.learningHost.t('learning.wizard.modeLabel', 'Learning mode')
   }
 
   async onOpen(): Promise<void> {
@@ -68,17 +70,17 @@ export class LearningView extends ItemView {
       this.scheduleRebuildCheck()
     })
     this.registerEvent(
-      this.plugin.app.workspace.on('window-open', () => {
+      this.learningHost.app.workspace.on('window-open', () => {
         this.scheduleRebuildCheck()
       }),
     )
     this.registerEvent(
-      this.plugin.app.workspace.on('window-close', () => {
+      this.learningHost.app.workspace.on('window-close', () => {
         this.scheduleRebuildCheck()
       }),
     )
     this.registerEvent(
-      this.plugin.app.workspace.on('layout-change', () => {
+      this.learningHost.app.workspace.on('layout-change', () => {
         this.scheduleRebuildCheck()
       }),
     )
@@ -149,47 +151,34 @@ export class LearningView extends ItemView {
         mutations: { gcTime: 0 },
       },
     })
-
     this.root.render(
-      <PluginProvider plugin={this.plugin}>
+      <LearningUiHostProvider host={this.learningHost}>
         <LanguageProvider>
-          <AppProvider app={this.app}>
+          <AppProvider app={this.learningHost.app}>
             <SettingsProvider
-              settings={this.plugin.settings}
+              settings={this.learningHost.settings}
               setSettings={(newSettings) =>
-                this.plugin.setSettings(newSettings)
+                this.learningHost.setSettings(newSettings)
               }
               addSettingsChangeListener={(listener) =>
-                this.plugin.addSettingsChangeListener(listener)
+                this.learningHost.subscribeSettings(listener)
               }
             >
               <DarkModeProvider>
-                <DatabaseProvider
-                  getDatabaseManager={() => this.plugin.getDbManager()}
-                >
-                  <RAGProvider getRAGEngine={() => this.plugin.getRAGEngine()}>
-                    <McpProvider
-                      getMcpManager={() => this.plugin.getMcpManager()}
+                <QueryClientProvider client={queryClient}>
+                  <React.StrictMode>
+                    <DialogContainerProvider
+                      container={this.containerEl.children[1] as HTMLElement}
                     >
-                      <QueryClientProvider client={queryClient}>
-                        <React.StrictMode>
-                          <DialogContainerProvider
-                            container={
-                              this.containerEl.children[1] as HTMLElement
-                            }
-                          >
-                            <LearningWorkspace />
-                          </DialogContainerProvider>
-                        </React.StrictMode>
-                      </QueryClientProvider>
-                    </McpProvider>
-                  </RAGProvider>
-                </DatabaseProvider>
+                      <LearningWorkspace />
+                    </DialogContainerProvider>
+                  </React.StrictMode>
+                </QueryClientProvider>
               </DarkModeProvider>
             </SettingsProvider>
           </AppProvider>
         </LanguageProvider>
-      </PluginProvider>,
+      </LearningUiHostProvider>,
     )
     return Promise.resolve()
   }
