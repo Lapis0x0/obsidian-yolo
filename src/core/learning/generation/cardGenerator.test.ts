@@ -1,4 +1,11 @@
-import { type App, TFile } from 'obsidian'
+import type {
+  LearningVaultFile,
+  LearningVaultReadApi,
+} from '../learningVaultReadApi'
+import type {
+  LearningVaultFileSnapshot,
+  LearningVaultWriteApi,
+} from '../learningVaultWriteApi'
 
 import {
   CARD_END_MARKER,
@@ -101,16 +108,16 @@ describe('generateCardsForChapter streaming', () => {
     async (expectedStatus, interrupted) => {
       const knowledgePath = 'project/chapter/knowledge.md'
       const cardsPath = 'project/chapter/cards.md'
-      const knowledgeFile = Object.assign(new TFile(), { path: knowledgePath })
+      const knowledgeFile = { path: knowledgePath }
       const files = new Map<string, object>([[knowledgePath, knowledgeFile]])
       const contents = new Map<string, string>([
         [knowledgePath, '## KP <!--kp:aaaaaaaa-->\n\nBody'],
       ])
       const create = jest.fn(async (path: string, content: string) => {
-        const file = Object.assign(new TFile(), { path })
+        const file = { path }
         files.set(path, file)
         contents.set(path, content)
-        return file
+        return { path, content, identity: file }
       })
       const stream = jest.fn(async function* () {
         const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
@@ -121,25 +128,70 @@ describe('generateCardsForChapter streaming', () => {
           yield { type: 'completed' as const, text }
         }
       })
-      const app = {
-        vault: {
-          getAbstractFileByPath: (path: string) => files.get(path) ?? null,
-          getMarkdownFiles: () => [],
-          read: async (file: { path: string }) => contents.get(file.path) ?? '',
-          cachedRead: async (file: { path: string }) =>
-            contents.get(file.path) ?? '',
-          create,
-          modify: async (file: { path: string }, content: string) => {
-            contents.set(file.path, content)
-          },
-          delete: async (file: { path: string }) => {
-            files.delete(file.path)
-            contents.delete(file.path)
-          },
+      const getFile = (path: string): LearningVaultFile | null => {
+        if (!files.has(path)) return null
+        return {
+          kind: 'file',
+          path,
+          name: path.split('/').at(-1) ?? path,
+          ctime: 0,
+          mtime: 0,
+        }
+      }
+      const readSnapshot = async (
+        path: string,
+      ): Promise<LearningVaultFileSnapshot | null> => {
+        const identity = files.get(path)
+        if (!identity) return null
+        return { path, content: contents.get(path) ?? '', identity }
+      }
+      const vault = {
+        getEntry: getFile,
+        listMarkdownFiles: () => [],
+        readText: async (path: string) => contents.get(path) ?? '',
+      } as unknown as LearningVaultReadApi
+      const vaultWriter = {
+        readTextSnapshot: readSnapshot,
+        createTextIfAbsent: async (path: string, content: string) => {
+          if (files.has(path)) return null
+          return create(path, content)
         },
-      } as unknown as App
+        replaceTextIfUnchanged: async (
+          expected: LearningVaultFileSnapshot,
+          content: string,
+        ) => {
+          const current = await readSnapshot(expected.path)
+          if (
+            !current ||
+            current.identity !== expected.identity ||
+            current.content !== expected.content
+          ) {
+            return null
+          }
+          contents.set(expected.path, content)
+          return { ...expected, content }
+        },
+        deleteOwnedTextIfUnchanged: async (
+          created: LearningVaultFileSnapshot,
+          expected: LearningVaultFileSnapshot,
+        ) => {
+          const current = await readSnapshot(expected.path)
+          if (
+            !current ||
+            current.identity !== created.identity ||
+            current.identity !== expected.identity ||
+            current.content !== expected.content
+          ) {
+            return false
+          }
+          files.delete(expected.path)
+          contents.delete(expected.path)
+          return true
+        },
+      } as unknown as LearningVaultWriteApi
       const host: LearningGenerationHost = {
-        app,
+        vault,
+        vaultWriter,
         isDebugEnabled: () => false,
         agent: {
           stream: stream as LearningGenerationHost['agent']['stream'],

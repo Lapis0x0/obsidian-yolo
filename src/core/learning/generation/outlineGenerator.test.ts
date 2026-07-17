@@ -1,4 +1,5 @@
-import type { App } from 'obsidian'
+import type { LearningVaultReadApi } from '../learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../learningVaultWriteApi'
 
 import type {
   LearningGenerationAgentEvent,
@@ -117,7 +118,8 @@ function createHost(
   onRequest?: (request: unknown) => void,
 ): LearningGenerationHost {
   return {
-    app: {} as App,
+    vault: {} as LearningVaultReadApi,
+    vaultWriter: {} as LearningVaultWriteApi,
     isDebugEnabled: () => false,
     agent: {
       stream: (request: unknown) => {

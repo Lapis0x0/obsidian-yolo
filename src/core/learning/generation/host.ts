@@ -1,4 +1,5 @@
-import type { App } from 'obsidian'
+import type { LearningVaultReadApi } from '../learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../learningVaultWriteApi'
 
 export type LearningGenerationCapability =
   | 'none'
@@ -68,7 +69,8 @@ export type LearningGenerationAgent = {
 }
 
 export type LearningGenerationHost = {
-  app: App
+  vault: LearningVaultReadApi
+  vaultWriter: LearningVaultWriteApi
   agent: LearningGenerationAgent
   isDebugEnabled(): boolean
 }

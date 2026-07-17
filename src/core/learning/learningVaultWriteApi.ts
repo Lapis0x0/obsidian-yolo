@@ -38,4 +38,8 @@ export type LearningVaultWriteApi = {
   deleteCreatedTextIfUnchanged(
     expected: LearningVaultFileSnapshot,
   ): Promise<boolean>
+  deleteOwnedTextIfUnchanged(
+    created: LearningVaultFileSnapshot,
+    expected: LearningVaultFileSnapshot,
+  ): Promise<boolean>
 }

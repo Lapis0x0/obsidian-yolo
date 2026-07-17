@@ -24,6 +24,26 @@ export function createObsidianLearningVaultWriteApi(
     return value
   }
 
+  const deleteOwnedTextIfUnchanged = async (
+    created: LearningVaultFileSnapshot,
+    expected: LearningVaultFileSnapshot,
+  ): Promise<boolean> => {
+    if (
+      !createdSnapshots.has(created) ||
+      created.path !== expected.path ||
+      created.identity !== expected.identity
+    ) {
+      return false
+    }
+    const path = normalizeVaultPath(expected.path)
+    const entry = app.vault.getAbstractFileByPath(path)
+    if (!(entry instanceof TFile) || entry !== expected.identity) return false
+    if ((await app.vault.read(entry)) !== expected.content) return false
+    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Transaction rollback must restore the original absent-file state.
+    await app.vault.delete(entry)
+    return true
+  }
+
   return {
     ensureFolder: async (folderPath) => {
       const path = normalizeVaultPath(folderPath)
@@ -94,15 +114,8 @@ export function createObsidianLearningVaultWriteApi(
       if (createdSnapshots.has(expected)) createdSnapshots.add(next)
       return next
     },
-    deleteCreatedTextIfUnchanged: async (expected) => {
-      if (!createdSnapshots.has(expected)) return false
-      const path = normalizeVaultPath(expected.path)
-      const entry = app.vault.getAbstractFileByPath(path)
-      if (!(entry instanceof TFile) || entry !== expected.identity) return false
-      if ((await app.vault.read(entry)) !== expected.content) return false
-      // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Transaction rollback must restore the original absent-file state.
-      await app.vault.delete(entry)
-      return true
-    },
+    deleteCreatedTextIfUnchanged: async (expected) =>
+      deleteOwnedTextIfUnchanged(expected, expected),
+    deleteOwnedTextIfUnchanged,
   }
 }

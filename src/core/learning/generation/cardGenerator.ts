@@ -1,8 +1,12 @@
 import { dump as dumpYaml } from 'js-yaml'
-import { App, TFile, normalizePath } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import { formatCardBody, parseCardBody } from '../cardFormat'
+import {
+  type LearningVaultReadApi,
+  normalizeLearningVaultPath,
+} from '../learningVaultReadApi'
+import type { LearningVaultFileSnapshot } from '../learningVaultWriteApi'
 
 import {
   type ChapterDebugData,
@@ -97,13 +101,16 @@ export async function generateCardsForChapter({
   discardedCount: number
   debugData: ChapterDebugData
 }> {
-  const knowledgeFile = host.app.vault.getAbstractFileByPath(knowledgePath)
-  if (!(knowledgeFile instanceof TFile)) {
+  const knowledgeEntry = host.vault.getEntry(knowledgePath)
+  if (knowledgeEntry?.kind !== 'file') {
     throw new Error(`Knowledge file not found: ${knowledgePath}`)
   }
-
-  const knowledgeSnapshot = await host.app.vault.read(knowledgeFile)
-  const validKpUuids = extractKnowledgePointUuids(knowledgeSnapshot)
+  const knowledgeSnapshot =
+    await host.vaultWriter.readTextSnapshot(knowledgePath)
+  if (!knowledgeSnapshot) {
+    throw new Error(`Knowledge file not found: ${knowledgePath}`)
+  }
+  const validKpUuids = extractKnowledgePointUuids(knowledgeSnapshot.content)
   if (validKpUuids.size === 0) {
     throw new Error(
       `Knowledge file has no valid knowledge points: ${knowledgePath}`,
@@ -114,7 +121,7 @@ export async function generateCardsForChapter({
     projectTopic,
     chapterTitle,
     chapterContract,
-    knowledgeMdContent: extractMarkdownBody(knowledgeSnapshot),
+    knowledgeMdContent: extractMarkdownBody(knowledgeSnapshot.content),
     cardsFilePath: cardsPath,
     level,
   })
@@ -187,123 +194,117 @@ export async function generateCardsForChapter({
     throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
   }
 
-  await assertKnowledgeUnchanged(host, knowledgeFile, knowledgeSnapshot)
-  const cardsFile = await createCardsFile(
+  await assertKnowledgeUnchanged(host, knowledgeSnapshot)
+  const createdCards = await createCardsFile(
     host,
     cardsPath,
     chapterTitle,
     assignedDrafts,
   )
-  try {
-    await assertKnowledgeUnchanged(host, knowledgeFile, knowledgeSnapshot)
-  } catch (error) {
-    const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back only the file created by this generation transaction.
-    await host.app.vault.delete(ownedCardsFile)
-    throw error
-  }
   const expectedCardUuids = new Set(
     assignedDrafts.map((draft) => draft.cardUuid),
   )
+  let cardsSnapshot = createdCards
 
-  let finalOutput = firstOutput
-  let fileContent = await host.app.vault.read(cardsFile)
-  let validation = validateWrittenCards(
-    parseWrittenCardEntries(fileContent),
-    expectedCardUuids,
-    validKpUuids,
-  )
-
-  if (validation.invalid.length > 0 && !abortSignal?.aborted) {
-    const firstAssistantMessage: LearningGenerationAssistantMessage = {
-      role: 'assistant',
-      id: `card-gen-${chapterIndex}-resp-1`,
-      content: firstOutput,
-    }
-    const retryUserMessage: LearningGenerationUserMessage = {
-      role: 'user',
-      id: `card-gen-${chapterIndex}-req-2`,
-      promptContent: buildValidationRetryPrompt(
-        validation.invalid,
-        validKpUuids,
-        cardsPath,
-      ),
-    }
-    try {
-      const retryRun = await runStream({
-        messages: [firstUserMessage, firstAssistantMessage, retryUserMessage],
-      })
-      finalOutput = retryRun.text
-      if (retryRun.error) throw retryRun.error
-    } catch (error) {
-      console.error('[YOLO] Failed to correct generated cards:', error)
-    }
-
-    if (abortSignal?.aborted) {
-      const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-      // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
-      await host.app.vault.delete(ownedCardsFile)
-      throw new Error(`Card generation aborted: ${chapterTitle}`)
-    }
-
-    try {
-      await assertKnowledgeUnchanged(host, knowledgeFile, knowledgeSnapshot)
-    } catch (error) {
-      const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-      // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Remove only the transient file created by this generation transaction.
-      await host.app.vault.delete(ownedCardsFile)
-      throw error
-    }
-    const currentCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-    fileContent = await host.app.vault.read(currentCardsFile)
-    validation = validateWrittenCards(
-      parseWrittenCardEntries(fileContent),
+  try {
+    await assertKnowledgeUnchanged(host, knowledgeSnapshot)
+    let finalOutput = firstOutput
+    let validation = validateWrittenCards(
+      parseWrittenCardEntries(cardsSnapshot.content),
       expectedCardUuids,
       validKpUuids,
     )
-  }
 
-  const discardedCount = validation.discardedCount + streamParser.discardedCount
-  if (validation.valid.length === 0) {
-    const currentCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- An empty generated artifact should not be moved into the user's trash.
-    await host.app.vault.delete(currentCardsFile)
-    throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
-  }
+    if (validation.invalid.length > 0 && !abortSignal?.aborted) {
+      const firstAssistantMessage: LearningGenerationAssistantMessage = {
+        role: 'assistant',
+        id: `card-gen-${chapterIndex}-resp-1`,
+        content: firstOutput,
+      }
+      const retryUserMessage: LearningGenerationUserMessage = {
+        role: 'user',
+        id: `card-gen-${chapterIndex}-req-2`,
+        promptContent: buildValidationRetryPrompt(
+          validation.invalid,
+          validKpUuids,
+          cardsPath,
+        ),
+      }
+      try {
+        const retryRun = await runStream({
+          messages: [firstUserMessage, firstAssistantMessage, retryUserMessage],
+        })
+        finalOutput = retryRun.text
+        if (retryRun.error) throw retryRun.error
+      } catch (error) {
+        console.error('[YOLO] Failed to correct generated cards:', error)
+      }
 
-  if (discardedCount > 0) {
-    const currentCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-    await host.app.vault.modify(
-      currentCardsFile,
-      buildCardsContent(
+      cardsSnapshot = await readOwnedCardsSnapshot(
+        host,
+        cardsPath,
+        createdCards,
+      )
+      if (abortSignal?.aborted) {
+        throw new Error(`Card generation aborted: ${chapterTitle}`)
+      }
+
+      await assertKnowledgeUnchanged(host, knowledgeSnapshot)
+      validation = validateWrittenCards(
+        parseWrittenCardEntries(cardsSnapshot.content),
+        expectedCardUuids,
+        validKpUuids,
+      )
+    }
+
+    const discardedCount =
+      validation.discardedCount + streamParser.discardedCount
+    if (validation.valid.length === 0) {
+      throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
+    }
+
+    if (discardedCount > 0) {
+      const updated = await host.vaultWriter.replaceTextIfUnchanged(
+        cardsSnapshot,
+        buildCardsContent(
+          chapterTitle,
+          validation.valid.map((entry) => entry.block),
+        ),
+      )
+      if (!updated) throw cardsFileChangedError(cardsPath)
+      cardsSnapshot = updated
+    }
+
+    const finalCards = validation.valid.map(toGeneratedCard)
+    if (abortSignal?.aborted) {
+      throw new Error(`Card generation aborted: ${chapterTitle}`)
+    }
+    const collected = debug.finalize()
+    return {
+      cards: finalCards,
+      status: firstRun.error || discardedCount > 0 ? 'partial' : 'generated',
+      discardedCount,
+      debugData: {
+        chapterIndex,
         chapterTitle,
-        validation.valid.map((entry) => entry.block),
-      ),
-    )
-  }
-
-  const finalCards = validation.valid.map(toGeneratedCard)
-  if (abortSignal?.aborted) {
-    const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
-    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
-    await host.app.vault.delete(ownedCardsFile)
-    throw new Error(`Card generation aborted: ${chapterTitle}`)
-  }
-  const collected = debug.finalize()
-  return {
-    cards: finalCards,
-    status: firstRun.error || discardedCount > 0 ? 'partial' : 'generated',
-    discardedCount,
-    debugData: {
-      chapterIndex,
-      chapterTitle,
-      startedAt: collected.startedAt,
-      completedAt: collected.completedAt,
-      toolCalls: collected.toolCalls,
-      outputLength: finalOutput.length,
-      output: finalOutput,
-      count: finalCards.length,
-    },
+        startedAt: collected.startedAt,
+        completedAt: collected.completedAt,
+        toolCalls: collected.toolCalls,
+        outputLength: finalOutput.length,
+        output: finalOutput,
+        count: finalCards.length,
+      },
+    }
+  } catch (error) {
+    if (
+      !(await host.vaultWriter.deleteOwnedTextIfUnchanged(
+        createdCards,
+        cardsSnapshot,
+      ))
+    ) {
+      throw cardsFileChangedError(cardsPath)
+    }
+    throw error
   }
 }
 
@@ -347,12 +348,12 @@ export async function generateCardsParallel({
   onChapterSettled,
 }: GenerateCardsParallelOptions): Promise<CardGenerationResult[]> {
   const chapterDebugData: ChapterDebugData[] = []
-  const usedCardUuids = await collectExistingCardUuids(host.app, projectPath)
+  const usedCardUuids = await collectExistingCardUuids(host.vault, projectPath)
   const resolvedRunId = runId ?? `card-generation-${Date.now()}`
   const resolvedProjectId = projectId ?? projectPath
   const tasks = chapters.map(async (chapter, chapterIndex) => {
     let result: CardGenerationResult
-    if (host.app.vault.getAbstractFileByPath(chapter.cardsPath)) {
+    if (host.vault.getEntry(chapter.cardsPath)) {
       result = {
         chapterIndex,
         chapterTitle: chapter.title,
@@ -536,7 +537,7 @@ function buildCardWorkspaceScope(
   const include = workspaceScope?.enabled ? workspaceScope.include : []
   return {
     enabled: true,
-    include: [...new Set([...include, normalizePath(cardsPath)])],
+    include: [...new Set([...include, normalizeLearningVaultPath(cardsPath)])],
     exclude: workspaceScope?.enabled ? workspaceScope.exclude : [],
   }
 }
@@ -555,16 +556,20 @@ function throwIfAborted(abortSignal: AbortSignal | undefined): void {
   }
 }
 
-function getOwnedCardsFile(
+async function readOwnedCardsSnapshot(
   host: LearningGenerationHost,
   cardsPath: string,
-  expectedFile: TFile,
-): TFile {
-  const currentFile = host.app.vault.getAbstractFileByPath(cardsPath)
-  if (currentFile !== expectedFile) {
-    throw new Error(`Cards file changed concurrently: ${cardsPath}`)
+  created: LearningVaultFileSnapshot,
+): Promise<LearningVaultFileSnapshot> {
+  const current = await host.vaultWriter.readTextSnapshot(cardsPath)
+  if (!current || current.identity !== created.identity) {
+    throw cardsFileChangedError(cardsPath)
   }
-  return expectedFile
+  return current
+}
+
+function cardsFileChangedError(cardsPath: string): Error {
+  return new Error(`Cards file changed concurrently: ${cardsPath}`)
 }
 
 function assignCardUuid(
@@ -608,17 +613,18 @@ ${details}
 
 async function assertKnowledgeUnchanged(
   host: LearningGenerationHost,
-  knowledgeFile: TFile,
-  expectedContent: string,
+  expected: LearningVaultFileSnapshot,
 ): Promise<void> {
-  const currentFile = host.app.vault.getAbstractFileByPath(knowledgeFile.path)
-  if (!(currentFile instanceof TFile)) {
-    throw new Error(`Knowledge file disappeared: ${knowledgeFile.path}`)
+  const current = await host.vaultWriter.readTextSnapshot(expected.path)
+  if (!current) {
+    throw new Error(`Knowledge file disappeared: ${expected.path}`)
   }
-  const currentContent = await host.app.vault.read(currentFile)
-  if (currentContent !== expectedContent) {
+  if (
+    current.identity !== expected.identity ||
+    current.content !== expected.content
+  ) {
     throw new Error(
-      `Knowledge file changed during generation: ${knowledgeFile.path}`,
+      `Knowledge file changed during generation: ${expected.path}`,
     )
   }
 }
@@ -628,19 +634,18 @@ async function createCardsFile(
   cardsPath: string,
   chapterTitle: string,
   drafts: AssignedCardDraft[],
-): Promise<TFile> {
-  if (host.app.vault.getAbstractFileByPath(cardsPath)) {
-    throw new Error(`Cards file already exists: ${cardsPath}`)
-  }
+): Promise<LearningVaultFileSnapshot> {
   const blocks = drafts.map((draft) => {
     const title = draft.title.trim()
     const kpPart = draft.kpUuid ? ` kp:${draft.kpUuid.toLowerCase()}` : ''
     return `## ${title}${title ? ' ' : ''}<!--card:${draft.cardUuid}${kpPart}-->\n\n${formatCardBody(draft.front, draft.back)}`
   })
-  return host.app.vault.create(
+  const created = await host.vaultWriter.createTextIfAbsent(
     cardsPath,
     buildCardsContent(chapterTitle, blocks),
   )
+  if (!created) throw new Error(`Cards file already exists: ${cardsPath}`)
+  return created
 }
 
 function buildCardsContent(chapterTitle: string, blocks: string[]): string {
@@ -719,19 +724,21 @@ export class CardStreamParser {
 }
 
 async function collectExistingCardUuids(
-  app: App,
+  vault: LearningVaultReadApi,
   projectPath: string,
 ): Promise<Set<string>> {
-  const normalizedProject = normalizePath(projectPath.replace(/\/$/, ''))
+  const normalizedProject = normalizeLearningVaultPath(
+    projectPath.replace(/\/$/, ''),
+  )
   const projectPrefix = `${normalizedProject}/`
   const uuids = new Set<string>()
-  const cardFiles = app.vault
-    .getMarkdownFiles()
+  const cardFiles = vault
+    .listMarkdownFiles()
     .filter(
       (file) => file.name === 'cards.md' && file.path.startsWith(projectPrefix),
     )
   for (const file of cardFiles) {
-    const content = await app.vault.cachedRead(file)
+    const content = await vault.readText(file.path)
     for (const match of content.matchAll(
       /<!--\s*card:([0-9a-fA-F]{8})(?:\s+kp:[0-9a-fA-F]{8})?\s*-->/g,
     )) {

@@ -6,7 +6,8 @@ export function createLearningGenerationHost(
   host: LearningUiHost,
 ): LearningGenerationHost {
   return {
-    app: host.app,
+    vault: host.vault,
+    vaultWriter: host.vaultWriter,
     agent: host.generationAgent,
     isDebugEnabled: host.isGenerationDebugEnabled,
   }

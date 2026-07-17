@@ -155,7 +155,9 @@ describe('Obsidian Learning vault write adapter', () => {
     await expect(
       api.deleteCreatedTextIfUnchanged(ordinarySnapshot),
     ).resolves.toBe(false)
-    await expect(api.deleteCreatedTextIfUnchanged(created)).resolves.toBe(true)
+    await expect(
+      api.deleteOwnedTextIfUnchanged(created, ordinarySnapshot),
+    ).resolves.toBe(true)
 
     expect(deleteFile).toHaveBeenCalledTimes(1)
     expect(contents.has('p/cards.md')).toBe(false)

@@ -1,4 +1,5 @@
-import type { App } from 'obsidian'
+import type { LearningVaultReadApi } from '../learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../learningVaultWriteApi'
 
 import type { LearningGenerationHost } from './host'
 import { generateKnowledgePointsForChapter } from './knowledgePointGenerator'
@@ -10,7 +11,8 @@ describe('generateKnowledgePointsForChapter', () => {
       yield { type: 'completed' as const, text: markdown }
     })
     const host: LearningGenerationHost = {
-      app: {} as App,
+      vault: {} as LearningVaultReadApi,
+      vaultWriter: {} as LearningVaultWriteApi,
       isDebugEnabled: () => false,
       agent: { stream: stream as LearningGenerationHost['agent']['stream'] },
     }
