@@ -2,7 +2,6 @@ import { AlertTriangle, FileArchive, Loader2 } from 'lucide-react'
 import { normalizePath } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
   commitAnkiImportPlan,
@@ -39,8 +38,8 @@ export function AnkiImportModal({
   onClose: () => void
   onImported: (projectPath: string) => void | Promise<void>
 }) {
-  const app = useApp()
   const host = useLearningUiHost()
+  const app = host.app
   const { t } = useLanguage()
   const [state, setState] = useState<ImportState>('selecting')
   const [file, setFile] = useState<File | null>(null)

@@ -23,7 +23,6 @@ import {
   useState,
 } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type {
   LearningProjectAction,
@@ -58,8 +57,8 @@ export function HomeView({
   onNewProject: () => void
   onImportAnki: () => void
 }) {
-  const app = useApp()
   const host = useLearningUiHost()
+  const app = host.app
   const { language, t } = useLanguage()
   const [sortValue, setSortValue] = useState<ProjectSort>('recent')
   const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(

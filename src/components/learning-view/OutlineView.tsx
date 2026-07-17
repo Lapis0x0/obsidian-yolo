@@ -19,7 +19,6 @@ import {
   useState,
 } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type {
@@ -30,6 +29,7 @@ import type {
 import { openMarkdownFile } from '../../utils/obsidian'
 
 import { formatLearningText } from './i18n'
+import { useLearningUiHost } from './LearningUiHost'
 import { MasteryDot, Pill } from './primitives'
 
 const OUTLINE_SIDEBAR_WIDTH_STORAGE_KEY = 'yolo-learning-outline-sidebar-width'
@@ -343,7 +343,7 @@ function Detail({
   pointIndex: number
   t: (keyPath: string, fallback?: string) => string
 }) {
-  const app = useApp()
+  const app = useLearningUiHost().app
   const [body, setBody] = useState('')
   const [startLine, setStartLine] = useState<number | undefined>()
   const [loading, setLoading] = useState(false)
@@ -459,7 +459,7 @@ function LearningMarkdown({
   content: string
   sourcePath: string
 }) {
-  const app = useApp()
+  const app = useLearningUiHost().app
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

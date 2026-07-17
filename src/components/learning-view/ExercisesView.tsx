@@ -3,12 +3,12 @@ import { ArrowRight, Check, RotateCcw, X } from 'lucide-react'
 import { TFile, normalizePath } from 'obsidian'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type { Project as VaultProject } from '../../core/learning/types'
 
 import { formatLearningText } from './i18n'
+import { useLearningUiHost } from './LearningUiHost'
 import { Pill, Segmented, SelectMenu } from './primitives'
 
 type Exercise = {
@@ -82,7 +82,7 @@ export function ExercisesView({ project }: { project: VaultProject | null }) {
 }
 
 function useProjectExercises(project: VaultProject | null) {
-  const app = useApp()
+  const app = useLearningUiHost().app
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [loading, setLoading] = useState(false)
 

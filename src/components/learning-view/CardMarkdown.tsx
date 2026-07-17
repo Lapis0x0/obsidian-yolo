@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
 
-import { useApp } from '../../contexts/app-context'
-
 import { mountCardMarkdown } from './cardMarkdownLifecycle'
+import { useLearningUiHost } from './LearningUiHost'
 
 export function CardMarkdown({
   markdown,
@@ -13,7 +12,7 @@ export function CardMarkdown({
   sourcePath: string
   className?: string
 }) {
-  const app = useApp()
+  const app = useLearningUiHost().app
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

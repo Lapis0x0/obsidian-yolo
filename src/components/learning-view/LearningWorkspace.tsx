@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
-import { useSettings } from '../../contexts/settings-context'
 import { recoverAnkiImports } from '../../core/learning/anki/importService'
 import { cleanupStaging } from '../../core/learning/generation/referenceStaging'
 import type {
@@ -27,9 +25,9 @@ import { type LearningWizardInput, Wizard } from './Wizard'
 import { Workspace } from './Workspace'
 
 export function LearningWorkspace() {
-  const app = useApp()
   const host = useLearningUiHost()
-  const { settings } = useSettings()
+  const app = host.app
+  const [settings, setSettings] = useState(() => host.settings)
   const baseDir = useMemo(() => getYoloLearningDir(settings), [settings])
 
   const [projectId, setProjectId] = useState<string | null>(null)
@@ -57,6 +55,11 @@ export function LearningWorkspace() {
     statsService.getSnapshot(),
   )
   const vaultProjects = statsSnapshot.projects
+
+  useEffect(() => {
+    setSettings(host.settings)
+    return host.subscribeSettings(setSettings)
+  }, [host])
 
   useEffect(() => {
     host.setEventBus(bus)

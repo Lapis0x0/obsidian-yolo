@@ -49,7 +49,6 @@ import type {
 } from 'react'
 import { createPortal } from 'react-dom'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import {
   CardFileConflictError,
@@ -390,8 +389,8 @@ function useProjectCards(
   project: VaultProject | null,
   generation: CardGenerationWorkspace | null,
 ) {
-  const app = useApp()
   const host = useLearningUiHost()
+  const app = host.app
   const { t } = useLanguage()
   const [cards, setCards] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
@@ -763,8 +762,8 @@ function BrowseMode({
   projectPaused: boolean
 }) {
   const { t } = useLanguage()
-  const app = useApp()
   const host = useLearningUiHost()
+  const app = host.app
   const fileStore = getLearningCardFileStore(app)
   const [chapterFilter, setChapterFilter] = useState('all')
   const [pointFilter, setPointFilter] = useState('all')
