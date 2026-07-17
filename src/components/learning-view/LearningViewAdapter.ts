@@ -1,4 +1,12 @@
-import { getLanguage } from 'obsidian'
+import {
+  Component,
+  Keymap,
+  MarkdownRenderer,
+  Notice,
+  getLanguage,
+  htmlToMarkdown,
+  normalizePath,
+} from 'obsidian'
 
 import type {
   YoloAgentEvent,
@@ -22,10 +30,13 @@ import { getToolName } from '../../core/mcp/tool-name-utils'
 import { getYoloLearningDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 import type { ChatAssistantMessage, ChatUserMessage } from '../../types/chat'
+import { openMarkdownFile } from '../../utils/obsidian'
+import { ConfirmModal } from '../modals/ConfirmModal'
 
 import type {
   LearningLocale,
   LearningSettings,
+  LearningUiBridge,
   LearningUiHost,
 } from './LearningUiHost'
 
@@ -83,6 +94,72 @@ const TOOL_NAMES_BY_CAPABILITY: Record<LearningGenerationCapability, string[]> =
   }
 
 export type LearningViewPluginAdapter = YoloPlugin
+
+export function subscribeLearningViewWorkspaceChanges(
+  plugin: LearningViewPluginAdapter,
+  listener: () => void,
+): () => void {
+  const refs = [
+    plugin.app.workspace.on('window-open', listener),
+    plugin.app.workspace.on('window-close', listener),
+    plugin.app.workspace.on('layout-change', listener),
+  ]
+  return () => refs.forEach((ref) => plugin.app.workspace.offref(ref))
+}
+
+function createLearningUiBridge(plugin: YoloPlugin): LearningUiBridge {
+  const app = plugin.app
+  return {
+    showNotice: (message) => {
+      new Notice(message)
+    },
+    confirm: (options) => {
+      new ConfirmModal(app, options).open()
+    },
+    createMarkdownRenderer: () => {
+      const component = new Component()
+      component.load()
+      return {
+        render: (markdown, container, sourcePath) =>
+          MarkdownRenderer.render(
+            app,
+            markdown,
+            container,
+            sourcePath,
+            component,
+          ),
+        unload: () => component.unload(),
+      }
+    },
+    movePathToTrash: async (path) => {
+      const normalizedPath = normalizePath(path)
+      const entry = app.vault.getAbstractFileByPath(normalizedPath)
+      if (entry) {
+        await app.fileManager.trashFile(entry)
+        return true
+      }
+      if (!(await app.vault.adapter.exists(normalizedPath))) return false
+      const trashed = await app.vault.adapter.trashSystem(normalizedPath)
+      if (!trashed) await app.vault.adapter.trashLocal(normalizedPath)
+      return true
+    },
+    openMarkdownAtLine: (path, line) => openMarkdownFile(app, path, line),
+    openLinkText: (linktext, sourcePath, openInNewLeaf) =>
+      app.workspace.openLinkText(linktext, sourcePath, openInNewLeaf),
+    triggerHoverLink: ({ event, targetEl, linktext, sourcePath }) => {
+      app.workspace.trigger('hover-link', {
+        event,
+        source: 'preview',
+        hoverParent: { hoverPopover: null },
+        targetEl,
+        linktext,
+        sourcePath,
+      })
+    },
+    isModEvent: (event) => Boolean(Keymap.isModEvent(event)),
+    htmlToMarkdown,
+  }
+}
 
 const mapSettings = (plugin: YoloPlugin): LearningSettings => ({
   learningBaseDir: getYoloLearningDir(plugin.settings),
@@ -202,7 +279,7 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
     cardFileStore,
   } = getLearningVaultServices(plugin)
   return {
-    app: plugin.app,
+    bridge: createLearningUiBridge(plugin),
     vault,
     vaultWriter,
     ankiImportJournalStorage,

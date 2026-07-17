@@ -12,7 +12,6 @@ import {
   Target,
   Trash2,
 } from 'lucide-react'
-import { Notice, TFile, TFolder } from 'obsidian'
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -33,7 +32,6 @@ import type {
   Project as VaultProject,
 } from '../../core/learning/types'
 import { YoloPopoverContent } from '../common/popover/YoloPopoverContent'
-import { ConfirmModal } from '../modals/ConfirmModal'
 
 import { formatLearningText } from './i18n'
 import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
@@ -57,7 +55,7 @@ export function HomeView({
   onImportAnki: () => void
 }) {
   const host = useLearningUiHost()
-  const app = host.app
+  const bridge = host.bridge
   const { locale, t } = useLearningLanguage()
   const [sortValue, setSortValue] = useState<ProjectSort>('recent')
   const [pendingProjectSlug, setPendingProjectSlug] = useState<string | null>(
@@ -128,7 +126,7 @@ export function HomeView({
       const store = host.srsStore
       if (paused) await store.pauseProject(project.slug, new Date())
       else await store.resumeProject(project.slug, new Date())
-      new Notice(
+      bridge.showNotice(
         paused
           ? t('learning.home.pauseSuccess', '学习计划已暂停')
           : t('learning.home.resumeSuccess', '学习计划已恢复'),
@@ -138,7 +136,7 @@ export function HomeView({
         '[YOLO] Failed to update learning project pause state:',
         error,
       )
-      new Notice(
+      bridge.showNotice(
         paused
           ? t('learning.home.pauseFailed', '暂停学习计划失败，请重试')
           : t('learning.home.resumeFailed', '恢复学习计划失败，请重试'),
@@ -152,8 +150,8 @@ export function HomeView({
     setPendingProjectSlug(project.slug)
     let projectTrashed = false
     try {
-      const folder = app.vault.getAbstractFileByPath(project.folderPath)
-      if (!(folder instanceof TFolder)) {
+      const folder = host.vault.getEntry(project.folderPath)
+      if (folder?.kind !== 'folder') {
         throw new Error(
           `Learning project folder not found: ${project.folderPath}`,
         )
@@ -161,19 +159,17 @@ export function HomeView({
       const store = host.srsStore
       await store.pauseProject(project.slug, new Date())
       const statePath = await store.getProjectStateFilePath(project.slug)
-      const stateFile = app.vault.getAbstractFileByPath(statePath)
-      const stateExists = await app.vault.adapter.exists(statePath)
       await store.runExclusive(async () => {
-        await app.fileManager.trashFile(folder)
-        projectTrashed = true
-        if (stateFile instanceof TFile)
-          await app.fileManager.trashFile(stateFile)
-        else if (stateExists) {
-          const trashed = await app.vault.adapter.trashSystem(statePath)
-          if (!trashed) await app.vault.adapter.trashLocal(statePath)
+        const moved = await bridge.movePathToTrash(folder.path)
+        if (!moved) {
+          throw new Error(`Learning project folder not found: ${folder.path}`)
         }
+        projectTrashed = true
+        await bridge.movePathToTrash(statePath)
       })
-      new Notice(t('learning.home.deleteSuccess', '学习计划已移入回收站'))
+      bridge.showNotice(
+        t('learning.home.deleteSuccess', '学习计划已移入回收站'),
+      )
     } catch (error) {
       console.error('[YOLO] Failed to delete learning project:', error)
       if (!projectTrashed && !wasPaused) {
@@ -186,7 +182,7 @@ export function HomeView({
           )
         }
       }
-      new Notice(
+      bridge.showNotice(
         projectTrashed
           ? t(
               'learning.home.deleteStateFailed',
@@ -200,7 +196,7 @@ export function HomeView({
   }
 
   const confirmDeleteProject = (project: VaultProject) => {
-    new ConfirmModal(app, {
+    bridge.confirm({
       title: t('learning.home.deleteConfirmTitle', '删除学习计划'),
       message: formatLearningText(
         t(
@@ -211,7 +207,7 @@ export function HomeView({
       ),
       ctaText: t('learning.home.deleteProject', '删除'),
       onConfirm: () => void deleteProject(project, isProjectPaused(project)),
-    }).open()
+    })
   }
 
   return (

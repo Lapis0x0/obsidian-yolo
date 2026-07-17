@@ -1,18 +1,16 @@
-import { Component, MarkdownRenderer } from 'obsidian'
-import type { App } from 'obsidian'
+import type { LearningUiBridge } from './LearningUiHost'
 
 export function mountCardMarkdown(
-  app: App,
+  bridge: LearningUiBridge,
   container: HTMLElement,
   markdown: string,
   sourcePath: string,
 ): () => void {
-  const component = new Component()
-  component.load()
-  container.empty()
-  void MarkdownRenderer.render(app, markdown, container, sourcePath, component)
+  const renderer = bridge.createMarkdownRenderer()
+  container.replaceChildren()
+  void renderer.render(markdown, container, sourcePath)
   return () => {
-    component.unload()
-    container.empty()
+    renderer.unload()
+    container.replaceChildren()
   }
 }

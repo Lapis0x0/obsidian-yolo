@@ -1,4 +1,3 @@
-import type { App } from 'obsidian'
 import React, { type ReactNode, createContext, useContext } from 'react'
 
 import type { AnkiImportJournalStorage } from '../../core/learning/anki/ankiImportJournalStorage'
@@ -34,9 +33,50 @@ export type LearningActionToast = {
   onAction: () => void | Promise<void>
 }
 
+export type LearningConfirmOptions = {
+  title: string
+  message: string
+  ctaText?: string
+  cancelText?: string
+  onConfirm: () => void
+  onCancel?: () => void
+}
+
+export type LearningMarkdownRenderer = {
+  render(
+    markdown: string,
+    container: HTMLElement,
+    sourcePath: string,
+  ): Promise<void>
+  unload(): void
+}
+
+export type LearningHoverLinkOptions = {
+  event: MouseEvent
+  targetEl: EventTarget | null
+  linktext: string
+  sourcePath: string
+}
+
+export type LearningUiBridge = {
+  showNotice(message: string): void
+  confirm(options: LearningConfirmOptions): void
+  createMarkdownRenderer(): LearningMarkdownRenderer
+  movePathToTrash(path: string): Promise<boolean>
+  openMarkdownAtLine(path: string, line?: number): void
+  openLinkText(
+    linktext: string,
+    sourcePath: string,
+    openInNewLeaf: boolean,
+  ): Promise<void>
+  triggerHoverLink(options: LearningHoverLinkOptions): void
+  isModEvent(event: MouseEvent): boolean
+  htmlToMarkdown(html: string): string
+}
+
 // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- This public host boundary is intentionally extensible.
 export interface LearningUiHost {
-  readonly app: App
+  readonly bridge: LearningUiBridge
   readonly vault: LearningVaultReadApi
   readonly vaultWriter: LearningVaultWriteApi
   readonly ankiImportJournalStorage: AnkiImportJournalStorage

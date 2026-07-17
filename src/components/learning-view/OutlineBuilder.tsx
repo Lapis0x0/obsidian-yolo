@@ -26,7 +26,6 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react'
-import { Notice } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 
@@ -429,7 +428,7 @@ export function OutlineBuilder({
           host.releaseGeneration(controller)
           return
         }
-        new Notice(
+        host.bridge.showNotice(
           `知识点生成失败：${failedKnowledgeChapters
             .map((result) => result.chapterTitle)
             .join('、')}`,

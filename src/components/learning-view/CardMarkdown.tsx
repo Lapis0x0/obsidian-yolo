@@ -12,14 +12,14 @@ export function CardMarkdown({
   sourcePath: string
   className?: string
 }) {
-  const app = useLearningUiHost().app
+  const bridge = useLearningUiHost().bridge
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    return mountCardMarkdown(app, container, markdown, sourcePath)
-  }, [app, markdown, sourcePath])
+    return mountCardMarkdown(bridge, container, markdown, sourcePath)
+  }, [bridge, markdown, sourcePath])
 
   return <div ref={containerRef} className={className} />
 }

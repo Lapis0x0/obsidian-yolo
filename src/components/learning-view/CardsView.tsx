@@ -30,7 +30,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { Notice } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -566,7 +565,7 @@ function useProjectCards(
               },
             ]
         setError({ kind: formatError ? 'format' : 'load', items: errors })
-        new Notice(
+        host.bridge.showNotice(
           formatError
             ? t(
                 'learning.cards.invalidProjectCards',
@@ -666,7 +665,7 @@ function useProjectCards(
       })
       .catch(() => {
         if (introducedLoadGenerationRef.current !== generation) return
-        new Notice(
+        host.bridge.showNotice(
           t('learning.cards.srsLoadFailed', '复习数据加载失败，请重试'),
         )
       })
@@ -1334,7 +1333,7 @@ function BrowseMode({
       return true
     } catch (operationError) {
       console.error('[YOLO] Failed to update learning card:', operationError)
-      new Notice(
+      host.bridge.showNotice(
         operationError instanceof CardFileConflictError
           ? t(
               'learning.cards.cardFileConflict',
@@ -1409,7 +1408,7 @@ function BrowseMode({
       })
       .catch((operationError: unknown) => {
         console.error('[YOLO] Failed to update learning card:', operationError)
-        new Notice(
+        host.bridge.showNotice(
           operationError instanceof CardFileConflictError
             ? t(
                 'learning.cards.cardFileConflict',
@@ -1463,7 +1462,7 @@ function BrowseMode({
       })
       .catch((operationError: unknown) => {
         console.error('[YOLO] Failed to create learning card:', operationError)
-        new Notice(
+        host.bridge.showNotice(
           operationError instanceof CardFileConflictError
             ? t(
                 'learning.cards.cardFileConflict',
@@ -1560,7 +1559,7 @@ function BrowseMode({
           persistedCards.map((card) => card.id),
         )
       } catch {
-        new Notice(
+        host.bridge.showNotice(
           t('learning.cards.srsDeleteFailed', '卡片已删除，但复习记录清理失败'),
         )
       }
@@ -1589,7 +1588,7 @@ function BrowseMode({
       refresh()
     } catch (reviewError) {
       console.error('[YOLO] Failed to update card review state:', reviewError)
-      new Notice(
+      host.bridge.showNotice(
         t('learning.cards.quickReviewFailed', '学习状态更新失败，请重试'),
       )
     } finally {
@@ -1614,7 +1613,9 @@ function BrowseMode({
       refresh()
     } catch (srsError) {
       console.error('[YOLO] Failed to update card suspension:', srsError)
-      new Notice(t('learning.cards.suspendFailed', '暂停状态更新失败，请重试'))
+      host.bridge.showNotice(
+        t('learning.cards.suspendFailed', '暂停状态更新失败，请重试'),
+      )
     } finally {
       setWriting(false)
     }
@@ -3164,7 +3165,7 @@ function ReviewMode({
           !cancelled &&
           schedulingRequestGenerationRef.current === generation
         ) {
-          new Notice(
+          host.bridge.showNotice(
             t('learning.cards.srsLoadFailed', '复习计划加载失败，请重试'),
           )
         }
@@ -3197,7 +3198,9 @@ function ReviewMode({
         setSubmitting(false)
         setSubmittingGrade(null)
         resetDrag()
-        new Notice(t('learning.cards.reviewSaveFailed', '评分保存失败，请重试'))
+        host.bridge.showNotice(
+          t('learning.cards.reviewSaveFailed', '评分保存失败，请重试'),
+        )
         return
       }
 

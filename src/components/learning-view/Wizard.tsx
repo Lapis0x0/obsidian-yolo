@@ -1,6 +1,5 @@
 import cx from 'clsx'
 import { Sparkles, X } from 'lucide-react'
-import { TFile } from 'obsidian'
 import type React from 'react'
 import { useState } from 'react'
 
@@ -35,7 +34,6 @@ export function Wizard({
   onComplete: (input: LearningWizardInput) => void
 }) {
   const host = useLearningUiHost()
-  const app = host.app
   const writer = host.vaultWriter
   const { t } = useLearningLanguage()
   const levels = levelIds.map((id) => ({
@@ -87,8 +85,7 @@ export function Wizard({
   }
 
   const removeReference = async (ref: StagedReference) => {
-    const file = app.vault.getAbstractFileByPath(ref.vaultPath)
-    if (file instanceof TFile) await app.fileManager.trashFile(file)
+    await host.bridge.movePathToTrash(ref.vaultPath)
     setReferenceFiles((prev) =>
       prev.filter((item) => item.vaultPath !== ref.vaultPath),
     )

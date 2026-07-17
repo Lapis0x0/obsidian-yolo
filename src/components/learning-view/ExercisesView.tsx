@@ -1,8 +1,8 @@
 import cx from 'clsx'
 import { ArrowRight, Check, RotateCcw, X } from 'lucide-react'
-import { TFile, normalizePath } from 'obsidian'
 import { useEffect, useMemo, useState } from 'react'
 
+import { normalizeLearningVaultPath } from '../../core/learning/learningVaultReadApi'
 import { scanMarkdownEntries } from '../../core/learning/markdownScanner'
 import type { Project as VaultProject } from '../../core/learning/types'
 
@@ -81,7 +81,7 @@ export function ExercisesView({ project }: { project: VaultProject | null }) {
 }
 
 function useProjectExercises(project: VaultProject | null) {
-  const app = useLearningUiHost().app
+  const vault = useLearningUiHost().vault
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -102,11 +102,11 @@ function useProjectExercises(project: VaultProject | null) {
         project.chapters.map((chapter) => [chapter.id, chapter]),
       )
       for (const chapter of project.chapters) {
-        const file = app.vault.getAbstractFileByPath(
-          normalizePath(`${chapter.folderPath}/exercises.md`),
+        const filePath = normalizeLearningVaultPath(
+          `${chapter.folderPath}/exercises.md`,
         )
-        if (!(file instanceof TFile)) continue
-        const content = await app.vault.cachedRead(file)
+        if (vault.getEntry(filePath)?.kind !== 'file') continue
+        const content = await vault.readText(filePath)
         const entries = scanMarkdownEntries(content).filter(
           (entry) => entry.type === 'ex' && entry.uuid,
         )
@@ -135,7 +135,7 @@ function useProjectExercises(project: VaultProject | null) {
     return () => {
       cancelled = true
     }
-  }, [app, project])
+  }, [project, vault])
 
   return { exercises, loading }
 }

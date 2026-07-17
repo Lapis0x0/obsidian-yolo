@@ -9,6 +9,7 @@ import {
 import {
   type LearningViewPluginAdapter,
   createLearningUiHost,
+  subscribeLearningViewWorkspaceChanges,
 } from './components/learning-view/LearningViewAdapter'
 import { LearningWorkspace } from './components/learning-view/LearningWorkspace'
 import { LEARNING_VIEW_TYPE } from './constants'
@@ -32,13 +33,16 @@ export class LearningView extends ItemView {
   private mountedDoc: Document | null = null
   private hostObserver: MutationObserver | null = null
   private windowMigratedDisposer: (() => void) | null = null
+  private workspaceEventsDisposer: (() => void) | null = null
   private rebuildScheduled = false
   private rebuildRafId: number | null = null
   private isClosed = false
   private readonly learningHost: LearningUiHost
+  private readonly plugin: LearningViewPluginAdapter
 
   constructor(leaf: WorkspaceLeaf, plugin: LearningViewPluginAdapter) {
     super(leaf)
+    this.plugin = plugin
     this.learningHost = createLearningUiHost(plugin)
   }
 
@@ -62,20 +66,9 @@ export class LearningView extends ItemView {
     this.windowMigratedDisposer = this.containerEl.onWindowMigrated(() => {
       this.scheduleRebuildCheck()
     })
-    this.registerEvent(
-      this.learningHost.app.workspace.on('window-open', () => {
-        this.scheduleRebuildCheck()
-      }),
-    )
-    this.registerEvent(
-      this.learningHost.app.workspace.on('window-close', () => {
-        this.scheduleRebuildCheck()
-      }),
-    )
-    this.registerEvent(
-      this.learningHost.app.workspace.on('layout-change', () => {
-        this.scheduleRebuildCheck()
-      }),
+    this.workspaceEventsDisposer = subscribeLearningViewWorkspaceChanges(
+      this.plugin,
+      () => this.scheduleRebuildCheck(),
     )
     this.hostObserver = new MutationObserver(() => {
       this.scheduleRebuildCheck()
@@ -94,6 +87,8 @@ export class LearningView extends ItemView {
     this.hostObserver = null
     this.windowMigratedDisposer?.()
     this.windowMigratedDisposer = null
+    this.workspaceEventsDisposer?.()
+    this.workspaceEventsDisposer = null
     this.root?.unmount()
     this.root = null
     this.mountedHost = null

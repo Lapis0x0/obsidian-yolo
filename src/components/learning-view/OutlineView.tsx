@@ -1,14 +1,6 @@
 import cx from 'clsx'
 import { ChevronDown, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
 import {
-  App,
-  Component,
-  Keymap,
-  MarkdownRenderer,
-  TFile,
-  htmlToMarkdown,
-} from 'obsidian'
-import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -25,9 +17,9 @@ import type {
   KnowledgePoint as VaultKnowledgePoint,
   OutlineProject as VaultProject,
 } from '../../core/learning/types'
-import { openMarkdownFile } from '../../utils/obsidian'
 
 import { formatLearningText } from './i18n'
+import type { LearningUiBridge } from './LearningUiHost'
 import { useLearningLanguage, useLearningUiHost } from './LearningUiHost'
 import { MasteryDot, Pill } from './primitives'
 
@@ -342,7 +334,7 @@ function Detail({
   pointIndex: number
   t: (keyPath: string, fallback?: string) => string
 }) {
-  const app = useLearningUiHost().app
+  const host = useLearningUiHost()
   const [body, setBody] = useState('')
   const [startLine, setStartLine] = useState<number | undefined>()
   const [loading, setLoading] = useState(false)
@@ -351,8 +343,7 @@ function Detail({
     let cancelled = false
     const run = async () => {
       setLoading(true)
-      const file = app.vault.getAbstractFileByPath(point.knowledgeFilePath)
-      if (!(file instanceof TFile)) {
+      if (host.vault.getEntry(point.knowledgeFilePath)?.kind !== 'file') {
         if (!cancelled) {
           setBody('')
           setStartLine(undefined)
@@ -360,7 +351,7 @@ function Detail({
         }
         return
       }
-      const content = await app.vault.cachedRead(file)
+      const content = await host.vault.readText(point.knowledgeFilePath)
       const entry = scanMarkdownEntries(content).find(
         (item) => item.type === 'kp' && item.uuid === point.uuid,
       )
@@ -374,10 +365,10 @@ function Detail({
     return () => {
       cancelled = true
     }
-  }, [app, point])
+  }, [host.vault, point])
 
   const handleEdit = () => {
-    openMarkdownFile(app, point.knowledgeFilePath, startLine)
+    host.bridge.openMarkdownAtLine(point.knowledgeFilePath, startLine)
   }
 
   return (
@@ -458,38 +449,31 @@ function LearningMarkdown({
   content: string
   sourcePath: string
 }) {
-  const app = useLearningUiHost().app
+  const bridge = useLearningUiHost().bridge
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
-    const component = new Component()
-    component.load()
+    const renderer = bridge.createMarkdownRenderer()
 
     const renderMarkdown = async () => {
       const containerEl = containerRef.current
       if (!containerEl) return
 
       const staging = document.createElement('div')
-      await MarkdownRenderer.render(
-        app,
-        content,
-        staging,
-        sourcePath,
-        component,
-      )
+      await renderer.render(content, staging, sourcePath)
       if (cancelled || !containerRef.current) return
 
       containerRef.current.replaceChildren(...Array.from(staging.childNodes))
-      setupLearningMarkdownLinks(app, containerRef.current, sourcePath)
+      setupLearningMarkdownLinks(bridge, containerRef.current, sourcePath)
     }
 
     void renderMarkdown()
     return () => {
       cancelled = true
-      component.unload()
+      renderer.unload()
     }
-  }, [app, content, sourcePath])
+  }, [bridge, content, sourcePath])
 
   useEffect(() => {
     const containerEl = containerRef.current
@@ -519,7 +503,7 @@ function LearningMarkdown({
       const staging = document.createElement('div')
       staging.append(fragment)
 
-      const selectedMarkdown = htmlToMarkdown(staging.innerHTML).trim()
+      const selectedMarkdown = bridge.htmlToMarkdown(staging.innerHTML).trim()
       if (!selectedMarkdown || !event.clipboardData) return
 
       event.preventDefault()
@@ -530,7 +514,7 @@ function LearningMarkdown({
     return () => {
       containerEl.removeEventListener('copy', handleCopy)
     }
-  }, [])
+  }, [bridge])
 
   return (
     <div
@@ -541,7 +525,7 @@ function LearningMarkdown({
 }
 
 function setupLearningMarkdownLinks(
-  app: App,
+  bridge: LearningUiBridge,
   containerEl: HTMLElement,
   sourcePath: string,
 ) {
@@ -550,11 +534,7 @@ function setupLearningMarkdownLinks(
       event.preventDefault()
       const linktext = el.getAttribute('href')
       if (linktext) {
-        void app.workspace.openLinkText(
-          linktext,
-          sourcePath,
-          Keymap.isModEvent(event),
-        )
+        void bridge.openLinkText(linktext, sourcePath, bridge.isModEvent(event))
       }
     })
 
@@ -562,10 +542,8 @@ function setupLearningMarkdownLinks(
       event.preventDefault()
       const linktext = el.getAttribute('href')
       if (linktext) {
-        app.workspace.trigger('hover-link', {
+        bridge.triggerHoverLink({
           event,
-          source: 'preview',
-          hoverParent: { hoverPopover: null },
           targetEl: event.currentTarget,
           linktext,
           sourcePath,
