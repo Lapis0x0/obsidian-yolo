@@ -1,11 +1,16 @@
 import { execFile } from 'node:child_process'
-import { copyFile, readFile, rename, watch } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rename, watch } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 const sourceDir = process.cwd()
-const artifactNames = new Set(['main.js', 'styles.css'])
+const artifactNames = new Set([
+  'main.js',
+  'styles.css',
+  'modules/host-api-conformance/1.0.0/entry.js',
+  'modules/host-api-conformance/1.0.0/module.json',
+])
 const pendingTimers = new Map()
 let copyChain = Promise.resolve()
 
@@ -33,11 +38,13 @@ async function readPluginId(directory) {
 async function copyArtifact(pluginDir, artifactName) {
   const sourcePath = path.join(sourceDir, artifactName)
   const targetPath = path.join(pluginDir, artifactName)
+  const targetDir = path.dirname(targetPath)
   const temporaryPath = path.join(
-    pluginDir,
-    `.${artifactName}.${process.pid}.tmp`,
+    targetDir,
+    `.${path.basename(artifactName)}.${process.pid}.tmp`,
   )
 
+  await mkdir(targetDir, { recursive: true })
   await copyFile(sourcePath, temporaryPath)
   await rename(temporaryPath, targetPath)
   console.log(`[dev-sync] ${artifactName}`)

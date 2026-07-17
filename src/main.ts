@@ -67,6 +67,17 @@ import type {
 } from './core/mcp/localMcpServerConfig'
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
+import {
+  DomBlobModuleScriptExecutor,
+  EMPTY_INSTALLED_MODULE_STATE_SOURCE,
+  EMPTY_MODULE_CATALOG_SOURCE,
+  ModuleLoader,
+  ModuleManager,
+  ModuleRuntime,
+  ModuleStore,
+  ObsidianModuleContributionRegistrar,
+  parseModuleArtifactManifest,
+} from './core/modules'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import {
@@ -234,6 +245,8 @@ export default class YoloPlugin extends Plugin {
   private ragCoordinator: RagCoordinator | null = null
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
+  private moduleManager: ModuleManager | null = null
+  private moduleRuntime: ModuleRuntime | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
@@ -2070,6 +2083,20 @@ export default class YoloPlugin extends Plugin {
 
   async onload() {
     this.isUnloaded = false
+    this.moduleManager = new ModuleManager({
+      catalogSource: EMPTY_MODULE_CATALOG_SOURCE,
+      installedStateSource: EMPTY_INSTALLED_MODULE_STATE_SOURCE,
+    })
+    void this.moduleManager.refresh()
+    if (process.env.NODE_ENV === 'development') {
+      this.addCommand({
+        id: 'dev-activate-host-api-conformance-module',
+        name: '[Development] Activate host API conformance module',
+        callback: () => {
+          void this.activateLocalConformanceModule()
+        },
+      })
+    }
     ensureBufferByteLengthCompat()
     clearRequestTransportMemory()
     addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
@@ -2537,6 +2564,10 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    this.moduleManager?.dispose()
+    this.moduleManager = null
+    this.moduleRuntime?.dispose()
+    this.moduleRuntime = null
     for (const controller of this.learningGenerationAbortControllers) {
       controller.abort()
     }
@@ -3601,6 +3632,59 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     // if initialization is running, wait for it to complete instead of creating a new initialization promise
     return this.dbManagerInitPromise
+  }
+
+  getModuleManager(): ModuleManager {
+    if (!this.moduleManager) {
+      throw new Error('[YOLO] Module manager is unavailable')
+    }
+    return this.moduleManager
+  }
+
+  private async activateLocalConformanceModule(): Promise<void> {
+    const moduleId = 'host-api-conformance'
+    const version = '1.0.0'
+    try {
+      const store = new ModuleStore({
+        adapter: this.app.vault.adapter,
+        manifest: this.manifest,
+        configDir: this.app.vault.configDir,
+      })
+      const manifestBytes = await store.readManifestBytes(moduleId, version)
+      const manifest = parseModuleArtifactManifest(
+        JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes),
+        ),
+      )
+      if (manifest.id !== moduleId || manifest.version !== version) {
+        throw new Error('Conformance module manifest identity mismatch')
+      }
+      const entryBytes = await store.readEntryBytes(
+        manifest.id,
+        manifest.version,
+        manifest.entry.path,
+      )
+      this.moduleRuntime ??= new ModuleRuntime(
+        new ObsidianModuleContributionRegistrar(this),
+      )
+      const definition = await new ModuleLoader({
+        executor: new DomBlobModuleScriptExecutor(),
+      }).load(
+        {
+          id: manifest.id,
+          byteSize: manifest.entry.byteSize,
+          sha256: manifest.entry.sha256,
+        },
+        entryBytes,
+      )
+      await this.moduleRuntime.activate(definition)
+      new Notice('Host API conformance module activated')
+    } catch (error) {
+      console.error('[YOLO] Conformance module activation failed', error)
+      new Notice(
+        `Host API conformance module unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 
   async tryGetVectorManager(): Promise<VectorManager | null> {
