@@ -71,6 +71,11 @@ export type YoloModuleAgentMessageV1 =
       content: string
     }>
 
+export type YoloModuleAgentActivityV1 = Readonly<{
+  title: string
+  detail?: string
+}>
+
 export type YoloModuleAgentRequestV1 = Readonly<{
   prompt?: string
   messages?: readonly YoloModuleAgentMessageV1[]
@@ -82,6 +87,7 @@ export type YoloModuleAgentRequestV1 = Readonly<{
     include: readonly string[]
     exclude: readonly string[]
   }>
+  activity?: YoloModuleAgentActivityV1
   signal?: AbortSignal
 }>
 

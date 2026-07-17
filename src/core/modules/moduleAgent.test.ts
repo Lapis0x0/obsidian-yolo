@@ -133,6 +133,81 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     expect(() => activation.api.stream(request)).toThrow('no longer active')
   })
 
+  it('maps generic activity data into the module scope', async () => {
+    let received: YoloAgentRunRequest | undefined
+    const agent = {
+      run: jest.fn(),
+      abort: jest.fn(),
+      stream: async function* (request: YoloAgentRunRequest) {
+        received = request
+        yield {
+          type: 'completed' as const,
+          conversationId: 'private-conversation',
+          text: 'done',
+        }
+      },
+    } satisfies YoloAgentApi
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleAgentCapabilityProvider({
+      getAgentApi: async () => agent,
+    }).create('example-module', lifecycle)
+    activation.activate()
+
+    await collect(
+      activation.api.stream({
+        prompt: 'Question',
+        systemPrompt: 'System',
+        capability: 'none',
+        activity: {
+          title: 'Generating',
+          detail: 'Drafting cards',
+          // Runtime snapshotting must discard properties outside the public API.
+          kind: 'learning-agent',
+          action: 'open-learning-view',
+        } as never,
+      }),
+    )
+
+    expect(received?.activity).toMatchObject({
+      kind: 'module:example-module',
+      title: 'Generating',
+      detail: 'Drafting cards',
+    })
+    expect(JSON.stringify(received?.activity)).not.toContain(
+      'private-conversation',
+    )
+    lifecycle.dispose()
+  })
+
+  it('does not misclassify an uncorrelated Core AbortError as cancellation', async () => {
+    const abortError = new Error('Core run cancelled')
+    abortError.name = 'AbortError'
+    const agent = {
+      run: jest.fn(),
+      abort: jest.fn(),
+      stream: async function* () {
+        throw abortError
+        yield* [] as YoloAgentEvent[]
+      },
+    } satisfies YoloAgentApi
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleAgentCapabilityProvider({
+      getAgentApi: async () => agent,
+    }).create('example-module', lifecycle)
+    activation.activate()
+
+    await expect(
+      collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+        }),
+      ),
+    ).resolves.toEqual([{ type: 'error', message: 'Core run cancelled' }])
+    lifecycle.dispose()
+  })
+
   it('aborts every in-flight stream when the module is disposed', async () => {
     let receivedSignal: AbortSignal | undefined
     let started!: () => void

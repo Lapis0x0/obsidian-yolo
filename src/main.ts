@@ -1385,12 +1385,15 @@ export default class YoloPlugin extends Plugin {
         status: summary.isWaitingApproval ? 'waiting' : 'running',
         updatedAt: Date.now(),
         action:
-          summary.activity?.action === 'open-learning-view'
+          summary.activity?.kind === 'learning-agent' &&
+          summary.activity.action === 'open-learning-view'
             ? { type: 'open-learning-view' }
-            : {
-                type: 'open-agent-conversation',
-                conversationId: summary.conversationId,
-              },
+            : summary.activity?.kind.startsWith('module:')
+              ? undefined
+              : {
+                  type: 'open-agent-conversation',
+                  conversationId: summary.conversationId,
+                },
       })
     }
 

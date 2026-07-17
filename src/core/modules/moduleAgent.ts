@@ -8,6 +8,7 @@ import { getLocalFileToolServerName } from '../mcp/localFileToolNames'
 import { getToolName } from '../mcp/tool-name-utils'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
+import { assertModuleId } from './moduleStore'
 import type {
   YoloModuleAgentCapabilityV1,
   YoloModuleAgentEventV1,
@@ -77,6 +78,7 @@ export class CoreModuleAgentCapabilityProvider
     moduleId: string,
     lifecycle: ModuleLifecycleScope,
   ): ModuleAgentCapabilityActivationV1 {
+    assertModuleId(moduleId, 'Module id')
     let active = true
     let activationComplete = false
     const controllers = new Set<AbortController>()
@@ -97,7 +99,12 @@ export class CoreModuleAgentCapabilityProvider
       stream: (request) => {
         assertAvailable()
         const snapshot = snapshotRequest(request)
-        return this.streamRequest(snapshot, controllers, assertAvailable)
+        return this.streamRequest(
+          snapshot,
+          moduleId,
+          controllers,
+          assertAvailable,
+        )
       },
     })
     return Object.freeze({
@@ -111,6 +118,7 @@ export class CoreModuleAgentCapabilityProvider
 
   private async *streamRequest(
     request: YoloModuleAgentRequestV1,
+    moduleId: string,
     controllers: Set<AbortController>,
     assertAvailable: () => void,
   ): AsyncIterable<YoloModuleAgentEventV1> {
@@ -145,7 +153,9 @@ export class CoreModuleAgentCapabilityProvider
         yield Object.freeze({ type: 'aborted' })
         return
       }
-      const coreStream = agent.stream(mapRequest(request, controller.signal))
+      const coreStream = agent.stream(
+        mapRequest(request, moduleId, controller.signal),
+      )
       iterator = coreStream[Symbol.asyncIterator]()
       while (true) {
         const nextResult = await raceAbort(iterator.next(), controller.signal)
@@ -213,6 +223,7 @@ function snapshotRequest(
   const systemPrompt = request.systemPrompt
   const capability = request.capability
   const workspaceScope = request.workspaceScope
+  const activity = request.activity
   const signal = request.signal
   if (prompt !== undefined && typeof prompt !== 'string') {
     throw new TypeError('Module agent prompt must be a string')
@@ -257,6 +268,8 @@ function snapshotRequest(
   ) {
     throw new TypeError('Module agent workspace scope is invalid')
   }
+  const snappedActivity =
+    activity === undefined ? undefined : snapshotActivity(activity)
   const snappedMessages = messages?.map(snapshotMessage)
   if (
     snappedMessages &&
@@ -275,7 +288,28 @@ function snapshotRequest(
     ...(workspaceScope !== undefined
       ? { workspaceScope: snapshotWorkspaceScope(workspaceScope) }
       : {}),
+    ...(snappedActivity !== undefined ? { activity: snappedActivity } : {}),
     ...(signal ? { signal } : {}),
+  })
+}
+
+function snapshotActivity(
+  activity: NonNullable<YoloModuleAgentRequestV1['activity']>,
+): NonNullable<YoloModuleAgentRequestV1['activity']> {
+  if (!activity || typeof activity !== 'object') {
+    throw new TypeError('Module agent activity must be an object')
+  }
+  if (typeof activity.title !== 'string' || !activity.title.trim()) {
+    throw new TypeError(
+      'Module agent activity title must be a non-empty string',
+    )
+  }
+  if (activity.detail !== undefined && typeof activity.detail !== 'string') {
+    throw new TypeError('Module agent activity detail must be a string')
+  }
+  return Object.freeze({
+    title: activity.title,
+    ...(activity.detail !== undefined ? { detail: activity.detail } : {}),
   })
 }
 
@@ -332,6 +366,7 @@ function snapshotPath(path: string): string {
 
 function mapRequest(
   request: YoloModuleAgentRequestV1,
+  moduleId: string,
   abortSignal: AbortSignal,
 ): YoloAgentRunRequest {
   return {
@@ -350,6 +385,17 @@ function mapRequest(
             enabled: request.workspaceScope.enabled,
             include: [...request.workspaceScope.include],
             exclude: [...request.workspaceScope.exclude],
+          },
+        }
+      : {}),
+    ...(request.activity
+      ? {
+          activity: {
+            kind: `module:${moduleId}`,
+            title: request.activity.title,
+            ...(request.activity.detail !== undefined
+              ? { detail: request.activity.detail }
+              : {}),
           },
         }
       : {}),
