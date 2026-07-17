@@ -7,7 +7,7 @@ export type ModuleConfigSnapshot<T = unknown> = ModuleDataEnvelope<T>
 
 export type ModuleConfigBackend<T = unknown> = Readonly<{
   read(): Promise<ModuleConfigSnapshot<T>>
-  write(next: ModuleConfigSnapshot<T>): Promise<void>
+  write(next: ModuleConfigSnapshot<T>): Promise<ModuleConfigSnapshot<T>>
   subscribe(listener: () => void): ModuleDisposer
 }>
 
@@ -51,8 +51,14 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
     let unsubscribeBackend: ModuleDisposer | undefined
     let backendGeneration = 0
     let queue = Promise.resolve()
+    let signalDisposal!: () => void
+    const disposalSignal = new Promise<void>((resolve) => {
+      signalDisposal = resolve
+    })
     const listeners = new Set<() => void>()
     const isDisposed = (): boolean => state === 'disposed'
+    const unavailableError = (): Error =>
+      new Error(`Module "${moduleId}" config is unavailable`)
 
     const reportCallbackError = (error: unknown): void => {
       try {
@@ -63,8 +69,16 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
     }
     const assertActive = (): void => {
       if (state !== 'active') {
-        throw new Error(`Module "${moduleId}" config is unavailable`)
+        throw unavailableError()
       }
+    }
+    const raceDisposal = async <R>(operation: Promise<R>): Promise<R> => {
+      const outcome = await Promise.race([
+        operation.then((value) => ({ disposed: false as const, value })),
+        disposalSignal.then(() => ({ disposed: true as const })),
+      ])
+      if (outcome.disposed) throw unavailableError()
+      return outcome.value
     }
     const publish = (next: ModuleConfigSnapshot<T>): void => {
       if (state !== 'active') return
@@ -86,7 +100,7 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
         () => undefined,
         () => undefined,
       )
-      return result
+      return raceDisposal(result)
     }
     const refresh = (): void => {
       if (state === 'activating') {
@@ -98,11 +112,14 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
         if (state !== 'active') return
         const next = cloneAndFreezeSnapshot<T>(await backend.read())
         publish(next)
-      }).catch(reportCallbackError)
+      }).catch((error) => {
+        if (!isDisposed()) reportCallbackError(error)
+      })
     }
 
     lifecycle.add(() => {
       state = 'disposed'
+      signalDisposal()
       listeners.clear()
       const unsubscribe = unsubscribeBackend
       unsubscribeBackend = undefined
@@ -119,9 +136,9 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
         const ownedNext = cloneAndFreezeSnapshot<T>(next)
         return enqueue(async () => {
           assertActive()
-          await backend.write(ownedNext)
-          assertActive()
-          const persisted = cloneAndFreezeSnapshot<T>(await backend.read())
+          const persisted = cloneAndFreezeSnapshot<T>(
+            await raceDisposal(backend.write(ownedNext)),
+          )
           assertActive()
           publish(persisted)
           return persisted
@@ -155,7 +172,9 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
           let stable = false
           for (let reads = 0; reads < MAX_ACTIVATION_READS; reads += 1) {
             const generationBeforeRead = backendGeneration
-            initial = cloneAndFreezeSnapshot<T>(await backend.read())
+            initial = cloneAndFreezeSnapshot<T>(
+              await raceDisposal(backend.read()),
+            )
             if (backendGeneration === generationBeforeRead) {
               stable = true
               break
@@ -167,7 +186,7 @@ export class ModuleConfigCapabilityProvider<T = unknown> {
             )
           }
           if (isDisposed()) {
-            throw new Error(`Module "${moduleId}" config is unavailable`)
+            throw unavailableError()
           }
           snapshot = initial!
           state = 'active'
@@ -196,8 +215,10 @@ function cloneAndFreezeSnapshot<T>(value: unknown): ModuleConfigSnapshot<T> {
     )
   }
   const schemaVersion = readDataProperty(value, 'schemaVersion')
-  if (!Number.isSafeInteger(schemaVersion) || (schemaVersion as number) < 1) {
-    throw new TypeError('Config schemaVersion must be a positive safe integer')
+  if (!Number.isSafeInteger(schemaVersion) || (schemaVersion as number) < 0) {
+    throw new TypeError(
+      'Config schemaVersion must be a non-negative safe integer',
+    )
   }
   const data = cloneJson(readDataProperty(value, 'data'), new Set()) as T
   return Object.freeze({ schemaVersion: schemaVersion as number, data })

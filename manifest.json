@@ -2,7 +2,7 @@
   "id": "yolo",
   "name": "YOLO",
   "version": "1.6.0.3",
-  "minAppVersion": "1.8.0",
+  "minAppVersion": "1.8.7",
   "description": "Agent-native AI assistant — chat, write, search, orchestrate, all in one.",
   "author": "Lapix0x0",
   "authorUrl": "https://github.com/Lapis0x0",

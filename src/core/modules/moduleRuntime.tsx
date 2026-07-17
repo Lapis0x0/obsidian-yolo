@@ -138,6 +138,7 @@ export class ModuleRuntime {
     {
       lifecycle: ModuleLifecycleScope
       stager: ModuleContributionStager
+      cancelActivation(): void
     }
   >()
   private readonly removeRuntimeBridge: () => void
@@ -157,13 +158,18 @@ export class ModuleRuntime {
     }
     const lifecycle = new ModuleLifecycleScope()
     const stager = new ModuleContributionStager()
+    let cancelActivation!: () => void
+    const activationCancelled = new Promise<void>((resolve) => {
+      cancelActivation = resolve
+    })
     let workspaceActive = false
+    const isWorkspaceActive = (): boolean => workspaceActive && !this.disposed
     const workspace: YoloModuleWorkspaceV1 = Object.freeze({
       registerView: stager.workspace.registerView,
       registerRibbonAction: stager.workspace.registerRibbonAction,
       registerCommand: stager.workspace.registerCommand,
       openView: (options) => {
-        if (!workspaceActive) {
+        if (!isWorkspaceActive()) {
           return Promise.reject(
             new Error(`Module "${definition.id}" workspace is not active`),
           )
@@ -182,49 +188,73 @@ export class ModuleRuntime {
         return this.registrar.openView(
           definition.id,
           snapshot,
-          () => workspaceActive,
+          isWorkspaceActive,
         )
       },
     })
-    this.pending.set(definition.id, { lifecycle, stager })
+    this.pending.set(definition.id, {
+      lifecycle,
+      stager,
+      cancelActivation,
+    })
     try {
       const capabilityActivation = this.capabilityProvider.create(
         definition.id,
         lifecycle,
       )
-      await definition.activate({
-        version: 1,
-        lifecycle,
-        workspace,
-        agent: capabilityActivation.capabilities.agent,
-        assets: capabilityActivation.capabilities.assets,
-        background: capabilityActivation.capabilities.background,
-        paths: capabilityActivation.capabilities.paths,
-        ui: capabilityActivation.capabilities.ui,
-        vault: capabilityActivation.capabilities.vault,
-      })
-      if (this.disposed) {
+      const definitionResult = await Promise.race([
+        Promise.resolve(
+          definition.activate({
+            version: 1,
+            lifecycle,
+            workspace,
+            agent: capabilityActivation.capabilities.agent,
+            assets: capabilityActivation.capabilities.assets,
+            background: capabilityActivation.capabilities.background,
+            config: capabilityActivation.capabilities.config,
+            paths: capabilityActivation.capabilities.paths,
+            privateStorage: capabilityActivation.capabilities.privateStorage,
+            ui: capabilityActivation.capabilities.ui,
+            vault: capabilityActivation.capabilities.vault,
+          }),
+        ).then(() => 'activated' as const),
+        activationCancelled.then(() => 'disposed' as const),
+      ])
+      if (definitionResult === 'disposed' || this.disposed) {
         throw new Error('Module runtime was disposed during activation')
       }
       const contributions = stager.finish({ allowEmpty: true })
-      capabilityActivation.commit()
-      if (this.disposed) {
-        throw new Error('Module runtime was disposed during capability commit')
+      const preparationResult = await Promise.race([
+        capabilityActivation.prepare().then(() => 'prepared' as const),
+        activationCancelled.then(() => 'disposed' as const),
+      ])
+      if (preparationResult === 'disposed' || this.disposed) {
+        throw new Error('Module runtime was disposed during capability prepare')
       }
+      // Runtime state also closes navigation during reentrant disposal.
+      lifecycle.add(() => {
+        workspaceActive = false
+      })
+      capabilityActivation.activate()
+      if (this.disposed) {
+        throw new Error(
+          'Module runtime was disposed during capability activation',
+        )
+      }
+      workspaceActive = true
       this.registrar.commit(definition.id, contributions, lifecycle)
       if (this.disposed) {
         throw new Error(
           'Module runtime was disposed during contribution commit',
         )
       }
-      // Registered last so LIFO disposal closes navigation before every cleanup.
-      lifecycle.add(() => {
-        workspaceActive = false
-      })
-      capabilityActivation.activate()
+      capabilityActivation.commit()
+      if (this.disposed) {
+        throw new Error('Module runtime was disposed during capability commit')
+      }
       this.scopes.set(definition.id, lifecycle)
-      workspaceActive = true
     } catch (error) {
+      workspaceActive = false
       stager.close()
       try {
         lifecycle.dispose()
@@ -244,6 +274,7 @@ export class ModuleRuntime {
     if (this.disposed) return
     this.disposed = true
     for (const [id, activation] of [...this.pending].reverse()) {
+      activation.cancelActivation()
       activation.stager.close()
       try {
         activation.lifecycle.dispose()

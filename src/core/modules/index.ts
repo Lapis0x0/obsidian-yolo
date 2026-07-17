@@ -28,6 +28,14 @@ export {
   type ModuleAssetsCapabilityProviderV1,
 } from './moduleAssets'
 export {
+  ModuleConfigCapabilityProvider,
+  type ModuleConfigBackend,
+  type ModuleConfigCapabilityActivationV1,
+  type ModuleConfigCapabilityProviderOptions,
+  type ModuleConfigSnapshot,
+  type ModuleConfigV1,
+} from './moduleConfig'
+export {
   ModuleArtifactInstaller,
   type ModuleArtifactDownloadRequest,
   type ModuleArtifactInstallerOptions,
@@ -47,6 +55,16 @@ export {
   type ModulePathsCapabilityProviderV1,
 } from './modulePaths'
 export {
+  ModulePrivateStorageCapabilityProvider,
+  ModulePrivateStorageVerificationError,
+  type ModulePrivateStorageBackend,
+  type ModulePrivateStorageCapabilityActivationV1,
+  type ModulePrivateStorageCapabilityProviderOptions,
+  type ModulePrivateStorageCapabilityProviderV1,
+  type ModulePrivateStorageScopeV1,
+  type ModulePrivateStorageV1,
+} from './modulePrivateStorage'
+export {
   ObsidianModuleUiCapabilityProvider,
   UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
   type ModuleUiCapabilityActivationV1,
@@ -64,6 +82,9 @@ export {
 } from './moduleVault'
 export {
   CoreModuleHostCapabilityProvider,
+  UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
+  UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER,
+  type ModuleConfigCapabilityProviderV1,
   type ModuleHostCapabilityActivationV1,
   type ModuleHostCapabilityProviderV1,
 } from './hostCapabilities'
@@ -145,3 +166,13 @@ export type {
   YoloModuleVaultV1,
   YoloModuleVaultWrittenFileV1,
 } from './types'
+export {
+  IndexedDbDataAdapter,
+  MODULE_DEVICE_LOCAL_DATABASE_NAMESPACE_KEY,
+  type IndexedDbDataAdapterOptions,
+} from './indexedDbDataAdapter'
+export {
+  createObsidianModuleConfigBackendFactory,
+  type ObsidianModuleConfigBackendFactoryOptions,
+  type ObsidianModuleConfigSettings,
+} from './obsidianModuleConfigBackend'

@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
 
+import type { ModuleConfigV1 } from './moduleConfig'
+import type { ModulePrivateStorageV1 } from './modulePrivateStorage'
+
 export type ModuleDisposer = () => void
 
 export type YoloModuleLifecycle = {
@@ -251,7 +254,9 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   agent: YoloModuleAgentV1
   assets: YoloModuleAssetsV1
   background: YoloModuleBackgroundV1
+  config: ModuleConfigV1
   paths: YoloModulePathsV1
+  privateStorage: ModulePrivateStorageV1
   ui: YoloModuleUiV1
   vault: YoloModuleVaultV1
 }>

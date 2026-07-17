@@ -72,15 +72,19 @@ import {
   DomBlobModuleScriptExecutor,
   EMPTY_INSTALLED_MODULE_STATE_SOURCE,
   EMPTY_MODULE_CATALOG_SOURCE,
+  IndexedDbDataAdapter,
   ManagedModulePathsCapabilityProvider,
   ModuleAssetsCapabilityProvider,
+  ModuleConfigCapabilityProvider,
   ModuleLoader,
   ModuleManager,
+  ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
   ModuleStore,
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
+  createObsidianModuleConfigBackendFactory,
   parseModuleArtifactManifest,
 } from './core/modules'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -93,7 +97,11 @@ import {
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
-import { getYoloBaseDir, getYoloLearningDir } from './core/paths/yoloPaths'
+import {
+  getYoloBaseDir,
+  getYoloJsonDbRootDir,
+  getYoloLearningDir,
+} from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -200,6 +208,8 @@ export type {
 export type { PluginUpdateState } from './core/update/pluginUpdater'
 
 const STARTUP_GRACE_MS = 30 * 1000
+const MODULE_PRIVATE_STORAGE_DIR = 'module-private'
+const MODULE_DEVICE_LOCAL_VIRTUAL_ROOT = 'module-private-device-local'
 type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
@@ -3594,6 +3604,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       manifest: this.manifest,
       configDir: this.app.vault.configDir,
     })
+    const createConfigBackend = createObsidianModuleConfigBackendFactory({
+      app: this.app,
+      getSettings: () => this.settings,
+      subscribeSettingsChange: (listener) =>
+        this.addSettingsChangeListener(() => listener()),
+    })
+    const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
+    this.register(() => deviceLocalAdapter.close())
     let registry: BundledModuleRegistry | null = null
     const runtime = new ModuleRuntime(
       new ObsidianModuleContributionRegistrar(this),
@@ -3610,6 +3628,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             registry?.getVerifiedArtifact(moduleId),
         }),
         backgroundActivities: this.getBackgroundActivityRegistry(),
+        config: new ModuleConfigCapabilityProvider({
+          createBackend: createConfigBackend,
+          reportCallbackError: (moduleId, error) => {
+            console.error(
+              `[YOLO] Module "${moduleId}" config callback failed`,
+              error,
+            )
+          },
+        }),
         paths: new ManagedModulePathsCapabilityProvider({
           getBaseDir: () => getYoloBaseDir(this.settings),
           subscribe: (listener) =>
@@ -3619,6 +3646,19 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
               `[YOLO] Module "${moduleId}" managed-path callback failed`,
               error,
             )
+          },
+        }),
+        privateStorage: new ModulePrivateStorageCapabilityProvider({
+          synchronized: {
+            adapter: this.app.vault.adapter,
+            getRootPath: () =>
+              normalizePath(
+                `${getYoloJsonDbRootDir(this.settings)}/${MODULE_PRIVATE_STORAGE_DIR}`,
+              ),
+          },
+          deviceLocal: {
+            adapter: deviceLocalAdapter,
+            getRootPath: () => MODULE_DEVICE_LOCAL_VIRTUAL_ROOT,
           },
         }),
         ui: new ObsidianModuleUiCapabilityProvider({

@@ -5,6 +5,7 @@ import { BackgroundActivityRegistry } from '../background/backgroundActivityRegi
 import { CoreModuleHostCapabilityProvider } from './hostCapabilities'
 import type { ModuleContributionRegistrar } from './moduleRuntime'
 import { ModuleRuntime } from './moduleRuntime'
+import type { YoloModuleDefinition } from './types'
 
 const createRuntime = (
   registrar: ModuleContributionRegistrar,
@@ -58,6 +59,256 @@ describe('ModuleRuntime', () => {
 
     await expect(moduleAssets.readText('theme.css')).resolves.toBe('body {}')
     runtime.dispose()
+  })
+
+  it('defers publication and activates capabilities before command callbacks', async () => {
+    let configActive = false
+    let storageActive = false
+    let resolveConfig!: () => void
+    const configReady = new Promise<void>((resolve) => {
+      resolveConfig = resolve
+    })
+    let markConfigStarted!: () => void
+    const configStarted = new Promise<void>((resolve) => {
+      markConfigStarted = resolve
+    })
+    const configApi = Object.freeze({
+      getSnapshot: () => {
+        if (!configActive) throw new Error('config is unavailable')
+        return { schemaVersion: 1, data: { enabled: true } }
+      },
+      replace: async (next: { schemaVersion: number; data: unknown }) => next,
+      subscribe: () => () => undefined,
+    })
+    const storageScope = Object.freeze({
+      list: async () => {
+        if (!storageActive) throw new Error('storage is unavailable')
+        return []
+      },
+      readText: async () => null,
+      readBinary: async () => null,
+      readJson: async () => null,
+      writeText: async () => undefined,
+      writeBinary: async () => undefined,
+      writeJson: async () => undefined,
+      remove: async () => undefined,
+    })
+    const privateStorageApi = Object.freeze({
+      synchronized: storageScope,
+      deviceLocal: storageScope,
+    })
+    const activityRegistry = new BackgroundActivityRegistry()
+    let activityIds: string[] = []
+    activityRegistry.subscribe((activities) => {
+      activityIds = [...activities.keys()]
+    })
+    let commandObservation: Promise<void> | undefined
+    const commit = jest.fn((_moduleId, contributions) => {
+      const command = contributions.commands?.[0]
+      if (!command) throw new Error('Expected staged command')
+      commandObservation = Promise.resolve(command.callback())
+    })
+    const runtime = new ModuleRuntime(
+      { commit },
+      new CoreModuleHostCapabilityProvider({
+        backgroundActivities: activityRegistry,
+        config: {
+          create: () => ({
+            api: configApi,
+            activate: async () => {
+              markConfigStarted()
+              await configReady
+              configActive = true
+            },
+          }),
+        },
+        privateStorage: {
+          create: () => ({
+            api: privateStorageApi,
+            activate: () => {
+              storageActive = true
+            },
+          }),
+        },
+      }),
+    )
+    let injectedConfig!: typeof configApi
+    let injectedStorage!: typeof privateStorageApi
+    const activation = runtime.activate({
+      id: 'stateful-module',
+      activate: async (host) => {
+        injectedConfig = host.config as typeof configApi
+        injectedStorage = host.privateStorage as typeof privateStorageApi
+        expect(() => host.config.getSnapshot()).toThrow('config is unavailable')
+        await expect(host.privateStorage.synchronized.list()).rejects.toThrow(
+          'storage is unavailable',
+        )
+        host.workspace.registerCommand({
+          id: 'observe-state',
+          name: 'Observe state',
+          callback: async () => {
+            expect(host.config.getSnapshot()).toEqual({
+              schemaVersion: 1,
+              data: { enabled: true },
+            })
+            await expect(
+              host.privateStorage.synchronized.list(),
+            ).resolves.toEqual([])
+          },
+        })
+        host.background.upsert({
+          id: 'preparing',
+          title: 'Preparing',
+          status: 'waiting',
+        })
+      },
+    })
+    await configStarted
+
+    expect(commit).not.toHaveBeenCalled()
+    expect(activityIds).toEqual([])
+    expect(() => injectedConfig.getSnapshot()).toThrow('config is unavailable')
+    await expect(injectedStorage.synchronized.list()).rejects.toThrow(
+      'storage is unavailable',
+    )
+    resolveConfig()
+    await activation
+    if (!commandObservation) throw new Error('Command was not observed')
+    await commandObservation
+
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(activityIds).toEqual(['module:["stateful-module","preparing"]'])
+    expect(injectedConfig.getSnapshot()).toEqual({
+      schemaVersion: 1,
+      data: { enabled: true },
+    })
+    await expect(injectedStorage.synchronized.list()).resolves.toEqual([])
+    runtime.dispose()
+  })
+
+  it('rolls back a deferred config preparation failure and permits retry', async () => {
+    const providerCleanup = jest.fn()
+    const contributionCleanup = jest.fn()
+    const commit = jest.fn((_moduleId, _contributions, lifecycle) => {
+      lifecycle.add(contributionCleanup)
+    })
+    let attempts = 0
+    let rejectPreparation!: (error: Error) => void
+    const failedPreparation = new Promise<void>((_resolve, reject) => {
+      rejectPreparation = reject
+    })
+    let markPreparationStarted!: () => void
+    const preparationStarted = new Promise<void>((resolve) => {
+      markPreparationStarted = resolve
+    })
+    const activityRegistry = new BackgroundActivityRegistry()
+    let activityIds: string[] = []
+    activityRegistry.subscribe((activities) => {
+      activityIds = [...activities.keys()]
+    })
+    const runtime = new ModuleRuntime(
+      { commit },
+      new CoreModuleHostCapabilityProvider({
+        backgroundActivities: activityRegistry,
+        config: {
+          create: (_moduleId, lifecycle) => {
+            lifecycle.add(providerCleanup)
+            return {
+              api: {
+                getSnapshot: () => ({ schemaVersion: 1, data: {} }),
+                replace: async (next) => next,
+                subscribe: () => () => undefined,
+              },
+              activate: async () => {
+                attempts += 1
+                if (attempts === 1) {
+                  markPreparationStarted()
+                  await failedPreparation
+                }
+              },
+            }
+          },
+        },
+      }),
+    )
+    const definition: YoloModuleDefinition = {
+      id: 'retry-module',
+      activate: (host) => {
+        host.background.upsert({
+          id: 'preparing',
+          title: 'Preparing',
+          status: 'waiting',
+        })
+      },
+    }
+
+    const firstActivation = runtime.activate(definition)
+    await preparationStarted
+    expect(commit).not.toHaveBeenCalled()
+    expect(activityIds).toEqual([])
+    rejectPreparation(new Error('config activation failed'))
+
+    await expect(firstActivation).rejects.toThrow('config activation failed')
+    expect(commit).not.toHaveBeenCalled()
+    expect(contributionCleanup).not.toHaveBeenCalled()
+    expect(providerCleanup).toHaveBeenCalledTimes(1)
+    expect(activityIds).toEqual([])
+
+    await expect(runtime.activate(definition)).resolves.toBeUndefined()
+    runtime.dispose()
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(contributionCleanup).toHaveBeenCalledTimes(1)
+    expect(providerCleanup).toHaveBeenCalledTimes(2)
+    expect(activityIds).toEqual([])
+  })
+
+  it('rejects promptly when disposed during capability preparation', async () => {
+    const providerCleanup = jest.fn()
+    const contributionCleanup = jest.fn()
+    const configReady = new Promise<void>(() => undefined)
+    let markConfigStarted!: () => void
+    const configStarted = new Promise<void>((resolve) => {
+      markConfigStarted = resolve
+    })
+    const runtime = new ModuleRuntime(
+      {
+        commit: (_moduleId, _contributions, lifecycle) => {
+          lifecycle.add(contributionCleanup)
+        },
+      },
+      new CoreModuleHostCapabilityProvider({
+        backgroundActivities: new BackgroundActivityRegistry(),
+        config: {
+          create: (_moduleId, lifecycle) => {
+            lifecycle.add(providerCleanup)
+            return {
+              api: {
+                getSnapshot: () => ({ schemaVersion: 1, data: {} }),
+                replace: async (next) => next,
+                subscribe: () => () => undefined,
+              },
+              activate: async () => {
+                markConfigStarted()
+                await configReady
+              },
+            }
+          },
+        },
+      }),
+    )
+    const activation = runtime.activate({
+      id: 'disposed-capability-module',
+      activate: () => undefined,
+    })
+    await configStarted
+
+    runtime.dispose()
+
+    await expect(activation).rejects.toThrow(
+      'disposed during capability prepare',
+    )
+    expect(contributionCleanup).not.toHaveBeenCalled()
+    expect(providerCleanup).toHaveBeenCalledTimes(1)
   })
 
   it('does not commit declarations when module activation fails', async () => {
@@ -132,33 +383,30 @@ describe('ModuleRuntime', () => {
     runtime.dispose()
   })
 
-  it('rolls back a pending activation when the runtime is disposed', async () => {
+  it('promptly disposes a never-resolving definition and ignores late rejection', async () => {
     const cleanup = jest.fn()
     const commit = jest.fn()
     const runtime = createRuntime({ commit })
-    let continueActivation!: () => void
-    const blocked = new Promise<void>((resolve) => {
-      continueActivation = resolve
+    let rejectActivation!: (error: Error) => void
+    const blocked = new Promise<void>((_resolve, reject) => {
+      rejectActivation = reject
     })
     const activation = runtime.activate({
       id: 'pending-module',
       activate: async (host) => {
         host.lifecycle.add(cleanup)
         await blocked
-        host.workspace.registerRibbonAction({
-          icon: 'clock',
-          title: 'Pending',
-          onClick: () => undefined,
-        })
       },
     })
 
     runtime.dispose()
-    continueActivation()
 
-    await expect(activation).rejects.toThrow()
+    await expect(activation).rejects.toThrow('disposed during activation')
     expect(cleanup).toHaveBeenCalledTimes(1)
     expect(commit).not.toHaveBeenCalled()
+
+    rejectActivation(new Error('late module rejection'))
+    await Promise.resolve()
   })
 
   it('rolls back background activities when activation fails', async () => {
@@ -271,10 +519,16 @@ describe('ModuleRuntime', () => {
     expect(cleanup).toHaveBeenCalledTimes(1)
   })
 
-  it('does not commit workspace declarations after capability commit fails', async () => {
+  it('rolls back registrar contributions after background commit fails', async () => {
     const commit = jest.fn()
+    const contributionCleanup = jest.fn()
     const runtime = new ModuleRuntime(
-      { commit },
+      {
+        commit: (moduleId, contributions, lifecycle) => {
+          commit(moduleId, contributions, lifecycle)
+          lifecycle.add(contributionCleanup)
+        },
+      },
       new CoreModuleHostCapabilityProvider({
         backgroundActivities: {
           upsert: jest.fn(),
@@ -304,12 +558,14 @@ describe('ModuleRuntime', () => {
         },
       }),
     ).rejects.toThrow('background commit failed')
-    expect(commit).not.toHaveBeenCalled()
+    expect(commit).toHaveBeenCalledTimes(1)
+    expect(contributionCleanup).toHaveBeenCalledTimes(1)
     runtime.dispose()
   })
 
-  it('keeps callbacks disabled when workspace contribution commit fails', async () => {
+  it('does not publish background activities when registrar commit fails', async () => {
     const onOpen = jest.fn()
+    const upsertAll = jest.fn()
     const remove = jest.fn()
     const runtime = new ModuleRuntime(
       {
@@ -320,10 +576,7 @@ describe('ModuleRuntime', () => {
       new CoreModuleHostCapabilityProvider({
         backgroundActivities: {
           upsert: jest.fn(),
-          upsertAll: (activities) => {
-            const [activity] = [...activities]
-            if (activity.action?.type === 'callback') activity.action.run()
-          },
+          upsertAll,
           remove,
         },
       }),
@@ -350,7 +603,8 @@ describe('ModuleRuntime', () => {
     ).rejects.toThrow('workspace commit failed')
 
     expect(onOpen).not.toHaveBeenCalled()
-    expect(remove).toHaveBeenCalledWith('module:["failed-workspace","notice"]')
+    expect(upsertAll).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
     runtime.dispose()
   })
 
@@ -381,7 +635,7 @@ describe('ModuleRuntime', () => {
       }),
     ).rejects.toThrow('disposed during capability commit')
 
-    expect(commit).not.toHaveBeenCalled()
+    expect(commit).toHaveBeenCalledTimes(1)
     expect(remove).toHaveBeenCalledWith(
       'module:["reentrant-capability","work"]',
     )

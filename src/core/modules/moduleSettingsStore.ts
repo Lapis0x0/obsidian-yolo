@@ -355,8 +355,8 @@ function assertSchemaVersion(
   value: unknown,
   label: string,
 ): asserts value is number {
-  if (!Number.isSafeInteger(value) || (value as number) < 1) {
-    throw new TypeError(`${label} must be a positive safe integer`)
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new TypeError(`${label} must be a non-negative safe integer`)
   }
 }
 

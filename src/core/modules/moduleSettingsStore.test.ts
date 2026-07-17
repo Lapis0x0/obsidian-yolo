@@ -83,6 +83,23 @@ describe('ModuleSettingsStore', () => {
     )
   })
 
+  it('round-trips schema version zero', async () => {
+    const adapter = new MemoryAdapter()
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter: asDataAdapter(adapter),
+      rootPath: 'settings/modules',
+    })
+
+    await expect(
+      store.write('generic', { schemaVersion: 0, data: { enabled: true } }),
+    ).resolves.toEqual({ schemaVersion: 0, data: { enabled: true } })
+    await expect(store.read('generic')).resolves.toEqual({
+      schemaVersion: 0,
+      data: { enabled: true },
+    })
+  })
+
   it('keeps synchronized intent and device-local state in explicit backends', async () => {
     const adapter = new MemoryAdapter()
     const settings = new ModuleSettingsStore({
@@ -148,7 +165,7 @@ describe('ModuleSettingsStore', () => {
     )
     adapter.files.set(
       'settings/modules/notes.json',
-      JSON.stringify({ schemaVersion: 0, data: {} }),
+      JSON.stringify({ schemaVersion: -1, data: {} }),
     )
     await expect(store.read('notes')).rejects.toThrow('invalid envelope')
   })
@@ -336,6 +353,26 @@ describe('ModuleSettingsStore', () => {
     await expect(store.read('generic')).resolves.toEqual({
       schemaVersion: 3,
       data: { count: 4 },
+    })
+  })
+
+  it('migrates schema version zero to one', async () => {
+    const adapter = new MemoryAdapter()
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter: asDataAdapter(adapter),
+      rootPath: 'migration-zero/modules',
+    })
+    await store.write('generic', { schemaVersion: 0, data: { count: 1 } })
+
+    await expect(
+      store.migrate('generic', 1, {
+        0: (data) => ({ count: (data as { count: number }).count + 1 }),
+      }),
+    ).resolves.toEqual({ schemaVersion: 1, data: { count: 2 } })
+    await expect(store.read('generic')).resolves.toEqual({
+      schemaVersion: 1,
+      data: { count: 2 },
     })
   })
 

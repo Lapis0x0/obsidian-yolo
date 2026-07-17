@@ -17,6 +17,7 @@ function createHarness(initial: ModuleConfigSnapshot<Config>) {
       write: async (next) => {
         writes.push(next)
         stored = next
+        return stored
       },
       subscribe: (listener) => {
         backendListener = listener
@@ -49,7 +50,7 @@ describe('ModuleConfigCapabilityProvider', () => {
     const provider = new ModuleConfigCapabilityProvider({
       createBackend: () => ({
         read: async () => ({ schemaVersion: 1, data: {} }),
-        write: async () => undefined,
+        write: async (next) => next,
         subscribe: () => () => undefined,
       }),
     })
@@ -77,6 +78,7 @@ describe('ModuleConfigCapabilityProvider', () => {
           writes += 1
           if (writes === 1) await blocked
           stored = next
+          return stored
         },
         subscribe: () => () => undefined,
       }),
@@ -106,6 +108,45 @@ describe('ModuleConfigCapabilityProvider', () => {
       data: { value: 2 },
     })
     expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('activates and replaces schema version zero snapshots', async () => {
+    const harness = createHarness({ schemaVersion: 0, data: { value: 0 } })
+
+    await harness.activation.activate()
+    await expect(
+      harness.activation.api.replace({
+        schemaVersion: 0,
+        data: { value: 1 },
+      }),
+    ).resolves.toEqual({ schemaVersion: 0, data: { value: 1 } })
+    expect(harness.activation.api.getSnapshot()).toEqual({
+      schemaVersion: 0,
+      data: { value: 1 },
+    })
+  })
+
+  it('publishes the snapshot returned by write without reading again', async () => {
+    const persisted = { schemaVersion: 1, data: { value: 2 } } as const
+    const read = jest.fn(async () => ({
+      schemaVersion: 1,
+      data: { value: 0 },
+    }))
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ModuleConfigCapabilityProvider<Config>({
+      createBackend: () => ({
+        read,
+        write: async () => persisted,
+        subscribe: () => () => undefined,
+      }),
+    }).create('generic', lifecycle)
+    await activation.activate()
+
+    await expect(
+      activation.api.replace({ schemaVersion: 1, data: { value: 1 } }),
+    ).resolves.toEqual(persisted)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(activation.api.getSnapshot()).toEqual(persisted)
   })
 
   it('deep-copies and freezes snapshots and publishes external updates', async () => {
@@ -156,7 +197,7 @@ describe('ModuleConfigCapabilityProvider', () => {
           }
           return stored
         },
-        write: async () => undefined,
+        write: async (next) => next,
         subscribe: (listener) => {
           backendListener = listener
           return () => undefined
@@ -180,7 +221,7 @@ describe('ModuleConfigCapabilityProvider', () => {
           backendListener?.()
           return { schemaVersion: 1, data: { value: 1 } }
         },
-        write: async () => undefined,
+        write: async (next) => next,
         subscribe: (listener) => {
           backendListener = listener
           return unsubscribeBackend
@@ -193,6 +234,54 @@ describe('ModuleConfigCapabilityProvider', () => {
     )
     expect(unsubscribeBackend).toHaveBeenCalledTimes(1)
     expect(() => activation.api.getSnapshot()).toThrow('unavailable')
+  })
+
+  it('rejects activation promptly when disposed during a pending read', async () => {
+    const unsubscribeBackend = jest.fn()
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ModuleConfigCapabilityProvider<Config>({
+      createBackend: () => ({
+        read: () => new Promise<ModuleConfigSnapshot<Config>>(() => undefined),
+        write: async (next) => next,
+        subscribe: () => unsubscribeBackend,
+      }),
+    }).create('generic', lifecycle)
+
+    const pending = activation.activate()
+    lifecycle.dispose()
+
+    await expect(pending).rejects.toThrow('unavailable')
+    expect(unsubscribeBackend).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects an in-flight replace promptly when disposed', async () => {
+    let settleWrite!: (value: ModuleConfigSnapshot<Config>) => void
+    const write = jest.fn(
+      () =>
+        new Promise<ModuleConfigSnapshot<Config>>((resolve) => {
+          settleWrite = resolve
+        }),
+    )
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ModuleConfigCapabilityProvider<Config>({
+      createBackend: () => ({
+        read: async () => ({ schemaVersion: 1, data: { value: 0 } }),
+        write,
+        subscribe: () => () => undefined,
+      }),
+    }).create('generic', lifecycle)
+    await activation.activate()
+
+    const pending = activation.api.replace({
+      schemaVersion: 1,
+      data: { value: 1 },
+    })
+    await flush()
+    lifecycle.dispose()
+
+    await expect(pending).rejects.toThrow('unavailable')
+    settleWrite({ schemaVersion: 1, data: { value: 1 } })
+    await flush()
   })
 
   it('rejects sparse arrays and arrays with custom properties', async () => {
@@ -216,7 +305,7 @@ describe('ModuleConfigCapabilityProvider', () => {
       const activation = new ModuleConfigCapabilityProvider({
         createBackend: () => ({
           read: async () => ({ schemaVersion: 1, data: value }),
-          write: async () => undefined,
+          write: async (next) => next,
           subscribe: () => () => undefined,
         }),
       }).create('generic', new ModuleLifecycleScope())
@@ -265,6 +354,7 @@ describe('ModuleConfigCapabilityProvider', () => {
           read: async () => stored,
           write: async (next) => {
             stored = next
+            return stored
           },
           subscribe: () => () => undefined,
         }

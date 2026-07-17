@@ -23,8 +23,9 @@ describe('CoreModuleHostCapabilityProvider', () => {
 
     expect(createAssets).toHaveBeenCalledWith('asset-module', lifecycle)
     expect(activation.capabilities.assets).toBe(api)
-    activation.commit()
+    await activation.prepare()
     activation.activate()
+    activation.commit()
 
     expect(activateAssets).toHaveBeenCalledTimes(1)
     await expect(
@@ -94,7 +95,7 @@ describe('CoreModuleHostCapabilityProvider', () => {
     secondLifecycle.dispose()
   })
 
-  it('isolates callback and reporter errors, captures, and revokes it', () => {
+  it('isolates callback and reporter errors, captures, and revokes it', async () => {
     const registry = new BackgroundActivityRegistry()
     let latest: ReadonlyMap<string, BackgroundActivity> = new Map()
     registry.subscribe((activities) => {
@@ -121,8 +122,9 @@ describe('CoreModuleHostCapabilityProvider', () => {
 
     background.upsert(declaration)
     Object.assign(declaration, { onOpen: jest.fn() })
-    activation.commit()
+    await activation.prepare()
     activation.activate()
+    activation.commit()
     const activity = latest.get('module:["callback-module","notice"]')
     if (activity?.action?.type !== 'callback') {
       throw new Error('Expected callback action')
@@ -165,8 +167,9 @@ describe('CoreModuleHostCapabilityProvider', () => {
       status: 'reminder',
       onOpen: () => Promise.reject(rejection),
     })
-    activation.commit()
+    await activation.prepare()
     activation.activate()
+    activation.commit()
     const activity = latest.get('module:["async-module","notice"]')
     if (activity?.action?.type !== 'callback') {
       throw new Error('Expected callback action')
@@ -342,7 +345,7 @@ describe('CoreModuleHostCapabilityProvider', () => {
     lifecycle.dispose()
   })
 
-  it('revokes callbacks when an activity is replaced or removed', () => {
+  it('revokes callbacks when an activity is replaced or removed', async () => {
     const registry = new BackgroundActivityRegistry()
     let latest: ReadonlyMap<string, BackgroundActivity> = new Map()
     registry.subscribe((activities) => {
@@ -361,8 +364,9 @@ describe('CoreModuleHostCapabilityProvider', () => {
       status: 'reminder',
       onOpen: firstCallback,
     })
-    activation.commit()
+    await activation.prepare()
     activation.activate()
+    activation.commit()
     const firstActivity = latest.get('module:["replacement-module","notice"]')
     if (firstActivity?.action?.type !== 'callback') {
       throw new Error('Expected first callback action')
@@ -386,6 +390,86 @@ describe('CoreModuleHostCapabilityProvider', () => {
     background.remove('notice')
     secondActivity.action.run()
     expect(secondCallback).toHaveBeenCalledTimes(1)
+    lifecycle.dispose()
+  })
+
+  it('injects state APIs, prepares config, then activates synchronously', async () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const configApi = Object.freeze({
+      getSnapshot: jest.fn(() => ({ schemaVersion: 1, data: {} })),
+      replace: jest.fn(async (next) => next),
+      subscribe: jest.fn(() => () => undefined),
+    })
+    const storageScope = Object.freeze({
+      list: jest.fn(async () => []),
+      readText: jest.fn(async () => null),
+      readBinary: jest.fn(async () => null),
+      readJson: jest.fn(async () => null),
+      writeText: jest.fn(async () => undefined),
+      writeBinary: jest.fn(async () => undefined),
+      writeJson: jest.fn(async () => undefined),
+      remove: jest.fn(async () => undefined),
+    })
+    const privateStorageApi = Object.freeze({
+      synchronized: storageScope,
+      deviceLocal: storageScope,
+    })
+    let resolveConfig!: () => void
+    const configReady = new Promise<void>((resolve) => {
+      resolveConfig = resolve
+    })
+    const activateConfig = jest.fn(() => configReady)
+    const activatePrivateStorage = jest.fn()
+    const createConfig = jest.fn(() => ({
+      api: configApi,
+      activate: activateConfig,
+    }))
+    const createPrivateStorage = jest.fn(() => ({
+      api: privateStorageApi,
+      activate: activatePrivateStorage,
+    }))
+    const activation = new CoreModuleHostCapabilityProvider({
+      backgroundActivities: new BackgroundActivityRegistry(),
+      config: { create: createConfig },
+      privateStorage: { create: createPrivateStorage },
+    }).create('stateful-module', lifecycle)
+
+    expect(createConfig).toHaveBeenCalledWith('stateful-module', lifecycle)
+    expect(createPrivateStorage).toHaveBeenCalledWith(
+      'stateful-module',
+      lifecycle,
+    )
+    expect(activation.capabilities.config).toBe(configApi)
+    expect(activation.capabilities.privateStorage).toBe(privateStorageApi)
+    const preparing = activation.prepare()
+    expect(activateConfig).toHaveBeenCalledTimes(1)
+    expect(activatePrivateStorage).not.toHaveBeenCalled()
+
+    resolveConfig()
+    await preparing
+
+    expect(activatePrivateStorage).not.toHaveBeenCalled()
+    activation.activate()
+    activation.commit()
+    expect(activatePrivateStorage).toHaveBeenCalledTimes(1)
+    lifecycle.dispose()
+  })
+
+  it('provides safe unavailable state capability defaults', async () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleHostCapabilityProvider({
+      backgroundActivities: new BackgroundActivityRegistry(),
+    }).create('default-state-module', lifecycle)
+
+    expect(() => activation.capabilities.config.getSnapshot()).toThrow(
+      'config capability is unavailable',
+    )
+    await expect(
+      activation.capabilities.privateStorage.deviceLocal.readText('state.json'),
+    ).rejects.toThrow('private storage capability is unavailable')
+    await expect(activation.prepare()).resolves.toBeUndefined()
+    expect(() => activation.activate()).not.toThrow()
+    activation.commit()
     lifecycle.dispose()
   })
 })

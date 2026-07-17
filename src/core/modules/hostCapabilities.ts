@@ -12,10 +12,19 @@ import {
   type ModuleAssetsCapabilityProviderV1,
   UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
 } from './moduleAssets'
+import type {
+  ModuleConfigCapabilityActivationV1,
+  ModuleConfigV1,
+} from './moduleConfig'
 import {
   type ModulePathsCapabilityProviderV1,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
 } from './modulePaths'
+import type {
+  ModulePrivateStorageCapabilityProviderV1,
+  ModulePrivateStorageScopeV1,
+  ModulePrivateStorageV1,
+} from './modulePrivateStorage'
 import {
   type ModuleUiCapabilityProviderV1,
   UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
@@ -39,9 +48,78 @@ export type ModuleHostCapabilityProviderV1 = {
 
 export type ModuleHostCapabilityActivationV1 = Readonly<{
   capabilities: YoloModuleCapabilitiesV1
+  prepare(): Promise<void>
   commit(): void
   activate(): void
 }>
+
+export type ModuleConfigCapabilityProviderV1 = {
+  create(
+    moduleId: string,
+    lifecycle: ModuleLifecycleScope,
+  ): ModuleConfigCapabilityActivationV1
+}
+
+const unavailableConfigApi: ModuleConfigV1 = Object.freeze({
+  getSnapshot: () => {
+    throw new Error('Module config capability is unavailable')
+  },
+  replace: async () => {
+    throw new Error('Module config capability is unavailable')
+  },
+  subscribe: () => {
+    throw new Error('Module config capability is unavailable')
+  },
+})
+
+export const UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER: ModuleConfigCapabilityProviderV1 =
+  Object.freeze({
+    create: () => ({
+      api: unavailableConfigApi,
+      activate: async () => undefined,
+    }),
+  })
+
+const unavailablePrivateStorageScope: ModulePrivateStorageScopeV1 =
+  Object.freeze({
+    list: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    readText: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    readBinary: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    readJson: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    writeText: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    writeBinary: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    writeJson: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    remove: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+  })
+
+const unavailablePrivateStorageApi: ModulePrivateStorageV1 = Object.freeze({
+  synchronized: unavailablePrivateStorageScope,
+  deviceLocal: unavailablePrivateStorageScope,
+})
+
+export const UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER: ModulePrivateStorageCapabilityProviderV1 =
+  Object.freeze({
+    create: () => ({
+      api: unavailablePrivateStorageApi,
+      activate: () => undefined,
+    }),
+  })
 
 class ModuleBackgroundCleanupError extends Error {
   constructor(readonly errors: unknown[]) {
@@ -54,7 +132,9 @@ type CoreModuleHostCapabilityProviderOptions = {
   agent?: ModuleAgentCapabilityProviderV1
   assets?: ModuleAssetsCapabilityProviderV1
   backgroundActivities: BackgroundActivityBatchSink
+  config?: ModuleConfigCapabilityProviderV1
   paths?: ModulePathsCapabilityProviderV1
+  privateStorage?: ModulePrivateStorageCapabilityProviderV1
   ui?: ModuleUiCapabilityProviderV1
   vault?: ModuleVaultCapabilityProviderV1
   now?: () => number
@@ -67,8 +147,10 @@ export class CoreModuleHostCapabilityProvider
   private readonly agent: ModuleAgentCapabilityProviderV1
   private readonly assets: ModuleAssetsCapabilityProviderV1
   private readonly backgroundActivities: BackgroundActivityBatchSink
+  private readonly config: ModuleConfigCapabilityProviderV1
   private readonly now: () => number
   private readonly paths: ModulePathsCapabilityProviderV1
+  private readonly privateStorage: ModulePrivateStorageCapabilityProviderV1
   private readonly ui: ModuleUiCapabilityProviderV1
   private readonly reportCallbackError: (
     moduleId: string,
@@ -80,7 +162,9 @@ export class CoreModuleHostCapabilityProvider
     agent = UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
     assets = UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
     backgroundActivities,
+    config = UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
+    privateStorage = UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER,
     ui = UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
     vault = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
     now = Date.now,
@@ -94,7 +178,9 @@ export class CoreModuleHostCapabilityProvider
     this.agent = agent
     this.assets = assets
     this.backgroundActivities = backgroundActivities
+    this.config = config
     this.paths = paths
+    this.privateStorage = privateStorage
     this.ui = ui
     this.vault = vault
     this.now = now
@@ -114,7 +200,9 @@ export class CoreModuleHostCapabilityProvider
       now: this.now,
       reportCallbackError: this.reportCallbackError,
     })
+    const config = this.config.create(moduleId, lifecycle)
     const paths = this.paths.create(moduleId, lifecycle)
+    const privateStorage = this.privateStorage.create(moduleId, lifecycle)
     const ui = this.ui.create(moduleId, lifecycle)
     const vault = this.vault.create(moduleId, lifecycle)
     return Object.freeze({
@@ -122,16 +210,20 @@ export class CoreModuleHostCapabilityProvider
         agent: agent.api,
         assets: assets.api,
         background: background.api,
+        config: config.api,
         paths: paths.api,
+        privateStorage: privateStorage.api,
         ui: ui.api,
         vault: vault.api,
       }),
+      prepare: () => config.activate(),
       commit: () => background.commit(),
       activate: () => {
         agent.activate()
         assets.activate()
         background.activate()
         paths.activate()
+        privateStorage.activate()
         ui.activate()
         vault.activate()
       },
@@ -274,7 +366,8 @@ function createModuleBackgroundCapability({
     },
     activate: () => {
       assertActive()
-      if (!committed) throw new Error('Module capabilities are not committed')
+      if (activationComplete)
+        throw new Error('Module capabilities are already active')
       lifecycle.add(() => {
         activationComplete = false
       })

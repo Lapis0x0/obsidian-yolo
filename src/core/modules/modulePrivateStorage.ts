@@ -3,8 +3,21 @@ import type { DataAdapter } from 'obsidian'
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { assertModuleId, assertModulePathSegment } from './moduleStore'
 
+export type ModulePrivateStorageAdapter = Pick<
+  DataAdapter,
+  | 'stat'
+  | 'exists'
+  | 'list'
+  | 'read'
+  | 'readBinary'
+  | 'write'
+  | 'writeBinary'
+  | 'mkdir'
+  | 'remove'
+>
+
 export type ModulePrivateStorageBackend = Readonly<{
-  adapter: DataAdapter
+  adapter: ModulePrivateStorageAdapter
   /** Returns the current vault-relative storage root. */
   getRootPath(): string
 }>
@@ -51,7 +64,10 @@ export const MAX_MODULE_PRIVATE_LIST_ENTRIES = 1024
 export const MAX_MODULE_PRIVATE_JSON_DEPTH = 64
 export const MAX_MODULE_PRIVATE_JSON_NODES = 10_000
 
-const writeQueues = new WeakMap<DataAdapter, Map<string, Promise<void>>>()
+const writeQueues = new WeakMap<
+  ModulePrivateStorageAdapter,
+  Map<string, Promise<void>>
+>()
 
 export class ModulePrivateStorageVerificationError extends Error {
   constructor(message: string) {
@@ -121,7 +137,7 @@ export class ModulePrivateStorageCapabilityProvider
 
 function createPrivateStorageScope(
   moduleId: string,
-  adapter: DataAdapter,
+  adapter: ModulePrivateStorageAdapter,
   getRoot: () => string,
   assertActive: () => void,
 ): ModulePrivateStorageScopeV1 {
@@ -259,7 +275,7 @@ function createPrivateStorageScope(
 }
 
 async function listFiles(
-  adapter: DataAdapter,
+  adapter: ModulePrivateStorageAdapter,
   root: string,
   start: string,
   assertActive: () => void,
@@ -306,7 +322,7 @@ function relativeListedPath(root: string, path: string): string {
 }
 
 async function ensureParentFolders(
-  adapter: DataAdapter,
+  adapter: ModulePrivateStorageAdapter,
   target: string,
   assertActive: () => void,
 ): Promise<void> {
@@ -331,7 +347,7 @@ async function ensureParentFolders(
 }
 
 function enqueueWrite(
-  adapter: DataAdapter,
+  adapter: ModulePrivateStorageAdapter,
   target: string,
   operation: () => Promise<void>,
 ): Promise<void> {
@@ -445,7 +461,7 @@ function assertBlobSize(byteLength: number): void {
 }
 
 async function assertReadableFile(
-  adapter: DataAdapter,
+  adapter: ModulePrivateStorageAdapter,
   target: string,
   assertActive: () => void,
 ): Promise<boolean> {
