@@ -53,11 +53,7 @@ import type {
   LearningNavigationTarget,
 } from './core/learning/learningNavigation'
 import { LearningRuntime } from './core/learning/learningRuntime'
-import { getTotalDueCards } from './core/learning/learningStatsService'
-import type {
-  LearningStatsService,
-  LearningStatsSnapshot,
-} from './core/learning/learningStatsService'
+import type { LearningStatsService } from './core/learning/learningStatsService'
 import type { ProjectEventBus } from './core/learning/projectEventBus'
 import type { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
@@ -197,9 +193,7 @@ export type { PluginUpdateState } from './core/update/pluginUpdater'
 
 const STARTUP_GRACE_MS = 30 * 1000
 type TranslateFn = (keyPath: string, fallback?: string) => string
-type BackgroundStatusPanelAction =
-  | BackgroundActivityAction
-  | { type: 'open-learning-home' }
+type BackgroundStatusPanelAction = BackgroundActivityAction
 
 export default class YoloPlugin extends Plugin {
   settings: YoloSettings
@@ -270,7 +264,6 @@ export default class YoloPlugin extends Plugin {
   private backgroundStatusPanelList: HTMLElement | null = null
   private backgroundStatusPanelEmpty: HTMLElement | null = null
   private latestBackgroundActivities = new Map<string, BackgroundActivity>()
-  private latestLearningStats: LearningStatsSnapshot | null = null
   private backgroundStatusPanelRenderVersion = 0
   private isUnloaded = false
   private backgroundStatusPanelItems = new Map<
@@ -380,6 +373,11 @@ export default class YoloPlugin extends Plugin {
         app: this.app,
         getSettings: () => this.settings,
         getLearningBaseDir: () => getYoloLearningDir(this.settings),
+        backgroundActivities: this.getBackgroundActivityRegistry(),
+        openLearningHome: () => {
+          void this.openLearningView({ type: 'home' })
+        },
+        translate: (keyPath, fallback) => this.t(keyPath, fallback),
       })
     }
     return this.learningRuntime
@@ -1315,12 +1313,6 @@ export default class YoloPlugin extends Plugin {
         this.latestBackgroundActivities = new Map(activities)
         this.updateBackgroundStatusBar()
       })
-    const unsubscribeLearningStats = this.getLearningStatsService().subscribe(
-      (snapshot) => {
-        this.latestLearningStats = snapshot
-        this.updateBackgroundStatusBar()
-      },
-    )
     let isActive = true
     let unsubscribeAgentSummaries: (() => void) | null = null
     void this.warmupAgentService()
@@ -1340,7 +1332,6 @@ export default class YoloPlugin extends Plugin {
     this.register(() => {
       isActive = false
       unsubscribeActivities()
-      unsubscribeLearningStats()
       unsubscribeAgentSummaries?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
@@ -1351,7 +1342,6 @@ export default class YoloPlugin extends Plugin {
       this.backgroundStatusPanelRenderVersion += 1
       this.backgroundStatusPanelItems.clear()
       this.latestBackgroundActivities.clear()
-      this.latestLearningStats = null
       this.backgroundActivityRegistry?.clear()
       this.backgroundActivityRegistry = null
     })
@@ -1417,12 +1407,8 @@ export default class YoloPlugin extends Plugin {
     }
     this.backgroundStatusPanelRenderVersion += 1
 
-    const dueCards = this.latestLearningStats
-      ? getTotalDueCards(this.latestLearningStats)
-      : 0
     const model = buildBackgroundStatusModel(
       this.latestBackgroundActivities.values(),
-      dueCards,
     )
 
     if (!model.visible) {
@@ -1435,13 +1421,7 @@ export default class YoloPlugin extends Plugin {
       return
     }
 
-    const label =
-      model.activities.length > 0
-        ? this.buildBackgroundStatusBarLabel(model.activities)
-        : this.t(
-            'statusBar.learningReviewLabel',
-            'YOLO Learning：今日有 {count} 张待复习卡片',
-          ).replace('{count}', String(dueCards))
+    const label = this.buildBackgroundStatusBarLabel(model.activities)
 
     this.backgroundStatusBarLabel.setText(label)
     this.backgroundStatusBarItem.removeAttribute('title')
@@ -1450,13 +1430,16 @@ export default class YoloPlugin extends Plugin {
       'is-running',
       'is-waiting',
       'is-failed',
-      'is-review',
+      'is-reminder',
     )
     if (model.tone) {
       this.backgroundStatusBarRing.classList.add(`is-${model.tone}`)
     }
-    if (model.tone === 'review') {
-      setIcon(this.backgroundStatusBarRing, 'graduation-cap')
+    if (model.tone === 'reminder') {
+      const reminderIcon =
+        model.activities.find((activity) => activity.status === 'reminder')
+          ?.icon ?? 'bell'
+      setIcon(this.backgroundStatusBarRing, reminderIcon)
     }
     this.backgroundStatusBarItem.show()
 
@@ -1474,6 +1457,9 @@ export default class YoloPlugin extends Plugin {
     )
     const failedActivities = activities.filter(
       (activity) => activity.status === 'failed',
+    )
+    const reminderActivities = activities.filter(
+      (activity) => activity.status === 'reminder',
     )
     const agentActivities = runningActivities.filter(
       (activity) => activity.kind === 'agent',
@@ -1527,6 +1513,11 @@ export default class YoloPlugin extends Plugin {
         'statusBar.backgroundTasksRunning',
         '当前有 {count} 个后台任务正在运行',
       ).replace('{count}', String(runningActivities.length))
+    }
+
+    if (failedActivities.length === 0 && reminderActivities.length === 1) {
+      const [reminder] = reminderActivities
+      return reminder.summary || reminder.detail || reminder.title
     }
 
     return this.t(
@@ -1589,12 +1580,8 @@ export default class YoloPlugin extends Plugin {
     }
 
     const renderVersion = ++this.backgroundStatusPanelRenderVersion
-    const dueCards = this.latestLearningStats
-      ? getTotalDueCards(this.latestLearningStats)
-      : 0
     const model = buildBackgroundStatusModel(
       this.latestBackgroundActivities.values(),
-      dueCards,
     )
     const activities = model.activities
 
@@ -1662,46 +1649,14 @@ export default class YoloPlugin extends Plugin {
         'is-running',
         'is-waiting',
         'is-failed',
-        'is-review',
+        'is-reminder',
       )
       itemRecord.indicator.empty()
       itemRecord.indicator.classList.add(`is-${activity.status}`)
+      const indicatorIcon =
+        activity.icon ?? (activity.status === 'reminder' ? 'bell' : undefined)
+      if (indicatorIcon) setIcon(itemRecord.indicator, indicatorIcon)
 
-      if (itemRecord.item !== insertBeforeNode) {
-        this.backgroundStatusPanelList.insertBefore(
-          itemRecord.item,
-          insertBeforeNode,
-        )
-      }
-      insertBeforeNode = itemRecord.item.nextSibling
-    }
-
-    if (model.showReviewReminder) {
-      const reminderId = 'reminder:learning-review'
-      nextActivityIds.add(reminderId)
-      const title = this.t('statusBar.learningReviewTitle', 'YOLO Learning')
-      const detail = this.t(
-        'statusBar.learningReviewDetail',
-        '{count} 张卡片待复习',
-      ).replace('{count}', String(dueCards))
-      const itemRecord =
-        this.backgroundStatusPanelItems.get(reminderId) ??
-        this.createBackgroundStatusPanelItem(reminderId, {
-          type: 'open-learning-home',
-        })
-      itemRecord.action = { type: 'open-learning-home' }
-      itemRecord.title.setText(title)
-      itemRecord.title.setAttribute('title', title)
-      itemRecord.detail.setText(detail)
-      itemRecord.detail.hidden = false
-      itemRecord.indicator.classList.remove(
-        'is-running',
-        'is-waiting',
-        'is-failed',
-      )
-      itemRecord.indicator.classList.add('is-review')
-      itemRecord.indicator.empty()
-      setIcon(itemRecord.indicator, 'graduation-cap')
       if (itemRecord.item !== insertBeforeNode) {
         this.backgroundStatusPanelList.insertBefore(
           itemRecord.item,
@@ -1754,7 +1709,13 @@ export default class YoloPlugin extends Plugin {
     const indicator = row.createDiv({
       cls: 'yolo-background-activity-status-panel-item-indicator',
     })
-    const record = {
+    const record: {
+      item: HTMLElement
+      title: HTMLElement
+      detail: HTMLElement
+      indicator: HTMLElement
+      action?: BackgroundStatusPanelAction
+    } = {
       item,
       title,
       detail,
@@ -1765,7 +1726,9 @@ export default class YoloPlugin extends Plugin {
     const openAction = () => {
       this.closeBackgroundStatusPanel()
       const currentAction = record.action
-      if (!currentAction) {
+      if (!currentAction) return
+      if (currentAction.type === 'callback') {
+        currentAction.run()
         return
       }
       if (currentAction.type === 'open-agent-conversation') {
@@ -1783,9 +1746,6 @@ export default class YoloPlugin extends Plugin {
       if (currentAction.type === 'open-learning-view') {
         void this.openLearningView()
         return
-      }
-      if (currentAction.type === 'open-learning-home') {
-        void this.openLearningView({ type: 'home' })
       }
     }
 

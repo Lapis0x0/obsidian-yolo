@@ -1,4 +1,8 @@
-export type BackgroundActivityStatus = 'running' | 'waiting' | 'failed'
+export type BackgroundActivityStatus =
+  | 'running'
+  | 'waiting'
+  | 'failed'
+  | 'reminder'
 
 export type BackgroundActivityAction =
   | {
@@ -11,15 +15,26 @@ export type BackgroundActivityAction =
   | {
       type: 'open-learning-view'
     }
+  | {
+      type: 'callback'
+      run(): void
+    }
 
 export type BackgroundActivity = {
   id: string
-  kind: 'agent' | 'learning-agent' | 'rag-index'
+  kind: string
   title: string
   detail?: string
+  summary?: string
+  icon?: string
   status: BackgroundActivityStatus
   updatedAt: number
   action?: BackgroundActivityAction
+}
+
+export type BackgroundActivitySink = {
+  upsert(activity: BackgroundActivity): void
+  remove(id: string): void
 }
 
 export type BackgroundActivitySubscriber = (

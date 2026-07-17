@@ -16762,7 +16762,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   border-top-color: color-mix(in srgb, var(--color-red) 82%, white 8%);
 }
 
-.yolo-background-activity-status-bar-ring.is-review {
+.yolo-background-activity-status-bar-ring.is-reminder {
   order: -1;
   border: 0;
   border-radius: 0;
@@ -16770,7 +16770,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   animation: none;
 }
 
-.yolo-background-activity-status-bar-ring.is-review svg {
+.yolo-background-activity-status-bar-ring.is-reminder svg {
   width: 14px;
   height: 14px;
   stroke-width: 2;
@@ -16924,7 +16924,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   border-top-color: color-mix(in srgb, var(--color-red) 82%, white 8%);
 }
 
-.yolo-background-activity-status-panel-item-indicator.is-review {
+.yolo-background-activity-status-panel-item-indicator.is-reminder {
   order: -1;
   border: 0;
   border-radius: 0;
@@ -16932,7 +16932,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   animation: none;
 }
 
-.yolo-background-activity-status-panel-item-indicator.is-review svg {
+.yolo-background-activity-status-panel-item-indicator.is-reminder svg {
   width: 12px;
   height: 12px;
   stroke-width: 2;

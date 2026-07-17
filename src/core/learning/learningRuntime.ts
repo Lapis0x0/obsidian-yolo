@@ -1,12 +1,13 @@
 import type { App } from 'obsidian'
 
+import type { BackgroundActivitySink } from '../background/backgroundActivityRegistry'
 import type { YoloSettingsLike } from '../paths/yoloManagedData'
 
 import type {
   LearningNavigationHandler,
   LearningNavigationTarget,
 } from './learningNavigation'
-import { LearningStatsService } from './learningStatsService'
+import { LearningStatsService, getTotalDueCards } from './learningStatsService'
 import { createObsidianLearningVaultReadApi } from './obsidianLearningVaultReadApi'
 import type { ProjectEventBus } from './projectEventBus'
 import { ObsidianLearningSrsStorage } from './srs/obsidianLearningSrsStorage'
@@ -16,17 +17,26 @@ type LearningRuntimeOptions = {
   app: App
   getSettings: () => YoloSettingsLike | null
   getLearningBaseDir: () => string
+  backgroundActivities?: BackgroundActivitySink
+  openLearningHome?: () => void
+  translate?: (keyPath: string, fallback: string) => string
   createSrsStore?: () => LearningSrsStore
   createStatsService?: (srsStore: LearningSrsStore) => LearningStatsService
 }
 
 export class LearningRuntime {
+  private static readonly REVIEW_REMINDER_ID = 'reminder:learning-review'
+
   private readonly createSrsStore: () => LearningSrsStore
   private readonly createStatsService: (
     srsStore: LearningSrsStore,
   ) => LearningStatsService
+  private readonly backgroundActivities?: BackgroundActivitySink
+  private readonly openLearningHome?: () => void
+  private readonly translate: (keyPath: string, fallback: string) => string
   private srsStore: LearningSrsStore | null = null
   private statsService: LearningStatsService | null = null
+  private unsubscribeStats: (() => void) | null = null
   private eventBus: ProjectEventBus | null = null
   private navigationHandler: LearningNavigationHandler | null = null
   private pendingNavigation: LearningNavigationTarget | null = null
@@ -37,6 +47,9 @@ export class LearningRuntime {
     app,
     getSettings,
     getLearningBaseDir,
+    backgroundActivities,
+    openLearningHome,
+    translate = (_keyPath, fallback) => fallback,
     createSrsStore = () =>
       new LearningSrsStore(new ObsidianLearningSrsStorage(app, getSettings)),
     createStatsService = (srsStore) =>
@@ -48,6 +61,9 @@ export class LearningRuntime {
   }: LearningRuntimeOptions) {
     this.createSrsStore = createSrsStore
     this.createStatsService = createStatsService
+    this.backgroundActivities = backgroundActivities
+    this.openLearningHome = openLearningHome
+    this.translate = translate
   }
 
   getSrsStore(): LearningSrsStore {
@@ -65,7 +81,39 @@ export class LearningRuntime {
   }
 
   startStats(): void {
-    this.getStatsService().start()
+    const statsService = this.getStatsService()
+    if (!this.unsubscribeStats && this.backgroundActivities) {
+      this.unsubscribeStats = statsService.subscribe((snapshot) => {
+        const dueCards = getTotalDueCards(snapshot)
+        if (dueCards === 0) {
+          this.backgroundActivities?.remove(LearningRuntime.REVIEW_REMINDER_ID)
+          return
+        }
+        this.backgroundActivities?.upsert({
+          id: LearningRuntime.REVIEW_REMINDER_ID,
+          kind: 'learning-review',
+          title: this.translate(
+            'statusBar.learningReviewTitle',
+            'YOLO Learning',
+          ),
+          detail: this.translate(
+            'statusBar.learningReviewDetail',
+            '{count} cards to review',
+          ).replace('{count}', String(dueCards)),
+          summary: this.translate(
+            'statusBar.learningReviewLabel',
+            'YOLO Learning: {count} cards due today',
+          ).replace('{count}', String(dueCards)),
+          icon: 'graduation-cap',
+          status: 'reminder',
+          updatedAt: Date.now(),
+          action: this.openLearningHome
+            ? { type: 'callback', run: this.openLearningHome }
+            : undefined,
+        })
+      })
+    }
+    statsService.start()
   }
 
   restartStats(): void {
@@ -122,6 +170,9 @@ export class LearningRuntime {
     this.disposed = true
     for (const controller of this.generationControllers) controller.abort()
     this.generationControllers.clear()
+    this.unsubscribeStats?.()
+    this.unsubscribeStats = null
+    this.backgroundActivities?.remove(LearningRuntime.REVIEW_REMINDER_ID)
     this.statsService?.dispose()
     this.statsService = null
     this.eventBus = null

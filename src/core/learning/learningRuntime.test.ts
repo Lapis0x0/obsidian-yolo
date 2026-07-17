@@ -1,11 +1,22 @@
 import type { App } from 'obsidian'
 
+import type { BackgroundActivity } from '../background/backgroundActivityRegistry'
+
 import { LearningRuntime } from './learningRuntime'
-import type { LearningStatsService } from './learningStatsService'
+import type {
+  LearningStatsService,
+  LearningStatsSnapshot,
+} from './learningStatsService'
 import type { LearningSrsStore } from './srs/srsStore'
 
 const createRuntime = (
   overrides: {
+    backgroundActivities?: {
+      upsert(activity: BackgroundActivity): void
+      remove(id: string): void
+    }
+    openLearningHome?: () => void
+    translate?: (keyPath: string, fallback: string) => string
     createSrsStore?: () => LearningSrsStore
     createStatsService?: (store: LearningSrsStore) => LearningStatsService
   } = {},
@@ -120,4 +131,92 @@ describe('LearningRuntime', () => {
     )
     expect(runExclusive).toHaveBeenCalledTimes(1)
   })
+
+  it('publishes and removes its review reminder through the background sink', () => {
+    const upsert = jest.fn()
+    const remove = jest.fn()
+    const unsubscribe = jest.fn()
+    const openLearningHome = jest.fn()
+    const startStats = jest.fn()
+    const disposeStats = jest.fn()
+    let publishStats: (snapshot: LearningStatsSnapshot) => void = () => {
+      throw new Error('Stats subscriber was not registered')
+    }
+    const statsService = {
+      subscribe: jest.fn(
+        (subscriber: (snapshot: LearningStatsSnapshot) => void) => {
+          publishStats = subscriber
+          subscriber(createStatsSnapshot(0))
+          return unsubscribe
+        },
+      ),
+      start: startStats,
+      dispose: disposeStats,
+    } as unknown as LearningStatsService
+    const runtime = createRuntime({
+      backgroundActivities: { upsert, remove },
+      openLearningHome,
+      translate: (_keyPath, fallback) => `translated:${fallback}`,
+      createSrsStore: () => ({}) as LearningSrsStore,
+      createStatsService: () => statsService,
+    })
+
+    runtime.startStats()
+    expect(remove).toHaveBeenCalledWith('reminder:learning-review')
+    expect(startStats).toHaveBeenCalledTimes(1)
+
+    publishStats(createStatsSnapshot(4))
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'reminder:learning-review',
+        kind: 'learning-review',
+        title: 'translated:YOLO Learning',
+        detail: 'translated:4 cards to review',
+        summary: 'translated:YOLO Learning: 4 cards due today',
+        icon: 'graduation-cap',
+        status: 'reminder',
+      }),
+    )
+    const reminder = upsert.mock.lastCall?.[0] as BackgroundActivity
+    if (reminder.action?.type !== 'callback') {
+      throw new Error('Expected a callback reminder action')
+    }
+    reminder.action.run()
+    expect(openLearningHome).toHaveBeenCalledTimes(1)
+
+    publishStats(createStatsSnapshot(0))
+    expect(remove).toHaveBeenCalledTimes(2)
+
+    runtime.dispose()
+    expect(unsubscribe).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledTimes(3)
+    expect(disposeStats).toHaveBeenCalledTimes(1)
+  })
 })
+
+function createStatsSnapshot(dueCards: number): LearningStatsSnapshot {
+  return {
+    projects: [],
+    byProject: new Map([
+      [
+        'project',
+        {
+          paused: false,
+          totalCards: dueCards,
+          targetCards: dueCards,
+          targetCardProgress: 0,
+          estimatedRetention: 0,
+          dueCards,
+          lastStudiedAt: null,
+          createdAt: 0,
+          lastActiveAt: 0,
+          nextDueAt: null,
+          nextAction: null,
+        },
+      ],
+    ]),
+    pausedProjectIds: new Set(),
+    failedProjectIds: new Set(),
+    loading: false,
+  }
+}
