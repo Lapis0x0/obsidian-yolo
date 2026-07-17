@@ -111,6 +111,26 @@ describe('generateOutline', () => {
       }),
     ).rejects.toThrow('大纲生成结果缺少 projectGoal')
   })
+
+  it('rejects explicitly aborted output instead of parsing partial JSON', async () => {
+    const host = createHost([
+      {
+        type: 'text',
+        text: '{"projectName":"Partial"',
+        delta: '{"projectName":"Partial"',
+      },
+      { type: 'aborted' },
+    ])
+
+    await expect(
+      generateOutline({
+        host,
+        topic: 'python',
+        level: 'beginner',
+        goal: '入门',
+      }),
+    ).rejects.toThrow('Outline generation aborted')
+  })
 })
 
 function createHost(

@@ -60,6 +60,7 @@ export type LearningGenerationAgentEvent =
       arguments?: Record<string, unknown>
     }
   | { type: 'completed'; text: string }
+  | { type: 'aborted' }
   | { type: 'error'; message: string }
 
 export type LearningGenerationAgent = {

@@ -1,3 +1,4 @@
+import { LearningGenerationAbortError } from './abortError'
 import { PhaseDebugCollector, emitPhaseDebugLog } from './debugLog'
 import type {
   LearningGenerationActivity,
@@ -77,6 +78,9 @@ export async function generateOutline({
     }
     if (event.type === 'completed') {
       completedText = event.text
+    }
+    if (event.type === 'aborted') {
+      throw new LearningGenerationAbortError('Outline generation aborted')
     }
     if (event.type === 'error') {
       throw new Error(event.message)

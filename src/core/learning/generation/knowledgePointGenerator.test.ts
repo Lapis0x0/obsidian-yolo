@@ -37,4 +37,32 @@ describe('generateKnowledgePointsForChapter', () => {
       }),
     )
   })
+
+  it('rejects explicitly aborted partial markdown', async () => {
+    const stream = async function* () {
+      yield {
+        type: 'text' as const,
+        text: '## Partial\n\nunfinished',
+        delta: '## Partial\n\nunfinished',
+      }
+      yield { type: 'aborted' as const }
+    }
+    const host: LearningGenerationHost = {
+      vault: {} as LearningVaultReadApi,
+      vaultWriter: {} as LearningVaultWriteApi,
+      isDebugEnabled: () => false,
+      agent: { stream },
+    }
+
+    await expect(
+      generateKnowledgePointsForChapter({
+        host,
+        chapterIndex: 0,
+        projectTopic: 'Python',
+        chapterTitle: 'Basics',
+        chapterContract: 'Cover variables',
+        level: 'beginner',
+      }),
+    ).rejects.toThrow('Knowledge point generation aborted: Basics')
+  })
 })

@@ -1,5 +1,6 @@
 import { scanMarkdownEntries } from '../markdownScanner'
 
+import { LearningGenerationAbortError } from './abortError'
 import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
 import type {
   LearningGenerationActivity,
@@ -102,6 +103,11 @@ export async function generateKnowledgePointsForChapter({
     }
     if (event.type === 'completed') {
       completedText = event.text
+    }
+    if (event.type === 'aborted') {
+      throw new LearningGenerationAbortError(
+        `Knowledge point generation aborted: ${chapterTitle}`,
+      )
     }
     if (event.type === 'error') {
       throw new Error(event.message)

@@ -266,6 +266,58 @@ describe('generateCardsForChapter streaming', () => {
     },
   )
 
+  it('rejects an explicit abort before writing streamed cards', async () => {
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const cardsPath = 'project/chapter/cards.md'
+    const knowledgeIdentity = { path: knowledgePath }
+    const createTextIfAbsent = jest.fn()
+    const host: LearningGenerationHost = {
+      vault: {
+        getEntry: () => ({
+          kind: 'file',
+          path: knowledgePath,
+          name: 'knowledge.md',
+          ctime: 0,
+          mtime: 0,
+        }),
+      } as unknown as LearningVaultReadApi,
+      vaultWriter: {
+        readTextSnapshot: async () => ({
+          path: knowledgePath,
+          content: '## KP <!--kp:aaaaaaaa-->\n\nBody',
+          identity: knowledgeIdentity,
+        }),
+        createTextIfAbsent,
+      } as unknown as LearningVaultWriteApi,
+      isDebugEnabled: () => false,
+      agent: {
+        stream: async function* () {
+          const text = `${cardBlock('Partial')}${CARD_END_MARKER}\n`
+          yield { type: 'text' as const, text, delta: text }
+          yield { type: 'aborted' as const }
+        },
+      },
+    }
+
+    await expect(
+      generateCardsForChapter({
+        host,
+        chapterIndex: 0,
+        projectTopic: 'Topic',
+        chapterTitle: 'Chapter',
+        chapterContract: 'Contract',
+        knowledgePath,
+        cardsPath,
+        level: 'beginner',
+        usedCardUuids: new Set(),
+        runId: 'run',
+        projectId: 'project',
+        chapterId: 'chapter',
+      }),
+    ).rejects.toThrow('Card generation aborted: Chapter')
+    expect(createTextIfAbsent).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['owned content', false],
     ['externally edited content', true],

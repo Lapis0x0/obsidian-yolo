@@ -8,6 +8,7 @@ import {
 } from '../learningVaultReadApi'
 import type { LearningVaultFileSnapshot } from '../learningVaultWriteApi'
 
+import { LearningGenerationAbortError } from './abortError'
 import {
   type ChapterDebugData,
   PhaseDebugCollector,
@@ -145,9 +146,10 @@ export async function generateCardsForChapter({
   const runStream = async (
     request: { prompt: string } | { messages: LearningGenerationMessage[] },
     consumeCards = false,
-  ): Promise<{ text: string; error?: Error }> => {
+  ): Promise<{ text: string; error?: Error; aborted?: true }> => {
     let accumulated = ''
     let completedText = ''
+    let aborted = false
     const stream = host.agent.stream({
       ...request,
       modelId,
@@ -167,6 +169,12 @@ export async function generateCardsForChapter({
         }
         if (event.type === 'tool') debug.recordToolCall(event)
         if (event.type === 'completed') completedText = event.text
+        if (event.type === 'aborted') {
+          aborted = true
+          throw new LearningGenerationAbortError(
+            `Card generation aborted: ${chapterTitle}`,
+          )
+        }
         if (event.type === 'error') throw new Error(event.message)
       }
     } catch (error) {
@@ -174,6 +182,7 @@ export async function generateCardsForChapter({
       return {
         text: completedText || accumulated,
         error: error instanceof Error ? error : new Error(String(error)),
+        ...(aborted ? { aborted: true as const } : {}),
       }
     }
 
@@ -188,6 +197,12 @@ export async function generateCardsForChapter({
   }
   const firstRun = await runStream({ messages: [firstUserMessage] }, true)
   const firstOutput = firstRun.text
+  if (firstRun.aborted) {
+    throw (
+      firstRun.error ??
+      new LearningGenerationAbortError('Card generation was aborted')
+    )
+  }
   throwIfAborted(abortSignal)
   if (assignedDrafts.length === 0) {
     if (firstRun.error) throw firstRun.error
@@ -233,13 +248,16 @@ export async function generateCardsForChapter({
           cardsPath,
         ),
       }
+      let retryAborted = false
       try {
         const retryRun = await runStream({
           messages: [firstUserMessage, firstAssistantMessage, retryUserMessage],
         })
+        retryAborted = retryRun.aborted === true
         finalOutput = retryRun.text
         if (retryRun.error) throw retryRun.error
       } catch (error) {
+        if (retryAborted) throw error
         console.error('[YOLO] Failed to correct generated cards:', error)
       }
 
