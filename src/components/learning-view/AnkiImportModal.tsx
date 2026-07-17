@@ -111,6 +111,7 @@ export function AnkiImportModal({
       if (controller.signal.aborted) return
       setState('parsing')
       const nextPlan = await prepareAnkiImport({
+        workerHost: host.ankiWorkerHost,
         vault: host.vault,
         baseDir,
         packageBytes,

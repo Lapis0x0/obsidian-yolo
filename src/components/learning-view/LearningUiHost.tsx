@@ -2,6 +2,7 @@ import type { App } from 'obsidian'
 import React, { type ReactNode, createContext, useContext } from 'react'
 
 import type { AnkiImportJournalStorage } from '../../core/learning/anki/ankiImportJournalStorage'
+import type { AnkiWorkerHost } from '../../core/learning/anki/AnkiWorkerHost'
 import type { AnkiRuntimeHost } from '../../core/learning/anki/runtime/AnkiRuntimeHost'
 import type { LearningCardFileStore } from '../../core/learning/cardFile'
 import type { LearningGenerationAgent } from '../../core/learning/generation/host'
@@ -39,6 +40,7 @@ export interface LearningUiHost {
   readonly vault: LearningVaultReadApi
   readonly vaultWriter: LearningVaultWriteApi
   readonly ankiImportJournalStorage: AnkiImportJournalStorage
+  readonly ankiWorkerHost: AnkiWorkerHost
   readonly ankiRuntimeHost: AnkiRuntimeHost
   readonly settings: LearningSettings
   readonly locale: LearningLocale

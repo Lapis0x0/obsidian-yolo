@@ -4,6 +4,7 @@ import type {
   YoloAgentEvent,
   YoloAgentRunRequest,
 } from '../../core/agent/agent-api'
+import { createBrowserAnkiWorkerHost } from '../../core/learning/anki/browserAnkiWorkerHost'
 import { ObsidianAnkiImportJournalStorage } from '../../core/learning/anki/obsidianAnkiImportJournalStorage'
 import { createObsidianAnkiRuntimeHost } from '../../core/learning/anki/runtime/obsidianAnkiRuntimeHost'
 import { LearningCardFileStore } from '../../core/learning/cardFile'
@@ -33,6 +34,7 @@ type LearningVaultServices = Pick<
   | 'vault'
   | 'vaultWriter'
   | 'ankiImportJournalStorage'
+  | 'ankiWorkerHost'
   | 'ankiRuntimeHost'
   | 'cardFileStore'
 >
@@ -51,6 +53,7 @@ function getLearningVaultServices(plugin: YoloPlugin): LearningVaultServices {
       plugin.app,
       () => plugin.getLearningSrsStore().getLearningDataRootDir(),
     ),
+    ankiWorkerHost: createBrowserAnkiWorkerHost(),
     ankiRuntimeHost: createObsidianAnkiRuntimeHost({
       adapter: plugin.app.vault.adapter,
       manifest: plugin.manifest,
@@ -194,6 +197,7 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
     vault,
     vaultWriter,
     ankiImportJournalStorage,
+    ankiWorkerHost,
     ankiRuntimeHost,
     cardFileStore,
   } = getLearningVaultServices(plugin)
@@ -202,6 +206,7 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
     vault,
     vaultWriter,
     ankiImportJournalStorage,
+    ankiWorkerHost,
     ankiRuntimeHost,
     get settings() {
       return mapSettings(plugin)
