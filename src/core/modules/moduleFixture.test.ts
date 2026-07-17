@@ -23,6 +23,8 @@ describe('host API conformance artifact boundary', () => {
       createHash('sha256').update(entry).digest('hex'),
     )
     expect(source).toContain('yolo.module.host-runtime.v1')
+    expect(source).toContain('conformance-status')
+    expect(source).toContain('.background.upsert')
     expect(source).not.toContain('react.production.min')
   })
 

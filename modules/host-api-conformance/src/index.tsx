@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 
 const VIEW_TYPE = 'yolo-host-api-conformance'
 const RIBBON_EVENT = 'yolo:host-api-conformance:ribbon'
+const BACKGROUND_ACTIVITY_ID = 'conformance-status'
 
 function ConformanceView() {
   const [ribbonClicks, setRibbonClicks] = useState(0)
@@ -25,8 +26,21 @@ yolo.registerModule({
   id: 'host-api-conformance',
   activate(host) {
     const marker = { active: true }
+    let ribbonClicks = 0
+    const notifyView = () => {
+      if (marker.active) window.dispatchEvent(new Event(RIBBON_EVENT))
+    }
     host.lifecycle.add(() => {
       marker.active = false
+    })
+    host.background.upsert({
+      id: BACKGROUND_ACTIVITY_ID,
+      title: 'Host API conformance',
+      detail: 'Background capability is active',
+      summary: 'Host API conformance module is active',
+      icon: 'flask-conical',
+      status: 'reminder',
+      onOpen: notifyView,
     })
     host.workspace.registerView({
       type: VIEW_TYPE,
@@ -38,7 +52,18 @@ yolo.registerModule({
       icon: 'flask-conical',
       title: 'Test YOLO module host API',
       onClick: () => {
-        if (marker.active) window.dispatchEvent(new Event(RIBBON_EVENT))
+        if (!marker.active) return
+        ribbonClicks += 1
+        notifyView()
+        host.background.upsert({
+          id: BACKGROUND_ACTIVITY_ID,
+          title: 'Host API conformance',
+          detail: `Ribbon invoked ${ribbonClicks} times`,
+          summary: 'Host API background capability updated',
+          icon: 'flask-conical',
+          status: 'reminder',
+          onOpen: notifyView,
+        })
       },
     })
   },
