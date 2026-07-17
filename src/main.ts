@@ -65,10 +65,12 @@ import type {
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
+  BundledModuleRegistry,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   EMPTY_INSTALLED_MODULE_STATE_SOURCE,
   EMPTY_MODULE_CATALOG_SOURCE,
+  ManagedModulePathsCapabilityProvider,
   ModuleLoader,
   ModuleManager,
   ModuleRuntime,
@@ -87,7 +89,7 @@ import {
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
-import { getYoloLearningDir } from './core/paths/yoloPaths'
+import { getYoloBaseDir, getYoloLearningDir } from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -243,6 +245,7 @@ export default class YoloPlugin extends Plugin {
   private mcpCoordinator: McpCoordinator | null = null
   private moduleManager: ModuleManager | null = null
   private moduleRuntime: ModuleRuntime | null = null
+  private bundledModuleRegistry: BundledModuleRegistry | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
@@ -2029,11 +2032,7 @@ export default class YoloPlugin extends Plugin {
 
   async onload() {
     this.isUnloaded = false
-    this.moduleManager = new ModuleManager({
-      catalogSource: EMPTY_MODULE_CATALOG_SOURCE,
-      installedStateSource: EMPTY_INSTALLED_MODULE_STATE_SOURCE,
-    })
-    void this.moduleManager.refresh()
+    this.initializeModuleSystem()
     if (process.env.NODE_ENV === 'development') {
       this.addCommand({
         id: 'dev-activate-host-api-conformance-module',
@@ -2052,6 +2051,7 @@ export default class YoloPlugin extends Plugin {
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
     this.warnIfInstallationIncomplete()
+    await this.activateBundledModules()
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -2514,6 +2514,7 @@ export default class YoloPlugin extends Plugin {
     this.moduleManager = null
     this.moduleRuntime?.dispose()
     this.moduleRuntime = null
+    this.bundledModuleRegistry = null
     this.learningRuntime?.dispose()
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
@@ -3580,6 +3581,64 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleManager
   }
 
+  private initializeModuleSystem(): void {
+    const store = new ModuleStore({
+      adapter: this.app.vault.adapter,
+      manifest: this.manifest,
+      configDir: this.app.vault.configDir,
+    })
+    const runtime = new ModuleRuntime(
+      new ObsidianModuleContributionRegistrar(this),
+      new CoreModuleHostCapabilityProvider({
+        backgroundActivities: this.getBackgroundActivityRegistry(),
+        paths: new ManagedModulePathsCapabilityProvider({
+          getBaseDir: () => getYoloBaseDir(this.settings),
+          subscribe: (listener) =>
+            this.addSettingsChangeListener(() => listener()),
+          reportCallbackError: (moduleId, error) => {
+            console.error(
+              `[YOLO] Module "${moduleId}" managed-path callback failed`,
+              error,
+            )
+          },
+        }),
+        vault: new ObsidianModuleVaultCapabilityProvider(this.app),
+      }),
+    )
+    this.moduleRuntime = runtime
+    if (process.env.NODE_ENV === 'development') {
+      const registry = new BundledModuleRegistry({
+        store,
+        loader: new ModuleLoader({
+          executor: new DomBlobModuleScriptExecutor(),
+        }),
+        runtime,
+        reportActivationError: (moduleId, error) => {
+          console.error(`[YOLO] Bundled module "${moduleId}" failed`, error)
+        },
+      })
+      this.bundledModuleRegistry = registry
+      this.moduleManager = new ModuleManager({
+        catalogSource: registry.catalogSource,
+        installedStateSource: registry.installedStateSource,
+      })
+      return
+    }
+    this.moduleManager = new ModuleManager({
+      catalogSource: EMPTY_MODULE_CATALOG_SOURCE,
+      installedStateSource: EMPTY_INSTALLED_MODULE_STATE_SOURCE,
+    })
+  }
+
+  private async activateBundledModules(): Promise<void> {
+    try {
+      await this.bundledModuleRegistry?.activateAll()
+    } catch (error) {
+      console.error('[YOLO] Failed to load the bundled module index', error)
+    }
+    await this.moduleManager?.refresh()
+  }
+
   private async activateLocalConformanceModule(): Promise<void> {
     const moduleId = 'host-api-conformance'
     const version = '1.0.0'
@@ -3603,13 +3662,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         manifest.version,
         manifest.entry.path,
       )
-      this.moduleRuntime ??= new ModuleRuntime(
-        new ObsidianModuleContributionRegistrar(this),
-        new CoreModuleHostCapabilityProvider({
-          backgroundActivities: this.getBackgroundActivityRegistry(),
-          vault: new ObsidianModuleVaultCapabilityProvider(this.app),
-        }),
-      )
+      if (!this.moduleRuntime) throw new Error('Module runtime is unavailable')
       const definition = await new ModuleLoader({
         executor: new DomBlobModuleScriptExecutor(),
       }).load(
@@ -3621,6 +3674,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         entryBytes,
       )
       await this.moduleRuntime.activate(definition)
+      await this.moduleManager?.refresh()
       new Notice('Host API conformance module activated')
     } catch (error) {
       console.error('[YOLO] Conformance module activation failed', error)

@@ -8,8 +8,11 @@ const sourceDir = process.cwd()
 const artifactNames = new Set([
   'main.js',
   'styles.css',
+  'modules/bundled.json',
   'modules/host-api-conformance/1.0.0/entry.js',
   'modules/host-api-conformance/1.0.0/module.json',
+  'modules/learning/0.1.0/entry.js',
+  'modules/learning/0.1.0/module.json',
 ])
 const pendingTimers = new Map()
 let copyChain = Promise.resolve()

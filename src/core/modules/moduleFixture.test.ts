@@ -31,6 +31,40 @@ describe('host API conformance artifact boundary', () => {
     expect(source).not.toContain('react.production.min')
   })
 
+  it('ships a separately hashed Learning preview that uses only Host API', () => {
+    const bundled = JSON.parse(
+      readFileSync('modules/bundled.json', 'utf8'),
+    ) as {
+      schemaVersion: number
+      modules: Array<{ id: string; version: string }>
+    }
+    expect(bundled).toEqual({
+      schemaVersion: 1,
+      modules: [expect.objectContaining({ id: 'learning', version: '0.1.0' })],
+    })
+
+    const learningDir = path.resolve('modules/learning/0.1.0')
+    const manifest = parseModuleArtifactManifest(
+      JSON.parse(readFileSync(path.join(learningDir, 'module.json'), 'utf8')),
+    )
+    const entry = readFileSync(path.join(learningDir, manifest.entry.path))
+    const source = entry.toString('utf8')
+    expect(manifest.id).toBe('learning')
+    expect(manifest.version).toBe('0.1.0')
+    expect(manifest.entry.byteSize).toBe(entry.byteLength)
+    expect(manifest.entry.sha256).toBe(
+      createHash('sha256').update(entry).digest('hex'),
+    )
+    expect(source).toContain('yolo.module.host-runtime.v1')
+    expect(source).toContain('yolo-learning-module-preview')
+    expect(source).toContain('.paths.getSnapshot')
+    expect(source).toContain('.vault.listChildren')
+    expect(source).toContain('.vault.subscribe')
+    expect(source).not.toContain('react.production.min')
+    expect(source).not.toContain('LearningViewAdapter')
+    expect(source).not.toContain('YoloPlugin')
+  })
+
   it('keeps fixture source and artifacts out of production main metadata', () => {
     expect(readFileSync('esbuild.config.mjs', 'utf8')).not.toContain(
       'host-api-conformance',
@@ -41,7 +75,7 @@ describe('host API conformance artifact boundary', () => {
     }
     expect(
       Object.keys(metafile.inputs).filter((input) =>
-        input.replace(/\\/g, '/').includes('modules/host-api-conformance'),
+        input.replace(/\\/g, '/').startsWith('modules/'),
       ),
     ).toEqual([])
   })

@@ -50,6 +50,15 @@ export type YoloModuleBackgroundV1 = {
   remove(id: string): void
 }
 
+export type YoloModulePathsSnapshotV1 = Readonly<{
+  contentRoot: string
+}>
+
+export type YoloModulePathsV1 = {
+  getSnapshot(): YoloModulePathsSnapshotV1
+  subscribe(listener: () => void): ModuleDisposer
+}
+
 export type YoloModuleVaultFileV1 = Readonly<{
   kind: 'file'
   path: string
@@ -133,6 +142,7 @@ export type YoloModuleVaultV1 = {
 
 export type YoloModuleCapabilitiesV1 = Readonly<{
   background: YoloModuleBackgroundV1
+  paths: YoloModulePathsV1
   vault: YoloModuleVaultV1
 }>
 

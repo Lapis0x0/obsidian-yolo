@@ -196,6 +196,7 @@ export class ModuleRuntime {
         lifecycle,
         workspace,
         background: capabilityActivation.capabilities.background,
+        paths: capabilityActivation.capabilities.paths,
         vault: capabilityActivation.capabilities.vault,
       })
       if (this.disposed) {

@@ -94,6 +94,10 @@ export class ModuleStore {
     )
   }
 
+  async readBundledIndexBytes(): Promise<Uint8Array> {
+    return await this.readBytes(`${this.pluginDir}/modules/bundled.json`)
+  }
+
   async readEntryBytes(
     moduleId: string,
     version: string,

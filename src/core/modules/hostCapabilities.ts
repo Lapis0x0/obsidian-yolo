@@ -5,6 +5,10 @@ import type {
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import {
+  type ModulePathsCapabilityProviderV1,
+  UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
+} from './modulePaths'
+import {
   type ModuleVaultCapabilityProviderV1,
   UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
 } from './moduleVault'
@@ -36,6 +40,7 @@ class ModuleBackgroundCleanupError extends Error {
 
 type CoreModuleHostCapabilityProviderOptions = {
   backgroundActivities: BackgroundActivityBatchSink
+  paths?: ModulePathsCapabilityProviderV1
   vault?: ModuleVaultCapabilityProviderV1
   now?: () => number
   reportCallbackError?: (moduleId: string, error: unknown) => void
@@ -46,6 +51,7 @@ export class CoreModuleHostCapabilityProvider
 {
   private readonly backgroundActivities: BackgroundActivityBatchSink
   private readonly now: () => number
+  private readonly paths: ModulePathsCapabilityProviderV1
   private readonly reportCallbackError: (
     moduleId: string,
     error: unknown,
@@ -54,6 +60,7 @@ export class CoreModuleHostCapabilityProvider
 
   constructor({
     backgroundActivities,
+    paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
     vault = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
     now = Date.now,
     reportCallbackError = (moduleId, error) => {
@@ -64,6 +71,7 @@ export class CoreModuleHostCapabilityProvider
     },
   }: CoreModuleHostCapabilityProviderOptions) {
     this.backgroundActivities = backgroundActivities
+    this.paths = paths
     this.vault = vault
     this.now = now
     this.reportCallbackError = reportCallbackError
@@ -80,15 +88,18 @@ export class CoreModuleHostCapabilityProvider
       now: this.now,
       reportCallbackError: this.reportCallbackError,
     })
+    const paths = this.paths.create(moduleId, lifecycle)
     const vault = this.vault.create(moduleId, lifecycle)
     return Object.freeze({
       capabilities: Object.freeze({
         background: background.api,
+        paths: paths.api,
         vault: vault.api,
       }),
       commit: () => background.commit(),
       activate: () => {
         background.activate()
+        paths.activate()
         vault.activate()
       },
     })

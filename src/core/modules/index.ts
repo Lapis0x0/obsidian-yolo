@@ -1,9 +1,23 @@
 export { ModuleCleanupError, ModuleLifecycleScope } from './lifecycleScope'
 export {
+  BundledModuleRegistry,
+  parseBundledModuleIndex,
+  type BundledModuleDescriptor,
+  type BundledModuleIndex,
+  type BundledModuleRegistryOptions,
+} from './bundledModuleRegistry'
+export {
   ModuleContributionStager,
   type StagedModuleContributions,
 } from './contributionStager'
 export { ModuleLoader, type ModuleLoaderOptions } from './moduleLoader'
+export {
+  ManagedModulePathsCapabilityProvider,
+  UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
+  type ManagedModulePathsCapabilityProviderOptions,
+  type ModulePathsCapabilityActivationV1,
+  type ModulePathsCapabilityProviderV1,
+} from './modulePaths'
 export {
   ObsidianModuleVaultCapabilityProvider,
   UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
@@ -67,6 +81,8 @@ export type {
   YoloModuleCapabilitiesV1,
   YoloModuleLifecycle,
   YoloModuleOpenViewOptionsV1,
+  YoloModulePathsSnapshotV1,
+  YoloModulePathsV1,
   YoloModuleRibbonActionV1,
   YoloModuleRuntimeRegistration,
   YoloModuleViewV1,

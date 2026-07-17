@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "learning",
+      "version": "0.1.0",
+      "name": "Learning module preview",
+      "description": "Read-only module boundary preview for existing Learning data."
+    }
+  ]
+}
