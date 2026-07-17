@@ -15,6 +15,7 @@ import { EditorTab } from './tabs/EditorTab'
 import { KnowledgeTab } from './tabs/KnowledgeTab'
 import { LearningTab } from './tabs/LearningTab'
 import { ModelsTab } from './tabs/ModelsTab'
+import { ModulesTab } from './tabs/ModulesTab'
 import { OthersTab } from './tabs/OthersTab'
 
 type SettingsTabsProps = {
@@ -27,6 +28,7 @@ export type SettingsTabId =
   | 'editor'
   | 'knowledge'
   | 'learning'
+  | 'modules'
   | 'agent'
   | 'others'
 
@@ -61,6 +63,11 @@ const SETTINGS_TABS: SettingsTab[] = [
     id: 'learning',
     labelKey: 'settings.tabs.learning',
     component: LearningTab,
+  },
+  {
+    id: 'modules',
+    labelKey: 'settings.tabs.modules',
+    component: ModulesTab,
   },
   {
     id: 'others',

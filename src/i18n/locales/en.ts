@@ -487,6 +487,7 @@ export const en: TranslationKeys = {
       tools: 'Tools',
       agent: 'Agent',
       learning: 'Learning',
+      modules: 'Modules',
       others: 'Others',
     },
     supportYolo: {
@@ -528,6 +529,34 @@ export const en: TranslationKeys = {
       generationModel: 'Learning generation model',
       generationModelDesc:
         'Used to generate outlines, knowledge points, and cards. This selection is independent of the current assistant.',
+    },
+    modules: {
+      title: 'Modules',
+      description:
+        'View optional Yolo capabilities and their current runtime status.',
+      refresh: 'Refresh modules',
+      refreshing: 'Refreshing modules',
+      loading: 'Loading modules…',
+      loadError: 'Modules could not be loaded.',
+      catalogError: 'Catalog: {error}',
+      installedError: 'Installed modules: {error}',
+      empty: 'No modules were found.',
+      installed: 'Installed',
+      installedDescription: 'Modules currently present in this installation.',
+      installedEmpty: 'No modules are installed.',
+      available: 'Available',
+      availableDescription: 'Modules available to this Yolo installation.',
+      availableEmpty: 'No additional modules are available.',
+      version: 'Version {version}',
+      availableVersion: 'Update {version}',
+      statuses: {
+        available: 'Available',
+        installed: 'Installed',
+        active: 'Active',
+        disabled: 'Disabled',
+        updateAvailable: 'Update available',
+        failed: 'Failed',
+      },
     },
     smartSpace: {
       quickActionsTitle: 'Smart space quick actions',

@@ -153,6 +153,7 @@ export type TranslationKeys = {
       tools: string
       agent: string
       learning: string
+      modules: string
       others: string
     }
     supportYolo: {
@@ -185,6 +186,33 @@ export type TranslationKeys = {
       generationTitle: string
       generationModel: string
       generationModelDesc: string
+    }
+    modules: {
+      title: string
+      description: string
+      refresh: string
+      refreshing: string
+      loading: string
+      loadError: string
+      catalogError: string
+      installedError: string
+      empty: string
+      installed: string
+      installedDescription: string
+      installedEmpty: string
+      available: string
+      availableDescription: string
+      availableEmpty: string
+      version: string
+      availableVersion: string
+      statuses: {
+        available: string
+        installed: string
+        active: string
+        disabled: string
+        updateAvailable: string
+        failed: string
+      }
     }
     chatPreferences: {
       title: string

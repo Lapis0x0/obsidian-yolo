@@ -488,6 +488,7 @@ export const it: TranslationKeys = {
       tools: 'Strumenti',
       agent: 'Agent',
       learning: 'Modalità studio',
+      modules: 'Moduli',
       others: 'Altro',
     },
     supportYolo: {
@@ -530,6 +531,35 @@ export const it: TranslationKeys = {
       generationModel: 'Modello di generazione per lo studio',
       generationModelDesc:
         "Usato per generare scalette, punti di conoscenza e schede. Questa scelta e indipendente dall'assistente corrente.",
+    },
+    modules: {
+      title: 'Moduli',
+      description:
+        'Visualizza le funzionalità opzionali di Yolo e il loro stato corrente.',
+      refresh: 'Aggiorna moduli',
+      refreshing: 'Aggiornamento moduli',
+      loading: 'Caricamento moduli…',
+      loadError: 'Impossibile caricare i moduli.',
+      catalogError: 'Catalogo: {error}',
+      installedError: 'Moduli installati: {error}',
+      empty: 'Nessun modulo trovato.',
+      installed: 'Installati',
+      installedDescription: 'Moduli presenti in questa installazione.',
+      installedEmpty: 'Nessun modulo installato.',
+      available: 'Disponibili',
+      availableDescription:
+        'Moduli disponibili per questa installazione di Yolo.',
+      availableEmpty: 'Nessun altro modulo disponibile.',
+      version: 'Versione {version}',
+      availableVersion: 'Aggiornamento {version}',
+      statuses: {
+        available: 'Disponibile',
+        installed: 'Installato',
+        active: 'Attivo',
+        disabled: 'Disabilitato',
+        updateAvailable: 'Aggiornamento disponibile',
+        failed: 'Non riuscito',
+      },
     },
     smartSpace: {
       quickActionsTitle: 'Azioni rapide smart space',

@@ -6,6 +6,7 @@
 @import './settings/assistants.css';
 @import './settings/tabs.css';
 @import './settings/agent.css';
+@import './settings/modules.css';
 @import './settings/web-search.css';
 @import './settings/connectivity-test.css';
 @import './settings/batch-add-models.css';
