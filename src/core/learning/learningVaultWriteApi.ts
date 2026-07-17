@@ -13,6 +13,7 @@ export type LearningVaultWrittenFile = {
 /** Compare-and-swap Learning boundary over vault text files. */
 export type LearningVaultWriteApi = {
   ensureFolder(folderPath: string): Promise<void>
+  createFolder(folderPath: string): Promise<void>
   listChildNames(folderPath: string): Promise<readonly string[]>
   listChildFilePaths(folderPath: string): Promise<readonly string[]>
   createText(
@@ -25,6 +26,8 @@ export type LearningVaultWriteApi = {
     content: string,
   ): Promise<LearningVaultWrittenFile>
   renamePath(oldPath: string, newPath: string): Promise<void>
+  removeExactPath(path: string): Promise<void>
+  removeEmptyFolder(folderPath: string): Promise<void>
   removeTree(folderPath: string): Promise<void>
   readTextSnapshot(filePath: string): Promise<LearningVaultFileSnapshot | null>
   createTextIfAbsent(

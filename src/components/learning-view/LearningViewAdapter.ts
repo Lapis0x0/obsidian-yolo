@@ -4,6 +4,7 @@ import type {
   YoloAgentEvent,
   YoloAgentRunRequest,
 } from '../../core/agent/agent-api'
+import { ObsidianAnkiImportJournalStorage } from '../../core/learning/anki/obsidianAnkiImportJournalStorage'
 import { LearningCardFileStore } from '../../core/learning/cardFile'
 import type {
   LearningGenerationAgentEvent,
@@ -28,7 +29,7 @@ import type {
 
 type LearningVaultServices = Pick<
   LearningUiHost,
-  'vault' | 'vaultWriter' | 'cardFileStore'
+  'vault' | 'vaultWriter' | 'ankiImportJournalStorage' | 'cardFileStore'
 >
 
 const learningVaultServices = new WeakMap<object, LearningVaultServices>()
@@ -41,6 +42,10 @@ function getLearningVaultServices(plugin: YoloPlugin): LearningVaultServices {
   const services = {
     vault,
     vaultWriter,
+    ankiImportJournalStorage: new ObsidianAnkiImportJournalStorage(
+      plugin.app,
+      () => plugin.getLearningSrsStore().getLearningDataRootDir(),
+    ),
     cardFileStore: new LearningCardFileStore(vault, vaultWriter),
   }
   learningVaultServices.set(plugin.app, services)
@@ -175,11 +180,13 @@ async function* streamGenerationAgent(
 }
 
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
-  const { vault, vaultWriter, cardFileStore } = getLearningVaultServices(plugin)
+  const { vault, vaultWriter, ankiImportJournalStorage, cardFileStore } =
+    getLearningVaultServices(plugin)
   return {
     app: plugin.app,
     vault,
     vaultWriter,
+    ankiImportJournalStorage,
     get settings() {
       return mapSettings(plugin)
     },

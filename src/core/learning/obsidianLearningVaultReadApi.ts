@@ -67,6 +67,7 @@ export function createObsidianLearningVaultReadApi(
         ctime: file.stat?.ctime ?? 0,
         mtime: file.stat?.mtime ?? 0,
       })),
+    exists: (path) => app.vault.adapter.exists(normalizeVaultPath(path)),
     readText: async (filePath) => {
       const entry = app.vault.getAbstractFileByPath(
         normalizeVaultPath(filePath),
@@ -76,6 +77,8 @@ export function createObsidianLearningVaultReadApi(
       }
       return app.vault.cachedRead(entry)
     },
+    readBinary: (filePath) =>
+      app.vault.adapter.readBinary(normalizeVaultPath(filePath)),
     onCreate: (scopePath, listener) => subscribe('create', scopePath, listener),
     onModify: (scopePath, listener) => subscribe('modify', scopePath, listener),
     onDelete: (scopePath, listener) => subscribe('delete', scopePath, listener),

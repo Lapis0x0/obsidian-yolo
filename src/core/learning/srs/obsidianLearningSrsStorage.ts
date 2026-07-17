@@ -5,6 +5,8 @@ import {
   ensureLearningJsonDbRootDir,
 } from '../../paths/yoloManagedData'
 import {
+  LEGACY_JSON_DB_DIR_NAME,
+  YOLO_JSON_DB_DIR_NAME,
   YOLO_LEARNING_SRS_DIR_NAME,
   getYoloJsonDbRootDir,
 } from '../../paths/yoloPaths'
@@ -68,15 +70,50 @@ export class ObsidianLearningSrsStorage implements LearningSrsStorage {
     return { path, content: await this.app.vault.adapter.read(path) }
   }
 
-  async write(projectSlug: string, content: string): Promise<void> {
+  async exists(projectSlug: string): Promise<boolean> {
+    return this.app.vault.adapter.exists(await this.ensure(projectSlug))
+  }
+
+  async write(projectSlug: string, content: string): Promise<string> {
     const path = await this.ensure(projectSlug)
     await this.app.vault.adapter.write(path, content)
+    return path
+  }
+
+  async writeProjectStateAtPath(
+    projectSlug: string,
+    path: string,
+    content: string,
+  ): Promise<void> {
+    await this.app.vault.adapter.write(
+      this.validateProjectStatePath(projectSlug, path),
+      content,
+    )
   }
 
   async remove(projectSlug: string): Promise<boolean> {
     const path = await this.ensure(projectSlug)
     if (!(await this.app.vault.adapter.exists(path))) return false
     await this.app.vault.adapter.remove(path)
+    return true
+  }
+
+  async existsProjectStateAtPath(
+    projectSlug: string,
+    path: string,
+  ): Promise<boolean> {
+    return this.app.vault.adapter.exists(
+      this.validateProjectStatePath(projectSlug, path),
+    )
+  }
+
+  async removeProjectStateAtPath(
+    projectSlug: string,
+    path: string,
+  ): Promise<boolean> {
+    const validated = this.validateProjectStatePath(projectSlug, path)
+    if (!(await this.app.vault.adapter.exists(validated))) return false
+    await this.app.vault.adapter.remove(validated)
     return true
   }
 
@@ -104,5 +141,21 @@ export class ObsidianLearningSrsStorage implements LearningSrsStorage {
       await this.app.vault.adapter.mkdir(directory)
     }
     return directory
+  }
+
+  private validateProjectStatePath(projectSlug: string, path: string): string {
+    const normalized = normalizePath(path)
+    const suffix = `/${YOLO_LEARNING_SRS_DIR_NAME}/${projectSlug}.json`
+    const managedRoots = [YOLO_JSON_DB_DIR_NAME, LEGACY_JSON_DB_DIR_NAME]
+    const isManaged = managedRoots.some((root) => {
+      const managedPath = `${root}${suffix}`
+      return (
+        normalized === managedPath || normalized.endsWith(`/${managedPath}`)
+      )
+    })
+    if (!isManaged) {
+      throw new Error(`Invalid Learning SRS project state path: ${path}`)
+    }
+    return normalized
   }
 }

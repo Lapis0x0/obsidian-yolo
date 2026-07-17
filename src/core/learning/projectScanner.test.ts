@@ -35,7 +35,9 @@ function createVault(
         (entry): entry is Extract<LearningVaultEntry, { kind: 'file' }> =>
           entry.kind === 'file' && entry.name.endsWith('.md'),
       ),
+    exists: async (path) => entries.has(path),
     readText: async (path) => contents[path] ?? '',
+    readBinary: async () => new ArrayBuffer(0),
     onCreate: () => () => undefined,
     onModify: () => () => undefined,
     onDelete: () => () => undefined,

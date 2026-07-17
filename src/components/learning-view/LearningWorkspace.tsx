@@ -25,7 +25,6 @@ import { Workspace } from './Workspace'
 
 export function LearningWorkspace() {
   const host = useLearningUiHost()
-  const app = host.app
   const vault = host.vault
   const [settings, setSettings] = useState(() => host.settings)
   const baseDir = settings.learningBaseDir
@@ -112,8 +111,10 @@ export function LearningWorkspace() {
     const run = async () => {
       try {
         await recoverAnkiImports({
-          app,
+          vault,
+          writer: host.vaultWriter,
           srsStore: host.srsStore,
+          journalStorage: host.ankiImportJournalStorage,
         })
       } catch (error) {
         console.error('[YOLO] Failed to recover Anki imports:', error)
@@ -128,7 +129,7 @@ export function LearningWorkspace() {
       cancelled = true
       bus.stopWatchingVault()
     }
-  }, [app, baseDir, bus, host, statsService])
+  }, [baseDir, bus, host, statsService, vault])
 
   useEffect(() => {
     const project = vaultProjects.find((item) => item.id === projectId)

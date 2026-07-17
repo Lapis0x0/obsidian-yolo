@@ -107,7 +107,7 @@ export function AnkiImportModal({
       if (controller.signal.aborted) return
       setState('parsing')
       const nextPlan = await prepareAnkiImport({
-        app,
+        vault: host.vault,
         baseDir,
         packageBytes,
         wasmBytes: wasm.buffer.slice(
@@ -160,21 +160,21 @@ export function AnkiImportModal({
     abortRef.current = controller
     setState('importing')
     try {
-      const listing = (await app.vault.adapter.exists(baseDir))
-        ? await app.vault.adapter.list(baseDir)
-        : { files: [], folders: [] }
-      const existingSlugs = listing.folders.map(
-        (path) => path.split('/').at(-1) ?? '',
-      )
+      const existingSlugs = host.vault
+        .listChildren(baseDir)
+        .filter((entry) => entry.kind === 'folder')
+        .map((entry) => entry.name)
       const renamed = renameAnkiImportPlan({
         plan,
         projectName: name,
         existingProjectSlugs: existingSlugs,
       })
       const projectPath = await commitAnkiImportPlan({
-        app,
+        vault: host.vault,
+        writer: host.vaultWriter,
         plan: renamed,
         srsStore: host.srsStore,
+        journalStorage: host.ankiImportJournalStorage,
         signal: controller.signal,
       })
       onClose()

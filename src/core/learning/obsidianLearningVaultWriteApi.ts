@@ -1,4 +1,4 @@
-import { App, TFile, normalizePath } from 'obsidian'
+import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
 import { normalizeLearningVaultPath } from './learningVaultReadApi'
 import type {
@@ -100,6 +100,9 @@ export function createObsidianLearningVaultWriteApi(
       if (app.vault.getAbstractFileByPath(path)) return
       await app.vault.adapter.mkdir(path)
     },
+    createFolder: async (folderPath) => {
+      await app.vault.createFolder(normalizeVaultPath(folderPath))
+    },
     listChildNames: async (folderPath) => {
       const listed = await app.vault.adapter.list(
         normalizeVaultPath(folderPath),
@@ -138,6 +141,31 @@ export function createObsidianLearningVaultWriteApi(
         normalizeVaultPath(oldPath),
         normalizeVaultPath(newPath),
       )
+    },
+    removeExactPath: async (filePath) => {
+      const path = normalizeVaultPath(filePath)
+      const entry = app.vault.getAbstractFileByPath(path)
+      if (entry instanceof TFile) {
+        // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Transaction rollback must permanently remove only its recorded paths.
+        await app.vault.delete(entry, true)
+        return
+      }
+      if (entry instanceof TFolder) {
+        throw new Error(`Learning vault path is not a file: ${path}`)
+      }
+      if (!(await app.vault.adapter.exists(path))) return
+      const stat = await app.vault.adapter.stat(path)
+      if (stat?.type === 'folder') {
+        throw new Error(`Learning vault path is not a file: ${path}`)
+      }
+      await app.vault.adapter.remove(path)
+    },
+    removeEmptyFolder: async (folderPath) => {
+      const path = normalizeVaultPath(folderPath)
+      if (!(await app.vault.adapter.exists(path))) return
+      const children = await app.vault.adapter.list(path)
+      if (children.files.length > 0 || children.folders.length > 0) return
+      await app.vault.adapter.rmdir(path, false)
     },
     removeTree: async (folderPath) => {
       await app.vault.adapter.rmdir(normalizeVaultPath(folderPath), true)

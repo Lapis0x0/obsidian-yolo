@@ -24,6 +24,7 @@ function createVault(initial: Record<string, string> = {}) {
     },
   )
   const createBinary = jest.fn(async (path: string) => createFile(path))
+  const createFolder = jest.fn(async () => undefined)
   const mkdir = jest.fn(async () => undefined)
   const list = jest.fn(async () => ({
     files: ['p/one.md', 'p/two.pdf'],
@@ -31,6 +32,15 @@ function createVault(initial: Record<string, string> = {}) {
   }))
   const rename = jest.fn(async () => undefined)
   const rmdir = jest.fn(async () => undefined)
+  const remove = jest.fn(async () => undefined)
+  const exists = jest.fn(async (path: string) => entries.has(path))
+  const stat = jest.fn(async (path: string) =>
+    entries.has(path) ? { type: 'file' as const } : null,
+  )
+  const deletePath = jest.fn(async (entry: TFile) => {
+    entries.delete(entry.path)
+    contents.delete(entry.path)
+  })
 
   const app = {
     vault: {
@@ -40,9 +50,11 @@ function createVault(initial: Record<string, string> = {}) {
       read: jest.fn(async (file: TFile) => contents.get(file.path) ?? ''),
       create,
       createBinary,
+      createFolder,
       modify,
       process,
-      adapter: { mkdir, list, rename, rmdir },
+      delete: deletePath,
+      adapter: { mkdir, list, rename, rmdir, remove, exists, stat },
     },
   } as unknown as App
   return {
@@ -54,10 +66,13 @@ function createVault(initial: Record<string, string> = {}) {
     modify,
     process,
     createBinary,
+    createFolder,
     mkdir,
     list,
     rename,
     rmdir,
+    exists,
+    deletePath,
   }
 }
 
@@ -71,10 +86,12 @@ function createFile(path: string): TFile {
 
 describe('Obsidian Learning vault write adapter', () => {
   it('provides normalized path operations through Vault and DataAdapter', async () => {
-    const { api, createBinary, mkdir, rename, rmdir } = createVault()
+    const { api, createBinary, createFolder, mkdir, rename, rmdir } =
+      createVault()
     const content = new ArrayBuffer(2)
 
     await api.ensureFolder('/p//nested/')
+    await api.createFolder('/p//exclusive/')
     await expect(api.listChildNames('/p/')).resolves.toEqual([
       'one.md',
       'two.pdf',
@@ -89,9 +106,26 @@ describe('Obsidian Learning vault write adapter', () => {
     await api.removeTree('/p//nested/')
 
     expect(mkdir).toHaveBeenCalledWith('p/nested')
+    expect(createFolder).toHaveBeenCalledWith('p/exclusive')
     expect(createBinary).toHaveBeenCalledWith('p/binary.pdf', content)
     expect(rename).toHaveBeenCalledWith('p/one.md', 'p/renamed.md')
     expect(rmdir).toHaveBeenCalledWith('p/nested', true)
+  })
+
+  it('removes folders only when they are empty and never recursively', async () => {
+    const { api, exists, list, rmdir } = createVault()
+    exists.mockResolvedValue(true)
+    list.mockResolvedValueOnce({ files: [], folders: [] })
+
+    await api.removeEmptyFolder('/p//empty/')
+    expect(rmdir).toHaveBeenCalledWith('p/empty', false)
+
+    list.mockResolvedValueOnce({
+      files: ['p/nonempty/foreign.md'],
+      folders: [],
+    })
+    await api.removeEmptyFolder('/p//nonempty/')
+    expect(rmdir).not.toHaveBeenCalledWith('p/nonempty', expect.anything())
   })
 
   it('creates and writes text by path with the resulting mtime', async () => {
@@ -108,6 +142,19 @@ describe('Obsidian Learning vault write adapter', () => {
 
     expect(contents.get('p/new.md')).toBe('new')
     expect(contents.get('p/existing.md')).toBe('after')
+  })
+
+  it('permanently removes only the exact requested path', async () => {
+    const { api, contents, deletePath } = createVault({
+      'p/owned.md': 'owned',
+      'p/other.md': 'other',
+    })
+
+    await api.removeExactPath('/p//owned.md/')
+
+    expect(deletePath).toHaveBeenCalledWith(expect.any(TFile), true)
+    expect(contents.has('p/owned.md')).toBe(false)
+    expect(contents.get('p/other.md')).toBe('other')
   })
 
   it('creates only when absent and normalizes paths inside the adapter', async () => {

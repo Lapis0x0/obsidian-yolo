@@ -25,7 +25,9 @@ export type LearningVaultReadApi = {
   getEntry(path: string): LearningVaultEntry | null
   listChildren(folderPath: string): readonly LearningVaultEntry[]
   listMarkdownFiles(): readonly LearningVaultFile[]
+  exists(path: string): Promise<boolean>
   readText(filePath: string): Promise<string>
+  readBinary(filePath: string): Promise<ArrayBuffer>
   onCreate(scopePath: string, listener: LearningVaultEntryListener): () => void
   onModify(scopePath: string, listener: LearningVaultEntryListener): () => void
   onDelete(scopePath: string, listener: LearningVaultEntryListener): () => void

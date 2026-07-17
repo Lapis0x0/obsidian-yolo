@@ -1,12 +1,15 @@
 import { dump as dumpYaml } from 'js-yaml'
-import { App, TFile, TFolder, normalizePath } from 'obsidian'
 
-import { YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME } from '../../paths/yoloPaths'
 import { parseCardFile } from '../cardFile'
-import { createObsidianLearningVaultReadApi } from '../obsidianLearningVaultReadApi'
+import {
+  type LearningVaultReadApi,
+  normalizeLearningVaultPath,
+} from '../learningVaultReadApi'
+import type { LearningVaultWriteApi } from '../learningVaultWriteApi'
 import { scanProject } from '../projectScanner'
 import { LearningSrsStore } from '../srs/srsStore'
 
+import type { AnkiImportJournalStorage } from './ankiImportJournalStorage'
 import type { AnkiImportPlan } from './importPlan'
 
 type ImportJournal = {
@@ -27,6 +30,9 @@ const throwIfAborted = (signal?: AbortSignal): void => {
   if (signal?.aborted)
     throw new DOMException('Anki import was aborted', 'AbortError')
 }
+
+const joinPath = (...parts: string[]): string =>
+  normalizeLearningVaultPath(parts.join('/'))
 
 const replaceMedia = (
   markdown: string,
@@ -77,49 +83,20 @@ const indexFile = (plan: AnkiImportPlan): string =>
       .join('\n'),
   )
 
-const ensureDir = async (app: App, path: string): Promise<void> => {
-  if (!(await app.vault.adapter.exists(path)))
-    await app.vault.adapter.mkdir(path)
-}
-
-const journalDirectory = async (
-  app: App,
-  srsStore: LearningSrsStore,
-): Promise<string> => {
-  const root = await srsStore.getLearningDataRootDir()
-  const dir = normalizePath(`${root}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}`)
-  await ensureDir(app, dir)
-  return dir
-}
-
-const removeJournal = async (app: App, path: string): Promise<void> => {
-  if (await app.vault.adapter.exists(path)) await app.vault.adapter.remove(path)
-}
-
-const removeVaultPath = async (app: App, path: string): Promise<void> => {
-  const file = app.vault.getAbstractFileByPath(path)
-  if (file instanceof TFile || file instanceof TFolder) {
-    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Transaction rollback must remove partial import files permanently.
-    await app.vault.delete(file, true)
-    return
-  }
-  if (!(await app.vault.adapter.exists(path))) return
-  const stat = await app.vault.adapter.stat(path)
-  if (stat?.type === 'folder') await app.vault.adapter.rmdir(path, true)
-  else await app.vault.adapter.remove(path)
-}
-
 const rollback = async (
-  app: App,
+  writer: LearningVaultWriteApi,
   srsStore: LearningSrsStore,
   journal: ImportJournal,
 ): Promise<void> => {
   assertJournalScope(journal)
   for (const path of [...journal.createdFiles].reverse())
-    await removeVaultPath(app, path)
-  await srsStore.deleteProjectState(journal.projectSlug)
+    await writer.removeExactPath(path)
+  await srsStore.deletePersistedProjectStateAtPath(
+    journal.projectSlug,
+    journal.srsPath,
+  )
   for (const path of [...journal.createdFolders].reverse())
-    await removeVaultPath(app, path)
+    await writer.removeEmptyFolder(path)
 }
 
 const assertJournalScope = (journal: ImportJournal): void => {
@@ -135,28 +112,24 @@ const assertJournalScope = (journal: ImportJournal): void => {
 }
 
 const verify = async (
-  app: App,
+  vault: LearningVaultReadApi,
   plan: AnkiImportPlan,
   srsStore: LearningSrsStore,
 ): Promise<void> => {
-  const folder = app.vault.getAbstractFileByPath(plan.projectPath)
-  if (
-    !(folder instanceof TFolder) ||
-    !(await scanProject(createObsidianLearningVaultReadApi(app), folder.path))
-  )
+  if (!(await scanProject(vault, plan.projectPath)))
     throw new Error('Imported Anki project cannot be scanned')
   const uuids = new Set<string>()
   for (const chapter of plan.chapters) {
-    const path = normalizePath(`${plan.projectPath}/${chapter.slug}/cards.md`)
-    const content = await app.vault.adapter.read(path)
+    const path = joinPath(plan.projectPath, chapter.slug, 'cards.md')
+    const content = await vault.readText(path)
     const parsed = parseCardFile(content, { mode: 'chapter-direct', path })
     if (!parsed.complete || parsed.cards.length !== chapter.cards.length)
       throw new Error(`Imported cards failed validation: ${path}`)
     parsed.cards.forEach((card) => uuids.add(card.cardUuid))
   }
   for (const asset of plan.assets) {
-    const path = normalizePath(`${plan.projectPath}/assets/${asset.fileName}`)
-    const bytes = new Uint8Array(await app.vault.adapter.readBinary(path))
+    const path = joinPath(plan.projectPath, 'assets', asset.fileName)
+    const bytes = new Uint8Array(await vault.readBinary(path))
     if (
       bytes.byteLength !== asset.bytes.byteLength ||
       bytes.some((v, i) => v !== asset.bytes[i])
@@ -178,127 +151,147 @@ const verify = async (
 }
 
 export async function commitAnkiImportPlan({
-  app,
+  vault,
+  writer,
   plan,
   srsStore,
+  journalStorage,
   signal,
 }: {
-  app: App
+  vault: LearningVaultReadApi
+  writer: LearningVaultWriteApi
   plan: AnkiImportPlan
   srsStore: LearningSrsStore
+  journalStorage: AnkiImportJournalStorage
   signal?: AbortSignal
 }): Promise<string> {
   throwIfAborted(signal)
-  if (await app.vault.adapter.exists(plan.projectPath))
+  if (await vault.exists(plan.projectPath))
     throw new Error(`Import target already exists: ${plan.projectPath}`)
-  await ensureDir(app, plan.baseDir)
-  const journalPath = normalizePath(
-    `${await journalDirectory(app, srsStore)}/${crypto.randomUUID()}.json`,
-  )
+  await writer.ensureFolder(plan.baseDir)
   const journal: ImportJournal = {
     version: 1,
     runId: crypto.randomUUID(),
     projectSlug: plan.projectSlug,
     projectPath: plan.projectPath,
-    indexPath: normalizePath(`${plan.projectPath}/index.md`),
+    indexPath: joinPath(plan.projectPath, 'index.md'),
     srsPath: await srsStore.getProjectStateFilePath(plan.projectSlug),
     createdFiles: [],
     createdFolders: [],
   }
+  const serializeJournal = () => JSON.stringify(journal, null, 2)
+  const journalPath = await journalStorage.create(serializeJournal())
   const saveJournal = () =>
-    app.vault.adapter.write(journalPath, JSON.stringify(journal, null, 2))
-  await saveJournal()
+    journalStorage.write(journalPath, serializeJournal())
   try {
     const makeFolder = async (path: string) => {
+      await writer.createFolder(path)
       journal.createdFolders.push(path)
-      await saveJournal()
-      await app.vault.createFolder(path)
+      try {
+        await saveJournal()
+      } catch (error) {
+        journal.createdFolders.pop()
+        await writer.removeEmptyFolder(path)
+        throw error
+      }
     }
     const writeText = async (path: string, content: string) => {
+      await writer.createText(path, content)
       journal.createdFiles.push(path)
-      await saveJournal()
-      await app.vault.create(path, content)
+      try {
+        await saveJournal()
+      } catch (error) {
+        journal.createdFiles.pop()
+        await writer.removeExactPath(path)
+        throw error
+      }
     }
     const writeBinary = async (path: string, bytes: Uint8Array) => {
-      journal.createdFiles.push(path)
-      await saveJournal()
-      await app.vault.createBinary(
+      await writer.createBinary(
         path,
         bytes.buffer.slice(
           bytes.byteOffset,
           bytes.byteOffset + bytes.byteLength,
         ),
       )
+      journal.createdFiles.push(path)
+      try {
+        await saveJournal()
+      } catch (error) {
+        journal.createdFiles.pop()
+        await writer.removeExactPath(path)
+        throw error
+      }
     }
     await makeFolder(plan.projectPath)
-    const assetsPath = normalizePath(`${plan.projectPath}/assets`)
+    const assetsPath = joinPath(plan.projectPath, 'assets')
     await makeFolder(assetsPath)
     const writtenAssets = new Set<string>()
     for (const asset of plan.assets) {
       if (writtenAssets.has(asset.fileName)) continue
       writtenAssets.add(asset.fileName)
-      await writeBinary(
-        normalizePath(`${assetsPath}/${asset.fileName}`),
-        asset.bytes,
-      )
+      await writeBinary(joinPath(assetsPath, asset.fileName), asset.bytes)
     }
     for (const chapter of plan.chapters) {
       throwIfAborted(signal)
-      const path = normalizePath(`${plan.projectPath}/${chapter.slug}`)
+      const path = joinPath(plan.projectPath, chapter.slug)
       await makeFolder(path)
       await writeText(
-        normalizePath(`${path}/index.md`),
+        joinPath(path, 'index.md'),
         yamlFile({ title: chapter.title }),
       )
-      await writeText(
-        normalizePath(`${path}/cards.md`),
-        cardFile(plan, chapter),
-      )
+      await writeText(joinPath(path, 'cards.md'), cardFile(plan, chapter))
     }
     throwIfAborted(signal)
-    await srsStore.initializeProjectState(plan.projectSlug, plan.srsState, {
-      activateCache: false,
-    })
+    await srsStore.initializeProjectStateAtPath(
+      plan.projectSlug,
+      journal.srsPath,
+      plan.srsState,
+      { activateCache: false },
+    )
     throwIfAborted(signal)
     await writeText(journal.indexPath, indexFile(plan))
     srsStore.activateProjectState(plan.projectSlug, plan.srsState)
-    await verify(app, plan, srsStore)
-    await removeJournal(app, journalPath)
+    await verify(vault, plan, srsStore)
+    await journalStorage.remove(journalPath)
     return plan.projectPath
   } catch (error) {
-    await rollback(app, srsStore, journal)
-    await removeJournal(app, journalPath)
+    await rollback(writer, srsStore, journal)
+    await journalStorage.remove(journalPath)
     throw error
   }
 }
 
 export async function recoverAnkiImports({
-  app,
+  vault,
+  writer,
   srsStore,
+  journalStorage,
 }: {
-  app: App
+  vault: LearningVaultReadApi
+  writer: LearningVaultWriteApi
   srsStore: LearningSrsStore
+  journalStorage: AnkiImportJournalStorage
 }): Promise<{ confirmed: string[]; rolledBack: string[] }> {
-  const dir = await journalDirectory(app, srsStore)
-  const listing = await app.vault.adapter.list(dir)
   const confirmed: string[] = []
   const rolledBack: string[] = []
-  for (const path of listing.files.filter((file) => file.endsWith('.json'))) {
-    const journal = JSON.parse(
-      await app.vault.adapter.read(path),
-    ) as ImportJournal
+  for (const path of await journalStorage.list()) {
+    const journal = JSON.parse(await journalStorage.read(path)) as ImportJournal
     assertJournalScope(journal)
     const complete =
-      (await app.vault.adapter.exists(journal.indexPath)) &&
-      (await app.vault.adapter.exists(journal.srsPath))
+      (await vault.exists(journal.indexPath)) &&
+      (await srsStore.hasPersistedProjectStateAtPath(
+        journal.projectSlug,
+        journal.srsPath,
+      ))
     if (complete) {
       srsStore.invalidateProject(journal.projectSlug)
       confirmed.push(journal.projectPath)
     } else {
-      await rollback(app, srsStore, journal)
+      await rollback(writer, srsStore, journal)
       rolledBack.push(journal.projectPath)
     }
-    await removeJournal(app, path)
+    await journalStorage.remove(path)
   }
   return { confirmed, rolledBack }
 }

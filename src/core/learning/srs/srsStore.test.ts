@@ -21,6 +21,9 @@ function createApp(initialFiles: Record<string, string> = {}) {
     write: jest.fn(async (path: string, content: string) => {
       files.set(path, content)
     }),
+    remove: jest.fn(async (path: string) => {
+      files.delete(path)
+    }),
   }
   const app = { vault: { adapter } } as unknown as App
   return { app, adapter, files }
@@ -30,6 +33,51 @@ const createStore = (app: App): LearningSrsStore =>
   new LearningSrsStore(new ObsidianLearningSrsStorage(app, () => null))
 
 describe('LearningSrsStore', () => {
+  it('reports whether project state is persisted without loading it', async () => {
+    const { app } = createApp({
+      'YOLO/.yolo_json_db/learning-srs/project.json': '{}',
+    })
+    const store = createStore(app)
+
+    await expect(store.hasPersistedProjectState('project')).resolves.toBe(true)
+    await expect(store.hasPersistedProjectState('missing')).resolves.toBe(false)
+  })
+
+  it('checks and removes a validated persisted state path independent of current root', async () => {
+    const oldPath = 'Old/.yolo_json_db/learning-srs/project.json'
+    const legacyPath = '.smtcmp_json_db/learning-srs/project.json'
+    const currentPath = 'Current/.yolo_json_db/learning-srs/project.json'
+    const { app, files } = createApp({
+      [oldPath]: '{}',
+      [legacyPath]: '{}',
+      [currentPath]: '{}',
+    })
+    const store = new LearningSrsStore(
+      new ObsidianLearningSrsStorage(app, () => ({
+        yolo: { baseDir: 'Current' },
+      })),
+    )
+    const invalidate = jest.spyOn(store, 'invalidateProject')
+
+    await expect(
+      store.hasPersistedProjectStateAtPath('project', oldPath),
+    ).resolves.toBe(true)
+    await store.deletePersistedProjectStateAtPath('project', oldPath)
+
+    expect(files.has(oldPath)).toBe(false)
+    expect(files.has(currentPath)).toBe(true)
+    expect(invalidate).toHaveBeenCalledWith('project')
+    await expect(
+      store.hasPersistedProjectStateAtPath('project', legacyPath),
+    ).resolves.toBe(true)
+    await expect(
+      store.hasPersistedProjectStateAtPath(
+        'project',
+        'Old/.yolo_json_db/not-srs/project.json',
+      ),
+    ).rejects.toThrow('Invalid Learning SRS project state path')
+  })
+
   it('stores project state under the configured YOLO root', async () => {
     const { app, files } = createApp()
     const store = new LearningSrsStore(

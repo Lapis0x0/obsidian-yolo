@@ -114,14 +114,39 @@ export class LearningSrsStore {
     projectSlug: string,
     state: SrsProjectState,
     options: { activateCache?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<string> {
     return this.enqueueWrite(async () => {
       this.validateProjectSlug(projectSlug)
       const validated = this.parseProjectState(
         structuredClone(state),
         `${projectSlug}.json`,
       ).state
-      await this.writeProjectState(projectSlug, validated)
+      const persistedPath = await this.writeProjectState(projectSlug, validated)
+      if (options.activateCache !== false)
+        this.cache.set(projectSlug, validated)
+      else this.invalidateProject(projectSlug)
+      this.emitMutation(projectSlug)
+      return persistedPath
+    })
+  }
+
+  initializeProjectStateAtPath(
+    projectSlug: string,
+    path: string,
+    state: SrsProjectState,
+    options: { activateCache?: boolean } = {},
+  ): Promise<void> {
+    return this.enqueueWrite(async () => {
+      this.validateProjectSlug(projectSlug)
+      const validated = this.parseProjectState(
+        structuredClone(state),
+        path,
+      ).state
+      await this.storage.writeProjectStateAtPath(
+        projectSlug,
+        path,
+        JSON.stringify(validated, null, 2),
+      )
       if (options.activateCache !== false)
         this.cache.set(projectSlug, validated)
       else this.invalidateProject(projectSlug)
@@ -154,6 +179,35 @@ export class LearningSrsStore {
     this.validateProjectSlug(projectSlug)
     await this.getLearningDataRootDir()
     return this.storage.ensure(projectSlug)
+  }
+
+  async hasPersistedProjectState(projectSlug: string): Promise<boolean> {
+    this.validateProjectSlug(projectSlug)
+    await this.getLearningDataRootDir()
+    return this.storage.exists(projectSlug)
+  }
+
+  async hasPersistedProjectStateAtPath(
+    projectSlug: string,
+    path: string,
+  ): Promise<boolean> {
+    this.validateProjectSlug(projectSlug)
+    return this.storage.existsProjectStateAtPath(projectSlug, path)
+  }
+
+  deletePersistedProjectStateAtPath(
+    projectSlug: string,
+    path: string,
+  ): Promise<void> {
+    return this.enqueueWrite(async () => {
+      this.validateProjectSlug(projectSlug)
+      const existed = await this.storage.removeProjectStateAtPath(
+        projectSlug,
+        path,
+      )
+      this.invalidateProject(projectSlug)
+      if (existed) this.emitMutation(projectSlug)
+    })
   }
 
   async getProjectState(projectSlug: string): Promise<SrsProjectState> {
@@ -517,9 +571,9 @@ export class LearningSrsStore {
   private async writeProjectState(
     projectSlug: string,
     state: SrsProjectState,
-  ): Promise<void> {
+  ): Promise<string> {
     await this.getLearningDataRootDir()
-    await this.storage.write(projectSlug, JSON.stringify(state, null, 2))
+    return this.storage.write(projectSlug, JSON.stringify(state, null, 2))
   }
 
   private parseProjectState(

@@ -1,17 +1,17 @@
-import type { App } from 'obsidian'
+import type { LearningVaultReadApi } from '../learningVaultReadApi'
 
 import { type AnkiImportPlan, buildAnkiImportPlan } from './importPlan'
 import { commitAnkiImportPlan } from './importWriter'
 import { parseAnkiPackageInWorker } from './workerClient'
 
 export async function prepareAnkiImport({
-  app,
+  vault,
   baseDir,
   packageBytes,
   wasmBytes,
   signal,
 }: {
-  app: App
+  vault: LearningVaultReadApi
   baseDir: string
   packageBytes: ArrayBuffer
   wasmBytes: ArrayBuffer
@@ -20,10 +20,10 @@ export async function prepareAnkiImport({
   const parsed = await parseAnkiPackageInWorker(packageBytes, wasmBytes, signal)
   if (signal?.aborted)
     throw new DOMException('Anki import was aborted', 'AbortError')
-  const listing = (await app.vault.adapter.exists(baseDir))
-    ? await app.vault.adapter.list(baseDir)
-    : { files: [], folders: [] }
-  const slugs = listing.folders.map((path) => path.split('/').at(-1) ?? '')
+  const slugs = vault
+    .listChildren(baseDir)
+    .filter((entry) => entry.kind === 'folder')
+    .map((entry) => entry.name)
   return buildAnkiImportPlan({ parsed, baseDir, existingProjectSlugs: slugs })
 }
 
