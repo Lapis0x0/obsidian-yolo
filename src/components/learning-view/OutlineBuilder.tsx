@@ -63,6 +63,7 @@ import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import { summarizeCardGeneration } from './cardsWorkspace'
 import { formatLearningText } from './i18n'
+import { createLearningGenerationHost } from './learningGenerationHost'
 
 type Phase = 'outline' | 'ready' | 'knowledge' | 'error'
 type OutlineWaitingStage = 'preparing' | 'structuring'
@@ -137,6 +138,7 @@ export function OutlineBuilder({
       : undefined
   const learningModelId =
     plugin.settings.learningOptions.modelId || plugin.settings.chatModelId
+  const generationHost = createLearningGenerationHost(plugin)
 
   const createChapter = (chapter: OutlineChapter): EditableChapter => ({
     ...chapter,
@@ -169,7 +171,7 @@ export function OutlineBuilder({
     setProjectGoal('')
     setEstimatedKnowledgePoints(0)
     void generateOutline({
-      plugin,
+      host: generationHost,
       modelId: learningModelId,
       topic,
       level,
@@ -344,7 +346,7 @@ export function OutlineBuilder({
           try {
             const { drafts, debugData } =
               await generateKnowledgePointsForChapter({
-                plugin,
+                host: generationHost,
                 modelId: learningModelId,
                 chapterIndex: index,
                 projectTopic: resolvedProjectName,
@@ -528,7 +530,7 @@ export function OutlineBuilder({
 
       onCardGenerationStarted(runId, scaffold.projectPath)
       void generateCardsParallel({
-        plugin,
+        host: generationHost,
         modelId: learningModelId,
         projectTopic: resolvedProjectName,
         projectPath: scaffold.projectPath,

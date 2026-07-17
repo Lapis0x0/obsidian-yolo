@@ -1,14 +1,13 @@
-import type YoloPlugin from '../../../main'
 import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 
 import { PhaseDebugCollector, emitPhaseDebugLog } from './debugLog'
+import type { LearningGenerationHost } from './host'
 import { OUTLINE_GENERATOR_PROMPT } from './prompts'
-import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type { Outline, OutlineChapter } from './types'
 
 export type GenerateOutlineOptions = {
-  plugin: YoloPlugin
+  host: LearningGenerationHost
   modelId?: string
   topic: string
   level: string
@@ -23,7 +22,7 @@ export type GenerateOutlineOptions = {
 }
 
 export async function generateOutline({
-  plugin,
+  host,
   modelId,
   topic,
   level,
@@ -46,7 +45,7 @@ export async function generateOutline({
   }
   const debug = new PhaseDebugCollector()
 
-  const stream = plugin.agent.stream({
+  const stream = host.agent.stream({
     prompt: buildOutlinePrompt({
       topic,
       level,
@@ -58,11 +57,7 @@ export async function generateOutline({
     mode: 'agent',
     yolo: true,
     systemPromptOverride: OUTLINE_GENERATOR_PROMPT,
-    tools: {
-      allowedToolNames: workspaceScope?.enabled
-        ? LEARNING_READONLY_TOOL_NAMES
-        : [],
-    },
+    capability: workspaceScope?.enabled ? 'readonly-vault' : 'none',
     workspaceScope,
     activity,
     abortSignal,

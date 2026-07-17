@@ -1,5 +1,6 @@
-import type YoloPlugin from '../../../main'
+import type { App } from 'obsidian'
 
+import type { LearningGenerationHost } from './host'
 import { generateKnowledgePointsForChapter } from './knowledgePointGenerator'
 
 describe('generateKnowledgePointsForChapter', () => {
@@ -8,12 +9,13 @@ describe('generateKnowledgePointsForChapter', () => {
     const stream = jest.fn(async function* () {
       yield { type: 'completed' as const, text: markdown }
     })
-    const plugin = {
-      agent: { stream },
-    } as unknown as YoloPlugin
+    const host: LearningGenerationHost = {
+      app: {} as App,
+      agent: { stream: stream as LearningGenerationHost['agent']['stream'] },
+    }
 
     const result = await generateKnowledgePointsForChapter({
-      plugin,
+      host,
       modelId: 'learning-model',
       chapterIndex: 0,
       projectTopic: 'Python',
@@ -26,7 +28,10 @@ describe('generateKnowledgePointsForChapter', () => {
       { title: 'Variables', body: 'A variable stores a value.' },
     ])
     expect(stream).toHaveBeenCalledWith(
-      expect.objectContaining({ modelId: 'learning-model' }),
+      expect.objectContaining({
+        modelId: 'learning-model',
+        capability: 'none',
+      }),
     )
   })
 })

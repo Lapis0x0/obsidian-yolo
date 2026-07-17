@@ -2,7 +2,6 @@ import { dump as dumpYaml } from 'js-yaml'
 import { App, TFile, normalizePath } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
-import type YoloPlugin from '../../../main'
 import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { ChatAssistantMessage, ChatUserMessage } from '../../../types/chat'
 import { buildAgentApiUserMessage } from '../../agent/agent-api'
@@ -14,8 +13,8 @@ import {
   PhaseDebugCollector,
   emitChaptersDebugLog,
 } from './debugLog'
+import type { LearningGenerationHost } from './host'
 import { CARD_GENERATOR_PROMPT, buildCardPrompt } from './prompts'
-import { LEARNING_CARD_TOOL_NAMES } from './tools'
 import type {
   CardDraft,
   CardGenerationEvent,
@@ -50,7 +49,7 @@ type WrittenCardValidation = {
 }
 
 export type GenerateCardsForChapterOptions = {
-  plugin: YoloPlugin
+  host: LearningGenerationHost
   modelId?: string
   chapterIndex: number
   projectTopic: string
@@ -71,7 +70,7 @@ export type GenerateCardsForChapterOptions = {
 }
 
 export async function generateCardsForChapter({
-  plugin,
+  host,
   modelId,
   chapterIndex,
   projectTopic,
@@ -95,12 +94,12 @@ export async function generateCardsForChapter({
   discardedCount: number
   debugData: ChapterDebugData
 }> {
-  const knowledgeFile = plugin.app.vault.getAbstractFileByPath(knowledgePath)
+  const knowledgeFile = host.app.vault.getAbstractFileByPath(knowledgePath)
   if (!(knowledgeFile instanceof TFile)) {
     throw new Error(`Knowledge file not found: ${knowledgePath}`)
   }
 
-  const knowledgeSnapshot = await plugin.app.vault.read(knowledgeFile)
+  const knowledgeSnapshot = await host.app.vault.read(knowledgeFile)
   const validKpUuids = extractKnowledgePointUuids(knowledgeSnapshot)
   if (validKpUuids.size === 0) {
     throw new Error(
@@ -141,13 +140,13 @@ export async function generateCardsForChapter({
   ): Promise<{ text: string; error?: Error }> => {
     let accumulated = ''
     let completedText = ''
-    const stream = plugin.agent.stream({
+    const stream = host.agent.stream({
       ...request,
       modelId,
       mode: 'agent',
       yolo: true,
       systemPromptOverride: CARD_GENERATOR_PROMPT,
-      tools: { allowedToolNames: LEARNING_CARD_TOOL_NAMES },
+      capability: 'edit-vault',
       workspaceScope: cardWorkspaceScope,
       activity,
       abortSignal,
@@ -189,19 +188,19 @@ export async function generateCardsForChapter({
     throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
   }
 
-  await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
+  await assertKnowledgeUnchanged(host, knowledgeFile, knowledgeSnapshot)
   const cardsFile = await createCardsFile(
-    plugin,
+    host,
     cardsPath,
     chapterTitle,
     assignedDrafts,
   )
   try {
-    await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
+    await assertKnowledgeUnchanged(host, knowledgeFile, knowledgeSnapshot)
   } catch (error) {
-    const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
     // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back only the file created by this generation transaction.
-    await plugin.app.vault.delete(ownedCardsFile)
+    await host.app.vault.delete(ownedCardsFile)
     throw error
   }
   const expectedCardUuids = new Set(
@@ -209,7 +208,7 @@ export async function generateCardsForChapter({
   )
 
   let finalOutput = firstOutput
-  let fileContent = await plugin.app.vault.read(cardsFile)
+  let fileContent = await host.app.vault.read(cardsFile)
   let validation = validateWrittenCards(
     parseWrittenCardEntries(fileContent),
     expectedCardUuids,
@@ -242,22 +241,22 @@ export async function generateCardsForChapter({
     }
 
     if (abortSignal?.aborted) {
-      const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+      const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
       // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
-      await plugin.app.vault.delete(ownedCardsFile)
+      await host.app.vault.delete(ownedCardsFile)
       throw new Error(`Card generation aborted: ${chapterTitle}`)
     }
 
     try {
-      await assertKnowledgeUnchanged(plugin, knowledgeFile, knowledgeSnapshot)
+      await assertKnowledgeUnchanged(host, knowledgeFile, knowledgeSnapshot)
     } catch (error) {
-      const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+      const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
       // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Remove only the transient file created by this generation transaction.
-      await plugin.app.vault.delete(ownedCardsFile)
+      await host.app.vault.delete(ownedCardsFile)
       throw error
     }
-    const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
-    fileContent = await plugin.app.vault.read(currentCardsFile)
+    const currentCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
+    fileContent = await host.app.vault.read(currentCardsFile)
     validation = validateWrittenCards(
       parseWrittenCardEntries(fileContent),
       expectedCardUuids,
@@ -267,15 +266,15 @@ export async function generateCardsForChapter({
 
   const discardedCount = validation.discardedCount + streamParser.discardedCount
   if (validation.valid.length === 0) {
-    const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    const currentCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
     // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- An empty generated artifact should not be moved into the user's trash.
-    await plugin.app.vault.delete(currentCardsFile)
+    await host.app.vault.delete(currentCardsFile)
     throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
   }
 
   if (discardedCount > 0) {
-    const currentCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
-    await plugin.app.vault.modify(
+    const currentCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
+    await host.app.vault.modify(
       currentCardsFile,
       buildCardsContent(
         chapterTitle,
@@ -286,9 +285,9 @@ export async function generateCardsForChapter({
 
   const finalCards = validation.valid.map(toGeneratedCard)
   if (abortSignal?.aborted) {
-    const ownedCardsFile = getOwnedCardsFile(plugin, cardsPath, cardsFile)
+    const ownedCardsFile = getOwnedCardsFile(host, cardsPath, cardsFile)
     // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Roll back an aborted generation transaction.
-    await plugin.app.vault.delete(ownedCardsFile)
+    await host.app.vault.delete(ownedCardsFile)
     throw new Error(`Card generation aborted: ${chapterTitle}`)
   }
   const collected = debug.finalize()
@@ -316,7 +315,7 @@ export type CardGenerationChapter = OutlineChapter & {
 }
 
 export type GenerateCardsParallelOptions = {
-  plugin: YoloPlugin
+  host: LearningGenerationHost
   modelId?: string
   projectTopic: string
   projectPath: string
@@ -333,7 +332,7 @@ export type GenerateCardsParallelOptions = {
 }
 
 export async function generateCardsParallel({
-  plugin,
+  host,
   modelId,
   projectTopic,
   projectPath,
@@ -349,12 +348,12 @@ export async function generateCardsParallel({
   onChapterSettled,
 }: GenerateCardsParallelOptions): Promise<CardGenerationResult[]> {
   const chapterDebugData: ChapterDebugData[] = []
-  const usedCardUuids = await collectExistingCardUuids(plugin.app, projectPath)
+  const usedCardUuids = await collectExistingCardUuids(host.app, projectPath)
   const resolvedRunId = runId ?? `card-generation-${Date.now()}`
   const resolvedProjectId = projectId ?? projectPath
   const tasks = chapters.map(async (chapter, chapterIndex) => {
     let result: CardGenerationResult
-    if (plugin.app.vault.getAbstractFileByPath(chapter.cardsPath)) {
+    if (host.app.vault.getAbstractFileByPath(chapter.cardsPath)) {
       result = {
         chapterIndex,
         chapterTitle: chapter.title,
@@ -374,7 +373,7 @@ export async function generateCardsParallel({
     try {
       const { cards, debugData, status, discardedCount } =
         await generateCardsForChapter({
-          plugin,
+          host,
           modelId,
           chapterIndex,
           projectTopic,
@@ -558,11 +557,11 @@ function throwIfAborted(abortSignal: AbortSignal | undefined): void {
 }
 
 function getOwnedCardsFile(
-  plugin: YoloPlugin,
+  host: LearningGenerationHost,
   cardsPath: string,
   expectedFile: TFile,
 ): TFile {
-  const currentFile = plugin.app.vault.getAbstractFileByPath(cardsPath)
+  const currentFile = host.app.vault.getAbstractFileByPath(cardsPath)
   if (currentFile !== expectedFile) {
     throw new Error(`Cards file changed concurrently: ${cardsPath}`)
   }
@@ -609,15 +608,15 @@ ${details}
 }
 
 async function assertKnowledgeUnchanged(
-  plugin: YoloPlugin,
+  host: LearningGenerationHost,
   knowledgeFile: TFile,
   expectedContent: string,
 ): Promise<void> {
-  const currentFile = plugin.app.vault.getAbstractFileByPath(knowledgeFile.path)
+  const currentFile = host.app.vault.getAbstractFileByPath(knowledgeFile.path)
   if (!(currentFile instanceof TFile)) {
     throw new Error(`Knowledge file disappeared: ${knowledgeFile.path}`)
   }
-  const currentContent = await plugin.app.vault.read(currentFile)
+  const currentContent = await host.app.vault.read(currentFile)
   if (currentContent !== expectedContent) {
     throw new Error(
       `Knowledge file changed during generation: ${knowledgeFile.path}`,
@@ -626,12 +625,12 @@ async function assertKnowledgeUnchanged(
 }
 
 async function createCardsFile(
-  plugin: YoloPlugin,
+  host: LearningGenerationHost,
   cardsPath: string,
   chapterTitle: string,
   drafts: AssignedCardDraft[],
 ): Promise<TFile> {
-  if (plugin.app.vault.getAbstractFileByPath(cardsPath)) {
+  if (host.app.vault.getAbstractFileByPath(cardsPath)) {
     throw new Error(`Cards file already exists: ${cardsPath}`)
   }
   const blocks = drafts.map((draft) => {
@@ -639,7 +638,7 @@ async function createCardsFile(
     const kpPart = draft.kpUuid ? ` kp:${draft.kpUuid.toLowerCase()}` : ''
     return `## ${title}${title ? ' ' : ''}<!--card:${draft.cardUuid}${kpPart}-->\n\n${formatCardBody(draft.front, draft.back)}`
   })
-  return plugin.app.vault.create(
+  return host.app.vault.create(
     cardsPath,
     buildCardsContent(chapterTitle, blocks),
   )

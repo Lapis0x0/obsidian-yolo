@@ -1,11 +1,10 @@
-import type YoloPlugin from '../../../main'
 import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
 import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
+import type { LearningGenerationHost } from './host'
 import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
-import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
   ChapterGenerationResult,
   GenerationProgress,
@@ -14,7 +13,7 @@ import type {
 } from './types'
 
 export type GenerateKnowledgePointsForChapterOptions = {
-  plugin: YoloPlugin
+  host: LearningGenerationHost
   modelId?: string
   chapterIndex: number
   projectTopic: string
@@ -31,7 +30,7 @@ export type GenerateKnowledgePointsForChapterOptions = {
 }
 
 export async function generateKnowledgePointsForChapter({
-  plugin,
+  host,
   modelId,
   chapterIndex,
   projectTopic,
@@ -71,7 +70,7 @@ export async function generateKnowledgePointsForChapter({
     }
   }
 
-  const stream = plugin.agent.stream({
+  const stream = host.agent.stream({
     prompt: buildKnowledgePointPrompt({
       projectTopic,
       chapterTitle,
@@ -83,11 +82,7 @@ export async function generateKnowledgePointsForChapter({
     mode: 'agent',
     yolo: true,
     systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
-    tools: {
-      allowedToolNames: workspaceScope?.enabled
-        ? LEARNING_READONLY_TOOL_NAMES
-        : [],
-    },
+    capability: workspaceScope?.enabled ? 'readonly-vault' : 'none',
     workspaceScope,
     activity,
     abortSignal,
@@ -135,7 +130,7 @@ export async function generateKnowledgePointsForChapter({
 }
 
 export type GenerateKnowledgePointsParallelOptions = {
-  plugin: YoloPlugin
+  host: LearningGenerationHost
   modelId?: string
   projectTopic: string
   chapters: OutlineChapter[]
@@ -147,7 +142,7 @@ export type GenerateKnowledgePointsParallelOptions = {
 }
 
 export async function generateKnowledgePointsParallel({
-  plugin,
+  host,
   modelId,
   projectTopic,
   chapters,
@@ -166,7 +161,7 @@ export async function generateKnowledgePointsParallel({
     })
     try {
       const { drafts } = await generateKnowledgePointsForChapter({
-        plugin,
+        host,
         modelId,
         chapterIndex,
         projectTopic,

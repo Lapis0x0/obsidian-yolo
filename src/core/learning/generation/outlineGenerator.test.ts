@@ -1,5 +1,8 @@
-import type YoloPlugin from '../../../main'
+import type { App } from 'obsidian'
 
+import type { YoloAgentEvent } from '../../agent/agent-api'
+
+import type { LearningGenerationHost } from './host'
 import { generateOutline } from './outlineGenerator'
 import type { Outline } from './types'
 
@@ -8,7 +11,7 @@ describe('generateOutline', () => {
     const text =
       '{"projectName":"Python","projectGoal":"能够编写基础 Python 程序","chapters":[{"title":"第一章","contract":"覆盖变量与 { 类型 }"},{"title":"第二章","contract":"覆盖控制流"}],"estimatedKnowledgePoints":10}'
     const onRequest = jest.fn()
-    const plugin = createPlugin(
+    const host = createHost(
       [
         {
           type: 'text',
@@ -31,11 +34,12 @@ describe('generateOutline', () => {
 
     const snapshots: Outline[] = []
     const result = await generateOutline({
-      plugin,
+      host,
       modelId: 'learning-model',
       topic: 'python',
       level: 'beginner',
       goal: '入门',
+      workspaceScope: { enabled: true, include: ['references'], exclude: [] },
       onOutline: (outline) => snapshots.push(outline),
     })
 
@@ -81,12 +85,15 @@ describe('generateOutline', () => {
       estimatedKnowledgePoints: 10,
     })
     expect(onRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ modelId: 'learning-model' }),
+      expect.objectContaining({
+        modelId: 'learning-model',
+        capability: 'readonly-vault',
+      }),
     )
   })
 
   it('rejects an outline without a generated project goal', async () => {
-    const plugin = createPlugin([
+    const host = createHost([
       {
         type: 'completed',
         text: '{"projectName":"Python","chapters":[{"title":"第一章","contract":"覆盖基础语法"}],"estimatedKnowledgePoints":5}',
@@ -95,7 +102,7 @@ describe('generateOutline', () => {
 
     await expect(
       generateOutline({
-        plugin,
+        host,
         topic: 'python',
         level: 'beginner',
         goal: '入门',
@@ -104,18 +111,19 @@ describe('generateOutline', () => {
   })
 })
 
-function createPlugin(
+function createHost(
   events: unknown[],
   onRequest?: (request: unknown) => void,
-): YoloPlugin {
+): LearningGenerationHost {
   return {
+    app: {} as App,
     agent: {
       stream: (request: unknown) => {
         onRequest?.(request)
-        return streamEvents(events)
+        return streamEvents(events) as AsyncIterable<YoloAgentEvent>
       },
     },
-  } as unknown as YoloPlugin
+  }
 }
 
 async function* streamEvents(events: unknown[]) {

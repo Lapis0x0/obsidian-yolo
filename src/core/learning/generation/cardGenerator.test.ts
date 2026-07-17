@@ -1,6 +1,4 @@
-import { TFile } from 'obsidian'
-
-import type YoloPlugin from '../../../main'
+import { type App, TFile } from 'obsidian'
 
 import {
   CARD_END_MARKER,
@@ -10,6 +8,7 @@ import {
   parseWrittenCardEntries,
   validateWrittenCards,
 } from './cardGenerator'
+import type { LearningGenerationHost } from './host'
 import type { CardDraft, CardGenerationEvent } from './types'
 
 const cardBlock = (title: string, kpUuid = 'aaaaaaaa') =>
@@ -122,33 +121,33 @@ describe('generateCardsForChapter streaming', () => {
           yield { type: 'completed' as const, text }
         }
       })
-      const plugin = {
-        app: {
-          vault: {
-            getAbstractFileByPath: (path: string) => files.get(path) ?? null,
-            getMarkdownFiles: () => [],
-            read: async (file: { path: string }) =>
-              contents.get(file.path) ?? '',
-            cachedRead: async (file: { path: string }) =>
-              contents.get(file.path) ?? '',
-            create,
-            modify: async (file: { path: string }, content: string) => {
-              contents.set(file.path, content)
-            },
-            delete: async (file: { path: string }) => {
-              files.delete(file.path)
-              contents.delete(file.path)
-            },
+      const app = {
+        vault: {
+          getAbstractFileByPath: (path: string) => files.get(path) ?? null,
+          getMarkdownFiles: () => [],
+          read: async (file: { path: string }) => contents.get(file.path) ?? '',
+          cachedRead: async (file: { path: string }) =>
+            contents.get(file.path) ?? '',
+          create,
+          modify: async (file: { path: string }, content: string) => {
+            contents.set(file.path, content)
+          },
+          delete: async (file: { path: string }) => {
+            files.delete(file.path)
+            contents.delete(file.path)
           },
         },
+      } as unknown as App
+      const host: LearningGenerationHost = {
+        app,
         agent: {
-          stream,
+          stream: stream as LearningGenerationHost['agent']['stream'],
         },
-      } as unknown as YoloPlugin
+      }
       const events: CardGenerationEvent[] = []
 
       const result = await generateCardsForChapter({
-        plugin,
+        host,
         modelId: 'learning-model',
         chapterIndex: 2,
         projectTopic: 'Topic',
@@ -183,7 +182,10 @@ describe('generateCardsForChapter streaming', () => {
       expect(written).not.toContain(CARD_END_MARKER)
       expect(create).toHaveBeenCalledTimes(1)
       expect(stream).toHaveBeenCalledWith(
-        expect.objectContaining({ modelId: 'learning-model' }),
+        expect.objectContaining({
+          modelId: 'learning-model',
+          capability: 'edit-vault',
+        }),
       )
     },
   )
