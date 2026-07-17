@@ -1,12 +1,10 @@
-import { type App, normalizePath, requestUrl } from 'obsidian'
-
+import type { AnkiRuntimeHost } from './AnkiRuntimeHost'
 import {
   ANKI_SQLITE_RUNTIME_VERSION,
   type AnkiRuntimeManifest,
   createAnkiRuntimeManifest,
 } from './metadata'
 
-type Download = (url: string) => Promise<ArrayBuffer>
 export type AnkiRuntimeStatus =
   | { kind: 'missing'; expectedVersion: string; dir: string }
   | { kind: 'downloading'; expectedVersion: string; dir: string }
@@ -14,11 +12,20 @@ export type AnkiRuntimeStatus =
   | { kind: 'failed'; expectedVersion: string; dir: string; reason: string }
 
 type Options = {
-  app: App
-  pluginId: string
-  pluginDir?: string
+  host: AnkiRuntimeHost
   manifest?: AnkiRuntimeManifest
-  download?: Download
+}
+
+const assertPathSegment = (value: string, label: string): string => {
+  if (!value || value === '.' || value === '..' || /[\\/]/.test(value)) {
+    throw new Error(`${label} must be a non-empty path segment`)
+  }
+  return value
+}
+
+const joinRelative = (...segments: string[]): string => {
+  segments.forEach((segment) => assertPathSegment(segment, 'Runtime path'))
+  return segments.join('/')
 }
 
 const hash = async (bytes: ArrayBuffer): Promise<string> =>
@@ -27,202 +34,224 @@ const hash = async (bytes: ArrayBuffer): Promise<string> =>
     (byte) => byte.toString(16).padStart(2, '0'),
   ).join('')
 
+const describeError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
 export class AnkiSqliteRuntimeManager {
-  private readonly app: App
+  private readonly host: AnkiRuntimeHost
   private readonly manifest: AnkiRuntimeManifest
-  private readonly root: string
-  private readonly download: Download
+  private readonly version: string
   private preparing: Promise<{ version: string; dir: string }> | null = null
   private volatile: AnkiRuntimeStatus | null = null
 
   constructor(options: Options) {
-    this.app = options.app
+    this.host = options.host
     this.manifest =
       options.manifest ?? createAnkiRuntimeManifest(ANKI_SQLITE_RUNTIME_VERSION)
-    const base = options.pluginDir
-      ? normalizePath(options.pluginDir)
-      : normalizePath(
-          `${options.app.vault.configDir}/plugins/${options.pluginId}`,
-        )
-    this.root = normalizePath(`${base}/runtime/anki-sqlite`)
-    this.download =
-      options.download ??
-      (async (url) => {
-        const response = await requestUrl({ url, method: 'GET', throw: false })
-        if (response.status < 200 || response.status >= 300)
-          throw new Error(`Runtime download failed: HTTP ${response.status}`)
-        return response.arrayBuffer.slice(0)
-      })
+    this.version = assertPathSegment(
+      this.manifest.runtimeVersion,
+      'Runtime version',
+    )
+    this.manifest.files.forEach((file) =>
+      assertPathSegment(file.name, 'Runtime file name'),
+    )
   }
 
   private versionDir(): string {
-    return normalizePath(`${this.root}/${this.manifest.runtimeVersion}`)
+    return this.version
   }
+
   private tempDir(): string {
-    return normalizePath(`${this.root}/.tmp-${this.manifest.runtimeVersion}`)
-  }
-  private currentPath(): string {
-    return normalizePath(`${this.root}/current.json`)
-  }
-
-  private async mkdir(path: string): Promise<void> {
-    try {
-      await this.app.vault.adapter.mkdir(path)
-    } catch (error) {
-      if (!(await this.app.vault.adapter.exists(path))) throw error
-    }
-  }
-
-  private async remove(path: string): Promise<void> {
-    if (!(await this.app.vault.adapter.exists(path))) return
-    const stat = await this.app.vault.adapter.stat(path)
-    if (stat?.type === 'folder') await this.app.vault.adapter.rmdir(path, true)
-    else await this.app.vault.adapter.remove(path)
+    return `.tmp-${this.version}`
   }
 
   async getStatus(): Promise<AnkiRuntimeStatus> {
     if (
       this.volatile?.kind === 'downloading' ||
       this.volatile?.kind === 'failed'
-    )
+    ) {
       return this.volatile
-    try {
-      if (!(await this.app.vault.adapter.exists(this.currentPath())))
-        throw new Error('missing')
-      const current = JSON.parse(
-        await this.app.vault.adapter.read(this.currentPath()),
-      ) as { version?: string; readyAt?: number }
-      if (current.version !== this.manifest.runtimeVersion)
-        throw new Error('version')
-      for (const file of this.manifest.files) {
-        const stat = await this.app.vault.adapter.stat(
-          normalizePath(`${this.versionDir()}/${file.name}`),
-        )
-        if (!stat || stat.size !== file.size) throw new Error('incomplete')
-      }
-      return {
-        kind: 'ready',
-        version: current.version,
-        dir: this.versionDir(),
-        readyAt: current.readyAt ?? 0,
-      }
-    } catch {
-      return {
-        kind: 'missing',
-        expectedVersion: this.manifest.runtimeVersion,
-        dir: this.versionDir(),
-      }
     }
+    return this.readDiskStatus()
   }
 
   async ensureReady(): Promise<{ version: string; dir: string }> {
     const status = await this.getStatus()
-    if (status.kind === 'ready')
-      return { version: status.version, dir: status.dir }
-    if (!this.preparing)
-      this.preparing = this.install().finally(() => {
-        this.preparing = null
-      })
+    if (status.kind === 'ready') return this.toReadyResult(status)
+    if (!this.preparing) {
+      this.preparing = this.host
+        .runExclusive(async () => {
+          const lockedStatus = await this.readDiskStatus()
+          if (lockedStatus.kind === 'ready') {
+            this.volatile = lockedStatus
+            return this.toReadyResult(lockedStatus)
+          }
+          return this.installUnlocked()
+        })
+        .finally(() => {
+          this.preparing = null
+        })
+    }
     return this.preparing
   }
 
   async loadWasm(): Promise<Uint8Array> {
     const ready = await this.ensureReady()
     return new Uint8Array(
-      await this.app.vault.adapter.readBinary(
-        normalizePath(`${ready.dir}/sql-wasm.wasm`),
+      await this.host.storage.readBinary(
+        joinRelative(ready.dir, 'sql-wasm.wasm'),
       ),
     )
   }
 
   async clearLocalRuntime(): Promise<void> {
-    await this.remove(this.root)
-    this.volatile = {
-      kind: 'missing',
-      expectedVersion: this.manifest.runtimeVersion,
-      dir: this.versionDir(),
-    }
+    await this.host.runExclusive(async () => this.host.storage.remove(''))
+    this.volatile = this.missingStatus()
   }
 
   async redownload(): Promise<{ version: string; dir: string }> {
-    await this.remove(this.versionDir())
-    await this.remove(this.tempDir())
-    await this.remove(this.currentPath())
-    return this.ensureReady()
+    return this.host.runExclusive(async () => {
+      await this.host.storage.remove('current.json')
+      await this.host.storage.remove(this.versionDir())
+      await this.host.storage.remove(this.tempDir())
+      return this.installUnlocked()
+    })
   }
 
   async clearObsoleteVersions(): Promise<void> {
-    if (!(await this.app.vault.adapter.exists(this.root))) return
-    const listing = await this.app.vault.adapter.list(this.root)
+    await this.host.runExclusive(async () => this.clearObsoleteVersionsUnlocked())
+  }
+
+  private async readDiskStatus(): Promise<AnkiRuntimeStatus> {
+    try {
+      if (!(await this.host.storage.exists('current.json'))) {
+        return this.missingStatus()
+      }
+      const current = JSON.parse(
+        await this.host.storage.readText('current.json'),
+      ) as { version?: string; readyAt?: number }
+      if (current.version !== this.version) return this.missingStatus()
+      await this.verifyRuntimeFiles(this.versionDir())
+      return {
+        kind: 'ready',
+        version: this.version,
+        dir: this.versionDir(),
+        readyAt: current.readyAt ?? 0,
+      }
+    } catch {
+      return this.missingStatus()
+    }
+  }
+
+  private async verifyRuntimeFiles(dir: string): Promise<void> {
+    for (const file of this.manifest.files) {
+      const path = joinRelative(dir, file.name)
+      const stat = await this.host.storage.stat(path)
+      if (!stat || stat.type !== 'file' || stat.size !== file.size) {
+        throw new Error(`Runtime integrity check failed: ${file.name}`)
+      }
+      const bytes = await this.host.storage.readBinary(path)
+      if (
+        bytes.byteLength !== file.size ||
+        (await hash(bytes)) !== file.sha256.toLowerCase()
+      ) {
+        throw new Error(`Runtime integrity check failed: ${file.name}`)
+      }
+    }
+  }
+
+  private async clearObsoleteVersionsUnlocked(): Promise<void> {
+    const listing = await this.listRoot()
     const keep = new Set([this.versionDir(), this.tempDir()])
     await Promise.all(
       listing.folders
-        .filter((path) => !keep.has(normalizePath(path)))
-        .map((path) => this.remove(path)),
+        .filter((path) => !keep.has(path))
+        .map((path) => this.host.storage.remove(path)),
     )
   }
 
-  private async install(): Promise<{ version: string; dir: string }> {
+  private async listRoot() {
+    if (!(await this.host.storage.exists(''))) {
+      return { files: [], folders: [] }
+    }
+    return this.host.storage.list('')
+  }
+
+  private async installUnlocked(): Promise<{ version: string; dir: string }> {
     this.volatile = {
       kind: 'downloading',
-      expectedVersion: this.manifest.runtimeVersion,
+      expectedVersion: this.version,
       dir: this.versionDir(),
     }
-    await this.mkdir(this.root)
-    await this.remove(this.tempDir())
-    await this.mkdir(this.tempDir())
     try {
+      await this.host.storage.mkdir('')
+      await this.host.storage.remove(this.tempDir())
+      await this.host.storage.mkdir(this.tempDir())
       for (const file of this.manifest.files) {
-        const bytes = await this.download(file.url)
+        const bytes = await this.host.downloadArrayBuffer(file.url)
         if (
           bytes.byteLength !== file.size ||
-          (await hash(bytes)) !== file.sha256
-        )
+          (await hash(bytes)) !== file.sha256.toLowerCase()
+        ) {
           throw new Error(`Runtime integrity check failed: ${file.name}`)
-        await this.app.vault.adapter.writeBinary(
-          normalizePath(`${this.tempDir()}/${file.name}`),
+        }
+        await this.host.storage.writeBinary(
+          joinRelative(this.tempDir(), file.name),
           bytes,
         )
       }
-      await this.app.vault.adapter.write(
-        normalizePath(`${this.tempDir()}/manifest.json`),
+      await this.verifyRuntimeFiles(this.tempDir())
+      await this.host.storage.writeText(
+        joinRelative(this.tempDir(), 'manifest.json'),
         JSON.stringify(this.manifest, null, 2),
       )
-      await this.remove(this.versionDir())
-      await this.mkdir(this.versionDir())
-      for (const file of this.manifest.files) {
-        const bytes = await this.app.vault.adapter.readBinary(
-          normalizePath(`${this.tempDir()}/${file.name}`),
-        )
-        await this.app.vault.adapter.writeBinary(
-          normalizePath(`${this.versionDir()}/${file.name}`),
-          bytes,
-        )
-      }
+
+      await this.host.storage.remove('current.json')
+      await this.host.storage.remove(this.versionDir())
+      await this.host.storage.rename(this.tempDir(), this.versionDir())
       const readyAt = Date.now()
-      await this.app.vault.adapter.write(
-        this.currentPath(),
-        JSON.stringify({ version: this.manifest.runtimeVersion, readyAt }),
+      await this.host.storage.writeText(
+        'current.json',
+        JSON.stringify({ version: this.version, readyAt }),
       )
-      await this.remove(this.tempDir())
-      await this.clearObsoleteVersions()
+      try {
+        await this.clearObsoleteVersionsUnlocked()
+      } catch (error) {
+        console.warn('[YOLO] Failed to clean obsolete Anki runtimes:', error)
+      }
       this.volatile = {
         kind: 'ready',
-        version: this.manifest.runtimeVersion,
+        version: this.version,
         dir: this.versionDir(),
         readyAt,
       }
-      return { version: this.manifest.runtimeVersion, dir: this.versionDir() }
+      return { version: this.version, dir: this.versionDir() }
     } catch (error) {
-      await this.remove(this.tempDir())
-      const reason = error instanceof Error ? error.message : String(error)
+      let reason = describeError(error)
+      try {
+        await this.host.storage.remove(this.tempDir())
+      } catch (cleanupError) {
+        reason += `; staging cleanup failed: ${describeError(cleanupError)}`
+      }
       this.volatile = {
         kind: 'failed',
-        expectedVersion: this.manifest.runtimeVersion,
+        expectedVersion: this.version,
         dir: this.versionDir(),
         reason,
       }
       throw error
     }
+  }
+
+  private missingStatus(): AnkiRuntimeStatus {
+    return {
+      kind: 'missing',
+      expectedVersion: this.version,
+      dir: this.versionDir(),
+    }
+  }
+
+  private toReadyResult(status: Extract<AnkiRuntimeStatus, { kind: 'ready' }>) {
+    return { version: status.version, dir: status.dir }
   }
 }

@@ -1,5 +1,4 @@
 import { AlertTriangle, FileArchive, Loader2 } from 'lucide-react'
-import { normalizePath } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
 import {
@@ -8,6 +7,7 @@ import {
   renameAnkiImportPlan,
 } from '../../core/learning/anki/importService'
 import type { AnkiImportPlan } from '../../core/learning/anki/importService'
+import type { AnkiRuntimeHost } from '../../core/learning/anki/runtime/AnkiRuntimeHost'
 import { AnkiSqliteRuntimeManager } from '../../core/learning/anki/runtime/AnkiSqliteRuntimeManager'
 
 import {
@@ -28,6 +28,17 @@ type ImportState =
 
 type ErrorAction = 'retry' | 'reselect'
 
+const runtimeManagers = new WeakMap<AnkiRuntimeHost, AnkiSqliteRuntimeManager>()
+
+const getRuntimeManager = (host: AnkiRuntimeHost): AnkiSqliteRuntimeManager => {
+  let manager = runtimeManagers.get(host)
+  if (!manager) {
+    manager = new AnkiSqliteRuntimeManager({ host })
+    runtimeManagers.set(host, manager)
+  }
+  return manager
+}
+
 export function AnkiImportModal({
   baseDir,
   onClose,
@@ -38,7 +49,6 @@ export function AnkiImportModal({
   onImported: (projectPath: string) => void | Promise<void>
 }) {
   const host = useLearningUiHost()
-  const app = host.app
   const { t } = useLearningLanguage()
   const [state, setState] = useState<ImportState>('selecting')
   const [file, setFile] = useState<File | null>(null)
@@ -90,13 +100,7 @@ export function AnkiImportModal({
     setPlan(null)
     setError('')
     try {
-      const runtime = new AnkiSqliteRuntimeManager({
-        app,
-        pluginId: host.runtimeIdentity.pluginId,
-        pluginDir: host.runtimeIdentity.pluginDir
-          ? normalizePath(host.runtimeIdentity.pluginDir)
-          : undefined,
-      })
+      const runtime = getRuntimeManager(host.ankiRuntimeHost)
       const status = await runtime.getStatus()
       if (controller.signal.aborted) return
       setState(status.kind === 'ready' ? 'parsing' : 'runtime')

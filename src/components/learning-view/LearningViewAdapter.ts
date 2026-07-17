@@ -5,6 +5,7 @@ import type {
   YoloAgentRunRequest,
 } from '../../core/agent/agent-api'
 import { ObsidianAnkiImportJournalStorage } from '../../core/learning/anki/obsidianAnkiImportJournalStorage'
+import { createObsidianAnkiRuntimeHost } from '../../core/learning/anki/runtime/obsidianAnkiRuntimeHost'
 import { LearningCardFileStore } from '../../core/learning/cardFile'
 import type {
   LearningGenerationAgentEvent,
@@ -29,7 +30,11 @@ import type {
 
 type LearningVaultServices = Pick<
   LearningUiHost,
-  'vault' | 'vaultWriter' | 'ankiImportJournalStorage' | 'cardFileStore'
+  | 'vault'
+  | 'vaultWriter'
+  | 'ankiImportJournalStorage'
+  | 'ankiRuntimeHost'
+  | 'cardFileStore'
 >
 
 const learningVaultServices = new WeakMap<object, LearningVaultServices>()
@@ -46,6 +51,11 @@ function getLearningVaultServices(plugin: YoloPlugin): LearningVaultServices {
       plugin.app,
       () => plugin.getLearningSrsStore().getLearningDataRootDir(),
     ),
+    ankiRuntimeHost: createObsidianAnkiRuntimeHost({
+      adapter: plugin.app.vault.adapter,
+      manifest: plugin.manifest,
+      configDir: plugin.app.vault.configDir,
+    }),
     cardFileStore: new LearningCardFileStore(vault, vaultWriter),
   }
   learningVaultServices.set(plugin.app, services)
@@ -180,13 +190,19 @@ async function* streamGenerationAgent(
 }
 
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
-  const { vault, vaultWriter, ankiImportJournalStorage, cardFileStore } =
-    getLearningVaultServices(plugin)
+  const {
+    vault,
+    vaultWriter,
+    ankiImportJournalStorage,
+    ankiRuntimeHost,
+    cardFileStore,
+  } = getLearningVaultServices(plugin)
   return {
     app: plugin.app,
     vault,
     vaultWriter,
     ankiImportJournalStorage,
+    ankiRuntimeHost,
     get settings() {
       return mapSettings(plugin)
     },
@@ -203,10 +219,6 @@ export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
       stream: (request) => streamGenerationAgent(plugin, request),
     },
     isGenerationDebugEnabled: isLLMDebugCaptureEnabled,
-    runtimeIdentity: {
-      pluginId: plugin.manifest.id,
-      pluginDir: plugin.manifest.dir,
-    },
     subscribeSettings: (listener) =>
       plugin.addSettingsChangeListener(() => listener(mapSettings(plugin))),
     setEventBus: (bus) => plugin.setLearningEventBus(bus),

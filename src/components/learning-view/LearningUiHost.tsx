@@ -2,6 +2,7 @@ import type { App } from 'obsidian'
 import React, { type ReactNode, createContext, useContext } from 'react'
 
 import type { AnkiImportJournalStorage } from '../../core/learning/anki/ankiImportJournalStorage'
+import type { AnkiRuntimeHost } from '../../core/learning/anki/runtime/AnkiRuntimeHost'
 import type { LearningCardFileStore } from '../../core/learning/cardFile'
 import type { LearningGenerationAgent } from '../../core/learning/generation/host'
 import type {
@@ -38,6 +39,7 @@ export interface LearningUiHost {
   readonly vault: LearningVaultReadApi
   readonly vaultWriter: LearningVaultWriteApi
   readonly ankiImportJournalStorage: AnkiImportJournalStorage
+  readonly ankiRuntimeHost: AnkiRuntimeHost
   readonly settings: LearningSettings
   readonly locale: LearningLocale
   readonly t: (keyPath: string, fallback?: string) => string
@@ -46,10 +48,6 @@ export interface LearningUiHost {
   readonly cardFileStore: LearningCardFileStore
   readonly generationAgent: LearningGenerationAgent
   readonly isGenerationDebugEnabled: () => boolean
-  readonly runtimeIdentity: {
-    pluginId: string
-    pluginDir?: string
-  }
   subscribeSettings(listener: (settings: LearningSettings) => void): () => void
   setEventBus(bus: ProjectEventBus | null): void
   setNavigationHandler(handler: LearningNavigationHandler | null): void
