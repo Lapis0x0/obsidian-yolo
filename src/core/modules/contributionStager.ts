@@ -4,6 +4,11 @@ import type {
   YoloModuleWorkspaceV1,
 } from './types'
 
+type YoloModuleWorkspaceContributionsV1 = Pick<
+  YoloModuleWorkspaceV1,
+  'registerView' | 'registerRibbonAction'
+>
+
 export type StagedModuleContributions = Readonly<{
   view?: YoloModuleViewV1
   ribbonAction?: YoloModuleRibbonActionV1
@@ -21,7 +26,7 @@ export class ModuleContributionStager {
   private ribbonAction: YoloModuleRibbonActionV1 | undefined
   private finished = false
 
-  readonly workspace: YoloModuleWorkspaceV1 = {
+  readonly workspace: YoloModuleWorkspaceContributionsV1 = {
     registerView: (view) => {
       this.assertOpen()
       if (this.view) throw new Error('A module may register only one view')

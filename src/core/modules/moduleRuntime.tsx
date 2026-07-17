@@ -7,7 +7,12 @@ import { ModuleContributionStager } from './contributionStager'
 import type { ModuleHostCapabilityProviderV1 } from './hostCapabilities'
 import { ModuleLifecycleScope } from './lifecycleScope'
 import { installYoloModuleRuntimeBridge } from './runtimeBridge'
-import type { YoloModuleDefinition, YoloModuleViewV1 } from './types'
+import type {
+  YoloModuleDefinition,
+  YoloModuleOpenViewOptionsV1,
+  YoloModuleViewV1,
+  YoloModuleWorkspaceV1,
+} from './types'
 
 class ModuleItemView extends ItemView {
   private root: Root | null = null
@@ -118,6 +123,11 @@ export type ModuleContributionRegistrar = {
     contributions: StagedModuleContributions,
     lifecycle: ModuleLifecycleScope,
   ): void
+  openView?(
+    moduleId: string,
+    options?: YoloModuleOpenViewOptionsV1,
+    isActive?: () => boolean,
+  ): Promise<void>
 }
 
 /** Activates modules atomically through a declaration-first host API. */
@@ -147,6 +157,34 @@ export class ModuleRuntime {
     }
     const lifecycle = new ModuleLifecycleScope()
     const stager = new ModuleContributionStager()
+    let workspaceActive = false
+    const workspace: YoloModuleWorkspaceV1 = Object.freeze({
+      registerView: stager.workspace.registerView,
+      registerRibbonAction: stager.workspace.registerRibbonAction,
+      openView: (options) => {
+        if (!workspaceActive) {
+          return Promise.reject(
+            new Error(`Module "${definition.id}" workspace is not active`),
+          )
+        }
+        if (!this.registrar.openView) {
+          return Promise.reject(
+            new Error('Module workspace navigation is unavailable'),
+          )
+        }
+        let snapshot: YoloModuleOpenViewOptionsV1 | undefined
+        try {
+          snapshot = snapshotOpenViewOptions(options)
+        } catch (error) {
+          return Promise.reject(toError(error))
+        }
+        return this.registrar.openView(
+          definition.id,
+          snapshot,
+          () => workspaceActive,
+        )
+      },
+    })
     this.pending.set(definition.id, { lifecycle, stager })
     try {
       const capabilityActivation = this.capabilityProvider.create(
@@ -156,7 +194,7 @@ export class ModuleRuntime {
       await definition.activate({
         version: 1,
         lifecycle,
-        workspace: stager.workspace,
+        workspace,
         background: capabilityActivation.capabilities.background,
       })
       if (this.disposed) {
@@ -173,8 +211,13 @@ export class ModuleRuntime {
           'Module runtime was disposed during contribution commit',
         )
       }
+      // Registered last so LIFO disposal closes navigation before every cleanup.
+      lifecycle.add(() => {
+        workspaceActive = false
+      })
       capabilityActivation.activate()
       this.scopes.set(definition.id, lifecycle)
+      workspaceActive = true
     } catch (error) {
       stager.close()
       try {
@@ -224,6 +267,8 @@ export class ObsidianModuleContributionRegistrar
   implements ModuleContributionRegistrar
 {
   private readonly viewTypes = new Set<string>()
+  private readonly viewTypeByModuleId = new Map<string, string>()
+  private readonly openingViewByModuleId = new Map<string, Promise<void>>()
 
   constructor(private readonly plugin: Plugin) {}
 
@@ -262,6 +307,96 @@ export class ObsidianModuleContributionRegistrar
         (leaf) => new ModuleItemView(leaf, this.plugin, view),
       )
       this.viewTypes.add(view.type)
+      this.viewTypeByModuleId.set(moduleId, view.type)
     }
   }
+
+  async openView(
+    moduleId: string,
+    options?: YoloModuleOpenViewOptionsV1,
+    isActive: () => boolean = () => true,
+  ): Promise<void> {
+    const viewType = this.viewTypeByModuleId.get(moduleId)
+    if (!viewType) {
+      throw new Error(`Module "${moduleId}" has no registered view`)
+    }
+    assertModuleWorkspaceActive(moduleId, isActive)
+    if (options?.newLeaf) {
+      return this.openViewNow(moduleId, viewType, true, isActive)
+    }
+    const pending = this.openingViewByModuleId.get(moduleId)
+    if (pending) return pending
+    const opening = this.openViewNow(moduleId, viewType, false, isActive)
+    this.openingViewByModuleId.set(moduleId, opening)
+    try {
+      await opening
+    } finally {
+      if (this.openingViewByModuleId.get(moduleId) === opening) {
+        this.openingViewByModuleId.delete(moduleId)
+      }
+    }
+  }
+
+  private async openViewNow(
+    moduleId: string,
+    viewType: string,
+    newLeaf: boolean,
+    isActive: () => boolean,
+  ): Promise<void> {
+    const workspace = this.plugin.app.workspace
+    assertModuleWorkspaceActive(moduleId, isActive)
+    if (!newLeaf) {
+      const existing = workspace.getLeavesOfType(viewType)[0]
+      if (existing) {
+        await workspace.revealLeaf(existing)
+        assertModuleWorkspaceActive(moduleId, isActive)
+        return
+      }
+    }
+    const leaf = workspace.getLeaf('tab')
+    try {
+      assertModuleWorkspaceActive(moduleId, isActive)
+      await leaf.setViewState({ type: viewType, active: true })
+      assertModuleWorkspaceActive(moduleId, isActive)
+      await workspace.revealLeaf(leaf)
+      assertModuleWorkspaceActive(moduleId, isActive)
+    } catch (error) {
+      try {
+        leaf.detach()
+      } catch (cleanupError) {
+        console.error(
+          `[YOLO] Module "${moduleId}" failed to detach an incomplete view`,
+          cleanupError,
+        )
+      }
+      throw error
+    }
+  }
+}
+
+function snapshotOpenViewOptions(
+  options: YoloModuleOpenViewOptionsV1 | undefined,
+): YoloModuleOpenViewOptionsV1 | undefined {
+  if (options === undefined) return undefined
+  if (!options || typeof options !== 'object') {
+    throw new TypeError('Module openView options must be an object')
+  }
+  const newLeaf = options.newLeaf
+  if (newLeaf !== undefined && typeof newLeaf !== 'boolean') {
+    throw new TypeError('Module openView newLeaf must be a boolean')
+  }
+  return Object.freeze({ newLeaf })
+}
+
+function assertModuleWorkspaceActive(
+  moduleId: string,
+  isActive: () => boolean,
+): void {
+  if (!isActive()) {
+    throw new Error(`Module "${moduleId}" workspace is not active`)
+  }
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }

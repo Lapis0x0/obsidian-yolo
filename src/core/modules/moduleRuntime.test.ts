@@ -371,4 +371,100 @@ describe('ModuleRuntime', () => {
       runtime.activate({ id: 'late-module', activate: () => undefined }),
     ).rejects.toThrow('Module runtime is disposed')
   })
+
+  it('opens only through the active module workspace capability', async () => {
+    const openView = jest.fn(async () => undefined)
+    const runtime = createRuntime({ commit: jest.fn(), openView })
+    let moduleOpenView!: Parameters<
+      Parameters<ModuleRuntime['activate']>[0]['activate']
+    >[0]['workspace']['openView']
+
+    await runtime.activate({
+      id: 'workspace-module',
+      activate: async (host) => {
+        moduleOpenView = (options) => host.workspace.openView(options)
+        await expect(moduleOpenView()).rejects.toThrow(
+          'workspace is not active',
+        )
+        host.workspace.registerView({
+          type: 'workspace-view',
+          name: 'Workspace',
+          icon: 'layout',
+          render: () => null,
+        })
+      },
+    })
+
+    await expect(moduleOpenView({ newLeaf: true })).resolves.toBeUndefined()
+    expect(openView).toHaveBeenCalledWith(
+      'workspace-module',
+      { newLeaf: true },
+      expect.any(Function),
+    )
+    await expect(
+      moduleOpenView({
+        newLeaf: 'yes',
+      } as unknown as Parameters<typeof moduleOpenView>[0]),
+    ).rejects.toThrow('newLeaf must be a boolean')
+    await expect(
+      moduleOpenView(null as unknown as Parameters<typeof moduleOpenView>[0]),
+    ).rejects.toThrow('options must be an object')
+    let optionReads = 0
+    await moduleOpenView({
+      get newLeaf() {
+        optionReads += 1
+        return optionReads === 1
+      },
+    })
+    expect(optionReads).toBe(1)
+    expect(openView).toHaveBeenLastCalledWith(
+      'workspace-module',
+      { newLeaf: true },
+      expect.any(Function),
+    )
+
+    runtime.dispose()
+    await expect(moduleOpenView()).rejects.toThrow('workspace is not active')
+  })
+
+  it('rejects navigation when the host has no workspace controller', async () => {
+    const runtime = createRuntime({ commit: jest.fn() })
+    let moduleOpenView!: () => Promise<void>
+    await runtime.activate({
+      id: 'no-navigation',
+      activate: (host) => {
+        moduleOpenView = () => host.workspace.openView()
+      },
+    })
+
+    await expect(moduleOpenView()).rejects.toThrow(
+      'workspace navigation is unavailable',
+    )
+    runtime.dispose()
+  })
+
+  it('closes workspace navigation before registrar-owned cleanup runs', async () => {
+    const openView = jest.fn(async () => undefined)
+    let moduleOpenView!: () => Promise<void>
+    let cleanupNavigation: Promise<void> | null = null
+    const runtime = createRuntime({
+      commit: (_moduleId, _contributions, lifecycle) => {
+        lifecycle.add(() => {
+          cleanupNavigation = moduleOpenView()
+        })
+      },
+      openView,
+    })
+    await runtime.activate({
+      id: 'cleanup-navigation',
+      activate: (host) => {
+        moduleOpenView = () => host.workspace.openView()
+      },
+    })
+
+    runtime.dispose()
+
+    await expect(cleanupNavigation).rejects.toThrow('workspace is not active')
+    expect(openView).not.toHaveBeenCalled()
+  })
 })

@@ -59,6 +59,7 @@ export type {
   YoloModuleBackgroundV1,
   YoloModuleCapabilitiesV1,
   YoloModuleLifecycle,
+  YoloModuleOpenViewOptionsV1,
   YoloModuleRibbonActionV1,
   YoloModuleRuntimeRegistration,
   YoloModuleViewV1,

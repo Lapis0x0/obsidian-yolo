@@ -25,6 +25,7 @@ describe('host API conformance artifact boundary', () => {
     expect(source).toContain('yolo.module.host-runtime.v1')
     expect(source).toContain('conformance-status')
     expect(source).toContain('.background.upsert')
+    expect(source).toContain('.workspace.openView')
     expect(source).not.toContain('react.production.min')
   })
 

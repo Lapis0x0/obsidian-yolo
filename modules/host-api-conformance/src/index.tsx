@@ -4,14 +4,19 @@ const VIEW_TYPE = 'yolo-host-api-conformance'
 const RIBBON_EVENT = 'yolo:host-api-conformance:ribbon'
 const BACKGROUND_ACTIVITY_ID = 'conformance-status'
 
-function ConformanceView() {
-  const [ribbonClicks, setRibbonClicks] = useState(0)
+function ConformanceView({
+  getRibbonClicks,
+}: {
+  getRibbonClicks: () => number
+}) {
+  const [ribbonClicks, setRibbonClicks] = useState(getRibbonClicks)
 
   useEffect(() => {
-    const onRibbonClick = () => setRibbonClicks((count) => count + 1)
+    const onRibbonClick = () => setRibbonClicks(getRibbonClicks())
     window.addEventListener(RIBBON_EVENT, onRibbonClick)
+    onRibbonClick()
     return () => window.removeEventListener(RIBBON_EVENT, onRibbonClick)
-  }, [])
+  }, [getRibbonClicks])
 
   return (
     <main data-yolo-module="host-api-conformance">
@@ -30,6 +35,10 @@ yolo.registerModule({
     const notifyView = () => {
       if (marker.active) window.dispatchEvent(new Event(RIBBON_EVENT))
     }
+    const openModuleView = async () => {
+      await host.workspace.openView()
+      notifyView()
+    }
     host.lifecycle.add(() => {
       marker.active = false
     })
@@ -40,13 +49,13 @@ yolo.registerModule({
       summary: 'Host API conformance module is active',
       icon: 'flask-conical',
       status: 'reminder',
-      onOpen: notifyView,
+      onOpen: openModuleView,
     })
     host.workspace.registerView({
       type: VIEW_TYPE,
       name: 'Host API conformance',
       icon: 'flask-conical',
-      render: () => <ConformanceView />,
+      render: () => <ConformanceView getRibbonClicks={() => ribbonClicks} />,
     })
     host.workspace.registerRibbonAction({
       icon: 'flask-conical',
@@ -54,7 +63,6 @@ yolo.registerModule({
       onClick: () => {
         if (!marker.active) return
         ribbonClicks += 1
-        notifyView()
         host.background.upsert({
           id: BACKGROUND_ACTIVITY_ID,
           title: 'Host API conformance',
@@ -62,7 +70,10 @@ yolo.registerModule({
           summary: 'Host API background capability updated',
           icon: 'flask-conical',
           status: 'reminder',
-          onOpen: notifyView,
+          onOpen: openModuleView,
+        })
+        void openModuleView().catch((error: unknown) => {
+          console.error('Host API conformance view failed to open', error)
         })
       },
     })

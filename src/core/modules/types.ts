@@ -19,9 +19,14 @@ export type YoloModuleRibbonActionV1 = Readonly<{
   onClick(): void
 }>
 
+export type YoloModuleOpenViewOptionsV1 = Readonly<{
+  newLeaf?: boolean
+}>
+
 export type YoloModuleWorkspaceV1 = {
   registerView(view: YoloModuleViewV1): void
   registerRibbonAction(action: YoloModuleRibbonActionV1): void
+  openView(options?: YoloModuleOpenViewOptionsV1): Promise<void>
 }
 
 export type YoloModuleBackgroundActivityStatusV1 =
