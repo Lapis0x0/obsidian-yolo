@@ -116,6 +116,11 @@ export {
   type OfficialModuleCatalogRequest,
 } from './officialModuleCatalogClient'
 export {
+  OfficialModuleCatalogSource,
+  type OfficialModuleCatalogSourceOptions,
+  type OfficialModuleCompatibilityProvider,
+} from './officialModuleCatalogSource'
+export {
   ModuleStore,
   collectModuleManifestFiles,
   isModuleHostApiRange,
