@@ -26,6 +26,8 @@ describe('host API conformance artifact boundary', () => {
     expect(source).toContain('conformance-status')
     expect(source).toContain('.background.upsert')
     expect(source).toContain('.workspace.openView')
+    expect(source).toContain('.vault.listMarkdownFiles')
+    expect(source).toContain('.vault.subscribe')
     expect(source).not.toContain('react.production.min')
   })
 

@@ -4,6 +4,10 @@ import type {
 } from '../background/backgroundActivityRegistry'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
+import {
+  type ModuleVaultCapabilityProviderV1,
+  UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
+} from './moduleVault'
 import type {
   YoloModuleBackgroundActivityV1,
   YoloModuleBackgroundV1,
@@ -32,6 +36,7 @@ class ModuleBackgroundCleanupError extends Error {
 
 type CoreModuleHostCapabilityProviderOptions = {
   backgroundActivities: BackgroundActivityBatchSink
+  vault?: ModuleVaultCapabilityProviderV1
   now?: () => number
   reportCallbackError?: (moduleId: string, error: unknown) => void
 }
@@ -45,9 +50,11 @@ export class CoreModuleHostCapabilityProvider
     moduleId: string,
     error: unknown,
   ) => void
+  private readonly vault: ModuleVaultCapabilityProviderV1
 
   constructor({
     backgroundActivities,
+    vault = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
     now = Date.now,
     reportCallbackError = (moduleId, error) => {
       console.error(
@@ -57,6 +64,7 @@ export class CoreModuleHostCapabilityProvider
     },
   }: CoreModuleHostCapabilityProviderOptions) {
     this.backgroundActivities = backgroundActivities
+    this.vault = vault
     this.now = now
     this.reportCallbackError = reportCallbackError
   }
@@ -72,10 +80,17 @@ export class CoreModuleHostCapabilityProvider
       now: this.now,
       reportCallbackError: this.reportCallbackError,
     })
+    const vault = this.vault.create(moduleId, lifecycle)
     return Object.freeze({
-      capabilities: Object.freeze({ background: background.api }),
+      capabilities: Object.freeze({
+        background: background.api,
+        vault: vault.api,
+      }),
       commit: () => background.commit(),
-      activate: () => background.activate(),
+      activate: () => {
+        background.activate()
+        vault.activate()
+      },
     })
   }
 }
@@ -216,6 +231,9 @@ function createModuleBackgroundCapability({
     activate: () => {
       assertActive()
       if (!committed) throw new Error('Module capabilities are not committed')
+      lifecycle.add(() => {
+        activationComplete = false
+      })
       activationComplete = true
     },
   }

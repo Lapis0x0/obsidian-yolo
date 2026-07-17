@@ -5,6 +5,13 @@ export {
 } from './contributionStager'
 export { ModuleLoader, type ModuleLoaderOptions } from './moduleLoader'
 export {
+  ObsidianModuleVaultCapabilityProvider,
+  UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
+  normalizeModuleVaultPath,
+  type ModuleVaultCapabilityActivationV1,
+  type ModuleVaultCapabilityProviderV1,
+} from './moduleVault'
+export {
   CoreModuleHostCapabilityProvider,
   type ModuleHostCapabilityActivationV1,
   type ModuleHostCapabilityProviderV1,
@@ -63,4 +70,9 @@ export type {
   YoloModuleRibbonActionV1,
   YoloModuleRuntimeRegistration,
   YoloModuleViewV1,
+  YoloModuleVaultEntryV1,
+  YoloModuleVaultEventV1,
+  YoloModuleVaultFileV1,
+  YoloModuleVaultFolderV1,
+  YoloModuleVaultV1,
 } from './types'

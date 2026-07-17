@@ -6,23 +6,33 @@ const BACKGROUND_ACTIVITY_ID = 'conformance-status'
 
 function ConformanceView({
   getRibbonClicks,
+  getVaultEvents,
+  markdownFileCount,
 }: {
   getRibbonClicks: () => number
+  getVaultEvents: () => number
+  markdownFileCount: number
 }) {
   const [ribbonClicks, setRibbonClicks] = useState(getRibbonClicks)
+  const [vaultEvents, setVaultEvents] = useState(getVaultEvents)
 
   useEffect(() => {
-    const onRibbonClick = () => setRibbonClicks(getRibbonClicks())
-    window.addEventListener(RIBBON_EVENT, onRibbonClick)
-    onRibbonClick()
-    return () => window.removeEventListener(RIBBON_EVENT, onRibbonClick)
-  }, [getRibbonClicks])
+    const onModuleEvent = () => {
+      setRibbonClicks(getRibbonClicks())
+      setVaultEvents(getVaultEvents())
+    }
+    window.addEventListener(RIBBON_EVENT, onModuleEvent)
+    onModuleEvent()
+    return () => window.removeEventListener(RIBBON_EVENT, onModuleEvent)
+  }, [getRibbonClicks, getVaultEvents])
 
   return (
     <main data-yolo-module="host-api-conformance">
       <h2>Host API conformance</h2>
       <p>Shared React hooks are active.</p>
       <p>Ribbon actions observed: {ribbonClicks}</p>
+      <p>Vault events observed: {vaultEvents}</p>
+      <p>Markdown files visible: {markdownFileCount}</p>
     </main>
   )
 }
@@ -32,6 +42,8 @@ yolo.registerModule({
   activate(host) {
     const marker = { active: true }
     let ribbonClicks = 0
+    let vaultEvents = 0
+    const markdownFileCount = host.vault.listMarkdownFiles().length
     const notifyView = () => {
       if (marker.active) window.dispatchEvent(new Event(RIBBON_EVENT))
     }
@@ -41,6 +53,10 @@ yolo.registerModule({
     }
     host.lifecycle.add(() => {
       marker.active = false
+    })
+    host.vault.subscribe('', () => {
+      vaultEvents += 1
+      notifyView()
     })
     host.background.upsert({
       id: BACKGROUND_ACTIVITY_ID,
@@ -55,7 +71,13 @@ yolo.registerModule({
       type: VIEW_TYPE,
       name: 'Host API conformance',
       icon: 'flask-conical',
-      render: () => <ConformanceView getRibbonClicks={() => ribbonClicks} />,
+      render: () => (
+        <ConformanceView
+          getRibbonClicks={() => ribbonClicks}
+          getVaultEvents={() => vaultEvents}
+          markdownFileCount={markdownFileCount}
+        />
+      ),
     })
     host.workspace.registerRibbonAction({
       icon: 'flask-conical',

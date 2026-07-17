@@ -50,8 +50,51 @@ export type YoloModuleBackgroundV1 = {
   remove(id: string): void
 }
 
+export type YoloModuleVaultFileV1 = Readonly<{
+  kind: 'file'
+  path: string
+  name: string
+  ctime: number
+  mtime: number
+}>
+
+export type YoloModuleVaultFolderV1 = Readonly<{
+  kind: 'folder'
+  path: string
+  name: string
+}>
+
+export type YoloModuleVaultEntryV1 =
+  | YoloModuleVaultFileV1
+  | YoloModuleVaultFolderV1
+
+export type YoloModuleVaultEventV1 =
+  | Readonly<{
+      type: 'create' | 'modify' | 'delete'
+      entry: YoloModuleVaultEntryV1
+    }>
+  | Readonly<{
+      type: 'rename'
+      entry: YoloModuleVaultEntryV1
+      oldPath: string
+    }>
+
+export type YoloModuleVaultV1 = {
+  getEntry(path: string): YoloModuleVaultEntryV1 | null
+  listChildren(folderPath: string): readonly YoloModuleVaultEntryV1[]
+  listMarkdownFiles(): readonly YoloModuleVaultFileV1[]
+  exists(path: string): Promise<boolean>
+  readText(filePath: string): Promise<string>
+  readBinary(filePath: string): Promise<ArrayBuffer>
+  subscribe(
+    scopePath: string,
+    listener: (event: YoloModuleVaultEventV1) => void | Promise<void>,
+  ): ModuleDisposer
+}
+
 export type YoloModuleCapabilitiesV1 = Readonly<{
   background: YoloModuleBackgroundV1
+  vault: YoloModuleVaultV1
 }>
 
 export type YoloHostApiV1 = Readonly<{

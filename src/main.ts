@@ -74,6 +74,7 @@ import {
   ModuleRuntime,
   ModuleStore,
   ObsidianModuleContributionRegistrar,
+  ObsidianModuleVaultCapabilityProvider,
   parseModuleArtifactManifest,
 } from './core/modules'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
@@ -3606,6 +3607,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         new ObsidianModuleContributionRegistrar(this),
         new CoreModuleHostCapabilityProvider({
           backgroundActivities: this.getBackgroundActivityRegistry(),
+          vault: new ObsidianModuleVaultCapabilityProvider(this.app),
         }),
       )
       const definition = await new ModuleLoader({

@@ -196,6 +196,7 @@ export class ModuleRuntime {
         lifecycle,
         workspace,
         background: capabilityActivation.capabilities.background,
+        vault: capabilityActivation.capabilities.vault,
       })
       if (this.disposed) {
         throw new Error('Module runtime was disposed during activation')

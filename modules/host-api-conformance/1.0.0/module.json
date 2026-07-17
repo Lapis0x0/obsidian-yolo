@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "entry": {
     "path": "entry.js",
-    "byteSize": 1764,
-    "sha256": "87ab8a5521b37186512c7ac82c6b06b277d5aa10d70ae4dc689ede77059ea379"
+    "byteSize": 2039,
+    "sha256": "27e73e812d1d14f8a8cc136171d4de2da06c656b052465a33504111d3eb26bc0"
   }
 }
