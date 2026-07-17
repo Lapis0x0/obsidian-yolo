@@ -69,6 +69,49 @@ describe('ModuleManager', () => {
     ])
   })
 
+  it('uses semantic version precedence for update availability', async () => {
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [
+          { id: 'prerelease', version: '1.0.0' },
+          { id: 'equivalent', version: '1.0.0' },
+          { id: 'build-only', version: '1.0.0+catalog' },
+          { id: 'numeric-prerelease', version: '1.0.0-beta.11' },
+          {
+            id: 'large-numeric-prerelease',
+            version: '1.0.0-beta.9007199254740993',
+          },
+        ],
+      },
+      installedStateSource: {
+        load: async () => [
+          { id: 'prerelease', version: '1.0.0-beta' },
+          { id: 'equivalent', version: '1.0' },
+          { id: 'build-only', version: '1.0.0+installed' },
+          { id: 'numeric-prerelease', version: '1.0.0-beta.2' },
+          {
+            id: 'large-numeric-prerelease',
+            version: '1.0.0-beta.9007199254740992',
+          },
+        ],
+      },
+    })
+
+    await manager.refresh()
+
+    expect(
+      Object.fromEntries(
+        manager.getSnapshot().modules.map(({ id, status }) => [id, status]),
+      ),
+    ).toEqual({
+      'build-only': 'installed',
+      equivalent: 'installed',
+      'large-numeric-prerelease': 'update-available',
+      'numeric-prerelease': 'update-available',
+      prerelease: 'update-available',
+    })
+  })
+
   it('notifies active subscriptions and stops after unsubscribe or dispose', async () => {
     const manager = new ModuleManager({
       catalogSource: { load: async () => [] },
