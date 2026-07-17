@@ -101,11 +101,18 @@ describe('CardStreamParser', () => {
 
 describe('generateCardsForChapter streaming', () => {
   it.each([
-    ['generated', false],
-    ['partial', true],
+    ['generated', false, false, false],
+    ['partial', true, false, false],
+    ['generated', false, true, false],
+    ['generated', false, false, true],
   ] as const)(
     'keeps published UUIDs identical in events, result, and disk for %s output',
-    async (expectedStatus, interrupted) => {
+    async (
+      expectedStatus,
+      interrupted,
+      preexistingRollbackShell,
+      retryWithExternalEdit,
+    ) => {
       const knowledgePath = 'project/chapter/knowledge.md'
       const cardsPath = 'project/chapter/cards.md'
       const knowledgeFile = { path: knowledgePath }
@@ -113,13 +120,28 @@ describe('generateCardsForChapter streaming', () => {
       const contents = new Map<string, string>([
         [knowledgePath, '## KP <!--kp:aaaaaaaa-->\n\nBody'],
       ])
+      if (preexistingRollbackShell) {
+        const cardsFile = { path: cardsPath }
+        files.set(cardsPath, cardsFile)
+        contents.set(cardsPath, '---\ntitle: Chapter - 卡片\n---\n')
+      }
+      let generatedContent = ''
       const create = jest.fn(async (path: string, content: string) => {
         const file = { path }
+        generatedContent = content
+        const written = retryWithExternalEdit
+          ? `${content}\n${content.slice(content.indexOf('## '))}`
+          : content
         files.set(path, file)
-        contents.set(path, content)
-        return { path, content, identity: file }
+        contents.set(path, written)
+        return { path, content: written, identity: file }
       })
+      let streamRun = 0
       const stream = jest.fn(async function* () {
+        streamRun += 1
+        if (retryWithExternalEdit && streamRun === 2) {
+          contents.set(cardsPath, `${generatedContent}\nuser edit\n`)
+        }
         const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
         yield { type: 'text' as const, delta: text, text }
         if (interrupted) {
@@ -171,9 +193,10 @@ describe('generateCardsForChapter streaming', () => {
           contents.set(expected.path, content)
           return { ...expected, content }
         },
-        deleteOwnedTextIfUnchanged: async (
+        revertOwnedCreatedTextIfUnchanged: async (
           created: LearningVaultFileSnapshot,
           expected: LearningVaultFileSnapshot,
+          fallbackContent: string,
         ) => {
           const current = await readSnapshot(expected.path)
           if (
@@ -182,11 +205,10 @@ describe('generateCardsForChapter streaming', () => {
             current.identity !== expected.identity ||
             current.content !== expected.content
           ) {
-            return false
+            return null
           }
-          files.delete(expected.path)
-          contents.delete(expected.path)
-          return true
+          contents.set(expected.path, fallbackContent)
+          return { ...expected, content: fallbackContent }
         },
       } as unknown as LearningVaultWriteApi
       const host: LearningGenerationHost = {
@@ -233,7 +255,8 @@ describe('generateCardsForChapter streaming', () => {
       )
       expect(written).toContain('A?\n\n---\n\nA!')
       expect(written).not.toContain(CARD_END_MARKER)
-      expect(create).toHaveBeenCalledTimes(1)
+      if (retryWithExternalEdit) expect(written).toContain('user edit')
+      expect(create).toHaveBeenCalledTimes(preexistingRollbackShell ? 0 : 1)
       expect(stream).toHaveBeenCalledWith(
         expect.objectContaining({
           modelId: 'learning-model',
@@ -242,6 +265,113 @@ describe('generateCardsForChapter streaming', () => {
       )
     },
   )
+
+  it.each([
+    ['owned content', false],
+    ['externally edited content', true],
+  ] as const)('handles cleanup safely for %s', async (_label, externalEdit) => {
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const cardsPath = 'project/chapter/cards.md'
+    const knowledgeFile = { path: knowledgePath }
+    const cardsFile = { path: cardsPath }
+    const files = new Map<string, object>([[knowledgePath, knowledgeFile]])
+    const contents = new Map<string, string>([
+      [knowledgePath, '## KP <!--kp:aaaaaaaa-->\n\nBody'],
+    ])
+    let knowledgeReads = 0
+    const readSnapshot = async (
+      path: string,
+    ): Promise<LearningVaultFileSnapshot | null> => {
+      const identity = files.get(path)
+      if (!identity) return null
+      if (path === knowledgePath) {
+        knowledgeReads += 1
+        if (knowledgeReads === 3) {
+          contents.set(knowledgePath, 'externally changed knowledge')
+          if (externalEdit) {
+            contents.set(cardsPath, `${contents.get(cardsPath)}user edit\n`)
+          }
+        }
+      }
+      return { path, content: contents.get(path) ?? '', identity }
+    }
+    const revert = jest.fn(
+      async (
+        created: LearningVaultFileSnapshot,
+        expected: LearningVaultFileSnapshot,
+        fallbackContent: string,
+      ): Promise<LearningVaultFileSnapshot | null> => {
+        if (
+          created !== expected ||
+          contents.get(expected.path) !== expected.content
+        ) {
+          return null
+        }
+        contents.set(expected.path, fallbackContent)
+        return { ...expected, content: fallbackContent }
+      },
+    )
+    const vaultWriter = {
+      readTextSnapshot: readSnapshot,
+      createTextIfAbsent: async (path: string, content: string) => {
+        if (files.has(path)) return null
+        files.set(path, cardsFile)
+        contents.set(path, content)
+        return { path, content, identity: cardsFile }
+      },
+      revertOwnedCreatedTextIfUnchanged: revert,
+    } as unknown as LearningVaultWriteApi
+    const host = {
+      vault: {
+        getEntry: (path: string) =>
+          files.has(path)
+            ? {
+                kind: 'file' as const,
+                path,
+                name: path.split('/').at(-1) ?? path,
+                ctime: 0,
+                mtime: 0,
+              }
+            : null,
+      } as unknown as LearningVaultReadApi,
+      vaultWriter,
+      isDebugEnabled: () => false,
+      agent: {
+        stream: async function* () {
+          const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
+          yield { type: 'text' as const, delta: text, text }
+          yield { type: 'completed' as const, text }
+        },
+      },
+    } as LearningGenerationHost
+
+    const generation = generateCardsForChapter({
+      host,
+      chapterIndex: 0,
+      projectTopic: 'Topic',
+      chapterTitle: 'Chapter',
+      chapterContract: 'Contract',
+      knowledgePath,
+      cardsPath,
+      level: 'beginner',
+      usedCardUuids: new Set(),
+      runId: 'run',
+      projectId: 'project',
+      chapterId: 'chapter',
+    })
+
+    if (externalEdit) {
+      await expect(generation).rejects.toThrow(
+        `Card generation failed and cleanup was incomplete: ${cardsPath}; original error: Knowledge file changed during generation: ${knowledgePath}`,
+      )
+      expect(contents.get(cardsPath)).toContain('user edit')
+    } else {
+      await expect(generation).rejects.toThrow(
+        `Knowledge file changed during generation: ${knowledgePath}`,
+      )
+      expect(contents.get(cardsPath)).toBe('---\ntitle: Chapter - 卡片\n---\n')
+    }
+  })
 })
 
 describe('cardGenerator validation', () => {

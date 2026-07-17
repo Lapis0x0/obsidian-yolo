@@ -26,6 +26,27 @@ import type {
   LearningUiHost,
 } from './LearningUiHost'
 
+type LearningVaultServices = Pick<
+  LearningUiHost,
+  'vault' | 'vaultWriter' | 'cardFileStore'
+>
+
+const learningVaultServices = new WeakMap<object, LearningVaultServices>()
+
+function getLearningVaultServices(plugin: YoloPlugin): LearningVaultServices {
+  const cached = learningVaultServices.get(plugin.app)
+  if (cached) return cached
+  const vault = createObsidianLearningVaultReadApi(plugin.app)
+  const vaultWriter = createObsidianLearningVaultWriteApi(plugin.app)
+  const services = {
+    vault,
+    vaultWriter,
+    cardFileStore: new LearningCardFileStore(vault, vaultWriter),
+  }
+  learningVaultServices.set(plugin.app, services)
+  return services
+}
+
 const localFileToolName = (name: string) =>
   getToolName(getLocalFileToolServerName(), name)
 
@@ -154,13 +175,11 @@ async function* streamGenerationAgent(
 }
 
 export function createLearningUiHost(plugin: YoloPlugin): LearningUiHost {
-  const vaultReadApi = createObsidianLearningVaultReadApi(plugin.app)
-  const vaultWriteApi = createObsidianLearningVaultWriteApi(plugin.app)
-  const cardFileStore = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
+  const { vault, vaultWriter, cardFileStore } = getLearningVaultServices(plugin)
   return {
     app: plugin.app,
-    vault: vaultReadApi,
-    vaultWriter: vaultWriteApi,
+    vault,
+    vaultWriter,
     get settings() {
       return mapSettings(plugin)
     },

@@ -9,39 +9,89 @@ import type {
 const normalizeVaultPath = (path: string) =>
   normalizePath(normalizeLearningVaultPath(path))
 
+type AppWriteState = {
+  readonly pathQueues: Map<string, Promise<void>>
+  readonly creationReceipts: WeakMap<LearningVaultFileSnapshot, symbol>
+}
+
+const appWriteStates = new WeakMap<App, AppWriteState>()
+const processMismatch = new Error('Learning vault process mismatch')
+
+function getAppWriteState(app: App): AppWriteState {
+  let state = appWriteStates.get(app)
+  if (!state) {
+    state = {
+      pathQueues: new Map(),
+      creationReceipts: new WeakMap(),
+    }
+    appWriteStates.set(app, state)
+  }
+  return state
+}
+
+function serializePath<R>(
+  state: AppWriteState,
+  path: string,
+  operation: () => Promise<R>,
+): Promise<R> {
+  const previous = state.pathQueues.get(path) ?? Promise.resolve()
+  const result = previous.then(operation, operation)
+  const settled = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  state.pathQueues.set(path, settled)
+  void settled.then(() => {
+    if (state.pathQueues.get(path) === settled) state.pathQueues.delete(path)
+  })
+  return result
+}
+
 export function createObsidianLearningVaultWriteApi(
   app: App,
 ): LearningVaultWriteApi {
-  const createdSnapshots = new WeakSet<LearningVaultFileSnapshot>()
+  const state = getAppWriteState(app)
 
   const snapshot = (
     file: TFile,
     content: string,
-    created = false,
+    receipt?: symbol,
   ): LearningVaultFileSnapshot => {
     const value = { path: file.path, content, identity: file }
-    if (created) createdSnapshots.add(value)
+    if (receipt) state.creationReceipts.set(value, receipt)
     return value
   }
 
-  const deleteOwnedTextIfUnchanged = async (
+  const revertOwnedCreatedTextIfUnchanged = async (
     created: LearningVaultFileSnapshot,
     expected: LearningVaultFileSnapshot,
-  ): Promise<boolean> => {
-    if (
-      !createdSnapshots.has(created) ||
-      created.path !== expected.path ||
-      created.identity !== expected.identity
-    ) {
-      return false
-    }
+    fallbackContent: string,
+  ): Promise<LearningVaultFileSnapshot | null> => {
     const path = normalizeVaultPath(expected.path)
-    const entry = app.vault.getAbstractFileByPath(path)
-    if (!(entry instanceof TFile) || entry !== expected.identity) return false
-    if ((await app.vault.read(entry)) !== expected.content) return false
-    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Transaction rollback must restore the original absent-file state.
-    await app.vault.delete(entry)
-    return true
+    return serializePath(state, path, async () => {
+      const receipt = state.creationReceipts.get(created)
+      if (
+        !receipt ||
+        state.creationReceipts.get(expected) !== receipt ||
+        created.path !== expected.path ||
+        created.identity !== expected.identity
+      ) {
+        return null
+      }
+      const entry = app.vault.getAbstractFileByPath(path)
+      if (!(entry instanceof TFile) || entry !== expected.identity) return null
+      try {
+        await app.vault.process(entry, (current) => {
+          if (current !== expected.content) throw processMismatch
+          return fallbackContent
+        })
+      } catch (error) {
+        if (error === processMismatch) return null
+        throw error
+      }
+      if (app.vault.getAbstractFileByPath(path) !== entry) return null
+      return snapshot(entry, fallbackContent)
+    })
   }
 
   return {
@@ -65,8 +115,11 @@ export function createObsidianLearningVaultWriteApi(
       return listed.files
     },
     createText: async (filePath, content) => {
-      const file = await app.vault.create(normalizeVaultPath(filePath), content)
-      return { path: file.path, mtime: file.stat?.mtime ?? 0 }
+      const path = normalizeVaultPath(filePath)
+      return serializePath(state, path, async () => {
+        const file = await app.vault.create(path, content)
+        return { path: file.path, mtime: file.stat?.mtime ?? 0 }
+      })
     },
     createBinary: async (filePath, content) => {
       await app.vault.createBinary(normalizeVaultPath(filePath), content)
@@ -100,22 +153,31 @@ export function createObsidianLearningVaultWriteApi(
     },
     createTextIfAbsent: async (filePath, content) => {
       const path = normalizeVaultPath(filePath)
-      if (app.vault.getAbstractFileByPath(path)) return null
-      const file = await app.vault.create(path, content)
-      return snapshot(file, content, true)
+      return serializePath(state, path, async () => {
+        if (app.vault.getAbstractFileByPath(path)) return null
+        const file = await app.vault.create(path, content)
+        return snapshot(file, content, Symbol(path))
+      })
     },
     replaceTextIfUnchanged: async (expected, content) => {
       const path = normalizeVaultPath(expected.path)
-      const entry = app.vault.getAbstractFileByPath(path)
-      if (!(entry instanceof TFile) || entry !== expected.identity) return null
-      if ((await app.vault.read(entry)) !== expected.content) return null
-      await app.vault.modify(entry, content)
-      const next = snapshot(entry, content)
-      if (createdSnapshots.has(expected)) createdSnapshots.add(next)
-      return next
+      return serializePath(state, path, async () => {
+        const entry = app.vault.getAbstractFileByPath(path)
+        if (!(entry instanceof TFile) || entry !== expected.identity)
+          return null
+        try {
+          await app.vault.process(entry, (current) => {
+            if (current !== expected.content) throw processMismatch
+            return content
+          })
+        } catch (error) {
+          if (error === processMismatch) return null
+          throw error
+        }
+        if (app.vault.getAbstractFileByPath(path) !== entry) return null
+        return snapshot(entry, content, state.creationReceipts.get(expected))
+      })
     },
-    deleteCreatedTextIfUnchanged: async (expected) =>
-      deleteOwnedTextIfUnchanged(expected, expected),
-    deleteOwnedTextIfUnchanged,
+    revertOwnedCreatedTextIfUnchanged,
   }
 }

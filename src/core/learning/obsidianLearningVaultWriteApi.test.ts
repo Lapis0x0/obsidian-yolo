@@ -16,10 +16,13 @@ function createVault(initial: Record<string, string> = {}) {
   const modify = jest.fn(async (file: TFile, content: string) => {
     contents.set(file.path, content)
   })
-  const deleteFile = jest.fn(async (file: TFile) => {
-    entries.delete(file.path)
-    contents.delete(file.path)
-  })
+  const process = jest.fn(
+    async (file: TFile, update: (data: string) => string) => {
+      const next = update(contents.get(file.path) ?? '')
+      await modify(file, next)
+      return next
+    },
+  )
   const createBinary = jest.fn(async (path: string) => createFile(path))
   const mkdir = jest.fn(async () => undefined)
   const list = jest.fn(async () => ({
@@ -38,17 +41,18 @@ function createVault(initial: Record<string, string> = {}) {
       create,
       createBinary,
       modify,
-      delete: deleteFile,
+      process,
       adapter: { mkdir, list, rename, rmdir },
     },
   } as unknown as App
   return {
+    app,
     api: createObsidianLearningVaultWriteApi(app),
     contents,
     entries,
     create,
     modify,
-    deleteFile,
+    process,
     createBinary,
     mkdir,
     list,
@@ -140,26 +144,84 @@ describe('Obsidian Learning vault write adapter', () => {
     expect(modify).not.toHaveBeenCalled()
   })
 
-  it('rollback-deletes only its creation receipt while content still matches', async () => {
-    const { api, contents, deleteFile } = createVault()
+  it('shares path serialization across API instances so only one CAS wins', async () => {
+    const { app, api, contents, process } = createVault({
+      'p/cards.md': 'before',
+    })
+    const otherApi = createObsidianLearningVaultWriteApi(app)
+    const firstSnapshot = await api.readTextSnapshot('p/cards.md')
+    const secondSnapshot = await otherApi.readTextSnapshot('p/cards.md')
+    expect(firstSnapshot).not.toBeNull()
+    expect(secondSnapshot).not.toBeNull()
+    if (!firstSnapshot || !secondSnapshot) return
+
+    let releaseFirst: () => void = () => undefined
+    const firstPaused = new Promise<void>((resolvePaused) => {
+      process.mockImplementationOnce(
+        async (file: TFile, update: (data: string) => string) => {
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve
+            resolvePaused()
+          })
+          const next = update(contents.get(file.path) ?? '')
+          contents.set(file.path, next)
+          return next
+        },
+      )
+    })
+
+    const first = api.replaceTextIfUnchanged(firstSnapshot, 'first')
+    await firstPaused
+    const second = otherApi.replaceTextIfUnchanged(secondSnapshot, 'second')
+    releaseFirst()
+
+    const results = await Promise.all([first, second])
+    expect(results.filter(Boolean)).toHaveLength(1)
+    expect(contents.get('p/cards.md')).toBe('first')
+  })
+
+  it('preserves an external edit observed inside process without touching it', async () => {
+    const { api, contents, modify, process } = createVault({
+      'p/cards.md': 'before',
+    })
+    const expected = await api.readTextSnapshot('p/cards.md')
+    expect(expected).not.toBeNull()
+    if (!expected) return
+    process.mockImplementationOnce(
+      async (file: TFile, update: (data: string) => string) => {
+        contents.set(file.path, 'external')
+        return update('external')
+      },
+    )
+
+    await expect(
+      api.replaceTextIfUnchanged(expected, 'after'),
+    ).resolves.toBeNull()
+    expect(contents.get('p/cards.md')).toBe('external')
+    expect(modify).not.toHaveBeenCalled()
+  })
+
+  it('reverts only snapshots in its creation receipt lineage', async () => {
+    const { api, contents } = createVault()
     const created = await api.createTextIfAbsent('p/cards.md', 'created')
     expect(created).not.toBeNull()
     if (!created) return
 
     contents.set('p/cards.md', 'external')
-    await expect(api.deleteCreatedTextIfUnchanged(created)).resolves.toBe(false)
+    await expect(
+      api.revertOwnedCreatedTextIfUnchanged(created, created, 'empty'),
+    ).resolves.toBeNull()
     contents.set('p/cards.md', 'created')
     const ordinarySnapshot = await api.readTextSnapshot('p/cards.md')
     expect(ordinarySnapshot).not.toBeNull()
     if (!ordinarySnapshot) return
     await expect(
-      api.deleteCreatedTextIfUnchanged(ordinarySnapshot),
-    ).resolves.toBe(false)
+      api.revertOwnedCreatedTextIfUnchanged(created, ordinarySnapshot, 'empty'),
+    ).resolves.toBeNull()
     await expect(
-      api.deleteOwnedTextIfUnchanged(created, ordinarySnapshot),
-    ).resolves.toBe(true)
+      api.revertOwnedCreatedTextIfUnchanged(created, created, 'empty'),
+    ).resolves.toMatchObject({ content: 'empty' })
 
-    expect(deleteFile).toHaveBeenCalledTimes(1)
-    expect(contents.has('p/cards.md')).toBe(false)
+    expect(contents.get('p/cards.md')).toBe('empty')
   })
 })

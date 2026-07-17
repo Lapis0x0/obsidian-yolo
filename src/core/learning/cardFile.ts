@@ -605,10 +605,11 @@ export class LearningCardFileStore {
                 entry.before.content,
               )
             } else {
-              await this.casDeleteCreatedFile(
+              await this.casRevertCreatedFile(
                 entry.path,
                 entry.file,
                 entry.after,
+                buildCardsContent(input.targetChapterTitle ?? ''),
               )
             }
           }
@@ -749,10 +750,11 @@ export class LearningCardFileStore {
               targetSnapshot.content,
             )
           } else {
-            await this.casDeleteCreatedFile(
+            await this.casRevertCreatedFile(
               input.targetPath,
               writtenTargetFile,
               targetAfterInsert,
+              buildCardsContent(input.targetChapterTitle ?? ''),
             )
           }
         } catch (rollbackError) {
@@ -800,15 +802,20 @@ export class LearningCardFileStore {
     return updated
   }
 
-  private async casDeleteCreatedFile(
+  private async casRevertCreatedFile(
     path: string,
     expectedFile: LearningVaultFileSnapshot | null,
     expectedContent: string,
+    fallbackContent: string,
   ): Promise<void> {
     if (
       !expectedFile ||
       expectedFile.content !== expectedContent ||
-      !(await this.writer.deleteCreatedTextIfUnchanged(expectedFile))
+      !(await this.writer.revertOwnedCreatedTextIfUnchanged(
+        expectedFile,
+        expectedFile,
+        fallbackContent,
+      ))
     ) {
       throw new CardFileConflictError(path)
     }

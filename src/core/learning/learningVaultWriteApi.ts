@@ -35,11 +35,10 @@ export type LearningVaultWriteApi = {
     expected: LearningVaultFileSnapshot,
     content: string,
   ): Promise<LearningVaultFileSnapshot | null>
-  deleteCreatedTextIfUnchanged(
-    expected: LearningVaultFileSnapshot,
-  ): Promise<boolean>
-  deleteOwnedTextIfUnchanged(
+  /** Atomically removes owned payload but retains a safe file shell. */
+  revertOwnedCreatedTextIfUnchanged(
     created: LearningVaultFileSnapshot,
     expected: LearningVaultFileSnapshot,
-  ): Promise<boolean>
+    fallbackContent: string,
+  ): Promise<LearningVaultFileSnapshot | null>
 }

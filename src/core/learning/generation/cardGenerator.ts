@@ -195,16 +195,18 @@ export async function generateCardsForChapter({
   }
 
   await assertKnowledgeUnchanged(host, knowledgeSnapshot)
-  const createdCards = await createCardsFile(
+  const cardsTransaction = await createCardsFile(
     host,
     cardsPath,
     chapterTitle,
     assignedDrafts,
   )
+  const createdCards = cardsTransaction.snapshot
   const expectedCardUuids = new Set(
     assignedDrafts.map((draft) => draft.cardUuid),
   )
   let cardsSnapshot = createdCards
+  let cleanupExpected: LearningVaultFileSnapshot | null = createdCards
 
   try {
     await assertKnowledgeUnchanged(host, knowledgeSnapshot)
@@ -216,6 +218,7 @@ export async function generateCardsForChapter({
     )
 
     if (validation.invalid.length > 0 && !abortSignal?.aborted) {
+      const beforeRetry = cardsSnapshot
       const firstAssistantMessage: LearningGenerationAssistantMessage = {
         role: 'assistant',
         id: `card-gen-${chapterIndex}-resp-1`,
@@ -240,11 +243,12 @@ export async function generateCardsForChapter({
         console.error('[YOLO] Failed to correct generated cards:', error)
       }
 
-      cardsSnapshot = await readOwnedCardsSnapshot(
+      cardsSnapshot = await readCurrentCardsSnapshot(
         host,
         cardsPath,
         createdCards,
       )
+      if (cardsSnapshot.content !== beforeRetry.content) cleanupExpected = null
       if (abortSignal?.aborted) {
         throw new Error(`Card generation aborted: ${chapterTitle}`)
       }
@@ -263,7 +267,7 @@ export async function generateCardsForChapter({
       throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
     }
 
-    if (discardedCount > 0) {
+    if (discardedCount > 0 && cleanupExpected) {
       const updated = await host.vaultWriter.replaceTextIfUnchanged(
         cardsSnapshot,
         buildCardsContent(
@@ -273,6 +277,7 @@ export async function generateCardsForChapter({
       )
       if (!updated) throw cardsFileChangedError(cardsPath)
       cardsSnapshot = updated
+      cleanupExpected = updated
     }
 
     const finalCards = validation.valid.map(toGeneratedCard)
@@ -296,13 +301,26 @@ export async function generateCardsForChapter({
       },
     }
   } catch (error) {
-    if (
-      !(await host.vaultWriter.deleteOwnedTextIfUnchanged(
-        createdCards,
-        cardsSnapshot,
-      ))
-    ) {
-      throw cardsFileChangedError(cardsPath)
+    if (!cleanupExpected) {
+      throw cleanupIncompleteError(error, cardsPath)
+    }
+    let reverted: LearningVaultFileSnapshot | null
+    try {
+      reverted = cardsTransaction.creationReceipt
+        ? await host.vaultWriter.revertOwnedCreatedTextIfUnchanged(
+            cardsTransaction.creationReceipt,
+            cleanupExpected,
+            cardsTransaction.fallbackContent,
+          )
+        : await host.vaultWriter.replaceTextIfUnchanged(
+            cleanupExpected,
+            cardsTransaction.fallbackContent,
+          )
+    } catch (cleanupError) {
+      throw cleanupIncompleteError(error, cardsPath, cleanupError)
+    }
+    if (!reverted) {
+      throw cleanupIncompleteError(error, cardsPath)
     }
     throw error
   }
@@ -353,7 +371,9 @@ export async function generateCardsParallel({
   const resolvedProjectId = projectId ?? projectPath
   const tasks = chapters.map(async (chapter, chapterIndex) => {
     let result: CardGenerationResult
-    if (host.vault.getEntry(chapter.cardsPath)) {
+    if (
+      await shouldSkipExistingCardsFile(host, chapter.cardsPath, chapter.title)
+    ) {
       result = {
         chapterIndex,
         chapterTitle: chapter.title,
@@ -556,7 +576,7 @@ function throwIfAborted(abortSignal: AbortSignal | undefined): void {
   }
 }
 
-async function readOwnedCardsSnapshot(
+async function readCurrentCardsSnapshot(
   host: LearningGenerationHost,
   cardsPath: string,
   created: LearningVaultFileSnapshot,
@@ -570,6 +590,30 @@ async function readOwnedCardsSnapshot(
 
 function cardsFileChangedError(cardsPath: string): Error {
   return new Error(`Cards file changed concurrently: ${cardsPath}`)
+}
+
+function cleanupIncompleteError(
+  error: unknown,
+  cardsPath: string,
+  cleanupError?: unknown,
+): Error {
+  const original = errorMessage(error)
+  const cleanup = cleanupError
+    ? `; cleanup error: ${errorMessage(cleanupError)}`
+    : ''
+  return new Error(
+    `Card generation failed and cleanup was incomplete: ${cardsPath}; original error: ${original}${cleanup}`,
+  )
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error) ?? 'Unknown error'
+  } catch {
+    return 'Unknown error'
+  }
 }
 
 function assignCardUuid(
@@ -634,18 +678,47 @@ async function createCardsFile(
   cardsPath: string,
   chapterTitle: string,
   drafts: AssignedCardDraft[],
-): Promise<LearningVaultFileSnapshot> {
+): Promise<{
+  snapshot: LearningVaultFileSnapshot
+  creationReceipt: LearningVaultFileSnapshot | null
+  fallbackContent: string
+}> {
   const blocks = drafts.map((draft) => {
     const title = draft.title.trim()
     const kpPart = draft.kpUuid ? ` kp:${draft.kpUuid.toLowerCase()}` : ''
     return `## ${title}${title ? ' ' : ''}<!--card:${draft.cardUuid}${kpPart}-->\n\n${formatCardBody(draft.front, draft.back)}`
   })
-  const created = await host.vaultWriter.createTextIfAbsent(
-    cardsPath,
-    buildCardsContent(chapterTitle, blocks),
+  const fallbackContent = buildCardsContent(chapterTitle, [])
+  const content = buildCardsContent(chapterTitle, blocks)
+  const created = await host.vaultWriter.createTextIfAbsent(cardsPath, content)
+  if (created) {
+    return {
+      snapshot: created,
+      creationReceipt: created,
+      fallbackContent,
+    }
+  }
+
+  const existing = await host.vaultWriter.readTextSnapshot(cardsPath)
+  if (!existing || existing.content !== fallbackContent) {
+    throw new Error(`Cards file already exists: ${cardsPath}`)
+  }
+  const updated = await host.vaultWriter.replaceTextIfUnchanged(
+    existing,
+    content,
   )
-  if (!created) throw new Error(`Cards file already exists: ${cardsPath}`)
-  return created
+  if (!updated) throw cardsFileChangedError(cardsPath)
+  return { snapshot: updated, creationReceipt: null, fallbackContent }
+}
+
+async function shouldSkipExistingCardsFile(
+  host: LearningGenerationHost,
+  cardsPath: string,
+  chapterTitle: string,
+): Promise<boolean> {
+  if (!host.vault.getEntry(cardsPath)) return false
+  const existing = await host.vaultWriter.readTextSnapshot(cardsPath)
+  return existing?.content !== buildCardsContent(chapterTitle, [])
 }
 
 function buildCardsContent(chapterTitle: string, blocks: string[]): string {
@@ -653,7 +726,8 @@ function buildCardsContent(chapterTitle: string, blocks: string[]): string {
     { title: `${chapterTitle} - 卡片` },
     { lineWidth: -1 },
   ).trimEnd()
-  return `---\n${yaml}\n---\n\n${blocks.join('\n\n')}\n`
+  const header = `---\n${yaml}\n---\n`
+  return blocks.length > 0 ? `${header}\n${blocks.join('\n\n')}\n` : header
 }
 
 function toGeneratedCard(entry: WrittenCardEntry): GeneratedCard {

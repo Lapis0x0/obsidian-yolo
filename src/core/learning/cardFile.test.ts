@@ -35,6 +35,13 @@ function createApp(initialFiles: Record<string, string>) {
   const modify = jest.fn(async (file: TFile, content: string) => {
     files.set(file.path, content)
   })
+  const process = jest.fn(
+    async (file: TFile, update: (data: string) => string) => {
+      const next = update(files.get(file.path) ?? '')
+      await modify(file, next)
+      return next
+    },
+  )
   const create = jest.fn(async (path: string, content: string) => {
     const file = new TFile()
     file.path = path
@@ -56,6 +63,7 @@ function createApp(initialFiles: Record<string, string>) {
       cachedRead,
       read,
       modify,
+      process,
       create,
       delete: deleteFile,
     },
@@ -72,6 +80,7 @@ function createApp(initialFiles: Record<string, string>) {
     cachedRead,
     read,
     modify,
+    process,
     create,
     deleteFile,
   }
@@ -563,7 +572,7 @@ describe('cardFile', () => {
     expect(files.get(sourcePath)).toBe(`${A}\n`)
   })
 
-  it('deletes a newly created target when source deletion fails', async () => {
+  it('reverts a newly created target to an empty shell when source deletion fails', async () => {
     const sourcePath = 'p/a/cards.md'
     const targetPath = 'p/new/cards.md'
     const { vaultReadApi, vaultWriteApi, files, modify, create, deleteFile } =
@@ -583,8 +592,8 @@ describe('cardFile', () => {
       }),
     ).rejects.toThrow('source failed')
     expect(create).toHaveBeenCalledTimes(1)
-    expect(deleteFile).toHaveBeenCalledTimes(1)
-    expect(files.has(targetPath)).toBe(false)
+    expect(deleteFile).not.toHaveBeenCalled()
+    expect(files.get(targetPath)).toBe('---\ntitle: 新章节 - 卡片\n---\n')
     expect(files.get(sourcePath)).toBe(`${A}\n`)
   })
 
@@ -619,22 +628,80 @@ describe('cardFile', () => {
 
   it('detects full-content CAS changes before writing', async () => {
     const path = 'p/a/cards.md'
-    const { vaultReadApi, vaultWriteApi, adapter, read, files, modify } =
+    const { vaultReadApi, vaultWriteApi, adapter, process, files, modify } =
       createApp({
         [path]: `${A}\n`,
       })
     const store = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
-    let reads = 0
-    read.mockImplementation(async () => {
-      reads += 1
-      if (reads === 2) files.set(path, `${A}\nexternal\n`)
-      return files.get(path) ?? ''
-    })
+    process.mockImplementationOnce(
+      async (file: TFile, update: (data: string) => string) => {
+        files.set(file.path, `${A}\nexternal\n`)
+        return update(files.get(file.path) ?? '')
+      },
+    )
 
     await expect(store.deleteCard(path, 'aaaaaaaa')).rejects.toBeInstanceOf(
       CardFileConflictError,
     )
     expect(modify).not.toHaveBeenCalled()
     expect(adapter.write).not.toHaveBeenCalled()
+  })
+
+  it('coordinates CAS across two store and writer instances', async () => {
+    const path = 'p/a/cards.md'
+    const { app, vaultReadApi, vaultWriteApi, files, process, modify } =
+      createApp({ [path]: `${A}\n` })
+    const otherReadApi = createObsidianLearningVaultReadApi(app)
+    const otherWriteApi = createObsidianLearningVaultWriteApi(app)
+    const firstStore = new LearningCardFileStore(vaultReadApi, vaultWriteApi)
+    const secondStore = new LearningCardFileStore(otherReadApi, otherWriteApi)
+
+    let releaseFirst: () => void = () => undefined
+    let firstProcessStarted: () => void = () => undefined
+    const processStarted = new Promise<void>((resolve) => {
+      firstProcessStarted = resolve
+    })
+    process.mockImplementationOnce(
+      async (file: TFile, update: (data: string) => string) => {
+        firstProcessStarted()
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve
+        })
+        const next = update(files.get(file.path) ?? '')
+        await modify(file, next)
+        return next
+      },
+    )
+
+    const first = firstStore.updateCard(path, 'aaaaaaaa', {
+      front: 'First',
+      back: 'back A',
+    })
+    await processStarted
+
+    let secondSnapshotRead: () => void = () => undefined
+    const secondReadComplete = new Promise<void>((resolve) => {
+      secondSnapshotRead = resolve
+    })
+    const readSecondSnapshot =
+      otherWriteApi.readTextSnapshot.bind(otherWriteApi)
+    jest
+      .spyOn(otherWriteApi, 'readTextSnapshot')
+      .mockImplementation(async (filePath) => {
+        const snapshot = await readSecondSnapshot(filePath)
+        secondSnapshotRead()
+        return snapshot
+      })
+    const second = secondStore.updateCard(path, 'aaaaaaaa', {
+      front: 'Second',
+      back: 'back A',
+    })
+    await secondReadComplete
+    releaseFirst()
+
+    await expect(first).resolves.toBeUndefined()
+    await expect(second).rejects.toBeInstanceOf(CardFileConflictError)
+    expect(files.get(path)).toContain('\n\nFirst\n\n---')
+    expect(files.get(path)).not.toContain('\n\nSecond\n\n---')
   })
 })
