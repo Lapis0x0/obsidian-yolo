@@ -12,6 +12,18 @@ export {
 } from './contributionStager'
 export { ModuleLoader, type ModuleLoaderOptions } from './moduleLoader'
 export {
+  ModuleArtifactInstaller,
+  type ModuleArtifactDownloadRequest,
+  type ModuleArtifactInstallerOptions,
+} from './moduleArtifactInstaller'
+export { sha256Hex, verifyModuleBytes } from './moduleIntegrity'
+export {
+  verifyInstalledModuleArtifact,
+  type ModuleArtifactDescriptor,
+  type ModuleArtifactReadStore,
+  type VerifiedModuleArtifact,
+} from './moduleArtifactVerifier'
+export {
   ManagedModulePathsCapabilityProvider,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
   type ManagedModulePathsCapabilityProviderOptions,
@@ -39,8 +51,11 @@ export {
 export {
   ModuleStore,
   parseModuleArtifactManifest,
+  parseModuleReadyMarker,
+  type ModuleArtifactFile,
   type ModuleStoreOptions,
   type ModuleArtifactManifest,
+  type ModuleReadyMarker,
   resolveModulePluginDir,
 } from './moduleStore'
 export {

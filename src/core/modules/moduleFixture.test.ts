@@ -5,19 +5,31 @@ import { existsSync, readFileSync } from 'node:fs'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test resolves repository fixtures
 import * as path from 'node:path'
 
-import { parseModuleArtifactManifest } from './moduleStore'
+import {
+  parseModuleArtifactManifest,
+  parseModuleReadyMarker,
+} from './moduleStore'
 
 describe('host API conformance artifact boundary', () => {
   const artifactDir = path.resolve('modules/host-api-conformance/1.0.0')
 
   it('records the exact entry byte size and SHA-256', () => {
+    const manifestBytes = readFileSync(path.join(artifactDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
-      JSON.parse(readFileSync(path.join(artifactDir, 'module.json'), 'utf8')),
+      JSON.parse(manifestBytes.toString('utf8')),
+    )
+    const ready = parseModuleReadyMarker(
+      JSON.parse(readFileSync(path.join(artifactDir, 'ready.json'), 'utf8')),
     )
     const entry = readFileSync(path.join(artifactDir, manifest.entry.path))
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('host-api-conformance')
     expect(manifest.version).toBe('1.0.0')
+    expect(ready).toMatchObject({
+      id: manifest.id,
+      version: manifest.version,
+      manifestSha256: createHash('sha256').update(manifestBytes).digest('hex'),
+    })
     expect(manifest.entry.byteSize).toBe(entry.byteLength)
     expect(manifest.entry.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),
@@ -36,7 +48,11 @@ describe('host API conformance artifact boundary', () => {
       readFileSync('modules/bundled.json', 'utf8'),
     ) as {
       schemaVersion: number
-      modules: Array<{ id: string; version: string }>
+      modules: Array<{
+        id: string
+        version: string
+        manifest: { byteSize: number; sha256: string }
+      }>
     }
     expect(bundled).toEqual({
       schemaVersion: 1,
@@ -44,13 +60,22 @@ describe('host API conformance artifact boundary', () => {
     })
 
     const learningDir = path.resolve('modules/learning/0.1.0')
+    const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
-      JSON.parse(readFileSync(path.join(learningDir, 'module.json'), 'utf8')),
+      JSON.parse(manifestBytes.toString('utf8')),
+    )
+    const ready = parseModuleReadyMarker(
+      JSON.parse(readFileSync(path.join(learningDir, 'ready.json'), 'utf8')),
     )
     const entry = readFileSync(path.join(learningDir, manifest.entry.path))
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('learning')
     expect(manifest.version).toBe('0.1.0')
+    expect(bundled.modules[0]?.manifest).toEqual({
+      byteSize: manifestBytes.byteLength,
+      sha256: createHash('sha256').update(manifestBytes).digest('hex'),
+    })
+    expect(ready.manifestSha256).toBe(bundled.modules[0]?.manifest.sha256)
     expect(manifest.entry.byteSize).toBe(entry.byteLength)
     expect(manifest.entry.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),

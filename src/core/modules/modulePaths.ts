@@ -1,4 +1,5 @@
 import type { ModuleLifecycleScope } from './lifecycleScope'
+import { assertModuleId } from './moduleStore'
 import { normalizeModuleVaultPath } from './moduleVault'
 import type {
   ModuleDisposer,
@@ -50,7 +51,7 @@ export class ManagedModulePathsCapabilityProvider
     moduleId: string,
     lifecycle: ModuleLifecycleScope,
   ): ModulePathsCapabilityActivationV1 {
-    assertModuleId(moduleId)
+    assertModuleId(moduleId, 'Module id')
     let active = true
     let activationComplete = false
     let changedBeforeActivation = false
@@ -131,16 +132,5 @@ export class ManagedModulePathsCapabilityProvider
     return Object.freeze({
       contentRoot: normalizeModuleVaultPath(`${baseDir}/${moduleId}`),
     })
-  }
-}
-
-function assertModuleId(moduleId: string): void {
-  if (
-    !moduleId ||
-    moduleId === '.' ||
-    moduleId === '..' ||
-    /[\\/]/.test(moduleId)
-  ) {
-    throw new Error('Module id must be a non-empty path segment')
   }
 }

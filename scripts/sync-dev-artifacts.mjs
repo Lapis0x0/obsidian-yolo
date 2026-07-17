@@ -11,8 +11,10 @@ const artifactNames = new Set([
   'modules/bundled.json',
   'modules/host-api-conformance/1.0.0/entry.js',
   'modules/host-api-conformance/1.0.0/module.json',
+  'modules/host-api-conformance/1.0.0/ready.json',
   'modules/learning/0.1.0/entry.js',
   'modules/learning/0.1.0/module.json',
+  'modules/learning/0.1.0/ready.json',
 ])
 const pendingTimers = new Map()
 let copyChain = Promise.resolve()

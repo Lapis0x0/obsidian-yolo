@@ -1,10 +1,10 @@
+import {
+  type ModuleArtifactReadStore,
+  verifyInstalledModuleArtifact,
+} from './moduleArtifactVerifier'
 import type { ModuleLoader } from './moduleLoader'
 import type { ModuleRuntime } from './moduleRuntime'
-import {
-  type ModuleArtifactManifest,
-  type ModuleStore,
-  parseModuleArtifactManifest,
-} from './moduleStore'
+import { assertModuleId, assertModulePathSegment } from './moduleStore'
 import type {
   InstalledModuleState,
   InstalledModuleStateSource,
@@ -17,6 +17,10 @@ export type BundledModuleDescriptor = Readonly<{
   version: string
   name: string
   description: string
+  manifest: Readonly<{
+    byteSize: number
+    sha256: string
+  }>
 }>
 
 export type BundledModuleIndex = Readonly<{
@@ -25,12 +29,12 @@ export type BundledModuleIndex = Readonly<{
 }>
 
 export type BundledModuleRegistryOptions = {
-  store: Pick<
-    ModuleStore,
-    'readBundledIndexBytes' | 'readManifestBytes' | 'readEntryBytes'
-  >
+  store: ModuleArtifactReadStore & {
+    readBundledIndexBytes(): Promise<Uint8Array>
+  }
   loader: Pick<ModuleLoader, 'load'>
   runtime: Pick<ModuleRuntime, 'activate'>
+  subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   reportActivationError?: (moduleId: string, error: unknown) => void
 }
 
@@ -57,26 +61,48 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
       throw new Error('Bundled module descriptor is invalid')
     }
     const descriptor = value as Record<string, unknown>
-    const id = requirePathSegment(descriptor.id, 'Bundled module id')
-    const version = requirePathSegment(
-      descriptor.version,
-      'Bundled module version',
-    )
-    if (ids.has(id)) {
+    if (typeof descriptor.id !== 'string') {
+      throw new Error('Bundled module id must be a string')
+    }
+    if (typeof descriptor.version !== 'string') {
+      throw new Error('Bundled module version must be a string')
+    }
+    assertModuleId(descriptor.id, 'Bundled module id')
+    assertModulePathSegment(descriptor.version, 'Bundled module version')
+    const id = descriptor.id
+    const version = descriptor.version
+    const canonicalId = id.toLowerCase()
+    if (ids.has(canonicalId)) {
       throw new Error(`Bundled module index contains duplicate id "${id}"`)
     }
-    ids.add(id)
+    ids.add(canonicalId)
     if (typeof descriptor.name !== 'string' || !descriptor.name.trim()) {
       throw new Error('Bundled module name must be a non-empty string')
     }
     if (typeof descriptor.description !== 'string') {
       throw new Error('Bundled module description must be a string')
     }
+    const manifest = descriptor.manifest as
+      | { byteSize?: unknown; sha256?: unknown }
+      | undefined
+    if (
+      !manifest ||
+      !Number.isSafeInteger(manifest.byteSize) ||
+      (manifest.byteSize as number) < 0 ||
+      typeof manifest.sha256 !== 'string' ||
+      !/^[a-fA-F0-9]{64}$/.test(manifest.sha256)
+    ) {
+      throw new Error('Bundled module manifest metadata is invalid')
+    }
     return Object.freeze({
       id,
       version,
       name: descriptor.name,
       description: descriptor.description,
+      manifest: Object.freeze({
+        byteSize: manifest.byteSize as number,
+        sha256: manifest.sha256.toLowerCase(),
+      }),
     })
   })
   return Object.freeze({
@@ -98,8 +124,13 @@ export class BundledModuleRegistry {
   private indexPromise: Promise<BundledModuleIndex> | null = null
   private activationPromise: Promise<void> | null = null
   private readonly states = new Map<string, ActivationState>()
+  private readonly subtleCrypto: Pick<SubtleCrypto, 'digest'>
 
-  constructor(private readonly options: BundledModuleRegistryOptions) {}
+  constructor(private readonly options: BundledModuleRegistryOptions) {
+    const subtleCrypto = options.subtleCrypto ?? globalThis.crypto?.subtle
+    if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
+    this.subtleCrypto = subtleCrypto
+  }
 
   activateAll(): Promise<void> {
     this.activationPromise ??= this.activateAllOnce()
@@ -158,11 +189,10 @@ export class BundledModuleRegistry {
   private async activateOne(module: BundledModuleDescriptor): Promise<void> {
     this.states.set(module.id, Object.freeze({ version: module.version }))
     try {
-      const manifest = await this.readManifest(module)
-      const entryBytes = await this.options.store.readEntryBytes(
-        manifest.id,
-        manifest.version,
-        manifest.entry.path,
+      const { manifest, entryBytes } = await verifyInstalledModuleArtifact(
+        this.options.store,
+        module,
+        this.subtleCrypto,
       )
       const definition = await this.options.loader.load(
         {
@@ -192,37 +222,6 @@ export class BundledModuleRegistry {
       }
     }
   }
-
-  private async readManifest(
-    module: BundledModuleDescriptor,
-  ): Promise<ModuleArtifactManifest> {
-    const bytes = await this.options.store.readManifestBytes(
-      module.id,
-      module.version,
-    )
-    const manifest = parseModuleArtifactManifest(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-    )
-    if (manifest.id !== module.id || manifest.version !== module.version) {
-      throw new Error(
-        `Bundled module "${module.id}" manifest identity mismatch`,
-      )
-    }
-    return manifest
-  }
-}
-
-function requirePathSegment(value: unknown, label: string): string {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value === '.' ||
-    value === '..' ||
-    /[\\/]/.test(value)
-  ) {
-    throw new Error(`${label} must be a non-empty path segment`)
-  }
-  return value
 }
 
 function errorMessage(error: unknown): string {

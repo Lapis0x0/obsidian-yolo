@@ -5,7 +5,11 @@
       "id": "learning",
       "version": "0.1.0",
       "name": "Learning module preview",
-      "description": "Read-only module boundary preview for existing Learning data."
+      "description": "Read-only module boundary preview for existing Learning data.",
+      "manifest": {
+        "byteSize": 414,
+        "sha256": "a924c982f7f880edd5e3017fad15d5f5c362ca5176128a01861af2aa7135f139"
+      }
     }
   ]
 }
