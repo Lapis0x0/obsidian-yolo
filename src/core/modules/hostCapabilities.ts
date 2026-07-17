@@ -5,6 +5,10 @@ import type {
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import {
+  type ModuleAgentCapabilityProviderV1,
+  UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
+} from './moduleAgent'
+import {
   type ModulePathsCapabilityProviderV1,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
 } from './modulePaths'
@@ -39,6 +43,7 @@ class ModuleBackgroundCleanupError extends Error {
 }
 
 type CoreModuleHostCapabilityProviderOptions = {
+  agent?: ModuleAgentCapabilityProviderV1
   backgroundActivities: BackgroundActivityBatchSink
   paths?: ModulePathsCapabilityProviderV1
   vault?: ModuleVaultCapabilityProviderV1
@@ -49,6 +54,7 @@ type CoreModuleHostCapabilityProviderOptions = {
 export class CoreModuleHostCapabilityProvider
   implements ModuleHostCapabilityProviderV1
 {
+  private readonly agent: ModuleAgentCapabilityProviderV1
   private readonly backgroundActivities: BackgroundActivityBatchSink
   private readonly now: () => number
   private readonly paths: ModulePathsCapabilityProviderV1
@@ -59,6 +65,7 @@ export class CoreModuleHostCapabilityProvider
   private readonly vault: ModuleVaultCapabilityProviderV1
 
   constructor({
+    agent = UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
     backgroundActivities,
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
     vault = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
@@ -70,6 +77,7 @@ export class CoreModuleHostCapabilityProvider
       )
     },
   }: CoreModuleHostCapabilityProviderOptions) {
+    this.agent = agent
     this.backgroundActivities = backgroundActivities
     this.paths = paths
     this.vault = vault
@@ -81,6 +89,7 @@ export class CoreModuleHostCapabilityProvider
     moduleId: string,
     lifecycle: ModuleLifecycleScope,
   ): ModuleHostCapabilityActivationV1 {
+    const agent = this.agent.create(moduleId, lifecycle)
     const background = createModuleBackgroundCapability({
       moduleId,
       lifecycle,
@@ -92,12 +101,14 @@ export class CoreModuleHostCapabilityProvider
     const vault = this.vault.create(moduleId, lifecycle)
     return Object.freeze({
       capabilities: Object.freeze({
+        agent: agent.api,
         background: background.api,
         paths: paths.api,
         vault: vault.api,
       }),
       commit: () => background.commit(),
       activate: () => {
+        agent.activate()
         background.activate()
         paths.activate()
         vault.activate()

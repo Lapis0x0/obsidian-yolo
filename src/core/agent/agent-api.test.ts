@@ -310,9 +310,7 @@ describe('agent api helpers', () => {
       ),
     ).toEqual(['server__search'])
 
-    expect(
-      narrowAllowedToolNames(undefined, ['server__search']),
-    ).toBeUndefined()
+    expect(narrowAllowedToolNames(undefined, ['server__search'])).toEqual([])
   })
 
   it('maps legacy agent-full API mode to agent with YOLO enabled', async () => {

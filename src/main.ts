@@ -66,6 +66,7 @@ import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
   BundledModuleRegistry,
+  CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   EMPTY_INSTALLED_MODULE_STATE_SOURCE,
@@ -3590,6 +3591,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const runtime = new ModuleRuntime(
       new ObsidianModuleContributionRegistrar(this),
       new CoreModuleHostCapabilityProvider({
+        agent: new CoreModuleAgentCapabilityProvider({
+          getAgentApi: async () => {
+            await this.warmupAgentService()
+            return this.getAgentApi()
+          },
+        }),
         backgroundActivities: this.getBackgroundActivityRegistry(),
         paths: new ManagedModulePathsCapabilityProvider({
           getBaseDir: () => getYoloBaseDir(this.settings),

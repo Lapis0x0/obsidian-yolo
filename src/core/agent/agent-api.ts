@@ -542,9 +542,8 @@ export function narrowAllowedToolNames(
   runtimeAllowedToolNames: string[] | undefined,
   requestedAllowedToolNames: string[] | undefined,
 ): string[] | undefined {
-  if (!runtimeAllowedToolNames || !requestedAllowedToolNames) {
-    return runtimeAllowedToolNames
-  }
+  if (!requestedAllowedToolNames) return runtimeAllowedToolNames
+  if (!runtimeAllowedToolNames) return []
 
   const requested = new Set(requestedAllowedToolNames)
   return runtimeAllowedToolNames.filter((name) => requested.has(name))

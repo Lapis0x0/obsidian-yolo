@@ -12,6 +12,13 @@ export {
 } from './contributionStager'
 export { ModuleLoader, type ModuleLoaderOptions } from './moduleLoader'
 export {
+  CoreModuleAgentCapabilityProvider,
+  UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
+  type CoreModuleAgentCapabilityProviderOptions,
+  type ModuleAgentCapabilityActivationV1,
+  type ModuleAgentCapabilityProviderV1,
+} from './moduleAgent'
+export {
   ModuleArtifactInstaller,
   type ModuleArtifactDownloadRequest,
   type ModuleArtifactInstallerOptions,
@@ -93,6 +100,11 @@ export type {
   YoloModuleBackgroundActivityStatusV1,
   YoloModuleBackgroundActivityV1,
   YoloModuleBackgroundV1,
+  YoloModuleAgentCapabilityV1,
+  YoloModuleAgentEventV1,
+  YoloModuleAgentMessageV1,
+  YoloModuleAgentRequestV1,
+  YoloModuleAgentV1,
   YoloModuleCapabilitiesV1,
   YoloModuleLifecycle,
   YoloModuleOpenViewOptionsV1,

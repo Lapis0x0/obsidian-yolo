@@ -50,6 +50,57 @@ export type YoloModuleBackgroundV1 = {
   remove(id: string): void
 }
 
+export type YoloModuleAgentCapabilityV1 = 'none' | 'vault-read' | 'vault-write'
+
+export type YoloModuleAgentMessageV1 =
+  | Readonly<{
+      role: 'user'
+      id: string
+      content: string
+    }>
+  | Readonly<{
+      role: 'assistant'
+      id: string
+      content: string
+    }>
+
+export type YoloModuleAgentRequestV1 = Readonly<{
+  prompt?: string
+  messages?: readonly YoloModuleAgentMessageV1[]
+  modelId?: string
+  systemPrompt: string
+  capability: YoloModuleAgentCapabilityV1
+  workspaceScope?: Readonly<{
+    enabled: boolean
+    include: readonly string[]
+    exclude: readonly string[]
+  }>
+  signal?: AbortSignal
+}>
+
+export type YoloModuleAgentEventV1 =
+  | Readonly<{ type: 'text'; text: string; delta: string }>
+  | Readonly<{
+      type: 'tool'
+      name: string
+      status:
+        | 'pending'
+        | 'running'
+        | 'completed'
+        | 'error'
+        | 'awaiting_approval'
+      arguments?: Readonly<Record<string, unknown>>
+    }>
+  | Readonly<{ type: 'completed'; text: string }>
+  | Readonly<{ type: 'aborted' }>
+  | Readonly<{ type: 'error'; message: string }>
+
+export type YoloModuleAgentV1 = {
+  stream(
+    request: YoloModuleAgentRequestV1,
+  ): AsyncIterable<YoloModuleAgentEventV1>
+}
+
 export type YoloModulePathsSnapshotV1 = Readonly<{
   contentRoot: string
 }>
@@ -141,6 +192,7 @@ export type YoloModuleVaultV1 = {
 }
 
 export type YoloModuleCapabilitiesV1 = Readonly<{
+  agent: YoloModuleAgentV1
   background: YoloModuleBackgroundV1
   paths: YoloModulePathsV1
   vault: YoloModuleVaultV1
