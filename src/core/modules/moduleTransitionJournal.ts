@@ -1,5 +1,6 @@
 import { sha256Hex } from './moduleIntegrity'
 import type { ModuleDataEnvelope } from './moduleSettingsStore'
+import { assertModuleId, assertModulePathSegment } from './moduleStore'
 
 export const MAX_MODULE_TRANSITION_SETTINGS_SNAPSHOT_BYTES = 256 * 1024
 
@@ -7,6 +8,9 @@ const MAX_SETTINGS_SNAPSHOT_DEPTH = 32
 const MAX_SETTINGS_SNAPSHOT_NODES = 10_000
 const SHA256 = /^[a-f0-9]{64}$/
 const DANGEROUS_NAMES = new Set(['__proto__', 'prototype', 'constructor'])
+const MANAGED_SETTINGS_ROOT_SUFFIX = '.yolo_json_db/module-settings'
+const SETTINGS_SNAPSHOT_HASH_DOMAIN =
+  'yolo.module-transition.settings-snapshot.v1\u0000'
 
 export type ModuleTransitionPhase =
   | 'prepared'
@@ -19,6 +23,12 @@ export type ModuleTransitionSettingsSnapshot =
   | Readonly<{ present: false; envelope: null }>
   | Readonly<{ present: true; envelope: ModuleDataEnvelope }>
 
+export type ModuleTransitionSettingsLocation = Readonly<{
+  moduleId: string
+  storageRoot: string
+  storagePath: string
+}>
+
 export type ModuleTransitionJournal = Readonly<{
   phase: ModuleTransitionPhase
   moduleId: string
@@ -28,18 +38,19 @@ export type ModuleTransitionJournal = Readonly<{
   targetManifestSha256: string
   settings: Readonly<{
     namespace: 'settings'
+    location: ModuleTransitionSettingsLocation
     sourceSchemaVersion: number
     targetSchemaVersion: number
     previous: ModuleTransitionSettingsSnapshot
     previousSha256: string
     expectedPostSha256: string
-  }>
+  }> | null
 }>
 
-declare const VERIFIED_MODULE_TRANSITION_JOURNAL: unique symbol
+declare const SNAPSHOT_VERIFIED_MODULE_TRANSITION_JOURNAL: unique symbol
 
-export type VerifiedModuleTransitionJournal = ModuleTransitionJournal &
-  Readonly<{ [VERIFIED_MODULE_TRANSITION_JOURNAL]: true }>
+export type SnapshotVerifiedModuleTransitionJournal = ModuleTransitionJournal &
+  Readonly<{ [SNAPSHOT_VERIFIED_MODULE_TRANSITION_JOURNAL]: true }>
 
 export type ModuleTransitionJournalBinding = Readonly<{
   moduleId: string
@@ -59,7 +70,7 @@ export type ModuleTransitionJournalBinding = Readonly<{
   }> | null
 }>
 
-/** Validates and freezes structure and state bindings without authenticating hashes. */
+/** Validates and freezes structure and state bindings without checking content hashes. */
 export function parseModuleTransitionJournal(
   value: unknown,
   binding: ModuleTransitionJournalBinding,
@@ -148,6 +159,7 @@ export function parseModuleTransitionJournal(
   const settings = parseSettings(
     dataProperty(journal, 'settings'),
     binding.targetDescriptor.dataSchemas.settings,
+    moduleId,
   )
   return Object.freeze({
     phase,
@@ -161,15 +173,19 @@ export function parseModuleTransitionJournal(
 }
 
 /**
- * Parses and binds untrusted input before authenticating the exact canonical
- * previous-settings snapshot bytes. Only this function creates the brand.
+ * Parses and binds untrusted input before checking the domain-separated content
+ * digest of the canonical previous-settings snapshot. This detects conflicts;
+ * it does not authenticate the journal. Only this function creates the brand.
  */
 export async function verifyModuleTransitionJournalSnapshot(
   value: unknown,
   binding: ModuleTransitionJournalBinding,
   subtleCrypto: Pick<SubtleCrypto, 'digest'>,
-): Promise<VerifiedModuleTransitionJournal> {
+): Promise<SnapshotVerifiedModuleTransitionJournal> {
   const journal = parseModuleTransitionJournal(value, binding)
+  if (journal.settings === null) {
+    return journal as SnapshotVerifiedModuleTransitionJournal
+  }
   const actual = await hashModuleTransitionSettingsSnapshot(
     journal.settings.previous,
     subtleCrypto,
@@ -177,15 +193,19 @@ export async function verifyModuleTransitionJournalSnapshot(
   if (actual !== journal.settings.previousSha256) {
     throw new Error('Transition previous settings SHA-256 mismatch')
   }
-  return journal as VerifiedModuleTransitionJournal
+  return journal as SnapshotVerifiedModuleTransitionJournal
 }
 
 export function hashModuleTransitionSettingsSnapshot(
   snapshot: ModuleTransitionSettingsSnapshot,
   subtleCrypto: Pick<SubtleCrypto, 'digest'>,
 ): Promise<string> {
+  // Domain-separated canonical content identity for conflict detection. This
+  // digest does not authenticate the journal because no secret is involved.
   return sha256Hex(
-    new TextEncoder().encode(canonicalJson(snapshot)),
+    new TextEncoder().encode(
+      `${SETTINGS_SNAPSHOT_HASH_DOMAIN}${canonicalJson(snapshot)}`,
+    ),
     subtleCrypto,
   )
 }
@@ -214,10 +234,21 @@ function parseSettings(
   descriptorSchema:
     | Readonly<{ readMin: number; readMax: number; write: number }>
     | undefined,
+  moduleId: string,
 ): ModuleTransitionJournal['settings'] {
+  if (!descriptorSchema) {
+    if (value !== null) {
+      throw new Error('Stateless transition settings must be null')
+    }
+    return null
+  }
+  if (value === null) {
+    throw new Error('Transition settings are required by the target descriptor')
+  }
   const settings = plainRecord(value, 'Transition settings')
   assertExactKeys(settings, [
     'namespace',
+    'location',
     'sourceSchemaVersion',
     'targetSchemaVersion',
     'previous',
@@ -232,6 +263,10 @@ function parseSettings(
   if (namespace !== 'settings') {
     throw new Error('Transition settings namespace is unsupported')
   }
+  const location = parseModuleTransitionSettingsLocation(
+    dataProperty(settings, 'location'),
+    moduleId,
+  )
   if (!isSchemaVersion(sourceSchemaVersion)) {
     throw new Error('Transition source settings schema is invalid')
   }
@@ -242,10 +277,10 @@ function parseSettings(
     throw new Error('Transition settings SHA-256 is invalid')
   }
   if (
-    !descriptorSchema ||
     sourceSchemaVersion < descriptorSchema.readMin ||
     sourceSchemaVersion > descriptorSchema.readMax ||
-    targetSchemaVersion !== descriptorSchema.write
+    targetSchemaVersion !== descriptorSchema.write ||
+    sourceSchemaVersion !== targetSchemaVersion
   ) {
     throw new Error(
       'Transition settings schemas do not match the target descriptor',
@@ -258,12 +293,44 @@ function parseSettings(
   )
   return Object.freeze({
     namespace,
+    location,
     sourceSchemaVersion,
     targetSchemaVersion,
     previous,
     previousSha256,
     expectedPostSha256,
   })
+}
+
+export function parseModuleTransitionSettingsLocation(
+  value: unknown,
+  expectedModuleId?: string,
+): ModuleTransitionSettingsLocation {
+  const location = plainRecord(value, 'Transition settings location')
+  assertExactKeys(location, ['moduleId', 'storageRoot', 'storagePath'])
+  const moduleId = dataProperty(location, 'moduleId')
+  const storageRoot = dataProperty(location, 'storageRoot')
+  const storagePath = dataProperty(location, 'storagePath')
+  if (typeof moduleId !== 'string') {
+    throw new Error('Transition settings location moduleId is invalid')
+  }
+  assertModuleId(moduleId, 'Transition settings location moduleId')
+  if (expectedModuleId !== undefined && moduleId !== expectedModuleId) {
+    throw new Error(
+      'Transition settings location moduleId does not match journal',
+    )
+  }
+  if (
+    typeof storageRoot !== 'string' ||
+    !isSafeVaultRelativePath(storageRoot)
+  ) {
+    throw new Error('Transition settings storage root is invalid')
+  }
+  const expectedPath = `${storageRoot}/${moduleId}.json`
+  if (typeof storagePath !== 'string' || storagePath !== expectedPath) {
+    throw new Error('Transition settings storage path is invalid')
+  }
+  return Object.freeze({ moduleId, storageRoot, storagePath })
 }
 
 function parsePreviousSettings(
@@ -455,4 +522,38 @@ function isPhase(value: unknown): value is ModuleTransitionPhase {
     value === 'committed' ||
     value === 'rollback-completed'
   )
+}
+
+function isSafeVaultRelativePath(value: string): boolean {
+  if (
+    !(
+      value.length > 0 &&
+      value.normalize('NFC') === value &&
+      !value.includes('\\') &&
+      !value.startsWith('/') &&
+      !value.endsWith('/') &&
+      !/^[A-Za-z]:\//.test(value)
+    )
+  ) {
+    return false
+  }
+  try {
+    const parts = value.split('/')
+    if (
+      parts.length < 3 ||
+      parts.slice(-2).join('/') !== MANAGED_SETTINGS_ROOT_SUFFIX
+    ) {
+      return false
+    }
+    for (const part of parts) {
+      if (!part || part === '.' || part === '..') return false
+      assertModulePathSegment(
+        part.startsWith('.') ? `root${part}` : part,
+        'Transition settings storage root',
+      )
+    }
+    return true
+  } catch {
+    return false
+  }
 }

@@ -146,12 +146,14 @@ export {
   advanceModuleTransitionPhase,
   hashModuleTransitionSettingsSnapshot,
   parseModuleTransitionJournal,
+  parseModuleTransitionSettingsLocation,
   verifyModuleTransitionJournalSnapshot,
   type ModuleTransitionJournal,
   type ModuleTransitionJournalBinding,
   type ModuleTransitionPhase,
+  type ModuleTransitionSettingsLocation,
   type ModuleTransitionSettingsSnapshot,
-  type VerifiedModuleTransitionJournal,
+  type SnapshotVerifiedModuleTransitionJournal,
 } from './moduleTransitionJournal'
 export { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 export {
@@ -263,6 +265,10 @@ export {
 } from './indexedDbDataAdapter'
 export {
   createObsidianModuleConfigBackendFactory,
+  createObsidianModuleTransitionSettingsBackend,
+  type CapturedModuleSettingsLocation,
+  type CapturedModuleTransitionSettings,
   type ObsidianModuleConfigBackendFactoryOptions,
   type ObsidianModuleConfigSettings,
+  type ObsidianModuleTransitionSettingsBackend,
 } from './obsidianModuleConfigBackend'

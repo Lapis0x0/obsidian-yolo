@@ -66,8 +66,13 @@ function activeTransition(): NonNullable<ModuleDeviceState['transition']> {
     targetManifestSha256: HASH,
     settings: {
       namespace: 'settings',
+      location: {
+        moduleId: 'learning',
+        storageRoot: 'YOLO/.yolo_json_db/module-settings',
+        storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
+      },
       sourceSchemaVersion: 0,
-      targetSchemaVersion: 1,
+      targetSchemaVersion: 0,
       previous: { present: false, envelope: null },
       previousSha256: 'b'.repeat(64),
       expectedPostSha256: 'c'.repeat(64),

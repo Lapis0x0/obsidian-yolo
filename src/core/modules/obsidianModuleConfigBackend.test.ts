@@ -2,8 +2,10 @@ import type { App, DataAdapter, EventRef, TAbstractFile, Vault } from 'obsidian'
 
 import { ModuleSettingsCorruptionError } from './moduleSettingsStore'
 import {
+  type CapturedModuleSettingsLocation,
   type ObsidianModuleConfigSettings,
   createObsidianModuleConfigBackendFactory,
+  createObsidianModuleTransitionSettingsBackend,
 } from './obsidianModuleConfigBackend'
 
 type VaultEvent = 'create' | 'modify' | 'delete' | 'rename'
@@ -33,6 +35,10 @@ class MemoryAdapter {
     this.writes.push(path)
     if (this.writeHook) await this.writeHook(path, data)
     else this.files.set(path, data)
+  }
+
+  async remove(path: string): Promise<void> {
+    this.files.delete(path)
   }
 }
 
@@ -84,12 +90,17 @@ function createHarness(baseDir = 'YOLO') {
       }
     },
   })
+  const transitionBackend = createObsidianModuleTransitionSettingsBackend({
+    app: { vault: vault as unknown as Vault } as App,
+    getSettings: () => settings,
+  })
 
   return {
     adapter,
     vault,
     settingsDisposer,
     backend: factory('notes'),
+    transitionBackend,
     setBaseDir(next: string, notify = true) {
       settings = { yolo: { baseDir: next } }
       if (notify) for (const listener of [...settingsListeners]) listener()
@@ -272,5 +283,170 @@ describe('createObsidianModuleConfigBackendFactory', () => {
     })
 
     expect(() => factory('../notes')).toThrow('path segment')
+  })
+})
+
+describe('createObsidianModuleTransitionSettingsBackend', () => {
+  it('distinguishes an absent file from a present schema-0 envelope', async () => {
+    const harness = createHarness()
+
+    await expect(harness.transitionBackend.capture('notes')).resolves.toEqual({
+      location: {
+        moduleId: 'notes',
+        storageRoot: 'YOLO/.yolo_json_db/module-settings',
+        storagePath: 'YOLO/.yolo_json_db/module-settings/notes.json',
+      },
+      snapshot: { present: false, envelope: null },
+    })
+
+    harness.adapter.files.set(
+      'YOLO/.yolo_json_db/module-settings/notes.json',
+      JSON.stringify({ schemaVersion: 0, data: {} }),
+    )
+    await expect(harness.transitionBackend.capture('notes')).resolves.toEqual({
+      location: {
+        moduleId: 'notes',
+        storageRoot: 'YOLO/.yolo_json_db/module-settings',
+        storagePath: 'YOLO/.yolo_json_db/module-settings/notes.json',
+      },
+      snapshot: {
+        present: true,
+        envelope: { schemaVersion: 0, data: {} },
+      },
+    })
+  })
+
+  it('resolves and normalizes the current base directory for each capture', async () => {
+    const harness = createHarness('First//Root')
+
+    const first = await harness.transitionBackend.capture('notes')
+    harness.setBaseDir('Second\\Root')
+    const second = await harness.transitionBackend.capture('notes')
+
+    expect(first.location.storageRoot).toBe(
+      'First/Root/.yolo_json_db/module-settings',
+    )
+    expect(second.location.storageRoot).toBe(
+      'Second/Root/.yolo_json_db/module-settings',
+    )
+  })
+
+  it('binds the base directory synchronously when capture starts', async () => {
+    const harness = createHarness('Old')
+
+    const pending = harness.transitionBackend.capture('notes')
+    harness.setBaseDir('New')
+
+    await expect(pending).resolves.toMatchObject({
+      location: {
+        storageRoot: 'Old/.yolo_json_db/module-settings',
+        storagePath: 'Old/.yolo_json_db/module-settings/notes.json',
+      },
+    })
+  })
+
+  it('reads the exact captured root after the active base directory changes', async () => {
+    const harness = createHarness('Old')
+    harness.adapter.files.set(
+      'Old/.yolo_json_db/module-settings/notes.json',
+      JSON.stringify({ schemaVersion: 1, data: { enabled: true } }),
+    )
+    const captured = await harness.transitionBackend.capture('notes')
+    harness.setBaseDir('New')
+    harness.adapter.files.set(
+      'New/.yolo_json_db/module-settings/notes.json',
+      JSON.stringify({ schemaVersion: 2, data: { enabled: false } }),
+    )
+
+    await expect(
+      harness.transitionBackend.readAtCapturedLocation(captured.location),
+    ).resolves.toEqual({
+      present: true,
+      envelope: { schemaVersion: 1, data: { enabled: true } },
+    })
+  })
+
+  it.each([
+    {
+      moduleId: '../notes',
+      storageRoot: 'Safe/.yolo_json_db/module-settings',
+      storagePath: 'Safe/.yolo_json_db/module-settings/../notes.json',
+    },
+    {
+      moduleId: 'notes',
+      storageRoot: '../Outside',
+      storagePath: '../Outside/notes.json',
+    },
+    {
+      moduleId: 'notes',
+      storageRoot: 'Safe/.yolo_json_db/module-settings',
+      storagePath: 'Outside/notes.json',
+    },
+    {
+      moduleId: 'notes',
+      storageRoot: 'Safe/arbitrary/root',
+      storagePath: 'Safe/arbitrary/root/notes.json',
+    },
+    {
+      moduleId: 'notes',
+      storageRoot: 'Safe/.yolo_json_db/module-setting',
+      storagePath: 'Safe/.yolo_json_db/module-setting/notes.json',
+    },
+    {
+      moduleId: 'notes',
+      storageRoot: 'Safe/not.yolo_json_db/module-settings',
+      storagePath: 'Safe/not.yolo_json_db/module-settings/notes.json',
+    },
+  ])('rejects a malicious captured location %#', async (location) => {
+    const harness = createHarness()
+
+    await expect(
+      harness.transitionBackend.readAtCapturedLocation(
+        location as CapturedModuleSettingsLocation,
+      ),
+    ).rejects.toThrow()
+    await expect(
+      harness.transitionBackend.writeVerifiedAtCapturedLocation(
+        location as CapturedModuleSettingsLocation,
+        { present: false, envelope: null },
+      ),
+    ).rejects.toThrow()
+    expect(harness.adapter.writes).toEqual([])
+  })
+
+  it('returns deeply frozen capture data', async () => {
+    const harness = createHarness()
+    harness.adapter.files.set(
+      'YOLO/.yolo_json_db/module-settings/notes.json',
+      JSON.stringify({
+        schemaVersion: 3,
+        data: { nested: [{ enabled: true }] },
+      }),
+    )
+
+    const captured = await harness.transitionBackend.capture('notes')
+    const present = captured.snapshot
+    if (!present.present) throw new Error('Expected present settings')
+
+    expect(Object.isFrozen(captured)).toBe(true)
+    expect(Object.isFrozen(captured.location)).toBe(true)
+    expect(Object.isFrozen(present)).toBe(true)
+    expect(Object.isFrozen(present.envelope)).toBe(true)
+    expect(Object.isFrozen(present.envelope.data)).toBe(true)
+    expect(
+      Object.isFrozen(
+        (present.envelope.data as { nested: readonly unknown[] }).nested,
+      ),
+    ).toBe(true)
+  })
+
+  it('does not write while capturing or reading a captured location', async () => {
+    const harness = createHarness()
+    const captured = await harness.transitionBackend.capture('notes')
+
+    await harness.transitionBackend.readAtCapturedLocation(captured.location)
+
+    expect(harness.adapter.writes).toEqual([])
+    expect(harness.adapter.folders).toEqual(new Set())
   })
 })

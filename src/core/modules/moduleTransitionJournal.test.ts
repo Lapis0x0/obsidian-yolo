@@ -5,7 +5,7 @@ import {
   type ModuleTransitionJournal,
   type ModuleTransitionJournalBinding,
   type ModuleTransitionSettingsSnapshot,
-  type VerifiedModuleTransitionJournal,
+  type SnapshotVerifiedModuleTransitionJournal,
   hashModuleTransitionSettingsSnapshot,
   parseModuleTransitionJournal,
   verifyModuleTransitionJournalSnapshot,
@@ -20,7 +20,7 @@ function journal(
 ): ModuleTransitionJournal {
   return parseModuleTransitionJournal(
     journalValue(previous, previousSha256),
-    binding(),
+    binding({}, previous.present ? previous.envelope.schemaVersion : 0),
   )
 }
 
@@ -40,8 +40,13 @@ function journalValue(
     targetManifestSha256: HASH,
     settings: {
       namespace: 'settings',
+      location: {
+        moduleId: 'learning',
+        storageRoot: 'YOLO/.yolo_json_db/module-settings',
+        storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
+      },
       sourceSchemaVersion,
-      targetSchemaVersion: 2,
+      targetSchemaVersion: sourceSchemaVersion,
       previous,
       previousSha256,
       expectedPostSha256: 'f'.repeat(64),
@@ -51,6 +56,7 @@ function journalValue(
 
 function binding(
   patch: Partial<ModuleTransitionJournalBinding> = {},
+  settingsWrite = 1,
 ): ModuleTransitionJournalBinding {
   return {
     moduleId: 'learning',
@@ -62,35 +68,101 @@ function binding(
     targetDescriptor: {
       manifest: { sha256: HASH },
       dataSchemas: {
-        settings: { readMin: 0, readMax: 2, write: 2 },
+        settings: { readMin: 0, readMax: 2, write: settingsWrite },
       },
     },
     ...patch,
   }
 }
 
-describe('module transition journal cryptographic verification', () => {
+describe('module transition journal snapshot digest verification', () => {
+  it('requires settings payload presence exactly when declared by the target', async () => {
+    const statelessBinding = binding({
+      targetDescriptor: { manifest: { sha256: HASH }, dataSchemas: {} },
+    })
+    const stateless = {
+      ...(journalValue(
+        { present: false, envelope: null },
+        '0'.repeat(64),
+      ) as Record<string, unknown>),
+      settings: null,
+    }
+    const digest = jest.fn<
+      ReturnType<SubtleCrypto['digest']>,
+      Parameters<SubtleCrypto['digest']>
+    >()
+
+    await expect(
+      verifyModuleTransitionJournalSnapshot(stateless, statelessBinding, {
+        digest,
+      }),
+    ).resolves.toMatchObject({ settings: null })
+    expect(digest).not.toHaveBeenCalled()
+    expect(() => parseModuleTransitionJournal(stateless, binding())).toThrow(
+      'required',
+    )
+    expect(() =>
+      parseModuleTransitionJournal(
+        journalValue({ present: false, envelope: null }),
+        statelessBinding,
+      ),
+    ).toThrow('must be null')
+  })
+
+  it.each([
+    { moduleId: 'other' },
+    { storageRoot: '../outside' },
+    { storageRoot: 'Safe//Root' },
+    { storageRoot: 'Safe\\Root' },
+    { storageRoot: 'Safe/Arbitrary/Root' },
+    { storageRoot: 'Safe/.yolo_json_db/module-setting' },
+    { storageRoot: 'Safe/not.yolo_json_db/module-settings' },
+    { storagePath: 'Outside/learning.json' },
+  ])('rejects invalid or unbound settings location %#', (patch) => {
+    const value = journalValue({ present: false, envelope: null }) as {
+      settings: { location: Record<string, string> }
+    }
+    value.settings.location = {
+      ...value.settings.location,
+      ...(patch as unknown as Record<string, string>),
+    }
+
+    expect(() => parseModuleTransitionJournal(value, binding())).toThrow()
+  })
+
+  it('rejects schema-changing settings at durable journal admission', () => {
+    const value = journalValue({
+      present: true,
+      envelope: { schemaVersion: 1, data: {} },
+    }) as { settings: { targetSchemaVersion: number } }
+    value.settings.targetSchemaVersion = 2
+
+    expect(() => parseModuleTransitionJournal(value, binding({}, 2))).toThrow(
+      'schemas do not match',
+    )
+  })
+
   it('verifies canonical previous snapshot bytes and returns the branded frozen journal', async () => {
     const parsed = journal({
       present: true,
       envelope: { schemaVersion: 1, data: { deck: 'A', flags: [true] } },
     })
     const digest = await hashModuleTransitionSettingsSnapshot(
-      parsed.settings.previous,
+      parsed.settings!.previous,
       subtleCrypto,
     )
-    const authenticated = journalValue(parsed.settings.previous, digest)
+    const digestBound = journalValue(parsed.settings!.previous, digest)
 
-    const verified: VerifiedModuleTransitionJournal =
+    const verified: SnapshotVerifiedModuleTransitionJournal =
       await verifyModuleTransitionJournalSnapshot(
-        authenticated,
+        digestBound,
         binding(),
         subtleCrypto,
       )
 
-    expect(verified).toEqual(authenticated)
+    expect(verified).toEqual(digestBound)
     expect(Object.isFrozen(verified)).toBe(true)
-    expect(Object.isFrozen(verified.settings.previous.envelope?.data)).toBe(
+    expect(Object.isFrozen(verified.settings!.previous.envelope?.data)).toBe(
       true,
     )
   })
@@ -112,10 +184,10 @@ describe('module transition journal cryptographic verification', () => {
       envelope: { schemaVersion: 1, data: { deck: 'A' } },
     })
     const digest = await hashModuleTransitionSettingsSnapshot(
-      parsed.settings.previous,
+      parsed.settings!.previous,
       subtleCrypto,
     )
-    const valid = journalValue(parsed.settings.previous, digest)
+    const valid = journalValue(parsed.settings!.previous, digest)
 
     await expect(
       verifyModuleTransitionJournalSnapshot(
@@ -157,18 +229,18 @@ describe('module transition journal cryptographic verification', () => {
 
     await expect(
       hashModuleTransitionSettingsSnapshot(
-        left.settings.previous,
+        left.settings!.previous,
         subtleCrypto,
       ),
     ).resolves.toBe(
       await hashModuleTransitionSettingsSnapshot(
-        right.settings.previous,
+        right.settings!.previous,
         subtleCrypto,
       ),
     )
   })
 
-  it('cryptographically distinguishes absent settings from a present null envelope', async () => {
+  it('hashes absent settings distinctly from a present null envelope', async () => {
     const absent = journal({ present: false, envelope: null })
     const present = journal({
       present: true,
@@ -176,11 +248,11 @@ describe('module transition journal cryptographic verification', () => {
     })
 
     const absentHash = await hashModuleTransitionSettingsSnapshot(
-      absent.settings.previous,
+      absent.settings!.previous,
       subtleCrypto,
     )
     const presentHash = await hashModuleTransitionSettingsSnapshot(
-      present.settings.previous,
+      present.settings!.previous,
       subtleCrypto,
     )
 

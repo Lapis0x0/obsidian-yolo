@@ -118,7 +118,7 @@ function descriptor(version: string, moduleId = 'learning') {
     hostApi: '^1.0.0',
     dataSchemas: {
       cards: { readMin: 1, readMax: 3, write: 2 },
-      settings: { readMin: 0, readMax: 3, write: 2 },
+      settings: { readMin: 0, readMax: 3, write: 1 },
     },
     platform: 'desktop' as const,
     manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${moduleId}-v${version}/module.json`,
@@ -132,7 +132,9 @@ function rawData(value: unknown, schemaVersion = 1): string {
 
 function transition(
   patch: Partial<ModuleTransitionJournal> = {},
-): ModuleTransitionJournal {
+): ModuleTransitionJournal & {
+  settings: NonNullable<ModuleTransitionJournal['settings']>
+} {
   return {
     phase: 'prepared',
     moduleId: 'learning',
@@ -142,8 +144,13 @@ function transition(
     targetManifestSha256: HASH,
     settings: {
       namespace: 'settings',
+      location: {
+        moduleId: 'learning',
+        storageRoot: 'YOLO/.yolo_json_db/module-settings',
+        storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
+      },
       sourceSchemaVersion: 1,
-      targetSchemaVersion: 2,
+      targetSchemaVersion: 1,
       previous: {
         present: true,
         envelope: { schemaVersion: 1, data: { deck: 'A' } },
@@ -152,6 +159,8 @@ function transition(
       expectedPostSha256: 'c'.repeat(64),
     },
     ...patch,
+  } as ModuleTransitionJournal & {
+    settings: NonNullable<ModuleTransitionJournal['settings']>
   }
 }
 
@@ -397,9 +406,9 @@ describe('ModuleDeviceStateStore', () => {
     for (const value of [
       read?.transition,
       read?.transition?.settings,
-      read?.transition?.settings.previous,
-      read?.transition?.settings.previous.envelope,
-      read?.transition?.settings.previous.envelope?.data,
+      read?.transition?.settings?.previous,
+      read?.transition?.settings?.previous.envelope,
+      read?.transition?.settings?.previous.envelope?.data,
     ]) {
       expect(Object.isFrozen(value)).toBe(true)
     }
@@ -603,6 +612,41 @@ describe('ModuleDeviceStateStore', () => {
     )
   })
 
+  it('accepts the exact prepared mutation for a stateless target', async () => {
+    const store = createStore()
+    const baseline = state()
+    const statelessTarget = {
+      ...baseline.readyVersions['2.0.0-beta.1'],
+      dataSchemas: {},
+    }
+    const current = await store.write({
+      ...baseline,
+      readyVersions: {
+        ...baseline.readyVersions,
+        '2.0.0-beta.1': statelessTarget,
+      },
+    })
+
+    await expect(
+      store.write({
+        ...current,
+        downloadedCandidate: null,
+        pendingVersion: '2.0.0-beta.1',
+        transition: { ...transition(), settings: null },
+      }),
+    ).resolves.toMatchObject({
+      downloadedCandidate: null,
+      pendingVersion: '2.0.0-beta.1',
+      transition: { phase: 'prepared', settings: null },
+    })
+  })
+
+  it('does not permit creating a transition with no existing device state', async () => {
+    await expect(createStore().write(transitioningState())).rejects.toThrow(
+      'requires existing device state',
+    )
+  })
+
   it('advances transition phases only one monotonic step at a time', () => {
     expect(advanceModuleTransitionPhase('prepared', 'settings-committed')).toBe(
       'settings-committed',
@@ -726,14 +770,31 @@ describe('ModuleDeviceStateStore', () => {
     }
 
     const store = createStore()
-    await store.write(state())
+    const baseline = state()
+    const schemaZeroTarget = {
+      ...baseline.readyVersions['2.0.0-beta.1'],
+      dataSchemas: {
+        ...baseline.readyVersions['2.0.0-beta.1'].dataSchemas,
+        settings: { readMin: 0, readMax: 3, write: 0 },
+      },
+    }
+    const current = await store.write({
+      ...baseline,
+      readyVersions: {
+        ...baseline.readyVersions,
+        '2.0.0-beta.1': schemaZeroTarget,
+      },
+    })
     await expect(
       store.write({
-        ...transitioningState(),
+        ...current,
+        downloadedCandidate: null,
+        pendingVersion: '2.0.0-beta.1',
         transition: transition({
           settings: {
             ...base.settings,
             sourceSchemaVersion: 0,
+            targetSchemaVersion: 0,
             previous: { present: false, envelope: null },
           },
         }),
@@ -759,7 +820,7 @@ describe('ModuleDeviceStateStore', () => {
       }),
     })
     source.z[0].a = 9
-    expect(written.transition?.settings.previous.envelope?.data).toEqual({
+    expect(written.transition?.settings?.previous.envelope?.data).toEqual({
       a: 'safe',
       z: [{ a: 1, b: 2 }],
     })
