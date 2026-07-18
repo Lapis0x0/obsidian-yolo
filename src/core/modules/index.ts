@@ -51,6 +51,7 @@ export {
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
   type ModuleActivationResult,
+  type ModuleActivationStartupDisposition,
 } from './moduleActivationCoordinator'
 export {
   createOfficialModuleArtifactDownloader,

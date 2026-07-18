@@ -215,6 +215,9 @@ function harness(
     activateVerifiedArtifact,
     readAtCapturedLocation,
     recoveryOptions,
+    setDurable: (state: ModuleDeviceState) => {
+      durable = state
+    },
     durable: () => durable,
   }
 }
@@ -510,8 +513,11 @@ describe('ModuleStartupTransitionRecovery', () => {
 
   it('returns activated with a diagnostic when committed cleanup is uncertain', async () => {
     const test = harness(await transitioningState('committed'), {
-      write: async (next) => {
-        expect(next.transition).toBeNull()
+      write: async (next, setDurable) => {
+        if (next.transition !== null) {
+          setDurable(next)
+          return next
+        }
         throw new Error('cleanup storage unavailable')
       },
     })
@@ -536,6 +542,17 @@ describe('ModuleStartupTransitionRecovery', () => {
     )
     expect(retried).toBe(recovered)
     expect(test.activateVerifiedArtifact).toHaveBeenCalledTimes(1)
+
+    test.setDurable(await transitioningState('prepared'))
+    const distinct = await test.recovery.recover(
+      MODULE_ID,
+      new AbortController().signal,
+    )
+    expect(distinct).toMatchObject({
+      status: 'activated',
+      version: TARGET_VERSION,
+    })
+    expect(test.activateVerifiedArtifact).toHaveBeenCalledTimes(2)
   })
 
   it('poisons after target activation when committed write readback diverges', async () => {

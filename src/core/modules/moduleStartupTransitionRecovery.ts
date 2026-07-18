@@ -44,15 +44,32 @@ export type ModuleStartupTransitionRecoveryResult = Readonly<{
   processPoisoned: boolean
 }>
 
+export type ModuleTransitionRealmDisposition = Readonly<{
+  reloadRequired: boolean
+  processPoisoned: boolean
+}>
+
 type CleanupResult = Readonly<{ error?: string }>
-type RealmRecoveryGuard = {
-  queue: Promise<void>
+type RealmPoisonState = {
   processPoisoned: boolean
   reloadRequired: boolean
-  completed: Map<string, ModuleStartupTransitionRecoveryResult>
+}
+type RealmRecoveryGuard = {
+  queue: Promise<void>
+  poison: RealmPoisonState
+  completed: Map<
+    string,
+    Readonly<{
+      journalIdentity: string
+      result: ModuleStartupTransitionRecoveryResult
+    }>
+  >
 }
 
 const realmRecoveryGuards = new WeakMap<object, RealmRecoveryGuard>()
+const GLOBAL_REALM_POISON_KEY = Symbol.for(
+  'obsidian-yolo.module-transition-recovery.realm-poison.v1',
+)
 
 /** Internal startup policy for recovering one durable module transition. */
 export class ModuleStartupTransitionRecovery<TVerified = unknown> {
@@ -77,17 +94,7 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       throw new Error('Module startup transition recovery options are invalid')
     }
     const realmToken = options.realmToken ?? globalThis
-    let guard = realmRecoveryGuards.get(realmToken)
-    if (!guard) {
-      guard = {
-        queue: Promise.resolve(),
-        processPoisoned: false,
-        reloadRequired: false,
-        completed: new Map(),
-      }
-      realmRecoveryGuards.set(realmToken, guard)
-    }
-    this.realmGuard = guard
+    this.realmGuard = getRealmRecoveryGuard(realmToken)
   }
 
   async recover(
@@ -108,15 +115,13 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     moduleId: string,
     signal: AbortSignal,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
-    const completed = this.realmGuard.completed.get(moduleId)
-    if (completed) return completed
-    if (this.realmGuard.processPoisoned) {
+    if (this.realmGuard.poison.processPoisoned) {
       return failed(
         moduleId,
         'Module transition recovery requires a fresh process',
         {
           processPoisoned: true,
-          reloadRequired: this.realmGuard.reloadRequired,
+          reloadRequired: this.realmGuard.poison.reloadRequired,
         },
       )
     }
@@ -137,11 +142,8 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       recovered = failed(moduleId, error)
     }
     if (recovered.processPoisoned) {
-      this.realmGuard.processPoisoned = true
-      this.realmGuard.reloadRequired = recovered.reloadRequired
-    }
-    if (recovered.status === 'activated') {
-      this.realmGuard.completed.set(moduleId, recovered)
+      this.realmGuard.poison.processPoisoned = true
+      this.realmGuard.poison.reloadRequired = recovered.reloadRequired
     }
     return recovered
   }
@@ -153,11 +155,17 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     const current = await abortable(transaction.read(), signal)
     if (current === null || current.transition === null) {
+      this.realmGuard.completed.delete(moduleId)
       return result({ moduleId, status: 'skipped' })
     }
     if (current.moduleId !== moduleId) {
       throw new Error(`Module "${moduleId}" returned mismatched device state`)
     }
+    const completed = this.realmGuard.completed.get(moduleId)
+    if (completed?.journalIdentity === transitionIdentity(current.transition)) {
+      return completed.result
+    }
+    this.realmGuard.completed.delete(moduleId)
 
     const unverifiedJournal = current.transition
     const targetDescriptor =
@@ -260,12 +268,14 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       })
     }
     const cleanup = await cleanupTerminal(transaction, committed, signal)
-    return result({
+    const recovered = result({
       moduleId: initial.moduleId,
       status: 'activated',
       version: journal.targetVersion,
       ...(cleanup.error === undefined ? {} : { error: cleanup.error }),
     })
+    this.rememberUncertainCleanup(committed, cleanup, recovered)
+    return recovered
   }
 
   private async rollbackInterrupted(
@@ -308,12 +318,14 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       )
     }
     const cleanup = await cleanupTerminal(transaction, committed, signal)
-    return result({
+    const recovered = result({
       moduleId: committed.moduleId,
       status: 'activated',
       version: journal.targetVersion,
       ...(cleanup.error === undefined ? {} : { error: cleanup.error }),
     })
+    this.rememberUncertainCleanup(committed, cleanup, recovered)
+    return recovered
   }
 
   private async resumeRollback(
@@ -363,13 +375,15 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       )
     }
     const cleanup = await cleanupTerminal(transaction, rolledBack, signal)
-    return result({
+    const recovered = result({
       moduleId: rolledBack.moduleId,
       status: 'activated',
       version: previousVersion,
       recoveredVersion: previousVersion,
       ...(cleanup.error === undefined ? {} : { error: cleanup.error }),
     })
+    this.rememberUncertainCleanup(rolledBack, cleanup, recovered)
+    return recovered
   }
 
   private async verifyPrevious(
@@ -461,6 +475,36 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       throw new Error('Transition current settings SHA-256 mismatch')
     }
   }
+
+  private rememberUncertainCleanup(
+    terminal: ModuleDeviceState,
+    cleanup: CleanupResult,
+    recovered: ModuleStartupTransitionRecoveryResult,
+  ): void {
+    const journal = terminal.transition
+    if (cleanup.error === undefined || journal === null) {
+      this.realmGuard.completed.delete(terminal.moduleId)
+      return
+    }
+    this.realmGuard.completed.set(
+      terminal.moduleId,
+      Object.freeze({
+        journalIdentity: transitionIdentity(journal),
+        result: recovered,
+      }),
+    )
+  }
+}
+
+/** Reads the realm fence before any ordinary module code is scheduled. */
+export function getModuleTransitionRealmDisposition(
+  realmToken: object = globalThis,
+): ModuleTransitionRealmDisposition {
+  const poison = getRealmRecoveryGuard(realmToken).poison
+  return Object.freeze({
+    reloadRequired: poison.reloadRequired,
+    processPoisoned: poison.processPoisoned,
+  })
 }
 
 function phaseState(
@@ -567,6 +611,44 @@ function equalCompleteState(
   right: ModuleDeviceState,
 ): boolean {
   return equalJsonValue(left, right)
+}
+
+function transitionIdentity(journal: ModuleTransitionJournal): string {
+  return JSON.stringify(journal)
+}
+
+function getGlobalRealmPoisonState(): RealmPoisonState {
+  const host = globalThis as typeof globalThis & {
+    [GLOBAL_REALM_POISON_KEY]?: RealmPoisonState
+  }
+  const existing = host[GLOBAL_REALM_POISON_KEY]
+  if (existing) return existing
+  const created: RealmPoisonState = {
+    processPoisoned: false,
+    reloadRequired: false,
+  }
+  Object.defineProperty(host, GLOBAL_REALM_POISON_KEY, {
+    configurable: false,
+    enumerable: false,
+    value: created,
+    writable: false,
+  })
+  return created
+}
+
+function getRealmRecoveryGuard(realmToken: object): RealmRecoveryGuard {
+  let guard = realmRecoveryGuards.get(realmToken)
+  if (guard) return guard
+  guard = {
+    queue: Promise.resolve(),
+    poison:
+      realmToken === globalThis
+        ? getGlobalRealmPoisonState()
+        : { processPoisoned: false, reloadRequired: false },
+    completed: new Map(),
+  }
+  realmRecoveryGuards.set(realmToken, guard)
+  return guard
 }
 
 function equalJsonValue(left: unknown, right: unknown): boolean {

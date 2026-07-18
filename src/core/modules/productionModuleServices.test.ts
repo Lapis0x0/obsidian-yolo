@@ -5,6 +5,10 @@ import type { DataAdapter, RequestUrlParam, RequestUrlResponse } from 'obsidian'
 
 import { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import { ModuleStore } from './moduleStore'
+import {
+  hashModuleTransitionSettingsSnapshot,
+  parseModuleTransitionJournal,
+} from './moduleTransitionJournal'
 import { OFFICIAL_MODULE_CATALOG_URL } from './officialModuleCatalogClient'
 import { createOfficialModuleCompatibilityProvider } from './officialModuleCompatibilityProvider'
 import {
@@ -272,6 +276,14 @@ function createHarness(
       activeVersions.set(definition.id, version)
     }),
   }
+  const transitionSettingsSnapshot = Object.freeze({
+    present: true as const,
+    envelope: Object.freeze({
+      schemaVersion: 1,
+      data: Object.freeze({ enabled: true }),
+    }),
+  })
+  const readAtCapturedLocation = jest.fn(async () => transitionSettingsSnapshot)
   const services = createProductionModuleServices({
     store,
     deviceStateStore,
@@ -285,6 +297,10 @@ function createHarness(
     isActive,
     activationLoader,
     activationRuntime,
+    transitionSettingsBackend: {
+      readAtCapturedLocation,
+    },
+    transitionRecoveryRealmToken: {},
     readCurrentSchemaVersion: async () => 1,
     catalogRequest,
     artifactRequest,
@@ -301,6 +317,8 @@ function createHarness(
     activeVersions,
     activationLoader,
     activationRuntime,
+    readAtCapturedLocation,
+    transitionSettingsSnapshot,
     services,
   }
 }
@@ -427,6 +445,80 @@ describe('createProductionModuleServices', () => {
     expect(
       failedInstall.adapter.folders.has('plugin/modules/learning/1.2.3'),
     ).toBe(false)
+  })
+
+  it('recovers a prepared transition through the production activation graph', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+    await harness.services.installConfirmedCandidate(candidate)
+    const installed = (await harness.deviceStateStore.read('learning'))!
+    const target = installed.readyVersions['1.2.3']
+    const previousSha256 = await hashModuleTransitionSettingsSnapshot(
+      harness.transitionSettingsSnapshot,
+      webcrypto.subtle as unknown as Pick<SubtleCrypto, 'digest'>,
+    )
+    const location = Object.freeze({
+      moduleId: 'learning',
+      storageRoot: 'YOLO/.yolo_json_db/module-settings',
+      storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
+    })
+    const transition = parseModuleTransitionJournal(
+      {
+        phase: 'prepared',
+        moduleId: 'learning',
+        platform: 'desktop',
+        previousActiveVersion: null,
+        targetVersion: '1.2.3',
+        targetManifestSha256: target.manifest.sha256,
+        settings: {
+          namespace: 'settings',
+          location,
+          sourceSchemaVersion: 1,
+          targetSchemaVersion: 1,
+          previous: harness.transitionSettingsSnapshot,
+          previousSha256,
+          expectedPostSha256: previousSha256,
+        },
+      },
+      {
+        moduleId: 'learning',
+        platform: 'desktop',
+        activeVersion: null,
+        downloadedCandidate: null,
+        pendingVersion: '1.2.3',
+        readyVersions: ['1.2.3'],
+        targetDescriptor: target,
+      },
+    )
+    await harness.deviceStateStore.write({
+      ...installed,
+      downloadedCandidate: null,
+      pendingVersion: '1.2.3',
+      transition,
+    })
+
+    await expect(
+      harness.services.activationCoordinator.activatePersistedModules(),
+    ).resolves.toEqual([
+      { moduleId: 'learning', status: 'activated', version: '1.2.3' },
+    ])
+
+    expect(harness.readAtCapturedLocation).toHaveBeenCalledWith(location)
+    expect(harness.activationRuntime.activate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'learning' }),
+      '1.2.3',
+      expect.any(AbortSignal),
+    )
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      activeVersion: '1.2.3',
+      downloadedCandidate: null,
+      pendingVersion: null,
+      transition: null,
+    })
+    expect(
+      harness.services.activationCoordinator.getStartupDisposition(),
+    ).toEqual({ reloadRequired: false, processPoisoned: false })
   })
 
   it('does not issue candidates while the manager snapshot is loading', async () => {
@@ -612,6 +704,13 @@ describe('createProductionModuleServices', () => {
         }),
       },
       activationRuntime: { activate: async () => undefined },
+      transitionSettingsBackend: {
+        readAtCapturedLocation: async () => ({
+          present: false as const,
+          envelope: null,
+        }),
+      },
+      transitionRecoveryRealmToken: {},
       readCurrentSchemaVersion: async () => 0,
       catalogRequest: async () => response(fixture.catalog),
       artifactRequest: async () => response('', 404),

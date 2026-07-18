@@ -1,6 +1,7 @@
 import {
   type ModuleArtifactDescriptor,
   type ModuleArtifactReadStore,
+  type VerifiedModuleArtifact,
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
 import type {
@@ -8,7 +9,12 @@ import type {
   ModuleDeviceStateStore,
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
+import {
+  ModuleStartupTransitionRecovery,
+  getModuleTransitionRealmDisposition,
+} from './moduleStartupTransitionRecovery'
 import type { ModuleArtifactPlatform } from './moduleStore'
+import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import { selectInitialCompatibleVersion } from './officialModuleCatalog'
 import type { YoloModuleDefinition, YoloModuleEntry } from './types'
 
@@ -39,6 +45,12 @@ export type ModuleActivationCoordinatorOptions = Readonly<{
   activationTimeoutMs?: number
   startupTimeoutMs?: number
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
+  transitionSettingsBackend?: Pick<
+    ObsidianModuleTransitionSettingsBackend,
+    'readAtCapturedLocation'
+  >
+  /** Isolates tests or explicitly independent realms; production omits this. */
+  transitionRecoveryRealmToken?: object
   reportActivationError?: (moduleId: string, error: unknown) => void
 }>
 
@@ -50,7 +62,16 @@ export type ModuleActivationResult = Readonly<{
   error?: string
 }>
 
+export type ModuleActivationStartupDisposition = Readonly<{
+  reloadRequired: boolean
+  processPoisoned: boolean
+}>
+
 const EMPTY_RESULTS = Object.freeze([]) as readonly ModuleActivationResult[]
+const READY_DISPOSITION: ModuleActivationStartupDisposition = Object.freeze({
+  reloadRequired: false,
+  processPoisoned: false,
+})
 export const DEFAULT_MODULE_ACTIVATION_TIMEOUT_MS = 30_000
 
 /** Activates only locally persisted, ready module versions during startup. */
@@ -61,6 +82,7 @@ export class ModuleActivationCoordinator {
   private readonly activationTimeoutMs: number
   private readonly startupTimeoutMs: number
   private activation: Promise<readonly ModuleActivationResult[]> | undefined
+  private startupDisposition = READY_DISPOSITION
   private disposed = false
 
   constructor(private readonly options: ModuleActivationCoordinatorOptions) {
@@ -81,6 +103,12 @@ export class ModuleActivationCoordinator {
       (options.startupTimeoutMs !== undefined &&
         (!Number.isSafeInteger(options.startupTimeoutMs) ||
           options.startupTimeoutMs <= 0)) ||
+      (options.transitionSettingsBackend !== undefined &&
+        typeof options.transitionSettingsBackend.readAtCapturedLocation !==
+          'function') ||
+      (options.transitionRecoveryRealmToken !== undefined &&
+        (options.transitionRecoveryRealmToken === null ||
+          typeof options.transitionRecoveryRealmToken !== 'object')) ||
       (options.reportActivationError !== undefined &&
         typeof options.reportActivationError !== 'function')
     ) {
@@ -109,6 +137,10 @@ export class ModuleActivationCoordinator {
     return this.errors.get(moduleId)
   }
 
+  getStartupDisposition(): ModuleActivationStartupDisposition {
+    return this.startupDisposition
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -125,15 +157,113 @@ export class ModuleActivationCoordinator {
       controller.abort()
     }, this.startupTimeoutMs)
     try {
+      const inheritedDisposition = getModuleTransitionRealmDisposition(
+        this.options.transitionRecoveryRealmToken ?? globalThis,
+      )
+      if (inheritedDisposition.processPoisoned) {
+        this.startupDisposition = inheritedDisposition
+        return EMPTY_RESULTS
+      }
       const listed = await withAbort(
         this.options.deviceStateStore.list(),
         controller.signal,
       )
       if (listed.length === 0) return EMPTY_RESULTS
-      const moduleIds = [...listed]
+      const sorted = [...listed].sort((left, right) =>
+        left.moduleId.localeCompare(right.moduleId),
+      )
+      const transitionIds = sorted
+        .filter((state) => state.transition !== null)
         .map((state) => state.moduleId)
-        .sort((left, right) => left.localeCompare(right))
-      const results = await withAbort(
+      const ordinaryIds = sorted
+        .filter((state) => state.transition === null)
+        .map((state) => state.moduleId)
+      const results: ModuleActivationResult[] = []
+      const recoverTransitions = async (
+        moduleIds: readonly string[],
+      ): Promise<
+        Readonly<{ poisoned: boolean; skipped: readonly string[] }>
+      > => {
+        if (moduleIds.length === 0) {
+          return Object.freeze({ poisoned: false, skipped: [] })
+        }
+        const subtleCrypto =
+          this.options.subtleCrypto ?? globalThis.crypto?.subtle ?? null
+        if (!subtleCrypto) {
+          for (const moduleId of moduleIds) {
+            results.push(
+              this.failed(
+                moduleId,
+                new Error('Web Crypto SHA-256 is unavailable'),
+              ),
+            )
+          }
+          return Object.freeze({ poisoned: false, skipped: [] })
+        }
+        const recovery =
+          new ModuleStartupTransitionRecovery<VerifiedModuleArtifact>({
+            deviceStateStore: this.options.deviceStateStore,
+            ...(this.options.transitionSettingsBackend
+              ? { settingsBackend: this.options.transitionSettingsBackend }
+              : {}),
+            subtleCrypto,
+            verifyArtifact: (descriptor, signal) =>
+              this.verifyTransitionArtifact(descriptor, signal),
+            activateVerifiedArtifact: (artifact, descriptor, signal) =>
+              this.activateVerifiedArtifact(artifact, descriptor, signal),
+            ...(this.options.transitionRecoveryRealmToken
+              ? { realmToken: this.options.transitionRecoveryRealmToken }
+              : {}),
+          })
+        const skipped: string[] = []
+        for (const moduleId of moduleIds) {
+          const recovered = await recovery.recover(moduleId, controller.signal)
+          results.push(this.mapTransitionRecovery(recovered))
+          this.startupDisposition = Object.freeze({
+            reloadRequired:
+              this.startupDisposition.reloadRequired ||
+              recovered.reloadRequired,
+            processPoisoned:
+              this.startupDisposition.processPoisoned ||
+              recovered.processPoisoned,
+          })
+          if (recovered.processPoisoned) {
+            return Object.freeze({ poisoned: true, skipped })
+          }
+          if (controller.signal.aborted) throw abortedError()
+          if (recovered.status === 'skipped') skipped.push(moduleId)
+        }
+        return Object.freeze({ poisoned: false, skipped })
+      }
+
+      const initialRecovery = await recoverTransitions(transitionIds)
+      if (initialRecovery.poisoned) return Object.freeze(results)
+      ordinaryIds.push(...initialRecovery.skipped)
+
+      // Device state is local-only, and production does not expose transition
+      // preparation until startup completes. Reclassifying under each module's
+      // lock closes the in-process list-to-activation window before parallel work.
+      const revalidatedOrdinaryIds: string[] = []
+      const lateTransitionIds: string[] = []
+      for (const moduleId of ordinaryIds) {
+        const hasTransition = await this.options.deviceStateStore.runExclusive(
+          moduleId,
+          async (transaction) => {
+            const state = await withAbort(transaction.read(), controller.signal)
+            return state?.transition != null
+          },
+        )
+        if (hasTransition) lateTransitionIds.push(moduleId)
+        else revalidatedOrdinaryIds.push(moduleId)
+      }
+      const lateRecovery = await recoverTransitions(lateTransitionIds)
+      if (lateRecovery.poisoned) return Object.freeze(results)
+      revalidatedOrdinaryIds.push(...lateRecovery.skipped)
+
+      const moduleIds = [...new Set(revalidatedOrdinaryIds)].sort(
+        (left, right) => left.localeCompare(right),
+      )
+      const ordinaryResults = await withAbort(
         Promise.all(
           moduleIds.map(async (moduleId): Promise<ModuleActivationResult> => {
             if (this.disposed) {
@@ -159,6 +289,7 @@ export class ModuleActivationCoordinator {
         ),
         controller.signal,
       )
+      results.push(...ordinaryResults)
       return Object.freeze(results)
     } catch (error) {
       if (timedOut) {
@@ -185,7 +316,7 @@ export class ModuleActivationCoordinator {
     }
     if (current.transition !== null) {
       throw new Error(
-        `Module "${moduleId}" transition recovery is not implemented`,
+        `Module "${moduleId}" transition appeared after the startup recovery pass`,
       )
     }
     const targetVersion = current.pendingVersion ?? current.activeVersion
@@ -294,6 +425,48 @@ export class ModuleActivationCoordinator {
     descriptor: ModuleArtifactDescriptor,
     parentSignal: AbortSignal,
   ): Promise<void> {
+    const artifact = await this.verifyOrdinaryArtifact(descriptor, parentSignal)
+    await this.activateVerifiedArtifact(artifact, descriptor, parentSignal)
+  }
+
+  private async verifyOrdinaryArtifact(
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<VerifiedModuleArtifact> {
+    await withAbort(this.assertCompatible(descriptor), signal)
+    return this.verifyArtifactBytes(descriptor, signal)
+  }
+
+  private async verifyTransitionArtifact(
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<VerifiedModuleArtifact> {
+    this.assertTransitionCompatible(descriptor)
+    return this.verifyArtifactBytes(descriptor, signal)
+  }
+
+  private async verifyArtifactBytes(
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<VerifiedModuleArtifact> {
+    const subtleCrypto =
+      this.options.subtleCrypto ?? globalThis.crypto?.subtle ?? null
+    if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
+    return withAbort(
+      verifyInstalledModuleArtifact(
+        this.options.artifactStore,
+        descriptor,
+        subtleCrypto,
+      ),
+      signal,
+    )
+  }
+
+  private async activateVerifiedArtifact(
+    artifact: VerifiedModuleArtifact,
+    descriptor: ModuleArtifactDescriptor,
+    parentSignal: AbortSignal,
+  ): Promise<void> {
     const controller = new AbortController()
     this.controllers.add(controller)
     const abortFromParent = () => controller.abort()
@@ -302,18 +475,6 @@ export class ModuleActivationCoordinator {
     let timedOut = false
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
-      await withAbort(this.assertCompatible(descriptor), controller.signal)
-      const subtleCrypto =
-        this.options.subtleCrypto ?? globalThis.crypto?.subtle ?? null
-      if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
-      const artifact = await withAbort(
-        verifyInstalledModuleArtifact(
-          this.options.artifactStore,
-          descriptor,
-          subtleCrypto,
-        ),
-        controller.signal,
-      )
       const entry = artifact.variant.files.find(
         (file) => file.role === 'entry' && file.path === artifact.variant.entry,
       )
@@ -324,24 +485,18 @@ export class ModuleActivationCoordinator {
         timedOut = true
         controller.abort()
       }, this.activationTimeoutMs)
-      const definition = await withAbort(
-        this.options.loader.load(
-          {
-            id: descriptor.id,
-            byteSize: entry.byteSize,
-            sha256: entry.sha256,
-          },
-          artifact.entryBytes,
-          controller.signal,
-        ),
+      const definition = await this.options.loader.load(
+        {
+          id: descriptor.id,
+          byteSize: entry.byteSize,
+          sha256: entry.sha256,
+        },
+        artifact.entryBytes,
         controller.signal,
       )
-      await withAbort(
-        this.options.runtime.activate(
-          definition,
-          descriptor.version,
-          controller.signal,
-        ),
+      await this.options.runtime.activate(
+        definition,
+        descriptor.version,
         controller.signal,
       )
     } catch (error) {
@@ -416,6 +571,75 @@ export class ModuleActivationCoordinator {
         )
       }
     }
+  }
+
+  private assertTransitionCompatible(
+    descriptor: ModuleArtifactDescriptor,
+  ): void {
+    const supported = new Set(this.supportedDataNamespaces)
+    const currentSchemas: Record<string, number> = {}
+    for (const namespace of Object.keys(descriptor.dataSchemas).sort()) {
+      if (!supported.has(namespace)) {
+        throw new Error(
+          `Module "${descriptor.id}" data namespace "${namespace}" is unsupported`,
+        )
+      }
+      currentSchemas[namespace] = descriptor.dataSchemas[namespace].write
+    }
+    const selected = selectInitialCompatibleVersion(
+      {
+        id: descriptor.id,
+        versions: [
+          {
+            version: descriptor.version,
+            hostApi: descriptor.hostApi,
+            platforms: [descriptor.platform],
+            dataSchemas: descriptor.dataSchemas,
+            manifestUrl: descriptor.manifestUrl,
+            manifest: descriptor.manifest,
+          },
+        ],
+      },
+      {
+        hostApi: this.options.hostApi,
+        platform: this.options.platform,
+        dataSchemas: currentSchemas,
+        supportedDataNamespaces: this.supportedDataNamespaces,
+      },
+    )
+    if (!selected) {
+      throw new Error(
+        `Module "${descriptor.id}" version "${descriptor.version}" is incompatible with the current Host API, platform, or transition schemas`,
+      )
+    }
+  }
+
+  private mapTransitionRecovery(
+    recovered: Readonly<{
+      moduleId: string
+      status: 'activated' | 'skipped' | 'failed'
+      version?: string
+      recoveredVersion?: string
+      error?: string
+    }>,
+  ): ModuleActivationResult {
+    if (recovered.error !== undefined) {
+      this.errors.set(recovered.moduleId, recovered.error)
+      this.report(recovered.moduleId, new Error(recovered.error))
+    } else if (recovered.status === 'activated') {
+      this.errors.delete(recovered.moduleId)
+    }
+    return result({
+      moduleId: recovered.moduleId,
+      status: recovered.status,
+      ...(recovered.version === undefined
+        ? {}
+        : { version: recovered.version }),
+      ...(recovered.recoveredVersion === undefined
+        ? {}
+        : { recoveredVersion: recovered.recoveredVersion }),
+      ...(recovered.error === undefined ? {} : { error: recovered.error }),
+    })
   }
 
   private async hasIntendedPointers(

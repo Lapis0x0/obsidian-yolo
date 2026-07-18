@@ -93,6 +93,15 @@ function transition(
 ): NonNullable<ModuleDeviceState['transition']> {
   const committed = phase === 'committed'
   const rolledBack = phase === 'rollback-completed'
+  const previousSnapshot = {
+    present: true,
+    envelope: { schemaVersion: 1, data: { enabled: true } },
+  } as const
+  const previousSha256 = hash(
+    encode(
+      `yolo.module-transition.settings-snapshot.v1\u0000{"envelope":{"data":{"enabled":true},"schemaVersion":1},"present":true}`,
+    ),
+  )
   return parseModuleTransitionJournal(
     {
       phase,
@@ -101,26 +110,21 @@ function transition(
       previousActiveVersion: '1.0.0',
       targetVersion: target.descriptor.version,
       targetManifestSha256: target.descriptor.manifest.sha256,
-      settings: {
-        namespace: 'settings',
-        location: {
-          moduleId: target.descriptor.id,
-          storageRoot: 'YOLO/.yolo_json_db/module-settings',
-          storagePath: `YOLO/.yolo_json_db/module-settings/${target.descriptor.id}.json`,
-        },
-        sourceSchemaVersion: 1,
-        targetSchemaVersion: 1,
-        previous: {
-          present: true,
-          envelope: { schemaVersion: 1, data: { enabled: true } },
-        },
-        previousSha256: hash(
-          encode(
-            '{"envelope":{"data":{"enabled":true},"schemaVersion":1},"present":true}',
-          ),
-        ),
-        expectedPostSha256: 'b'.repeat(64),
-      },
+      settings: target.descriptor.dataSchemas.settings
+        ? {
+            namespace: 'settings',
+            location: {
+              moduleId: target.descriptor.id,
+              storageRoot: 'YOLO/.yolo_json_db/module-settings',
+              storagePath: `YOLO/.yolo_json_db/module-settings/${target.descriptor.id}.json`,
+            },
+            sourceSchemaVersion: 1,
+            targetSchemaVersion: 1,
+            previous: previousSnapshot,
+            previousSha256,
+            expectedPostSha256: previousSha256,
+          }
+        : null,
     },
     {
       moduleId: target.descriptor.id,
@@ -158,6 +162,8 @@ type HarnessOptions = Readonly<{
   reportActivationError?: (moduleId: string, error: unknown) => void
   activationTimeoutMs?: number
   startupTimeoutMs?: number
+  afterList?: (durable: Map<string, ModuleDeviceState>) => void
+  transitionRecoveryRealmToken?: object
 }>
 
 function harness(options: HarnessOptions = {}) {
@@ -207,7 +213,9 @@ function harness(options: HarnessOptions = {}) {
   }
   const list = jest.fn(async () => {
     if (options.hangList) await new Promise<never>(() => undefined)
-    return [...durable.values()]
+    const listed = [...durable.values()]
+    options.afterList?.(durable)
+    return listed
   })
   const write = jest.fn(
     async (next: ModuleDeviceState): Promise<ModuleDeviceState> => {
@@ -258,6 +266,13 @@ function harness(options: HarnessOptions = {}) {
       options.readCurrentSchemaVersion ?? (async () => 1),
     loader: { load },
     runtime: { activate },
+    transitionSettingsBackend: {
+      readAtCapturedLocation: async () => ({
+        present: true,
+        envelope: { schemaVersion: 1, data: { enabled: true } },
+      }),
+    },
+    transitionRecoveryRealmToken: options.transitionRecoveryRealmToken ?? {},
     activationTimeoutMs: options.activationTimeoutMs,
     startupTimeoutMs: options.startupTimeoutMs,
     ...(options.provideCrypto === false
@@ -387,12 +402,18 @@ describe('ModuleActivationCoordinator', () => {
     )
   })
 
-  it.each(['prepared', 'committed', 'rollback-completed'] as const)(
-    'fails closed without mutation or code execution for a %s transition journal',
-    async (phase) => {
+  it.each([
+    ['prepared', '2.0.0', undefined],
+    ['settings-committed', '2.0.0', undefined],
+    ['activation-started', '1.0.0', '1.0.0'],
+    ['committed', '2.0.0', undefined],
+    ['rollback-completed', '1.0.0', '1.0.0'],
+  ] as const)(
+    'recovers a %s transition journal before ordinary activation',
+    async (phase, expectedVersion, recoveredVersion) => {
       const old = artifact('learning', '1.0.0')
       const target = artifact('learning', '2.0.0', {
-        dataSchemas: { settings: { readMin: 1, readMax: 1, write: 1 } },
+        dataSchemas: {},
       })
       const committed = phase === 'committed'
       const rolledBack = phase === 'rollback-completed'
@@ -409,19 +430,98 @@ describe('ModuleActivationCoordinator', () => {
       expect(results).toEqual([
         {
           moduleId: 'learning',
-          status: 'failed',
-          error: expect.stringContaining(
-            'transition recovery is not implemented',
-          ),
+          status: 'activated',
+          version: expectedVersion,
+          ...(recoveredVersion === undefined ? {} : { recoveredVersion }),
         },
       ])
-      expect(fixture.durable.get('learning')).toBe(initial)
-      expect(fixture.write).not.toHaveBeenCalled()
-      expect(fixture.calls).toEqual([])
-      expect(fixture.load).not.toHaveBeenCalled()
-      expect(fixture.activate).not.toHaveBeenCalled()
+      expect(fixture.durable.get('learning')?.transition).toBeNull()
+      expect(fixture.calls).toContain(`activate:learning@${expectedVersion}`)
+      expect(fixture.coordinator.getStartupDisposition()).toEqual({
+        reloadRequired: false,
+        processPoisoned: false,
+      })
     },
   )
+
+  it('stops before ordinary modules when transition activation poisons the realm', async () => {
+    const realmToken = {}
+    const old = artifact('learning', '1.0.0')
+    const target = artifact('learning', '2.0.0', { dataSchemas: {} })
+    const ordinary = artifact('notes', '1.0.0')
+    const fixture = harness({
+      artifacts: [old, target, ordinary],
+      states: [
+        state('learning', [old, target], {
+          activeVersion: '1.0.0',
+          pendingVersion: '2.0.0',
+          transition: transition(target, 'prepared'),
+        }),
+        state('notes', [ordinary], { activeVersion: '1.0.0' }),
+      ],
+      failRuntime: new Set(['learning@2.0.0']),
+      transitionRecoveryRealmToken: realmToken,
+    })
+
+    const results = await fixture.coordinator.activatePersistedModules()
+
+    expect(results).toEqual([
+      {
+        moduleId: 'learning',
+        status: 'failed',
+        error: 'runtime exploded',
+      },
+    ])
+    expect(fixture.calls).not.toContain('activate:notes@1.0.0')
+    expect(fixture.durable.get('learning')?.transition?.phase).toBe(
+      'activation-started',
+    )
+    expect(fixture.coordinator.getStartupDisposition()).toEqual({
+      reloadRequired: true,
+      processPoisoned: true,
+    })
+
+    const later = artifact('notes', '1.0.0')
+    const replacement = harness({
+      artifacts: [later],
+      states: [state('notes', [later], { activeVersion: '1.0.0' })],
+      transitionRecoveryRealmToken: realmToken,
+    })
+    await expect(
+      replacement.coordinator.activatePersistedModules(),
+    ).resolves.toEqual([])
+    expect(replacement.calls).toEqual([])
+    expect(replacement.coordinator.getStartupDisposition()).toEqual({
+      reloadRequired: true,
+      processPoisoned: true,
+    })
+  })
+
+  it('reclassifies a transition that appears after the initial device-state listing', async () => {
+    const old = artifact('learning', '1.0.0')
+    const target = artifact('learning', '2.0.0', { dataSchemas: {} })
+    const initial = state('learning', [old, target], {
+      activeVersion: '1.0.0',
+    })
+    const transitioning = state('learning', [old, target], {
+      activeVersion: '1.0.0',
+      pendingVersion: '2.0.0',
+      transition: transition(target, 'prepared'),
+    })
+    const fixture = harness({
+      artifacts: [old, target],
+      states: [initial],
+      afterList: (durable) => durable.set('learning', transitioning),
+    })
+
+    await expect(
+      fixture.coordinator.activatePersistedModules(),
+    ).resolves.toEqual([
+      { moduleId: 'learning', status: 'activated', version: '2.0.0' },
+    ])
+    expect(fixture.calls).toContain('activate:learning@2.0.0')
+    expect(fixture.calls).not.toContain('activate:learning@1.0.0')
+  })
 
   it('isolates verifier, loader, runtime, and reporter failures in module order', async () => {
     const verifier = artifact('a-verifier', '1.0.0')

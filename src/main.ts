@@ -88,6 +88,7 @@ import {
   ObsidianModuleVaultCapabilityProvider,
   type ProductionModuleServices,
   createObsidianModuleConfigBackendFactory,
+  createObsidianModuleTransitionSettingsBackend,
   createOfficialModuleCompatibilityProvider,
   createProductionModuleServices,
   parseModuleArtifactManifest,
@@ -2076,7 +2077,7 @@ export default class YoloPlugin extends Plugin {
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
     this.warnIfInstallationIncomplete()
-    await this.activateModules()
+    if (!(await this.activateModules())) return
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -3637,6 +3638,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       subscribeSettingsChange: (listener) =>
         this.addSettingsChangeListener(() => listener()),
     })
+    const transitionSettingsBackend =
+      createObsidianModuleTransitionSettingsBackend({
+        app: this.app,
+        getSettings: () => this.settings,
+      })
     const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
     this.register(() => deviceLocalAdapter.close())
     let registry: BundledModuleRegistry | null = null
@@ -3742,6 +3748,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       activationRuntime: runtime,
+      transitionSettingsBackend,
       readCurrentSchemaVersion: async (moduleId, namespace) => {
         if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
         return (await createConfigBackend(moduleId).read()).schemaVersion
@@ -3760,17 +3767,31 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.moduleManager = services.manager
   }
 
-  private async activateModules(): Promise<void> {
+  private async activateModules(): Promise<boolean> {
     if (!this.bundledModuleRegistry) {
       try {
         await this.productionModuleServices?.activationCoordinator.activatePersistedModules()
       } catch (error) {
         console.error('[YOLO] Failed to enumerate installed modules', error)
       }
+      const disposition =
+        this.productionModuleServices?.activationCoordinator.getStartupDisposition()
+      if (disposition?.reloadRequired) {
+        console.error(
+          '[YOLO] Module transition recovery requires a fresh process; reloading Obsidian',
+        )
+        window.location.reload()
+        return false
+      }
+      if (disposition?.processPoisoned) {
+        console.error(
+          '[YOLO] Module transition recovery stopped further module activation in this process',
+        )
+      }
       void this.moduleManager?.refresh().catch((error) => {
         console.error('[YOLO] Failed to refresh official modules', error)
       })
-      return
+      return true
     }
     try {
       await this.bundledModuleRegistry.activateAll()
@@ -3778,6 +3799,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       console.error('[YOLO] Failed to load the bundled module index', error)
     }
     await this.moduleManager?.refresh()
+    return true
   }
 
   private async activateLocalConformanceModule(): Promise<void> {

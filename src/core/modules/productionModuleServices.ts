@@ -17,6 +17,7 @@ import {
   type ModuleStore,
   assertModuleId,
 } from './moduleStore'
+import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import {
   type OfficialModuleArtifactRequest,
   createOfficialModuleArtifactDownloader,
@@ -51,6 +52,11 @@ export type ProductionModuleServicesOptions = Readonly<{
   isActive(moduleId: string, version: string): boolean
   activationRuntime: ModuleActivationCoordinatorOptions['runtime']
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
+  transitionSettingsBackend: Pick<
+    ObsidianModuleTransitionSettingsBackend,
+    'readAtCapturedLocation'
+  >
+  transitionRecoveryRealmToken?: object
   readCurrentSchemaVersion: ModuleActivationCoordinatorOptions['readCurrentSchemaVersion']
   catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
@@ -122,6 +128,10 @@ export function createProductionModuleServices(
     readCurrentSchemaVersion: options.readCurrentSchemaVersion,
     loader: activationLoader,
     runtime: options.activationRuntime,
+    transitionSettingsBackend: options.transitionSettingsBackend,
+    ...(options.transitionRecoveryRealmToken
+      ? { transitionRecoveryRealmToken: options.transitionRecoveryRealmToken }
+      : {}),
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportActivationError
       ? { reportActivationError: options.reportActivationError }
@@ -249,8 +259,13 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
     typeof options.activationRuntime?.activate !== 'function' ||
+    typeof options.transitionSettingsBackend?.readAtCapturedLocation !==
+      'function' ||
     (options.activationLoader !== undefined &&
       typeof options.activationLoader.load !== 'function') ||
+    (options.transitionRecoveryRealmToken !== undefined &&
+      (options.transitionRecoveryRealmToken === null ||
+        typeof options.transitionRecoveryRealmToken !== 'object')) ||
     typeof options.readCurrentSchemaVersion !== 'function' ||
     (options.catalogRequest !== undefined &&
       typeof options.catalogRequest !== 'function') ||
