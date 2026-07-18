@@ -549,6 +549,22 @@ export const en: TranslationKeys = {
       availableEmpty: 'No additional modules are available.',
       version: 'Version {version}',
       availableVersion: 'Update {version}',
+      install: 'Install',
+      update: 'Update',
+      installing: 'Installing…',
+      updating: 'Updating…',
+      confirmInstallTitle: 'Install {name}',
+      confirmUpdateTitle: 'Update {name}',
+      confirmMessage:
+        'Confirm the exact module release before downloading.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded and verified. This version will not be activated yet.',
+      candidateUnavailable:
+        '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
+      installSuccess:
+        'Downloaded and verified {name} {version}. It is not active yet.',
+      updateSuccess:
+        'Downloaded and verified the {name} {version} update. It is not active yet.',
+      installError: 'Could not install {name}: {error}',
+      updateError: 'Could not update {name}: {error}',
       statuses: {
         available: 'Available',
         installed: 'Installed',

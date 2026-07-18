@@ -552,6 +552,22 @@ export const it: TranslationKeys = {
       availableEmpty: 'Nessun altro modulo disponibile.',
       version: 'Versione {version}',
       availableVersion: 'Aggiornamento {version}',
+      install: 'Installa',
+      update: 'Aggiorna',
+      installing: 'Installazione…',
+      updating: 'Aggiornamento…',
+      confirmInstallTitle: 'Installa {name}',
+      confirmUpdateTitle: 'Aggiorna {name}',
+      confirmMessage:
+        'Conferma la versione esatta del modulo prima del download.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati e verificati. Questa versione non verrà ancora attivata.',
+      candidateUnavailable:
+        'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
+      installSuccess:
+        'Scaricato e verificato {name} {version}. Non è ancora attivo.',
+      updateSuccess:
+        "Scaricato e verificato l'aggiornamento {name} {version}. Non è ancora attivo.",
+      installError: 'Impossibile installare {name}: {error}',
+      updateError: 'Impossibile aggiornare {name}: {error}',
       statuses: {
         available: 'Disponibile',
         installed: 'Installato',

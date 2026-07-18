@@ -205,6 +205,18 @@ export type TranslationKeys = {
       availableEmpty: string
       version: string
       availableVersion: string
+      install: string
+      update: string
+      installing: string
+      updating: string
+      confirmInstallTitle: string
+      confirmUpdateTitle: string
+      confirmMessage: string
+      candidateUnavailable: string
+      installSuccess: string
+      updateSuccess: string
+      installError: string
+      updateError: string
       statuses: {
         available: string
         installed: string

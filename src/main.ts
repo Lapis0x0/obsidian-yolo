@@ -3621,9 +3621,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         new Error('[YOLO] Production module installation is unavailable'),
       )
     }
-    return this.productionModuleServices.coordinator.installConfirmedCandidate(
-      candidate,
-    )
+    return this.productionModuleServices.installConfirmedCandidate(candidate)
   }
 
   private initializeModuleSystem(): void {

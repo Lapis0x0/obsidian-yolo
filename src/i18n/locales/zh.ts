@@ -509,6 +509,20 @@ export const zh: TranslationKeys = {
       availableEmpty: '没有其他可用模块。',
       version: '版本 {version}',
       availableVersion: '可更新至 {version}',
+      install: '安装',
+      update: '更新',
+      installing: '正在安装…',
+      updating: '正在更新…',
+      confirmInstallTitle: '安装 {name}',
+      confirmUpdateTitle: '更新 {name}',
+      confirmMessage:
+        '下载前请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，但此版本暂时不会启用。',
+      candidateUnavailable:
+        '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
+      installSuccess: '已下载并校验 {name} {version}，但尚未启用。',
+      updateSuccess: '已下载并校验 {name} {version} 更新，但尚未启用。',
+      installError: '无法安装 {name}：{error}',
+      updateError: '无法更新 {name}：{error}',
       statuses: {
         available: '可用',
         installed: '已安装',

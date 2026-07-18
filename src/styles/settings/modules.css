@@ -65,7 +65,8 @@ button.yolo-modules-refresh:disabled {
 }
 
 .yolo-modules-refresh-icon.is-spinning,
-.yolo-modules-state-icon.is-spinning {
+.yolo-modules-state-icon.is-spinning,
+.yolo-module-card-action-icon.is-spinning {
   animation: yolo-modules-spin 0.8s linear infinite;
 }
 
@@ -276,8 +277,52 @@ button.yolo-modules-refresh:disabled {
   overflow-wrap: anywhere;
 }
 
+.yolo-module-card-actions {
+  display: flex;
+  align-items: flex-end;
+}
+
 .yolo-module-card-actions:empty {
   display: none;
+}
+
+button.yolo-module-card-action {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-4-2);
+  min-height: var(--input-height);
+  margin: 0;
+  padding: var(--size-4-1) var(--size-4-3);
+  border: 1px solid transparent;
+  border-radius: var(--button-radius);
+  background: var(--interactive-accent);
+  box-shadow: var(--input-shadow);
+  color: var(--text-on-accent);
+  font: inherit;
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+button.yolo-module-card-action:hover {
+  background: var(--interactive-accent-hover);
+}
+
+button.yolo-module-card-action:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 2px;
+}
+
+button.yolo-module-card-action:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.yolo-module-card-action-icon {
+  width: var(--icon-s);
+  height: var(--icon-s);
 }
 
 .yolo-modules-group-empty {
@@ -316,11 +361,20 @@ button.yolo-modules-refresh:disabled {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .yolo-module-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  button.yolo-module-card-action {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .yolo-modules-refresh-icon.is-spinning,
-  .yolo-modules-state-icon.is-spinning {
+  .yolo-modules-state-icon.is-spinning,
+  .yolo-module-card-action-icon.is-spinning {
     animation: none;
   }
 }

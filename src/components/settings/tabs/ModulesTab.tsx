@@ -4,12 +4,17 @@ import {
   RefreshCw,
   TriangleAlert,
 } from 'lucide-react'
-import { App } from 'obsidian'
-import { useSyncExternalStore } from 'react'
+import { App, Notice } from 'obsidian'
+import { useState, useSyncExternalStore } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import type { ModuleManagerSnapshot, ModuleRecord } from '../../../core/modules'
+import type {
+  ConfirmedModuleCandidate,
+  ModuleManagerSnapshot,
+  ModuleRecord,
+} from '../../../core/modules'
 import YoloPlugin from '../../../main'
+import { ConfirmModal } from '../../modals/ConfirmModal'
 
 type ModulesTabProps = {
   app: App
@@ -24,7 +29,15 @@ const INSTALLED_STATUSES = new Set<ModuleRecord['status']>([
   'failed',
 ])
 
-function ModuleCard({ module }: { module: ModuleRecord }) {
+function ModuleCard({
+  module,
+  operationModuleId,
+  onInstall,
+}: {
+  module: ModuleRecord
+  operationModuleId: string | null
+  onInstall: (module: ModuleRecord) => void
+}) {
   const { t } = useLanguage()
   const name = module.catalog?.name ?? module.id
   const description = module.catalog?.description
@@ -39,6 +52,14 @@ function ModuleCard({ module }: { module: ModuleRecord }) {
     'update-available': t('settings.modules.statuses.updateAvailable'),
     failed: t('settings.modules.statuses.failed'),
   }
+  const action =
+    module.status === 'available'
+      ? 'install'
+      : module.status === 'update-available'
+        ? 'update'
+        : undefined
+  const isOperating = operationModuleId === module.id
+  const hasOperation = operationModuleId !== null
 
   return (
     <article
@@ -76,7 +97,35 @@ function ModuleCard({ module }: { module: ModuleRecord }) {
           </p>
         )}
       </div>
-      <div className="yolo-module-card-actions" />
+      <div className="yolo-module-card-actions">
+        {action && (
+          <button
+            type="button"
+            className="yolo-module-card-action"
+            onClick={() => onInstall(module)}
+            disabled={hasOperation}
+            aria-busy={isOperating || undefined}
+          >
+            {isOperating && (
+              <LoaderCircle
+                className="yolo-module-card-action-icon is-spinning"
+                aria-hidden="true"
+              />
+            )}
+            <span>
+              {t(
+                isOperating
+                  ? action === 'update'
+                    ? 'settings.modules.updating'
+                    : 'settings.modules.installing'
+                  : action === 'update'
+                    ? 'settings.modules.update'
+                    : 'settings.modules.install',
+              )}
+            </span>
+          </button>
+        )}
+      </div>
     </article>
   )
 }
@@ -85,11 +134,15 @@ function ModuleGroup({
   description,
   emptyMessage,
   modules,
+  operationModuleId,
+  onInstall,
   title,
 }: {
   description: string
   emptyMessage: string
   modules: ReadonlyArray<ModuleRecord>
+  operationModuleId: string | null
+  onInstall: (module: ModuleRecord) => void
   title: string
 }) {
   return (
@@ -102,7 +155,12 @@ function ModuleGroup({
       {modules.length > 0 ? (
         <div className="yolo-modules-list">
           {modules.map((module) => (
-            <ModuleCard key={module.id} module={module} />
+            <ModuleCard
+              key={module.id}
+              module={module}
+              operationModuleId={operationModuleId}
+              onInstall={onInstall}
+            />
           ))}
         </div>
       ) : (
@@ -157,8 +215,11 @@ function ModuleErrorState({
   )
 }
 
-export function ModulesTab({ plugin }: ModulesTabProps) {
+export function ModulesTab({ app, plugin }: ModulesTabProps) {
   const { t } = useLanguage()
+  const [operationModuleId, setOperationModuleId] = useState<string | null>(
+    null,
+  )
   const manager = plugin.getModuleManager()
   const snapshot = useSyncExternalStore(
     manager.subscribe,
@@ -172,6 +233,83 @@ export function ModulesTab({ plugin }: ModulesTabProps) {
   const available = snapshot.modules.filter(
     (module) => module.status === 'available',
   )
+
+  const installCandidate = async (
+    module: ModuleRecord,
+    candidate: ConfirmedModuleCandidate,
+    isUpdate: boolean,
+  ) => {
+    const name = module.catalog?.name ?? module.id
+    try {
+      await plugin.installConfirmedModuleCandidate(candidate)
+      new Notice(
+        t(
+          isUpdate
+            ? 'settings.modules.updateSuccess'
+            : 'settings.modules.installSuccess',
+        )
+          .replace('{name}', name)
+          .replace('{version}', candidate.expectedVersion),
+        8000,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      new Notice(
+        t(
+          isUpdate
+            ? 'settings.modules.updateError'
+            : 'settings.modules.installError',
+        )
+          .replace('{name}', name)
+          .replace('{error}', message),
+        8000,
+      )
+    } finally {
+      setOperationModuleId((current) =>
+        current === module.id ? null : current,
+      )
+    }
+  }
+
+  const openInstallConfirmation = (module: ModuleRecord) => {
+    const name = module.catalog?.name ?? module.id
+    const candidate = plugin.getModuleInstallCandidate(module.id)
+    if (
+      !candidate ||
+      !module.catalog ||
+      candidate.expectedVersion !== module.catalog.version
+    ) {
+      new Notice(
+        t('settings.modules.candidateUnavailable').replace('{name}', name),
+      )
+      return
+    }
+
+    const isUpdate = module.status === 'update-available'
+    setOperationModuleId(module.id)
+    new ConfirmModal(app, {
+      title: t(
+        isUpdate
+          ? 'settings.modules.confirmUpdateTitle'
+          : 'settings.modules.confirmInstallTitle',
+      ).replace('{name}', name),
+      message: t('settings.modules.confirmMessage')
+        .replace('{name}', name)
+        .replace('{version}', candidate.expectedVersion)
+        .replace('{sha256}', candidate.expectedManifestSha256),
+      ctaText: t(
+        isUpdate ? 'settings.modules.update' : 'settings.modules.install',
+      ),
+      onConfirm: () => {
+        void installCandidate(module, candidate, isUpdate)
+      },
+      onCancel: () => {
+        setOperationModuleId((current) =>
+          current === module.id ? null : current,
+        )
+      },
+    }).open()
+  }
 
   return (
     <div className="yolo-modules-page">
@@ -188,7 +326,7 @@ export function ModulesTab({ plugin }: ModulesTabProps) {
           type="button"
           className="yolo-modules-refresh"
           onClick={() => void manager.refresh()}
-          disabled={isLoading}
+          disabled={isLoading || operationModuleId !== null}
           aria-label={t(
             isLoading
               ? 'settings.modules.refreshing'
@@ -240,12 +378,16 @@ export function ModulesTab({ plugin }: ModulesTabProps) {
               description={t('settings.modules.installedDescription')}
               emptyMessage={t('settings.modules.installedEmpty')}
               modules={installed}
+              operationModuleId={operationModuleId}
+              onInstall={openInstallConfirmation}
             />
             <ModuleGroup
               title={t('settings.modules.available')}
               description={t('settings.modules.availableDescription')}
               emptyMessage={t('settings.modules.availableEmpty')}
               modules={available}
+              operationModuleId={operationModuleId}
+              onInstall={openInstallConfirmation}
             />
           </div>
         </>

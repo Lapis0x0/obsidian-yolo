@@ -333,7 +333,7 @@ describe('createProductionModuleServices', () => {
       'Module id',
     )
 
-    await harness.services.coordinator.installConfirmedCandidate(candidate!)
+    await harness.services.installConfirmedCandidate(candidate!)
 
     expect(
       harness.artifactRequest.mock.calls.map(([request]) => request),
@@ -399,7 +399,7 @@ describe('createProductionModuleServices', () => {
     await failedInstall.services.manager.refresh()
     const candidate = failedInstall.services.getInstallCandidate('learning')!
     await expect(
-      failedInstall.services.coordinator.installConfirmedCandidate(candidate),
+      failedInstall.services.installConfirmedCandidate(candidate),
     ).rejects.toThrow('request was not successful')
     expect(await failedInstall.deviceStateStore.read('learning')).toBeNull()
     expect(
@@ -449,6 +449,112 @@ describe('createProductionModuleServices', () => {
       expectedVersion: '1.2.3',
       expectedManifestSha256: sha256(harness.fixture.manifestBytes),
     })
+  })
+
+  it('rejects duplicate in-flight installs across settings remounts', async () => {
+    const fixture = artifact()
+    let releaseRequest!: () => void
+    const requestGate = new Promise<void>((resolve) => {
+      releaseRequest = resolve
+    })
+    const harness = createHarness({
+      artifactRequest: async (request) => {
+        await requestGate
+        if (request.url === fixture.manifestUrl) {
+          return response(fixture.manifestBytes)
+        }
+        if (request.url === fixture.entryUrl) {
+          return response(fixture.entryBytes)
+        }
+        return response('', 404)
+      },
+    })
+    await harness.services.manager.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+
+    const firstInstall = harness.services.installConfirmedCandidate(candidate)
+    expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+    await expect(
+      harness.services.installConfirmedCandidate(candidate),
+    ).rejects.toThrow('already in progress')
+
+    releaseRequest()
+    await firstInstall
+    expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+  })
+
+  it('does not retain a failed install as completed', async () => {
+    const harness = createHarness({
+      artifactRequest: async () => response('', 503),
+    })
+    await harness.services.manager.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+
+    await expect(
+      harness.services.installConfirmedCandidate(candidate),
+    ).rejects.toThrow('request was not successful')
+    expect(harness.services.getInstallCandidate('learning')).toEqual(candidate)
+  })
+
+  it('rejects a stale captured candidate after it has completed', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+
+    await harness.services.installConfirmedCandidate(candidate)
+    await expect(
+      harness.services.installConfirmedCandidate(candidate),
+    ).rejects.toThrow('already downloaded')
+    expect(harness.artifactRequest).toHaveBeenCalledTimes(2)
+  })
+
+  it('snapshots mutable candidate fields for bookkeeping', async () => {
+    const fixture = artifact()
+    let releaseRequest!: () => void
+    const requestGate = new Promise<void>((resolve) => {
+      releaseRequest = resolve
+    })
+    const harness = createHarness({
+      artifactRequest: async (request) => {
+        await requestGate
+        if (request.url === fixture.manifestUrl) {
+          return response(fixture.manifestBytes)
+        }
+        if (request.url === fixture.entryUrl) {
+          return response(fixture.entryBytes)
+        }
+        return response('', 404)
+      },
+    })
+    await harness.services.manager.refresh()
+    const issued = harness.services.getInstallCandidate('learning')!
+    const mutableCandidate = { ...issued }
+
+    const installation =
+      harness.services.installConfirmedCandidate(mutableCandidate)
+    mutableCandidate.moduleId = 'calendar'
+    mutableCandidate.expectedVersion = '9.9.9'
+    mutableCandidate.expectedManifestSha256 = 'f'.repeat(64)
+    releaseRequest()
+
+    await expect(installation).resolves.toMatchObject({
+      descriptor: { id: 'learning', version: '1.2.3' },
+    })
+    await expect(
+      harness.services.installConfirmedCandidate(issued),
+    ).rejects.toThrow('already downloaded')
+  })
+
+  it('rejects installs after disposal', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+    harness.services.dispose()
+
+    await expect(
+      harness.services.installConfirmedCandidate(candidate),
+    ).rejects.toThrow('services are disposed')
+    expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
   })
 
   it('fails closed when compatibility and installation platforms differ', async () => {

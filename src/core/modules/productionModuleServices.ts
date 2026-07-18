@@ -4,6 +4,7 @@ import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import {
   type ConfirmedModuleCandidate,
   ModuleInstallationCoordinator,
+  type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
 import { ModuleManager } from './moduleManager'
 import {
@@ -53,6 +54,9 @@ export type ProductionModuleServices = Readonly<{
   installer: ModuleArtifactInstaller
   installedStateSource: ModuleDeviceStateInstalledStateSource
   getInstallCandidate(moduleId: string): ConfirmedModuleCandidate | undefined
+  installConfirmedCandidate(
+    candidate: ConfirmedModuleCandidate,
+  ): Promise<ModuleInstallationResult>
   dispose(): void
 }>
 
@@ -113,6 +117,9 @@ export function createProductionModuleServices(
       ? { reportRefreshError: options.reportRefreshError }
       : {}),
   })
+  const inFlightModuleIds = new Set<string>()
+  const completedCandidates = new Map<string, string>()
+  let disposed = false
 
   return Object.freeze({
     manager,
@@ -123,6 +130,7 @@ export function createProductionModuleServices(
     installedStateSource,
     getInstallCandidate(moduleId: string) {
       assertModuleId(moduleId, 'Module id')
+      if (disposed || inFlightModuleIds.has(moduleId)) return undefined
       const snapshot = manager.getSnapshot()
       if (snapshot.status !== 'ready') return undefined
       const displayed = snapshot.modules.find(
@@ -137,13 +145,49 @@ export function createProductionModuleServices(
       ) {
         return undefined
       }
+      const candidateIdentity = `${resolved.version}:${resolved.manifest.sha256}`
+      if (completedCandidates.get(moduleId) === candidateIdentity) {
+        return undefined
+      }
       return Object.freeze({
         moduleId,
         expectedVersion: resolved.version,
         expectedManifestSha256: resolved.manifest.sha256,
       })
     },
+    async installConfirmedCandidate(candidate: ConfirmedModuleCandidate) {
+      const request = Object.freeze({
+        moduleId: candidate.moduleId,
+        expectedVersion: candidate.expectedVersion,
+        expectedManifestSha256: candidate.expectedManifestSha256,
+      })
+      assertModuleId(request.moduleId, 'Module id')
+      const candidateIdentity = `${request.expectedVersion}:${request.expectedManifestSha256}`
+      if (disposed) {
+        throw new Error('Production module services are disposed')
+      }
+      if (completedCandidates.get(request.moduleId) === candidateIdentity) {
+        throw new Error(
+          `Module candidate is already downloaded: ${request.moduleId}@${request.expectedVersion}`,
+        )
+      }
+      if (inFlightModuleIds.has(request.moduleId)) {
+        throw new Error(
+          `Module installation is already in progress: ${request.moduleId}`,
+        )
+      }
+
+      inFlightModuleIds.add(request.moduleId)
+      try {
+        const result = await coordinator.installConfirmedCandidate(request)
+        completedCandidates.set(request.moduleId, candidateIdentity)
+        return result
+      } finally {
+        inFlightModuleIds.delete(request.moduleId)
+      }
+    },
     dispose: () => {
+      disposed = true
       coordinator.dispose()
       manager.dispose()
     },
