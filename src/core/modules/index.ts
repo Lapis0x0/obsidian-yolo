@@ -124,6 +124,7 @@ export {
   OfficialModuleCatalogClient,
   OfficialModuleCatalogUnavailableError,
   isOfficialModuleReleaseUrl,
+  type OfficialModuleCatalogCacheAdapter,
   type OfficialModuleCatalogClientOptions,
   type OfficialModuleCatalogRequest,
 } from './officialModuleCatalogClient'
@@ -140,6 +141,22 @@ export {
   type OfficialModuleCatalogSourceOptions,
   type OfficialModuleCompatibilityProvider,
 } from './officialModuleCatalogSource'
+export {
+  OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
+  YOLO_HOST_API_VERSION,
+  createOfficialModuleCompatibilityProvider,
+  type OfficialModuleCompatibilityDeviceState,
+  type OfficialModuleCompatibilityProviderOptions,
+} from './officialModuleCompatibilityProvider'
+export {
+  OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+  OFFICIAL_MODULE_CATALOG_CACHE_PATH,
+  OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS,
+  OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
+  createProductionModuleServices,
+  type ProductionModuleServices,
+  type ProductionModuleServicesOptions,
+} from './productionModuleServices'
 export {
   ModuleStore,
   collectModuleManifestFiles,

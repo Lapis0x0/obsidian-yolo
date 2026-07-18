@@ -246,6 +246,38 @@ describe('createOfficialModuleArtifactDownloader', () => {
     expect(request).toHaveBeenCalledTimes(2)
   })
 
+  it('rejects promptly on abort without stacking another transport', async () => {
+    let resolveRequest!: (value: RequestUrlResponse) => void
+    const pending = new Promise<RequestUrlResponse>((resolve) => {
+      resolveRequest = resolve
+    })
+    const request = jest.fn(() => pending)
+    const download = createOfficialModuleArtifactDownloader({
+      requestUrl: request,
+      timeoutMs: 30_000,
+    })
+    const controller = new AbortController()
+    const input = {
+      kind: 'artifact' as const,
+      url: ARTIFACT_URL,
+      byteSize: 1,
+      signal: controller.signal,
+    }
+
+    const downloading = download(input)
+    await Promise.resolve()
+    controller.abort()
+    await expect(downloading).rejects.toThrow('aborted')
+    await expect(
+      download({ kind: 'artifact', url: ARTIFACT_URL, byteSize: 1 }),
+    ).rejects.toThrow('still in progress')
+    expect(request).toHaveBeenCalledTimes(1)
+
+    resolveRequest(response(new Uint8Array([1])))
+    await pending
+    await Promise.resolve()
+  })
+
   it('rejects a non-function injected request', () => {
     expect(() =>
       createOfficialModuleArtifactDownloader({

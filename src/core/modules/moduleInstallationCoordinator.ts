@@ -42,6 +42,9 @@ export type ModuleInstallationCoordinatorOptions = Readonly<{
 
 /** Installs a catalog candidate confirmed by the user without activating it. */
 export class ModuleInstallationCoordinator {
+  private readonly activeControllers = new Set<AbortController>()
+  private disposed = false
+
   constructor(private readonly options: ModuleInstallationCoordinatorOptions) {
     if (
       !options ||
@@ -61,88 +64,115 @@ export class ModuleInstallationCoordinator {
   async installConfirmedCandidate(
     request: ConfirmedModuleCandidate,
   ): Promise<ModuleInstallationResult> {
+    if (this.disposed) {
+      throw new Error('Module installation coordinator is disposed')
+    }
     const { moduleId, expectedVersion, expectedManifestSha256 } =
       parseRequest(request)
-    return this.options.deviceStateStore.runExclusive(
-      moduleId,
-      async (transaction) => {
-        const existing = await transaction.read()
-        if (existing && existing.platform !== this.options.platform) {
-          throw new Error(
-            `Module "${moduleId}" device state belongs to ${existing.platform}, not ${this.options.platform}`,
-          )
-        }
-
-        const resolved =
-          this.options.catalogSource.getResolvedArtifactDescriptor(
-            moduleId,
-            expectedVersion,
-            this.options.platform,
-          )
-        if (!resolved) {
-          throw new Error(
-            `Official module "${moduleId}" candidate "${expectedVersion}" is unavailable`,
-          )
-        }
-        if (resolved.manifest.sha256 !== expectedManifestSha256) {
-          throw new Error(
-            `Official module "${moduleId}" candidate changed after confirmation`,
-          )
-        }
-        if (
-          resolved.id !== moduleId ||
-          resolved.version !== expectedVersion ||
-          resolved.platform !== this.options.platform
-        ) {
-          throw new Error(
-            `Official module "${moduleId}" returned a mismatched artifact descriptor`,
-          )
-        }
-
-        const descriptor = snapshotDescriptor(resolved)
-        const installedDescriptor = existing?.readyVersions[expectedVersion]
-        if (
-          installedDescriptor &&
-          !descriptorsEqual(installedDescriptor, descriptor)
-        ) {
-          throw new Error(
-            `Module "${moduleId}" version "${expectedVersion}" has a conflicting immutable descriptor`,
-          )
-        }
-
-        const manifest = snapshotManifest(
-          await this.options.installer.install(descriptor),
-        )
-        const nextState: ModuleDeviceState = {
-          moduleId,
-          platform: this.options.platform,
-          activeVersion: existing?.activeVersion ?? null,
-          downloadedCandidate: expectedVersion,
-          pendingVersion: existing?.pendingVersion ?? null,
-          readyVersions: {
-            ...(existing?.readyVersions ?? {}),
-            [expectedVersion]: descriptor,
-          },
-        }
-        let state: ModuleDeviceState
-        try {
-          state = snapshotState(await transaction.write(nextState))
-        } catch (writeError) {
-          const recovered = await this.readCommittedState(
-            transaction,
-            expectedVersion,
-            descriptor,
-          )
-          if (!recovered) {
-            await this.refreshSafely()
-            throw writeError
+    const controller = new AbortController()
+    this.activeControllers.add(controller)
+    try {
+      return await this.options.deviceStateStore.runExclusive(
+        moduleId,
+        async (transaction) => {
+          this.throwIfUnavailable(controller.signal)
+          const existing = await transaction.read()
+          if (existing && existing.platform !== this.options.platform) {
+            throw new Error(
+              `Module "${moduleId}" device state belongs to ${existing.platform}, not ${this.options.platform}`,
+            )
           }
-          state = recovered
-        }
-        await this.refreshSafely()
-        return Object.freeze({ descriptor, manifest, state })
-      },
-    )
+
+          const resolved =
+            this.options.catalogSource.getResolvedArtifactDescriptor(
+              moduleId,
+              expectedVersion,
+              this.options.platform,
+            )
+          if (!resolved) {
+            throw new Error(
+              `Official module "${moduleId}" candidate "${expectedVersion}" is unavailable`,
+            )
+          }
+          if (resolved.manifest.sha256 !== expectedManifestSha256) {
+            throw new Error(
+              `Official module "${moduleId}" candidate changed after confirmation`,
+            )
+          }
+          if (
+            resolved.id !== moduleId ||
+            resolved.version !== expectedVersion ||
+            resolved.platform !== this.options.platform
+          ) {
+            throw new Error(
+              `Official module "${moduleId}" returned a mismatched artifact descriptor`,
+            )
+          }
+
+          const descriptor = snapshotDescriptor(resolved)
+          const installedDescriptor = existing?.readyVersions[expectedVersion]
+          if (
+            installedDescriptor &&
+            !descriptorsEqual(installedDescriptor, descriptor)
+          ) {
+            throw new Error(
+              `Module "${moduleId}" version "${expectedVersion}" has a conflicting immutable descriptor`,
+            )
+          }
+
+          const manifest = snapshotManifest(
+            await this.options.installer.install(descriptor, controller.signal),
+          )
+          this.throwIfUnavailable(controller.signal)
+          // The state write is the operation's linearization point. Once commit
+          // starts, unload must not turn a durable result into cancellation.
+          this.activeControllers.delete(controller)
+          const nextState: ModuleDeviceState = {
+            moduleId,
+            platform: this.options.platform,
+            activeVersion: existing?.activeVersion ?? null,
+            downloadedCandidate: expectedVersion,
+            pendingVersion: existing?.pendingVersion ?? null,
+            readyVersions: {
+              ...(existing?.readyVersions ?? {}),
+              [expectedVersion]: descriptor,
+            },
+          }
+          let state: ModuleDeviceState
+          try {
+            state = snapshotState(await transaction.write(nextState))
+          } catch (writeError) {
+            const recovered = await this.readCommittedState(
+              transaction,
+              expectedVersion,
+              descriptor,
+            )
+            if (!recovered) {
+              await this.refreshSafely()
+              throw writeError
+            }
+            state = recovered
+          }
+          await this.refreshSafely()
+          return Object.freeze({ descriptor, manifest, state })
+        },
+      )
+    } finally {
+      this.activeControllers.delete(controller)
+    }
+  }
+
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    for (const controller of this.activeControllers) controller.abort()
+    this.activeControllers.clear()
+  }
+
+  private throwIfUnavailable(signal: AbortSignal): void {
+    if (this.disposed || signal.aborted) {
+      throw new Error('Module installation coordinator is disposed')
+    }
   }
 
   private async readCommittedState(

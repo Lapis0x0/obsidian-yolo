@@ -67,16 +67,16 @@ import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
   BundledModuleRegistry,
+  type ConfirmedModuleCandidate,
   CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
-  EMPTY_MODULE_CATALOG_SOURCE,
   IndexedDbDataAdapter,
   ManagedModulePathsCapabilityProvider,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
-  ModuleDeviceStateInstalledStateSource,
   ModuleDeviceStateStore,
+  type ModuleInstallationResult,
   ModuleLoader,
   ModuleManager,
   ModulePrivateStorageCapabilityProvider,
@@ -85,7 +85,10 @@ import {
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
+  type ProductionModuleServices,
   createObsidianModuleConfigBackendFactory,
+  createOfficialModuleCompatibilityProvider,
+  createProductionModuleServices,
   parseModuleArtifactManifest,
   selectModuleManifestVariant,
 } from './core/modules'
@@ -263,6 +266,7 @@ export default class YoloPlugin extends Plugin {
   private moduleManager: ModuleManager | null = null
   private moduleRuntime: ModuleRuntime | null = null
   private bundledModuleRegistry: BundledModuleRegistry | null = null
+  private productionModuleServices: ProductionModuleServices | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
@@ -2530,7 +2534,9 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
-    this.moduleManager?.dispose()
+    if (this.productionModuleServices) this.productionModuleServices.dispose()
+    else this.moduleManager?.dispose()
+    this.productionModuleServices = null
     this.moduleManager = null
     this.moduleRuntime?.dispose()
     this.moduleRuntime = null
@@ -3601,6 +3607,25 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleManager
   }
 
+  getModuleInstallCandidate(
+    moduleId: string,
+  ): ConfirmedModuleCandidate | undefined {
+    return this.productionModuleServices?.getInstallCandidate(moduleId)
+  }
+
+  installConfirmedModuleCandidate(
+    candidate: ConfirmedModuleCandidate,
+  ): Promise<ModuleInstallationResult> {
+    if (!this.productionModuleServices) {
+      return Promise.reject(
+        new Error('[YOLO] Production module installation is unavailable'),
+      )
+    }
+    return this.productionModuleServices.coordinator.installConfirmedCandidate(
+      candidate,
+    )
+  }
+
   private initializeModuleSystem(): void {
     const store = new ModuleStore({
       adapter: this.app.vault.adapter,
@@ -3691,29 +3716,52 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         },
       })
       this.bundledModuleRegistry = registry
+      this.productionModuleServices = null
       this.moduleManager = new ModuleManager({
         catalogSource: registry.catalogSource,
         installedStateSource: registry.installedStateSource,
       })
       return
     }
+    const platform = Platform.isDesktop ? 'desktop' : 'mobile'
     const deviceStateStore = new ModuleDeviceStateStore({
       kind: 'device-local-runtime-state',
       adapter: deviceLocalAdapter,
       rootPath: MODULE_DEVICE_STATE_ROOT,
     })
-    this.moduleManager = new ModuleManager({
-      catalogSource: EMPTY_MODULE_CATALOG_SOURCE,
-      installedStateSource: new ModuleDeviceStateInstalledStateSource({
-        store: deviceStateStore,
-        isActive: (moduleId, version) => runtime.isActive(moduleId, version),
-      }),
+    const getCompatibility = createOfficialModuleCompatibilityProvider({
+      platform,
+      readDeviceState: (moduleId) => deviceStateStore.read(moduleId),
+      readSettingsSchemaVersion: async (moduleId) =>
+        (await createConfigBackend(moduleId).read()).schemaVersion,
     })
+    const services = createProductionModuleServices({
+      store,
+      deviceStateStore,
+      catalogCacheAdapter: deviceLocalAdapter,
+      platform,
+      getCompatibility,
+      isActive: (moduleId, version) => runtime.isActive(moduleId, version),
+      reportCleanupError: (error) => {
+        console.error('[YOLO] Module artifact cleanup failed', error)
+      },
+      reportRefreshError: (error) => {
+        console.error('[YOLO] Module manager refresh failed', error)
+      },
+    })
+    this.productionModuleServices = services
+    this.moduleManager = services.manager
   }
 
   private async activateBundledModules(): Promise<void> {
+    if (!this.bundledModuleRegistry) {
+      void this.moduleManager?.refresh().catch((error) => {
+        console.error('[YOLO] Failed to refresh official modules', error)
+      })
+      return
+    }
     try {
-      await this.bundledModuleRegistry?.activateAll()
+      await this.bundledModuleRegistry.activateAll()
     } catch (error) {
       console.error('[YOLO] Failed to load the bundled module index', error)
     }

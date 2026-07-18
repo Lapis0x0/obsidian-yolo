@@ -34,6 +34,7 @@ export type OfficialModuleCompatibility = Readonly<{
   hostApi: string
   platform: OfficialModulePlatform
   dataSchemas: Readonly<Record<string, number>>
+  supportedDataNamespaces: readonly string[]
   activeVersion?: string
 }>
 
@@ -191,6 +192,7 @@ type CompatibilityContext = Readonly<{
   hostApi: Semver
   platform: OfficialModulePlatform
   dataSchemas: readonly (readonly [string, number])[]
+  supportedDataNamespaces: ReadonlySet<string>
   activeVersion: Semver | null
 }>
 
@@ -219,10 +221,23 @@ function parseCompatibility(
   if (compatibility.activeVersion && !activeVersion) {
     throw new Error('Active module version is invalid')
   }
+  if (
+    !Array.isArray(compatibility.supportedDataNamespaces) ||
+    compatibility.supportedDataNamespaces.some(
+      (namespace) => typeof namespace !== 'string' || !isNamespace(namespace),
+    ) ||
+    new Set(compatibility.supportedDataNamespaces).size !==
+      compatibility.supportedDataNamespaces.length
+  ) {
+    throw new Error('Supported data namespaces are invalid')
+  }
   return {
     hostApi,
     platform: compatibility.platform,
     dataSchemas,
+    supportedDataNamespaces: new Set(
+      compatibility.supportedDataNamespaces as readonly string[],
+    ),
     activeVersion,
   }
 }
@@ -240,7 +255,11 @@ function findHighestCompatible(
       !candidate.platforms.includes(compatibility.platform) ||
       !satisfiesRange(compatibility.hostApi, candidate.hostApi) ||
       (newerThan && compareSemver(candidateVersion, newerThan) <= 0) ||
-      !schemasAreCompatible(candidate.dataSchemas, compatibility.dataSchemas)
+      !schemasAreCompatible(
+        candidate.dataSchemas,
+        compatibility.dataSchemas,
+        compatibility.supportedDataNamespaces,
+      )
     ) {
       continue
     }
@@ -257,7 +276,15 @@ function findHighestCompatible(
 function schemasAreCompatible(
   candidateSchemas: Readonly<Record<string, OfficialModuleDataSchema>>,
   currentSchemas: readonly (readonly [string, number])[],
+  supportedNamespaces: ReadonlySet<string>,
 ): boolean {
+  if (
+    Object.keys(candidateSchemas).some(
+      (namespace) => !supportedNamespaces.has(namespace),
+    )
+  ) {
+    return false
+  }
   const current = new Map(currentSchemas)
   for (const [namespace, currentVersion] of current) {
     const schema = candidateSchemas[namespace]

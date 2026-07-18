@@ -603,4 +603,63 @@ describe('ModuleInstallationCoordinator', () => {
     expect(reportRefreshError).toHaveBeenCalledWith(refreshError)
     expect(value.deviceStateStore.write).toHaveBeenCalledTimes(1)
   })
+
+  it('aborts an in-flight installation and prevents state commit on dispose', async () => {
+    const installing = deferred<ModuleArtifactManifest>()
+    const install = jest.fn(
+      async (_descriptor: ModuleArtifactDescriptor, _signal?: AbortSignal) =>
+        installing.promise,
+    )
+    const value = fixture(null, {
+      installer: { install },
+    })
+
+    const result = value.coordinator.installConfirmedCandidate({
+      moduleId: 'learning',
+      expectedVersion: '2.0.0',
+      expectedManifestSha256: HASH,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    value.coordinator.dispose()
+    installing.resolve(manifest())
+
+    await expect(result).rejects.toThrow('disposed')
+    expect(value.deviceStateStore.write).not.toHaveBeenCalled()
+    expect(value.manager.refresh).not.toHaveBeenCalled()
+    const signal = install.mock.calls[0]?.[1]
+    expect(signal?.aborted).toBe(true)
+    await expect(
+      value.coordinator.installConfirmedCandidate({
+        moduleId: 'learning',
+        expectedVersion: '2.0.0',
+        expectedManifestSha256: HASH,
+      }),
+    ).rejects.toThrow('disposed')
+  })
+
+  it('allows a state commit that reached its linearization point before dispose', async () => {
+    const writing = deferred<ModuleDeviceState>()
+    const write = jest.fn(async (_next: ModuleDeviceState) => writing.promise)
+    const value = fixture(null, {
+      deviceStateStore: transactionalStore(
+        jest.fn(async () => null),
+        write,
+      ),
+    })
+
+    const result = value.coordinator.installConfirmedCandidate({
+      moduleId: 'learning',
+      expectedVersion: '2.0.0',
+      expectedManifestSha256: HASH,
+    })
+    while (write.mock.calls.length === 0) await Promise.resolve()
+    value.coordinator.dispose()
+    const committed = write.mock.calls[0][0]
+    writing.resolve(committed)
+
+    await expect(result).resolves.toMatchObject({
+      state: { downloadedCandidate: '2.0.0' },
+    })
+  })
 })

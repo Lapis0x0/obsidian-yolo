@@ -86,7 +86,11 @@ export function createOfficialModuleArtifactDownloader(
         if (requestInFlight === transport) requestInFlight = null
       },
     )
-    const response = await withTimeout(transport, validatedTimeoutMs)
+    const response = await withTimeout(
+      transport,
+      validatedTimeoutMs,
+      downloadRequest.signal,
+    )
     if (
       !response ||
       typeof response !== 'object' ||
@@ -119,22 +123,25 @@ function assertDownloadRequest(value: unknown): asserts value is Readonly<{
   kind: 'manifest' | 'artifact'
   url: string
   byteSize: number
+  signal?: AbortSignal
 }> {
   if (!isPlainRecord(value)) {
     throw new TypeError('Official module artifact download request is invalid')
   }
   const keys = Reflect.ownKeys(value)
   if (
-    keys.length !== 3 ||
+    (keys.length !== 3 && keys.length !== 4) ||
     !keys.includes('kind') ||
     !keys.includes('url') ||
     !keys.includes('byteSize') ||
+    (keys.length === 4 && !keys.includes('signal')) ||
     (value.kind !== 'manifest' && value.kind !== 'artifact') ||
     typeof value.url !== 'string' ||
     !isOfficialModuleReleaseUrl(value.url) ||
     !Number.isSafeInteger(value.byteSize) ||
     (value.byteSize as number) <= 0 ||
-    (value.byteSize as number) > maximumBytesFor(value.kind)
+    (value.byteSize as number) > maximumBytesFor(value.kind) ||
+    !isAbortSignal(value.signal)
   ) {
     throw new TypeError('Official module artifact download request is invalid')
   }
@@ -146,29 +153,57 @@ function maximumBytesFor(kind: 'manifest' | 'artifact'): number {
     : MAX_MODULE_ARTIFACT_FILE_BYTES
 }
 
-function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let settled = false
-    const timer = setTimeout(() => {
+    const finish = (settle: () => void): void => {
       if (settled) return
       settled = true
-      reject(new Error('Official module artifact request timed out'))
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+      settle()
+    }
+    const abort = (): void => {
+      finish(() =>
+        reject(new Error('Official module artifact request aborted')),
+      )
+    }
+    const timer = setTimeout(() => {
+      finish(() =>
+        reject(new Error('Official module artifact request timed out')),
+      )
     }, timeoutMs)
+    if (signal?.aborted) {
+      abort()
+      return
+    }
+    signal?.addEventListener('abort', abort, { once: true })
     operation.then(
       (value) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        resolve(value)
+        finish(() => resolve(value))
       },
       (error: unknown) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        reject(error instanceof Error ? error : new Error(String(error)))
+        finish(() =>
+          reject(error instanceof Error ? error : new Error(String(error))),
+        )
       },
     )
   })
+}
+
+function isAbortSignal(value: unknown): value is AbortSignal | undefined {
+  return (
+    value === undefined ||
+    (Boolean(value) &&
+      typeof value === 'object' &&
+      typeof (value as AbortSignal).aborted === 'boolean' &&
+      typeof (value as AbortSignal).addEventListener === 'function' &&
+      typeof (value as AbortSignal).removeEventListener === 'function')
+  )
 }
 
 function readContentLength(headers: unknown): number | null {

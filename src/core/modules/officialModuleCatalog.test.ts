@@ -374,6 +374,7 @@ describe('official module catalog V1', () => {
           hostApi: '1.3.0',
           platform,
           dataSchemas: { learning: 2 },
+          supportedDataNamespaces: ['learning'],
         })?.version,
       ).toBe('1.0.0')
     }
@@ -395,6 +396,7 @@ describe('official module catalog V1', () => {
         hostApi: '1.4.0',
         platform: 'desktop',
         dataSchemas: { learning: 2 },
+        supportedDataNamespaces: ['learning'],
       })?.version,
     ).toBe('2.0.0')
   })
@@ -406,6 +408,7 @@ describe('official module catalog V1', () => {
         hostApi: '1.3.0',
         platform: 'desktop',
         dataSchemas: { learning: 2 },
+        supportedDataNamespaces: ['learning'],
         activeVersion: '1.0.0',
       }),
     ).toBeNull()
@@ -422,6 +425,7 @@ describe('official module catalog V1', () => {
         hostApi: '1.3.0',
         platform: 'desktop',
         dataSchemas: { learning: 2 },
+        supportedDataNamespaces: ['learning'],
         activeVersion: '1.0.0',
       })?.version,
     ).toBe('2.0.0')
@@ -430,6 +434,7 @@ describe('official module catalog V1', () => {
         hostApi: '1.3.0',
         platform: 'desktop',
         dataSchemas: { learning: 2 },
+        supportedDataNamespaces: ['learning'],
         activeVersion: '2.0.0',
       }),
     ).toBeNull()
@@ -448,6 +453,7 @@ describe('official module catalog V1', () => {
         hostApi: '1.3.0',
         platform: 'desktop',
         dataSchemas: { learning: 2 },
+        supportedDataNamespaces: ['learning'],
       }),
     ).toBeNull()
     expect(
@@ -455,6 +461,7 @@ describe('official module catalog V1', () => {
         hostApi: '1.3.0',
         platform: 'desktop',
         dataSchemas: { learning: 1, orphaned: 1 },
+        supportedDataNamespaces: ['learning', 'orphaned'],
       }),
     ).toBeNull()
   })
@@ -480,11 +487,33 @@ describe('official module catalog V1', () => {
       hostApi: '1.3.0',
       platform: 'desktop' as const,
       dataSchemas: { learning: 2 },
+      supportedDataNamespaces: ['learning', 'search'],
     }
     expect(selectInitialCompatibleVersion(incompatible, context)).toBeNull()
     expect(selectInitialCompatibleVersion(compatible, context)?.version).toBe(
       '1.0.0',
     )
+  })
+
+  it('skips only versions requiring unsupported data namespaces', () => {
+    const module = moduleWithVersions(
+      version('1.0.0'),
+      version('2.0.0', {
+        dataSchemas: {
+          learning: { readMin: 1, readMax: 3, write: 3 },
+          future: { readMin: 0, readMax: 1, write: 1 },
+        },
+      }),
+    )
+
+    expect(
+      selectInitialCompatibleVersion(module, {
+        hostApi: '1.3.0',
+        platform: 'desktop',
+        dataSchemas: { learning: 2 },
+        supportedDataNamespaces: ['learning'],
+      })?.version,
+    ).toBe('1.0.0')
   })
 
   it('does not match prereleases from a stable range', () => {
@@ -496,6 +525,7 @@ describe('official module catalog V1', () => {
       hostApi: '1.3.0-beta.2',
       platform: 'desktop' as const,
       dataSchemas: { learning: 2 },
+      supportedDataNamespaces: ['learning'],
     }
     expect(selectInitialCompatibleVersion(stableRange, context)).toBeNull()
     expect(

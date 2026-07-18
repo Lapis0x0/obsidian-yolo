@@ -180,6 +180,7 @@ export class ModuleManager {
   private catalog: ReadonlyArray<ModuleCatalogEntry> = EMPTY_CATALOG
   private installed: ReadonlyArray<InstalledModuleState> = EMPTY_INSTALLED
   private refreshQueue: Promise<void> = Promise.resolve()
+  private refreshGeneration = 0
   private disposed = false
 
   constructor(private readonly options: ModuleManagerOptions) {}
@@ -193,7 +194,10 @@ export class ModuleManager {
   }
 
   refresh(): Promise<void> {
-    const operation = this.refreshQueue.then(() => this.refreshOnce())
+    if (this.disposed) return Promise.resolve()
+    const generation = ++this.refreshGeneration
+    this.publish('loading', this.snapshot.modules, EMPTY_ERRORS)
+    const operation = this.refreshQueue.then(() => this.refreshOnce(generation))
     this.refreshQueue = operation.catch(() => undefined)
     return operation
   }
@@ -206,9 +210,8 @@ export class ModuleManager {
     this.snapshot = INITIAL_SNAPSHOT
   }
 
-  private async refreshOnce(): Promise<void> {
+  private async refreshOnce(generation: number): Promise<void> {
     if (this.disposed) return
-    this.publish('loading', this.snapshot.modules, EMPTY_ERRORS)
     const [catalogResult, installedResult] = await Promise.allSettled([
       this.options.catalogSource.load(),
       this.options.installedStateSource.load(),
@@ -237,6 +240,7 @@ export class ModuleManager {
       errors.installed = errorMessage(installedResult.reason)
     }
 
+    if (generation !== this.refreshGeneration) return
     this.publish(
       Object.keys(errors).length === 0 ? 'ready' : 'error',
       buildRecords(this.catalog, this.installed),

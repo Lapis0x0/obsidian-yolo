@@ -173,6 +173,33 @@ function createInstaller(
 }
 
 describe('ModuleArtifactInstaller', () => {
+  it('cleans staging and refuses promotion when an install is aborted', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    let resolveManifest!: (bytes: Uint8Array) => void
+    const manifestDownload = new Promise<Uint8Array>((resolve) => {
+      resolveManifest = resolve
+    })
+    const installer = createInstaller(adapter, async (url) =>
+      url === artifact.descriptor.manifestUrl
+        ? manifestDownload
+        : artifact.entryBytes,
+    )
+    const controller = new AbortController()
+
+    const installing = installer.install(artifact.descriptor, controller.signal)
+    await Promise.resolve()
+    await Promise.resolve()
+    controller.abort()
+    resolveManifest(artifact.manifestBytes)
+
+    await expect(installing).rejects.toThrow('aborted')
+    expect(adapter.folders.has('plugin/modules/learning/0.1.0')).toBe(false)
+    expect(adapter.folders.has('plugin/modules/learning/.staging-0.1.0')).toBe(
+      false,
+    )
+  })
+
   it('stages, verifies, promotes, and reuses an immutable version', async () => {
     const artifact = createArtifact()
     const adapter = new MemoryAdapter()

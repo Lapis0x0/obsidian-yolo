@@ -25,6 +25,7 @@ export type ModuleArtifactDownloadRequest = Readonly<{
   kind: 'manifest' | 'artifact'
   url: string
   byteSize: number
+  signal?: AbortSignal
 }>
 
 export type ModuleArtifactInstallerOptions = {
@@ -39,26 +40,32 @@ const adapterQueues = new WeakMap<object, Map<string, Promise<void>>>()
 
 /** Downloads and promotes an immutable module version without activating it. */
 export class ModuleArtifactInstaller {
-  private readonly subtleCrypto: Pick<SubtleCrypto, 'digest'>
-
   constructor(private readonly options: ModuleArtifactInstallerOptions) {
-    const subtleCrypto = options.subtleCrypto ?? globalThis.crypto?.subtle
-    if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
-    this.subtleCrypto = subtleCrypto
+    if (!options || typeof options.download !== 'function') {
+      throw new Error('Module artifact installer options are invalid')
+    }
   }
 
   install(
     descriptor: ModuleArtifactDescriptor,
+    signal?: AbortSignal,
   ): Promise<ModuleArtifactManifest> {
+    assertAbortSignal(signal)
+    throwIfAborted(signal)
+    const subtleCrypto = this.options.subtleCrypto ?? globalThis.crypto?.subtle
+    if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
     const snapshot = snapshotDescriptor(descriptor)
     return enqueue(this.options.adapter, this.options.store.pluginDir, () =>
-      this.installUnlocked(snapshot),
+      this.installUnlocked(snapshot, subtleCrypto, signal),
     )
   }
 
   private async installUnlocked(
     descriptor: ModuleArtifactDescriptor,
+    subtleCrypto: Pick<SubtleCrypto, 'digest'>,
+    signal?: AbortSignal,
   ): Promise<ModuleArtifactManifest> {
+    throwIfAborted(signal)
     const adapter = this.options.adapter
     const moduleRoot = normalizePath(
       `${this.options.store.pluginDir}/modules/${descriptor.id}`,
@@ -78,7 +85,7 @@ export class ModuleArtifactInstaller {
         const verified = await verifyInstalledModuleArtifact(
           this.options.store,
           descriptor,
-          this.subtleCrypto,
+          subtleCrypto,
         )
         await this.cleanupDir(stagingDir)
         return verified.manifest
@@ -97,12 +104,14 @@ export class ModuleArtifactInstaller {
         kind: 'manifest',
         url: descriptor.manifestUrl,
         byteSize: descriptor.manifest.byteSize,
+        ...(signal ? { signal } : {}),
       })
+      throwIfAborted(signal)
       await verifyModuleBytes(
         manifestBytes,
         descriptor.manifest,
         `Module "${descriptor.id}" manifest`,
-        this.subtleCrypto,
+        subtleCrypto,
       )
       const manifest = parseModuleArtifactManifest(
         JSON.parse(
@@ -125,14 +134,17 @@ export class ModuleArtifactInstaller {
           kind: 'artifact',
           url: file.url,
           byteSize: file.byteSize,
+          ...(signal ? { signal } : {}),
         })
+        throwIfAborted(signal)
         await verifyModuleBytes(
           bytes,
           file,
           `Module "${descriptor.id}" file "${file.path}"`,
-          this.subtleCrypto,
+          subtleCrypto,
         )
         const target = normalizePath(`${stagingDir}/${file.path}`)
+        throwIfAborted(signal)
         await ensureParentDirs(adapter, stagingDir, file.path)
         await adapter.writeBinary(target, toArrayBuffer(bytes))
       }
@@ -145,7 +157,7 @@ export class ModuleArtifactInstaller {
         stagingDir,
         descriptor,
         files,
-        this.subtleCrypto,
+        subtleCrypto,
       )
       for (const markerVariant of manifest.variants) {
         const readyBytes = createReadyMarkerBytes(
@@ -166,11 +178,12 @@ export class ModuleArtifactInstaller {
           `Module "${descriptor.id}" version directory appeared during install`,
         )
       }
+      throwIfAborted(signal)
       await adapter.rename(stagingDir, targetDir)
       const verified = await verifyInstalledModuleArtifact(
         this.options.store,
         descriptor,
-        this.subtleCrypto,
+        subtleCrypto,
       )
       return verified.manifest
     } finally {
@@ -191,6 +204,23 @@ export class ModuleArtifactInstaller {
       }
     }
   }
+}
+
+function assertAbortSignal(signal: AbortSignal | undefined): void {
+  if (
+    signal !== undefined &&
+    (!signal ||
+      typeof signal !== 'object' ||
+      typeof signal.aborted !== 'boolean' ||
+      typeof signal.addEventListener !== 'function')
+  ) {
+    throw new TypeError('Module artifact install signal is invalid')
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted)
+    throw new Error('Module artifact installation was aborted')
 }
 
 async function verifyStagingArtifacts(

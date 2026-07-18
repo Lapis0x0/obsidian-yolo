@@ -553,9 +553,11 @@ export function resolveModulePluginDir(
 
 /** Reads already-installed module artifacts through Obsidian's adapter. */
 export class ModuleStore {
+  readonly adapter: DataAdapter
   readonly pluginDir: string
 
   constructor(private readonly options: ModuleStoreOptions) {
+    this.adapter = options.adapter
     this.pluginDir = resolveModulePluginDir(options.manifest, options.configDir)
   }
 

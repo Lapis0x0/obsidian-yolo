@@ -1,5 +1,4 @@
 import {
-  type DataAdapter,
   type RequestUrlParam,
   type RequestUrlResponse,
   requestUrl,
@@ -32,8 +31,18 @@ export type OfficialModuleCatalogRequest = (
   request: RequestUrlParam,
 ) => Promise<RequestUrlResponse>
 
+export type OfficialModuleCatalogCacheAdapter = Readonly<{
+  stat(
+    path: string,
+  ): Promise<Readonly<{ type: 'file' | 'folder'; size: number }> | null>
+  read(path: string): Promise<string>
+  exists(path: string): Promise<boolean>
+  mkdir(path: string): Promise<void>
+  write(path: string, data: string): Promise<void>
+}>
+
 export type OfficialModuleCatalogClientOptions = Readonly<{
-  adapter: DataAdapter
+  adapter: OfficialModuleCatalogCacheAdapter
   cachePath: string
   timeoutMs: number
   cacheTtlMs: number
@@ -272,7 +281,7 @@ function contentLengthExceedsLimit(
 }
 
 async function ensureParentDirectories(
-  adapter: DataAdapter,
+  adapter: OfficialModuleCatalogCacheAdapter,
   filePath: string,
 ): Promise<void> {
   const parts = filePath.split('/').slice(0, -1)
