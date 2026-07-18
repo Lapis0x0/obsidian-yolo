@@ -32,14 +32,13 @@ jobs:
         !startsWith(github.event.pull_request.title, '[auto-triage]') &&
         !startsWith(github.event.pull_request.head.ref, 'auto-triage/') &&
         !contains(github.event.pull_request.body || '', 'auto-triage: skip') &&
-        !contains(github.event.pull_request.body || '', 'claude-routine:obsidian-yolo-triage:v1') &&
         (
           github.event.action != 'review_requested' ||
           github.event.requested_reviewer.login == 'Lapis0x1'
         )
       ) ||
       (
-        github.event.sender.login != 'Lapis0x1' &&
+        github.event.sender.type != 'Bot' &&
         (
           contains(github.event.comment.body, '@Lapis0x1') ||
           contains(github.event.review.body, '@Lapis0x1')
@@ -63,18 +62,12 @@ jobs:
         id: skip-label
         env:
           GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
-          EVENT_NAME: ${{ github.event_name }}
           NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
           SKIP_LABEL: no-auto-triage
         run: |
           set -euo pipefail
 
-          should_check=false
-          if [[ "$EVENT_NAME" == "issues" || "$EVENT_NAME" == "pull_request_target" ]]; then
-            should_check=true
-          fi
-
-          if [[ "$should_check" != "true" || -z "$NUMBER" ]]; then
+          if [[ -z "$NUMBER" ]]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -163,36 +156,39 @@ jobs:
           URL: ${{ github.event.comment.html_url || github.event.review.html_url || github.event.issue.html_url || github.event.pull_request.html_url || '' }}
         run: |
           set -euo pipefail
-          cp .github/prompts/obsidian-yolo-auto-triage.md /tmp/auto-triage-prompt.md
-          if [[ "$EVENT_NAME" != "schedule" && "$EVENT_NAME" != "workflow_dispatch" ]]; then
-            TRIGGER_KIND="owner_mention"
-            if [[ "$EVENT_NAME" == "issues" ]]; then
-              TRIGGER_KIND="intake_issue"
-            elif [[ "$EVENT_NAME" == "pull_request_target" ]]; then
-              TRIGGER_KIND="intake_pr"
-            fi
-            {
-              printf '\n\n<routine-fire-payload>\n'
-              jq -n \
-                --arg trigger_kind "$TRIGGER_KIND" \
-                --arg event_name "$EVENT_NAME" \
-                --arg repo "$REPO" \
-                --arg number "$NUMBER" \
-                --arg author "$AUTHOR" \
-                --arg body "$BODY" \
-                --arg url "$URL" \
-                '{
-                  trigger_kind: $trigger_kind,
-                  event_name: $event_name,
-                  repo: $repo,
-                  number: $number,
-                  url: $url,
-                  author: $author,
-                  body: $body
-                }'
-              printf '\n</routine-fire-payload>\n'
-            } >> /tmp/auto-triage-prompt.md
+          TRIGGER_KIND="routine_scan"
+          if [[ "$EVENT_NAME" == "issues" ]]; then
+            TRIGGER_KIND="intake_issue"
+          elif [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+            TRIGGER_KIND="intake_pr"
+          elif [[ "$AUTHOR" == "Lapis0x0" ]]; then
+            TRIGGER_KIND="owner_command"
+          elif [[ "$EVENT_NAME" != "schedule" && "$EVENT_NAME" != "workflow_dispatch" ]]; then
+            TRIGGER_KIND="user_mention"
           fi
+
+          cp .github/prompts/obsidian-yolo-auto-triage.md /tmp/auto-triage-prompt.md
+          {
+            printf '\n\n<routine-fire-payload>\n'
+            jq -n \
+              --arg trigger_kind "$TRIGGER_KIND" \
+              --arg event_name "$EVENT_NAME" \
+              --arg repo "$REPO" \
+              --arg number "$NUMBER" \
+              --arg author "$AUTHOR" \
+              --arg body "$BODY" \
+              --arg url "$URL" \
+              '{
+                trigger_kind: $trigger_kind,
+                event_name: $event_name,
+                repo: $repo,
+                number: $number,
+                url: $url,
+                author: $author,
+                body: $body
+              }'
+            printf '\n</routine-fire-payload>\n'
+          } >> /tmp/auto-triage-prompt.md
 
       - name: Run Codex triage
         if: steps.skip-label.outputs.skip != 'true'
