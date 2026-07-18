@@ -3,6 +3,8 @@ import type {
   InstalledModuleStateSource,
   ModuleCatalogEntry,
   ModuleCatalogSource,
+  ModuleIntentState,
+  ModuleIntentStateSource,
   ModuleManagerSnapshot,
   ModuleRecord,
   ModuleStatus,
@@ -11,12 +13,14 @@ import type {
 export type ModuleManagerOptions = {
   catalogSource: ModuleCatalogSource
   installedStateSource: InstalledModuleStateSource
+  intentStateSource?: ModuleIntentStateSource
 }
 
 const EMPTY_ERRORS = Object.freeze({})
 const EMPTY_MODULES = Object.freeze([]) as ReadonlyArray<ModuleRecord>
 const EMPTY_CATALOG = Object.freeze([]) as ReadonlyArray<ModuleCatalogEntry>
 const EMPTY_INSTALLED = Object.freeze([]) as ReadonlyArray<InstalledModuleState>
+const EMPTY_INTENT = Object.freeze([]) as ReadonlyArray<ModuleIntentState>
 const INITIAL_SNAPSHOT: ModuleManagerSnapshot = Object.freeze({
   status: 'loading',
   modules: EMPTY_MODULES,
@@ -144,20 +148,24 @@ function resolveStatus(
 function buildRecords(
   catalogValues: ReadonlyArray<ModuleCatalogEntry>,
   installedValues: ReadonlyArray<InstalledModuleState>,
+  intentValues: ReadonlyArray<ModuleIntentState>,
 ): ReadonlyArray<ModuleRecord> {
   const catalogById = indexById(catalogValues, 'Catalog source')
   const installedById = indexById(installedValues, 'Installed-state source')
+  const intentById = indexById(intentValues, 'Intent-state source')
   const ids = new Set([...catalogById.keys(), ...installedById.keys()])
   return Object.freeze(
     [...ids].sort().map((id) => {
       const catalogValue = catalogById.get(id)
       const installedValue = installedById.get(id)
+      const intentValue = intentById.get(id)
       const catalog = catalogValue
         ? Object.freeze({ ...catalogValue })
         : undefined
       const installed = installedValue
         ? Object.freeze({ ...installedValue })
         : undefined
+      const intent = intentValue ? Object.freeze({ ...intentValue }) : undefined
       const status = resolveStatus(catalog, installed)
       return Object.freeze({
         id,
@@ -178,6 +186,12 @@ function buildRecords(
           : {}),
         ...(installed?.error ? { error: installed.error } : {}),
         status,
+        ...(intent
+          ? {
+              desiredInstalled: intent.desiredInstalled,
+              enabled: intent.enabled,
+            }
+          : {}),
         ...(catalog ? { catalog } : {}),
         ...(installed ? { installed } : {}),
       })
@@ -191,6 +205,7 @@ export class ModuleManager {
   private readonly listeners = new Set<() => void>()
   private catalog: ReadonlyArray<ModuleCatalogEntry> = EMPTY_CATALOG
   private installed: ReadonlyArray<InstalledModuleState> = EMPTY_INSTALLED
+  private intent: ReadonlyArray<ModuleIntentState> = EMPTY_INTENT
   private refreshQueue: Promise<void> = Promise.resolve()
   private refreshGeneration = 0
   private disposed = false
@@ -219,6 +234,7 @@ export class ModuleManager {
     this.listeners.clear()
     this.catalog = EMPTY_CATALOG
     this.installed = EMPTY_INSTALLED
+    this.intent = EMPTY_INTENT
     this.snapshot = INITIAL_SNAPSHOT
   }
 
@@ -230,7 +246,7 @@ export class ModuleManager {
     ])
     if (this.disposed) return
 
-    const errors: { catalog?: string; installed?: string } = {}
+    const errors: { catalog?: string; installed?: string; intent?: string } = {}
     if (catalogResult.status === 'fulfilled') {
       try {
         indexById(catalogResult.value, 'Catalog source')
@@ -252,10 +268,39 @@ export class ModuleManager {
       errors.installed = errorMessage(installedResult.reason)
     }
 
+    let nextIntent: ReadonlyArray<ModuleIntentState> | undefined
+    if (this.options.intentStateSource) {
+      const moduleIds = [
+        ...new Set([
+          ...this.catalog.map(({ id }) => id),
+          ...this.installed.map(({ id }) => id),
+        ]),
+      ].sort()
+      try {
+        const intent = await this.options.intentStateSource.load(moduleIds)
+        if (this.disposed) return
+        const intentById = indexById(intent, 'Intent-state source')
+        for (const id of intentById.keys()) {
+          if (!moduleIds.includes(id)) {
+            throw new Error(
+              `Intent-state source returned unexpected module id "${id}"`,
+            )
+          }
+        }
+        nextIntent = Object.freeze(
+          intent.map((value) => Object.freeze({ ...value })),
+        )
+      } catch (error) {
+        if (this.disposed) return
+        errors.intent = errorMessage(error)
+      }
+    }
+
     if (generation !== this.refreshGeneration) return
+    if (nextIntent) this.intent = nextIntent
     this.publish(
       Object.keys(errors).length === 0 ? 'ready' : 'error',
-      buildRecords(this.catalog, this.installed),
+      buildRecords(this.catalog, this.installed, this.intent),
       Object.freeze(errors),
     )
   }
@@ -265,7 +310,7 @@ export class ModuleManager {
     modules: ReadonlyArray<ModuleRecord>,
     errors: ModuleManagerSnapshot['errors'],
   ): void {
-    const error = [errors.catalog, errors.installed]
+    const error = [errors.catalog, errors.installed, errors.intent]
       .filter((message): message is string => Boolean(message))
       .join('; ')
     this.snapshot = Object.freeze({

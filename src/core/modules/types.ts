@@ -321,6 +321,18 @@ export type InstalledModuleStateSource = {
   load(): Promise<ReadonlyArray<InstalledModuleState>>
 }
 
+export type ModuleIntentState = Readonly<{
+  id: string
+  desiredInstalled: boolean
+  enabled: boolean
+}>
+
+export type ModuleIntentStateSource = {
+  load(
+    moduleIds: ReadonlyArray<string>,
+  ): Promise<ReadonlyArray<ModuleIntentState>>
+}
+
 export type ModuleRecord = Readonly<{
   id: string
   name: string
@@ -332,6 +344,8 @@ export type ModuleRecord = Readonly<{
   transitionPhase?: ModuleTransitionPhase
   error?: string
   status: ModuleStatus
+  desiredInstalled?: boolean
+  enabled?: boolean
   catalog?: Readonly<ModuleCatalogEntry>
   installed?: Readonly<InstalledModuleState>
 }>
@@ -344,6 +358,7 @@ export type ModuleManagerSnapshot = Readonly<{
   errors: Readonly<{
     catalog?: string
     installed?: string
+    intent?: string
   }>
   error?: string
 }>

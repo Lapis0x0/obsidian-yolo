@@ -161,6 +161,268 @@ describe('ModuleManager', () => {
     ])
   })
 
+  it('projects synchronized intent without changing actual status or visibility', async () => {
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [
+          { id: 'active', version: '1.0.0' },
+          { id: 'catalog-only', version: '1.0.0' },
+          { id: 'missing-intent', version: '1.0.0' },
+        ],
+      },
+      installedStateSource: {
+        load: async () => [
+          { id: 'active', version: '1.0.0', active: true },
+          { id: 'withdrawn', version: '1.0.0' },
+        ],
+      },
+      intentStateSource: {
+        load: async (ids) => {
+          expect(ids).toEqual([
+            'active',
+            'catalog-only',
+            'missing-intent',
+            'withdrawn',
+          ])
+          return [
+            { id: 'active', desiredInstalled: true, enabled: false },
+            {
+              id: 'catalog-only',
+              desiredInstalled: true,
+              enabled: true,
+            },
+            { id: 'withdrawn', desiredInstalled: false, enabled: false },
+          ]
+        },
+      },
+    })
+
+    await manager.refresh()
+
+    const byId = Object.fromEntries(
+      manager.getSnapshot().modules.map((module) => [module.id, module]),
+    )
+    expect(byId.active).toMatchObject({
+      status: 'active',
+      desiredInstalled: true,
+      enabled: false,
+    })
+    expect(byId['catalog-only']).toMatchObject({
+      status: 'available',
+      desiredInstalled: true,
+      enabled: true,
+    })
+    expect(byId.withdrawn).toMatchObject({
+      status: 'installed',
+      desiredInstalled: false,
+      enabled: false,
+    })
+    expect(byId['missing-intent']).not.toHaveProperty('desiredInstalled')
+    expect(byId['missing-intent']).not.toHaveProperty('enabled')
+    expect(Object.isFrozen(byId.active)).toBe(true)
+  })
+
+  it('isolates intent failures and retains the last good intent snapshot', async () => {
+    let failIntent = false
+    let catalogVersion = '1.0.0'
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [{ id: 'module', version: catalogVersion }],
+      },
+      installedStateSource: {
+        load: async () => [{ id: 'module', version: '1.0.0' }],
+      },
+      intentStateSource: {
+        load: async () => {
+          if (failIntent) throw new Error('intent unavailable')
+          return [{ id: 'module', desiredInstalled: true, enabled: false }]
+        },
+      },
+    })
+    await manager.refresh()
+
+    failIntent = true
+    catalogVersion = '2.0.0'
+    await expect(manager.refresh()).resolves.toBeUndefined()
+
+    expect(manager.getSnapshot()).toMatchObject({
+      status: 'error',
+      errors: { intent: 'intent unavailable' },
+      error: 'intent unavailable',
+      modules: [
+        {
+          id: 'module',
+          status: 'update-available',
+          availableVersion: '2.0.0',
+          desiredInstalled: true,
+          enabled: false,
+        },
+      ],
+    })
+  })
+
+  it('publishes loading immediately and suppresses stale refresh completion', async () => {
+    const resolvers: Array<
+      (
+        value: Array<{
+          id: string
+          desiredInstalled: boolean
+          enabled: boolean
+        }>,
+      ) => void
+    > = []
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [{ id: 'module', version: '1.0.0' }],
+      },
+      installedStateSource: { load: async () => [] },
+      intentStateSource: {
+        load: () =>
+          new Promise((resolve) => {
+            resolvers.push(resolve)
+          }),
+      },
+    })
+    const snapshots: string[] = []
+    manager.subscribe(() => snapshots.push(manager.getSnapshot().status))
+
+    const first = manager.refresh()
+    await Promise.resolve()
+    await Promise.resolve()
+    const second = manager.refresh()
+    expect(manager.getSnapshot().status).toBe('loading')
+
+    while (!resolvers[0]) await Promise.resolve()
+    resolvers[0]([{ id: 'module', desiredInstalled: false, enabled: false }])
+    await first
+    expect(manager.getSnapshot().status).toBe('loading')
+
+    while (!resolvers[1]) await Promise.resolve()
+    resolvers[1]([{ id: 'module', desiredInstalled: true, enabled: true }])
+    await second
+
+    expect(snapshots).toEqual(['loading', 'loading', 'ready'])
+    expect(manager.getSnapshot().modules[0]).toMatchObject({
+      desiredInstalled: true,
+      enabled: true,
+    })
+  })
+
+  it('does not retain stale intent when the current generation rejects', async () => {
+    let loadCount = 0
+    let resolveStale!: (
+      value: Array<{
+        id: string
+        desiredInstalled: boolean
+        enabled: boolean
+      }>,
+    ) => void
+    let markStaleStarted!: () => void
+    const staleStarted = new Promise<void>((resolve) => {
+      markStaleStarted = resolve
+    })
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [{ id: 'module', version: '1.0.0' }],
+      },
+      installedStateSource: { load: async () => [] },
+      intentStateSource: {
+        load: () => {
+          loadCount += 1
+          if (loadCount === 1) {
+            return Promise.resolve([
+              { id: 'module', desiredInstalled: true, enabled: false },
+            ])
+          }
+          if (loadCount === 2) {
+            markStaleStarted()
+            return new Promise((resolve) => {
+              resolveStale = resolve
+            })
+          }
+          return Promise.reject(new Error('current intent unavailable'))
+        },
+      },
+    })
+    await manager.refresh()
+
+    const staleRefresh = manager.refresh()
+    await staleStarted
+    const currentRefresh = manager.refresh()
+    resolveStale([{ id: 'module', desiredInstalled: false, enabled: true }])
+    await staleRefresh
+    await currentRefresh
+
+    expect(manager.getSnapshot()).toMatchObject({
+      status: 'error',
+      errors: { intent: 'current intent unavailable' },
+      modules: [
+        {
+          id: 'module',
+          desiredInstalled: true,
+          enabled: false,
+        },
+      ],
+    })
+  })
+
+  it.each(['fulfills', 'rejects'] as const)(
+    'keeps the disposed snapshot stable when a pending intent load %s',
+    async (outcome) => {
+      let resolveLoad!: (
+        value: Array<{
+          id: string
+          desiredInstalled: boolean
+          enabled: boolean
+        }>,
+      ) => void
+      let rejectLoad!: (reason: unknown) => void
+      let markStarted!: () => void
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve
+      })
+      const manager = new ModuleManager({
+        catalogSource: {
+          load: async () => [{ id: 'module', version: '1.0.0' }],
+        },
+        installedStateSource: { load: async () => [] },
+        intentStateSource: {
+          load: () => {
+            markStarted()
+            return new Promise((resolve, reject) => {
+              resolveLoad = resolve
+              rejectLoad = reject
+            })
+          },
+        },
+      })
+      const listener = jest.fn()
+      manager.subscribe(listener)
+
+      const refresh = manager.refresh()
+      await started
+      manager.dispose()
+      const disposedSnapshot = manager.getSnapshot()
+      listener.mockClear()
+
+      if (outcome === 'fulfills') {
+        resolveLoad([{ id: 'module', desiredInstalled: true, enabled: true }])
+      } else {
+        rejectLoad(new Error('intent unavailable'))
+      }
+      await expect(refresh).resolves.toBeUndefined()
+
+      expect(manager.getSnapshot()).toBe(disposedSnapshot)
+      expect(disposedSnapshot).toMatchObject({
+        status: 'loading',
+        modules: [],
+        errors: {},
+      })
+      expect(disposedSnapshot).not.toHaveProperty('error')
+      expect(listener).not.toHaveBeenCalled()
+    },
+  )
+
   it('isolates source failures and retains the last good side', async () => {
     let failCatalog = false
     let installed: InstalledModuleState[] = []
