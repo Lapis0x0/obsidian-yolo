@@ -32,7 +32,7 @@ describe('generateKnowledgePointsForChapter', () => {
 })
 
 describe('generateKnowledgePointsForChapter output language', () => {
-  it('instructs the model to generate in the user language', async () => {
+  it('uses the user language and inherits it via the chapter contract', async () => {
     const stream = jest.fn(async function* () {
       yield { type: 'completed' as const, text: '## KP\n\nBody' }
     })
@@ -46,13 +46,19 @@ describe('generateKnowledgePointsForChapter output language', () => {
       chapterIndex: 0,
       projectTopic: 'Python',
       chapterTitle: 'Basics',
-      chapterContract: 'Cover variables',
+      chapterContract: 'covers dataflow variables and single assignment',
       level: 'beginner',
     })
 
     const request = (stream.mock.calls as unknown[][])[0]?.[0] as {
       systemPromptOverride: string
+      prompt: string
     }
     expect(request.systemPromptOverride).toContain('language used by the user')
+    // Language propagation: the chapter contract (written by the outline stage
+    // in the user's language) must reach the knowledge-point request.
+    expect(request.prompt).toContain(
+      'covers dataflow variables and single assignment',
+    )
   })
 })

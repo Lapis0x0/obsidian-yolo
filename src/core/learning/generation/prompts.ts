@@ -1,3 +1,21 @@
+// Output-language strategy (no stored setting).
+//
+// Learning Mode does not persist a language choice. Every generation system
+// prompt below is written in English and instructs the model to produce output
+// in the language the user is using, inferred from the content it receives, and
+// to ignore the language these prompts are written in.
+//
+// The language propagates across the three stages through the content each
+// stage inherits, so a language-neutral topic (e.g. "Python") is disambiguated
+// once at the outline stage and then carried forward:
+//   outline           <- user topic + goal        (goal carries the language)
+//   knowledge points  <- topic + chapter contract (contract inherits it)
+//   cards             <- chapter contract + knowledge.md content (inherit it)
+//
+// The generator tests assert both halves of this contract: the instruction is
+// present in each system prompt, and each stage's request actually carries the
+// language-bearing context forward (goal -> contract -> knowledge).
+
 export const OUTLINE_GENERATOR_PROMPT = `You are a learning-content architect. Given the user's learning topic, current level, and goal, design a chapter-level learning outline.
 
 ## Output language

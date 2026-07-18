@@ -279,13 +279,16 @@ C`)
 })
 
 describe('generateCardsForChapter output language', () => {
-  it('instructs the model to generate in the user language', async () => {
+  it('uses the user language and inherits it via contract and knowledge', async () => {
     const knowledgePath = 'project/chapter/knowledge.md'
     const cardsPath = 'project/chapter/cards.md'
     const knowledgeFile = Object.assign(new TFile(), { path: knowledgePath })
     const files = new Map<string, object>([[knowledgePath, knowledgeFile]])
     const contents = new Map<string, string>([
-      [knowledgePath, '## KP <!--kp:aaaaaaaa-->\n\nBody'],
+      [
+        knowledgePath,
+        '## KP <!--kp:aaaaaaaa-->\n\nknowledge body carries the language',
+      ],
     ])
     const stream = jest.fn(async function* () {
       const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
@@ -318,9 +321,9 @@ describe('generateCardsForChapter output language', () => {
       plugin,
       modelId: 'learning-model',
       chapterIndex: 0,
-      projectTopic: 'Topic',
+      projectTopic: 'Python',
       chapterTitle: 'Chapter',
-      chapterContract: 'Contract',
+      chapterContract: 'contract text carries the language',
       knowledgePath,
       cardsPath,
       level: 'beginner',
@@ -330,9 +333,15 @@ describe('generateCardsForChapter output language', () => {
       chapterId: 'chapter-1',
     })
 
-    const request = (stream.mock.calls as unknown[][])[0]?.[0] as {
-      systemPromptOverride: string
-    }
+    const call = (stream.mock.calls as unknown[][])[0]?.[0]
+    const request = call as { systemPromptOverride: string }
+    // The card stage sends its prompt as a user message rather than a
+    // top-level prompt field, so inspect the serialized request.
+    const serialized = JSON.stringify(call)
     expect(request.systemPromptOverride).toContain('language used by the user')
+    // Language propagation: both the chapter contract and the knowledge.md
+    // content (in the user's language) must reach the card request.
+    expect(serialized).toContain('contract text carries the language')
+    expect(serialized).toContain('knowledge body carries the language')
   })
 })

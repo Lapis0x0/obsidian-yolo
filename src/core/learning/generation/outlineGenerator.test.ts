@@ -123,7 +123,7 @@ async function* streamEvents(events: unknown[]) {
 }
 
 describe('generateOutline output language', () => {
-  it('instructs the model to generate in the user language', async () => {
+  it('uses the user language and carries the goal into the request', async () => {
     const onRequest = jest.fn()
     const plugin = createPlugin(
       [
@@ -138,14 +138,18 @@ describe('generateOutline output language', () => {
     await generateOutline({
       plugin,
       modelId: 'learning-model',
-      topic: 't',
+      topic: 'Python',
       level: 'beginner',
-      goal: 'g',
+      goal: 'build real projects independently',
     })
 
     const request = onRequest.mock.calls[0]?.[0] as {
       systemPromptOverride: string
+      prompt: string
     }
     expect(request.systemPromptOverride).toContain('language used by the user')
+    // Language propagation: for a language-neutral topic ("Python") the user
+    // goal carries the language, and it must reach the outline request.
+    expect(request.prompt).toContain('build real projects independently')
   })
 })
