@@ -70,12 +70,13 @@ import {
   CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
-  EMPTY_INSTALLED_MODULE_STATE_SOURCE,
   EMPTY_MODULE_CATALOG_SOURCE,
   IndexedDbDataAdapter,
   ManagedModulePathsCapabilityProvider,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
+  ModuleDeviceStateInstalledStateSource,
+  ModuleDeviceStateStore,
   ModuleLoader,
   ModuleManager,
   ModulePrivateStorageCapabilityProvider,
@@ -211,6 +212,7 @@ export type { PluginUpdateState } from './core/update/pluginUpdater'
 const STARTUP_GRACE_MS = 30 * 1000
 const MODULE_PRIVATE_STORAGE_DIR = 'module-private'
 const MODULE_DEVICE_LOCAL_VIRTUAL_ROOT = 'module-private-device-local'
+const MODULE_DEVICE_STATE_ROOT = 'module-device-state'
 type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
@@ -3695,9 +3697,17 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       })
       return
     }
+    const deviceStateStore = new ModuleDeviceStateStore({
+      kind: 'device-local-runtime-state',
+      adapter: deviceLocalAdapter,
+      rootPath: MODULE_DEVICE_STATE_ROOT,
+    })
     this.moduleManager = new ModuleManager({
       catalogSource: EMPTY_MODULE_CATALOG_SOURCE,
-      installedStateSource: EMPTY_INSTALLED_MODULE_STATE_SOURCE,
+      installedStateSource: new ModuleDeviceStateInstalledStateSource({
+        store: deviceStateStore,
+        isActive: (moduleId, version) => runtime.isActive(moduleId, version),
+      }),
     })
   }
 
@@ -3749,7 +3759,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         },
         entryBytes,
       )
-      await this.moduleRuntime.activate(definition)
+      await this.moduleRuntime.activate(definition, version)
       await this.moduleManager?.refresh()
       new Notice('Host API conformance module activated')
     } catch (error) {

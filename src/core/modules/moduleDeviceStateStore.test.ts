@@ -12,9 +12,16 @@ class MemoryAdapter {
   readonly folders = new Set<string>()
   writes = 0
   writeHook?: (path: string, data: string) => Promise<void>
+  listHook?: (path: string) => Promise<{ files: string[]; folders: string[] }>
 
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.folders.has(path)
+  }
+
+  async stat(path: string): Promise<{ type: 'file' | 'folder' } | null> {
+    if (this.files.has(path)) return { type: 'file' }
+    if (this.folders.has(path)) return { type: 'folder' }
+    return null
   }
 
   async mkdir(path: string): Promise<void> {
@@ -27,6 +34,21 @@ class MemoryAdapter {
     return value
   }
 
+  async list(path: string): Promise<{ files: string[]; folders: string[] }> {
+    if (this.listHook) return this.listHook(path)
+    if (!this.folders.has(path)) return { files: [], folders: [] }
+    const prefix = `${path}/`
+    const files = [...this.files.keys()].filter(
+      (entry) =>
+        entry.startsWith(prefix) && !entry.slice(prefix.length).includes('/'),
+    )
+    const folders = [...this.folders].filter(
+      (entry) =>
+        entry.startsWith(prefix) && !entry.slice(prefix.length).includes('/'),
+    )
+    return { files, folders }
+  }
+
   async write(path: string, data: string): Promise<void> {
     this.writes += 1
     if (this.writeHook) await this.writeHook(path, data)
@@ -35,6 +57,24 @@ class MemoryAdapter {
 
   async remove(path: string): Promise<void> {
     this.files.delete(path)
+  }
+}
+
+function listMemoryEntries(
+  adapter: MemoryAdapter,
+  path: string,
+): { files: string[]; folders: string[] } {
+  if (!adapter.folders.has(path)) return { files: [], folders: [] }
+  const prefix = `${path}/`
+  return {
+    files: [...adapter.files.keys()].filter(
+      (entry) =>
+        entry.startsWith(prefix) && !entry.slice(prefix.length).includes('/'),
+    ),
+    folders: [...adapter.folders].filter(
+      (entry) =>
+        entry.startsWith(prefix) && !entry.slice(prefix.length).includes('/'),
+    ),
   }
 }
 
@@ -50,30 +90,30 @@ function createStore(adapter = new MemoryAdapter()): ModuleDeviceStateStore {
   })
 }
 
-function state(): ModuleDeviceState {
+function state(moduleId = 'learning'): ModuleDeviceState {
   return {
-    moduleId: 'learning',
+    moduleId,
     platform: 'desktop',
     activeVersion: '1.2.3',
     downloadedCandidate: '2.0.0-beta.1',
     pendingVersion: null,
     readyVersions: {
-      '1.2.3': descriptor('1.2.3'),
-      '2.0.0-beta.1': descriptor('2.0.0-beta.1'),
+      '1.2.3': descriptor('1.2.3', moduleId),
+      '2.0.0-beta.1': descriptor('2.0.0-beta.1', moduleId),
     },
   }
 }
 
-function descriptor(version: string) {
+function descriptor(version: string, moduleId = 'learning') {
   return {
-    id: 'learning',
+    id: moduleId,
     version,
     hostApi: '^1.0.0',
     dataSchemas: {
       cards: { readMin: 1, readMax: 3, write: 2 },
     },
     platform: 'desktop' as const,
-    manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning-v${version}/module.json`,
+    manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${moduleId}-v${version}/module.json`,
     manifest: { byteSize: 42, sha256: HASH },
   }
 }
@@ -83,6 +123,114 @@ function rawData(value: unknown, schemaVersion = 1): string {
 }
 
 describe('ModuleDeviceStateStore', () => {
+  it('returns one frozen empty list for a missing or empty root', async () => {
+    const adapter = new MemoryAdapter()
+    const store = createStore(adapter)
+
+    const missing = await store.list()
+    adapter.folders.add(ROOT)
+    const empty = await store.list()
+
+    expect(missing).toBe(empty)
+    expect(missing).toEqual([])
+    expect(Object.isFrozen(missing)).toBe(true)
+  })
+
+  it('lists every valid state in module-id order as a frozen snapshot', async () => {
+    const store = createStore()
+    await store.write(state('zebra'))
+    await store.write(state('alpha'))
+
+    const listed = await store.list()
+
+    expect(listed.map(({ moduleId }) => moduleId)).toEqual(['alpha', 'zebra'])
+    expect(Object.isFrozen(listed)).toBe(true)
+    expect(listed.every(Object.isFrozen)).toBe(true)
+  })
+
+  it('fails closed when the state root exists as a file', async () => {
+    const adapter = new MemoryAdapter()
+    adapter.files.set(ROOT, 'corrupt')
+
+    await expect(createStore(adapter).list()).rejects.toThrow('not a folder')
+  })
+
+  it('retries a normal remove race during enumeration', async () => {
+    const adapter = new MemoryAdapter()
+    const store = createStore(adapter)
+    await store.write(state('learning'))
+    let listed = 0
+    adapter.listHook = async (path) => {
+      listed += 1
+      if (listed === 1) {
+        const listing = listMemoryEntries(adapter, path)
+        adapter.files.delete(`${ROOT}/learning.json`)
+        return listing
+      }
+      return listMemoryEntries(adapter, path)
+    }
+
+    await expect(store.list()).resolves.toEqual([])
+    expect(listed).toBe(2)
+  })
+
+  it('fails closed when the state record bound is exceeded', async () => {
+    const adapter = new MemoryAdapter()
+    adapter.folders.add(ROOT)
+    adapter.listHook = async () => ({
+      files: Array.from(
+        { length: 101 },
+        (_, index) => `${ROOT}/module-${String(index)}.json`,
+      ),
+      folders: [],
+    })
+
+    await expect(createStore(adapter).list()).rejects.toThrow('too many')
+  })
+
+  it.each([
+    [
+      'folders',
+      { files: [] as string[], folders: [`${ROOT}/unexpected`] },
+      'unexpected folders',
+    ],
+    [
+      'files outside the direct root',
+      { files: [`${ROOT}/nested/learning.json`], folders: [] as string[] },
+      'unexpected file',
+    ],
+    [
+      'malformed filenames',
+      { files: [`${ROOT}/Learning.json`], folders: [] as string[] },
+      'malformed filename',
+    ],
+    [
+      'filename aliases',
+      {
+        files: [`${ROOT}/learning.json`, `${ROOT}/learning.json`],
+        folders: [] as string[],
+      },
+      'alias',
+    ],
+  ])('fails closed on unexpected %s', async (_label, listing, message) => {
+    const adapter = new MemoryAdapter()
+    adapter.folders.add(ROOT)
+    adapter.listHook = async () => listing
+
+    await expect(createStore(adapter).list()).rejects.toThrow(message)
+  })
+
+  it('fails the whole enumeration when a listed record is corrupt', async () => {
+    const adapter = new MemoryAdapter()
+    const store = createStore(adapter)
+    await store.write(state('alpha'))
+    adapter.files.set(`${ROOT}/zebra.json`, '{broken')
+
+    await expect(store.list()).rejects.toBeInstanceOf(
+      ModuleDeviceStateCorruptionError,
+    )
+  })
+
   it('reads empty state, writes a v1 snapshot, and removes it', async () => {
     const adapter = new MemoryAdapter()
     const store = createStore(adapter)
@@ -357,6 +505,7 @@ describe('ModuleDeviceStateStore', () => {
     })
 
     await store.write(state())
+    await expect(store.list()).resolves.toEqual([state()])
     await expect(store.read('learning')).resolves.toEqual(state())
     await store.remove('learning')
     await expect(store.read('learning')).resolves.toBeNull()

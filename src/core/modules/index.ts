@@ -127,6 +127,7 @@ export {
   type ModuleDeviceState,
   type ModuleDeviceStateStoreBackend,
 } from './moduleDeviceStateStore'
+export { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 export {
   OfficialModuleCatalogSource,
   type OfficialModuleCatalogSourceOptions,

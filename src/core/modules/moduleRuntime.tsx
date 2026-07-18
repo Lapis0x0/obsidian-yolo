@@ -133,6 +133,7 @@ export type ModuleContributionRegistrar = {
 /** Activates modules atomically through a declaration-first host API. */
 export class ModuleRuntime {
   private readonly scopes = new Map<string, ModuleLifecycleScope>()
+  private readonly activeVersions = new Map<string, string>()
   private readonly pending = new Map<
     string,
     {
@@ -151,7 +152,17 @@ export class ModuleRuntime {
     this.removeRuntimeBridge = installYoloModuleRuntimeBridge()
   }
 
-  async activate(definition: YoloModuleDefinition): Promise<void> {
+  isActive(moduleId: string, version?: string): boolean {
+    if (this.disposed || !this.scopes.has(moduleId)) return false
+    return (
+      version === undefined || this.activeVersions.get(moduleId) === version
+    )
+  }
+
+  async activate(
+    definition: YoloModuleDefinition,
+    version?: string,
+  ): Promise<void> {
     if (this.disposed) throw new Error('Module runtime is disposed')
     if (this.scopes.has(definition.id) || this.pending.has(definition.id)) {
       throw new Error(`Module "${definition.id}" is already active`)
@@ -253,6 +264,7 @@ export class ModuleRuntime {
         throw new Error('Module runtime was disposed during capability commit')
       }
       this.scopes.set(definition.id, lifecycle)
+      if (version !== undefined) this.activeVersions.set(definition.id, version)
     } catch (error) {
       workspaceActive = false
       stager.close()
@@ -291,6 +303,7 @@ export class ModuleRuntime {
       }
     }
     this.scopes.clear()
+    this.activeVersions.clear()
     this.removeRuntimeBridge()
   }
 }

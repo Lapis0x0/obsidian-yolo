@@ -274,7 +274,7 @@ export class BundledModuleRegistry {
         },
         entryBytes,
       )
-      await this.options.runtime.activate(definition)
+      await this.options.runtime.activate(definition, module.version)
       this.states.set(
         module.id,
         Object.freeze({ version: module.version, active: true }),

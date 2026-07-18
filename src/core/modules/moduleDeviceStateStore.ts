@@ -17,6 +17,8 @@ const SEMVER =
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
 const SHA256 = /^[a-fA-F0-9]{64}$/
 const DANGEROUS_NAMES = new Set(['__proto__', 'prototype', 'constructor'])
+const MAX_DEVICE_STATE_RECORDS = 100
+const ENUMERATION_RETRY_LIMIT = 2
 
 export type ModuleDeviceState = Readonly<{
   moduleId: string
@@ -27,7 +29,26 @@ export type ModuleDeviceState = Readonly<{
   readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>
 }>
 
-export type ModuleDeviceStateStoreBackend = DeviceLocalModuleRuntimeStateBackend
+type ModuleDeviceStateListing = Readonly<{
+  files: readonly string[]
+  folders: readonly string[]
+}>
+
+type ModuleDeviceStateRootStat = Readonly<{
+  type: 'file' | 'folder'
+}>
+
+export type ModuleDeviceStateStoreBackend =
+  DeviceLocalModuleRuntimeStateBackend &
+    Readonly<{
+      adapter: DeviceLocalModuleRuntimeStateBackend['adapter'] &
+        Readonly<{
+          list(path: string): Promise<ModuleDeviceStateListing>
+          stat(path: string): Promise<ModuleDeviceStateRootStat | null>
+        }>
+    }>
+
+const EMPTY_STATES = Object.freeze([]) as readonly ModuleDeviceState[]
 
 export class ModuleDeviceStateCorruptionError extends Error {
   constructor(moduleId: string, error: unknown) {
@@ -40,9 +61,89 @@ export class ModuleDeviceStateCorruptionError extends Error {
 
 export class ModuleDeviceStateStore {
   private readonly store: ModuleRuntimeStateStore
+  private readonly backend: ModuleDeviceStateStoreBackend
+  private readonly rootPath: string
 
   constructor(backend: ModuleDeviceStateStoreBackend) {
+    this.backend = backend
+    this.rootPath = backend.rootPath.replace(/\\/g, '/')
     this.store = new ModuleRuntimeStateStore(backend)
+  }
+
+  async list(): Promise<readonly ModuleDeviceState[]> {
+    return this.listAttempt(ENUMERATION_RETRY_LIMIT)
+  }
+
+  private async listAttempt(
+    retriesRemaining: number,
+  ): Promise<readonly ModuleDeviceState[]> {
+    const rootStat = await this.backend.adapter.stat(this.rootPath)
+    if (rootStat === null) return EMPTY_STATES
+    if (rootStat.type !== 'folder') {
+      throw new Error('Module device state root is not a folder')
+    }
+    const listing = await this.backend.adapter.list(this.rootPath)
+    if (listing.folders.length > 0) {
+      throw new Error('Module device state root contains unexpected folders')
+    }
+    if (listing.files.length === 0) return EMPTY_STATES
+    if (listing.files.length > MAX_DEVICE_STATE_RECORDS) {
+      throw new Error('Module device state root contains too many records')
+    }
+
+    const moduleIds: string[] = []
+    const seen = new Set<string>()
+    for (const path of listing.files) {
+      const prefix = `${this.rootPath}/`
+      if (!path.startsWith(prefix) || path.slice(prefix.length).includes('/')) {
+        throw new Error(
+          `Module device state root contains unexpected file "${path}"`,
+        )
+      }
+      const fileName = path.slice(prefix.length)
+      if (!fileName.endsWith('.json')) {
+        throw new Error(
+          `Module device state root contains malformed filename "${fileName}"`,
+        )
+      }
+      const moduleId = fileName.slice(0, -'.json'.length)
+      try {
+        assertModuleId(moduleId, 'Module id')
+      } catch (error) {
+        throw new Error(
+          `Module device state root contains malformed filename "${fileName}": ${describeError(error)}`,
+        )
+      }
+      const canonicalPath = `${this.rootPath}/${moduleId}.json`
+      if (path !== canonicalPath || seen.has(moduleId)) {
+        throw new Error(
+          `Module device state root contains an alias for "${canonicalPath}"`,
+        )
+      }
+      seen.add(moduleId)
+      moduleIds.push(moduleId)
+    }
+
+    moduleIds.sort()
+    const states = await Promise.all(
+      moduleIds.map(async (moduleId) => {
+        const value = await this.read(moduleId)
+        if (value === null) {
+          if (retriesRemaining > 0) return null
+          throw new Error(
+            'Module device state changed repeatedly during listing',
+          )
+        }
+        return value
+      }),
+    )
+    const stableStates = states.filter(
+      (state): state is ModuleDeviceState => state !== null,
+    )
+    if (stableStates.length !== states.length) {
+      return this.listAttempt(retriesRemaining - 1)
+    }
+    return Object.freeze(stableStates)
   }
 
   async read(moduleId: string): Promise<ModuleDeviceState | null> {

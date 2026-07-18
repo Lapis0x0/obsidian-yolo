@@ -19,6 +19,22 @@ const createRuntime = (
   )
 
 describe('ModuleRuntime', () => {
+  it('reports only committed, undisposed modules as active', async () => {
+    const runtime = createRuntime({ commit: jest.fn() })
+    expect(runtime.isActive('learning')).toBe(false)
+
+    await runtime.activate(
+      { id: 'learning', activate: () => undefined },
+      '1.2.3',
+    )
+    expect(runtime.isActive('learning')).toBe(true)
+    expect(runtime.isActive('learning', '1.2.3')).toBe(true)
+    expect(runtime.isActive('learning', '2.0.0')).toBe(false)
+
+    runtime.dispose()
+    expect(runtime.isActive('learning')).toBe(false)
+  })
+
   it('injects assets and activates them only after module activation commits', async () => {
     let assetsActive = false
     const readText = jest.fn(async () => {
