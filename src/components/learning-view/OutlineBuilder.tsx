@@ -121,7 +121,6 @@ export function OutlineBuilder({
   const [phase, setPhase] = useState<Phase>('outline')
   const [outlineWaitingStage, setOutlineWaitingStage] =
     useState<OutlineWaitingStage>('preparing')
-  const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const abortOnUnmountRef = useRef(true)
@@ -162,7 +161,6 @@ export function OutlineBuilder({
     abortRef.current = controller
     setPhase('outline')
     setOutlineWaitingStage('preparing')
-    setError(null)
     nextChapterIdRef.current = 0
     setChapters([])
     setProjectName('')
@@ -197,7 +195,7 @@ export function OutlineBuilder({
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return
-        setError(err instanceof Error ? err.message : String(err))
+        console.error('[YOLO] Failed to generate learning outline:', err)
         setPhase('error')
       })
   }
@@ -232,8 +230,8 @@ export function OutlineBuilder({
     setChapters((current) => [
       ...current,
       createChapter({
-        title: '新章节',
-        contract: '说明本章覆盖范围、边界和预计知识点。',
+        title: '',
+        contract: '',
       }),
     ])
   }
@@ -249,19 +247,21 @@ export function OutlineBuilder({
   }
 
   const confirmAndGenerate = async () => {
+    if (
+      chapters.length === 0 ||
+      chapters.some(
+        (chapter) => !chapter.title.trim() || !chapter.contract.trim(),
+      )
+    ) {
+      return
+    }
     const validChapters = chapters.filter(
       (chapter) => chapter.title.trim() && chapter.contract.trim(),
     )
-    if (validChapters.length === 0) {
-      setError('至少需要一个有效章节')
-      setPhase('error')
-      return
-    }
     const controller = new AbortController()
     plugin.trackLearningGeneration(controller)
     abortRef.current = controller
     setPhase('knowledge')
-    setError(null)
 
     const baseDir = getYoloLearningDir(plugin.settings)
     const resolvedProjectName = projectName || topic
@@ -288,7 +288,7 @@ export function OutlineBuilder({
     } catch (err: unknown) {
       plugin.releaseLearningGeneration(controller)
       if (controller.signal.aborted) return
-      setError(err instanceof Error ? err.message : String(err))
+      console.error('[YOLO] Failed to create learning project:', err)
       setPhase('error')
       return
     }
@@ -430,9 +430,17 @@ export function OutlineBuilder({
           return
         }
         new Notice(
-          `知识点生成失败：${failedKnowledgeChapters
-            .map((result) => result.chapterTitle)
-            .join('、')}`,
+          formatLearningText(
+            t(
+              'learning.outlineBuilder.failedKnowledgeChapters',
+              '知识点生成失败：{chapters}',
+            ),
+            {
+              chapters: failedKnowledgeChapters
+                .map((result) => result.chapterTitle)
+                .join(', '),
+            },
+          ),
         )
         plugin.releaseLearningGeneration(controller)
         return
@@ -581,6 +589,11 @@ export function OutlineBuilder({
 
   const generating = phase === 'outline'
   const busy = phase === 'outline' || phase === 'knowledge'
+  const hasIncompleteChapters =
+    chapters.length === 0 ||
+    chapters.some(
+      (chapter) => !chapter.title.trim() || !chapter.contract.trim(),
+    )
   const generationHeading =
     chapters.length > 0
       ? formatLearningText(
@@ -652,10 +665,7 @@ export function OutlineBuilder({
 
           <div className="yolo-learning-outline-builder-chapters">
             {phase === 'error' && (
-              <ErrorCard
-                error={error ?? '生成失败'}
-                onRetry={startOutlineGeneration}
-              />
+              <ErrorCard onRetry={startOutlineGeneration} t={t} />
             )}
 
             <DndContext
@@ -769,7 +779,7 @@ export function OutlineBuilder({
             <button
               type="button"
               onClick={() => void confirmAndGenerate()}
-              disabled={busy || phase === 'error'}
+              disabled={busy || phase === 'error' || hasIncompleteChapters}
               className="yolo-learning-outline-builder-complete"
             >
               <Layers size={16} />
@@ -893,6 +903,10 @@ function ChapterCard({
             <input
               value={chapter.title}
               disabled={disabled}
+              placeholder={t(
+                'learning.outlineBuilder.chapterTitlePlaceholder',
+                '章节标题',
+              )}
               onChange={(event) => onUpdate({ title: event.target.value })}
               className="yolo-learning-outline-builder-card-title"
             />
@@ -910,18 +924,30 @@ function ChapterCard({
             ref={contractRef}
             value={chapter.contract}
             disabled={disabled}
+            placeholder={t(
+              'learning.outlineBuilder.chapterContractPlaceholder',
+              '说明本章覆盖范围、边界和预计知识点',
+            )}
             rows={1}
             onChange={(event) => onUpdate({ contract: event.target.value })}
             className="yolo-learning-outline-builder-contract"
           />
-          {chapter.progress && <ProgressLine progress={chapter.progress} />}
+          {chapter.progress && (
+            <ProgressLine progress={chapter.progress} t={t} />
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function ProgressLine({ progress }: { progress: GenerationProgress }) {
+function ProgressLine({
+  progress,
+  t,
+}: {
+  progress: GenerationProgress
+  t: (keyPath: string, fallback?: string) => string
+}) {
   const isError = progress.status === 'error'
   const isDone = progress.status === 'completed'
   return (
@@ -934,12 +960,27 @@ function ProgressLine({ progress }: { progress: GenerationProgress }) {
         <Sparkles size={12} className="yolo-learning-outline-builder-pulse" />
       )}
       {isError
-        ? progress.error
+        ? t(
+            'learning.outlineBuilder.knowledgeGenerationFailed',
+            '知识点生成失败',
+          )
         : isDone
-          ? '知识点生成完成'
+          ? t(
+              'learning.outlineBuilder.knowledgeGenerationComplete',
+              '知识点生成完成',
+            )
           : progress.currentKnowledgePointTitle
-            ? `正在生成：${progress.currentKnowledgePointTitle}`
-            : '知识点生成中...'}
+            ? formatLearningText(
+                t(
+                  'learning.outlineBuilder.knowledgeGeneratingCurrent',
+                  '正在生成：{title}',
+                ),
+                { title: progress.currentKnowledgePointTitle },
+              )
+            : t(
+                'learning.outlineBuilder.knowledgeGenerating',
+                '正在生成知识点',
+              )}
     </div>
   )
 }
@@ -974,20 +1015,33 @@ function SkeletonCard({
   )
 }
 
-function ErrorCard({ error, onRetry }: { error: string; onRetry: () => void }) {
+function ErrorCard({
+  onRetry,
+  t,
+}: {
+  onRetry: () => void
+  t: (keyPath: string, fallback?: string) => string
+}) {
   return (
     <div className="yolo-learning-outline-builder-card">
       <div className="yolo-learning-outline-builder-card-row">
         <AlertCircle size={18} />
         <div className="yolo-learning-outline-builder-card-content">
-          <h3 className="yolo-learning-outline-builder-card-title">生成失败</h3>
-          <div className="yolo-learning-outline-builder-contract">{error}</div>
+          <h3 className="yolo-learning-outline-builder-card-title">
+            {t('learning.outlineBuilder.failed', '生成失败')}
+          </h3>
+          <div className="yolo-learning-outline-builder-contract">
+            {t(
+              'learning.outlineBuilder.failedDescription',
+              '无法继续生成，请重试。',
+            )}
+          </div>
           <button
             type="button"
             onClick={onRetry}
             className="yolo-learning-outline-builder-add"
           >
-            重试
+            {t('common.retry', '重试')}
           </button>
         </div>
       </div>

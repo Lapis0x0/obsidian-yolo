@@ -334,9 +334,7 @@ describe('cardFile', () => {
     expect(create).toHaveBeenCalledWith(path, expect.any(String))
     expect(modify).not.toHaveBeenCalled()
     expect(adapter.write).not.toHaveBeenCalled()
-    expect(files.get(path)).toMatch(
-      /^---\ntitle: 第一章 - 卡片\n---\n\n## 新卡片 /,
-    )
+    expect(files.get(path)).toMatch(/^---\ntitle: 第一章\n---\n\n## 新卡片 /)
   })
 
   it('detects a concurrent file creation before Vault.create', async () => {
@@ -496,7 +494,7 @@ describe('cardFile', () => {
 
     expect(create).toHaveBeenCalledWith(targetPath, expect.any(String))
     expect(files.get(targetPath)).toMatch(
-      /^---\ntitle: 新章节 - 卡片\n---\n\n## A <!--card:aaaaaaaa kp:33333333-->/,
+      /^---\ntitle: 新章节\n---\n\n## A <!--card:aaaaaaaa kp:33333333-->/,
     )
     expect(modify.mock.calls.map(([file]) => file.path)).toEqual([sourcePath])
     expect(adapter.write).not.toHaveBeenCalled()

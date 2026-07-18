@@ -176,6 +176,7 @@ describe('generateCardsForChapter streaming', () => {
         cardUuid: result.cards[0]?.cardUuid,
       })
       const written = contents.get(cardsPath) ?? ''
+      expect(written).toMatch(/^---\ntitle: Chapter\n---/)
       expect(written).toContain(
         `<!--card:${result.cards[0]?.cardUuid} kp:aaaaaaaa-->`,
       )

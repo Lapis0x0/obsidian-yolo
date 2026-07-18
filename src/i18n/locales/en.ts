@@ -323,9 +323,17 @@ export const en: TranslationKeys = {
     outlineBuilder: {
       estimatedKnowledgePoints: 'Estimated knowledge points',
       failed: 'Generation failed',
+      failedDescription: 'Unable to continue generation. Please try again.',
+      failedKnowledgeChapters: 'Knowledge-point generation failed: {chapters}',
       knowledgeGenerating: 'Generating knowledge points',
+      knowledgeGeneratingCurrent: 'Generating: {title}',
+      knowledgeGenerationComplete: 'Knowledge points generated',
+      knowledgeGenerationFailed: 'Knowledge-point generation failed',
       outlineGenerating: 'Generating outline',
       planningPath: 'Planning the learning path',
+      chapterTitlePlaceholder: 'Chapter title',
+      chapterContractPlaceholder:
+        'Describe this chapter’s scope, boundaries, and estimated knowledge points',
       draftBadge: 'Outline draft',
       subagentPending: 'Sub-agent standing by',
       subagentReady: 'After confirmation, a sub-agent will generate it',

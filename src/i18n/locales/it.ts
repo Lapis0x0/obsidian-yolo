@@ -321,9 +321,17 @@ export const it: TranslationKeys = {
     outlineBuilder: {
       estimatedKnowledgePoints: 'Punti di conoscenza stimati',
       failed: 'Generazione non riuscita',
+      failedDescription: 'Impossibile continuare la generazione. Riprova.',
+      failedKnowledgeChapters: 'Generazione dei punti non riuscita: {chapters}',
       knowledgeGenerating: 'Generazione dei punti di conoscenza in corso',
+      knowledgeGeneratingCurrent: 'Generazione: {title}',
+      knowledgeGenerationComplete: 'Punti di conoscenza generati',
+      knowledgeGenerationFailed: 'Generazione dei punti non riuscita',
       outlineGenerating: 'Generazione della scaletta in corso',
       planningPath: 'Pianificazione del percorso di apprendimento in corso',
+      chapterTitlePlaceholder: 'Titolo del capitolo',
+      chapterContractPlaceholder:
+        'Descrivi ambito, limiti e numero stimato di punti del capitolo',
       draftBadge: 'Bozza schema',
       subagentPending: 'Sub-agent in attesa',
       subagentReady: 'Dopo la conferma, un sub-agent lo genererà',

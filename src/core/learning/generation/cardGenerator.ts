@@ -651,7 +651,7 @@ async function createCardsFile(
 
 function buildCardsContent(chapterTitle: string, blocks: string[]): string {
   const yaml = dumpYaml(
-    { title: `${chapterTitle} - Cards` },
+    { title: chapterTitle.trim() },
     { lineWidth: -1 },
   ).trimEnd()
   return `---\n${yaml}\n---\n\n${blocks.join('\n\n')}\n`
