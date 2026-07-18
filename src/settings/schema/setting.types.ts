@@ -19,6 +19,22 @@ import { DEFAULT_CHAT_QUICK_ACCESS_ENTRIES } from '../chatQuickAccess'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 
+// Allowlist for Learning Mode generated-content output language. Shared
+// with the Settings dropdown so the schema and UI cannot drift.
+export const LEARNING_OUTPUT_LANGUAGES = [
+  'auto',
+  'English',
+  'Simplified Chinese',
+  'Spanish',
+  'Italian',
+  'French',
+  'German',
+  'Japanese',
+  'Korean',
+  'Portuguese',
+] as const
+export type LearningOutputLanguage = (typeof LEARNING_OUTPUT_LANGUAGES)[number]
+
 const resilientArraySchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z
     .array(z.unknown())
@@ -509,7 +525,7 @@ export const yoloSettingsSchema = z.object({
   learningOptions: z
     .object({
       modelId: z.string().catch(''),
-      outputLanguage: z.string().catch('auto'),
+      outputLanguage: z.enum(LEARNING_OUTPUT_LANGUAGES).catch('auto'),
       betaNoticeAcknowledged: z.boolean().catch(false),
     })
     .catch({

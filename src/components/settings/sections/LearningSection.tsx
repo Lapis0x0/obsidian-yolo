@@ -3,10 +3,26 @@ import { useMemo } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  LEARNING_OUTPUT_LANGUAGES,
+  type LearningOutputLanguage,
+} from '../../../settings/schema/setting.types'
+import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
 } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+
+const OUTPUT_LANGUAGE_LABELS: Record<string, string> = {
+  English: 'English',
+  'Simplified Chinese': '\u7b80\u4f53\u4e2d\u6587',
+  Spanish: 'Espa\u00f1ol',
+  Italian: 'Italiano',
+  French: 'Fran\u00e7ais',
+  German: 'Deutsch',
+  Japanese: '\u65e5\u672c\u8a9e',
+  Korean: '\ud55c\uad6d\uc5b4',
+  Portuguese: 'Portugu\u00eas',
+}
 
 export function LearningSection() {
   const { settings, setSettings } = useSettings()
@@ -60,7 +76,7 @@ export function LearningSection() {
           ...settings,
           learningOptions: {
             ...settings.learningOptions,
-            outputLanguage,
+            outputLanguage: outputLanguage as LearningOutputLanguage,
           },
         })
       } catch (error: unknown) {
@@ -99,18 +115,14 @@ export function LearningSection() {
           >
             <ObsidianDropdown
               value={settings.learningOptions.outputLanguage ?? 'auto'}
-              options={{
-                auto: t('settings.learning.outputLanguageAuto'),
-                English: 'English',
-                'Simplified Chinese': '\u7b80\u4f53\u4e2d\u6587',
-                Spanish: 'Espa\u00f1ol',
-                Italian: 'Italiano',
-                French: 'Fran\u00e7ais',
-                German: 'Deutsch',
-                Japanese: '\u65e5\u672c\u8a9e',
-                Korean: '\ud55c\uad6d\uc5b4',
-                Portuguese: 'Portugu\u00eas',
-              }}
+              options={Object.fromEntries(
+                LEARNING_OUTPUT_LANGUAGES.map((lang) => [
+                  lang,
+                  lang === 'auto'
+                    ? t('settings.learning.outputLanguageAuto')
+                    : OUTPUT_LANGUAGE_LABELS[lang],
+                ]),
+              )}
               onChange={updateOutputLanguage}
             />
           </ObsidianSetting>

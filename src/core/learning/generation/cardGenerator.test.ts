@@ -277,3 +277,64 @@ C`)
     expect(result.discardedCount).toBe(3)
   })
 })
+
+describe('generateCardsForChapter output language', () => {
+  it('prepends the output-language directive to the system prompt', async () => {
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const cardsPath = 'project/chapter/cards.md'
+    const knowledgeFile = Object.assign(new TFile(), { path: knowledgePath })
+    const files = new Map<string, object>([[knowledgePath, knowledgeFile]])
+    const contents = new Map<string, string>([
+      [knowledgePath, '## KP <!--kp:aaaaaaaa-->\n\nBody'],
+    ])
+    const stream = jest.fn(async function* () {
+      const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
+      yield { type: 'text' as const, delta: text, text }
+      yield { type: 'completed' as const, text }
+    })
+    const plugin = {
+      app: {
+        vault: {
+          getAbstractFileByPath: (path: string) => files.get(path) ?? null,
+          getMarkdownFiles: () => [],
+          read: async (file: { path: string }) => contents.get(file.path) ?? '',
+          cachedRead: async (file: { path: string }) =>
+            contents.get(file.path) ?? '',
+          create: async (path: string, content: string) => {
+            const file = Object.assign(new TFile(), { path })
+            files.set(path, file)
+            contents.set(path, content)
+            return file
+          },
+          modify: async (file: { path: string }, content: string) => {
+            contents.set(file.path, content)
+          },
+        },
+      },
+      agent: { stream },
+      settings: { learningOptions: { outputLanguage: 'English' } },
+    } as unknown as YoloPlugin
+
+    await generateCardsForChapter({
+      plugin,
+      modelId: 'learning-model',
+      chapterIndex: 0,
+      projectTopic: 'Topic',
+      chapterTitle: 'Chapter',
+      chapterContract: 'Contract',
+      knowledgePath,
+      cardsPath,
+      level: 'beginner',
+      usedCardUuids: new Set(),
+      runId: 'run-1',
+      projectId: 'project-1',
+      chapterId: 'chapter-1',
+    })
+
+    const request = (stream.mock.calls as unknown[][])[0]?.[0] as {
+      systemPromptOverride: string
+    }
+    expect(request.systemPromptOverride).toContain('OUTPUT LANGUAGE')
+    expect(request.systemPromptOverride).toContain('English')
+  })
+})
