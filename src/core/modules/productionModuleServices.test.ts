@@ -256,7 +256,22 @@ function createHarness(
         return response('', 404)
       }),
   )
-  const isActive = jest.fn(() => true)
+  const activeVersions = new Map<string, string>()
+  const isActive = jest.fn(
+    (moduleId: string, version: string) =>
+      activeVersions.get(moduleId) === version,
+  )
+  const activationLoader = {
+    load: jest.fn(async (entry: { id: string }) => ({
+      id: entry.id,
+      activate: () => undefined,
+    })),
+  }
+  const activationRuntime = {
+    activate: jest.fn(async (definition: { id: string }, version: string) => {
+      activeVersions.set(definition.id, version)
+    }),
+  }
   const services = createProductionModuleServices({
     store,
     deviceStateStore,
@@ -268,6 +283,9 @@ function createHarness(
       readSettingsSchemaVersion: async () => 0,
     }),
     isActive,
+    activationLoader,
+    activationRuntime,
+    readCurrentSchemaVersion: async () => 1,
     catalogRequest,
     artifactRequest,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
@@ -280,6 +298,9 @@ function createHarness(
     deviceStateStore,
     fixture,
     isActive,
+    activeVersions,
+    activationLoader,
+    activationRuntime,
     services,
   }
 }
@@ -359,6 +380,7 @@ describe('createProductionModuleServices', () => {
       ...installed,
       activeVersion: '1.2.3',
     })
+    await harness.services.activationCoordinator.activatePersistedModules()
     await harness.services.manager.refresh()
     expect(harness.isActive).toHaveBeenCalledWith('learning', '1.2.3')
     expect(harness.services.manager.getSnapshot().modules[0]?.status).toBe(
@@ -582,6 +604,14 @@ describe('createProductionModuleServices', () => {
         supportedDataNamespaces: ['settings'],
       }),
       isActive: () => false,
+      activationLoader: {
+        load: async (entry) => ({
+          id: entry.id,
+          activate: () => undefined,
+        }),
+      },
+      activationRuntime: { activate: async () => undefined },
+      readCurrentSchemaVersion: async () => 0,
       catalogRequest: async () => response(fixture.catalog),
       artifactRequest: async () => response('', 404),
       subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,

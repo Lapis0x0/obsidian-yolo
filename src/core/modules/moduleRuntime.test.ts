@@ -35,6 +35,32 @@ describe('ModuleRuntime', () => {
     expect(runtime.isActive('learning')).toBe(false)
   })
 
+  it('rolls back a hanging activation when its signal is aborted', async () => {
+    const runtime = createRuntime({ commit: jest.fn() })
+    const controller = new AbortController()
+    let cleaned = false
+    const activation = runtime.activate(
+      {
+        id: 'hanging',
+        activate: ({ lifecycle }) => {
+          lifecycle.add(() => {
+            cleaned = true
+          })
+          return new Promise<void>(() => undefined)
+        },
+      },
+      '1.0.0',
+      controller.signal,
+    )
+
+    controller.abort()
+
+    await expect(activation).rejects.toThrow('disposed during activation')
+    expect(cleaned).toBe(true)
+    expect(runtime.isActive('hanging')).toBe(false)
+    runtime.dispose()
+  })
+
   it('injects assets and activates them only after module activation commits', async () => {
     let assetsActive = false
     const readText = jest.fn(async () => {

@@ -162,8 +162,10 @@ export class ModuleRuntime {
   async activate(
     definition: YoloModuleDefinition,
     version?: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     if (this.disposed) throw new Error('Module runtime is disposed')
+    if (signal?.aborted) throw new Error('Module activation was aborted')
     if (this.scopes.has(definition.id) || this.pending.has(definition.id)) {
       throw new Error(`Module "${definition.id}" is already active`)
     }
@@ -173,6 +175,8 @@ export class ModuleRuntime {
     const activationCancelled = new Promise<void>((resolve) => {
       cancelActivation = resolve
     })
+    const abortActivation = () => cancelActivation()
+    signal?.addEventListener('abort', abortActivation, { once: true })
     let workspaceActive = false
     const isWorkspaceActive = (): boolean => workspaceActive && !this.disposed
     const workspace: YoloModuleWorkspaceV1 = Object.freeze({
@@ -278,6 +282,7 @@ export class ModuleRuntime {
       }
       throw error
     } finally {
+      signal?.removeEventListener('abort', abortActivation)
       this.pending.delete(definition.id)
     }
   }

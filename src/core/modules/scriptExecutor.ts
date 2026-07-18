@@ -6,7 +6,11 @@ export type ModuleRegistrationCapture = {
 }
 
 export type ModuleScriptExecutor = {
-  execute(source: string, capture: ModuleRegistrationCapture): Promise<void>
+  execute(
+    source: string,
+    capture: ModuleRegistrationCapture,
+    signal?: AbortSignal,
+  ): Promise<void>
 }
 
 export type ScriptResource = {
@@ -72,7 +76,9 @@ export class DomBlobModuleScriptExecutor implements ModuleScriptExecutor {
   async execute(
     source: string,
     capture: ModuleRegistrationCapture,
+    signal?: AbortSignal,
   ): Promise<void> {
+    throwIfAborted(signal)
     const bridgeName = `__yolo_module_bridge_${nextBridgeId++}`
     const bridge = {
       registration: capture.registration,
@@ -86,7 +92,29 @@ export class DomBlobModuleScriptExecutor implements ModuleScriptExecutor {
     try {
       url = this.host.createScriptUrl(wrappedSource)
       await new Promise<void>((resolve, reject) => {
-        script = this.host.appendScript(url!, resolve, reject)
+        let settled = false
+        const settle = (callback: () => void) => {
+          if (settled) return
+          settled = true
+          signal?.removeEventListener('abort', onAbort)
+          callback()
+        }
+        const onAbort = () => {
+          script?.remove()
+          script = undefined
+          settle(() => reject(abortedError()))
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
+        try {
+          script = this.host.appendScript(
+            url!,
+            () => settle(resolve),
+            (error) => settle(() => reject(toError(error))),
+          )
+          if (signal?.aborted) onAbort()
+        } catch (error) {
+          settle(() => reject(toError(error)))
+        }
       })
     } finally {
       capture.closeRegistration()
@@ -101,4 +129,16 @@ export class DomBlobModuleScriptExecutor implements ModuleScriptExecutor {
       }
     }
   }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortedError()
+}
+
+function abortedError(): Error {
+  return new Error('Module script execution was aborted')
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }

@@ -92,8 +92,11 @@ export class ModuleLoader {
   load(
     entry: YoloModuleEntry,
     entryBytes: Uint8Array,
+    signal?: AbortSignal,
   ): Promise<YoloModuleDefinition> {
-    const operation = this.queue.then(() => this.loadOne(entry, entryBytes))
+    const operation = this.queue.then(() =>
+      this.loadOne(entry, entryBytes, signal),
+    )
     this.queue = operation.then(
       () => undefined,
       () => undefined,
@@ -104,7 +107,9 @@ export class ModuleLoader {
   private async loadOne(
     entry: YoloModuleEntry,
     entryBytes: Uint8Array,
+    signal?: AbortSignal,
   ): Promise<YoloModuleDefinition> {
+    throwIfAborted(signal)
     assertEntry(entry)
     await verifyModuleBytes(
       entryBytes,
@@ -112,14 +117,19 @@ export class ModuleLoader {
       `Module "${entry.id}" entry`,
       this.subtleCrypto,
     )
+    throwIfAborted(signal)
 
     const source = new TextDecoder('utf-8', { fatal: true }).decode(entryBytes)
     const capture = new RegistrationCapture()
     try {
-      await this.options.executor.execute(source, capture)
+      await this.options.executor.execute(source, capture, signal)
     } finally {
       capture.closeRegistration()
     }
     return capture.result(entry.id)
   }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new Error('Module loading was aborted')
 }

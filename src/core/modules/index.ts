@@ -47,6 +47,12 @@ export {
   type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
 export {
+  DEFAULT_MODULE_ACTIVATION_TIMEOUT_MS,
+  ModuleActivationCoordinator,
+  type ModuleActivationCoordinatorOptions,
+  type ModuleActivationResult,
+} from './moduleActivationCoordinator'
+export {
   createOfficialModuleArtifactDownloader,
   type OfficialModuleArtifactDownloaderOptions,
   type OfficialModuleArtifactRequest,

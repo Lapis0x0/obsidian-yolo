@@ -82,6 +82,7 @@ import {
   ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
   ModuleStore,
+  OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
@@ -2075,7 +2076,7 @@ export default class YoloPlugin extends Plugin {
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
     this.warnIfInstallationIncomplete()
-    await this.activateBundledModules()
+    await this.activateModules()
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -3740,19 +3741,32 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       platform,
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
+      activationRuntime: runtime,
+      readCurrentSchemaVersion: async (moduleId, namespace) => {
+        if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
+        return (await createConfigBackend(moduleId).read()).schemaVersion
+      },
       reportCleanupError: (error) => {
         console.error('[YOLO] Module artifact cleanup failed', error)
       },
       reportRefreshError: (error) => {
         console.error('[YOLO] Module manager refresh failed', error)
       },
+      reportActivationError: (moduleId, error) => {
+        console.error(`[YOLO] Module "${moduleId}" activation failed`, error)
+      },
     })
     this.productionModuleServices = services
     this.moduleManager = services.manager
   }
 
-  private async activateBundledModules(): Promise<void> {
+  private async activateModules(): Promise<void> {
     if (!this.bundledModuleRegistry) {
+      try {
+        await this.productionModuleServices?.activationCoordinator.activatePersistedModules()
+      } catch (error) {
+        console.error('[YOLO] Failed to enumerate installed modules', error)
+      }
       void this.moduleManager?.refresh().catch((error) => {
         console.error('[YOLO] Failed to refresh official modules', error)
       })

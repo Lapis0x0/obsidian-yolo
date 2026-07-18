@@ -24,6 +24,7 @@ function state(
 function source(
   states: readonly ModuleDeviceState[],
   activeIds: ReadonlySet<string> = new Set(),
+  errors: Readonly<Record<string, string>> = {},
 ) {
   const list = jest.fn(async () => states)
   const isActive = jest.fn((moduleId: string) => activeIds.has(moduleId))
@@ -31,6 +32,7 @@ function source(
     source: new ModuleDeviceStateInstalledStateSource({
       store: { list },
       isActive,
+      getError: (moduleId) => errors[moduleId],
     }),
     isActive,
     list,
@@ -74,6 +76,22 @@ describe('ModuleDeviceStateInstalledStateSource', () => {
       { id: 'learning', version: '1.0.0' },
     ])
     expect(fixture.isActive).toHaveBeenCalledWith('learning', '1.0.0')
+  })
+
+  it('projects isolated startup activation errors', async () => {
+    const fixture = source(
+      [state('learning', { activeVersion: '1.0.0' })],
+      new Set(),
+      { learning: 'entry verification failed' },
+    )
+
+    await expect(fixture.source.load()).resolves.toEqual([
+      {
+        id: 'learning',
+        version: '1.0.0',
+        error: 'entry verification failed',
+      },
+    ])
   })
 
   it('preserves every enumerated installed record without a catalog lookup', async () => {

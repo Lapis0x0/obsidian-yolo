@@ -12,6 +12,7 @@ export class ModuleDeviceStateInstalledStateSource
     private readonly options: Readonly<{
       store: Pick<ModuleDeviceStateStore, 'list'>
       isActive(moduleId: string, version: string): boolean
+      getError?(moduleId: string): string | undefined
     }>,
   ) {}
 
@@ -24,10 +25,12 @@ export class ModuleDeviceStateInstalledStateSource
       const version =
         state.activeVersion ?? state.pendingVersion ?? state.downloadedCandidate
       if (version === null) continue
+      const error = this.options.getError?.(state.moduleId)
       installed.push(
         Object.freeze({
           id: state.moduleId,
           version,
+          ...(error ? { error } : {}),
           ...(state.activeVersion === version &&
           this.options.isActive(state.moduleId, version)
             ? { active: true }

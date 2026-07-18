@@ -13,6 +13,7 @@ class FakeHost implements BlobScriptHost {
   revoked: string[] = []
   deleted: string[] = []
   appendError: unknown
+  settleImmediately = true
 
   setBridge(name: string, value: unknown): () => void {
     this.bridgeName = name
@@ -27,8 +28,10 @@ class FakeHost implements BlobScriptHost {
     onLoad: () => void,
     onError: (error: unknown) => void,
   ): ScriptResource {
-    if (this.appendError) onError(this.appendError)
-    else onLoad()
+    if (this.settleImmediately) {
+      if (this.appendError) onError(this.appendError)
+      else onLoad()
+    }
     return { remove: () => (this.removed += 1) }
   }
   revokeScriptUrl(url: string): void {
@@ -68,4 +71,23 @@ describe('DomBlobModuleScriptExecutor', () => {
       expect(registration.closed).toBeGreaterThan(0)
     },
   )
+
+  it('removes an unexecuted script when aborted', async () => {
+    const host = new FakeHost()
+    host.settleImmediately = false
+    const registration = capture()
+    const controller = new AbortController()
+    const execution = new DomBlobModuleScriptExecutor(host).execute(
+      'yolo.registerModule(module)',
+      registration,
+      controller.signal,
+    )
+
+    controller.abort()
+
+    await expect(execution).rejects.toThrow('aborted')
+    expect(host.removed).toBe(1)
+    expect(host.revoked).toEqual(['blob:test'])
+    expect(host.deleted).toEqual([host.bridgeName])
+  })
 })

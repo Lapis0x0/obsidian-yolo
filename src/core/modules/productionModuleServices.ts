@@ -1,3 +1,7 @@
+import {
+  ModuleActivationCoordinator,
+  type ModuleActivationCoordinatorOptions,
+} from './moduleActivationCoordinator'
 import { ModuleArtifactInstaller } from './moduleArtifactInstaller'
 import { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
@@ -6,6 +10,7 @@ import {
   ModuleInstallationCoordinator,
   type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
+import { ModuleLoader } from './moduleLoader'
 import { ModuleManager } from './moduleManager'
 import {
   type ModuleArtifactPlatform,
@@ -25,6 +30,11 @@ import {
   OfficialModuleCatalogSource,
   type OfficialModuleCompatibilityProvider,
 } from './officialModuleCatalogSource'
+import {
+  OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
+  YOLO_HOST_API_VERSION,
+} from './officialModuleCompatibilityProvider'
+import { DomBlobModuleScriptExecutor } from './scriptExecutor'
 
 export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
   'official-module-catalog/catalog-v1.json'
@@ -39,16 +49,21 @@ export type ProductionModuleServicesOptions = Readonly<{
   platform: ModuleArtifactPlatform
   getCompatibility: OfficialModuleCompatibilityProvider
   isActive(moduleId: string, version: string): boolean
+  activationRuntime: ModuleActivationCoordinatorOptions['runtime']
+  activationLoader?: ModuleActivationCoordinatorOptions['loader']
+  readCurrentSchemaVersion: ModuleActivationCoordinatorOptions['readCurrentSchemaVersion']
   catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   reportCleanupError?: (error: unknown) => void
   reportRefreshError?: (error: unknown) => void
+  reportActivationError?: (moduleId: string, error: unknown) => void
 }>
 
 export type ProductionModuleServices = Readonly<{
   manager: ModuleManager
   coordinator: ModuleInstallationCoordinator
+  activationCoordinator: ModuleActivationCoordinator
   catalogClient: OfficialModuleCatalogClient
   catalogSource: OfficialModuleCatalogSource
   installer: ModuleArtifactInstaller
@@ -85,9 +100,37 @@ export function createProductionModuleServices(
       return compatibility
     },
   })
+  const activationLoader =
+    options.activationLoader ??
+    Object.freeze({
+      load: (...args: Parameters<ModuleLoader['load']>) => {
+        const loader = new ModuleLoader({
+          executor: new DomBlobModuleScriptExecutor(),
+          ...(options.subtleCrypto
+            ? { subtleCrypto: options.subtleCrypto }
+            : {}),
+        })
+        return loader.load(...args)
+      },
+    })
+  const activationCoordinator = new ModuleActivationCoordinator({
+    deviceStateStore: options.deviceStateStore,
+    artifactStore: options.store,
+    platform: options.platform,
+    hostApi: YOLO_HOST_API_VERSION,
+    supportedDataNamespaces: [OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE],
+    readCurrentSchemaVersion: options.readCurrentSchemaVersion,
+    loader: activationLoader,
+    runtime: options.activationRuntime,
+    ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
+    ...(options.reportActivationError
+      ? { reportActivationError: options.reportActivationError }
+      : {}),
+  })
   const installedStateSource = new ModuleDeviceStateInstalledStateSource({
     store: options.deviceStateStore,
     isActive: options.isActive,
+    getError: (moduleId) => activationCoordinator.getError(moduleId),
   })
   const manager = new ModuleManager({
     catalogSource,
@@ -124,6 +167,7 @@ export function createProductionModuleServices(
   return Object.freeze({
     manager,
     coordinator,
+    activationCoordinator,
     catalogClient,
     catalogSource,
     installer,
@@ -188,6 +232,7 @@ export function createProductionModuleServices(
     },
     dispose: () => {
       disposed = true
+      activationCoordinator.dispose()
       coordinator.dispose()
       manager.dispose()
     },
@@ -203,6 +248,10 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     (options.platform !== 'desktop' && options.platform !== 'mobile') ||
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
+    typeof options.activationRuntime?.activate !== 'function' ||
+    (options.activationLoader !== undefined &&
+      typeof options.activationLoader.load !== 'function') ||
+    typeof options.readCurrentSchemaVersion !== 'function' ||
     (options.catalogRequest !== undefined &&
       typeof options.catalogRequest !== 'function') ||
     (options.artifactRequest !== undefined &&
@@ -210,7 +259,9 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     (options.reportCleanupError !== undefined &&
       typeof options.reportCleanupError !== 'function') ||
     (options.reportRefreshError !== undefined &&
-      typeof options.reportRefreshError !== 'function')
+      typeof options.reportRefreshError !== 'function') ||
+    (options.reportActivationError !== undefined &&
+      typeof options.reportActivationError !== 'function')
   ) {
     throw new TypeError('Production module services options are invalid')
   }
