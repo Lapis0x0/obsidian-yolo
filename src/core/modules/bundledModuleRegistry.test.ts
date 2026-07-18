@@ -302,6 +302,36 @@ describe('BundledModuleRegistry', () => {
     ).toThrow('path segment')
   })
 
+  it('accepts an encoded release tag without changing the bundled preview', () => {
+    const manifestUrl =
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/module.json'
+    const parsed = parseBundledModuleIndex({
+      schemaVersion: 1,
+      modules: [{ ...index.modules[0], manifestUrl }],
+    })
+    expect(parsed.modules[0]?.manifestUrl).toBe(manifestUrl)
+    expect(index.modules[0].manifestUrl).toContain(
+      '/module-learning-v0.1.0/module.json',
+    )
+  })
+
+  it.each(['learning/v0.1.0', 'learning%252Fv0.1.0', 'learning%2F..'])(
+    'rejects unsafe bundled release tag form %s',
+    (tag) => {
+      expect(() =>
+        parseBundledModuleIndex({
+          schemaVersion: 1,
+          modules: [
+            {
+              ...index.modules[0],
+              manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${tag}/module.json`,
+            },
+          ],
+        }),
+      ).toThrow('compatibility metadata is invalid')
+    },
+  )
+
   it('strictly rejects unknown root and nested fields', () => {
     expect(() =>
       parseBundledModuleIndex({ ...index, unexpected: true }),

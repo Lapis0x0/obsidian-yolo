@@ -1,5 +1,7 @@
 import { type DataAdapter, normalizePath } from 'obsidian'
 
+import { parseModuleReleaseUrl } from './moduleReleaseUrl'
+
 export type ModuleStoreOptions = {
   adapter: DataAdapter
   manifest: Readonly<{ id: string; dir?: string }>
@@ -62,8 +64,6 @@ const MAX_SEMVER_RANGE_LENGTH = 512
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
 const DANGEROUS_NAMESPACES = new Set(['__proto__', 'prototype', 'constructor'])
-const RELEASE_URL =
-  /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/releases\/download\/([A-Za-z0-9._+-]+)\/([A-Za-z0-9][A-Za-z0-9._+-]*)$/
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
@@ -257,8 +257,8 @@ function parseVariantFiles(
       throw new Error('Module artifact file is invalid')
     }
     assertModulePathSegment(file.name, 'Module artifact file name')
-    const releaseMatch = RELEASE_URL.exec(file.url)
-    if (!releaseMatch || releaseMatch[4] !== file.name) {
+    const releaseUrl = parseModuleReleaseUrl(file.url)
+    if (!releaseUrl || releaseUrl.assetName !== file.name) {
       throw new Error('Module artifact file URL is invalid')
     }
     assertCanonicalManifestPath(file.path)
@@ -359,10 +359,7 @@ export function moduleReadyMarkerFileName(
 }
 
 export function moduleArtifactReleaseParent(url: string): string | null {
-  const match = RELEASE_URL.exec(url)
-  return match
-    ? `${match[1].toLowerCase()}/${match[2].toLowerCase()}/${match[3]}`
-    : null
+  return parseModuleReleaseUrl(url)?.releaseParent ?? null
 }
 
 function parseModuleArtifactDataSchemas(
@@ -555,10 +552,23 @@ export function resolveModulePluginDir(
 export class ModuleStore {
   readonly adapter: DataAdapter
   readonly pluginDir: string
+  private readonly removalPathOptions: Pick<
+    ModuleStoreOptions,
+    'manifest' | 'configDir'
+  >
 
   constructor(private readonly options: ModuleStoreOptions) {
     this.adapter = options.adapter
     this.pluginDir = resolveModulePluginDir(options.manifest, options.configDir)
+    this.removalPathOptions = Object.freeze({
+      configDir: options.configDir,
+      manifest: Object.freeze({
+        id: options.manifest.id,
+        ...(options.manifest.dir === undefined
+          ? {}
+          : { dir: options.manifest.dir }),
+      }),
+    })
   }
 
   async readManifestBytes(
@@ -643,12 +653,96 @@ export class ModuleStore {
     return Object.freeze(files.sort())
   }
 
+  /** Removes one immutable, redownloadable version tree and verifies absence. */
+  async removeVersionArtifacts(
+    moduleId: string,
+    version: string,
+  ): Promise<void> {
+    assertModuleId(moduleId, 'Module id')
+    assertModulePathSegment(version, 'Module version')
+    const destructivePluginDir = resolveDestructiveModulePluginDir(
+      this.removalPathOptions,
+    )
+    const adapter = this.adapter
+    if (
+      typeof adapter.stat !== 'function' ||
+      typeof adapter.rmdir !== 'function'
+    ) {
+      throw new Error(
+        'Module adapter cannot safely remove artifact directories',
+      )
+    }
+    const root = normalizePortablePath(
+      `${destructivePluginDir}/modules/${moduleId}/${version}`,
+    )
+    const expectedRoot = `${destructivePluginDir}/modules/${moduleId}/${version}`
+    if (root !== expectedRoot) {
+      throw new Error('Module artifact removal root is not canonical')
+    }
+    const before = await adapter.stat(root)
+    if (before === null) return
+    if (before.type !== 'folder') {
+      throw new Error('Module version artifact root is not a folder')
+    }
+    try {
+      await adapter.rmdir(root, true)
+    } catch (error) {
+      // A failed adapter call may still have completed. Never recreate artifacts.
+      try {
+        if ((await adapter.stat(root)) === null) return
+      } catch {
+        // Preserve the original removal error when absence cannot be proven.
+      }
+      throw error
+    }
+    if ((await adapter.stat(root)) !== null) {
+      throw new Error('Module version artifacts remain after removal')
+    }
+  }
+
   private async readBytes(path: string): Promise<Uint8Array> {
     const bytes = await this.options.adapter.readBinary(
       normalizePortablePath(path),
     )
     return new Uint8Array(bytes)
   }
+}
+
+function resolveDestructiveModulePluginDir(
+  options: Pick<ModuleStoreOptions, 'manifest' | 'configDir'>,
+): string {
+  assertModuleId(options.manifest.id, 'Plugin id')
+  const configDir = options.configDir
+  if (
+    typeof configDir !== 'string' ||
+    configDir !== configDir.trim() ||
+    configDir.normalize('NFKC') !== configDir ||
+    configDir.includes('/') ||
+    configDir.includes('\\') ||
+    /^[A-Za-z]:/.test(configDir)
+  ) {
+    throw new Error('Module artifact removal config directory is unsafe')
+  }
+  const configSegment = configDir.startsWith('.')
+    ? configDir.slice(1)
+    : configDir
+  try {
+    assertModulePathSegment(configSegment, 'Config directory')
+  } catch {
+    throw new Error('Module artifact removal config directory is unsafe')
+  }
+  const expected = `${configDir}/plugins/${options.manifest.id}`
+  if (
+    options.manifest.dir !== undefined &&
+    (options.manifest.dir !== expected ||
+      options.manifest.dir.normalize('NFKC') !== options.manifest.dir ||
+      normalizePortablePath(options.manifest.dir) !== options.manifest.dir)
+  ) {
+    throw new Error(
+      'Module artifact removal manifest directory is outside the expected plugin root',
+    )
+  }
+  return expected
 }
 
 function relativeVersionPath(root: string, path: string): string {

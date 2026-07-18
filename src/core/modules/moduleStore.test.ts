@@ -3,6 +3,7 @@ import type { DataAdapter } from 'obsidian'
 import {
   MAX_MODULE_ARTIFACT_FILE_BYTES,
   ModuleStore,
+  moduleArtifactReleaseParent,
   parseModuleArtifactManifest,
   resolveModulePluginDir,
   selectModuleManifestVariant,
@@ -132,6 +133,160 @@ describe('ModuleStore', () => {
     expect(readBinary).not.toHaveBeenCalled()
   })
 
+  it('recursively removes only the resolved version root and verifies absence', async () => {
+    const root = '.config/plugins/yolo/modules/notes/1.2.0'
+    let present = true
+    const stat = jest.fn(async (path: string) =>
+      path === root && present ? { type: 'folder' as const } : null,
+    )
+    const rmdir = jest.fn(async () => {
+      present = false
+    })
+    const store = new ModuleStore({
+      adapter: { stat, rmdir } as unknown as DataAdapter,
+      manifest: { id: 'yolo', dir: '.config/plugins/yolo' },
+      configDir: '.config',
+    })
+
+    await expect(
+      store.removeVersionArtifacts('notes', '1.2.0'),
+    ).resolves.toBeUndefined()
+    expect(rmdir).toHaveBeenCalledWith(root, true)
+    expect(stat).toHaveBeenCalledTimes(2)
+  })
+
+  it('makes version removal idempotent, including a completed uncertain call', async () => {
+    const stat = jest
+      .fn<Promise<{ type: 'folder' } | null>, [string]>()
+      .mockResolvedValueOnce({ type: 'folder' })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+    const rmdir = jest.fn(async () => {
+      throw new Error('uncertain removal')
+    })
+    const store = new ModuleStore({
+      adapter: { stat, rmdir } as unknown as DataAdapter,
+      manifest: { id: 'yolo', dir: '.config/plugins/yolo' },
+      configDir: '.config',
+    })
+
+    await expect(
+      store.removeVersionArtifacts('notes', '1.2.0'),
+    ).resolves.toBeUndefined()
+    await expect(
+      store.removeVersionArtifacts('notes', '1.2.0'),
+    ).resolves.toBeUndefined()
+    expect(rmdir).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails closed for unsafe removal capability, roots, paths, and readback', async () => {
+    const noRemoval = new ModuleStore({
+      adapter: { stat: async () => null } as unknown as DataAdapter,
+      manifest: { id: 'yolo', dir: '.config/plugins/yolo' },
+      configDir: '.config',
+    })
+    await expect(
+      noRemoval.removeVersionArtifacts('notes', '1.0.0'),
+    ).rejects.toThrow('cannot safely remove')
+
+    const fileRoot = new ModuleStore({
+      adapter: {
+        stat: async () => ({ type: 'file' }),
+        rmdir: jest.fn(),
+      } as unknown as DataAdapter,
+      manifest: { id: 'yolo', dir: '.config/plugins/yolo' },
+      configDir: '.config',
+    })
+    await expect(
+      fileRoot.removeVersionArtifacts('notes', '1.0.0'),
+    ).rejects.toThrow('not a folder')
+
+    const remains = new ModuleStore({
+      adapter: {
+        stat: async () => ({ type: 'folder' }),
+        rmdir: async () => undefined,
+      } as unknown as DataAdapter,
+      manifest: { id: 'yolo', dir: '.config/plugins/yolo' },
+      configDir: '.config',
+    })
+    await expect(
+      remains.removeVersionArtifacts('notes', '1.0.0'),
+    ).rejects.toThrow('remain after removal')
+    await expect(
+      remains.removeVersionArtifacts('../notes', '1.0.0'),
+    ).rejects.toThrow('path segment')
+    await expect(
+      remains.removeVersionArtifacts('notes', '../1.0.0'),
+    ).rejects.toThrow('path segment')
+  })
+
+  it.each([
+    {
+      label: 'absolute manifest directory',
+      manifest: { id: 'yolo', dir: '/vault/.config/plugins/yolo' },
+      configDir: '.config',
+    },
+    {
+      label: 'drive-qualified manifest directory',
+      manifest: { id: 'yolo', dir: 'C:\\vault\\plugins\\yolo' },
+      configDir: '.config',
+    },
+    {
+      label: 'traversing manifest directory',
+      manifest: { id: 'yolo', dir: '.config/plugins/other/../yolo' },
+      configDir: '.config',
+    },
+    {
+      label: 'separator alias',
+      manifest: { id: 'yolo', dir: '.config\\plugins\\yolo' },
+      configDir: '.config',
+    },
+    {
+      label: 'case alias',
+      manifest: { id: 'yolo', dir: '.config/plugins/YOLO' },
+      configDir: '.config',
+    },
+    {
+      label: 'Unicode alias',
+      manifest: { id: 'yolo', dir: '.config/plugins/yol\uFF4F' },
+      configDir: '.config',
+    },
+    {
+      label: 'absolute config directory',
+      manifest: { id: 'yolo' },
+      configDir: '/vault/.config',
+    },
+    {
+      label: 'drive-qualified config directory',
+      manifest: { id: 'yolo' },
+      configDir: 'C:\\vault',
+    },
+    {
+      label: 'traversing config directory',
+      manifest: { id: 'yolo' },
+      configDir: '.config/..',
+    },
+    {
+      label: 'non-canonical Unicode config directory',
+      manifest: { id: 'yolo' },
+      configDir: '.co\u0301nfig',
+    },
+  ])('rejects $label before recursive removal', async (options) => {
+    const rmdir = jest.fn()
+    const stat = jest.fn()
+    const store = new ModuleStore({
+      adapter: { stat, rmdir } as unknown as DataAdapter,
+      manifest: options.manifest,
+      configDir: options.configDir,
+    })
+
+    await expect(
+      store.removeVersionArtifacts('notes', '1.0.0'),
+    ).rejects.toThrow('Module artifact removal')
+    expect(stat).not.toHaveBeenCalled()
+    expect(rmdir).not.toHaveBeenCalled()
+  })
+
   it('parses and deterministically selects a complete platform closure', () => {
     const desktop = artifactFile()
     const mobile = artifactFile({ name: 'mobile.js', path: 'mobile.js' })
@@ -162,6 +317,58 @@ describe('ModuleStore', () => {
       'variants',
     ])
   })
+
+  it('parses encoded release tags and compares their canonical parent identity', () => {
+    const encodedRoot =
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0'
+    expect(() =>
+      parseModuleArtifactManifest(
+        artifactManifest({
+          version: '0.1.0',
+          variants: [
+            {
+              platform: 'desktop',
+              entry: 'entry.js',
+              files: [artifactFile({ url: `${encodedRoot}/entry.js` })],
+            },
+          ],
+        }),
+      ),
+    ).not.toThrow()
+    expect(moduleArtifactReleaseParent(`${encodedRoot}/module.json`)).toBe(
+      moduleArtifactReleaseParent(
+        `${encodedRoot.replace('%2F', '%2f')}/entry.js`,
+      ),
+    )
+    expect(
+      moduleArtifactReleaseParent(
+        `${encodedRoot.replace('v0.1.0', 'v0.1.1')}/entry.js`,
+      ),
+    ).not.toBe(moduleArtifactReleaseParent(`${encodedRoot}/module.json`))
+  })
+
+  it.each(['learning/v0.1.0', 'learning%252Fv0.1.0', 'learning%2F..'])(
+    'rejects unsafe release tag form %s in artifact URLs',
+    (tag) => {
+      expect(() =>
+        parseModuleArtifactManifest(
+          artifactManifest({
+            variants: [
+              {
+                platform: 'desktop',
+                entry: 'entry.js',
+                files: [
+                  artifactFile({
+                    url: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${tag}/entry.js`,
+                  }),
+                ],
+              },
+            ],
+          }),
+        ),
+      ).toThrow('URL')
+    },
+  )
 
   it('strictly rejects old/unknown fields and invalid release metadata', () => {
     expect(() =>

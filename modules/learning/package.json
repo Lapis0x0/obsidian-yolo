@@ -1,0 +1,15 @@
+{
+  "name": "@obsidian-yolo/learning",
+  "version": "0.1.0",
+  "private": true,
+  "yoloModule": {
+    "previewVersion": "0.1.0",
+    "previewTag": "module-learning-v0.1.0",
+    "releaseTagPrefix": "learning/v"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest --config ../../jest.config.js --runInBand --testPathPattern=modules/learning/src",
+    "build": "node ../../scripts/build-first-party-modules.mjs --module learning"
+  }
+}

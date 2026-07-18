@@ -959,6 +959,26 @@ describe('ModuleDeviceStateStore', () => {
     }
   })
 
+  it('persists a descriptor from a canonical encoded Learning release tag', async () => {
+    const value = state()
+    const encoded = {
+      ...value,
+      readyVersions: {
+        ...value.readyVersions,
+        '1.2.3': {
+          ...value.readyVersions['1.2.3'],
+          manifestUrl:
+            'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv1.2.3/module.json',
+        },
+      },
+    }
+    await expect(createStore().write(encoded)).resolves.toMatchObject({
+      readyVersions: {
+        '1.2.3': { manifestUrl: expect.stringContaining('learning%2Fv1.2.3') },
+      },
+    })
+  })
+
   it.each([
     ['version', { version: '01.2.3' }],
     ['host API', { hostApi: 'latest' }],
@@ -968,6 +988,20 @@ describe('ModuleDeviceStateStore', () => {
       {
         manifestUrl:
           'https://github.com/other/project/releases/download/v1/module.json',
+      },
+    ],
+    [
+      'raw slash release tag',
+      {
+        manifestUrl:
+          'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning/v1.2.3/module.json',
+      },
+    ],
+    [
+      'encoded traversal release tag',
+      {
+        manifestUrl:
+          'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2F../module.json',
       },
     ],
     ['manifest size', { manifest: { byteSize: 0, sha256: HASH } }],

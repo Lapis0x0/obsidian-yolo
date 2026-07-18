@@ -6,6 +6,7 @@ import {
   OfficialModuleCatalogClient,
   type OfficialModuleCatalogClientOptions,
   OfficialModuleCatalogUnavailableError,
+  isOfficialModuleReleaseUrl,
 } from './officialModuleCatalogClient'
 
 const CACHE_PATH = 'runtime/catalog/cache.json'
@@ -171,6 +172,21 @@ describe('OfficialModuleCatalogClient', () => {
     await expect(untrusted.load()).rejects.toBeInstanceOf(
       OfficialModuleCatalogUnavailableError,
     )
+  })
+
+  it('uses the shared encoded-tag URL contract for official releases', () => {
+    expect(
+      isOfficialModuleReleaseUrl(
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/module.json',
+      ),
+    ).toBe(true)
+    for (const url of [
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning/v0.1.0/module.json',
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%252Fv0.1.0/module.json',
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2F../module.json',
+    ]) {
+      expect(isOfficialModuleReleaseUrl(url)).toBe(false)
+    }
   })
 
   it.each([

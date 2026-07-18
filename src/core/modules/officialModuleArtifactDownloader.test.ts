@@ -55,6 +55,20 @@ describe('createOfficialModuleArtifactDownloader', () => {
     })
   })
 
+  it('downloads from a canonical encoded Learning release tag', async () => {
+    const encodedUrl =
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/entry.js'
+    const { download, request } = setup()
+    await expect(
+      download({ kind: 'artifact', url: encodedUrl, byteSize: 3 }),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]))
+    expect(request).toHaveBeenCalledWith({
+      url: encodedUrl,
+      method: 'GET',
+      throw: false,
+    })
+  })
+
   it('returns bytes copied from the response buffer', async () => {
     const result = response(new Uint8Array([4, 5, 6]))
     const { download } = setup(result)
@@ -138,6 +152,16 @@ describe('createOfficialModuleArtifactDownloader', () => {
       byteSize: 1,
     },
     { kind: 'artifact', url: `${ARTIFACT_URL}?token=x`, byteSize: 1 },
+    {
+      kind: 'artifact',
+      url: 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning/v0.1.0/entry.js',
+      byteSize: 1,
+    },
+    {
+      kind: 'artifact',
+      url: 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2F../entry.js',
+      byteSize: 1,
+    },
     { kind: 'unknown', url: ARTIFACT_URL, byteSize: 1 },
     { kind: 'artifact', url: ARTIFACT_URL, byteSize: 0 },
     { kind: 'artifact', url: ARTIFACT_URL, byteSize: 1.5 },

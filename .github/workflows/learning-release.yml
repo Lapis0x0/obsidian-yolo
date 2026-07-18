@@ -1,0 +1,107 @@
+name: Validate and release Learning module
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/learning-release.yml'
+      - 'scripts/build-first-party-modules.mjs'
+      - 'scripts/validate-learning-release.mjs'
+      - 'modules/learning/**'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to validate; defaults to the package-derived tag'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'learning/v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: learning-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      LEARNING_RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check Learning
+        run: npm --prefix modules/learning run typecheck
+
+      - name: Test Learning
+        run: npm --prefix modules/learning test
+
+      - name: Build and validate release assets
+        run: node scripts/validate-learning-release.mjs --build
+
+      - name: Validate generated URLs against Core
+        run: |
+          export LEARNING_RELEASE_PARITY_INPUT="$(
+            node -e "const manifest=require('./modules/learning/release/module.json'); process.stdout.write(JSON.stringify({version:manifest.version,urls:manifest.variants.flatMap(variant=>variant.files.map(file=>file.url))}))"
+          )"
+          npx jest src/core/modules/moduleReleaseUrl.test.ts --runInBand
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/learning/v')
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      LEARNING_RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package and validate release assets
+        run: node scripts/validate-learning-release.mjs --build
+
+      - name: Require a new GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing_release_ids="$(
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[][] | select(.tag_name == \"${LEARNING_RELEASE_TAG}\") | .id"
+          )"
+          if [[ -n "$existing_release_ids" ]]; then
+            echo "::error::GitHub Release ${LEARNING_RELEASE_TAG} already exists; releases are immutable"
+            exit 1
+          fi
+
+      - name: Upload GitHub Release assets
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: modules/learning/release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          overwrite_files: false

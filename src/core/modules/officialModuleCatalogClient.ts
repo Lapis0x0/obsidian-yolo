@@ -4,6 +4,7 @@ import {
   requestUrl,
 } from 'obsidian'
 
+import { isModuleReleaseUrlAllowed } from './moduleReleaseUrl'
 import {
   type OfficialModuleCatalogV1,
   parseOfficialModuleCatalog,
@@ -14,9 +15,6 @@ export const OFFICIAL_MODULE_CATALOG_URL =
 export const OFFICIAL_MODULE_RELEASE_REPOSITORIES = Object.freeze([
   Object.freeze({ owner: 'Lapis0x0', repo: 'obsidian-yolo' }),
 ])
-
-const OFFICIAL_MODULE_RELEASE_URL =
-  /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/
 
 const CATALOG_MAX_BYTES = 1_000_000
 const CACHE_MAX_BYTES = 7_000_000
@@ -64,14 +62,7 @@ export class OfficialModuleCatalogUnavailableError extends Error {
 
 /** Checks a release URL against the code-owned first-party repository list. */
 export function isOfficialModuleReleaseUrl(value: unknown): value is string {
-  if (typeof value !== 'string') return false
-  const match = OFFICIAL_MODULE_RELEASE_URL.exec(value)
-  if (!match) return false
-  return OFFICIAL_MODULE_RELEASE_REPOSITORIES.some(
-    ({ owner, repo }) =>
-      owner.toLowerCase() === match[1]?.toLowerCase() &&
-      repo.toLowerCase() === match[2]?.toLowerCase(),
-  )
+  return isModuleReleaseUrlAllowed(value, OFFICIAL_MODULE_RELEASE_REPOSITORIES)
 }
 
 export class OfficialModuleCatalogClient {

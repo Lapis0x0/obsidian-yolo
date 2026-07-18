@@ -4,6 +4,7 @@ import {
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
 import type { ModuleLoader } from './moduleLoader'
+import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 import type { ModuleRuntime } from './moduleRuntime'
 import {
   type ModuleArtifactDataSchemas,
@@ -111,9 +112,7 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
       ) ||
       new Set(descriptor.platforms).size !== descriptor.platforms.length ||
       typeof descriptor.manifestUrl !== 'string' ||
-      !/^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]+\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(
-        descriptor.manifestUrl,
-      )
+      !parseModuleReleaseUrl(descriptor.manifestUrl)
     ) {
       throw new Error('Bundled module compatibility metadata is invalid')
     }

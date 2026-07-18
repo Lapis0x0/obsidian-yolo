@@ -102,11 +102,11 @@ class MemoryAdapter {
   }
 }
 
-function createArtifact() {
+function createArtifact(
+  releaseRoot = 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0',
+) {
   const entryBytes = encode('yolo.registerModule({ id: "learning" })')
   const entrySha256 = hash(entryBytes)
-  const releaseRoot =
-    'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0'
   const file = {
     role: 'entry',
     name: 'entry.js',
@@ -231,6 +231,41 @@ describe('ModuleArtifactInstaller', () => {
     await installer.install(artifact.descriptor)
     expect(download).toHaveBeenCalledTimes(2)
   })
+
+  it('installs from a canonical encoded Learning release tag', async () => {
+    const artifact = createArtifact(
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0',
+    )
+    const adapter = new MemoryAdapter()
+    const download = jest.fn(async (url: string) =>
+      url === artifact.descriptor.manifestUrl
+        ? artifact.manifestBytes
+        : artifact.entryBytes,
+    )
+
+    await expect(
+      createInstaller(adapter, download).install(artifact.descriptor),
+    ).resolves.toMatchObject({ id: 'learning', version: '0.1.0' })
+    expect(download).toHaveBeenCalledWith(
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/entry.js',
+    )
+  })
+
+  it.each(['learning/v0.1.0', 'learning%252Fv0.1.0', 'learning%2F..'])(
+    'rejects unsafe descriptor release tag form %s',
+    (tag) => {
+      const artifact = createArtifact()
+      const adapter = new MemoryAdapter()
+      const download = jest.fn(async () => artifact.manifestBytes)
+      expect(() =>
+        createInstaller(adapter, download).install({
+          ...artifact.descriptor,
+          manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${tag}/module.json`,
+        }),
+      ).toThrow('descriptor is invalid')
+      expect(download).not.toHaveBeenCalled()
+    },
+  )
 
   it('removes staging and leaves no ready version after a hash mismatch', async () => {
     const artifact = createArtifact()

@@ -83,9 +83,6 @@ const DANGEROUS_NAMESPACES = new Set(['__proto__', 'prototype', 'constructor'])
 const SHA256 = /^[a-fA-F0-9]{64}$/
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
-const RELEASE_URL =
-  /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/
-
 export function parseOfficialModuleCatalog(
   raw: string | Uint8Array,
   options: OfficialModuleCatalogParserOptions,
@@ -457,15 +454,15 @@ function parseAllowedRepositories(
   for (const repository of repositories) {
     const value = asObject(repository, 'Official repository allowlist entry')
     assertKeys(value, ['owner', 'repo'], 'Official repository allowlist entry')
-    if (
-      typeof value.owner !== 'string' ||
-      typeof value.repo !== 'string' ||
-      !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(value.owner) ||
-      !/^[A-Za-z0-9._-]+$/.test(value.repo)
-    ) {
+    if (typeof value.owner !== 'string' || typeof value.repo !== 'string') {
       throw new Error('Official repository allowlist entry is invalid')
     }
-    parsed.add(`${value.owner.toLowerCase()}/${value.repo.toLowerCase()}`)
+    const key = moduleReleaseRepositoryKey({
+      owner: value.owner,
+      repo: value.repo,
+    })
+    if (!key) throw new Error('Official repository allowlist entry is invalid')
+    parsed.add(key)
   }
   if (parsed.size === 0)
     throw new Error('Official repository allowlist is empty')
@@ -476,11 +473,8 @@ function isAllowedReleaseUrl(
   value: string,
   repositories: ReadonlySet<string>,
 ): boolean {
-  const match = RELEASE_URL.exec(value)
-  return Boolean(
-    match &&
-      repositories.has(`${match[1].toLowerCase()}/${match[2].toLowerCase()}`),
-  )
+  const parsed = parseModuleReleaseUrl(value)
+  return Boolean(parsed && repositories.has(parsed.repositoryKey))
 }
 
 function assertBoundedStrings(value: unknown, maxBytes: number): void {
@@ -747,3 +741,7 @@ function sameCore(left: Semver, right: Semver): boolean {
     left.patch === right.patch
   )
 }
+import {
+  moduleReleaseRepositoryKey,
+  parseModuleReleaseUrl,
+} from './moduleReleaseUrl'

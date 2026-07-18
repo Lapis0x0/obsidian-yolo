@@ -192,10 +192,32 @@ describe('official module catalog V1', () => {
     ).toThrow(/unknown field/)
   })
 
+  it('accepts canonical encoded slash tags through the shared URL parser', () => {
+    const parsed = parse(
+      catalog([
+        {
+          id: 'learning',
+          versions: [
+            version('1.0.0', {
+              manifestUrl:
+                'https://github.com/yolo-official/learning/releases/download/learning%2Fv1.0.0/module.json',
+            }),
+          ],
+        },
+      ]),
+    )
+    expect(parsed.modules[0]?.versions[0]?.manifestUrl).toContain(
+      '/learning%2Fv1.0.0/module.json',
+    )
+  })
+
   it('rejects non-release and HTTP URLs', () => {
     for (const manifestUrl of [
       'https://example.com/module.json',
       'http://github.com/yolo-official/learning/releases/download/v1/module.json',
+      'https://github.com/yolo-official/learning/releases/download/learning/v1.0.0/module.json',
+      'https://github.com/yolo-official/learning/releases/download/learning%252Fv1.0.0/module.json',
+      'https://github.com/yolo-official/learning/releases/download/learning%2F../module.json',
     ]) {
       expect(() =>
         parse(

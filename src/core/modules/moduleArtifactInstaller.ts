@@ -6,6 +6,7 @@ import {
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
 import { verifyModuleBytes } from './moduleIntegrity'
+import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 import {
   MAX_MODULE_MANIFEST_BYTES,
   type ModuleArtifactFile,
@@ -306,7 +307,7 @@ function snapshotDescriptor(
   if (
     !isModuleHostApiRange(descriptor.hostApi) ||
     (descriptor.platform !== 'desktop' && descriptor.platform !== 'mobile') ||
-    !isReleaseUrl(descriptor.manifestUrl)
+    !parseModuleReleaseUrl(descriptor.manifestUrl)
   ) {
     throw new Error('Module artifact descriptor is invalid')
   }
@@ -386,15 +387,6 @@ function manifestMatchesDescriptor(
         expected.write === schema.write
       )
     })
-  )
-}
-
-function isReleaseUrl(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    /^https:\/\/github\.com\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]+\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(
-      value,
-    )
   )
 }
 
