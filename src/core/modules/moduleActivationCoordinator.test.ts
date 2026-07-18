@@ -13,6 +13,7 @@ import type {
   ModuleDeviceState,
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
+import { parseModuleTransitionJournal } from './moduleTransitionJournal'
 
 const encode = (value: unknown): Uint8Array =>
   new TextEncoder().encode(
@@ -81,8 +82,52 @@ function state(
     readyVersions: Object.fromEntries(
       artifacts.map((item) => [item.descriptor.version, item.descriptor]),
     ),
+    transition: null,
     ...patch,
   }
+}
+
+function transition(
+  target: Artifact,
+  phase: NonNullable<ModuleDeviceState['transition']>['phase'] = 'prepared',
+): NonNullable<ModuleDeviceState['transition']> {
+  const committed = phase === 'committed'
+  const rolledBack = phase === 'rollback-completed'
+  return parseModuleTransitionJournal(
+    {
+      phase,
+      moduleId: target.descriptor.id,
+      platform: target.descriptor.platform,
+      previousActiveVersion: '1.0.0',
+      targetVersion: target.descriptor.version,
+      targetManifestSha256: target.descriptor.manifest.sha256,
+      settings: {
+        namespace: 'settings',
+        sourceSchemaVersion: 1,
+        targetSchemaVersion: 1,
+        previous: {
+          present: true,
+          envelope: { schemaVersion: 1, data: { enabled: true } },
+        },
+        previousSha256: hash(
+          encode(
+            '{"envelope":{"data":{"enabled":true},"schemaVersion":1},"present":true}',
+          ),
+        ),
+        expectedPostSha256: 'b'.repeat(64),
+      },
+    },
+    {
+      moduleId: target.descriptor.id,
+      platform: target.descriptor.platform,
+      activeVersion: committed ? target.descriptor.version : '1.0.0',
+      downloadedCandidate: rolledBack ? target.descriptor.version : null,
+      pendingVersion:
+        committed || rolledBack ? null : target.descriptor.version,
+      readyVersions: ['1.0.0', target.descriptor.version],
+      targetDescriptor: target.descriptor,
+    },
+  )
 }
 
 type HarnessOptions = Readonly<{
@@ -336,6 +381,42 @@ describe('ModuleActivationCoordinator', () => {
       'transition journal',
     )
   })
+
+  it.each(['prepared', 'committed', 'rollback-completed'] as const)(
+    'fails closed without mutation or code execution for a %s transition journal',
+    async (phase) => {
+      const old = artifact('learning', '1.0.0')
+      const target = artifact('learning', '2.0.0', {
+        dataSchemas: { settings: { readMin: 1, readMax: 1, write: 1 } },
+      })
+      const committed = phase === 'committed'
+      const rolledBack = phase === 'rollback-completed'
+      const initial = state('learning', [old, target], {
+        activeVersion: committed ? '2.0.0' : '1.0.0',
+        pendingVersion: committed || rolledBack ? null : '2.0.0',
+        downloadedCandidate: rolledBack ? '2.0.0' : null,
+        transition: transition(target, phase),
+      })
+      const fixture = harness({ artifacts: [old, target], states: [initial] })
+
+      const results = await fixture.coordinator.activatePersistedModules()
+
+      expect(results).toEqual([
+        {
+          moduleId: 'learning',
+          status: 'failed',
+          error: expect.stringContaining(
+            'transition recovery is not implemented',
+          ),
+        },
+      ])
+      expect(fixture.durable.get('learning')).toBe(initial)
+      expect(fixture.write).not.toHaveBeenCalled()
+      expect(fixture.calls).toEqual([])
+      expect(fixture.load).not.toHaveBeenCalled()
+      expect(fixture.activate).not.toHaveBeenCalled()
+    },
+  )
 
   it('isolates verifier, loader, runtime, and reporter failures in module order', async () => {
     const verifier = artifact('a-verifier', '1.0.0')

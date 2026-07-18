@@ -9,9 +9,15 @@ import {
   assertModuleId,
   isModuleHostApiRange,
 } from './moduleStore'
+import {
+  type ModuleTransitionJournal,
+  advanceModuleTransitionPhase,
+  parseModuleTransitionJournal,
+} from './moduleTransitionJournal'
 import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
+const LEGACY_SCHEMA_VERSION = 1
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
@@ -27,6 +33,7 @@ export type ModuleDeviceState = Readonly<{
   downloadedCandidate: string | null
   pendingVersion: string | null
   readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>
+  transition: ModuleTransitionJournal | null
 }>
 
 type ModuleDeviceStateListing = Readonly<{
@@ -174,10 +181,17 @@ export class ModuleDeviceStateStore {
     }
     if (envelope === null) return null
     try {
-      if (envelope.schemaVersion !== SCHEMA_VERSION) {
+      if (
+        envelope.schemaVersion !== LEGACY_SCHEMA_VERSION &&
+        envelope.schemaVersion !== SCHEMA_VERSION
+      ) {
         throw new Error(`unsupported schema version ${envelope.schemaVersion}`)
       }
-      return parseState(envelope.data, moduleId)
+      return parseState(
+        envelope.data,
+        moduleId,
+        envelope.schemaVersion === LEGACY_SCHEMA_VERSION,
+      )
     } catch (error) {
       throw new ModuleDeviceStateCorruptionError(moduleId, error)
     }
@@ -195,6 +209,8 @@ export class ModuleDeviceStateStore {
     moduleId: string,
   ): Promise<ModuleDeviceState> {
     const snapshot = parseState(state, moduleId)
+    const existing = await this.readUnlocked(moduleId)
+    assertDurableTransitionProgression(existing, snapshot)
     const envelope = await this.store.write(snapshot.moduleId, {
       schemaVersion: SCHEMA_VERSION,
       data: snapshot,
@@ -241,24 +257,43 @@ export class ModuleDeviceStateStore {
     return this.runExclusive(moduleId, (transaction) => transaction.remove())
   }
 
-  private removeUnlocked(moduleId: string): Promise<void> {
-    return this.store.remove(moduleId)
+  private async removeUnlocked(moduleId: string): Promise<void> {
+    let existing: ModuleDeviceState | null
+    try {
+      existing = await this.readUnlocked(moduleId)
+    } catch (error) {
+      if (!(error instanceof ModuleDeviceStateCorruptionError)) throw error
+      await this.store.remove(moduleId)
+      return
+    }
+    if (existing?.transition) {
+      throw new Error(
+        'Device state with an active transition cannot be removed',
+      )
+    }
+    await this.store.remove(moduleId)
   }
 }
 
 function parseState(
   value: unknown,
   expectedModuleId?: string,
+  legacyV1 = false,
 ): ModuleDeviceState {
   const state = plainRecord(value, 'Module device state')
-  assertExactKeys(state, [
+  const v1Keys = [
     'moduleId',
     'platform',
     'activeVersion',
     'downloadedCandidate',
     'pendingVersion',
     'readyVersions',
-  ])
+  ] as const
+  if (legacyV1) {
+    assertExactKeys(state, v1Keys)
+  } else {
+    assertExactKeys(state, [...v1Keys, 'transition'])
+  }
   const moduleId = dataProperty(state, 'moduleId')
   const platform = dataProperty(state, 'platform')
   if (typeof moduleId !== 'string') throw new Error('moduleId is invalid')
@@ -293,6 +328,23 @@ function parseState(
     readyVersions,
   )
   const pendingVersion = parsePointer(state, 'pendingVersion', readyVersions)
+  const transitionValue = legacyV1 ? null : dataProperty(state, 'transition')
+  const transition =
+    transitionValue === null
+      ? null
+      : parseModuleTransitionJournal(transitionValue, {
+          moduleId,
+          platform,
+          activeVersion,
+          downloadedCandidate,
+          pendingVersion,
+          readyVersions: Object.keys(readyVersions),
+          targetDescriptor:
+            typeof transitionValue === 'object' && transitionValue !== null
+              ? (readyVersions[readTransitionTargetVersion(transitionValue)] ??
+                null)
+              : null,
+        })
   return Object.freeze({
     moduleId,
     platform,
@@ -300,7 +352,147 @@ function parseState(
     downloadedCandidate,
     pendingVersion,
     readyVersions: Object.freeze(readyVersions),
+    transition,
   })
+}
+
+function assertDurableTransitionProgression(
+  existing: ModuleDeviceState | null,
+  next: ModuleDeviceState,
+): void {
+  if (existing === null) {
+    if (next.transition !== null) {
+      throw new Error('Transition preparation requires existing device state')
+    }
+    return
+  }
+  if (equalJson(existing, next)) return
+
+  const current = existing.transition
+  const following = next.transition
+  if (current === null) {
+    if (following === null) return
+    if (following.phase !== 'prepared') {
+      throw new Error('A new transition must begin in the prepared phase')
+    }
+    const expected = {
+      ...existing,
+      downloadedCandidate: null,
+      pendingVersion: following.targetVersion,
+      transition: following,
+    }
+    if (
+      existing.pendingVersion !== null ||
+      existing.downloadedCandidate !== following.targetVersion ||
+      following.previousActiveVersion !== existing.activeVersion ||
+      !equalJson(expected, next)
+    ) {
+      throw new Error('Prepared transition state mutation is invalid')
+    }
+    return
+  }
+
+  if (following === null) {
+    if (
+      current.phase !== 'prepared' &&
+      current.phase !== 'rollback-completed' &&
+      current.phase !== 'committed'
+    ) {
+      throw new Error(
+        'Transition settings must be restored before journal cleanup',
+      )
+    }
+    const expected =
+      current.phase === 'prepared'
+        ? {
+            ...existing,
+            activeVersion: current.previousActiveVersion,
+            downloadedCandidate: current.targetVersion,
+            pendingVersion: null,
+            transition: null,
+          }
+        : { ...existing, transition: null }
+    if (!equalJson(expected, next)) {
+      throw new Error('Transition cleanup or rollback state is invalid')
+    }
+    return
+  }
+
+  if (!equalJournalPayload(current, following)) {
+    throw new Error('Transition immutable payload cannot be replaced')
+  }
+  advanceModuleTransitionPhase(current.phase, following.phase)
+  const expected =
+    current.phase === 'activation-started' && following.phase === 'committed'
+      ? {
+          ...existing,
+          activeVersion: current.targetVersion,
+          pendingVersion: null,
+          transition: following,
+        }
+      : following.phase === 'rollback-completed'
+        ? {
+            ...existing,
+            activeVersion: current.previousActiveVersion,
+            downloadedCandidate: current.targetVersion,
+            pendingVersion: null,
+            transition: following,
+          }
+        : { ...existing, transition: following }
+  if (!equalJson(expected, next)) {
+    throw new Error('Transition phase write contains unrelated state mutation')
+  }
+}
+
+function equalJournalPayload(
+  left: ModuleTransitionJournal,
+  right: ModuleTransitionJournal,
+): boolean {
+  return (
+    left.moduleId === right.moduleId &&
+    left.platform === right.platform &&
+    left.previousActiveVersion === right.previousActiveVersion &&
+    left.targetVersion === right.targetVersion &&
+    left.targetManifestSha256 === right.targetManifestSha256 &&
+    equalJson(left.settings, right.settings)
+  )
+}
+
+function equalJson(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== 'object' ||
+    typeof right !== 'object' ||
+    Array.isArray(left) !== Array.isArray(right)
+  ) {
+    return false
+  }
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => equalJson(value, right[index]))
+    )
+  }
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  const leftKeys = Object.keys(leftRecord).sort()
+  const rightKeys = Object.keys(rightRecord).sort()
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        equalJson(leftRecord[key], rightRecord[key]),
+    )
+  )
+}
+
+function readTransitionTargetVersion(value: object): string {
+  const transition = plainRecord(value, 'Module transition journal')
+  const targetVersion = dataProperty(transition, 'targetVersion')
+  return typeof targetVersion === 'string' ? targetVersion : ''
 }
 
 function parseDescriptor(

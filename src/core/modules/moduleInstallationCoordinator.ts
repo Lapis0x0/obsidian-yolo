@@ -82,6 +82,11 @@ export class ModuleInstallationCoordinator {
               `Module "${moduleId}" device state belongs to ${existing.platform}, not ${this.options.platform}`,
             )
           }
+          if (existing !== null && existing.transition !== null) {
+            throw new Error(
+              `Module "${moduleId}" installation is blocked by an active transition`,
+            )
+          }
 
           const resolved =
             this.options.catalogSource.getResolvedArtifactDescriptor(
@@ -137,15 +142,16 @@ export class ModuleInstallationCoordinator {
               ...(existing?.readyVersions ?? {}),
               [expectedVersion]: descriptor,
             },
+            transition: existing?.transition ?? null,
           }
+          const intendedState = snapshotState(nextState)
           let state: ModuleDeviceState
           try {
-            state = snapshotState(await transaction.write(nextState))
+            state = snapshotState(await transaction.write(intendedState))
           } catch (writeError) {
             const recovered = await this.readCommittedState(
               transaction,
-              expectedVersion,
-              descriptor,
+              intendedState,
             )
             if (!recovered) {
               await this.refreshSafely()
@@ -177,14 +183,11 @@ export class ModuleInstallationCoordinator {
 
   private async readCommittedState(
     transaction: ModuleDeviceStateTransaction,
-    expectedVersion: string,
-    descriptor: ModuleArtifactDescriptor,
+    intended: ModuleDeviceState,
   ): Promise<ModuleDeviceState | null> {
     try {
       const actual = await transaction.read()
-      return actual?.downloadedCandidate === expectedVersion &&
-        actual.platform === this.options.platform &&
-        descriptorsEqual(actual.readyVersions[expectedVersion], descriptor)
+      return actual !== null && statesEqual(actual, intended)
         ? snapshotState(actual)
         : null
     } catch {
@@ -203,6 +206,35 @@ export class ModuleInstallationCoordinator {
       }
     }
   }
+}
+
+function statesEqual(
+  left: ModuleDeviceState,
+  right: ModuleDeviceState,
+): boolean {
+  if (
+    left.moduleId !== right.moduleId ||
+    left.platform !== right.platform ||
+    left.activeVersion !== right.activeVersion ||
+    left.downloadedCandidate !== right.downloadedCandidate ||
+    left.pendingVersion !== right.pendingVersion ||
+    JSON.stringify(left.transition) !== JSON.stringify(right.transition)
+  ) {
+    return false
+  }
+  const leftVersions = Object.keys(left.readyVersions).sort()
+  const rightVersions = Object.keys(right.readyVersions).sort()
+  return (
+    leftVersions.length === rightVersions.length &&
+    leftVersions.every(
+      (version, index) =>
+        version === rightVersions[index] &&
+        descriptorsEqual(
+          left.readyVersions[version],
+          right.readyVersions[version],
+        ),
+    )
+  )
 }
 
 function parseRequest(
@@ -340,6 +372,7 @@ function snapshotState(state: ModuleDeviceState): ModuleDeviceState {
     downloadedCandidate: state.downloadedCandidate,
     pendingVersion: state.pendingVersion,
     readyVersions: Object.freeze(readyVersions),
+    transition: state.transition,
   })
 }
 

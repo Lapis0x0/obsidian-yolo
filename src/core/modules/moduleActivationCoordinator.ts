@@ -183,6 +183,11 @@ export class ModuleActivationCoordinator {
     if (current.moduleId !== moduleId) {
       throw new Error(`Module "${moduleId}" returned mismatched device state`)
     }
+    if (current.transition !== null) {
+      throw new Error(
+        `Module "${moduleId}" transition recovery is not implemented`,
+      )
+    }
     const targetVersion = current.pendingVersion ?? current.activeVersion
     if (!targetVersion) return result({ moduleId, status: 'skipped' })
     const descriptor = snapshotDescriptor(current.readyVersions[targetVersion])
@@ -467,6 +472,7 @@ function snapshotState(state: ModuleDeviceState): ModuleDeviceState {
   return Object.freeze({
     ...state,
     readyVersions: Object.freeze({ ...state.readyVersions }),
+    transition: state.transition,
   })
 }
 
@@ -479,7 +485,8 @@ function equalState(
     left.platform !== right.platform ||
     left.activeVersion !== right.activeVersion ||
     left.pendingVersion !== right.pendingVersion ||
-    left.downloadedCandidate !== right.downloadedCandidate
+    left.downloadedCandidate !== right.downloadedCandidate ||
+    JSON.stringify(left.transition) !== JSON.stringify(right.transition)
   ) {
     return false
   }

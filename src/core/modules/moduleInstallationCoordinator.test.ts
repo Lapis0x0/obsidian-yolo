@@ -51,7 +51,27 @@ function state(
     downloadedCandidate: null,
     pendingVersion: null,
     readyVersions: {},
+    transition: null,
     ...patch,
+  }
+}
+
+function activeTransition(): NonNullable<ModuleDeviceState['transition']> {
+  return {
+    phase: 'prepared',
+    moduleId: 'learning',
+    platform: 'desktop',
+    previousActiveVersion: null,
+    targetVersion: '2.0.0',
+    targetManifestSha256: HASH,
+    settings: {
+      namespace: 'settings',
+      sourceSchemaVersion: 0,
+      targetSchemaVersion: 1,
+      previous: { present: false, envelope: null },
+      previousSha256: 'b'.repeat(64),
+      expectedPostSha256: 'c'.repeat(64),
+    },
   }
 }
 
@@ -225,6 +245,31 @@ describe('ModuleInstallationCoordinator', () => {
     expect(Object.isFrozen(result.descriptor.dataSchemas.cards)).toBe(true)
     expect(Object.isFrozen(result.manifest.variants[0].files)).toBe(true)
     expect(Object.isFrozen(result.state.readyVersions)).toBe(true)
+  })
+
+  it('fails closed before installation when device state has an active transition', async () => {
+    const value = fixture(
+      state('learning', {
+        downloadedCandidate: null,
+        pendingVersion: '2.0.0',
+        readyVersions: { '2.0.0': descriptor() },
+        transition: activeTransition(),
+      }),
+    )
+
+    await expect(
+      value.coordinator.installConfirmedCandidate({
+        moduleId: 'learning',
+        expectedVersion: '2.0.0',
+        expectedManifestSha256: HASH,
+      }),
+    ).rejects.toThrow('active transition')
+    expect(
+      value.catalogSource.getResolvedArtifactDescriptor,
+    ).not.toHaveBeenCalled()
+    expect(value.installer.install).not.toHaveBeenCalled()
+    expect(value.deviceStateStore.write).not.toHaveBeenCalled()
+    expect(value.durable()?.transition?.phase).toBe('prepared')
   })
 
   it('preserves active, pending, and other ready versions without activation', async () => {
@@ -470,6 +515,71 @@ describe('ModuleInstallationCoordinator', () => {
     expect(read).toHaveBeenCalledTimes(2)
     expect(value.manager.refresh).toHaveBeenCalledTimes(1)
   })
+
+  it.each([
+    [
+      'active pointer',
+      (next: ModuleDeviceState): ModuleDeviceState => ({
+        ...next,
+        activeVersion: '2.0.0',
+      }),
+    ],
+    [
+      'downloaded pointer',
+      (next: ModuleDeviceState): ModuleDeviceState => ({
+        ...next,
+        downloadedCandidate: null,
+      }),
+    ],
+    [
+      'pending pointer',
+      (next: ModuleDeviceState): ModuleDeviceState => ({
+        ...next,
+        pendingVersion: '2.0.0',
+      }),
+    ],
+    [
+      'ready descriptors',
+      (next: ModuleDeviceState): ModuleDeviceState => ({
+        ...next,
+        readyVersions: {
+          ...next.readyVersions,
+          '1.0.0': descriptor('learning', '1.0.0'),
+        },
+      }),
+    ],
+    [
+      'transition',
+      (next: ModuleDeviceState): ModuleDeviceState => ({
+        ...next,
+        transition: activeTransition(),
+      }),
+    ],
+  ])(
+    'rejects uncertain write readback with changed %s',
+    async (_label, mutate) => {
+      let durable: ModuleDeviceState | null = null
+      const writeError = new Error('verification read failed')
+      const value = fixture(null, {
+        deviceStateStore: transactionalStore(
+          jest.fn(async () => durable),
+          jest.fn(async (next) => {
+            durable = mutate(next)
+            throw writeError
+          }),
+        ),
+      })
+
+      await expect(
+        value.coordinator.installConfirmedCandidate({
+          moduleId: 'learning',
+          expectedVersion: '2.0.0',
+          expectedManifestSha256: HASH,
+        }),
+      ).rejects.toBe(writeError)
+      expect(value.manager.refresh).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('serializes the full flow across coordinators sharing a store', async () => {
     const firstInstall = deferred<ModuleArtifactManifest>()

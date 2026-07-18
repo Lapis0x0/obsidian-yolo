@@ -141,6 +141,18 @@ export {
   type ModuleDeviceStateStoreBackend,
   type ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
+export {
+  MAX_MODULE_TRANSITION_SETTINGS_SNAPSHOT_BYTES,
+  advanceModuleTransitionPhase,
+  hashModuleTransitionSettingsSnapshot,
+  parseModuleTransitionJournal,
+  verifyModuleTransitionJournalSnapshot,
+  type ModuleTransitionJournal,
+  type ModuleTransitionJournalBinding,
+  type ModuleTransitionPhase,
+  type ModuleTransitionSettingsSnapshot,
+  type VerifiedModuleTransitionJournal,
+} from './moduleTransitionJournal'
 export { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 export {
   OfficialModuleCatalogSource,

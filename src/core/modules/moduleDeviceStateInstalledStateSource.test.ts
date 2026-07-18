@@ -17,6 +17,7 @@ function state(
     pendingVersion: null,
     downloadedCandidate: null,
     readyVersions: {},
+    transition: null,
     ...pointers,
   }
 }

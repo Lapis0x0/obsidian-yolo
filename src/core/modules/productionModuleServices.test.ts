@@ -460,6 +460,7 @@ describe('createProductionModuleServices', () => {
       downloadedCandidate: null,
       pendingVersion: null,
       readyVersions: { '1.0.0': oldDescriptor },
+      transition: null,
     })
 
     await harness.services.manager.refresh()
