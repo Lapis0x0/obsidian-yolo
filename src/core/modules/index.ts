@@ -41,6 +41,12 @@ export {
   type ModuleArtifactInstallerOptions,
 } from './moduleArtifactInstaller'
 export {
+  ModuleInstallationCoordinator,
+  type ConfirmedModuleCandidate,
+  type ModuleInstallationCoordinatorOptions,
+  type ModuleInstallationResult,
+} from './moduleInstallationCoordinator'
+export {
   createOfficialModuleArtifactDownloader,
   type OfficialModuleArtifactDownloaderOptions,
   type OfficialModuleArtifactRequest,
@@ -126,6 +132,7 @@ export {
   ModuleDeviceStateStore,
   type ModuleDeviceState,
   type ModuleDeviceStateStoreBackend,
+  type ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
 export { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 export {

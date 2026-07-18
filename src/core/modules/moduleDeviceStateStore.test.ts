@@ -122,6 +122,14 @@ function rawData(value: unknown, schemaVersion = 1): string {
   return JSON.stringify({ schemaVersion, data: value })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 describe('ModuleDeviceStateStore', () => {
   it('returns one frozen empty list for a missing or empty root', async () => {
     const adapter = new MemoryAdapter()
@@ -482,6 +490,76 @@ describe('ModuleDeviceStateStore', () => {
     release()
     await Promise.all([writing, removing])
     await expect(first.read('learning')).resolves.toBeNull()
+  })
+
+  it('serializes whole transactions across equivalent store instances', async () => {
+    const adapter = new MemoryAdapter()
+    const first = createStore(adapter)
+    const second = createStore(adapter)
+    const blocked = deferred<undefined>()
+    const events: string[] = []
+
+    const firstOperation = first.runExclusive('learning', async () => {
+      events.push('first-start')
+      await blocked.promise
+      events.push('first-end')
+    })
+    await Promise.resolve()
+    const secondOperation = second.runExclusive('learning', async () => {
+      events.push('second')
+    })
+    await Promise.resolve()
+    expect(events).toEqual(['first-start'])
+
+    blocked.resolve(undefined)
+    await Promise.all([firstOperation, secondOperation])
+    expect(events).toEqual(['first-start', 'first-end', 'second'])
+  })
+
+  it('keeps direct writes behind an active transaction lock', async () => {
+    const adapter = new MemoryAdapter()
+    const first = createStore(adapter)
+    const second = createStore(adapter)
+    const blocked = deferred<undefined>()
+
+    const transaction = first.runExclusive('learning', async () => {
+      await blocked.promise
+    })
+    await Promise.resolve()
+    const writing = second.write(state())
+    await Promise.resolve()
+    expect(adapter.writes).toBe(0)
+
+    blocked.resolve(undefined)
+    await Promise.all([transaction, writing])
+    expect(adapter.writes).toBe(1)
+  })
+
+  it('normalizes root aliases when coordinating transactions', async () => {
+    const adapter = new MemoryAdapter()
+    const first = createStore(adapter)
+    const alias = new ModuleDeviceStateStore({
+      kind: 'device-local-runtime-state',
+      adapter,
+      rootPath: ROOT.toUpperCase(),
+    })
+    const blocked = deferred<undefined>()
+    const events: string[] = []
+
+    const firstOperation = first.runExclusive('learning', async () => {
+      events.push('first')
+      await blocked.promise
+    })
+    await Promise.resolve()
+    const aliasOperation = alias.runExclusive('learning', async () => {
+      events.push('alias')
+    })
+    await Promise.resolve()
+    expect(events).toEqual(['first'])
+
+    blocked.resolve(undefined)
+    await Promise.all([firstOperation, aliasOperation])
+    expect(events).toEqual(['first', 'alias'])
   })
 
   it('works directly with IndexedDbDataAdapter', async () => {

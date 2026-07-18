@@ -48,7 +48,14 @@ export type ModuleDeviceStateStoreBackend =
         }>
     }>
 
+export type ModuleDeviceStateTransaction = Readonly<{
+  read(): Promise<ModuleDeviceState | null>
+  write(state: ModuleDeviceState): Promise<ModuleDeviceState>
+  remove(): Promise<void>
+}>
+
 const EMPTY_STATES = Object.freeze([]) as readonly ModuleDeviceState[]
+const transactionQueues = new WeakMap<object, Map<string, Promise<void>>>()
 
 export class ModuleDeviceStateCorruptionError extends Error {
   constructor(moduleId: string, error: unknown) {
@@ -63,10 +70,12 @@ export class ModuleDeviceStateStore {
   private readonly store: ModuleRuntimeStateStore
   private readonly backend: ModuleDeviceStateStoreBackend
   private readonly rootPath: string
+  private readonly rootIdentity: string
 
   constructor(backend: ModuleDeviceStateStoreBackend) {
     this.backend = backend
     this.rootPath = backend.rootPath.replace(/\\/g, '/')
+    this.rootIdentity = this.rootPath.normalize('NFC').toLowerCase()
     this.store = new ModuleRuntimeStateStore(backend)
   }
 
@@ -148,6 +157,12 @@ export class ModuleDeviceStateStore {
 
   async read(moduleId: string): Promise<ModuleDeviceState | null> {
     assertModuleId(moduleId, 'Module id')
+    return this.readUnlocked(moduleId)
+  }
+
+  private async readUnlocked(
+    moduleId: string,
+  ): Promise<ModuleDeviceState | null> {
     let envelope
     try {
       envelope = await this.store.read(moduleId)
@@ -170,6 +185,16 @@ export class ModuleDeviceStateStore {
 
   async write(state: ModuleDeviceState): Promise<ModuleDeviceState> {
     const snapshot = parseState(state)
+    return this.runExclusive(snapshot.moduleId, (transaction) =>
+      transaction.write(snapshot),
+    )
+  }
+
+  private async writeUnlocked(
+    state: ModuleDeviceState,
+    moduleId: string,
+  ): Promise<ModuleDeviceState> {
+    const snapshot = parseState(state, moduleId)
     const envelope = await this.store.write(snapshot.moduleId, {
       schemaVersion: SCHEMA_VERSION,
       data: snapshot,
@@ -177,8 +202,46 @@ export class ModuleDeviceStateStore {
     return parseState(envelope.data, snapshot.moduleId)
   }
 
+  runExclusive<T>(
+    moduleId: string,
+    operation: (transaction: ModuleDeviceStateTransaction) => Promise<T>,
+  ): Promise<T> {
+    assertModuleId(moduleId, 'Module id')
+    if (typeof operation !== 'function') {
+      throw new TypeError('Module device state operation must be a function')
+    }
+    let queues = transactionQueues.get(this.backend.adapter)
+    if (!queues) {
+      queues = new Map()
+      transactionQueues.set(this.backend.adapter, queues)
+    }
+    const key = `${this.rootIdentity}\u0000${moduleId}`
+    const previous = queues.get(key) ?? Promise.resolve()
+    const transaction: ModuleDeviceStateTransaction = Object.freeze({
+      read: () => this.readUnlocked(moduleId),
+      write: (state) => this.writeUnlocked(state, moduleId),
+      remove: () => this.removeUnlocked(moduleId),
+    })
+    const result = previous
+      .catch(() => undefined)
+      .then(() => operation(transaction))
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    queues.set(key, tail)
+    void tail.then(() => {
+      if (queues?.get(key) === tail) queues.delete(key)
+    })
+    return result
+  }
+
   remove(moduleId: string): Promise<void> {
     assertModuleId(moduleId, 'Module id')
+    return this.runExclusive(moduleId, (transaction) => transaction.remove())
+  }
+
+  private removeUnlocked(moduleId: string): Promise<void> {
     return this.store.remove(moduleId)
   }
 }
