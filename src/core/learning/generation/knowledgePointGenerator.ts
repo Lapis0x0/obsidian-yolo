@@ -7,6 +7,7 @@ import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
 import {
   KNOWLEDGE_POINT_GENERATOR_PROMPT,
   buildLanguageDirective,
+  buildLanguageReminder,
 } from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
@@ -86,8 +87,9 @@ export async function generateKnowledgePointsForChapter({
     mode: 'agent',
     yolo: true,
     systemPromptOverride:
+      buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage) +
       KNOWLEDGE_POINT_GENERATOR_PROMPT +
-      buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage),
+      buildLanguageReminder(plugin.settings?.learningOptions?.outputLanguage),
     tools: {
       allowedToolNames: workspaceScope?.enabled
         ? LEARNING_READONLY_TOOL_NAMES

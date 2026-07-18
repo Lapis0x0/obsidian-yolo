@@ -18,6 +18,7 @@ import {
   CARD_GENERATOR_PROMPT,
   buildCardPrompt,
   buildLanguageDirective,
+  buildLanguageReminder,
 } from './prompts'
 import { LEARNING_CARD_TOOL_NAMES } from './tools'
 import type {
@@ -151,8 +152,11 @@ export async function generateCardsForChapter({
       mode: 'agent',
       yolo: true,
       systemPromptOverride:
+        buildLanguageDirective(
+          plugin.settings?.learningOptions?.outputLanguage,
+        ) +
         CARD_GENERATOR_PROMPT +
-        buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage),
+        buildLanguageReminder(plugin.settings?.learningOptions?.outputLanguage),
       tools: { allowedToolNames: LEARNING_CARD_TOOL_NAMES },
       workspaceScope: cardWorkspaceScope,
       activity,

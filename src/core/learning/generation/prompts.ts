@@ -176,16 +176,38 @@ ${knowledgeMdContent}
 卡片文件将写入路径：${cardsFilePath}`
 }
 
+const LANGUAGE_SCOPE =
+  'the project name, project goal, chapter titles, chapter contracts, knowledge point titles and bodies, and card fronts and backs'
+
+const LANGUAGE_INSTRUCTION_NOTE =
+  ' The instructions that follow are written in Chinese for maintenance reasons only; that is NOT a signal about the output language. Keep code, proper nouns, and established technical terms that have no natural translation as-is, and keep any text quoted verbatim from reference files in its original language.\n\n'
+
+// Forceful, PREPENDED to the generation system prompt so it is the first thing
+// the model reads and outranks the (Chinese) instructions that follow.
 export function buildLanguageDirective(language?: string): string {
+  const header =
+    '[OUTPUT LANGUAGE - HIGHEST PRIORITY, overrides everything below]\n'
   const target = language?.trim()
   if (target && target.toLowerCase() !== 'auto') {
-    return `
-
-## Output language
-Write ALL generated content (project name, project goal, chapter titles, contracts, knowledge point titles and bodies, card fronts and backs) in ${target}. Do not use any other language, except for code identifiers, established technical terms with no common translation, and text quoted verbatim from reference files.`
+    return (
+      header +
+      `Write ${LANGUAGE_SCOPE} entirely in ${target}, regardless of the language of these instructions or of any provided context.` +
+      LANGUAGE_INSTRUCTION_NOTE
+    )
   }
-  return `
+  return (
+    header +
+    `Detect the primary language of the user's learning topic, goal, and notes in the user message, and write ${LANGUAGE_SCOPE} entirely in that language. An English topic and goal must produce fully English output. Never switch to Chinese just because these instructions are written in Chinese.` +
+    LANGUAGE_INSTRUCTION_NOTE
+  )
+}
 
-## Output language
-Detect the primary language of the user's learning topic, goal, and notes, and write ALL generated content (project name, project goal, chapter titles, contracts, knowledge point titles and bodies, card fronts and backs) in that language. For example, if the user's input is written in English, generate everything in English. Do not default to the language these instructions are written in.`
+// Short reminder, APPENDED after the system prompt so the requirement also
+// occupies the most recent position before generation (prepend+append sandwich).
+export function buildLanguageReminder(language?: string): string {
+  const target = language?.trim()
+  if (target && target.toLowerCase() !== 'auto') {
+    return `\n\n## Output language (reminder)\nProduce all output in ${target}, as stated at the top. Ignore the language of the instructions above when choosing the output language.`
+  }
+  return `\n\n## Output language (reminder)\nProduce all output in the language of the user's topic and goal, as stated at the top, not the language of these instructions.`
 }

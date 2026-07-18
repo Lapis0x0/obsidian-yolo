@@ -29,6 +29,7 @@ describe('parseYoloSettings', () => {
     expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
     expect(result.learningOptions).toEqual({
       modelId: '',
+      outputLanguage: 'auto',
       betaNoticeAcknowledged: false,
     })
 
