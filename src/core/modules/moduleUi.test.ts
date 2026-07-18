@@ -30,7 +30,9 @@ jest.mock('obsidian', () => ({
   Keymap: { isModEvent: keymapIsModEvent },
   MarkdownRenderer: { render: markdownRender },
   Notice: jest.fn().mockImplementation(notice),
+  TFile: class {},
   htmlToMarkdown: convertHtmlToMarkdown,
+  normalizePath: (path: string) => path,
 }))
 
 type ModalOptions = {
@@ -56,7 +58,7 @@ class MockConfirmModal {
   }
 }
 
-import type { App } from 'obsidian'
+import { type App, TFile } from 'obsidian'
 
 import { ModuleLifecycleScope } from './lifecycleScope'
 import { ObsidianModuleUiCapabilityProvider } from './moduleUi'
@@ -108,6 +110,92 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
       hoverParent: { hoverPopover: null },
     })
     lifecycle.dispose()
+  })
+
+  it('opens an exact one-based file location and returns false for missing files', async () => {
+    const file = Object.assign(new TFile(), { path: 'cards.md' })
+    const openFile = jest.fn(async () => undefined)
+    const getLeaf = jest.fn(() => ({ openFile }))
+    const locationApp = {
+      vault: {
+        getAbstractFileByPath: jest.fn((path: string) =>
+          path === 'cards.md' ? file : null,
+        ),
+      },
+      workspace: { getLeaf },
+    } as unknown as App
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ObsidianModuleUiCapabilityProvider({
+      app: locationApp,
+      createConfirmModal: (modalApp, options) =>
+        new MockConfirmModal(modalApp, options),
+    }).create('learning', lifecycle)
+    activation.activate()
+
+    await expect(
+      activation.api.openFileAt({ path: 'missing.md', line: 1 }),
+    ).resolves.toBe(false)
+    await expect(
+      activation.api.openFileAt({
+        path: 'cards.md',
+        line: 4,
+        column: 3,
+        newLeaf: true,
+      }),
+    ).resolves.toBe(true)
+    expect(getLeaf).toHaveBeenCalledWith('tab')
+    expect(openFile).toHaveBeenCalledWith(file, { eState: { line: 3, ch: 2 } })
+    await expect(
+      activation.api.openFileAt({ path: 'cards.md', column: 2 }),
+    ).rejects.toThrow('requires a line')
+    await expect(
+      activation.api.openFileAt({ path: '../outside.md' }),
+    ).rejects.toThrow('dot segments')
+    lifecycle.dispose()
+  })
+
+  it('namespaces action toasts, revokes callbacks, and dismisses on disposal', async () => {
+    const show = jest.fn()
+    const dismiss = jest.fn()
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ObsidianModuleUiCapabilityProvider({
+      app,
+      createConfirmModal: (modalApp, options) =>
+        new MockConfirmModal(modalApp, options),
+      actionToasts: { show, dismiss },
+    }).create('learning', lifecycle)
+    activation.activate()
+    const onAction = jest.fn()
+    activation.api.showActionToast({
+      id: 'generated',
+      tone: 'success',
+      title: 'Generated',
+      message: 'Ready',
+      actionLabel: 'Open',
+      dismissLabel: 'Dismiss',
+      onAction,
+    })
+    const shown = show.mock.calls[0][0]
+    expect(shown.id).toBe('module:["learning","generated"]')
+    await shown.onAction()
+    expect(onAction).toHaveBeenCalledTimes(1)
+
+    activation.api.showActionToast({
+      id: 'generated',
+      tone: 'warning',
+      title: 'Replaced',
+      message: 'New',
+      actionLabel: 'Open',
+      dismissLabel: 'Dismiss',
+      onAction: jest.fn(),
+    })
+    await shown.onAction()
+    expect(onAction).toHaveBeenCalledTimes(1)
+
+    lifecycle.dispose()
+    expect(dismiss).toHaveBeenCalledWith('module:["learning","generated"]')
+    await shown.onAction()
+    expect(onAction).toHaveBeenCalledTimes(1)
   })
 
   it('maps confirm outcomes and dismissal to booleans exactly once', async () => {

@@ -4,15 +4,19 @@ import {
   Keymap,
   MarkdownRenderer,
   Notice,
+  TFile,
   htmlToMarkdown,
 } from 'obsidian'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { assertModuleId } from './moduleStore'
+import { normalizeModuleVaultPath } from './moduleVault'
 import type {
+  YoloModuleActionToastV1,
   YoloModuleConfirmOptionsV1,
   YoloModuleHoverLinkOptionsV1,
   YoloModuleMarkdownRendererV1,
+  YoloModuleOpenFileLocationV1,
   YoloModuleUiV1,
 } from './types'
 
@@ -37,11 +41,13 @@ export const UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER: ModuleUiCapabilityProvid
     create: () => ({
       api: Object.freeze({
         notice: unavailable,
+        showActionToast: unavailable,
         confirm: async () => unavailable(),
         createMarkdownRenderer: unavailable,
         htmlToMarkdown: unavailable,
         isModEvent: unavailable,
         openLink: async () => unavailable(),
+        openFileAt: async () => unavailable(),
         hoverLink: unavailable,
       }),
       activate: () => undefined,
@@ -73,6 +79,10 @@ export type ModuleConfirmModalFactory = (
 export type ObsidianModuleUiCapabilityProviderOptions = {
   app: App
   createConfirmModal: ModuleConfirmModalFactory
+  actionToasts?: Readonly<{
+    show(toast: YoloModuleActionToastV1): void
+    dismiss(id: string): void
+  }>
   reportCleanupError?: (moduleId: string, error: unknown) => void
 }
 
@@ -81,6 +91,7 @@ export class ObsidianModuleUiCapabilityProvider
 {
   private readonly app: App
   private readonly createConfirmModal: ModuleConfirmModalFactory
+  private readonly actionToasts: ObsidianModuleUiCapabilityProviderOptions['actionToasts']
   private readonly reportCleanupError: (
     moduleId: string,
     error: unknown,
@@ -89,6 +100,7 @@ export class ObsidianModuleUiCapabilityProvider
   constructor(options: ObsidianModuleUiCapabilityProviderOptions) {
     this.app = options.app
     this.createConfirmModal = options.createConfirmModal
+    this.actionToasts = options.actionToasts
     this.reportCleanupError = options.reportCleanupError ?? (() => undefined)
   }
 
@@ -101,6 +113,7 @@ export class ObsidianModuleUiCapabilityProvider
     let activationComplete = false
     const pendingConfirms = new Set<PendingConfirm>()
     const renderers = new Set<OwnedRenderer>()
+    const actionToastTokens = new Map<string, object>()
 
     const inactiveError = (): Error =>
       new Error(`Module "${moduleId}" is no longer active`)
@@ -130,6 +143,14 @@ export class ObsidianModuleUiCapabilityProvider
           errors.push(error)
         }
       }
+      for (const id of actionToastTokens.keys()) {
+        try {
+          this.actionToasts?.dismiss(id)
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      actionToastTokens.clear()
       if (errors.length > 0) {
         throw new ModuleUiCleanupError(errors)
       }
@@ -140,6 +161,30 @@ export class ObsidianModuleUiCapabilityProvider
         assertActive()
         requireString(message, 'Notice message')
         new Notice(message)
+      },
+      showActionToast: (toast: YoloModuleActionToastV1) => {
+        assertActive()
+        if (!this.actionToasts) {
+          throw new Error('Module action toast capability is unavailable')
+        }
+        const snapshot = snapshotActionToast(toast)
+        const id = `module:${JSON.stringify([moduleId, snapshot.id])}`
+        const token = {}
+        actionToastTokens.set(id, token)
+        const callback = snapshot.onAction
+        this.actionToasts.show({
+          ...snapshot,
+          id,
+          onAction: () => {
+            if (
+              !active ||
+              !activationComplete ||
+              actionToastTokens.get(id) !== token
+            )
+              return
+            return callback()
+          },
+        })
       },
       confirm: (options: YoloModuleConfirmOptionsV1) => {
         assertActive()
@@ -269,6 +314,26 @@ export class ObsidianModuleUiCapabilityProvider
         requireString(sourcePath, 'Link source path')
         return this.app.workspace.openLinkText(linktext, sourcePath, newLeaf)
       },
+      openFileAt: async (location: YoloModuleOpenFileLocationV1) => {
+        assertActive()
+        const snapshot = snapshotOpenFileLocation(location)
+        const file = this.app.vault.getAbstractFileByPath(snapshot.path)
+        if (!(file instanceof TFile)) return false
+        const leaf = this.app.workspace.getLeaf(
+          snapshot.newLeaf ? 'tab' : false,
+        )
+        await leaf.openFile(file, {
+          eState:
+            snapshot.line === undefined
+              ? undefined
+              : {
+                  line: snapshot.line - 1,
+                  ch: (snapshot.column ?? 1) - 1,
+                },
+        })
+        assertActive()
+        return true
+      },
       hoverLink: (options: YoloModuleHoverLinkOptionsV1) => {
         assertActive()
         const snapshot = snapshotHoverLinkOptions(options)
@@ -296,6 +361,70 @@ export class ObsidianModuleUiCapabilityProvider
       // Error reporters cannot escape a module UI lifecycle boundary.
     }
   }
+}
+
+function snapshotActionToast(
+  toast: YoloModuleActionToastV1,
+): YoloModuleActionToastV1 {
+  if (!toast || typeof toast !== 'object')
+    throw new TypeError('Action toast must be an object')
+  const id = toast.id
+  const tone = toast.tone
+  const title = toast.title
+  const message = toast.message
+  const actionLabel = toast.actionLabel
+  const dismissLabel = toast.dismissLabel
+  const onAction = toast.onAction
+  requireNonEmptyString(id, 'Action toast id')
+  requireNonEmptyString(title, 'Action toast title')
+  requireString(message, 'Action toast message')
+  requireNonEmptyString(actionLabel, 'Action toast action label')
+  requireNonEmptyString(dismissLabel, 'Action toast dismiss label')
+  if (tone !== 'success' && tone !== 'warning' && tone !== 'error') {
+    throw new Error('Action toast tone is invalid')
+  }
+  if (typeof onAction !== 'function')
+    throw new TypeError('Action toast action must be a function')
+  return Object.freeze({
+    id,
+    tone,
+    title,
+    message,
+    actionLabel,
+    dismissLabel,
+    onAction,
+  })
+}
+
+function snapshotOpenFileLocation(
+  location: YoloModuleOpenFileLocationV1,
+): YoloModuleOpenFileLocationV1 {
+  if (!location || typeof location !== 'object')
+    throw new TypeError('Open file location must be an object')
+  const path = normalizeModuleVaultPath(location.path)
+  const line = location.line
+  const column = location.column
+  const newLeaf = location.newLeaf
+  for (const [value, label] of [
+    [line, 'Open file line'],
+    [column, 'Open file column'],
+  ] as const) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 1)) {
+      throw new TypeError(`${label} must be a positive integer`)
+    }
+  }
+  if (column !== undefined && line === undefined) {
+    throw new Error('Open file column requires a line')
+  }
+  if (newLeaf !== undefined && typeof newLeaf !== 'boolean') {
+    throw new TypeError('Open file newLeaf must be a boolean')
+  }
+  return Object.freeze({
+    path,
+    line,
+    column,
+    newLeaf,
+  })
 }
 
 class ModuleUiCleanupError extends Error {
@@ -350,6 +479,14 @@ function requireOptionalString(value: unknown, label: string): void {
 function requireString(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string')
     throw new TypeError(`${label} must be a string`)
+}
+
+function requireNonEmptyString(
+  value: unknown,
+  label: string,
+): asserts value is string {
+  requireString(value, label)
+  if (!value.trim()) throw new TypeError(`${label} must be a non-empty string`)
 }
 
 function requireEvent(

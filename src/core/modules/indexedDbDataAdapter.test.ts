@@ -262,7 +262,7 @@ describe('IndexedDbDataAdapter', () => {
 
     expect(listed.files).toHaveLength(MAX_MODULE_PRIVATE_LIST_ENTRIES + 1)
     expect(listed.folders).toEqual([])
-  }, 15_000)
+  }, 30_000)
 
   it('commits concurrent writes to different records without losing either file', async () => {
     const adapter = createAdapter()

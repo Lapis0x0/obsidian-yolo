@@ -19,11 +19,14 @@ class MemoryAdapter {
   readonly reads: string[] = []
   readonly writes: string[] = []
   readonly lists: string[] = []
+  existsHook?: (path: string) => Promise<void>
   writeHook?: (path: string, value: string | ArrayBuffer) => Promise<void>
   removeHook?: (path: string) => Promise<void>
+  renameHook?: (fromPath: string, toPath: string) => Promise<void>
 
   async exists(path: string): Promise<boolean> {
     this.existsChecks.push(path)
+    if (this.existsHook) await this.existsHook(path)
     return this.files.has(path) || this.folders.has(path)
   }
 
@@ -96,6 +99,30 @@ class MemoryAdapter {
     if (this.removeHook) await this.removeHook(path)
     else this.files.delete(path)
   }
+
+  async rename(fromPath: string, toPath: string): Promise<void> {
+    if (this.renameHook) await this.renameHook(fromPath, toPath)
+    const value = this.files.get(fromPath)
+    if (value !== undefined) {
+      this.files.set(toPath, value)
+      this.files.delete(fromPath)
+      return
+    }
+
+    const prefix = `${fromPath}/`
+    const files = [...this.files.entries()].filter(([path]) =>
+      path.startsWith(prefix),
+    )
+    if (!this.folders.has(fromPath) && files.length === 0) {
+      throw new Error(`Missing source: ${fromPath}`)
+    }
+    for (const [path, entry] of files) {
+      this.files.set(`${toPath}/${path.slice(prefix.length)}`, entry)
+      this.files.delete(path)
+    }
+    this.folders.add(toPath)
+    this.folders.delete(fromPath)
+  }
 }
 
 const asAdapter = (adapter: MemoryAdapter): DataAdapter =>
@@ -117,7 +144,71 @@ function createStorage(
   return { activation, lifecycle }
 }
 
+function barrier() {
+  let release!: () => void
+  let reach!: () => void
+  const blocked = new Promise<void>((resolve) => (release = resolve))
+  const reached = new Promise<void>((resolve) => (reach = resolve))
+  return { blocked, reached, reach, release }
+}
+
 describe('ModulePrivateStorageCapabilityProvider', () => {
+  it('resolves the synchronized root for every operation after a base move', async () => {
+    const adapter = new MemoryAdapter()
+    let root = 'old/private'
+    const { activation, lifecycle } = createStorage(
+      adapter,
+      'learning',
+      () => root,
+    )
+    activation.activate()
+    await activation.api.synchronized.writeText('state.json', 'old')
+
+    root = 'moved/private'
+    await expect(
+      activation.api.synchronized.readText('state.json'),
+    ).resolves.toBeNull()
+    await activation.api.synchronized.writeText('state.json', 'new')
+
+    expect(adapter.files.get('old/private/learning/state.json')).toBe('old')
+    expect(adapter.files.get('moved/private/learning/state.json')).toBe('new')
+    lifecycle.dispose()
+  })
+
+  it('provides rooted stat, immediate list, rename, and exact file deletion', async () => {
+    const adapter = new MemoryAdapter()
+    const { activation, lifecycle } = createStorage(adapter, 'learning')
+    activation.activate()
+    const storage = activation.api.synchronized
+    await storage.writeBinary(
+      'runtime/sqlite.wasm',
+      new Uint8Array([1, 2]).buffer,
+    )
+
+    await expect(storage.stat('runtime/sqlite.wasm')).resolves.toEqual({
+      type: 'file',
+      size: 2,
+    })
+    await expect(storage.listEntries('runtime')).resolves.toEqual({
+      files: ['runtime/sqlite.wasm'],
+      folders: [],
+    })
+    await storage.rename('runtime/sqlite.wasm', 'runtime/sqlite.next.wasm')
+    await expect(
+      storage.readBinary('runtime/sqlite.next.wasm'),
+    ).resolves.toEqual(new Uint8Array([1, 2]).buffer)
+    await expect(storage.removeFile('runtime')).rejects.toThrow(
+      'requires a file',
+    )
+    await expect(storage.removeFile('runtime/sqlite.next.wasm')).resolves.toBe(
+      true,
+    )
+    await expect(storage.removeFile('runtime/sqlite.next.wasm')).resolves.toBe(
+      false,
+    )
+    lifecycle.dispose()
+  })
+
   it('isolates modules and scopes while supporting text, binary, JSON, list, and remove', async () => {
     const adapter = new MemoryAdapter()
     const first = createStorage(adapter, 'notes')
@@ -265,6 +356,117 @@ describe('ModulePrivateStorageCapabilityProvider', () => {
     ).rejects.toBeInstanceOf(ModulePrivateStorageVerificationError)
     expect(adapter.files.get('sync/private/notes/value.txt')).toBe('external')
     expect(adapter.writes.at(-1)).toBe('sync/private/notes/value.txt')
+  })
+
+  it('locks a directory rename source against descendant writes', async () => {
+    const adapter = new MemoryAdapter()
+    const { activation } = createStorage(adapter)
+    activation.activate()
+    const storage = activation.api.synchronized
+    adapter.folders.add('sync/private/notes/runtime')
+    adapter.files.set('sync/private/notes/runtime/state.json', 'old')
+    const renameBarrier = barrier()
+    adapter.renameHook = async () => {
+      renameBarrier.reach()
+      await renameBarrier.blocked
+    }
+
+    const rename = storage.rename('runtime', 'archive')
+    await renameBarrier.reached
+    const write = storage.writeText('runtime/new.json', 'new')
+    await Promise.resolve()
+    expect(adapter.writes).toHaveLength(0)
+
+    renameBarrier.release()
+    await Promise.all([rename, write])
+    expect(adapter.files.get('sync/private/notes/archive/state.json')).toBe(
+      'old',
+    )
+    expect(adapter.files.get('sync/private/notes/runtime/new.json')).toBe('new')
+  })
+
+  it('locks a directory rename destination against descendant writes', async () => {
+    const adapter = new MemoryAdapter()
+    const { activation } = createStorage(adapter)
+    activation.activate()
+    const storage = activation.api.synchronized
+    adapter.folders.add('sync/private/notes/staging')
+    adapter.files.set('sync/private/notes/staging/state.json', 'old')
+    const renameBarrier = barrier()
+    adapter.renameHook = async () => {
+      renameBarrier.reach()
+      await renameBarrier.blocked
+    }
+
+    const rename = storage.rename('staging', 'runtime')
+    await renameBarrier.reached
+    const write = storage.writeText('runtime/new.json', 'new')
+    await Promise.resolve()
+    expect(adapter.writes).toHaveLength(0)
+
+    renameBarrier.release()
+    await Promise.all([rename, write])
+    expect(adapter.files.get('sync/private/notes/runtime/state.json')).toBe(
+      'old',
+    )
+    expect(adapter.files.get('sync/private/notes/runtime/new.json')).toBe('new')
+  })
+
+  it('atomically locks reverse renames without deadlocking', async () => {
+    const adapter = new MemoryAdapter()
+    const { activation } = createStorage(adapter)
+    activation.activate()
+    const storage = activation.api.synchronized
+    adapter.files.set('sync/private/notes/a.json', 'a')
+    adapter.files.set('sync/private/notes/b.json', 'b')
+    const firstCheckBarrier = barrier()
+    let blockedFirstCheck = false
+    adapter.existsHook = async (path) => {
+      if (path !== 'sync/private/notes/a.json' || blockedFirstCheck) return
+      blockedFirstCheck = true
+      firstCheckBarrier.reach()
+      await firstCheckBarrier.blocked
+    }
+
+    const forward = storage.rename('a.json', 'b.json')
+    await firstCheckBarrier.reached
+    const reverse = storage.rename('b.json', 'a.json')
+    await Promise.resolve()
+    expect(adapter.existsChecks).toEqual(['sync/private/notes/a.json'])
+    firstCheckBarrier.release()
+    const results = await Promise.allSettled([forward, reverse])
+
+    expect(results.map((result) => result.status)).toEqual([
+      'rejected',
+      'rejected',
+    ])
+    expect(adapter.files.get('sync/private/notes/a.json')).toBe('a')
+    expect(adapter.files.get('sync/private/notes/b.json')).toBe('b')
+  })
+
+  it('releases all rename path locks after failure', async () => {
+    const adapter = new MemoryAdapter()
+    const { activation } = createStorage(adapter)
+    activation.activate()
+    const storage = activation.api.synchronized
+    adapter.files.set('sync/private/notes/source.json', 'old')
+    const renameBarrier = barrier()
+    adapter.renameHook = async () => {
+      renameBarrier.reach()
+      await renameBarrier.blocked
+      throw new Error('rename failed')
+    }
+
+    const rename = storage.rename('source.json', 'destination.json')
+    await renameBarrier.reached
+    const write = storage.writeText('destination.json', 'new')
+    await Promise.resolve()
+    expect(adapter.writes).toHaveLength(0)
+
+    renameBarrier.release()
+    await expect(rename).rejects.toThrow('rename failed')
+    await expect(write).resolves.toBeUndefined()
+    expect(adapter.files.get('sync/private/notes/destination.json')).toBe('new')
   })
 
   it('gates operations before activation and after lifecycle disposal', async () => {

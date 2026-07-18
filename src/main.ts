@@ -81,6 +81,8 @@ import {
   ModuleManager,
   ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
+  ModuleSettingsCapabilityProvider,
+  ModuleSettingsContributionRegistry,
   ModuleStore,
   OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
   ObsidianModuleContributionRegistrar,
@@ -234,6 +236,8 @@ export default class YoloPlugin extends Plugin {
   private pluginUpdateDownloadPromise: Promise<void> | null = null
   private updateToastCleanup: (() => void) | null = null
   private actionToastController: ActionToastController | null = null
+  private readonly moduleSettingsContributions =
+    new ModuleSettingsContributionRegistry()
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -2058,6 +2062,7 @@ export default class YoloPlugin extends Plugin {
 
   async onload() {
     this.isUnloaded = false
+    this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
     if (process.env.NODE_ENV === 'development') {
       this.addCommand({
@@ -2164,7 +2169,6 @@ export default class YoloPlugin extends Plugin {
     )
 
     this.setupBackgroundActivityStatusBar()
-    this.actionToastController = mountActionToast()
     this.updateToastCleanup = mountUpdateToast(this)
     // The toast is anchored to the window (not a chat view), so trigger the
     // check at load time rather than waiting for a chat view to open.
@@ -3714,9 +3718,33 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             getRootPath: () => MODULE_DEVICE_LOCAL_VIRTUAL_ROOT,
           },
         }),
+        settings: new ModuleSettingsCapabilityProvider({
+          sink: this.moduleSettingsContributions,
+          getModelSnapshot: () => ({
+            defaultModelId: this.settings.chatModelId,
+            models: this.settings.chatModels
+              .filter((model) => model.enable ?? true)
+              .map((model) => ({
+                id: model.id,
+                name: model.name ?? model.model,
+                providerId: model.providerId,
+              })),
+          }),
+          subscribeModels: (listener) =>
+            this.addSettingsChangeListener(() => listener()),
+        }),
         ui: new ObsidianModuleUiCapabilityProvider({
           app: this.app,
           createConfirmModal: (app, options) => new ConfirmModal(app, options),
+          actionToasts: {
+            show: (toast) => {
+              if (!this.actionToastController) {
+                throw new Error('[YOLO] Action toast host is unavailable')
+              }
+              this.actionToastController.show(toast)
+            },
+            dismiss: (id) => this.actionToastController?.dismiss(id),
+          },
           reportCleanupError: (moduleId, error) => {
             console.error(
               `[YOLO] Module "${moduleId}" UI cleanup failed`,

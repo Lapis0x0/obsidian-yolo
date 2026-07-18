@@ -26,6 +26,10 @@ import type {
   ModulePrivateStorageV1,
 } from './modulePrivateStorage'
 import {
+  type ModuleSettingsCapabilityProviderV1,
+  UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
+} from './moduleSettingsContributions'
+import {
   type ModuleUiCapabilityProviderV1,
   UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
 } from './moduleUi'
@@ -33,6 +37,7 @@ import {
   type ModuleVaultCapabilityProviderV1,
   UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
 } from './moduleVault'
+import { ModuleWorkerHostCapabilityProvider } from './moduleWorkerHost'
 import type {
   YoloModuleBackgroundActivityV1,
   YoloModuleBackgroundV1,
@@ -85,6 +90,12 @@ const unavailablePrivateStorageScope: ModulePrivateStorageScopeV1 =
     list: async () => {
       throw new Error('Module private storage capability is unavailable')
     },
+    stat: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    listEntries: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
     readText: async () => {
       throw new Error('Module private storage capability is unavailable')
     },
@@ -101,6 +112,15 @@ const unavailablePrivateStorageScope: ModulePrivateStorageScopeV1 =
       throw new Error('Module private storage capability is unavailable')
     },
     writeJson: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    mkdir: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    rename: async () => {
+      throw new Error('Module private storage capability is unavailable')
+    },
+    removeFile: async () => {
       throw new Error('Module private storage capability is unavailable')
     },
     remove: async () => {
@@ -135,8 +155,10 @@ type CoreModuleHostCapabilityProviderOptions = {
   config?: ModuleConfigCapabilityProviderV1
   paths?: ModulePathsCapabilityProviderV1
   privateStorage?: ModulePrivateStorageCapabilityProviderV1
+  settings?: ModuleSettingsCapabilityProviderV1
   ui?: ModuleUiCapabilityProviderV1
   vault?: ModuleVaultCapabilityProviderV1
+  workers?: Pick<ModuleWorkerHostCapabilityProvider, 'create'>
   now?: () => number
   reportCallbackError?: (moduleId: string, error: unknown) => void
 }
@@ -151,12 +173,14 @@ export class CoreModuleHostCapabilityProvider
   private readonly now: () => number
   private readonly paths: ModulePathsCapabilityProviderV1
   private readonly privateStorage: ModulePrivateStorageCapabilityProviderV1
+  private readonly settings: ModuleSettingsCapabilityProviderV1
   private readonly ui: ModuleUiCapabilityProviderV1
   private readonly reportCallbackError: (
     moduleId: string,
     error: unknown,
   ) => void
   private readonly vault: ModuleVaultCapabilityProviderV1
+  private readonly workers: Pick<ModuleWorkerHostCapabilityProvider, 'create'>
 
   constructor({
     agent = UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
@@ -165,8 +189,10 @@ export class CoreModuleHostCapabilityProvider
     config = UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
     privateStorage = UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER,
+    settings = UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
     ui = UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
     vault = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
+    workers = new ModuleWorkerHostCapabilityProvider(),
     now = Date.now,
     reportCallbackError = (moduleId, error) => {
       console.error(
@@ -181,8 +207,10 @@ export class CoreModuleHostCapabilityProvider
     this.config = config
     this.paths = paths
     this.privateStorage = privateStorage
+    this.settings = settings
     this.ui = ui
     this.vault = vault
+    this.workers = workers
     this.now = now
     this.reportCallbackError = reportCallbackError
   }
@@ -203,8 +231,10 @@ export class CoreModuleHostCapabilityProvider
     const config = this.config.create(moduleId, lifecycle)
     const paths = this.paths.create(moduleId, lifecycle)
     const privateStorage = this.privateStorage.create(moduleId, lifecycle)
+    const settings = this.settings.create(moduleId, lifecycle)
     const ui = this.ui.create(moduleId, lifecycle)
     const vault = this.vault.create(moduleId, lifecycle)
+    const workers = this.workers.create(moduleId, lifecycle)
     return Object.freeze({
       capabilities: Object.freeze({
         agent: agent.api,
@@ -213,19 +243,26 @@ export class CoreModuleHostCapabilityProvider
         config: config.api,
         paths: paths.api,
         privateStorage: privateStorage.api,
+        settings: settings.api,
         ui: ui.api,
         vault: vault.api,
+        workers: workers.api,
       }),
       prepare: () => config.activate(),
-      commit: () => background.commit(),
+      commit: () => {
+        settings.commit()
+        background.commit()
+      },
       activate: () => {
         agent.activate()
         assets.activate()
         background.activate()
         paths.activate()
         privateStorage.activate()
+        settings.activate()
         ui.activate()
         vault.activate()
+        workers.activate()
       },
     })
   }

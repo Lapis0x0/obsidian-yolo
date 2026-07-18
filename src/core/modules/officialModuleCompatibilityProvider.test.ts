@@ -60,7 +60,7 @@ describe('createOfficialModuleCompatibilityProvider', () => {
     )
 
     await expect(provider(catalogModule(SETTINGS))).resolves.toEqual({
-      hostApi: '1.0.0',
+      hostApi: '1.1.0',
       platform: 'desktop',
       dataSchemas: { settings: 0 },
       supportedDataNamespaces: ['settings'],

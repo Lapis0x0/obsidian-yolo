@@ -5,7 +5,6 @@ import path from 'node:path'
 import esbuild from 'esbuild'
 
 const runtimeSymbol = 'yolo.module.host-runtime.v1'
-const hostApi = '^1.0.0'
 const artifactPlatforms = ['desktop', 'mobile']
 const learningPackage = JSON.parse(
   await readFile(path.resolve('modules', 'learning', 'package.json'), 'utf8'),
@@ -23,10 +22,22 @@ const moduleDefinitions = [
   {
     id: 'host-api-conformance',
     version: '1.0.0',
+    declarationPath: path.resolve(
+      'modules',
+      'host-api-conformance',
+      '1.0.0',
+      'module.json',
+    ),
   },
   {
     id: 'learning',
     version: learningPreviewVersion,
+    declarationPath: path.resolve(
+      'modules',
+      'learning',
+      learningPreviewVersion,
+      'module.json',
+    ),
     releaseTag: learningPreviewTag,
     assets: [
       {
@@ -142,8 +153,20 @@ async function buildModule({
   version,
   assets = [],
   artifactDir: outputDir,
+  declarationPath,
   releaseTag,
 }) {
+  const declaration = JSON.parse(await readFile(declarationPath, 'utf8'))
+  if (
+    declaration.id !== id ||
+    typeof declaration.hostApi !== 'string' ||
+    !declaration.dataSchemas ||
+    typeof declaration.dataSchemas !== 'object' ||
+    Array.isArray(declaration.dataSchemas)
+  ) {
+    throw new Error(`Invalid compatibility declaration for module: ${id}`)
+  }
+  const { hostApi, dataSchemas } = declaration
   const sourceDir = path.resolve('modules', id, 'src')
   const artifactDir = outputDir
     ? path.resolve(outputDir)
@@ -192,7 +215,6 @@ async function buildModule({
     url: `${releaseRoot}/${file.name}`,
     storage: 'module',
   }))
-  const dataSchemas = {}
   const manifest = {
     schemaVersion: 1,
     id,

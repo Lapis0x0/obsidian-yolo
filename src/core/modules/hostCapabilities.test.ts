@@ -402,12 +402,17 @@ describe('CoreModuleHostCapabilityProvider', () => {
     })
     const storageScope = Object.freeze({
       list: jest.fn(async () => []),
+      stat: jest.fn(async () => null),
+      listEntries: jest.fn(async () => ({ files: [], folders: [] })),
       readText: jest.fn(async () => null),
       readBinary: jest.fn(async () => null),
       readJson: jest.fn(async () => null),
       writeText: jest.fn(async () => undefined),
       writeBinary: jest.fn(async () => undefined),
       writeJson: jest.fn(async () => undefined),
+      mkdir: jest.fn(async () => undefined),
+      rename: jest.fn(async () => undefined),
+      removeFile: jest.fn(async () => false),
       remove: jest.fn(async () => undefined),
     })
     const privateStorageApi = Object.freeze({

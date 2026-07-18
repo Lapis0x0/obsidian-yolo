@@ -2,8 +2,14 @@
   "schemaVersion": 1,
   "id": "learning",
   "version": "0.1.0",
-  "hostApi": "^1.0.0",
-  "dataSchemas": {},
+  "hostApi": "^1.1.0",
+  "dataSchemas": {
+    "settings": {
+      "readMin": 0,
+      "readMax": 0,
+      "write": 0
+    }
+  },
   "variants": [
     {
       "platform": "desktop",

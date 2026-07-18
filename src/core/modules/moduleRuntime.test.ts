@@ -127,12 +127,17 @@ describe('ModuleRuntime', () => {
         if (!storageActive) throw new Error('storage is unavailable')
         return []
       },
+      stat: async () => null,
+      listEntries: async () => ({ files: [], folders: [] }),
       readText: async () => null,
       readBinary: async () => null,
       readJson: async () => null,
       writeText: async () => undefined,
       writeBinary: async () => undefined,
       writeJson: async () => undefined,
+      mkdir: async () => undefined,
+      rename: async () => undefined,
+      removeFile: async () => false,
       remove: async () => undefined,
     })
     const privateStorageApi = Object.freeze({
@@ -760,6 +765,20 @@ describe('ModuleRuntime', () => {
       { newLeaf: true },
       expect.any(Function),
     )
+
+    const target = { type: 'project', projectId: 'alpha' }
+    await moduleOpenView({ state: target })
+    target.projectId = 'changed'
+    expect(openView).toHaveBeenLastCalledWith(
+      'workspace-module',
+      { newLeaf: undefined, state: { type: 'project', projectId: 'alpha' } },
+      expect.any(Function),
+    )
+    await expect(
+      moduleOpenView({
+        state: { callback: () => undefined },
+      }),
+    ).rejects.toThrow('structured-cloneable')
 
     runtime.dispose()
     await expect(moduleOpenView()).rejects.toThrow('workspace is not active')

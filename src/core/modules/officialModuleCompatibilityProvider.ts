@@ -4,7 +4,7 @@ import type {
   OfficialModulePlatform,
 } from './officialModuleCatalog'
 
-export const YOLO_HOST_API_VERSION = '1.0.0'
+export const YOLO_HOST_API_VERSION = '1.1.0'
 export const OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE = 'settings'
 const SUPPORTED_DATA_NAMESPACES = Object.freeze([
   OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,

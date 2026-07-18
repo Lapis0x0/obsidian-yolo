@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 
 import type { ModuleConfigV1 } from './moduleConfig'
 import type { ModulePrivateStorageV1 } from './modulePrivateStorage'
+import type { YoloModuleSettingsV1 } from './moduleSettingsContributions'
 import type { ModuleTransitionPhase } from './moduleTransitionJournal'
+import type { YoloModuleWorkersV1 } from './moduleWorkerHost'
 
 export type ModuleDisposer = () => void
 
@@ -15,6 +17,8 @@ export type YoloModuleViewV1 = Readonly<{
   name: string
   icon: string
   render(): ReactNode
+  getState?(): Readonly<Record<string, unknown>>
+  setState?(state: Readonly<Record<string, unknown>>): void | Promise<void>
 }>
 
 export type YoloModuleRibbonActionV1 = Readonly<{
@@ -31,6 +35,7 @@ export type YoloModuleCommandV1 = Readonly<{
 
 export type YoloModuleOpenViewOptionsV1 = Readonly<{
   newLeaf?: boolean
+  state?: Readonly<Record<string, unknown>>
 }>
 
 export type YoloModuleWorkspaceV1 = {
@@ -140,6 +145,23 @@ export type YoloModuleConfirmOptionsV1 = Readonly<{
   cancelText?: string
 }>
 
+export type YoloModuleActionToastV1 = Readonly<{
+  id: string
+  tone: 'success' | 'warning' | 'error'
+  title: string
+  message: string
+  actionLabel: string
+  dismissLabel: string
+  onAction(): void | Promise<void>
+}>
+
+export type YoloModuleOpenFileLocationV1 = Readonly<{
+  path: string
+  line?: number
+  column?: number
+  newLeaf?: boolean
+}>
+
 export type YoloModuleMarkdownRendererV1 = {
   render(
     markdown: string,
@@ -158,6 +180,7 @@ export type YoloModuleHoverLinkOptionsV1 = Readonly<{
 
 export type YoloModuleUiV1 = {
   notice(message: string): void
+  showActionToast(toast: YoloModuleActionToastV1): void
   confirm(options: YoloModuleConfirmOptionsV1): Promise<boolean>
   createMarkdownRenderer(): YoloModuleMarkdownRendererV1
   htmlToMarkdown(html: string): string
@@ -167,6 +190,7 @@ export type YoloModuleUiV1 = {
     sourcePath: string,
     newLeaf?: boolean,
   ): Promise<void>
+  openFileAt(location: YoloModuleOpenFileLocationV1): Promise<boolean>
   hoverLink(options: YoloModuleHoverLinkOptionsV1): void
 }
 
@@ -258,8 +282,10 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   config: ModuleConfigV1
   paths: YoloModulePathsV1
   privateStorage: ModulePrivateStorageV1
+  settings: YoloModuleSettingsV1
   ui: YoloModuleUiV1
   vault: YoloModuleVaultV1
+  workers: YoloModuleWorkersV1
 }>
 
 export type YoloHostApiV1 = Readonly<{

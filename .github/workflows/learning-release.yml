@@ -6,6 +6,8 @@ on:
       - '.github/workflows/learning-release.yml'
       - 'scripts/build-first-party-modules.mjs'
       - 'scripts/validate-learning-release.mjs'
+      - 'scripts/verify-learning-release-assets.mjs'
+      - 'scripts/verify-learning-release-assets.test.mjs'
       - 'modules/learning/**'
   workflow_dispatch:
     inputs:
@@ -33,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Use Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -52,6 +56,9 @@ jobs:
       - name: Build and validate release assets
         run: node scripts/validate-learning-release.mjs --build
 
+      - name: Test remote Release asset verification
+        run: node --test scripts/verify-learning-release-assets.test.mjs
+
       - name: Validate generated URLs against Core
         run: |
           export LEARNING_RELEASE_PARITY_INPUT="$(
@@ -66,11 +73,22 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    outputs:
+      release_id: ${{ steps.verify.outputs.release_id }}
+      release_tag: ${{ steps.verify.outputs.release_tag }}
+      release_url: ${{ steps.verify.outputs.release_url }}
+      manifest_url: ${{ steps.verify.outputs.manifest_url }}
+      manifest_byte_size: ${{ steps.verify.outputs.manifest_byte_size }}
+      manifest_sha256: ${{ steps.verify.outputs.manifest_sha256 }}
+      metadata_artifact: learning-release-metadata-${{ github.run_id }}
     env:
       LEARNING_RELEASE_TAG: ${{ github.ref_name }}
+      LEARNING_RELEASE_OWNER: learning-release-owner:${{ github.run_id }}:${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Use Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -84,7 +102,8 @@ jobs:
       - name: Package and validate release assets
         run: node scripts/validate-learning-release.mjs --build
 
-      - name: Require a new GitHub Release
+      - name: Create draft GitHub Release
+        id: create
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -98,10 +117,67 @@ jobs:
             exit 1
           fi
 
-      - name: Upload GitHub Release assets
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+          release="$(
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$LEARNING_RELEASE_TAG" \
+              -f name="$LEARNING_RELEASE_TAG" \
+              -f target_commitish="$GITHUB_SHA" \
+              -f body="<!-- ${LEARNING_RELEASE_OWNER} -->" \
+              -F draft=true \
+              -F prerelease=false \
+              -F generate_release_notes=true
+          )"
+          release_id="$(jq -r '.id' <<<"$release")"
+          if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::GitHub did not return a valid draft Release id"
+            exit 1
+          fi
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+
+      - name: Upload draft Release assets without replacement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$LEARNING_RELEASE_TAG" modules/learning/release/*
+
+      - name: Read back and verify draft Release assets
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/verify-learning-release-assets.mjs \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$LEARNING_RELEASE_TAG" \
+            --release-id "${{ steps.create.outputs.release_id }}" \
+            --target-commit "$GITHUB_SHA" \
+            --asset-dir modules/learning/release \
+            --metadata-out learning-release-metadata.json
+
+      - name: Preserve verified release metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          files: modules/learning/release/*
-          fail_on_unmatched_files: true
-          generate_release_notes: true
-          overwrite_files: false
+          name: learning-release-metadata-${{ github.run_id }}
+          path: learning-release-metadata.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish verified GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/releases/${{ steps.create.outputs.release_id }}" \
+            -F draft=false \
+            --jq '.html_url'
+
+      - name: Remove this run's failed draft Release
+        if: ${{ failure() || cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/verify-learning-release-assets.mjs \
+            --cleanup-owned-draft \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$LEARNING_RELEASE_TAG" \
+            --release-id "${{ steps.create.outputs.release_id }}" \
+            --target-commit "$GITHUB_SHA" \
+            --owner-marker "$LEARNING_RELEASE_OWNER"

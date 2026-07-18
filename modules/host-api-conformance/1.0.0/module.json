@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "host-api-conformance",
   "version": "1.0.0",
-  "hostApi": "^1.0.0",
+  "hostApi": "^1.1.0",
   "dataSchemas": {},
   "variants": [
     {

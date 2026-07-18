@@ -14,7 +14,8 @@ export type ModulePrivateStorageAdapter = Pick<
   | 'writeBinary'
   | 'mkdir'
   | 'remove'
->
+> &
+  Partial<Pick<DataAdapter, 'rename'>>
 
 export type ModulePrivateStorageBackend = Readonly<{
   adapter: ModulePrivateStorageAdapter
@@ -25,12 +26,22 @@ export type ModulePrivateStorageBackend = Readonly<{
 export type ModulePrivateStorageScopeV1 = Readonly<{
   /** Lists blobs recursively below a directory key, or the scope root. */
   list(directoryPrefix?: string): Promise<readonly string[]>
+  stat(
+    key: string,
+  ): Promise<Readonly<{ type: 'file' | 'folder'; size: number }> | null>
+  listEntries(
+    directoryPrefix?: string,
+  ): Promise<Readonly<{ files: readonly string[]; folders: readonly string[] }>>
   readText(key: string): Promise<string | null>
   readBinary(key: string): Promise<ArrayBuffer | null>
   readJson<T = unknown>(key: string): Promise<T | null>
   writeText(key: string, value: string): Promise<void>
   writeBinary(key: string, value: ArrayBuffer): Promise<void>
   writeJson(key: string, value: unknown): Promise<void>
+  mkdir(key: string): Promise<void>
+  rename(fromKey: string, toKey: string): Promise<void>
+  /** Deletes only a file at the exact key; folders are rejected. */
+  removeFile(key: string): Promise<boolean>
   remove(key: string): Promise<void>
 }>
 
@@ -64,10 +75,17 @@ export const MAX_MODULE_PRIVATE_LIST_ENTRIES = 1024
 export const MAX_MODULE_PRIVATE_JSON_DEPTH = 64
 export const MAX_MODULE_PRIVATE_JSON_NODES = 10_000
 
-const writeQueues = new WeakMap<
-  ModulePrivateStorageAdapter,
-  Map<string, Promise<void>>
->()
+type PathLockRequest = Readonly<{
+  paths: readonly string[]
+  start(): void
+}>
+
+type PathLockState = {
+  readonly active: Set<PathLockRequest>
+  readonly waiting: PathLockRequest[]
+}
+
+const pathLocks = new WeakMap<ModulePrivateStorageAdapter, PathLockState>()
 
 export class ModulePrivateStorageVerificationError extends Error {
   constructor(message: string) {
@@ -184,6 +202,44 @@ function createPrivateStorageScope(
       const keys = await listFiles(adapter, root, start, assertActive)
       return Object.freeze(keys.sort())
     },
+    stat: async (key) => {
+      const { target } = resolveOperation(key)
+      const value = await adapter.stat(target)
+      assertActive()
+      return value
+        ? Object.freeze({ type: value.type, size: value.size })
+        : null
+    },
+    listEntries: async (directoryPrefix = '') => {
+      assertActive()
+      const root = `${getRoot()}/${moduleId}`
+      const start = directoryPrefix
+        ? `${root}/${normalizeKey(directoryPrefix)}`
+        : root
+      const stat = await adapter.stat(start)
+      assertActive()
+      if (stat?.type !== 'folder')
+        return Object.freeze({
+          files: Object.freeze([]),
+          folders: Object.freeze([]),
+        })
+      const listing = await adapter.list(start)
+      assertActive()
+      if (
+        listing.files.length + listing.folders.length >
+        MAX_MODULE_PRIVATE_LIST_ENTRIES
+      ) {
+        throw new Error('Module private storage list exceeds the entry limit')
+      }
+      return Object.freeze({
+        files: Object.freeze(
+          listing.files.map((path) => relativeListedPath(root, path)).sort(),
+        ),
+        folders: Object.freeze(
+          listing.folders.map((path) => relativeListedPath(root, path)).sort(),
+        ),
+      })
+    },
     readText,
     readBinary,
     readJson: async <T = unknown>(key: string): Promise<T | null> => {
@@ -252,6 +308,62 @@ function createPrivateStorageScope(
         assertActive()
         assertBlobSize(textByteLength(actual))
         if (actual !== serialized) throw verificationError(moduleId, key)
+      })
+    },
+    mkdir: (key) => {
+      const operation = resolveOperation(key)
+      return enqueueWrite(adapter, operation.target, async () => {
+        assertActive()
+        await ensureParentFolders(
+          adapter,
+          `${operation.target}/placeholder`,
+          assertActive,
+        )
+        const stat = await adapter.stat(operation.target)
+        assertActive()
+        if (stat?.type === 'folder') return
+        if (stat) throw new Error('Module private storage path is not a folder')
+        await adapter.mkdir(operation.target)
+        assertActive()
+      })
+    },
+    rename: (fromKey, toKey) => {
+      assertActive()
+      const root = `${getRoot()}/${moduleId}`
+      const fromTarget = `${root}/${normalizeKey(fromKey)}`
+      const toTarget = `${root}/${normalizeKey(toKey)}`
+      if (fromTarget === toTarget) return Promise.resolve()
+      return enqueuePaths(adapter, [fromTarget, toTarget], async () => {
+        assertActive()
+        if (!adapter.rename) {
+          throw new Error('Module private storage rename is unavailable')
+        }
+        if (!(await adapter.exists(fromTarget)))
+          throw new Error('Module private storage source does not exist')
+        assertActive()
+        if (await adapter.exists(toTarget))
+          throw new Error('Module private storage destination already exists')
+        assertActive()
+        await ensureParentFolders(adapter, toTarget, assertActive)
+        await adapter.rename(fromTarget, toTarget)
+        assertActive()
+      })
+    },
+    removeFile: (key) => {
+      const operation = resolveOperation(key)
+      return enqueueWrite(adapter, operation.target, async () => {
+        assertActive()
+        const stat = await adapter.stat(operation.target)
+        assertActive()
+        if (stat === null) return false
+        if (stat.type !== 'file')
+          throw new Error('Module private storage exact delete requires a file')
+        await adapter.remove(operation.target)
+        assertActive()
+        if (await adapter.exists(operation.target))
+          throw verificationError(moduleId, key)
+        assertActive()
+        return true
       })
     },
     remove: (key) => {
@@ -346,28 +458,90 @@ async function ensureParentFolders(
   }
 }
 
-function enqueueWrite(
+function enqueueWrite<T>(
   adapter: ModulePrivateStorageAdapter,
   target: string,
-  operation: () => Promise<void>,
-): Promise<void> {
-  let queues = writeQueues.get(adapter)
-  if (!queues) {
-    queues = new Map()
-    writeQueues.set(adapter, queues)
+  operation: () => Promise<T>,
+): Promise<T> {
+  return enqueuePaths(adapter, [target], operation)
+}
+
+function enqueuePaths<T>(
+  adapter: ModulePrivateStorageAdapter,
+  targets: readonly string[],
+  operation: () => Promise<T>,
+): Promise<T> {
+  const paths = [...new Set(targets.map(canonicalIdentity))].sort()
+  let state = pathLocks.get(adapter)
+  if (!state) {
+    state = { active: new Set(), waiting: [] }
+    pathLocks.set(adapter, state)
   }
-  const key = canonicalIdentity(target)
-  const previous = queues.get(key) ?? Promise.resolve()
-  const result = previous.catch(() => undefined).then(operation)
-  const settled = result.then(
-    () => undefined,
-    () => undefined,
-  )
-  queues.set(key, settled)
-  void settled.finally(() => {
-    if (queues?.get(key) === settled) queues.delete(key)
+  const lockState = state
+
+  return new Promise<T>((resolve, reject) => {
+    const request: PathLockRequest = {
+      paths,
+      start: () => {
+        void Promise.resolve()
+          .then(operation)
+          .then(
+            (value) => {
+              releasePathLock(lockState, request)
+              resolve(value)
+            },
+            (error: unknown) => {
+              releasePathLock(lockState, request)
+              reject(error instanceof Error ? error : new Error(String(error)))
+            },
+          )
+      },
+    }
+    lockState.waiting.push(request)
+    drainPathLocks(lockState)
   })
-  return result
+}
+
+function releasePathLock(state: PathLockState, request: PathLockRequest): void {
+  state.active.delete(request)
+  drainPathLocks(state)
+}
+
+function drainPathLocks(state: PathLockState): void {
+  let granted = true
+  while (granted) {
+    granted = false
+    for (let index = 0; index < state.waiting.length; index += 1) {
+      const request = state.waiting[index]
+      const conflictsWithActive = [...state.active].some((active) =>
+        pathRequestsConflict(active, request),
+      )
+      const conflictsWithEarlierWaiter = state.waiting
+        .slice(0, index)
+        .some((waiting) => pathRequestsConflict(waiting, request))
+      if (conflictsWithActive || conflictsWithEarlierWaiter) continue
+
+      state.waiting.splice(index, 1)
+      state.active.add(request)
+      request.start()
+      granted = true
+      break
+    }
+  }
+}
+
+function pathRequestsConflict(
+  left: PathLockRequest,
+  right: PathLockRequest,
+): boolean {
+  return left.paths.some((leftPath) =>
+    right.paths.some(
+      (rightPath) =>
+        leftPath === rightPath ||
+        leftPath.startsWith(`${rightPath}/`) ||
+        rightPath.startsWith(`${leftPath}/`),
+    ),
+  )
 }
 
 function normalizeRoot(value: string): string {

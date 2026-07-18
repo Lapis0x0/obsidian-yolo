@@ -84,6 +84,28 @@ export {
   type ModulePrivateStorageV1,
 } from './modulePrivateStorage'
 export {
+  ModuleSettingsCapabilityProvider,
+  ModuleSettingsContributionRegistry,
+  UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
+  type ModuleSettingsCapabilityProviderOptions,
+  type ModuleSettingsCapabilityProviderV1,
+  type ModuleSettingsContributionSinkV1,
+  type RegisteredModuleSettingsContributionV1,
+  type YoloModuleModelOptionV1,
+  type YoloModuleModelSnapshotV1,
+  type YoloModuleSettingFieldV1,
+  type YoloModuleSettingsContributionV1,
+  type YoloModuleSettingsV1,
+} from './moduleSettingsContributions'
+export {
+  ModuleWorkerHostCapabilityProvider,
+  UNAVAILABLE_MODULE_WORKER_CAPABILITY_PROVIDER,
+  type ModuleWorkerFactory,
+  type YoloModuleWorkerCallOptionsV1,
+  type YoloModuleWorkerV1,
+  type YoloModuleWorkersV1,
+} from './moduleWorkerHost'
+export {
   ObsidianModuleUiCapabilityProvider,
   UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
   type ModuleUiCapabilityActivationV1,

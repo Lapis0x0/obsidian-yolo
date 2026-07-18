@@ -1,4 +1,9 @@
-import { ItemView, type Plugin, type WorkspaceLeaf } from 'obsidian'
+import {
+  ItemView,
+  type Plugin,
+  type ViewStateResult,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import React from 'react'
 import { type Root, createRoot } from 'react-dom/client'
 
@@ -82,6 +87,15 @@ class ModuleItemView extends ItemView {
     this.mountedHost = null
     this.mountedDocument = null
     return Promise.resolve()
+  }
+
+  getState(): Record<string, unknown> {
+    return snapshotViewState(this.declaration.getState?.()) ?? {}
+  }
+
+  async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    await super.setState(state, result)
+    await this.declaration.setState?.(snapshotViewState(state) ?? {})
   }
 
   private render(): void {
@@ -229,8 +243,10 @@ export class ModuleRuntime {
             config: capabilityActivation.capabilities.config,
             paths: capabilityActivation.capabilities.paths,
             privateStorage: capabilityActivation.capabilities.privateStorage,
+            settings: capabilityActivation.capabilities.settings,
             ui: capabilityActivation.capabilities.ui,
             vault: capabilityActivation.capabilities.vault,
+            workers: capabilityActivation.capabilities.workers,
           }),
         ).then(() => 'activated' as const),
         activationCancelled.then(() => 'disposed' as const),
@@ -409,11 +425,11 @@ export class ObsidianModuleContributionRegistrar
     }
     assertModuleWorkspaceActive(moduleId, isActive)
     if (options?.newLeaf) {
-      return this.openViewNow(moduleId, viewType, true, isActive)
+      return this.openViewNow(moduleId, viewType, options, isActive)
     }
     const pending = this.openingViewByModuleId.get(moduleId)
     if (pending) return pending
-    const opening = this.openViewNow(moduleId, viewType, false, isActive)
+    const opening = this.openViewNow(moduleId, viewType, options, isActive)
     this.openingViewByModuleId.set(moduleId, opening)
     try {
       await opening
@@ -427,14 +443,23 @@ export class ObsidianModuleContributionRegistrar
   private async openViewNow(
     moduleId: string,
     viewType: string,
-    newLeaf: boolean,
+    options: YoloModuleOpenViewOptionsV1 | undefined,
     isActive: () => boolean,
   ): Promise<void> {
     const workspace = this.plugin.app.workspace
+    const newLeaf = options?.newLeaf === true
     assertModuleWorkspaceActive(moduleId, isActive)
     if (!newLeaf) {
       const existing = workspace.getLeavesOfType(viewType)[0]
       if (existing) {
+        if (optionsHasState(options)) {
+          await existing.setViewState({
+            type: viewType,
+            active: true,
+            state: options.state,
+          })
+          assertModuleWorkspaceActive(moduleId, isActive)
+        }
         await workspace.revealLeaf(existing)
         assertModuleWorkspaceActive(moduleId, isActive)
         return
@@ -443,7 +468,11 @@ export class ObsidianModuleContributionRegistrar
     const leaf = workspace.getLeaf('tab')
     try {
       assertModuleWorkspaceActive(moduleId, isActive)
-      await leaf.setViewState({ type: viewType, active: true })
+      await leaf.setViewState({
+        type: viewType,
+        active: true,
+        ...(optionsHasState(options) ? { state: options.state } : {}),
+      })
       assertModuleWorkspaceActive(moduleId, isActive)
       await workspace.revealLeaf(leaf)
       assertModuleWorkspaceActive(moduleId, isActive)
@@ -472,7 +501,35 @@ function snapshotOpenViewOptions(
   if (newLeaf !== undefined && typeof newLeaf !== 'boolean') {
     throw new TypeError('Module openView newLeaf must be a boolean')
   }
-  return Object.freeze({ newLeaf })
+  const state = options.state
+  return Object.freeze({
+    newLeaf,
+    ...(Object.prototype.hasOwnProperty.call(options, 'state')
+      ? { state: snapshotViewState(state) }
+      : {}),
+  })
+}
+
+function optionsHasState(
+  options: YoloModuleOpenViewOptionsV1 | undefined,
+): options is YoloModuleOpenViewOptionsV1 & { state: unknown } {
+  return Boolean(
+    options && Object.prototype.hasOwnProperty.call(options, 'state'),
+  )
+}
+
+function snapshotViewState(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Module view state must be an object')
+  }
+  try {
+    return structuredClone(value) as Record<string, unknown>
+  } catch {
+    throw new TypeError('Module view state must be structured-cloneable')
+  }
 }
 
 function assertModuleWorkspaceActive(

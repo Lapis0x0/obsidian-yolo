@@ -4,7 +4,10 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const repository = 'Lapis0x0/obsidian-yolo'
-const hostApi = '^1.0.0'
+const hostApi = '^1.1.0'
+const dataSchemas = {
+  settings: { readMin: 0, readMax: 0, write: 0 },
+}
 const artifactPlatforms = ['desktop', 'mobile']
 const expectedArtifactRoles = new Map([
   ['entry.js', 'entry'],
@@ -82,7 +85,7 @@ assertEqual(manifest.schemaVersion, 1, 'manifest schemaVersion')
 assertEqual(manifest.id, 'learning', 'manifest id')
 assertEqual(manifest.version, version, 'manifest version')
 assertEqual(manifest.hostApi, hostApi, 'manifest hostApi')
-assertJsonEqual(manifest.dataSchemas, {}, 'manifest dataSchemas')
+assertJsonEqual(manifest.dataSchemas, dataSchemas, 'manifest dataSchemas')
 assertArray(manifest.variants, 'manifest variants')
 assertEqual(manifest.variants.length, artifactPlatforms.length, 'variant count')
 

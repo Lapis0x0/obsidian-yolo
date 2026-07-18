@@ -1,0 +1,99 @@
+name: Publish verified module to catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_url:
+        description: 'Canonical public module.json GitHub Release URL'
+        required: true
+        type: string
+      module_id:
+        description: 'Expected official module id'
+        required: true
+        type: string
+      version:
+        description: 'Expected semantic version'
+        required: true
+        type: string
+
+concurrency:
+  group: module-catalog-${{ inputs.module_id }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPDATE_BRANCH: automation/module-catalog-${{ inputs.module_id }}-v${{ inputs.version }}
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+
+      - name: Verify published release and update catalog
+        run: >-
+          node scripts/update-module-catalog.mjs
+          --manifest-url "$MANIFEST_URL"
+          --expected-id "$MODULE_ID"
+          --expected-version "$MODULE_VERSION"
+        env:
+          MANIFEST_URL: ${{ inputs.manifest_url }}
+          MODULE_ID: ${{ inputs.module_id }}
+          MODULE_VERSION: ${{ inputs.version }}
+
+      - name: Test catalog updater
+        run: node --test scripts/update-module-catalog.test.mjs
+
+      - name: Detect catalog change
+        id: changes
+        run: |
+          if git diff --quiet -- modules/catalog-v1.json; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Catalog already contains this verified release.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            git diff --check -- modules/catalog-v1.json
+          fi
+
+      - name: Commit verified update
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$UPDATE_BRANCH"
+          git add modules/catalog-v1.json
+          git commit -m "chore(modules): catalog $MODULE_ID $MODULE_VERSION"
+          git push --force-with-lease origin "HEAD:$UPDATE_BRANCH"
+        env:
+          MODULE_ID: ${{ inputs.module_id }}
+          MODULE_VERSION: ${{ inputs.version }}
+
+      - name: Create or report pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODULE_ID: ${{ inputs.module_id }}
+          MODULE_VERSION: ${{ inputs.version }}
+        run: |
+          existing_pr="$(gh pr list --base "${{ github.event.repository.default_branch }}" --head "$UPDATE_BRANCH" --state open --json url --jq '.[0].url')"
+          if [[ -n "$existing_pr" ]]; then
+            echo "Updated existing pull request: $existing_pr" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$UPDATE_BRANCH" \
+              --title "chore(modules): catalog $MODULE_ID $MODULE_VERSION" \
+              --body "Verified the complete published release closure before updating the official module catalog. Dispatch: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
