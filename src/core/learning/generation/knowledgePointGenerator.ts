@@ -4,7 +4,10 @@ import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
 import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
-import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
+import {
+  KNOWLEDGE_POINT_GENERATOR_PROMPT,
+  buildLanguageDirective,
+} from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
   ChapterGenerationResult,
@@ -82,7 +85,9 @@ export async function generateKnowledgePointsForChapter({
     modelId,
     mode: 'agent',
     yolo: true,
-    systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
+    systemPromptOverride:
+      KNOWLEDGE_POINT_GENERATOR_PROMPT +
+      buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage),
     tools: {
       allowedToolNames: workspaceScope?.enabled
         ? LEARNING_READONLY_TOOL_NAMES

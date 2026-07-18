@@ -485,6 +485,11 @@ export const zh: TranslationKeys = {
         '生成 Tab 补全建议时使用的系统提示词。留空则使用内置默认值。',
     },
     learning: {
+      outputLanguage: '\u8f93\u51fa\u8bed\u8a00',
+      outputLanguageDesc:
+        '\u751f\u6210\u5927\u7eb2\u3001\u77e5\u8bc6\u70b9\u548c\u5361\u7247\u65f6\u4f7f\u7528\u7684\u8bed\u8a00\u3002Auto \u8ddf\u968f\u5b66\u4e60\u4e3b\u9898\u548c\u76ee\u6807\u8f93\u5165\u7684\u8bed\u8a00\u3002',
+      outputLanguageAuto:
+        '\u81ea\u52a8\uff08\u8ddf\u968f\u8f93\u5165\u8bed\u8a00\uff09',
       generationTitle: '内容生成',
       generationModel: '学习生成模型',
       generationModelDesc:

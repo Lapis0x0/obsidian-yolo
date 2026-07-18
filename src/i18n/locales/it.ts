@@ -526,6 +526,10 @@ export const it: TranslationKeys = {
         'Messaggio di sistema applicato quando si generano suggerimenti di completamento tab; lascia vuoto per usare quello predefinito incorporato.',
     },
     learning: {
+      outputLanguage: 'Lingua di output',
+      outputLanguageDesc:
+        "Lingua usata per generare scalette, punti di conoscenza e schede. Auto segue la lingua dell'argomento e dell'obiettivo inseriti.",
+      outputLanguageAuto: "Auto (segue la lingua dell'input)",
       generationTitle: 'Generazione',
       generationModel: 'Modello di generazione per lo studio',
       generationModelDesc:

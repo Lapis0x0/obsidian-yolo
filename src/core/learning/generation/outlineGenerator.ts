@@ -3,7 +3,7 @@ import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import type { AgentRunActivity } from '../../agent/service'
 
 import { PhaseDebugCollector, emitPhaseDebugLog } from './debugLog'
-import { OUTLINE_GENERATOR_PROMPT } from './prompts'
+import { OUTLINE_GENERATOR_PROMPT, buildLanguageDirective } from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type { Outline, OutlineChapter } from './types'
 
@@ -57,7 +57,9 @@ export async function generateOutline({
     modelId,
     mode: 'agent',
     yolo: true,
-    systemPromptOverride: OUTLINE_GENERATOR_PROMPT,
+    systemPromptOverride:
+      OUTLINE_GENERATOR_PROMPT +
+      buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage),
     tools: {
       allowedToolNames: workspaceScope?.enabled
         ? LEARNING_READONLY_TOOL_NAMES

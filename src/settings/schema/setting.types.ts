@@ -509,10 +509,12 @@ export const yoloSettingsSchema = z.object({
   learningOptions: z
     .object({
       modelId: z.string().catch(''),
+      outputLanguage: z.string().catch('auto'),
       betaNoticeAcknowledged: z.boolean().catch(false),
     })
     .catch({
       modelId: '',
+      outputLanguage: 'auto',
       betaNoticeAcknowledged: false,
     }),
 

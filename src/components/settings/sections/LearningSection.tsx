@@ -53,6 +53,22 @@ export function LearningSection() {
     })()
   }
 
+  const updateOutputLanguage = (outputLanguage: string) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          learningOptions: {
+            ...settings.learningOptions,
+            outputLanguage,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update learning output language:', error)
+      }
+    })()
+  }
+
   return (
     <div className="yolo-settings-section">
       <section className="yolo-models-block">
@@ -74,6 +90,28 @@ export function LearningSection() {
               value={settings.learningOptions.modelId}
               groupedOptions={modelGroups}
               onChange={updateModel}
+            />
+          </ObsidianSetting>
+          <ObsidianSetting
+            name={t('settings.learning.outputLanguage')}
+            desc={t('settings.learning.outputLanguageDesc')}
+            className="yolo-models-select-card"
+          >
+            <ObsidianDropdown
+              value={settings.learningOptions.outputLanguage ?? 'auto'}
+              options={{
+                auto: t('settings.learning.outputLanguageAuto'),
+                English: 'English',
+                'Simplified Chinese': '\u7b80\u4f53\u4e2d\u6587',
+                Spanish: 'Espa\u00f1ol',
+                Italian: 'Italiano',
+                French: 'Fran\u00e7ais',
+                German: 'Deutsch',
+                Japanese: '\u65e5\u672c\u8a9e',
+                Korean: '\ud55c\uad6d\uc5b4',
+                Portuguese: 'Portugu\u00eas',
+              }}
+              onChange={updateOutputLanguage}
             />
           </ObsidianSetting>
         </div>

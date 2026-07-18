@@ -14,7 +14,11 @@ import {
   PhaseDebugCollector,
   emitChaptersDebugLog,
 } from './debugLog'
-import { CARD_GENERATOR_PROMPT, buildCardPrompt } from './prompts'
+import {
+  CARD_GENERATOR_PROMPT,
+  buildCardPrompt,
+  buildLanguageDirective,
+} from './prompts'
 import { LEARNING_CARD_TOOL_NAMES } from './tools'
 import type {
   CardDraft,
@@ -146,7 +150,9 @@ export async function generateCardsForChapter({
       modelId,
       mode: 'agent',
       yolo: true,
-      systemPromptOverride: CARD_GENERATOR_PROMPT,
+      systemPromptOverride:
+        CARD_GENERATOR_PROMPT +
+        buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage),
       tools: { allowedToolNames: LEARNING_CARD_TOOL_NAMES },
       workspaceScope: cardWorkspaceScope,
       activity,

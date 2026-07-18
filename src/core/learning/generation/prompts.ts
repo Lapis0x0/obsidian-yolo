@@ -175,3 +175,17 @@ ${knowledgeMdContent}
 
 卡片文件将写入路径：${cardsFilePath}`
 }
+
+export function buildLanguageDirective(language?: string): string {
+  const target = language?.trim()
+  if (target && target.toLowerCase() !== 'auto') {
+    return `
+
+## Output language
+Write ALL generated content (project name, project goal, chapter titles, contracts, knowledge point titles and bodies, card fronts and backs) in ${target}. Do not use any other language, except for code identifiers, established technical terms with no common translation, and text quoted verbatim from reference files.`
+  }
+  return `
+
+## Output language
+Detect the primary language of the user's learning topic, goal, and notes, and write ALL generated content (project name, project goal, chapter titles, contracts, knowledge point titles and bodies, card fronts and backs) in that language. For example, if the user's input is written in English, generate everything in English. Do not default to the language these instructions are written in.`
+}

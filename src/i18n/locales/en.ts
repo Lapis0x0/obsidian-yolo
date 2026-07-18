@@ -524,6 +524,10 @@ export const en: TranslationKeys = {
         'System message applied when generating tab completion suggestions; leave empty to use the built-in default.',
     },
     learning: {
+      outputLanguage: 'Output language',
+      outputLanguageDesc:
+        'Language used for generated outlines, knowledge points, and cards. Auto follows the language of your topic and goal input.',
+      outputLanguageAuto: 'Auto (follow input language)',
       generationTitle: 'Generation',
       generationModel: 'Learning generation model',
       generationModelDesc:
