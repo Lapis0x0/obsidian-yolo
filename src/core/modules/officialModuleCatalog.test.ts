@@ -277,6 +277,29 @@ describe('official module catalog V1', () => {
       }),
     ).toThrow(/manifest is invalid/)
     expect(() =>
+      parse(catalog([{ id: 'learning', versions: [version('1.0.0')] }]), {
+        ...OPTIONS,
+        limits: { maxManifestBytes: 2 * 1024 * 1024 },
+      }),
+    ).toThrow(/cannot exceed its hard limit/)
+    expect(() =>
+      parse(
+        catalog([
+          {
+            id: 'learning',
+            versions: [
+              version('1.0.0', {
+                manifest: {
+                  byteSize: 1024 * 1024 + 1,
+                  sha256: 'a'.repeat(64),
+                },
+              }),
+            ],
+          },
+        ]),
+      ),
+    ).toThrow(/manifest is invalid/)
+    expect(() =>
       parse(
         catalog([
           { id: 'learning', versions: [version('1.0.0')] },

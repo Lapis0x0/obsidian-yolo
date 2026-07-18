@@ -1,5 +1,3 @@
-import type { DataAdapter } from 'obsidian'
-
 import { assertModuleId, assertModulePathSegment } from './moduleStore'
 
 /**
@@ -10,9 +8,17 @@ export type ModuleStorageKind =
   | 'synchronized-intent'
   | 'device-local-runtime-state'
 
+export type ModuleStorageAdapter = Readonly<{
+  exists(path: string): Promise<boolean>
+  mkdir(path: string): Promise<void>
+  read(path: string): Promise<string>
+  write(path: string, data: string): Promise<void>
+  remove(path: string): Promise<void>
+}>
+
 export type ModuleStorageBackend<K extends ModuleStorageKind> = Readonly<{
   kind: K
-  adapter: DataAdapter
+  adapter: ModuleStorageAdapter
   /** Caller-owned vault-relative root. The store deliberately chooses no path. */
   rootPath: string
 }>
@@ -97,6 +103,21 @@ export class ModuleNamespacedDataStore<K extends ModuleStorageKind> {
         next,
         moduleId,
       )) as ModuleDataEnvelope<T>
+    })
+  }
+
+  remove(moduleId: string): Promise<void> {
+    const paths = this.pathsFor(moduleId)
+    this.assertNotMigrating(paths.target)
+    return this.enqueue(paths.target, async () => {
+      const previous = await this.readRaw(paths.target)
+      if (previous === null) return
+      await this.backend.adapter.remove(paths.target)
+      if (await this.backend.adapter.exists(paths.target)) {
+        throw new ModuleSettingsConflictError(
+          `Module "${moduleId}" changed while its removal was being verified`,
+        )
+      }
     })
   }
 

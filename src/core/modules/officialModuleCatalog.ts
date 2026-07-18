@@ -74,7 +74,7 @@ const DEFAULT_LIMITS: OfficialModuleCatalogLimits = Object.freeze({
   maxStringBytes: 4_096,
   maxRangeAlternatives: 8,
   maxComparatorsPerAlternative: 16,
-  maxManifestBytes: 16_000_000,
+  maxManifestBytes: 1024 * 1024,
 })
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
@@ -83,7 +83,7 @@ const SHA256 = /^[a-fA-F0-9]{64}$/
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const RELEASE_URL =
-  /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9._+-]+$/
+  /^https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/([A-Za-z0-9._-]+)\/releases\/download\/[A-Za-z0-9._+-]+\/[A-Za-z0-9][A-Za-z0-9._+-]*$/
 
 export function parseOfficialModuleCatalog(
   raw: string | Uint8Array,
@@ -410,6 +410,14 @@ function resolveLimits(
   for (const [name, value] of Object.entries(limits)) {
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new Error(`Official module catalog limit "${name}" is invalid`)
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(supplied, name) &&
+      value > DEFAULT_LIMITS[name as keyof OfficialModuleCatalogLimits]
+    ) {
+      throw new Error(
+        `Official module catalog limit "${name}" cannot exceed its hard limit`,
+      )
     }
   }
   return limits

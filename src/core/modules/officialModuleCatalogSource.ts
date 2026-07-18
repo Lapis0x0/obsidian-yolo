@@ -1,3 +1,4 @@
+import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import {
   type OfficialModuleCatalogModule,
   type OfficialModuleCatalogV1,
@@ -66,6 +67,41 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
     Record<string, OfficialModuleCatalogVersion>
   > {
     return this.resolvedVersions
+  }
+
+  getResolvedArtifactDescriptor(
+    moduleId: string,
+    expectedVersion: string,
+    platform: OfficialModuleCompatibility['platform'],
+  ): ModuleArtifactDescriptor | undefined {
+    const resolved = this.resolvedVersions[moduleId]
+    if (!resolved) return undefined
+    if (resolved.version !== expectedVersion) {
+      throw new Error(
+        `Official module "${moduleId}" resolved candidate changed from "${expectedVersion}" to "${resolved.version}"`,
+      )
+    }
+    if (!resolved.platforms.includes(platform)) {
+      throw new Error(
+        `Official module "${moduleId}" candidate does not support ${platform}`,
+      )
+    }
+    const dataSchemas = Object.create(null) as Record<
+      string,
+      { readMin: number; readMax: number; write: number }
+    >
+    for (const [namespace, schema] of Object.entries(resolved.dataSchemas)) {
+      dataSchemas[namespace] = Object.freeze({ ...schema })
+    }
+    return Object.freeze({
+      id: moduleId,
+      version: resolved.version,
+      hostApi: resolved.hostApi,
+      dataSchemas: Object.freeze(dataSchemas),
+      platform,
+      manifestUrl: resolved.manifestUrl,
+      manifest: Object.freeze({ ...resolved.manifest }),
+    })
   }
 
   private async loadOnce(): Promise<ReadonlyArray<ModuleCatalogEntry>> {

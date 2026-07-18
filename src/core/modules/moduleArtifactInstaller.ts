@@ -22,6 +22,7 @@ import {
 } from './moduleStore'
 
 export type ModuleArtifactDownloadRequest = Readonly<{
+  kind: 'manifest' | 'artifact'
   url: string
   byteSize: number
 }>
@@ -93,6 +94,7 @@ export class ModuleArtifactInstaller {
     await ensureDir(adapter, stagingDir)
     try {
       const manifestBytes = await this.options.download({
+        kind: 'manifest',
         url: descriptor.manifestUrl,
         byteSize: descriptor.manifest.byteSize,
       })
@@ -120,6 +122,7 @@ export class ModuleArtifactInstaller {
 
       for (const file of files) {
         const bytes = await this.options.download({
+          kind: 'artifact',
           url: file.url,
           byteSize: file.byteSize,
         })

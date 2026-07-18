@@ -40,6 +40,11 @@ export {
   type ModuleArtifactDownloadRequest,
   type ModuleArtifactInstallerOptions,
 } from './moduleArtifactInstaller'
+export {
+  createOfficialModuleArtifactDownloader,
+  type OfficialModuleArtifactDownloaderOptions,
+  type OfficialModuleArtifactRequest,
+} from './officialModuleArtifactDownloader'
 export { sha256Hex, verifyModuleBytes } from './moduleIntegrity'
 export {
   verifyInstalledModuleArtifact,
@@ -112,9 +117,16 @@ export {
   OFFICIAL_MODULE_RELEASE_REPOSITORIES,
   OfficialModuleCatalogClient,
   OfficialModuleCatalogUnavailableError,
+  isOfficialModuleReleaseUrl,
   type OfficialModuleCatalogClientOptions,
   type OfficialModuleCatalogRequest,
 } from './officialModuleCatalogClient'
+export {
+  ModuleDeviceStateCorruptionError,
+  ModuleDeviceStateStore,
+  type ModuleDeviceState,
+  type ModuleDeviceStateStoreBackend,
+} from './moduleDeviceStateStore'
 export {
   OfficialModuleCatalogSource,
   type OfficialModuleCatalogSourceOptions,

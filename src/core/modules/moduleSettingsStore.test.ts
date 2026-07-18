@@ -1,5 +1,3 @@
-import type { DataAdapter } from 'obsidian'
-
 import {
   ModuleRuntimeStateStore,
   ModuleSettingsConflictError,
@@ -38,15 +36,12 @@ class MemoryAdapter {
   }
 }
 
-const asDataAdapter = (adapter: MemoryAdapter): DataAdapter =>
-  adapter as unknown as DataAdapter
-
 describe('ModuleSettingsStore', () => {
   it('isolates module ids and returns a frozen deep copy', async () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: '.config/yolo/module-settings',
     })
     const source = { nested: { enabled: true }, names: ['one'] }
@@ -87,7 +82,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'settings/modules',
     })
 
@@ -104,12 +99,12 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const settings = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'sync/modules',
     })
     const runtime = new ModuleRuntimeStateStore({
       kind: 'device-local-runtime-state',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'local/modules',
     })
 
@@ -124,7 +119,7 @@ describe('ModuleSettingsStore', () => {
       () =>
         new ModuleRuntimeStateStore({
           kind: 'device-local-runtime-state',
-          adapter: asDataAdapter(adapter),
+          adapter,
           rootPath: 'sync/modules',
         }),
     ).toThrow('requires a distinct backend root')
@@ -132,7 +127,7 @@ describe('ModuleSettingsStore', () => {
       () =>
         new ModuleRuntimeStateStore({
           kind: 'device-local-runtime-state',
-          adapter: asDataAdapter(adapter),
+          adapter,
           rootPath: 'SYNC/MODULES',
         }),
     ).toThrow('requires a distinct backend root')
@@ -142,7 +137,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'settings/modules',
     })
 
@@ -151,7 +146,7 @@ describe('ModuleSettingsStore', () => {
       () =>
         new ModuleSettingsStore({
           kind: 'synchronized-intent',
-          adapter: asDataAdapter(adapter),
+          adapter,
           rootPath: '../settings',
         }),
     ).toThrow('safe vault-relative path')
@@ -168,13 +163,15 @@ describe('ModuleSettingsStore', () => {
       JSON.stringify({ schemaVersion: -1, data: {} }),
     )
     await expect(store.read('notes')).rejects.toThrow('invalid envelope')
+    await expect(store.remove('notes')).resolves.toBeUndefined()
+    await expect(store.read('notes')).resolves.toBeNull()
   })
 
   it('rejects JSON lookalikes without invoking accessors', async () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'strict/modules',
     })
     let accessorInvoked = false
@@ -241,7 +238,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const backend = {
       kind: 'synchronized-intent' as const,
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'settings/modules',
     }
     const firstStore = new ModuleSettingsStore(backend)
@@ -290,7 +287,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'settings/modules',
     })
     await store.write('notes', { schemaVersion: 1, data: { value: 'old' } })
@@ -318,7 +315,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'settings/modules',
     })
     await store.write('notes', { schemaVersion: 1, data: { value: 'old' } })
@@ -339,7 +336,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'settings/modules',
     })
     await store.write('generic', { schemaVersion: 1, data: { count: 1 } })
@@ -360,7 +357,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'migration-zero/modules',
     })
     await store.write('generic', { schemaVersion: 0, data: { count: 1 } })
@@ -380,7 +377,7 @@ describe('ModuleSettingsStore', () => {
     const adapter = new MemoryAdapter()
     const backend = {
       kind: 'synchronized-intent' as const,
-      adapter: asDataAdapter(adapter),
+      adapter,
       rootPath: 'migration/modules',
     }
     const store = new ModuleSettingsStore(backend)

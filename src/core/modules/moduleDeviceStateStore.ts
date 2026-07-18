@@ -1,0 +1,304 @@
+import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
+import {
+  type DeviceLocalModuleRuntimeStateBackend,
+  ModuleRuntimeStateStore,
+  ModuleSettingsCorruptionError,
+} from './moduleSettingsStore'
+import {
+  MAX_MODULE_MANIFEST_BYTES,
+  assertModuleId,
+  isModuleHostApiRange,
+} from './moduleStore'
+import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
+
+const SCHEMA_VERSION = 1
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
+const SHA256 = /^[a-fA-F0-9]{64}$/
+const DANGEROUS_NAMES = new Set(['__proto__', 'prototype', 'constructor'])
+
+export type ModuleDeviceState = Readonly<{
+  moduleId: string
+  platform: 'desktop' | 'mobile'
+  activeVersion: string | null
+  downloadedCandidate: string | null
+  pendingVersion: string | null
+  readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>
+}>
+
+export type ModuleDeviceStateStoreBackend = DeviceLocalModuleRuntimeStateBackend
+
+export class ModuleDeviceStateCorruptionError extends Error {
+  constructor(moduleId: string, error: unknown) {
+    super(
+      `Device-local state for module "${moduleId}" is corrupt: ${describeError(error)}`,
+    )
+    this.name = 'ModuleDeviceStateCorruptionError'
+  }
+}
+
+export class ModuleDeviceStateStore {
+  private readonly store: ModuleRuntimeStateStore
+
+  constructor(backend: ModuleDeviceStateStoreBackend) {
+    this.store = new ModuleRuntimeStateStore(backend)
+  }
+
+  async read(moduleId: string): Promise<ModuleDeviceState | null> {
+    assertModuleId(moduleId, 'Module id')
+    let envelope
+    try {
+      envelope = await this.store.read(moduleId)
+    } catch (error) {
+      if (error instanceof ModuleSettingsCorruptionError) {
+        throw new ModuleDeviceStateCorruptionError(moduleId, error)
+      }
+      throw error
+    }
+    if (envelope === null) return null
+    try {
+      if (envelope.schemaVersion !== SCHEMA_VERSION) {
+        throw new Error(`unsupported schema version ${envelope.schemaVersion}`)
+      }
+      return parseState(envelope.data, moduleId)
+    } catch (error) {
+      throw new ModuleDeviceStateCorruptionError(moduleId, error)
+    }
+  }
+
+  async write(state: ModuleDeviceState): Promise<ModuleDeviceState> {
+    const snapshot = parseState(state)
+    const envelope = await this.store.write(snapshot.moduleId, {
+      schemaVersion: SCHEMA_VERSION,
+      data: snapshot,
+    })
+    return parseState(envelope.data, snapshot.moduleId)
+  }
+
+  remove(moduleId: string): Promise<void> {
+    assertModuleId(moduleId, 'Module id')
+    return this.store.remove(moduleId)
+  }
+}
+
+function parseState(
+  value: unknown,
+  expectedModuleId?: string,
+): ModuleDeviceState {
+  const state = plainRecord(value, 'Module device state')
+  assertExactKeys(state, [
+    'moduleId',
+    'platform',
+    'activeVersion',
+    'downloadedCandidate',
+    'pendingVersion',
+    'readyVersions',
+  ])
+  const moduleId = dataProperty(state, 'moduleId')
+  const platform = dataProperty(state, 'platform')
+  if (typeof moduleId !== 'string') throw new Error('moduleId is invalid')
+  assertModuleId(moduleId, 'Module id')
+  if (expectedModuleId !== undefined && moduleId !== expectedModuleId) {
+    throw new Error('moduleId does not match its storage namespace')
+  }
+  if (platform !== 'desktop' && platform !== 'mobile') {
+    throw new Error('platform is invalid')
+  }
+
+  const readyInput = plainRecord(
+    dataProperty(state, 'readyVersions'),
+    'readyVersions',
+  )
+  const readyVersions: Record<string, ModuleArtifactDescriptor> = {}
+  for (const version of Object.getOwnPropertyNames(readyInput)) {
+    assertSafeName(version, 'Ready version')
+    assertVersion(version, 'Ready version')
+    readyVersions[version] = parseDescriptor(
+      dataProperty(readyInput, version),
+      moduleId,
+      version,
+      platform,
+    )
+  }
+
+  const activeVersion = parsePointer(state, 'activeVersion', readyVersions)
+  const downloadedCandidate = parsePointer(
+    state,
+    'downloadedCandidate',
+    readyVersions,
+  )
+  const pendingVersion = parsePointer(state, 'pendingVersion', readyVersions)
+  return Object.freeze({
+    moduleId,
+    platform,
+    activeVersion,
+    downloadedCandidate,
+    pendingVersion,
+    readyVersions: Object.freeze(readyVersions),
+  })
+}
+
+function parseDescriptor(
+  value: unknown,
+  moduleId: string,
+  version: string,
+  platform: 'desktop' | 'mobile',
+): ModuleArtifactDescriptor {
+  const descriptor = plainRecord(value, `Descriptor ${version}`)
+  assertExactKeys(descriptor, [
+    'id',
+    'version',
+    'hostApi',
+    'dataSchemas',
+    'platform',
+    'manifestUrl',
+    'manifest',
+  ])
+  const id = dataProperty(descriptor, 'id')
+  const descriptorVersion = dataProperty(descriptor, 'version')
+  const descriptorPlatform = dataProperty(descriptor, 'platform')
+  const hostApi = dataProperty(descriptor, 'hostApi')
+  const manifestUrl = dataProperty(descriptor, 'manifestUrl')
+  if (
+    id !== moduleId ||
+    descriptorVersion !== version ||
+    descriptorPlatform !== platform
+  ) {
+    throw new Error('Descriptor identity does not match its enclosing state')
+  }
+  if (!isModuleHostApiRange(hostApi)) throw new Error('hostApi is invalid')
+  if (!isOfficialModuleReleaseUrl(manifestUrl)) {
+    throw new Error('manifestUrl is invalid')
+  }
+
+  const manifest = plainRecord(dataProperty(descriptor, 'manifest'), 'manifest')
+  assertExactKeys(manifest, ['byteSize', 'sha256'])
+  const byteSize = dataProperty(manifest, 'byteSize')
+  const sha256 = dataProperty(manifest, 'sha256')
+  if (
+    !Number.isSafeInteger(byteSize) ||
+    (byteSize as number) <= 0 ||
+    (byteSize as number) > MAX_MODULE_MANIFEST_BYTES ||
+    typeof sha256 !== 'string' ||
+    !SHA256.test(sha256)
+  ) {
+    throw new Error('manifest metadata is invalid')
+  }
+  return Object.freeze({
+    id: moduleId,
+    version,
+    hostApi,
+    dataSchemas: parseDataSchemas(dataProperty(descriptor, 'dataSchemas')),
+    platform,
+    manifestUrl,
+    manifest: Object.freeze({
+      byteSize: byteSize as number,
+      sha256: sha256.toLowerCase(),
+    }),
+  })
+}
+
+function parseDataSchemas(
+  value: unknown,
+): ModuleArtifactDescriptor['dataSchemas'] {
+  const input = plainRecord(value, 'dataSchemas')
+  const names = Object.getOwnPropertyNames(input)
+  if (names.length > 32) throw new Error('dataSchemas is invalid')
+  const result: Record<
+    string,
+    Readonly<{ readMin: number; readMax: number; write: number }>
+  > = {}
+  for (const name of names) {
+    assertSafeName(name, 'Data schema namespace')
+    if (!SCHEMA_NAMESPACE.test(name)) throw new Error('dataSchemas is invalid')
+    const schema = plainRecord(dataProperty(input, name), `Data schema ${name}`)
+    assertExactKeys(schema, ['readMin', 'readMax', 'write'])
+    const readMin = dataProperty(schema, 'readMin')
+    const readMax = dataProperty(schema, 'readMax')
+    const write = dataProperty(schema, 'write')
+    if (
+      !isSchemaVersion(readMin) ||
+      !isSchemaVersion(readMax) ||
+      !isSchemaVersion(write) ||
+      readMin > readMax ||
+      write < readMin ||
+      write > readMax
+    ) {
+      throw new Error(`Data schema "${name}" is invalid`)
+    }
+    result[name] = Object.freeze({ readMin, readMax, write })
+  }
+  return Object.freeze(result)
+}
+
+function parsePointer(
+  state: Record<string, unknown>,
+  name: 'activeVersion' | 'downloadedCandidate' | 'pendingVersion',
+  readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>,
+): string | null {
+  const value = dataProperty(state, name)
+  if (value === null) return null
+  if (typeof value !== 'string') throw new Error(`${name} is invalid`)
+  assertVersion(value, name)
+  if (!Object.prototype.hasOwnProperty.call(readyVersions, value)) {
+    throw new Error(`${name} must refer to a ready version`)
+  }
+  return value
+}
+
+function plainRecord(value: unknown, label: string): Record<string, unknown> {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null) ||
+    Object.getOwnPropertySymbols(value).length > 0
+  ) {
+    throw new TypeError(`${label} must be a plain object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function assertExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): void {
+  const names = Object.getOwnPropertyNames(value)
+  for (const name of names) assertSafeName(name, 'Property')
+  if (
+    names.length !== expected.length ||
+    expected.some((name) => !names.includes(name))
+  ) {
+    throw new Error(`Object must contain only ${expected.join(', ')}`)
+  }
+  for (const name of names) dataProperty(value, name)
+}
+
+function dataProperty(value: object, name: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, name)
+  if (!descriptor || !('value' in descriptor) || !descriptor.enumerable) {
+    throw new TypeError(
+      `Property "${name}" must be an enumerable data property`,
+    )
+  }
+  return descriptor.value
+}
+
+function assertSafeName(value: string, label: string): void {
+  if (DANGEROUS_NAMES.has(value)) throw new Error(`${label} is forbidden`)
+}
+
+function assertVersion(value: string, label: string): void {
+  assertSafeName(value, label)
+  if (!SEMVER.test(value)) throw new Error(`${label} must be semantic`)
+}
+
+function isSchemaVersion(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

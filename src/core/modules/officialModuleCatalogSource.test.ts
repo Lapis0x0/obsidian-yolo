@@ -90,6 +90,51 @@ describe('OfficialModuleCatalogSource', () => {
     expect(fixture.source.getResolvedVersion('learning')).toBe(
       catalog.modules[0].versions[0],
     )
+    expect(
+      fixture.source.getResolvedArtifactDescriptor(
+        'learning',
+        '1.2.0',
+        'desktop',
+      ),
+    ).toEqual({
+      id: 'learning',
+      version: '1.2.0',
+      hostApi: '>=1.0.0 <2.0.0',
+      dataSchemas: { core: { readMin: 0, readMax: 2, write: 2 } },
+      platform: 'desktop',
+      manifestUrl:
+        'https://github.com/Lapis0x0/obsidian-yolo/releases/download/v1.2.0/learning.json',
+      manifest: { byteSize: 10, sha256: HASH },
+    })
+  })
+
+  it('binds installer lookup to the displayed version and selected platform', async () => {
+    const fixture = source(
+      parsedCatalog([{ id: 'learning', versions: ['1.0.0'] }]),
+    )
+    await fixture.source.load()
+
+    expect(() =>
+      fixture.source.getResolvedArtifactDescriptor(
+        'learning',
+        '0.9.0',
+        'desktop',
+      ),
+    ).toThrow('candidate changed')
+    expect(() =>
+      fixture.source.getResolvedArtifactDescriptor(
+        'learning',
+        '1.0.0',
+        'mobile',
+      ),
+    ).toThrow('does not support mobile')
+    expect(
+      fixture.source.getResolvedArtifactDescriptor(
+        'missing',
+        '1.0.0',
+        'desktop',
+      ),
+    ).toBeUndefined()
   })
 
   it('selects only a version newer than the active version for updates', async () => {
