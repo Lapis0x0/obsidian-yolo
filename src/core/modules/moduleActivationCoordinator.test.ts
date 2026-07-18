@@ -103,6 +103,11 @@ function transition(
       targetManifestSha256: target.descriptor.manifest.sha256,
       settings: {
         namespace: 'settings',
+        location: {
+          moduleId: target.descriptor.id,
+          storageRoot: 'YOLO/.yolo_json_db/module-settings',
+          storagePath: `YOLO/.yolo_json_db/module-settings/${target.descriptor.id}.json`,
+        },
         sourceSchemaVersion: 1,
         targetSchemaVersion: 1,
         previous: {
