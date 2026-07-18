@@ -209,20 +209,35 @@ export type TranslationKeys = {
       update: string
       installing: string
       updating: string
+      applyAndReload: string
+      preparing: string
+      reload: string
+      reloading: string
       confirmInstallTitle: string
       confirmUpdateTitle: string
       confirmMessage: string
+      confirmApplyTitle: string
+      confirmApplyMessage: string
+      applyWithdrawnWarning: string
+      applyCatalogUnavailableWarning: string
       candidateUnavailable: string
+      transitionCandidateUnavailable: string
       installSuccess: string
       updateSuccess: string
       installError: string
       updateError: string
+      applyError: string
+      reloadError: string
+      readyToApplyDetail: string
+      activationPendingDetail: string
       statuses: {
         available: string
         installed: string
         active: string
         disabled: string
         updateAvailable: string
+        readyToApply: string
+        activationPending: string
         failed: string
       }
     }

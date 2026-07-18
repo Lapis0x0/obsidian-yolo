@@ -553,24 +553,45 @@ export const en: TranslationKeys = {
       update: 'Update',
       installing: 'Installing…',
       updating: 'Updating…',
+      applyAndReload: 'Apply and reload',
+      preparing: 'Preparing…',
+      reload: 'Reload',
+      reloading: 'Reloading…',
       confirmInstallTitle: 'Install {name}',
       confirmUpdateTitle: 'Update {name}',
       confirmMessage:
         'Confirm the exact module release before downloading.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded and verified. This version will not be activated yet.',
+      confirmApplyTitle: 'Apply {name}',
+      confirmApplyMessage:
+        'Confirm the verified module release to activate after reload.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nYolo will durably prepare this version, then reload Obsidian. Activation happens during the next startup.',
+      applyWithdrawnWarning:
+        'Warning: this module is no longer listed in the current official catalog. The downloaded release remains locally verified, but it may have been withdrawn.',
+      applyCatalogUnavailableWarning:
+        'Warning: the official catalog is unavailable, so this release’s current availability cannot be confirmed.',
       candidateUnavailable:
         '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
+      transitionCandidateUnavailable:
+        '{name} cannot be applied right now. The downloaded release may have changed or another operation may be in progress.',
       installSuccess:
         'Downloaded and verified {name} {version}. It is not active yet.',
       updateSuccess:
         'Downloaded and verified the {name} {version} update. It is not active yet.',
       installError: 'Could not install {name}: {error}',
       updateError: 'Could not update {name}: {error}',
+      applyError: 'Could not prepare {name} for activation: {error}',
+      reloadError:
+        '{name} {version} is prepared, but Obsidian could not reload automatically: {error}. Reload Obsidian to continue.',
+      readyToApplyDetail: 'Downloaded version {version} is verified and ready.',
+      activationPendingDetail:
+        'Version {version} is prepared. Reload to continue activation or recovery.',
       statuses: {
         available: 'Available',
         installed: 'Installed',
         active: 'Active',
         disabled: 'Disabled',
         updateAvailable: 'Update available',
+        readyToApply: 'Ready to apply',
+        activationPending: 'Activation pending',
         failed: 'Failed',
       },
     },

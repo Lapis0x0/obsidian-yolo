@@ -11,12 +11,28 @@ describe('ModuleManager', () => {
       { id: 'available', version: '1.0.0' },
       { id: 'installed', version: '1.0.0' },
       { id: 'update', version: '2.0.0' },
+      { id: 'candidate', version: '2.0.0' },
+      { id: 'pending', version: '2.0.0' },
     ]
     const installed: InstalledModuleState[] = [
       { id: 'installed', version: '1.0.0' },
       { id: 'active', version: '1.0.0', active: true },
       { id: 'disabled', version: '1.0.0', disabled: true },
       { id: 'update', version: '1.0.0' },
+      {
+        id: 'candidate',
+        version: '1.0.0',
+        candidateVersion: '2.0.0',
+        active: true,
+        error: 'old version failed',
+      },
+      {
+        id: 'pending',
+        version: '1.0.0',
+        pendingVersion: '2.0.0',
+        transitionPhase: 'prepared',
+        active: true,
+      },
       { id: 'failed', version: '1.0.0', error: 'activation failed' },
     ]
     const manager = new ModuleManager({
@@ -33,12 +49,116 @@ describe('ModuleManager', () => {
     expect(snapshot.modules.map(({ id, status }) => [id, status])).toEqual([
       ['active', 'active'],
       ['available', 'available'],
+      ['candidate', 'ready-to-apply'],
       ['disabled', 'disabled'],
       ['failed', 'failed'],
       ['installed', 'installed'],
+      ['pending', 'activation-pending'],
       ['update', 'update-available'],
     ])
+    const candidate = snapshot.modules.find(({ id }) => id === 'candidate')
+    const pending = snapshot.modules.find(({ id }) => id === 'pending')
+    expect(candidate).toMatchObject({
+      version: '1.0.0',
+      candidateVersion: '2.0.0',
+      error: 'old version failed',
+    })
+    expect(candidate).not.toHaveProperty('availableVersion')
+    expect(pending).toMatchObject({
+      version: '1.0.0',
+      pendingVersion: '2.0.0',
+      transitionPhase: 'prepared',
+    })
+    expect(pending).not.toHaveProperty('availableVersion')
     expect(manager.getSnapshot()).toBe(snapshot)
+  })
+
+  it('projects initial candidates and pending activation without false updates', async () => {
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [
+          { id: 'candidate', version: '3.0.0' },
+          { id: 'pending', version: '3.0.0' },
+          { id: 'failed', version: '3.0.0' },
+        ],
+      },
+      installedStateSource: {
+        load: async () => [
+          {
+            id: 'candidate',
+            version: '2.0.0',
+            candidateVersion: '2.0.0',
+          },
+          {
+            id: 'pending',
+            version: '2.0.0',
+            pendingVersion: '2.0.0',
+            transitionPhase: 'prepared',
+          },
+          {
+            id: 'failed',
+            version: '1.0.0',
+            candidateVersion: '2.0.0',
+            pendingVersion: '2.0.0',
+            transitionPhase: 'prepared',
+            error: 'activation failed',
+          },
+        ],
+      },
+    })
+
+    await manager.refresh()
+
+    expect(manager.getSnapshot().modules).toMatchObject([
+      {
+        id: 'candidate',
+        version: '2.0.0',
+        candidateVersion: '2.0.0',
+        status: 'ready-to-apply',
+      },
+      {
+        id: 'failed',
+        version: '1.0.0',
+        candidateVersion: '2.0.0',
+        pendingVersion: '2.0.0',
+        transitionPhase: 'prepared',
+        status: 'activation-pending',
+        error: 'activation failed',
+      },
+      {
+        id: 'pending',
+        version: '2.0.0',
+        pendingVersion: '2.0.0',
+        transitionPhase: 'prepared',
+        status: 'activation-pending',
+      },
+    ])
+    expect(
+      manager
+        .getSnapshot()
+        .modules.every((module) => module.availableVersion === undefined),
+    ).toBe(true)
+  })
+
+  it('keeps active and catalog-withdrawn semantics without staged state', async () => {
+    const manager = new ModuleManager({
+      catalogSource: { load: async () => [] },
+      installedStateSource: {
+        load: async () => [
+          { id: 'withdrawn-active', version: '1.0.0', active: true },
+          { id: 'withdrawn-installed', version: '1.0.0' },
+        ],
+      },
+    })
+
+    await manager.refresh()
+
+    expect(
+      manager.getSnapshot().modules.map(({ id, status }) => [id, status]),
+    ).toEqual([
+      ['withdrawn-active', 'active'],
+      ['withdrawn-installed', 'installed'],
+    ])
   })
 
   it('isolates source failures and retains the last good side', async () => {

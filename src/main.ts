@@ -3615,6 +3615,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.productionModuleServices?.getInstallCandidate(moduleId)
   }
 
+  getModuleTransitionCandidate(
+    moduleId: string,
+  ): Promise<ConfirmedModuleCandidate | undefined> {
+    return (
+      this.productionModuleServices?.getTransitionCandidate(moduleId) ??
+      Promise.resolve(undefined)
+    )
+  }
+
   installConfirmedModuleCandidate(
     candidate: ConfirmedModuleCandidate,
   ): Promise<ModuleInstallationResult> {
@@ -3624,6 +3633,17 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       )
     }
     return this.productionModuleServices.installConfirmedCandidate(candidate)
+  }
+
+  prepareConfirmedModuleTransition(
+    candidate: ConfirmedModuleCandidate,
+  ): ReturnType<ProductionModuleServices['prepareConfirmedTransition']> {
+    if (!this.productionModuleServices) {
+      return Promise.reject(
+        new Error('[YOLO] Production module transition is unavailable'),
+      )
+    }
+    return this.productionModuleServices.prepareConfirmedTransition(candidate)
   }
 
   private initializeModuleSystem(): void {

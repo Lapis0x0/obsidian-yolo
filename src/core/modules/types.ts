@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import type { ModuleConfigV1 } from './moduleConfig'
 import type { ModulePrivateStorageV1 } from './modulePrivateStorage'
+import type { ModuleTransitionPhase } from './moduleTransitionJournal'
 
 export type ModuleDisposer = () => void
 
@@ -290,6 +291,8 @@ export type ModuleStatus =
   | 'active'
   | 'disabled'
   | 'update-available'
+  | 'ready-to-apply'
+  | 'activation-pending'
   | 'failed'
 
 export type ModuleCatalogEntry = {
@@ -302,6 +305,9 @@ export type ModuleCatalogEntry = {
 export type InstalledModuleState = {
   id: string
   version: string
+  candidateVersion?: string
+  pendingVersion?: string
+  transitionPhase?: ModuleTransitionPhase
   active?: boolean
   disabled?: boolean
   error?: string
@@ -321,6 +327,9 @@ export type ModuleRecord = Readonly<{
   description: string
   version: string
   availableVersion?: string
+  candidateVersion?: string
+  pendingVersion?: string
+  transitionPhase?: ModuleTransitionPhase
   error?: string
   status: ModuleStatus
   catalog?: Readonly<ModuleCatalogEntry>

@@ -17,6 +17,7 @@ import {
   type ModuleStore,
   assertModuleId,
 } from './moduleStore'
+import { ModuleTransitionCoordinator } from './moduleTransitionCoordinator'
 import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import {
   type OfficialModuleArtifactRequest,
@@ -54,7 +55,7 @@ export type ProductionModuleServicesOptions = Readonly<{
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   transitionSettingsBackend: Pick<
     ObsidianModuleTransitionSettingsBackend,
-    'readAtCapturedLocation'
+    'capture' | 'readAtCapturedLocation'
   >
   transitionRecoveryRealmToken?: object
   readCurrentSchemaVersion: ModuleActivationCoordinatorOptions['readCurrentSchemaVersion']
@@ -75,9 +76,13 @@ export type ProductionModuleServices = Readonly<{
   installer: ModuleArtifactInstaller
   installedStateSource: ModuleDeviceStateInstalledStateSource
   getInstallCandidate(moduleId: string): ConfirmedModuleCandidate | undefined
+  getTransitionCandidate(
+    moduleId: string,
+  ): Promise<ConfirmedModuleCandidate | undefined>
   installConfirmedCandidate(
     candidate: ConfirmedModuleCandidate,
   ): Promise<ModuleInstallationResult>
+  prepareConfirmedTransition(candidate: ConfirmedModuleCandidate): Promise<void>
   dispose(): void
 }>
 
@@ -146,6 +151,16 @@ export function createProductionModuleServices(
     catalogSource,
     installedStateSource,
   })
+  const transitionCoordinator = new ModuleTransitionCoordinator({
+    deviceStateStore: options.deviceStateStore,
+    settingsBackend: options.transitionSettingsBackend,
+    manager,
+    platform: options.platform,
+    ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
+    ...(options.reportRefreshError
+      ? { reportRefreshError: options.reportRefreshError }
+      : {}),
+  })
   const installer = new ModuleArtifactInstaller({
     adapter: options.store.adapter,
     store: options.store,
@@ -209,6 +224,32 @@ export function createProductionModuleServices(
         expectedManifestSha256: resolved.manifest.sha256,
       })
     },
+    async getTransitionCandidate(moduleId: string) {
+      assertModuleId(moduleId, 'Module id')
+      if (disposed || inFlightModuleIds.has(moduleId)) return undefined
+      const state = await options.deviceStateStore.read(moduleId)
+      if (disposed || inFlightModuleIds.has(moduleId)) return undefined
+      const version = state?.downloadedCandidate
+      const descriptor = version ? state.readyVersions[version] : undefined
+      if (
+        !state ||
+        state.platform !== options.platform ||
+        state.transition !== null ||
+        state.pendingVersion !== null ||
+        state.activeVersion === version ||
+        !descriptor ||
+        descriptor.id !== moduleId ||
+        descriptor.version !== version ||
+        descriptor.platform !== options.platform
+      ) {
+        return undefined
+      }
+      return Object.freeze({
+        moduleId: state.moduleId,
+        expectedVersion: descriptor.version,
+        expectedManifestSha256: descriptor.manifest.sha256,
+      })
+    },
     async installConfirmedCandidate(candidate: ConfirmedModuleCandidate) {
       const request = Object.freeze({
         moduleId: candidate.moduleId,
@@ -240,8 +281,32 @@ export function createProductionModuleServices(
         inFlightModuleIds.delete(request.moduleId)
       }
     },
+    async prepareConfirmedTransition(candidate: ConfirmedModuleCandidate) {
+      const request = Object.freeze({
+        moduleId: candidate.moduleId,
+        expectedVersion: candidate.expectedVersion,
+        expectedManifestSha256: candidate.expectedManifestSha256,
+      })
+      assertModuleId(request.moduleId, 'Module id')
+      if (disposed) {
+        throw new Error('Production module services are disposed')
+      }
+      if (inFlightModuleIds.has(request.moduleId)) {
+        throw new Error(
+          `Module operation is already in progress: ${request.moduleId}`,
+        )
+      }
+
+      inFlightModuleIds.add(request.moduleId)
+      try {
+        await transitionCoordinator.prepareConfirmedCandidate(request)
+      } finally {
+        inFlightModuleIds.delete(request.moduleId)
+      }
+    },
     dispose: () => {
       disposed = true
+      transitionCoordinator.dispose()
       activationCoordinator.dispose()
       coordinator.dispose()
       manager.dispose()
@@ -259,6 +324,7 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
     typeof options.activationRuntime?.activate !== 'function' ||
+    typeof options.transitionSettingsBackend?.capture !== 'function' ||
     typeof options.transitionSettingsBackend?.readAtCapturedLocation !==
       'function' ||
     (options.activationLoader !== undefined &&

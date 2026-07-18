@@ -6,7 +6,7 @@ function state(
   pointers: Partial<
     Pick<
       ModuleDeviceState,
-      'activeVersion' | 'pendingVersion' | 'downloadedCandidate'
+      'activeVersion' | 'pendingVersion' | 'downloadedCandidate' | 'transition'
     >
   >,
 ): ModuleDeviceState {
@@ -41,17 +41,25 @@ function source(
 }
 
 describe('ModuleDeviceStateInstalledStateSource', () => {
-  it('maps active first, then pending, then downloaded candidate', async () => {
+  it('preserves active, pending, candidate, and transition projections', async () => {
+    const transition = Object.freeze({
+      phase: 'prepared' as const,
+      moduleId: 'pending',
+      platform: 'desktop' as const,
+      previousActiveVersion: null,
+      targetVersion: '2.0.0',
+      targetManifestSha256: 'a'.repeat(64),
+      settings: null,
+    })
     const fixture = source(
       [
         state('active', {
           activeVersion: '1.0.0',
-          pendingVersion: '2.0.0',
           downloadedCandidate: '3.0.0',
         }),
         state('pending', {
           pendingVersion: '2.0.0',
-          downloadedCandidate: '3.0.0',
+          transition,
         }),
         state('candidate', { downloadedCandidate: '3.0.0' }),
         state('pointerless', {}),
@@ -62,9 +70,19 @@ describe('ModuleDeviceStateInstalledStateSource', () => {
     const installed = await fixture.source.load()
 
     expect(installed).toEqual([
-      { id: 'active', version: '1.0.0', active: true },
-      { id: 'pending', version: '2.0.0' },
-      { id: 'candidate', version: '3.0.0' },
+      {
+        id: 'active',
+        version: '1.0.0',
+        candidateVersion: '3.0.0',
+        active: true,
+      },
+      {
+        id: 'pending',
+        version: '2.0.0',
+        pendingVersion: '2.0.0',
+        transitionPhase: 'prepared',
+      },
+      { id: 'candidate', version: '3.0.0', candidateVersion: '3.0.0' },
     ])
     expect(Object.isFrozen(installed)).toBe(true)
     expect(installed.every(Object.isFrozen)).toBe(true)

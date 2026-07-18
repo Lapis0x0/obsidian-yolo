@@ -283,6 +283,17 @@ function createHarness(
       data: Object.freeze({ enabled: true }),
     }),
   })
+  const transitionSettingsLocation = Object.freeze({
+    moduleId: 'learning',
+    storageRoot: 'YOLO/.yolo_json_db/module-settings',
+    storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
+  })
+  const captureSettings = jest.fn(async () =>
+    Object.freeze({
+      location: transitionSettingsLocation,
+      snapshot: transitionSettingsSnapshot,
+    }),
+  )
   const readAtCapturedLocation = jest.fn(async () => transitionSettingsSnapshot)
   const services = createProductionModuleServices({
     store,
@@ -298,6 +309,7 @@ function createHarness(
     activationLoader,
     activationRuntime,
     transitionSettingsBackend: {
+      capture: captureSettings,
       readAtCapturedLocation,
     },
     transitionRecoveryRealmToken: {},
@@ -317,7 +329,9 @@ function createHarness(
     activeVersions,
     activationLoader,
     activationRuntime,
+    captureSettings,
     readAtCapturedLocation,
+    transitionSettingsLocation,
     transitionSettingsSnapshot,
     services,
   }
@@ -390,13 +404,14 @@ describe('createProductionModuleServices', () => {
       downloadedCandidate: '1.2.3',
     })
     expect(harness.services.manager.getSnapshot().modules[0]?.status).toBe(
-      'installed',
+      'ready-to-apply',
     )
 
     const installed = (await harness.deviceStateStore.read('learning'))!
     await harness.deviceStateStore.write({
       ...installed,
       activeVersion: '1.2.3',
+      downloadedCandidate: null,
     })
     await harness.services.activationCoordinator.activatePersistedModules()
     await harness.services.manager.refresh()
@@ -458,11 +473,7 @@ describe('createProductionModuleServices', () => {
       harness.transitionSettingsSnapshot,
       webcrypto.subtle as unknown as Pick<SubtleCrypto, 'digest'>,
     )
-    const location = Object.freeze({
-      moduleId: 'learning',
-      storageRoot: 'YOLO/.yolo_json_db/module-settings',
-      storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
-    })
+    const location = harness.transitionSettingsLocation
     const transition = parseModuleTransitionJournal(
       {
         phase: 'prepared',
@@ -566,6 +577,93 @@ describe('createProductionModuleServices', () => {
     })
   })
 
+  it.each([
+    ['first install', null],
+    ['update', '1.0.0'],
+  ] as const)(
+    'derives and prepares a durable transition after %s',
+    async (_label, activeVersion) => {
+      const harness = createHarness()
+      if (activeVersion) {
+        const oldDescriptor = {
+          id: 'learning',
+          version: activeVersion,
+          hostApi: '>=1.0.0 <2.0.0',
+          dataSchemas: { settings: { readMin: 0, readMax: 1, write: 1 } },
+          platform: 'desktop' as const,
+          manifestUrl:
+            'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v1.0.0/module.json',
+          manifest: { byteSize: 1, sha256: 'b'.repeat(64) },
+        }
+        await harness.deviceStateStore.write({
+          moduleId: 'learning',
+          platform: 'desktop',
+          activeVersion,
+          downloadedCandidate: null,
+          pendingVersion: null,
+          readyVersions: { [activeVersion]: oldDescriptor },
+          transition: null,
+        })
+      }
+      await harness.services.manager.refresh()
+      const installCandidate = harness.services.getInstallCandidate('learning')!
+      await harness.services.installConfirmedCandidate(installCandidate)
+
+      const transitionCandidate =
+        await harness.services.getTransitionCandidate('learning')
+      expect(transitionCandidate).toEqual(installCandidate)
+      expect(Object.isFrozen(transitionCandidate)).toBe(true)
+
+      await harness.services.prepareConfirmedTransition(transitionCandidate!)
+      expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+        activeVersion,
+        downloadedCandidate: null,
+        pendingVersion: '1.2.3',
+        transition: {
+          phase: 'prepared',
+          previousActiveVersion: activeVersion,
+          targetVersion: '1.2.3',
+        },
+      })
+      expect(
+        await harness.services.getTransitionCandidate('learning'),
+      ).toBeUndefined()
+      await expect(
+        harness.services.prepareConfirmedTransition(transitionCandidate!),
+      ).rejects.toThrow('already has a transition')
+    },
+  )
+
+  it('keeps durable transition candidates stable across queries and catalog changes', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    const installCandidate = harness.services.getInstallCandidate('learning')!
+    await harness.services.installConfirmedCandidate(installCandidate)
+
+    const first = await harness.services.getTransitionCandidate('learning')
+    const second = await harness.services.getTransitionCandidate('learning')
+    expect(second).toEqual(first)
+    expect(second).not.toBe(first)
+
+    await flushPromises()
+    const now = Date.now()
+    const clock = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(now + OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS + 1)
+    harness.catalogRequest.mockResolvedValue(
+      response(JSON.stringify({ schemaVersion: 1, modules: [] })),
+    )
+    try {
+      await harness.services.manager.refresh()
+    } finally {
+      clock.mockRestore()
+    }
+
+    expect(await harness.services.getTransitionCandidate('learning')).toEqual(
+      first,
+    )
+  })
+
   it('rejects duplicate in-flight installs across settings remounts', async () => {
     const fixture = artifact()
     let releaseRequest!: () => void
@@ -591,6 +689,9 @@ describe('createProductionModuleServices', () => {
     expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
     await expect(
       harness.services.installConfirmedCandidate(candidate),
+    ).rejects.toThrow('already in progress')
+    await expect(
+      harness.services.prepareConfirmedTransition(candidate),
     ).rejects.toThrow('already in progress')
 
     releaseRequest()
@@ -660,6 +761,91 @@ describe('createProductionModuleServices', () => {
     ).rejects.toThrow('already downloaded')
   })
 
+  it('shares the module exclusion with install and snapshots mutable transition requests', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    const installCandidate = harness.services.getInstallCandidate('learning')!
+    await harness.services.coordinator.installConfirmedCandidate(
+      installCandidate,
+    )
+    const issued = await harness.services.getTransitionCandidate('learning')
+    let releaseCapture!: () => void
+    const captureGate = new Promise<void>((resolve) => {
+      releaseCapture = resolve
+    })
+    harness.captureSettings.mockImplementation(async () => {
+      await captureGate
+      return {
+        location: harness.transitionSettingsLocation,
+        snapshot: harness.transitionSettingsSnapshot,
+      }
+    })
+    const mutableCandidate = { ...issued! }
+
+    const preparation =
+      harness.services.prepareConfirmedTransition(mutableCandidate)
+    mutableCandidate.moduleId = 'calendar'
+    mutableCandidate.expectedVersion = '9.9.9'
+    mutableCandidate.expectedManifestSha256 = 'f'.repeat(64)
+    await expect(
+      harness.services.installConfirmedCandidate(installCandidate),
+    ).rejects.toThrow('already in progress')
+    expect(
+      await harness.services.getTransitionCandidate('learning'),
+    ).toBeUndefined()
+
+    releaseCapture()
+    await expect(preparation).resolves.toBeUndefined()
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      moduleId: 'learning',
+      pendingVersion: '1.2.3',
+    })
+  })
+
+  it('allows transition preparation to retry after failure', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.installConfirmedCandidate(
+      harness.services.getInstallCandidate('learning')!,
+    )
+    const candidate = await harness.services.getTransitionCandidate('learning')
+    harness.captureSettings.mockRejectedValueOnce(new Error('capture failed'))
+
+    await expect(
+      harness.services.prepareConfirmedTransition(candidate!),
+    ).rejects.toThrow('capture failed')
+    await expect(
+      harness.services.prepareConfirmedTransition(candidate!),
+    ).resolves.toBeUndefined()
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      pendingVersion: '1.2.3',
+    })
+  })
+
+  it('disposes transition preparation and rejects later transition access', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.installConfirmedCandidate(
+      harness.services.getInstallCandidate('learning')!,
+    )
+    const candidate = await harness.services.getTransitionCandidate('learning')
+    harness.captureSettings.mockImplementation(() => new Promise(() => {}))
+    const preparation = harness.services.prepareConfirmedTransition(candidate!)
+    await Promise.resolve()
+
+    harness.services.dispose()
+
+    await expect(preparation).rejects.toThrow(
+      'transition coordinator is disposed',
+    )
+    expect(
+      await harness.services.getTransitionCandidate('learning'),
+    ).toBeUndefined()
+    await expect(
+      harness.services.prepareConfirmedTransition(candidate!),
+    ).rejects.toThrow('services are disposed')
+  })
+
   it('rejects installs after disposal', async () => {
     const harness = createHarness()
     await harness.services.manager.refresh()
@@ -705,6 +891,14 @@ describe('createProductionModuleServices', () => {
       },
       activationRuntime: { activate: async () => undefined },
       transitionSettingsBackend: {
+        capture: async () => ({
+          location: {
+            moduleId: 'learning',
+            storageRoot: 'YOLO/.yolo_json_db/module-settings',
+            storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
+          },
+          snapshot: { present: false as const, envelope: null },
+        }),
         readAtCapturedLocation: async () => ({
           present: false as const,
           envelope: null,

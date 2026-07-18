@@ -556,24 +556,46 @@ export const it: TranslationKeys = {
       update: 'Aggiorna',
       installing: 'Installazione…',
       updating: 'Aggiornamento…',
+      applyAndReload: 'Applica e ricarica',
+      preparing: 'Preparazione…',
+      reload: 'Ricarica',
+      reloading: 'Ricaricamento…',
       confirmInstallTitle: 'Installa {name}',
       confirmUpdateTitle: 'Aggiorna {name}',
       confirmMessage:
         'Conferma la versione esatta del modulo prima del download.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati e verificati. Questa versione non verrà ancora attivata.',
+      confirmApplyTitle: 'Applica {name}',
+      confirmApplyMessage:
+        'Conferma la versione verificata del modulo da attivare dopo il ricaricamento.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nYolo preparerà la versione in modo persistente, quindi ricaricherà Obsidian. L’attivazione avverrà al prossimo avvio.',
+      applyWithdrawnWarning:
+        'Attenzione: questo modulo non è più presente nel catalogo ufficiale corrente. La versione scaricata rimane verificata localmente, ma potrebbe essere stata ritirata.',
+      applyCatalogUnavailableWarning:
+        'Attenzione: il catalogo ufficiale non è disponibile, quindi non è possibile confermare la disponibilità corrente di questa versione.',
       candidateUnavailable:
         'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
+      transitionCandidateUnavailable:
+        'Al momento non è possibile applicare {name}. La versione scaricata potrebbe essere cambiata o potrebbe essere in corso un’altra operazione.',
       installSuccess:
         'Scaricato e verificato {name} {version}. Non è ancora attivo.',
       updateSuccess:
         "Scaricato e verificato l'aggiornamento {name} {version}. Non è ancora attivo.",
       installError: 'Impossibile installare {name}: {error}',
       updateError: 'Impossibile aggiornare {name}: {error}',
+      applyError: 'Impossibile preparare {name} per l’attivazione: {error}',
+      reloadError:
+        'La versione {version} di {name} è pronta, ma Obsidian non è stato ricaricato automaticamente: {error}. Ricarica Obsidian per continuare.',
+      readyToApplyDetail:
+        'La versione {version} è stata scaricata, verificata ed è pronta.',
+      activationPendingDetail:
+        'La versione {version} è pronta. Ricarica per continuare l’attivazione o il ripristino.',
       statuses: {
         available: 'Disponibile',
         installed: 'Installato',
         active: 'Attivo',
         disabled: 'Disabilitato',
         updateAvailable: 'Aggiornamento disponibile',
+        readyToApply: 'Pronto da applicare',
+        activationPending: 'Attivazione in attesa',
         failed: 'Non riuscito',
       },
     },

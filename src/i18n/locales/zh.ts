@@ -513,22 +513,43 @@ export const zh: TranslationKeys = {
       update: '更新',
       installing: '正在安装…',
       updating: '正在更新…',
+      applyAndReload: '应用并重载',
+      preparing: '正在准备…',
+      reload: '重载',
+      reloading: '正在重载…',
       confirmInstallTitle: '安装 {name}',
       confirmUpdateTitle: '更新 {name}',
       confirmMessage:
         '下载前请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，但此版本暂时不会启用。',
+      confirmApplyTitle: '应用 {name}',
+      confirmApplyMessage:
+        '请确认重载后要启用的已校验模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\nYOLO 会先持久化准备此版本，再重载 Obsidian；模块将在下次启动期间启用。',
+      applyWithdrawnWarning:
+        '警告：此模块已不在当前官方目录中。已下载版本仍通过本地校验，但可能已被撤回。',
+      applyCatalogUnavailableWarning:
+        '警告：当前无法访问官方目录，因此无法确认此版本目前是否仍然可用。',
       candidateUnavailable:
         '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
+      transitionCandidateUnavailable:
+        '目前无法应用 {name}。已下载版本可能已经变化，或另一个操作正在进行。',
       installSuccess: '已下载并校验 {name} {version}，但尚未启用。',
       updateSuccess: '已下载并校验 {name} {version} 更新，但尚未启用。',
       installError: '无法安装 {name}：{error}',
       updateError: '无法更新 {name}：{error}',
+      applyError: '无法准备启用 {name}：{error}',
+      reloadError:
+        '{name} {version} 已准备完成，但无法自动重载 Obsidian：{error}。请手动重载 Obsidian 以继续。',
+      readyToApplyDetail: '已下载并校验版本 {version}，可以应用。',
+      activationPendingDetail:
+        '版本 {version} 已准备完成。重载以继续启用或恢复。',
       statuses: {
         available: '可用',
         installed: '已安装',
         active: '已启用',
         disabled: '已停用',
         updateAvailable: '有可用更新',
+        readyToApply: '待应用',
+        activationPending: '等待重载',
         failed: '失败',
       },
     },

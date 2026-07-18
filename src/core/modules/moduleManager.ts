@@ -128,8 +128,12 @@ function resolveStatus(
   installed: InstalledModuleState | undefined,
 ): ModuleStatus {
   if (!installed) return 'available'
-  if (installed.error) return 'failed'
+  if (installed.pendingVersion || installed.transitionPhase) {
+    return 'activation-pending'
+  }
   if (installed.disabled) return 'disabled'
+  if (installed.candidateVersion) return 'ready-to-apply'
+  if (installed.error) return 'failed'
   if (catalog && compareVersions(installed.version, catalog.version) < 0) {
     return 'update-available'
   }
@@ -154,18 +158,26 @@ function buildRecords(
       const installed = installedValue
         ? Object.freeze({ ...installedValue })
         : undefined
+      const status = resolveStatus(catalog, installed)
       return Object.freeze({
         id,
         name: catalog?.name ?? id,
         description: catalog?.description ?? '',
         version: installed?.version ?? catalog?.version ?? '',
-        ...(catalog &&
-        installed &&
-        compareVersions(installed.version, catalog.version) < 0
+        ...(catalog && status === 'update-available'
           ? { availableVersion: catalog.version }
           : {}),
+        ...(installed?.candidateVersion
+          ? { candidateVersion: installed.candidateVersion }
+          : {}),
+        ...(installed?.pendingVersion
+          ? { pendingVersion: installed.pendingVersion }
+          : {}),
+        ...(installed?.transitionPhase
+          ? { transitionPhase: installed.transitionPhase }
+          : {}),
         ...(installed?.error ? { error: installed.error } : {}),
-        status: resolveStatus(catalog, installed),
+        status,
         ...(catalog ? { catalog } : {}),
         ...(installed ? { installed } : {}),
       })

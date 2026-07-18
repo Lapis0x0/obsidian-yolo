@@ -30,6 +30,15 @@ export class ModuleDeviceStateInstalledStateSource
         Object.freeze({
           id: state.moduleId,
           version,
+          ...(state.downloadedCandidate
+            ? { candidateVersion: state.downloadedCandidate }
+            : {}),
+          ...(state.pendingVersion
+            ? { pendingVersion: state.pendingVersion }
+            : {}),
+          ...(state.transition
+            ? { transitionPhase: state.transition.phase }
+            : {}),
           ...(error ? { error } : {}),
           ...(state.activeVersion === version &&
           this.options.isActive(state.moduleId, version)

@@ -206,6 +206,14 @@ button.yolo-modules-refresh:disabled {
   --yolo-module-status-color: var(--color-orange);
 }
 
+.yolo-module-card--ready-to-apply {
+  --yolo-module-status-color: var(--interactive-accent);
+}
+
+.yolo-module-card--activation-pending {
+  --yolo-module-status-color: var(--color-purple);
+}
+
 .yolo-module-card--failed {
   --yolo-module-status-color: var(--text-error);
 }
@@ -275,6 +283,21 @@ button.yolo-modules-refresh:disabled {
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
+}
+
+.yolo-module-card-transition-detail {
+  margin: var(--size-4-3) 0 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-left: 2px solid var(--yolo-module-status-color);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  background: color-mix(
+    in srgb,
+    var(--yolo-module-status-color) 8%,
+    transparent
+  );
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-normal);
 }
 
 .yolo-module-card-actions {

@@ -5,7 +5,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { App, Notice } from 'obsidian'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type {
@@ -21,22 +21,26 @@ type ModulesTabProps = {
   plugin: YoloPlugin
 }
 
+type ModuleAction = 'install' | 'update' | 'apply' | 'reload'
+
 const INSTALLED_STATUSES = new Set<ModuleRecord['status']>([
   'installed',
   'active',
   'disabled',
   'update-available',
+  'ready-to-apply',
+  'activation-pending',
   'failed',
 ])
 
 function ModuleCard({
   module,
   operationModuleId,
-  onInstall,
+  onAction,
 }: {
   module: ModuleRecord
   operationModuleId: string | null
-  onInstall: (module: ModuleRecord) => void
+  onAction: (module: ModuleRecord, action: ModuleAction) => void
 }) {
   const { t } = useLanguage()
   const name = module.catalog?.name ?? module.id
@@ -50,14 +54,22 @@ function ModuleCard({
     active: t('settings.modules.statuses.active'),
     disabled: t('settings.modules.statuses.disabled'),
     'update-available': t('settings.modules.statuses.updateAvailable'),
+    'ready-to-apply': t('settings.modules.statuses.readyToApply'),
+    'activation-pending': t('settings.modules.statuses.activationPending'),
     failed: t('settings.modules.statuses.failed'),
   }
-  const action =
+  const action: ModuleAction | undefined =
     module.status === 'available'
       ? 'install'
       : module.status === 'update-available'
         ? 'update'
-        : undefined
+        : module.status === 'ready-to-apply'
+          ? 'apply'
+          : module.status === 'activation-pending'
+            ? 'reload'
+            : undefined
+  const transitionVersion =
+    module.pendingVersion ?? module.candidateVersion ?? module.version
   const isOperating = operationModuleId === module.id
   const hasOperation = operationModuleId !== null
 
@@ -96,13 +108,27 @@ function ModuleCard({
             {module.installed.error}
           </p>
         )}
+        {(module.status === 'ready-to-apply' ||
+          module.status === 'activation-pending') && (
+          <p
+            className="yolo-module-card-transition-detail"
+            role="status"
+            aria-live="polite"
+          >
+            {t(
+              module.status === 'ready-to-apply'
+                ? 'settings.modules.readyToApplyDetail'
+                : 'settings.modules.activationPendingDetail',
+            ).replace('{version}', transitionVersion)}
+          </p>
+        )}
       </div>
       <div className="yolo-module-card-actions">
         {action && (
           <button
             type="button"
             className="yolo-module-card-action"
-            onClick={() => onInstall(module)}
+            onClick={() => onAction(module, action)}
             disabled={hasOperation}
             aria-busy={isOperating || undefined}
           >
@@ -117,10 +143,18 @@ function ModuleCard({
                 isOperating
                   ? action === 'update'
                     ? 'settings.modules.updating'
-                    : 'settings.modules.installing'
+                    : action === 'install'
+                      ? 'settings.modules.installing'
+                      : action === 'apply'
+                        ? 'settings.modules.preparing'
+                        : 'settings.modules.reloading'
                   : action === 'update'
                     ? 'settings.modules.update'
-                    : 'settings.modules.install',
+                    : action === 'install'
+                      ? 'settings.modules.install'
+                      : action === 'apply'
+                        ? 'settings.modules.applyAndReload'
+                        : 'settings.modules.reload',
               )}
             </span>
           </button>
@@ -135,14 +169,14 @@ function ModuleGroup({
   emptyMessage,
   modules,
   operationModuleId,
-  onInstall,
+  onAction,
   title,
 }: {
   description: string
   emptyMessage: string
   modules: ReadonlyArray<ModuleRecord>
   operationModuleId: string | null
-  onInstall: (module: ModuleRecord) => void
+  onAction: (module: ModuleRecord, action: ModuleAction) => void
   title: string
 }) {
   return (
@@ -159,7 +193,7 @@ function ModuleGroup({
               key={module.id}
               module={module}
               operationModuleId={operationModuleId}
-              onInstall={onInstall}
+              onAction={onAction}
             />
           ))}
         </div>
@@ -220,6 +254,9 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
   const [operationModuleId, setOperationModuleId] = useState<string | null>(
     null,
   )
+  const mountedRef = useRef(true)
+  const operationGenerationRef = useRef(0)
+  const confirmationModalRef = useRef<ConfirmModal | null>(null)
   const manager = plugin.getModuleManager()
   const snapshot = useSyncExternalStore(
     manager.subscribe,
@@ -233,6 +270,22 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
   const available = snapshot.modules.filter(
     (module) => module.status === 'available',
   )
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      operationGenerationRef.current += 1
+      const modal = confirmationModalRef.current
+      confirmationModalRef.current = null
+      modal?.close()
+    }
+  }, [])
+
+  const clearOperation = (moduleId: string) => {
+    if (!mountedRef.current) return
+    setOperationModuleId((current) => (current === moduleId ? null : current))
+  }
 
   const installCandidate = async (
     module: ModuleRecord,
@@ -265,9 +318,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
         8000,
       )
     } finally {
-      setOperationModuleId((current) =>
-        current === module.id ? null : current,
-      )
+      clearOperation(module.id)
     }
   }
 
@@ -286,8 +337,9 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     }
 
     const isUpdate = module.status === 'update-available'
+    const generation = ++operationGenerationRef.current
     setOperationModuleId(module.id)
-    new ConfirmModal(app, {
+    const modal = new ConfirmModal(app, {
       title: t(
         isUpdate
           ? 'settings.modules.confirmUpdateTitle'
@@ -301,14 +353,161 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
         isUpdate ? 'settings.modules.update' : 'settings.modules.install',
       ),
       onConfirm: () => {
+        if (
+          !mountedRef.current ||
+          generation !== operationGenerationRef.current
+        ) {
+          return
+        }
+        confirmationModalRef.current = null
         void installCandidate(module, candidate, isUpdate)
       },
       onCancel: () => {
-        setOperationModuleId((current) =>
-          current === module.id ? null : current,
-        )
+        if (generation !== operationGenerationRef.current) return
+        confirmationModalRef.current = null
+        clearOperation(module.id)
       },
-    }).open()
+    })
+    confirmationModalRef.current = modal
+    modal.open()
+  }
+
+  const prepareTransition = async (
+    module: ModuleRecord,
+    candidate: ConfirmedModuleCandidate,
+  ) => {
+    const name = module.catalog?.name ?? module.id
+    try {
+      await plugin.prepareConfirmedModuleTransition(candidate)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      new Notice(
+        t('settings.modules.applyError')
+          .replace('{name}', name)
+          .replace('{error}', message),
+        8000,
+      )
+      clearOperation(module.id)
+      return
+    }
+
+    try {
+      window.location.reload()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      new Notice(
+        t('settings.modules.reloadError')
+          .replace('{name}', name)
+          .replace('{version}', candidate.expectedVersion)
+          .replace('{error}', message),
+        8000,
+      )
+    } finally {
+      clearOperation(module.id)
+    }
+  }
+
+  const openApplyConfirmation = async (module: ModuleRecord) => {
+    const name = module.catalog?.name ?? module.id
+    const generation = ++operationGenerationRef.current
+    setOperationModuleId(module.id)
+    let candidate: ConfirmedModuleCandidate | undefined
+    try {
+      candidate = await plugin.getModuleTransitionCandidate(module.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      new Notice(
+        t('settings.modules.applyError')
+          .replace('{name}', name)
+          .replace('{error}', message),
+        8000,
+      )
+      clearOperation(module.id)
+      return
+    }
+    if (!mountedRef.current || generation !== operationGenerationRef.current) {
+      return
+    }
+    if (
+      !candidate ||
+      !module.candidateVersion ||
+      candidate.expectedVersion !== module.candidateVersion
+    ) {
+      new Notice(
+        t('settings.modules.transitionCandidateUnavailable').replace(
+          '{name}',
+          name,
+        ),
+      )
+      clearOperation(module.id)
+      return
+    }
+
+    const catalogWarning = snapshot.errors.catalog
+      ? t('settings.modules.applyCatalogUnavailableWarning')
+      : !module.catalog
+        ? t('settings.modules.applyWithdrawnWarning')
+        : ''
+    const modal = new ConfirmModal(app, {
+      title: t('settings.modules.confirmApplyTitle').replace('{name}', name),
+      message: `${t('settings.modules.confirmApplyMessage')
+        .replace('{name}', name)
+        .replace('{version}', candidate.expectedVersion)
+        .replace('{sha256}', candidate.expectedManifestSha256)}${
+        catalogWarning ? `\n\n${catalogWarning}` : ''
+      }`,
+      ctaText: t('settings.modules.applyAndReload'),
+      onConfirm: () => {
+        if (
+          !mountedRef.current ||
+          generation !== operationGenerationRef.current
+        ) {
+          return
+        }
+        confirmationModalRef.current = null
+        void prepareTransition(module, candidate)
+      },
+      onCancel: () => {
+        if (generation !== operationGenerationRef.current) return
+        confirmationModalRef.current = null
+        clearOperation(module.id)
+      },
+    })
+    confirmationModalRef.current = modal
+    modal.open()
+  }
+
+  const reloadPreparedTransition = (module: ModuleRecord) => {
+    const name = module.catalog?.name ?? module.id
+    const version =
+      module.pendingVersion ?? module.candidateVersion ?? module.version
+    setOperationModuleId(module.id)
+    try {
+      window.location.reload()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      new Notice(
+        t('settings.modules.reloadError')
+          .replace('{name}', name)
+          .replace('{version}', version)
+          .replace('{error}', message),
+        8000,
+      )
+    } finally {
+      clearOperation(module.id)
+    }
+  }
+
+  const handleAction = (module: ModuleRecord, action: ModuleAction) => {
+    if (action === 'install' || action === 'update') {
+      openInstallConfirmation(module)
+      return
+    }
+    if (action === 'apply') {
+      void openApplyConfirmation(module)
+      return
+    }
+    reloadPreparedTransition(module)
   }
 
   return (
@@ -379,7 +578,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
               emptyMessage={t('settings.modules.installedEmpty')}
               modules={installed}
               operationModuleId={operationModuleId}
-              onInstall={openInstallConfirmation}
+              onAction={handleAction}
             />
             <ModuleGroup
               title={t('settings.modules.available')}
@@ -387,7 +586,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
               emptyMessage={t('settings.modules.availableEmpty')}
               modules={available}
               operationModuleId={operationModuleId}
-              onInstall={openInstallConfirmation}
+              onAction={handleAction}
             />
           </div>
         </>
