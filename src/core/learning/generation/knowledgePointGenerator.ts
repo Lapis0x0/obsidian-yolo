@@ -4,11 +4,7 @@ import type { AgentRunActivity } from '../../agent/service'
 import { scanMarkdownEntries } from '../markdownScanner'
 
 import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
-import {
-  KNOWLEDGE_POINT_GENERATOR_PROMPT,
-  buildLanguageDirective,
-  buildLanguageReminder,
-} from './prompts'
+import { KNOWLEDGE_POINT_GENERATOR_PROMPT } from './prompts'
 import { LEARNING_READONLY_TOOL_NAMES } from './tools'
 import type {
   ChapterGenerationResult,
@@ -86,10 +82,7 @@ export async function generateKnowledgePointsForChapter({
     modelId,
     mode: 'agent',
     yolo: true,
-    systemPromptOverride:
-      buildLanguageDirective(plugin.settings?.learningOptions?.outputLanguage) +
-      KNOWLEDGE_POINT_GENERATOR_PROMPT +
-      buildLanguageReminder(plugin.settings?.learningOptions?.outputLanguage),
+    systemPromptOverride: KNOWLEDGE_POINT_GENERATOR_PROMPT,
     tools: {
       allowedToolNames: workspaceScope?.enabled
         ? LEARNING_READONLY_TOOL_NAMES
@@ -236,17 +229,17 @@ function buildKnowledgePointPrompt({
   referenceDir?: string
 }): string {
   const refSection = referenceDir
-    ? `\n参考资料目录：${referenceDir}（如契约中注明了参考文件，用 fs_read 读取对应路径）`
+    ? `\nReference materials directory: ${referenceDir} (if the contract notes a reference file, use fs_read to read the corresponding path)`
     : ''
 
-  return `请为以下章节生成知识点：
+  return `Generate knowledge points for the following chapter:
 
-项目主题：${projectTopic}
-章节标题：${chapterTitle}
-章节契约：
+Project topic: ${projectTopic}
+Chapter title: ${chapterTitle}
+Chapter contract:
 ${chapterContract}
 
-用户当前水平：${level}${refSection}`
+User's current level: ${level}${refSection}`
 }
 
 function parseKnowledgePointDrafts(markdown: string): KnowledgePointDraft[] {

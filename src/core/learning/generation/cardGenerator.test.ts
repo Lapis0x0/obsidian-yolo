@@ -226,9 +226,9 @@ title: 测试
 
     expect(result.valid).toHaveLength(0)
     expect(result.invalid[0]?.errors).toEqual([
-      '缺少标题',
-      '分隔线前缺少正面内容',
-      '分隔线后缺少背面内容',
+      'missing title',
+      'missing front content before the separator',
+      'missing back content after the separator',
     ])
   })
 
@@ -267,11 +267,11 @@ C`)
     expect(result.invalid).toEqual([
       expect.objectContaining({
         cardUuid: '11111111',
-        errors: ['card UUID 重复'],
+        errors: ['duplicate card UUID'],
       }),
       expect.objectContaining({
         cardUuid: '22222222',
-        errors: ['缺少该 card UUID'],
+        errors: ['missing this card UUID'],
       }),
     ])
     expect(result.discardedCount).toBe(3)
@@ -279,7 +279,7 @@ C`)
 })
 
 describe('generateCardsForChapter output language', () => {
-  it('prepends the output-language directive to the system prompt', async () => {
+  it('instructs the model to generate in the user language', async () => {
     const knowledgePath = 'project/chapter/knowledge.md'
     const cardsPath = 'project/chapter/cards.md'
     const knowledgeFile = Object.assign(new TFile(), { path: knowledgePath })
@@ -312,7 +312,6 @@ describe('generateCardsForChapter output language', () => {
         },
       },
       agent: { stream },
-      settings: { learningOptions: { outputLanguage: 'English' } },
     } as unknown as YoloPlugin
 
     await generateCardsForChapter({
@@ -334,7 +333,6 @@ describe('generateCardsForChapter output language', () => {
     const request = (stream.mock.calls as unknown[][])[0]?.[0] as {
       systemPromptOverride: string
     }
-    expect(request.systemPromptOverride).toContain('OUTPUT LANGUAGE')
-    expect(request.systemPromptOverride).toContain('English')
+    expect(request.systemPromptOverride).toContain('language used by the user')
   })
 })

@@ -100,7 +100,7 @@ describe('generateOutline', () => {
         level: 'beginner',
         goal: '入门',
       }),
-    ).rejects.toThrow('大纲生成结果缺少 projectGoal')
+    ).rejects.toThrow('Outline generation result is missing projectGoal')
   })
 })
 
@@ -123,7 +123,7 @@ async function* streamEvents(events: unknown[]) {
 }
 
 describe('generateOutline output language', () => {
-  it('prepends the output-language directive to the system prompt', async () => {
+  it('instructs the model to generate in the user language', async () => {
     const onRequest = jest.fn()
     const plugin = createPlugin(
       [
@@ -134,9 +134,6 @@ describe('generateOutline output language', () => {
       ],
       onRequest,
     )
-    ;(plugin as unknown as { settings: unknown }).settings = {
-      learningOptions: { outputLanguage: 'English' },
-    }
 
     await generateOutline({
       plugin,
@@ -149,15 +146,6 @@ describe('generateOutline output language', () => {
     const request = onRequest.mock.calls[0]?.[0] as {
       systemPromptOverride: string
     }
-    expect(request.systemPromptOverride).toContain('OUTPUT LANGUAGE')
-    expect(request.systemPromptOverride).toContain('English')
-    // Directive must be PREPENDED, i.e. appear before the (Chinese) base prompt.
-    expect(
-      request.systemPromptOverride.indexOf('OUTPUT LANGUAGE'),
-    ).toBeLessThan(
-      request.systemPromptOverride.indexOf(
-        '\u5b66\u4e60\u5185\u5bb9\u67b6\u6784\u5e08',
-      ),
-    )
+    expect(request.systemPromptOverride).toContain('language used by the user')
   })
 })

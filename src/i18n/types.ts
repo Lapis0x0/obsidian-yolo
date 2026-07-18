@@ -182,9 +182,6 @@ export type TranslationKeys = {
       tabCompletionSystemPromptDesc?: string
     }
     learning: {
-      outputLanguage: string
-      outputLanguageDesc: string
-      outputLanguageAuto: string
       generationTitle: string
       generationModel: string
       generationModelDesc: string
