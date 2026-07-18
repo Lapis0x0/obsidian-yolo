@@ -270,6 +270,133 @@ describe('ModuleStartupTransitionRecovery', () => {
     },
   )
 
+  it.each([
+    { phase: 'prepared', writes: [null] },
+    {
+      phase: 'settings-committed',
+      writes: ['rollback-completed', null],
+    },
+    {
+      phase: 'activation-started',
+      writes: ['rollback-completed', null],
+    },
+    { phase: 'committed', writes: [null] },
+    { phase: 'rollback-completed', writes: [null] },
+  ] as const)(
+    'settles a non-live $phase journal without evaluating module code',
+    async ({ phase, writes }) => {
+      const test = harness(await transitioningState(phase))
+
+      const recovered = await test.recovery.recover(
+        MODULE_ID,
+        new AbortController().signal,
+        false,
+      )
+
+      expect(recovered).toEqual({
+        moduleId: MODULE_ID,
+        status: 'skipped',
+        reloadRequired: false,
+        processPoisoned: false,
+      })
+      expect(test.writes).toEqual(writes)
+      expect(test.durable()).toMatchObject(
+        phase === 'committed'
+          ? {
+              activeVersion: TARGET_VERSION,
+              downloadedCandidate: null,
+              pendingVersion: null,
+              transition: null,
+            }
+          : {
+              activeVersion: PREVIOUS_VERSION,
+              downloadedCandidate: TARGET_VERSION,
+              pendingVersion: null,
+              transition: null,
+            },
+      )
+      expect(test.verifyArtifact).not.toHaveBeenCalled()
+      expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
+    },
+  )
+
+  it('keeps a non-live journal failed when rollback would overwrite synchronized settings', async () => {
+    const conflicting: ModuleTransitionSettingsSnapshot = Object.freeze({
+      present: true,
+      envelope: Object.freeze({
+        schemaVersion: 1,
+        data: Object.freeze({ enabled: false }),
+      }),
+    })
+    const test = harness(
+      await transitioningState('activation-started', { stateful: true }),
+      { settingsSnapshot: conflicting },
+    )
+
+    const recovered = await test.recovery.recover(
+      MODULE_ID,
+      new AbortController().signal,
+      false,
+    )
+
+    expect(recovered).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('newer synchronized settings'),
+      reloadRequired: true,
+      processPoisoned: false,
+    })
+    expect(test.durable().transition?.phase).toBe('activation-started')
+    expect(test.writes).toEqual([])
+    expect(test.verifyArtifact).not.toHaveBeenCalled()
+    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
+  })
+
+  it('settles a non-live stateful transition when settings still match the rollback snapshot', async () => {
+    const test = harness(
+      await transitioningState('settings-committed', { stateful: true }),
+    )
+
+    await expect(
+      test.recovery.recover(MODULE_ID, new AbortController().signal, false),
+    ).resolves.toMatchObject({
+      status: 'skipped',
+      reloadRequired: false,
+      processPoisoned: false,
+    })
+    expect(test.readAtCapturedLocation).toHaveBeenCalledTimes(1)
+    expect(test.durable()).toMatchObject({
+      activeVersion: PREVIOUS_VERSION,
+      downloadedCandidate: TARGET_VERSION,
+      pendingVersion: null,
+      transition: null,
+    })
+    expect(test.verifyArtifact).not.toHaveBeenCalled()
+    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
+  })
+
+  it('requires reload when an invalid non-live journal cannot be settled safely', async () => {
+    const test = harness(
+      await transitioningState('settings-committed', {
+        stateful: true,
+        previousSha256: 'c'.repeat(64),
+        expectedPostSha256: 'c'.repeat(64),
+      }),
+    )
+
+    await expect(
+      test.recovery.recover(MODULE_ID, new AbortController().signal, false),
+    ).resolves.toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('previous settings SHA-256 mismatch'),
+      reloadRequired: true,
+      processPoisoned: false,
+    })
+    expect(test.durable().transition?.phase).toBe('settings-committed')
+    expect(test.writes).toEqual([])
+    expect(test.verifyArtifact).not.toHaveBeenCalled()
+    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
+  })
+
   it('checks the full stateful snapshot at only the captured location', async () => {
     const test = harness(
       await transitioningState('prepared', { stateful: true }),

@@ -10,7 +10,10 @@ import {
   parseModuleReadyMarker,
   selectModuleManifestVariant,
 } from './moduleStore'
-import { parseOfficialModuleCatalog } from './officialModuleCatalog'
+import {
+  parseOfficialModuleCatalog,
+  selectInitialCompatibleVersion,
+} from './officialModuleCatalog'
 
 describe('host API conformance artifact boundary', () => {
   const artifactDir = path.resolve('modules/host-api-conformance/1.0.0')
@@ -76,7 +79,7 @@ describe('host API conformance artifact boundary', () => {
     expect(source).not.toContain('react.production.min')
   })
 
-  it('ships a separately hashed Learning preview that uses only Host API', () => {
+  it('ships a separately hashed Learning module that uses only Host API', () => {
     const bundled = JSON.parse(
       readFileSync('modules/bundled.json', 'utf8'),
     ) as {
@@ -136,7 +139,7 @@ describe('host API conformance artifact boundary', () => {
     expect(style).toBeDefined()
     expect(manifest.hostApi).toBe('^1.1.0')
     expect(manifest.dataSchemas).toEqual({
-      settings: { readMin: 0, readMax: 0, write: 0 },
+      settings: { readMin: 0, readMax: 1, write: 1 },
     })
     expect(manifest.variants.map(({ platform }) => platform)).toEqual([
       'desktop',
@@ -155,14 +158,11 @@ describe('host API conformance artifact boundary', () => {
     expect(style!.sha256).toBe(
       createHash('sha256').update(styleBytes).digest('hex'),
     )
-    expect(styleBytes.toString('utf8')).toContain(
-      '.yolo-learning-module-preview',
-    )
+    expect(styleBytes.toString('utf8')).toContain('.yolo-learning')
     expect(source).toContain('yolo.module.host-runtime.v1')
-    expect(source).toContain('yolo-learning-module-preview')
+    expect(source).toContain('yolo-learning')
     expect(source).toContain('.paths.getSnapshot')
     expect(source).toContain('.vault.listChildren')
-    expect(source).toContain('.vault.subscribe')
     expect(source).toContain('.workspace.registerCommand')
     expect(source).not.toContain('react.production.min')
     expect(source).not.toContain('LearningViewAdapter')
@@ -208,6 +208,16 @@ describe('host API conformance artifact boundary', () => {
     expect(catalog.modules[0]?.versions[0]?.dataSchemas).toEqual(
       manifest.dataSchemas,
     )
+    for (const currentSettingsSchema of [0, 1]) {
+      expect(
+        selectInitialCompatibleVersion(catalog.modules[0], {
+          hostApi: '1.1.0',
+          platform: 'desktop',
+          dataSchemas: { settings: currentSettingsSchema },
+          supportedDataNamespaces: ['settings'],
+        })?.version,
+      ).toBe('0.1.0')
+    }
   })
 
   it('keeps fixture source and artifacts out of production main metadata', () => {

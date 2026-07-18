@@ -1,4 +1,5 @@
 import type { ModuleLifecycleScope } from './lifecycleScope'
+import type { ModuleConfigSnapshot } from './moduleConfig'
 
 export type YoloModuleModelOptionV1 = Readonly<{
   id: string
@@ -31,13 +32,38 @@ export type YoloModuleSettingsV1 = Readonly<{
 }>
 
 export type ModuleSettingsContributionSinkV1 = Readonly<{
-  add(moduleId: string, contribution: YoloModuleSettingsContributionV1): void
+  add(
+    moduleId: string,
+    contribution: YoloModuleSettingsContributionV1,
+    fields?: ModuleSettingsFieldAdapterV1,
+  ): void
   remove(moduleId: string, contributionId: string): void
+}>
+
+export type ModuleSettingsFieldSnapshotV1 = Readonly<{
+  values: Readonly<Record<string, unknown>>
+  models: YoloModuleModelSnapshotV1
+}>
+
+export type ModuleSettingsFieldAdapterV1 = Readonly<{
+  getSnapshot(): Promise<ModuleSettingsFieldSnapshotV1>
+  write(
+    key: string,
+    value: string | boolean,
+  ): Promise<ModuleSettingsFieldSnapshotV1>
+  subscribe(listener: () => void): () => void
+}>
+
+export type ModuleSettingsConfigAdapterV1 = Readonly<{
+  read(): Promise<ModuleConfigSnapshot>
+  replace(next: ModuleConfigSnapshot): Promise<ModuleConfigSnapshot>
+  subscribe(listener: () => void): () => void
 }>
 
 export type RegisteredModuleSettingsContributionV1 = Readonly<{
   moduleId: string
   contribution: YoloModuleSettingsContributionV1
+  fields: ModuleSettingsFieldAdapterV1
 }>
 
 export class ModuleSettingsContributionRegistry
@@ -48,12 +74,19 @@ export class ModuleSettingsContributionRegistry
     RegisteredModuleSettingsContributionV1
   >()
   private readonly listeners = new Set<() => void>()
+  private snapshot: readonly RegisteredModuleSettingsContributionV1[] =
+    Object.freeze([])
 
-  add(moduleId: string, contribution: YoloModuleSettingsContributionV1): void {
+  add(
+    moduleId: string,
+    contribution: YoloModuleSettingsContributionV1,
+    fields = UNAVAILABLE_MODULE_SETTINGS_FIELD_ADAPTER,
+  ): void {
     this.contributions.set(
       contributionKey(moduleId, contribution.id),
-      Object.freeze({ moduleId, contribution }),
+      Object.freeze({ moduleId, contribution, fields }),
     )
+    this.updateSnapshot()
     this.emit()
   }
 
@@ -61,20 +94,14 @@ export class ModuleSettingsContributionRegistry
     if (!this.contributions.delete(contributionKey(moduleId, contributionId))) {
       return
     }
+    this.updateSnapshot()
     this.emit()
   }
 
-  getSnapshot(): readonly RegisteredModuleSettingsContributionV1[] {
-    return Object.freeze(
-      [...this.contributions.values()].sort(
-        (left, right) =>
-          left.moduleId.localeCompare(right.moduleId) ||
-          left.contribution.id.localeCompare(right.contribution.id),
-      ),
-    )
-  }
+  getSnapshot = (): readonly RegisteredModuleSettingsContributionV1[] =>
+    this.snapshot
 
-  subscribe(listener: () => void): () => void {
+  subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
@@ -82,7 +109,18 @@ export class ModuleSettingsContributionRegistry
   clear(): void {
     if (this.contributions.size === 0) return
     this.contributions.clear()
+    this.updateSnapshot()
     this.emit()
+  }
+
+  private updateSnapshot(): void {
+    this.snapshot = Object.freeze(
+      [...this.contributions.values()].sort(
+        (left, right) =>
+          left.moduleId.localeCompare(right.moduleId) ||
+          left.contribution.id.localeCompare(right.contribution.id),
+      ),
+    )
   }
 
   private emit(): void {
@@ -105,6 +143,7 @@ export type ModuleSettingsCapabilityProviderOptions = Readonly<{
   sink: ModuleSettingsContributionSinkV1
   getModelSnapshot(): YoloModuleModelSnapshotV1
   subscribeModels(listener: () => void): () => void
+  createConfigAdapter?: (moduleId: string) => ModuleSettingsConfigAdapterV1
 }>
 
 export class ModuleSettingsCapabilityProvider
@@ -118,6 +157,8 @@ export class ModuleSettingsCapabilityProvider
     const staged = new Map<string, YoloModuleSettingsContributionV1>()
     const published = new Set<string>()
     const subscriptions = new Set<() => void>()
+    let configAdapter: ModuleSettingsConfigAdapterV1 | undefined
+    let writeQueue = Promise.resolve()
     let active = true
     let activationComplete = false
     let committed = false
@@ -184,12 +225,155 @@ export class ModuleSettingsCapabilityProvider
         committed = true
         for (const contribution of staged.values()) {
           published.add(contribution.id)
-          this.options.sink.add(moduleId, contribution)
+          configAdapter ??= this.options.createConfigAdapter?.(moduleId)
+          this.options.sink.add(
+            moduleId,
+            contribution,
+            configAdapter
+              ? createFieldAdapter({
+                  moduleId,
+                  contribution,
+                  config: configAdapter,
+                  getModels: () =>
+                    snapshotModels(this.options.getModelSnapshot()),
+                  subscribeModels: this.options.subscribeModels,
+                  isActive: () => active && activationComplete,
+                  trackSubscription: (unsubscribe) => {
+                    subscriptions.add(unsubscribe)
+                    return () => {
+                      subscriptions.delete(unsubscribe)
+                      unsubscribe()
+                    }
+                  },
+                  enqueueWrite: (operation) => {
+                    const result = writeQueue
+                      .catch(() => undefined)
+                      .then(operation)
+                    writeQueue = result.then(
+                      () => undefined,
+                      () => undefined,
+                    )
+                    return result
+                  },
+                })
+              : UNAVAILABLE_MODULE_SETTINGS_FIELD_ADAPTER,
+          )
         }
         staged.clear()
       },
     })
   }
+}
+
+const UNAVAILABLE_MODULE_SETTINGS_FIELD_ADAPTER: ModuleSettingsFieldAdapterV1 =
+  Object.freeze({
+    getSnapshot: async () => {
+      throw new Error('Module settings config adapter is unavailable')
+    },
+    write: async () => {
+      throw new Error('Module settings config adapter is unavailable')
+    },
+    subscribe: () => () => undefined,
+  })
+
+function createFieldAdapter({
+  moduleId,
+  contribution,
+  config,
+  getModels,
+  subscribeModels,
+  isActive,
+  trackSubscription,
+  enqueueWrite,
+}: {
+  moduleId: string
+  contribution: YoloModuleSettingsContributionV1
+  config: ModuleSettingsConfigAdapterV1
+  getModels: () => YoloModuleModelSnapshotV1
+  subscribeModels: (listener: () => void) => () => void
+  isActive: () => boolean
+  trackSubscription: (unsubscribe: () => void) => () => void
+  enqueueWrite: <T>(operation: () => Promise<T>) => Promise<T>
+}): ModuleSettingsFieldAdapterV1 {
+  const fields = new Map(contribution.fields.map((field) => [field.key, field]))
+  const assertActive = (): void => {
+    if (!isActive())
+      throw new Error(`Module "${moduleId}" settings are not active`)
+  }
+  const read = async (): Promise<ModuleSettingsFieldSnapshotV1> => {
+    assertActive()
+    return fieldSnapshot(await config.read(), fields, getModels())
+  }
+  return Object.freeze({
+    getSnapshot: read,
+    write: (key, value) => {
+      assertActive()
+      const field = fields.get(key)
+      if (!field) throw new Error(`Settings field "${key}" is not declared`)
+      if (
+        field.type === 'toggle'
+          ? typeof value !== 'boolean'
+          : typeof value !== 'string'
+      ) {
+        throw new TypeError(`Settings field "${key}" has an invalid value`)
+      }
+      return enqueueWrite(async () => {
+        assertActive()
+        const current = await config.read()
+        const data = readConfigData(current)
+        const persisted = await config.replace({
+          schemaVersion: 1,
+          data: { ...data, [key]: value },
+        })
+        assertActive()
+        return fieldSnapshot(persisted, fields, getModels())
+      })
+    },
+    subscribe: (listener) => {
+      assertActive()
+      if (typeof listener !== 'function') {
+        throw new TypeError('Settings field listener must be a function')
+      }
+      const notify = () => {
+        if (isActive()) listener()
+      }
+      const unsubscribeConfig = config.subscribe(notify)
+      let unsubscribeModels: () => void
+      try {
+        unsubscribeModels = subscribeModels(notify)
+      } catch (error) {
+        unsubscribeConfig()
+        throw error
+      }
+      let subscribed = true
+      const unsubscribe = () => {
+        if (!subscribed) return
+        subscribed = false
+        unsubscribeConfig()
+        unsubscribeModels()
+      }
+      return trackSubscription(unsubscribe)
+    },
+  })
+}
+
+function fieldSnapshot(
+  snapshot: ModuleConfigSnapshot,
+  fields: ReadonlyMap<string, YoloModuleSettingFieldV1>,
+  models: YoloModuleModelSnapshotV1,
+): ModuleSettingsFieldSnapshotV1 {
+  const data = readConfigData(snapshot)
+  const values: Record<string, unknown> = {}
+  for (const key of fields.keys()) values[key] = data[key]
+  return Object.freeze({ values: Object.freeze(values), models })
+}
+
+function readConfigData(
+  snapshot: ModuleConfigSnapshot,
+): Record<string, unknown> {
+  const data = snapshot.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+  return { ...(data as Record<string, unknown>) }
 }
 
 export const UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER: ModuleSettingsCapabilityProviderV1 =

@@ -131,6 +131,32 @@
   font-size: var(--font-ui-small);
 }
 
+.yolo-module-settings-block:not(:first-child) {
+  margin-top: var(--size-4-8);
+}
+
+.yolo-module-settings-field.setting-item {
+  align-items: center;
+}
+
+select.yolo-module-settings-select,
+input.yolo-module-settings-text {
+  box-sizing: border-box;
+  min-width: 220px;
+  max-width: 100%;
+}
+
+select.yolo-module-settings-select {
+  appearance: auto;
+  font: inherit;
+}
+
+.yolo-module-settings-error {
+  margin-top: var(--size-4-2);
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
+}
+
 /* Settings: Embedding DB Manage */
 
 .yolo-settings-embedding-db-manage-root {

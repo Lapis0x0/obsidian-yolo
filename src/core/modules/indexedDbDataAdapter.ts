@@ -182,6 +182,55 @@ export class IndexedDbDataAdapter {
     })
   }
 
+  async rename(from: string, to: string): Promise<void> {
+    const normalizedFrom = normalizePath(from)
+    const normalizedTo = normalizePath(to)
+    if (normalizedFrom === normalizedTo) return
+    if (
+      normalizedFrom.startsWith(`${normalizedTo}/`) ||
+      normalizedTo.startsWith(`${normalizedFrom}/`)
+    ) {
+      throw new Error(
+        'IndexedDB rename paths must not be ancestors of each other',
+      )
+    }
+
+    await this.writeTransaction(async (store) => {
+      const source = parseOptionalRecord(
+        await requestResult(store.get(normalizedFrom)),
+        normalizedFrom,
+      )
+      if (!source) throw new Error(`IndexedDB source does not exist: ${from}`)
+
+      await assertParentFolder(store, normalizedTo)
+      const destination = parseOptionalRecord(
+        await requestResult(store.get(normalizedTo)),
+        normalizedTo,
+      )
+      const destinationDescendants = await listDescendantRecords(
+        store,
+        normalizedTo,
+      )
+      if (destination || destinationDescendants.length > 0) {
+        throw new Error(`IndexedDB destination already exists: ${to}`)
+      }
+
+      const descendants = await listDescendantRecords(store, normalizedFrom)
+      if (source.type !== 'folder' && descendants.length > 0) {
+        throw corruptionError(normalizedFrom)
+      }
+      const sourceRecords = [source, ...descendants]
+      for (const record of sourceRecords) {
+        const suffix = record.path.slice(normalizedFrom.length)
+        const destinationPath = `${normalizedTo}${suffix}`
+        await requestResult(store.add(relocateRecord(record, destinationPath)))
+      }
+      for (const record of sourceRecords) {
+        await requestResult(store.delete(record.path))
+      }
+    })
+  }
+
   async remove(path: string): Promise<void> {
     const normalizedPath = normalizePath(path)
     await this.writeTransaction(async (store) => {
@@ -189,10 +238,14 @@ export class IndexedDbDataAdapter {
         await requestResult(store.get(normalizedPath)),
         normalizedPath,
       )
-      if (existing?.type === 'folder') {
-        throw new Error(`IndexedDB path is a folder: ${path}`)
+      if (!existing) return
+      if (existing.type === 'folder') {
+        const descendants = await listDescendantRecords(store, normalizedPath)
+        for (const record of descendants) {
+          await requestResult(store.delete(record.path))
+        }
       }
-      if (existing) await requestResult(store.delete(normalizedPath))
+      await requestResult(store.delete(normalizedPath))
     })
   }
 
@@ -446,6 +499,55 @@ async function assertParentFolder(
   )
   if (record?.type !== 'folder') {
     throw new Error(`IndexedDB parent folder does not exist: ${parent}`)
+  }
+}
+
+async function listDescendantRecords(
+  store: IDBObjectStore,
+  path: string,
+): Promise<StoredRecord[]> {
+  const prefix = `${path}/`
+  const paths = await new Promise<string[]>((resolve, reject) => {
+    const descendants: string[] = []
+    const request = store.openKeyCursor()
+    request.onerror = () =>
+      reject(indexedDbError('subtree query failed', request.error))
+    request.onsuccess = () => {
+      const cursor = request.result
+      if (!cursor) {
+        resolve(descendants)
+        return
+      }
+      const key = cursor.primaryKey
+      if (typeof key !== 'string' || key < prefix) {
+        cursor.continue(prefix)
+        return
+      }
+      if (key.startsWith(prefix)) {
+        descendants.push(key)
+        cursor.continue()
+        return
+      }
+      resolve(descendants)
+    }
+  })
+  const records: StoredRecord[] = []
+  for (const descendantPath of paths) {
+    const record = parseOptionalRecord(
+      await requestResult(store.get(descendantPath)),
+      descendantPath,
+    )
+    if (!record) throw corruptionError(descendantPath)
+    records.push(record)
+  }
+  return records
+}
+
+function relocateRecord(record: StoredRecord, path: string): StoredRecord {
+  return {
+    ...record,
+    path,
+    parent: parentPath(path),
   }
 }
 

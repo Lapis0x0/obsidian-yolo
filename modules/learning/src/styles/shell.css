@@ -1,0 +1,438 @@
+/*
+ * Learning Mode — shell + workspace styles.
+ *
+ * Covers the root layout (.yolo-learning-root / .yolo-learning-page) and the
+ * Phase-0 placeholder views (HomeView / Wizard / OutlineBuilder) plus the
+ * Workspace header + tab body.
+ */
+
+/* ── Root / page shell ──────────────────────────────────────────────────── */
+
+.yolo-learning-root {
+  height: 100%;
+  position: relative;
+}
+
+.yolo-learning-page {
+  height: 100%;
+  overflow: hidden;
+  padding: 24px;
+}
+
+.yolo-learning-page.is-workspace {
+  margin-right: -12px;
+  padding: 0;
+}
+
+.yolo-learning-page.is-home {
+  box-sizing: border-box;
+  margin-right: -12px;
+  overflow-y: auto;
+}
+
+.yolo-learning-page.is-home > .yolo-learning-home {
+  height: 100%;
+  overflow: visible;
+}
+
+/* ── Workspace header + body ────────────────────────────────────────────── */
+
+.yolo-learning-workspace-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.yolo-learning-workspace-header {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 24px 16px 0;
+}
+
+.yolo-learning-workspace-header::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background-color: var(--yolo-border);
+}
+
+button.yolo-learning-workspace-back {
+  --yolo-learning-button-height: 32px;
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 0;
+  min-height: 0;
+  margin-right: -7px;
+  flex-shrink: 0;
+  border-radius: var(--yolo-radius-md);
+  border: none;
+  background: transparent;
+  box-sizing: border-box;
+  color: var(--yolo-muted-foreground);
+  cursor: pointer;
+  line-height: 0;
+  padding: 0;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+button.yolo-learning-workspace-back:hover {
+  background-color: var(--yolo-secondary);
+  color: var(--yolo-foreground);
+}
+
+button.yolo-learning-workspace-back svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+
+.yolo-learning-workspace-divider {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background-color: var(--yolo-border);
+}
+
+.yolo-learning-workspace-project-name {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-learning-workspace-progress-pill {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-learning-workspace-card-mode {
+  box-sizing: border-box;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.yolo-learning-workspace-card-mode .yolo-learning-segmented-option {
+  --yolo-learning-button-height: 26px;
+
+  height: 26px;
+  padding: 3px 10px;
+}
+
+.yolo-learning-workspace-header-spacer {
+  flex: 1 1 auto;
+}
+
+.yolo-learning-workspace-coming-soon {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.yolo-learning-workspace-main {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  padding-top: 20px;
+  min-height: 0;
+}
+
+.yolo-learning-workspace-main.is-outline {
+  overflow: hidden;
+}
+
+.yolo-learning-tab-placeholder {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--yolo-muted-foreground);
+  font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .yolo-learning-workspace-header {
+    flex-wrap: wrap;
+  }
+
+  .yolo-learning-workspace-header-spacer {
+    display: none;
+  }
+}
+
+/* ── Home stub ──────────────────────────────────────────────────────────── */
+
+.yolo-learning-home {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.yolo-learning-home-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.yolo-learning-home-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.yolo-learning-home-subtitle {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--yolo-muted-foreground);
+}
+
+.yolo-learning-home-new-btn {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--yolo-radius-lg);
+  border: none;
+  background-color: var(--yolo-primary);
+  color: var(--yolo-primary-foreground);
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.yolo-learning-home-new-btn:hover {
+  opacity: 0.9;
+}
+
+.yolo-learning-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.yolo-learning-home-card {
+  --yolo-learning-button-background: var(--yolo-card);
+  --yolo-learning-button-color: var(--yolo-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-card);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-xl);
+  background-color: var(--yolo-card);
+  color: var(--yolo-foreground);
+  padding: 20px;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.yolo-learning-home-card:hover {
+  border-color: color-mix(in oklab, var(--yolo-foreground) 20%, transparent);
+}
+
+/* ── Wizard stub ────────────────────────────────────────────────────────── */
+
+.yolo-learning-wizard-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.yolo-learning-wizard-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.yolo-learning-wizard-dialog {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 90%;
+  width: 720px;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--yolo-radius-xl);
+  border: 1px solid var(--yolo-border);
+  background-color: var(--yolo-card);
+}
+
+.yolo-learning-wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--yolo-border);
+}
+
+.yolo-learning-wizard-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.yolo-learning-wizard-close {
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: transparent;
+  --yolo-learning-button-hover-color: var(--yolo-muted-foreground);
+
+  border: none;
+  background: transparent;
+  color: var(--yolo-muted-foreground);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.yolo-learning-wizard-body {
+  padding: 24px;
+  color: var(--yolo-muted-foreground);
+  font-size: 14px;
+}
+
+.yolo-learning-wizard-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--yolo-border);
+}
+
+.yolo-learning-wizard-primary {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--yolo-radius-lg);
+  background-color: var(--yolo-primary);
+  color: var(--yolo-primary-foreground);
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.yolo-learning-wizard-primary:hover {
+  opacity: 0.9;
+}
+
+/* ── Outline builder stub ───────────────────────────────────────────────── */
+
+.yolo-learning-outline-builder {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--yolo-border);
+  border-radius: var(--yolo-radius-xl);
+  background-color: var(--yolo-card);
+}
+
+.yolo-learning-outline-builder-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--yolo-border);
+}
+
+.yolo-learning-outline-builder-back {
+  --yolo-learning-button-height: 32px;
+  --yolo-learning-button-background: transparent;
+  --yolo-learning-button-color: var(--yolo-muted-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-secondary);
+  --yolo-learning-button-hover-color: var(--yolo-foreground);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--yolo-radius-md);
+  background: transparent;
+  color: var(--yolo-muted-foreground);
+  cursor: pointer;
+}
+
+.yolo-learning-outline-builder-back:hover {
+  background-color: var(--yolo-secondary);
+  color: var(--yolo-foreground);
+}
+
+.yolo-learning-outline-builder-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.yolo-learning-outline-builder-body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.yolo-learning-outline-builder-complete {
+  --yolo-learning-button-background: var(--yolo-primary);
+  --yolo-learning-button-color: var(--yolo-primary-foreground);
+  --yolo-learning-button-hover-background: var(--yolo-primary);
+  --yolo-learning-button-hover-color: var(--yolo-primary-foreground);
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--yolo-radius-lg);
+  background-color: var(--yolo-primary);
+  color: var(--yolo-primary-foreground);
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.yolo-learning-outline-builder-complete:hover {
+  opacity: 0.9;
+}

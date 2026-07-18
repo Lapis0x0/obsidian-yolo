@@ -61,6 +61,8 @@ function createHostVault() {
     writeText: async (path) => ({ path, mtime: 2 }),
     renamePath: async () => undefined,
     trashPath: async () => true,
+    removeFileExact: async () => true,
+    removeEmptyFolderExact: async () => true,
     readTextSnapshot: async () => initial,
     createTextIfAbsent: async () => created,
     replaceTextIfUnchanged,

@@ -3,6 +3,9 @@ import type {
   ModuleDeviceStateStore,
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
+import type { ModuleIntentStore } from './moduleIntentStore'
+import type { ModuleManager } from './moduleManager'
+import type { ModuleRuntimeQuiescence } from './moduleRuntimeReservation'
 import {
   type ModuleArtifactPlatform,
   type ModuleStore,
@@ -16,13 +19,10 @@ const SEMVER =
 export type ModuleUninstallCoordinatorOptions = Readonly<{
   artifactStore: Pick<ModuleStore, 'removeVersionArtifacts'>
   deviceStateStore: Pick<ModuleDeviceStateStore, 'runExclusive'>
-  runtime: Readonly<{
-    /** Atomically rejects active/pending modules and excludes activation until settlement. */
-    runWithModuleQuiesced<T>(
-      moduleId: string,
-      operation: () => Promise<T>,
-    ): Promise<T>
-  }>
+  intentStore: Pick<ModuleIntentStore, 'get'>
+  manager: Pick<ModuleManager, 'refresh'>
+  /** Shared with every activation path; it does not deactivate a live module. */
+  runtime: ModuleRuntimeQuiescence
   /**
    * Product-policy gate only. It cannot detect other devices. Production must
    * not authorize until missing artifacts can be verified and redownloaded.
@@ -34,6 +34,20 @@ export type ModuleUninstallCoordinatorOptions = Readonly<{
   platform: ModuleArtifactPlatform
 }>
 
+export class ModuleUninstallRefreshError extends Error {
+  readonly uninstallError: Error
+  readonly refreshError: Error
+
+  constructor(moduleId: string, uninstallError: Error, refreshError: Error) {
+    super(
+      `Module "${moduleId}" uninstall failed and the module manager could not be refreshed`,
+    )
+    this.name = 'ModuleUninstallRefreshError'
+    this.uninstallError = uninstallError
+    this.refreshError = refreshError
+  }
+}
+
 /** Removes only local program artifacts and their device-local installation state. */
 export class ModuleUninstallCoordinator {
   constructor(private readonly options: ModuleUninstallCoordinatorOptions) {
@@ -41,6 +55,8 @@ export class ModuleUninstallCoordinator {
       !options ||
       typeof options.artifactStore?.removeVersionArtifacts !== 'function' ||
       typeof options.deviceStateStore?.runExclusive !== 'function' ||
+      typeof options.intentStore?.get !== 'function' ||
+      typeof options.manager?.refresh !== 'function' ||
       typeof options.runtime?.runWithModuleQuiesced !== 'function' ||
       typeof options.authorizeArtifactRemoval !== 'function' ||
       (options.platform !== 'desktop' && options.platform !== 'mobile')
@@ -51,37 +67,68 @@ export class ModuleUninstallCoordinator {
 
   async uninstall(moduleId: string): Promise<void> {
     assertModuleId(moduleId, 'Module id')
-    return this.options.runtime.runWithModuleQuiesced(moduleId, () =>
-      this.options.deviceStateStore.runExclusive(
-        moduleId,
-        async (transaction) => {
-          const state = await transaction.read()
-          if (state === null) return
-          const versions = validateRemovableState(
-            state,
-            moduleId,
-            this.options.platform,
-          )
-          const authorized = await this.options.authorizeArtifactRemoval(
-            moduleId,
-            versions,
-          )
-          if (authorized !== true) {
-            throw new Error(
-              `Module "${moduleId}" artifact removal is not authorized by product policy`,
-            )
-          }
-          for (const version of versions) {
-            await this.options.artifactStore.removeVersionArtifacts(
+    let uninstallError: Error | undefined
+    try {
+      await this.options.runtime.runWithModuleQuiesced(moduleId, () =>
+        this.options.deviceStateStore.runExclusive(
+          moduleId,
+          async (transaction) => {
+            const intent = await this.options.intentStore.get(moduleId)
+            if (intent?.desiredInstalled !== false) {
+              throw new Error(
+                `Module "${moduleId}" uninstall requires desiredInstalled to be false`,
+              )
+            }
+
+            const state = await transaction.read()
+            if (state === null) return
+            const versions = validateRemovableState(
+              state,
               moduleId,
-              version,
+              this.options.platform,
             )
-          }
-          await removeState(transaction)
-        },
-      ),
-    )
+            const authorized = await this.options.authorizeArtifactRemoval(
+              moduleId,
+              versions,
+            )
+            if (authorized !== true) {
+              throw new Error(
+                `Module "${moduleId}" artifact removal is not authorized by product policy`,
+              )
+            }
+            for (const version of versions) {
+              await this.options.artifactStore.removeVersionArtifacts(
+                moduleId,
+                version,
+              )
+            }
+            await removeState(transaction)
+          },
+        ),
+      )
+    } catch (error) {
+      uninstallError = toError(error)
+    }
+
+    try {
+      await this.options.manager.refresh()
+    } catch (refreshError) {
+      const refreshFailure = toError(refreshError)
+      if (uninstallError !== undefined) {
+        throw new ModuleUninstallRefreshError(
+          moduleId,
+          uninstallError,
+          refreshFailure,
+        )
+      }
+      throw refreshFailure
+    }
+    if (uninstallError !== undefined) throw uninstallError
   }
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 function validateRemovableState(
@@ -97,6 +144,8 @@ function validateRemovableState(
       `Module "${moduleId}" device state belongs to ${state.platform}, not ${platform}`,
     )
   }
+  // The runtime reservation proves current-process inactivity. activeVersion is
+  // only the durable pointer from the last successful startup.
   if (state.transition !== null) {
     throw new Error(
       `Module "${moduleId}" uninstall is blocked by an active transition`,

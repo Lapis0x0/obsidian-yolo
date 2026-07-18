@@ -1,4 +1,8 @@
 import { ModuleLifecycleScope } from './lifecycleScope'
+import {
+  managedModuleDataNamespace,
+  runExclusive,
+} from './managedModuleDataLock'
 import { ManagedModulePathsCapabilityProvider } from './modulePaths'
 
 describe('ManagedModulePathsCapabilityProvider', () => {
@@ -84,5 +88,50 @@ describe('ManagedModulePathsCapabilityProvider', () => {
     expect(() => activation.api.subscribe(42 as unknown as () => void)).toThrow(
       'listener must be a function',
     )
+    expect(() =>
+      activation.api.runExclusive('../srs', () => undefined),
+    ).toThrow('namespace')
+  })
+
+  it('shares the real managed-data barrier with Core relocation callers', async () => {
+    const vaultIdentity = {}
+    let baseDir = 'YOLO'
+    let publishChange = (): void => undefined
+    const options = {
+      vaultIdentity,
+      getBaseDir: () => baseDir,
+      subscribe: (listener: () => void) => {
+        publishChange = listener
+        return () => undefined
+      },
+    }
+    const secondLifecycle = new ModuleLifecycleScope()
+    const second = new ManagedModulePathsCapabilityProvider(options).create(
+      'learning',
+      secondLifecycle,
+    )
+    let release!: () => void
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const relocation = runExclusive(
+      vaultIdentity,
+      managedModuleDataNamespace('learning', 'managed-data'),
+      () => barrier,
+    )
+    const observedRoots: string[] = []
+    const queued = second.api.runExclusive('managed-data', () => {
+      observedRoots.push(second.api.getSnapshot().contentRoot)
+    })
+
+    await Promise.resolve()
+    expect(observedRoots).toEqual([])
+    baseDir = 'Moved'
+    publishChange()
+    release()
+    await relocation
+    await queued
+    expect(observedRoots).toEqual(['Moved/learning'])
+    secondLifecycle.dispose()
   })
 })

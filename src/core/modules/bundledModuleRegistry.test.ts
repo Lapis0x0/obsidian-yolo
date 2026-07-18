@@ -137,6 +137,16 @@ describe('BundledModuleRegistry', () => {
       { id: 'second', version: '1.0.0', active: true },
     ])
     expect(activate).toHaveBeenCalledTimes(2)
+    expect(activate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: 'learning' }),
+      '0.1.0',
+    )
+    expect(activate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: 'second' }),
+      '1.0.0',
+    )
     expect(registry.getVerifiedArtifact('learning')).toEqual(
       expect.objectContaining({
         manifest: expect.objectContaining({ id: 'learning' }),
@@ -146,6 +156,80 @@ describe('BundledModuleRegistry', () => {
     expect(store.readBundledIndexBytes).toHaveBeenCalledTimes(1)
     await registry.activateAll()
     expect(activate).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares concurrent activation and requires only the activation seam', async () => {
+    let releaseFirst!: () => void
+    const firstActivation = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let markFirstStarted!: () => void
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve
+    })
+    const activate = jest
+      .fn<Promise<void>, [{ id: string }, string?]>()
+      .mockImplementationOnce(() => {
+        markFirstStarted()
+        return firstActivation
+      })
+      .mockResolvedValueOnce(undefined)
+    const registry = new BundledModuleRegistry({
+      store: {
+        readBundledIndexBytes: async () => encode(index),
+        readReadyMarkerBytes: async (
+          id: string,
+          version: string,
+          platform: string,
+        ) =>
+          encode({
+            schemaVersion: 1,
+            id,
+            version,
+            platform,
+            manifestSha256: 'c'.repeat(64),
+          }),
+        readManifestBytes: async (id: string, version: string) =>
+          encode(artifactManifest(id, version, 3, 'a'.repeat(64))),
+        readEntryBytes: async () => new Uint8Array([1, 2, 3]),
+        listVersionFiles: async () => [
+          'entry.js',
+          'module.json',
+          `ready.desktop.${'c'.repeat(64)}.json`,
+          `ready.mobile.${'c'.repeat(64)}.json`,
+        ],
+      },
+      loader: {
+        load: async (entry) => ({
+          id: entry.id,
+          activate: () => undefined,
+        }),
+      },
+      platform: 'desktop',
+      runtime: { activate },
+      subtleCrypto: subtleCrypto(0xaa),
+    })
+
+    const first = registry.activateAll()
+    const raced = registry.activateAll()
+    expect(raced).toBe(first)
+    await firstStarted
+    expect(activate).toHaveBeenCalledTimes(1)
+    expect(activate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'learning' }),
+      '0.1.0',
+    )
+
+    releaseFirst()
+    await expect(Promise.all([first, raced])).resolves.toEqual([
+      undefined,
+      undefined,
+    ])
+    expect(activate).toHaveBeenCalledTimes(2)
+    expect(activate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'second' }),
+      '1.0.0',
+    )
   })
 
   it('isolates a failed module and continues activating the remainder', async () => {

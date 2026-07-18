@@ -26,11 +26,15 @@ describe('ModuleSettingsCapabilityProvider', () => {
     activation.activate()
     activation.commit()
 
-    expect(add).toHaveBeenCalledWith('learning', {
-      id: 'learning',
-      title: 'Learning',
-      fields: [{ key: 'modelId', type: 'model', name: 'Model' }],
-    })
+    expect(add).toHaveBeenCalledWith(
+      'learning',
+      {
+        id: 'learning',
+        title: 'Learning',
+        fields: [{ key: 'modelId', type: 'model', name: 'Model' }],
+      },
+      expect.any(Object),
+    )
     expect(Object.isFrozen(add.mock.calls[0][1].fields)).toBe(true)
     lifecycle.dispose()
     expect(remove).toHaveBeenCalledWith('learning', 'learning')
@@ -99,6 +103,67 @@ describe('ModuleSettingsCapabilityProvider', () => {
     expect(() => activation.api.getModelSnapshot()).toThrow('Model id')
     lifecycle.dispose()
   })
+
+  it('writes a model field to schema-one module config and reads it back', async () => {
+    let config = {
+      schemaVersion: 0,
+      data: { modelId: 'old/model', betaNoticeAcknowledged: true },
+    }
+    const configListeners = new Set<() => void>()
+    const registry = new ModuleSettingsContributionRegistry()
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ModuleSettingsCapabilityProvider({
+      sink: registry,
+      getModelSnapshot: () => ({
+        defaultModelId: 'provider/default',
+        models: [
+          { id: 'provider/default', name: 'Default', providerId: 'provider' },
+          { id: 'provider/other', name: 'Other', providerId: 'provider' },
+        ],
+      }),
+      subscribeModels: () => () => undefined,
+      createConfigAdapter: () => ({
+        read: async () => config,
+        replace: async (next) => {
+          config = next as typeof config
+          for (const listener of configListeners) listener()
+          return config
+        },
+        subscribe: (listener) => {
+          configListeners.add(listener)
+          return () => configListeners.delete(listener)
+        },
+      }),
+    }).create('learning', lifecycle)
+    activation.api.contribute({
+      id: 'learning',
+      title: 'Generation',
+      fields: [{ key: 'modelId', type: 'model', name: 'Model' }],
+    })
+    activation.activate()
+    activation.commit()
+
+    const registration = registry.getSnapshot()[0]
+    await registration.fields.write('modelId', 'provider/other')
+
+    expect(config).toEqual({
+      schemaVersion: 1,
+      data: { modelId: 'provider/other', betaNoticeAcknowledged: true },
+    })
+    expect(await registration.fields.getSnapshot()).toEqual({
+      values: { modelId: 'provider/other' },
+      models: {
+        defaultModelId: 'provider/default',
+        models: [
+          { id: 'provider/default', name: 'Default', providerId: 'provider' },
+          { id: 'provider/other', name: 'Other', providerId: 'provider' },
+        ],
+      },
+    })
+
+    lifecycle.dispose()
+    expect(registry.getSnapshot()).toEqual([])
+  })
 })
 
 describe('ModuleSettingsContributionRegistry', () => {
@@ -119,21 +184,36 @@ describe('ModuleSettingsContributionRegistry', () => {
 
     registry.add('notes', notes)
     registry.add('learning', learning)
-    expect(registry.getSnapshot()).toEqual([
-      { moduleId: 'learning', contribution: learning },
-      { moduleId: 'notes', contribution: notes },
+    const sorted = registry.getSnapshot()
+    expect(registry.getSnapshot()).toBe(sorted)
+    expect(sorted).toEqual([
+      {
+        moduleId: 'learning',
+        contribution: learning,
+        fields: expect.any(Object),
+      },
+      { moduleId: 'notes', contribution: notes, fields: expect.any(Object) },
     ])
 
     registry.remove('learning', 'missing')
     expect(listener).toHaveBeenCalledTimes(2)
     registry.remove('learning', 'general')
     expect(registry.getSnapshot()).toEqual([
-      { moduleId: 'notes', contribution: notes },
+      { moduleId: 'notes', contribution: notes, fields: expect.any(Object) },
     ])
     expect(listener).toHaveBeenCalledTimes(3)
 
+    registry.add('learning', learning)
+    expect(
+      registry.getSnapshot().some(({ moduleId }) => moduleId === 'learning'),
+    ).toBe(true)
+    registry.remove('learning', 'general')
+    expect(
+      registry.getSnapshot().some(({ moduleId }) => moduleId === 'learning'),
+    ).toBe(false)
+
     unsubscribe()
     registry.clear()
-    expect(listener).toHaveBeenCalledTimes(3)
+    expect(listener).toHaveBeenCalledTimes(5)
   })
 })

@@ -1,0 +1,113 @@
+/*
+ * Learning Mode — design token layer.
+ *
+ * The design mock (Next.js + Tailwind) declared a hard-coded palette in
+ * :root/.dark. This plugin must follow the user's Obsidian theme instead, so
+ * every design token is remapped onto an Obsidian theme variable here, scoped
+ * to `.yolo-learning`. All learning-view component CSS should reference these
+ * `--yolo-*` aliases (never hard-coded colors), so the mapping lives in one
+ * place.
+ *
+ * Migration note: when translating a Tailwind class from the mock, look up the
+ * design token it used (e.g. `bg-primary` → `--primary`) and use the matching
+ * `--yolo-*` alias below (`var(--yolo-primary)`).
+ */
+
+.yolo-learning {
+  /* Core surfaces */
+  --yolo-background: var(--background-primary);
+  --yolo-card: var(--background-primary);
+  --yolo-popover: var(--background-primary);
+  --yolo-surface: var(--background-secondary);
+  --yolo-surface-2: var(--background-secondary-alt);
+  --yolo-secondary: var(--background-secondary);
+  --yolo-muted: var(--background-secondary);
+  --yolo-accent: var(--background-modifier-hover);
+
+  /* Text */
+  --yolo-foreground: var(--text-normal);
+  --yolo-muted-foreground: var(--text-muted);
+  --yolo-faint: var(--text-faint);
+  --yolo-accent-foreground: var(--text-accent);
+
+  /* Primary / interactive */
+  --yolo-primary: var(--interactive-accent);
+  --yolo-primary-hover: var(--interactive-accent-hover);
+  --yolo-primary-foreground: var(--text-on-accent);
+  --yolo-ring: var(--interactive-accent);
+
+  /* Borders */
+  --yolo-border: var(--background-modifier-border);
+  --yolo-input: var(--background-modifier-border);
+
+  /* Status */
+  --yolo-success: var(--color-green);
+  --yolo-warning: var(--color-yellow);
+  --yolo-danger: var(--color-red);
+  --yolo-easy: var(--color-purple);
+
+  /* Radii (mirrors the mock's --radius-* scale) */
+  --yolo-radius-sm: 4px;
+  --yolo-radius-md: 6px;
+  --yolo-radius-lg: 8px;
+  --yolo-radius-xl: 12px;
+
+  color: var(--yolo-foreground);
+  background-color: var(--yolo-background);
+  font-family: var(--font-interface);
+}
+
+/*
+ * Obsidian applies global chrome to every <button>, including a fixed
+ * input-height, normal interactive background, and input shadow. Learning UI
+ * uses buttons as cards, tabs, chips, and icon controls, so route those host
+ * styles through scoped variables that component classes can own explicitly.
+ */
+.yolo-learning button {
+  height: var(--yolo-learning-button-height, auto);
+  min-height: 0;
+  max-height: none;
+  font-family: inherit;
+  white-space: normal;
+}
+
+.yolo-learning button:not(.clickable-icon) {
+  background-color: var(--yolo-learning-button-background, transparent);
+  box-shadow: var(--yolo-learning-button-shadow, none);
+  color: var(--yolo-learning-button-color, inherit);
+}
+
+.yolo-learning button:not(.clickable-icon):hover {
+  background-color: var(
+    --yolo-learning-button-hover-background,
+    var(--yolo-learning-button-background, transparent)
+  );
+  box-shadow: var(
+    --yolo-learning-button-hover-shadow,
+    var(--yolo-learning-button-shadow, none)
+  );
+  color: var(
+    --yolo-learning-button-hover-color,
+    var(--yolo-learning-button-color, inherit)
+  );
+}
+
+/* Thin scrollbars (ported from the mock's `.scrollbar-thin` utility). */
+.yolo-learning .yolo-learning-scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--yolo-border) transparent;
+}
+
+.yolo-learning .yolo-learning-scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.yolo-learning .yolo-learning-scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--yolo-border);
+  border-radius: 8px;
+}
+
+.yolo-learning .yolo-learning-scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}

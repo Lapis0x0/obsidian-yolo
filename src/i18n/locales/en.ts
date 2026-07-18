@@ -538,8 +538,10 @@ export const en: TranslationKeys = {
       refreshing: 'Refreshing modules',
       loading: 'Loading modules…',
       loadError: 'Modules could not be loaded.',
+      settingsSaveError: 'Unable to save module settings',
       catalogError: 'Catalog: {error}',
       installedError: 'Installed modules: {error}',
+      intentError: 'Module intent: {error}',
       empty: 'No modules were found.',
       installed: 'Installed',
       installedDescription: 'Modules currently present in this installation.',
@@ -584,6 +586,47 @@ export const en: TranslationKeys = {
       readyToApplyDetail: 'Downloaded version {version} is verified and ready.',
       activationPendingDetail:
         'Version {version} is prepared. Reload to continue activation or recovery.',
+      intentLabel: 'Intent',
+      intentUnknown: 'Unavailable',
+      intentInstalledEnabled: 'Installed · enabled',
+      intentInstalledDisabled: 'Installed · disabled',
+      intentUninstalled: 'Not installed',
+      readinessLabel: 'Readiness',
+      readiness: {
+        notInstalled: 'Not installed',
+        pending: 'Pending or needs retry',
+        ready: 'Ready on this device',
+        failed: 'Failed',
+      },
+      incompatibleReason: 'Incompatible: {reason}',
+      retry: 'Retry',
+      actionReloadSuccess:
+        '{name} intent was saved. Reload Obsidian for it to take effect.',
+      actionError: 'Could not change {name}: {error}',
+      actionSuccess: {
+        install: '{name} is installed and ready on this device.',
+        enable: '{name} is marked enabled.',
+        disable: '{name} is marked disabled; its files and data were kept.',
+        uninstall: '{name} was safely uninstalled from this device.',
+      },
+      actions: {
+        install: 'Install',
+        installBusy: 'Installing…',
+        enable: 'Enable',
+        enableBusy: 'Enabling…',
+        disable: 'Disable',
+        disableBusy: 'Disabling…',
+        uninstall: 'Uninstall',
+        uninstallBusy: 'Uninstalling…',
+      },
+      confirmProduct: {
+        installTitle: 'Install {name}',
+        installMessage:
+          'Install {name}? Yolo will save the installation intent, then download and verify the compatible module files for this device.',
+        uninstallTitle: 'Uninstall {name}',
+        uninstallMessage:
+          'Uninstall {name}? The installation intent will be cleared first. If the module is active, its files and data will be kept until Obsidian reloads. Otherwise, only the local module program files and installation state will be removed safely.',
+      },
       statuses: {
         available: 'Available',
         installed: 'Installed',

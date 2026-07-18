@@ -112,6 +112,10 @@ const UNAVAILABLE_MODULE_VAULT_API: YoloModuleVaultV1 = Object.freeze({
   writeText: () => Promise.reject(new Error('Module vault is unavailable')),
   renamePath: () => Promise.reject(new Error('Module vault is unavailable')),
   trashPath: () => Promise.reject(new Error('Module vault is unavailable')),
+  removeFileExact: () =>
+    Promise.reject(new Error('Module vault is unavailable')),
+  removeEmptyFolderExact: () =>
+    Promise.reject(new Error('Module vault is unavailable')),
   readTextSnapshot: () =>
     Promise.reject(new Error('Module vault is unavailable')),
   createTextIfAbsent: () =>
@@ -348,6 +352,32 @@ function createObsidianModuleVaultCapability({
         const entry = app.vault.getAbstractFileByPath(path)
         if (!isVaultEntry(entry)) return false
         await app.fileManager.trashFile(entry)
+        return true
+      })
+    },
+    removeFileExact: async (rawPath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(rawPath)
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        const entry = app.vault.getAbstractFileByPath(path)
+        if (!(entry instanceof TFile)) return false
+        // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated file.
+        await app.vault.delete(entry, true)
+        return true
+      })
+    },
+    removeEmptyFolderExact: async (rawPath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(rawPath)
+      return serializeVaultPaths(writeState, [path], async () => {
+        assertAvailable()
+        const entry = app.vault.getAbstractFileByPath(path)
+        if (!(entry instanceof TFolder) || entry.children.length > 0) {
+          return false
+        }
+        // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated empty folder.
+        await app.vault.delete(entry, false)
         return true
       })
     },

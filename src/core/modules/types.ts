@@ -10,6 +10,7 @@ export type ModuleDisposer = () => void
 
 export type YoloModuleLifecycle = {
   add(disposer: ModuleDisposer): void
+  whenActive(callback: () => void | Promise<void>): void
 }
 
 export type YoloModuleViewV1 = Readonly<{
@@ -130,6 +131,15 @@ export type YoloModulePathsSnapshotV1 = Readonly<{
 export type YoloModulePathsV1 = {
   getSnapshot(): YoloModulePathsSnapshotV1
   subscribe(listener: () => void): ModuleDisposer
+  /**
+   * Serializes module-managed data access for this module and namespace.
+   * The callback starts after lock acquisition and must not reacquire the same
+   * namespace before it settles.
+   */
+  runExclusive<T>(
+    namespace: string,
+    operation: () => T | PromiseLike<T>,
+  ): Promise<T>
 }
 
 export type YoloModuleAssetsV1 = Readonly<{
@@ -253,6 +263,8 @@ export type YoloModuleVaultV1 = {
   ): Promise<YoloModuleVaultWrittenFileV1>
   renamePath(oldPath: string, newPath: string): Promise<void>
   trashPath(path: string): Promise<boolean>
+  removeFileExact(path: string): Promise<boolean>
+  removeEmptyFolderExact(path: string): Promise<boolean>
   readTextSnapshot(
     filePath: string,
   ): Promise<YoloModuleVaultTextSnapshotV1 | null>

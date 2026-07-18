@@ -75,12 +75,15 @@ import {
   ManagedModulePathsCapabilityProvider,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
+  ModuleDataRemovalCoordinator,
   ModuleDeviceStateStore,
   type ModuleInstallationResult,
+  ModuleIntentStore,
   ModuleLoader,
   ModuleManager,
   ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
+  ModuleRuntimeReservation,
   ModuleSettingsCapabilityProvider,
   ModuleSettingsContributionRegistry,
   ModuleStore,
@@ -89,13 +92,27 @@ import {
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
   type ProductionModuleServices,
+  authorizeOfficialModuleArtifactRemoval,
+  createLearningOwnedDataDescriptors,
+  createLearningOwnedDataRemovalPort,
+  createModuleDataRemovalJournalPort,
   createObsidianModuleConfigBackendFactory,
+  createObsidianModuleConfigCreateIfAbsent,
+  createObsidianModuleIntentBackend,
   createObsidianModuleTransitionSettingsBackend,
   createOfficialModuleCompatibilityProvider,
   createProductionModuleServices,
+  handoffLearningLegacySettings,
+  isLearningOwnedDataDescriptor,
+  managedModuleDataNamespace,
   parseModuleArtifactManifest,
+  runExclusive as runManagedModuleDataExclusive,
   selectModuleManifestVariant,
 } from './core/modules'
+import {
+  isLearningModuleOwner,
+  openLearningModuleView,
+} from './core/modules/learningModuleOwner'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import {
@@ -271,8 +288,18 @@ export default class YoloPlugin extends Plugin {
   private mcpCoordinator: McpCoordinator | null = null
   private moduleManager: ModuleManager | null = null
   private moduleRuntime: ModuleRuntime | null = null
+  private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
   private bundledModuleRegistry: BundledModuleRegistry | null = null
   private productionModuleServices: ProductionModuleServices | null = null
+  private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
+  private learningModuleSettingsHandoffState: 'pending' | 'ready' | 'failed' =
+    'pending'
+  private readonly learningModuleSettingsHandoffListeners = new Set<
+    () => void
+  >()
+  private readonly managedModulePathChangeListeners = new Set<() => void>()
+  private learningModuleOwnsProduct = false
+  private removeLearningModuleDataOperation: (() => Promise<void>) | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
@@ -420,6 +447,14 @@ export default class YoloPlugin extends Plugin {
    * existing leaf if one is already open.
    */
   async openLearningView(target?: LearningNavigationTarget): Promise<void> {
+    if (this.learningModuleOwnsProduct) {
+      await openLearningModuleView(
+        this.app.workspace,
+        LEARNING_VIEW_TYPE,
+        target,
+      )
+      return
+    }
     const leaf = await this.revealLearningView(target)
 
     if (!this.settings.learningOptions.betaNoticeAcknowledged) {
@@ -450,7 +485,48 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
+  getLearningModuleSettingsHandoffState(): 'pending' | 'ready' | 'failed' {
+    return this.learningModuleSettingsHandoffState
+  }
+
+  subscribeLearningModuleSettingsHandoff(listener: () => void): () => void {
+    this.learningModuleSettingsHandoffListeners.add(listener)
+    return () => this.learningModuleSettingsHandoffListeners.delete(listener)
+  }
+
+  async retryLearningModuleSettingsHandoff(): Promise<void> {
+    const handoff = this.learningModuleSettingsHandoff
+    if (!handoff)
+      throw new Error('Learning module settings handoff is unavailable')
+    await handoff()
+  }
+
+  private setLearningModuleSettingsHandoffState(
+    state: 'pending' | 'ready' | 'failed',
+  ): void {
+    if (this.learningModuleSettingsHandoffState === state) return
+    this.learningModuleSettingsHandoffState = state
+    for (const listener of this.learningModuleSettingsHandoffListeners)
+      listener()
+  }
+
+  private publishManagedModulePathChange(): void {
+    for (const listener of this.managedModulePathChangeListeners) {
+      try {
+        listener()
+      } catch (error) {
+        console.error('[YOLO] Managed module path publication failed', error)
+      }
+    }
+  }
+
   private async acknowledgeLearningBetaNotice(): Promise<void> {
+    if (this.learningModuleSettingsHandoffState !== 'ready') {
+      new Notice(
+        'Learning settings handoff is incomplete. Retry it from Learning settings before changing Learning preferences.',
+      )
+      return
+    }
     try {
       await this.setSettings({
         ...this.settings,
@@ -2081,8 +2157,14 @@ export default class YoloPlugin extends Plugin {
     await loadLocale(this.resolveObsidianLanguage())
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
+    try {
+      await this.learningModuleSettingsHandoff?.()
+    } catch (error) {
+      console.error('[YOLO] Learning module settings handoff failed', error)
+    }
     this.warnIfInstallationIncomplete()
     if (!(await this.activateModules())) return
+    this.learningModuleOwnsProduct = isLearningModuleOwner(this.moduleRuntime)
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -2104,7 +2186,8 @@ export default class YoloPlugin extends Plugin {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
     })
     this.app.workspace.onLayoutReady(() => {
-      this.getLearningRuntime().startStats()
+      if (!this.learningModuleOwnsProduct)
+        this.getLearningRuntime().startStats()
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2135,10 +2218,12 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
-    this.registerView(
-      LEARNING_VIEW_TYPE,
-      (leaf) => new LearningView(leaf, this),
-    )
+    if (!this.learningModuleOwnsProduct) {
+      this.registerView(
+        LEARNING_VIEW_TYPE,
+        (leaf) => new LearningView(leaf, this),
+      )
+    }
     this.startWebviewSelectionBridge()
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
@@ -2160,13 +2245,15 @@ export default class YoloPlugin extends Plugin {
     this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
     })
-    this.addRibbonIcon(
-      'graduation-cap',
-      this.t('commands.learningModeLabel'),
-      () => {
-        void this.openLearningView()
-      },
-    )
+    if (!this.learningModuleOwnsProduct) {
+      this.addRibbonIcon(
+        'graduation-cap',
+        this.t('commands.learningModeLabel'),
+        () => {
+          void this.openLearningView()
+        },
+      )
+    }
 
     this.setupBackgroundActivityStatusBar()
     this.updateToastCleanup = mountUpdateToast(this)
@@ -2241,13 +2328,15 @@ export default class YoloPlugin extends Plugin {
       },
     })
 
-    this.addCommand({
-      id: 'open-learning-mode',
-      name: this.t('commands.openLearningMode'),
-      callback: () => {
-        void this.openLearningView()
-      },
-    })
+    if (!this.learningModuleOwnsProduct) {
+      this.addCommand({
+        id: 'open-learning-mode',
+        name: this.t('commands.openLearningMode'),
+        callback: () => {
+          void this.openLearningView()
+        },
+      })
+    }
 
     // Global ESC to cancel any ongoing AI continuation/rewrite
     this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => {
@@ -2544,6 +2633,14 @@ export default class YoloPlugin extends Plugin {
     else this.moduleManager?.dispose()
     this.productionModuleServices = null
     this.moduleManager = null
+    this.learningModuleSettingsHandoff = null
+    this.setLearningModuleSettingsHandoffState('pending')
+    this.learningModuleSettingsHandoffListeners.clear()
+    this.managedModulePathChangeListeners.clear()
+    this.learningModuleOwnsProduct = false
+    this.removeLearningModuleDataOperation = null
+    this.moduleRuntimeReservation?.dispose()
+    this.moduleRuntimeReservation = null
     this.moduleRuntime?.dispose()
     this.moduleRuntime = null
     this.bundledModuleRegistry = null
@@ -2796,10 +2893,15 @@ export default class YoloPlugin extends Plugin {
     const baseDirChanged =
       previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
 
-    if (baseDirChanged && this.learningRuntime) {
-      await this.learningRuntime.runExclusiveIfSrsInitialized(async () => {
-        this.settings = normalizedSettings
-      })
+    if (baseDirChanged) {
+      await runManagedModuleDataExclusive(
+        this.app.vault,
+        managedModuleDataNamespace('learning', 'managed-data'),
+        async () => {
+          this.settings = normalizedSettings
+          this.publishManagedModulePathChange()
+        },
+      )
     } else {
       this.settings = normalizedSettings
     }
@@ -3058,13 +3160,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           fromSettings: previousSettings,
           toSettings: normalizedSettings,
         })
-      const migrated = this.learningRuntime
-        ? await this.learningRuntime.runExclusiveIfSrsInitialized(async () => {
-            const succeeded = await relocate()
-            if (succeeded) this.settings = normalizedSettings
-            return succeeded
-          })
-        : await relocate()
+      const migrated = await runManagedModuleDataExclusive(
+        this.app.vault,
+        managedModuleDataNamespace('learning', 'managed-data'),
+        async () => {
+          const succeeded = await relocate()
+          if (succeeded) {
+            this.settings = normalizedSettings
+            this.publishManagedModulePathChange()
+          }
+          return succeeded
+        },
+      )
       if (!migrated) {
         new Notice(
           'Failed to move YOLO managed data. Keeping previous YOLO root folder.',
@@ -3650,6 +3757,59 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.productionModuleServices.prepareConfirmedTransition(candidate)
   }
 
+  async setModuleDesiredInstalled(
+    moduleId: string,
+    desiredInstalled: boolean,
+  ): Promise<void> {
+    const coordinator = this.productionModuleServices?.intentCoordinator
+    if (!coordinator) {
+      throw new Error('[YOLO] Module installation intent is unavailable')
+    }
+    if (desiredInstalled) await coordinator.install(moduleId)
+    else await coordinator.uninstall(moduleId)
+  }
+
+  async setModuleEnabled(moduleId: string, enabled: boolean): Promise<void> {
+    const coordinator = this.productionModuleServices?.intentCoordinator
+    if (!coordinator) {
+      throw new Error('[YOLO] Module enablement intent is unavailable')
+    }
+    if (enabled) await coordinator.enable(moduleId)
+    else await coordinator.disable(moduleId)
+  }
+
+  async ensureModuleReady(moduleId: string): Promise<void> {
+    const reconciler = this.productionModuleServices?.readinessReconciler
+    if (!reconciler) {
+      throw new Error('[YOLO] Module readiness reconciliation is unavailable')
+    }
+    const result = await reconciler.ensureModuleReady(moduleId)
+    if (result.status !== 'ready') {
+      throw new Error(
+        result.error ?? `Module "${moduleId}" is not ready (${result.status})`,
+      )
+    }
+  }
+
+  async uninstallInactiveModule(moduleId: string): Promise<void> {
+    const coordinator = this.productionModuleServices?.uninstallCoordinator
+    if (!coordinator) {
+      throw new Error('[YOLO] Module uninstall is unavailable')
+    }
+    await coordinator.uninstall(moduleId)
+  }
+
+  async uninstallAndRemoveModuleData(moduleId: string): Promise<void> {
+    if (moduleId !== 'learning' || !this.removeLearningModuleDataOperation) {
+      throw new Error(`[YOLO] Data removal is unavailable for "${moduleId}"`)
+    }
+    await this.removeLearningModuleDataOperation()
+  }
+
+  hasModuleProductCapabilities(): boolean {
+    return this.productionModuleServices !== null
+  }
+
   private initializeModuleSystem(): void {
     const store = new ModuleStore({
       adapter: this.app.vault.adapter,
@@ -3662,6 +3822,24 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       subscribeSettingsChange: (listener) =>
         this.addSettingsChangeListener(() => listener()),
     })
+    const createConfigIfAbsent = createObsidianModuleConfigCreateIfAbsent({
+      app: this.app,
+      getSettings: () => this.settings,
+    })
+    this.setLearningModuleSettingsHandoffState('pending')
+    this.learningModuleSettingsHandoff = async () => {
+      this.setLearningModuleSettingsHandoffState('pending')
+      try {
+        await handoffLearningLegacySettings(
+          createConfigIfAbsent,
+          this.settings.learningOptions,
+        )
+        this.setLearningModuleSettingsHandoffState('ready')
+      } catch (error) {
+        this.setLearningModuleSettingsHandoffState('failed')
+        throw error
+      }
+    }
     const transitionSettingsBackend =
       createObsidianModuleTransitionSettingsBackend({
         app: this.app,
@@ -3670,6 +3848,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
     this.register(() => deviceLocalAdapter.close())
     let registry: BundledModuleRegistry | null = null
+    const servicesReference: { current: ProductionModuleServices | null } = {
+      current: null,
+    }
     const runtime = new ModuleRuntime(
       new ObsidianModuleContributionRegistrar(this),
       new CoreModuleHostCapabilityProvider({
@@ -3682,11 +3863,20 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         assets: new ModuleAssetsCapabilityProvider({
           store,
           getVerifiedArtifact: (moduleId) =>
-            registry?.getVerifiedArtifact(moduleId),
+            registry?.getVerifiedArtifact(moduleId) ??
+            servicesReference.current?.getVerifiedArtifact(moduleId),
         }),
         backgroundActivities: this.getBackgroundActivityRegistry(),
         config: new ModuleConfigCapabilityProvider({
-          createBackend: createConfigBackend,
+          createBackend: (moduleId) => {
+            if (
+              moduleId === 'learning' &&
+              this.learningModuleSettingsHandoffState !== 'ready'
+            ) {
+              throw new Error('Learning module settings handoff is incomplete')
+            }
+            return createConfigBackend(moduleId)
+          },
           reportCallbackError: (moduleId, error) => {
             console.error(
               `[YOLO] Module "${moduleId}" config callback failed`,
@@ -3695,9 +3885,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           },
         }),
         paths: new ManagedModulePathsCapabilityProvider({
+          vaultIdentity: this.app.vault,
           getBaseDir: () => getYoloBaseDir(this.settings),
-          subscribe: (listener) =>
-            this.addSettingsChangeListener(() => listener()),
+          subscribe: (listener) => {
+            this.managedModulePathChangeListeners.add(listener)
+            return () => this.managedModulePathChangeListeners.delete(listener)
+          },
           reportCallbackError: (moduleId, error) => {
             console.error(
               `[YOLO] Module "${moduleId}" managed-path callback failed`,
@@ -3720,6 +3913,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         }),
         settings: new ModuleSettingsCapabilityProvider({
           sink: this.moduleSettingsContributions,
+          createConfigAdapter: (moduleId) => {
+            const backend = createConfigBackend(moduleId)
+            return {
+              read: () => backend.read(),
+              replace: (next) => backend.write(next),
+              subscribe: (listener) => backend.subscribe(listener),
+            }
+          },
           getModelSnapshot: () => ({
             defaultModelId: this.settings.chatModelId,
             models: this.settings.chatModels
@@ -3755,7 +3956,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         vault: new ObsidianModuleVaultCapabilityProvider(this.app),
       }),
     )
+    const runtimeReservation = new ModuleRuntimeReservation({ runtime })
     this.moduleRuntime = runtime
+    this.moduleRuntimeReservation = runtimeReservation
     if (process.env.NODE_ENV === 'development') {
       registry = new BundledModuleRegistry({
         store,
@@ -3763,7 +3966,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         loader: new ModuleLoader({
           executor: new DomBlobModuleScriptExecutor(),
         }),
-        runtime,
+        runtime: runtimeReservation,
         reportActivationError: (moduleId, error) => {
           console.error(`[YOLO] Bundled module "${moduleId}" failed`, error)
         },
@@ -3782,6 +3985,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       adapter: deviceLocalAdapter,
       rootPath: MODULE_DEVICE_STATE_ROOT,
     })
+    const intentStore = new ModuleIntentStore(
+      createObsidianModuleIntentBackend({
+        app: this.app,
+        getSettings: () => this.settings,
+        subscribeSettingsChange: (listener) =>
+          this.addSettingsChangeListener(() => listener()),
+      }),
+    )
     const getCompatibility = createOfficialModuleCompatibilityProvider({
       platform,
       readDeviceState: (moduleId) => deviceStateStore.read(moduleId),
@@ -3796,9 +4007,27 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       activationRuntime: runtime,
+      runtimeReservation,
+      intentStore,
+      authorizeArtifactRemoval: (moduleId, versions) => {
+        const current = servicesReference.current
+        if (!current) return Promise.resolve(false)
+        return authorizeOfficialModuleArtifactRemoval(
+          current.catalogClient,
+          moduleId,
+          versions,
+          platform,
+        )
+      },
       transitionSettingsBackend,
       readCurrentSchemaVersion: async (moduleId, namespace) => {
         if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
+        if (
+          moduleId === 'learning' &&
+          this.learningModuleSettingsHandoffState !== 'ready'
+        ) {
+          throw new Error('Learning module settings handoff is incomplete')
+        }
         return (await createConfigBackend(moduleId).read()).schemaVersion
       },
       reportCleanupError: (error) => {
@@ -3810,7 +4039,94 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       reportActivationError: (moduleId, error) => {
         console.error(`[YOLO] Module "${moduleId}" activation failed`, error)
       },
+      requestReload: (moduleId) => {
+        this.showActionToast({
+          id: `module-reload-required:${moduleId}`,
+          tone: 'warning',
+          title: 'Module change pending',
+          message: `Reload Obsidian to apply synchronized changes for "${moduleId}".`,
+          actionLabel: 'Reload',
+          dismissLabel: 'Later',
+          onAction: () => window.location.reload(),
+        })
+      },
+      reportStartupError: (error, moduleId) => {
+        console.error(
+          moduleId
+            ? `[YOLO] Module "${moduleId}" startup reconciliation failed`
+            : '[YOLO] Module startup reconciliation failed',
+          error,
+        )
+      },
     })
+    servicesReference.current = services
+    let dataRemovalRunning = false
+    this.removeLearningModuleDataOperation = async () => {
+      if (dataRemovalRunning) {
+        throw new Error('Learning data removal is already in progress')
+      }
+      dataRemovalRunning = true
+      try {
+        const journal = createModuleDataRemovalJournalPort(deviceLocalAdapter)
+        const pendingJournal = await journal.read('learning')
+        const pendingDescriptors =
+          pendingJournal &&
+          typeof pendingJournal === 'object' &&
+          'descriptors' in pendingJournal &&
+          Array.isArray(pendingJournal.descriptors)
+            ? pendingJournal.descriptors
+            : null
+        const descriptors = pendingDescriptors
+          ? pendingDescriptors
+          : await createLearningOwnedDataDescriptors(
+              this.app,
+              this.settings,
+              deviceLocalAdapter,
+            )
+        const approved = new Set(
+          descriptors.map((value) => JSON.stringify(value)),
+        )
+        const token = Object.freeze({ nonce: crypto.randomUUID() })
+        const removal = createLearningOwnedDataRemovalPort(
+          this.app,
+          deviceLocalAdapter,
+        )
+        const coordinator = new ModuleDataRemovalCoordinator({
+          artifactUninstaller: services.uninstallCoordinator!,
+          runtime: runtimeReservation,
+          intentStore,
+          ownership: {
+            approve: async (owner, descriptor) =>
+              owner === 'learning' &&
+              approved.has(JSON.stringify(descriptor)) &&
+              isLearningOwnedDataDescriptor(descriptor, this.settings),
+          },
+          authorization: {
+            verifyHighRiskToken: async (candidate, request) =>
+              candidate === token &&
+              request.moduleId === 'learning' &&
+              request.descriptors.length === approved.size &&
+              request.descriptors.every((descriptor) =>
+                approved.has(JSON.stringify(descriptor)),
+              ),
+          },
+          removal: {
+            remove: (descriptor) =>
+              runManagedModuleDataExclusive(
+                this.app.vault,
+                managedModuleDataNamespace('learning', 'managed-data'),
+                () => removal.remove(descriptor),
+              ),
+          },
+          journal,
+        })
+        await services.intentCoordinator!.uninstall('learning')
+        await coordinator.uninstallAndRemoveData('learning', descriptors, token)
+        await services.manager.refresh()
+      } finally {
+        dataRemovalRunning = false
+      }
+    }
     this.productionModuleServices = services
     this.moduleManager = services.manager
   }
@@ -3818,7 +4134,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   private async activateModules(): Promise<boolean> {
     if (!this.bundledModuleRegistry) {
       try {
-        await this.productionModuleServices?.activationCoordinator.activatePersistedModules()
+        const services = this.productionModuleServices
+        if (services?.startupReconciler) {
+          await services.startupReconciler.start()
+        } else {
+          await services?.activationCoordinator.activatePersistedModules()
+        }
       } catch (error) {
         console.error('[YOLO] Failed to enumerate installed modules', error)
       }
@@ -3836,9 +4157,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           '[YOLO] Module transition recovery stopped further module activation in this process',
         )
       }
-      void this.moduleManager?.refresh().catch((error) => {
-        console.error('[YOLO] Failed to refresh official modules', error)
-      })
+      if (!this.productionModuleServices?.startupReconciler) {
+        void this.moduleManager?.refresh().catch((error) => {
+          console.error('[YOLO] Failed to refresh official modules', error)
+        })
+      }
       return true
     }
     try {
@@ -3878,7 +4201,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         manifest.version,
         entry.path,
       )
-      if (!this.moduleRuntime) throw new Error('Module runtime is unavailable')
+      if (!this.moduleRuntimeReservation) {
+        throw new Error('Module runtime reservation is unavailable')
+      }
       const definition = await new ModuleLoader({
         executor: new DomBlobModuleScriptExecutor(),
       }).load(
@@ -3889,7 +4214,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         },
         entryBytes,
       )
-      await this.moduleRuntime.activate(definition, version)
+      await this.moduleRuntimeReservation.activate(definition, version)
       await this.moduleManager?.refresh()
       new Notice('Host API conformance module activated')
     } catch (error) {

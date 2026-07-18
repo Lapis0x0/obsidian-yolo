@@ -5,11 +5,18 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import type {
+  ModuleSettingsContributionRegistry,
+  RegisteredModuleSettingsContributionV1,
+} from '../../core/modules/moduleSettingsContributions'
 import YoloPlugin from '../../main'
 
+import { LearningSection } from './sections/LearningSection'
+import { ModuleSettingsSection } from './sections/ModuleSettingsSection'
 import { AgentTab } from './tabs/AgentTab'
 import { EditorTab } from './tabs/EditorTab'
 import { KnowledgeTab } from './tabs/KnowledgeTab'
@@ -78,6 +85,22 @@ const SETTINGS_TABS: SettingsTab[] = [
 
 const STORAGE_KEY = 'yolo_settings_active_tab'
 
+const EMPTY_MODULE_SETTINGS_SNAPSHOT: readonly RegisteredModuleSettingsContributionV1[] =
+  Object.freeze([])
+const EMPTY_MODULE_SETTINGS_REGISTRY = {
+  getSnapshot: () => EMPTY_MODULE_SETTINGS_SNAPSHOT,
+  subscribe: () => () => undefined,
+}
+
+export function partitionModuleSettings(
+  registrations: readonly RegisteredModuleSettingsContributionV1[],
+) {
+  return {
+    learning: registrations.filter(({ moduleId }) => moduleId === 'learning'),
+    other: registrations.filter(({ moduleId }) => moduleId !== 'learning'),
+  }
+}
+
 export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const { t } = useLanguage()
   const [activeTab, setActiveTab] = useState<SettingsTabId>(() => {
@@ -94,6 +117,24 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
     }
     return 'models'
   })
+  const registry =
+    (
+      plugin as YoloPlugin & {
+        getModuleSettingsContributionRegistry?: () => ModuleSettingsContributionRegistry
+      }
+    ).getModuleSettingsContributionRegistry?.() ??
+    EMPTY_MODULE_SETTINGS_REGISTRY
+  const moduleSettings = useSyncExternalStore(
+    registry.subscribe,
+    registry.getSnapshot,
+    registry.getSnapshot,
+  )
+  const partitionedModuleSettings = partitionModuleSettings(moduleSettings)
+  const learningHandoffState = useSyncExternalStore(
+    (listener) => plugin.subscribeLearningModuleSettingsHandoff(listener),
+    () => plugin.getLearningModuleSettingsHandoffState(),
+    () => plugin.getLearningModuleSettingsHandoffState(),
+  )
 
   useEffect(() => {
     // Save to localStorage when tab changes
@@ -193,7 +234,21 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
         ))}
       </div>
       <div className="yolo-settings-tabs-content">
-        <ActiveComponent app={app} plugin={plugin} />
+        {activeTab === 'learning' ? (
+          <LearningSection
+            moduleSettings={partitionedModuleSettings.learning}
+            handoffState={learningHandoffState}
+            retryHandoff={() => plugin.retryLearningModuleSettingsHandoff()}
+          />
+        ) : (
+          <ActiveComponent app={app} plugin={plugin} />
+        )}
+        {activeTab === 'modules' &&
+        partitionedModuleSettings.other.length > 0 ? (
+          <ModuleSettingsSection
+            registrations={partitionedModuleSettings.other}
+          />
+        ) : null}
       </div>
     </div>
   )

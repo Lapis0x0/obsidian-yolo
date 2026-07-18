@@ -13,15 +13,134 @@ import type {
   ModuleManagerSnapshot,
   ModuleRecord,
 } from '../../../core/modules'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 
 type ModulesTabProps = {
   app: App
-  plugin: YoloPlugin
+  plugin: YoloPlugin & Partial<ModuleProductCapabilities>
 }
 
-type ModuleAction = 'install' | 'update' | 'apply' | 'reload'
+export type ModuleProductCapabilities = {
+  hasModuleProductCapabilities?: () => boolean
+  getModuleInstallCandidate: (
+    moduleId: string,
+  ) => ConfirmedModuleCandidate | undefined
+  installConfirmedModuleCandidate: (
+    candidate: ConfirmedModuleCandidate,
+  ) => Promise<unknown>
+  setModuleDesiredInstalled: (
+    moduleId: string,
+    desiredInstalled: boolean,
+  ) => Promise<void>
+  setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>
+  uninstallInactiveModule: (moduleId: string) => Promise<void>
+  uninstallAndRemoveModuleData: (moduleId: string) => Promise<void>
+}
+
+export type ModuleProductAction = 'install' | 'enable' | 'disable' | 'uninstall'
+
+export function requiresModuleProductConfirmation(
+  action: ModuleProductAction,
+): boolean {
+  return action === 'install' || action === 'uninstall'
+}
+
+type ModuleAction =
+  | ModuleProductAction
+  | 'update'
+  | 'apply'
+  | 'reload'
+  | 'remove-data'
+
+type ProductModuleRecord = ModuleRecord & {
+  incompatibilityReason?: string
+}
+
+type OperationState = Readonly<{
+  action: ModuleAction
+  error?: string
+  moduleId: string
+}>
+
+export function getModuleProductActions(
+  module: Pick<ModuleRecord, 'desiredInstalled' | 'enabled' | 'installed'>,
+  productCapabilitiesAvailable = false,
+): readonly ModuleProductAction[] {
+  if (!productCapabilitiesAvailable) return []
+  if (!module.installed) return ['install']
+  if (module.desiredInstalled === false) return ['uninstall']
+
+  const actions: ModuleProductAction[] = []
+  if (module.enabled === true) actions.push('disable')
+  if (module.enabled === false) actions.push('enable')
+  actions.push('uninstall')
+  return actions
+}
+
+export function hasModuleProductCapabilities(
+  capabilities: Partial<ModuleProductCapabilities>,
+): boolean {
+  return capabilities.hasModuleProductCapabilities?.() === true
+}
+
+function requireCapability<K extends keyof ModuleProductCapabilities>(
+  capabilities: Partial<ModuleProductCapabilities>,
+  name: K,
+): ModuleProductCapabilities[K] {
+  const capability = capabilities[name]
+  if (typeof capability !== 'function') {
+    throw new Error(`Module host capability is unavailable: ${name}`)
+  }
+  return capability.bind(capabilities) as ModuleProductCapabilities[K]
+}
+
+export async function executeModuleProductAction(
+  capabilities: Partial<ModuleProductCapabilities>,
+  module: Pick<ModuleRecord, 'id' | 'installed' | 'status'>,
+  action: ModuleProductAction,
+  confirmedInstallCandidate?: ConfirmedModuleCandidate,
+): Promise<Readonly<{ reloadRequired: boolean }>> {
+  if (!hasModuleProductCapabilities(capabilities)) {
+    throw new Error('Module product capabilities are unavailable')
+  }
+  if (action === 'install') {
+    if (
+      !confirmedInstallCandidate ||
+      confirmedInstallCandidate.moduleId !== module.id
+    ) {
+      throw new Error(
+        `No confirmed install candidate is available for ${module.id}`,
+      )
+    }
+    await requireCapability(capabilities, 'setModuleDesiredInstalled')(
+      module.id,
+      true,
+    )
+    await requireCapability(
+      capabilities,
+      'installConfirmedModuleCandidate',
+    )(confirmedInstallCandidate)
+    return { reloadRequired: false }
+  }
+  if (action === 'enable' || action === 'disable') {
+    await requireCapability(capabilities, 'setModuleEnabled')(
+      module.id,
+      action === 'enable',
+    )
+    return { reloadRequired: true }
+  }
+
+  await requireCapability(capabilities, 'setModuleDesiredInstalled')(
+    module.id,
+    false,
+  )
+  if (module.installed?.active === true || module.status === 'active') {
+    return { reloadRequired: true }
+  }
+  await requireCapability(capabilities, 'uninstallInactiveModule')(module.id)
+  return { reloadRequired: false }
+}
 
 const INSTALLED_STATUSES = new Set<ModuleRecord['status']>([
   'installed',
@@ -35,12 +154,14 @@ const INSTALLED_STATUSES = new Set<ModuleRecord['status']>([
 
 function ModuleCard({
   module,
-  operationModuleId,
+  operation,
   onAction,
+  productCapabilitiesAvailable,
 }: {
-  module: ModuleRecord
-  operationModuleId: string | null
+  module: ProductModuleRecord
+  operation: OperationState | null
   onAction: (module: ModuleRecord, action: ModuleAction) => void
+  productCapabilitiesAvailable: boolean
 }) {
   const { t } = useLanguage()
   const name = module.catalog?.name ?? module.id
@@ -58,20 +179,31 @@ function ModuleCard({
     'activation-pending': t('settings.modules.statuses.activationPending'),
     failed: t('settings.modules.statuses.failed'),
   }
-  const action: ModuleAction | undefined =
-    module.status === 'available'
-      ? 'install'
-      : module.status === 'update-available'
-        ? 'update'
-        : module.status === 'ready-to-apply'
-          ? 'apply'
-          : module.status === 'activation-pending'
-            ? 'reload'
-            : undefined
+  const releaseAction: ModuleAction | undefined =
+    module.status === 'update-available'
+      ? 'update'
+      : module.status === 'ready-to-apply'
+        ? 'apply'
+        : module.status === 'activation-pending'
+          ? 'reload'
+          : undefined
   const transitionVersion =
     module.pendingVersion ?? module.candidateVersion ?? module.version
-  const isOperating = operationModuleId === module.id
-  const hasOperation = operationModuleId !== null
+  const productActions = getModuleProductActions(
+    module,
+    productCapabilitiesAvailable,
+  )
+  const isOperating = operation?.moduleId === module.id && !operation.error
+  const hasOperation = operation !== null && !operation.error
+  const intentInstalled = module.desiredInstalled
+  const intentEnabled = module.enabled
+  const readiness = module.installed
+    ? module.status === 'failed'
+      ? 'failed'
+      : 'ready'
+    : intentInstalled
+      ? 'pending'
+      : 'notInstalled'
 
   return (
     <article
@@ -108,6 +240,36 @@ function ModuleCard({
             {module.installed.error}
           </p>
         )}
+        {module.incompatibilityReason && (
+          <p className="yolo-module-card-error" role="alert">
+            {t('settings.modules.incompatibleReason').replace(
+              '{reason}',
+              module.incompatibilityReason,
+            )}
+          </p>
+        )}
+        <div className="yolo-module-card-state-row">
+          <span className="yolo-module-card-state-label">
+            {t('settings.modules.intentLabel')}
+          </span>
+          <span className="yolo-module-card-state-value">
+            {t(
+              intentInstalled === undefined
+                ? 'settings.modules.intentUnknown'
+                : intentInstalled
+                  ? intentEnabled
+                    ? 'settings.modules.intentInstalledEnabled'
+                    : 'settings.modules.intentInstalledDisabled'
+                  : 'settings.modules.intentUninstalled',
+            )}
+          </span>
+          <span className="yolo-module-card-state-label">
+            {t('settings.modules.readinessLabel')}
+          </span>
+          <span className="yolo-module-card-state-value">
+            {t(`settings.modules.readiness.${readiness}`)}
+          </span>
+        </div>
         {(module.status === 'ready-to-apply' ||
           module.status === 'activation-pending') && (
           <p
@@ -122,13 +284,25 @@ function ModuleCard({
             ).replace('{version}', transitionVersion)}
           </p>
         )}
+        {operation?.moduleId === module.id && operation.error && (
+          <div className="yolo-module-card-operation-error" role="alert">
+            <span>{operation.error}</span>
+            <button
+              type="button"
+              className="yolo-module-card-retry"
+              onClick={() => onAction(module, operation.action)}
+            >
+              {t('settings.modules.retry')}
+            </button>
+          </div>
+        )}
       </div>
       <div className="yolo-module-card-actions">
-        {action && (
+        {releaseAction && (
           <button
             type="button"
             className="yolo-module-card-action"
-            onClick={() => onAction(module, action)}
+            onClick={() => onAction(module, releaseAction)}
             disabled={hasOperation}
             aria-busy={isOperating || undefined}
           >
@@ -141,24 +315,67 @@ function ModuleCard({
             <span>
               {t(
                 isOperating
-                  ? action === 'update'
+                  ? releaseAction === 'update'
                     ? 'settings.modules.updating'
-                    : action === 'install'
-                      ? 'settings.modules.installing'
-                      : action === 'apply'
-                        ? 'settings.modules.preparing'
-                        : 'settings.modules.reloading'
-                  : action === 'update'
+                    : releaseAction === 'apply'
+                      ? 'settings.modules.preparing'
+                      : 'settings.modules.reloading'
+                  : releaseAction === 'update'
                     ? 'settings.modules.update'
-                    : action === 'install'
-                      ? 'settings.modules.install'
-                      : action === 'apply'
-                        ? 'settings.modules.applyAndReload'
-                        : 'settings.modules.reload',
+                    : releaseAction === 'apply'
+                      ? 'settings.modules.applyAndReload'
+                      : 'settings.modules.reload',
               )}
             </span>
           </button>
         )}
+        {productActions.map((action) => (
+          <button
+            key={action}
+            type="button"
+            className={`yolo-module-card-action yolo-module-card-action--${action}`}
+            onClick={() => onAction(module, action)}
+            disabled={hasOperation}
+            aria-busy={isOperating || undefined}
+          >
+            {isOperating && operation?.action === action && (
+              <LoaderCircle
+                className="yolo-module-card-action-icon is-spinning"
+                aria-hidden="true"
+              />
+            )}
+            <span>
+              {t(
+                isOperating && operation?.action === action
+                  ? `settings.modules.actions.${action}Busy`
+                  : `settings.modules.actions.${action}`,
+              )}
+            </span>
+          </button>
+        ))}
+        {productCapabilitiesAvailable &&
+        module.id === 'learning' &&
+        module.installed ? (
+          <button
+            type="button"
+            className="yolo-module-card-action yolo-module-card-action--remove-data"
+            onClick={() => onAction(module, 'remove-data')}
+            disabled={hasOperation}
+            aria-busy={
+              isOperating && operation?.action === 'remove-data'
+                ? true
+                : undefined
+            }
+          >
+            {isOperating && operation?.action === 'remove-data' ? (
+              <LoaderCircle
+                className="yolo-module-card-action-icon is-spinning"
+                aria-hidden="true"
+              />
+            ) : null}
+            <span>Uninstall and delete Learning data</span>
+          </button>
+        ) : null}
       </div>
     </article>
   )
@@ -168,15 +385,17 @@ function ModuleGroup({
   description,
   emptyMessage,
   modules,
-  operationModuleId,
+  operation,
   onAction,
+  productCapabilitiesAvailable,
   title,
 }: {
   description: string
   emptyMessage: string
   modules: ReadonlyArray<ModuleRecord>
-  operationModuleId: string | null
+  operation: OperationState | null
   onAction: (module: ModuleRecord, action: ModuleAction) => void
+  productCapabilitiesAvailable: boolean
   title: string
 }) {
   return (
@@ -192,8 +411,9 @@ function ModuleGroup({
             <ModuleCard
               key={module.id}
               module={module}
-              operationModuleId={operationModuleId}
+              operation={operation}
               onAction={onAction}
+              productCapabilitiesAvailable={productCapabilitiesAvailable}
             />
           ))}
         </div>
@@ -225,6 +445,12 @@ function ModuleErrorState({
           snapshot.errors.installed,
         )
       : undefined,
+    snapshot.errors.intent
+      ? t('settings.modules.intentError').replace(
+          '{error}',
+          snapshot.errors.intent,
+        )
+      : undefined,
   ].filter((detail): detail is string => Boolean(detail))
 
   return (
@@ -251,9 +477,7 @@ function ModuleErrorState({
 
 export function ModulesTab({ app, plugin }: ModulesTabProps) {
   const { t } = useLanguage()
-  const [operationModuleId, setOperationModuleId] = useState<string | null>(
-    null,
-  )
+  const [operation, setOperation] = useState<OperationState | null>(null)
   const mountedRef = useRef(true)
   const operationGenerationRef = useRef(0)
   const confirmationModalRef = useRef<ConfirmModal | null>(null)
@@ -264,6 +488,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     manager.getSnapshot,
   )
   const isLoading = snapshot.status === 'loading'
+  const productCapabilitiesAvailable = hasModuleProductCapabilities(plugin)
   const installed = snapshot.modules.filter((module) =>
     INSTALLED_STATUSES.has(module.status),
   )
@@ -284,7 +509,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
 
   const clearOperation = (moduleId: string) => {
     if (!mountedRef.current) return
-    setOperationModuleId((current) => (current === moduleId ? null : current))
+    setOperation((current) => (current?.moduleId === moduleId ? null : current))
   }
 
   const installCandidate = async (
@@ -338,7 +563,10 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
 
     const isUpdate = module.status === 'update-available'
     const generation = ++operationGenerationRef.current
-    setOperationModuleId(module.id)
+    setOperation({
+      action: isUpdate ? 'update' : 'install',
+      moduleId: module.id,
+    })
     const modal = new ConfirmModal(app, {
       title: t(
         isUpdate
@@ -410,7 +638,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
   const openApplyConfirmation = async (module: ModuleRecord) => {
     const name = module.catalog?.name ?? module.id
     const generation = ++operationGenerationRef.current
-    setOperationModuleId(module.id)
+    setOperation({ action: 'apply', moduleId: module.id })
     let candidate: ConfirmedModuleCandidate | undefined
     try {
       candidate = await plugin.getModuleTransitionCandidate(module.id)
@@ -481,7 +709,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     const name = module.catalog?.name ?? module.id
     const version =
       module.pendingVersion ?? module.candidateVersion ?? module.version
-    setOperationModuleId(module.id)
+    setOperation({ action: 'reload', moduleId: module.id })
     try {
       window.location.reload()
     } catch (error) {
@@ -498,8 +726,197 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     }
   }
 
+  const runProductAction = async (
+    module: ModuleRecord,
+    action: ModuleProductAction,
+    confirmedInstallCandidate?: ConfirmedModuleCandidate,
+  ) => {
+    const name = module.catalog?.name ?? module.id
+    setOperation({ action, moduleId: module.id })
+    try {
+      const result = await executeModuleProductAction(
+        plugin,
+        module,
+        action,
+        confirmedInstallCandidate,
+      )
+      await manager.refresh()
+      new Notice(
+        t(
+          result.reloadRequired
+            ? 'settings.modules.actionReloadSuccess'
+            : `settings.modules.actionSuccess.${action}`,
+        ).replace('{name}', name),
+        8000,
+      )
+      clearOperation(module.id)
+    } catch (error) {
+      if (!mountedRef.current) return
+      const message = error instanceof Error ? error.message : String(error)
+      setOperation({
+        action,
+        error: t('settings.modules.actionError')
+          .replace('{name}', name)
+          .replace('{error}', message),
+        moduleId: module.id,
+      })
+    }
+  }
+
+  const openProductConfirmation = (
+    module: ModuleRecord,
+    action: 'install' | 'uninstall',
+  ) => {
+    const name = module.catalog?.name ?? module.id
+    let confirmedInstallCandidate: ConfirmedModuleCandidate | undefined
+    if (action === 'install') {
+      const candidate = plugin.getModuleInstallCandidate(module.id)
+      if (!candidate || candidate.moduleId !== module.id) {
+        setOperation({
+          action,
+          error: t('settings.modules.actionError')
+            .replace('{name}', name)
+            .replace(
+              '{error}',
+              `No install candidate is available for ${module.id}`,
+            ),
+          moduleId: module.id,
+        })
+        return
+      }
+      confirmedInstallCandidate = {
+        moduleId: candidate.moduleId,
+        expectedVersion: candidate.expectedVersion,
+        expectedManifestSha256: candidate.expectedManifestSha256,
+      }
+    }
+    const generation = ++operationGenerationRef.current
+    setOperation({ action, moduleId: module.id })
+    const confirmationMessage = t(
+      `settings.modules.confirmProduct.${action}Message`,
+    ).replace('{name}', name)
+    const modal = new ConfirmModal(app, {
+      title: t(`settings.modules.confirmProduct.${action}Title`).replace(
+        '{name}',
+        name,
+      ),
+      message:
+        action === 'install' && confirmedInstallCandidate
+          ? `${confirmationMessage}\n\n${t('settings.modules.version').replace(
+              '{version}',
+              confirmedInstallCandidate.expectedVersion,
+            )}`
+          : confirmationMessage,
+      ctaText: t(`settings.modules.actions.${action}`),
+      onConfirm: () => {
+        if (
+          !mountedRef.current ||
+          generation !== operationGenerationRef.current
+        ) {
+          return
+        }
+        confirmationModalRef.current = null
+        void runProductAction(module, action, confirmedInstallCandidate)
+      },
+      onCancel: () => {
+        if (generation !== operationGenerationRef.current) return
+        confirmationModalRef.current = null
+        clearOperation(module.id)
+      },
+    })
+    confirmationModalRef.current = modal
+    modal.open()
+  }
+
+  const runDataRemoval = async (module: ModuleRecord) => {
+    const name = module.catalog?.name ?? module.id
+    setOperation({ action: 'remove-data', moduleId: module.id })
+    try {
+      await requireCapability(plugin, 'uninstallAndRemoveModuleData')(module.id)
+      await manager.refresh()
+      new Notice(
+        `${name} was uninstalled and its owned data was removed.`,
+        8000,
+      )
+      clearOperation(module.id)
+    } catch (error) {
+      if (!mountedRef.current) return
+      const message = error instanceof Error ? error.message : String(error)
+      setOperation({
+        action: 'remove-data',
+        error: `Unable to remove ${name} data: ${message}`,
+        moduleId: module.id,
+      })
+    }
+  }
+
+  const openDataRemovalConfirmation = (module: ModuleRecord) => {
+    const name = module.catalog?.name ?? module.id
+    const generation = ++operationGenerationRef.current
+    setOperation({ action: 'remove-data', moduleId: module.id })
+    const first = new ConfirmModal(app, {
+      title: `Uninstall ${name} and delete data?`,
+      message:
+        'This is separate from normal uninstall. Learning project folders will be moved to trash; SRS state, Anki recovery journals, module settings, and private runtime data will be permanently deleted.',
+      ctaText: 'Review permanent deletion',
+      onConfirm: () => {
+        if (
+          !mountedRef.current ||
+          generation !== operationGenerationRef.current
+        ) {
+          return
+        }
+        const second = new ConfirmModal(app, {
+          title: 'Confirm permanent Learning data deletion',
+          message:
+            'This is the final confirmation. SRS state and Anki recovery data cannot be restored from Obsidian trash.',
+          ctaText: 'Permanently delete owned data',
+          onConfirm: () => {
+            if (
+              !mountedRef.current ||
+              generation !== operationGenerationRef.current
+            ) {
+              return
+            }
+            confirmationModalRef.current = null
+            void runDataRemoval(module)
+          },
+          onCancel: () => {
+            if (generation !== operationGenerationRef.current) return
+            confirmationModalRef.current = null
+            clearOperation(module.id)
+          },
+        })
+        confirmationModalRef.current = second
+        second.open()
+      },
+      onCancel: () => {
+        if (generation !== operationGenerationRef.current) return
+        confirmationModalRef.current = null
+        clearOperation(module.id)
+      },
+    })
+    confirmationModalRef.current = first
+    first.open()
+  }
+
   const handleAction = (module: ModuleRecord, action: ModuleAction) => {
-    if (action === 'install' || action === 'update') {
+    if (action === 'remove-data') {
+      openDataRemovalConfirmation(module)
+      return
+    }
+    if (
+      (action === 'install' || action === 'uninstall') &&
+      requiresModuleProductConfirmation(action)
+    ) {
+      openProductConfirmation(module, action)
+      return
+    }
+    if (action === 'enable' || action === 'disable') {
+      void runProductAction(module, action)
+      return
+    }
+    if (action === 'update') {
       openInstallConfirmation(module)
       return
     }
@@ -525,7 +942,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
           type="button"
           className="yolo-modules-refresh"
           onClick={() => void manager.refresh()}
-          disabled={isLoading || operationModuleId !== null}
+          disabled={isLoading || (operation !== null && !operation.error)}
           aria-label={t(
             isLoading
               ? 'settings.modules.refreshing'
@@ -577,16 +994,18 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
               description={t('settings.modules.installedDescription')}
               emptyMessage={t('settings.modules.installedEmpty')}
               modules={installed}
-              operationModuleId={operationModuleId}
+              operation={operation}
               onAction={handleAction}
+              productCapabilitiesAvailable={productCapabilitiesAvailable}
             />
             <ModuleGroup
               title={t('settings.modules.available')}
               description={t('settings.modules.availableDescription')}
               emptyMessage={t('settings.modules.availableEmpty')}
               modules={available}
-              operationModuleId={operationModuleId}
+              operation={operation}
               onAction={handleAction}
+              productCapabilitiesAvailable={productCapabilitiesAvailable}
             />
           </div>
         </>

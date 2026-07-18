@@ -1,4 +1,10 @@
 import type { ModuleLifecycleScope } from './lifecycleScope'
+import {
+  ManagedModuleDataLockOwner,
+  type ManagedModuleDataVaultIdentity,
+  assertManagedModuleDataNamespace,
+  managedModuleDataNamespace,
+} from './managedModuleDataLock'
 import { assertModuleId } from './moduleStore'
 import { normalizeModuleVaultPath } from './moduleVault'
 import type {
@@ -22,6 +28,8 @@ export type ModulePathsCapabilityProviderV1 = {
 export type ManagedModulePathsCapabilityProviderOptions = {
   getBaseDir(): string
   subscribe(listener: () => void): ModuleDisposer
+  /** Stable Vault object shared by every provider and Core lock caller. */
+  vaultIdentity?: ManagedModuleDataVaultIdentity
   reportCallbackError?: (moduleId: string, error: unknown) => void
 }
 
@@ -35,6 +43,7 @@ export const UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER: ModulePathsCapability
       api: Object.freeze({
         getSnapshot: unavailable,
         subscribe: unavailable,
+        runExclusive: unavailable,
       }),
       activate: () => undefined,
     }),
@@ -43,6 +52,8 @@ export const UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER: ModulePathsCapability
 export class ManagedModulePathsCapabilityProvider
   implements ModulePathsCapabilityProviderV1
 {
+  private readonly fallbackVaultIdentity = {}
+
   constructor(
     private readonly options: ManagedModulePathsCapabilityProviderOptions,
   ) {}
@@ -56,6 +67,9 @@ export class ManagedModulePathsCapabilityProvider
     let activationComplete = false
     let changedBeforeActivation = false
     let snapshot = this.createSnapshot(moduleId)
+    const lockOwner = new ManagedModuleDataLockOwner(
+      this.options.vaultIdentity ?? this.fallbackVaultIdentity,
+    )
     const listeners = new Set<() => void>()
     const reportCallbackError = (error: unknown): void => {
       try {
@@ -89,6 +103,7 @@ export class ManagedModulePathsCapabilityProvider
       activationComplete = false
       listeners.clear()
       unsubscribeSource()
+      lockOwner.dispose()
     })
 
     const assertActive = (): void => {
@@ -111,6 +126,17 @@ export class ManagedModulePathsCapabilityProvider
           subscribed = false
           listeners.delete(listener)
         }
+      },
+      runExclusive: (namespace, operation) => {
+        assertActive()
+        assertManagedModuleDataNamespace(namespace)
+        if (typeof operation !== 'function') {
+          throw new TypeError('Managed data lock operation must be a function')
+        }
+        return lockOwner.runExclusive(
+          managedModuleDataNamespace(moduleId, namespace),
+          operation,
+        )
       },
     })
     return Object.freeze({

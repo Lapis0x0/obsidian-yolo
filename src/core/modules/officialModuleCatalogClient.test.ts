@@ -280,6 +280,49 @@ describe('OfficialModuleCatalogClient', () => {
     expect(adapter.writes).toHaveLength(0)
   })
 
+  it('never falls back to a stale cache when a fresh load is required', async () => {
+    const adapter = new FakeAdapter()
+    adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 1))
+    const request = jest.fn(async () => {
+      throw new Error('offline')
+    })
+    const client = new OfficialModuleCatalogClient(
+      options(adapter, { requestUrl: request }),
+    )
+
+    await expect(client.loadFresh()).rejects.toBeInstanceOf(
+      OfficialModuleCatalogUnavailableError,
+    )
+    expect(request).toHaveBeenCalledWith({
+      url: OFFICIAL_MODULE_CATALOG_URL,
+      method: 'GET',
+      throw: false,
+    })
+    expect(adapter.statPaths).toHaveLength(0)
+    expect(adapter.readPaths).toHaveLength(0)
+    expect(adapter.writes).toHaveLength(0)
+  })
+
+  it('validates and caches a successful fresh load without reading cache', async () => {
+    const adapter = new FakeAdapter()
+    adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 9_500))
+    const client = new OfficialModuleCatalogClient(
+      options(adapter, {
+        requestUrl: jest.fn(async () => response(catalog('2.0.0'))),
+      }),
+    )
+
+    await expect(client.loadFresh()).resolves.toMatchObject({
+      modules: [{ versions: [{ version: '2.0.0' }] }],
+    })
+    await flushPromises()
+    expect(adapter.statPaths).toHaveLength(0)
+    expect(adapter.readPaths).toHaveLength(0)
+    expect(JSON.parse(adapter.writes[0]?.[1] ?? '').catalog).toBe(
+      catalog('2.0.0'),
+    )
+  })
+
   it('accepts small clock skew but rejects cache timestamps too far ahead', async () => {
     const freshAdapter = new FakeAdapter()
     freshAdapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 310_000))

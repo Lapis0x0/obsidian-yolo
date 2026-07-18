@@ -6,7 +6,7 @@ import path from 'node:path'
 const repository = 'Lapis0x0/obsidian-yolo'
 const hostApi = '^1.1.0'
 const dataSchemas = {
-  settings: { readMin: 0, readMax: 0, write: 0 },
+  settings: { readMin: 0, readMax: 1, write: 1 },
 }
 const artifactPlatforms = ['desktop', 'mobile']
 const expectedArtifactRoles = new Map([

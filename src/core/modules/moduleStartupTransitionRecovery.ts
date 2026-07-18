@@ -100,9 +100,10 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
   async recover(
     moduleId: string,
     signal: AbortSignal,
+    allowModuleExecution = true,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     const recovery = this.realmGuard.queue.then(() =>
-      this.recoverSerial(moduleId, signal),
+      this.recoverSerial(moduleId, signal, allowModuleExecution),
     )
     this.realmGuard.queue = recovery.then(
       () => undefined,
@@ -114,6 +115,7 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
   private async recoverSerial(
     moduleId: string,
     signal: AbortSignal,
+    allowModuleExecution: boolean,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     if (this.realmGuard.poison.processPoisoned) {
       return failed(
@@ -132,14 +134,31 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
         moduleId,
         async (transaction) => {
           try {
-            return await this.recoverExclusive(moduleId, transaction, signal)
+            return await this.recoverExclusive(
+              moduleId,
+              transaction,
+              signal,
+              allowModuleExecution,
+            )
           } catch (error) {
-            return failed(moduleId, error)
+            return failed(
+              moduleId,
+              error,
+              allowModuleExecution
+                ? undefined
+                : { processPoisoned: false, reloadRequired: true },
+            )
           }
         },
       )
     } catch (error) {
-      recovered = failed(moduleId, error)
+      recovered = failed(
+        moduleId,
+        error,
+        allowModuleExecution
+          ? undefined
+          : { processPoisoned: false, reloadRequired: true },
+      )
     }
     if (recovered.processPoisoned) {
       this.realmGuard.poison.processPoisoned = true
@@ -152,6 +171,7 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     moduleId: string,
     transaction: ModuleDeviceStateTransaction,
     signal: AbortSignal,
+    allowModuleExecution: boolean,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     const current = await abortable(transaction.read(), signal)
     if (current === null || current.transition === null) {
@@ -162,7 +182,10 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       throw new Error(`Module "${moduleId}" returned mismatched device state`)
     }
     const completed = this.realmGuard.completed.get(moduleId)
-    if (completed?.journalIdentity === transitionIdentity(current.transition)) {
+    if (
+      allowModuleExecution &&
+      completed?.journalIdentity === transitionIdentity(current.transition)
+    ) {
       return completed.result
     }
     this.realmGuard.completed.delete(moduleId)
@@ -200,6 +223,10 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       )
     }
 
+    if (!allowModuleExecution) {
+      return this.settleWithoutExecution(current, journal, transaction, signal)
+    }
+
     switch (journal.phase) {
       case 'prepared':
       case 'settings-committed':
@@ -222,6 +249,70 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
         )
       case 'rollback-completed':
         return this.resumeRollback(current, journal, transaction, signal)
+    }
+  }
+
+  private async settleWithoutExecution(
+    initial: ModuleDeviceState,
+    journal: ModuleTransitionJournal,
+    transaction: ModuleDeviceStateTransaction,
+    signal: AbortSignal,
+  ): Promise<ModuleStartupTransitionRecoveryResult> {
+    let terminal = initial
+    try {
+      switch (journal.phase) {
+        case 'prepared':
+          terminal = rollbackPointers(initial)
+          break
+        case 'settings-committed':
+        case 'activation-started':
+          await this.assertSettingsCanRollBack(journal, signal)
+          terminal = phaseState(initial, 'rollback-completed')
+          await writeExact(transaction, terminal, signal)
+          break
+        case 'committed':
+        case 'rollback-completed':
+          break
+      }
+    } catch (error) {
+      return failed(initial.moduleId, error, {
+        processPoisoned: false,
+        reloadRequired: true,
+      })
+    }
+
+    const cleanup = await cleanupTerminal(transaction, terminal, signal)
+    if (cleanup.error !== undefined) {
+      return failed(initial.moduleId, cleanup.error, {
+        processPoisoned: false,
+        reloadRequired: true,
+      })
+    }
+    this.realmGuard.completed.delete(initial.moduleId)
+    return result({ moduleId: initial.moduleId, status: 'skipped' })
+  }
+
+  private async assertSettingsCanRollBack(
+    journal: ModuleTransitionJournal,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (journal.settings === null) return
+    const backend = this.options.settingsBackend
+    if (!backend) {
+      throw new Error('Transition settings backend is unavailable')
+    }
+    const snapshot = await abortable(
+      backend.readAtCapturedLocation(journal.settings.location),
+      signal,
+    )
+    const actual = await abortable(
+      hashModuleTransitionSettingsSnapshot(snapshot, this.options.subtleCrypto),
+      signal,
+    )
+    if (actual !== journal.settings.previousSha256) {
+      throw new Error(
+        'Transition settings cannot be rolled back without overwriting newer synchronized settings',
+      )
     }
   }
 
@@ -534,6 +625,19 @@ function phaseState(
           }
         : {}
   return Object.freeze({ ...current, ...pointers, transition })
+}
+
+function rollbackPointers(current: ModuleDeviceState): ModuleDeviceState {
+  const transition = current.transition
+  if (transition === null || transition.phase !== 'prepared') {
+    throw new Error('Only a prepared transition can be directly rolled back')
+  }
+  return Object.freeze({
+    ...current,
+    activeVersion: transition.previousActiveVersion,
+    downloadedCandidate: transition.targetVersion,
+    pendingVersion: null,
+  })
 }
 
 function assertDescriptorIdentity(

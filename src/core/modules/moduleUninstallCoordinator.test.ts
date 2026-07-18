@@ -6,6 +6,7 @@ import type {
 import {
   ModuleUninstallCoordinator,
   type ModuleUninstallCoordinatorOptions,
+  ModuleUninstallRefreshError,
 } from './moduleUninstallCoordinator'
 
 const HASH = 'a'.repeat(64)
@@ -34,8 +35,8 @@ function state(
   return {
     moduleId: id,
     platform: 'desktop',
-    activeVersion: versions[0] ?? null,
-    downloadedCandidate: versions[1] ?? null,
+    activeVersion: null,
+    downloadedCandidate: versions[0] ?? null,
     pendingVersion: null,
     readyVersions: Object.fromEntries(
       versions.map((version) => [version, descriptor(id, version)]),
@@ -67,6 +68,9 @@ function deferred<T>() {
 
 type FixtureOptions = Readonly<{
   states?: readonly ModuleDeviceState[]
+  intents?: Readonly<
+    Record<string, Readonly<{ desiredInstalled: boolean; enabled: boolean }>>
+  >
   active?: readonly string[]
   activationPending?: ReadonlySet<string>
   authorizeArtifactRemoval?: (
@@ -78,6 +82,7 @@ type FixtureOptions = Readonly<{
     moduleId: string,
     states: Map<string, ModuleDeviceState>,
   ) => Promise<void>
+  refresh?: () => Promise<void>
 }>
 
 function fixture(options: FixtureOptions = {}) {
@@ -89,6 +94,14 @@ function fixture(options: FixtureOptions = {}) {
     artifacts.set(current.moduleId, new Set(Object.keys(current.readyVersions)))
   }
   const events: string[] = []
+  const intents = new Map(
+    Object.entries(
+      options.intents ?? {
+        learning: { desiredInstalled: false, enabled: false },
+        notes: { desiredInstalled: false, enabled: false },
+      },
+    ),
+  )
   const queues = new Map<string, Promise<void>>()
   const reservationQueues = new Map<string, Promise<void>>()
   const reserved = new Set<string>()
@@ -193,9 +206,16 @@ function fixture(options: FixtureOptions = {}) {
   const authorizeArtifactRemoval = jest.fn(
     options.authorizeArtifactRemoval ?? (async () => true),
   )
+  const getIntent = jest.fn(async (moduleId: string) => intents.get(moduleId))
+  const refresh = jest.fn(async () => {
+    events.push('refresh')
+    await options.refresh?.()
+  })
   const coordinator = new ModuleUninstallCoordinator({
     artifactStore: { removeVersionArtifacts },
     deviceStateStore: { runExclusive },
+    intentStore: { get: getIntent },
+    manager: { refresh },
     runtime,
     authorizeArtifactRemoval,
     platform: 'desktop',
@@ -212,6 +232,8 @@ function fixture(options: FixtureOptions = {}) {
     reserved,
     attemptActivation,
     authorizeArtifactRemoval,
+    getIntent,
+    refresh,
   }
 }
 
@@ -225,6 +247,7 @@ describe('ModuleUninstallCoordinator', () => {
       'read:learning',
       'artifact:learning:1.0.0',
       'state:learning',
+      'refresh',
     ])
     expect(value.artifacts.get('learning')).toEqual(new Set())
     expect(value.states.has('learning')).toBe(false)
@@ -246,8 +269,11 @@ describe('ModuleUninstallCoordinator', () => {
     )
   })
 
-  it('rejects a runtime-active module before artifact mutation', async () => {
-    const value = fixture({ active: ['learning'] })
+  it('rejects a runtime-active module before artifact mutation and refreshes', async () => {
+    const value = fixture({
+      states: [state('learning', ['1.0.0'], { activeVersion: '1.0.0' })],
+      active: ['learning'],
+    })
 
     await expect(value.coordinator.uninstall('learning')).rejects.toThrow(
       'is active',
@@ -255,6 +281,45 @@ describe('ModuleUninstallCoordinator', () => {
     expect(value.removeVersionArtifacts).not.toHaveBeenCalled()
     expect(value.removeState).not.toHaveBeenCalled()
     expect(value.read).not.toHaveBeenCalled()
+    expect(value.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes stale active-version artifacts when the runtime is quiescent', async () => {
+    const value = fixture({
+      states: [
+        state('learning', ['1.0.0', '2.0.0'], {
+          activeVersion: '1.0.0',
+        }),
+      ],
+      intents: {
+        learning: { desiredInstalled: false, enabled: false },
+      },
+    })
+
+    await expect(
+      value.coordinator.uninstall('learning'),
+    ).resolves.toBeUndefined()
+    expect(value.removeVersionArtifacts.mock.calls).toEqual([
+      ['learning', '1.0.0'],
+      ['learning', '2.0.0'],
+    ])
+    expect(value.states.has('learning')).toBe(false)
+    expect(value.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires explicit uninstalled intent before cleanup', async () => {
+    const value = fixture({
+      intents: {
+        learning: { desiredInstalled: true, enabled: false },
+      },
+    })
+
+    await expect(value.coordinator.uninstall('learning')).rejects.toThrow(
+      'requires desiredInstalled to be false',
+    )
+    expect(value.read).not.toHaveBeenCalled()
+    expect(value.removeVersionArtifacts).not.toHaveBeenCalled()
+    expect(value.refresh).toHaveBeenCalledTimes(1)
   })
 
   it('rejects runtime-pending activation before artifact mutation', async () => {
@@ -336,7 +401,7 @@ describe('ModuleUninstallCoordinator', () => {
     expect(value.removeVersionArtifacts).not.toHaveBeenCalled()
   })
 
-  it('removes active, downloaded, and every additional ready version', async () => {
+  it('removes downloaded and every additional ready version', async () => {
     const value = fixture({
       states: [state('learning', ['1.0.0', '2.0.0', '1.5.0'])],
     })
@@ -374,6 +439,33 @@ describe('ModuleUninstallCoordinator', () => {
     )
     expect(value.states.has('learning')).toBe(true)
     expect(value.removeState).not.toHaveBeenCalled()
+    expect(value.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a partial artifact deletion without losing the original error', async () => {
+    const artifactError = new Error('second artifact removal failed')
+    let failed = false
+    const value = fixture({
+      states: [state('learning', ['1.0.0', '2.0.0'])],
+      removeArtifact: async (_moduleId, version) => {
+        if (version === '2.0.0' && !failed) {
+          failed = true
+          throw artifactError
+        }
+      },
+    })
+
+    await expect(value.coordinator.uninstall('learning')).rejects.toBe(
+      artifactError,
+    )
+    expect(value.artifacts.get('learning')).toEqual(new Set(['2.0.0']))
+    expect(value.states.has('learning')).toBe(true)
+
+    await expect(
+      value.coordinator.uninstall('learning'),
+    ).resolves.toBeUndefined()
+    expect(value.states.has('learning')).toBe(false)
+    expect(value.refresh).toHaveBeenCalledTimes(2)
   })
 
   it('leaves artifacts gone after state removal failure and succeeds on retry', async () => {
@@ -464,7 +556,7 @@ describe('ModuleUninstallCoordinator', () => {
     },
   )
 
-  it('has no data, config, private storage, intent, or catalog dependency', async () => {
+  it('has no data, config, private storage, or catalog dependency', async () => {
     const value = fixture()
     const options = Object.keys(
       (
@@ -478,12 +570,39 @@ describe('ModuleUninstallCoordinator', () => {
       'artifactStore',
       'authorizeArtifactRemoval',
       'deviceStateStore',
+      'intentStore',
+      'manager',
       'platform',
       'runtime',
     ])
     await expect(
       value.coordinator.uninstall('learning'),
     ).resolves.toBeUndefined()
+  })
+
+  it('preserves uninstall and refresh errors when both fail', async () => {
+    const uninstallError = new Error('artifact removal failed')
+    const refreshError = new Error('refresh failed')
+    const value = fixture({
+      removeArtifact: async () => {
+        throw uninstallError
+      },
+      refresh: async () => {
+        throw refreshError
+      },
+    })
+
+    const failure = await value.coordinator
+      .uninstall('learning')
+      .catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(ModuleUninstallRefreshError)
+    expect((failure as ModuleUninstallRefreshError).uninstallError).toBe(
+      uninstallError,
+    )
+    expect((failure as ModuleUninstallRefreshError).refreshError).toBe(
+      refreshError,
+    )
+    expect(value.refresh).toHaveBeenCalledTimes(1)
   })
 
   it('serializes concurrent uninstall calls for the same module', async () => {

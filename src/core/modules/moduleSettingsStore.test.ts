@@ -10,6 +10,7 @@ class MemoryAdapter {
   readonly folders = new Set<string>()
   readonly writes: string[] = []
   writeHook?: (path: string, data: string) => Promise<void>
+  createHook?: (path: string, data: string) => Promise<void>
 
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.folders.has(path)
@@ -29,6 +30,12 @@ class MemoryAdapter {
     this.writes.push(path)
     if (this.writeHook) await this.writeHook(path, data)
     else this.files.set(path, data)
+  }
+
+  async create(path: string, data: string): Promise<void> {
+    if (this.createHook) return this.createHook(path, data)
+    if (this.files.has(path)) throw new Error(`File already exists: ${path}`)
+    this.files.set(path, data)
   }
 
   async remove(path: string): Promise<void> {
@@ -280,6 +287,123 @@ describe('ModuleSettingsStore', () => {
     await expect(firstStore.read('notes')).resolves.toEqual({
       schemaVersion: 1,
       data: { order: 2 },
+    })
+  })
+
+  it('creates only when absent and preserves an existing schema-zero envelope', async () => {
+    const adapter = new MemoryAdapter()
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter,
+      create: (path, data) => adapter.create(path, data),
+      rootPath: 'settings/modules',
+    })
+
+    await expect(
+      store.createIfAbsent('learning', {
+        schemaVersion: 0,
+        data: { modelId: 'legacy' },
+      }),
+    ).resolves.toBe('created')
+    await expect(
+      store.createIfAbsent('learning', {
+        schemaVersion: 0,
+        data: { modelId: 'replacement' },
+      }),
+    ).resolves.toBe('already-present')
+    await expect(store.read('learning')).resolves.toEqual({
+      schemaVersion: 0,
+      data: { modelId: 'legacy' },
+    })
+  })
+
+  it('serializes create-if-absent across stores without a TOCTOU overwrite', async () => {
+    const adapter = new MemoryAdapter()
+    const backend = {
+      kind: 'synchronized-intent' as const,
+      adapter,
+      create: (path: string, data: string) => adapter.create(path, data),
+      rootPath: 'settings/modules',
+    }
+    const firstStore = new ModuleSettingsStore(backend)
+    const secondStore = new ModuleSettingsStore(backend)
+
+    const results = await Promise.all([
+      firstStore.createIfAbsent('learning', {
+        schemaVersion: 0,
+        data: { owner: 'first' },
+      }),
+      secondStore.createIfAbsent('learning', {
+        schemaVersion: 0,
+        data: { owner: 'second' },
+      }),
+    ])
+
+    expect(results).toEqual(['created', 'already-present'])
+    await expect(firstStore.read('learning')).resolves.toEqual({
+      schemaVersion: 0,
+      data: { owner: 'first' },
+    })
+  })
+
+  it('fails safely when create fails before mutation or cannot be read back', async () => {
+    const adapter = new MemoryAdapter()
+    const createFailure = new Error('create unavailable')
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter,
+      create: async () => {
+        throw createFailure
+      },
+      rootPath: 'settings/modules',
+    })
+
+    await expect(
+      store.createIfAbsent('learning', { schemaVersion: 0, data: {} }),
+    ).rejects.toBe(createFailure)
+    expect(adapter.files).toEqual(new Map())
+
+    adapter.createHook = async (path, data) => {
+      adapter.files.set(path, data)
+      throw createFailure
+    }
+    const uncertainStore = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter,
+      create: (path, data) => adapter.create(path, data),
+      rootPath: 'other/modules',
+    })
+    await expect(
+      uncertainStore.createIfAbsent('learning', {
+        schemaVersion: 0,
+        data: { recovered: true },
+      }),
+    ).resolves.toBe('created')
+  })
+
+  it('rejects a successful create whose exact readback changed', async () => {
+    const adapter = new MemoryAdapter()
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter,
+      create: async (path) => {
+        adapter.files.set(
+          path,
+          JSON.stringify({ schemaVersion: 1, data: { external: true } }),
+        )
+      },
+      rootPath: 'settings/modules',
+    })
+
+    await expect(
+      store.createIfAbsent('learning', {
+        schemaVersion: 0,
+        data: { legacy: true },
+      }),
+    ).rejects.toBeInstanceOf(ModuleSettingsConflictError)
+    await expect(store.read('learning')).resolves.toEqual({
+      schemaVersion: 1,
+      data: { external: true },
     })
   })
 

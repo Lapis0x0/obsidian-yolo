@@ -14,6 +14,7 @@ import { type App, TFile, TFolder } from 'obsidian'
 import { ModuleLifecycleScope } from './lifecycleScope'
 import {
   ObsidianModuleVaultCapabilityProvider,
+  UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
   normalizeModuleVaultPath,
 } from './moduleVault'
 
@@ -58,6 +59,9 @@ function createApp(entries: Array<TFile | TFolder>) {
     ),
     cachedRead: jest.fn(async (file: TFile) => `content:${file.path}`),
     readBinary: jest.fn(async () => binary),
+    delete: jest.fn(async (entry: TFile | TFolder) => {
+      byPath.delete(entry.path)
+    }),
     adapter: {
       exists: jest.fn(async (path: string) => byPath.has(path)),
     },
@@ -150,6 +154,95 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
     lifecycle.dispose()
     expect(() => capability.api.getEntry('notes')).toThrow('not active')
     await expect(capability.api.exists('notes')).rejects.toThrow('not active')
+  })
+
+  it('permanently removes only an exact file or exact empty folder', async () => {
+    const file = createFile('notes/card.md')
+    const child = createFile('notes/archive/card.md')
+    const nonEmptyFolder = createFolder('notes/archive', [child])
+    const emptyFolder = createFolder('notes/empty', [])
+    const { app, vault } = createApp([file, child, nonEmptyFolder, emptyFolder])
+    const lifecycle = new ModuleLifecycleScope()
+    const api = new ObsidianModuleVaultCapabilityProvider(app).create(
+      'notes',
+      lifecycle,
+    ).api
+
+    await expect(api.removeFileExact('notes/missing.md')).resolves.toBe(false)
+    await expect(api.removeFileExact('notes/empty')).resolves.toBe(false)
+    await expect(api.removeEmptyFolderExact('notes/card.md')).resolves.toBe(
+      false,
+    )
+    await expect(api.removeEmptyFolderExact('notes/archive')).resolves.toBe(
+      false,
+    )
+    expect(vault.delete).not.toHaveBeenCalled()
+
+    await expect(api.removeFileExact('notes/card.md')).resolves.toBe(true)
+    expect(vault.delete).toHaveBeenNthCalledWith(1, file, true)
+    await expect(api.removeEmptyFolderExact('notes/empty')).resolves.toBe(true)
+    expect(vault.delete).toHaveBeenNthCalledWith(2, emptyFolder, false)
+    await expect(api.removeFileExact('notes/card.md')).resolves.toBe(false)
+    await expect(api.removeEmptyFolderExact('notes/empty')).resolves.toBe(false)
+    expect(vault.delete).toHaveBeenCalledTimes(2)
+    lifecycle.dispose()
+  })
+
+  it('propagates exact removal failures without reporting success', async () => {
+    const file = createFile('notes/card.md')
+    const folder = createFolder('notes/empty', [])
+    const { app, vault } = createApp([file, folder])
+    const lifecycle = new ModuleLifecycleScope()
+    const api = new ObsidianModuleVaultCapabilityProvider(app).create(
+      'notes',
+      lifecycle,
+    ).api
+    vault.delete
+      .mockRejectedValueOnce(new Error('file delete failed'))
+      .mockRejectedValueOnce(new Error('folder delete failed'))
+
+    await expect(api.removeFileExact('notes/card.md')).rejects.toThrow(
+      'file delete failed',
+    )
+    await expect(api.removeEmptyFolderExact('notes/empty')).rejects.toThrow(
+      'folder delete failed',
+    )
+    lifecycle.dispose()
+  })
+
+  it.each([
+    ['removeFileExact', '/absolute.md'],
+    ['removeFileExact', '../escape.md'],
+    ['removeFileExact', ''],
+    ['removeEmptyFolderExact', '/absolute'],
+    ['removeEmptyFolderExact', 'notes/../escape'],
+    ['removeEmptyFolderExact', ''],
+  ] as const)('validates paths for %s', async (method, path) => {
+    const { app, vault } = createApp([])
+    const lifecycle = new ModuleLifecycleScope()
+    const api = new ObsidianModuleVaultCapabilityProvider(app).create(
+      'notes',
+      lifecycle,
+    ).api
+
+    await expect(api[method](path)).rejects.toThrow('Module vault path')
+    expect(vault.delete).not.toHaveBeenCalled()
+    lifecycle.dispose()
+  })
+
+  it('exposes unavailable exact removals as rejected operations', async () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const api = UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER.create(
+      'notes',
+      lifecycle,
+    ).api
+
+    await expect(api.removeFileExact('notes/card.md')).rejects.toThrow(
+      'unavailable',
+    )
+    await expect(api.removeEmptyFolderExact('notes/empty')).rejects.toThrow(
+      'unavailable',
+    )
   })
 
   it('scopes events, gates activation, and unsubscribes with lifecycle', () => {

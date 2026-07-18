@@ -179,7 +179,7 @@ describe('IndexedDbDataAdapter', () => {
     await expect(second.read('private/notes/value.txt')).resolves.toBe('second')
   })
 
-  it('supports explicit folders, parent checks, deterministic immediate lists, and file removal', async () => {
+  it('supports explicit folders, parent checks, deterministic immediate lists, and removal', async () => {
     const adapter = createAdapter()
     await createTree(adapter)
     await adapter.mkdir('private/notes/z-folder')
@@ -206,9 +206,97 @@ describe('IndexedDbDataAdapter', () => {
     await expect(adapter.write('missing/value.txt', 'x')).rejects.toThrow(
       'parent folder',
     )
-    await expect(adapter.remove('private/notes')).rejects.toThrow('folder')
     await adapter.remove('private/notes/a.txt')
     await expect(adapter.exists('private/notes/a.txt')).resolves.toBe(false)
+    await adapter.remove('private/notes/a-folder')
+    await expect(adapter.exists('private/notes/a-folder')).resolves.toBe(false)
+    await expect(
+      adapter.exists('private/notes/a-folder/nested.txt'),
+    ).resolves.toBe(false)
+  })
+
+  it('atomically renames explicit directory trees containing text and binary files', async () => {
+    const adapter = createAdapter()
+    await createTree(adapter)
+    await adapter.mkdir('private/notes/runtime')
+    await adapter.mkdir('private/notes/runtime/empty')
+    await adapter.mkdir('private/notes/runtime/nested')
+    await adapter.write('private/notes/runtime/state.json', '{"ready":true}')
+    await adapter.writeBinary(
+      'private/notes/runtime/nested/index.bin',
+      new Uint8Array([1, 2, 3]).buffer,
+    )
+
+    await adapter.rename('private/notes/runtime', 'private/notes/archive')
+
+    await expect(adapter.exists('private/notes/runtime')).resolves.toBe(false)
+    await expect(adapter.list('private/notes/archive')).resolves.toEqual({
+      files: ['private/notes/archive/state.json'],
+      folders: ['private/notes/archive/empty', 'private/notes/archive/nested'],
+    })
+    await expect(
+      adapter.readBinary('private/notes/archive/nested/index.bin'),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]).buffer)
+  })
+
+  it('rejects unsafe or conflicting renames without changing either tree', async () => {
+    const adapter = createAdapter()
+    await createTree(adapter)
+    await adapter.mkdir('private/notes/runtime')
+    await adapter.write('private/notes/runtime/state.json', 'source')
+    await adapter.mkdir('private/notes/archive')
+    await adapter.write('private/notes/archive/state.json', 'destination')
+
+    await expect(
+      adapter.rename('private/notes/runtime', 'private/notes/archive'),
+    ).rejects.toThrow('destination already exists')
+    await expect(
+      adapter.rename('private/notes/runtime', 'private/notes/runtime/nested'),
+    ).rejects.toThrow('ancestors')
+    await expect(
+      adapter.rename('private/notes/missing', 'private/notes/other'),
+    ).rejects.toThrow('source does not exist')
+    await expect(
+      adapter.read('private/notes/runtime/state.json'),
+    ).resolves.toBe('source')
+    await expect(
+      adapter.read('private/notes/archive/state.json'),
+    ).resolves.toBe('destination')
+  })
+
+  it('aborts a tree rename without partial state when a write request fails', async () => {
+    const adapter = createAdapter()
+    await createTree(adapter)
+    await adapter.mkdir('private/notes/runtime')
+    await adapter.write('private/notes/runtime/first.txt', 'first')
+    await adapter.write('private/notes/runtime/second.txt', 'second')
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- The mock invokes it with the active object store below.
+    const originalAdd = IDBObjectStore.prototype.add
+    const add = jest.spyOn(IDBObjectStore.prototype, 'add')
+    let renameAdds = 0
+    add.mockImplementation(function (value: unknown, key?: IDBValidKey) {
+      renameAdds += 1
+      if (renameAdds === 2) throw new Error('simulated quota failure')
+      return key === undefined
+        ? originalAdd.call(this, value)
+        : originalAdd.call(this, value, key)
+    })
+
+    try {
+      await expect(
+        adapter.rename('private/notes/runtime', 'private/notes/archive'),
+      ).rejects.toThrow('simulated quota failure')
+    } finally {
+      add.mockRestore()
+    }
+
+    await expect(adapter.exists('private/notes/archive')).resolves.toBe(false)
+    await expect(adapter.read('private/notes/runtime/first.txt')).resolves.toBe(
+      'first',
+    )
+    await expect(
+      adapter.read('private/notes/runtime/second.txt'),
+    ).resolves.toBe('second')
   })
 
   it('lists through key cursors without fetching or cloning child payloads', async () => {

@@ -14,6 +14,8 @@ import type {
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
 import { parseModuleTransitionJournal } from './moduleTransitionJournal'
+import type { ModuleIntentState } from './types'
+import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
 const encode = (value: unknown): Uint8Array =>
   new TextEncoder().encode(
@@ -141,6 +143,9 @@ function transition(
 
 type HarnessOptions = Readonly<{
   states?: readonly ModuleDeviceState[]
+  intents?: ReadonlyMap<string, ModuleIntentState>
+  failIntent?: ReadonlySet<string>
+  provideIntentSource?: boolean
   artifacts?: readonly Artifact[]
   hangList?: boolean
   hangVerifier?: ReadonlySet<string>
@@ -164,6 +169,7 @@ type HarnessOptions = Readonly<{
   startupTimeoutMs?: number
   afterList?: (durable: Map<string, ModuleDeviceState>) => void
   transitionRecoveryRealmToken?: object
+  verifiedArtifactRegistry?: VerifiedModuleArtifactRegistry
 }>
 
 function harness(options: HarnessOptions = {}) {
@@ -176,6 +182,14 @@ function harness(options: HarnessOptions = {}) {
   const durable = new Map(
     (options.states ?? []).map((item) => [item.moduleId, item]),
   )
+  const intents =
+    options.intents ??
+    new Map(
+      (options.states ?? []).map(({ moduleId }) => [
+        moduleId,
+        { id: moduleId, desiredInstalled: true, enabled: true },
+      ]),
+    )
   const calls: string[] = []
   const artifactFor = (id: string, version: string): Artifact => {
     const item = artifacts.get(`${id}@${version}`)
@@ -217,6 +231,16 @@ function harness(options: HarnessOptions = {}) {
     options.afterList?.(durable)
     return listed
   })
+  const loadIntent = jest.fn(async (moduleIds: ReadonlyArray<string>) => {
+    const moduleId = moduleIds[0]
+    if (moduleId && options.failIntent?.has(moduleId)) {
+      throw new Error('intent read exploded')
+    }
+    return moduleIds.flatMap((id) => {
+      const intent = intents.get(id)
+      return intent ? [intent] : []
+    })
+  })
   const write = jest.fn(
     async (next: ModuleDeviceState): Promise<ModuleDeviceState> => {
       if (options.write) return options.write(next, durable)
@@ -256,8 +280,13 @@ function harness(options: HarnessOptions = {}) {
       }
     },
   )
+  const verifiedArtifactRegistry =
+    options.verifiedArtifactRegistry ?? new VerifiedModuleArtifactRegistry()
   const coordinator = new ModuleActivationCoordinator({
     deviceStateStore: { list, runExclusive },
+    ...(options.provideIntentSource === false
+      ? {}
+      : { intentStateSource: { load: loadIntent } }),
     artifactStore,
     platform: options.platform ?? 'desktop',
     hostApi: options.hostApi ?? '1.1.0',
@@ -273,6 +302,7 @@ function harness(options: HarnessOptions = {}) {
       }),
     },
     transitionRecoveryRealmToken: options.transitionRecoveryRealmToken ?? {},
+    verifiedArtifactRegistry,
     activationTimeoutMs: options.activationTimeoutMs,
     startupTimeoutMs: options.startupTimeoutMs,
     ...(options.provideCrypto === false
@@ -284,7 +314,17 @@ function harness(options: HarnessOptions = {}) {
         }),
     reportActivationError: options.reportActivationError,
   })
-  return { coordinator, durable, calls, list, write, load, activate }
+  return {
+    coordinator,
+    durable,
+    calls,
+    list,
+    loadIntent,
+    write,
+    load,
+    activate,
+    verifiedArtifactRegistry,
+  }
 }
 
 function rejectOnAbort(signal?: AbortSignal): Promise<never> {
@@ -340,6 +380,313 @@ describe('ModuleActivationCoordinator', () => {
     ])
     expect(Object.isFrozen(results)).toBe(true)
     expect(Object.isFrozen(results[0])).toBe(true)
+    expect(
+      fixture.verifiedArtifactRegistry.getVerifiedArtifact('learning'),
+    ).toMatchObject({
+      manifest: { id: 'learning', version: '1.0.0' },
+      entryBytes: active.entryBytes,
+    })
+  })
+
+  it('clears failed, disabled, and disposed activation artifacts', async () => {
+    const first = artifact('learning', '1.0.0')
+    const registry = new VerifiedModuleArtifactRegistry()
+    const active = harness({
+      artifacts: [first],
+      states: [state('learning', [first], { activeVersion: '1.0.0' })],
+      verifiedArtifactRegistry: registry,
+    })
+    await active.coordinator.activatePersistedModules()
+    const published = registry.getVerifiedArtifact('learning')!
+    expect(published).toBeDefined()
+
+    const failed = harness({
+      artifacts: [first],
+      states: [state('learning', [first], { activeVersion: '1.0.0' })],
+      failRuntime: new Set(['learning@1.0.0']),
+      verifiedArtifactRegistry: registry,
+    })
+    await failed.coordinator.activatePersistedModules()
+    expect(registry.getVerifiedArtifact('learning')).toBeUndefined()
+
+    registry.publish('learning', '1.0.0', published)
+    const disabled = harness({
+      artifacts: [first],
+      states: [state('learning', [first], { activeVersion: '1.0.0' })],
+      intents: new Map([
+        [
+          'learning',
+          { id: 'learning', desiredInstalled: true, enabled: false },
+        ],
+      ]),
+      verifiedArtifactRegistry: registry,
+    })
+    await disabled.coordinator.activatePersistedModules()
+    expect(registry.getVerifiedArtifact('learning')).toBeUndefined()
+
+    const reactivated = harness({
+      artifacts: [first],
+      states: [state('learning', [first], { activeVersion: '1.0.0' })],
+      verifiedArtifactRegistry: registry,
+    })
+    await reactivated.coordinator.activatePersistedModules()
+    reactivated.coordinator.dispose()
+    expect(registry.getVerifiedArtifact('learning')).toBeUndefined()
+  })
+
+  it('replaces the published artifact when the active version changes', async () => {
+    const first = artifact('learning', '1.0.0')
+    const second = artifact('learning', '2.0.0')
+    const registry = new VerifiedModuleArtifactRegistry()
+    const firstActivation = harness({
+      artifacts: [first],
+      states: [state('learning', [first], { activeVersion: '1.0.0' })],
+      verifiedArtifactRegistry: registry,
+    })
+    await firstActivation.coordinator.activatePersistedModules()
+    const firstPublished = registry.getVerifiedArtifact('learning')
+
+    const secondActivation = harness({
+      artifacts: [second],
+      states: [state('learning', [second], { activeVersion: '2.0.0' })],
+      readCurrentSchemaVersion: async () => 1,
+      verifiedArtifactRegistry: registry,
+    })
+    await secondActivation.coordinator.activatePersistedModules()
+
+    expect(registry.getVerifiedArtifact('learning')).not.toBe(firstPublished)
+    expect(registry.getVerifiedArtifact('learning')?.manifest.version).toBe(
+      '2.0.0',
+    )
+  })
+
+  it.each([
+    ['active', { activeVersion: '1.0.0' }, null],
+    ['pending', { activeVersion: '1.0.0', pendingVersion: '1.0.0' }, null],
+  ] as const)(
+    'skips disabled %s state without loading artifacts, activating runtime, or rewriting state',
+    async (_, patch, transitionKind) => {
+      const active = artifact('learning', '1.0.0')
+      const target = artifact('learning', '2.0.0', { dataSchemas: {} })
+      const initial = state('learning', [active, target], {
+        ...patch,
+        ...(transitionKind ? { transition: transition(target) } : {}),
+      })
+      const fixture = harness({
+        artifacts: [active, target],
+        states: [initial],
+        intents: new Map([
+          [
+            'learning',
+            {
+              id: 'learning',
+              desiredInstalled: true,
+              enabled: false,
+            },
+          ],
+        ]),
+      })
+
+      await expect(
+        fixture.coordinator.activatePersistedModules(),
+      ).resolves.toEqual([{ moduleId: 'learning', status: 'skipped' }])
+      expect(fixture.calls).toEqual([])
+      expect(fixture.write).not.toHaveBeenCalled()
+      expect(fixture.durable.get('learning')).toBe(initial)
+    },
+  )
+
+  it.each([
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+    [false, false, false],
+  ] as const)(
+    'settles a transition for intent installed=%s enabled=%s with execution=%s',
+    async (desiredInstalled, enabled, executes) => {
+      const old = artifact('learning', '1.0.0')
+      const target = artifact('learning', '2.0.0', { dataSchemas: {} })
+      const fixture = harness({
+        artifacts: [old, target],
+        states: [
+          state('learning', [old, target], {
+            activeVersion: '1.0.0',
+            pendingVersion: '2.0.0',
+            transition: transition(target),
+          }),
+        ],
+        intents: new Map([
+          ['learning', { id: 'learning', desiredInstalled, enabled }],
+        ]),
+      })
+
+      const results = await fixture.coordinator.activatePersistedModules()
+
+      expect(results).toEqual([
+        executes
+          ? { moduleId: 'learning', status: 'activated', version: '2.0.0' }
+          : { moduleId: 'learning', status: 'skipped' },
+      ])
+      expect(fixture.durable.get('learning')?.transition).toBeNull()
+      expect(fixture.durable.get('learning')).toMatchObject(
+        executes
+          ? {
+              activeVersion: '2.0.0',
+              downloadedCandidate: null,
+              pendingVersion: null,
+            }
+          : {
+              activeVersion: '1.0.0',
+              downloadedCandidate: '2.0.0',
+              pendingVersion: null,
+            },
+      )
+      expect(fixture.loadIntent).toHaveBeenCalledWith(['learning'])
+      expect(fixture.calls).toEqual(
+        executes
+          ? [
+              'verify:learning@2.0.0',
+              'load:learning:2.0.0',
+              'activate:learning@2.0.0',
+            ]
+          : [],
+      )
+    },
+  )
+
+  it('settles without execution before reporting a transition intent read error', async () => {
+    const old = artifact('learning', '1.0.0')
+    const target = artifact('learning', '2.0.0', { dataSchemas: {} })
+    const fixture = harness({
+      artifacts: [old, target],
+      states: [
+        state('learning', [old, target], {
+          activeVersion: '1.0.0',
+          pendingVersion: '2.0.0',
+          transition: transition(target),
+        }),
+      ],
+      failIntent: new Set(['learning']),
+    })
+
+    await expect(
+      fixture.coordinator.activatePersistedModules(),
+    ).resolves.toEqual([
+      {
+        moduleId: 'learning',
+        status: 'failed',
+        error: 'intent read exploded',
+      },
+    ])
+    expect(fixture.durable.get('learning')).toMatchObject({
+      activeVersion: '1.0.0',
+      downloadedCandidate: '2.0.0',
+      pendingVersion: null,
+      transition: null,
+    })
+    expect(fixture.calls).toEqual([])
+  })
+
+  it.each([
+    ['missing', new Map<string, ModuleIntentState>()],
+    [
+      'not installed or enabled',
+      new Map([
+        [
+          'learning',
+          {
+            id: 'learning',
+            desiredInstalled: false,
+            enabled: false,
+          },
+        ],
+      ]),
+    ],
+    [
+      'not desired',
+      new Map([
+        [
+          'learning',
+          {
+            id: 'learning',
+            desiredInstalled: false,
+            enabled: true,
+          },
+        ],
+      ]),
+    ],
+  ])('fails closed for %s intent', async (_, intents) => {
+    const item = artifact('learning', '1.0.0')
+    const fixture = harness({
+      artifacts: [item],
+      states: [state('learning', [item], { activeVersion: '1.0.0' })],
+      intents,
+    })
+
+    await expect(
+      fixture.coordinator.activatePersistedModules(),
+    ).resolves.toEqual([{ moduleId: 'learning', status: 'skipped' }])
+    expect(fixture.calls).toEqual([])
+    expect(fixture.write).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the intent source is absent', async () => {
+    const item = artifact('learning', '1.0.0')
+    const fixture = harness({
+      artifacts: [item],
+      states: [state('learning', [item], { activeVersion: '1.0.0' })],
+      provideIntentSource: false,
+    })
+
+    await expect(
+      fixture.coordinator.activatePersistedModules(),
+    ).resolves.toEqual([{ moduleId: 'learning', status: 'skipped' }])
+    expect(fixture.calls).toEqual([])
+  })
+
+  it('isolates intent read errors and skipped intent from an enabled module', async () => {
+    const failed = artifact('a-failed', '1.0.0')
+    const skipped = artifact('b-skipped', '1.0.0')
+    const enabled = artifact('c-enabled', '1.0.0')
+    const fixture = harness({
+      artifacts: [failed, skipped, enabled],
+      states: [failed, skipped, enabled].map((item) =>
+        state(item.descriptor.id, [item], { activeVersion: '1.0.0' }),
+      ),
+      intents: new Map([
+        [
+          'b-skipped',
+          {
+            id: 'b-skipped',
+            desiredInstalled: true,
+            enabled: false,
+          },
+        ],
+        [
+          'c-enabled',
+          {
+            id: 'c-enabled',
+            desiredInstalled: true,
+            enabled: true,
+          },
+        ],
+      ]),
+      failIntent: new Set(['a-failed']),
+    })
+
+    const results = await fixture.coordinator.activatePersistedModules()
+
+    expect(results.map(({ moduleId, status }) => [moduleId, status])).toEqual([
+      ['a-failed', 'failed'],
+      ['b-skipped', 'skipped'],
+      ['c-enabled', 'activated'],
+    ])
+    expect(fixture.calls).toEqual([
+      'verify:c-enabled@1.0.0',
+      'load:c-enabled:1.0.0',
+      'activate:c-enabled@1.0.0',
+    ])
+    expect(fixture.write).not.toHaveBeenCalled()
   })
 
   it('does not read undeclared data namespaces', async () => {

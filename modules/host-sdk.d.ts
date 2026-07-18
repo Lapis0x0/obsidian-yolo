@@ -1,14 +1,14 @@
 import type {
+  YoloModuleModelSnapshotV1,
+  YoloModuleSettingsContributionV1,
+} from '../src/core/modules/moduleSettingsContributions'
+import type { YoloModuleWorkerV1 } from '../src/core/modules/moduleWorkerHost'
+import type {
   YoloHostApiV1,
   YoloModuleActionToastV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleRuntimeRegistration,
 } from '../src/core/modules/types'
-import type {
-  YoloModuleModelSnapshotV1,
-  YoloModuleSettingsContributionV1,
-} from '../src/core/modules/moduleSettingsContributions'
-import type { YoloModuleWorkerV1 } from '../src/core/modules/moduleWorkerHost'
 
 declare global {
   const yolo: YoloModuleRuntimeRegistration

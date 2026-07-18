@@ -72,6 +72,7 @@ export class OfficialModuleCatalogClient {
   private cacheWriteGeneration = 0
   private cacheWriteQueue: Promise<void> = Promise.resolve()
   private inFlight: Promise<OfficialModuleCatalogV1> | null = null
+  private freshInFlight: Promise<OfficialModuleCatalogV1> | null = null
 
   constructor(private readonly options: OfficialModuleCatalogClientOptions) {
     if (
@@ -105,6 +106,23 @@ export class OfficialModuleCatalogClient {
     return load
   }
 
+  /** Loads only from the official endpoint; cached data is never authoritative. */
+  loadFresh(): Promise<OfficialModuleCatalogV1> {
+    if (this.freshInFlight) return this.freshInFlight
+
+    const load = this.loadFreshOnce()
+    this.freshInFlight = load
+    void load.then(
+      () => {
+        if (this.freshInFlight === load) this.freshInFlight = null
+      },
+      () => {
+        if (this.freshInFlight === load) this.freshInFlight = null
+      },
+    )
+    return load
+  }
+
   private async loadOnce(): Promise<OfficialModuleCatalogV1> {
     let currentTime: number
     try {
@@ -119,37 +137,51 @@ export class OfficialModuleCatalogClient {
     }
 
     try {
-      /*
-       * requestUrl buffers the body before resolving. The fixed code-owned
-       * endpoint, Content-Length check, and parser limits validate that buffer;
-       * they are not a streaming transport cap.
-       */
-      const response = await withTimeout(
-        this.request({
-          url: OFFICIAL_MODULE_CATALOG_URL,
-          method: 'GET',
-          throw: false,
-        }),
-        this.options.timeoutMs,
-      )
-      if (
-        !Number.isInteger(response.status) ||
-        response.status < 200 ||
-        response.status >= 300
-      ) {
-        throw new Error('Official module catalog request was not successful')
-      }
-      if (contentLengthExceedsLimit(response.headers, CATALOG_MAX_BYTES)) {
-        throw new Error('Official module catalog exceeds the byte limit')
-      }
-
-      const catalog = this.parse(response.text)
-      this.enqueueCacheWrite(response.text, currentTime)
-      return catalog
+      return await this.requestFresh(currentTime)
     } catch {
       if (cached) return cached.catalog
       throw new OfficialModuleCatalogUnavailableError()
     }
+  }
+
+  private async loadFreshOnce(): Promise<OfficialModuleCatalogV1> {
+    try {
+      return await this.requestFresh(readCurrentTime(this.now))
+    } catch {
+      throw new OfficialModuleCatalogUnavailableError()
+    }
+  }
+
+  private async requestFresh(
+    fetchedAt: number,
+  ): Promise<OfficialModuleCatalogV1> {
+    /*
+     * requestUrl buffers the body before resolving. The fixed code-owned
+     * endpoint, Content-Length check, and parser limits validate that buffer;
+     * they are not a streaming transport cap.
+     */
+    const response = await withTimeout(
+      this.request({
+        url: OFFICIAL_MODULE_CATALOG_URL,
+        method: 'GET',
+        throw: false,
+      }),
+      this.options.timeoutMs,
+    )
+    if (
+      !Number.isInteger(response.status) ||
+      response.status < 200 ||
+      response.status >= 300
+    ) {
+      throw new Error('Official module catalog request was not successful')
+    }
+    if (contentLengthExceedsLimit(response.headers, CATALOG_MAX_BYTES)) {
+      throw new Error('Official module catalog exceeds the byte limit')
+    }
+
+    const catalog = this.parse(response.text)
+    this.enqueueCacheWrite(response.text, fetchedAt)
+    return catalog
   }
 
   private parse(raw: string): OfficialModuleCatalogV1 {

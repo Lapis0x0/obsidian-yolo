@@ -104,6 +104,7 @@ function fixture(initial: Record<string, ModuleDeviceState | null> = {}) {
     return {} as never
   }
   const installer = { install: jest.fn(install) }
+  const repair = jest.fn(install)
   const candidates = new Map<string, ModuleArtifactDescriptor>()
   const options: ModuleReadinessReconcilerOptions = {
     deviceStateStore: { runExclusive },
@@ -120,7 +121,7 @@ function fixture(initial: Record<string, ModuleDeviceState | null> = {}) {
       ),
     },
     artifactStore,
-    installer,
+    installer: { ...installer, repair },
     platform: 'desktop',
     subtleCrypto: { digest: jest.fn() },
   }
@@ -128,7 +129,7 @@ function fixture(initial: Record<string, ModuleDeviceState | null> = {}) {
     durable,
     files,
     artifactStore,
-    installer,
+    installer: { ...installer, repair },
     candidates,
     options,
     create: () => new ModuleReadinessReconciler(options),
@@ -136,24 +137,84 @@ function fixture(initial: Record<string, ModuleDeviceState | null> = {}) {
 }
 
 describe('ModuleReadinessReconciler', () => {
-  it('preserves an active corrupted artifact and reports repair required', async () => {
+  it('preserves an active corrupted artifact when exact repair is offline', async () => {
     const existing = state('learning', ['1.0.0'])
     const value = fixture({ learning: existing })
     value.files.add('learning@1.0.0')
     value.artifactStore.readManifestBytes.mockResolvedValue(new Uint8Array())
+    value.installer.repair.mockRejectedValue(new Error('offline'))
 
     await expect(value.create().ensureModuleReady('learning')).rejects.toThrow(
-      'requires repair',
+      'offline',
     )
 
     expect(value.durable.get('learning')).toBe(existing)
     expect(value.files.has('learning@1.0.0')).toBe(true)
     expect(value.artifactStore.removeVersionArtifacts).not.toHaveBeenCalled()
-    expect(value.installer.install).not.toHaveBeenCalled()
+    expect(value.installer.repair).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'learning', version: '1.0.0' }),
+      expect.any(AbortSignal),
+    )
     expect(
       value.options.catalogSource.getResolvedVersion,
     ).not.toHaveBeenCalled()
     expect(value.options.intentStore.get).not.toHaveBeenCalled()
+  })
+
+  it('repairs an active corrupted artifact from its device-state descriptor', async () => {
+    const existing = state('learning', ['1.0.0'])
+    const value = fixture({ learning: existing })
+    value.files.add('learning@1.0.0')
+    value.artifactStore.readManifestBytes.mockResolvedValue(new Uint8Array())
+
+    await expect(
+      value.create().ensureModuleReady('learning'),
+    ).resolves.toMatchObject({
+      status: 'ready',
+      repairedVersions: ['1.0.0'],
+    })
+
+    expect(value.durable.get('learning')).toBe(existing)
+    expect(value.installer.repair).toHaveBeenCalledTimes(1)
+    expect(
+      value.options.catalogSource.getResolvedVersion,
+    ).not.toHaveBeenCalled()
+  })
+
+  it('preserves a pending corrupted artifact when exact repair is offline', async () => {
+    const existing = state('learning', ['1.1.0'], {
+      activeVersion: null,
+      pendingVersion: '1.1.0',
+    })
+    const value = fixture({ learning: existing })
+    value.files.add('learning@1.1.0')
+    value.artifactStore.readManifestBytes.mockResolvedValue(new Uint8Array())
+    value.installer.repair.mockRejectedValue(new Error('offline'))
+
+    await expect(value.create().ensureModuleReady('learning')).rejects.toThrow(
+      'offline',
+    )
+
+    expect(value.durable.get('learning')).toBe(existing)
+    expect(value.files.has('learning@1.1.0')).toBe(true)
+    expect(value.artifactStore.removeVersionArtifacts).not.toHaveBeenCalled()
+  })
+
+  it('does not repair an active artifact after a transient read failure', async () => {
+    const existing = state('learning', ['1.0.0'])
+    const value = fixture({ learning: existing })
+    value.files.add('learning@1.0.0')
+    value.artifactStore.readManifestBytes.mockRejectedValue(
+      new Error('storage temporarily unavailable'),
+    )
+
+    await expect(value.create().ensureModuleReady('learning')).rejects.toThrow(
+      'storage temporarily unavailable',
+    )
+
+    expect(value.durable.get('learning')).toBe(existing)
+    expect(value.installer.repair).not.toHaveBeenCalled()
+    expect(value.artifactStore.removeVersionArtifacts).not.toHaveBeenCalled()
   })
 
   it('preserves a candidate after a transient read failure while installation is offline', async () => {
@@ -166,7 +227,7 @@ describe('ModuleReadinessReconciler', () => {
     value.artifactStore.readManifestBytes.mockRejectedValue(
       new Error('storage temporarily unavailable'),
     )
-    value.installer.install.mockRejectedValue(new Error('offline'))
+    value.installer.repair.mockRejectedValue(new Error('offline'))
 
     await expect(value.create().ensureModuleReady('learning')).rejects.toThrow(
       'storage temporarily unavailable',
@@ -175,10 +236,10 @@ describe('ModuleReadinessReconciler', () => {
     expect(value.durable.get('learning')).toBe(existing)
     expect(value.files.has('learning@2.0.0')).toBe(true)
     expect(value.artifactStore.removeVersionArtifacts).not.toHaveBeenCalled()
-    expect(value.installer.install).not.toHaveBeenCalled()
+    expect(value.installer.repair).not.toHaveBeenCalled()
   })
 
-  it('cleans and reinstalls a deterministically corrupted inactive candidate', async () => {
+  it('repairs a deterministically corrupted inactive candidate without deleting it first', async () => {
     const existing = state('learning', ['2.0.0'], {
       activeVersion: null,
       downloadedCandidate: '2.0.0',
@@ -195,11 +256,8 @@ describe('ModuleReadinessReconciler', () => {
     })
 
     expect(value.durable.get('learning')).toBe(existing)
-    expect(value.artifactStore.removeVersionArtifacts).toHaveBeenCalledWith(
-      'learning',
-      '2.0.0',
-    )
-    expect(value.installer.install).toHaveBeenCalledTimes(1)
+    expect(value.artifactStore.removeVersionArtifacts).not.toHaveBeenCalled()
+    expect(value.installer.repair).toHaveBeenCalledTimes(1)
     expect(value.files.has('learning@2.0.0')).toBe(true)
   })
 
@@ -224,15 +282,19 @@ describe('ModuleReadinessReconciler', () => {
   it('does not consult catalog or change versions when local state already exists', async () => {
     const existing = state('learning', ['1.0.0'])
     const value = fixture({ learning: existing })
+    value.files.add('learning@1.0.0')
+    value.artifactStore.readManifestBytes.mockResolvedValue(new Uint8Array())
     value.candidates.set('learning', descriptor('learning', '9.0.0'))
     value.options.intentStore.get = jest.fn(async () => ({
       desiredInstalled: true,
       enabled: true,
     }))
 
-    await expect(value.create().ensureModuleReady('learning')).rejects.toThrow(
-      'requires repair',
-    )
+    await expect(
+      value.create().ensureModuleReady('learning'),
+    ).resolves.toMatchObject({
+      repairedVersions: ['1.0.0'],
+    })
 
     expect(value.durable.get('learning')).toBe(existing)
     expect(
@@ -342,7 +404,7 @@ describe('ModuleReadinessReconciler', () => {
       deferred<undefined>(),
     ]
     let calls = 0
-    value.installer.install.mockImplementation(
+    value.installer.repair.mockImplementation(
       async () => gates[calls++].promise as never,
     )
     const reconciler = value.create()
@@ -351,13 +413,13 @@ describe('ModuleReadinessReconciler', () => {
     const second = reconciler.ensureModuleReady('learning')
     const other = reconciler.ensureModuleReady('writing')
     await nextMacrotask()
-    expect(value.installer.install).toHaveBeenCalledTimes(2)
+    expect(value.installer.repair).toHaveBeenCalledTimes(2)
 
     gates[0].resolve(undefined)
     gates[1].resolve(undefined)
     await Promise.all([first, other])
     await nextMacrotask()
-    expect(value.installer.install).toHaveBeenCalledTimes(3)
+    expect(value.installer.repair).toHaveBeenCalledTimes(3)
     gates[2].resolve(undefined)
     await second
   })
@@ -371,7 +433,7 @@ describe('ModuleReadinessReconciler', () => {
     })
     value.artifactStore.readManifestBytes.mockResolvedValue(new Uint8Array())
     const started = deferred<undefined>()
-    value.installer.install.mockImplementation(
+    value.installer.repair.mockImplementation(
       async (_descriptor: ModuleArtifactDescriptor, signal?: AbortSignal) =>
         new Promise<never>((_resolve, reject) => {
           started.resolve(undefined)

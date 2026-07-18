@@ -5,7 +5,6 @@ import {
 } from './moduleArtifactVerifier'
 import type { ModuleLoader } from './moduleLoader'
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
-import type { ModuleRuntime } from './moduleRuntime'
 import {
   type ModuleArtifactDataSchemas,
   type ModuleArtifactPlatform,
@@ -18,6 +17,7 @@ import type {
   InstalledModuleStateSource,
   ModuleCatalogEntry,
   ModuleCatalogSource,
+  YoloModuleDefinition,
 } from './types'
 
 export type BundledModuleDescriptor = Readonly<{
@@ -40,12 +40,20 @@ export type BundledModuleIndex = Readonly<{
   modules: readonly BundledModuleDescriptor[]
 }>
 
+export type BundledModuleActivationRuntime = Readonly<{
+  activate(
+    definition: YoloModuleDefinition,
+    version?: string,
+    signal?: AbortSignal,
+  ): Promise<void>
+}>
+
 export type BundledModuleRegistryOptions = {
   store: ModuleArtifactReadStore & {
     readBundledIndexBytes(): Promise<Uint8Array>
   }
   loader: Pick<ModuleLoader, 'load'>
-  runtime: Pick<ModuleRuntime, 'activate'>
+  runtime: BundledModuleActivationRuntime
   platform: ModuleArtifactPlatform
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   reportActivationError?: (moduleId: string, error: unknown) => void

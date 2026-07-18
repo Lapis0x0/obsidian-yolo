@@ -19,6 +19,8 @@ export type ModuleStorageAdapter = Readonly<{
 export type ModuleStorageBackend<K extends ModuleStorageKind> = Readonly<{
   kind: K
   adapter: ModuleStorageAdapter
+  /** Must reject without modifying the target when it already exists. */
+  create?: (path: string, data: string) => Promise<void>
   /** Caller-owned vault-relative root. The store deliberately chooses no path. */
   rootPath: string
 }>
@@ -32,6 +34,9 @@ export type ModuleDataEnvelope<T = unknown> = Readonly<{
   schemaVersion: number
   data: T
 }>
+
+/** `created` means this attempt established the exact requested bytes. */
+export type ModuleCreateIfAbsentResult = 'created' | 'already-present'
 
 /** A migration must synchronously return plain JSON data. */
 export type ModuleDataMigration = (data: unknown) => unknown
@@ -103,6 +108,51 @@ export class ModuleNamespacedDataStore<K extends ModuleStorageKind> {
         next,
         moduleId,
       )) as ModuleDataEnvelope<T>
+    })
+  }
+
+  createIfAbsent<T>(
+    moduleId: string,
+    envelope: ModuleDataEnvelope<T>,
+  ): Promise<ModuleCreateIfAbsentResult> {
+    const paths = this.pathsFor(moduleId)
+    this.assertNotMigrating(paths.target)
+    const next = serializeEnvelope(envelope, moduleId)
+    const create = this.backend.create
+    if (!create) {
+      throw new Error(
+        'Module storage backend does not provide create-if-absent capability',
+      )
+    }
+    return this.enqueue(paths.target, async () => {
+      await this.ensureRoot()
+      const previous = await this.readRaw(paths.target)
+      if (previous !== null) {
+        parseEnvelope(previous, moduleId)
+        return 'already-present'
+      }
+
+      try {
+        await create(paths.target, next)
+      } catch (createError) {
+        let actual: string | null
+        try {
+          actual = await this.readRaw(paths.target)
+        } catch {
+          throw createError
+        }
+        if (actual === null) throw createError
+        const actualCanonical = canonicalEnvelope(actual, moduleId)
+        return actualCanonical === next ? 'created' : 'already-present'
+      }
+
+      const actual = await this.backend.adapter.read(paths.target)
+      if (canonicalEnvelope(actual, moduleId) !== next) {
+        throw new ModuleSettingsConflictError(
+          `Module "${moduleId}" changed while its creation was being verified`,
+        )
+      }
+      return 'created'
     })
   }
 

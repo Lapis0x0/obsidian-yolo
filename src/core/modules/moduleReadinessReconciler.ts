@@ -32,7 +32,7 @@ export type ModuleReadinessReconcilerOptions = Readonly<{
   >
   artifactStore: ModuleArtifactReadStore &
     Pick<ModuleStore, 'removeVersionArtifacts'>
-  installer: Pick<ModuleArtifactInstaller, 'install'>
+  installer: Pick<ModuleArtifactInstaller, 'install' | 'repair'>
   platform: ModuleArtifactPlatform
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
 }>
@@ -53,6 +53,7 @@ export class ModuleReadinessReconciler {
       !options.artifactStore ||
       typeof options.artifactStore.removeVersionArtifacts !== 'function' ||
       typeof options.installer?.install !== 'function' ||
+      typeof options.installer?.repair !== 'function' ||
       (options.platform !== 'desktop' && options.platform !== 'mobile')
     ) {
       throw new Error('Module readiness reconciler options are invalid')
@@ -191,21 +192,10 @@ export class ModuleReadinessReconciler {
     signal: AbortSignal,
   ): Promise<ModuleReadinessResult> {
     const versions = referencedVersions(state)
-    const protectedVersions = new Set(
-      [state.activeVersion, state.pendingVersion].filter(
-        (version): version is string => version !== null,
-      ),
-    )
     const repairedVersions: string[] = []
     for (const version of versions) {
       const descriptor = state.readyVersions[version]
-      if (
-        await this.ensureDescriptor(
-          descriptor,
-          signal,
-          protectedVersions.has(version) ? 'protected' : 'candidate',
-        )
-      ) {
+      if (await this.ensureDescriptor(descriptor, signal, 'persisted')) {
         repairedVersions.push(version)
       }
     }
@@ -220,7 +210,7 @@ export class ModuleReadinessReconciler {
   private async ensureDescriptor(
     descriptor: ModuleArtifactDescriptor,
     signal: AbortSignal,
-    repairPolicy: 'protected' | 'candidate' | 'initial',
+    repairPolicy: 'persisted' | 'initial',
   ): Promise<boolean> {
     this.throwIfUnavailable(signal)
     const subtleCrypto =
@@ -238,16 +228,14 @@ export class ModuleReadinessReconciler {
       return false
     } catch (error) {
       if (signal.aborted || this.disposed) throw disposedError()
-      if (repairPolicy === 'protected') {
-        throw new Error(
-          `Module "${descriptor.id}" version "${descriptor.version}" requires repair; its active or pending artifact was preserved: ${errorMessage(error)}`,
-        )
-      }
       if (error instanceof ArtifactAccessError) {
-        if (repairPolicy === 'candidate') throw error
+        if (repairPolicy === 'persisted') throw error
         // With no durable state, installation is safe if the version is absent.
         // An immutable existing version will be verified again by the installer.
         return this.installDescriptor(descriptor, signal)
+      }
+      if (repairPolicy === 'persisted') {
+        return this.repairDescriptor(descriptor, signal)
       }
       await this.options.artifactStore.removeVersionArtifacts(
         descriptor.id,
@@ -264,6 +252,23 @@ export class ModuleReadinessReconciler {
   ): Promise<true> {
     try {
       await this.options.installer.install(
+        snapshotDescriptor(descriptor),
+        signal,
+      )
+    } catch (error) {
+      if (signal.aborted || this.disposed) throw disposedError()
+      throw error
+    }
+    this.throwIfUnavailable(signal)
+    return true
+  }
+
+  private async repairDescriptor(
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<true> {
+    try {
+      await this.options.installer.repair(
         snapshotDescriptor(descriptor),
         signal,
       )

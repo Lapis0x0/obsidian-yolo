@@ -66,7 +66,7 @@ test('preserves schema declarations from a real Learning build', async () => {
       builtManifest.dataSchemas,
     )
     assert.deepEqual(builtManifest.dataSchemas, {
-      settings: { readMin: 0, readMax: 0, write: 0 },
+      settings: { readMin: 0, readMax: 1, write: 1 },
     })
   } finally {
     await rm(directory, { recursive: true, force: true })

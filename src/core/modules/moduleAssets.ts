@@ -44,6 +44,7 @@ type ResolvedAsset = Readonly<{
   moduleId: string
   version: string
   file: ModuleArtifactFile & { role: ModuleAssetRole }
+  artifact: VerifiedModuleArtifact
 }>
 
 const ASSET_ROLES = new Set<ModuleArtifactFile['role']>([
@@ -141,7 +142,12 @@ export class ModuleAssetsCapabilityProvider
           `Device-stored module artifact "${file.path}" is unsupported`,
         )
       }
-      return Object.freeze({ moduleId, version: manifest.version, file })
+      return Object.freeze({
+        moduleId,
+        version: manifest.version,
+        file,
+        artifact,
+      })
     }
     const read = async (
       path: string,
@@ -159,6 +165,16 @@ export class ModuleAssetsCapabilityProvider
         this.subtleCrypto,
       )
       assertActive()
+      const currentArtifact = await this.options.getVerifiedArtifact(moduleId)
+      assertActive()
+      if (
+        currentArtifact !== asset.artifact ||
+        currentArtifact.manifest.version !== asset.version
+      ) {
+        throw new Error(
+          `Module "${moduleId}" active artifact changed while reading assets`,
+        )
+      }
       return { ...asset, bytes }
     }
 

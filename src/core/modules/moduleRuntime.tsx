@@ -189,7 +189,12 @@ export class ModuleRuntime {
     const activationCancelled = new Promise<void>((resolve) => {
       cancelActivation = resolve
     })
-    const abortActivation = () => cancelActivation()
+    let activationWasCancelled = false
+    const markActivationCancelled = () => {
+      activationWasCancelled = true
+      cancelActivation()
+    }
+    const abortActivation = () => markActivationCancelled()
     signal?.addEventListener('abort', abortActivation, { once: true })
     let workspaceActive = false
     const isWorkspaceActive = (): boolean => workspaceActive && !this.disposed
@@ -224,7 +229,7 @@ export class ModuleRuntime {
     this.pending.set(definition.id, {
       lifecycle,
       stager,
-      cancelActivation,
+      cancelActivation: markActivationCancelled,
     })
     try {
       const capabilityActivation = this.capabilityProvider.create(
@@ -251,15 +256,24 @@ export class ModuleRuntime {
         ).then(() => 'activated' as const),
         activationCancelled.then(() => 'disposed' as const),
       ])
-      if (definitionResult === 'disposed' || this.disposed) {
+      if (
+        definitionResult === 'disposed' ||
+        activationWasCancelled ||
+        this.disposed
+      ) {
         throw new Error('Module runtime was disposed during activation')
       }
+      lifecycle.closeWhenActiveRegistration()
       const contributions = stager.finish({ allowEmpty: true })
       const preparationResult = await Promise.race([
         capabilityActivation.prepare().then(() => 'prepared' as const),
         activationCancelled.then(() => 'disposed' as const),
       ])
-      if (preparationResult === 'disposed' || this.disposed) {
+      if (
+        preparationResult === 'disposed' ||
+        activationWasCancelled ||
+        this.disposed
+      ) {
         throw new Error('Module runtime was disposed during capability prepare')
       }
       // Runtime state also closes navigation during reentrant disposal.
@@ -267,20 +281,35 @@ export class ModuleRuntime {
         workspaceActive = false
       })
       capabilityActivation.activate()
-      if (this.disposed) {
+      if (activationWasCancelled || this.disposed) {
         throw new Error(
           'Module runtime was disposed during capability activation',
         )
       }
+      const activeCallbackResult = await Promise.race([
+        lifecycle
+          .runWhenActiveCallbacks(() => activationWasCancelled || this.disposed)
+          .then(() => 'activated' as const),
+        activationCancelled.then(() => 'disposed' as const),
+      ])
+      if (
+        activeCallbackResult === 'disposed' ||
+        activationWasCancelled ||
+        this.disposed
+      ) {
+        throw new Error(
+          'Module runtime was disposed during whenActive callbacks',
+        )
+      }
       workspaceActive = true
       this.registrar.commit(definition.id, contributions, lifecycle)
-      if (this.disposed) {
+      if (activationWasCancelled || this.disposed) {
         throw new Error(
           'Module runtime was disposed during contribution commit',
         )
       }
       capabilityActivation.commit()
-      if (this.disposed) {
+      if (activationWasCancelled || this.disposed) {
         throw new Error('Module runtime was disposed during capability commit')
       }
       this.scopes.set(definition.id, lifecycle)

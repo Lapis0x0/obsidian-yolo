@@ -10,14 +10,24 @@ import {
   ModuleInstallationCoordinator,
   type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
+import { ModuleIntentCoordinator } from './moduleIntentCoordinator'
+import { SynchronizedModuleIntentStateSource } from './moduleIntentStateSource'
+import type { ModuleIntentStore } from './moduleIntentStore'
 import { ModuleLoader } from './moduleLoader'
 import { ModuleManager } from './moduleManager'
+import {
+  ModuleReadinessReconciler,
+  type ModuleReadinessResult,
+} from './moduleReadinessReconciler'
+import type { ModuleRuntimeQuiescence } from './moduleRuntimeReservation'
+import { ModuleStartupReconciler } from './moduleStartupReconciler'
 import {
   type ModuleArtifactPlatform,
   type ModuleStore,
   assertModuleId,
 } from './moduleStore'
 import { ModuleTransitionCoordinator } from './moduleTransitionCoordinator'
+import { ModuleUninstallCoordinator } from './moduleUninstallCoordinator'
 import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import {
   type OfficialModuleArtifactRequest,
@@ -37,12 +47,31 @@ import {
   YOLO_HOST_API_VERSION,
 } from './officialModuleCompatibilityProvider'
 import { DomBlobModuleScriptExecutor } from './scriptExecutor'
+import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
 export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
   'official-module-catalog/catalog-v1.json'
 export const OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS = 6 * 60 * 60 * 1_000
 export const OFFICIAL_MODULE_CATALOG_TIMEOUT_MS = 10_000
 export const OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS = 30_000
+
+export type ProductionModuleRuntimeReservation = Readonly<{
+  activate: ModuleActivationCoordinatorOptions['runtime']['activate']
+  runWithModuleQuiesced: ModuleRuntimeQuiescence['runWithModuleQuiesced']
+}>
+
+export type ProductionModuleReadinessReconciler = Readonly<{
+  ensureModuleReady(moduleId: string): Promise<ModuleReadinessResult>
+  reconcile(
+    moduleIds: readonly string[],
+  ): Promise<readonly ModuleReadinessResult[]>
+  dispose(): void
+}>
+
+type ProductionModuleIntentStore = Pick<
+  ModuleIntentStore,
+  'get' | 'set' | 'listModuleIds' | 'subscribeAll'
+>
 
 export type ProductionModuleServicesOptions = Readonly<{
   store: ModuleStore
@@ -52,6 +81,13 @@ export type ProductionModuleServicesOptions = Readonly<{
   getCompatibility: OfficialModuleCompatibilityProvider
   isActive(moduleId: string, version: string): boolean
   activationRuntime: ModuleActivationCoordinatorOptions['runtime']
+  /** Shared reservation owned and disposed by the composition root. */
+  runtimeReservation?: ProductionModuleRuntimeReservation
+  intentStore?: ProductionModuleIntentStore
+  authorizeArtifactRemoval?: (
+    moduleId: string,
+    versions: readonly string[],
+  ) => Promise<boolean>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   transitionSettingsBackend: Pick<
     ObsidianModuleTransitionSettingsBackend,
@@ -62,9 +98,12 @@ export type ProductionModuleServicesOptions = Readonly<{
   catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
+  verifiedArtifactRegistry?: VerifiedModuleArtifactRegistry
   reportCleanupError?: (error: unknown) => void
   reportRefreshError?: (error: unknown) => void
   reportActivationError?: (moduleId: string, error: unknown) => void
+  requestReload?: (moduleId: string) => void
+  reportStartupError?: (error: unknown, moduleId?: string) => void
 }>
 
 export type ProductionModuleServices = Readonly<{
@@ -75,6 +114,14 @@ export type ProductionModuleServices = Readonly<{
   catalogSource: OfficialModuleCatalogSource
   installer: ModuleArtifactInstaller
   installedStateSource: ModuleDeviceStateInstalledStateSource
+  intentCoordinator: ModuleIntentCoordinator | null
+  intentStateSource: SynchronizedModuleIntentStateSource | null
+  readinessReconciler: ProductionModuleReadinessReconciler | null
+  startupReconciler: ModuleStartupReconciler | null
+  uninstallCoordinator: ModuleUninstallCoordinator | null
+  runtimeReservation: ProductionModuleRuntimeReservation | null
+  verifiedArtifactRegistry: VerifiedModuleArtifactRegistry
+  getVerifiedArtifact: VerifiedModuleArtifactRegistry['getVerifiedArtifact']
   getInstallCandidate(moduleId: string): ConfirmedModuleCandidate | undefined
   getTransitionCandidate(
     moduleId: string,
@@ -124,6 +171,12 @@ export function createProductionModuleServices(
         return loader.load(...args)
       },
     })
+  const runtimeReservation = options.runtimeReservation ?? null
+  const verifiedArtifactRegistry =
+    options.verifiedArtifactRegistry ?? new VerifiedModuleArtifactRegistry()
+  const intentStateSource = options.intentStore
+    ? new SynchronizedModuleIntentStateSource({ store: options.intentStore })
+    : null
   const activationCoordinator = new ModuleActivationCoordinator({
     deviceStateStore: options.deviceStateStore,
     artifactStore: options.store,
@@ -132,8 +185,10 @@ export function createProductionModuleServices(
     supportedDataNamespaces: [OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE],
     readCurrentSchemaVersion: options.readCurrentSchemaVersion,
     loader: activationLoader,
-    runtime: options.activationRuntime,
+    runtime: runtimeReservation ?? options.activationRuntime,
+    ...(intentStateSource ? { intentStateSource } : {}),
     transitionSettingsBackend: options.transitionSettingsBackend,
+    verifiedArtifactRegistry,
     ...(options.transitionRecoveryRealmToken
       ? { transitionRecoveryRealmToken: options.transitionRecoveryRealmToken }
       : {}),
@@ -150,7 +205,11 @@ export function createProductionModuleServices(
   const manager = new ModuleManager({
     catalogSource,
     installedStateSource,
+    ...(intentStateSource ? { intentStateSource } : {}),
   })
+  const intentCoordinator = options.intentStore
+    ? new ModuleIntentCoordinator({ store: options.intentStore, manager })
+    : null
   const transitionCoordinator = new ModuleTransitionCoordinator({
     deviceStateStore: options.deviceStateStore,
     settingsBackend: options.transitionSettingsBackend,
@@ -185,6 +244,84 @@ export function createProductionModuleServices(
       ? { reportRefreshError: options.reportRefreshError }
       : {}),
   })
+  const ownedReadinessReconciler = options.intentStore
+    ? new ModuleReadinessReconciler({
+        deviceStateStore: options.deviceStateStore,
+        intentStore: options.intentStore,
+        catalogSource,
+        artifactStore: options.store,
+        installer,
+        platform: options.platform,
+        ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
+      })
+    : null
+  const readinessReconciler = ownedReadinessReconciler
+    ? createGuardedReadinessReconciler(
+        ownedReadinessReconciler,
+        runtimeReservation,
+      )
+    : null
+  const uninstallCoordinator = options.authorizeArtifactRemoval
+    ? new ModuleUninstallCoordinator({
+        artifactStore: options.store,
+        deviceStateStore: options.deviceStateStore,
+        intentStore: options.intentStore!,
+        manager,
+        runtime: runtimeReservation!,
+        authorizeArtifactRemoval: options.authorizeArtifactRemoval,
+        platform: options.platform,
+      })
+    : null
+  const startupIntentStore = options.intentStore
+  const startupReconciler =
+    startupIntentStore && readinessReconciler && options.requestReload
+      ? new ModuleStartupReconciler({
+          source: {
+            async listKnownModuleIds() {
+              const catalogEntriesPromise = catalogSource
+                .load()
+                .catch((error) => {
+                  try {
+                    options.reportStartupError?.(error)
+                  } catch {
+                    // Startup diagnostics must not make the optional catalog critical.
+                  }
+                  return []
+                })
+              const [intentModuleIds, deviceStates, catalogEntries] =
+                await Promise.all([
+                  startupIntentStore.listModuleIds(),
+                  options.deviceStateStore.list(),
+                  catalogEntriesPromise,
+                ])
+              return Object.freeze(
+                [
+                  ...new Set([
+                    ...intentModuleIds,
+                    ...deviceStates.map((state) => state.moduleId),
+                    ...catalogEntries.map((entry) => entry.id),
+                  ]),
+                ].sort(),
+              )
+            },
+            subscribe: (listener) => startupIntentStore.subscribeAll(listener),
+          },
+          intentStore: startupIntentStore,
+          readinessReconciler,
+          activationCoordinator,
+          manager,
+          ...(uninstallCoordinator
+            ? {
+                scheduleSafeUninstall: (moduleId: string) =>
+                  uninstallCoordinator.uninstall(moduleId),
+              }
+            : {}),
+          requestReload: options.requestReload,
+          ...(options.reportStartupError
+            ? { reportError: options.reportStartupError }
+            : {}),
+        })
+      : null
   const inFlightModuleIds = new Set<string>()
   const completedCandidates = new Map<string, string>()
   let disposed = false
@@ -197,6 +334,15 @@ export function createProductionModuleServices(
     catalogSource,
     installer,
     installedStateSource,
+    intentCoordinator,
+    intentStateSource,
+    readinessReconciler,
+    startupReconciler,
+    uninstallCoordinator,
+    runtimeReservation,
+    verifiedArtifactRegistry,
+    getVerifiedArtifact: (moduleId) =>
+      verifiedArtifactRegistry.getVerifiedArtifact(moduleId),
     getInstallCandidate(moduleId: string) {
       assertModuleId(moduleId, 'Module id')
       if (disposed || inFlightModuleIds.has(moduleId)) return undefined
@@ -306,8 +452,12 @@ export function createProductionModuleServices(
     },
     dispose: () => {
       disposed = true
+      startupReconciler?.dispose()
+      readinessReconciler?.dispose()
+      intentCoordinator?.dispose()
       transitionCoordinator.dispose()
       activationCoordinator.dispose()
+      verifiedArtifactRegistry.clearAll()
       coordinator.dispose()
       manager.dispose()
     },
@@ -324,6 +474,20 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
     typeof options.activationRuntime?.activate !== 'function' ||
+    (options.runtimeReservation !== undefined &&
+      (typeof options.runtimeReservation.activate !== 'function' ||
+        typeof options.runtimeReservation.runWithModuleQuiesced !==
+          'function')) ||
+    (options.intentStore !== undefined &&
+      (typeof options.intentStore.get !== 'function' ||
+        typeof options.intentStore.set !== 'function' ||
+        typeof options.intentStore.listModuleIds !== 'function' ||
+        typeof options.intentStore.subscribeAll !== 'function' ||
+        typeof options.requestReload !== 'function')) ||
+    (options.authorizeArtifactRemoval !== undefined &&
+      (typeof options.authorizeArtifactRemoval !== 'function' ||
+        options.intentStore === undefined ||
+        options.runtimeReservation === undefined)) ||
     typeof options.transitionSettingsBackend?.capture !== 'function' ||
     typeof options.transitionSettingsBackend?.readAtCapturedLocation !==
       'function' ||
@@ -332,6 +496,11 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     (options.transitionRecoveryRealmToken !== undefined &&
       (options.transitionRecoveryRealmToken === null ||
         typeof options.transitionRecoveryRealmToken !== 'object')) ||
+    (options.verifiedArtifactRegistry !== undefined &&
+      !(
+        options.verifiedArtifactRegistry instanceof
+        VerifiedModuleArtifactRegistry
+      )) ||
     typeof options.readCurrentSchemaVersion !== 'function' ||
     (options.catalogRequest !== undefined &&
       typeof options.catalogRequest !== 'function') ||
@@ -342,8 +511,60 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     (options.reportRefreshError !== undefined &&
       typeof options.reportRefreshError !== 'function') ||
     (options.reportActivationError !== undefined &&
-      typeof options.reportActivationError !== 'function')
+      typeof options.reportActivationError !== 'function') ||
+    (options.requestReload !== undefined &&
+      typeof options.requestReload !== 'function') ||
+    (options.reportStartupError !== undefined &&
+      typeof options.reportStartupError !== 'function')
   ) {
     throw new TypeError('Production module services options are invalid')
   }
+}
+
+function createGuardedReadinessReconciler(
+  reconciler: ModuleReadinessReconciler,
+  runtime: ProductionModuleRuntimeReservation | null,
+): ProductionModuleReadinessReconciler {
+  let disposed = false
+  const ensureModuleReady = (moduleId: string) =>
+    runtime
+      ? runtime.runWithModuleQuiesced(moduleId, () =>
+          reconciler.ensureModuleReady(moduleId),
+        )
+      : reconciler.ensureModuleReady(moduleId)
+
+  return Object.freeze({
+    ensureModuleReady,
+    async reconcile(moduleIds: readonly string[]) {
+      if (!Array.isArray(moduleIds)) {
+        throw new TypeError('Module readiness ids must be an array')
+      }
+      const ids = [...new Set(moduleIds)]
+      for (const moduleId of ids) assertModuleId(moduleId, 'Module id')
+      if (disposed) {
+        throw new Error('Module readiness reconciler is disposed')
+      }
+      return Object.freeze(
+        await Promise.all(
+          ids.sort().map(async (moduleId) => {
+            try {
+              return await ensureModuleReady(moduleId)
+            } catch (error) {
+              return Object.freeze({
+                moduleId,
+                status: 'failed' as const,
+                versions: Object.freeze([]),
+                repairedVersions: Object.freeze([]),
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+          }),
+        ),
+      )
+    },
+    dispose: () => {
+      disposed = true
+      reconciler.dispose()
+    },
+  })
 }

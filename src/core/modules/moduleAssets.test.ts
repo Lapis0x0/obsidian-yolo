@@ -89,13 +89,14 @@ function createHarness(
   )
   const revokeObjectURL = jest.fn()
   const lifecycle = new ModuleLifecycleScope()
+  const verifiedArtifact = Object.freeze({
+    manifest,
+    variant,
+    entryBytes: contents['entry.js'],
+  })
   const provider = new ModuleAssetsCapabilityProvider({
     store: { readEntryBytes },
-    getVerifiedArtifact: async () => ({
-      manifest,
-      variant,
-      entryBytes: contents['entry.js'],
-    }),
+    getVerifiedArtifact: async () => verifiedArtifact,
     urlApi: { createObjectURL, revokeObjectURL },
     subtleCrypto,
   })
@@ -267,6 +268,39 @@ describe('ModuleAssetsCapabilityProvider', () => {
     finishRead(Uint8Array.from([0, 97, 115, 109]))
 
     await expect(reading).rejects.toThrow('no longer active')
+  })
+
+  it('rejects an in-flight read if the active artifact version changes', async () => {
+    const harness = createHarness()
+    let finishRead!: (bytes: Uint8Array) => void
+    const blocked = new Promise<Uint8Array>((resolve) => {
+      finishRead = resolve
+    })
+    const first = {
+      manifest: harness.manifest,
+      variant: harness.variant,
+      entryBytes: encoder.encode('entry'),
+    }
+    let current = first
+    const activation = new ModuleAssetsCapabilityProvider({
+      store: { readEntryBytes: async () => blocked },
+      getVerifiedArtifact: () => current,
+      subtleCrypto,
+    }).create('learning', new ModuleLifecycleScope())
+    activation.activate()
+    const reading = activation.api.readText('styles/theme.css')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    current = {
+      ...first,
+      manifest: { ...first.manifest, version: '2.2.0' },
+    }
+    finishRead(encoder.encode('.root { color: red; }'))
+
+    await expect(reading).rejects.toThrow(
+      'active artifact changed while reading assets',
+    )
   })
 
   it('revokes a URL created reentrantly after disposal', async () => {

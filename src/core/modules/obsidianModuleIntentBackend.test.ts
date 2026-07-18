@@ -1,4 +1,11 @@
-import type { App, DataAdapter, EventRef, TAbstractFile, Vault } from 'obsidian'
+import type {
+  App,
+  DataAdapter,
+  EventRef,
+  ListedFiles,
+  TAbstractFile,
+  Vault,
+} from 'obsidian'
 
 import { ModuleIntentStore } from './moduleIntentStore'
 import {
@@ -15,6 +22,7 @@ class MemoryAdapter {
   readonly folders = new Set<string>()
   readonly writes: string[] = []
   writeHook?: (path: string, data: string) => Promise<void>
+  listError?: Error
 
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.folders.has(path)
@@ -38,6 +46,15 @@ class MemoryAdapter {
 
   async remove(path: string): Promise<void> {
     this.files.delete(path)
+  }
+
+  async list(path: string): Promise<ListedFiles> {
+    if (this.listError) throw this.listError
+    const prefix = `${path}/`
+    return {
+      files: [...this.files.keys()].filter((entry) => entry.startsWith(prefix)),
+      folders: [...this.folders].filter((entry) => entry.startsWith(prefix)),
+    }
   }
 }
 
@@ -185,6 +202,137 @@ describe('createObsidianModuleIntentBackend', () => {
     expect(harness.adapter.writes).toEqual([
       'Old/.yolo_json_db/module-intent/notes.json',
     ])
+  })
+
+  it('lists only sorted unique valid intent files directly under the current root', async () => {
+    const harness = createHarness('Active')
+    const root = 'Active/.yolo_json_db/module-intent'
+    harness.adapter.folders.add(root)
+    for (const path of [
+      `${root}/search.json`,
+      `${root}/notes.json`,
+      `${root}/notes.json.tmp`,
+      `${root}/Bad.json`,
+      `${root}/nested/deep.json`,
+    ]) {
+      harness.adapter.files.set(path, '')
+    }
+    harness.adapter.folders.add(`${root}/folder.json`)
+
+    await expect(harness.store.listModuleIds()).resolves.toEqual([
+      'notes',
+      'search',
+    ])
+    harness.setBaseDir('Missing', false)
+    await expect(harness.store.listModuleIds()).resolves.toEqual([])
+
+    harness.adapter.folders.add('Missing/.yolo_json_db/module-intent')
+    harness.adapter.listError = new Error('list failed')
+    await expect(harness.store.listModuleIds()).rejects.toThrow('list failed')
+  })
+
+  it('publishes both ids for a rename and ignores invalid or nested JSON paths', () => {
+    const harness = createHarness('Active')
+    const listener = jest.fn()
+    harness.store.subscribeAll(listener)
+    const root = 'Active/.yolo_json_db/module-intent'
+
+    harness.vault.emit('rename', `${root}/search.json`, `${root}/notes.json`)
+    harness.vault.emit('create', `${root}/nested/deep.json`)
+    harness.vault.emit('create', `${root}/Bad.json`)
+    harness.vault.emit('create', `${root}/notes.json.tmp`)
+
+    expect(listener.mock.calls).toEqual([['notes'], ['search']])
+  })
+
+  it('covers old and new roots while switching and then relocates', async () => {
+    const harness = createHarness('Old')
+    const oldRoot = 'Old/.yolo_json_db/module-intent'
+    const newRoot = 'New/.yolo_json_db/module-intent'
+    harness.adapter.folders.add(oldRoot)
+    harness.adapter.folders.add(newRoot)
+    harness.adapter.files.set(`${oldRoot}/old-only.json`, '')
+    harness.adapter.files.set(`${newRoot}/new-only.json`, '')
+    const listener = jest.fn()
+    harness.store.subscribeAll(listener)
+
+    harness.setBaseDir('New')
+    harness.vault.emit('modify', `${oldRoot}/during-old.json`)
+    harness.vault.emit('modify', `${newRoot}/during-new.json`)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const callsBeforeRelocationCheck = listener.mock.calls.length
+    harness.vault.emit('modify', `${oldRoot}/after.json`)
+    harness.vault.emit('modify', `${newRoot}/after.json`)
+
+    expect(listener.mock.calls).toEqual(
+      expect.arrayContaining([
+        ['during-old'],
+        ['during-new'],
+        ['old-only'],
+        ['new-only'],
+        ['after'],
+      ]),
+    )
+    expect(listener).toHaveBeenCalledTimes(callsBeforeRelocationCheck + 1)
+  })
+
+  it('relocates from a Vault event before settings notification arrives', () => {
+    const harness = createHarness('Old')
+    const listener = jest.fn()
+    harness.store.subscribeAll(listener)
+
+    harness.setBaseDir('New', false)
+    harness.vault.emit(
+      'create',
+      'New/.yolo_json_db/module-intent/discovered.json',
+    )
+
+    expect(listener).toHaveBeenCalledWith('discovered')
+  })
+
+  it('gives subscribeAll registration failures retryable cleanup', () => {
+    const harness = createHarness()
+    harness.vault.failOnRegistration = 3
+    harness.vault.failOffOnce = true
+
+    let registrationError: ModuleIntentSubscriptionRegistrationError | undefined
+    try {
+      harness.store.subscribeAll(jest.fn())
+    } catch (error) {
+      registrationError = error as ModuleIntentSubscriptionRegistrationError
+    }
+
+    expect(registrationError).toBeInstanceOf(
+      ModuleIntentSubscriptionRegistrationError,
+    )
+    expect(registrationError?.registrationCause).toMatchObject({
+      message: 'registration failed',
+    })
+    expect(harness.vault.removed).toHaveLength(0)
+    expect(() => registrationError?.cleanup()).not.toThrow()
+    expect(harness.vault.removed).toHaveLength(2)
+  })
+
+  it('cleans subscribeAll Vault refs when settings registration fails', () => {
+    const harness = createHarness()
+    harness.failSettingsRegistration()
+
+    let registrationError: ModuleIntentSubscriptionRegistrationError | undefined
+    try {
+      harness.store.subscribeAll(jest.fn())
+    } catch (error) {
+      registrationError = error as ModuleIntentSubscriptionRegistrationError
+    }
+
+    expect(registrationError).toBeInstanceOf(
+      ModuleIntentSubscriptionRegistrationError,
+    )
+    expect(registrationError?.registrationCause).toMatchObject({
+      message: 'settings registration failed',
+    })
+    expect(harness.vault.removed).toHaveLength(4)
+    expect(() => registrationError?.cleanup()).not.toThrow()
+    expect(harness.vault.removed).toHaveLength(4)
   })
 
   it('publishes only exact current module-path events and matching renames', () => {

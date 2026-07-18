@@ -172,6 +172,14 @@ function createInstaller(
   })
 }
 
+function artifactDownload(artifact: ReturnType<typeof createArtifact>) {
+  return jest.fn(async (url: string) =>
+    url === artifact.descriptor.manifestUrl
+      ? artifact.manifestBytes
+      : artifact.entryBytes,
+  )
+}
+
 describe('ModuleArtifactInstaller', () => {
   it('cleans staging and refuses promotion when an install is aborted', async () => {
     const artifact = createArtifact()
@@ -307,6 +315,170 @@ describe('ModuleArtifactInstaller', () => {
       original,
     )
     expect(validDownload).toHaveBeenCalledTimes(2)
+  })
+
+  it('repairs an existing version only after the exact replacement is fully staged', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const download = artifactDownload(artifact)
+    const installer = createInstaller(adapter, download)
+    await installer.install(artifact.descriptor)
+    const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
+    await adapter.writeBinary(entryPath, encode('corrupt').buffer)
+
+    await expect(installer.repair(artifact.descriptor)).resolves.toMatchObject({
+      id: 'learning',
+      version: '0.1.0',
+    })
+
+    expect(new Uint8Array(await adapter.readBinary(entryPath))).toEqual(
+      artifact.entryBytes,
+    )
+    expect([...adapter.folders].some((path) => path.includes('.repair-'))).toBe(
+      false,
+    )
+  })
+
+  it('preserves the only existing version when exact repair download fails', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const installer = createInstaller(adapter, artifactDownload(artifact))
+    await installer.install(artifact.descriptor)
+    const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
+    const corrupt = encode('unique corrupt original')
+    await adapter.writeBinary(entryPath, corrupt.buffer)
+    const offline = createInstaller(adapter, async () => {
+      throw new Error('offline')
+    })
+
+    await expect(offline.repair(artifact.descriptor)).rejects.toThrow('offline')
+
+    expect(new Uint8Array(await adapter.readBinary(entryPath))).toEqual(corrupt)
+    expect(adapter.folders.has('plugin/modules/learning/0.1.0')).toBe(true)
+  })
+
+  it('rolls back the original directory when replacement promotion fails', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const installer = createInstaller(adapter, artifactDownload(artifact))
+    await installer.install(artifact.descriptor)
+    const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
+    const corrupt = encode('original')
+    await adapter.writeBinary(entryPath, corrupt.buffer)
+    const rename = adapter.rename.bind(adapter)
+    jest.spyOn(adapter, 'rename').mockImplementation(async (from, to) => {
+      if (from.includes('.repair-staging-')) throw new Error('promotion failed')
+      await rename(from, to)
+    })
+
+    await expect(installer.repair(artifact.descriptor)).rejects.toThrow(
+      'promotion failed',
+    )
+
+    expect(new Uint8Array(await adapter.readBinary(entryPath))).toEqual(corrupt)
+    expect(
+      [...adapter.folders].some((path) => path.includes('.repair-backup-')),
+    ).toBe(false)
+  })
+
+  it('uses readback after an uncertain backup rename and completes repair', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const installer = createInstaller(adapter, artifactDownload(artifact))
+    await installer.install(artifact.descriptor)
+    const rename = adapter.rename.bind(adapter)
+    let uncertain = true
+    jest.spyOn(adapter, 'rename').mockImplementation(async (from, to) => {
+      await rename(from, to)
+      if (uncertain && to.includes('.repair-backup-')) {
+        uncertain = false
+        throw new Error('uncertain backup rename')
+      }
+    })
+
+    await expect(installer.repair(artifact.descriptor)).resolves.toMatchObject({
+      id: 'learning',
+    })
+    expect(
+      [...adapter.folders].some((path) => path.includes('.repair-backup-')),
+    ).toBe(false)
+  })
+
+  it('retries rollback after a transient rollback rename failure', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const installer = createInstaller(adapter, artifactDownload(artifact))
+    await installer.install(artifact.descriptor)
+    const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
+    const corrupt = encode('original')
+    await adapter.writeBinary(entryPath, corrupt.buffer)
+    const rename = adapter.rename.bind(adapter)
+    let rollbackFailures = 1
+    jest.spyOn(adapter, 'rename').mockImplementation(async (from, to) => {
+      if (from.includes('.repair-staging-')) throw new Error('promotion failed')
+      if (from.includes('.repair-backup-') && rollbackFailures-- > 0) {
+        throw new Error('rollback failed once')
+      }
+      await rename(from, to)
+    })
+
+    await expect(installer.repair(artifact.descriptor)).rejects.toThrow(
+      'rollback failed once',
+    )
+    expect(new Uint8Array(await adapter.readBinary(entryPath))).toEqual(corrupt)
+  })
+
+  it('fails closed when the adapter has no directory rename capability', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const installer = createInstaller(adapter, artifactDownload(artifact))
+    await installer.install(artifact.descriptor)
+    const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
+    const original = new Uint8Array(await adapter.readBinary(entryPath))
+    ;(adapter as unknown as { rename?: unknown }).rename = undefined
+
+    await expect(installer.repair(artifact.descriptor)).rejects.toThrow(
+      'cannot atomically replace',
+    )
+    expect(new Uint8Array(await adapter.readBinary(entryPath))).toEqual(
+      original,
+    )
+  })
+
+  it('serializes repairs for the same module before creating staging', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const initial = createInstaller(adapter, artifactDownload(artifact))
+    await initial.install(artifact.descriptor)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let markStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+    let manifestCalls = 0
+    const download = jest.fn(async (url: string) => {
+      if (url === artifact.descriptor.manifestUrl) {
+        manifestCalls += 1
+        if (manifestCalls === 1) {
+          markStarted()
+          await gate
+        }
+        return artifact.manifestBytes
+      }
+      return artifact.entryBytes
+    })
+    const installer = createInstaller(adapter, download)
+
+    const first = installer.repair(artifact.descriptor)
+    const second = installer.repair(artifact.descriptor)
+    await started
+    expect(manifestCalls).toBe(1)
+    release()
+    await Promise.all([first, second])
+    expect(manifestCalls).toBe(2)
   })
 
   it('uses manifest-fixed URLs and rejects descriptor compatibility drift', async () => {

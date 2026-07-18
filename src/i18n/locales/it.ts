@@ -540,8 +540,10 @@ export const it: TranslationKeys = {
       refreshing: 'Aggiornamento moduli',
       loading: 'Caricamento moduli…',
       loadError: 'Impossibile caricare i moduli.',
+      settingsSaveError: 'Impossibile salvare le impostazioni del modulo',
       catalogError: 'Catalogo: {error}',
       installedError: 'Moduli installati: {error}',
+      intentError: 'Intento del modulo: {error}',
       empty: 'Nessun modulo trovato.',
       installed: 'Installati',
       installedDescription: 'Moduli presenti in questa installazione.',
@@ -588,6 +590,48 @@ export const it: TranslationKeys = {
         'La versione {version} è stata scaricata, verificata ed è pronta.',
       activationPendingDetail:
         'La versione {version} è pronta. Ricarica per continuare l’attivazione o il ripristino.',
+      intentLabel: 'Intento',
+      intentUnknown: 'Non disponibile',
+      intentInstalledEnabled: 'Installato · abilitato',
+      intentInstalledDisabled: 'Installato · disabilitato',
+      intentUninstalled: 'Non installato',
+      readinessLabel: 'Disponibilità',
+      readiness: {
+        notInstalled: 'Non installato',
+        pending: 'In attesa o da riprovare',
+        ready: 'Pronto su questo dispositivo',
+        failed: 'Non riuscito',
+      },
+      incompatibleReason: 'Non compatibile: {reason}',
+      retry: 'Riprova',
+      actionReloadSuccess:
+        'L’intento per {name} è stato salvato. Ricarica Obsidian per applicarlo.',
+      actionError: 'Impossibile modificare {name}: {error}',
+      actionSuccess: {
+        install: '{name} è installato e pronto su questo dispositivo.',
+        enable: '{name} è contrassegnato come abilitato.',
+        disable:
+          '{name} è contrassegnato come disabilitato; file e dati sono stati conservati.',
+        uninstall: '{name} è stato disinstallato in sicurezza dal dispositivo.',
+      },
+      actions: {
+        install: 'Installa',
+        installBusy: 'Installazione…',
+        enable: 'Abilita',
+        enableBusy: 'Abilitazione…',
+        disable: 'Disabilita',
+        disableBusy: 'Disabilitazione…',
+        uninstall: 'Disinstalla',
+        uninstallBusy: 'Disinstallazione…',
+      },
+      confirmProduct: {
+        installTitle: 'Installa {name}',
+        installMessage:
+          'Installare {name}? Yolo salverà prima l’intento di installazione, quindi scaricherà e verificherà i file compatibili per questo dispositivo.',
+        uninstallTitle: 'Disinstalla {name}',
+        uninstallMessage:
+          'Disinstallare {name}? L’intento di installazione verrà prima cancellato. Se il modulo è attivo, file e dati saranno conservati fino al riavvio di Obsidian. Altrimenti verranno rimossi in sicurezza solo i file del programma e lo stato di installazione locali.',
+      },
       statuses: {
         available: 'Disponibile',
         installed: 'Installato',

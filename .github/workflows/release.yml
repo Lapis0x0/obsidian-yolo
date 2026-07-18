@@ -3,8 +3,7 @@ name: Release Obsidian plugin
 on:
   push:
     tags:
-      - '*'
-      - '!learning/v*'
+      - '[0-9]*'
 
 permissions:
   contents: read
@@ -14,8 +13,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      CORE_RELEASE_TAG_PATTERN: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?$'
 
     steps:
+      - name: Validate Core release tag
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ $CORE_RELEASE_TAG_PATTERN ]]; then
+            echo "::error::Core release tag must be a numeric version in the root tag namespace"
+            exit 1
+          fi
+
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false

@@ -47,6 +47,41 @@ export {
   type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
 export {
+  ModuleDataRemovalCoordinator,
+  type LearningCanonicalContentDataDescriptor,
+  type LearningImportJournalDataDescriptor,
+  type LearningSrsDataDescriptor,
+  type ModuleConfigDocumentDataDescriptor,
+  type ModuleDataOwnershipPort,
+  type ModuleDataRemovalAuthorizationPort,
+  type ModuleDataRemovalAuthorizationRequest,
+  type ModuleDataRemovalCoordinatorOptions,
+  type ModuleDataRemovalJournal,
+  type ModuleDataRemovalJournalPort,
+  type ModuleDataRemovalResult,
+  type ModuleOwnedDataDescriptor,
+  type ModuleOwnedDataRemovalPort,
+  type ModulePrivateNamespaceDataDescriptor,
+} from './moduleDataRemovalCoordinator'
+export {
+  createLearningOwnedDataDescriptors,
+  createLearningOwnedDataRemovalPort,
+  createModuleDataRemovalJournalPort,
+  isLearningOwnedDataDescriptor,
+} from './learningModuleDataRemoval'
+export {
+  ModuleIntentStore,
+  ModuleIntentWriteUncertainError,
+  type ModuleIntent,
+  type ModuleIntentBackend,
+} from './moduleIntentStore'
+export {
+  createObsidianModuleIntentBackend,
+  ModuleIntentSubscriptionRegistrationError,
+  type ObsidianModuleIntentBackendOptions,
+  type ObsidianModuleIntentSettings,
+} from './obsidianModuleIntentBackend'
+export {
   DEFAULT_MODULE_ACTIVATION_TIMEOUT_MS,
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
@@ -66,6 +101,11 @@ export {
   type ModuleArtifactReadStore,
   type VerifiedModuleArtifact,
 } from './moduleArtifactVerifier'
+export { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
+export {
+  managedModuleDataNamespace,
+  runExclusive,
+} from './managedModuleDataLock'
 export {
   ManagedModulePathsCapabilityProvider,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
@@ -89,7 +129,10 @@ export {
   UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
   type ModuleSettingsCapabilityProviderOptions,
   type ModuleSettingsCapabilityProviderV1,
+  type ModuleSettingsConfigAdapterV1,
   type ModuleSettingsContributionSinkV1,
+  type ModuleSettingsFieldAdapterV1,
+  type ModuleSettingsFieldSnapshotV1,
   type RegisteredModuleSettingsContributionV1,
   type YoloModuleModelOptionV1,
   type YoloModuleModelSnapshotV1,
@@ -158,6 +201,10 @@ export {
   type OfficialModuleCatalogRequest,
 } from './officialModuleCatalogClient'
 export {
+  authorizeOfficialModuleArtifactRemoval,
+  type OfficialModuleArtifactRemovalCatalogLoader,
+} from './officialModuleArtifactRemovalPolicy'
+export {
   ModuleDeviceStateCorruptionError,
   ModuleDeviceStateStore,
   type ModuleDeviceState,
@@ -225,6 +272,17 @@ export {
   type ModuleContributionRegistrar,
 } from './moduleRuntime'
 export {
+  ModuleRuntimeReservation,
+  type ModuleRuntimeQuiescence,
+  type ModuleRuntimeReservationOptions,
+  type ModuleRuntimeReservationTarget,
+} from './moduleRuntimeReservation'
+export {
+  ModuleStartupReconciler,
+  type ModuleStartupReconcileSource,
+  type ModuleStartupReconcilerOptions,
+} from './moduleStartupReconciler'
+export {
   YOLO_MODULE_RUNTIME_SYMBOL,
   getYoloModuleRuntimeBridge,
   installYoloModuleRuntimeBridge,
@@ -288,10 +346,18 @@ export {
 } from './indexedDbDataAdapter'
 export {
   createObsidianModuleConfigBackendFactory,
+  createObsidianModuleConfigCreateIfAbsent,
   createObsidianModuleTransitionSettingsBackend,
   type CapturedModuleSettingsLocation,
   type CapturedModuleTransitionSettings,
   type ObsidianModuleConfigBackendFactoryOptions,
+  type ObsidianModuleConfigBackendFactory,
+  type ObsidianModuleConfigCreateIfAbsent,
   type ObsidianModuleConfigSettings,
   type ObsidianModuleTransitionSettingsBackend,
 } from './obsidianModuleConfigBackend'
+export {
+  handoffLearningLegacySettings,
+  type LearningLegacySettings,
+  type ModuleConfigCreateIfAbsent,
+} from './learningModuleSettingsHandoff'

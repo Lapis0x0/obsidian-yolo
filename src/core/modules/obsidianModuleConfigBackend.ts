@@ -9,6 +9,7 @@ import { getYoloJsonDbRootDir } from '../paths/yoloPaths'
 
 import type { ModuleConfigBackend, ModuleConfigSnapshot } from './moduleConfig'
 import {
+  type ModuleCreateIfAbsentResult,
   type ModuleDataEnvelope,
   ModuleSettingsStore,
 } from './moduleSettingsStore'
@@ -38,6 +39,18 @@ export type ObsidianModuleConfigBackendFactoryOptions = Readonly<{
   subscribeSettingsChange(listener: () => void): ModuleDisposer
 }>
 
+export type ObsidianModuleConfigBackendFactory<T = unknown> = ((
+  moduleId: string,
+) => ModuleConfigBackend<T>) &
+  Readonly<{
+    createIfAbsent: ObsidianModuleConfigCreateIfAbsent<T>
+  }>
+
+export type ObsidianModuleConfigCreateIfAbsent<T = unknown> = (
+  moduleId: string,
+  envelope: ModuleDataEnvelope<T>,
+) => Promise<ModuleCreateIfAbsentResult>
+
 export type CapturedModuleSettingsLocation = ModuleTransitionSettingsLocation
 
 export type CapturedModuleTransitionSettings = Readonly<{
@@ -58,28 +71,29 @@ export type ObsidianModuleTransitionSettingsBackend = Readonly<{
 
 export function createObsidianModuleConfigBackendFactory<T = unknown>(
   options: ObsidianModuleConfigBackendFactoryOptions,
-): (moduleId: string) => ModuleConfigBackend<T> {
-  return (moduleId) => {
+): ObsidianModuleConfigBackendFactory<T> {
+  const rootPath = (): string =>
+    normalizePath(
+      `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_SETTINGS_DIR_NAME}`,
+    )
+  const createStore = (capturedRoot: string): ModuleSettingsStore =>
+    new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter: options.app.vault.adapter,
+      rootPath: capturedRoot,
+    })
+
+  const factory = (moduleId: string): ModuleConfigBackend<T> => {
     assertModuleId(moduleId, 'Module id')
 
-    const rootPath = (): string =>
-      normalizePath(
-        `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_SETTINGS_DIR_NAME}`,
-      )
     const targetPath = (): string =>
       normalizePath(`${rootPath()}/${moduleId}.json`)
-    const createStore = (): ModuleSettingsStore =>
-      new ModuleSettingsStore({
-        kind: 'synchronized-intent',
-        adapter: options.app.vault.adapter,
-        rootPath: rootPath(),
-      })
 
     return Object.freeze({
       read: async () =>
-        (await createStore().read<T>(moduleId)) ??
+        (await createStore(rootPath()).read<T>(moduleId)) ??
         (EMPTY_MODULE_CONFIG as ModuleConfigSnapshot<T>),
-      write: async (next) => createStore().write(moduleId, next),
+      write: async (next) => createStore(rootPath()).write(moduleId, next),
       subscribe: (listener) => {
         if (typeof listener !== 'function') {
           throw new TypeError(
@@ -151,6 +165,38 @@ export function createObsidianModuleConfigBackendFactory<T = unknown>(
         return unsubscribe
       },
     })
+  }
+
+  return Object.freeze(
+    Object.assign(factory, {
+      createIfAbsent: createObsidianModuleConfigCreateIfAbsent<T>(options),
+    }),
+  )
+}
+
+export function createObsidianModuleConfigCreateIfAbsent<T = unknown>(
+  options: Pick<
+    ObsidianModuleConfigBackendFactoryOptions,
+    'app' | 'getSettings'
+  >,
+): ObsidianModuleConfigCreateIfAbsent<T> {
+  return (moduleId, envelope) => {
+    assertModuleId(moduleId, 'Module id')
+    // Capture the active base directory before createIfAbsent can yield.
+    // Vault.create excludes locally visible files; it cannot arbitrate a
+    // remote sync write that has not reached this device yet.
+    const capturedRoot = normalizePath(
+      `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_SETTINGS_DIR_NAME}`,
+    )
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter: options.app.vault.adapter,
+      create: async (path, data) => {
+        await options.app.vault.create(path, data)
+      },
+      rootPath: capturedRoot,
+    })
+    return store.createIfAbsent(moduleId, envelope)
   }
 }
 

@@ -16,10 +16,16 @@ import {
 import type { ModuleArtifactPlatform } from './moduleStore'
 import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import { selectInitialCompatibleVersion } from './officialModuleCatalog'
-import type { YoloModuleDefinition, YoloModuleEntry } from './types'
+import type {
+  ModuleIntentStateSource,
+  YoloModuleDefinition,
+  YoloModuleEntry,
+} from './types'
+import type { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
 export type ModuleActivationCoordinatorOptions = Readonly<{
   deviceStateStore: Pick<ModuleDeviceStateStore, 'list' | 'runExclusive'>
+  intentStateSource?: Pick<ModuleIntentStateSource, 'load'>
   artifactStore: ModuleArtifactReadStore
   platform: ModuleArtifactPlatform
   hostApi: string
@@ -35,6 +41,7 @@ export type ModuleActivationCoordinatorOptions = Readonly<{
       signal?: AbortSignal,
     ): Promise<YoloModuleDefinition>
   }>
+  /** Shared protected activation seam (for example ModuleRuntimeReservation). */
   runtime: Readonly<{
     activate(
       definition: YoloModuleDefinition,
@@ -51,6 +58,10 @@ export type ModuleActivationCoordinatorOptions = Readonly<{
   >
   /** Isolates tests or explicitly independent realms; production omits this. */
   transitionRecoveryRealmToken?: object
+  verifiedArtifactRegistry?: Pick<
+    VerifiedModuleArtifactRegistry,
+    'publish' | 'clear' | 'clearAll'
+  >
   reportActivationError?: (moduleId: string, error: unknown) => void
 }>
 
@@ -90,6 +101,8 @@ export class ModuleActivationCoordinator {
       !options ||
       typeof options.deviceStateStore?.list !== 'function' ||
       typeof options.deviceStateStore?.runExclusive !== 'function' ||
+      (options.intentStateSource !== undefined &&
+        typeof options.intentStateSource.load !== 'function') ||
       !options.artifactStore ||
       (options.platform !== 'desktop' && options.platform !== 'mobile') ||
       typeof options.hostApi !== 'string' ||
@@ -109,6 +122,10 @@ export class ModuleActivationCoordinator {
       (options.transitionRecoveryRealmToken !== undefined &&
         (options.transitionRecoveryRealmToken === null ||
           typeof options.transitionRecoveryRealmToken !== 'object')) ||
+      (options.verifiedArtifactRegistry !== undefined &&
+        (typeof options.verifiedArtifactRegistry.publish !== 'function' ||
+          typeof options.verifiedArtifactRegistry.clear !== 'function' ||
+          typeof options.verifiedArtifactRegistry.clearAll !== 'function')) ||
       (options.reportActivationError !== undefined &&
         typeof options.reportActivationError !== 'function')
     ) {
@@ -146,9 +163,11 @@ export class ModuleActivationCoordinator {
     this.disposed = true
     for (const controller of this.controllers) controller.abort()
     this.controllers.clear()
+    this.options.verifiedArtifactRegistry?.clearAll()
   }
 
   private async activateAll(): Promise<readonly ModuleActivationResult[]> {
+    this.options.verifiedArtifactRegistry?.clearAll()
     const controller = new AbortController()
     this.controllers.add(controller)
     let timedOut = false
@@ -172,20 +191,18 @@ export class ModuleActivationCoordinator {
       const sorted = [...listed].sort((left, right) =>
         left.moduleId.localeCompare(right.moduleId),
       )
+      const results: ModuleActivationResult[] = []
       const transitionIds = sorted
         .filter((state) => state.transition !== null)
         .map((state) => state.moduleId)
       const ordinaryIds = sorted
         .filter((state) => state.transition === null)
         .map((state) => state.moduleId)
-      const results: ModuleActivationResult[] = []
       const recoverTransitions = async (
         moduleIds: readonly string[],
-      ): Promise<
-        Readonly<{ poisoned: boolean; skipped: readonly string[] }>
-      > => {
+      ): Promise<Readonly<{ halted: boolean; skipped: readonly string[] }>> => {
         if (moduleIds.length === 0) {
-          return Object.freeze({ poisoned: false, skipped: [] })
+          return Object.freeze({ halted: false, skipped: [] })
         }
         const subtleCrypto =
           this.options.subtleCrypto ?? globalThis.crypto?.subtle ?? null
@@ -198,7 +215,11 @@ export class ModuleActivationCoordinator {
               ),
             )
           }
-          return Object.freeze({ poisoned: false, skipped: [] })
+          this.startupDisposition = Object.freeze({
+            reloadRequired: true,
+            processPoisoned: false,
+          })
+          return Object.freeze({ halted: true, skipped: [] })
         }
         const recovery =
           new ModuleStartupTransitionRecovery<VerifiedModuleArtifact>({
@@ -217,8 +238,33 @@ export class ModuleActivationCoordinator {
           })
         const skipped: string[] = []
         for (const moduleId of moduleIds) {
-          const recovered = await recovery.recover(moduleId, controller.signal)
-          results.push(this.mapTransitionRecovery(recovered))
+          let intentError: unknown
+          let liveEligible = false
+          try {
+            const intents = await withAbort(
+              this.options.intentStateSource?.load([moduleId]) ??
+                Promise.resolve([]),
+              controller.signal,
+            )
+            const matches = intents.filter((intent) => intent.id === moduleId)
+            liveEligible =
+              matches.length === 1 &&
+              matches[0]?.desiredInstalled === true &&
+              matches[0].enabled === true
+          } catch (error) {
+            if (controller.signal.aborted) throw error
+            intentError = error
+          }
+          const recovered = await recovery.recover(
+            moduleId,
+            controller.signal,
+            liveEligible,
+          )
+          results.push(
+            intentError !== undefined && recovered.status !== 'failed'
+              ? this.failed(moduleId, intentError)
+              : this.mapTransitionRecovery(recovered),
+          )
           this.startupDisposition = Object.freeze({
             reloadRequired:
               this.startupDisposition.reloadRequired ||
@@ -227,17 +273,19 @@ export class ModuleActivationCoordinator {
               this.startupDisposition.processPoisoned ||
               recovered.processPoisoned,
           })
-          if (recovered.processPoisoned) {
-            return Object.freeze({ poisoned: true, skipped })
+          if (recovered.reloadRequired || recovered.processPoisoned) {
+            return Object.freeze({ halted: true, skipped })
           }
           if (controller.signal.aborted) throw abortedError()
-          if (recovered.status === 'skipped') skipped.push(moduleId)
+          if (liveEligible && recovered.status === 'skipped') {
+            skipped.push(moduleId)
+          }
         }
-        return Object.freeze({ poisoned: false, skipped })
+        return Object.freeze({ halted: false, skipped })
       }
 
       const initialRecovery = await recoverTransitions(transitionIds)
-      if (initialRecovery.poisoned) return Object.freeze(results)
+      if (initialRecovery.halted) return Object.freeze(results)
       ordinaryIds.push(...initialRecovery.skipped)
 
       // Device state is local-only, and production does not expose transition
@@ -257,7 +305,7 @@ export class ModuleActivationCoordinator {
         else revalidatedOrdinaryIds.push(moduleId)
       }
       const lateRecovery = await recoverTransitions(lateTransitionIds)
-      if (lateRecovery.poisoned) return Object.freeze(results)
+      if (lateRecovery.halted) return Object.freeze(results)
       revalidatedOrdinaryIds.push(...lateRecovery.skipped)
 
       const moduleIds = [...new Set(revalidatedOrdinaryIds)].sort(
@@ -273,6 +321,20 @@ export class ModuleActivationCoordinator {
               return this.failed(moduleId, error)
             }
             try {
+              const intents = await withAbort(
+                this.options.intentStateSource?.load([moduleId]) ??
+                  Promise.resolve([]),
+                controller.signal,
+              )
+              const matches = intents.filter((intent) => intent.id === moduleId)
+              if (
+                matches.length !== 1 ||
+                matches[0]?.desiredInstalled !== true ||
+                matches[0].enabled !== true
+              ) {
+                this.options.verifiedArtifactRegistry?.clear(moduleId)
+                return result({ moduleId, status: 'skipped' })
+              }
               return await this.options.deviceStateStore.runExclusive(
                 moduleId,
                 (transaction) =>
@@ -283,6 +345,7 @@ export class ModuleActivationCoordinator {
                   ),
               )
             } catch (error) {
+              if (controller.signal.aborted) throw error
               return this.failed(moduleId, error)
             }
           }),
@@ -467,6 +530,7 @@ export class ModuleActivationCoordinator {
     descriptor: ModuleArtifactDescriptor,
     parentSignal: AbortSignal,
   ): Promise<void> {
+    this.options.verifiedArtifactRegistry?.clear(descriptor.id)
     const controller = new AbortController()
     this.controllers.add(controller)
     const abortFromParent = () => controller.abort()
@@ -499,7 +563,16 @@ export class ModuleActivationCoordinator {
         descriptor.version,
         controller.signal,
       )
+      if (this.disposed || parentSignal.aborted || controller.signal.aborted) {
+        throw new Error(`Module "${descriptor.id}" activation was aborted`)
+      }
+      this.options.verifiedArtifactRegistry?.publish(
+        descriptor.id,
+        descriptor.version,
+        artifact,
+      )
     } catch (error) {
+      this.options.verifiedArtifactRegistry?.clear(descriptor.id)
       if (timedOut) {
         throw new Error(
           `Module "${descriptor.id}" activation timed out after ${this.activationTimeoutMs} ms`,
@@ -628,6 +701,9 @@ export class ModuleActivationCoordinator {
       this.report(recovered.moduleId, new Error(recovered.error))
     } else if (recovered.status === 'activated') {
       this.errors.delete(recovered.moduleId)
+    }
+    if (recovered.status !== 'activated') {
+      this.options.verifiedArtifactRegistry?.clear(recovered.moduleId)
     }
     return result({
       moduleId: recovered.moduleId,

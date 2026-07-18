@@ -3,7 +3,12 @@ import { createHash, webcrypto } from 'node:crypto'
 
 import type { DataAdapter, RequestUrlParam, RequestUrlResponse } from 'obsidian'
 
+import { ModuleLifecycleScope } from './lifecycleScope'
+import { ModuleAssetsCapabilityProvider } from './moduleAssets'
 import { ModuleDeviceStateStore } from './moduleDeviceStateStore'
+import type { ModuleIntent } from './moduleIntentStore'
+import { ModuleReadinessReconciler } from './moduleReadinessReconciler'
+import { ModuleRuntimeReservation } from './moduleRuntimeReservation'
 import { ModuleStore } from './moduleStore'
 import {
   hashModuleTransitionSettingsSnapshot,
@@ -166,12 +171,38 @@ function response(body: string | Uint8Array, status = 200): RequestUrlResponse {
   }
 }
 
-function artifact() {
+function artifact(withStyle = false) {
   const releaseRoot =
     'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v1.2.3'
   const entryUrl = `${releaseRoot}/entry.js`
+  const styleUrl = `${releaseRoot}/style.css`
   const manifestUrl = `${releaseRoot}/module.json`
   const entryBytes = encode('globalThis.yoloModuleLoaded = true')
+  const styleBytes = encode('.learning { color: red; }')
+  const files = [
+    {
+      role: 'entry',
+      name: 'entry.js',
+      path: 'entry.js',
+      byteSize: entryBytes.byteLength,
+      sha256: sha256(entryBytes),
+      url: entryUrl,
+      storage: 'module',
+    },
+    ...(withStyle
+      ? [
+          {
+            role: 'style',
+            name: 'style.css',
+            path: 'style.css',
+            byteSize: styleBytes.byteLength,
+            sha256: sha256(styleBytes),
+            url: styleUrl,
+            storage: 'module',
+          },
+        ]
+      : []),
+  ]
   const manifestBytes = encode(
     `${JSON.stringify({
       schemaVersion: 1,
@@ -183,17 +214,7 @@ function artifact() {
         {
           platform: 'desktop',
           entry: 'entry.js',
-          files: [
-            {
-              role: 'entry',
-              name: 'entry.js',
-              path: 'entry.js',
-              byteSize: entryBytes.byteLength,
-              sha256: sha256(entryBytes),
-              url: entryUrl,
-              storage: 'module',
-            },
-          ],
+          files,
         },
       ],
     })}\n`,
@@ -223,22 +244,35 @@ function artifact() {
       },
     ],
   })
-  return { catalog, entryBytes, entryUrl, manifestBytes, manifestUrl }
+  return {
+    catalog,
+    entryBytes,
+    entryUrl,
+    manifestBytes,
+    manifestUrl,
+    styleBytes,
+    styleUrl,
+  }
 }
 
 function createHarness(
   overrides: {
     catalogRequest?: (request: RequestUrlParam) => Promise<RequestUrlResponse>
     artifactRequest?: (request: RequestUrlParam) => Promise<RequestUrlResponse>
+    authorizeArtifactRemoval?:
+      | ((moduleId: string, versions: readonly string[]) => Promise<boolean>)
+      | null
+    intentStore?: null
+    withStyle?: boolean
   } = {},
 ) {
-  const fixture = artifact()
+  const fixture = artifact(overrides.withStyle)
   const adapter = new MemoryAdapter()
   const cacheAdapter = new MemoryAdapter()
   const dataAdapter = adapter as unknown as DataAdapter
   const store = new ModuleStore({
     adapter: dataAdapter,
-    manifest: { id: 'yolo', dir: 'plugin' },
+    manifest: { id: 'yolo', dir: 'config/plugins/yolo' },
     configDir: 'config',
   })
   const deviceStateStore = new ModuleDeviceStateStore({
@@ -257,10 +291,29 @@ function createHarness(
         }
         if (request.url === fixture.entryUrl)
           return response(fixture.entryBytes)
+        if (request.url === fixture.styleUrl)
+          return response(fixture.styleBytes)
         return response('', 404)
       }),
   )
   const activeVersions = new Map<string, string>()
+  const intents = new Map<string, ModuleIntent>([
+    ['learning', { desiredInstalled: true, enabled: true }],
+  ])
+  const intentListeners = new Set<(moduleId: string) => void>()
+  const intentStore = {
+    get: jest.fn(async (moduleId: string) => intents.get(moduleId)),
+    set: jest.fn(async (moduleId: string, intent: ModuleIntent) => {
+      const persisted = Object.freeze({ ...intent })
+      intents.set(moduleId, persisted)
+      return persisted
+    }),
+    listModuleIds: jest.fn(async () => [...intents.keys()]),
+    subscribeAll: jest.fn((listener: (moduleId: string) => void) => {
+      intentListeners.add(listener)
+      return () => intentListeners.delete(listener)
+    }),
+  }
   const isActive = jest.fn(
     (moduleId: string, version: string) =>
       activeVersions.get(moduleId) === version,
@@ -272,10 +325,19 @@ function createHarness(
     })),
   }
   const activationRuntime = {
+    isActive: jest.fn((moduleId: string) => activeVersions.has(moduleId)),
     activate: jest.fn(async (definition: { id: string }, version: string) => {
       activeVersions.set(definition.id, version)
     }),
   }
+  const runtimeReservation = new ModuleRuntimeReservation({
+    runtime: activationRuntime,
+  })
+  const authorizeArtifactRemoval = jest.fn(
+    overrides.authorizeArtifactRemoval ?? (async () => true),
+  )
+  const requestReload = jest.fn()
+  const reportStartupError = jest.fn()
   const transitionSettingsSnapshot = Object.freeze({
     present: true as const,
     envelope: Object.freeze({
@@ -306,8 +368,13 @@ function createHarness(
       readSettingsSchemaVersion: async () => 0,
     }),
     isActive,
+    ...(overrides.intentStore === null ? {} : { intentStore }),
     activationLoader,
     activationRuntime,
+    runtimeReservation,
+    ...(overrides.authorizeArtifactRemoval === null
+      ? {}
+      : { authorizeArtifactRemoval }),
     transitionSettingsBackend: {
       capture: captureSettings,
       readAtCapturedLocation,
@@ -317,6 +384,8 @@ function createHarness(
     catalogRequest,
     artifactRequest,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
+    requestReload,
+    reportStartupError,
   })
   return {
     adapter,
@@ -326,9 +395,20 @@ function createHarness(
     deviceStateStore,
     fixture,
     isActive,
+    intents,
+    intentStore,
+    emitIntent(moduleId: string) {
+      for (const listener of [...intentListeners]) listener(moduleId)
+    },
+    intentListenerCount: () => intentListeners.size,
     activeVersions,
     activationLoader,
     activationRuntime,
+    authorizeArtifactRemoval,
+    requestReload,
+    reportStartupError,
+    runtimeReservation,
+    store,
     captureSettings,
     readAtCapturedLocation,
     transitionSettingsLocation,
@@ -352,7 +432,7 @@ describe('createProductionModuleServices', () => {
   })
 
   it('discovers, snapshots, downloads, installs, and reports real device state', async () => {
-    const harness = createHarness()
+    const harness = createHarness({ withStyle: true })
 
     await harness.services.manager.refresh()
 
@@ -393,9 +473,12 @@ describe('createProductionModuleServices', () => {
     ).toEqual([
       { url: harness.fixture.manifestUrl, method: 'GET', throw: false },
       { url: harness.fixture.entryUrl, method: 'GET', throw: false },
+      { url: harness.fixture.styleUrl, method: 'GET', throw: false },
     ])
     expect(
-      harness.adapter.binaryFiles.has('plugin/modules/learning/1.2.3/entry.js'),
+      harness.adapter.binaryFiles.has(
+        'config/plugins/yolo/modules/learning/1.2.3/entry.js',
+      ),
     ).toBe(true)
     expect(await harness.deviceStateStore.read('learning')).toMatchObject({
       moduleId: 'learning',
@@ -420,6 +503,24 @@ describe('createProductionModuleServices', () => {
       'active',
     )
 
+    const lifecycle = new ModuleLifecycleScope()
+    const assets = new ModuleAssetsCapabilityProvider({
+      store: harness.store,
+      getVerifiedArtifact: harness.services.getVerifiedArtifact,
+      subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
+    }).create('learning', lifecycle)
+    assets.activate()
+    await expect(assets.api.readText('style.css')).resolves.toBe(
+      '.learning { color: red; }',
+    )
+    expect(
+      harness.services.getVerifiedArtifact('learning')?.manifest.version,
+    ).toBe('1.2.3')
+
+    harness.services.dispose()
+    expect(harness.services.getVerifiedArtifact('learning')).toBeUndefined()
+    lifecycle.dispose()
+
     await flushPromises()
     expect(
       harness.cacheAdapter.textFiles.has(OFFICIAL_MODULE_CATALOG_CACHE_PATH),
@@ -435,6 +536,443 @@ describe('createProductionModuleServices', () => {
     ).toBe(true)
     harness.services.dispose()
     expect(harness.services.manager.getSnapshot().status).toBe('loading')
+  })
+
+  it('composes synchronized intent, readiness, and the guarded activation seam', async () => {
+    const harness = createHarness()
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+    const {
+      intentCoordinator,
+      intentStateSource,
+      readinessReconciler,
+      runtimeReservation,
+    } = harness.services
+    expect(intentCoordinator).not.toBeNull()
+    expect(intentStateSource).not.toBeNull()
+    expect(readinessReconciler).not.toBeNull()
+    expect(harness.services.startupReconciler).not.toBeNull()
+    expect(runtimeReservation).not.toBeNull()
+    expect(runtimeReservation).toBe(harness.runtimeReservation)
+    expect(harness.services.uninstallCoordinator).not.toBeNull()
+
+    await harness.services.manager.refresh()
+    await expect(intentCoordinator!.install('learning')).resolves.toEqual({
+      desiredInstalled: true,
+      enabled: false,
+    })
+    expect(harness.services.manager.getSnapshot().modules[0]).toMatchObject({
+      id: 'learning',
+      desiredInstalled: true,
+      enabled: false,
+    })
+
+    await expect(
+      readinessReconciler!.ensureModuleReady('learning'),
+    ).resolves.toMatchObject({
+      moduleId: 'learning',
+      status: 'ready',
+      installedVersion: '1.2.3',
+    })
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      downloadedCandidate: '1.2.3',
+    })
+    await expect(intentCoordinator!.enable('learning')).resolves.toEqual({
+      desiredInstalled: true,
+      enabled: true,
+    })
+
+    const installed = (await harness.deviceStateStore.read('learning'))!
+    await harness.deviceStateStore.write({
+      ...installed,
+      activeVersion: '1.2.3',
+      downloadedCandidate: null,
+    })
+    await harness.services.activationCoordinator.activatePersistedModules()
+    expect(harness.activationRuntime.activate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'learning' }),
+      '1.2.3',
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('owns startup ordering across readiness, refresh, and activation', async () => {
+    const harness = createHarness()
+    const ensureModuleReady = jest.spyOn(
+      ModuleReadinessReconciler.prototype,
+      'ensureModuleReady',
+    )
+    const refresh = jest.spyOn(harness.services.manager, 'refresh')
+    const activatePersistedModules = jest.spyOn(
+      harness.services.activationCoordinator,
+      'activatePersistedModules',
+    )
+
+    await harness.services.startupReconciler!.start()
+
+    expect(harness.intentStore.subscribeAll).toHaveBeenCalledTimes(1)
+    expect(harness.intentStore.listModuleIds).toHaveBeenCalledTimes(1)
+    expect(
+      harness.intentStore.subscribeAll.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      harness.intentStore.listModuleIds.mock.invocationCallOrder[0],
+    )
+    expect(ensureModuleReady).toHaveBeenCalledWith('learning')
+    expect(ensureModuleReady.mock.invocationCallOrder[0]).toBeLessThan(
+      refresh.mock.invocationCallOrder[0],
+    )
+    expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(
+      activatePersistedModules.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('reconciles module ids added by the external intent subscription', async () => {
+    const harness = createHarness()
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+    await harness.services.startupReconciler!.start()
+    const ensureModuleReady = jest.spyOn(
+      ModuleReadinessReconciler.prototype,
+      'ensureModuleReady',
+    )
+
+    harness.intents.set('notes', {
+      desiredInstalled: true,
+      enabled: false,
+    })
+    harness.emitIntent('notes')
+    await harness.services.startupReconciler!.whenIdle()
+
+    expect(harness.intentStore.get).toHaveBeenCalledWith('notes')
+    expect(ensureModuleReady).toHaveBeenCalledWith('notes')
+
+    harness.intents.set('notes', {
+      desiredInstalled: true,
+      enabled: true,
+    })
+    harness.emitIntent('notes')
+    await harness.services.startupReconciler!.whenIdle()
+    expect(harness.requestReload).toHaveBeenCalledWith('notes')
+  })
+
+  it('unions intent, device-state, and catalog module ids at startup', async () => {
+    const harness = createHarness()
+    harness.intents.clear()
+    harness.intentStore.listModuleIds.mockResolvedValue(['intent-only'])
+    await harness.deviceStateStore.write({
+      moduleId: 'device-only',
+      platform: 'desktop',
+      activeVersion: null,
+      downloadedCandidate: null,
+      pendingVersion: null,
+      readyVersions: {},
+      transition: null,
+    })
+
+    await harness.services.startupReconciler!.start()
+
+    expect(
+      harness.intentStore.get.mock.calls
+        .map(([moduleId]) => moduleId)
+        .slice(0, 3),
+    ).toEqual(['device-only', 'intent-only', 'learning'])
+  })
+
+  it('starts a local active module when an uncached catalog load fails', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    const installed = (await harness.deviceStateStore.read('learning'))!
+    await harness.deviceStateStore.write({
+      ...installed,
+      activeVersion: '1.2.3',
+      downloadedCandidate: null,
+    })
+    harness.intents.set('catalog-only', {
+      desiredInstalled: true,
+      enabled: true,
+    })
+    await flushPromises()
+    harness.cacheAdapter.textFiles.clear()
+    harness.cacheAdapter.folders.clear()
+    harness.catalogRequest.mockResolvedValue(response('', 503))
+    expect(
+      await harness.cacheAdapter.stat(OFFICIAL_MODULE_CATALOG_CACHE_PATH),
+    ).toBeNull()
+
+    await harness.services.startupReconciler!.start()
+
+    expect(harness.activationRuntime.activate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'learning' }),
+      '1.2.3',
+      expect.any(AbortSignal),
+    )
+    expect(harness.reportStartupError.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          expect.objectContaining({
+            message: 'Official module catalog is unavailable',
+          }),
+        ],
+        [
+          expect.objectContaining({
+            message: expect.stringContaining(
+              'has no resolved installation candidate',
+            ),
+          }),
+          'catalog-only',
+        ],
+      ]),
+    )
+  })
+
+  it('recovers a disabled transition when an uncached catalog load fails', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    const candidate = await harness.services.getTransitionCandidate('learning')
+    await harness.services.prepareConfirmedTransition(candidate!)
+    harness.intents.set('learning', {
+      desiredInstalled: true,
+      enabled: false,
+    })
+    await flushPromises()
+    harness.cacheAdapter.textFiles.clear()
+    harness.cacheAdapter.folders.clear()
+    harness.catalogRequest.mockResolvedValue(response('', 503))
+    expect(
+      await harness.cacheAdapter.stat(OFFICIAL_MODULE_CATALOG_CACHE_PATH),
+    ).toBeNull()
+
+    await harness.services.startupReconciler!.start()
+
+    expect(harness.activationRuntime.activate).not.toHaveBeenCalled()
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      activeVersion: null,
+      downloadedCandidate: '1.2.3',
+      pendingVersion: null,
+      transition: null,
+    })
+  })
+
+  it('settles startup without runtime execution when installed intent is disabled', async () => {
+    const harness = createHarness()
+    harness.intents.set('learning', {
+      desiredInstalled: true,
+      enabled: false,
+    })
+    const activatePersistedModules = jest.spyOn(
+      harness.services.activationCoordinator,
+      'activatePersistedModules',
+    )
+
+    await harness.services.startupReconciler!.start()
+
+    expect(activatePersistedModules).toHaveBeenCalledTimes(1)
+    expect(harness.activationRuntime.activate).not.toHaveBeenCalled()
+  })
+
+  it('removes stale active state when the current runtime is quiescent', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    const installed = (await harness.deviceStateStore.read('learning'))!
+    await harness.deviceStateStore.write({
+      ...installed,
+      activeVersion: '1.2.3',
+      downloadedCandidate: null,
+    })
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+
+    await harness.services.startupReconciler!.start()
+
+    expect(harness.reportStartupError).not.toHaveBeenCalled()
+    expect(await harness.deviceStateStore.read('learning')).toBeNull()
+    expect(harness.authorizeArtifactRemoval).toHaveBeenCalledWith('learning', [
+      '1.2.3',
+    ])
+  })
+
+  it('does not uninstall while a transition is still unresolved', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    const candidate = await harness.services.getTransitionCandidate('learning')
+    await harness.services.prepareConfirmedTransition(candidate!)
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+
+    await harness.services.startupReconciler!.start()
+
+    expect(harness.reportStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('active transition'),
+      }),
+      'learning',
+    )
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      activeVersion: null,
+      transition: expect.any(Object),
+    })
+    expect(harness.activationRuntime.activate).not.toHaveBeenCalled()
+    expect(harness.authorizeArtifactRemoval).not.toHaveBeenCalled()
+  })
+
+  it('does not schedule safe uninstall without an uninstall coordinator', async () => {
+    const harness = createHarness({ authorizeArtifactRemoval: null })
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+
+    await harness.services.startupReconciler!.start()
+
+    expect(await harness.deviceStateStore.read('learning')).not.toBeNull()
+    expect(harness.reportStartupError).not.toHaveBeenCalled()
+  })
+
+  it('disposes the startup owner before its dependent services', async () => {
+    const harness = createHarness()
+    await harness.services.startupReconciler!.start()
+    const startupDispose = jest.spyOn(
+      harness.services.startupReconciler!,
+      'dispose',
+    )
+    const readinessDispose = jest.spyOn(
+      ModuleReadinessReconciler.prototype,
+      'dispose',
+    )
+    const activationDispose = jest.spyOn(
+      harness.services.activationCoordinator,
+      'dispose',
+    )
+
+    harness.services.dispose()
+
+    expect(harness.intentListenerCount()).toBe(0)
+    expect(startupDispose.mock.invocationCallOrder[0]).toBeLessThan(
+      readinessDispose.mock.invocationCallOrder[0],
+    )
+    expect(startupDispose.mock.invocationCallOrder[0]).toBeLessThan(
+      activationDispose.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('fails closed by not exposing uninstall without a product policy', () => {
+    const harness = createHarness({ authorizeArtifactRemoval: null })
+
+    expect(harness.services.uninstallCoordinator).toBeNull()
+  })
+
+  it('rejects uninstall composition without an intent store', () => {
+    expect(() => createHarness({ intentStore: null })).toThrow(
+      'Production module services options are invalid',
+    )
+  })
+
+  it('removes inactive artifacts only after intent is false, then refreshes', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+
+    await harness.services.uninstallCoordinator!.uninstall('learning')
+
+    expect(harness.authorizeArtifactRemoval).toHaveBeenCalledWith('learning', [
+      '1.2.3',
+    ])
+    expect(await harness.deviceStateStore.read('learning')).toBeNull()
+    expect(
+      harness.adapter.folders.has('config/plugins/yolo/modules/learning/1.2.3'),
+    ).toBe(false)
+    expect(harness.services.manager.getSnapshot().modules[0]).toMatchObject({
+      id: 'learning',
+      status: 'available',
+      desiredInstalled: false,
+    })
+  })
+
+  it('mutually excludes activation and uninstall for the same module', async () => {
+    const harness = createHarness()
+    await harness.services.manager.refresh()
+    await harness.services.readinessReconciler!.ensureModuleReady('learning')
+    const installed = (await harness.deviceStateStore.read('learning'))!
+    await harness.deviceStateStore.write({
+      ...installed,
+      activeVersion: '1.2.3',
+      downloadedCandidate: null,
+    })
+    let activationEntered!: () => void
+    const entered = new Promise<void>((resolve) => {
+      activationEntered = resolve
+    })
+    let releaseActivation!: () => void
+    const activationGate = new Promise<void>((resolve) => {
+      releaseActivation = resolve
+    })
+    harness.activationRuntime.activate.mockImplementationOnce(
+      async (definition: { id: string }, version: string) => {
+        activationEntered()
+        await activationGate
+        harness.activeVersions.set(definition.id, version)
+      },
+    )
+
+    const activation =
+      harness.services.activationCoordinator.activatePersistedModules()
+    await entered
+    harness.intents.set('learning', {
+      desiredInstalled: false,
+      enabled: false,
+    })
+
+    await expect(
+      harness.services.uninstallCoordinator!.uninstall('learning'),
+    ).rejects.toThrow('activation is pending and cannot be quiesced')
+    expect(harness.authorizeArtifactRemoval).not.toHaveBeenCalled()
+    expect(await harness.deviceStateStore.read('learning')).not.toBeNull()
+
+    releaseActivation()
+    await expect(activation).resolves.toEqual([
+      { moduleId: 'learning', status: 'activated', version: '1.2.3' },
+    ])
+  })
+
+  it('disposes owned services without disposing the external reservation', async () => {
+    const harness = createHarness()
+    const services = harness.services
+    services.dispose()
+
+    await expect(
+      services.intentCoordinator!.enable('learning'),
+    ).rejects.toThrow('coordinator is disposed')
+    await expect(
+      services.readinessReconciler!.reconcile(['learning']),
+    ).rejects.toThrow('reconciler is disposed')
+    await expect(
+      services.runtimeReservation!.activate(
+        {
+          id: 'learning',
+          activate: () => undefined,
+        },
+        '1.2.3',
+      ),
+    ).resolves.toBeUndefined()
+    expect(services.runtimeReservation).toBe(harness.runtimeReservation)
   })
 
   it('surfaces catalog errors and does not commit state after artifact errors', async () => {
@@ -458,7 +996,9 @@ describe('createProductionModuleServices', () => {
     ).rejects.toThrow('request was not successful')
     expect(await failedInstall.deviceStateStore.read('learning')).toBeNull()
     expect(
-      failedInstall.adapter.folders.has('plugin/modules/learning/1.2.3'),
+      failedInstall.adapter.folders.has(
+        'config/plugins/yolo/modules/learning/1.2.3',
+      ),
     ).toBe(false)
   })
 
@@ -864,7 +1404,7 @@ describe('createProductionModuleServices', () => {
     const dataAdapter = adapter as unknown as DataAdapter
     const store = new ModuleStore({
       adapter: dataAdapter,
-      manifest: { id: 'yolo', dir: 'plugin' },
+      manifest: { id: 'yolo', dir: 'config/plugins/yolo' },
       configDir: 'config',
     })
     const services = createProductionModuleServices({

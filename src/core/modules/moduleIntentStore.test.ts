@@ -51,7 +51,9 @@ function createBackend(
       adapter,
       rootPath: getRoot(),
     }),
+    listModuleIds: async () => [],
     subscribe: () => () => undefined,
+    subscribeAll: () => () => undefined,
   }
 }
 
@@ -211,6 +213,29 @@ describe('ModuleIntentStore', () => {
         }) as { desiredInstalled: boolean; enabled: boolean },
       ),
     ).toThrow('plain object')
+  })
+
+  it('forwards global discovery APIs and validates the listener', async () => {
+    const harness = createHarness()
+    const listener = jest.fn()
+    const dispose = jest.fn()
+    const listModuleIds = jest
+      .spyOn(harness.backend, 'listModuleIds')
+      .mockResolvedValue(['notes', 'search'])
+    const subscribeAll = jest
+      .spyOn(harness.backend, 'subscribeAll')
+      .mockReturnValue(dispose)
+
+    await expect(harness.store.listModuleIds()).resolves.toEqual([
+      'notes',
+      'search',
+    ])
+    expect(harness.store.subscribeAll(listener)).toBe(dispose)
+    expect(listModuleIds).toHaveBeenCalledTimes(1)
+    expect(subscribeAll).toHaveBeenCalledWith(listener)
+    expect(() => harness.store.subscribeAll(null as never)).toThrow(
+      'must be a function',
+    )
   })
 
   it('serializes the same module across store instances', async () => {

@@ -3,8 +3,10 @@ jest.mock('obsidian', () => ({ ItemView: class {} }))
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 
 import { CoreModuleHostCapabilityProvider } from './hostCapabilities'
+import { ModuleConfigCapabilityProvider } from './moduleConfig'
 import type { ModuleContributionRegistrar } from './moduleRuntime'
 import { ModuleRuntime } from './moduleRuntime'
+import { YOLO_HOST_API_VERSION } from './officialModuleCompatibilityProvider'
 import type { YoloModuleDefinition } from './types'
 
 const createRuntime = (
@@ -102,6 +104,181 @@ describe('ModuleRuntime', () => {
     await expect(moduleAssets.readText('theme.css')).resolves.toBe('body {}')
     runtime.dispose()
   })
+
+  it('bridges the 1.1 manifest contract to a version-1 host and runs whenActive after real config activation', async () => {
+    const calls: string[] = []
+    const cleanup = jest.fn()
+    const commit = jest.fn(() => calls.push('commit'))
+    const config = new ModuleConfigCapabilityProvider<{ enabled: boolean }>({
+      createBackend: () => ({
+        read: async () => ({ schemaVersion: 1, data: { enabled: true } }),
+        write: async (next) => next,
+        subscribe: () => () => undefined,
+      }),
+    })
+    const runtime = new ModuleRuntime(
+      { commit },
+      new CoreModuleHostCapabilityProvider({
+        backgroundActivities: new BackgroundActivityRegistry(),
+        config,
+      }),
+    )
+
+    await runtime.activate({
+      id: 'config-timing',
+      activate: (host) => {
+        expect(YOLO_HOST_API_VERSION).toBe('1.1.0')
+        expect(host.version).toBe(1)
+        expect(typeof host.lifecycle.whenActive).toBe('function')
+        expect(() => host.config.getSnapshot()).toThrow('config is unavailable')
+        host.lifecycle.whenActive(async () => {
+          calls.push('first')
+          expect(host.config.getSnapshot()).toEqual({
+            schemaVersion: 1,
+            data: { enabled: true },
+          })
+          await Promise.resolve()
+          host.lifecycle.add(cleanup)
+        })
+        host.lifecycle.whenActive(() => {
+          calls.push('second')
+        })
+      },
+    })
+
+    expect(calls).toEqual(['first', 'second', 'commit'])
+    runtime.dispose()
+    expect(cleanup).toHaveBeenCalledTimes(1)
+  })
+
+  it('rolls back capabilities and all declarations when a whenActive callback fails', async () => {
+    const callbackCleanup = jest.fn()
+    const unsubscribeConfig = jest.fn()
+    const commit = jest.fn()
+    const upsertAll = jest.fn()
+    const remove = jest.fn()
+    const config = new ModuleConfigCapabilityProvider({
+      createBackend: () => ({
+        read: async () => ({ schemaVersion: 1, data: { ready: true } }),
+        write: async (next) => next,
+        subscribe: () => unsubscribeConfig,
+      }),
+    })
+    let injectedConfig!: Parameters<
+      Parameters<ModuleRuntime['activate']>[0]['activate']
+    >[0]['config']
+    const runtime = new ModuleRuntime(
+      { commit },
+      new CoreModuleHostCapabilityProvider({
+        backgroundActivities: {
+          upsert: jest.fn(),
+          upsertAll,
+          remove,
+        },
+        config,
+      }),
+    )
+
+    await expect(
+      runtime.activate({
+        id: 'failed-when-active',
+        activate: (host) => {
+          injectedConfig = host.config
+          host.workspace.registerView({
+            type: 'failed-when-active-view',
+            name: 'Failed hook',
+            icon: 'x',
+            render: () => null,
+          })
+          host.workspace.registerCommand({
+            id: 'failed-hook-command',
+            name: 'Failed hook command',
+            callback: () => undefined,
+          })
+          host.background.upsert({
+            id: 'failed-hook-background',
+            title: 'Failed hook background',
+            status: 'waiting',
+          })
+          host.lifecycle.whenActive(() => {
+            expect(host.config.getSnapshot()).toEqual({
+              schemaVersion: 1,
+              data: { ready: true },
+            })
+            host.lifecycle.add(callbackCleanup)
+          })
+          host.lifecycle.whenActive(() => {
+            throw new Error('post-capability initialization failed')
+          })
+        },
+      }),
+    ).rejects.toThrow('post-capability initialization failed')
+
+    expect(runtime.isActive('failed-when-active')).toBe(false)
+    expect(commit).not.toHaveBeenCalled()
+    expect(upsertAll).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    expect(callbackCleanup).toHaveBeenCalledTimes(1)
+    expect(unsubscribeConfig).toHaveBeenCalledTimes(1)
+    expect(() => injectedConfig.getSnapshot()).toThrow('config is unavailable')
+    await expect(
+      runtime.activate({ id: 'isolated-module', activate: () => undefined }),
+    ).resolves.toBeUndefined()
+    expect(commit).toHaveBeenCalledTimes(1)
+    runtime.dispose()
+  })
+
+  it.each(['abort', 'dispose'] as const)(
+    'does not resume or commit when %s races a pending whenActive callback',
+    async (interruption) => {
+      const commit = jest.fn()
+      const cleanup = jest.fn()
+      const laterCallback = jest.fn()
+      const controller = new AbortController()
+      let releaseCallback!: () => void
+      const callbackBlocked = new Promise<void>((resolve) => {
+        releaseCallback = resolve
+      })
+      let markCallbackStarted!: () => void
+      const callbackStarted = new Promise<void>((resolve) => {
+        markCallbackStarted = resolve
+      })
+      const runtime = createRuntime({ commit })
+      const activation = runtime.activate(
+        {
+          id: `when-active-${interruption}`,
+          activate: (host) => {
+            host.lifecycle.whenActive(async () => {
+              host.lifecycle.add(cleanup)
+              markCallbackStarted()
+              await callbackBlocked
+            })
+            host.lifecycle.whenActive(laterCallback)
+          },
+        },
+        '1.0.0',
+        controller.signal,
+      )
+      await callbackStarted
+
+      if (interruption === 'abort') controller.abort()
+      else runtime.dispose()
+
+      await expect(activation).rejects.toThrow(
+        'disposed during whenActive callbacks',
+      )
+      expect(cleanup).toHaveBeenCalledTimes(1)
+      expect(laterCallback).not.toHaveBeenCalled()
+      expect(commit).not.toHaveBeenCalled()
+      expect(runtime.isActive(`when-active-${interruption}`)).toBe(false)
+
+      releaseCallback()
+      await Promise.resolve()
+      expect(cleanup).toHaveBeenCalledTimes(1)
+      expect(laterCallback).not.toHaveBeenCalled()
+      runtime.dispose()
+    },
+  )
 
   it('defers publication and activates capabilities before command callbacks', async () => {
     let configActive = false

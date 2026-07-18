@@ -16,6 +16,7 @@ class MemoryAdapter {
   readonly folders = new Set<string>()
   readonly writes: string[] = []
   writeHook?: (path: string, data: string) => Promise<void>
+  createHook?: (path: string, data: string) => Promise<void>
 
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.folders.has(path)
@@ -37,6 +38,12 @@ class MemoryAdapter {
     else this.files.set(path, data)
   }
 
+  async create(path: string, data: string): Promise<void> {
+    if (this.createHook) return this.createHook(path, data)
+    if (this.files.has(path)) throw new Error(`File already exists: ${path}`)
+    this.files.set(path, data)
+  }
+
   async remove(path: string): Promise<void> {
     this.files.delete(path)
   }
@@ -49,6 +56,11 @@ class VaultEvents {
   readonly removed: EventRef[] = []
 
   constructor(readonly adapter: DataAdapter) {}
+
+  async create(path: string, data: string): Promise<{ path: string }> {
+    await (this.adapter as unknown as MemoryAdapter).create(path, data)
+    return { path }
+  }
 
   on(event: VaultEvent, handler: EventHandler): EventRef {
     const ref = { id: ++this.nextRef } as unknown as EventRef
@@ -152,6 +164,75 @@ describe('createObsidianModuleConfigBackendFactory', () => {
       'One/.yolo_json_db/module-settings/notes.json',
       'Two/.yolo_json_db/module-settings/notes.json',
     ])
+  })
+
+  it('creates config only when truly absent', async () => {
+    const harness = createHarness()
+    const factory = createObsidianModuleConfigBackendFactory({
+      app: { vault: harness.vault as unknown as Vault } as App,
+      getSettings: () => ({ yolo: { baseDir: 'YOLO' } }),
+      subscribeSettingsChange: () => () => undefined,
+    })
+    const first = {
+      schemaVersion: 0,
+      data: { enabled: true },
+    }
+
+    await expect(factory.createIfAbsent('notes', first)).resolves.toBe(
+      'created',
+    )
+
+    await expect(
+      factory.createIfAbsent('notes', {
+        schemaVersion: 1,
+        data: { enabled: false },
+      }),
+    ).resolves.toBe('already-present')
+    await expect(factory('notes').read()).resolves.toEqual(first)
+  })
+
+  it('captures the active base directory before create-if-absent yields', async () => {
+    const harness = createHarness('Old')
+    const factory = createObsidianModuleConfigBackendFactory({
+      app: { vault: harness.vault as unknown as Vault } as App,
+      getSettings: () =>
+        ({ yolo: { baseDir: currentBaseDir } }) as ObsidianModuleConfigSettings,
+      subscribeSettingsChange: () => () => undefined,
+    })
+    let currentBaseDir = 'Old'
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let started!: () => void
+    const createStarted = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    harness.adapter.createHook = async (path, data) => {
+      started()
+      await blocked
+      harness.adapter.files.set(path, data)
+    }
+
+    const pending = factory.createIfAbsent('learning', {
+      schemaVersion: 0,
+      data: { enabled: true },
+    })
+    await createStarted
+    currentBaseDir = 'New'
+    release()
+
+    await expect(pending).resolves.toBe('created')
+    expect(
+      harness.adapter.files.has(
+        'Old/.yolo_json_db/module-settings/learning.json',
+      ),
+    ).toBe(true)
+    expect(
+      harness.adapter.files.has(
+        'New/.yolo_json_db/module-settings/learning.json',
+      ),
+    ).toBe(false)
   })
 
   it('returns the snapshot persisted under the root captured for the write', async () => {

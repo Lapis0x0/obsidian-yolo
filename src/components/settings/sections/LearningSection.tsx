@@ -2,13 +2,42 @@ import { useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modules/moduleSettingsContributions'
 import {
   ObsidianDropdown,
   type ObsidianDropdownOptionGroup,
 } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 
-export function LearningSection() {
+import { ModuleSettingsSection } from './ModuleSettingsSection'
+
+export function LearningSection({
+  moduleSettings = [],
+  handoffState = 'ready',
+  retryHandoff,
+}: {
+  moduleSettings?: readonly RegisteredModuleSettingsContributionV1[]
+  handoffState?: 'pending' | 'ready' | 'failed'
+  retryHandoff?: () => Promise<void>
+}) {
+  if (moduleSettings.length > 0) {
+    return <ModuleSettingsSection registrations={moduleSettings} />
+  }
+  return (
+    <LegacyLearningSection
+      handoffState={handoffState}
+      retryHandoff={retryHandoff}
+    />
+  )
+}
+
+function LegacyLearningSection({
+  handoffState,
+  retryHandoff,
+}: {
+  handoffState: 'pending' | 'ready' | 'failed'
+  retryHandoff?: () => Promise<void>
+}) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const modelGroups = useMemo(() => {
@@ -38,6 +67,7 @@ export function LearningSection() {
   }, [settings.chatModels, settings.providers])
 
   const updateModel = (modelId: string) => {
+    if (handoffState !== 'ready') return
     void (async () => {
       try {
         await setSettings({
@@ -55,6 +85,24 @@ export function LearningSection() {
 
   return (
     <div className="yolo-settings-section">
+      {handoffState !== 'ready' ? (
+        <div className="yolo-module-settings-error" role="alert">
+          <span>
+            {handoffState === 'pending'
+              ? 'Learning settings handoff is still in progress. Settings are read-only.'
+              : 'Learning settings handoff could not be confirmed. Settings are read-only to prevent divergent copies.'}
+          </span>
+          {handoffState === 'failed' && retryHandoff ? (
+            <button
+              type="button"
+              className="yolo-module-card-retry"
+              onClick={() => void retryHandoff().catch(() => undefined)}
+            >
+              Retry handoff
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <section className="yolo-models-block">
         <div className="yolo-models-block-head">
           <div className="yolo-models-block-head-title-row">
@@ -73,6 +121,7 @@ export function LearningSection() {
             <ObsidianDropdown
               value={settings.learningOptions.modelId}
               groupedOptions={modelGroups}
+              disabled={handoffState !== 'ready'}
               onChange={updateModel}
             />
           </ObsidianSetting>

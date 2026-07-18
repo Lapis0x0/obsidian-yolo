@@ -22,6 +22,13 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 /** Owns a module's synchronous resources and releases them in reverse order. */
 export class ModuleLifecycleScope implements YoloModuleLifecycle {
   private disposers: ModuleDisposer[] = []
+  private activeCallbacks: Array<() => void | Promise<void>> = []
+  private activeCallbackState:
+    | 'registering'
+    | 'ready'
+    | 'running'
+    | 'complete'
+    | 'failed' = 'registering'
   private disposed = false
 
   add(disposer: ModuleDisposer): void {
@@ -32,6 +39,59 @@ export class ModuleLifecycleScope implements YoloModuleLifecycle {
       throw new TypeError('Module disposer must be a function')
     }
     this.disposers.push(disposer)
+  }
+
+  whenActive(callback: () => void | Promise<void>): void {
+    if (this.disposed || this.activeCallbackState !== 'registering') {
+      throw new Error(
+        'Module lifecycle whenActive callbacks can only be registered during module activation',
+      )
+    }
+    if (typeof callback !== 'function') {
+      throw new TypeError(
+        'Module lifecycle whenActive callback must be a function',
+      )
+    }
+    this.activeCallbacks.push(callback)
+  }
+
+  closeWhenActiveRegistration(): void {
+    if (this.disposed || this.activeCallbackState !== 'registering') {
+      throw new Error(
+        'Module lifecycle whenActive registration is already closed',
+      )
+    }
+    this.activeCallbackState = 'ready'
+  }
+
+  async runWhenActiveCallbacks(isCancelled: () => boolean): Promise<void> {
+    if (this.disposed || this.activeCallbackState !== 'ready') {
+      throw new Error(
+        'Module lifecycle whenActive callbacks cannot be activated',
+      )
+    }
+    this.activeCallbackState = 'running'
+    try {
+      for (const callback of this.activeCallbacks) {
+        if (this.disposed || isCancelled()) {
+          throw new Error(
+            'Module lifecycle whenActive activation was cancelled',
+          )
+        }
+        await callback()
+        if (this.disposed || isCancelled()) {
+          throw new Error(
+            'Module lifecycle whenActive activation was cancelled',
+          )
+        }
+      }
+      this.activeCallbackState = 'complete'
+      this.activeCallbacks = []
+    } catch (error) {
+      this.activeCallbackState = 'failed'
+      this.activeCallbacks = []
+      throw error
+    }
   }
 
   activate(activation: (lifecycle: YoloModuleLifecycle) => void): void {
@@ -54,6 +114,7 @@ export class ModuleLifecycleScope implements YoloModuleLifecycle {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.activeCallbacks = []
     const errors = this.releaseFrom(0)
     if (errors.length > 0) {
       throw new ModuleCleanupError(

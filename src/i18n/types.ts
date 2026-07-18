@@ -194,8 +194,10 @@ export type TranslationKeys = {
       refreshing: string
       loading: string
       loadError: string
+      settingsSaveError: string
       catalogError: string
       installedError: string
+      intentError: string
       empty: string
       installed: string
       installedDescription: string
@@ -230,6 +232,44 @@ export type TranslationKeys = {
       reloadError: string
       readyToApplyDetail: string
       activationPendingDetail: string
+      intentLabel: string
+      intentUnknown: string
+      intentInstalledEnabled: string
+      intentInstalledDisabled: string
+      intentUninstalled: string
+      readinessLabel: string
+      readiness: {
+        notInstalled: string
+        pending: string
+        ready: string
+        failed: string
+      }
+      incompatibleReason: string
+      retry: string
+      actionReloadSuccess: string
+      actionError: string
+      actionSuccess: {
+        install: string
+        enable: string
+        disable: string
+        uninstall: string
+      }
+      actions: {
+        install: string
+        installBusy: string
+        enable: string
+        enableBusy: string
+        disable: string
+        disableBusy: string
+        uninstall: string
+        uninstallBusy: string
+      }
+      confirmProduct: {
+        installTitle: string
+        installMessage: string
+        uninstallTitle: string
+        uninstallMessage: string
+      }
       statuses: {
         available: string
         installed: string

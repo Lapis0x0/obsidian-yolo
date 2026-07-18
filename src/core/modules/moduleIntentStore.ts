@@ -17,7 +17,9 @@ export type ModuleIntent = Readonly<{
 
 export type ModuleIntentBackend = Readonly<{
   capture(): SynchronizedModuleSettingsBackend
+  listModuleIds(): Promise<readonly string[]>
   subscribe(moduleId: string, listener: () => void): ModuleDisposer
+  subscribeAll(listener: (moduleId: string) => void): ModuleDisposer
 }>
 
 type IntentData = Record<string, unknown> & ModuleIntent
@@ -105,6 +107,17 @@ export class ModuleIntentStore {
       throw new TypeError('Module intent listener must be a function')
     }
     return this.backend.subscribe(moduleId, listener)
+  }
+
+  listModuleIds(): Promise<readonly string[]> {
+    return this.backend.listModuleIds()
+  }
+
+  subscribeAll(listener: (moduleId: string) => void): ModuleDisposer {
+    if (typeof listener !== 'function') {
+      throw new TypeError('Module intent listener must be a function')
+    }
+    return this.backend.subscribeAll(listener)
   }
 }
 
