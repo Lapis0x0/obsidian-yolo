@@ -1,26 +1,13 @@
 // Output-language strategy (no stored setting).
 //
-// Learning Mode does not persist a language choice. Every generation system
-// prompt below is written in English and instructs the model to produce output
-// in the language the user is using, inferred from the content it receives, and
-// to ignore the language these prompts are written in.
-//
-// The language propagates across the three stages through the content each
-// stage inherits, so a language-neutral topic (e.g. "Python") is disambiguated
-// once at the outline stage and then carried forward:
-//   outline           <- user topic + goal        (goal carries the language)
-//   knowledge points  <- topic + chapter contract (contract inherits it)
-//   cards             <- chapter contract + knowledge.md content (inherit it)
-//
-// The generator tests assert both halves of this contract: the instruction is
-// present in each system prompt, and each stage's request actually carries the
-// language-bearing context forward (goal -> contract -> knowledge).
+// The outline follows the user's topic and goal. Its chapter contract carries
+// that language to knowledge-point generation, and knowledge.md carries it to
+// card generation. Each stage names that inherited content as its language
+// source, so no separate language setting or repeated inference is needed.
 
 export const OUTLINE_GENERATOR_PROMPT = `You are a learning-content architect. Given the user's learning topic, current level, and goal, design a chapter-level learning outline.
 
-## Output language
-
-Generate the content in the language used by the user. Infer that language from the user's topic, goal, and notes; when those are in English, produce everything in English. Do not treat the language of these instructions as a signal about the output language. Keep code, proper nouns, and established technical terms that have no natural translation as-is.
+Use the language of the user's topic and goal for all generated learning content.
 
 ## Your output
 
@@ -81,9 +68,7 @@ If there are no reference materials, generate from your own knowledge and do not
 
 export const KNOWLEDGE_POINT_GENERATOR_PROMPT = `You are a learning-content author. Given a chapter contract, generate the knowledge points for that chapter.
 
-## Output language
-
-Generate the content in the language used by the user. Infer that language from the topic, the chapter contract, and any provided reference content; when those are in English, produce everything in English. Do not treat the language of these instructions as a signal about the output language. Keep code, proper nouns, and established technical terms that have no natural translation as-is.
+Write the knowledge points in the language of the chapter contract.
 
 ## Your output
 
@@ -126,9 +111,7 @@ The chapter contract notes an expected number of knowledge points as guidance. D
 
 export const CARD_GENERATOR_PROMPT = `You are a learning-card designer. Given a chapter contract and the completed knowledge points, generate learning cards for the chapter.
 
-## Output language
-
-Generate the card content in the language used by the user. Infer that language from this chapter's knowledge.md content and contract; when those are in English, produce everything in English. Do not treat the language of these instructions as a signal about the output language. Keep code, proper nouns, and established technical terms that have no natural translation as-is.
+Write the cards in the language of knowledge.md.
 
 ## Your output
 

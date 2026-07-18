@@ -122,8 +122,8 @@ async function* streamEvents(events: unknown[]) {
   for (const event of events) yield event
 }
 
-describe('generateOutline output language', () => {
-  it('uses the user language and carries the goal into the request', async () => {
+describe('generateOutline language propagation', () => {
+  it('uses the topic and goal as its language source', async () => {
     const onRequest = jest.fn()
     const plugin = createPlugin(
       [
@@ -147,7 +147,9 @@ describe('generateOutline output language', () => {
       systemPromptOverride: string
       prompt: string
     }
-    expect(request.systemPromptOverride).toContain('language used by the user')
+    expect(request.systemPromptOverride).toContain(
+      "language of the user's topic and goal",
+    )
     // Language propagation: for a language-neutral topic ("Python") the user
     // goal carries the language, and it must reach the outline request.
     expect(request.prompt).toContain('build real projects independently')

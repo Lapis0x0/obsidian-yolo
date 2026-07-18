@@ -279,8 +279,8 @@ C`)
   })
 })
 
-describe('generateCardsForChapter output language', () => {
-  it('uses the user language and inherits it via contract and knowledge', async () => {
+describe('generateCardsForChapter language propagation', () => {
+  it('inherits the language from knowledge.md', async () => {
     const knowledgePath = 'project/chapter/knowledge.md'
     const cardsPath = 'project/chapter/cards.md'
     const knowledgeFile = Object.assign(new TFile(), { path: knowledgePath })
@@ -339,9 +339,9 @@ describe('generateCardsForChapter output language', () => {
     // The card stage sends its prompt as a user message rather than a
     // top-level prompt field, so inspect the serialized request.
     const serialized = JSON.stringify(call)
-    expect(request.systemPromptOverride).toContain('language used by the user')
-    // Language propagation: both the chapter contract and the knowledge.md
-    // content (in the user's language) must reach the card request.
+    expect(request.systemPromptOverride).toContain('language of knowledge.md')
+    // The contract still provides content boundaries, while knowledge.md is
+    // the authoritative language source for card content.
     expect(serialized).toContain('contract text carries the language')
     expect(serialized).toContain('knowledge body carries the language')
   })
