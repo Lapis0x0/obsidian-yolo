@@ -499,21 +499,25 @@ export function validateWrittenCards(
       invalid.push({
         cardUuid,
         block: matches[0]?.block ?? '',
-        errors: [matches.length === 0 ? '缺少该 card UUID' : 'card UUID 重复'],
+        errors: [
+          matches.length === 0
+            ? 'missing this card UUID'
+            : 'duplicate card UUID',
+        ],
       })
       continue
     }
 
     const entry = matches[0]
     const errors: string[] = []
-    if (!entry.title) errors.push('缺少标题')
+    if (!entry.title) errors.push('missing title')
     if (!entry.kpUuid) {
-      errors.push('缺少 kp UUID')
+      errors.push('missing kp UUID')
     } else if (!validKpUuids.has(entry.kpUuid)) {
-      errors.push(`kp:${entry.kpUuid} 不属于本章`)
+      errors.push(`kp:${entry.kpUuid} does not belong to this chapter`)
     }
-    if (!entry.front) errors.push('分隔线前缺少正面内容')
-    if (!entry.back) errors.push('分隔线后缺少背面内容')
+    if (!entry.front) errors.push('missing front content before the separator')
+    if (!entry.back) errors.push('missing back content after the separator')
     if (errors.length > 0) {
       invalid.push({ cardUuid, block: entry.block, errors })
     } else {
@@ -586,26 +590,26 @@ function buildValidationRetryPrompt(
 ): string {
   const details = invalid
     .map(
-      (entry) => `card UUID：${entry.cardUuid}
-问题：${entry.errors.join('；')}
-当前原文：
-${entry.block || '<该 UUID 已从文件中消失>'}`,
+      (entry) => `card UUID: ${entry.cardUuid}
+Problem: ${entry.errors.join('; ')}
+Current text:
+${entry.block || '<this UUID has disappeared from the file>'}`,
     )
     .join('\n\n')
 
-  return `cards.md 已写入以下路径：${cardsPath}
+  return `cards.md has been written to: ${cardsPath}
 
-以下卡片格式不正确，请使用 fs_edit 逐个精确修正：
+The following cards are incorrectly formatted; use fs_edit to fix each one precisely:
 
 ${details}
 
-本章合法的知识点 UUID：${[...validKpUuids].join(', ')}
+Valid knowledge-point UUIDs for this chapter: ${[...validKpUuids].join(', ')}
 
-只允许修改上述有问题的卡片，不要重写整个文件，也不要新增卡片。
-每张卡片必须保留现有 card UUID，标题行的最终格式必须是：
-## <卡片标题> <!--card:<现有card UUID> kp:<合法的知识点UUID>-->
+Only modify the problematic cards above; do not rewrite the whole file, and do not add new cards.
+Each card must keep its existing card UUID, and the final format of the title line must be:
+## <card title> <!--card:<existing card UUID> kp:<valid knowledge point UUID>-->
 
-正面和背面之间必须有且只有一个独占一行的 ---，正文不得再包含独占一行的 ---。修正完成后不要再输出卡片正文。`
+Between the front and the back there must be exactly one line containing only ---, and the body must not contain another line consisting solely of ---. After fixing, do not output card bodies again.`
 }
 
 async function assertKnowledgeUnchanged(
@@ -647,7 +651,7 @@ async function createCardsFile(
 
 function buildCardsContent(chapterTitle: string, blocks: string[]): string {
   const yaml = dumpYaml(
-    { title: `${chapterTitle} - 卡片` },
+    { title: chapterTitle.trim() },
     { lineWidth: -1 },
   ).trimEnd()
   return `---\n${yaml}\n---\n\n${blocks.join('\n\n')}\n`

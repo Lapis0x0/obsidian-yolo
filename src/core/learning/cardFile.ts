@@ -896,7 +896,7 @@ function detectCardFileMode(content: string): CardFileMode {
 
 function buildCardsContent(chapterTitle: string): string {
   const yaml = dumpYaml(
-    { title: `${chapterTitle.trim()} - 卡片` },
+    { title: chapterTitle.trim() },
     { lineWidth: -1 },
   ).trimEnd()
   return `---\n${yaml}\n---\n`

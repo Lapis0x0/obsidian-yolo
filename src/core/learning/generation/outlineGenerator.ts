@@ -132,21 +132,21 @@ function buildOutlinePrompt({
 }): string {
   const refSection =
     referenceFiles && referenceFiles.length > 0
-      ? `\n参考资料（请用 fs_read 读取以下文件，路径已给出）：\n${referenceFiles.map((f) => `- ${f.name}（路径：${f.vaultPath}）`).join('\n')}`
+      ? `\nReference materials (use fs_read to read the following files; paths are given):\n${referenceFiles.map((f) => `- ${f.name} (path: ${f.vaultPath})`).join('\n')}`
       : ''
 
-  return `请为以下学习需求生成大纲：
+  return `Generate an outline for the following learning request:
 
-主题：${topic}
-当前水平：${level}
-学习目标：${goal}
+Topic: ${topic}
+Current level: ${level}
+Learning goal: ${goal}
 ${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.trim()
 }
 
 function parseOutline(text: string): Outline {
   const parsed = parseJsonObject(text)
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error('大纲生成结果不是 JSON 对象')
+    throw new Error('Outline generation result is not a JSON object')
   }
 
   const record = parsed as Record<string, unknown>
@@ -161,13 +161,13 @@ function parseOutline(text: string): Outline {
       : 0
 
   if (!projectName) {
-    throw new Error('大纲生成结果缺少 projectName')
+    throw new Error('Outline generation result is missing projectName')
   }
   if (!projectGoal) {
-    throw new Error('大纲生成结果缺少 projectGoal')
+    throw new Error('Outline generation result is missing projectGoal')
   }
   if (chapters.length === 0) {
-    throw new Error('大纲生成结果中没有可用章节')
+    throw new Error('Outline generation result has no usable chapters')
   }
 
   return { projectName, projectGoal, chapters, estimatedKnowledgePoints }
@@ -287,14 +287,14 @@ function parseJsonObject(text: string): unknown {
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) {
       throw new Error(
-        `无法解析大纲 JSON（未找到 JSON 对象）。原始文本前 500 字符：\n${text.slice(0, 500)}`,
+        `Cannot parse outline JSON (no JSON object found). First 500 characters of the raw text:\n${text.slice(0, 500)}`,
       )
     }
     try {
       return JSON.parse(match[0])
     } catch (e) {
       throw new Error(
-        `无法解析大纲 JSON：${e instanceof Error ? e.message : String(e)}。提取的 JSON 片段前 500 字符：\n${match[0].slice(0, 500)}`,
+        `Cannot parse outline JSON: ${e instanceof Error ? e.message : String(e)}. First 500 characters of the extracted JSON fragment:\n${match[0].slice(0, 500)}`,
       )
     }
   }

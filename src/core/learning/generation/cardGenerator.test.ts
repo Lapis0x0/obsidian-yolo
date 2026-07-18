@@ -176,6 +176,7 @@ describe('generateCardsForChapter streaming', () => {
         cardUuid: result.cards[0]?.cardUuid,
       })
       const written = contents.get(cardsPath) ?? ''
+      expect(written).toMatch(/^---\ntitle: Chapter\n---/)
       expect(written).toContain(
         `<!--card:${result.cards[0]?.cardUuid} kp:aaaaaaaa-->`,
       )
@@ -226,9 +227,9 @@ title: 测试
 
     expect(result.valid).toHaveLength(0)
     expect(result.invalid[0]?.errors).toEqual([
-      '缺少标题',
-      '分隔线前缺少正面内容',
-      '分隔线后缺少背面内容',
+      'missing title',
+      'missing front content before the separator',
+      'missing back content after the separator',
     ])
   })
 
@@ -267,13 +268,81 @@ C`)
     expect(result.invalid).toEqual([
       expect.objectContaining({
         cardUuid: '11111111',
-        errors: ['card UUID 重复'],
+        errors: ['duplicate card UUID'],
       }),
       expect.objectContaining({
         cardUuid: '22222222',
-        errors: ['缺少该 card UUID'],
+        errors: ['missing this card UUID'],
       }),
     ])
     expect(result.discardedCount).toBe(3)
+  })
+})
+
+describe('generateCardsForChapter language propagation', () => {
+  it('inherits the language from knowledge.md', async () => {
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const cardsPath = 'project/chapter/cards.md'
+    const knowledgeFile = Object.assign(new TFile(), { path: knowledgePath })
+    const files = new Map<string, object>([[knowledgePath, knowledgeFile]])
+    const contents = new Map<string, string>([
+      [
+        knowledgePath,
+        '## KP <!--kp:aaaaaaaa-->\n\nknowledge body carries the language',
+      ],
+    ])
+    const stream = jest.fn(async function* () {
+      const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
+      yield { type: 'text' as const, delta: text, text }
+      yield { type: 'completed' as const, text }
+    })
+    const plugin = {
+      app: {
+        vault: {
+          getAbstractFileByPath: (path: string) => files.get(path) ?? null,
+          getMarkdownFiles: () => [],
+          read: async (file: { path: string }) => contents.get(file.path) ?? '',
+          cachedRead: async (file: { path: string }) =>
+            contents.get(file.path) ?? '',
+          create: async (path: string, content: string) => {
+            const file = Object.assign(new TFile(), { path })
+            files.set(path, file)
+            contents.set(path, content)
+            return file
+          },
+          modify: async (file: { path: string }, content: string) => {
+            contents.set(file.path, content)
+          },
+        },
+      },
+      agent: { stream },
+    } as unknown as YoloPlugin
+
+    await generateCardsForChapter({
+      plugin,
+      modelId: 'learning-model',
+      chapterIndex: 0,
+      projectTopic: 'Python',
+      chapterTitle: 'Chapter',
+      chapterContract: 'contract text carries the language',
+      knowledgePath,
+      cardsPath,
+      level: 'beginner',
+      usedCardUuids: new Set(),
+      runId: 'run-1',
+      projectId: 'project-1',
+      chapterId: 'chapter-1',
+    })
+
+    const call = (stream.mock.calls as unknown[][])[0]?.[0]
+    const request = call as { systemPromptOverride: string }
+    // The card stage sends its prompt as a user message rather than a
+    // top-level prompt field, so inspect the serialized request.
+    const serialized = JSON.stringify(call)
+    expect(request.systemPromptOverride).toContain('language of knowledge.md')
+    // The contract still provides content boundaries, while knowledge.md is
+    // the authoritative language source for card content.
+    expect(serialized).toContain('contract text carries the language')
+    expect(serialized).toContain('knowledge body carries the language')
   })
 })
