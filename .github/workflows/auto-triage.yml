@@ -101,11 +101,25 @@ jobs:
       - name: Restore Codex config
         if: steps.skip-label.outputs.skip != 'true'
         env:
-          YOLO_CODEX_CONFIG_TOML: ${{ secrets.YOLO_CODEX_CONFIG_TOML }}
+          YOLO_CODEX_API_KEY: ${{ secrets.YOLO_CODEX_API_KEY }}
+          YOLO_CODEX_BASE_URL: ${{ secrets.YOLO_CODEX_BASE_URL }}
         run: |
           set -euo pipefail
+          test -n "$YOLO_CODEX_API_KEY"
+          test -n "$YOLO_CODEX_BASE_URL"
           mkdir -p "$HOME/.codex"
-          printf '%s' "$YOLO_CODEX_CONFIG_TOML" > "$HOME/.codex/config.toml"
+          {
+            printf '%s\n' 'model_provider = "custom"'
+            printf '%s\n' 'disable_response_storage = true'
+            printf '%s\n' '[model_providers.custom]'
+            printf '%s\n' 'name = "custom"'
+            printf '%s\n' 'wire_api = "responses"'
+            printf '%s\n' 'requires_openai_auth = true'
+            printf 'base_url = "%s"\n' "$YOLO_CODEX_BASE_URL"
+            printf 'experimental_bearer_token = "%s"\n' "$YOLO_CODEX_API_KEY"
+            printf '%s\n' '[projects."/"]'
+            printf '%s\n' 'trust_level = "trusted"'
+          } > "$HOME/.codex/config.toml"
           chmod 600 "$HOME/.codex/config.toml"
 
       - name: Install Codex and gh
