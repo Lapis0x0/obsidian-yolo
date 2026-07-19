@@ -68,14 +68,17 @@ test('verifies draft assets before GitHub assigns canonical download URLs', asyn
       fetchImpl: fixture.fetchImpl,
     })
 
-    assert.match(metadata.manifest.url, /untagged-test/)
+    assert.equal(
+      metadata.manifest.url,
+      `${downloadBase}/${encodeURIComponent(tag)}/module.json`,
+    )
   } finally {
     await rm(fixture.directory, { recursive: true, force: true })
   }
 })
 
 test('independently verifies published release assets', async () => {
-  const fixture = await createFixture({ draft: false })
+  const fixture = await createFixture({ draft: false, draftDownloadTag: tag })
   try {
     const metadata = await verifyLearningReleaseAssets({
       repository,
@@ -289,7 +292,7 @@ async function createFixture({
   const url = (name) =>
     `${downloadBase}/${encodedTag}/${encodeURIComponent(name)}`
   const releaseUrl = (name) =>
-    `${downloadBase}/${encodeURIComponent(draftDownloadTag ?? tag)}/${encodeURIComponent(name)}`
+    `${downloadBase}/${draftDownloadTag ?? encodedTag}/${encodeURIComponent(name)}`
   const manifest = {
     schemaVersion: 1,
     id: 'learning',

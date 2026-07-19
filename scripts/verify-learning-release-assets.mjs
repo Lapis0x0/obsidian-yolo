@@ -106,11 +106,12 @@ export async function verifyLearningReleaseAssets({
       throw new Error(`Invalid or duplicate Release asset: ${asset?.name}`)
     }
     const canonicalUrl = `${downloadBase}/${encodedTag}/${encodeURIComponent(asset.name)}`
+    const publishedBrowserUrl = `${downloadBase}/${tag}/${encodeURIComponent(asset.name)}`
     if (!expectedDraft) {
-      assertEqual(
+      assertOneOf(
         asset.browser_download_url,
-        canonicalUrl,
-        `${asset.name} canonical URL`,
+        [canonicalUrl, publishedBrowserUrl],
+        `${asset.name} published URL`,
       )
     }
     if (!Number.isSafeInteger(asset.id) || asset.id <= 0) {
@@ -227,7 +228,7 @@ export async function verifyLearningReleaseAssets({
       name,
       byteSize: bytes.byteLength,
       sha256: digest,
-      url: asset.browser_download_url,
+      url: `${downloadBase}/${encodedTag}/${encodeURIComponent(name)}`,
     })
   }
 
@@ -241,7 +242,7 @@ export async function verifyLearningReleaseAssets({
     targetCommitish: release.target_commitish,
     version: manifest.version,
     manifest: {
-      url: moduleAsset.browser_download_url,
+      url: `${downloadBase}/${encodedTag}/module.json`,
       byteSize: moduleBytes.byteLength,
       sha256: manifestSha256,
     },
@@ -347,6 +348,14 @@ function assertSetEqual(actual, expected, label) {
     JSON.stringify(expectedValues),
     label,
   )
+}
+
+function assertOneOf(actual, expected, label) {
+  if (!expected.includes(actual)) {
+    throw new Error(
+      `${label} mismatch: expected one of ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`,
+    )
+  }
 }
 
 function assertEqual(actual, expected, label) {
