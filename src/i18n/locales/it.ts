@@ -519,7 +519,6 @@ export const it: TranslationKeys = {
       knowledge: 'Conoscenza',
       tools: 'Strumenti',
       agent: 'Agent',
-      learning: 'Modalità studio',
       modules: 'Moduli',
       others: 'Altro',
     },
@@ -2373,8 +2372,6 @@ export const it: TranslationKeys = {
       'Al momento ci sono {count} attivita in background in esecuzione',
     backgroundTasksNeedAttention:
       "Un'attivita in background richiede attenzione",
-    learningTasksRunning:
-      'La modalita apprendimento ha {count} attivita in esecuzione',
     learningReviewLabel: 'YOLO Learning: oggi {count} carte da ripassare',
     learningReviewTitle: 'YOLO Learning',
     learningReviewDetail: '{count} carte da ripassare',

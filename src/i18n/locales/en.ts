@@ -517,7 +517,6 @@ export const en: TranslationKeys = {
       knowledge: 'Knowledge',
       tools: 'Tools',
       agent: 'Agent',
-      learning: 'Learning',
       modules: 'Modules',
       others: 'Others',
     },
@@ -2468,7 +2467,6 @@ export const en: TranslationKeys = {
     backgroundTasksRunning:
       'There are currently {count} background tasks running',
     backgroundTasksNeedAttention: 'A background task needs attention',
-    learningTasksRunning: 'Learning mode has {count} running tasks',
     learningReviewLabel: 'YOLO Learning: {count} cards due today',
     learningReviewTitle: 'YOLO Learning',
     learningReviewDetail: '{count} cards to review',

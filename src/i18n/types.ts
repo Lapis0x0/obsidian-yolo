@@ -152,7 +152,6 @@ export type TranslationKeys = {
       knowledge: string
       tools: string
       agent: string
-      learning: string
       modules: string
       others: string
     }
@@ -1818,7 +1817,6 @@ export type TranslationKeys = {
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
-    learningTasksRunning?: string
     learningReviewLabel?: string
     learningReviewTitle?: string
     learningReviewDetail?: string

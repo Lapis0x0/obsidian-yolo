@@ -13,10 +13,8 @@ export type LearningWorkspaceScope = {
 }
 
 export type LearningGenerationActivity = {
-  kind: 'learning-agent'
   title: string
   detail?: string
-  action?: 'open-learning-view'
 }
 
 export type LearningGenerationUserMessage = {

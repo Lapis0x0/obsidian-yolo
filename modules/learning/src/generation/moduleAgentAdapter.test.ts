@@ -62,7 +62,7 @@ describe('createLearningGenerationAgent', () => {
         include: ['Learning'],
         exclude: ['Archive'],
       },
-      activity: { kind: 'learning-agent', title: 'Generating' },
+      activity: { title: 'Generating' },
       abortSignal: controller.signal,
     }
 

@@ -511,7 +511,7 @@ function generationActivity(
   title: string,
   detail: string,
 ): LearningGenerationActivity {
-  return { kind: 'learning-agent', title, detail, action: 'open-learning-view' }
+  return { title, detail }
 }
 
 function getCardGenerationOutcome(

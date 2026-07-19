@@ -162,8 +162,8 @@ describe('CoreModuleAgentCapabilityProvider', () => {
           title: 'Generating',
           detail: 'Drafting cards',
           // Runtime snapshotting must discard properties outside the public API.
-          kind: 'learning-agent',
-          action: 'open-learning-view',
+          kind: 'private-kind',
+          action: 'private-action',
         } as never,
       }),
     )

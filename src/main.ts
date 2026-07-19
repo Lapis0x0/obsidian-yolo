@@ -22,7 +22,7 @@ import {
 } from './components/ActionToast'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
-import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
+import { CHAT_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import type { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
 import type {
@@ -92,7 +92,6 @@ import {
   runExclusive as runManagedModuleDataExclusive,
   selectModuleManifestVariant,
 } from './core/modules'
-import { openLearningModuleView } from './core/modules/learningModuleOwner'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import {
@@ -266,11 +265,7 @@ export default class YoloPlugin extends Plugin {
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
   private rawLearningLegacySettings: unknown = undefined
-  private learningModuleSettingsHandoffState: 'pending' | 'ready' | 'failed' =
-    'pending'
-  private readonly learningModuleSettingsHandoffListeners = new Set<
-    () => void
-  >()
+  private learningModuleSettingsHandoffReady = false
   private readonly managedModulePathChangeListeners = new Set<() => void>()
   private removeLearningModuleDataOperation: (() => Promise<void>) | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
@@ -360,42 +355,6 @@ export default class YoloPlugin extends Plugin {
       this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
     }
     return this.chatLeafSessionManager
-  }
-
-  async openLearningView(): Promise<void> {
-    try {
-      await openLearningModuleView(this.app.workspace, LEARNING_VIEW_TYPE)
-    } catch (error) {
-      console.error('[YOLO] Learning module view is unavailable', error)
-      new Notice(
-        'Learning is unavailable. Manage the Learning module in settings.',
-      )
-    }
-  }
-
-  getLearningModuleSettingsHandoffState(): 'pending' | 'ready' | 'failed' {
-    return this.learningModuleSettingsHandoffState
-  }
-
-  subscribeLearningModuleSettingsHandoff(listener: () => void): () => void {
-    this.learningModuleSettingsHandoffListeners.add(listener)
-    return () => this.learningModuleSettingsHandoffListeners.delete(listener)
-  }
-
-  async retryLearningModuleSettingsHandoff(): Promise<void> {
-    const handoff = this.learningModuleSettingsHandoff
-    if (!handoff)
-      throw new Error('Learning module settings handoff is unavailable')
-    await handoff()
-  }
-
-  private setLearningModuleSettingsHandoffState(
-    state: 'pending' | 'ready' | 'failed',
-  ): void {
-    if (this.learningModuleSettingsHandoffState === state) return
-    this.learningModuleSettingsHandoffState = state
-    for (const listener of this.learningModuleSettingsHandoffListeners)
-      listener()
   }
 
   private publishManagedModulePathChange(): void {
@@ -1336,16 +1295,12 @@ export default class YoloPlugin extends Plugin {
             : this.t('statusBar.agentStatusRunning', '运行中')),
         status: summary.isWaitingApproval ? 'waiting' : 'running',
         updatedAt: Date.now(),
-        action:
-          summary.activity?.kind === 'learning-agent' &&
-          summary.activity.action === 'open-learning-view'
-            ? { type: 'open-learning-view' }
-            : summary.activity?.kind.startsWith('module:')
-              ? undefined
-              : {
-                  type: 'open-agent-conversation',
-                  conversationId: summary.conversationId,
-                },
+        action: summary.activity?.kind.startsWith('module:')
+          ? undefined
+          : {
+              type: 'open-agent-conversation',
+              conversationId: summary.conversationId,
+            },
       })
     }
 
@@ -1427,25 +1382,9 @@ export default class YoloPlugin extends Plugin {
     const agentActivities = runningActivities.filter(
       (activity) => activity.kind === 'agent',
     )
-    const learningActivities = runningActivities.filter(
-      (activity) => activity.kind === 'learning-agent',
-    )
     const waitingApprovalCount = runningActivities.filter(
       (activity) => activity.status === 'waiting',
     ).length
-
-    if (
-      runningActivities.length > 0 &&
-      learningActivities.length === runningActivities.length
-    ) {
-      if (learningActivities.length === 1) {
-        return learningActivities[0].detail || learningActivities[0].title
-      }
-      return this.t(
-        'statusBar.learningTasksRunning',
-        '学习模式有 {count} 个任务正在运行',
-      ).replace('{count}', String(learningActivities.length))
-    }
 
     if (
       runningActivities.length > 0 &&
@@ -1704,10 +1643,6 @@ export default class YoloPlugin extends Plugin {
       }
       if (currentAction.type === 'open-knowledge-settings') {
         this.openKnowledgeSettings()
-        return
-      }
-      if (currentAction.type === 'open-learning-view') {
-        void this.openLearningView()
         return
       }
     }
@@ -2455,8 +2390,7 @@ export default class YoloPlugin extends Plugin {
     this.moduleService = null
     this.learningModuleSettingsHandoff = null
     this.rawLearningLegacySettings = undefined
-    this.setLearningModuleSettingsHandoffState('pending')
-    this.learningModuleSettingsHandoffListeners.clear()
+    this.learningModuleSettingsHandoffReady = false
     this.managedModulePathChangeListeners.clear()
     this.removeLearningModuleDataOperation = null
     this.moduleRuntimeReservation?.dispose()
@@ -3560,19 +3494,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       app: this.app,
       getSettings: () => this.settings,
     })
-    this.setLearningModuleSettingsHandoffState('pending')
+    this.learningModuleSettingsHandoffReady = false
     this.learningModuleSettingsHandoff = async () => {
-      this.setLearningModuleSettingsHandoffState('pending')
-      try {
-        await handoffLearningLegacySettings(
-          createConfigIfAbsent,
-          this.rawLearningLegacySettings,
-        )
-        this.setLearningModuleSettingsHandoffState('ready')
-      } catch (error) {
-        this.setLearningModuleSettingsHandoffState('failed')
-        throw error
-      }
+      this.learningModuleSettingsHandoffReady = false
+      await handoffLearningLegacySettings(
+        createConfigIfAbsent,
+        this.rawLearningLegacySettings,
+      )
+      this.learningModuleSettingsHandoffReady = true
     }
     const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
     this.register(() => deviceLocalAdapter.close())
@@ -3598,7 +3527,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           createBackend: (moduleId) => {
             if (
               moduleId === 'learning' &&
-              this.learningModuleSettingsHandoffState !== 'ready'
+              !this.learningModuleSettingsHandoffReady
             ) {
               throw new Error('Learning module settings handoff is incomplete')
             }
@@ -3758,7 +3687,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
         if (
           moduleId === 'learning' &&
-          this.learningModuleSettingsHandoffState !== 'ready'
+          !this.learningModuleSettingsHandoffReady
         ) {
           throw new Error('Learning module settings handoff is incomplete')
         }

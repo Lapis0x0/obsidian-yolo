@@ -74,18 +74,11 @@ export type AgentConversationState = {
   activity?: AgentRunActivity
 }
 
-export type AgentRunActivity =
-  | {
-      kind: 'learning-agent'
-      title: string
-      detail?: string
-      action?: 'open-learning-view'
-    }
-  | {
-      kind: `module:${string}`
-      title: string
-      detail?: string
-    }
+export type AgentRunActivity = {
+  kind: `module:${string}`
+  title: string
+  detail?: string
+}
 
 const createEmptyConversationState = (
   conversationId: string,

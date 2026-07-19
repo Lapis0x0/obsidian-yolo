@@ -9,7 +9,6 @@ import {
 } from './types/provider.types'
 
 export const CHAT_VIEW_TYPE = 'yolo-chat-view'
-export const LEARNING_VIEW_TYPE = 'yolo-learning-view'
 
 // Empty-string sentinel; display layer localizes via getConversationDisplayTitle.
 export const DEFAULT_UNTITLED_CONVERSATION_TITLE = ''

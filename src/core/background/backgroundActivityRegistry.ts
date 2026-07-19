@@ -13,9 +13,6 @@ export type BackgroundActivityAction =
       type: 'open-knowledge-settings'
     }
   | {
-      type: 'open-learning-view'
-    }
-  | {
       type: 'callback'
       run(): void
     }
