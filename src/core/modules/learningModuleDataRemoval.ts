@@ -70,8 +70,7 @@ export type LearningModuleDataRemovalServiceOptions = Readonly<{
   app: App
   getSettings(): LearningRemovalSettings
   deviceLocal: DeviceLocalData
-  intentCoordinator: Readonly<{ uninstall(moduleId: string): Promise<unknown> }>
-  intentStore: Pick<ModuleIntentStore, 'get'>
+  intentStore: Pick<ModuleIntentStore, 'get' | 'set'>
   artifactUninstaller: Readonly<{ uninstall(moduleId: string): Promise<void> }>
   runtime: ModuleRuntimeQuiescence
 }>
@@ -90,7 +89,7 @@ export class LearningModuleDataRemovalService {
     }
     this.running = true
     try {
-      await this.options.intentCoordinator.uninstall(LEARNING_MODULE_ID)
+      await this.options.intentStore.set(LEARNING_MODULE_ID, 'uninstalled')
       await this.options.artifactUninstaller.uninstall(LEARNING_MODULE_ID)
       await this.options.runtime.runWithModuleQuiesced(LEARNING_MODULE_ID, () =>
         runManagedModuleDataExclusive(
@@ -106,10 +105,8 @@ export class LearningModuleDataRemovalService {
 
   private async removeDataWithJournal(): Promise<void> {
     const intent = await this.options.intentStore.get(LEARNING_MODULE_ID)
-    if (intent?.desiredInstalled !== false) {
-      throw new Error(
-        'Learning data removal requires desiredInstalled to be false',
-      )
+    if (intent !== 'uninstalled') {
+      throw new Error('Learning data removal requires uninstalled intent')
     }
 
     const stored = await this.readJournal()

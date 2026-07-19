@@ -363,8 +363,7 @@ export type InstalledModuleStateSource = {
 
 export type ModuleIntentState = Readonly<{
   id: string
-  desiredInstalled: boolean
-  enabled: boolean
+  state: 'uninstalled' | 'disabled' | 'enabled'
 }>
 
 export type ModuleIntentStateSource = {

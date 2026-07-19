@@ -11,8 +11,7 @@ import {
 } from './moduleStore'
 import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
 
-const SCHEMA_VERSION = 3
-const LEGACY_SCHEMA_VERSIONS = new Set([1, 2])
+const SCHEMA_VERSION = 1
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
@@ -24,10 +23,11 @@ const ENUMERATION_RETRY_LIMIT = 2
 export type ModuleDeviceState = Readonly<{
   moduleId: string
   platform: 'desktop' | 'mobile'
-  activeVersion: string | null
-  pendingVersion: string | null
-  activationPhase: 'pending' | 'activation-started' | null
-  readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>
+  active: ModuleArtifactDescriptor | null
+  pending: Readonly<{
+    descriptor: ModuleArtifactDescriptor
+    activationStarted: boolean
+  }> | null
 }>
 
 type ModuleDeviceStateListing = Readonly<{
@@ -175,13 +175,10 @@ export class ModuleDeviceStateStore {
     }
     if (envelope === null) return null
     try {
-      if (
-        !LEGACY_SCHEMA_VERSIONS.has(envelope.schemaVersion) &&
-        envelope.schemaVersion !== SCHEMA_VERSION
-      ) {
+      if (envelope.schemaVersion !== SCHEMA_VERSION) {
         throw new Error(`unsupported schema version ${envelope.schemaVersion}`)
       }
-      return parseState(envelope.data, moduleId, envelope.schemaVersion)
+      return parseState(envelope.data, moduleId)
     } catch (error) {
       throw new ModuleDeviceStateCorruptionError(moduleId, error)
     }
@@ -256,7 +253,7 @@ export class ModuleDeviceStateStore {
       await this.store.remove(moduleId)
       return
     }
-    if (existing?.activationPhase !== null) {
+    if (existing?.pending !== null) {
       throw new Error(
         'Device state with a pending activation cannot be removed',
       )
@@ -268,31 +265,9 @@ export class ModuleDeviceStateStore {
 function parseState(
   value: unknown,
   expectedModuleId?: string,
-  schemaVersion = SCHEMA_VERSION,
 ): ModuleDeviceState {
   const state = plainRecord(value, 'Module device state')
-  const legacyKeys = [
-    'moduleId',
-    'platform',
-    'activeVersion',
-    'downloadedCandidate',
-    'pendingVersion',
-    'readyVersions',
-  ] as const
-  if (schemaVersion === 1) {
-    assertExactKeys(state, legacyKeys)
-  } else if (schemaVersion === 2) {
-    assertExactKeys(state, [...legacyKeys, 'transition'])
-  } else {
-    assertExactKeys(state, [
-      'moduleId',
-      'platform',
-      'activeVersion',
-      'pendingVersion',
-      'activationPhase',
-      'readyVersions',
-    ])
-  }
+  assertExactKeys(state, ['moduleId', 'platform', 'active', 'pending'])
   const moduleId = dataProperty(state, 'moduleId')
   const platform = dataProperty(state, 'platform')
   if (typeof moduleId !== 'string') throw new Error('moduleId is invalid')
@@ -304,126 +279,38 @@ function parseState(
     throw new Error('platform is invalid')
   }
 
-  const readyInput = plainRecord(
-    dataProperty(state, 'readyVersions'),
-    'readyVersions',
-  )
-  const readyVersions: Record<string, ModuleArtifactDescriptor> = {}
-  for (const version of Object.getOwnPropertyNames(readyInput)) {
-    assertSafeName(version, 'Ready version')
-    assertVersion(version, 'Ready version')
-    readyVersions[version] = parseDescriptor(
-      dataProperty(readyInput, version),
-      moduleId,
-      version,
-      platform,
-    )
-  }
-
-  const activeVersion = parsePointer(state, 'activeVersion', readyVersions)
-  if (schemaVersion !== SCHEMA_VERSION) {
-    parsePointer(state, 'downloadedCandidate', readyVersions)
-  }
-  const pendingVersion = parsePointer(state, 'pendingVersion', readyVersions)
-  let activationPhase: ModuleDeviceState['activationPhase']
-  let migratedPendingVersion = pendingVersion
-  if (schemaVersion === SCHEMA_VERSION) {
-    const phase = dataProperty(state, 'activationPhase')
-    if (
-      phase !== null &&
-      phase !== 'pending' &&
-      phase !== 'activation-started'
-    ) {
-      throw new Error('activationPhase is invalid')
+  const activeValue = dataProperty(state, 'active')
+  const active =
+    activeValue === null
+      ? null
+      : parseDescriptor(activeValue, moduleId, platform, 'Active descriptor')
+  const pendingValue = dataProperty(state, 'pending')
+  let pending: ModuleDeviceState['pending'] = null
+  if (pendingValue !== null) {
+    const pendingRecord = plainRecord(pendingValue, 'Pending activation')
+    assertExactKeys(pendingRecord, ['descriptor', 'activationStarted'])
+    const activationStarted = dataProperty(pendingRecord, 'activationStarted')
+    if (typeof activationStarted !== 'boolean') {
+      throw new Error('activationStarted is invalid')
     }
-    activationPhase = phase
-  } else if (schemaVersion === 1) {
-    activationPhase = pendingVersion === null ? null : 'pending'
-  } else {
-    const transitionValue = dataProperty(state, 'transition')
-    if (transitionValue === null) {
-      activationPhase = pendingVersion === null ? null : 'pending'
-    } else {
-      const transition = plainRecord(
-        transitionValue,
-        'Legacy module transition journal',
-      )
-      const phase = dataProperty(transition, 'phase')
-      const transitionModuleId = dataProperty(transition, 'moduleId')
-      const transitionPlatform = dataProperty(transition, 'platform')
-      const targetVersion = dataProperty(transition, 'targetVersion')
-      const targetManifestSha256 = dataProperty(
-        transition,
-        'targetManifestSha256',
-      )
-      const previousActiveVersion = dataProperty(
-        transition,
-        'previousActiveVersion',
-      )
-      if (
-        typeof targetVersion !== 'string' ||
-        !Object.prototype.hasOwnProperty.call(readyVersions, targetVersion)
-      ) {
-        throw new Error('Legacy transition target is invalid')
-      }
-      if (
-        transitionModuleId !== moduleId ||
-        transitionPlatform !== platform ||
-        targetManifestSha256 !== readyVersions[targetVersion]?.manifest.sha256
-      ) {
-        throw new Error('Legacy transition identity is invalid')
-      }
-      if (previousActiveVersion !== activeVersion && phase !== 'committed') {
-        throw new Error('Legacy transition previous active version is invalid')
-      }
-      if (phase === 'prepared' || phase === 'settings-committed') {
-        if (pendingVersion !== targetVersion) {
-          throw new Error('Legacy transition pending version is invalid')
-        }
-        migratedPendingVersion = targetVersion
-        activationPhase = 'pending'
-      } else if (phase === 'activation-started') {
-        if (pendingVersion !== targetVersion) {
-          throw new Error('Legacy transition pending version is invalid')
-        }
-        migratedPendingVersion = targetVersion
-        activationPhase = 'activation-started'
-      } else if (phase === 'committed') {
-        if (activeVersion !== targetVersion || pendingVersion !== null) {
-          throw new Error('Legacy committed transition pointers are invalid')
-        }
-        migratedPendingVersion = null
-        activationPhase = null
-      } else if (phase === 'rollback-completed') {
-        if (
-          activeVersion !== previousActiveVersion ||
-          pendingVersion !== null
-        ) {
-          throw new Error('Legacy rollback transition pointers are invalid')
-        }
-        migratedPendingVersion = null
-        activationPhase = null
-      } else {
-        throw new Error('Legacy transition phase is invalid')
-      }
-    }
+    pending = Object.freeze({
+      descriptor: parseDescriptor(
+        dataProperty(pendingRecord, 'descriptor'),
+        moduleId,
+        platform,
+        'Pending descriptor',
+      ),
+      activationStarted,
+    })
   }
-  if ((migratedPendingVersion === null) !== (activationPhase === null)) {
-    throw new Error('Pending version and activation phase must be set together')
-  }
-  if (
-    migratedPendingVersion !== null &&
-    migratedPendingVersion === activeVersion
-  ) {
+  if (pending !== null && pending.descriptor.version === active?.version) {
     throw new Error('Pending version must differ from active version')
   }
   return Object.freeze({
     moduleId,
     platform,
-    activeVersion,
-    pendingVersion: migratedPendingVersion,
-    activationPhase,
-    readyVersions: Object.freeze(readyVersions),
+    active,
+    pending,
   })
 }
 
@@ -432,43 +319,34 @@ function assertDurableTransitionProgression(
   next: ModuleDeviceState,
 ): void {
   if (existing === null) {
-    if (next.activationPhase === 'activation-started') {
+    if (next.pending?.activationStarted === true) {
       throw new Error('A new pending activation must begin in pending')
     }
     return
   }
   if (equalJson(existing, next)) return
-  if (existing.activationPhase === null) {
+  if (existing.pending === null) {
     if (
-      existing.activeVersion === next.activeVersion &&
-      existing.pendingVersion === null &&
-      (next.activationPhase === null || next.activationPhase === 'pending')
+      equalJson(existing.active, next.active) &&
+      (next.pending === null || !next.pending.activationStarted)
     ) {
       return
     }
     throw new Error('A new pending activation must begin in pending')
   }
   if (
-    existing.activationPhase === next.activationPhase &&
-    existing.activeVersion === next.activeVersion &&
-    existing.pendingVersion === next.pendingVersion
+    !existing.pending.activationStarted &&
+    next.pending?.activationStarted === true &&
+    equalJson(existing.active, next.active) &&
+    equalJson(existing.pending.descriptor, next.pending.descriptor)
   ) {
     return
   }
   if (
-    existing.activationPhase === 'pending' &&
-    next.activationPhase === 'activation-started' &&
-    existing.activeVersion === next.activeVersion &&
-    existing.pendingVersion === next.pendingVersion
-  ) {
-    return
-  }
-  if (
-    next.activationPhase === null &&
-    next.pendingVersion === null &&
-    (next.activeVersion === existing.activeVersion ||
-      (existing.activationPhase === 'activation-started' &&
-        next.activeVersion === existing.pendingVersion))
+    next.pending === null &&
+    (equalJson(next.active, existing.active) ||
+      (existing.pending.activationStarted &&
+        equalJson(next.active, existing.pending.descriptor)))
   ) {
     return
   }
@@ -509,10 +387,10 @@ function equalJson(left: unknown, right: unknown): boolean {
 function parseDescriptor(
   value: unknown,
   moduleId: string,
-  version: string,
   platform: 'desktop' | 'mobile',
+  label: string,
 ): ModuleArtifactDescriptor {
-  const descriptor = plainRecord(value, `Descriptor ${version}`)
+  const descriptor = plainRecord(value, label)
   assertExactKeys(descriptor, [
     'id',
     'version',
@@ -523,17 +401,18 @@ function parseDescriptor(
     'manifest',
   ])
   const id = dataProperty(descriptor, 'id')
-  const descriptorVersion = dataProperty(descriptor, 'version')
+  const version = dataProperty(descriptor, 'version')
   const descriptorPlatform = dataProperty(descriptor, 'platform')
   const hostApi = dataProperty(descriptor, 'hostApi')
   const manifestUrl = dataProperty(descriptor, 'manifestUrl')
   if (
     id !== moduleId ||
-    descriptorVersion !== version ||
+    typeof version !== 'string' ||
     descriptorPlatform !== platform
   ) {
     throw new Error('Descriptor identity does not match its enclosing state')
   }
+  assertVersion(version, 'Descriptor version')
   if (!isModuleHostApiRange(hostApi)) throw new Error('hostApi is invalid')
   if (!isOfficialModuleReleaseUrl(manifestUrl)) {
     throw new Error('manifestUrl is invalid')
@@ -597,21 +476,6 @@ function parseDataSchemas(
     result[name] = Object.freeze({ readMin, readMax, write })
   }
   return Object.freeze(result)
-}
-
-function parsePointer(
-  state: Record<string, unknown>,
-  name: 'activeVersion' | 'downloadedCandidate' | 'pendingVersion',
-  readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>,
-): string | null {
-  const value = dataProperty(state, name)
-  if (value === null) return null
-  if (typeof value !== 'string') throw new Error(`${name} is invalid`)
-  assertVersion(value, name)
-  if (!Object.prototype.hasOwnProperty.call(readyVersions, value)) {
-    throw new Error(`${name} must refer to a ready version`)
-  }
-  return value
 }
 
 function plainRecord(value: unknown, label: string): Record<string, unknown> {

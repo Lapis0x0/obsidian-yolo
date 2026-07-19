@@ -185,10 +185,10 @@ export class ModuleStartupReconciler {
         continue
       }
       if (this.disposed) return
-      const current = intent ? snapshotIntent(intent) : null
+      const current = intent ?? null
       this.intents.set(moduleId, current)
 
-      if (current?.desiredInstalled) {
+      if (current === 'enabled') {
         try {
           const result =
             await this.options.readinessReconciler.ensureModuleReady(moduleId)
@@ -203,7 +203,7 @@ export class ModuleStartupReconciler {
         } catch (error) {
           this.report(error, moduleId)
         }
-      } else if (current?.desiredInstalled === false) {
+      } else if (current === 'uninstalled') {
         uninstallIds.push(moduleId)
       }
 
@@ -249,15 +249,8 @@ export class ModuleStartupReconciler {
   }
 }
 
-function snapshotIntent(intent: ModuleIntent): ModuleIntent {
-  return Object.freeze({
-    desiredInstalled: intent.desiredInstalled,
-    enabled: intent.enabled,
-  })
-}
-
 function isLiveEligible(intent: ModuleIntent | null): boolean {
-  return intent?.desiredInstalled === true && intent.enabled === true
+  return intent === 'enabled'
 }
 
 function disposedError(): Error {

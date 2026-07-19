@@ -184,10 +184,10 @@ export class ModuleActivationCoordinator {
       )
       const results: ModuleActivationResult[] = []
       const transitionIds = sorted
-        .filter((state) => state.activationPhase !== null)
+        .filter((state) => state.pending !== null)
         .map((state) => state.moduleId)
       const ordinaryIds = sorted
-        .filter((state) => state.activationPhase === null)
+        .filter((state) => state.pending === null)
         .map((state) => state.moduleId)
       const recoverTransitions = async (
         moduleIds: readonly string[],
@@ -219,9 +219,7 @@ export class ModuleActivationCoordinator {
             )
             const matches = intents.filter((intent) => intent.id === moduleId)
             liveEligible =
-              matches.length === 1 &&
-              matches[0]?.desiredInstalled === true &&
-              matches[0].enabled === true
+              matches.length === 1 && matches[0]?.state === 'enabled'
           } catch (error) {
             if (controller.signal.aborted) throw error
             intentError = error
@@ -269,7 +267,7 @@ export class ModuleActivationCoordinator {
           moduleId,
           async (transaction) => {
             const state = await withAbort(transaction.read(), controller.signal)
-            return state?.activationPhase != null
+            return state?.pending != null
           },
         )
         if (hasTransition) lateTransitionIds.push(moduleId)
@@ -298,11 +296,7 @@ export class ModuleActivationCoordinator {
                 controller.signal,
               )
               const matches = intents.filter((intent) => intent.id === moduleId)
-              if (
-                matches.length !== 1 ||
-                matches[0]?.desiredInstalled !== true ||
-                matches[0].enabled !== true
-              ) {
+              if (matches.length !== 1 || matches[0]?.state !== 'enabled') {
                 this.options.verifiedArtifactRegistry?.clear(moduleId)
                 return result({ moduleId, status: 'skipped' })
               }
@@ -348,23 +342,14 @@ export class ModuleActivationCoordinator {
     if (current.moduleId !== moduleId) {
       throw new Error(`Module "${moduleId}" returned mismatched device state`)
     }
-    if (current.activationPhase !== null) {
+    if (current.pending !== null) {
       throw new Error(
         `Module "${moduleId}" pending activation appeared after the startup recovery pass`,
       )
     }
-    const targetVersion = current.activeVersion
-    if (!targetVersion) return result({ moduleId, status: 'skipped' })
-    const descriptor = snapshotDescriptor(current.readyVersions[targetVersion])
-    if (
-      !descriptor ||
-      descriptor.id !== moduleId ||
-      descriptor.version !== targetVersion
-    ) {
-      throw new Error(
-        `Module "${moduleId}" has no ready descriptor for "${targetVersion}"`,
-      )
-    }
+    if (!current.active) return result({ moduleId, status: 'skipped' })
+    const descriptor = snapshotDescriptor(current.active)
+    const targetVersion = descriptor.version
 
     await this.activateDescriptor(descriptor, signal)
     this.errors.delete(moduleId)
@@ -630,9 +615,8 @@ function result(value: ModuleActivationResult): ModuleActivationResult {
 }
 
 function snapshotDescriptor(
-  descriptor: ModuleArtifactDescriptor | undefined,
-): ModuleArtifactDescriptor | undefined {
-  if (!descriptor) return undefined
+  descriptor: ModuleArtifactDescriptor,
+): ModuleArtifactDescriptor {
   const dataSchemas = Object.fromEntries(
     Object.entries(descriptor.dataSchemas).map(([namespace, schema]) => [
       namespace,

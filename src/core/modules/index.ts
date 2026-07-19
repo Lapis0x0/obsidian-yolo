@@ -1,10 +1,10 @@
 export { ModuleCleanupError, ModuleLifecycleScope } from './lifecycleScope'
 export {
-  BundledModuleRegistry,
+  BundledModuleCatalogSource,
   parseBundledModuleIndex,
+  type BundledModuleCatalogSourceOptions,
   type BundledModuleDescriptor,
   type BundledModuleIndex,
-  type BundledModuleRegistryOptions,
 } from './bundledModuleRegistry'
 export {
   ModuleContributionStager,
@@ -55,7 +55,6 @@ export {
 export { type ModuleOperationResult, type ModuleService } from './moduleService'
 export {
   ModuleIntentStore,
-  ModuleIntentWriteUncertainError,
   type ModuleIntent,
   type ModuleIntentBackend,
 } from './moduleIntentStore'

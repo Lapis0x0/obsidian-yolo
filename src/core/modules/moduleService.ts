@@ -10,7 +10,6 @@ export type ModuleOperationResult = Readonly<{
 
 /** The single application-facing entry point for module lifecycle operations. */
 export type ModuleService = Readonly<{
-  mode: 'bundled' | 'official'
   getSnapshot(): ModuleManagerSnapshot
   subscribe(listener: () => void): () => void
   refresh(): Promise<void>

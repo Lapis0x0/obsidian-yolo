@@ -32,7 +32,7 @@ describe('ModuleReadinessReconciler', () => {
           }),
       },
       intentStore: {
-        get: async () => ({ desiredInstalled: true, enabled: true }),
+        get: async () => 'enabled',
       },
       catalogSource: {
         getResolvedVersion: () => ({
@@ -83,8 +83,11 @@ describe('ModuleReadinessReconciler', () => {
       installedVersion: '1.0.0',
     })
     expect(durable).toMatchObject({
-      pendingVersion: '1.0.0',
-      activationPhase: 'pending',
+      active: null,
+      pending: {
+        descriptor: { version: '1.0.0' },
+        activationStarted: false,
+      },
     })
   })
 })

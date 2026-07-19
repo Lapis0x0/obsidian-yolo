@@ -56,7 +56,7 @@ import type {
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
-  BundledModuleRegistry,
+  BundledModuleCatalogSource,
   CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
@@ -68,7 +68,6 @@ import {
   ModuleDeviceStateStore,
   ModuleIntentStore,
   ModuleLoader,
-  ModuleManager,
   ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
   ModuleRuntimeReservation,
@@ -212,7 +211,7 @@ export type { PluginUpdateState } from './core/update/pluginUpdater'
 const STARTUP_GRACE_MS = 30 * 1000
 const MODULE_PRIVATE_STORAGE_DIR = 'module-private'
 const MODULE_DEVICE_LOCAL_VIRTUAL_ROOT = 'module-private-device-local'
-const MODULE_DEVICE_STATE_ROOT = 'module-device-state'
+const MODULE_DEVICE_STATE_ROOT = 'module-device-state-v1'
 type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
@@ -265,7 +264,6 @@ export default class YoloPlugin extends Plugin {
   private moduleService: ModuleService | null = null
   private moduleRuntime: ModuleRuntime | null = null
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
-  private bundledModuleRegistry: BundledModuleRegistry | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
   private rawLearningLegacySettings: unknown = undefined
   private learningModuleSettingsHandoffState: 'pending' | 'ready' | 'failed' =
@@ -2465,7 +2463,6 @@ export default class YoloPlugin extends Plugin {
     this.moduleRuntimeReservation = null
     this.moduleRuntime?.dispose()
     this.moduleRuntime = null
-    this.bundledModuleRegistry = null
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
     this.actionToastController?.destroy()
@@ -3579,7 +3576,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
     const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
     this.register(() => deviceLocalAdapter.close())
-    let registry: BundledModuleRegistry | null = null
     const servicesReference: { current: ModuleService | null } = {
       current: null,
     }
@@ -3595,7 +3591,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         assets: new ModuleAssetsCapabilityProvider({
           store,
           getVerifiedArtifact: (moduleId) =>
-            registry?.getVerifiedArtifact(moduleId) ??
             servicesReference.current?.getVerifiedArtifact(moduleId),
         }),
         backgroundActivities: this.getBackgroundActivityRegistry(),
@@ -3691,49 +3686,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const runtimeReservation = new ModuleRuntimeReservation({ runtime })
     this.moduleRuntime = runtime
     this.moduleRuntimeReservation = runtimeReservation
-    if (process.env.NODE_ENV === 'development') {
-      registry = new BundledModuleRegistry({
-        store,
-        platform: Platform.isDesktop ? 'desktop' : 'mobile',
-        loader: new ModuleLoader({
-          executor: new DomBlobModuleScriptExecutor(),
-        }),
-        runtime: runtimeReservation,
-        reportActivationError: (moduleId, error) => {
-          console.error(`[YOLO] Bundled module "${moduleId}" failed`, error)
-        },
-      })
-      this.bundledModuleRegistry = registry
-      const manager = new ModuleManager({
-        catalogSource: registry.catalogSource,
-        installedStateSource: registry.installedStateSource,
-      })
-      this.moduleService = Object.freeze({
-        mode: 'bundled' as const,
-        getSnapshot: manager.getSnapshot,
-        subscribe: manager.subscribe,
-        refresh: () => manager.refresh(),
-        getInstallCandidate: () => undefined,
-        install: () =>
-          Promise.reject(new Error('Bundled modules cannot be installed')),
-        setEnabled: () =>
-          Promise.reject(new Error('Bundled modules cannot be toggled')),
-        uninstall: () =>
-          Promise.reject(new Error('Bundled modules cannot be uninstalled')),
-        start: async () => {
-          await registry!.activateAll()
-          await manager.refresh()
-          return Object.freeze({
-            reloadRequired: false,
-            processPoisoned: false,
-          })
-        },
-        getVerifiedArtifact: (moduleId: string) =>
-          registry!.getVerifiedArtifact(moduleId),
-        dispose: () => manager.dispose(),
-      })
-      return
-    }
     const platform = Platform.isDesktop ? 'desktop' : 'mobile'
     const deviceStateStore = new ModuleDeviceStateStore({
       kind: 'device-local-runtime-state',
@@ -3748,9 +3700,41 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           this.addSettingsChangeListener(() => listener()),
       }),
     )
+    const bundledCatalogSource =
+      process.env.NODE_ENV === 'development'
+        ? new BundledModuleCatalogSource({ store, platform })
+        : undefined
+    const serviceIntentStore = bundledCatalogSource
+      ? {
+          get: async (moduleId: string) => {
+            const explicit = await intentStore.get(moduleId)
+            if (explicit !== undefined) return explicit
+            await bundledCatalogSource.load()
+            return bundledCatalogSource.getResolvedVersion(moduleId)
+              ? ('enabled' as const)
+              : undefined
+          },
+          set: (
+            moduleId: string,
+            state: 'uninstalled' | 'disabled' | 'enabled',
+          ) => intentStore.set(moduleId, state),
+          listModuleIds: () => intentStore.listModuleIds(),
+          subscribeAll: (listener: (moduleId: string) => void) =>
+            intentStore.subscribeAll(listener),
+        }
+      : intentStore
     const getCompatibility = createOfficialModuleCompatibilityProvider({
       platform,
-      readDeviceState: (moduleId) => deviceStateStore.read(moduleId),
+      readDeviceState: async (moduleId) => {
+        const state = await deviceStateStore.read(moduleId)
+        return state
+          ? {
+              moduleId,
+              platform: state.platform,
+              activeVersion: state.active?.version ?? null,
+            }
+          : null
+      },
       readSettingsSchemaVersion: async (moduleId) =>
         (await createConfigBackend(moduleId).read()).schemaVersion,
     })
@@ -3762,7 +3746,14 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,
-      intentStore,
+      intentStore: serviceIntentStore,
+      ...(bundledCatalogSource
+        ? {
+            catalogSource: bundledCatalogSource,
+            authorizeArtifactRemoval: async () => true,
+            removeVersionArtifacts: async () => undefined,
+          }
+        : {}),
       readCurrentSchemaVersion: async (moduleId, namespace) => {
         if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
         if (

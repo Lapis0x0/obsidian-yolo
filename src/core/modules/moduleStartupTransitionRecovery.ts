@@ -119,14 +119,14 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     allowModuleExecution: boolean,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     const current = await abortable(transaction.read(), signal)
-    if (current === null || current.activationPhase === null) {
+    if (current === null || current.pending === null) {
       return result({ moduleId, status: 'skipped' })
     }
-    if (current.moduleId !== moduleId || current.pendingVersion === null) {
+    if (current.moduleId !== moduleId) {
       throw new Error(`Module "${moduleId}" pending activation is invalid`)
     }
 
-    if (current.activationPhase === 'activation-started') {
+    if (current.pending.activationStarted) {
       return this.recoverInterrupted(
         current,
         transaction,
@@ -139,7 +139,7 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       return result({ moduleId, status: 'skipped' })
     }
 
-    const target = descriptorFor(current, current.pendingVersion)
+    const target = current.pending.descriptor
     await this.assertCanReadCurrentSchemas(moduleId, target, signal)
     const verified = await abortable(
       this.options.verifyArtifact(target, signal),
@@ -147,7 +147,10 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     )
     const started = Object.freeze({
       ...current,
-      activationPhase: 'activation-started' as const,
+      pending: Object.freeze({
+        descriptor: target,
+        activationStarted: true,
+      }),
     })
     await writeExact(transaction, started, signal)
 
@@ -157,9 +160,8 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       await this.assertWroteSchemas(moduleId, target, signal)
       const committed = Object.freeze({
         ...started,
-        activeVersion: target.version,
-        pendingVersion: null,
-        activationPhase: null,
+        active: target,
+        pending: null,
       })
       await writeExact(transaction, committed, signal)
       return result({
@@ -196,9 +198,9 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     signal: AbortSignal,
     allowModuleExecution: boolean,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
-    const previousVersion = current.activeVersion
+    const previous = current.active
     if (
-      previousVersion === null ||
+      previous === null ||
       !(await this.canRestorePrevious(current, signal))
     ) {
       return failed(
@@ -206,7 +208,6 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
         'Interrupted activation has no compatible previous version',
       )
     }
-    const previous = descriptorFor(current, previousVersion)
     const verified = await abortable(
       this.options.verifyArtifact(previous, signal),
       signal,
@@ -227,8 +228,8 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     return result({
       moduleId: current.moduleId,
       status: 'activated',
-      version: previousVersion,
-      recoveredVersion: previousVersion,
+      version: previous.version,
+      recoveredVersion: previous.version,
     })
   }
 
@@ -236,13 +237,8 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     state: ModuleDeviceState,
     signal: AbortSignal,
   ): Promise<boolean> {
-    if (state.activeVersion === null) return false
-    let previous: ModuleArtifactDescriptor
-    try {
-      previous = descriptorFor(state, state.activeVersion)
-    } catch {
-      return false
-    }
+    const previous = state.active
+    if (previous === null) return false
     try {
       await this.assertCanReadCurrentSchemas(state.moduleId, previous, signal)
       await abortable(this.options.verifyArtifact(previous, signal), signal)
@@ -300,29 +296,10 @@ export function getModuleTransitionRealmDisposition(
   return Object.freeze({ ...poison })
 }
 
-function descriptorFor(
-  state: ModuleDeviceState,
-  version: string,
-): ModuleArtifactDescriptor {
-  const descriptor = state.readyVersions[version]
-  if (
-    !descriptor ||
-    descriptor.id !== state.moduleId ||
-    descriptor.version !== version ||
-    descriptor.platform !== state.platform
-  ) {
-    throw new Error(
-      `Module "${state.moduleId}" has no exact ready descriptor for "${version}"`,
-    )
-  }
-  return descriptor
-}
-
 function clearPending(state: ModuleDeviceState): ModuleDeviceState {
   return Object.freeze({
     ...state,
-    pendingVersion: null,
-    activationPhase: null,
+    pending: null,
   })
 }
 

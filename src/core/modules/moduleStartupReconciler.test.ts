@@ -94,9 +94,9 @@ describe('ModuleStartupReconciler', () => {
   test('subscribes and makes desired modules ready before startup activation', async () => {
     const harness = createHarness(
       {
-        disabled: { desiredInstalled: true, enabled: false },
-        enabled: { desiredInstalled: true, enabled: true },
-        absent: { desiredInstalled: false, enabled: false },
+        disabled: 'disabled',
+        enabled: 'enabled',
+        absent: 'uninstalled',
       },
       ['enabled', 'absent', 'disabled'],
     )
@@ -105,10 +105,7 @@ describe('ModuleStartupReconciler', () => {
 
     expect(harness.log[0]).toBe('subscribe')
     expect(harness.log[1]).toBe('list')
-    expect(harness.ensureModuleReady.mock.calls).toEqual([
-      ['disabled'],
-      ['enabled'],
-    ])
+    expect(harness.ensureModuleReady.mock.calls).toEqual([['enabled']])
     expect(harness.log.indexOf('activate')).toBeGreaterThan(
       harness.log.indexOf('ready:enabled'),
     )
@@ -121,7 +118,7 @@ describe('ModuleStartupReconciler', () => {
 
   test('calls the activation owner seam for a disabled transition', async () => {
     const harness = createHarness({
-      notes: { desiredInstalled: true, enabled: false },
+      notes: 'disabled',
     })
     const restoredOwners: string[] = []
     harness.activatePersistedModules.mockImplementation(async () => {
@@ -153,7 +150,7 @@ describe('ModuleStartupReconciler', () => {
 
   test('coalesces synchronized updates and runs them serially', async () => {
     const harness = createHarness({
-      notes: { desiredInstalled: false, enabled: false },
+      notes: 'uninstalled',
     })
     await harness.reconciler.start()
     harness.ensureModuleReady.mockClear()
@@ -176,7 +173,7 @@ describe('ModuleStartupReconciler', () => {
       active -= 1
       return ready(moduleId)
     })
-    harness.intents.set('notes', { desiredInstalled: true, enabled: false })
+    harness.intents.set('notes', 'enabled')
     harness.emit('notes')
     harness.emit('notes')
     harness.emit('notes')
@@ -189,13 +186,13 @@ describe('ModuleStartupReconciler', () => {
     expect(harness.ensureModuleReady).toHaveBeenCalledTimes(1)
     expect(harness.refresh).toHaveBeenCalledTimes(1)
     expect(maximumActive).toBe(1)
-    expect(harness.requestReload).not.toHaveBeenCalled()
+    expect(harness.requestReload).toHaveBeenCalledWith('notes')
   })
 
   test('isolates module failures and continues startup', async () => {
     const harness = createHarness({
-      broken: { desiredInstalled: true, enabled: true },
-      healthy: { desiredInstalled: true, enabled: true },
+      broken: 'enabled',
+      healthy: 'enabled',
     })
     harness.ensureModuleReady.mockImplementation(async (moduleId: string) => {
       if (moduleId === 'broken') throw new Error('download failed')
@@ -215,8 +212,8 @@ describe('ModuleStartupReconciler', () => {
 
   test('finishes isolated readiness and refresh before transition recovery', async () => {
     const harness = createHarness({
-      broken: { desiredInstalled: true, enabled: false },
-      transition: { desiredInstalled: true, enabled: false },
+      broken: 'enabled',
+      transition: 'enabled',
     })
     harness.ensureModuleReady.mockImplementation(async (moduleId: string) => {
       harness.log.push(`custom-ready:${moduleId}`)
@@ -253,7 +250,7 @@ describe('ModuleStartupReconciler', () => {
 
   test('reports poisoned activation results without directly reloading', async () => {
     const harness = createHarness({
-      notes: { desiredInstalled: true, enabled: false },
+      notes: 'disabled',
     })
     harness.activatePersistedModules.mockResolvedValue(
       Object.freeze([
@@ -291,7 +288,7 @@ describe('ModuleStartupReconciler', () => {
 
   test('unsubscribes and rejects operations after disposal', async () => {
     const harness = createHarness({
-      notes: { desiredInstalled: false, enabled: false },
+      notes: 'uninstalled',
     })
     await harness.reconciler.start()
     harness.reconciler.dispose()
@@ -304,38 +301,28 @@ describe('ModuleStartupReconciler', () => {
 
   test.each([
     {
-      desiredInstalled: false,
-      enabled: false,
+      state: 'uninstalled' as const,
       readiness: 0,
       activation: 1,
       uninstall: 1,
     },
     {
-      desiredInstalled: false,
-      enabled: true,
+      state: 'disabled' as const,
       readiness: 0,
-      activation: 1,
-      uninstall: 1,
-    },
-    {
-      desiredInstalled: true,
-      enabled: false,
-      readiness: 1,
       activation: 1,
       uninstall: 0,
     },
     {
-      desiredInstalled: true,
-      enabled: true,
+      state: 'enabled' as const,
       readiness: 1,
       activation: 1,
       uninstall: 0,
     },
   ])(
-    'enforces intent combination installed=$desiredInstalled enabled=$enabled',
-    async ({ desiredInstalled, enabled, readiness, activation, uninstall }) => {
+    'enforces $state intent',
+    async ({ state, readiness, activation, uninstall }) => {
       const harness = createHarness({
-        notes: { desiredInstalled, enabled },
+        notes: state,
       })
 
       await harness.reconciler.start()
@@ -349,11 +336,11 @@ describe('ModuleStartupReconciler', () => {
 
   test('refreshes and explicitly requests reload when live eligibility changes', async () => {
     const harness = createHarness({
-      notes: { desiredInstalled: true, enabled: false },
+      notes: 'enabled',
     })
     await harness.reconciler.start()
     harness.log.length = 0
-    harness.intents.set('notes', { desiredInstalled: true, enabled: true })
+    harness.intents.set('notes', 'disabled')
 
     harness.emit('notes')
     await harness.reconciler.whenIdle()
@@ -366,7 +353,7 @@ describe('ModuleStartupReconciler', () => {
 
   test('requests reload for an eligibility update during startup', async () => {
     const harness = createHarness({
-      notes: { desiredInstalled: true, enabled: false },
+      notes: 'enabled',
     })
     let release: (() => void) | undefined
     let markStarted: (() => void) | undefined
@@ -383,12 +370,12 @@ describe('ModuleStartupReconciler', () => {
 
     const startup = harness.reconciler.start()
     await started
-    harness.intents.set('notes', { desiredInstalled: true, enabled: true })
+    harness.intents.set('notes', 'disabled')
     harness.emit('notes')
     release?.()
     await startup
 
-    expect(harness.ensureModuleReady).toHaveBeenCalledTimes(2)
+    expect(harness.ensureModuleReady).toHaveBeenCalledTimes(1)
     expect(harness.requestReload).toHaveBeenCalledWith('notes')
     expect(harness.log.indexOf('reload:notes')).toBeLessThan(
       harness.log.indexOf('activate'),
@@ -396,10 +383,11 @@ describe('ModuleStartupReconciler', () => {
   })
 
   test('deduplicates repeated source ids', async () => {
-    const harness = createHarness(
-      { notes: { desiredInstalled: true, enabled: false } },
-      ['notes', 'notes', 'notes'],
-    )
+    const harness = createHarness({ notes: 'enabled' }, [
+      'notes',
+      'notes',
+      'notes',
+    ])
 
     await harness.reconciler.start()
 

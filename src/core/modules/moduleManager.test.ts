@@ -21,4 +21,25 @@ describe('ModuleManager pending activation projection', () => {
       error: 'incompatible fallback',
     })
   })
+
+  test('projects synchronized disabled intent without local artifacts', async () => {
+    const manager = new ModuleManager({
+      catalogSource: {
+        load: async () => [{ id: 'learning', version: '1.0.0' }],
+      },
+      installedStateSource: { load: async () => [] },
+      intentStateSource: {
+        load: async () => [{ id: 'learning', state: 'disabled' }],
+      },
+    })
+
+    await manager.refresh()
+
+    expect(manager.getSnapshot().modules[0]).toMatchObject({
+      status: 'disabled',
+      desiredInstalled: true,
+      enabled: false,
+      version: '1.0.0',
+    })
+  })
 })

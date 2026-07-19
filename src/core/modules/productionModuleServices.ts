@@ -2,14 +2,16 @@ import {
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
 } from './moduleActivationCoordinator'
-import { ModuleArtifactInstaller } from './moduleArtifactInstaller'
+import {
+  ModuleArtifactInstaller,
+  type ModuleArtifactInstallerOptions,
+} from './moduleArtifactInstaller'
 import { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import {
   type ConfirmedModuleCandidate,
   ModuleInstallationCoordinator,
 } from './moduleInstallationCoordinator'
-import { ModuleIntentCoordinator } from './moduleIntentCoordinator'
 import { SynchronizedModuleIntentStateSource } from './moduleIntentStateSource'
 import type { ModuleIntentStore } from './moduleIntentStore'
 import { ModuleLoader } from './moduleLoader'
@@ -72,6 +74,11 @@ type ProductionModuleIntentStore = Pick<
   'get' | 'set' | 'listModuleIds' | 'subscribeAll'
 >
 
+export type ModuleCatalogResolutionSource = Pick<
+  OfficialModuleCatalogSource,
+  'load' | 'getResolvedVersion' | 'getResolvedArtifactDescriptor'
+>
+
 export type ProductionModuleServicesOptions = Readonly<{
   store: ModuleStore
   deviceStateStore: ModuleDeviceStateStore
@@ -82,6 +89,13 @@ export type ProductionModuleServicesOptions = Readonly<{
   /** Shared reservation owned and disposed by the composition root. */
   runtimeReservation: ProductionModuleRuntimeReservation
   intentStore: ProductionModuleIntentStore
+  catalogSource?: ModuleCatalogResolutionSource
+  artifactDownloader?: ModuleArtifactInstallerOptions['download']
+  authorizeArtifactRemoval?: (
+    moduleId: string,
+    versions: readonly string[],
+  ) => Promise<boolean>
+  removeVersionArtifacts?: (moduleId: string, version: string) => Promise<void>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   transitionRecoveryRealmToken?: object
   readCurrentSchemaVersion: ModuleActivationCoordinatorOptions['readCurrentSchemaVersion']
@@ -99,7 +113,6 @@ export type ProductionModuleServicesOptions = Readonly<{
 export type ProductionModuleServices = ModuleService &
   Readonly<{
     learningDataRemovalDependencies: Readonly<{
-      intentCoordinator: ModuleIntentCoordinator
       intentStore: ProductionModuleIntentStore
       artifactUninstaller: ModuleUninstallCoordinator
       runtime: ProductionModuleRuntimeReservation
@@ -119,18 +132,20 @@ export function createProductionModuleServices(
     cacheTtlMs: OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS,
     ...(options.catalogRequest ? { requestUrl: options.catalogRequest } : {}),
   })
-  const catalogSource = new OfficialModuleCatalogSource({
-    client: catalogClient,
-    getCompatibility: async (module) => {
-      const compatibility = await options.getCompatibility(module)
-      if (compatibility.platform !== options.platform) {
-        throw new Error(
-          `Official module compatibility platform ${compatibility.platform} does not match ${options.platform}`,
-        )
-      }
-      return compatibility
-    },
-  })
+  const catalogSource =
+    options.catalogSource ??
+    new OfficialModuleCatalogSource({
+      client: catalogClient,
+      getCompatibility: async (module) => {
+        const compatibility = await options.getCompatibility(module)
+        if (compatibility.platform !== options.platform) {
+          throw new Error(
+            `Official module compatibility platform ${compatibility.platform} does not match ${options.platform}`,
+          )
+        }
+        return compatibility
+      },
+    })
   const activationLoader =
     options.activationLoader ??
     Object.freeze({
@@ -179,19 +194,17 @@ export function createProductionModuleServices(
     installedStateSource,
     intentStateSource,
   })
-  const intentCoordinator = new ModuleIntentCoordinator({
-    store: options.intentStore,
-    manager,
-  })
   const installer = new ModuleArtifactInstaller({
     adapter: options.store.adapter,
     store: options.store,
-    download: createOfficialModuleArtifactDownloader({
-      timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-      ...(options.artifactRequest
-        ? { requestUrl: options.artifactRequest }
-        : {}),
-    }),
+    download:
+      options.artifactDownloader ??
+      createOfficialModuleArtifactDownloader({
+        timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+        ...(options.artifactRequest
+          ? { requestUrl: options.artifactRequest }
+          : {}),
+      }),
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportCleanupError
       ? { reportCleanupError: options.reportCleanupError }
@@ -221,27 +234,34 @@ export function createProductionModuleServices(
     runtimeReservation,
   )
   const uninstallCoordinator = new ModuleUninstallCoordinator({
-    artifactStore: options.store,
+    artifactStore: {
+      removeVersionArtifacts:
+        options.removeVersionArtifacts ??
+        ((moduleId, version) =>
+          options.store.removeVersionArtifacts(moduleId, version)),
+    },
     deviceStateStore: options.deviceStateStore,
     intentStore: options.intentStore,
     manager,
     runtime: runtimeReservation,
-    authorizeArtifactRemoval: (moduleId, versions) =>
-      authorizeOfficialModuleArtifactRemoval(
-        catalogClient,
-        moduleId,
-        versions,
-        options.platform,
-        {
-          timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-          ...(options.artifactRequest
-            ? { requestUrl: options.artifactRequest }
-            : {}),
-          ...(options.subtleCrypto
-            ? { subtleCrypto: options.subtleCrypto }
-            : {}),
-        },
-      ),
+    authorizeArtifactRemoval:
+      options.authorizeArtifactRemoval ??
+      ((moduleId, versions) =>
+        authorizeOfficialModuleArtifactRemoval(
+          catalogClient,
+          moduleId,
+          versions,
+          options.platform,
+          {
+            timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+            ...(options.artifactRequest
+              ? { requestUrl: options.artifactRequest }
+              : {}),
+            ...(options.subtleCrypto
+              ? { subtleCrypto: options.subtleCrypto }
+              : {}),
+          },
+        )),
     platform: options.platform,
   })
   const startupIntentStore = options.intentStore
@@ -314,44 +334,26 @@ export function createProductionModuleServices(
       async (transaction) => {
         const state = await transaction.read()
         if (
-          state?.pendingVersion !== version ||
-          state.activationPhase !== 'pending'
+          state?.pending?.descriptor.version !== version ||
+          state.pending.activationStarted
         ) {
           return
         }
         await transaction.write({
           ...state,
-          pendingVersion: null,
-          activationPhase: null,
-        })
-      },
-    )
-  }
-
-  const clearPendingActivation = async (moduleId: string): Promise<void> => {
-    await options.deviceStateStore.runExclusive(
-      moduleId,
-      async (transaction) => {
-        const state = await transaction.read()
-        if (!state || state.activationPhase === null) return
-        await transaction.write({
-          ...state,
-          pendingVersion: null,
-          activationPhase: null,
+          pending: null,
         })
       },
     )
   }
 
   return Object.freeze({
-    mode: 'official' as const,
     getSnapshot: manager.getSnapshot,
     subscribe: manager.subscribe,
     refresh: () => manager.refresh(),
     getVerifiedArtifact: (moduleId) =>
       verifiedArtifactRegistry.getVerifiedArtifact(moduleId),
     learningDataRemovalDependencies: Object.freeze({
-      intentCoordinator,
       intentStore: options.intentStore,
       artifactUninstaller: uninstallCoordinator,
       runtime: runtimeReservation,
@@ -383,10 +385,7 @@ export function createProductionModuleServices(
       return runModuleOperation(candidate.moduleId, async () => {
         const result = await coordinator.installConfirmedCandidate(candidate)
         try {
-          await options.intentStore.set(candidate.moduleId, {
-            desiredInstalled: true,
-            enabled: true,
-          })
+          await options.intentStore.set(candidate.moduleId, 'enabled')
         } catch (intentError) {
           try {
             await cancelMatchingPendingVersion(
@@ -406,27 +405,35 @@ export function createProductionModuleServices(
         await manager.refresh()
         return Object.freeze({
           reloadRequired: true,
-          version: result.state.pendingVersion ?? candidate.expectedVersion,
+          version:
+            result.state.pending?.descriptor.version ??
+            candidate.expectedVersion,
         })
       })
     },
     setEnabled(moduleId: string, enabled: boolean) {
       return runModuleOperation(moduleId, async () => {
-        if (enabled) await intentCoordinator.enable(moduleId)
-        else await intentCoordinator.disable(moduleId)
+        const current = await options.intentStore.get(moduleId)
+        if (current === undefined || current === 'uninstalled') {
+          throw new Error(`Module "${moduleId}" is not installed`)
+        }
+        await options.intentStore.set(
+          moduleId,
+          enabled ? 'enabled' : 'disabled',
+        )
+        await manager.refresh()
         return Object.freeze({ reloadRequired: true })
       })
     },
     uninstall(moduleId: string) {
       return runModuleOperation(moduleId, async () => {
-        await intentCoordinator.uninstall(moduleId)
+        await options.intentStore.set(moduleId, 'uninstalled')
+        await manager.refresh()
         const state = await options.deviceStateStore.read(moduleId)
         const isActive = Boolean(
-          state?.activeVersion &&
-            options.isActive(moduleId, state.activeVersion),
+          state?.active && options.isActive(moduleId, state.active.version),
         )
         if (isActive) return Object.freeze({ reloadRequired: true })
-        await clearPendingActivation(moduleId)
         await uninstallCoordinator.uninstall(moduleId)
         return Object.freeze({ reloadRequired: false })
       })
@@ -459,7 +466,6 @@ export function createProductionModuleServices(
       disposed = true
       startupReconciler.dispose()
       readinessReconciler.dispose()
-      intentCoordinator.dispose()
       activationCoordinator.dispose()
       verifiedArtifactRegistry.clearAll()
       coordinator.dispose()

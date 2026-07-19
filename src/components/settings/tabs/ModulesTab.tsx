@@ -63,6 +63,10 @@ export function getModuleProductActions(
 ): readonly ModuleProductAction[] {
   if (!productCapabilitiesAvailable) return []
   if (!module.installed) {
+    if (module.desiredInstalled === true) {
+      if (module.enabled === true || hasCompatibilityIssues(module)) return []
+      return ['enable', 'uninstall']
+    }
     return hasCompatibilityIssues(module) ? [] : ['install']
   }
   if (module.desiredInstalled === false) return ['uninstall']
@@ -444,7 +448,7 @@ export function ModulesTab({
     service.getSnapshot,
   )
   const isLoading = snapshot.status === 'loading'
-  const productCapabilitiesAvailable = service.mode === 'official'
+  const productCapabilitiesAvailable = true
   const installed = snapshot.modules.filter((module) =>
     INSTALLED_STATUSES.has(module.status),
   )

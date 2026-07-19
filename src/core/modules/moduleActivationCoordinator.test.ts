@@ -7,11 +7,10 @@ function pendingState(): ModuleDeviceState {
   return {
     moduleId: 'learning',
     platform: 'desktop',
-    activeVersion: null,
-    pendingVersion: '1.0.0',
-    activationPhase: 'pending',
-    readyVersions: {
-      '1.0.0': {
+    active: null,
+    pending: {
+      activationStarted: false,
+      descriptor: {
         id: 'learning',
         version: '1.0.0',
         hostApi: '^1.0.0',
@@ -48,8 +47,7 @@ function coordinator(states: ModuleDeviceState[], enabled: boolean) {
         load: async (ids) =>
           ids.map((id) => ({
             id,
-            desiredInstalled: true,
-            enabled,
+            state: enabled ? ('enabled' as const) : ('disabled' as const),
           })),
       },
       artifactStore: {} as never,
@@ -80,8 +78,8 @@ describe('ModuleActivationCoordinator minimal state integration', () => {
       expect.objectContaining({ moduleId: 'learning', status: 'skipped' }),
     ])
     expect(test.durable.get('learning')).toMatchObject({
-      pendingVersion: null,
-      activationPhase: null,
+      active: null,
+      pending: null,
     })
   })
 })

@@ -17,16 +17,20 @@ function descriptor(version: string, readMin = 1): ModuleArtifactDescriptor {
 }
 
 function state(
-  phase: ModuleDeviceState['activationPhase'],
+  activationStarted: boolean | null,
   previous = descriptor('1.0.0'),
 ): ModuleDeviceState {
   return {
     moduleId: 'learning',
     platform: 'desktop',
-    activeVersion: '1.0.0',
-    pendingVersion: phase === null ? null : '2.0.0',
-    activationPhase: phase,
-    readyVersions: { '1.0.0': previous, '2.0.0': descriptor('2.0.0') },
+    active: previous,
+    pending:
+      activationStarted === null
+        ? null
+        : {
+            descriptor: descriptor('2.0.0'),
+            activationStarted,
+          },
   }
 }
 
@@ -71,24 +75,22 @@ function harness(initial: ModuleDeviceState, activateError?: Error) {
 
 describe('ModuleStartupTransitionRecovery', () => {
   test('durably fences target execution and commits only after schema postcheck', async () => {
-    const test = harness(state('pending'))
+    const test = harness(state(false))
     await expect(
       test.recovery.recover('learning', new AbortController().signal),
     ).resolves.toMatchObject({ status: 'activated', version: '2.0.0' })
-    expect(test.writes.map((value) => value.activationPhase)).toEqual([
-      'activation-started',
-      null,
-    ])
+    expect(
+      test.writes.map((value) => value.pending?.activationStarted ?? null),
+    ).toEqual([true, null])
     expect(test.activations).toEqual(['2.0.0'])
     expect(test.durable()).toMatchObject({
-      activeVersion: '2.0.0',
-      pendingVersion: null,
-      activationPhase: null,
+      active: expect.objectContaining({ version: '2.0.0' }),
+      pending: null,
     })
   })
 
   test('poisons the realm after target failure and leaves fallback for reload', async () => {
-    const test = harness(state('pending'), new Error('boom'))
+    const test = harness(state(false), new Error('boom'))
     await expect(
       test.recovery.recover('learning', new AbortController().signal),
     ).resolves.toMatchObject({
@@ -98,14 +100,13 @@ describe('ModuleStartupTransitionRecovery', () => {
     })
     expect(test.activations).toEqual(['2.0.0'])
     expect(test.durable()).toMatchObject({
-      activeVersion: '1.0.0',
-      pendingVersion: null,
-      activationPhase: null,
+      active: expect.objectContaining({ version: '1.0.0' }),
+      pending: null,
     })
   })
 
   test('never retries an interrupted target and restores a compatible previous version', async () => {
-    const test = harness(state('activation-started'))
+    const test = harness(state(true))
     await expect(
       test.recovery.recover('learning', new AbortController().signal),
     ).resolves.toMatchObject({
@@ -114,25 +115,25 @@ describe('ModuleStartupTransitionRecovery', () => {
       recoveredVersion: '1.0.0',
     })
     expect(test.activations).toEqual(['1.0.0'])
-    expect(test.durable().activationPhase).toBeNull()
+    expect(test.durable().pending).toBeNull()
   })
 
   test('keeps an interrupted activation blocked when previous schema is incompatible', async () => {
-    const test = harness(state('activation-started', descriptor('1.0.0', 1)))
+    const test = harness(state(true, descriptor('1.0.0', 1)))
     test.setSchema(3)
     await expect(
       test.recovery.recover('learning', new AbortController().signal),
     ).resolves.toMatchObject({ status: 'failed', processPoisoned: false })
     expect(test.activations).toEqual([])
-    expect(test.durable().activationPhase).toBe('activation-started')
+    expect(test.durable().pending?.activationStarted).toBe(true)
   })
 
   test('cancels an unstarted pending activation when intent is not live', async () => {
-    const test = harness(state('pending'))
+    const test = harness(state(false))
     await expect(
       test.recovery.recover('learning', new AbortController().signal, false),
     ).resolves.toMatchObject({ status: 'skipped' })
     expect(test.activations).toEqual([])
-    expect(test.durable().activationPhase).toBeNull()
+    expect(test.durable().pending).toBeNull()
   })
 })

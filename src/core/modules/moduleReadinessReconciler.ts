@@ -10,6 +10,7 @@ import type {
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
 import type { ModuleIntentStore } from './moduleIntentStore'
+import { schedulePendingModule } from './modulePendingInstallation'
 import type { ModuleArtifactPlatform, ModuleStore } from './moduleStore'
 import { assertModuleId } from './moduleStore'
 import type { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
@@ -128,7 +129,7 @@ export class ModuleReadinessReconciler {
 
     const intent = await this.options.intentStore.get(moduleId)
     this.throwIfUnavailable(signal)
-    if (!intent?.desiredInstalled) {
+    if (intent === undefined || intent === 'uninstalled') {
       return readinessResult({
         moduleId,
         status: 'skipped',
@@ -160,29 +161,26 @@ export class ModuleReadinessReconciler {
       )
     }
 
-    const candidate = snapshotDescriptor(descriptor)
-    const repaired = await this.ensureDescriptor(candidate, signal, 'initial')
+    await this.installDescriptor(descriptor, signal)
     this.throwIfUnavailable(signal)
-    const intended = snapshotState({
-      moduleId,
-      platform: this.options.platform,
-      activeVersion: null,
-      pendingVersion: candidate.version,
-      activationPhase: 'pending',
-      readyVersions: { [candidate.version]: candidate },
-    })
     // Once the durable commit starts, dispose must not report cancellation for
     // an installation that may already have become visible.
     this.controllers.forEach((controller) => {
       if (controller.signal === signal) this.controllers.delete(controller)
     })
-    const committed = await writeWithReadback(transaction, intended)
+    const committed = await schedulePendingModule(
+      transaction,
+      moduleId,
+      this.options.platform,
+      descriptor,
+    )
     return readinessResult({
       moduleId,
       status: 'ready',
-      versions: [candidate.version],
-      repairedVersions: repaired ? [candidate.version] : [],
-      installedVersion: committed.pendingVersion ?? candidate.version,
+      versions: [descriptor.version],
+      repairedVersions: [descriptor.version],
+      installedVersion:
+        committed.pending?.descriptor.version ?? descriptor.version,
     })
   }
 
@@ -190,14 +188,14 @@ export class ModuleReadinessReconciler {
     state: ModuleDeviceState,
     signal: AbortSignal,
   ): Promise<ModuleReadinessResult> {
-    const versions = referencedVersions(state)
+    const descriptors = referencedDescriptors(state)
     const repairedVersions: string[] = []
-    for (const version of versions) {
-      const descriptor = state.readyVersions[version]
-      if (await this.ensureDescriptor(descriptor, signal, 'persisted')) {
-        repairedVersions.push(version)
+    for (const descriptor of descriptors) {
+      if (await this.ensureDescriptor(descriptor, signal)) {
+        repairedVersions.push(descriptor.version)
       }
     }
+    const versions = descriptors.map((descriptor) => descriptor.version)
     return readinessResult({
       moduleId: state.moduleId,
       status: versions.length === 0 ? 'skipped' : 'ready',
@@ -209,7 +207,6 @@ export class ModuleReadinessReconciler {
   private async ensureDescriptor(
     descriptor: ModuleArtifactDescriptor,
     signal: AbortSignal,
-    repairPolicy: 'persisted' | 'initial',
   ): Promise<boolean> {
     this.throwIfUnavailable(signal)
     const subtleCrypto =
@@ -227,21 +224,8 @@ export class ModuleReadinessReconciler {
       return false
     } catch (error) {
       if (signal.aborted || this.disposed) throw disposedError()
-      if (error instanceof ArtifactAccessError) {
-        if (repairPolicy === 'persisted') throw error
-        // With no durable state, installation is safe if the version is absent.
-        // An immutable existing version will be verified again by the installer.
-        return this.installDescriptor(descriptor, signal)
-      }
-      if (repairPolicy === 'persisted') {
-        return this.repairDescriptor(descriptor, signal)
-      }
-      await this.options.artifactStore.removeVersionArtifacts(
-        descriptor.id,
-        descriptor.version,
-      )
-      this.throwIfUnavailable(signal)
-      return this.installDescriptor(descriptor, signal)
+      if (error instanceof ArtifactAccessError) throw error
+      return this.repairDescriptor(descriptor, signal)
     }
   }
 
@@ -250,10 +234,7 @@ export class ModuleReadinessReconciler {
     signal: AbortSignal,
   ): Promise<true> {
     try {
-      await this.options.installer.install(
-        snapshotDescriptor(descriptor),
-        signal,
-      )
+      await this.options.installer.install(descriptor, signal)
     } catch (error) {
       if (signal.aborted || this.disposed) throw disposedError()
       throw error
@@ -267,10 +248,7 @@ export class ModuleReadinessReconciler {
     signal: AbortSignal,
   ): Promise<true> {
     try {
-      await this.options.installer.repair(
-        snapshotDescriptor(descriptor),
-        signal,
-      )
+      await this.options.installer.repair(descriptor, signal)
     } catch (error) {
       if (signal.aborted || this.disposed) throw disposedError()
       throw error
@@ -347,87 +325,25 @@ function validateState(
       `Module "${moduleId}" device state belongs to ${state.platform}, not ${platform}`,
     )
   }
-  for (const version of referencedVersions(state)) {
-    const descriptor = state.readyVersions[version]
-    if (
-      !descriptor ||
-      descriptor.id !== moduleId ||
-      descriptor.version !== version ||
-      descriptor.platform !== platform
-    ) {
-      throw new Error(
-        `Module "${moduleId}" has no exact ready descriptor for "${version}"`,
-      )
+  for (const descriptor of referencedDescriptors(state)) {
+    if (descriptor.id !== moduleId || descriptor.platform !== platform) {
+      throw new Error(`Module "${moduleId}" has a mismatched ready descriptor`)
     }
   }
 }
 
-function referencedVersions(state: ModuleDeviceState): readonly string[] {
-  return Object.freeze(
-    [
-      ...new Set(
-        [state.activeVersion, state.pendingVersion].filter(
-          (version): version is string => version !== null,
-        ),
-      ),
-    ].sort(),
+function referencedDescriptors(
+  state: ModuleDeviceState,
+): readonly ModuleArtifactDescriptor[] {
+  const descriptors = [state.active, state.pending?.descriptor].filter(
+    (descriptor): descriptor is ModuleArtifactDescriptor =>
+      descriptor !== null && descriptor !== undefined,
   )
-}
-
-async function writeWithReadback(
-  transaction: ModuleDeviceStateTransaction,
-  intended: ModuleDeviceState,
-): Promise<ModuleDeviceState> {
-  try {
-    return snapshotState(await transaction.write(intended))
-  } catch (error) {
-    try {
-      const actual = await transaction.read()
-      if (actual !== null && statesEqual(actual, intended))
-        return snapshotState(actual)
-    } catch {
-      // Preserve the original uncertain write failure.
-    }
-    throw error
-  }
-}
-
-function snapshotDescriptor(
-  descriptor: ModuleArtifactDescriptor,
-): ModuleArtifactDescriptor {
-  return Object.freeze({
-    ...descriptor,
-    dataSchemas: Object.freeze(
-      Object.fromEntries(
-        Object.entries(descriptor.dataSchemas).map(([name, schema]) => [
-          name,
-          Object.freeze({ ...schema }),
-        ]),
-      ),
-    ),
-    manifest: Object.freeze({ ...descriptor.manifest }),
-  })
-}
-
-function snapshotState(state: ModuleDeviceState): ModuleDeviceState {
-  return Object.freeze({
-    ...state,
-    readyVersions: Object.freeze(
-      Object.fromEntries(
-        Object.entries(state.readyVersions).map(([version, descriptor]) => [
-          version,
-          snapshotDescriptor(descriptor),
-        ]),
-      ),
-    ),
-  })
-}
-
-function statesEqual(
-  left: ModuleDeviceState,
-  right: ModuleDeviceState,
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  return descriptors.filter(
+    (descriptor, index) =>
+      descriptors.findIndex((other) => other.version === descriptor.version) ===
+      index,
+  )
 }
 
 function readinessResult(value: ModuleReadinessResult): ModuleReadinessResult {

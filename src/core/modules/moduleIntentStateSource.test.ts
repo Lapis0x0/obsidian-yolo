@@ -2,39 +2,29 @@ import { SynchronizedModuleIntentStateSource } from './moduleIntentStateSource'
 import type { ModuleIntent } from './moduleIntentStore'
 
 describe('SynchronizedModuleIntentStateSource', () => {
-  it('reads only sorted unique union IDs and omits missing intent', async () => {
+  it('reads sorted unique IDs and omits missing intent', async () => {
     const get = jest.fn(
       async (id: string): Promise<ModuleIntent | undefined> =>
-        id === 'catalog'
-          ? Object.freeze({ desiredInstalled: true, enabled: false })
-          : undefined,
+        id === 'catalog' ? 'disabled' : undefined,
     )
     const source = new SynchronizedModuleIntentStateSource({ store: { get } })
 
     const result = await source.load(['device', 'catalog', 'device'])
 
     expect(get.mock.calls.map(([id]) => id)).toEqual(['catalog', 'device'])
-    expect(result).toEqual([
-      { id: 'catalog', desiredInstalled: true, enabled: false },
-    ])
+    expect(result).toEqual([{ id: 'catalog', state: 'disabled' }])
     expect(Object.isFrozen(result)).toBe(true)
     expect(result.every(Object.isFrozen)).toBe(true)
-    expect(get).not.toHaveBeenCalledWith('unknown')
   })
 
-  it('projects all four boolean combinations without coercion', async () => {
-    const combinations: ModuleIntent[] = [
-      { desiredInstalled: false, enabled: false },
-      { desiredInstalled: false, enabled: true },
-      { desiredInstalled: true, enabled: false },
-      { desiredInstalled: true, enabled: true },
-    ]
+  it('projects all three states without coercion', async () => {
+    const states: ModuleIntent[] = ['uninstalled', 'disabled', 'enabled']
     const source = new SynchronizedModuleIntentStateSource({
-      store: { get: async (id: string) => combinations[Number(id)] },
+      store: { get: async (id: string) => states[Number(id)] },
     })
 
-    await expect(source.load(['0', '1', '2', '3'])).resolves.toEqual(
-      combinations.map((intent, id) => ({ id: String(id), ...intent })),
+    await expect(source.load(['0', '1', '2'])).resolves.toEqual(
+      states.map((state, id) => ({ id: String(id), state })),
     )
   })
 })

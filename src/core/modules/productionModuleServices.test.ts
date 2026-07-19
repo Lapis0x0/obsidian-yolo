@@ -252,16 +252,13 @@ function createHarness() {
     adapter,
     rootPath: 'device/module-state',
   })
-  const intents = new Map<string, ModuleIntent>([
-    ['learning', { desiredInstalled: false, enabled: false }],
-  ])
+  const intents = new Map<string, ModuleIntent>([['learning', 'uninstalled']])
   const listeners = new Set<(moduleId: string) => void>()
   const intentStore = {
     get: jest.fn(async (moduleId: string) => intents.get(moduleId)),
     set: jest.fn(async (moduleId: string, intent: ModuleIntent) => {
-      const saved = Object.freeze({ ...intent })
-      intents.set(moduleId, saved)
-      return saved
+      intents.set(moduleId, intent)
+      return intent
     }),
     listModuleIds: jest.fn(async () => [...intents.keys()]),
     subscribeAll: jest.fn((listener: (moduleId: string) => void) => {
@@ -299,7 +296,16 @@ function createHarness() {
     platform: 'desktop',
     getCompatibility: createOfficialModuleCompatibilityProvider({
       platform: 'desktop',
-      readDeviceState: (moduleId) => deviceStateStore.read(moduleId),
+      readDeviceState: async (moduleId) => {
+        const state = await deviceStateStore.read(moduleId)
+        return state
+          ? {
+              moduleId,
+              platform: state.platform,
+              activeVersion: state.active?.version ?? null,
+            }
+          : null
+      },
       readSettingsSchemaVersion: async () => 0,
     }),
     isActive,
@@ -314,6 +320,7 @@ function createHarness() {
     readCurrentSchemaVersion: async () => 0,
     catalogRequest,
     artifactRequest,
+    authorizeArtifactRemoval: async () => true,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
     requestReload: jest.fn(),
     reportCleanupError,
@@ -360,7 +367,6 @@ describe('createProductionModuleServices', () => {
         'getVerifiedArtifact',
         'install',
         'learningDataRemovalDependencies',
-        'mode',
         'refresh',
         'setEnabled',
         'start',
@@ -368,7 +374,6 @@ describe('createProductionModuleServices', () => {
         'uninstall',
       ].sort(),
     )
-    expect(services.mode).toBe('official')
   })
 
   it('installs the exact candidate, schedules it, and enables intent', async () => {
@@ -378,13 +383,12 @@ describe('createProductionModuleServices', () => {
       reloadRequired: true,
       version: '1.2.3',
     })
-    expect(harness.intents.get('learning')).toEqual({
-      desiredInstalled: true,
-      enabled: true,
-    })
+    expect(harness.intents.get('learning')).toBe('enabled')
     expect(await harness.deviceStateStore.read('learning')).toMatchObject({
-      pendingVersion: '1.2.3',
-      activationPhase: 'pending',
+      pending: {
+        descriptor: { version: '1.2.3' },
+        activationStarted: false,
+      },
     })
     expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
   })
@@ -399,22 +403,19 @@ describe('createProductionModuleServices', () => {
     await expect(harness.services.install(candidate)).rejects.toBe(intentError)
     const state = await harness.deviceStateStore.read('learning')
     expect(state).toMatchObject({
-      pendingVersion: null,
-      activationPhase: null,
+      active: null,
+      pending: null,
     })
-    expect(state?.readyVersions['1.2.3']).toBeDefined()
   })
 
   it('delegates enablement to synchronized intent', async () => {
     const harness = createHarness()
+    harness.intents.set('learning', 'disabled')
 
     await expect(
       harness.services.setEnabled('learning', true),
     ).resolves.toEqual({ reloadRequired: true })
-    expect(harness.intents.get('learning')).toEqual({
-      desiredInstalled: false,
-      enabled: true,
-    })
+    expect(harness.intents.get('learning')).toBe('enabled')
   })
 
   it('clears intent and safely removes an inactive pending installation', async () => {
@@ -424,7 +425,7 @@ describe('createProductionModuleServices', () => {
     await expect(harness.services.uninstall('learning')).resolves.toEqual({
       reloadRequired: false,
     })
-    expect(harness.intents.get('learning')?.desiredInstalled).toBe(false)
+    expect(harness.intents.get('learning')).toBe('uninstalled')
     expect(await harness.deviceStateStore.read('learning')).toBeNull()
   })
 
@@ -434,13 +435,12 @@ describe('createProductionModuleServices', () => {
     const pending = (await harness.deviceStateStore.read('learning'))!
     await harness.deviceStateStore.write({
       ...pending,
-      activationPhase: 'activation-started',
+      pending: { ...pending.pending!, activationStarted: true },
     })
     await harness.deviceStateStore.write({
       ...pending,
-      activeVersion: '1.2.3',
-      pendingVersion: null,
-      activationPhase: null,
+      active: pending.pending!.descriptor,
+      pending: null,
     })
     harness.activeVersions.set('learning', '1.2.3')
 

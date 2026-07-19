@@ -55,19 +55,18 @@ function descriptor(version: string): ModuleArtifactDescriptor {
 }
 
 function state(
-  phase: ModuleDeviceState['activationPhase'] = null,
+  pending: ModuleDeviceState['pending'] = null,
 ): ModuleDeviceState {
   return {
     moduleId: 'learning',
     platform: 'desktop',
-    activeVersion: '1.0.0',
-    pendingVersion: phase === null ? null : '2.0.0',
-    activationPhase: phase,
-    readyVersions: {
-      '1.0.0': descriptor('1.0.0'),
-      '2.0.0': descriptor('2.0.0'),
-    },
+    active: descriptor('1.0.0'),
+    pending,
   }
+}
+
+function pending(activationStarted: boolean): ModuleDeviceState['pending'] {
+  return { descriptor: descriptor('2.0.0'), activationStarted }
 }
 
 function harness() {
@@ -80,116 +79,85 @@ function harness() {
   return { adapter, store }
 }
 
-describe('ModuleDeviceStateStore v3', () => {
-  test('persists the minimal pending activation state', async () => {
+describe('ModuleDeviceStateStore', () => {
+  test('persists only active and pending descriptors', async () => {
     const { adapter, store } = harness()
-    await store.write(state('pending'))
-    expect(await store.read('learning')).toEqual(state('pending'))
-    expect(JSON.parse(adapter.files.get(PATH)!).schemaVersion).toBe(3)
+    await store.write(state(pending(false)))
+
+    expect(await store.read('learning')).toEqual(state(pending(false)))
+    const envelope = JSON.parse(adapter.files.get(PATH)!)
+    expect(envelope.schemaVersion).toBe(1)
+    expect(envelope.data).toEqual(state(pending(false)))
   })
 
   test('enforces pending -> activation-started -> active progression', async () => {
     const { store } = harness()
-    await store.write(state('pending'))
-    await store.write(state('activation-started'))
-    await expect(store.write(state('pending'))).rejects.toThrow(
+    await store.write(state(pending(false)))
+    await store.write(state(pending(true)))
+    await expect(store.write(state(pending(false)))).rejects.toThrow(
       'Pending activation progression is invalid',
     )
     await store.write({
-      ...state('activation-started'),
-      activeVersion: '2.0.0',
-      pendingVersion: null,
-      activationPhase: null,
+      ...state(),
+      active: descriptor('2.0.0'),
+    })
+
+    expect(await store.read('learning')).toEqual({
+      ...state(),
+      active: descriptor('2.0.0'),
     })
   })
 
-  test('migrates v1 pending and discards a downloaded-only pointer', async () => {
+  test('allows clearing a pending activation before or after activation starts', async () => {
+    const beforeActivation = harness().store
+    await beforeActivation.write(state(pending(false)))
+    await beforeActivation.write(state())
+
+    const afterActivation = harness().store
+    await afterActivation.write(state(pending(false)))
+    await afterActivation.write(state(pending(true)))
+    await afterActivation.write(state())
+  })
+
+  test('rejects starting activation in a newly created state', async () => {
+    const { store } = harness()
+    await expect(store.write(state(pending(true)))).rejects.toThrow(
+      'A new pending activation must begin in pending',
+    )
+  })
+
+  test('does not interpret development-time legacy schemas', async () => {
     const { adapter, store } = harness()
     adapter.folders.add(ROOT)
     adapter.files.set(
       PATH,
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 3,
         data: {
           moduleId: 'learning',
           platform: 'desktop',
           activeVersion: '1.0.0',
-          downloadedCandidate: '2.0.0',
           pendingVersion: null,
-          readyVersions: state().readyVersions,
+          activationPhase: null,
+          readyVersions: { '1.0.0': descriptor('1.0.0') },
         },
       }),
     )
-    expect(await store.read('learning')).toMatchObject({
-      activeVersion: '1.0.0',
-      pendingVersion: null,
-      activationPhase: null,
-    })
 
-    adapter.files.set(
-      PATH,
-      JSON.stringify({
-        schemaVersion: 1,
-        data: {
-          moduleId: 'learning',
-          platform: 'desktop',
-          activeVersion: '1.0.0',
-          downloadedCandidate: null,
-          pendingVersion: '2.0.0',
-          readyVersions: state().readyVersions,
-        },
-      }),
+    await expect(store.read('learning')).rejects.toThrow(
+      'unsupported schema version 3',
     )
-    expect(await store.read('learning')).toMatchObject({
-      pendingVersion: '2.0.0',
-      activationPhase: 'pending',
-    })
   })
 
-  test.each([
-    ['prepared', 'pending', '2.0.0'],
-    ['settings-committed', 'pending', '2.0.0'],
-    ['activation-started', 'activation-started', '2.0.0'],
-    ['committed', null, null],
-    ['rollback-completed', null, null],
-  ] as const)('migrates v2 phase %s', async (legacyPhase, phase, pending) => {
-    const { adapter, store } = harness()
-    adapter.folders.add(ROOT)
-    const activeVersion = legacyPhase === 'committed' ? '2.0.0' : '1.0.0'
-    adapter.files.set(
-      PATH,
-      JSON.stringify({
-        schemaVersion: 2,
-        data: {
-          moduleId: 'learning',
-          platform: 'desktop',
-          activeVersion,
-          downloadedCandidate:
-            legacyPhase === 'rollback-completed' ? '2.0.0' : null,
-          pendingVersion: [
-            'prepared',
-            'settings-committed',
-            'activation-started',
-          ].includes(legacyPhase)
-            ? '2.0.0'
-            : null,
-          readyVersions: state().readyVersions,
-          transition: {
-            phase: legacyPhase,
-            moduleId: 'learning',
-            platform: 'desktop',
-            previousActiveVersion: '1.0.0',
-            targetVersion: '2.0.0',
-            targetManifestSha256: HASH,
-            settings: null,
-          },
-        },
-      }),
-    )
-    expect(await store.read('learning')).toMatchObject({
-      activeVersion,
-      pendingVersion: pending,
-      activationPhase: phase,
-    })
+  test('rejects active and pending descriptors for the same version', async () => {
+    const { store } = harness()
+    await expect(
+      store.write(
+        state({
+          descriptor: descriptor('1.0.0'),
+          activationStarted: false,
+        }),
+      ),
+    ).rejects.toThrow('Pending version must differ from active version')
   })
 })

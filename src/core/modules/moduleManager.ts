@@ -164,7 +164,10 @@ function buildRecords(
         ? Object.freeze({ ...installedValue })
         : undefined
       const intent = intentValue ? Object.freeze({ ...intentValue }) : undefined
-      const status = resolveStatus(catalog, installed)
+      const status =
+        !installed && intent?.state === 'disabled'
+          ? 'disabled'
+          : resolveStatus(catalog, installed)
       return Object.freeze({
         id,
         name: catalog?.name ?? id,
@@ -186,8 +189,8 @@ function buildRecords(
         status,
         ...(intent
           ? {
-              desiredInstalled: intent.desiredInstalled,
-              enabled: intent.enabled,
+              desiredInstalled: intent.state !== 'uninstalled',
+              enabled: intent.state === 'enabled',
             }
           : {}),
         ...(catalog ? { catalog } : {}),

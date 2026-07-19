@@ -1,9 +1,4 @@
-import {
-  type ModuleArtifactReadStore,
-  type VerifiedModuleArtifact,
-  verifyInstalledModuleArtifact,
-} from './moduleArtifactVerifier'
-import type { ModuleLoader } from './moduleLoader'
+import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 import {
   type ModuleArtifactDataSchemas,
@@ -12,13 +7,8 @@ import {
   assertModulePathSegment,
   isModuleHostApiRange,
 } from './moduleStore'
-import type {
-  InstalledModuleState,
-  InstalledModuleStateSource,
-  ModuleCatalogEntry,
-  ModuleCatalogSource,
-  YoloModuleDefinition,
-} from './types'
+import type { OfficialModuleCatalogVersion } from './officialModuleCatalog'
+import type { ModuleCatalogEntry, ModuleCatalogSource } from './types'
 
 export type BundledModuleDescriptor = Readonly<{
   id: string
@@ -40,30 +30,12 @@ export type BundledModuleIndex = Readonly<{
   modules: readonly BundledModuleDescriptor[]
 }>
 
-export type BundledModuleActivationRuntime = Readonly<{
-  activate(
-    definition: YoloModuleDefinition,
-    version?: string,
-    signal?: AbortSignal,
-  ): Promise<void>
-}>
-
-export type BundledModuleRegistryOptions = {
-  store: ModuleArtifactReadStore & {
+export type BundledModuleCatalogSourceOptions = {
+  store: {
     readBundledIndexBytes(): Promise<Uint8Array>
   }
-  loader: Pick<ModuleLoader, 'load'>
-  runtime: BundledModuleActivationRuntime
   platform: ModuleArtifactPlatform
-  subtleCrypto?: Pick<SubtleCrypto, 'digest'>
-  reportActivationError?: (moduleId: string, error: unknown) => void
 }
-
-type ActivationState = Readonly<{
-  version: string
-  active?: boolean
-  error?: string
-}>
 
 export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
   const candidate = asPlainObject(value, 'Bundled module index')
@@ -165,38 +137,66 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
   })
 }
 
-/** Discovers and activates module artifacts shipped beside the plugin. */
-export class BundledModuleRegistry {
-  readonly catalogSource: ModuleCatalogSource = Object.freeze({
-    load: async () => this.loadCatalog(),
-  })
-
-  readonly installedStateSource: InstalledModuleStateSource = Object.freeze({
-    load: async () => this.loadInstalledStates(),
-  })
-
+/** Projects immutable module artifacts shipped beside the plugin as a catalog. */
+export class BundledModuleCatalogSource implements ModuleCatalogSource {
   private indexPromise: Promise<BundledModuleIndex> | null = null
-  private activationPromise: Promise<void> | null = null
-  private readonly states = new Map<string, ActivationState>()
-  private readonly verifiedArtifacts = new Map<string, VerifiedModuleArtifact>()
-  private readonly subtleCrypto: Pick<SubtleCrypto, 'digest'>
+  private readonly resolvedVersions = new Map<
+    string,
+    OfficialModuleCatalogVersion
+  >()
 
-  constructor(private readonly options: BundledModuleRegistryOptions) {
+  constructor(private readonly options: BundledModuleCatalogSourceOptions) {
     if (options.platform !== 'desktop' && options.platform !== 'mobile') {
       throw new Error('Bundled module runtime platform is invalid')
     }
-    const subtleCrypto = options.subtleCrypto ?? globalThis.crypto?.subtle
-    if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
-    this.subtleCrypto = subtleCrypto
   }
 
-  activateAll(): Promise<void> {
-    this.activationPromise ??= this.activateAllOnce()
-    return this.activationPromise
+  async load(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
+    const index = await this.loadIndex()
+    this.resolvedVersions.clear()
+    return Object.freeze(
+      index.modules.map((module) => {
+        if (!module.platforms.includes(this.options.platform)) {
+          return catalogEntry(module, [{ kind: 'platform' }])
+        }
+        this.resolvedVersions.set(module.id, resolvedVersion(module))
+        return catalogEntry(module)
+      }),
+    )
   }
 
-  getVerifiedArtifact(moduleId: string): VerifiedModuleArtifact | undefined {
-    return this.verifiedArtifacts.get(moduleId)
+  getResolvedVersion(
+    moduleId: string,
+  ): OfficialModuleCatalogVersion | undefined {
+    return this.resolvedVersions.get(moduleId)
+  }
+
+  getResolvedArtifactDescriptor(
+    moduleId: string,
+    expectedVersion: string,
+    platform: ModuleArtifactPlatform,
+  ): ModuleArtifactDescriptor | undefined {
+    const resolved = this.resolvedVersions.get(moduleId)
+    if (!resolved) return undefined
+    if (resolved.version !== expectedVersion) {
+      throw new Error(
+        `Bundled module "${moduleId}" resolved candidate changed from "${expectedVersion}" to "${resolved.version}"`,
+      )
+    }
+    if (platform !== this.options.platform) {
+      throw new Error(
+        `Bundled module catalog platform ${this.options.platform} does not match ${platform}`,
+      )
+    }
+    return Object.freeze({
+      id: moduleId,
+      version: resolved.version,
+      hostApi: resolved.hostApi,
+      dataSchemas: resolved.dataSchemas,
+      platform,
+      manifestUrl: resolved.manifestUrl,
+      manifest: resolved.manifest,
+    })
   }
 
   private async loadIndex(): Promise<BundledModuleIndex> {
@@ -209,103 +209,34 @@ export class BundledModuleRegistry {
       )
     return await this.indexPromise
   }
-
-  private async loadCatalog(): Promise<readonly ModuleCatalogEntry[]> {
-    const index = await this.loadIndex()
-    return Object.freeze(
-      index.modules.map((module) =>
-        Object.freeze({
-          id: module.id,
-          version: module.version,
-          name: module.name,
-          description: module.description,
-        }),
-      ),
-    )
-  }
-
-  private async loadInstalledStates(): Promise<
-    readonly InstalledModuleState[]
-  > {
-    const index = await this.loadIndex()
-    return Object.freeze(
-      index.modules.map((module) => {
-        const state = this.states.get(module.id)
-        return Object.freeze({
-          id: module.id,
-          version: state?.version ?? module.version,
-          ...(state?.active ? { active: true } : {}),
-          ...(state?.error ? { error: state.error } : {}),
-        })
-      }),
-    )
-  }
-
-  private async activateAllOnce(): Promise<void> {
-    const index = await this.loadIndex()
-    for (const module of index.modules) {
-      await this.activateOne(module)
-    }
-  }
-
-  private async activateOne(module: BundledModuleDescriptor): Promise<void> {
-    this.states.set(module.id, Object.freeze({ version: module.version }))
-    this.verifiedArtifacts.delete(module.id)
-    try {
-      if (!module.platforms.includes(this.options.platform)) {
-        throw new Error(
-          `Bundled module "${module.id}" does not support ${this.options.platform}`,
-        )
-      }
-      const artifact = await verifyInstalledModuleArtifact(
-        this.options.store,
-        {
-          id: module.id,
-          version: module.version,
-          hostApi: module.hostApi,
-          dataSchemas: module.dataSchemas,
-          platform: this.options.platform,
-          manifestUrl: module.manifestUrl,
-          manifest: module.manifest,
-        },
-        this.subtleCrypto,
-      )
-      this.verifiedArtifacts.set(module.id, artifact)
-      const { manifest, variant, entryBytes } = artifact
-      const entry = variant.files.find((file) => file.role === 'entry')!
-      const definition = await this.options.loader.load(
-        {
-          id: manifest.id,
-          byteSize: entry.byteSize,
-          sha256: entry.sha256,
-        },
-        entryBytes,
-      )
-      await this.options.runtime.activate(definition, module.version)
-      this.states.set(
-        module.id,
-        Object.freeze({ version: module.version, active: true }),
-      )
-    } catch (error) {
-      this.verifiedArtifacts.delete(module.id)
-      this.states.set(
-        module.id,
-        Object.freeze({
-          version: module.version,
-          error: errorMessage(error),
-        }),
-      )
-      try {
-        this.options.reportActivationError?.(module.id, error)
-      } catch {
-        // Reporting cannot block activation of the remaining modules.
-      }
-    }
-  }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+function catalogEntry(
+  module: BundledModuleDescriptor,
+  compatibilityIssues: ModuleCatalogEntry['compatibilityIssues'] = [],
+): ModuleCatalogEntry {
+  return Object.freeze({
+    id: module.id,
+    version: module.version,
+    name: module.name,
+    description: module.description,
+    ...(compatibilityIssues.length > 0
+      ? { compatibilityIssues: Object.freeze(compatibilityIssues) }
+      : {}),
+  })
+}
+
+function resolvedVersion(
+  module: BundledModuleDescriptor,
+): OfficialModuleCatalogVersion {
+  return Object.freeze({
+    version: module.version,
+    hostApi: module.hostApi,
+    dataSchemas: module.dataSchemas,
+    platforms: module.platforms,
+    manifestUrl: module.manifestUrl,
+    manifest: module.manifest,
+  })
 }
 
 function assertKeys(

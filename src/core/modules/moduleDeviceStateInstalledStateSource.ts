@@ -22,24 +22,24 @@ export class ModuleDeviceStateInstalledStateSource
 
     const installed: InstalledModuleState[] = []
     for (const state of states) {
-      const version =
-        state.activeVersion ??
-        state.pendingVersion ??
-        Object.keys(state.readyVersions).at(-1)
+      const version = state.active?.version ?? state.pending?.descriptor.version
       if (version === undefined) continue
+      const pendingVersion = state.pending?.descriptor.version
       const error = this.options.getError?.(state.moduleId)
       installed.push(
         Object.freeze({
           id: state.moduleId,
           version,
-          ...(state.pendingVersion
-            ? { pendingVersion: state.pendingVersion }
-            : {}),
-          ...(state.activationPhase
-            ? { activationPhase: state.activationPhase }
+          ...(pendingVersion ? { pendingVersion } : {}),
+          ...(state.pending
+            ? {
+                activationPhase: state.pending.activationStarted
+                  ? ('activation-started' as const)
+                  : ('pending' as const),
+              }
             : {}),
           ...(error ? { error } : {}),
-          ...(state.activeVersion === version &&
+          ...(state.active?.version === version &&
           this.options.isActive(state.moduleId, version)
             ? { active: true }
             : {}),

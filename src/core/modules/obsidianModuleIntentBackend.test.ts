@@ -152,20 +152,11 @@ describe('createObsidianModuleIntentBackend', () => {
     const harness = createHarness('First')
 
     await Promise.all([
-      harness.store.set('notes', {
-        desiredInstalled: true,
-        enabled: false,
-      }),
-      harness.store.set('search', {
-        desiredInstalled: false,
-        enabled: true,
-      }),
+      harness.store.set('notes', 'disabled'),
+      harness.store.set('search', 'uninstalled'),
     ])
     harness.setBaseDir('Second')
-    await harness.store.set('notes', {
-      desiredInstalled: false,
-      enabled: false,
-    })
+    await harness.store.set('notes', 'uninstalled')
 
     expect(harness.adapter.writes).toEqual([
       'First/.yolo_json_db/module-intent/notes.json',
@@ -190,10 +181,7 @@ describe('createObsidianModuleIntentBackend', () => {
       harness.adapter.files.set(path, data)
     }
 
-    const pending = harness.store.set('notes', {
-      desiredInstalled: true,
-      enabled: true,
-    })
+    const pending = harness.store.set('notes', 'enabled')
     await writeStarted
     harness.setBaseDir('New')
     release()

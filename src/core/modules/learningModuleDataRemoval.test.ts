@@ -108,13 +108,12 @@ function fixture() {
         local.set(path, value)
       },
     },
-    intentCoordinator: {
-      uninstall: async () => {
-        events.push('intent')
-      },
-    },
     intentStore: {
-      get: async () => ({ desiredInstalled: false, enabled: false }),
+      set: async () => {
+        events.push('intent')
+        return 'uninstalled'
+      },
+      get: async () => 'uninstalled',
     },
     artifactUninstaller: {
       uninstall: async () => {

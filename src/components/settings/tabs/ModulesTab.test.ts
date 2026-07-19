@@ -71,6 +71,16 @@ describe('ModulesTab product actions', () => {
       ['enable', 'uninstall'],
     ],
     [
+      'disabled synchronized intent without local artifacts',
+      moduleRecord({
+        desiredInstalled: true,
+        enabled: false,
+        id: 'notes',
+        status: 'disabled',
+      }),
+      ['enable', 'uninstall'],
+    ],
+    [
       'uninstall pending',
       moduleRecord({
         desiredInstalled: false,

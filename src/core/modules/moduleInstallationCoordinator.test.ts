@@ -61,12 +61,20 @@ describe('ModuleInstallationCoordinator', () => {
     await expect(
       test.value.installConfirmedCandidate(candidate),
     ).resolves.toMatchObject({
-      state: { pendingVersion: '2.0.0', activationPhase: 'pending' },
+      state: {
+        active: null,
+        pending: {
+          descriptor: { version: '2.0.0' },
+          activationStarted: false,
+        },
+      },
     })
     expect(test.durable()).toMatchObject({
-      activeVersion: null,
-      pendingVersion: '2.0.0',
-      activationPhase: 'pending',
+      active: null,
+      pending: {
+        descriptor: { version: '2.0.0' },
+        activationStarted: false,
+      },
     })
   })
 

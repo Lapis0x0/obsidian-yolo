@@ -1,16 +1,15 @@
 import type { ModuleDeviceState } from './moduleDeviceStateStore'
 import { ModuleUninstallCoordinator } from './moduleUninstallCoordinator'
 
-describe('ModuleUninstallCoordinator pending activation guard', () => {
-  test('does not remove artifacts while activation is pending', async () => {
+describe('ModuleUninstallCoordinator', () => {
+  test('discards a pending installation before removing local state', async () => {
     const state: ModuleDeviceState = {
       moduleId: 'learning',
       platform: 'desktop',
-      activeVersion: null,
-      pendingVersion: '1.0.0',
-      activationPhase: 'pending',
-      readyVersions: {
-        '1.0.0': {
+      active: null,
+      pending: {
+        activationStarted: false,
+        descriptor: {
           id: 'learning',
           version: '1.0.0',
           hostApi: '^1.0.0',
@@ -23,27 +22,29 @@ describe('ModuleUninstallCoordinator pending activation guard', () => {
       },
     }
     const remove = jest.fn(async () => undefined)
+    const write = jest.fn(async (next: ModuleDeviceState) => next)
+    const removeState = jest.fn(async () => undefined)
     const coordinator = new ModuleUninstallCoordinator({
       artifactStore: { removeVersionArtifacts: remove },
       deviceStateStore: {
         runExclusive: async (_id, operation) =>
           operation({
             read: async () => state,
-            write: async (next) => next,
-            remove: async () => undefined,
+            write,
+            remove: removeState,
           }),
       },
       intentStore: {
-        get: async () => ({ desiredInstalled: false, enabled: false }),
+        get: async () => 'uninstalled',
       },
       manager: { refresh: async () => undefined },
       runtime: { runWithModuleQuiesced: async (_id, operation) => operation() },
       authorizeArtifactRemoval: async () => true,
       platform: 'desktop',
     })
-    await expect(coordinator.uninstall('learning')).rejects.toThrow(
-      'blocked by a pending activation',
-    )
-    expect(remove).not.toHaveBeenCalled()
+    await expect(coordinator.uninstall('learning')).resolves.toBeUndefined()
+    expect(write).toHaveBeenCalledWith({ ...state, pending: null })
+    expect(removeState).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledWith('learning', '1.0.0')
   })
 })

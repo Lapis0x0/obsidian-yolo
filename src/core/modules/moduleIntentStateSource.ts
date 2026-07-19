@@ -16,19 +16,11 @@ export class SynchronizedModuleIntentStateSource
   ): Promise<ReadonlyArray<ModuleIntentState>> {
     const ids = [...new Set(moduleIds)].sort()
     const intents = await Promise.all(
-      ids.map(async (id) => ({ id, intent: await this.options.store.get(id) })),
+      ids.map(async (id) => ({ id, state: await this.options.store.get(id) })),
     )
     return Object.freeze(
-      intents.flatMap(({ id, intent }) =>
-        intent
-          ? [
-              Object.freeze({
-                id,
-                desiredInstalled: intent.desiredInstalled,
-                enabled: intent.enabled,
-              }),
-            ]
-          : [],
+      intents.flatMap(({ id, state }) =>
+        state ? [Object.freeze({ id, state })] : [],
       ),
     )
   }

@@ -10,11 +10,7 @@ import {
   type ModuleArtifactPlatform,
   type ModuleStore,
   assertModuleId,
-  assertModulePathSegment,
 } from './moduleStore'
-
-const SEMVER =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
 export type ModuleUninstallCoordinatorOptions = Readonly<{
   artifactStore: Pick<ModuleStore, 'removeVersionArtifacts'>
@@ -74,13 +70,13 @@ export class ModuleUninstallCoordinator {
           moduleId,
           async (transaction) => {
             const intent = await this.options.intentStore.get(moduleId)
-            if (intent?.desiredInstalled !== false) {
+            if (intent !== 'uninstalled') {
               throw new Error(
-                `Module "${moduleId}" uninstall requires desiredInstalled to be false`,
+                `Module "${moduleId}" uninstall requires uninstalled intent`,
               )
             }
 
-            const state = await transaction.read()
+            let state = await transaction.read()
             if (state === null) return
             const versions = validateRemovableState(
               state,
@@ -101,6 +97,9 @@ export class ModuleUninstallCoordinator {
                 moduleId,
                 version,
               )
+            }
+            if (state.pending !== null) {
+              state = await transaction.write({ ...state, pending: null })
             }
             await removeState(transaction)
           },
@@ -144,52 +143,17 @@ function validateRemovableState(
       `Module "${moduleId}" device state belongs to ${state.platform}, not ${platform}`,
     )
   }
-  // The runtime reservation proves current-process inactivity. activeVersion is
-  // only the durable pointer from the last successful startup.
-  if (state.activationPhase !== null) {
-    throw new Error(
-      `Module "${moduleId}" uninstall is blocked by a pending activation`,
-    )
-  }
-  if (state.pendingVersion !== null) {
-    throw new Error(
-      `Module "${moduleId}" uninstall is blocked by a pending version`,
-    )
-  }
-
-  const versions = Object.keys(state.readyVersions).sort()
-  const canonicalVersions = new Set<string>()
-  for (const version of versions) {
-    assertModulePathSegment(version, 'Module version')
-    if (!SEMVER.test(version)) {
-      throw new Error('Module version must be semantic')
-    }
-    const canonical = version.normalize('NFKC').toLowerCase()
-    if (canonicalVersions.has(canonical)) {
-      throw new Error('Module ready versions contain a path alias')
-    }
-    canonicalVersions.add(canonical)
-    const descriptor = state.readyVersions[version]
-    if (
-      !descriptor ||
-      descriptor.id !== moduleId ||
-      descriptor.version !== version ||
-      descriptor.platform !== platform
-    ) {
-      throw new Error(
-        `Module "${moduleId}" has a mismatched descriptor for "${version}"`,
-      )
-    }
-  }
-  for (const pointer of [state.activeVersion]) {
-    if (
-      pointer !== null &&
-      !Object.prototype.hasOwnProperty.call(state.readyVersions, pointer)
-    ) {
-      throw new Error(`Module "${moduleId}" has an invalid version pointer`)
-    }
-  }
-  return Object.freeze(versions)
+  // The runtime reservation proves current-process inactivity. `active` only
+  // records the descriptor from the last successful startup.
+  return Object.freeze(
+    [
+      ...new Set(
+        [state.active?.version, state.pending?.descriptor.version].filter(
+          (version): version is string => version !== undefined,
+        ),
+      ),
+    ].sort(),
+  )
 }
 
 async function removeState(
