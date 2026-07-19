@@ -224,6 +224,7 @@ export class ModuleActivationCoordinator {
         const recovery =
           new ModuleStartupTransitionRecovery<VerifiedModuleArtifact>({
             deviceStateStore: this.options.deviceStateStore,
+            readCurrentSchemaVersion: this.options.readCurrentSchemaVersion,
             ...(this.options.transitionSettingsBackend
               ? { settingsBackend: this.options.transitionSettingsBackend }
               : {}),

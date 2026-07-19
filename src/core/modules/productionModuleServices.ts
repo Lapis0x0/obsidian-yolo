@@ -213,6 +213,7 @@ export function createProductionModuleServices(
   const transitionCoordinator = new ModuleTransitionCoordinator({
     deviceStateStore: options.deviceStateStore,
     settingsBackend: options.transitionSettingsBackend,
+    readCurrentSchemaVersion: options.readCurrentSchemaVersion,
     manager,
     platform: options.platform,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),

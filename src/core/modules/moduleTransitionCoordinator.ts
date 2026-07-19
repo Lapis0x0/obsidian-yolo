@@ -8,7 +8,6 @@ import type { ModuleArtifactPlatform } from './moduleStore'
 import { assertModuleId } from './moduleStore'
 import {
   type ModuleTransitionJournal,
-  hashModuleTransitionSettingsSnapshot,
   verifyModuleTransitionJournalSnapshot,
 } from './moduleTransitionJournal'
 import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
@@ -29,10 +28,14 @@ export type ModuleTransitionPreparationResult = Readonly<{
 
 export type ModuleTransitionCoordinatorOptions = Readonly<{
   deviceStateStore: Pick<ModuleDeviceStateStore, 'runExclusive'>
-  settingsBackend: Pick<
+  settingsBackend?: Pick<
     ObsidianModuleTransitionSettingsBackend,
     'capture' | 'readAtCapturedLocation'
   >
+  readCurrentSchemaVersion(
+    moduleId: string,
+    namespace: string,
+  ): Promise<number | null>
   manager: Pick<ModuleManager, 'refresh'>
   platform: ModuleArtifactPlatform
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
@@ -48,8 +51,11 @@ export class ModuleTransitionCoordinator {
     if (
       !options ||
       typeof options.deviceStateStore?.runExclusive !== 'function' ||
-      typeof options.settingsBackend?.capture !== 'function' ||
-      typeof options.settingsBackend?.readAtCapturedLocation !== 'function' ||
+      (options.settingsBackend !== undefined &&
+        (typeof options.settingsBackend.capture !== 'function' ||
+          typeof options.settingsBackend.readAtCapturedLocation !==
+            'function')) ||
+      typeof options.readCurrentSchemaVersion !== 'function' ||
       typeof options.manager?.refresh !== 'function' ||
       (options.platform !== 'desktop' && options.platform !== 'mobile') ||
       (options.subtleCrypto !== undefined &&
@@ -86,43 +92,23 @@ export class ModuleTransitionCoordinator {
 
           const descriptor = current.readyVersions[request.expectedVersion]
           const schema = descriptor.dataSchemas.settings
-          const subtleCrypto =
-            this.options.subtleCrypto ?? globalThis.crypto?.subtle
-          if (schema && !subtleCrypto) {
-            throw new Error('Web Crypto SHA-256 is unavailable')
-          }
-
-          let settings: ModuleTransitionJournal['settings'] = null
           if (schema) {
-            const captured = await withAbort(
-              this.options.settingsBackend.capture(request.moduleId),
-              controller.signal,
-            )
-            this.throwIfUnavailable(controller.signal)
-            const sourceSchemaVersion = captured.snapshot.present
-              ? captured.snapshot.envelope.schemaVersion
-              : 0
-            if (sourceSchemaVersion !== schema.write) {
-              throw new Error(
-                `Module "${request.moduleId}" settings schema transition is not supported`,
-              )
-            }
-            const digest = await withAbort(
-              hashModuleTransitionSettingsSnapshot(
-                captured.snapshot,
-                subtleCrypto,
+            const sourceSchemaVersion = await withAbort(
+              this.options.readCurrentSchemaVersion(
+                request.moduleId,
+                'settings',
               ),
               controller.signal,
             )
             this.throwIfUnavailable(controller.signal)
-            settings = {
-              namespace: 'settings',
-              location: captured.location,
-              sourceSchemaVersion,
-              targetSchemaVersion: schema.write,
-              previous: captured.snapshot,
-              previousSha256: digest,
-              expectedPostSha256: digest,
+            if (
+              sourceSchemaVersion === null ||
+              sourceSchemaVersion < schema.readMin ||
+              sourceSchemaVersion > schema.readMax
+            ) {
+              throw new Error(
+                `Module "${request.moduleId}" cannot read settings schema ${String(sourceSchemaVersion)}`,
+              )
             }
           }
 
@@ -133,7 +119,7 @@ export class ModuleTransitionCoordinator {
             previousActiveVersion: current.activeVersion,
             targetVersion: request.expectedVersion,
             targetManifestSha256: request.expectedManifestSha256,
-            settings,
+            settings: null,
           }
           const intendedPointers = {
             activeVersion: current.activeVersion,
@@ -147,52 +133,18 @@ export class ModuleTransitionCoordinator {
             readyVersions: Object.keys(current.readyVersions),
             targetDescriptor: descriptor,
           }
-          const journal = subtleCrypto
-            ? await withAbort(
-                verifyModuleTransitionJournalSnapshot(
-                  journalValue,
-                  binding,
-                  subtleCrypto,
-                ),
-                controller.signal,
-              )
-            : // A stateless journal has no settings snapshot hash to verify.
-              await verifyModuleTransitionJournalSnapshot(
-                journalValue,
-                binding,
-                UNAVAILABLE_SUBTLE_CRYPTO,
-              )
-          this.throwIfUnavailable(controller.signal)
-          if (journal.settings !== null) {
-            const freshSnapshot = await withAbort(
-              this.options.settingsBackend.readAtCapturedLocation(
-                journal.settings.location,
-              ),
-              controller.signal,
-            )
-            const freshJournal = await withAbort(
-              verifyModuleTransitionJournalSnapshot(
-                {
-                  ...journal,
-                  settings: { ...journal.settings, previous: freshSnapshot },
-                },
-                binding,
-                subtleCrypto,
-              ),
-              controller.signal,
-            )
-            if (
-              freshJournal.settings === null ||
-              !equalJson(
-                freshJournal.settings.previous,
-                journal.settings.previous,
-              )
-            ) {
-              throw new Error(
-                `Module "${request.moduleId}" settings changed during transition preparation`,
-              )
-            }
-          }
+          const subtleCrypto =
+            this.options.subtleCrypto ??
+            globalThis.crypto?.subtle ??
+            UNAVAILABLE_SUBTLE_CRYPTO
+          const journal = await withAbort(
+            verifyModuleTransitionJournalSnapshot(
+              journalValue,
+              binding,
+              subtleCrypto,
+            ),
+            controller.signal,
+          )
           this.throwIfUnavailable(controller.signal)
           const intended: ModuleDeviceState = {
             ...current,

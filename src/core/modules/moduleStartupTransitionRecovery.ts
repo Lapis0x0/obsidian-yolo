@@ -19,6 +19,10 @@ export type ModuleStartupTransitionRecoveryOptions<TVerified = unknown> =
       ObsidianModuleTransitionSettingsBackend,
       'readAtCapturedLocation'
     >
+    readCurrentSchemaVersion(
+      moduleId: string,
+      namespace: string,
+    ): Promise<number | null>
     subtleCrypto: Pick<SubtleCrypto, 'digest'>
     /** Verifies immutable bytes only. This callback must never evaluate module code. */
     verifyArtifact(
@@ -81,6 +85,7 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     if (
       !options ||
       typeof options.deviceStateStore?.runExclusive !== 'function' ||
+      typeof options.readCurrentSchemaVersion !== 'function' ||
       typeof options.subtleCrypto?.digest !== 'function' ||
       typeof options.verifyArtifact !== 'function' ||
       typeof options.activateVerifiedArtifact !== 'function' ||
@@ -238,7 +243,16 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
           signal,
         )
       case 'activation-started':
-        return this.rollbackInterrupted(current, journal, transaction, signal)
+        return journal.settings === null &&
+          targetDescriptor.dataSchemas.settings !== undefined
+          ? this.resumeTarget(
+              current,
+              journal,
+              targetDescriptor,
+              transaction,
+              signal,
+            )
+          : this.rollbackInterrupted(current, journal, transaction, signal)
       case 'committed':
         return this.resumeCommitted(
           current,
@@ -323,6 +337,11 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     transaction: ModuleDeviceStateTransaction,
     signal: AbortSignal,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
+    await this.assertTargetCanReadCurrentSchema(
+      initial.moduleId,
+      descriptor,
+      signal,
+    )
     const verified = await this.verify(descriptor, signal)
     await this.verifySettings(journal, signal)
 
@@ -340,6 +359,21 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     try {
       await this.activateTarget(verified, descriptor, signal)
     } catch (error) {
+      if (journal.settings === null) {
+        const rollback = await this.prepareForwardOnlyRollback(
+          initial,
+          journal,
+          transaction,
+          signal,
+        )
+        return failed(
+          initial.moduleId,
+          rollback
+            ? error
+            : 'Target activation failed and no previous version can read the current data schema',
+          { processPoisoned: true, reloadRequired: true },
+        )
+      }
       return failed(
         initial.moduleId,
         error,
@@ -347,6 +381,26 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
           ? { processPoisoned: true, reloadRequired: true }
           : undefined,
       )
+    }
+    try {
+      await this.assertTargetWroteCurrentSchema(
+        initial.moduleId,
+        descriptor,
+        signal,
+      )
+    } catch (error) {
+      if (journal.settings === null) {
+        await this.prepareForwardOnlyRollback(
+          initial,
+          journal,
+          transaction,
+          signal,
+        )
+      }
+      return failed(initial.moduleId, error, {
+        processPoisoned: true,
+        reloadRequired: true,
+      })
     }
 
     const committed = phaseState(current, 'committed')
@@ -537,6 +591,76 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
       await this.options.activateVerifiedArtifact(verified, descriptor, signal)
     } catch (error) {
       throw new ActivationAttemptError(error)
+    }
+  }
+
+  private async prepareForwardOnlyRollback(
+    current: ModuleDeviceState,
+    journal: ModuleTransitionJournal,
+    transaction: ModuleDeviceStateTransaction,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const previousVersion = journal.previousActiveVersion
+    if (previousVersion === null) return false
+    const previous = current.readyVersions[previousVersion]
+    if (!previous) return false
+
+    for (const [namespace, schema] of Object.entries(previous.dataSchemas)) {
+      const currentSchema = await abortable(
+        this.options.readCurrentSchemaVersion(current.moduleId, namespace),
+        signal,
+      )
+      if (
+        currentSchema === null ||
+        currentSchema < schema.readMin ||
+        currentSchema > schema.readMax
+      ) {
+        return false
+      }
+    }
+
+    const rolledBack = phaseState(current, 'rollback-completed')
+    await writeExact(transaction, rolledBack, signal)
+    return true
+  }
+
+  private async assertTargetCanReadCurrentSchema(
+    moduleId: string,
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const schema = descriptor.dataSchemas.settings
+    if (!schema) return
+    const current = await abortable(
+      this.options.readCurrentSchemaVersion(moduleId, 'settings'),
+      signal,
+    )
+    if (
+      current === null ||
+      current < schema.readMin ||
+      current > schema.readMax
+    ) {
+      throw new Error(
+        `Module "${moduleId}" cannot read current settings schema ${String(current)}`,
+      )
+    }
+  }
+
+  private async assertTargetWroteCurrentSchema(
+    moduleId: string,
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const schema = descriptor.dataSchemas.settings
+    if (!schema) return
+    const current = await abortable(
+      this.options.readCurrentSchemaVersion(moduleId, 'settings'),
+      signal,
+    )
+    if (current !== schema.write) {
+      throw new Error(
+        `Module "${moduleId}" did not finish settings schema ${schema.write}; current schema is ${String(current)}`,
+      )
     }
   }
 

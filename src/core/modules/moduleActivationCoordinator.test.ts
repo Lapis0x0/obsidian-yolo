@@ -821,7 +821,7 @@ describe('ModuleActivationCoordinator', () => {
     ])
     expect(fixture.calls).not.toContain('activate:notes@1.0.0')
     expect(fixture.durable.get('learning')?.transition?.phase).toBe(
-      'activation-started',
+      'rollback-completed',
     )
     expect(fixture.coordinator.getStartupDisposition()).toEqual({
       reloadRequired: true,

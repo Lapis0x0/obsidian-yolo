@@ -13,6 +13,7 @@ import {
   executeModuleProductAction,
   getModuleProductActions,
   hasModuleProductCapabilities,
+  prepareModuleTransitionForReload,
   requiresModuleProductConfirmation,
 } from './ModulesTab'
 
@@ -184,6 +185,42 @@ describe('ModulesTab product actions', () => {
     expect(host.installConfirmedModuleCandidate).not.toHaveBeenCalledWith(
       candidate('2.0.0', 'b'.repeat(64)),
     )
+  })
+
+  it('enables the module only after durable transition preparation', async () => {
+    const host = capabilities()
+    const prepareConfirmedModuleTransition = jest
+      .fn()
+      .mockResolvedValue(undefined)
+    const confirmedCandidate = candidate()
+
+    await prepareModuleTransitionForReload(
+      { ...host, prepareConfirmedModuleTransition },
+      confirmedCandidate,
+    )
+
+    expect(prepareConfirmedModuleTransition).toHaveBeenCalledWith(
+      confirmedCandidate,
+    )
+    expect(host.setModuleEnabled).toHaveBeenCalledWith('notes', true)
+    expect(
+      prepareConfirmedModuleTransition.mock.invocationCallOrder[0],
+    ).toBeLessThan(host.setModuleEnabled.mock.invocationCallOrder[0])
+  })
+
+  it('does not enable a module when transition preparation fails', async () => {
+    const host = capabilities()
+    const prepareConfirmedModuleTransition = jest
+      .fn()
+      .mockRejectedValue(new Error('prepare failed'))
+
+    await expect(
+      prepareModuleTransitionForReload(
+        { ...host, prepareConfirmedModuleTransition },
+        candidate(),
+      ),
+    ).rejects.toThrow('prepare failed')
+    expect(host.setModuleEnabled).not.toHaveBeenCalled()
   })
 
   it('changes only enable intent and requires reload', async () => {

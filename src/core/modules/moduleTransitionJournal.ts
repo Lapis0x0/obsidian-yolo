@@ -243,7 +243,7 @@ function parseSettings(
     return null
   }
   if (value === null) {
-    throw new Error('Transition settings are required by the target descriptor')
+    return null
   }
   const settings = plainRecord(value, 'Transition settings')
   assertExactKeys(settings, [

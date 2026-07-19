@@ -38,6 +38,23 @@ export type ModuleProductCapabilities = {
   uninstallAndRemoveModuleData: (moduleId: string) => Promise<void>
 }
 
+export type ModuleTransitionCapabilities = Pick<
+  ModuleProductCapabilities,
+  'setModuleEnabled'
+> & {
+  prepareConfirmedModuleTransition(
+    candidate: ConfirmedModuleCandidate,
+  ): Promise<void>
+}
+
+export async function prepareModuleTransitionForReload(
+  capabilities: ModuleTransitionCapabilities,
+  candidate: ConfirmedModuleCandidate,
+): Promise<void> {
+  await capabilities.prepareConfirmedModuleTransition(candidate)
+  await capabilities.setModuleEnabled(candidate.moduleId, true)
+}
+
 export type ModuleProductAction = 'install' | 'enable' | 'disable' | 'uninstall'
 
 export function requiresModuleProductConfirmation(
@@ -642,7 +659,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
   ) => {
     const name = module.catalog?.name ?? module.id
     try {
-      await plugin.prepareConfirmedModuleTransition(candidate)
+      await prepareModuleTransitionForReload(plugin, candidate)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       new Notice(

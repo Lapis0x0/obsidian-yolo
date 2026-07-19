@@ -152,6 +152,7 @@ function fixture(overrides: Overrides = {}) {
       capture: captureSettings,
       readAtCapturedLocation: readCapturedSettings,
     },
+    readCurrentSchemaVersion: async () => 1,
     manager,
     platform: 'desktop',
     subtleCrypto,
@@ -182,6 +183,7 @@ describe('ModuleTransitionCoordinator', () => {
         new ModuleTransitionCoordinator({
           deviceStateStore: { runExclusive: jest.fn() },
           settingsBackend: { capture: jest.fn() } as never,
+          readCurrentSchemaVersion: async () => 1,
           manager: { refresh: jest.fn() },
           platform: 'desktop',
         }),
@@ -217,9 +219,10 @@ describe('ModuleTransitionCoordinator', () => {
       }),
     ],
   ] as const)(
-    'prepares a stateful %s without changing settings',
+    'prepares a stateful %s without taking ownership of settings',
     async (_label, initial) => {
-      const harness = fixture({ initial })
+      const readCurrentSchemaVersion = jest.fn(async () => 1)
+      const harness = fixture({ initial, readCurrentSchemaVersion })
       const result =
         await harness.coordinator.prepareConfirmedCandidate(request)
 
@@ -230,140 +233,59 @@ describe('ModuleTransitionCoordinator', () => {
         transition: {
           phase: 'prepared',
           previousActiveVersion: initial.activeVersion,
+          settings: null,
         },
       })
-      expect(result.journal.settings).toMatchObject({
-        location: capture().location,
-        sourceSchemaVersion: 1,
-        targetSchemaVersion: 1,
-      })
-      expect(result.journal.settings?.previousSha256).toBe(
-        result.journal.settings?.expectedPostSha256,
+      expect(readCurrentSchemaVersion).toHaveBeenCalledWith(
+        'learning',
+        'settings',
       )
-      expect(harness.captureSettings).toHaveBeenCalledTimes(1)
-      expect(harness.readCapturedSettings).toHaveBeenCalledTimes(1)
+      expect(harness.captureSettings).not.toHaveBeenCalled()
+      expect(harness.readCapturedSettings).not.toHaveBeenCalled()
       expect(harness.manager.refresh).toHaveBeenCalledTimes(1)
       expect(Object.isFrozen(result.journal)).toBe(true)
     },
   )
 
-  it('preserves absent settings distinctly and hashes the full canonical snapshot', async () => {
-    const absent = capture({ present: false, envelope: null })
-    const schemaZero = descriptor('2.0.0', {
-      dataSchemas: { settings: { readMin: 0, readMax: 1, write: 0 } },
-    })
-    const first = fixture({
-      initial: state({
-        readyVersions: {
-          '1.0.0': descriptor('1.0.0'),
-          '2.0.0': schemaZero,
-        },
-      }),
-      settingsBackend: { capture: jest.fn(async () => absent) },
-    })
-    const reordered = fixture({
-      settingsBackend: {
-        capture: jest.fn(async () =>
-          capture({
-            present: true,
-            envelope: { data: { a: [true], z: 1 }, schemaVersion: 1 },
-          }),
-        ),
-      },
-    })
-    const normal = fixture()
+  it('allows a module-owned forward migration from schema zero', async () => {
+    const harness = fixture({ readCurrentSchemaVersion: async () => 0 })
 
-    const absentResult =
-      await first.coordinator.prepareConfirmedCandidate(request)
-    const left = await normal.coordinator.prepareConfirmedCandidate(request)
-    const right = await reordered.coordinator.prepareConfirmedCandidate(request)
-
-    expect(absentResult.journal.settings?.previous).toEqual(absent.snapshot)
-    expect(left.journal.settings?.previousSha256).toBe(
-      right.journal.settings?.previousSha256,
-    )
+    await expect(
+      harness.coordinator.prepareConfirmedCandidate(request),
+    ).resolves.toMatchObject({ journal: { settings: null } })
+    expect(harness.captureSettings).not.toHaveBeenCalled()
   })
 
-  it('does not capture settings or require crypto for a stateless module', async () => {
+  it.each([null, 3])(
+    'rejects unreadable current settings schema %s',
+    async (currentSchema) => {
+      const harness = fixture({
+        readCurrentSchemaVersion: async () => currentSchema,
+      })
+
+      await expect(
+        harness.coordinator.prepareConfirmedCandidate(request),
+      ).rejects.toThrow('cannot read settings schema')
+      expect(harness.write).not.toHaveBeenCalled()
+      expect(harness.durable()).toEqual(state())
+    },
+  )
+
+  it('does not read settings schema for a stateless module', async () => {
     const target = descriptor('2.0.0', { dataSchemas: {} })
+    const readCurrentSchemaVersion = jest.fn(async () => 1)
     const harness = fixture({
       initial: state({
         readyVersions: { '1.0.0': descriptor('1.0.0'), '2.0.0': target },
       }),
+      readCurrentSchemaVersion,
       subtleCrypto: undefined,
     })
 
     const result = await harness.coordinator.prepareConfirmedCandidate(request)
 
     expect(result.journal.settings).toBeNull()
-    expect(harness.captureSettings).not.toHaveBeenCalled()
-    expect(harness.readCapturedSettings).not.toHaveBeenCalled()
-  })
-
-  it('rejects a local settings change between capture and admission', async () => {
-    const harness = fixture({
-      settingsBackend: {
-        readAtCapturedLocation: jest.fn(async () => ({
-          present: true as const,
-          envelope: { schemaVersion: 1, data: { changed: true } },
-        })),
-      },
-    })
-
-    await expect(
-      harness.coordinator.prepareConfirmedCandidate(request),
-    ).rejects.toThrow('SHA-256 mismatch')
-    expect(harness.write).not.toHaveBeenCalled()
-    expect(harness.manager.refresh).not.toHaveBeenCalled()
-  })
-
-  it('rechecks the captured location after the dynamic base directory changes', async () => {
-    let activeRoot = 'Old/.yolo_json_db/module-settings'
-    const captured = capture()
-    const readAtCapturedLocation = jest.fn(async (location) => {
-      expect(activeRoot).toBe('New/.yolo_json_db/module-settings')
-      expect(location).toEqual(captured.location)
-      return captured.snapshot
-    })
-    const harness = fixture({
-      settingsBackend: {
-        capture: jest.fn(async () => {
-          activeRoot = 'New/.yolo_json_db/module-settings'
-          return captured
-        }),
-        readAtCapturedLocation,
-      },
-    })
-
-    await expect(
-      harness.coordinator.prepareConfirmedCandidate(request),
-    ).resolves.toBeDefined()
-    expect(readAtCapturedLocation).toHaveBeenCalledWith(captured.location)
-  })
-
-  it('rejects schema-changing, oversized, corrupt, and location-mismatched captures without mutation', async () => {
-    const cases: CapturedModuleTransitionSettings[] = [
-      capture({ present: true, envelope: { schemaVersion: 0, data: {} } }),
-      capture({
-        present: true,
-        envelope: { schemaVersion: 1, data: 'x'.repeat(256 * 1024) },
-      }),
-      capture({
-        present: true,
-        envelope: { schemaVersion: 1, data: { invalid: undefined } },
-      }),
-      { ...capture(), location: { ...capture().location, moduleId: 'other' } },
-    ]
-    for (const captured of cases) {
-      const harness = fixture({
-        settingsBackend: { capture: jest.fn(async () => captured) },
-      })
-      await expect(
-        harness.coordinator.prepareConfirmedCandidate(request),
-      ).rejects.toThrow()
-      expect(harness.write).not.toHaveBeenCalled()
-      expect(harness.durable()).toEqual(state())
-    }
+    expect(readCurrentSchemaVersion).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -482,26 +404,21 @@ describe('ModuleTransitionCoordinator', () => {
   })
 
   it('serializes preparation across coordinators sharing the state lock', async () => {
-    const blocked = deferred<CapturedModuleTransitionSettings>()
-    const captureStarted = deferred<undefined>()
+    const blocked = deferred<number | null>()
+    const readStarted = deferred<undefined>()
     const events: string[] = []
     const first = fixture({
-      settingsBackend: {
-        capture: jest.fn(async () => {
-          events.push('first-capture')
-          captureStarted.resolve(undefined)
-          return blocked.promise
-        }),
+      readCurrentSchemaVersion: async () => {
+        events.push('first-read')
+        readStarted.resolve(undefined)
+        return blocked.promise
       },
     })
     const second = new ModuleTransitionCoordinator({
       deviceStateStore: first.deviceStateStore,
-      settingsBackend: {
-        capture: jest.fn(async () => {
-          events.push('second-capture')
-          return capture()
-        }),
-        readAtCapturedLocation: jest.fn(async () => capture().snapshot),
+      readCurrentSchemaVersion: async () => {
+        events.push('second-read')
+        return 1
       },
       manager: { refresh: async () => undefined },
       platform: 'desktop',
@@ -509,14 +426,14 @@ describe('ModuleTransitionCoordinator', () => {
     })
 
     const firstOperation = first.coordinator.prepareConfirmedCandidate(request)
-    await captureStarted.promise
+    await readStarted.promise
     const secondOperation = second.prepareConfirmedCandidate(request)
     await Promise.resolve()
-    expect(events).toEqual(['first-capture'])
-    blocked.resolve(capture())
+    expect(events).toEqual(['first-read'])
+    blocked.resolve(1)
     await expect(firstOperation).resolves.toBeDefined()
     await expect(secondOperation).rejects.toThrow()
-    expect(events).toEqual(['first-capture'])
+    expect(events).toEqual(['first-read'])
   })
 
   it('cancels before lock, during capture, and immediately before write', async () => {

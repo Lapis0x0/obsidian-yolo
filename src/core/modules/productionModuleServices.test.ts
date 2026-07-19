@@ -357,6 +357,7 @@ function createHarness(
     }),
   )
   const readAtCapturedLocation = jest.fn(async () => transitionSettingsSnapshot)
+  const readCurrentSchemaVersion = jest.fn(async () => 1)
   const services = createProductionModuleServices({
     store,
     deviceStateStore,
@@ -380,7 +381,7 @@ function createHarness(
       readAtCapturedLocation,
     },
     transitionRecoveryRealmToken: {},
-    readCurrentSchemaVersion: async () => 1,
+    readCurrentSchemaVersion,
     catalogRequest,
     artifactRequest,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
@@ -411,6 +412,7 @@ function createHarness(
     store,
     captureSettings,
     readAtCapturedLocation,
+    readCurrentSchemaVersion,
     transitionSettingsLocation,
     transitionSettingsSnapshot,
     services,
@@ -1349,11 +1351,13 @@ describe('createProductionModuleServices', () => {
       harness.services.getInstallCandidate('learning')!,
     )
     const candidate = await harness.services.getTransitionCandidate('learning')
-    harness.captureSettings.mockRejectedValueOnce(new Error('capture failed'))
+    harness.readCurrentSchemaVersion.mockRejectedValueOnce(
+      new Error('schema read failed'),
+    )
 
     await expect(
       harness.services.prepareConfirmedTransition(candidate!),
-    ).rejects.toThrow('capture failed')
+    ).rejects.toThrow('schema read failed')
     await expect(
       harness.services.prepareConfirmedTransition(candidate!),
     ).resolves.toBeUndefined()

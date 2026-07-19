@@ -76,7 +76,7 @@ function binding(
 }
 
 describe('module transition journal snapshot digest verification', () => {
-  it('requires settings payload presence exactly when declared by the target', async () => {
+  it('allows forward-only settings migration metadata to remain outside the journal', async () => {
     const statelessBinding = binding({
       targetDescriptor: { manifest: { sha256: HASH }, dataSchemas: {} },
     })
@@ -98,9 +98,9 @@ describe('module transition journal snapshot digest verification', () => {
       }),
     ).resolves.toMatchObject({ settings: null })
     expect(digest).not.toHaveBeenCalled()
-    expect(() => parseModuleTransitionJournal(stateless, binding())).toThrow(
-      'required',
-    )
+    expect(() =>
+      parseModuleTransitionJournal(stateless, binding()),
+    ).not.toThrow()
     expect(() =>
       parseModuleTransitionJournal(
         journalValue({ present: false, envelope: null }),
