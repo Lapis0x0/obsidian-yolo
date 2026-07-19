@@ -567,12 +567,17 @@ function ImportSkillModalContent({
   )
 
   const detectConflicts = useCallback(
-    (packages: SkillPackage[]) => {
+    async (packages: SkillPackage[]) => {
       const conflicts: SkillPackage[] = []
       const noConflict: SkillPackage[] = []
       for (const pkg of packages) {
         const targetPath = normalizePath(`${skillsDir}/${pkg.targetName}`)
-        if (app.vault.getAbstractFileByPath(targetPath)) {
+        const exists = targetPath
+          .split('/')
+          .some((segment) => segment.startsWith('.'))
+          ? await app.vault.adapter.exists(targetPath)
+          : Boolean(app.vault.getAbstractFileByPath(targetPath))
+        if (exists) {
           conflicts.push(pkg)
         } else {
           noConflict.push(pkg)
@@ -592,7 +597,7 @@ function ImportSkillModalContent({
   }, [])
 
   const addCandidates = useCallback(
-    (candidates: RawCandidate[]) => {
+    async (candidates: RawCandidate[]) => {
       if (candidates.length === 0) {
         new Notice(
           t(
@@ -611,7 +616,7 @@ function ImportSkillModalContent({
 
       if (valid.length === 0) return
 
-      const { conflicts, noConflict } = detectConflicts(valid)
+      const { conflicts, noConflict } = await detectConflicts(valid)
       if (conflicts.length === 0) {
         mergeIntoList(valid)
         return
@@ -654,7 +659,7 @@ function ImportSkillModalContent({
 
       try {
         const candidates = await readRawCandidatesFromFileList(files)
-        addCandidates(candidates)
+        await addCandidates(candidates)
       } catch {
         new Notice(
           t('settings.agent.importSkillReadError', 'Failed to read files.'),
@@ -687,7 +692,7 @@ function ImportSkillModalContent({
       if (items && items.length > 0) {
         try {
           const candidates = await readRawCandidatesFromDataTransfer(items)
-          addCandidates(candidates)
+          await addCandidates(candidates)
         } catch {
           new Notice(
             t('settings.agent.importSkillReadError', 'Failed to read files.'),
@@ -721,7 +726,7 @@ function ImportSkillModalContent({
         files: result.files,
         isSingleFile: !result.isDirectory,
       }))
-      addCandidates(candidates)
+      await addCandidates(candidates)
       setUrlValue('')
     } catch (err) {
       if (!isMountedRef.current) return
@@ -771,15 +776,38 @@ function ImportSkillModalContent({
     let successCount = 0
     const errors: string[] = []
 
-    // 递归保证目录存在(Obsidian createFolder 不会递归创建父目录)
+    const isHiddenPath = (path: string) =>
+      path.split('/').some((segment) => segment.startsWith('.'))
+
+    // Vault API 会忽略点号开头的目录；此类路径必须使用 adapter。
     const ensureFolder = async (path: string) => {
       const segments = path.split('/').filter((s) => s.length > 0)
       let cur = ''
       for (const seg of segments) {
         cur = cur ? `${cur}/${seg}` : seg
-        if (!app.vault.getAbstractFileByPath(cur)) {
+        if (isHiddenPath(cur)) {
+          const stat = await app.vault.adapter.stat(cur)
+          if (stat?.type === 'folder') continue
+          if (stat) throw new Error(`path is not a folder: ${cur}`)
+          await app.vault.adapter.mkdir(cur)
+        } else if (!app.vault.getAbstractFileByPath(cur)) {
           await app.vault.createFolder(cur)
         }
+      }
+    }
+
+    const removeExistingPath = async (path: string) => {
+      if (!isHiddenPath(path)) {
+        const existing = app.vault.getAbstractFileByPath(path)
+        if (existing) await app.fileManager.trashFile(existing)
+        return
+      }
+
+      const stat = await app.vault.adapter.stat(path)
+      if (!stat) return
+      const movedToSystemTrash = await app.vault.adapter.trashSystem(path)
+      if (!movedToSystemTrash) {
+        await app.vault.adapter.trashLocal(path)
       }
     }
 
@@ -791,11 +819,8 @@ function ImportSkillModalContent({
           if (pkg.isDirectory) {
             const pkgDir = normalizePath(`${skillsDir}/${pkg.targetName}`)
             // 覆盖时:无论已存在的是文件还是目录,先 trash 再写新,避免遗留旧资源 / 类型冲突
-            const existing = app.vault.getAbstractFileByPath(pkgDir)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
-            }
-            await app.vault.createFolder(pkgDir)
+            await removeExistingPath(pkgDir)
+            await ensureFolder(pkgDir)
 
             for (const file of pkg.files) {
               if (!isSafeRelativePath(file.relativePath)) {
@@ -812,18 +837,23 @@ function ImportSkillModalContent({
               if (parentDir) {
                 await ensureFolder(parentDir)
               }
-              await app.vault.create(targetPath, file.content)
+              if (isHiddenPath(targetPath)) {
+                await app.vault.adapter.write(targetPath, file.content)
+              } else {
+                await app.vault.create(targetPath, file.content)
+              }
             }
           } else {
             const targetPath = normalizePath(`${skillsDir}/${pkg.targetName}`)
             if (!targetPath.startsWith(`${skillsDir}/`)) {
               throw new Error(`path escaped target: ${pkg.targetName}`)
             }
-            const existing = app.vault.getAbstractFileByPath(targetPath)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
+            await removeExistingPath(targetPath)
+            if (isHiddenPath(targetPath)) {
+              await app.vault.adapter.write(targetPath, pkg.files[0].content)
+            } else {
+              await app.vault.create(targetPath, pkg.files[0].content)
             }
-            await app.vault.create(targetPath, pkg.files[0].content)
           }
           successCount++
         } catch (err) {
