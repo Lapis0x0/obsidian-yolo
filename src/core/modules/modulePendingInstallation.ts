@@ -18,16 +18,11 @@ export async function schedulePendingModule(
       `Module "${moduleId}" device state belongs to ${existing.platform}, not ${platform}`,
     )
   }
-  if (existing?.pending) {
-    throw new Error(
-      `Module "${moduleId}" installation is blocked by a pending activation`,
-    )
-  }
   const intended: ModuleDeviceState = {
     moduleId,
     platform,
     active: existing?.active ?? null,
-    pending: { descriptor, activationStarted: false },
+    pending: { descriptor },
   }
   try {
     return await transaction.write(intended)

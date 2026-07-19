@@ -6,7 +6,6 @@ describe('ModuleManager pending activation projection', () => {
       id: 'learning',
       version: '1.0.0',
       pendingVersion: '2.0.0',
-      activationPhase: 'activation-started' as const,
       error: 'incompatible fallback',
     }
     const manager = new ModuleManager({
@@ -17,7 +16,6 @@ describe('ModuleManager pending activation projection', () => {
     expect(manager.getSnapshot().modules[0]).toMatchObject({
       status: 'failed',
       pendingVersion: '2.0.0',
-      activationPhase: 'activation-started',
       error: 'incompatible fallback',
     })
   })

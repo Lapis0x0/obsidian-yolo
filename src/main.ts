@@ -75,12 +75,9 @@ import {
   ModuleSettingsCapabilityProvider,
   ModuleSettingsContributionRegistry,
   ModuleStore,
-  OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
-  clearModuleStartupReloadAttempt,
-  consumeModuleStartupReloadAttempt,
   createObsidianModuleConfigBackendFactory,
   createObsidianModuleConfigCreateIfAbsent,
   createObsidianModuleIntentBackend,
@@ -210,7 +207,7 @@ export type { PluginUpdateState } from './core/update/pluginUpdater'
 const STARTUP_GRACE_MS = 30 * 1000
 const MODULE_PRIVATE_STORAGE_DIR = 'module-private'
 const MODULE_DEVICE_LOCAL_VIRTUAL_ROOT = 'module-private-device-local'
-const MODULE_DEVICE_STATE_ROOT = 'module-device-state-v1'
+const MODULE_DEVICE_STATE_ROOT = 'module-device-state-v2'
 type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
@@ -3664,8 +3661,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             }
           : null
       },
-      readSettingsSchemaVersion: async (moduleId) =>
-        (await createConfigBackend(moduleId).read()).schemaVersion,
     })
     const services = createProductionModuleServices({
       store,
@@ -3683,16 +3678,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             removeVersionArtifacts: async () => undefined,
           }
         : {}),
-      readCurrentSchemaVersion: async (moduleId, namespace) => {
-        if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
-        if (
-          moduleId === 'learning' &&
-          !this.learningModuleSettingsHandoffReady
-        ) {
-          throw new Error('Learning module settings handoff is incomplete')
-        }
-        return (await createConfigBackend(moduleId).read()).schemaVersion
-      },
       reportCleanupError: (error) => {
         console.error('[YOLO] Module artifact cleanup failed', error)
       },
@@ -3735,31 +3720,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   private async activateModules(): Promise<boolean> {
-    let disposition
     try {
-      disposition = await this.getModuleService().start()
+      await this.getModuleService().start()
     } catch (error) {
       console.error('[YOLO] Failed to start modules', error)
       return true
-    }
-    if (disposition.reloadRequired) {
-      if (consumeModuleStartupReloadAttempt(sessionStorage)) {
-        console.error(
-          '[YOLO] Module activation recovery requires a fresh process; reloading Obsidian once',
-        )
-        window.location.reload()
-      } else {
-        console.error(
-          '[YOLO] Module activation recovery still requires a fresh process after one reload; suppressing another automatic reload',
-        )
-      }
-      return false
-    }
-    clearModuleStartupReloadAttempt(sessionStorage)
-    if (disposition.processPoisoned) {
-      console.error(
-        '[YOLO] Module activation recovery stopped further module activation in this process',
-      )
     }
     return true
   }

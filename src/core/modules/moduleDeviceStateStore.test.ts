@@ -65,8 +65,8 @@ function state(
   }
 }
 
-function pending(activationStarted: boolean): ModuleDeviceState['pending'] {
-  return { descriptor: descriptor('2.0.0'), activationStarted }
+function pending(version = '2.0.0'): ModuleDeviceState['pending'] {
+  return { descriptor: descriptor(version) }
 }
 
 function harness() {
@@ -82,48 +82,34 @@ function harness() {
 describe('ModuleDeviceStateStore', () => {
   test('persists only active and pending descriptors', async () => {
     const { adapter, store } = harness()
-    await store.write(state(pending(false)))
+    await store.write(state(pending()))
 
-    expect(await store.read('learning')).toEqual(state(pending(false)))
+    expect(await store.read('learning')).toEqual(state(pending()))
     const envelope = JSON.parse(adapter.files.get(PATH)!)
     expect(envelope.schemaVersion).toBe(1)
-    expect(envelope.data).toEqual(state(pending(false)))
+    expect(envelope.data).toEqual(state(pending()))
   })
 
-  test('enforces pending -> activation-started -> active progression', async () => {
+  test('allows replacing and promoting a pending descriptor', async () => {
     const { store } = harness()
-    await store.write(state(pending(false)))
-    await store.write(state(pending(true)))
-    await expect(store.write(state(pending(false)))).rejects.toThrow(
-      'Pending activation progression is invalid',
-    )
+    await store.write(state(pending()))
+    await store.write(state(pending('3.0.0')))
     await store.write({
       ...state(),
-      active: descriptor('2.0.0'),
+      active: descriptor('3.0.0'),
     })
 
     expect(await store.read('learning')).toEqual({
       ...state(),
-      active: descriptor('2.0.0'),
+      active: descriptor('3.0.0'),
     })
   })
 
-  test('allows clearing a pending activation before or after activation starts', async () => {
-    const beforeActivation = harness().store
-    await beforeActivation.write(state(pending(false)))
-    await beforeActivation.write(state())
-
-    const afterActivation = harness().store
-    await afterActivation.write(state(pending(false)))
-    await afterActivation.write(state(pending(true)))
-    await afterActivation.write(state())
-  })
-
-  test('rejects starting activation in a newly created state', async () => {
+  test('allows clearing a pending descriptor', async () => {
     const { store } = harness()
-    await expect(store.write(state(pending(true)))).rejects.toThrow(
-      'A new pending activation must begin in pending',
-    )
+    await store.write(state(pending()))
+    await store.write(state())
+    expect((await store.read('learning'))?.pending).toBeNull()
   })
 
   test('does not interpret development-time legacy schemas', async () => {
@@ -149,15 +135,11 @@ describe('ModuleDeviceStateStore', () => {
     )
   })
 
-  test('rejects active and pending descriptors for the same version', async () => {
+  test('allows a rebuilt descriptor with the same semantic version', async () => {
     const { store } = harness()
-    await expect(
-      store.write(
-        state({
-          descriptor: descriptor('1.0.0'),
-          activationStarted: false,
-        }),
-      ),
-    ).rejects.toThrow('Pending version must differ from active version')
+    await store.write(state(pending('1.0.0')))
+    expect((await store.read('learning'))?.pending?.descriptor.version).toBe(
+      '1.0.0',
+    )
   })
 })

@@ -69,7 +69,6 @@ export {
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
   type ModuleActivationResult,
-  type ModuleActivationStartupDisposition,
 } from './moduleActivationCoordinator'
 export {
   createOfficialModuleArtifactDownloader,
@@ -203,7 +202,6 @@ export {
   type OfficialModuleCompatibilityProvider,
 } from './officialModuleCatalogSource'
 export {
-  OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
   YOLO_HOST_API_VERSION,
   createOfficialModuleCompatibilityProvider,
   type OfficialModuleCompatibilityDeviceState,
@@ -248,11 +246,6 @@ export {
   type ModuleRuntimeReservationOptions,
   type ModuleRuntimeReservationTarget,
 } from './moduleRuntimeReservation'
-export {
-  clearModuleStartupReloadAttempt,
-  consumeModuleStartupReloadAttempt,
-  type ModuleStartupReloadGuardStorage,
-} from './moduleStartupReloadGuard'
 export {
   ModuleStartupReconciler,
   type ModuleStartupReconcileSource,

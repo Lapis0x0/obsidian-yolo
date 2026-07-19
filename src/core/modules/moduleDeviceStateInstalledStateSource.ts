@@ -31,13 +31,6 @@ export class ModuleDeviceStateInstalledStateSource
           id: state.moduleId,
           version,
           ...(pendingVersion ? { pendingVersion } : {}),
-          ...(state.pending
-            ? {
-                activationPhase: state.pending.activationStarted
-                  ? ('activation-started' as const)
-                  : ('pending' as const),
-              }
-            : {}),
           ...(error ? { error } : {}),
           ...(state.active?.version === version &&
           this.options.isActive(state.moduleId, version)

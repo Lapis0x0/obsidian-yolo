@@ -127,7 +127,6 @@ describe('ModuleStartupReconciler', () => {
         Object.freeze({
           moduleId: 'notes',
           status: 'activated' as const,
-          recoveredVersion: '1.0.0',
         }),
       ])
     })

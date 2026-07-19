@@ -347,7 +347,6 @@ export type InstalledModuleState = {
   id: string
   version: string
   pendingVersion?: string
-  activationPhase?: 'pending' | 'activation-started'
   active?: boolean
   disabled?: boolean
   error?: string
@@ -379,7 +378,6 @@ export type ModuleRecord = Readonly<{
   version: string
   availableVersion?: string
   pendingVersion?: string
-  activationPhase?: 'pending' | 'activation-started'
   error?: string
   compatibilityIssues?: readonly ModuleCompatibilityIssue[]
   status: ModuleStatus

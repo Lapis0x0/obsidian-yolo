@@ -395,14 +395,12 @@ describe('official module catalog V1', () => {
         selectInitialCompatibleVersion(module, {
           hostApi: '1.3.0',
           platform,
-          dataSchemas: { learning: 2 },
-          supportedDataNamespaces: ['learning'],
         })?.version,
       ).toBe('1.0.0')
     }
   })
 
-  it('selects the highest Host API, platform, and schema-compatible initial version', () => {
+  it('selects the highest Host API and platform-compatible initial version', () => {
     const module = moduleWithVersions(
       version('1.0.0'),
       version('2.0.0', { hostApi: '^1.2.0' }),
@@ -417,10 +415,8 @@ describe('official module catalog V1', () => {
       selectInitialCompatibleVersion(module, {
         hostApi: '1.4.0',
         platform: 'desktop',
-        dataSchemas: { learning: 2 },
-        supportedDataNamespaces: ['learning'],
       })?.version,
-    ).toBe('2.0.0')
+    ).toBe('4.0.0')
   })
 
   it('never lets initial selection replace an active version', () => {
@@ -429,8 +425,6 @@ describe('official module catalog V1', () => {
       selectInitialCompatibleVersion(module, {
         hostApi: '1.3.0',
         platform: 'desktop',
-        dataSchemas: { learning: 2 },
-        supportedDataNamespaces: ['learning'],
         activeVersion: '1.0.0',
       }),
     ).toBeNull()
@@ -446,8 +440,6 @@ describe('official module catalog V1', () => {
       findCompatibleUpdate(module, {
         hostApi: '1.3.0',
         platform: 'desktop',
-        dataSchemas: { learning: 2 },
-        supportedDataNamespaces: ['learning'],
         activeVersion: '1.0.0',
       })?.version,
     ).toBe('2.0.0')
@@ -455,87 +447,9 @@ describe('official module catalog V1', () => {
       findCompatibleUpdate(module, {
         hostApi: '1.3.0',
         platform: 'desktop',
-        dataSchemas: { learning: 2 },
-        supportedDataNamespaces: ['learning'],
         activeVersion: '2.0.0',
       }),
     ).toBeNull()
-  })
-
-  it('requires every current namespace to be readable and never writes below current', () => {
-    const module = moduleWithVersions(
-      version('1.0.0', {
-        dataSchemas: {
-          learning: { readMin: 1, readMax: 4, write: 1 },
-        },
-      }),
-    )
-    expect(
-      selectInitialCompatibleVersion(module, {
-        hostApi: '1.3.0',
-        platform: 'desktop',
-        dataSchemas: { learning: 2 },
-        supportedDataNamespaces: ['learning'],
-      }),
-    ).toBeNull()
-    expect(
-      selectInitialCompatibleVersion(module, {
-        hostApi: '1.3.0',
-        platform: 'desktop',
-        dataSchemas: { learning: 1, orphaned: 1 },
-        supportedDataNamespaces: ['learning', 'orphaned'],
-      }),
-    ).toBeNull()
-  })
-
-  it('allows a new namespace only when the candidate can read schema zero', () => {
-    const incompatible = moduleWithVersions(
-      version('1.0.0', {
-        dataSchemas: {
-          learning: { readMin: 1, readMax: 3, write: 3 },
-          search: { readMin: 1, readMax: 1, write: 1 },
-        },
-      }),
-    )
-    const compatible = moduleWithVersions(
-      version('1.0.0', {
-        dataSchemas: {
-          learning: { readMin: 1, readMax: 3, write: 3 },
-          search: { readMin: 0, readMax: 1, write: 1 },
-        },
-      }),
-    )
-    const context = {
-      hostApi: '1.3.0',
-      platform: 'desktop' as const,
-      dataSchemas: { learning: 2 },
-      supportedDataNamespaces: ['learning', 'search'],
-    }
-    expect(selectInitialCompatibleVersion(incompatible, context)).toBeNull()
-    expect(selectInitialCompatibleVersion(compatible, context)?.version).toBe(
-      '1.0.0',
-    )
-  })
-
-  it('skips only versions requiring unsupported data namespaces', () => {
-    const module = moduleWithVersions(
-      version('1.0.0'),
-      version('2.0.0', {
-        dataSchemas: {
-          learning: { readMin: 1, readMax: 3, write: 3 },
-          future: { readMin: 0, readMax: 1, write: 1 },
-        },
-      }),
-    )
-
-    expect(
-      selectInitialCompatibleVersion(module, {
-        hostApi: '1.3.0',
-        platform: 'desktop',
-        dataSchemas: { learning: 2 },
-        supportedDataNamespaces: ['learning'],
-      })?.version,
-    ).toBe('1.0.0')
   })
 
   it('does not match prereleases from a stable range', () => {
@@ -546,8 +460,6 @@ describe('official module catalog V1', () => {
     const context = {
       hostApi: '1.3.0-beta.2',
       platform: 'desktop' as const,
-      dataSchemas: { learning: 2 },
-      supportedDataNamespaces: ['learning'],
     }
     expect(selectInitialCompatibleVersion(stableRange, context)).toBeNull()
     expect(

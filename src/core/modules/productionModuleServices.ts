@@ -43,10 +43,7 @@ import {
   OfficialModuleCatalogSource,
   type OfficialModuleCompatibilityProvider,
 } from './officialModuleCatalogSource'
-import {
-  OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE,
-  YOLO_HOST_API_VERSION,
-} from './officialModuleCompatibilityProvider'
+import { YOLO_HOST_API_VERSION } from './officialModuleCompatibilityProvider'
 import { DomBlobModuleScriptExecutor } from './scriptExecutor'
 import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
@@ -97,8 +94,6 @@ export type ProductionModuleServicesOptions = Readonly<{
   ) => Promise<boolean>
   removeVersionArtifacts?: (moduleId: string, version: string) => Promise<void>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
-  transitionRecoveryRealmToken?: object
-  readCurrentSchemaVersion: ModuleActivationCoordinatorOptions['readCurrentSchemaVersion']
   catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
@@ -170,15 +165,10 @@ export function createProductionModuleServices(
     artifactStore: options.store,
     platform: options.platform,
     hostApi: YOLO_HOST_API_VERSION,
-    supportedDataNamespaces: [OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE],
-    readCurrentSchemaVersion: options.readCurrentSchemaVersion,
     loader: activationLoader,
     runtime: runtimeReservation,
     intentStateSource,
     verifiedArtifactRegistry,
-    ...(options.transitionRecoveryRealmToken
-      ? { transitionRecoveryRealmToken: options.transitionRecoveryRealmToken }
-      : {}),
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportActivationError
       ? { reportActivationError: options.reportActivationError }
@@ -333,10 +323,7 @@ export function createProductionModuleServices(
       moduleId,
       async (transaction) => {
         const state = await transaction.read()
-        if (
-          state?.pending?.descriptor.version !== version ||
-          state.pending.activationStarted
-        ) {
+        if (state?.pending?.descriptor.version !== version) {
           return
         }
         await transaction.write({
@@ -460,7 +447,6 @@ export function createProductionModuleServices(
                 : 'Module startup failed',
             )
       }
-      return activationCoordinator.getStartupDisposition()
     },
     dispose: () => {
       disposed = true
@@ -491,15 +477,11 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     typeof options.intentStore?.subscribeAll !== 'function' ||
     (options.activationLoader !== undefined &&
       typeof options.activationLoader.load !== 'function') ||
-    (options.transitionRecoveryRealmToken !== undefined &&
-      (options.transitionRecoveryRealmToken === null ||
-        typeof options.transitionRecoveryRealmToken !== 'object')) ||
     (options.verifiedArtifactRegistry !== undefined &&
       !(
         options.verifiedArtifactRegistry instanceof
         VerifiedModuleArtifactRegistry
       )) ||
-    typeof options.readCurrentSchemaVersion !== 'function' ||
     (options.catalogRequest !== undefined &&
       typeof options.catalogRequest !== 'function') ||
     (options.artifactRequest !== undefined &&

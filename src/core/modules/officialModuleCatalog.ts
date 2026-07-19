@@ -33,8 +33,6 @@ export type OfficialModuleCatalogV1 = Readonly<{
 export type OfficialModuleCompatibility = Readonly<{
   hostApi: string
   platform: OfficialModulePlatform
-  dataSchemas: Readonly<Record<string, number>>
-  supportedDataNamespaces: readonly string[]
   activeVersion?: string
 }>
 
@@ -165,10 +163,7 @@ export function parseOfficialModuleCatalog(
   }) as OfficialModuleCatalogV1
 }
 
-export type OfficialModuleCompatibilityIssue =
-  | 'platform'
-  | 'host-api'
-  | 'data-schema'
+export type OfficialModuleCompatibilityIssue = 'platform' | 'host-api'
 
 export function getOfficialModuleCompatibilityIssues(
   module: OfficialModuleCatalogModule,
@@ -216,8 +211,6 @@ export function findCompatibleUpdate(
 type CompatibilityContext = Readonly<{
   hostApi: Semver
   platform: OfficialModulePlatform
-  dataSchemas: readonly (readonly [string, number])[]
-  supportedDataNamespaces: ReadonlySet<string>
   activeVersion: Semver | null
 }>
 
@@ -232,37 +225,15 @@ function parseCompatibility(
   ) {
     throw new Error('Current platform is invalid')
   }
-  const schemas = asObject(compatibility.dataSchemas, 'Current data schemas')
-  const dataSchemas: [string, number][] = []
-  for (const [namespace, value] of Object.entries(schemas)) {
-    if (!isNamespace(namespace) || !isSchemaVersion(value)) {
-      throw new Error(`Current data schema "${namespace}" is invalid`)
-    }
-    dataSchemas.push([namespace, value])
-  }
   const activeVersion = compatibility.activeVersion
     ? parseSemver(compatibility.activeVersion)
     : null
   if (compatibility.activeVersion && !activeVersion) {
     throw new Error('Active module version is invalid')
   }
-  if (
-    !Array.isArray(compatibility.supportedDataNamespaces) ||
-    compatibility.supportedDataNamespaces.some(
-      (namespace) => typeof namespace !== 'string' || !isNamespace(namespace),
-    ) ||
-    new Set(compatibility.supportedDataNamespaces).size !==
-      compatibility.supportedDataNamespaces.length
-  ) {
-    throw new Error('Supported data namespaces are invalid')
-  }
   return {
     hostApi,
     platform: compatibility.platform,
-    dataSchemas,
-    supportedDataNamespaces: new Set(
-      compatibility.supportedDataNamespaces as readonly string[],
-    ),
     activeVersion,
   }
 }
@@ -274,15 +245,6 @@ function candidateCompatibilityIssues(
   if (!candidate.platforms.includes(compatibility.platform)) return ['platform']
   if (!satisfiesRange(compatibility.hostApi, candidate.hostApi)) {
     return ['host-api']
-  }
-  if (
-    !schemasAreCompatible(
-      candidate.dataSchemas,
-      compatibility.dataSchemas,
-      compatibility.supportedDataNamespaces,
-    )
-  ) {
-    return ['data-schema']
   }
   return []
 }
@@ -310,36 +272,6 @@ function findHighestCompatible(
     }
   }
   return selected
-}
-
-function schemasAreCompatible(
-  candidateSchemas: Readonly<Record<string, OfficialModuleDataSchema>>,
-  currentSchemas: readonly (readonly [string, number])[],
-  supportedNamespaces: ReadonlySet<string>,
-): boolean {
-  if (
-    Object.keys(candidateSchemas).some(
-      (namespace) => !supportedNamespaces.has(namespace),
-    )
-  ) {
-    return false
-  }
-  const current = new Map(currentSchemas)
-  for (const [namespace, currentVersion] of current) {
-    const schema = candidateSchemas[namespace]
-    if (
-      !schema ||
-      currentVersion < schema.readMin ||
-      currentVersion > schema.readMax ||
-      schema.write < currentVersion
-    ) {
-      return false
-    }
-  }
-  for (const [namespace, schema] of Object.entries(candidateSchemas)) {
-    if (!current.has(namespace) && schema.readMin !== 0) return false
-  }
-  return true
 }
 
 function parseCatalogVersion(

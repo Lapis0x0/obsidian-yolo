@@ -208,16 +208,12 @@ describe('host API conformance artifact boundary', () => {
     expect(catalog.modules[0]?.versions[0]?.dataSchemas).toEqual(
       manifest.dataSchemas,
     )
-    for (const currentSettingsSchema of [0, 1]) {
-      expect(
-        selectInitialCompatibleVersion(catalog.modules[0], {
-          hostApi: '1.1.0',
-          platform: 'desktop',
-          dataSchemas: { settings: currentSettingsSchema },
-          supportedDataNamespaces: ['settings'],
-        })?.version,
-      ).toBe('0.1.0')
-    }
+    expect(
+      selectInitialCompatibleVersion(catalog.modules[0], {
+        hostApi: '1.1.0',
+        platform: 'desktop',
+      })?.version,
+    ).toBe('0.1.0')
   })
 
   it('keeps fixture source and artifacts out of production main metadata', () => {

@@ -306,7 +306,6 @@ function createHarness() {
             }
           : null
       },
-      readSettingsSchemaVersion: async () => 0,
     }),
     isActive,
     intentStore,
@@ -317,7 +316,6 @@ function createHarness() {
       })),
     },
     runtimeReservation,
-    readCurrentSchemaVersion: async () => 0,
     catalogRequest,
     artifactRequest,
     authorizeArtifactRemoval: async () => true,
@@ -387,7 +385,6 @@ describe('createProductionModuleServices', () => {
     expect(await harness.deviceStateStore.read('learning')).toMatchObject({
       pending: {
         descriptor: { version: '1.2.3' },
-        activationStarted: false,
       },
     })
     expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
@@ -435,10 +432,6 @@ describe('createProductionModuleServices', () => {
     const pending = (await harness.deviceStateStore.read('learning'))!
     await harness.deviceStateStore.write({
       ...pending,
-      pending: { ...pending.pending!, activationStarted: true },
-    })
-    await harness.deviceStateStore.write({
-      ...pending,
       active: pending.pending!.descriptor,
       pending: null,
     })
@@ -450,13 +443,23 @@ describe('createProductionModuleServices', () => {
     expect(await harness.deviceStateStore.read('learning')).not.toBeNull()
   })
 
-  it('starts reconciliation, refreshes the snapshot, and returns disposition', async () => {
+  it('starts reconciliation and refreshes the snapshot', async () => {
     const harness = createHarness()
 
-    await expect(harness.services.start()).resolves.toEqual({
-      reloadRequired: false,
-      processPoisoned: false,
-    })
+    await expect(harness.services.start()).resolves.toBeUndefined()
     expect(harness.services.getSnapshot().status).toBe('ready')
+  })
+
+  it('activates a pending target and commits it as active', async () => {
+    const harness = createHarness()
+    await install(harness)
+
+    await harness.services.start()
+
+    expect(harness.activeVersions.get('learning')).toBe('1.2.3')
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      active: { version: '1.2.3' },
+      pending: null,
+    })
   })
 })

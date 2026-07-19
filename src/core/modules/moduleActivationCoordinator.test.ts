@@ -9,7 +9,6 @@ function pendingState(): ModuleDeviceState {
     platform: 'desktop',
     active: null,
     pending: {
-      activationStarted: false,
       descriptor: {
         id: 'learning',
         version: '1.0.0',
@@ -53,15 +52,12 @@ function coordinator(states: ModuleDeviceState[], enabled: boolean) {
       artifactStore: {} as never,
       platform: 'desktop',
       hostApi: '1.0.0',
-      supportedDataNamespaces: [],
-      readCurrentSchemaVersion: async () => 0,
       loader: {
         load: async () => {
           throw new Error('not used')
         },
       },
       runtime: { activate: async () => undefined },
-      transitionRecoveryRealmToken: {},
     }),
   }
 }
@@ -72,14 +68,16 @@ describe('ModuleActivationCoordinator minimal state integration', () => {
     await expect(test.value.activatePersistedModules()).resolves.toEqual([])
   })
 
-  test('cancels pending activation without executing code when intent is disabled', async () => {
+  test('leaves the target pending without executing code when intent is disabled', async () => {
     const test = coordinator([pendingState()], false)
     await expect(test.value.activatePersistedModules()).resolves.toEqual([
       expect.objectContaining({ moduleId: 'learning', status: 'skipped' }),
     ])
     expect(test.durable.get('learning')).toMatchObject({
       active: null,
-      pending: null,
+      pending: expect.objectContaining({
+        descriptor: expect.objectContaining({ version: '1.0.0' }),
+      }),
     })
   })
 })

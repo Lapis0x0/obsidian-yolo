@@ -157,7 +157,7 @@ button.yolo-modules-refresh:disabled {
 
 .yolo-modules-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--size-4-3);
 }
 
@@ -448,10 +448,6 @@ button.yolo-module-card-action:disabled {
 
   button.yolo-modules-refresh {
     align-self: flex-start;
-  }
-
-  .yolo-modules-list {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

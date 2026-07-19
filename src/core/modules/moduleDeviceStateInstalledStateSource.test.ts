@@ -22,7 +22,6 @@ describe('ModuleDeviceStateInstalledStateSource', () => {
             active: descriptor('1.0.0'),
             pending: {
               descriptor: descriptor('2.0.0'),
-              activationStarted: false,
             },
           },
         ],
@@ -34,7 +33,6 @@ describe('ModuleDeviceStateInstalledStateSource', () => {
         id: 'learning',
         version: '1.0.0',
         pendingVersion: '2.0.0',
-        activationPhase: 'pending',
       },
     ])
   })
@@ -49,7 +47,6 @@ describe('ModuleDeviceStateInstalledStateSource', () => {
             active: null,
             pending: {
               descriptor: descriptor('1.0.0'),
-              activationStarted: false,
             },
           },
         ],
@@ -62,7 +59,6 @@ describe('ModuleDeviceStateInstalledStateSource', () => {
         id: 'learning',
         version: '1.0.0',
         pendingVersion: '1.0.0',
-        activationPhase: 'pending',
       },
     ])
   })

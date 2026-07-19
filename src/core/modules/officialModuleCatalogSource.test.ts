@@ -51,8 +51,6 @@ function compatibility(
   return {
     hostApi: '1.5.0',
     platform: 'desktop',
-    dataSchemas: { core: 1 },
-    supportedDataNamespaces: ['core'],
     ...(activeVersion !== undefined ? { activeVersion } : {}),
   }
 }

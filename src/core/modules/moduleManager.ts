@@ -133,8 +133,7 @@ function resolveStatus(
 ): ModuleStatus {
   if (!installed) return 'available'
   if (installed.error) return 'failed'
-  if (installed.pendingVersion || installed.activationPhase)
-    return 'activation-pending'
+  if (installed.pendingVersion) return 'activation-pending'
   if (installed.disabled) return 'disabled'
   if (catalog && compareVersions(installed.version, catalog.version) < 0) {
     return 'update-available'
@@ -165,7 +164,7 @@ function buildRecords(
         : undefined
       const intent = intentValue ? Object.freeze({ ...intentValue }) : undefined
       const status =
-        !installed && intent?.state === 'disabled'
+        intent?.state === 'disabled'
           ? 'disabled'
           : resolveStatus(catalog, installed)
       return Object.freeze({
@@ -178,9 +177,6 @@ function buildRecords(
           : {}),
         ...(installed?.pendingVersion
           ? { pendingVersion: installed.pendingVersion }
-          : {}),
-        ...(installed?.activationPhase
-          ? { activationPhase: installed.activationPhase }
           : {}),
         ...(installed?.error ? { error: installed.error } : {}),
         ...(catalog?.compatibilityIssues

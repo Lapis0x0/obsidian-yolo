@@ -8,7 +8,6 @@ describe('ModuleUninstallCoordinator', () => {
       platform: 'desktop',
       active: null,
       pending: {
-        activationStarted: false,
         descriptor: {
           id: 'learning',
           version: '1.0.0',

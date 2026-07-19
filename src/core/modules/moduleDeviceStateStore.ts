@@ -26,7 +26,6 @@ export type ModuleDeviceState = Readonly<{
   active: ModuleArtifactDescriptor | null
   pending: Readonly<{
     descriptor: ModuleArtifactDescriptor
-    activationStarted: boolean
   }> | null
 }>
 
@@ -196,8 +195,6 @@ export class ModuleDeviceStateStore {
     moduleId: string,
   ): Promise<ModuleDeviceState> {
     const snapshot = parseState(state, moduleId)
-    const existing = await this.readUnlocked(moduleId)
-    assertDurableTransitionProgression(existing, snapshot)
     const envelope = await this.store.write(snapshot.moduleId, {
       schemaVersion: SCHEMA_VERSION,
       data: snapshot,
@@ -245,18 +242,12 @@ export class ModuleDeviceStateStore {
   }
 
   private async removeUnlocked(moduleId: string): Promise<void> {
-    let existing: ModuleDeviceState | null
     try {
-      existing = await this.readUnlocked(moduleId)
+      await this.readUnlocked(moduleId)
     } catch (error) {
       if (!(error instanceof ModuleDeviceStateCorruptionError)) throw error
       await this.store.remove(moduleId)
       return
-    }
-    if (existing?.pending !== null) {
-      throw new Error(
-        'Device state with a pending activation cannot be removed',
-      )
     }
     await this.store.remove(moduleId)
   }
@@ -287,12 +278,8 @@ function parseState(
   const pendingValue = dataProperty(state, 'pending')
   let pending: ModuleDeviceState['pending'] = null
   if (pendingValue !== null) {
-    const pendingRecord = plainRecord(pendingValue, 'Pending activation')
-    assertExactKeys(pendingRecord, ['descriptor', 'activationStarted'])
-    const activationStarted = dataProperty(pendingRecord, 'activationStarted')
-    if (typeof activationStarted !== 'boolean') {
-      throw new Error('activationStarted is invalid')
-    }
+    const pendingRecord = plainRecord(pendingValue, 'Pending module')
+    assertExactKeys(pendingRecord, ['descriptor'])
     pending = Object.freeze({
       descriptor: parseDescriptor(
         dataProperty(pendingRecord, 'descriptor'),
@@ -300,11 +287,7 @@ function parseState(
         platform,
         'Pending descriptor',
       ),
-      activationStarted,
     })
-  }
-  if (pending !== null && pending.descriptor.version === active?.version) {
-    throw new Error('Pending version must differ from active version')
   }
   return Object.freeze({
     moduleId,
@@ -312,76 +295,6 @@ function parseState(
     active,
     pending,
   })
-}
-
-function assertDurableTransitionProgression(
-  existing: ModuleDeviceState | null,
-  next: ModuleDeviceState,
-): void {
-  if (existing === null) {
-    if (next.pending?.activationStarted === true) {
-      throw new Error('A new pending activation must begin in pending')
-    }
-    return
-  }
-  if (equalJson(existing, next)) return
-  if (existing.pending === null) {
-    if (
-      equalJson(existing.active, next.active) &&
-      (next.pending === null || !next.pending.activationStarted)
-    ) {
-      return
-    }
-    throw new Error('A new pending activation must begin in pending')
-  }
-  if (
-    !existing.pending.activationStarted &&
-    next.pending?.activationStarted === true &&
-    equalJson(existing.active, next.active) &&
-    equalJson(existing.pending.descriptor, next.pending.descriptor)
-  ) {
-    return
-  }
-  if (
-    next.pending === null &&
-    (equalJson(next.active, existing.active) ||
-      (existing.pending.activationStarted &&
-        equalJson(next.active, existing.pending.descriptor)))
-  ) {
-    return
-  }
-  throw new Error('Pending activation progression is invalid')
-}
-
-function equalJson(left: unknown, right: unknown): boolean {
-  if (left === right) return true
-  if (
-    left === null ||
-    right === null ||
-    typeof left !== 'object' ||
-    typeof right !== 'object' ||
-    Array.isArray(left) !== Array.isArray(right)
-  ) {
-    return false
-  }
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((value, index) => equalJson(value, right[index]))
-    )
-  }
-  const leftRecord = left as Record<string, unknown>
-  const rightRecord = right as Record<string, unknown>
-  const leftKeys = Object.keys(leftRecord).sort()
-  const rightKeys = Object.keys(rightRecord).sort()
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key, index) =>
-        key === rightKeys[index] &&
-        equalJson(leftRecord[key], rightRecord[key]),
-    )
-  )
 }
 
 function parseDescriptor(

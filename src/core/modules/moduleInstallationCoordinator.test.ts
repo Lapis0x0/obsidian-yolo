@@ -65,7 +65,6 @@ describe('ModuleInstallationCoordinator', () => {
         active: null,
         pending: {
           descriptor: { version: '2.0.0' },
-          activationStarted: false,
         },
       },
     })
@@ -73,17 +72,22 @@ describe('ModuleInstallationCoordinator', () => {
       active: null,
       pending: {
         descriptor: { version: '2.0.0' },
-        activationStarted: false,
       },
     })
   })
 
-  test('rejects another installation while activation is pending', async () => {
-    const first = harness()
-    await first.value.installConfirmedCandidate(candidate)
-    const second = harness(first.durable())
+  test('replaces an older pending target', async () => {
+    const older = descriptor()
+    const second = harness({
+      moduleId: 'learning',
+      platform: 'desktop',
+      active: null,
+      pending: { descriptor: { ...older, version: '1.0.0' } },
+    })
     await expect(
       second.value.installConfirmedCandidate(candidate),
-    ).rejects.toThrow('blocked by a pending activation')
+    ).resolves.toMatchObject({
+      state: { pending: { descriptor: { version: '2.0.0' } } },
+    })
   })
 })

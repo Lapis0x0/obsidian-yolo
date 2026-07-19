@@ -124,7 +124,7 @@ export class ModuleReadinessReconciler {
     this.throwIfUnavailable(signal)
     if (state !== null) {
       validateState(state, moduleId, this.options.platform)
-      return this.ensurePersistedState(state, signal)
+      return this.ensurePersistedState(state, transaction, signal)
     }
 
     const intent = await this.options.intentStore.get(moduleId)
@@ -186,8 +186,34 @@ export class ModuleReadinessReconciler {
 
   private async ensurePersistedState(
     state: ModuleDeviceState,
+    transaction: ModuleDeviceStateTransaction,
     signal: AbortSignal,
   ): Promise<ModuleReadinessResult> {
+    const selected = state.pending?.descriptor ?? state.active
+    const resolved = this.options.catalogSource.getResolvedVersion(
+      state.moduleId,
+    )
+    if (selected && resolved?.version === selected.version) {
+      const current = this.options.catalogSource.getResolvedArtifactDescriptor(
+        state.moduleId,
+        resolved.version,
+        this.options.platform,
+      )
+      if (current && current.manifest.sha256 !== selected.manifest.sha256) {
+        const repaired = await this.ensureDescriptor(current, signal)
+        await transaction.write({
+          ...state,
+          pending: { descriptor: current },
+        })
+        return readinessResult({
+          moduleId: state.moduleId,
+          status: 'ready',
+          versions: [current.version],
+          repairedVersions: repaired ? [current.version] : [],
+          installedVersion: current.version,
+        })
+      }
+    }
     const descriptors = referencedDescriptors(state)
     const repairedVersions: string[] = []
     for (const descriptor of descriptors) {

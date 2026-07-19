@@ -1,4 +1,3 @@
-import type { ModuleActivationStartupDisposition } from './moduleActivationCoordinator'
 import type { VerifiedModuleArtifact } from './moduleArtifactVerifier'
 import type { ConfirmedModuleCandidate } from './moduleInstallationCoordinator'
 import type { ModuleManagerSnapshot } from './types'
@@ -17,7 +16,7 @@ export type ModuleService = Readonly<{
   install(candidate: ConfirmedModuleCandidate): Promise<ModuleOperationResult>
   setEnabled(moduleId: string, enabled: boolean): Promise<ModuleOperationResult>
   uninstall(moduleId: string): Promise<ModuleOperationResult>
-  start(): Promise<ModuleActivationStartupDisposition>
+  start(): Promise<void>
   getVerifiedArtifact(moduleId: string): VerifiedModuleArtifact | undefined
   dispose(): void
 }>
