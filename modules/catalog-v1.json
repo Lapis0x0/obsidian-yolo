@@ -1,4 +1,30 @@
 {
   "schemaVersion": 1,
-  "modules": []
+  "modules": [
+    {
+      "id": "learning",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "hostApi": "^1.1.0",
+          "platforms": [
+            "desktop",
+            "mobile"
+          ],
+          "dataSchemas": {
+            "settings": {
+              "readMin": 0,
+              "readMax": 1,
+              "write": 1
+            }
+          },
+          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/module.json",
+          "manifest": {
+            "byteSize": 1860,
+            "sha256": "46db11c33063246f76ecca16ad168213a07113a2a7fbb2172be79026d9e4478a"
+          }
+        }
+      ]
+    }
+  ]
 }
