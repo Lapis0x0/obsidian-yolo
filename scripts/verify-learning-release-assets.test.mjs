@@ -144,7 +144,7 @@ test('deletes only the matching draft owned by this workflow run', async () => {
   assert.deepEqual(result, { deleted: true, releaseId })
   assert.deepEqual(requests, [
     {
-      url: `${apiBase}/repos/${repository}/releases/tags/${encodeURIComponent(tag)}`,
+      url: `${apiBase}/repos/${repository}/releases/${releaseId}`,
       method: 'GET',
     },
     {
@@ -326,7 +326,7 @@ async function createFixture({
       url: `${apiBase}/repos/${repository}/releases/assets/${1000 + index}`,
     })),
   }
-  const apiUrl = `${apiBase}/repos/${repository}/releases/tags/${encodedTag}`
+  const apiUrl = `${apiBase}/repos/${repository}/releases/${releaseId}`
   const fetchImpl = async (requestUrl) => {
     if (requestUrl === apiUrl) return response(JSON.stringify(release))
     const releaseAsset = release.assets.find(({ url }) => requestUrl === url)

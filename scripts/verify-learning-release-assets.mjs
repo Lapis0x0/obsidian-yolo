@@ -23,12 +23,11 @@ export async function cleanupOwnedDraftRelease({
       'A tag, target commit, owner marker, and GitHub token are required',
     )
   }
-  if (releaseId && !/^\d+$/.test(String(releaseId))) {
-    throw new Error('Release id must be numeric when provided')
+  if (!/^\d+$/.test(String(releaseId))) {
+    throw new Error('A numeric Release id is required')
   }
 
-  const encodedTag = encodeURIComponent(tag)
-  const apiUrl = `${apiBase}/repos/${repository}/releases/tags/${encodedTag}`
+  const apiUrl = `${apiBase}/repos/${repository}/releases/${releaseId}`
   const response = await githubRequest(apiUrl, token, fetchImpl)
   if (response.status === 404) return { deleted: false, reason: 'not-found' }
   if (!response.ok) {
@@ -39,8 +38,7 @@ export async function cleanupOwnedDraftRelease({
   if (!Number.isSafeInteger(release.id) || release.id <= 0) {
     throw new Error('Refusing to delete a Release with an invalid id')
   }
-  if (releaseId)
-    assertEqual(String(release.id), String(releaseId), 'Release id')
+  assertEqual(String(release.id), String(releaseId), 'Release id')
   assertEqual(release.tag_name, tag, 'Release tag')
   assertEqual(release.target_commitish, targetCommit, 'Release target commit')
   assertEqual(release.draft, true, 'Release draft state')
@@ -88,7 +86,7 @@ export async function verifyLearningReleaseAssets({
   if (!token) throw new Error('GH_TOKEN or GITHUB_TOKEN is required')
 
   const encodedTag = encodeURIComponent(tag)
-  const apiUrl = `${apiBase}/repos/${repository}/releases/tags/${encodedTag}`
+  const apiUrl = `${apiBase}/repos/${repository}/releases/${releaseId}`
   const release = await fetchJson(apiUrl, token, fetchImpl)
   assertEqual(String(release.id), String(releaseId), 'Release id')
   assertEqual(release.tag_name, tag, 'Release tag')
