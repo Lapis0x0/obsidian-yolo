@@ -150,14 +150,20 @@ describe('OfficialModuleCatalogSource', () => {
     expect(fixture.source.getResolvedVersion('learning')?.version).toBe('2.0.0')
   })
 
-  it('omits an uninstalled module when no compatible candidate exists', async () => {
+  it('projects structured incompatibility issues for unavailable modules', async () => {
     const fixture = source(
       parsedCatalog([
         { id: 'mobile-only', versions: ['1.0.0'], platform: 'mobile' },
       ]),
     )
 
-    await expect(fixture.source.load()).resolves.toEqual([])
+    await expect(fixture.source.load()).resolves.toEqual([
+      {
+        id: 'mobile-only',
+        version: '',
+        compatibilityIssues: [{ kind: 'platform' }],
+      },
+    ])
     expect(fixture.source.getResolvedVersion('mobile-only')).toBeUndefined()
   })
 

@@ -603,6 +603,11 @@ export const it: TranslationKeys = {
         failed: 'Non riuscito',
       },
       incompatibleReason: 'Non compatibile: {reason}',
+      compatibility: {
+        platform: 'piattaforma',
+        hostApi: 'API host',
+        dataSchema: 'schema dei dati',
+      },
       retry: 'Riprova',
       actionReloadSuccess:
         'L’intento per {name} è stato salvato. Ricarica Obsidian per applicarlo.',

@@ -5,6 +5,7 @@ import {
   type OfficialModuleCatalogVersion,
   type OfficialModuleCompatibility,
   findCompatibleUpdate,
+  getOfficialModuleCompatibilityIssues,
   selectInitialCompatibleVersion,
 } from './officialModuleCatalog'
 import type { OfficialModuleCatalogClient } from './officialModuleCatalogClient'
@@ -138,7 +139,25 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
         resolvedVersions[module.id] = selected
         entries.push(catalogEntry(module, selected.version))
       } else if (compatibility.activeVersion !== undefined) {
-        entries.push(catalogEntry(module, compatibility.activeVersion))
+        entries.push(
+          catalogEntry(
+            module,
+            compatibility.activeVersion,
+            getOfficialModuleCompatibilityIssues(module, compatibility).map(
+              (kind) => Object.freeze({ kind }),
+            ),
+          ),
+        )
+      } else {
+        entries.push(
+          catalogEntry(
+            module,
+            '',
+            getOfficialModuleCompatibilityIssues(module, compatibility).map(
+              (kind) => Object.freeze({ kind }),
+            ),
+          ),
+        )
       }
     }
 
@@ -160,6 +179,7 @@ function sortedModules(
 function catalogEntry(
   module: OfficialModuleCatalogModule,
   version: string,
+  compatibilityIssues: ModuleCatalogEntry['compatibilityIssues'] = [],
 ): ModuleCatalogEntry {
   return Object.freeze({
     id: module.id,
@@ -168,6 +188,7 @@ function catalogEntry(
     ...(module.description !== undefined
       ? { description: module.description }
       : {}),
+    ...(compatibilityIssues.length > 0 ? { compatibilityIssues } : {}),
   })
 }
 

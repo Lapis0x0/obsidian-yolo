@@ -185,6 +185,9 @@ function buildRecords(
           ? { transitionPhase: installed.transitionPhase }
           : {}),
         ...(installed?.error ? { error: installed.error } : {}),
+        ...(catalog?.compatibilityIssues
+          ? { compatibilityIssues: catalog.compatibilityIssues }
+          : {}),
         status,
         ...(intent
           ? {

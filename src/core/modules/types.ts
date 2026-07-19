@@ -333,11 +333,16 @@ export type ModuleStatus =
   | 'activation-pending'
   | 'failed'
 
+export type ModuleCompatibilityIssue = Readonly<{
+  kind: 'platform' | 'host-api' | 'data-schema'
+}>
+
 export type ModuleCatalogEntry = {
   id: string
   version: string
   name?: string
   description?: string
+  compatibilityIssues?: readonly ModuleCompatibilityIssue[]
 }
 
 export type InstalledModuleState = {
@@ -381,6 +386,7 @@ export type ModuleRecord = Readonly<{
   pendingVersion?: string
   transitionPhase?: ModuleTransitionPhase
   error?: string
+  compatibilityIssues?: readonly ModuleCompatibilityIssue[]
   status: ModuleStatus
   desiredInstalled?: boolean
   enabled?: boolean

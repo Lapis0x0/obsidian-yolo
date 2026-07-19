@@ -53,8 +53,21 @@ type ModuleAction =
   | 'reload'
   | 'remove-data'
 
-type ProductModuleRecord = ModuleRecord & {
-  incompatibilityReason?: string
+type ProductModuleRecord = ModuleRecord
+
+function moduleCompatibilityReason(
+  module: ModuleRecord,
+  t: (key: string) => string,
+): string | undefined {
+  const issues = module.compatibilityIssues
+  if (!issues || issues.length === 0) return undefined
+  return issues
+    .map((issue) => t(`settings.modules.compatibility.${issue.kind}`))
+    .join(', ')
+}
+
+function hasCompatibilityIssues(module: Pick<ModuleRecord, 'compatibilityIssues'>): boolean {
+  return (module.compatibilityIssues?.length ?? 0) > 0
 }
 
 type OperationState = Readonly<{
@@ -64,16 +77,23 @@ type OperationState = Readonly<{
 }>
 
 export function getModuleProductActions(
-  module: Pick<ModuleRecord, 'desiredInstalled' | 'enabled' | 'installed'>,
+  module: Pick<
+    ModuleRecord,
+    'desiredInstalled' | 'enabled' | 'installed' | 'compatibilityIssues'
+  >,
   productCapabilitiesAvailable = false,
 ): readonly ModuleProductAction[] {
   if (!productCapabilitiesAvailable) return []
-  if (!module.installed) return ['install']
+  if (!module.installed) {
+    return hasCompatibilityIssues(module) ? [] : ['install']
+  }
   if (module.desiredInstalled === false) return ['uninstall']
 
   const actions: ModuleProductAction[] = []
   if (module.enabled === true) actions.push('disable')
-  if (module.enabled === false) actions.push('enable')
+  if (module.enabled === false && !hasCompatibilityIssues(module)) {
+    actions.push('enable')
+  }
   actions.push('uninstall')
   return actions
 }
@@ -97,10 +117,23 @@ function requireCapability<K extends keyof ModuleProductCapabilities>(
 
 export async function executeModuleProductAction(
   capabilities: Partial<ModuleProductCapabilities>,
-  module: Pick<ModuleRecord, 'id' | 'installed' | 'status'>,
+  module: Pick<
+    ModuleRecord,
+    'id' | 'installed' | 'status' | 'compatibilityIssues'
+  >,
   action: ModuleProductAction,
   confirmedInstallCandidate?: ConfirmedModuleCandidate,
 ): Promise<Readonly<{ reloadRequired: boolean }>> {
+  if (
+    hasCompatibilityIssues(module) &&
+    (action === 'install' || action === 'enable')
+  ) {
+    throw new Error(
+      `Module ${module.id} is incompatible: ${module.compatibilityIssues
+        ?.map((issue) => issue.kind)
+        .join(', ')}`,
+    )
+  }
   if (!hasModuleProductCapabilities(capabilities)) {
     throw new Error('Module product capabilities are unavailable')
   }
@@ -193,6 +226,8 @@ function ModuleCard({
     module,
     productCapabilitiesAvailable,
   )
+  const incompatibilityReason = moduleCompatibilityReason(module, t)
+  const isIncompatible = incompatibilityReason !== undefined
   const isOperating = operation?.moduleId === module.id && !operation.error
   const hasOperation = operation !== null && !operation.error
   const intentInstalled = module.desiredInstalled
@@ -240,11 +275,11 @@ function ModuleCard({
             {module.installed.error}
           </p>
         )}
-        {module.incompatibilityReason && (
+        {incompatibilityReason && (
           <p className="yolo-module-card-error" role="alert">
             {t('settings.modules.incompatibleReason').replace(
               '{reason}',
-              module.incompatibilityReason,
+              incompatibilityReason,
             )}
           </p>
         )}

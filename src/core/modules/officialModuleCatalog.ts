@@ -165,6 +165,39 @@ export function parseOfficialModuleCatalog(
   }) as OfficialModuleCatalogV1
 }
 
+export type OfficialModuleCompatibilityIssue =
+  | 'platform'
+  | 'host-api'
+  | 'data-schema'
+
+export function getOfficialModuleCompatibilityIssues(
+  module: OfficialModuleCatalogModule,
+  compatibility: OfficialModuleCompatibility,
+): readonly OfficialModuleCompatibilityIssue[] {
+  const context = parseCompatibility(compatibility)
+  const issues = new Set<OfficialModuleCompatibilityIssue>()
+  for (const candidate of module.versions) {
+    if (!candidate.platforms.includes(context.platform)) {
+      issues.add('platform')
+      continue
+    }
+    if (!satisfiesRange(context.hostApi, candidate.hostApi)) {
+      issues.add('host-api')
+      continue
+    }
+    if (
+      !schemasAreCompatible(
+        candidate.dataSchemas,
+        context.dataSchemas,
+        context.supportedDataNamespaces,
+      )
+    ) {
+      issues.add('data-schema')
+    }
+  }
+  return Object.freeze([...issues].sort())
+}
+
 export function selectInitialCompatibleVersion(
   module: OfficialModuleCatalogModule,
   compatibility: OfficialModuleCompatibility,

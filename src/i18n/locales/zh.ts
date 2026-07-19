@@ -557,6 +557,11 @@ export const zh: TranslationKeys = {
         failed: '失败',
       },
       incompatibleReason: '不兼容：{reason}',
+      compatibility: {
+        platform: '平台',
+        hostApi: '宿主 API',
+        dataSchema: '数据架构',
+      },
       retry: '重试',
       actionReloadSuccess: '已保存 {name} 的操作意图。重载 Obsidian 后生效。',
       actionError: '无法更改 {name}：{error}',

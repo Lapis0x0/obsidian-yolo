@@ -599,6 +599,11 @@ export const en: TranslationKeys = {
         failed: 'Failed',
       },
       incompatibleReason: 'Incompatible: {reason}',
+      compatibility: {
+        platform: 'platform',
+        hostApi: 'Host API',
+        dataSchema: 'data schema',
+      },
       retry: 'Retry',
       actionReloadSuccess:
         '{name} intent was saved. Reload Obsidian for it to take effect.',

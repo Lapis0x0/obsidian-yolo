@@ -180,6 +180,7 @@ export {
 } from './moduleManager'
 export {
   findCompatibleUpdate,
+  getOfficialModuleCompatibilityIssues,
   parseOfficialModuleCatalog,
   selectInitialCompatibleVersion,
   type OfficialModuleCatalogModule,
@@ -187,6 +188,7 @@ export {
   type OfficialModuleCatalogV1,
   type OfficialModuleCatalogVersion,
   type OfficialModuleCompatibility,
+  type OfficialModuleCompatibilityIssue,
   type OfficialModuleDataSchema,
   type OfficialModulePlatform,
 } from './officialModuleCatalog'

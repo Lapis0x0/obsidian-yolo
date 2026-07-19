@@ -118,6 +118,20 @@ describe('ModulesTab product actions', () => {
     ).toEqual(['install'])
   })
 
+  it('hides and rejects unsafe product actions for incompatible modules', async () => {
+    const host = capabilities()
+    const incompatible = moduleRecord({
+      compatibilityIssues: [{ kind: 'host-api' }],
+      id: 'notes',
+    })
+
+    expect(getModuleProductActions(incompatible, true)).toEqual([])
+    await expect(
+      executeModuleProductAction(host, incompatible, 'install', candidate()),
+    ).rejects.toThrow('Module notes is incompatible: host-api')
+    expect(host.setModuleDesiredInstalled).not.toHaveBeenCalled()
+  })
+
   it('requires confirmation only for install and uninstall', () => {
     expect(requiresModuleProductConfirmation('install')).toBe(true)
     expect(requiresModuleProductConfirmation('uninstall')).toBe(true)

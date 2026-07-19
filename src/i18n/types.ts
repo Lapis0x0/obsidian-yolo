@@ -245,6 +245,11 @@ export type TranslationKeys = {
         failed: string
       }
       incompatibleReason: string
+      compatibility: {
+        platform: string
+        hostApi: string
+        dataSchema: string
+      }
       retry: string
       actionReloadSuccess: string
       actionError: string
