@@ -109,9 +109,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           existing_release_ids="$(
-            gh api --paginate --slurp \
+            gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-              --jq ".[][] | select(.tag_name == \"${LEARNING_RELEASE_TAG}\") | .id"
+              --jq ".[] | select(.tag_name == \"${LEARNING_RELEASE_TAG}\") | .id"
           )"
           if [[ -n "$existing_release_ids" ]]; then
             echo "::error::GitHub Release ${LEARNING_RELEASE_TAG} already exists; releases are immutable"

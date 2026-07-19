@@ -188,6 +188,9 @@ test('release workflow verifies publication before dispatching catalog review', 
   const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
   const release = workflow.jobs.release
   const steps = release.steps
+  const createIndex = steps.findIndex(
+    ({ name }) => name === 'Create draft GitHub Release',
+  )
   const publishIndex = steps.findIndex(
     ({ name }) => name === 'Publish verified GitHub Release',
   )
@@ -203,6 +206,8 @@ test('release workflow verifies publication before dispatching catalog review', 
 
   assert.equal(release.permissions.actions, 'write')
   assert.equal(release.permissions.contents, 'write')
+  assert.match(steps[createIndex].run, /gh api --paginate/)
+  assert.doesNotMatch(steps[createIndex].run, /--slurp/)
   assert.ok(publishIndex < verificationIndex)
   assert.ok(verificationIndex < dispatchIndex)
   assert.ok(dispatchIndex < cleanupIndex)
