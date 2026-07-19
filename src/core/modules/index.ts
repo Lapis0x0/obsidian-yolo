@@ -280,6 +280,11 @@ export {
   type ModuleRuntimeReservationTarget,
 } from './moduleRuntimeReservation'
 export {
+  clearModuleStartupReloadAttempt,
+  consumeModuleStartupReloadAttempt,
+  type ModuleStartupReloadGuardStorage,
+} from './moduleStartupReloadGuard'
+export {
   ModuleStartupReconciler,
   type ModuleStartupReconcileSource,
   type ModuleStartupReconcilerOptions,

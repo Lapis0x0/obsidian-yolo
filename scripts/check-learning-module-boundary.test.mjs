@@ -125,6 +125,21 @@ test('keeps Learning implementation out of the Core production metafile', async 
   }
 })
 
+test('Core guards automatic reloads for persistent module transition failures', async () => {
+  const source = await readFile(
+    path.join(repositoryRoot, 'src', 'main.ts'),
+    'utf8',
+  )
+  const dispositionBranch = source.match(
+    /if \(disposition\?\.reloadRequired\) \{([\s\S]*?)\n        return false\n      \}/,
+  )
+
+  assert.ok(dispositionBranch, 'Core handles reload-required disposition')
+  assert.match(dispositionBranch[1], /consumeModuleStartupReloadAttempt/)
+  assert.match(dispositionBranch[1], /window\.location\.reload\s*\(/)
+  assert.match(dispositionBranch[1], /suppressing another automatic reload/)
+})
+
 test('Core source has no dependency on the Learning module source tree', async () => {
   const imports = await readImports(path.join(repositoryRoot, 'src'))
   for (const { filePath, specifier } of imports) {

@@ -83,6 +83,8 @@ import {
   ObsidianModuleVaultCapabilityProvider,
   type ProductionModuleServices,
   authorizeOfficialModuleArtifactRemoval,
+  clearModuleStartupReloadAttempt,
+  consumeModuleStartupReloadAttempt,
   createLearningOwnedDataDescriptors,
   createLearningOwnedDataRemovalPort,
   createModuleDataRemovalJournalPort,
@@ -3975,12 +3977,19 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       const disposition =
         this.productionModuleServices?.activationCoordinator.getStartupDisposition()
       if (disposition?.reloadRequired) {
-        console.error(
-          '[YOLO] Module transition recovery requires a fresh process; reloading Obsidian',
-        )
-        window.location.reload()
+        if (consumeModuleStartupReloadAttempt(sessionStorage)) {
+          console.error(
+            '[YOLO] Module transition recovery requires a fresh process; reloading Obsidian once',
+          )
+          window.location.reload()
+        } else {
+          console.error(
+            '[YOLO] Module transition recovery still requires a fresh process after one reload; suppressing another automatic reload',
+          )
+        }
         return false
       }
+      clearModuleStartupReloadAttempt(sessionStorage)
       if (disposition?.processPoisoned) {
         console.error(
           '[YOLO] Module transition recovery stopped further module activation in this process',
