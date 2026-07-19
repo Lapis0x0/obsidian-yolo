@@ -52,6 +52,28 @@ test('verifies the remote release closure and writes catalog metadata', async ()
   }
 })
 
+test('verifies draft assets before GitHub assigns canonical download URLs', async () => {
+  const fixture = await createFixture({ draftDownloadTag: 'untagged-test' })
+  try {
+    const metadata = await verifyLearningReleaseAssets({
+      repository,
+      tag,
+      releaseId,
+      targetCommit: 'test-commit',
+      assetDir: fixture.directory,
+      metadataOut: fixture.metadataPath,
+      token: 'test-token',
+      apiBase,
+      downloadBase,
+      fetchImpl: fixture.fetchImpl,
+    })
+
+    assert.match(metadata.manifest.url, /untagged-test/)
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true })
+  }
+})
+
 test('independently verifies published release assets', async () => {
   const fixture = await createFixture({ draft: false })
   try {
@@ -258,6 +280,7 @@ async function createFixture({
   extraAsset = false,
   corruptEntryDownload = false,
   draft = true,
+  draftDownloadTag,
 } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-release-'))
   const entry = Buffer.from('export default true\n')
@@ -265,6 +288,8 @@ async function createFixture({
   const encodedTag = encodeURIComponent(tag)
   const url = (name) =>
     `${downloadBase}/${encodedTag}/${encodeURIComponent(name)}`
+  const releaseUrl = (name) =>
+    `${downloadBase}/${encodeURIComponent(draftDownloadTag ?? tag)}/${encodeURIComponent(name)}`
   const manifest = {
     schemaVersion: 1,
     id: 'learning',
@@ -322,7 +347,7 @@ async function createFixture({
       id: 1000 + index,
       name,
       size: bytes.length,
-      browser_download_url: url(name),
+      browser_download_url: releaseUrl(name),
       url: `${apiBase}/repos/${repository}/releases/assets/${1000 + index}`,
     })),
   }

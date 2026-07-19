@@ -106,11 +106,13 @@ export async function verifyLearningReleaseAssets({
       throw new Error(`Invalid or duplicate Release asset: ${asset?.name}`)
     }
     const canonicalUrl = `${downloadBase}/${encodedTag}/${encodeURIComponent(asset.name)}`
-    assertEqual(
-      asset.browser_download_url,
-      canonicalUrl,
-      `${asset.name} canonical URL`,
-    )
+    if (!expectedDraft) {
+      assertEqual(
+        asset.browser_download_url,
+        canonicalUrl,
+        `${asset.name} canonical URL`,
+      )
+    }
     if (!Number.isSafeInteger(asset.id) || asset.id <= 0) {
       throw new Error(`${asset.name} has an invalid GitHub asset id`)
     }
@@ -198,7 +200,7 @@ export async function verifyLearningReleaseAssets({
       assertEqual(digest, declaration.sha256, `${name} manifest SHA-256`)
       assertEqual(
         declaration.url,
-        asset.browser_download_url,
+        `${downloadBase}/${encodedTag}/${encodeURIComponent(name)}`,
         `${name} manifest URL`,
       )
     } else if (name.startsWith('ready.')) {
