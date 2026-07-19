@@ -105,9 +105,12 @@ describe('ModuleLoader', () => {
     expect(executor.sources).toEqual(['module source'])
   })
 
-  it('rejects byte-size and SHA-256 mismatches before execution', async () => {
+  it('uses SHA-256 rather than declared byte size as entry identity', async () => {
     const artifact = entryFor('notes')
-    const executor = new FakeExecutor(() => undefined)
+    const registered = definition('notes')
+    const executor = new FakeExecutor((capture) => {
+      capture.registration.registerModule(registered)
+    })
     const loader = new ModuleLoader({
       executor,
       subtleCrypto,
@@ -118,14 +121,14 @@ describe('ModuleLoader', () => {
         { ...artifact.entry, byteSize: artifact.bytes.length + 1 },
         artifact.bytes,
       ),
-    ).rejects.toThrow('entry size mismatch')
+    ).resolves.toBe(registered)
     await expect(
       loader.load(
         { ...artifact.entry, sha256: '0'.repeat(64) },
         artifact.bytes,
       ),
     ).rejects.toThrow('entry SHA-256 mismatch')
-    expect(executor.sources).toEqual([])
+    expect(executor.sources).toHaveLength(1)
   })
 
   it('rejects empty, multiple, and wrong-id registrations', async () => {

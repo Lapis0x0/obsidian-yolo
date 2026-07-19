@@ -109,11 +109,9 @@ export class ModuleArtifactInstaller {
         )
         await this.cleanupDir(stagingDir)
         return verified.manifest
-      } catch (error) {
+      } catch {
         await this.cleanupDir(stagingDir)
-        throw new Error(
-          `Module "${descriptor.id}" version directory exists but is invalid: ${describeError(error)}`,
-        )
+        return this.repairUnlocked(descriptor, subtleCrypto, signal)
       }
     }
 

@@ -13,7 +13,7 @@ import { ModuleSettingsStore } from './moduleSettingsStore'
 import { assertModuleId } from './moduleStore'
 import type { ModuleDisposer } from './types'
 
-const MODULE_INTENT_DIR_NAME = 'module-intent'
+const MODULE_INTENT_DIR_NAME = 'module-intent-v1'
 
 export type ObsidianModuleIntentSettings = Readonly<{
   yolo?: Readonly<{

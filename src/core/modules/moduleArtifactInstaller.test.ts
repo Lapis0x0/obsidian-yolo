@@ -293,7 +293,7 @@ describe('ModuleArtifactInstaller', () => {
     )
   })
 
-  it('never replaces an immutable version after a transient read failure', async () => {
+  it('atomically repairs an existing version that cannot be verified', async () => {
     const artifact = createArtifact()
     const adapter = new MemoryAdapter()
     const validDownload = jest.fn(async (url: string) =>
@@ -308,13 +308,16 @@ describe('ModuleArtifactInstaller', () => {
     const original = new Uint8Array(await adapter.readBinary(entryPath))
     adapter.failReadOnce = readyPath(artifact)
 
-    await expect(installer.install(artifact.descriptor)).rejects.toThrow(
-      'version directory exists but is invalid',
+    await expect(installer.install(artifact.descriptor)).resolves.toMatchObject(
+      {
+        id: 'learning',
+        version: '0.1.0',
+      },
     )
     expect(new Uint8Array(await adapter.readBinary(entryPath))).toEqual(
       original,
     )
-    expect(validDownload).toHaveBeenCalledTimes(2)
+    expect(validDownload).toHaveBeenCalledTimes(4)
   })
 
   it('repairs an existing version only after the exact replacement is fully staged', async () => {

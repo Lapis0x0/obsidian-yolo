@@ -159,9 +159,9 @@ describe('createObsidianModuleIntentBackend', () => {
     await harness.store.set('notes', 'uninstalled')
 
     expect(harness.adapter.writes).toEqual([
-      'First/.yolo_json_db/module-intent/notes.json',
-      'First/.yolo_json_db/module-intent/search.json',
-      'Second/.yolo_json_db/module-intent/notes.json',
+      'First/.yolo_json_db/module-intent-v1/notes.json',
+      'First/.yolo_json_db/module-intent-v1/search.json',
+      'Second/.yolo_json_db/module-intent-v1/notes.json',
     ])
   })
 
@@ -188,13 +188,13 @@ describe('createObsidianModuleIntentBackend', () => {
     await pending
 
     expect(harness.adapter.writes).toEqual([
-      'Old/.yolo_json_db/module-intent/notes.json',
+      'Old/.yolo_json_db/module-intent-v1/notes.json',
     ])
   })
 
   it('lists only sorted unique valid intent files directly under the current root', async () => {
     const harness = createHarness('Active')
-    const root = 'Active/.yolo_json_db/module-intent'
+    const root = 'Active/.yolo_json_db/module-intent-v1'
     harness.adapter.folders.add(root)
     for (const path of [
       `${root}/search.json`,
@@ -214,7 +214,7 @@ describe('createObsidianModuleIntentBackend', () => {
     harness.setBaseDir('Missing', false)
     await expect(harness.store.listModuleIds()).resolves.toEqual([])
 
-    harness.adapter.folders.add('Missing/.yolo_json_db/module-intent')
+    harness.adapter.folders.add('Missing/.yolo_json_db/module-intent-v1')
     harness.adapter.listError = new Error('list failed')
     await expect(harness.store.listModuleIds()).rejects.toThrow('list failed')
   })
@@ -223,7 +223,7 @@ describe('createObsidianModuleIntentBackend', () => {
     const harness = createHarness('Active')
     const listener = jest.fn()
     harness.store.subscribeAll(listener)
-    const root = 'Active/.yolo_json_db/module-intent'
+    const root = 'Active/.yolo_json_db/module-intent-v1'
 
     harness.vault.emit('rename', `${root}/search.json`, `${root}/notes.json`)
     harness.vault.emit('create', `${root}/nested/deep.json`)
@@ -235,8 +235,8 @@ describe('createObsidianModuleIntentBackend', () => {
 
   it('covers old and new roots while switching and then relocates', async () => {
     const harness = createHarness('Old')
-    const oldRoot = 'Old/.yolo_json_db/module-intent'
-    const newRoot = 'New/.yolo_json_db/module-intent'
+    const oldRoot = 'Old/.yolo_json_db/module-intent-v1'
+    const newRoot = 'New/.yolo_json_db/module-intent-v1'
     harness.adapter.folders.add(oldRoot)
     harness.adapter.folders.add(newRoot)
     harness.adapter.files.set(`${oldRoot}/old-only.json`, '')
@@ -272,7 +272,7 @@ describe('createObsidianModuleIntentBackend', () => {
     harness.setBaseDir('New', false)
     harness.vault.emit(
       'create',
-      'New/.yolo_json_db/module-intent/discovered.json',
+      'New/.yolo_json_db/module-intent-v1/discovered.json',
     )
 
     expect(listener).toHaveBeenCalledWith('discovered')
@@ -327,7 +327,7 @@ describe('createObsidianModuleIntentBackend', () => {
     const harness = createHarness('Active')
     const listener = jest.fn()
     harness.store.subscribe('notes', listener)
-    const target = 'Active/.yolo_json_db/module-intent/notes.json'
+    const target = 'Active/.yolo_json_db/module-intent-v1/notes.json'
 
     harness.vault.emit('create', target)
     harness.vault.emit('modify', target)
@@ -335,11 +335,11 @@ describe('createObsidianModuleIntentBackend', () => {
     harness.vault.emit('modify', `${target}.backup`)
     harness.vault.emit(
       'modify',
-      'Active/.yolo_json_db/module-intent/nested/notes.json',
+      'Active/.yolo_json_db/module-intent-v1/nested/notes.json',
     )
     harness.vault.emit(
       'modify',
-      'Active/.yolo_json_db/module-intent/search.json',
+      'Active/.yolo_json_db/module-intent-v1/search.json',
     )
     harness.vault.emit('rename', 'other.json', target)
     harness.vault.emit('rename', target, 'other.json')
@@ -352,8 +352,8 @@ describe('createObsidianModuleIntentBackend', () => {
     const harness = createHarness('Old')
     const listener = jest.fn()
     harness.store.subscribe('notes', listener)
-    const oldPath = 'Old/.yolo_json_db/module-intent/notes.json'
-    const newPath = 'New/.yolo_json_db/module-intent/notes.json'
+    const oldPath = 'Old/.yolo_json_db/module-intent-v1/notes.json'
+    const newPath = 'New/.yolo_json_db/module-intent-v1/notes.json'
 
     harness.setBaseDir('New')
     harness.notifySettingsChange()
@@ -369,8 +369,14 @@ describe('createObsidianModuleIntentBackend', () => {
     harness.store.subscribe('notes', listener)
 
     harness.setBaseDir('New', false)
-    harness.vault.emit('modify', 'New/.yolo_json_db/module-intent/notes.json')
-    harness.vault.emit('modify', 'Old/.yolo_json_db/module-intent/notes.json')
+    harness.vault.emit(
+      'modify',
+      'New/.yolo_json_db/module-intent-v1/notes.json',
+    )
+    harness.vault.emit(
+      'modify',
+      'Old/.yolo_json_db/module-intent-v1/notes.json',
+    )
 
     expect(listener).toHaveBeenCalledTimes(1)
   })
@@ -382,7 +388,10 @@ describe('createObsidianModuleIntentBackend', () => {
 
     unsubscribe()
     unsubscribe()
-    harness.vault.emit('modify', 'YOLO/.yolo_json_db/module-intent/notes.json')
+    harness.vault.emit(
+      'modify',
+      'YOLO/.yolo_json_db/module-intent-v1/notes.json',
+    )
     harness.setBaseDir('Other')
 
     expect(harness.vault.removed).toHaveLength(4)
@@ -398,7 +407,10 @@ describe('createObsidianModuleIntentBackend', () => {
     const unsubscribe = harness.store.subscribe('notes', listener)
 
     expect(unsubscribe).toThrow('offref failed')
-    harness.vault.emit('modify', 'YOLO/.yolo_json_db/module-intent/notes.json')
+    harness.vault.emit(
+      'modify',
+      'YOLO/.yolo_json_db/module-intent-v1/notes.json',
+    )
     harness.setBaseDir('Other')
     expect(listener).not.toHaveBeenCalled()
     expect(harness.vault.removed).toHaveLength(0)
@@ -429,7 +441,10 @@ describe('createObsidianModuleIntentBackend', () => {
       message: 'registration failed',
     })
     expect(harness.vault.removed).toHaveLength(0)
-    harness.vault.emit('modify', 'YOLO/.yolo_json_db/module-intent/notes.json')
+    harness.vault.emit(
+      'modify',
+      'YOLO/.yolo_json_db/module-intent-v1/notes.json',
+    )
     expect(listener).not.toHaveBeenCalled()
 
     expect(() => registrationError?.cleanup()).not.toThrow()

@@ -14,15 +14,10 @@ export async function sha256Hex(
 
 export async function verifyModuleBytes(
   bytes: Uint8Array,
-  expected: Readonly<{ byteSize: number; sha256: string }>,
+  expected: Readonly<{ sha256: string }>,
   label: string,
   subtleCrypto: Pick<SubtleCrypto, 'digest'>,
 ): Promise<void> {
-  if (bytes.byteLength !== expected.byteSize) {
-    throw new Error(
-      `${label} size mismatch: expected ${expected.byteSize}, received ${bytes.byteLength}`,
-    )
-  }
   const actualDigest = await sha256Hex(bytes, subtleCrypto)
   if (actualDigest !== expected.sha256.toLowerCase()) {
     throw new Error(`${label} SHA-256 mismatch`)

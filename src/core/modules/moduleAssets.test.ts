@@ -193,7 +193,7 @@ describe('ModuleAssetsCapabilityProvider', () => {
 
     await expect(
       harness.activation.api.createBlobUrl('workers/index.js'),
-    ).rejects.toThrow(/size mismatch|SHA-256 mismatch/)
+    ).rejects.toThrow('SHA-256 mismatch')
     expect(harness.createObjectURL).not.toHaveBeenCalled()
   })
 

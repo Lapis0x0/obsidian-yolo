@@ -94,20 +94,37 @@ describe('createOfficialModuleArtifactDownloader', () => {
     },
   )
 
-  it('rejects a Content-Length larger than expected', async () => {
+  it('does not treat Content-Length as an exact identity field', async () => {
     const { download } = setup(
       response(new Uint8Array([1, 2, 3]), 200, { 'content-length': '4' }),
     )
     await expect(
       download({ kind: 'artifact', url: ARTIFACT_URL, byteSize: 3 }),
-    ).rejects.toThrow('exceeds')
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]))
   })
 
-  it('rejects a final body size different from expected', async () => {
+  it('does not treat declared byteSize as an exact identity field', async () => {
     const { download } = setup(response(new Uint8Array([1, 2])))
     await expect(
       download({ kind: 'artifact', url: ARTIFACT_URL, byteSize: 3 }),
-    ).rejects.toThrow('size mismatch')
+    ).resolves.toEqual(new Uint8Array([1, 2]))
+  })
+
+  it('rejects Content-Length and bodies above the hard manifest limit', async () => {
+    const oversized = new Uint8Array(MAX_MODULE_MANIFEST_BYTES + 1)
+    const header = setup(
+      response(new Uint8Array([1]), 200, {
+        'content-length': String(oversized.byteLength),
+      }),
+    )
+    await expect(
+      header.download({ kind: 'manifest', url: MANIFEST_URL, byteSize: 1 }),
+    ).rejects.toThrow('byte limit')
+
+    const body = setup(response(oversized))
+    await expect(
+      body.download({ kind: 'manifest', url: MANIFEST_URL, byteSize: 1 }),
+    ).rejects.toThrow('byte limit')
   })
 
   it.each(['-1', '1.5', ' 3', '03', '9007199254740992'])(
@@ -232,7 +249,7 @@ describe('createOfficialModuleArtifactDownloader', () => {
         url: MANIFEST_URL,
         byteSize: MAX_MODULE_MANIFEST_BYTES + 1,
       }),
-    ).rejects.toThrow('size mismatch')
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]))
     expect(request).toHaveBeenCalledTimes(1)
   })
 

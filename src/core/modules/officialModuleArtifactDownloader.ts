@@ -102,18 +102,17 @@ export function createOfficialModuleArtifactDownloader(
     }
 
     const contentLength = readContentLength(response.headers)
-    if (contentLength !== null && contentLength > downloadRequest.byteSize) {
-      throw new Error('Official module artifact exceeds its expected byte size')
+    const maximumBytes = maximumBytesFor(downloadRequest.kind)
+    if (contentLength !== null && contentLength > maximumBytes) {
+      throw new Error('Official module artifact exceeds the byte limit')
     }
     if (!(response.arrayBuffer instanceof ArrayBuffer)) {
       throw new Error('Official module artifact response body is invalid')
     }
 
     const bytes = new Uint8Array(response.arrayBuffer)
-    if (bytes.byteLength !== downloadRequest.byteSize) {
-      throw new Error(
-        `Official module artifact size mismatch: expected ${downloadRequest.byteSize}, received ${bytes.byteLength}`,
-      )
+    if (bytes.byteLength > maximumBytes) {
+      throw new Error('Official module artifact exceeds the byte limit')
     }
     return bytes.slice()
   }
