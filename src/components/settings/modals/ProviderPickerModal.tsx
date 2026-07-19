@@ -203,7 +203,7 @@ function ProviderPickerComponent({
                   <span className="yolo-pp-badge yolo-pp-badge--mute">
                     {t(
                       'settings.providers.pickerCustomDesc',
-                      'Manually enter base URL and API key',
+                      'Base URL + API key',
                     )}
                   </span>
                 </div>

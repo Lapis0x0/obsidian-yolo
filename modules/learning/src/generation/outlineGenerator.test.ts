@@ -116,7 +116,7 @@ describe('generateOutline', () => {
         level: 'beginner',
         goal: '入门',
       }),
-    ).rejects.toThrow('大纲生成结果缺少 projectGoal')
+    ).rejects.toThrow('Outline generation result is missing projectGoal')
   })
 
   it('rejects explicitly aborted output instead of parsing partial JSON', async () => {
@@ -162,3 +162,37 @@ function createHost(
 async function* streamEvents(events: LearningGenerationAgentEvent[]) {
   for (const event of events) yield event
 }
+
+describe('generateOutline language propagation', () => {
+  it('uses the topic and goal as its language source', async () => {
+    const onRequest = jest.fn()
+    const host = createHost(
+      [
+        {
+          type: 'completed',
+          text: '{"projectName":"X","projectGoal":"g","chapters":[{"title":"c","contract":"x"}],"estimatedKnowledgePoints":1}',
+        },
+      ],
+      onRequest,
+    )
+
+    await generateOutline({
+      host,
+      modelId: 'learning-model',
+      topic: 'Python',
+      level: 'beginner',
+      goal: 'build real projects independently',
+    })
+
+    const request = onRequest.mock.calls[0]?.[0] as {
+      systemPromptOverride: string
+      prompt: string
+    }
+    expect(request.systemPromptOverride).toContain(
+      "language of the user's topic and goal",
+    )
+    // Language propagation: for a language-neutral topic ("Python") the user
+    // goal carries the language, and it must reach the outline request.
+    expect(request.prompt).toContain('build real projects independently')
+  })
+})

@@ -148,6 +148,7 @@ export const en: TranslationKeys = {
       cancel: 'Not now',
     },
     common: {
+      loading: 'Loading…',
       all: 'All',
       allChapters: 'All chapters',
       allKnowledgePoints: 'All knowledge points',
@@ -170,6 +171,8 @@ export const en: TranslationKeys = {
       exercises: 'Exercises',
     },
     workspace: {
+      missingProject: 'Project not found',
+      projectNotFound: 'Project does not exist or has not finished scanning',
       backToHome: 'Back to learning center',
       learned: 'Learned',
     },
@@ -318,6 +321,19 @@ export const en: TranslationKeys = {
       },
     },
     outlineBuilder: {
+      estimatedKnowledgePoints: 'Estimated knowledge points',
+      failed: 'Generation failed',
+      failedDescription: 'Unable to continue generation. Please try again.',
+      failedKnowledgeChapters: 'Knowledge-point generation failed: {chapters}',
+      knowledgeGenerating: 'Generating knowledge points',
+      knowledgeGeneratingCurrent: 'Generating: {title}',
+      knowledgeGenerationComplete: 'Knowledge points generated',
+      knowledgeGenerationFailed: 'Knowledge-point generation failed',
+      outlineGenerating: 'Generating outline',
+      planningPath: 'Planning the learning path',
+      chapterTitlePlaceholder: 'Chapter title',
+      chapterContractPlaceholder:
+        'Describe this chapter’s scope, boundaries, and estimated knowledge points',
       draftBadge: 'Outline draft',
       subagentPending: 'Sub-agent standing by',
       subagentReady: 'After confirmation, a sub-agent will generate it',
@@ -339,6 +355,10 @@ export const en: TranslationKeys = {
       generating: 'Generating...',
     },
     outline: {
+      emptyBody: 'This knowledge point has no content yet',
+      emptyProject:
+        'This project has no knowledge points yet. The outline will appear here once generation completes.',
+      noPointSelected: 'Select a knowledge point',
       searchPlaceholder: 'Search knowledge points...',
       addChapter: 'Add chapter',
       addPoint: 'Add knowledge point',
@@ -351,6 +371,13 @@ export const en: TranslationKeys = {
       exerciseCount: '{count} exercises',
     },
     cards: {
+      cardCreateFailed: 'Failed to create card, please try again',
+      empty:
+        'No cards yet. Generate knowledge points first, then create cards from them.',
+      generating: 'Generating cards',
+      noReviewCards: 'No cards due',
+      reviewSaveFailed: 'Failed to save rating, please try again',
+      srsLoadFailed: 'Failed to load review data, please try again',
       study: 'Learn',
       generationCompleteTitle: 'Learning cards are ready',
       generationCompleteSummary:
@@ -426,6 +453,10 @@ export const en: TranslationKeys = {
         'Card deleted, but its review history could not be removed',
     },
     exercises: {
+      empty:
+        'No exercises yet. Generate knowledge points first, then create exercises from them.',
+      mvpNoEvaluation: 'Automatic evaluation is not available in the MVP stage',
+      noPracticeExercises: 'No exercises to practice',
       practice: 'Practice',
       locatedTo: 'Located at: ',
       allStatus: 'All statuses',
@@ -1226,7 +1257,7 @@ export const en: TranslationKeys = {
       pickerTitle: 'Add provider',
       pickerSearchPlaceholder: 'Search providers · press Enter',
       pickerCustomLabel: 'Custom provider',
-      pickerCustomDesc: 'Manually enter base URL and API key',
+      pickerCustomDesc: 'Base URL + API key',
       pickerEmpty: 'No matching providers',
       categoryAll: 'All',
       categoryMain: 'International',

@@ -107,7 +107,7 @@ ${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.tr
 function parseOutline(text: string): Outline {
   const parsed = parseJsonObject(text)
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error('大纲生成结果不是 JSON 对象')
+    throw new Error('Outline generation result is not a JSON object')
   }
   const record = parsed as Record<string, unknown>
   const projectName =
@@ -119,9 +119,15 @@ function parseOutline(text: string): Outline {
     typeof record.estimatedKnowledgePoints === 'number'
       ? record.estimatedKnowledgePoints
       : 0
-  if (!projectName) throw new Error('大纲生成结果缺少 projectName')
-  if (!projectGoal) throw new Error('大纲生成结果缺少 projectGoal')
-  if (chapters.length === 0) throw new Error('大纲生成结果中没有可用章节')
+  if (!projectName) {
+    throw new Error('Outline generation result is missing projectName')
+  }
+  if (!projectGoal) {
+    throw new Error('Outline generation result is missing projectGoal')
+  }
+  if (chapters.length === 0) {
+    throw new Error('Outline generation result has no usable chapters')
+  }
   return { projectName, projectGoal, chapters, estimatedKnowledgePoints }
 }
 

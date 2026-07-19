@@ -145,6 +145,7 @@ export const it: TranslationKeys = {
       cancel: 'Non ora',
     },
     common: {
+      loading: 'Caricamento…',
       all: 'Tutti',
       allChapters: 'Tutti i capitoli',
       allKnowledgePoints: 'Tutti i punti',
@@ -167,6 +168,8 @@ export const it: TranslationKeys = {
       exercises: 'Esercizi',
     },
     workspace: {
+      missingProject: 'Progetto non trovato',
+      projectNotFound: 'Il progetto non esiste o non ha terminato la scansione',
       backToHome: 'Torna al centro apprendimento',
       learned: 'Appreso',
     },
@@ -316,6 +319,19 @@ export const it: TranslationKeys = {
       },
     },
     outlineBuilder: {
+      estimatedKnowledgePoints: 'Punti di conoscenza stimati',
+      failed: 'Generazione non riuscita',
+      failedDescription: 'Impossibile continuare la generazione. Riprova.',
+      failedKnowledgeChapters: 'Generazione dei punti non riuscita: {chapters}',
+      knowledgeGenerating: 'Generazione dei punti di conoscenza in corso',
+      knowledgeGeneratingCurrent: 'Generazione: {title}',
+      knowledgeGenerationComplete: 'Punti di conoscenza generati',
+      knowledgeGenerationFailed: 'Generazione dei punti non riuscita',
+      outlineGenerating: 'Generazione della scaletta in corso',
+      planningPath: 'Pianificazione del percorso di apprendimento in corso',
+      chapterTitlePlaceholder: 'Titolo del capitolo',
+      chapterContractPlaceholder:
+        'Descrivi ambito, limiti e numero stimato di punti del capitolo',
       draftBadge: 'Bozza schema',
       subagentPending: 'Sub-agent in attesa',
       subagentReady: 'Dopo la conferma, un sub-agent lo genererà',
@@ -337,6 +353,10 @@ export const it: TranslationKeys = {
       generating: 'Generazione...',
     },
     outline: {
+      emptyBody: 'Questo punto di conoscenza non ha ancora contenuto',
+      emptyProject:
+        'Questo progetto non ha ancora punti di conoscenza. La scaletta apparirà qui al termine della generazione.',
+      noPointSelected: 'Seleziona un punto di conoscenza',
       searchPlaceholder: 'Cerca punti conoscenza...',
       addChapter: 'Aggiungi capitolo',
       addPoint: 'Aggiungi punto conoscenza',
@@ -349,6 +369,13 @@ export const it: TranslationKeys = {
       exerciseCount: '{count} esercizi',
     },
     cards: {
+      cardCreateFailed: 'Creazione della scheda non riuscita, riprova',
+      empty:
+        'Ancora nessuna scheda. Genera prima i punti di conoscenza, poi crea le schede da essi.',
+      generating: 'Generazione delle schede in corso',
+      noReviewCards: 'Nessuna scheda da rivedere',
+      reviewSaveFailed: 'Salvataggio della valutazione non riuscito, riprova',
+      srsLoadFailed: 'Caricamento dei dati di ripasso non riuscito, riprova',
       study: 'Studia',
       generationCompleteTitle: 'Le carte di studio sono pronte',
       generationCompleteSummary:
@@ -427,6 +454,11 @@ export const it: TranslationKeys = {
         'Carta eliminata, ma non è stato possibile rimuovere la cronologia',
     },
     exercises: {
+      empty:
+        'Ancora nessun esercizio. Genera prima i punti di conoscenza, poi crea gli esercizi da essi.',
+      mvpNoEvaluation:
+        'La valutazione automatica non è disponibile nella fase MVP',
+      noPracticeExercises: 'Nessun esercizio da praticare',
       practice: 'Pratica',
       locatedTo: 'Posizione: ',
       allStatus: 'Tutti gli stati',
@@ -1144,7 +1176,7 @@ export const it: TranslationKeys = {
       pickerTitle: 'Aggiungi provider',
       pickerSearchPlaceholder: 'Cerca provider · premi Invio',
       pickerCustomLabel: 'Provider personalizzato',
-      pickerCustomDesc: 'Inserisci manualmente base URL e API key',
+      pickerCustomDesc: 'URL base + chiave API',
       pickerEmpty: 'Nessun provider corrispondente',
       categoryAll: 'Tutti',
       categoryMain: 'Internazionale',
