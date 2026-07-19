@@ -360,6 +360,5 @@ export {
 } from './obsidianModuleConfigBackend'
 export {
   handoffLearningLegacySettings,
-  type LearningLegacySettings,
   type ModuleConfigCreateIfAbsent,
 } from './learningModuleSettingsHandoff'

@@ -100,9 +100,49 @@ test('keeps Core out of the Learning entry metafile', async () => {
   }
 })
 
+test('keeps Learning implementation out of the Core production metafile', async () => {
+  await execFileAsync('npm', ['run', 'build'], { cwd: repositoryRoot })
+  const metafile = JSON.parse(
+    await readFile(path.join(repositoryRoot, 'meta.json'), 'utf8'),
+  )
+  const inputs = Object.keys(metafile.inputs).map((input) =>
+    input.replaceAll('\\', '/'),
+  )
+  const forbidden = [
+    /(^|\/)modules\/learning\/src\//,
+    /(^|\/)src\/components\/learning-view\//,
+    /(^|\/)src\/core\/learning\//,
+    /(^|\/)LearningView\.tsx$/,
+    /(?:^|\/)(?:anki|fsrs)(?:\/|[^/]*)/i,
+    /(?:anki[^/]*worker|worker[^/]*anki)/i,
+  ]
+  for (const input of inputs) {
+    assert.equal(
+      forbidden.some((pattern) => pattern.test(input)),
+      false,
+      `Core production bundle includes Learning implementation: ${input}`,
+    )
+  }
+})
+
+test('Core source has no dependency on the Learning module source tree', async () => {
+  const imports = await readImports(path.join(repositoryRoot, 'src'))
+  for (const { filePath, specifier } of imports) {
+    assert.doesNotMatch(
+      specifier.replaceAll('\\', '/'),
+      /(?:^|\/)modules\/learning\/src(?:\/|$)/,
+      `${path.relative(repositoryRoot, filePath)} imports ${specifier}`,
+    )
+  }
+})
+
 async function readProductionImports() {
+  return readImports(sourceRoot)
+}
+
+async function readImports(root) {
   const imports = []
-  for (const filePath of await listSourceFiles(sourceRoot)) {
+  for (const filePath of await listSourceFiles(root)) {
     if (/\.(?:test|fixture)\.[cm]?[jt]sx?$/.test(filePath)) continue
     const source = await readFile(filePath, 'utf8')
     const importPattern =

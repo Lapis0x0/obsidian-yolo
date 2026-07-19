@@ -102,15 +102,6 @@ export function normalizeYoloSettingsReferences(
         fallbackChatModelId,
       ),
     },
-    learningOptions: {
-      ...settings.learningOptions,
-      modelId:
-        normalizeModelReference(
-          settings.learningOptions.modelId,
-          enabledChatModelIds,
-          learningFallbackModelId,
-        ) || learningFallbackModelId,
-    },
     assistants,
     currentAssistantId:
       settings.currentAssistantId &&

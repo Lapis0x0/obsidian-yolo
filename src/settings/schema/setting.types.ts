@@ -506,15 +506,7 @@ export const yoloSettingsSchema = z.object({
 
   notificationOptions: notificationOptionsSchema,
 
-  learningOptions: z
-    .object({
-      modelId: z.string().catch(''),
-      betaNoticeAcknowledged: z.boolean().catch(false),
-    })
-    .catch({
-      modelId: '',
-      betaNoticeAcknowledged: false,
-    }),
+  learningOptions: z.unknown().optional(),
 
   // Continuation (续写) options
   continuationOptions: z

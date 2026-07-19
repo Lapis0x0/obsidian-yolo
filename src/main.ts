@@ -21,7 +21,6 @@ import {
   type ActionToastOptions,
   mountActionToast,
 } from './components/ActionToast'
-import { AcknowledgementModal } from './components/modals/AcknowledgementModal'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
@@ -49,14 +48,6 @@ import {
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
-import type {
-  LearningNavigationHandler,
-  LearningNavigationTarget,
-} from './core/learning/learningNavigation'
-import { LearningRuntime } from './core/learning/learningRuntime'
-import type { LearningStatsService } from './core/learning/learningStatsService'
-import type { ProjectEventBus } from './core/learning/projectEventBus'
-import type { LearningSrsStore } from './core/learning/srs/srsStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type {
@@ -109,10 +100,7 @@ import {
   runExclusive as runManagedModuleDataExclusive,
   selectModuleManifestVariant,
 } from './core/modules'
-import {
-  isLearningModuleOwner,
-  openLearningModuleView,
-} from './core/modules/learningModuleOwner'
+import { openLearningModuleView } from './core/modules/learningModuleOwner'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import {
@@ -123,11 +111,7 @@ import {
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
-import {
-  getYoloBaseDir,
-  getYoloJsonDbRootDir,
-  getYoloLearningDir,
-} from './core/paths/yoloPaths'
+import { getYoloBaseDir, getYoloJsonDbRootDir } from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -198,7 +182,6 @@ import { TabCompletionController } from './features/editor/tab-completion/tabCom
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
-import { LearningView } from './LearningView'
 import {
   YoloSettings,
   yoloSettingsSchema,
@@ -292,19 +275,18 @@ export default class YoloPlugin extends Plugin {
   private bundledModuleRegistry: BundledModuleRegistry | null = null
   private productionModuleServices: ProductionModuleServices | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
+  private rawLearningLegacySettings: unknown = undefined
   private learningModuleSettingsHandoffState: 'pending' | 'ready' | 'failed' =
     'pending'
   private readonly learningModuleSettingsHandoffListeners = new Set<
     () => void
   >()
   private readonly managedModulePathChangeListeners = new Set<() => void>()
-  private learningModuleOwnsProduct = false
   private removeLearningModuleDataOperation: (() => Promise<void>) | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
-  private learningRuntime: LearningRuntime | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -390,98 +372,14 @@ export default class YoloPlugin extends Plugin {
     return this.chatLeafSessionManager
   }
 
-  /**
-   * Registers (or clears) the active LearningView's ProjectEventBus. The
-   * workspace component calls this on mount / unmount so plugin-level
-   * commands (e.g. mock replay) can reach the bus that's currently driving
-   * the on-screen graph.
-   */
-  setLearningEventBus(bus: ProjectEventBus | null): void {
-    this.getLearningRuntime().setEventBus(bus)
-  }
-
-  setLearningNavigationHandler(
-    handler: LearningNavigationHandler | null,
-  ): void {
-    this.getLearningRuntime().setNavigationHandler(handler)
-  }
-
-  showActionToast(toast: ActionToastOptions): void {
-    this.actionToastController?.show(toast)
-  }
-
-  trackLearningGeneration(controller: AbortController): void {
-    this.getLearningRuntime().trackGeneration(controller)
-  }
-
-  releaseLearningGeneration(controller: AbortController): void {
-    this.getLearningRuntime().releaseGeneration(controller)
-  }
-
-  getLearningSrsStore(): LearningSrsStore {
-    return this.getLearningRuntime().getSrsStore()
-  }
-
-  getLearningStatsService(): LearningStatsService {
-    return this.getLearningRuntime().getStatsService()
-  }
-
-  private getLearningRuntime(): LearningRuntime {
-    if (!this.learningRuntime) {
-      this.learningRuntime = new LearningRuntime({
-        app: this.app,
-        getSettings: () => this.settings,
-        getLearningBaseDir: () => getYoloLearningDir(this.settings),
-        backgroundActivities: this.getBackgroundActivityRegistry(),
-        openLearningHome: () => {
-          void this.openLearningView({ type: 'home' })
-        },
-        translate: (keyPath, fallback) => this.t(keyPath, fallback),
-      })
-    }
-    return this.learningRuntime
-  }
-
-  /**
-   * Opens the LearningView in the main workspace (new tab). Activates an
-   * existing leaf if one is already open.
-   */
-  async openLearningView(target?: LearningNavigationTarget): Promise<void> {
-    if (this.learningModuleOwnsProduct) {
-      await openLearningModuleView(
-        this.app.workspace,
-        LEARNING_VIEW_TYPE,
-        target,
+  async openLearningView(): Promise<void> {
+    try {
+      await openLearningModuleView(this.app.workspace, LEARNING_VIEW_TYPE)
+    } catch (error) {
+      console.error('[YOLO] Learning module view is unavailable', error)
+      new Notice(
+        'Learning is unavailable. Manage the Learning module in settings.',
       )
-      return
-    }
-    const leaf = await this.revealLearningView(target)
-
-    if (!this.settings.learningOptions.betaNoticeAcknowledged) {
-      new AcknowledgementModal(this.app, {
-        title: this.t(
-          'learning.betaNotice.title',
-          'Learning mode public beta notice',
-        ),
-        messages: [
-          this.t(
-            'learning.betaNotice.description',
-            'Learning mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some learning mode features will become part of paid plans in the future. Free users will still be able to use learning mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.',
-          ),
-        ],
-        centered: true,
-        confirmText: this.t(
-          'learning.betaNotice.confirm',
-          'I understand, enter learning mode',
-        ),
-        cancelText: this.t('learning.betaNotice.cancel', 'Not now'),
-        onConfirm: () => {
-          void this.acknowledgeLearningBetaNotice()
-        },
-        onDismiss: () => {
-          if (leaf.view.getViewType() === LEARNING_VIEW_TYPE) leaf.detach()
-        },
-      }).open()
     }
   }
 
@@ -520,44 +418,8 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
-  private async acknowledgeLearningBetaNotice(): Promise<void> {
-    if (this.learningModuleSettingsHandoffState !== 'ready') {
-      new Notice(
-        'Learning settings handoff is incomplete. Retry it from Learning settings before changing Learning preferences.',
-      )
-      return
-    }
-    try {
-      await this.setSettings({
-        ...this.settings,
-        learningOptions: {
-          ...this.settings.learningOptions,
-          betaNoticeAcknowledged: true,
-        },
-      })
-    } catch (error: unknown) {
-      console.error(
-        'Failed to persist learning beta notice confirmation',
-        error,
-      )
-    }
-  }
-
-  private async revealLearningView(
-    target?: LearningNavigationTarget,
-  ): Promise<WorkspaceLeaf> {
-    if (target) this.getLearningRuntime().queueNavigation(target)
-    const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
-    if (existing) {
-      this.app.workspace.revealLeaf(existing)
-      this.getLearningRuntime().flushNavigation()
-      return existing
-    }
-    const leaf = this.app.workspace.getLeaf('tab')
-    await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
-    this.app.workspace.revealLeaf(leaf)
-    this.getLearningRuntime().flushNavigation()
-    return leaf
+  showActionToast(toast: ActionToastOptions): void {
+    this.actionToastController?.show(toast)
   }
 
   private getModelListCacheKey(
@@ -2164,7 +2026,6 @@ export default class YoloPlugin extends Plugin {
     }
     this.warnIfInstallationIncomplete()
     if (!(await this.activateModules())) return
-    this.learningModuleOwnsProduct = isLearningModuleOwner(this.moduleRuntime)
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -2184,10 +2045,6 @@ export default class YoloPlugin extends Plugin {
     // sub-second transient; the migration is idempotent so it always converges.
     this.app.workspace.onLayoutReady(() => {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
-    })
-    this.app.workspace.onLayoutReady(() => {
-      if (!this.learningModuleOwnsProduct)
-        this.getLearningRuntime().startStats()
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2218,12 +2075,6 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
-    if (!this.learningModuleOwnsProduct) {
-      this.registerView(
-        LEARNING_VIEW_TYPE,
-        (leaf) => new LearningView(leaf, this),
-      )
-    }
     this.startWebviewSelectionBridge()
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
@@ -2245,15 +2096,6 @@ export default class YoloPlugin extends Plugin {
     this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
     })
-    if (!this.learningModuleOwnsProduct) {
-      this.addRibbonIcon(
-        'graduation-cap',
-        this.t('commands.learningModeLabel'),
-        () => {
-          void this.openLearningView()
-        },
-      )
-    }
 
     this.setupBackgroundActivityStatusBar()
     this.updateToastCleanup = mountUpdateToast(this)
@@ -2327,16 +2169,6 @@ export default class YoloPlugin extends Plugin {
         })
       },
     })
-
-    if (!this.learningModuleOwnsProduct) {
-      this.addCommand({
-        id: 'open-learning-mode',
-        name: this.t('commands.openLearningMode'),
-        callback: () => {
-          void this.openLearningView()
-        },
-      })
-    }
 
     // Global ESC to cancel any ongoing AI continuation/rewrite
     this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => {
@@ -2634,17 +2466,16 @@ export default class YoloPlugin extends Plugin {
     this.productionModuleServices = null
     this.moduleManager = null
     this.learningModuleSettingsHandoff = null
+    this.rawLearningLegacySettings = undefined
     this.setLearningModuleSettingsHandoffState('pending')
     this.learningModuleSettingsHandoffListeners.clear()
     this.managedModulePathChangeListeners.clear()
-    this.learningModuleOwnsProduct = false
     this.removeLearningModuleDataOperation = null
     this.moduleRuntimeReservation?.dispose()
     this.moduleRuntimeReservation = null
     this.moduleRuntime?.dispose()
     this.moduleRuntime = null
     this.bundledModuleRegistry = null
-    this.learningRuntime?.dispose()
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
     this.actionToastController?.destroy()
@@ -2734,6 +2565,7 @@ export default class YoloPlugin extends Plugin {
     const rawPluginData = (await this.loadData()) as unknown
     const pluginExtract = extractYoloDataMeta(rawPluginData)
     const sourceRaw = pluginExtract?.raw ?? null
+    this.rawLearningLegacySettings = sourceRaw?.learningOptions
     const sourceMeta = pluginExtract?.meta ?? null
 
     const parsedSettings = parseYoloSettings(sourceRaw)
@@ -2923,7 +2755,6 @@ export default class YoloPlugin extends Plugin {
       new Notice(
         'YOLO: detected a `baseDir` change in data.json. Reloaded settings against the new path.',
       )
-      this.learningRuntime?.restartStats()
     }
 
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
@@ -3186,7 +3017,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     this.settings = normalizedSettings
-    if (yoloBaseDirChanged) this.learningRuntime?.restartStats()
     await this.persistPluginDirSettings(normalizedSettings)
     this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
     setLLMDebugCaptureEnabled(
@@ -3832,7 +3662,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       try {
         await handoffLearningLegacySettings(
           createConfigIfAbsent,
-          this.settings.learningOptions,
+          this.rawLearningLegacySettings,
         )
         this.setLearningModuleSettingsHandoffState('ready')
       } catch (error) {
