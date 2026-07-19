@@ -40,7 +40,7 @@ export type ModuleInstallationCoordinatorOptions = Readonly<{
   reportRefreshError?: (error: unknown) => void
 }>
 
-/** Installs a catalog candidate confirmed by the user without activating it. */
+/** Installs and durably schedules a catalog candidate confirmed by the user. */
 export class ModuleInstallationCoordinator {
   private readonly activeControllers = new Set<AbortController>()
   private disposed = false
@@ -82,9 +82,9 @@ export class ModuleInstallationCoordinator {
               `Module "${moduleId}" device state belongs to ${existing.platform}, not ${this.options.platform}`,
             )
           }
-          if (existing !== null && existing.transition !== null) {
+          if (existing !== null && existing.activationPhase !== null) {
             throw new Error(
-              `Module "${moduleId}" installation is blocked by an active transition`,
+              `Module "${moduleId}" installation is blocked by a pending activation`,
             )
           }
 
@@ -136,13 +136,12 @@ export class ModuleInstallationCoordinator {
             moduleId,
             platform: this.options.platform,
             activeVersion: existing?.activeVersion ?? null,
-            downloadedCandidate: expectedVersion,
-            pendingVersion: existing?.pendingVersion ?? null,
+            pendingVersion: expectedVersion,
+            activationPhase: 'pending',
             readyVersions: {
               ...(existing?.readyVersions ?? {}),
               [expectedVersion]: descriptor,
             },
-            transition: existing?.transition ?? null,
           }
           const intendedState = snapshotState(nextState)
           let state: ModuleDeviceState
@@ -216,9 +215,8 @@ function statesEqual(
     left.moduleId !== right.moduleId ||
     left.platform !== right.platform ||
     left.activeVersion !== right.activeVersion ||
-    left.downloadedCandidate !== right.downloadedCandidate ||
     left.pendingVersion !== right.pendingVersion ||
-    JSON.stringify(left.transition) !== JSON.stringify(right.transition)
+    left.activationPhase !== right.activationPhase
   ) {
     return false
   }
@@ -369,10 +367,9 @@ function snapshotState(state: ModuleDeviceState): ModuleDeviceState {
     moduleId: state.moduleId,
     platform: state.platform,
     activeVersion: state.activeVersion,
-    downloadedCandidate: state.downloadedCandidate,
     pendingVersion: state.pendingVersion,
+    activationPhase: state.activationPhase,
     readyVersions: Object.freeze(readyVersions),
-    transition: state.transition,
   })
 }
 

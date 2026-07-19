@@ -57,23 +57,22 @@ import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
   BundledModuleRegistry,
-  type ConfirmedModuleCandidate,
   CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   IndexedDbDataAdapter,
+  LearningModuleDataRemovalService,
   ManagedModulePathsCapabilityProvider,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
-  ModuleDataRemovalCoordinator,
   ModuleDeviceStateStore,
-  type ModuleInstallationResult,
   ModuleIntentStore,
   ModuleLoader,
   ModuleManager,
   ModulePrivateStorageCapabilityProvider,
   ModuleRuntime,
   ModuleRuntimeReservation,
+  type ModuleService,
   ModuleSettingsCapabilityProvider,
   ModuleSettingsContributionRegistry,
   ModuleStore,
@@ -81,21 +80,14 @@ import {
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
-  type ProductionModuleServices,
-  authorizeOfficialModuleArtifactRemoval,
   clearModuleStartupReloadAttempt,
   consumeModuleStartupReloadAttempt,
-  createLearningOwnedDataDescriptors,
-  createLearningOwnedDataRemovalPort,
-  createModuleDataRemovalJournalPort,
   createObsidianModuleConfigBackendFactory,
   createObsidianModuleConfigCreateIfAbsent,
   createObsidianModuleIntentBackend,
-  createObsidianModuleTransitionSettingsBackend,
   createOfficialModuleCompatibilityProvider,
   createProductionModuleServices,
   handoffLearningLegacySettings,
-  isLearningOwnedDataDescriptor,
   managedModuleDataNamespace,
   parseModuleArtifactManifest,
   runExclusive as runManagedModuleDataExclusive,
@@ -270,11 +262,10 @@ export default class YoloPlugin extends Plugin {
   private ragCoordinator: RagCoordinator | null = null
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
-  private moduleManager: ModuleManager | null = null
+  private moduleService: ModuleService | null = null
   private moduleRuntime: ModuleRuntime | null = null
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
   private bundledModuleRegistry: BundledModuleRegistry | null = null
-  private productionModuleServices: ProductionModuleServices | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
   private rawLearningLegacySettings: unknown = undefined
   private learningModuleSettingsHandoffState: 'pending' | 'ready' | 'failed' =
@@ -2462,10 +2453,8 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
-    if (this.productionModuleServices) this.productionModuleServices.dispose()
-    else this.moduleManager?.dispose()
-    this.productionModuleServices = null
-    this.moduleManager = null
+    this.moduleService?.dispose()
+    this.moduleService = null
     this.learningModuleSettingsHandoff = null
     this.rawLearningLegacySettings = undefined
     this.setLearningModuleSettingsHandoffState('pending')
@@ -3544,101 +3533,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.dbManagerInitPromise
   }
 
-  getModuleManager(): ModuleManager {
-    if (!this.moduleManager) {
-      throw new Error('[YOLO] Module manager is unavailable')
+  getModuleService(): ModuleService {
+    if (!this.moduleService) {
+      throw new Error('[YOLO] Module service is unavailable')
     }
-    return this.moduleManager
+    return this.moduleService
   }
 
-  getModuleInstallCandidate(
-    moduleId: string,
-  ): ConfirmedModuleCandidate | undefined {
-    return this.productionModuleServices?.getInstallCandidate(moduleId)
-  }
-
-  getModuleTransitionCandidate(
-    moduleId: string,
-  ): Promise<ConfirmedModuleCandidate | undefined> {
-    return (
-      this.productionModuleServices?.getTransitionCandidate(moduleId) ??
-      Promise.resolve(undefined)
-    )
-  }
-
-  installConfirmedModuleCandidate(
-    candidate: ConfirmedModuleCandidate,
-  ): Promise<ModuleInstallationResult> {
-    if (!this.productionModuleServices) {
-      return Promise.reject(
-        new Error('[YOLO] Production module installation is unavailable'),
-      )
-    }
-    return this.productionModuleServices.installConfirmedCandidate(candidate)
-  }
-
-  prepareConfirmedModuleTransition(
-    candidate: ConfirmedModuleCandidate,
-  ): ReturnType<ProductionModuleServices['prepareConfirmedTransition']> {
-    if (!this.productionModuleServices) {
-      return Promise.reject(
-        new Error('[YOLO] Production module transition is unavailable'),
-      )
-    }
-    return this.productionModuleServices.prepareConfirmedTransition(candidate)
-  }
-
-  async setModuleDesiredInstalled(
-    moduleId: string,
-    desiredInstalled: boolean,
-  ): Promise<void> {
-    const coordinator = this.productionModuleServices?.intentCoordinator
-    if (!coordinator) {
-      throw new Error('[YOLO] Module installation intent is unavailable')
-    }
-    if (desiredInstalled) await coordinator.install(moduleId)
-    else await coordinator.uninstall(moduleId)
-  }
-
-  async setModuleEnabled(moduleId: string, enabled: boolean): Promise<void> {
-    const coordinator = this.productionModuleServices?.intentCoordinator
-    if (!coordinator) {
-      throw new Error('[YOLO] Module enablement intent is unavailable')
-    }
-    if (enabled) await coordinator.enable(moduleId)
-    else await coordinator.disable(moduleId)
-  }
-
-  async ensureModuleReady(moduleId: string): Promise<void> {
-    const reconciler = this.productionModuleServices?.readinessReconciler
-    if (!reconciler) {
-      throw new Error('[YOLO] Module readiness reconciliation is unavailable')
-    }
-    const result = await reconciler.ensureModuleReady(moduleId)
-    if (result.status !== 'ready') {
-      throw new Error(
-        result.error ?? `Module "${moduleId}" is not ready (${result.status})`,
-      )
-    }
-  }
-
-  async uninstallInactiveModule(moduleId: string): Promise<void> {
-    const coordinator = this.productionModuleServices?.uninstallCoordinator
-    if (!coordinator) {
-      throw new Error('[YOLO] Module uninstall is unavailable')
-    }
-    await coordinator.uninstall(moduleId)
-  }
-
-  async uninstallAndRemoveModuleData(moduleId: string): Promise<void> {
-    if (moduleId !== 'learning' || !this.removeLearningModuleDataOperation) {
-      throw new Error(`[YOLO] Data removal is unavailable for "${moduleId}"`)
+  async uninstallAndRemoveLearningData(): Promise<void> {
+    if (!this.removeLearningModuleDataOperation) {
+      throw new Error('[YOLO] Learning data removal is unavailable')
     }
     await this.removeLearningModuleDataOperation()
-  }
-
-  hasModuleProductCapabilities(): boolean {
-    return this.productionModuleServices !== null
   }
 
   private initializeModuleSystem(): void {
@@ -3671,15 +3577,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         throw error
       }
     }
-    const transitionSettingsBackend =
-      createObsidianModuleTransitionSettingsBackend({
-        app: this.app,
-        getSettings: () => this.settings,
-      })
     const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
     this.register(() => deviceLocalAdapter.close())
     let registry: BundledModuleRegistry | null = null
-    const servicesReference: { current: ProductionModuleServices | null } = {
+    const servicesReference: { current: ModuleService | null } = {
       current: null,
     }
     const runtime = new ModuleRuntime(
@@ -3803,10 +3704,33 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         },
       })
       this.bundledModuleRegistry = registry
-      this.productionModuleServices = null
-      this.moduleManager = new ModuleManager({
+      const manager = new ModuleManager({
         catalogSource: registry.catalogSource,
         installedStateSource: registry.installedStateSource,
+      })
+      this.moduleService = Object.freeze({
+        mode: 'bundled' as const,
+        getSnapshot: manager.getSnapshot,
+        subscribe: manager.subscribe,
+        refresh: () => manager.refresh(),
+        getInstallCandidate: () => undefined,
+        install: () =>
+          Promise.reject(new Error('Bundled modules cannot be installed')),
+        setEnabled: () =>
+          Promise.reject(new Error('Bundled modules cannot be toggled')),
+        uninstall: () =>
+          Promise.reject(new Error('Bundled modules cannot be uninstalled')),
+        start: async () => {
+          await registry!.activateAll()
+          await manager.refresh()
+          return Object.freeze({
+            reloadRequired: false,
+            processPoisoned: false,
+          })
+        },
+        getVerifiedArtifact: (moduleId: string) =>
+          registry!.getVerifiedArtifact(moduleId),
+        dispose: () => manager.dispose(),
       })
       return
     }
@@ -3837,20 +3761,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       platform,
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
-      activationRuntime: runtime,
       runtimeReservation,
       intentStore,
-      authorizeArtifactRemoval: (moduleId, versions) => {
-        const current = servicesReference.current
-        if (!current) return Promise.resolve(false)
-        return authorizeOfficialModuleArtifactRemoval(
-          current.catalogClient,
-          moduleId,
-          versions,
-          platform,
-        )
-      },
-      transitionSettingsBackend,
       readCurrentSchemaVersion: async (moduleId, namespace) => {
         if (namespace !== OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE) return null
         if (
@@ -3891,123 +3803,44 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       },
     })
     servicesReference.current = services
-    let dataRemovalRunning = false
-    this.removeLearningModuleDataOperation = async () => {
-      if (dataRemovalRunning) {
-        throw new Error('Learning data removal is already in progress')
-      }
-      dataRemovalRunning = true
-      try {
-        const journal = createModuleDataRemovalJournalPort(deviceLocalAdapter)
-        const pendingJournal = await journal.read('learning')
-        const pendingDescriptors =
-          pendingJournal &&
-          typeof pendingJournal === 'object' &&
-          'descriptors' in pendingJournal &&
-          Array.isArray(pendingJournal.descriptors)
-            ? pendingJournal.descriptors
-            : null
-        const descriptors = pendingDescriptors
-          ? pendingDescriptors
-          : await createLearningOwnedDataDescriptors(
-              this.app,
-              this.settings,
-              deviceLocalAdapter,
-            )
-        const approved = new Set(
-          descriptors.map((value) => JSON.stringify(value)),
-        )
-        const token = Object.freeze({ nonce: crypto.randomUUID() })
-        const removal = createLearningOwnedDataRemovalPort(
-          this.app,
-          deviceLocalAdapter,
-        )
-        const coordinator = new ModuleDataRemovalCoordinator({
-          artifactUninstaller: services.uninstallCoordinator!,
-          runtime: runtimeReservation,
-          intentStore,
-          ownership: {
-            approve: async (owner, descriptor) =>
-              owner === 'learning' &&
-              approved.has(JSON.stringify(descriptor)) &&
-              isLearningOwnedDataDescriptor(descriptor, this.settings),
-          },
-          authorization: {
-            verifyHighRiskToken: async (candidate, request) =>
-              candidate === token &&
-              request.moduleId === 'learning' &&
-              request.descriptors.length === approved.size &&
-              request.descriptors.every((descriptor) =>
-                approved.has(JSON.stringify(descriptor)),
-              ),
-          },
-          removal: {
-            remove: (descriptor) =>
-              runManagedModuleDataExclusive(
-                this.app.vault,
-                managedModuleDataNamespace('learning', 'managed-data'),
-                () => removal.remove(descriptor),
-              ),
-          },
-          journal,
-        })
-        await services.intentCoordinator!.uninstall('learning')
-        await coordinator.uninstallAndRemoveData('learning', descriptors, token)
-        await services.manager.refresh()
-      } finally {
-        dataRemovalRunning = false
-      }
-    }
-    this.productionModuleServices = services
-    this.moduleManager = services.manager
+    const learningDataRemoval = new LearningModuleDataRemovalService({
+      app: this.app,
+      getSettings: () => this.settings,
+      deviceLocal: deviceLocalAdapter,
+      ...services.learningDataRemovalDependencies,
+    })
+    this.removeLearningModuleDataOperation = () =>
+      learningDataRemoval.uninstallAndRemoveData()
+    this.moduleService = services
   }
 
   private async activateModules(): Promise<boolean> {
-    if (!this.bundledModuleRegistry) {
-      try {
-        const services = this.productionModuleServices
-        if (services?.startupReconciler) {
-          await services.startupReconciler.start()
-        } else {
-          await services?.activationCoordinator.activatePersistedModules()
-        }
-      } catch (error) {
-        console.error('[YOLO] Failed to enumerate installed modules', error)
-      }
-      const disposition =
-        this.productionModuleServices?.activationCoordinator.getStartupDisposition()
-      if (disposition?.reloadRequired) {
-        if (consumeModuleStartupReloadAttempt(sessionStorage)) {
-          console.error(
-            '[YOLO] Module transition recovery requires a fresh process; reloading Obsidian once',
-          )
-          window.location.reload()
-        } else {
-          console.error(
-            '[YOLO] Module transition recovery still requires a fresh process after one reload; suppressing another automatic reload',
-          )
-        }
-        return false
-      }
-      clearModuleStartupReloadAttempt(sessionStorage)
-      if (disposition?.processPoisoned) {
-        console.error(
-          '[YOLO] Module transition recovery stopped further module activation in this process',
-        )
-      }
-      if (!this.productionModuleServices?.startupReconciler) {
-        void this.moduleManager?.refresh().catch((error) => {
-          console.error('[YOLO] Failed to refresh official modules', error)
-        })
-      }
+    let disposition
+    try {
+      disposition = await this.getModuleService().start()
+    } catch (error) {
+      console.error('[YOLO] Failed to start modules', error)
       return true
     }
-    try {
-      await this.bundledModuleRegistry.activateAll()
-    } catch (error) {
-      console.error('[YOLO] Failed to load the bundled module index', error)
+    if (disposition.reloadRequired) {
+      if (consumeModuleStartupReloadAttempt(sessionStorage)) {
+        console.error(
+          '[YOLO] Module activation recovery requires a fresh process; reloading Obsidian once',
+        )
+        window.location.reload()
+      } else {
+        console.error(
+          '[YOLO] Module activation recovery still requires a fresh process after one reload; suppressing another automatic reload',
+        )
+      }
+      return false
     }
-    await this.moduleManager?.refresh()
+    clearModuleStartupReloadAttempt(sessionStorage)
+    if (disposition.processPoisoned) {
+      console.error(
+        '[YOLO] Module activation recovery stopped further module activation in this process',
+      )
+    }
     return true
   }
 
@@ -4053,7 +3886,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         entryBytes,
       )
       await this.moduleRuntimeReservation.activate(definition, version)
-      await this.moduleManager?.refresh()
+      await this.moduleService?.refresh()
       new Notice('Host API conformance module activated')
     } catch (error) {
       console.error('[YOLO] Conformance module activation failed', error)

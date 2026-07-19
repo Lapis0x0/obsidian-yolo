@@ -13,62 +13,21 @@ import type {
   ModuleManagerSnapshot,
   ModuleRecord,
 } from '../../../core/modules'
-import type YoloPlugin from '../../../main'
+import type {
+  ModuleOperationResult,
+  ModuleService,
+} from '../../../core/modules/moduleService'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 
 type ModulesTabProps = {
   app: App
-  plugin: YoloPlugin & Partial<ModuleProductCapabilities>
-}
-
-export type ModuleProductCapabilities = {
-  hasModuleProductCapabilities?: () => boolean
-  getModuleInstallCandidate: (
-    moduleId: string,
-  ) => ConfirmedModuleCandidate | undefined
-  installConfirmedModuleCandidate: (
-    candidate: ConfirmedModuleCandidate,
-  ) => Promise<unknown>
-  setModuleDesiredInstalled: (
-    moduleId: string,
-    desiredInstalled: boolean,
-  ) => Promise<void>
-  setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>
-  uninstallInactiveModule: (moduleId: string) => Promise<void>
-  uninstallAndRemoveModuleData: (moduleId: string) => Promise<void>
-}
-
-export type ModuleTransitionCapabilities = Pick<
-  ModuleProductCapabilities,
-  'setModuleEnabled'
-> & {
-  prepareConfirmedModuleTransition(
-    candidate: ConfirmedModuleCandidate,
-  ): Promise<void>
-}
-
-export async function prepareModuleTransitionForReload(
-  capabilities: ModuleTransitionCapabilities,
-  candidate: ConfirmedModuleCandidate,
-): Promise<void> {
-  await capabilities.prepareConfirmedModuleTransition(candidate)
-  await capabilities.setModuleEnabled(candidate.moduleId, true)
+  service: ModuleService
+  removeLearningData?: () => Promise<void>
 }
 
 export type ModuleProductAction = 'install' | 'enable' | 'disable' | 'uninstall'
 
-export function requiresModuleProductConfirmation(
-  action: ModuleProductAction,
-): boolean {
-  return action === 'install' || action === 'uninstall'
-}
-
-type ModuleAction =
-  | ModuleProductAction
-  | 'update'
-  | 'apply'
-  | 'reload'
-  | 'remove-data'
+type ModuleAction = ModuleProductAction | 'update' | 'reload' | 'remove-data'
 
 type ProductModuleRecord = ModuleRecord
 
@@ -117,45 +76,12 @@ export function getModuleProductActions(
   return actions
 }
 
-export function hasModuleProductCapabilities(
-  capabilities: Partial<ModuleProductCapabilities>,
-): boolean {
-  return capabilities.hasModuleProductCapabilities?.() === true
-}
-
-function requireCapability<K extends keyof ModuleProductCapabilities>(
-  capabilities: Partial<ModuleProductCapabilities>,
-  name: K,
-): ModuleProductCapabilities[K] {
-  const capability = capabilities[name]
-  if (typeof capability !== 'function') {
-    throw new Error(`Module host capability is unavailable: ${name}`)
-  }
-  return capability.bind(capabilities) as ModuleProductCapabilities[K]
-}
-
 export async function executeModuleProductAction(
-  capabilities: Partial<ModuleProductCapabilities>,
-  module: Pick<
-    ModuleRecord,
-    'id' | 'installed' | 'status' | 'compatibilityIssues'
-  >,
+  service: Pick<ModuleService, 'install' | 'setEnabled' | 'uninstall'>,
+  module: Pick<ModuleRecord, 'id'>,
   action: ModuleProductAction,
   confirmedInstallCandidate?: ConfirmedModuleCandidate,
-): Promise<Readonly<{ reloadRequired: boolean }>> {
-  if (
-    hasCompatibilityIssues(module) &&
-    (action === 'install' || action === 'enable')
-  ) {
-    throw new Error(
-      `Module ${module.id} is incompatible: ${module.compatibilityIssues
-        ?.map((issue) => issue.kind)
-        .join(', ')}`,
-    )
-  }
-  if (!hasModuleProductCapabilities(capabilities)) {
-    throw new Error('Module product capabilities are unavailable')
-  }
+): Promise<ModuleOperationResult> {
   if (action === 'install') {
     if (
       !confirmedInstallCandidate ||
@@ -165,33 +91,12 @@ export async function executeModuleProductAction(
         `No confirmed install candidate is available for ${module.id}`,
       )
     }
-    await requireCapability(capabilities, 'setModuleDesiredInstalled')(
-      module.id,
-      true,
-    )
-    await requireCapability(
-      capabilities,
-      'installConfirmedModuleCandidate',
-    )(confirmedInstallCandidate)
-    return { reloadRequired: false }
+    return service.install(confirmedInstallCandidate)
   }
   if (action === 'enable' || action === 'disable') {
-    await requireCapability(capabilities, 'setModuleEnabled')(
-      module.id,
-      action === 'enable',
-    )
-    return { reloadRequired: true }
+    return service.setEnabled(module.id, action === 'enable')
   }
-
-  await requireCapability(capabilities, 'setModuleDesiredInstalled')(
-    module.id,
-    false,
-  )
-  if (module.installed?.active === true || module.status === 'active') {
-    return { reloadRequired: true }
-  }
-  await requireCapability(capabilities, 'uninstallInactiveModule')(module.id)
-  return { reloadRequired: false }
+  return service.uninstall(module.id)
 }
 
 const INSTALLED_STATUSES = new Set<ModuleRecord['status']>([
@@ -199,7 +104,6 @@ const INSTALLED_STATUSES = new Set<ModuleRecord['status']>([
   'active',
   'disabled',
   'update-available',
-  'ready-to-apply',
   'activation-pending',
   'failed',
 ])
@@ -209,11 +113,13 @@ function ModuleCard({
   operation,
   onAction,
   productCapabilitiesAvailable,
+  removeLearningDataAvailable,
 }: {
   module: ProductModuleRecord
   operation: OperationState | null
   onAction: (module: ModuleRecord, action: ModuleAction) => void
   productCapabilitiesAvailable: boolean
+  removeLearningDataAvailable: boolean
 }) {
   const { t } = useLanguage()
   const name = module.catalog?.name ?? module.id
@@ -227,20 +133,16 @@ function ModuleCard({
     active: t('settings.modules.statuses.active'),
     disabled: t('settings.modules.statuses.disabled'),
     'update-available': t('settings.modules.statuses.updateAvailable'),
-    'ready-to-apply': t('settings.modules.statuses.readyToApply'),
     'activation-pending': t('settings.modules.statuses.activationPending'),
     failed: t('settings.modules.statuses.failed'),
   }
   const releaseAction: ModuleAction | undefined =
     module.status === 'update-available'
       ? 'update'
-      : module.status === 'ready-to-apply'
-        ? 'apply'
-        : module.status === 'activation-pending'
-          ? 'reload'
-          : undefined
-  const transitionVersion =
-    module.pendingVersion ?? module.candidateVersion ?? module.version
+      : module.status === 'activation-pending'
+        ? 'reload'
+        : undefined
+  const transitionVersion = module.pendingVersion ?? module.version
   const productActions = getModuleProductActions(
     module,
     productCapabilitiesAvailable,
@@ -323,18 +225,16 @@ function ModuleCard({
             {t(`settings.modules.readiness.${readiness}`)}
           </span>
         </div>
-        {(module.status === 'ready-to-apply' ||
-          module.status === 'activation-pending') && (
+        {module.status === 'activation-pending' && (
           <p
             className="yolo-module-card-transition-detail"
             role="status"
             aria-live="polite"
           >
-            {t(
-              module.status === 'ready-to-apply'
-                ? 'settings.modules.readyToApplyDetail'
-                : 'settings.modules.activationPendingDetail',
-            ).replace('{version}', transitionVersion)}
+            {t('settings.modules.activationPendingDetail').replace(
+              '{version}',
+              transitionVersion,
+            )}
           </p>
         )}
         {operation?.moduleId === module.id && operation.error && (
@@ -370,14 +270,10 @@ function ModuleCard({
                 isOperating
                   ? releaseAction === 'update'
                     ? 'settings.modules.updating'
-                    : releaseAction === 'apply'
-                      ? 'settings.modules.preparing'
-                      : 'settings.modules.reloading'
+                    : 'settings.modules.reloading'
                   : releaseAction === 'update'
                     ? 'settings.modules.update'
-                    : releaseAction === 'apply'
-                      ? 'settings.modules.applyAndReload'
-                      : 'settings.modules.reload',
+                    : 'settings.modules.reload',
               )}
             </span>
           </button>
@@ -407,6 +303,7 @@ function ModuleCard({
           </button>
         ))}
         {productCapabilitiesAvailable &&
+        removeLearningDataAvailable &&
         module.id === 'learning' &&
         module.installed ? (
           <button
@@ -441,6 +338,7 @@ function ModuleGroup({
   operation,
   onAction,
   productCapabilitiesAvailable,
+  removeLearningDataAvailable,
   title,
 }: {
   description: string
@@ -449,6 +347,7 @@ function ModuleGroup({
   operation: OperationState | null
   onAction: (module: ModuleRecord, action: ModuleAction) => void
   productCapabilitiesAvailable: boolean
+  removeLearningDataAvailable: boolean
   title: string
 }) {
   return (
@@ -467,6 +366,7 @@ function ModuleGroup({
               operation={operation}
               onAction={onAction}
               productCapabilitiesAvailable={productCapabilitiesAvailable}
+              removeLearningDataAvailable={removeLearningDataAvailable}
             />
           ))}
         </div>
@@ -528,20 +428,23 @@ function ModuleErrorState({
   )
 }
 
-export function ModulesTab({ app, plugin }: ModulesTabProps) {
+export function ModulesTab({
+  app,
+  removeLearningData,
+  service,
+}: ModulesTabProps) {
   const { t } = useLanguage()
   const [operation, setOperation] = useState<OperationState | null>(null)
   const mountedRef = useRef(true)
   const operationGenerationRef = useRef(0)
   const confirmationModalRef = useRef<ConfirmModal | null>(null)
-  const manager = plugin.getModuleManager()
   const snapshot = useSyncExternalStore(
-    manager.subscribe,
-    manager.getSnapshot,
-    manager.getSnapshot,
+    service.subscribe,
+    service.getSnapshot,
+    service.getSnapshot,
   )
   const isLoading = snapshot.status === 'loading'
-  const productCapabilitiesAvailable = hasModuleProductCapabilities(plugin)
+  const productCapabilitiesAvailable = service.mode === 'official'
   const installed = snapshot.modules.filter((module) =>
     INSTALLED_STATUSES.has(module.status),
   )
@@ -572,17 +475,16 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
   ) => {
     const name = module.catalog?.name ?? module.id
     try {
-      await plugin.installConfirmedModuleCandidate(candidate)
-      new Notice(
-        t(
-          isUpdate
-            ? 'settings.modules.updateSuccess'
-            : 'settings.modules.installSuccess',
-        )
-          .replace('{name}', name)
-          .replace('{version}', candidate.expectedVersion),
-        8000,
+      const result = await executeModuleProductAction(
+        service,
+        module,
+        'install',
+        candidate,
       )
+      if (result.reloadRequired) {
+        reloadPendingActivation(module, candidate.expectedVersion)
+        return
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       new Notice(
@@ -602,7 +504,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
 
   const openInstallConfirmation = (module: ModuleRecord) => {
     const name = module.catalog?.name ?? module.id
-    const candidate = plugin.getModuleInstallCandidate(module.id)
+    const candidate = service.getInstallCandidate(module.id)
     if (
       !candidate ||
       !module.catalog ||
@@ -631,7 +533,9 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
         .replace('{version}', candidate.expectedVersion)
         .replace('{sha256}', candidate.expectedManifestSha256),
       ctaText: t(
-        isUpdate ? 'settings.modules.update' : 'settings.modules.install',
+        isUpdate
+          ? 'settings.modules.updateAndReload'
+          : 'settings.modules.installAndReload',
       ),
       onConfirm: () => {
         if (
@@ -653,115 +557,12 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     modal.open()
   }
 
-  const prepareTransition = async (
+  const reloadPendingActivation = (
     module: ModuleRecord,
-    candidate: ConfirmedModuleCandidate,
+    preparedVersion?: string,
   ) => {
     const name = module.catalog?.name ?? module.id
-    try {
-      await prepareModuleTransitionForReload(plugin, candidate)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      new Notice(
-        t('settings.modules.applyError')
-          .replace('{name}', name)
-          .replace('{error}', message),
-        8000,
-      )
-      clearOperation(module.id)
-      return
-    }
-
-    try {
-      window.location.reload()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      new Notice(
-        t('settings.modules.reloadError')
-          .replace('{name}', name)
-          .replace('{version}', candidate.expectedVersion)
-          .replace('{error}', message),
-        8000,
-      )
-    } finally {
-      clearOperation(module.id)
-    }
-  }
-
-  const openApplyConfirmation = async (module: ModuleRecord) => {
-    const name = module.catalog?.name ?? module.id
-    const generation = ++operationGenerationRef.current
-    setOperation({ action: 'apply', moduleId: module.id })
-    let candidate: ConfirmedModuleCandidate | undefined
-    try {
-      candidate = await plugin.getModuleTransitionCandidate(module.id)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      new Notice(
-        t('settings.modules.applyError')
-          .replace('{name}', name)
-          .replace('{error}', message),
-        8000,
-      )
-      clearOperation(module.id)
-      return
-    }
-    if (!mountedRef.current || generation !== operationGenerationRef.current) {
-      return
-    }
-    if (
-      !candidate ||
-      !module.candidateVersion ||
-      candidate.expectedVersion !== module.candidateVersion
-    ) {
-      new Notice(
-        t('settings.modules.transitionCandidateUnavailable').replace(
-          '{name}',
-          name,
-        ),
-      )
-      clearOperation(module.id)
-      return
-    }
-
-    const catalogWarning = snapshot.errors.catalog
-      ? t('settings.modules.applyCatalogUnavailableWarning')
-      : !module.catalog
-        ? t('settings.modules.applyWithdrawnWarning')
-        : ''
-    const modal = new ConfirmModal(app, {
-      title: t('settings.modules.confirmApplyTitle').replace('{name}', name),
-      message: `${t('settings.modules.confirmApplyMessage')
-        .replace('{name}', name)
-        .replace('{version}', candidate.expectedVersion)
-        .replace('{sha256}', candidate.expectedManifestSha256)}${
-        catalogWarning ? `\n\n${catalogWarning}` : ''
-      }`,
-      ctaText: t('settings.modules.applyAndReload'),
-      onConfirm: () => {
-        if (
-          !mountedRef.current ||
-          generation !== operationGenerationRef.current
-        ) {
-          return
-        }
-        confirmationModalRef.current = null
-        void prepareTransition(module, candidate)
-      },
-      onCancel: () => {
-        if (generation !== operationGenerationRef.current) return
-        confirmationModalRef.current = null
-        clearOperation(module.id)
-      },
-    })
-    confirmationModalRef.current = modal
-    modal.open()
-  }
-
-  const reloadPreparedTransition = (module: ModuleRecord) => {
-    const name = module.catalog?.name ?? module.id
-    const version =
-      module.pendingVersion ?? module.candidateVersion ?? module.version
+    const version = preparedVersion ?? module.pendingVersion ?? module.version
     setOperation({ action: 'reload', moduleId: module.id })
     try {
       window.location.reload()
@@ -788,18 +589,17 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     setOperation({ action, moduleId: module.id })
     try {
       const result = await executeModuleProductAction(
-        plugin,
+        service,
         module,
         action,
         confirmedInstallCandidate,
       )
-      await manager.refresh()
+      if (result.reloadRequired) {
+        reloadPendingActivation(module, result.version)
+        return
+      }
       new Notice(
-        t(
-          result.reloadRequired
-            ? 'settings.modules.actionReloadSuccess'
-            : `settings.modules.actionSuccess.${action}`,
-        ).replace('{name}', name),
+        t(`settings.modules.actionSuccess.${action}`).replace('{name}', name),
         8000,
       )
       clearOperation(module.id)
@@ -818,31 +618,9 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
 
   const openProductConfirmation = (
     module: ModuleRecord,
-    action: 'install' | 'uninstall',
+    action: 'uninstall',
   ) => {
     const name = module.catalog?.name ?? module.id
-    let confirmedInstallCandidate: ConfirmedModuleCandidate | undefined
-    if (action === 'install') {
-      const candidate = plugin.getModuleInstallCandidate(module.id)
-      if (!candidate || candidate.moduleId !== module.id) {
-        setOperation({
-          action,
-          error: t('settings.modules.actionError')
-            .replace('{name}', name)
-            .replace(
-              '{error}',
-              `No install candidate is available for ${module.id}`,
-            ),
-          moduleId: module.id,
-        })
-        return
-      }
-      confirmedInstallCandidate = {
-        moduleId: candidate.moduleId,
-        expectedVersion: candidate.expectedVersion,
-        expectedManifestSha256: candidate.expectedManifestSha256,
-      }
-    }
     const generation = ++operationGenerationRef.current
     setOperation({ action, moduleId: module.id })
     const confirmationMessage = t(
@@ -853,13 +631,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
         '{name}',
         name,
       ),
-      message:
-        action === 'install' && confirmedInstallCandidate
-          ? `${confirmationMessage}\n\n${t('settings.modules.version').replace(
-              '{version}',
-              confirmedInstallCandidate.expectedVersion,
-            )}`
-          : confirmationMessage,
+      message: confirmationMessage,
       ctaText: t(`settings.modules.actions.${action}`),
       onConfirm: () => {
         if (
@@ -869,7 +641,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
           return
         }
         confirmationModalRef.current = null
-        void runProductAction(module, action, confirmedInstallCandidate)
+        void runProductAction(module, action)
       },
       onCancel: () => {
         if (generation !== operationGenerationRef.current) return
@@ -885,8 +657,10 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
     const name = module.catalog?.name ?? module.id
     setOperation({ action: 'remove-data', moduleId: module.id })
     try {
-      await requireCapability(plugin, 'uninstallAndRemoveModuleData')(module.id)
-      await manager.refresh()
+      if (!removeLearningData) {
+        throw new Error('Learning data removal is unavailable')
+      }
+      await removeLearningData()
       new Notice(
         `${name} was uninstalled and its owned data was removed.`,
         8000,
@@ -958,10 +732,11 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
       openDataRemovalConfirmation(module)
       return
     }
-    if (
-      (action === 'install' || action === 'uninstall') &&
-      requiresModuleProductConfirmation(action)
-    ) {
+    if (action === 'install' || action === 'update') {
+      openInstallConfirmation(module)
+      return
+    }
+    if (action === 'uninstall') {
       openProductConfirmation(module, action)
       return
     }
@@ -969,15 +744,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
       void runProductAction(module, action)
       return
     }
-    if (action === 'update') {
-      openInstallConfirmation(module)
-      return
-    }
-    if (action === 'apply') {
-      void openApplyConfirmation(module)
-      return
-    }
-    reloadPreparedTransition(module)
+    reloadPendingActivation(module)
   }
 
   return (
@@ -994,7 +761,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
         <button
           type="button"
           className="yolo-modules-refresh"
-          onClick={() => void manager.refresh()}
+          onClick={() => void service.refresh()}
           disabled={isLoading || (operation !== null && !operation.error)}
           aria-label={t(
             isLoading
@@ -1050,6 +817,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
               operation={operation}
               onAction={handleAction}
               productCapabilitiesAvailable={productCapabilitiesAvailable}
+              removeLearningDataAvailable={Boolean(removeLearningData)}
             />
             <ModuleGroup
               title={t('settings.modules.available')}
@@ -1059,6 +827,7 @@ export function ModulesTab({ app, plugin }: ModulesTabProps) {
               operation={operation}
               onAction={handleAction}
               productCapabilitiesAvailable={productCapabilitiesAvailable}
+              removeLearningDataAvailable={Boolean(removeLearningData)}
             />
           </div>
         </>

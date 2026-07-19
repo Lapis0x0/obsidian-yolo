@@ -4,27 +4,14 @@ import type {
   ModuleDeviceStateStore,
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
-import {
-  type ModuleTransitionJournal,
-  type ModuleTransitionPhase,
-  hashModuleTransitionSettingsSnapshot,
-  verifyModuleTransitionJournalSnapshot,
-} from './moduleTransitionJournal'
-import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 
 export type ModuleStartupTransitionRecoveryOptions<TVerified = unknown> =
   Readonly<{
     deviceStateStore: Pick<ModuleDeviceStateStore, 'runExclusive'>
-    settingsBackend?: Pick<
-      ObsidianModuleTransitionSettingsBackend,
-      'readAtCapturedLocation'
-    >
     readCurrentSchemaVersion(
       moduleId: string,
       namespace: string,
     ): Promise<number | null>
-    subtleCrypto: Pick<SubtleCrypto, 'digest'>
-    /** Verifies immutable bytes only. This callback must never evaluate module code. */
     verifyArtifact(
       descriptor: ModuleArtifactDescriptor,
       signal: AbortSignal,
@@ -34,7 +21,6 @@ export type ModuleStartupTransitionRecoveryOptions<TVerified = unknown> =
       descriptor: ModuleArtifactDescriptor,
       signal: AbortSignal,
     ): Promise<void>
-    /** Test/isolated-realm seam. Production must use the default global token. */
     realmToken?: object
   }>
 
@@ -53,53 +39,30 @@ export type ModuleTransitionRealmDisposition = Readonly<{
   processPoisoned: boolean
 }>
 
-type CleanupResult = Readonly<{ error?: string }>
 type RealmPoisonState = {
   processPoisoned: boolean
   reloadRequired: boolean
 }
-type RealmRecoveryGuard = {
+
+type RealmGuard = {
   queue: Promise<void>
   poison: RealmPoisonState
-  completed: Map<
-    string,
-    Readonly<{
-      journalIdentity: string
-      result: ModuleStartupTransitionRecoveryResult
-    }>
-  >
 }
 
-const realmRecoveryGuards = new WeakMap<object, RealmRecoveryGuard>()
+const realmGuards = new WeakMap<object, RealmGuard>()
 const GLOBAL_REALM_POISON_KEY = Symbol.for(
-  'obsidian-yolo.module-transition-recovery.realm-poison.v1',
+  'obsidian-yolo.module-activation.realm-poison.v2',
 )
 
-/** Internal startup policy for recovering one durable module transition. */
+/** Owns the durable pending -> activation-started -> active startup protocol. */
 export class ModuleStartupTransitionRecovery<TVerified = unknown> {
-  private readonly realmGuard: RealmRecoveryGuard
+  private readonly realmGuard: RealmGuard
 
   constructor(
     private readonly options: ModuleStartupTransitionRecoveryOptions<TVerified>,
   ) {
-    if (
-      !options ||
-      typeof options.deviceStateStore?.runExclusive !== 'function' ||
-      typeof options.readCurrentSchemaVersion !== 'function' ||
-      typeof options.subtleCrypto?.digest !== 'function' ||
-      typeof options.verifyArtifact !== 'function' ||
-      typeof options.activateVerifiedArtifact !== 'function' ||
-      (options.realmToken !== undefined &&
-        (options.realmToken === null ||
-          (typeof options.realmToken !== 'object' &&
-            typeof options.realmToken !== 'function'))) ||
-      (options.settingsBackend !== undefined &&
-        typeof options.settingsBackend.readAtCapturedLocation !== 'function')
-    ) {
-      throw new Error('Module startup transition recovery options are invalid')
-    }
     const realmToken = options.realmToken ?? globalThis
-    this.realmGuard = getRealmRecoveryGuard(realmToken)
+    this.realmGuard = getRealmGuard(realmToken)
   }
 
   async recover(
@@ -107,14 +70,14 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     signal: AbortSignal,
     allowModuleExecution = true,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
-    const recovery = this.realmGuard.queue.then(() =>
+    const operation = this.realmGuard.queue.then(() =>
       this.recoverSerial(moduleId, signal, allowModuleExecution),
     )
-    this.realmGuard.queue = recovery.then(
+    this.realmGuard.queue = operation.then(
       () => undefined,
       () => undefined,
     )
-    return recovery
+    return operation
   }
 
   private async recoverSerial(
@@ -123,53 +86,30 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     allowModuleExecution: boolean,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     if (this.realmGuard.poison.processPoisoned) {
-      return failed(
-        moduleId,
-        'Module transition recovery requires a fresh process',
-        {
-          processPoisoned: true,
-          reloadRequired: this.realmGuard.poison.reloadRequired,
-        },
-      )
+      return failed(moduleId, 'Module activation requires a fresh process', {
+        processPoisoned: true,
+        reloadRequired: this.realmGuard.poison.reloadRequired,
+      })
     }
-    if (signal.aborted) return failed(moduleId, abortedError())
-    let recovered: ModuleStartupTransitionRecoveryResult
     try {
-      recovered = await this.options.deviceStateStore.runExclusive(
+      const recovered = await this.options.deviceStateStore.runExclusive(
         moduleId,
-        async (transaction) => {
-          try {
-            return await this.recoverExclusive(
-              moduleId,
-              transaction,
-              signal,
-              allowModuleExecution,
-            )
-          } catch (error) {
-            return failed(
-              moduleId,
-              error,
-              allowModuleExecution
-                ? undefined
-                : { processPoisoned: false, reloadRequired: true },
-            )
-          }
-        },
+        (transaction) =>
+          this.recoverExclusive(
+            moduleId,
+            transaction,
+            signal,
+            allowModuleExecution,
+          ),
       )
+      if (recovered.processPoisoned) {
+        this.realmGuard.poison.processPoisoned = true
+        this.realmGuard.poison.reloadRequired = recovered.reloadRequired
+      }
+      return recovered
     } catch (error) {
-      recovered = failed(
-        moduleId,
-        error,
-        allowModuleExecution
-          ? undefined
-          : { processPoisoned: false, reloadRequired: true },
-      )
+      return failed(moduleId, error)
     }
-    if (recovered.processPoisoned) {
-      this.realmGuard.poison.processPoisoned = true
-      this.realmGuard.poison.reloadRequired = recovered.reloadRequired
-    }
-    return recovered
   }
 
   private async recoverExclusive(
@@ -179,606 +119,211 @@ export class ModuleStartupTransitionRecovery<TVerified = unknown> {
     allowModuleExecution: boolean,
   ): Promise<ModuleStartupTransitionRecoveryResult> {
     const current = await abortable(transaction.read(), signal)
-    if (current === null || current.transition === null) {
-      this.realmGuard.completed.delete(moduleId)
+    if (current === null || current.activationPhase === null) {
       return result({ moduleId, status: 'skipped' })
     }
-    if (current.moduleId !== moduleId) {
-      throw new Error(`Module "${moduleId}" returned mismatched device state`)
-    }
-    const completed = this.realmGuard.completed.get(moduleId)
-    if (
-      allowModuleExecution &&
-      completed?.journalIdentity === transitionIdentity(current.transition)
-    ) {
-      return completed.result
-    }
-    this.realmGuard.completed.delete(moduleId)
-
-    const unverifiedJournal = current.transition
-    const targetDescriptor =
-      current.readyVersions[unverifiedJournal.targetVersion]
-    if (targetDescriptor) {
-      assertDescriptorIdentity(
-        targetDescriptor,
-        moduleId,
-        unverifiedJournal.targetVersion,
-        current.platform,
-      )
-    }
-    const journal = await abortable(
-      verifyModuleTransitionJournalSnapshot(
-        unverifiedJournal,
-        {
-          moduleId: current.moduleId,
-          platform: current.platform,
-          activeVersion: current.activeVersion,
-          downloadedCandidate: current.downloadedCandidate,
-          pendingVersion: current.pendingVersion,
-          readyVersions: Object.keys(current.readyVersions),
-          targetDescriptor: targetDescriptor ?? null,
-        },
-        this.options.subtleCrypto,
-      ),
-      signal,
-    )
-    if (!targetDescriptor) {
-      throw new Error(
-        `Module "${moduleId}" has no ready descriptor for "${journal.targetVersion}"`,
-      )
+    if (current.moduleId !== moduleId || current.pendingVersion === null) {
+      throw new Error(`Module "${moduleId}" pending activation is invalid`)
     }
 
-    if (!allowModuleExecution) {
-      return this.settleWithoutExecution(current, journal, transaction, signal)
-    }
-
-    switch (journal.phase) {
-      case 'prepared':
-      case 'settings-committed':
-        return this.resumeTarget(
-          current,
-          journal,
-          targetDescriptor,
-          transaction,
-          signal,
-        )
-      case 'activation-started':
-        return journal.settings === null &&
-          targetDescriptor.dataSchemas.settings !== undefined
-          ? this.resumeTarget(
-              current,
-              journal,
-              targetDescriptor,
-              transaction,
-              signal,
-            )
-          : this.rollbackInterrupted(current, journal, transaction, signal)
-      case 'committed':
-        return this.resumeCommitted(
-          current,
-          journal,
-          targetDescriptor,
-          transaction,
-          signal,
-        )
-      case 'rollback-completed':
-        return this.resumeRollback(current, journal, transaction, signal)
-    }
-  }
-
-  private async settleWithoutExecution(
-    initial: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-  ): Promise<ModuleStartupTransitionRecoveryResult> {
-    let terminal = initial
-    try {
-      switch (journal.phase) {
-        case 'prepared':
-          terminal = rollbackPointers(initial)
-          break
-        case 'settings-committed':
-        case 'activation-started':
-          await this.assertSettingsCanRollBack(journal, signal)
-          terminal = phaseState(initial, 'rollback-completed')
-          await writeExact(transaction, terminal, signal)
-          break
-        case 'committed':
-        case 'rollback-completed':
-          break
-      }
-    } catch (error) {
-      return failed(initial.moduleId, error, {
-        processPoisoned: false,
-        reloadRequired: true,
-      })
-    }
-
-    const cleanup = await cleanupTerminal(transaction, terminal, signal)
-    if (cleanup.error !== undefined) {
-      return failed(initial.moduleId, cleanup.error, {
-        processPoisoned: false,
-        reloadRequired: true,
-      })
-    }
-    this.realmGuard.completed.delete(initial.moduleId)
-    return result({ moduleId: initial.moduleId, status: 'skipped' })
-  }
-
-  private async assertSettingsCanRollBack(
-    journal: ModuleTransitionJournal,
-    signal: AbortSignal,
-  ): Promise<void> {
-    if (journal.settings === null) return
-    const backend = this.options.settingsBackend
-    if (!backend) {
-      throw new Error('Transition settings backend is unavailable')
-    }
-    const snapshot = await abortable(
-      backend.readAtCapturedLocation(journal.settings.location),
-      signal,
-    )
-    const actual = await abortable(
-      hashModuleTransitionSettingsSnapshot(snapshot, this.options.subtleCrypto),
-      signal,
-    )
-    if (actual !== journal.settings.previousSha256) {
-      throw new Error(
-        'Transition settings cannot be rolled back without overwriting newer synchronized settings',
-      )
-    }
-  }
-
-  private async resumeTarget(
-    initial: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    descriptor: ModuleArtifactDescriptor,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-  ): Promise<ModuleStartupTransitionRecoveryResult> {
-    await this.assertTargetCanReadCurrentSchema(
-      initial.moduleId,
-      descriptor,
-      signal,
-    )
-    const verified = await this.verify(descriptor, signal)
-    await this.verifySettings(journal, signal)
-
-    let current = initial
-    if (journal.phase === 'prepared') {
-      current = phaseState(current, 'settings-committed')
-      await writeExact(transaction, current, signal)
-    }
-    current = phaseState(current, 'activation-started')
-    await writeExact(transaction, current, signal)
-    // The state marker is durable before this final observable conflict check.
-    // DataAdapter has no CAS, so an external writer can still race afterward.
-    await this.verifySettings(journal, signal)
-
-    try {
-      await this.activateTarget(verified, descriptor, signal)
-    } catch (error) {
-      if (journal.settings === null) {
-        const rollback = await this.prepareForwardOnlyRollback(
-          initial,
-          journal,
-          transaction,
-          signal,
-        )
-        return failed(
-          initial.moduleId,
-          rollback
-            ? error
-            : 'Target activation failed and no previous version can read the current data schema',
-          { processPoisoned: true, reloadRequired: true },
-        )
-      }
-      return failed(
-        initial.moduleId,
-        error,
-        error instanceof ActivationAttemptError
-          ? { processPoisoned: true, reloadRequired: true }
-          : undefined,
-      )
-    }
-    try {
-      await this.assertTargetWroteCurrentSchema(
-        initial.moduleId,
-        descriptor,
+    if (current.activationPhase === 'activation-started') {
+      return this.recoverInterrupted(
+        current,
+        transaction,
         signal,
+        allowModuleExecution,
       )
-    } catch (error) {
-      if (journal.settings === null) {
-        await this.prepareForwardOnlyRollback(
-          initial,
-          journal,
-          transaction,
-          signal,
-        )
-      }
-      return failed(initial.moduleId, error, {
-        processPoisoned: true,
-        reloadRequired: true,
-      })
+    }
+    if (!allowModuleExecution) {
+      await writeExact(transaction, clearPending(current), signal)
+      return result({ moduleId, status: 'skipped' })
     }
 
-    const committed = phaseState(current, 'committed')
+    const target = descriptorFor(current, current.pendingVersion)
+    await this.assertCanReadCurrentSchemas(moduleId, target, signal)
+    const verified = await abortable(
+      this.options.verifyArtifact(target, signal),
+      signal,
+    )
+    const started = Object.freeze({
+      ...current,
+      activationPhase: 'activation-started' as const,
+    })
+    await writeExact(transaction, started, signal)
+
     try {
+      // Once target code is invoked this realm is never reused for fallback.
+      await this.options.activateVerifiedArtifact(verified, target, signal)
+      await this.assertWroteSchemas(moduleId, target, signal)
+      const committed = Object.freeze({
+        ...started,
+        activeVersion: target.version,
+        pendingVersion: null,
+        activationPhase: null,
+      })
       await writeExact(transaction, committed, signal)
+      return result({
+        moduleId,
+        status: 'activated',
+        version: target.version,
+      })
     } catch (error) {
-      return failed(initial.moduleId, error, {
+      let canRestore = false
+      let recoveryError: unknown
+      try {
+        canRestore = await this.canRestorePrevious(started, signal)
+        if (canRestore) {
+          await writeExact(transaction, clearPending(started), signal)
+        }
+      } catch (failure) {
+        recoveryError = failure
+      }
+      return failed(
+        moduleId,
+        recoveryError !== undefined
+          ? `Target activation failed and rollback state could not be persisted: ${errorMessage(error)}; ${errorMessage(recoveryError)}`
+          : canRestore
+            ? error
+            : 'Target activation failed and the previous version cannot read the current data schema',
+        { processPoisoned: true, reloadRequired: true },
+      )
+    }
+  }
+
+  private async recoverInterrupted(
+    current: ModuleDeviceState,
+    transaction: ModuleDeviceStateTransaction,
+    signal: AbortSignal,
+    allowModuleExecution: boolean,
+  ): Promise<ModuleStartupTransitionRecoveryResult> {
+    const previousVersion = current.activeVersion
+    if (
+      previousVersion === null ||
+      !(await this.canRestorePrevious(current, signal))
+    ) {
+      return failed(
+        current.moduleId,
+        'Interrupted activation has no compatible previous version',
+      )
+    }
+    const previous = descriptorFor(current, previousVersion)
+    const verified = await abortable(
+      this.options.verifyArtifact(previous, signal),
+      signal,
+    )
+    if (!allowModuleExecution) {
+      await writeExact(transaction, clearPending(current), signal)
+      return result({ moduleId: current.moduleId, status: 'skipped' })
+    }
+    try {
+      await this.options.activateVerifiedArtifact(verified, previous, signal)
+      await writeExact(transaction, clearPending(current), signal)
+    } catch (error) {
+      return failed(current.moduleId, error, {
         processPoisoned: true,
         reloadRequired: true,
       })
     }
-    const cleanup = await cleanupTerminal(transaction, committed, signal)
-    const recovered = result({
-      moduleId: initial.moduleId,
-      status: 'activated',
-      version: journal.targetVersion,
-      ...(cleanup.error === undefined ? {} : { error: cleanup.error }),
-    })
-    this.rememberUncertainCleanup(committed, cleanup, recovered)
-    return recovered
-  }
-
-  private async rollbackInterrupted(
-    initial: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-  ): Promise<ModuleStartupTransitionRecoveryResult> {
-    await this.verifySettings(journal, signal)
-    const rolledBack = phaseState(initial, 'rollback-completed')
-    await writeExact(transaction, rolledBack, signal)
-    const previous = await this.verifyPrevious(rolledBack, journal, signal)
-    return this.activatePrevious(
-      rolledBack,
-      journal,
-      transaction,
-      signal,
-      previous,
-    )
-  }
-
-  private async resumeCommitted(
-    committed: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    descriptor: ModuleArtifactDescriptor,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-  ): Promise<ModuleStartupTransitionRecoveryResult> {
-    await this.verifySettings(journal, signal)
-    const verified = await this.verify(descriptor, signal)
-    try {
-      await this.activateTarget(verified, descriptor, signal)
-    } catch (error) {
-      return failed(
-        committed.moduleId,
-        error,
-        error instanceof ActivationAttemptError
-          ? { processPoisoned: true, reloadRequired: false }
-          : undefined,
-      )
-    }
-    const cleanup = await cleanupTerminal(transaction, committed, signal)
-    const recovered = result({
-      moduleId: committed.moduleId,
-      status: 'activated',
-      version: journal.targetVersion,
-      ...(cleanup.error === undefined ? {} : { error: cleanup.error }),
-    })
-    this.rememberUncertainCleanup(committed, cleanup, recovered)
-    return recovered
-  }
-
-  private async resumeRollback(
-    rolledBack: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-  ): Promise<ModuleStartupTransitionRecoveryResult> {
-    await this.verifySettings(journal, signal)
-    const previous = await this.verifyPrevious(rolledBack, journal, signal)
-    return this.activatePrevious(
-      rolledBack,
-      journal,
-      transaction,
-      signal,
-      previous,
-    )
-  }
-
-  private async activatePrevious(
-    rolledBack: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-    previous: Readonly<{
-      descriptor: ModuleArtifactDescriptor
-      verified: TVerified
-    }> | null,
-  ): Promise<ModuleStartupTransitionRecoveryResult> {
-    const previousVersion = journal.previousActiveVersion
-    if (previousVersion === null) {
-      const cleanup = await cleanupTerminal(transaction, rolledBack, signal)
-      const message =
-        cleanup.error ?? 'Transition has no previous active version'
-      return failed(rolledBack.moduleId, message)
-    }
-    if (previous === null) throw new Error('Previous artifact was not verified')
-    try {
-      await this.activate(previous.verified, previous.descriptor, signal)
-    } catch (error) {
-      return failed(
-        rolledBack.moduleId,
-        error,
-        error instanceof ActivationAttemptError
-          ? { processPoisoned: true, reloadRequired: false }
-          : undefined,
-      )
-    }
-    const cleanup = await cleanupTerminal(transaction, rolledBack, signal)
-    const recovered = result({
-      moduleId: rolledBack.moduleId,
+    return result({
+      moduleId: current.moduleId,
       status: 'activated',
       version: previousVersion,
       recoveredVersion: previousVersion,
-      ...(cleanup.error === undefined ? {} : { error: cleanup.error }),
     })
-    this.rememberUncertainCleanup(rolledBack, cleanup, recovered)
-    return recovered
   }
 
-  private async verifyPrevious(
+  private async canRestorePrevious(
     state: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    signal: AbortSignal,
-  ): Promise<Readonly<{
-    descriptor: ModuleArtifactDescriptor
-    verified: TVerified
-  }> | null> {
-    const previousVersion = journal.previousActiveVersion
-    if (previousVersion === null) return null
-    const descriptor = state.readyVersions[previousVersion]
-    if (!descriptor) {
-      throw new Error(
-        `Module "${state.moduleId}" has no ready descriptor for previous active version "${previousVersion}"`,
-      )
-    }
-    assertDescriptorIdentity(
-      descriptor,
-      state.moduleId,
-      previousVersion,
-      state.platform,
-    )
-    const verified = await this.verify(descriptor, signal)
-    return Object.freeze({ descriptor, verified })
-  }
-
-  private async verify(
-    descriptor: ModuleArtifactDescriptor,
-    signal: AbortSignal,
-  ): Promise<TVerified> {
-    throwIfAborted(signal)
-    return abortable(this.options.verifyArtifact(descriptor, signal), signal)
-  }
-
-  private async activate(
-    verified: TVerified,
-    descriptor: ModuleArtifactDescriptor,
-    signal: AbortSignal,
-  ): Promise<void> {
-    throwIfAborted(signal)
-    try {
-      // Once module code is invoked, keep the recovery lock until its promise
-      // settles. Abort is advisory; releasing early would let code continue
-      // mutating runtime state behind a subsequent recovery operation.
-      await this.options.activateVerifiedArtifact(verified, descriptor, signal)
-    } catch (error) {
-      throw new ActivationAttemptError(error)
-    }
-  }
-
-  private async activateTarget(
-    verified: TVerified,
-    descriptor: ModuleArtifactDescriptor,
-    signal: AbortSignal,
-  ): Promise<void> {
-    throwIfAborted(signal)
-    try {
-      await this.options.activateVerifiedArtifact(verified, descriptor, signal)
-    } catch (error) {
-      throw new ActivationAttemptError(error)
-    }
-  }
-
-  private async prepareForwardOnlyRollback(
-    current: ModuleDeviceState,
-    journal: ModuleTransitionJournal,
-    transaction: ModuleDeviceStateTransaction,
     signal: AbortSignal,
   ): Promise<boolean> {
-    const previousVersion = journal.previousActiveVersion
-    if (previousVersion === null) return false
-    const previous = current.readyVersions[previousVersion]
-    if (!previous) return false
+    if (state.activeVersion === null) return false
+    let previous: ModuleArtifactDescriptor
+    try {
+      previous = descriptorFor(state, state.activeVersion)
+    } catch {
+      return false
+    }
+    try {
+      await this.assertCanReadCurrentSchemas(state.moduleId, previous, signal)
+      await abortable(this.options.verifyArtifact(previous, signal), signal)
+      return true
+    } catch {
+      return false
+    }
+  }
 
-    for (const [namespace, schema] of Object.entries(previous.dataSchemas)) {
-      const currentSchema = await abortable(
-        this.options.readCurrentSchemaVersion(current.moduleId, namespace),
+  private async assertCanReadCurrentSchemas(
+    moduleId: string,
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<void> {
+    for (const [namespace, schema] of Object.entries(descriptor.dataSchemas)) {
+      const current = await abortable(
+        this.options.readCurrentSchemaVersion(moduleId, namespace),
         signal,
       )
       if (
-        currentSchema === null ||
-        currentSchema < schema.readMin ||
-        currentSchema > schema.readMax
+        current === null ||
+        current < schema.readMin ||
+        current > schema.readMax
       ) {
-        return false
+        throw new Error(
+          `Module "${moduleId}" cannot read current ${namespace} schema ${String(current)}`,
+        )
       }
     }
-
-    const rolledBack = phaseState(current, 'rollback-completed')
-    await writeExact(transaction, rolledBack, signal)
-    return true
   }
 
-  private async assertTargetCanReadCurrentSchema(
+  private async assertWroteSchemas(
     moduleId: string,
     descriptor: ModuleArtifactDescriptor,
     signal: AbortSignal,
   ): Promise<void> {
-    const schema = descriptor.dataSchemas.settings
-    if (!schema) return
-    const current = await abortable(
-      this.options.readCurrentSchemaVersion(moduleId, 'settings'),
-      signal,
-    )
-    if (
-      current === null ||
-      current < schema.readMin ||
-      current > schema.readMax
-    ) {
-      throw new Error(
-        `Module "${moduleId}" cannot read current settings schema ${String(current)}`,
+    for (const [namespace, schema] of Object.entries(descriptor.dataSchemas)) {
+      const current = await abortable(
+        this.options.readCurrentSchemaVersion(moduleId, namespace),
+        signal,
       )
+      if (current !== schema.write) {
+        throw new Error(
+          `Module "${moduleId}" did not finish ${namespace} schema ${schema.write}; current schema is ${String(current)}`,
+        )
+      }
     }
-  }
-
-  private async assertTargetWroteCurrentSchema(
-    moduleId: string,
-    descriptor: ModuleArtifactDescriptor,
-    signal: AbortSignal,
-  ): Promise<void> {
-    const schema = descriptor.dataSchemas.settings
-    if (!schema) return
-    const current = await abortable(
-      this.options.readCurrentSchemaVersion(moduleId, 'settings'),
-      signal,
-    )
-    if (current !== schema.write) {
-      throw new Error(
-        `Module "${moduleId}" did not finish settings schema ${schema.write}; current schema is ${String(current)}`,
-      )
-    }
-  }
-
-  private async verifySettings(
-    journal: ModuleTransitionJournal,
-    signal: AbortSignal,
-  ): Promise<void> {
-    if (journal.settings === null) return
-    if (
-      journal.settings.previousSha256 !== journal.settings.expectedPostSha256
-    ) {
-      throw new Error('Transition changes settings schema or content')
-    }
-    const backend = this.options.settingsBackend
-    if (!backend) {
-      throw new Error('Transition settings backend is unavailable')
-    }
-    const snapshot = await abortable(
-      backend.readAtCapturedLocation(journal.settings.location),
-      signal,
-    )
-    const actual = await abortable(
-      hashModuleTransitionSettingsSnapshot(snapshot, this.options.subtleCrypto),
-      signal,
-    )
-    if (actual !== journal.settings.expectedPostSha256) {
-      throw new Error('Transition current settings SHA-256 mismatch')
-    }
-  }
-
-  private rememberUncertainCleanup(
-    terminal: ModuleDeviceState,
-    cleanup: CleanupResult,
-    recovered: ModuleStartupTransitionRecoveryResult,
-  ): void {
-    const journal = terminal.transition
-    if (cleanup.error === undefined || journal === null) {
-      this.realmGuard.completed.delete(terminal.moduleId)
-      return
-    }
-    this.realmGuard.completed.set(
-      terminal.moduleId,
-      Object.freeze({
-        journalIdentity: transitionIdentity(journal),
-        result: recovered,
-      }),
-    )
   }
 }
 
-/** Reads the realm fence before any ordinary module code is scheduled. */
 export function getModuleTransitionRealmDisposition(
   realmToken: object = globalThis,
 ): ModuleTransitionRealmDisposition {
-  const poison = getRealmRecoveryGuard(realmToken).poison
-  return Object.freeze({
-    reloadRequired: poison.reloadRequired,
-    processPoisoned: poison.processPoisoned,
-  })
+  const poison = getRealmGuard(realmToken).poison
+  return Object.freeze({ ...poison })
 }
 
-function phaseState(
-  current: ModuleDeviceState,
-  phase: ModuleTransitionPhase,
-): ModuleDeviceState {
-  const currentTransition = current.transition
-  if (currentTransition === null) {
-    throw new Error('Module transition journal is missing')
-  }
-  const transition = Object.freeze({
-    ...currentTransition,
-    phase,
-  }) as ModuleTransitionJournal
-  const pointers =
-    phase === 'committed'
-      ? {
-          activeVersion: currentTransition.targetVersion,
-          downloadedCandidate: null,
-          pendingVersion: null,
-        }
-      : phase === 'rollback-completed'
-        ? {
-            activeVersion: currentTransition.previousActiveVersion,
-            downloadedCandidate: currentTransition.targetVersion,
-            pendingVersion: null,
-          }
-        : {}
-  return Object.freeze({ ...current, ...pointers, transition })
-}
-
-function rollbackPointers(current: ModuleDeviceState): ModuleDeviceState {
-  const transition = current.transition
-  if (transition === null || transition.phase !== 'prepared') {
-    throw new Error('Only a prepared transition can be directly rolled back')
-  }
-  return Object.freeze({
-    ...current,
-    activeVersion: transition.previousActiveVersion,
-    downloadedCandidate: transition.targetVersion,
-    pendingVersion: null,
-  })
-}
-
-function assertDescriptorIdentity(
-  descriptor: ModuleArtifactDescriptor,
-  moduleId: string,
+function descriptorFor(
+  state: ModuleDeviceState,
   version: string,
-  platform: ModuleDeviceState['platform'],
-): void {
+): ModuleArtifactDescriptor {
+  const descriptor = state.readyVersions[version]
   if (
-    descriptor.id !== moduleId ||
+    !descriptor ||
+    descriptor.id !== state.moduleId ||
     descriptor.version !== version ||
-    descriptor.platform !== platform
+    descriptor.platform !== state.platform
   ) {
     throw new Error(
-      `Module "${moduleId}" descriptor identity does not match version "${version}"`,
+      `Module "${state.moduleId}" has no exact ready descriptor for "${version}"`,
     )
   }
+  return descriptor
+}
+
+function clearPending(state: ModuleDeviceState): ModuleDeviceState {
+  return Object.freeze({
+    ...state,
+    pendingVersion: null,
+    activationPhase: null,
+  })
 }
 
 async function writeExact(
@@ -786,127 +331,46 @@ async function writeExact(
   intended: ModuleDeviceState,
   signal: AbortSignal,
 ): Promise<void> {
-  throwIfAborted(signal)
   try {
-    const written = await transaction.write(intended)
-    if (!equalCompleteState(written, intended)) {
-      throw new Error('Module transition state write returned divergent state')
+    const written = await abortable(transaction.write(intended), signal)
+    if (JSON.stringify(written) !== JSON.stringify(intended)) {
+      throw new Error('Module activation state write returned divergent state')
     }
   } catch (writeError) {
-    let actual: ModuleDeviceState | null
-    try {
-      actual = await transaction.read()
-    } catch (readError) {
-      throw new Error(
-        `Module transition state write is unresolved: ${errorMessage(writeError)}; readback failed: ${errorMessage(readError)}`,
-      )
+    const actual = await abortable(transaction.read(), signal)
+    if (
+      actual !== null &&
+      JSON.stringify(actual) === JSON.stringify(intended)
+    ) {
+      return
     }
-    if (actual !== null && equalCompleteState(actual, intended)) return
-    throw new Error(
-      `Module transition state write is unresolved: ${errorMessage(writeError)}; readback diverged`,
-    )
+    throw writeError
   }
 }
 
-async function cleanupTerminal(
-  transaction: ModuleDeviceStateTransaction,
-  terminal: ModuleDeviceState,
-  signal: AbortSignal,
-): Promise<CleanupResult> {
-  const cleaned = Object.freeze({ ...terminal, transition: null })
-  try {
-    await writeExact(transaction, cleaned, signal)
-    return Object.freeze({})
-  } catch (error) {
-    try {
-      const actual = await transaction.read()
-      if (actual !== null && equalCompleteState(actual, terminal)) {
-        return Object.freeze({
-          error: `Transition journal cleanup is unresolved: ${errorMessage(error)}`,
-        })
-      }
-    } catch {
-      // The terminal state cannot be confirmed below.
-    }
-    return Object.freeze({
-      error: `Transition journal cleanup is unresolved: ${errorMessage(error)}`,
-    })
-  }
-}
-
-function equalCompleteState(
-  left: ModuleDeviceState,
-  right: ModuleDeviceState,
-): boolean {
-  return equalJsonValue(left, right)
-}
-
-function transitionIdentity(journal: ModuleTransitionJournal): string {
-  return JSON.stringify(journal)
-}
-
-function getGlobalRealmPoisonState(): RealmPoisonState {
-  const host = globalThis as typeof globalThis & {
-    [GLOBAL_REALM_POISON_KEY]?: RealmPoisonState
-  }
-  const existing = host[GLOBAL_REALM_POISON_KEY]
-  if (existing) return existing
-  const created: RealmPoisonState = {
-    processPoisoned: false,
-    reloadRequired: false,
-  }
-  Object.defineProperty(host, GLOBAL_REALM_POISON_KEY, {
-    configurable: false,
-    enumerable: false,
-    value: created,
-    writable: false,
-  })
-  return created
-}
-
-function getRealmRecoveryGuard(realmToken: object): RealmRecoveryGuard {
-  let guard = realmRecoveryGuards.get(realmToken)
+function getRealmGuard(realmToken: object): RealmGuard {
+  let guard = realmGuards.get(realmToken)
   if (guard) return guard
   guard = {
     queue: Promise.resolve(),
     poison:
       realmToken === globalThis
-        ? getGlobalRealmPoisonState()
+        ? getGlobalPoison()
         : { processPoisoned: false, reloadRequired: false },
-    completed: new Map(),
   }
-  realmRecoveryGuards.set(realmToken, guard)
+  realmGuards.set(realmToken, guard)
   return guard
 }
 
-function equalJsonValue(left: unknown, right: unknown): boolean {
-  if (left === right) return true
-  if (
-    left === null ||
-    right === null ||
-    typeof left !== 'object' ||
-    typeof right !== 'object'
-  ) {
-    return false
+function getGlobalPoison(): RealmPoisonState {
+  const host = globalThis as typeof globalThis & {
+    [GLOBAL_REALM_POISON_KEY]?: RealmPoisonState
   }
-  if (
-    Object.getOwnPropertySymbols(left).length > 0 ||
-    Object.getOwnPropertySymbols(right).length > 0
-  ) {
-    return false
-  }
-  const leftRecord = left as Record<string, unknown>
-  const rightRecord = right as Record<string, unknown>
-  const leftKeys = Object.getOwnPropertyNames(leftRecord).sort()
-  const rightKeys = Object.getOwnPropertyNames(rightRecord).sort()
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key, index) =>
-        key === rightKeys[index] &&
-        equalJsonValue(leftRecord[key], rightRecord[key]),
-    )
-  )
+  const existing = host[GLOBAL_REALM_POISON_KEY]
+  if (existing) return existing
+  const created = { processPoisoned: false, reloadRequired: false }
+  Object.defineProperty(host, GLOBAL_REALM_POISON_KEY, { value: created })
+  return created
 }
 
 function result(
@@ -931,26 +395,30 @@ function result(
 function failed(
   moduleId: string,
   error: unknown,
-  disposition: Readonly<{
-    processPoisoned: boolean
-    reloadRequired: boolean
-  }> = Object.freeze({ processPoisoned: false, reloadRequired: false }),
+  disposition: Pick<
+    ModuleStartupTransitionRecoveryResult,
+    'reloadRequired' | 'processPoisoned'
+  > = { reloadRequired: false, processPoisoned: false },
 ): ModuleStartupTransitionRecoveryResult {
   return result({
     moduleId,
     status: 'failed',
-    error: errorMessage(error),
-    reloadRequired: disposition.reloadRequired,
-    processPoisoned: disposition.processPoisoned,
+    error: error instanceof Error ? error.message : String(error),
+    ...disposition,
   })
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(abortedError())
-  return new Promise<T>((resolve, reject) => {
+  if (signal.aborted)
+    return Promise.reject(new Error('Module activation was aborted'))
+  return new Promise((resolve, reject) => {
     const onAbort = () => {
       cleanup()
-      reject(abortedError())
+      reject(new Error('Module activation was aborted'))
     }
     const cleanup = () => signal.removeEventListener('abort', onAbort)
     signal.addEventListener('abort', onAbort, { once: true })
@@ -965,23 +433,4 @@ function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
       },
     )
   })
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) throw abortedError()
-}
-
-function abortedError(): Error {
-  return new Error('Module transition recovery was aborted')
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-class ActivationAttemptError extends Error {
-  constructor(error: unknown) {
-    super(errorMessage(error))
-    this.name = 'ActivationAttemptError'
-  }
 }

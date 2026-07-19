@@ -9,15 +9,10 @@ import {
   assertModuleId,
   isModuleHostApiRange,
 } from './moduleStore'
-import {
-  type ModuleTransitionJournal,
-  advanceModuleTransitionPhase,
-  parseModuleTransitionJournal,
-} from './moduleTransitionJournal'
 import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
 
-const SCHEMA_VERSION = 2
-const LEGACY_SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 3
+const LEGACY_SCHEMA_VERSIONS = new Set([1, 2])
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
@@ -30,10 +25,9 @@ export type ModuleDeviceState = Readonly<{
   moduleId: string
   platform: 'desktop' | 'mobile'
   activeVersion: string | null
-  downloadedCandidate: string | null
   pendingVersion: string | null
+  activationPhase: 'pending' | 'activation-started' | null
   readyVersions: Readonly<Record<string, ModuleArtifactDescriptor>>
-  transition: ModuleTransitionJournal | null
 }>
 
 type ModuleDeviceStateListing = Readonly<{
@@ -182,16 +176,12 @@ export class ModuleDeviceStateStore {
     if (envelope === null) return null
     try {
       if (
-        envelope.schemaVersion !== LEGACY_SCHEMA_VERSION &&
+        !LEGACY_SCHEMA_VERSIONS.has(envelope.schemaVersion) &&
         envelope.schemaVersion !== SCHEMA_VERSION
       ) {
         throw new Error(`unsupported schema version ${envelope.schemaVersion}`)
       }
-      return parseState(
-        envelope.data,
-        moduleId,
-        envelope.schemaVersion === LEGACY_SCHEMA_VERSION,
-      )
+      return parseState(envelope.data, moduleId, envelope.schemaVersion)
     } catch (error) {
       throw new ModuleDeviceStateCorruptionError(moduleId, error)
     }
@@ -266,9 +256,9 @@ export class ModuleDeviceStateStore {
       await this.store.remove(moduleId)
       return
     }
-    if (existing?.transition) {
+    if (existing?.activationPhase !== null) {
       throw new Error(
-        'Device state with an active transition cannot be removed',
+        'Device state with a pending activation cannot be removed',
       )
     }
     await this.store.remove(moduleId)
@@ -278,10 +268,10 @@ export class ModuleDeviceStateStore {
 function parseState(
   value: unknown,
   expectedModuleId?: string,
-  legacyV1 = false,
+  schemaVersion = SCHEMA_VERSION,
 ): ModuleDeviceState {
   const state = plainRecord(value, 'Module device state')
-  const v1Keys = [
+  const legacyKeys = [
     'moduleId',
     'platform',
     'activeVersion',
@@ -289,10 +279,19 @@ function parseState(
     'pendingVersion',
     'readyVersions',
   ] as const
-  if (legacyV1) {
-    assertExactKeys(state, v1Keys)
+  if (schemaVersion === 1) {
+    assertExactKeys(state, legacyKeys)
+  } else if (schemaVersion === 2) {
+    assertExactKeys(state, [...legacyKeys, 'transition'])
   } else {
-    assertExactKeys(state, [...v1Keys, 'transition'])
+    assertExactKeys(state, [
+      'moduleId',
+      'platform',
+      'activeVersion',
+      'pendingVersion',
+      'activationPhase',
+      'readyVersions',
+    ])
   }
   const moduleId = dataProperty(state, 'moduleId')
   const platform = dataProperty(state, 'platform')
@@ -322,37 +321,109 @@ function parseState(
   }
 
   const activeVersion = parsePointer(state, 'activeVersion', readyVersions)
-  const downloadedCandidate = parsePointer(
-    state,
-    'downloadedCandidate',
-    readyVersions,
-  )
+  if (schemaVersion !== SCHEMA_VERSION) {
+    parsePointer(state, 'downloadedCandidate', readyVersions)
+  }
   const pendingVersion = parsePointer(state, 'pendingVersion', readyVersions)
-  const transitionValue = legacyV1 ? null : dataProperty(state, 'transition')
-  const transition =
-    transitionValue === null
-      ? null
-      : parseModuleTransitionJournal(transitionValue, {
-          moduleId,
-          platform,
-          activeVersion,
-          downloadedCandidate,
-          pendingVersion,
-          readyVersions: Object.keys(readyVersions),
-          targetDescriptor:
-            typeof transitionValue === 'object' && transitionValue !== null
-              ? (readyVersions[readTransitionTargetVersion(transitionValue)] ??
-                null)
-              : null,
-        })
+  let activationPhase: ModuleDeviceState['activationPhase']
+  let migratedPendingVersion = pendingVersion
+  if (schemaVersion === SCHEMA_VERSION) {
+    const phase = dataProperty(state, 'activationPhase')
+    if (
+      phase !== null &&
+      phase !== 'pending' &&
+      phase !== 'activation-started'
+    ) {
+      throw new Error('activationPhase is invalid')
+    }
+    activationPhase = phase
+  } else if (schemaVersion === 1) {
+    activationPhase = pendingVersion === null ? null : 'pending'
+  } else {
+    const transitionValue = dataProperty(state, 'transition')
+    if (transitionValue === null) {
+      activationPhase = pendingVersion === null ? null : 'pending'
+    } else {
+      const transition = plainRecord(
+        transitionValue,
+        'Legacy module transition journal',
+      )
+      const phase = dataProperty(transition, 'phase')
+      const transitionModuleId = dataProperty(transition, 'moduleId')
+      const transitionPlatform = dataProperty(transition, 'platform')
+      const targetVersion = dataProperty(transition, 'targetVersion')
+      const targetManifestSha256 = dataProperty(
+        transition,
+        'targetManifestSha256',
+      )
+      const previousActiveVersion = dataProperty(
+        transition,
+        'previousActiveVersion',
+      )
+      if (
+        typeof targetVersion !== 'string' ||
+        !Object.prototype.hasOwnProperty.call(readyVersions, targetVersion)
+      ) {
+        throw new Error('Legacy transition target is invalid')
+      }
+      if (
+        transitionModuleId !== moduleId ||
+        transitionPlatform !== platform ||
+        targetManifestSha256 !== readyVersions[targetVersion]?.manifest.sha256
+      ) {
+        throw new Error('Legacy transition identity is invalid')
+      }
+      if (previousActiveVersion !== activeVersion && phase !== 'committed') {
+        throw new Error('Legacy transition previous active version is invalid')
+      }
+      if (phase === 'prepared' || phase === 'settings-committed') {
+        if (pendingVersion !== targetVersion) {
+          throw new Error('Legacy transition pending version is invalid')
+        }
+        migratedPendingVersion = targetVersion
+        activationPhase = 'pending'
+      } else if (phase === 'activation-started') {
+        if (pendingVersion !== targetVersion) {
+          throw new Error('Legacy transition pending version is invalid')
+        }
+        migratedPendingVersion = targetVersion
+        activationPhase = 'activation-started'
+      } else if (phase === 'committed') {
+        if (activeVersion !== targetVersion || pendingVersion !== null) {
+          throw new Error('Legacy committed transition pointers are invalid')
+        }
+        migratedPendingVersion = null
+        activationPhase = null
+      } else if (phase === 'rollback-completed') {
+        if (
+          activeVersion !== previousActiveVersion ||
+          pendingVersion !== null
+        ) {
+          throw new Error('Legacy rollback transition pointers are invalid')
+        }
+        migratedPendingVersion = null
+        activationPhase = null
+      } else {
+        throw new Error('Legacy transition phase is invalid')
+      }
+    }
+  }
+  if ((migratedPendingVersion === null) !== (activationPhase === null)) {
+    throw new Error('Pending version and activation phase must be set together')
+  }
+  if (
+    migratedPendingVersion !== null &&
+    migratedPendingVersion === activeVersion
+  ) {
+    throw new Error('Pending version must differ from active version')
+  }
   return Object.freeze({
     moduleId,
     platform,
     activeVersion,
-    downloadedCandidate,
-    pendingVersion,
+    pendingVersion: migratedPendingVersion,
+    activationPhase,
     readyVersions: Object.freeze(readyVersions),
-    transition,
   })
 }
 
@@ -361,101 +432,47 @@ function assertDurableTransitionProgression(
   next: ModuleDeviceState,
 ): void {
   if (existing === null) {
-    if (next.transition !== null) {
-      throw new Error('Transition preparation requires existing device state')
+    if (next.activationPhase === 'activation-started') {
+      throw new Error('A new pending activation must begin in pending')
     }
     return
   }
   if (equalJson(existing, next)) return
-
-  const current = existing.transition
-  const following = next.transition
-  if (current === null) {
-    if (following === null) return
-    if (following.phase !== 'prepared') {
-      throw new Error('A new transition must begin in the prepared phase')
-    }
-    const expected = {
-      ...existing,
-      downloadedCandidate: null,
-      pendingVersion: following.targetVersion,
-      transition: following,
-    }
+  if (existing.activationPhase === null) {
     if (
-      existing.pendingVersion !== null ||
-      existing.downloadedCandidate !== following.targetVersion ||
-      following.previousActiveVersion !== existing.activeVersion ||
-      !equalJson(expected, next)
+      existing.activeVersion === next.activeVersion &&
+      existing.pendingVersion === null &&
+      (next.activationPhase === null || next.activationPhase === 'pending')
     ) {
-      throw new Error('Prepared transition state mutation is invalid')
+      return
     }
+    throw new Error('A new pending activation must begin in pending')
+  }
+  if (
+    existing.activationPhase === next.activationPhase &&
+    existing.activeVersion === next.activeVersion &&
+    existing.pendingVersion === next.pendingVersion
+  ) {
     return
   }
-
-  if (following === null) {
-    if (
-      current.phase !== 'prepared' &&
-      current.phase !== 'rollback-completed' &&
-      current.phase !== 'committed'
-    ) {
-      throw new Error(
-        'Transition settings must be restored before journal cleanup',
-      )
-    }
-    const expected =
-      current.phase === 'prepared'
-        ? {
-            ...existing,
-            activeVersion: current.previousActiveVersion,
-            downloadedCandidate: current.targetVersion,
-            pendingVersion: null,
-            transition: null,
-          }
-        : { ...existing, transition: null }
-    if (!equalJson(expected, next)) {
-      throw new Error('Transition cleanup or rollback state is invalid')
-    }
+  if (
+    existing.activationPhase === 'pending' &&
+    next.activationPhase === 'activation-started' &&
+    existing.activeVersion === next.activeVersion &&
+    existing.pendingVersion === next.pendingVersion
+  ) {
     return
   }
-
-  if (!equalJournalPayload(current, following)) {
-    throw new Error('Transition immutable payload cannot be replaced')
+  if (
+    next.activationPhase === null &&
+    next.pendingVersion === null &&
+    (next.activeVersion === existing.activeVersion ||
+      (existing.activationPhase === 'activation-started' &&
+        next.activeVersion === existing.pendingVersion))
+  ) {
+    return
   }
-  advanceModuleTransitionPhase(current.phase, following.phase)
-  const expected =
-    current.phase === 'activation-started' && following.phase === 'committed'
-      ? {
-          ...existing,
-          activeVersion: current.targetVersion,
-          pendingVersion: null,
-          transition: following,
-        }
-      : following.phase === 'rollback-completed'
-        ? {
-            ...existing,
-            activeVersion: current.previousActiveVersion,
-            downloadedCandidate: current.targetVersion,
-            pendingVersion: null,
-            transition: following,
-          }
-        : { ...existing, transition: following }
-  if (!equalJson(expected, next)) {
-    throw new Error('Transition phase write contains unrelated state mutation')
-  }
-}
-
-function equalJournalPayload(
-  left: ModuleTransitionJournal,
-  right: ModuleTransitionJournal,
-): boolean {
-  return (
-    left.moduleId === right.moduleId &&
-    left.platform === right.platform &&
-    left.previousActiveVersion === right.previousActiveVersion &&
-    left.targetVersion === right.targetVersion &&
-    left.targetManifestSha256 === right.targetManifestSha256 &&
-    equalJson(left.settings, right.settings)
-  )
+  throw new Error('Pending activation progression is invalid')
 }
 
 function equalJson(left: unknown, right: unknown): boolean {
@@ -487,12 +504,6 @@ function equalJson(left: unknown, right: unknown): boolean {
         equalJson(leftRecord[key], rightRecord[key]),
     )
   )
-}
-
-function readTransitionTargetVersion(value: object): string {
-  const transition = plainRecord(value, 'Module transition journal')
-  const targetVersion = dataProperty(transition, 'targetVersion')
-  return typeof targetVersion === 'string' ? targetVersion : ''
 }
 
 function parseDescriptor(

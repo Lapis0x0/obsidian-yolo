@@ -23,21 +23,20 @@ export class ModuleDeviceStateInstalledStateSource
     const installed: InstalledModuleState[] = []
     for (const state of states) {
       const version =
-        state.activeVersion ?? state.pendingVersion ?? state.downloadedCandidate
-      if (version === null) continue
+        state.activeVersion ??
+        state.pendingVersion ??
+        Object.keys(state.readyVersions).at(-1)
+      if (version === undefined) continue
       const error = this.options.getError?.(state.moduleId)
       installed.push(
         Object.freeze({
           id: state.moduleId,
           version,
-          ...(state.downloadedCandidate
-            ? { candidateVersion: state.downloadedCandidate }
-            : {}),
           ...(state.pendingVersion
             ? { pendingVersion: state.pendingVersion }
             : {}),
-          ...(state.transition
-            ? { transitionPhase: state.transition.phase }
+          ...(state.activationPhase
+            ? { activationPhase: state.activationPhase }
             : {}),
           ...(error ? { error } : {}),
           ...(state.activeVersion === version &&

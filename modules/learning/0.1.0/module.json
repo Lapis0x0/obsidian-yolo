@@ -19,9 +19,9 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 1013635,
-          "sha256": "4cce9a0dc1592bf7cefc2c26c532b14183b0e0a3afb2f5d157327633f47b6f83",
-          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/entry.js",
+          "byteSize": 1008789,
+          "sha256": "049ee3e36da78b8e6cefeec33392b4056d89d15b38e1aa82b98d4db9965b40db",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js",
           "storage": "module"
         },
         {
@@ -30,7 +30,7 @@
           "path": "style.css",
           "byteSize": 106760,
           "sha256": "096f1c5a2df1fa07d8f420aa70487cb4803fb764b4180043ba4e7dd5d45a8da8",
-          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/style.css",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/style.css",
           "storage": "module"
         }
       ]
@@ -43,9 +43,9 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 1013635,
-          "sha256": "4cce9a0dc1592bf7cefc2c26c532b14183b0e0a3afb2f5d157327633f47b6f83",
-          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/entry.js",
+          "byteSize": 1008789,
+          "sha256": "049ee3e36da78b8e6cefeec33392b4056d89d15b38e1aa82b98d4db9965b40db",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js",
           "storage": "module"
         },
         {
@@ -54,7 +54,7 @@
           "path": "style.css",
           "byteSize": 106760,
           "sha256": "096f1c5a2df1fa07d8f420aa70487cb4803fb764b4180043ba4e7dd5d45a8da8",
-          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/style.css",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/style.css",
           "storage": "module"
         }
       ]

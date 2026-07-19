@@ -146,9 +146,9 @@ function validateRemovableState(
   }
   // The runtime reservation proves current-process inactivity. activeVersion is
   // only the durable pointer from the last successful startup.
-  if (state.transition !== null) {
+  if (state.activationPhase !== null) {
     throw new Error(
-      `Module "${moduleId}" uninstall is blocked by an active transition`,
+      `Module "${moduleId}" uninstall is blocked by a pending activation`,
     )
   }
   if (state.pendingVersion !== null) {
@@ -181,7 +181,7 @@ function validateRemovableState(
       )
     }
   }
-  for (const pointer of [state.activeVersion, state.downloadedCandidate]) {
+  for (const pointer of [state.activeVersion]) {
     if (
       pointer !== null &&
       !Object.prototype.hasOwnProperty.call(state.readyVersions, pointer)

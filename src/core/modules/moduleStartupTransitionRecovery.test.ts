@@ -1,984 +1,138 @@
-// eslint-disable-next-line import/no-nodejs-modules -- recovery integrity tests require Node's real Web Crypto implementation
-import { webcrypto } from 'node:crypto'
-
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
-import type {
-  ModuleDeviceState,
-  ModuleDeviceStateTransaction,
-} from './moduleDeviceStateStore'
-import {
-  ModuleStartupTransitionRecovery,
-  type ModuleStartupTransitionRecoveryOptions,
-} from './moduleStartupTransitionRecovery'
-import {
-  type ModuleTransitionPhase,
-  type ModuleTransitionSettingsSnapshot,
-  hashModuleTransitionSettingsSnapshot,
-  parseModuleTransitionJournal,
-} from './moduleTransitionJournal'
+import type { ModuleDeviceState } from './moduleDeviceStateStore'
+import { ModuleStartupTransitionRecovery } from './moduleStartupTransitionRecovery'
 
-const subtleCrypto = webcrypto.subtle as unknown as Pick<SubtleCrypto, 'digest'>
-const MODULE_ID = 'learning'
-const PREVIOUS_VERSION = '1.0.0'
-const TARGET_VERSION = '2.0.0'
-const LOCATION = Object.freeze({
-  moduleId: MODULE_ID,
-  storageRoot: 'YOLO/.yolo_json_db/module-settings',
-  storagePath: 'YOLO/.yolo_json_db/module-settings/learning.json',
-})
-const SETTINGS_SNAPSHOT: ModuleTransitionSettingsSnapshot = Object.freeze({
-  present: true,
-  envelope: Object.freeze({
-    schemaVersion: 1,
-    data: Object.freeze({ enabled: true }),
-  }),
-})
+const HASH = 'a'.repeat(64)
 
-function descriptor(
-  version: string,
-  stateful: boolean,
-): ModuleArtifactDescriptor {
-  const dataSchemas: ModuleArtifactDescriptor['dataSchemas'] = stateful
-    ? { settings: Object.freeze({ readMin: 0, readMax: 1, write: 1 }) }
-    : {}
-  return Object.freeze({
-    id: MODULE_ID,
+function descriptor(version: string, readMin = 1): ModuleArtifactDescriptor {
+  return {
+    id: 'learning',
     version,
     hostApi: '^1.0.0',
-    dataSchemas: Object.freeze(dataSchemas),
     platform: 'desktop',
+    dataSchemas: { settings: { readMin, readMax: 2, write: 2 } },
     manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning-v${version}/module.json`,
-    manifest: Object.freeze({
-      byteSize: 100,
-      sha256: version === TARGET_VERSION ? 'b'.repeat(64) : 'a'.repeat(64),
-    }),
-  })
+    manifest: { byteSize: 1, sha256: HASH },
+  }
 }
 
-async function transitioningState(
-  phase: ModuleTransitionPhase,
-  options: Readonly<{
-    stateful?: boolean
-    forwardOnly?: boolean
-    previousVersion?: string | null
-    previousSha256?: string
-    expectedPostSha256?: string
-  }> = {},
-): Promise<ModuleDeviceState> {
-  const stateful = options.stateful ?? false
-  const previousVersion =
-    options.previousVersion === undefined
-      ? PREVIOUS_VERSION
-      : options.previousVersion
-  const previous = descriptor(PREVIOUS_VERSION, stateful)
-  const target = descriptor(TARGET_VERSION, stateful)
-  const snapshotHash = await hashModuleTransitionSettingsSnapshot(
-    SETTINGS_SNAPSHOT,
-    subtleCrypto,
-  )
-  const committed = phase === 'committed'
-  const rolledBack = phase === 'rollback-completed'
-  const activeVersion = committed ? TARGET_VERSION : previousVersion
-  const downloadedCandidate = rolledBack ? TARGET_VERSION : null
-  const pendingVersion = committed || rolledBack ? null : TARGET_VERSION
-  const readyVersions = Object.freeze({
-    ...(previousVersion === null ? {} : { [PREVIOUS_VERSION]: previous }),
-    [TARGET_VERSION]: target,
-  })
-  const journal = parseModuleTransitionJournal(
-    {
-      phase,
-      moduleId: MODULE_ID,
-      platform: 'desktop',
-      previousActiveVersion: previousVersion,
-      targetVersion: TARGET_VERSION,
-      targetManifestSha256: target.manifest.sha256,
-      settings:
-        stateful && options.forwardOnly !== true
-          ? {
-              namespace: 'settings',
-              location: LOCATION,
-              sourceSchemaVersion: 1,
-              targetSchemaVersion: 1,
-              previous: SETTINGS_SNAPSHOT,
-              previousSha256: options.previousSha256 ?? snapshotHash,
-              expectedPostSha256: options.expectedPostSha256 ?? snapshotHash,
-            }
-          : null,
-    },
-    {
-      moduleId: MODULE_ID,
-      platform: 'desktop',
-      activeVersion,
-      downloadedCandidate,
-      pendingVersion,
-      readyVersions: Object.keys(readyVersions),
-      targetDescriptor: target,
-    },
-  )
-  return Object.freeze({
-    moduleId: MODULE_ID,
+function state(
+  phase: ModuleDeviceState['activationPhase'],
+  previous = descriptor('1.0.0'),
+): ModuleDeviceState {
+  return {
+    moduleId: 'learning',
     platform: 'desktop',
-    activeVersion,
-    downloadedCandidate,
-    pendingVersion,
-    readyVersions,
-    transition: journal,
-  })
+    activeVersion: '1.0.0',
+    pendingVersion: phase === null ? null : '2.0.0',
+    activationPhase: phase,
+    readyVersions: { '1.0.0': previous, '2.0.0': descriptor('2.0.0') },
+  }
 }
 
-type Verified = Readonly<{ version: string }>
-type WriteOverride = (
-  next: ModuleDeviceState,
-  setDurable: (state: ModuleDeviceState) => void,
-) => Promise<ModuleDeviceState>
-
-function harness(
-  initial: ModuleDeviceState,
-  options: Readonly<{
-    settingsSnapshot?: ModuleTransitionSettingsSnapshot
-    withSettingsBackend?: boolean
-    verifyError?: string
-    activationError?: string
-    activation?: (
-      verified: Verified,
-      descriptor: ModuleArtifactDescriptor,
-      signal?: AbortSignal,
-    ) => Promise<void>
-    currentSchema?: number | null
-    migrateToSchema?: number
-    write?: WriteOverride
-  }> = {},
-) {
+function harness(initial: ModuleDeviceState, activateError?: Error) {
   let durable = initial
-  let currentSchema = options.currentSchema ?? 1
-  const events: string[] = []
-  const writes: (ModuleTransitionPhase | null)[] = []
-  const readAtCapturedLocation = jest.fn(async () => {
-    events.push('settings-read')
-    return options.settingsSnapshot ?? SETTINGS_SNAPSHOT
-  })
-  const verifyArtifact = jest.fn(async (item: ModuleArtifactDescriptor) => {
-    events.push(`verify:${item.version}`)
-    if (options.verifyError) throw new Error(options.verifyError)
-    return Object.freeze({ version: item.version })
-  })
-  const activateVerifiedArtifact = jest.fn(
-    async (
-      _verified: Verified,
-      item: ModuleArtifactDescriptor,
-      signal?: AbortSignal,
-    ) => {
-      events.push(`activate:${item.version}`)
-      if (options.activationError) throw new Error(options.activationError)
-      if (options.activation) {
-        await options.activation(_verified, item, signal)
-      }
-      if (options.migrateToSchema !== undefined) {
-        currentSchema = options.migrateToSchema
-      }
-    },
-  )
-  const write = jest.fn(async (next: ModuleDeviceState) => {
-    writes.push(next.transition?.phase ?? null)
-    events.push(`write:${next.transition?.phase ?? 'clean'}`)
-    if (options.write) {
-      return options.write(next, (state) => {
-        durable = state
-      })
-    }
-    durable = next
-    return next
-  })
-  const runExclusive = async <T>(
-    moduleId: string,
-    operation: (transaction: ModuleDeviceStateTransaction) => Promise<T>,
-  ): Promise<T> => {
-    expect(moduleId).toBe(MODULE_ID)
-    return operation(
-      Object.freeze({
-        read: async () => durable,
-        write,
-        remove: async () => undefined,
-      }),
-    )
-  }
-  const recoveryOptions: ModuleStartupTransitionRecoveryOptions<Verified> = {
-    deviceStateStore: { runExclusive },
-    readCurrentSchemaVersion: async () => currentSchema,
-    subtleCrypto,
-    verifyArtifact,
-    activateVerifiedArtifact,
-    realmToken: {},
-    ...(options.withSettingsBackend === false
-      ? {}
-      : { settingsBackend: { readAtCapturedLocation } }),
-  }
-  const recovery = new ModuleStartupTransitionRecovery(recoveryOptions)
+  let schema = 1
+  const writes: ModuleDeviceState[] = []
+  const activations: string[] = []
+  const recovery =
+    new ModuleStartupTransitionRecovery<ModuleArtifactDescriptor>({
+      realmToken: {},
+      deviceStateStore: {
+        runExclusive: async (_moduleId, operation) =>
+          operation({
+            read: async () => durable,
+            write: async (next) => {
+              durable = next
+              writes.push(next)
+              return next
+            },
+            remove: async () => undefined,
+          }),
+      },
+      readCurrentSchemaVersion: async () => schema,
+      verifyArtifact: async (value) => value,
+      activateVerifiedArtifact: async (_verified, value) => {
+        activations.push(value.version)
+        if (value.version === '2.0.0' && activateError) throw activateError
+        if (value.version === '2.0.0') schema = 2
+      },
+    })
   return {
     recovery,
-    events,
     writes,
-    write,
-    verifyArtifact,
-    activateVerifiedArtifact,
-    readAtCapturedLocation,
-    recoveryOptions,
-    setDurable: (state: ModuleDeviceState) => {
-      durable = state
-    },
+    activations,
     durable: () => durable,
+    setSchema: (v: number) => {
+      schema = v
+    },
   }
 }
 
 describe('ModuleStartupTransitionRecovery', () => {
-  it.each([
-    {
-      phase: 'prepared',
-      activated: TARGET_VERSION,
-      writes: ['settings-committed', 'activation-started', 'committed', null],
-    },
-    {
-      phase: 'settings-committed',
-      activated: TARGET_VERSION,
-      writes: ['activation-started', 'committed', null],
-    },
-    {
-      phase: 'activation-started',
-      activated: PREVIOUS_VERSION,
-      writes: ['rollback-completed', null],
-    },
-    { phase: 'committed', activated: TARGET_VERSION, writes: [null] },
-    {
-      phase: 'rollback-completed',
-      activated: PREVIOUS_VERSION,
-      writes: [null],
-    },
-  ] as const)(
-    'recovers a stateless $phase journal',
-    async ({ phase, activated, writes }) => {
-      const test = harness(await transitioningState(phase))
-
-      const recovered = await test.recovery.recover(
-        MODULE_ID,
-        new AbortController().signal,
-      )
-
-      expect(recovered).toMatchObject({
-        status: 'activated',
-        version: activated,
-        reloadRequired: false,
-        processPoisoned: false,
-      })
-      expect(test.writes).toEqual(writes)
-      expect(test.events).toContain(`activate:${activated}`)
-      expect(test.events).not.toContain(
-        `activate:${activated === TARGET_VERSION ? PREVIOUS_VERSION : TARGET_VERSION}`,
-      )
-      expect(test.durable().transition).toBeNull()
-    },
-  )
-
-  it.each(['prepared', 'settings-committed', 'activation-started'] as const)(
-    'completes a forward-only schema migration from a $phase journal',
-    async (phase) => {
-      const test = harness(
-        await transitioningState(phase, {
-          stateful: true,
-          forwardOnly: true,
-          previousVersion: null,
-        }),
-        { currentSchema: 0, migrateToSchema: 1 },
-      )
-
-      const recovered = await test.recovery.recover(
-        MODULE_ID,
-        new AbortController().signal,
-      )
-
-      expect(recovered).toMatchObject({
-        status: 'activated',
-        version: TARGET_VERSION,
-        reloadRequired: false,
-        processPoisoned: false,
-      })
-      expect(test.events).toContain(`activate:${TARGET_VERSION}`)
-      expect(test.durable()).toMatchObject({
-        activeVersion: TARGET_VERSION,
-        pendingVersion: null,
-        transition: null,
-      })
-    },
-  )
-
-  it('requires a fresh process before rolling back to a schema-compatible previous version', async () => {
-    const test = harness(
-      await transitioningState('prepared', {
-        stateful: true,
-        forwardOnly: true,
-      }),
-      { currentSchema: 1, activationError: 'target failed' },
-    )
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      reloadRequired: true,
-      processPoisoned: true,
-    })
-    expect(test.durable().transition?.phase).toBe('rollback-completed')
-    expect(test.events).not.toContain(`activate:${PREVIOUS_VERSION}`)
-  })
-
-  it('preserves forward-migrated data when no previous version can read it', async () => {
-    const state = await transitioningState('prepared', {
-      stateful: true,
-      forwardOnly: true,
-    })
-    const previous = state.readyVersions[PREVIOUS_VERSION]
-    const incompatiblePrevious = Object.freeze({
-      ...previous,
-      dataSchemas: Object.freeze({
-        settings: Object.freeze({ readMin: 0, readMax: 0, write: 0 }),
-      }),
-    })
-    const initial = Object.freeze({
-      ...state,
-      readyVersions: Object.freeze({
-        ...state.readyVersions,
-        [PREVIOUS_VERSION]: incompatiblePrevious,
-      }),
-    })
-    const test = harness(initial, {
-      currentSchema: 1,
-      activationError: 'target failed',
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      reloadRequired: true,
-      processPoisoned: true,
-    })
-    expect(recovered.error).toContain('no previous version can read')
-    expect(test.durable().transition?.phase).toBe('activation-started')
-  })
-  it.each([
-    { phase: 'prepared', writes: [null] },
-    {
-      phase: 'settings-committed',
-      writes: ['rollback-completed', null],
-    },
-    {
-      phase: 'activation-started',
-      writes: ['rollback-completed', null],
-    },
-    { phase: 'committed', writes: [null] },
-    { phase: 'rollback-completed', writes: [null] },
-  ] as const)(
-    'settles a non-live $phase journal without evaluating module code',
-    async ({ phase, writes }) => {
-      const test = harness(await transitioningState(phase))
-
-      const recovered = await test.recovery.recover(
-        MODULE_ID,
-        new AbortController().signal,
-        false,
-      )
-
-      expect(recovered).toEqual({
-        moduleId: MODULE_ID,
-        status: 'skipped',
-        reloadRequired: false,
-        processPoisoned: false,
-      })
-      expect(test.writes).toEqual(writes)
-      expect(test.durable()).toMatchObject(
-        phase === 'committed'
-          ? {
-              activeVersion: TARGET_VERSION,
-              downloadedCandidate: null,
-              pendingVersion: null,
-              transition: null,
-            }
-          : {
-              activeVersion: PREVIOUS_VERSION,
-              downloadedCandidate: TARGET_VERSION,
-              pendingVersion: null,
-              transition: null,
-            },
-      )
-      expect(test.verifyArtifact).not.toHaveBeenCalled()
-      expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-    },
-  )
-
-  it('keeps a non-live journal failed when rollback would overwrite synchronized settings', async () => {
-    const conflicting: ModuleTransitionSettingsSnapshot = Object.freeze({
-      present: true,
-      envelope: Object.freeze({
-        schemaVersion: 1,
-        data: Object.freeze({ enabled: false }),
-      }),
-    })
-    const test = harness(
-      await transitioningState('activation-started', { stateful: true }),
-      { settingsSnapshot: conflicting },
-    )
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-      false,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      error: expect.stringContaining('newer synchronized settings'),
-      reloadRequired: true,
-      processPoisoned: false,
-    })
-    expect(test.durable().transition?.phase).toBe('activation-started')
-    expect(test.writes).toEqual([])
-    expect(test.verifyArtifact).not.toHaveBeenCalled()
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-  })
-
-  it('settles a non-live stateful transition when settings still match the rollback snapshot', async () => {
-    const test = harness(
-      await transitioningState('settings-committed', { stateful: true }),
-    )
-
+  test('durably fences target execution and commits only after schema postcheck', async () => {
+    const test = harness(state('pending'))
     await expect(
-      test.recovery.recover(MODULE_ID, new AbortController().signal, false),
-    ).resolves.toMatchObject({
-      status: 'skipped',
-      reloadRequired: false,
-      processPoisoned: false,
-    })
-    expect(test.readAtCapturedLocation).toHaveBeenCalledTimes(1)
-    expect(test.durable()).toMatchObject({
-      activeVersion: PREVIOUS_VERSION,
-      downloadedCandidate: TARGET_VERSION,
-      pendingVersion: null,
-      transition: null,
-    })
-    expect(test.verifyArtifact).not.toHaveBeenCalled()
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-  })
-
-  it('requires reload when an invalid non-live journal cannot be settled safely', async () => {
-    const test = harness(
-      await transitioningState('settings-committed', {
-        stateful: true,
-        previousSha256: 'c'.repeat(64),
-        expectedPostSha256: 'c'.repeat(64),
-      }),
-    )
-
-    await expect(
-      test.recovery.recover(MODULE_ID, new AbortController().signal, false),
-    ).resolves.toMatchObject({
-      status: 'failed',
-      error: expect.stringContaining('previous settings SHA-256 mismatch'),
-      reloadRequired: true,
-      processPoisoned: false,
-    })
-    expect(test.durable().transition?.phase).toBe('settings-committed')
-    expect(test.writes).toEqual([])
-    expect(test.verifyArtifact).not.toHaveBeenCalled()
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-  })
-
-  it('checks the full stateful snapshot at only the captured location', async () => {
-    const test = harness(
-      await transitioningState('prepared', { stateful: true }),
-    )
-
-    await expect(
-      test.recovery.recover(MODULE_ID, new AbortController().signal),
-    ).resolves.toMatchObject({ status: 'activated', version: TARGET_VERSION })
-
-    expect(test.readAtCapturedLocation).toHaveBeenCalledTimes(2)
-    expect(test.readAtCapturedLocation).toHaveBeenNthCalledWith(1, LOCATION)
-    expect(test.readAtCapturedLocation).toHaveBeenNthCalledWith(2, LOCATION)
-    expect(test.events.slice(0, 3)).toEqual([
-      `verify:${TARGET_VERSION}`,
-      'settings-read',
-      'write:settings-committed',
+      test.recovery.recover('learning', new AbortController().signal),
+    ).resolves.toMatchObject({ status: 'activated', version: '2.0.0' })
+    expect(test.writes.map((value) => value.activationPhase)).toEqual([
+      'activation-started',
+      null,
     ])
-  })
-
-  it('fails a bad journal snapshot hash before settings, state, or code actions', async () => {
-    const test = harness(
-      await transitioningState('prepared', {
-        stateful: true,
-        previousSha256: 'c'.repeat(64),
-        expectedPostSha256: 'c'.repeat(64),
-      }),
-    )
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      error: expect.stringContaining('previous settings SHA-256 mismatch'),
-      processPoisoned: false,
-    })
-    expect(test.events).toEqual([])
-  })
-
-  it('fails closed when current settings conflict with the journal', async () => {
-    const conflicting: ModuleTransitionSettingsSnapshot = Object.freeze({
-      present: true,
-      envelope: Object.freeze({
-        schemaVersion: 1,
-        data: Object.freeze({ enabled: false }),
-      }),
-    })
-    const test = harness(
-      await transitioningState('prepared', { stateful: true }),
-      { settingsSnapshot: conflicting },
-    )
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      error: expect.stringContaining('current settings SHA-256 mismatch'),
-      processPoisoned: false,
-    })
-    expect(test.writes).toEqual([])
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-  })
-
-  it('requires a settings backend for stateful recovery', async () => {
-    const test = harness(
-      await transitioningState('prepared', { stateful: true }),
-      { withSettingsBackend: false },
-    )
-
-    await expect(
-      test.recovery.recover(MODULE_ID, new AbortController().signal),
-    ).resolves.toMatchObject({
-      status: 'failed',
-      error: 'Transition settings backend is unavailable',
-      processPoisoned: false,
-    })
-    expect(test.writes).toEqual([])
-  })
-
-  it('verifies the target before any phase write and leaves prepared on failure', async () => {
-    const test = harness(await transitioningState('prepared'), {
-      verifyError: 'artifact corrupt',
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      error: 'artifact corrupt',
-      processPoisoned: false,
-    })
-    expect(test.events).toEqual([`verify:${TARGET_VERSION}`])
-    expect(test.durable().transition?.phase).toBe('prepared')
-  })
-
-  it('never verifies or executes target code from activation-started', async () => {
-    const test = harness(await transitioningState('activation-started'))
-
-    await test.recovery.recover(MODULE_ID, new AbortController().signal)
-
-    expect(test.verifyArtifact).toHaveBeenCalledTimes(1)
-    expect(test.verifyArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({ version: PREVIOUS_VERSION }),
-      expect.any(AbortSignal),
-    )
-    expect(test.events).not.toContain(`verify:${TARGET_VERSION}`)
-    expect(test.events).not.toContain(`activate:${TARGET_VERSION}`)
-    expect(test.events).toEqual([
-      'write:rollback-completed',
-      `verify:${PREVIOUS_VERSION}`,
-      `activate:${PREVIOUS_VERSION}`,
-      'write:clean',
-    ])
-  })
-
-  it('poisons the process and prepares a compatible previous version for fresh-process recovery', async () => {
-    const test = harness(await transitioningState('prepared'), {
-      activationError: 'target exploded',
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toEqual({
-      moduleId: MODULE_ID,
-      status: 'failed',
-      error: 'target exploded',
-      reloadRequired: true,
-      processPoisoned: true,
-    })
-    expect(test.durable().transition?.phase).toBe('rollback-completed')
-    expect(test.events).not.toContain(`activate:${PREVIOUS_VERSION}`)
-
-    const retried = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-    expect(retried).toMatchObject({
-      status: 'failed',
-      reloadRequired: true,
-      processPoisoned: true,
-      error: expect.stringContaining('requires a fresh process'),
-    })
-    expect(test.events).not.toContain(`activate:${PREVIOUS_VERSION}`)
-
-    const replacement = new ModuleStartupTransitionRecovery(
-      test.recoveryOptions,
-    )
-    await expect(
-      replacement.recover(MODULE_ID, new AbortController().signal),
-    ).resolves.toMatchObject({
-      status: 'failed',
-      processPoisoned: true,
-      error: expect.stringContaining('requires a fresh process'),
-    })
-    expect(test.events).not.toContain(`activate:${PREVIOUS_VERSION}`)
-  })
-
-  it('poisons the process when previous-version activation was attempted and failed', async () => {
-    const initial = await transitioningState('rollback-completed')
-    const test = harness(initial, { activationError: 'previous exploded' })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toEqual({
-      moduleId: MODULE_ID,
-      status: 'failed',
-      error: 'previous exploded',
-      reloadRequired: false,
-      processPoisoned: true,
-    })
-    expect(test.durable().transition?.phase).toBe('rollback-completed')
-  })
-
-  it('rechecks settings after activation-started is durable and never starts target after a conflict', async () => {
-    const conflicting: ModuleTransitionSettingsSnapshot = Object.freeze({
-      present: true,
-      envelope: Object.freeze({
-        schemaVersion: 1,
-        data: Object.freeze({ enabled: false }),
-      }),
-    })
-    let reads = 0
-    const initial = await transitioningState('prepared', { stateful: true })
-    const test = harness(initial)
-    test.readAtCapturedLocation.mockImplementation(async () => {
-      reads += 1
-      return reads === 1 ? SETTINGS_SNAPSHOT : conflicting
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      processPoisoned: false,
-      error: expect.stringContaining('current settings SHA-256 mismatch'),
-    })
-    expect(test.durable().transition?.phase).toBe('activation-started')
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-  })
-
-  it('accepts a committed write that throws after the exact state is durable', async () => {
-    const test = harness(await transitioningState('prepared'), {
-      write: async (next, setDurable) => {
-        setDurable(next)
-        if (next.transition?.phase === 'committed') {
-          throw new Error('late write failure')
-        }
-        return next
-      },
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'activated',
-      version: TARGET_VERSION,
-      processPoisoned: false,
-    })
-    expect(test.durable().transition).toBeNull()
-  })
-
-  it('returns activated with a diagnostic when committed cleanup is uncertain', async () => {
-    const test = harness(await transitioningState('committed'), {
-      write: async (next, setDurable) => {
-        if (next.transition !== null) {
-          setDurable(next)
-          return next
-        }
-        throw new Error('cleanup storage unavailable')
-      },
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'activated',
-      version: TARGET_VERSION,
-      error: expect.stringContaining('cleanup is unresolved'),
-      reloadRequired: false,
-      processPoisoned: false,
-    })
-    expect(test.durable().transition?.phase).toBe('committed')
-
-    const retried = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-    expect(retried).toBe(recovered)
-    expect(test.activateVerifiedArtifact).toHaveBeenCalledTimes(1)
-
-    test.setDurable(await transitioningState('prepared'))
-    const distinct = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-    expect(distinct).toMatchObject({
-      status: 'activated',
-      version: TARGET_VERSION,
-    })
-    expect(test.activateVerifiedArtifact).toHaveBeenCalledTimes(2)
-  })
-
-  it('poisons after target activation when committed write readback diverges', async () => {
-    const test = harness(await transitioningState('prepared'), {
-      write: async (next, setDurable) => {
-        if (next.transition?.phase === 'committed') {
-          setDurable(
-            Object.freeze({
-              ...next,
-              readyVersions: Object.freeze({
-                ...next.readyVersions,
-                [TARGET_VERSION]: Object.freeze({
-                  ...next.readyVersions[TARGET_VERSION],
-                  manifest: Object.freeze({
-                    ...next.readyVersions[TARGET_VERSION].manifest,
-                    byteSize: 101,
-                  }),
-                }),
-              }),
-            }),
-          )
-          throw new Error('commit uncertain')
-        }
-        setDurable(next)
-        return next
-      },
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      error: expect.stringContaining('readback diverged'),
-      reloadRequired: true,
-      processPoisoned: true,
-    })
-    expect(test.writes).not.toContain(null)
-  })
-
-  it('does not roll back a committed journal when startup activation fails', async () => {
-    const test = harness(await transitioningState('committed'), {
-      activationError: 'committed activation failed',
-    })
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      reloadRequired: false,
-      processPoisoned: true,
-    })
-    expect(test.writes).toEqual([])
-    expect(test.durable().transition?.phase).toBe('committed')
-    expect(test.events).not.toContain(`activate:${PREVIOUS_VERSION}`)
-  })
-
-  it('restores the previous active version and cleans rollback-completed', async () => {
-    const test = harness(await transitioningState('rollback-completed'))
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'activated',
-      version: PREVIOUS_VERSION,
-      recoveredVersion: PREVIOUS_VERSION,
-    })
-    expect(test.writes).toEqual([null])
-  })
-
-  it('cleans a first-install rollback while retaining the candidate', async () => {
-    const test = harness(
-      await transitioningState('activation-started', {
-        previousVersion: null,
-      }),
-    )
-
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
-
-    expect(recovered).toMatchObject({
-      status: 'failed',
-      error: 'Transition has no previous active version',
-      reloadRequired: false,
-      processPoisoned: false,
-    })
+    expect(test.activations).toEqual(['2.0.0'])
     expect(test.durable()).toMatchObject({
-      activeVersion: null,
-      downloadedCandidate: TARGET_VERSION,
+      activeVersion: '2.0.0',
       pendingVersion: null,
-      transition: null,
+      activationPhase: null,
     })
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
   })
 
-  it('awaits an invoked state write to settle even when recovery is aborted', async () => {
-    let settleWrite: (() => void) | undefined
-    const writeStarted = new Promise<void>((resolve) => {
-      settleWrite = resolve
-    })
-    let releaseWrite: (() => void) | undefined
-    const blockedWrite = new Promise<void>((resolve) => {
-      releaseWrite = resolve
-    })
-    const test = harness(await transitioningState('settings-committed'), {
-      write: async (next, setDurable) => {
-        settleWrite?.()
-        await blockedWrite
-        setDurable(next)
-        return next
-      },
-    })
-    const controller = new AbortController()
-    let settled = false
-    const recovery = test.recovery
-      .recover(MODULE_ID, controller.signal)
-      .finally(() => {
-        settled = true
-      })
-    await writeStarted
-
-    controller.abort()
-    await Promise.resolve()
-    expect(settled).toBe(false)
-    releaseWrite?.()
-
-    await expect(recovery).resolves.toMatchObject({
+  test('poisons the realm after target failure and leaves fallback for reload', async () => {
+    const test = harness(state('pending'), new Error('boom'))
+    await expect(
+      test.recovery.recover('learning', new AbortController().signal),
+    ).resolves.toMatchObject({
       status: 'failed',
-      processPoisoned: false,
-    })
-    expect(test.durable().transition?.phase).toBe('activation-started')
-    expect(test.activateVerifiedArtifact).not.toHaveBeenCalled()
-  })
-
-  it('does not release recovery while invoked module code ignores abort', async () => {
-    let activationStarted: (() => void) | undefined
-    const started = new Promise<void>((resolve) => {
-      activationStarted = resolve
-    })
-    let releaseActivation: (() => void) | undefined
-    const blocked = new Promise<void>((resolve) => {
-      releaseActivation = resolve
-    })
-    const test = harness(await transitioningState('prepared'), {
-      activation: async () => {
-        activationStarted?.()
-        await blocked
-      },
-    })
-    const controller = new AbortController()
-    let settled = false
-    const recovery = test.recovery
-      .recover(MODULE_ID, controller.signal)
-      .finally(() => {
-        settled = true
-      })
-    await started
-
-    controller.abort()
-    await Promise.resolve()
-    expect(settled).toBe(false)
-    releaseActivation?.()
-
-    await expect(recovery).resolves.toMatchObject({
-      status: 'failed',
-      reloadRequired: true,
       processPoisoned: true,
+      reloadRequired: true,
     })
-    expect(test.durable().transition?.phase).toBe('activation-started')
+    expect(test.activations).toEqual(['2.0.0'])
+    expect(test.durable()).toMatchObject({
+      activeVersion: '1.0.0',
+      pendingVersion: null,
+      activationPhase: null,
+    })
   })
 
-  it('returns immutable deterministic results', async () => {
-    const test = harness(await transitioningState('prepared'), {
-      verifyError: 'fixed failure',
+  test('never retries an interrupted target and restores a compatible previous version', async () => {
+    const test = harness(state('activation-started'))
+    await expect(
+      test.recovery.recover('learning', new AbortController().signal),
+    ).resolves.toMatchObject({
+      status: 'activated',
+      version: '1.0.0',
+      recoveredVersion: '1.0.0',
     })
+    expect(test.activations).toEqual(['1.0.0'])
+    expect(test.durable().activationPhase).toBeNull()
+  })
 
-    const recovered = await test.recovery.recover(
-      MODULE_ID,
-      new AbortController().signal,
-    )
+  test('keeps an interrupted activation blocked when previous schema is incompatible', async () => {
+    const test = harness(state('activation-started', descriptor('1.0.0', 1)))
+    test.setSchema(3)
+    await expect(
+      test.recovery.recover('learning', new AbortController().signal),
+    ).resolves.toMatchObject({ status: 'failed', processPoisoned: false })
+    expect(test.activations).toEqual([])
+    expect(test.durable().activationPhase).toBe('activation-started')
+  })
 
-    expect(Object.isFrozen(recovered)).toBe(true)
-    expect(recovered).toEqual({
-      moduleId: MODULE_ID,
-      status: 'failed',
-      error: 'fixed failure',
-      reloadRequired: false,
-      processPoisoned: false,
-    })
+  test('cancels an unstarted pending activation when intent is not live', async () => {
+    const test = harness(state('pending'))
+    await expect(
+      test.recovery.recover('learning', new AbortController().signal, false),
+    ).resolves.toMatchObject({ status: 'skipped' })
+    expect(test.activations).toEqual([])
+    expect(test.durable().activationPhase).toBeNull()
   })
 })

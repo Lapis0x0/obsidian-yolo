@@ -5,7 +5,6 @@ import {
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
 import type {
-  ModuleDeviceState,
   ModuleDeviceStateStore,
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
@@ -14,7 +13,6 @@ import {
   getModuleTransitionRealmDisposition,
 } from './moduleStartupTransitionRecovery'
 import type { ModuleArtifactPlatform } from './moduleStore'
-import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import { selectInitialCompatibleVersion } from './officialModuleCatalog'
 import type {
   ModuleIntentStateSource,
@@ -52,10 +50,6 @@ export type ModuleActivationCoordinatorOptions = Readonly<{
   activationTimeoutMs?: number
   startupTimeoutMs?: number
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
-  transitionSettingsBackend?: Pick<
-    ObsidianModuleTransitionSettingsBackend,
-    'readAtCapturedLocation'
-  >
   /** Isolates tests or explicitly independent realms; production omits this. */
   transitionRecoveryRealmToken?: object
   verifiedArtifactRegistry?: Pick<
@@ -116,9 +110,6 @@ export class ModuleActivationCoordinator {
       (options.startupTimeoutMs !== undefined &&
         (!Number.isSafeInteger(options.startupTimeoutMs) ||
           options.startupTimeoutMs <= 0)) ||
-      (options.transitionSettingsBackend !== undefined &&
-        typeof options.transitionSettingsBackend.readAtCapturedLocation !==
-          'function') ||
       (options.transitionRecoveryRealmToken !== undefined &&
         (options.transitionRecoveryRealmToken === null ||
           typeof options.transitionRecoveryRealmToken !== 'object')) ||
@@ -193,10 +184,10 @@ export class ModuleActivationCoordinator {
       )
       const results: ModuleActivationResult[] = []
       const transitionIds = sorted
-        .filter((state) => state.transition !== null)
+        .filter((state) => state.activationPhase !== null)
         .map((state) => state.moduleId)
       const ordinaryIds = sorted
-        .filter((state) => state.transition === null)
+        .filter((state) => state.activationPhase === null)
         .map((state) => state.moduleId)
       const recoverTransitions = async (
         moduleIds: readonly string[],
@@ -204,31 +195,10 @@ export class ModuleActivationCoordinator {
         if (moduleIds.length === 0) {
           return Object.freeze({ halted: false, skipped: [] })
         }
-        const subtleCrypto =
-          this.options.subtleCrypto ?? globalThis.crypto?.subtle ?? null
-        if (!subtleCrypto) {
-          for (const moduleId of moduleIds) {
-            results.push(
-              this.failed(
-                moduleId,
-                new Error('Web Crypto SHA-256 is unavailable'),
-              ),
-            )
-          }
-          this.startupDisposition = Object.freeze({
-            reloadRequired: true,
-            processPoisoned: false,
-          })
-          return Object.freeze({ halted: true, skipped: [] })
-        }
         const recovery =
           new ModuleStartupTransitionRecovery<VerifiedModuleArtifact>({
             deviceStateStore: this.options.deviceStateStore,
             readCurrentSchemaVersion: this.options.readCurrentSchemaVersion,
-            ...(this.options.transitionSettingsBackend
-              ? { settingsBackend: this.options.transitionSettingsBackend }
-              : {}),
-            subtleCrypto,
             verifyArtifact: (descriptor, signal) =>
               this.verifyTransitionArtifact(descriptor, signal),
             activateVerifiedArtifact: (artifact, descriptor, signal) =>
@@ -299,7 +269,7 @@ export class ModuleActivationCoordinator {
           moduleId,
           async (transaction) => {
             const state = await withAbort(transaction.read(), controller.signal)
-            return state?.transition != null
+            return state?.activationPhase != null
           },
         )
         if (hasTransition) lateTransitionIds.push(moduleId)
@@ -378,12 +348,12 @@ export class ModuleActivationCoordinator {
     if (current.moduleId !== moduleId) {
       throw new Error(`Module "${moduleId}" returned mismatched device state`)
     }
-    if (current.transition !== null) {
+    if (current.activationPhase !== null) {
       throw new Error(
-        `Module "${moduleId}" transition appeared after the startup recovery pass`,
+        `Module "${moduleId}" pending activation appeared after the startup recovery pass`,
       )
     }
-    const targetVersion = current.pendingVersion ?? current.activeVersion
+    const targetVersion = current.activeVersion
     if (!targetVersion) return result({ moduleId, status: 'skipped' })
     const descriptor = snapshotDescriptor(current.readyVersions[targetVersion])
     if (
@@ -396,21 +366,6 @@ export class ModuleActivationCoordinator {
       )
     }
 
-    const pending = current.pendingVersion === targetVersion
-    if (pending) {
-      const transitionError = new Error(
-        `Module "${moduleId}" pending activation requires a transition journal`,
-      )
-      this.report(moduleId, transitionError)
-      return this.recoverPendingFailure(
-        current,
-        targetVersion,
-        transitionError,
-        transaction,
-        signal,
-      )
-    }
-
     await this.activateDescriptor(descriptor, signal)
     this.errors.delete(moduleId)
     return result({
@@ -418,71 +373,6 @@ export class ModuleActivationCoordinator {
       status: 'activated',
       version: targetVersion,
     })
-  }
-
-  private async recoverPendingFailure(
-    current: ModuleDeviceState,
-    targetVersion: string,
-    targetError: unknown,
-    transaction: ModuleDeviceStateTransaction,
-    signal: AbortSignal,
-  ): Promise<ModuleActivationResult> {
-    let rollbackError: unknown
-    const rolledBack = snapshotState({
-      ...current,
-      pendingVersion: null,
-      downloadedCandidate: targetVersion,
-    })
-    try {
-      await withAbort(transaction.write(rolledBack), signal)
-    } catch (error) {
-      if (!(await this.hasIntendedPointers(transaction, rolledBack, signal))) {
-        rollbackError = error
-      }
-    }
-
-    const oldVersion = current.activeVersion
-    if (oldVersion && oldVersion !== targetVersion) {
-      try {
-        const oldDescriptor = snapshotDescriptor(
-          current.readyVersions[oldVersion],
-        )
-        if (!oldDescriptor || oldDescriptor.id !== current.moduleId) {
-          throw new Error(
-            `Module "${current.moduleId}" has no ready descriptor for fallback "${oldVersion}"`,
-          )
-        }
-        await this.activateDescriptor(oldDescriptor, signal)
-        if (rollbackError) {
-          throw combinedError(
-            targetError,
-            rollbackError,
-            'state rollback failed',
-          )
-        }
-        const message = `Pending version "${targetVersion}" was not activated; restored active version "${oldVersion}": ${errorMessage(targetError)}`
-        this.errors.set(current.moduleId, message)
-        return result({
-          moduleId: current.moduleId,
-          status: 'activated',
-          version: oldVersion,
-          recoveredVersion: oldVersion,
-          error: message,
-        })
-      } catch (fallbackError) {
-        throw combinedError(
-          targetError,
-          rollbackError
-            ? combinedError(rollbackError, fallbackError, 'fallback failed')
-            : fallbackError,
-          'pending activation and fallback failed',
-        )
-      }
-    }
-    if (rollbackError) {
-      throw combinedError(targetError, rollbackError, 'state rollback failed')
-    }
-    throw targetError
   }
 
   private async activateDescriptor(
@@ -719,19 +609,6 @@ export class ModuleActivationCoordinator {
     })
   }
 
-  private async hasIntendedPointers(
-    transaction: ModuleDeviceStateTransaction,
-    intended: ModuleDeviceState,
-    signal: AbortSignal,
-  ): Promise<boolean> {
-    try {
-      const actual = await withAbort(transaction.read(), signal)
-      return actual !== null && equalState(actual, intended)
-    } catch {
-      return false
-    }
-  }
-
   private failed(moduleId: string, error: unknown): ModuleActivationResult {
     const message = errorMessage(error)
     this.errors.set(moduleId, message)
@@ -767,78 +644,6 @@ function snapshotDescriptor(
     dataSchemas: Object.freeze(dataSchemas),
     manifest: Object.freeze({ ...descriptor.manifest }),
   })
-}
-
-function snapshotState(state: ModuleDeviceState): ModuleDeviceState {
-  return Object.freeze({
-    ...state,
-    readyVersions: Object.freeze({ ...state.readyVersions }),
-    transition: state.transition,
-  })
-}
-
-function equalState(
-  left: ModuleDeviceState,
-  right: ModuleDeviceState,
-): boolean {
-  if (
-    left.moduleId !== right.moduleId ||
-    left.platform !== right.platform ||
-    left.activeVersion !== right.activeVersion ||
-    left.pendingVersion !== right.pendingVersion ||
-    left.downloadedCandidate !== right.downloadedCandidate ||
-    JSON.stringify(left.transition) !== JSON.stringify(right.transition)
-  ) {
-    return false
-  }
-  const leftVersions = Object.keys(left.readyVersions).sort()
-  const rightVersions = Object.keys(right.readyVersions).sort()
-  return (
-    leftVersions.length === rightVersions.length &&
-    leftVersions.every((version, index) => {
-      if (rightVersions[index] !== version) return false
-      const leftDescriptor = left.readyVersions[version]
-      const rightDescriptor = right.readyVersions[version]
-      if (!leftDescriptor || !rightDescriptor) return false
-      return equalDescriptor(leftDescriptor, rightDescriptor)
-    })
-  )
-}
-
-function equalDescriptor(
-  left: ModuleArtifactDescriptor,
-  right: ModuleArtifactDescriptor,
-): boolean {
-  if (
-    left.id !== right.id ||
-    left.version !== right.version ||
-    left.hostApi !== right.hostApi ||
-    left.platform !== right.platform ||
-    left.manifestUrl !== right.manifestUrl ||
-    left.manifest.byteSize !== right.manifest.byteSize ||
-    left.manifest.sha256 !== right.manifest.sha256
-  ) {
-    return false
-  }
-  const leftNamespaces = Object.keys(left.dataSchemas).sort()
-  const rightNamespaces = Object.keys(right.dataSchemas).sort()
-  return (
-    leftNamespaces.length === rightNamespaces.length &&
-    leftNamespaces.every((namespace, index) => {
-      if (rightNamespaces[index] !== namespace) return false
-      const leftSchema = left.dataSchemas[namespace]
-      const rightSchema = right.dataSchemas[namespace]
-      return (
-        leftSchema?.readMin === rightSchema?.readMin &&
-        leftSchema?.readMax === rightSchema?.readMax &&
-        leftSchema?.write === rightSchema?.write
-      )
-    })
-  )
-}
-
-function combinedError(first: unknown, second: unknown, label: string): Error {
-  return new Error(`${label}: ${errorMessage(first)}; ${errorMessage(second)}`)
 }
 
 function errorMessage(error: unknown): string {

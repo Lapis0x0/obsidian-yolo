@@ -1,214 +1,336 @@
 import { type App, TFile, TFolder, normalizePath } from 'obsidian'
+import { z } from 'zod'
 
 import { getYoloJsonDbRootDir, getYoloLearningDir } from '../paths/yoloPaths'
 
 import type { IndexedDbDataAdapter } from './indexedDbDataAdapter'
-import type {
-  ModuleDataRemovalJournal,
-  ModuleDataRemovalJournalPort,
-  ModuleOwnedDataDescriptor,
-  ModuleOwnedDataRemovalPort,
-} from './moduleDataRemovalCoordinator'
+import {
+  managedModuleDataNamespace,
+  runExclusive as runManagedModuleDataExclusive,
+} from './managedModuleDataLock'
+import type { ModuleIntentStore } from './moduleIntentStore'
+import type { ModuleRuntimeQuiescence } from './moduleRuntimeReservation'
 import { assertModulePathSegment } from './moduleStore'
 
 const LEARNING_MODULE_ID = 'learning'
 const ANKI_RUNTIME_NAMESPACE = 'anki-runtime'
+const ANKI_RUNTIME_PATH = 'module-private-device-local/learning/anki-runtime'
 const JOURNAL_ROOT = 'module-data-removal-journals'
-const UUID_JSON =
-  /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.json$/
+const JOURNAL_PATH = `${JOURNAL_ROOT}/learning.json`
+const MAX_TARGETS = 256
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 type LearningRemovalSettings = Readonly<{
   yolo?: Readonly<{ baseDir?: string }>
 }>
 
-export async function createLearningOwnedDataDescriptors(
-  app: App,
-  settings: LearningRemovalSettings,
-  deviceLocal: Pick<IndexedDbDataAdapter, 'stat'>,
-): Promise<readonly ModuleOwnedDataDescriptor[]> {
-  const learningRoot = normalizePath(getYoloLearningDir(settings))
-  const dataRoot = normalizePath(getYoloJsonDbRootDir(settings))
-  const descriptors: ModuleOwnedDataDescriptor[] = []
-  const projects = app.vault.getAbstractFileByPath(learningRoot)
-  if (projects instanceof TFolder) {
-    for (const child of [...projects.children].sort((a, b) =>
-      a.path.localeCompare(b.path),
-    )) {
-      if (!(child instanceof TFolder) || child.parent?.path !== learningRoot) {
-        continue
-      }
-      const index = app.vault.getAbstractFileByPath(`${child.path}/index.md`)
-      if (!(index instanceof TFile) || index.parent?.path !== child.path)
-        continue
-      assertModulePathSegment(child.name, 'Learning project slug')
-      descriptors.push({
-        kind: 'learning-canonical-content',
-        moduleId: LEARNING_MODULE_ID,
-        projectSlug: child.name,
-        path: child.path,
-        deletion: 'trash',
-      })
-    }
-  }
-
-  const srsRoot = `${dataRoot}/learning-srs`
-  const srsFolder = app.vault.getAbstractFileByPath(srsRoot)
-  if (srsFolder instanceof TFolder) {
-    for (const child of [...srsFolder.children].sort((a, b) =>
-      a.path.localeCompare(b.path),
-    )) {
-      if (!(child instanceof TFile) || child.parent?.path !== srsRoot) continue
-      if (child.extension !== 'json') continue
-      assertModulePathSegment(child.basename, 'Learning project slug')
-      descriptors.push({
-        kind: 'learning-srs',
-        moduleId: LEARNING_MODULE_ID,
-        projectSlug: child.basename,
-        path: child.path,
-        deletion: 'exact',
-      })
-    }
-  }
-
-  const importRoot = `${dataRoot}/anki-import-journals`
-  const importFolder = app.vault.getAbstractFileByPath(importRoot)
-  if (importFolder instanceof TFolder) {
-    for (const child of [...importFolder.children].sort((a, b) =>
-      a.path.localeCompare(b.path),
-    )) {
-      if (!(child instanceof TFile) || child.parent?.path !== importRoot)
-        continue
-      const match = UUID_JSON.exec(child.name)
-      if (!match) continue
-      descriptors.push({
-        kind: 'learning-import-journal',
-        moduleId: LEARNING_MODULE_ID,
-        journalId: match[1],
-        path: child.path,
-        deletion: 'exact',
-      })
-    }
-  }
-
-  descriptors.push({
-    kind: 'config-document',
-    moduleId: LEARNING_MODULE_ID,
-    documentId: 'settings',
-    path: `${dataRoot}/module-settings/learning.json`,
-    deletion: 'exact',
+const projectTargetSchema = z
+  .object({ kind: z.literal('project'), projectSlug: z.string() })
+  .strict()
+const srsTargetSchema = z
+  .object({ kind: z.literal('srs'), projectSlug: z.string() })
+  .strict()
+const importJournalTargetSchema = z
+  .object({
+    kind: z.literal('anki-import-journal'),
+    journalId: z.string().regex(UUID),
   })
-  if (
-    await deviceLocal.stat(
-      `module-private-device-local/learning/${ANKI_RUNTIME_NAMESPACE}`,
-    )
-  ) {
-    descriptors.push({
-      kind: 'module-private-namespace',
-      moduleId: LEARNING_MODULE_ID,
-      locality: 'device-local',
-      namespace: ANKI_RUNTIME_NAMESPACE,
-      deletion: 'exact',
-    })
-  }
-  return Object.freeze(descriptors)
-}
+  .strict()
+const settingsTargetSchema = z.object({ kind: z.literal('settings') }).strict()
+const ankiRuntimeTargetSchema = z
+  .object({ kind: z.literal('anki-runtime') })
+  .strict()
 
-export function isLearningOwnedDataDescriptor(
-  descriptor: ModuleOwnedDataDescriptor,
-  settings: LearningRemovalSettings,
-): boolean {
-  if (descriptor.moduleId !== LEARNING_MODULE_ID) return false
-  const learningRoot = normalizePath(getYoloLearningDir(settings))
-  const dataRoot = normalizePath(getYoloJsonDbRootDir(settings))
-  switch (descriptor.kind) {
-    case 'learning-canonical-content':
-      return descriptor.path === `${learningRoot}/${descriptor.projectSlug}`
-    case 'learning-srs':
-      return (
-        descriptor.path ===
-        `${dataRoot}/learning-srs/${descriptor.projectSlug}.json`
-      )
-    case 'learning-import-journal':
-      return (
-        descriptor.path ===
-        `${dataRoot}/anki-import-journals/${descriptor.journalId}.json`
-      )
-    case 'config-document':
-      return (
-        descriptor.documentId === 'settings' &&
-        descriptor.path === `${dataRoot}/module-settings/learning.json`
-      )
-    case 'module-private-namespace':
-      return (
-        descriptor.locality === 'device-local' &&
-        descriptor.namespace === ANKI_RUNTIME_NAMESPACE
-      )
-  }
-}
+const targetSchema = z.discriminatedUnion('kind', [
+  projectTargetSchema,
+  srsTargetSchema,
+  importJournalTargetSchema,
+  settingsTargetSchema,
+  ankiRuntimeTargetSchema,
+])
 
-export function createLearningOwnedDataRemovalPort(
-  app: App,
-  deviceLocal: Pick<IndexedDbDataAdapter, 'remove'>,
-): ModuleOwnedDataRemovalPort {
-  return Object.freeze({
-    remove: async (descriptor) => {
-      if (descriptor.moduleId !== LEARNING_MODULE_ID) {
-        throw new Error('Learning removal port rejects foreign module data')
-      }
-      if (descriptor.kind === 'learning-canonical-content') {
-        const entry = app.vault.getAbstractFileByPath(descriptor.path)
-        if (entry) await app.fileManager.trashFile(entry)
-        return
-      }
-      if (
-        descriptor.kind === 'learning-srs' ||
-        descriptor.kind === 'learning-import-journal' ||
-        descriptor.kind === 'config-document'
-      ) {
-        const entry = app.vault.getAbstractFileByPath(descriptor.path)
-        if (!entry) return
-        if (!(entry instanceof TFile)) {
-          throw new Error(
-            `Exact Learning data path is not a file: ${descriptor.path}`,
-          )
+const journalSchema = z
+  .object({
+    version: z.literal(1),
+    targets: z.array(targetSchema).min(1).max(MAX_TARGETS),
+    completedTargetIds: z.array(z.string()),
+  })
+  .strict()
+
+export type LearningDataRemovalTarget = z.infer<typeof targetSchema>
+export type LearningDataRemovalJournal = z.infer<typeof journalSchema>
+
+type DeviceLocalData = Pick<
+  IndexedDbDataAdapter,
+  'mkdir' | 'read' | 'remove' | 'stat' | 'write'
+>
+
+export type LearningModuleDataRemovalServiceOptions = Readonly<{
+  app: App
+  getSettings(): LearningRemovalSettings
+  deviceLocal: DeviceLocalData
+  intentCoordinator: Readonly<{ uninstall(moduleId: string): Promise<unknown> }>
+  intentStore: Pick<ModuleIntentStore, 'get'>
+  artifactUninstaller: Readonly<{ uninstall(moduleId: string): Promise<void> }>
+  runtime: ModuleRuntimeQuiescence
+}>
+
+/** Core-owned destructive path for Learning data. Ordinary uninstall never calls it. */
+export class LearningModuleDataRemovalService {
+  private running = false
+
+  constructor(
+    private readonly options: LearningModuleDataRemovalServiceOptions,
+  ) {}
+
+  async uninstallAndRemoveData(): Promise<void> {
+    if (this.running) {
+      throw new Error('Learning data removal is already in progress')
+    }
+    this.running = true
+    try {
+      await this.options.intentCoordinator.uninstall(LEARNING_MODULE_ID)
+      await this.options.artifactUninstaller.uninstall(LEARNING_MODULE_ID)
+      await this.options.runtime.runWithModuleQuiesced(LEARNING_MODULE_ID, () =>
+        runManagedModuleDataExclusive(
+          this.options.app.vault,
+          managedModuleDataNamespace(LEARNING_MODULE_ID, 'managed-data'),
+          () => this.removeDataWithJournal(),
+        ),
+      )
+    } finally {
+      this.running = false
+    }
+  }
+
+  private async removeDataWithJournal(): Promise<void> {
+    const intent = await this.options.intentStore.get(LEARNING_MODULE_ID)
+    if (intent?.desiredInstalled !== false) {
+      throw new Error(
+        'Learning data removal requires desiredInstalled to be false',
+      )
+    }
+
+    const stored = await this.readJournal()
+    const targets = stored?.targets ?? (await this.enumerateTargets())
+    validateTargets(targets)
+    const completedTargetIds = stored?.completedTargetIds ?? []
+    const completed = new Set(completedTargetIds)
+    if (completed.size !== completedTargetIds.length) {
+      throw new Error('Learning data removal journal has duplicate targets')
+    }
+    validateCompletedTargets(targets, completed)
+
+    await this.writeJournal(targets, completed)
+    const roots = currentRoots(this.options.getSettings())
+    for (const target of targets) {
+      const id = targetId(target)
+      if (completed.has(id)) continue
+      await this.removeTarget(target, roots)
+      completed.add(id)
+      await this.writeJournal(targets, completed)
+    }
+    await this.options.deviceLocal.remove(JOURNAL_PATH)
+  }
+
+  private async enumerateTargets(): Promise<LearningDataRemovalTarget[]> {
+    const { dataRoot, learningRoot } = currentRoots(this.options.getSettings())
+    const targets: LearningDataRemovalTarget[] = []
+    const projects = this.options.app.vault.getAbstractFileByPath(learningRoot)
+    if (projects instanceof TFolder) {
+      for (const child of [...projects.children].sort((left, right) =>
+        left.path.localeCompare(right.path),
+      )) {
+        if (
+          !(child instanceof TFolder) ||
+          child.parent?.path !== learningRoot
+        ) {
+          continue
         }
-        // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Sidecars/config use the protocol's exact permanent-delete boundary.
-        await app.vault.delete(entry, true)
-        return
-      }
-      if (
-        descriptor.kind === 'module-private-namespace' &&
-        descriptor.locality === 'device-local'
-      ) {
-        await deviceLocal.remove(
-          `module-private-device-local/learning/${descriptor.namespace}`,
+        const index = this.options.app.vault.getAbstractFileByPath(
+          `${child.path}/index.md`,
         )
-        return
+        if (!(index instanceof TFile) || index.parent?.path !== child.path) {
+          continue
+        }
+        assertModulePathSegment(child.name, 'Learning project slug')
+        targets.push({ kind: 'project', projectSlug: child.name })
       }
-      throw new Error('Learning removal port rejects unsupported data')
-    },
-  })
+    }
+
+    const srsRoot = `${dataRoot}/learning-srs`
+    const srsFolder = this.options.app.vault.getAbstractFileByPath(srsRoot)
+    if (srsFolder instanceof TFolder) {
+      for (const child of [...srsFolder.children].sort((left, right) =>
+        left.path.localeCompare(right.path),
+      )) {
+        if (
+          !(child instanceof TFile) ||
+          child.parent?.path !== srsRoot ||
+          child.extension !== 'json'
+        ) {
+          continue
+        }
+        assertModulePathSegment(child.basename, 'Learning project slug')
+        targets.push({ kind: 'srs', projectSlug: child.basename })
+      }
+    }
+
+    const importRoot = `${dataRoot}/anki-import-journals`
+    const importFolder =
+      this.options.app.vault.getAbstractFileByPath(importRoot)
+    if (importFolder instanceof TFolder) {
+      for (const child of [...importFolder.children].sort((left, right) =>
+        left.path.localeCompare(right.path),
+      )) {
+        if (!(child instanceof TFile) || child.parent?.path !== importRoot) {
+          continue
+        }
+        const match = UUID.exec(child.basename)
+        if (child.extension === 'json' && match) {
+          targets.push({ kind: 'anki-import-journal', journalId: match[0] })
+        }
+      }
+    }
+
+    targets.push({ kind: 'settings' })
+    if (await this.options.deviceLocal.stat(ANKI_RUNTIME_PATH)) {
+      targets.push({ kind: 'anki-runtime' })
+    }
+    return targets
+  }
+
+  private async removeTarget(
+    target: LearningDataRemovalTarget,
+    roots: LearningRoots,
+  ): Promise<void> {
+    if (target.kind === 'anki-runtime') {
+      await this.options.deviceLocal.remove(ANKI_RUNTIME_PATH)
+      return
+    }
+
+    const path = targetPath(target, roots)
+    const entry = this.options.app.vault.getAbstractFileByPath(path)
+    if (!entry) return
+    if (target.kind === 'project') {
+      const index = this.options.app.vault.getAbstractFileByPath(
+        `${path}/index.md`,
+      )
+      if (
+        !(entry instanceof TFolder) ||
+        entry.parent?.path !== roots.learningRoot ||
+        !(index instanceof TFile) ||
+        index.parent?.path !== path
+      ) {
+        throw new Error(`Learning project path is not canonical: ${path}`)
+      }
+      await this.options.app.fileManager.trashFile(entry)
+      return
+    }
+    if (!(entry instanceof TFile)) {
+      throw new Error(`Exact Learning data path is not a file: ${path}`)
+    }
+    // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Learning sidecars and settings are the explicit permanent-delete boundary.
+    await this.options.app.vault.delete(entry, true)
+  }
+
+  private async readJournal(): Promise<LearningDataRemovalJournal | null> {
+    if (!(await this.options.deviceLocal.stat(JOURNAL_PATH))) return null
+    try {
+      return journalSchema.parse(
+        JSON.parse(await this.options.deviceLocal.read(JOURNAL_PATH)),
+      )
+    } catch (error) {
+      const detail = error instanceof Error ? `: ${error.message}` : ''
+      throw new Error(`Learning data removal journal is invalid${detail}`)
+    }
+  }
+
+  private async writeJournal(
+    targets: readonly LearningDataRemovalTarget[],
+    completed: ReadonlySet<string>,
+  ): Promise<void> {
+    if (!(await this.options.deviceLocal.stat(JOURNAL_ROOT))) {
+      await this.options.deviceLocal.mkdir(JOURNAL_ROOT)
+    }
+    const journal: LearningDataRemovalJournal = {
+      version: 1,
+      targets: [...targets],
+      completedTargetIds: targets
+        .map(targetId)
+        .filter((id) => completed.has(id)),
+    }
+    await this.options.deviceLocal.write(JOURNAL_PATH, JSON.stringify(journal))
+  }
 }
 
-export function createModuleDataRemovalJournalPort(
-  adapter: Pick<
-    IndexedDbDataAdapter,
-    'mkdir' | 'read' | 'remove' | 'stat' | 'write'
-  >,
-): ModuleDataRemovalJournalPort {
-  const pathFor = (moduleId: string): string =>
-    `${JOURNAL_ROOT}/${moduleId}.json`
-  return Object.freeze({
-    read: async (moduleId) => {
-      const path = pathFor(moduleId)
-      return (await adapter.stat(path))
-        ? JSON.parse(await adapter.read(path))
-        : null
-    },
-    write: async (moduleId, journal: ModuleDataRemovalJournal) => {
-      if (!(await adapter.stat(JOURNAL_ROOT))) await adapter.mkdir(JOURNAL_ROOT)
-      await adapter.write(pathFor(moduleId), JSON.stringify(journal))
-    },
-    remove: (moduleId) => adapter.remove(pathFor(moduleId)),
-  })
+type LearningRoots = Readonly<{ dataRoot: string; learningRoot: string }>
+
+function currentRoots(settings: LearningRemovalSettings): LearningRoots {
+  return {
+    dataRoot: normalizePath(getYoloJsonDbRootDir(settings)),
+    learningRoot: normalizePath(getYoloLearningDir(settings)),
+  }
+}
+
+function targetPath(
+  target: Exclude<LearningDataRemovalTarget, { kind: 'anki-runtime' }>,
+  roots: LearningRoots,
+): string {
+  switch (target.kind) {
+    case 'project':
+      return `${roots.learningRoot}/${target.projectSlug}`
+    case 'srs':
+      return `${roots.dataRoot}/learning-srs/${target.projectSlug}.json`
+    case 'anki-import-journal':
+      return `${roots.dataRoot}/anki-import-journals/${target.journalId}.json`
+    case 'settings':
+      return `${roots.dataRoot}/module-settings/learning.json`
+  }
+}
+
+function targetId(target: LearningDataRemovalTarget): string {
+  switch (target.kind) {
+    case 'project':
+      return `project:${target.projectSlug}`
+    case 'srs':
+      return `srs:${target.projectSlug}`
+    case 'anki-import-journal':
+      return `anki-import-journal:${target.journalId}`
+    case 'settings':
+      return 'settings'
+    case 'anki-runtime':
+      return ANKI_RUNTIME_NAMESPACE
+  }
+}
+
+function validateTargets(targets: readonly LearningDataRemovalTarget[]): void {
+  if (targets.length === 0 || targets.length > MAX_TARGETS) {
+    throw new Error('Learning data removal target count is invalid')
+  }
+  const ids = new Set<string>()
+  for (const target of targets) {
+    if ('projectSlug' in target) {
+      assertModulePathSegment(target.projectSlug, 'Learning project slug')
+    }
+    const id = targetId(target)
+    const canonical = id.normalize('NFKC').toLowerCase()
+    if (ids.has(canonical)) {
+      throw new Error('Learning data removal targets must be unique')
+    }
+    ids.add(canonical)
+  }
+}
+
+function validateCompletedTargets(
+  targets: readonly LearningDataRemovalTarget[],
+  completed: ReadonlySet<string>,
+): void {
+  const ids = new Set(targets.map(targetId))
+  for (const id of completed) {
+    if (!ids.has(id)) {
+      throw new Error('Learning data removal journal has an unknown target')
+    }
+  }
 }

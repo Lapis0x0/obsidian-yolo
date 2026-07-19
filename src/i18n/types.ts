@@ -209,28 +209,19 @@ export type TranslationKeys = {
       availableVersion: string
       install: string
       update: string
+      installAndReload: string
+      updateAndReload: string
       installing: string
       updating: string
-      applyAndReload: string
-      preparing: string
       reload: string
       reloading: string
       confirmInstallTitle: string
       confirmUpdateTitle: string
       confirmMessage: string
-      confirmApplyTitle: string
-      confirmApplyMessage: string
-      applyWithdrawnWarning: string
-      applyCatalogUnavailableWarning: string
       candidateUnavailable: string
-      transitionCandidateUnavailable: string
-      installSuccess: string
-      updateSuccess: string
       installError: string
       updateError: string
-      applyError: string
       reloadError: string
-      readyToApplyDetail: string
       activationPendingDetail: string
       intentLabel: string
       intentUnknown: string
@@ -251,10 +242,8 @@ export type TranslationKeys = {
         dataSchema: string
       }
       retry: string
-      actionReloadSuccess: string
       actionError: string
       actionSuccess: {
-        install: string
         enable: string
         disable: string
         uninstall: string
@@ -270,8 +259,6 @@ export type TranslationKeys = {
         uninstallBusy: string
       }
       confirmProduct: {
-        installTitle: string
-        installMessage: string
         uninstallTitle: string
         uninstallMessage: string
       }
@@ -281,7 +268,6 @@ export type TranslationKeys = {
         active: string
         disabled: string
         updateAvailable: string
-        readyToApply: string
         activationPending: string
         failed: string
       }

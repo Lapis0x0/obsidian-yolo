@@ -584,37 +584,22 @@ export const en: TranslationKeys = {
       availableVersion: 'Update {version}',
       install: 'Install',
       update: 'Update',
+      installAndReload: 'Install and reload',
+      updateAndReload: 'Update and reload',
       installing: 'Installing…',
       updating: 'Updating…',
-      applyAndReload: 'Apply and reload',
-      preparing: 'Preparing…',
       reload: 'Reload',
       reloading: 'Reloading…',
       confirmInstallTitle: 'Install {name}',
       confirmUpdateTitle: 'Update {name}',
       confirmMessage:
-        'Confirm the exact module release before downloading.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded and verified. This version will not be activated yet.',
-      confirmApplyTitle: 'Apply {name}',
-      confirmApplyMessage:
-        'Confirm the verified module release to activate after reload.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nYolo will durably prepare this version, then reload Obsidian. Activation happens during the next startup.',
-      applyWithdrawnWarning:
-        'Warning: this module is no longer listed in the current official catalog. The downloaded release remains locally verified, but it may have been withdrawn.',
-      applyCatalogUnavailableWarning:
-        'Warning: the official catalog is unavailable, so this release’s current availability cannot be confirmed.',
+        'Confirm the exact module release.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded and verified, then Obsidian will reload to activate this version.',
       candidateUnavailable:
         '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
-      transitionCandidateUnavailable:
-        '{name} cannot be applied right now. The downloaded release may have changed or another operation may be in progress.',
-      installSuccess:
-        'Downloaded and verified {name} {version}. It is not active yet.',
-      updateSuccess:
-        'Downloaded and verified the {name} {version} update. It is not active yet.',
       installError: 'Could not install {name}: {error}',
       updateError: 'Could not update {name}: {error}',
-      applyError: 'Could not prepare {name} for activation: {error}',
       reloadError:
         '{name} {version} is prepared, but Obsidian could not reload automatically: {error}. Reload Obsidian to continue.',
-      readyToApplyDetail: 'Downloaded version {version} is verified and ready.',
       activationPendingDetail:
         'Version {version} is prepared. Reload to continue activation or recovery.',
       intentLabel: 'Intent',
@@ -636,11 +621,8 @@ export const en: TranslationKeys = {
         dataSchema: 'data schema',
       },
       retry: 'Retry',
-      actionReloadSuccess:
-        '{name} intent was saved. Reload Obsidian for it to take effect.',
       actionError: 'Could not change {name}: {error}',
       actionSuccess: {
-        install: '{name} is installed and ready on this device.',
         enable: '{name} is marked enabled.',
         disable: '{name} is marked disabled; its files and data were kept.',
         uninstall: '{name} was safely uninstalled from this device.',
@@ -656,9 +638,6 @@ export const en: TranslationKeys = {
         uninstallBusy: 'Uninstalling…',
       },
       confirmProduct: {
-        installTitle: 'Install {name}',
-        installMessage:
-          'Install {name}? Yolo will save the installation intent, then download and verify the compatible module files for this device.',
         uninstallTitle: 'Uninstall {name}',
         uninstallMessage:
           'Uninstall {name}? The installation intent will be cleared first. If the module is active, its files and data will be kept until Obsidian reloads. Otherwise, only the local module program files and installation state will be removed safely.',
@@ -669,7 +648,6 @@ export const en: TranslationKeys = {
         active: 'Active',
         disabled: 'Disabled',
         updateAvailable: 'Update available',
-        readyToApply: 'Ready to apply',
         activationPending: 'Activation pending',
         failed: 'Failed',
       },

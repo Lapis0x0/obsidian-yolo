@@ -8,7 +8,6 @@ import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import {
   type ConfirmedModuleCandidate,
   ModuleInstallationCoordinator,
-  type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
 import { ModuleIntentCoordinator } from './moduleIntentCoordinator'
 import { SynchronizedModuleIntentStateSource } from './moduleIntentStateSource'
@@ -20,19 +19,19 @@ import {
   type ModuleReadinessResult,
 } from './moduleReadinessReconciler'
 import type { ModuleRuntimeQuiescence } from './moduleRuntimeReservation'
+import type { ModuleService } from './moduleService'
 import { ModuleStartupReconciler } from './moduleStartupReconciler'
 import {
   type ModuleArtifactPlatform,
   type ModuleStore,
   assertModuleId,
 } from './moduleStore'
-import { ModuleTransitionCoordinator } from './moduleTransitionCoordinator'
 import { ModuleUninstallCoordinator } from './moduleUninstallCoordinator'
-import type { ObsidianModuleTransitionSettingsBackend } from './obsidianModuleConfigBackend'
 import {
   type OfficialModuleArtifactRequest,
   createOfficialModuleArtifactDownloader,
 } from './officialModuleArtifactDownloader'
+import { authorizeOfficialModuleArtifactRemoval } from './officialModuleArtifactRemovalPolicy'
 import {
   type OfficialModuleCatalogCacheAdapter,
   OfficialModuleCatalogClient,
@@ -80,19 +79,10 @@ export type ProductionModuleServicesOptions = Readonly<{
   platform: ModuleArtifactPlatform
   getCompatibility: OfficialModuleCompatibilityProvider
   isActive(moduleId: string, version: string): boolean
-  activationRuntime: ModuleActivationCoordinatorOptions['runtime']
   /** Shared reservation owned and disposed by the composition root. */
-  runtimeReservation?: ProductionModuleRuntimeReservation
-  intentStore?: ProductionModuleIntentStore
-  authorizeArtifactRemoval?: (
-    moduleId: string,
-    versions: readonly string[],
-  ) => Promise<boolean>
+  runtimeReservation: ProductionModuleRuntimeReservation
+  intentStore: ProductionModuleIntentStore
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
-  transitionSettingsBackend: Pick<
-    ObsidianModuleTransitionSettingsBackend,
-    'capture' | 'readAtCapturedLocation'
-  >
   transitionRecoveryRealmToken?: object
   readCurrentSchemaVersion: ModuleActivationCoordinatorOptions['readCurrentSchemaVersion']
   catalogRequest?: OfficialModuleCatalogRequest
@@ -102,36 +92,19 @@ export type ProductionModuleServicesOptions = Readonly<{
   reportCleanupError?: (error: unknown) => void
   reportRefreshError?: (error: unknown) => void
   reportActivationError?: (moduleId: string, error: unknown) => void
-  requestReload?: (moduleId: string) => void
+  requestReload: (moduleId: string) => void
   reportStartupError?: (error: unknown, moduleId?: string) => void
 }>
 
-export type ProductionModuleServices = Readonly<{
-  manager: ModuleManager
-  coordinator: ModuleInstallationCoordinator
-  activationCoordinator: ModuleActivationCoordinator
-  catalogClient: OfficialModuleCatalogClient
-  catalogSource: OfficialModuleCatalogSource
-  installer: ModuleArtifactInstaller
-  installedStateSource: ModuleDeviceStateInstalledStateSource
-  intentCoordinator: ModuleIntentCoordinator | null
-  intentStateSource: SynchronizedModuleIntentStateSource | null
-  readinessReconciler: ProductionModuleReadinessReconciler | null
-  startupReconciler: ModuleStartupReconciler | null
-  uninstallCoordinator: ModuleUninstallCoordinator | null
-  runtimeReservation: ProductionModuleRuntimeReservation | null
-  verifiedArtifactRegistry: VerifiedModuleArtifactRegistry
-  getVerifiedArtifact: VerifiedModuleArtifactRegistry['getVerifiedArtifact']
-  getInstallCandidate(moduleId: string): ConfirmedModuleCandidate | undefined
-  getTransitionCandidate(
-    moduleId: string,
-  ): Promise<ConfirmedModuleCandidate | undefined>
-  installConfirmedCandidate(
-    candidate: ConfirmedModuleCandidate,
-  ): Promise<ModuleInstallationResult>
-  prepareConfirmedTransition(candidate: ConfirmedModuleCandidate): Promise<void>
-  dispose(): void
-}>
+export type ProductionModuleServices = ModuleService &
+  Readonly<{
+    learningDataRemovalDependencies: Readonly<{
+      intentCoordinator: ModuleIntentCoordinator
+      intentStore: ProductionModuleIntentStore
+      artifactUninstaller: ModuleUninstallCoordinator
+      runtime: ProductionModuleRuntimeReservation
+    }>
+  }>
 
 /** Composes the production official-module discovery and installation pipeline. */
 export function createProductionModuleServices(
@@ -171,12 +144,12 @@ export function createProductionModuleServices(
         return loader.load(...args)
       },
     })
-  const runtimeReservation = options.runtimeReservation ?? null
+  const runtimeReservation = options.runtimeReservation
   const verifiedArtifactRegistry =
     options.verifiedArtifactRegistry ?? new VerifiedModuleArtifactRegistry()
-  const intentStateSource = options.intentStore
-    ? new SynchronizedModuleIntentStateSource({ store: options.intentStore })
-    : null
+  const intentStateSource = new SynchronizedModuleIntentStateSource({
+    store: options.intentStore,
+  })
   const activationCoordinator = new ModuleActivationCoordinator({
     deviceStateStore: options.deviceStateStore,
     artifactStore: options.store,
@@ -185,9 +158,8 @@ export function createProductionModuleServices(
     supportedDataNamespaces: [OFFICIAL_MODULE_SETTINGS_DATA_NAMESPACE],
     readCurrentSchemaVersion: options.readCurrentSchemaVersion,
     loader: activationLoader,
-    runtime: runtimeReservation ?? options.activationRuntime,
-    ...(intentStateSource ? { intentStateSource } : {}),
-    transitionSettingsBackend: options.transitionSettingsBackend,
+    runtime: runtimeReservation,
+    intentStateSource,
     verifiedArtifactRegistry,
     ...(options.transitionRecoveryRealmToken
       ? { transitionRecoveryRealmToken: options.transitionRecoveryRealmToken }
@@ -205,21 +177,11 @@ export function createProductionModuleServices(
   const manager = new ModuleManager({
     catalogSource,
     installedStateSource,
-    ...(intentStateSource ? { intentStateSource } : {}),
+    intentStateSource,
   })
-  const intentCoordinator = options.intentStore
-    ? new ModuleIntentCoordinator({ store: options.intentStore, manager })
-    : null
-  const transitionCoordinator = new ModuleTransitionCoordinator({
-    deviceStateStore: options.deviceStateStore,
-    settingsBackend: options.transitionSettingsBackend,
-    readCurrentSchemaVersion: options.readCurrentSchemaVersion,
+  const intentCoordinator = new ModuleIntentCoordinator({
+    store: options.intentStore,
     manager,
-    platform: options.platform,
-    ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
-    ...(options.reportRefreshError
-      ? { reportRefreshError: options.reportRefreshError }
-      : {}),
   })
   const installer = new ModuleArtifactInstaller({
     adapter: options.store.adapter,
@@ -245,105 +207,155 @@ export function createProductionModuleServices(
       ? { reportRefreshError: options.reportRefreshError }
       : {}),
   })
-  const ownedReadinessReconciler = options.intentStore
-    ? new ModuleReadinessReconciler({
-        deviceStateStore: options.deviceStateStore,
-        intentStore: options.intentStore,
-        catalogSource,
-        artifactStore: options.store,
-        installer,
-        platform: options.platform,
-        ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
-      })
-    : null
-  const readinessReconciler = ownedReadinessReconciler
-    ? createGuardedReadinessReconciler(
-        ownedReadinessReconciler,
-        runtimeReservation,
-      )
-    : null
-  const uninstallCoordinator = options.authorizeArtifactRemoval
-    ? new ModuleUninstallCoordinator({
-        artifactStore: options.store,
-        deviceStateStore: options.deviceStateStore,
-        intentStore: options.intentStore!,
-        manager,
-        runtime: runtimeReservation!,
-        authorizeArtifactRemoval: options.authorizeArtifactRemoval,
-        platform: options.platform,
-      })
-    : null
+  const ownedReadinessReconciler = new ModuleReadinessReconciler({
+    deviceStateStore: options.deviceStateStore,
+    intentStore: options.intentStore,
+    catalogSource,
+    artifactStore: options.store,
+    installer,
+    platform: options.platform,
+    ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
+  })
+  const readinessReconciler = createGuardedReadinessReconciler(
+    ownedReadinessReconciler,
+    runtimeReservation,
+  )
+  const uninstallCoordinator = new ModuleUninstallCoordinator({
+    artifactStore: options.store,
+    deviceStateStore: options.deviceStateStore,
+    intentStore: options.intentStore,
+    manager,
+    runtime: runtimeReservation,
+    authorizeArtifactRemoval: (moduleId, versions) =>
+      authorizeOfficialModuleArtifactRemoval(
+        catalogClient,
+        moduleId,
+        versions,
+        options.platform,
+        {
+          timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+          ...(options.artifactRequest
+            ? { requestUrl: options.artifactRequest }
+            : {}),
+          ...(options.subtleCrypto
+            ? { subtleCrypto: options.subtleCrypto }
+            : {}),
+        },
+      ),
+    platform: options.platform,
+  })
   const startupIntentStore = options.intentStore
-  const startupReconciler =
-    startupIntentStore && readinessReconciler && options.requestReload
-      ? new ModuleStartupReconciler({
-          source: {
-            async listKnownModuleIds() {
-              const catalogEntriesPromise = catalogSource
-                .load()
-                .catch((error) => {
-                  try {
-                    options.reportStartupError?.(error)
-                  } catch {
-                    // Startup diagnostics must not make the optional catalog critical.
-                  }
-                  return []
-                })
-              const [intentModuleIds, deviceStates, catalogEntries] =
-                await Promise.all([
-                  startupIntentStore.listModuleIds(),
-                  options.deviceStateStore.list(),
-                  catalogEntriesPromise,
-                ])
-              return Object.freeze(
-                [
-                  ...new Set([
-                    ...intentModuleIds,
-                    ...deviceStates.map((state) => state.moduleId),
-                    ...catalogEntries.map((entry) => entry.id),
-                  ]),
-                ].sort(),
-              )
-            },
-            subscribe: (listener) => startupIntentStore.subscribeAll(listener),
-          },
-          intentStore: startupIntentStore,
-          readinessReconciler,
-          activationCoordinator,
-          manager,
-          ...(uninstallCoordinator
-            ? {
-                scheduleSafeUninstall: (moduleId: string) =>
-                  uninstallCoordinator.uninstall(moduleId),
-              }
-            : {}),
-          requestReload: options.requestReload,
-          ...(options.reportStartupError
-            ? { reportError: options.reportStartupError }
-            : {}),
+  const startupReconciler = new ModuleStartupReconciler({
+    source: {
+      async listKnownModuleIds() {
+        const catalogEntriesPromise = catalogSource.load().catch((error) => {
+          try {
+            options.reportStartupError?.(error)
+          } catch {
+            // Startup diagnostics must not make the optional catalog critical.
+          }
+          return []
         })
-      : null
+        const [intentModuleIds, deviceStates, catalogEntries] =
+          await Promise.all([
+            startupIntentStore.listModuleIds(),
+            options.deviceStateStore.list(),
+            catalogEntriesPromise,
+          ])
+        return Object.freeze(
+          [
+            ...new Set([
+              ...intentModuleIds,
+              ...deviceStates.map((state) => state.moduleId),
+              ...catalogEntries.map((entry) => entry.id),
+            ]),
+          ].sort(),
+        )
+      },
+      subscribe: (listener) => startupIntentStore.subscribeAll(listener),
+    },
+    intentStore: startupIntentStore,
+    readinessReconciler,
+    activationCoordinator,
+    manager,
+    scheduleSafeUninstall: (moduleId: string) =>
+      uninstallCoordinator.uninstall(moduleId),
+    requestReload: options.requestReload,
+    ...(options.reportStartupError
+      ? { reportError: options.reportStartupError }
+      : {}),
+  })
   const inFlightModuleIds = new Set<string>()
-  const completedCandidates = new Map<string, string>()
   let disposed = false
 
+  const runModuleOperation = async <T>(
+    moduleId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    assertModuleId(moduleId, 'Module id')
+    if (disposed) throw new Error('Production module services are disposed')
+    if (inFlightModuleIds.has(moduleId)) {
+      throw new Error(`Module operation is already in progress: ${moduleId}`)
+    }
+    inFlightModuleIds.add(moduleId)
+    try {
+      return await operation()
+    } finally {
+      inFlightModuleIds.delete(moduleId)
+    }
+  }
+
+  const cancelMatchingPendingVersion = async (
+    moduleId: string,
+    version: string,
+  ): Promise<void> => {
+    await options.deviceStateStore.runExclusive(
+      moduleId,
+      async (transaction) => {
+        const state = await transaction.read()
+        if (
+          state?.pendingVersion !== version ||
+          state.activationPhase !== 'pending'
+        ) {
+          return
+        }
+        await transaction.write({
+          ...state,
+          pendingVersion: null,
+          activationPhase: null,
+        })
+      },
+    )
+  }
+
+  const clearPendingActivation = async (moduleId: string): Promise<void> => {
+    await options.deviceStateStore.runExclusive(
+      moduleId,
+      async (transaction) => {
+        const state = await transaction.read()
+        if (!state || state.activationPhase === null) return
+        await transaction.write({
+          ...state,
+          pendingVersion: null,
+          activationPhase: null,
+        })
+      },
+    )
+  }
+
   return Object.freeze({
-    manager,
-    coordinator,
-    activationCoordinator,
-    catalogClient,
-    catalogSource,
-    installer,
-    installedStateSource,
-    intentCoordinator,
-    intentStateSource,
-    readinessReconciler,
-    startupReconciler,
-    uninstallCoordinator,
-    runtimeReservation,
-    verifiedArtifactRegistry,
+    mode: 'official' as const,
+    getSnapshot: manager.getSnapshot,
+    subscribe: manager.subscribe,
+    refresh: () => manager.refresh(),
     getVerifiedArtifact: (moduleId) =>
       verifiedArtifactRegistry.getVerifiedArtifact(moduleId),
+    learningDataRemovalDependencies: Object.freeze({
+      intentCoordinator,
+      intentStore: options.intentStore,
+      artifactUninstaller: uninstallCoordinator,
+      runtime: runtimeReservation,
+    }),
     getInstallCandidate(moduleId: string) {
       assertModuleId(moduleId, 'Module id')
       if (disposed || inFlightModuleIds.has(moduleId)) return undefined
@@ -361,102 +373,93 @@ export function createProductionModuleServices(
       ) {
         return undefined
       }
-      const candidateIdentity = `${resolved.version}:${resolved.manifest.sha256}`
-      if (completedCandidates.get(moduleId) === candidateIdentity) {
-        return undefined
-      }
       return Object.freeze({
         moduleId,
         expectedVersion: resolved.version,
         expectedManifestSha256: resolved.manifest.sha256,
       })
     },
-    async getTransitionCandidate(moduleId: string) {
-      assertModuleId(moduleId, 'Module id')
-      if (disposed || inFlightModuleIds.has(moduleId)) return undefined
-      const state = await options.deviceStateStore.read(moduleId)
-      if (disposed || inFlightModuleIds.has(moduleId)) return undefined
-      const version = state?.downloadedCandidate
-      const descriptor = version ? state.readyVersions[version] : undefined
-      if (
-        !state ||
-        state.platform !== options.platform ||
-        state.transition !== null ||
-        state.pendingVersion !== null ||
-        state.activeVersion === version ||
-        !descriptor ||
-        descriptor.id !== moduleId ||
-        descriptor.version !== version ||
-        descriptor.platform !== options.platform
-      ) {
-        return undefined
-      }
-      return Object.freeze({
-        moduleId: state.moduleId,
-        expectedVersion: descriptor.version,
-        expectedManifestSha256: descriptor.manifest.sha256,
+    install(candidate: ConfirmedModuleCandidate) {
+      return runModuleOperation(candidate.moduleId, async () => {
+        const result = await coordinator.installConfirmedCandidate(candidate)
+        try {
+          await options.intentStore.set(candidate.moduleId, {
+            desiredInstalled: true,
+            enabled: true,
+          })
+        } catch (intentError) {
+          try {
+            await cancelMatchingPendingVersion(
+              candidate.moduleId,
+              candidate.expectedVersion,
+            )
+          } catch (rollbackError) {
+            options.reportCleanupError?.(rollbackError)
+          }
+          try {
+            await manager.refresh()
+          } catch (refreshError) {
+            options.reportRefreshError?.(refreshError)
+          }
+          throw intentError
+        }
+        await manager.refresh()
+        return Object.freeze({
+          reloadRequired: true,
+          version: result.state.pendingVersion ?? candidate.expectedVersion,
+        })
       })
     },
-    async installConfirmedCandidate(candidate: ConfirmedModuleCandidate) {
-      const request = Object.freeze({
-        moduleId: candidate.moduleId,
-        expectedVersion: candidate.expectedVersion,
-        expectedManifestSha256: candidate.expectedManifestSha256,
+    setEnabled(moduleId: string, enabled: boolean) {
+      return runModuleOperation(moduleId, async () => {
+        if (enabled) await intentCoordinator.enable(moduleId)
+        else await intentCoordinator.disable(moduleId)
+        return Object.freeze({ reloadRequired: true })
       })
-      assertModuleId(request.moduleId, 'Module id')
-      const candidateIdentity = `${request.expectedVersion}:${request.expectedManifestSha256}`
-      if (disposed) {
-        throw new Error('Production module services are disposed')
-      }
-      if (completedCandidates.get(request.moduleId) === candidateIdentity) {
-        throw new Error(
-          `Module candidate is already downloaded: ${request.moduleId}@${request.expectedVersion}`,
-        )
-      }
-      if (inFlightModuleIds.has(request.moduleId)) {
-        throw new Error(
-          `Module installation is already in progress: ${request.moduleId}`,
-        )
-      }
-
-      inFlightModuleIds.add(request.moduleId)
-      try {
-        const result = await coordinator.installConfirmedCandidate(request)
-        completedCandidates.set(request.moduleId, candidateIdentity)
-        return result
-      } finally {
-        inFlightModuleIds.delete(request.moduleId)
-      }
     },
-    async prepareConfirmedTransition(candidate: ConfirmedModuleCandidate) {
-      const request = Object.freeze({
-        moduleId: candidate.moduleId,
-        expectedVersion: candidate.expectedVersion,
-        expectedManifestSha256: candidate.expectedManifestSha256,
-      })
-      assertModuleId(request.moduleId, 'Module id')
-      if (disposed) {
-        throw new Error('Production module services are disposed')
-      }
-      if (inFlightModuleIds.has(request.moduleId)) {
-        throw new Error(
-          `Module operation is already in progress: ${request.moduleId}`,
+    uninstall(moduleId: string) {
+      return runModuleOperation(moduleId, async () => {
+        await intentCoordinator.uninstall(moduleId)
+        const state = await options.deviceStateStore.read(moduleId)
+        const isActive = Boolean(
+          state?.activeVersion &&
+            options.isActive(moduleId, state.activeVersion),
         )
-      }
-
-      inFlightModuleIds.add(request.moduleId)
+        if (isActive) return Object.freeze({ reloadRequired: true })
+        await clearPendingActivation(moduleId)
+        await uninstallCoordinator.uninstall(moduleId)
+        return Object.freeze({ reloadRequired: false })
+      })
+    },
+    async start() {
+      let startupError: unknown
       try {
-        await transitionCoordinator.prepareConfirmedCandidate(request)
-      } finally {
-        inFlightModuleIds.delete(request.moduleId)
+        await startupReconciler.start()
+      } catch (error) {
+        startupError = error
       }
+      try {
+        await manager.refresh()
+      } catch (refreshError) {
+        if (startupError === undefined) throw refreshError
+        options.reportRefreshError?.(refreshError)
+      }
+      if (startupError !== undefined) {
+        throw startupError instanceof Error
+          ? startupError
+          : new Error(
+              typeof startupError === 'string'
+                ? startupError
+                : 'Module startup failed',
+            )
+      }
+      return activationCoordinator.getStartupDisposition()
     },
     dispose: () => {
       disposed = true
-      startupReconciler?.dispose()
-      readinessReconciler?.dispose()
-      intentCoordinator?.dispose()
-      transitionCoordinator.dispose()
+      startupReconciler.dispose()
+      readinessReconciler.dispose()
+      intentCoordinator.dispose()
       activationCoordinator.dispose()
       verifiedArtifactRegistry.clearAll()
       coordinator.dispose()
@@ -474,24 +477,12 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     (options.platform !== 'desktop' && options.platform !== 'mobile') ||
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
-    typeof options.activationRuntime?.activate !== 'function' ||
-    (options.runtimeReservation !== undefined &&
-      (typeof options.runtimeReservation.activate !== 'function' ||
-        typeof options.runtimeReservation.runWithModuleQuiesced !==
-          'function')) ||
-    (options.intentStore !== undefined &&
-      (typeof options.intentStore.get !== 'function' ||
-        typeof options.intentStore.set !== 'function' ||
-        typeof options.intentStore.listModuleIds !== 'function' ||
-        typeof options.intentStore.subscribeAll !== 'function' ||
-        typeof options.requestReload !== 'function')) ||
-    (options.authorizeArtifactRemoval !== undefined &&
-      (typeof options.authorizeArtifactRemoval !== 'function' ||
-        options.intentStore === undefined ||
-        options.runtimeReservation === undefined)) ||
-    typeof options.transitionSettingsBackend?.capture !== 'function' ||
-    typeof options.transitionSettingsBackend?.readAtCapturedLocation !==
-      'function' ||
+    typeof options.runtimeReservation?.activate !== 'function' ||
+    typeof options.runtimeReservation?.runWithModuleQuiesced !== 'function' ||
+    typeof options.intentStore?.get !== 'function' ||
+    typeof options.intentStore?.set !== 'function' ||
+    typeof options.intentStore?.listModuleIds !== 'function' ||
+    typeof options.intentStore?.subscribeAll !== 'function' ||
     (options.activationLoader !== undefined &&
       typeof options.activationLoader.load !== 'function') ||
     (options.transitionRecoveryRealmToken !== undefined &&
@@ -513,8 +504,7 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       typeof options.reportRefreshError !== 'function') ||
     (options.reportActivationError !== undefined &&
       typeof options.reportActivationError !== 'function') ||
-    (options.requestReload !== undefined &&
-      typeof options.requestReload !== 'function') ||
+    typeof options.requestReload !== 'function' ||
     (options.reportStartupError !== undefined &&
       typeof options.reportStartupError !== 'function')
   ) {
@@ -524,15 +514,13 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
 
 function createGuardedReadinessReconciler(
   reconciler: ModuleReadinessReconciler,
-  runtime: ProductionModuleRuntimeReservation | null,
+  runtime: ProductionModuleRuntimeReservation,
 ): ProductionModuleReadinessReconciler {
   let disposed = false
   const ensureModuleReady = (moduleId: string) =>
-    runtime
-      ? runtime.runWithModuleQuiesced(moduleId, () =>
-          reconciler.ensureModuleReady(moduleId),
-        )
-      : reconciler.ensureModuleReady(moduleId)
+    runtime.runWithModuleQuiesced(moduleId, () =>
+      reconciler.ensureModuleReady(moduleId),
+    )
 
   return Object.freeze({
     ensureModuleReady,

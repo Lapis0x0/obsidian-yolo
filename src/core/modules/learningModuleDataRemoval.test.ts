@@ -1,10 +1,13 @@
 import { TFile, TFolder } from 'obsidian'
 
 import {
-  createLearningOwnedDataDescriptors,
-  createLearningOwnedDataRemovalPort,
-  isLearningOwnedDataDescriptor,
+  LearningModuleDataRemovalService,
+  type LearningModuleDataRemovalServiceOptions,
 } from './learningModuleDataRemoval'
+import {
+  managedModuleDataNamespace,
+  runExclusive,
+} from './managedModuleDataLock'
 
 const folder = (path: string, parent: TFolder | null = null): TFolder =>
   Object.assign(new TFolder(), {
@@ -28,156 +31,223 @@ const file = (path: string, parent: TFolder): TFile => {
 
 function fixture() {
   const entries = new Map<string, TFile | TFolder>()
-  const learning = folder('Root/learning')
-  const project = folder('Root/learning/React-3', learning)
-  const nested = folder('Root/learning/React-3/chapter', project)
-  const index = file('Root/learning/React-3/index.md', project)
-  const unmanaged = folder('Root/learning/PersonalNotes', learning)
-  learning.children.push(project, unmanaged)
-  project.children.push(index, nested)
-  const srs = folder('Root/.yolo_json_db/learning-srs')
-  const srsFile = file('Root/.yolo_json_db/learning-srs/React-3.json', srs)
-  const foreignSrs = file('Root/.yolo_json_db/learning-srs/readme.md', srs)
-  srs.children.push(srsFile, foreignSrs)
-  const journals = folder('Root/.yolo_json_db/anki-import-journals')
-  const journal = file(
-    'Root/.yolo_json_db/anki-import-journals/123e4567-e89b-42d3-a456-426614174000.json',
-    journals,
-  )
-  const foreignJournal = file(
-    'Root/.yolo_json_db/anki-import-journals/notes.json',
-    journals,
-  )
-  journals.children.push(journal, foreignJournal)
-  for (const entry of [
-    learning,
-    project,
-    index,
-    nested,
-    unmanaged,
-    srs,
-    srsFile,
-    foreignSrs,
-    journals,
-    journal,
-    foreignJournal,
-  ]) {
-    entries.set(entry.path, entry)
+  const local = new Map<string, string | null>()
+  let baseDir = 'Root'
+
+  const addTree = (root: string) => {
+    const learning = folder(`${root}/learning`)
+    const project = folder(`${root}/learning/React-3`, learning)
+    const index = file(`${project.path}/index.md`, project)
+    learning.children.push(project)
+    project.children.push(index)
+    const srs = folder(`${root}/.yolo_json_db/learning-srs`)
+    const srsFile = file(`${srs.path}/React-3.json`, srs)
+    srs.children.push(srsFile)
+    const journals = folder(`${root}/.yolo_json_db/anki-import-journals`)
+    const journal = file(
+      `${journals.path}/123e4567-e89b-42d3-a456-426614174000.json`,
+      journals,
+    )
+    journals.children.push(journal)
+    const settings = folder(`${root}/.yolo_json_db/module-settings`)
+    const settingsFile = file(`${settings.path}/learning.json`, settings)
+    settings.children.push(settingsFile)
+    for (const entry of [
+      learning,
+      project,
+      index,
+      srs,
+      srsFile,
+      journals,
+      journal,
+      settings,
+      settingsFile,
+    ]) {
+      entries.set(entry.path, entry)
+    }
+    return { journal, project, settingsFile, srsFile }
   }
-  const trashFile = jest.fn(async () => undefined)
-  const deleteEntry = jest.fn(async () => undefined)
-  const app = {
-    vault: {
-      getAbstractFileByPath: (path: string) => entries.get(path) ?? null,
-      delete: deleteEntry,
+
+  const original = addTree(baseDir)
+  local.set('module-private-device-local/learning/anki-runtime', null)
+  const trashFile = jest.fn(async (entry: TFile | TFolder) => {
+    entries.delete(entry.path)
+  })
+  const deleteEntry = jest.fn(async (entry: TFile | TFolder) => {
+    entries.delete(entry.path)
+  })
+  const events: string[] = []
+  const options: LearningModuleDataRemovalServiceOptions = {
+    app: {
+      vault: {
+        getAbstractFileByPath: (path: string) => entries.get(path) ?? null,
+        delete: deleteEntry,
+      },
+      fileManager: { trashFile },
+    } as never,
+    getSettings: () => ({ yolo: { baseDir } }),
+    deviceLocal: {
+      mkdir: async (path) => {
+        local.set(path, null)
+      },
+      read: async (path) => {
+        const value = local.get(path)
+        if (typeof value !== 'string') throw new Error(`Missing ${path}`)
+        return value
+      },
+      remove: async (path) => {
+        local.delete(path)
+      },
+      stat: async (path) =>
+        local.has(path)
+          ? ({
+              type: local.get(path) === null ? 'folder' : 'file',
+            } as never)
+          : null,
+      write: async (path, value) => {
+        local.set(path, value)
+      },
     },
-    fileManager: { trashFile },
+    intentCoordinator: {
+      uninstall: async () => {
+        events.push('intent')
+      },
+    },
+    intentStore: {
+      get: async () => ({ desiredInstalled: false, enabled: false }),
+    },
+    artifactUninstaller: {
+      uninstall: async () => {
+        events.push('artifacts')
+      },
+    },
+    runtime: {
+      runWithModuleQuiesced: async (_moduleId, operation) => {
+        events.push('quiesced')
+        return operation()
+      },
+    },
   }
-  return { app, deleteEntry, entries, journal, project, srsFile, trashFile }
+
+  return {
+    addTree,
+    deleteEntry,
+    entries,
+    events,
+    local,
+    options,
+    original,
+    setBaseDir: (value: string) => {
+      baseDir = value
+    },
+    trashFile,
+  }
 }
 
-describe('Learning Host-owned data removal policy', () => {
-  it('enumerates only direct canonical owned data and known private state', async () => {
+describe('LearningModuleDataRemovalService', () => {
+  it('uninstalls first, trashes canonical projects, and exactly deletes sidecars', async () => {
     const value = fixture()
-    const descriptors = await createLearningOwnedDataDescriptors(
-      value.app as never,
-      { yolo: { baseDir: 'Root' } },
-      { stat: async () => ({ type: 'folder', size: 0, ctime: 0, mtime: 0 }) },
+    const service = new LearningModuleDataRemovalService(value.options)
+
+    await service.uninstallAndRemoveData()
+
+    expect(value.events).toEqual(['intent', 'artifacts', 'quiesced'])
+    expect(value.trashFile).toHaveBeenCalledWith(value.original.project)
+    expect(value.deleteEntry).toHaveBeenCalledWith(value.original.srsFile, true)
+    expect(value.deleteEntry).toHaveBeenCalledWith(value.original.journal, true)
+    expect(value.deleteEntry).toHaveBeenCalledWith(
+      value.original.settingsFile,
+      true,
     )
-
-    expect(descriptors).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'learning-canonical-content',
-          projectSlug: 'React-3',
-          path: value.project.path,
-          deletion: 'trash',
-        }),
-        expect.objectContaining({
-          kind: 'learning-srs',
-          projectSlug: 'React-3',
-          path: value.srsFile.path,
-          deletion: 'exact',
-        }),
-        expect.objectContaining({
-          kind: 'learning-import-journal',
-          path: value.journal.path,
-          deletion: 'exact',
-        }),
-        expect.objectContaining({
-          kind: 'config-document',
-          path: 'Root/.yolo_json_db/module-settings/learning.json',
-        }),
-        expect.objectContaining({
-          kind: 'module-private-namespace',
-          namespace: 'anki-runtime',
-        }),
-      ]),
+    expect(value.local.has('module-data-removal-journals/learning.json')).toBe(
+      false,
     )
-    expect(JSON.stringify(descriptors)).not.toContain('chapter')
-    expect(JSON.stringify(descriptors)).not.toContain('PersonalNotes')
-    expect(JSON.stringify(descriptors)).not.toContain('readme.md')
-    expect(JSON.stringify(descriptors)).not.toContain('notes.json')
-  })
-
-  it('trashes project content but permanently deletes exact sidecars', async () => {
-    const value = fixture()
-    const removePrivate = jest.fn(async () => undefined)
-    const port = createLearningOwnedDataRemovalPort(value.app as never, {
-      remove: removePrivate,
-    })
-
-    await port.remove({
-      kind: 'learning-canonical-content',
-      moduleId: 'learning',
-      projectSlug: 'React-3',
-      path: value.project.path,
-      deletion: 'trash',
-    })
-    await port.remove({
-      kind: 'learning-srs',
-      moduleId: 'learning',
-      projectSlug: 'React-3',
-      path: value.srsFile.path,
-      deletion: 'exact',
-    })
-    await port.remove({
-      kind: 'module-private-namespace',
-      moduleId: 'learning',
-      locality: 'device-local',
-      namespace: 'anki-runtime',
-      deletion: 'exact',
-    })
-
-    expect(value.trashFile).toHaveBeenCalledWith(value.project)
-    expect(value.deleteEntry).toHaveBeenCalledWith(value.srsFile, true)
-    expect(removePrivate).toHaveBeenCalledWith(
-      'module-private-device-local/learning/anki-runtime',
-    )
-  })
-
-  it('independently binds approved descriptors to the current managed roots', () => {
-    const descriptor = {
-      kind: 'learning-srs' as const,
-      moduleId: 'learning' as const,
-      projectSlug: 'React-3',
-      path: 'Root/.yolo_json_db/learning-srs/React-3.json',
-      deletion: 'exact' as const,
-    }
-
     expect(
-      isLearningOwnedDataDescriptor(descriptor, {
-        yolo: { baseDir: 'Root' },
-      }),
-    ).toBe(true)
-    expect(
-      isLearningOwnedDataDescriptor(
-        {
-          ...descriptor,
-          path: 'Other/.yolo_json_db/learning-srs/React-3.json',
-        },
-        { yolo: { baseDir: 'Root' } },
-      ),
+      value.local.has('module-private-device-local/learning/anki-runtime'),
     ).toBe(false)
+  })
+
+  it('keeps a logical journal after failure and resumes against the current baseDir', async () => {
+    const value = fixture()
+    let failed = false
+    const resumedDelete = jest.fn(async (entry: TFile) => {
+      if (entry.path.endsWith('/learning-srs/React-3.json') && !failed) {
+        failed = true
+        throw new Error('SRS removal failed')
+      }
+      value.entries.delete(entry.path)
+    })
+    value.options.app.vault.delete = resumedDelete
+    const service = new LearningModuleDataRemovalService(value.options)
+
+    await expect(service.uninstallAndRemoveData()).rejects.toThrow(
+      'SRS removal failed',
+    )
+    const journal = JSON.parse(
+      value.local.get('module-data-removal-journals/learning.json') as string,
+    )
+    expect(journal.targets[0]).toEqual({
+      kind: 'project',
+      projectSlug: 'React-3',
+    })
+    expect(JSON.stringify(journal)).not.toContain('Root/learning')
+
+    value.setBaseDir('Moved')
+    const moved = value.addTree('Moved')
+    await service.uninstallAndRemoveData()
+
+    expect(resumedDelete).toHaveBeenCalledWith(moved.srsFile, true)
+    expect(value.local.has('module-data-removal-journals/learning.json')).toBe(
+      false,
+    )
+  })
+
+  it('fails closed when an exact target resolves to the wrong file type', async () => {
+    const value = fixture()
+    const wrong = folder('Root/.yolo_json_db/module-settings/learning.json')
+    value.entries.set(wrong.path, wrong)
+
+    await expect(
+      new LearningModuleDataRemovalService(
+        value.options,
+      ).uninstallAndRemoveData(),
+    ).rejects.toThrow('not a file')
+    expect(value.local.has('module-data-removal-journals/learning.json')).toBe(
+      true,
+    )
+  })
+
+  it('holds the shared managed-data lock for the complete deletion plan', async () => {
+    const value = fixture()
+    let releaseDelete!: () => void
+    const blockedDelete = new Promise<void>((resolve) => {
+      releaseDelete = resolve
+    })
+    const originalDelete = value.options.app.vault.delete.bind(
+      value.options.app.vault,
+    )
+    value.options.app.vault.delete = jest.fn(async (entry: TFile) => {
+      if (entry.path.endsWith('/learning-srs/React-3.json')) {
+        await blockedDelete
+      }
+      await originalDelete(entry, true)
+    })
+    const service = new LearningModuleDataRemovalService(value.options)
+    const removal = service.uninstallAndRemoveData()
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+    const competing = jest.fn(async () => undefined)
+    const queued = runExclusive(
+      value.options.app.vault,
+      managedModuleDataNamespace('learning', 'managed-data'),
+      competing,
+    )
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(competing).not.toHaveBeenCalled()
+
+    releaseDelete()
+    await removal
+    await queued
+    expect(competing).toHaveBeenCalledTimes(1)
   })
 })

@@ -167,10 +167,9 @@ export class ModuleReadinessReconciler {
       moduleId,
       platform: this.options.platform,
       activeVersion: null,
-      downloadedCandidate: candidate.version,
-      pendingVersion: null,
+      pendingVersion: candidate.version,
+      activationPhase: 'pending',
       readyVersions: { [candidate.version]: candidate },
-      transition: null,
     })
     // Once the durable commit starts, dispose must not report cancellation for
     // an installation that may already have become visible.
@@ -183,7 +182,7 @@ export class ModuleReadinessReconciler {
       status: 'ready',
       versions: [candidate.version],
       repairedVersions: repaired ? [candidate.version] : [],
-      installedVersion: committed.downloadedCandidate ?? candidate.version,
+      installedVersion: committed.pendingVersion ?? candidate.version,
     })
   }
 
@@ -367,11 +366,9 @@ function referencedVersions(state: ModuleDeviceState): readonly string[] {
   return Object.freeze(
     [
       ...new Set(
-        [
-          state.activeVersion,
-          state.pendingVersion,
-          state.downloadedCandidate,
-        ].filter((version): version is string => version !== null),
+        [state.activeVersion, state.pendingVersion].filter(
+          (version): version is string => version !== null,
+        ),
       ),
     ].sort(),
   )
@@ -423,7 +420,6 @@ function snapshotState(state: ModuleDeviceState): ModuleDeviceState {
         ]),
       ),
     ),
-    transition: state.transition,
   })
 }
 

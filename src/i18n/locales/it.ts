@@ -588,38 +588,22 @@ export const it: TranslationKeys = {
       availableVersion: 'Aggiornamento {version}',
       install: 'Installa',
       update: 'Aggiorna',
+      installAndReload: 'Installa e ricarica',
+      updateAndReload: 'Aggiorna e ricarica',
       installing: 'Installazione…',
       updating: 'Aggiornamento…',
-      applyAndReload: 'Applica e ricarica',
-      preparing: 'Preparazione…',
       reload: 'Ricarica',
       reloading: 'Ricaricamento…',
       confirmInstallTitle: 'Installa {name}',
       confirmUpdateTitle: 'Aggiorna {name}',
       confirmMessage:
-        'Conferma la versione esatta del modulo prima del download.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati e verificati. Questa versione non verrà ancora attivata.',
-      confirmApplyTitle: 'Applica {name}',
-      confirmApplyMessage:
-        'Conferma la versione verificata del modulo da attivare dopo il ricaricamento.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nYolo preparerà la versione in modo persistente, quindi ricaricherà Obsidian. L’attivazione avverrà al prossimo avvio.',
-      applyWithdrawnWarning:
-        'Attenzione: questo modulo non è più presente nel catalogo ufficiale corrente. La versione scaricata rimane verificata localmente, ma potrebbe essere stata ritirata.',
-      applyCatalogUnavailableWarning:
-        'Attenzione: il catalogo ufficiale non è disponibile, quindi non è possibile confermare la disponibilità corrente di questa versione.',
+        'Conferma la versione esatta del modulo.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati e verificati, quindi Obsidian verrà ricaricato per attivare questa versione.',
       candidateUnavailable:
         'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
-      transitionCandidateUnavailable:
-        'Al momento non è possibile applicare {name}. La versione scaricata potrebbe essere cambiata o potrebbe essere in corso un’altra operazione.',
-      installSuccess:
-        'Scaricato e verificato {name} {version}. Non è ancora attivo.',
-      updateSuccess:
-        "Scaricato e verificato l'aggiornamento {name} {version}. Non è ancora attivo.",
       installError: 'Impossibile installare {name}: {error}',
       updateError: 'Impossibile aggiornare {name}: {error}',
-      applyError: 'Impossibile preparare {name} per l’attivazione: {error}',
       reloadError:
         'La versione {version} di {name} è pronta, ma Obsidian non è stato ricaricato automaticamente: {error}. Ricarica Obsidian per continuare.',
-      readyToApplyDetail:
-        'La versione {version} è stata scaricata, verificata ed è pronta.',
       activationPendingDetail:
         'La versione {version} è pronta. Ricarica per continuare l’attivazione o il ripristino.',
       intentLabel: 'Intento',
@@ -641,11 +625,8 @@ export const it: TranslationKeys = {
         dataSchema: 'schema dei dati',
       },
       retry: 'Riprova',
-      actionReloadSuccess:
-        'L’intento per {name} è stato salvato. Ricarica Obsidian per applicarlo.',
       actionError: 'Impossibile modificare {name}: {error}',
       actionSuccess: {
-        install: '{name} è installato e pronto su questo dispositivo.',
         enable: '{name} è contrassegnato come abilitato.',
         disable:
           '{name} è contrassegnato come disabilitato; file e dati sono stati conservati.',
@@ -662,9 +643,6 @@ export const it: TranslationKeys = {
         uninstallBusy: 'Disinstallazione…',
       },
       confirmProduct: {
-        installTitle: 'Installa {name}',
-        installMessage:
-          'Installare {name}? Yolo salverà prima l’intento di installazione, quindi scaricherà e verificherà i file compatibili per questo dispositivo.',
         uninstallTitle: 'Disinstalla {name}',
         uninstallMessage:
           'Disinstallare {name}? L’intento di installazione verrà prima cancellato. Se il modulo è attivo, file e dati saranno conservati fino al riavvio di Obsidian. Altrimenti verranno rimossi in sicurezza solo i file del programma e lo stato di installazione locali.',
@@ -675,7 +653,6 @@ export const it: TranslationKeys = {
         active: 'Attivo',
         disabled: 'Disabilitato',
         updateAvailable: 'Aggiornamento disponibile',
-        readyToApply: 'Pronto da applicare',
         activationPending: 'Attivazione in attesa',
         failed: 'Non riuscito',
       },

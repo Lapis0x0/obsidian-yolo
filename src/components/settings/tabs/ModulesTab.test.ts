@@ -7,14 +7,11 @@ import type {
   ConfirmedModuleCandidate,
   ModuleRecord,
 } from '../../../core/modules'
+import type { ModuleService } from '../../../core/modules/moduleService'
 
 import {
-  type ModuleProductCapabilities,
   executeModuleProductAction,
   getModuleProductActions,
-  hasModuleProductCapabilities,
-  prepareModuleTransitionForReload,
-  requiresModuleProductConfirmation,
 } from './ModulesTab'
 
 function moduleRecord(
@@ -29,18 +26,6 @@ function moduleRecord(
   }
 }
 
-function capabilities(): jest.Mocked<ModuleProductCapabilities> {
-  return {
-    getModuleInstallCandidate: jest.fn(),
-    hasModuleProductCapabilities: jest.fn(() => true),
-    installConfirmedModuleCandidate: jest.fn().mockResolvedValue(undefined),
-    setModuleDesiredInstalled: jest.fn().mockResolvedValue(undefined),
-    setModuleEnabled: jest.fn().mockResolvedValue(undefined),
-    uninstallInactiveModule: jest.fn().mockResolvedValue(undefined),
-    uninstallAndRemoveModuleData: jest.fn().mockResolvedValue(undefined),
-  }
-}
-
 function candidate(
   expectedVersion = '1.0.0',
   expectedManifestSha256 = 'a'.repeat(64),
@@ -49,6 +34,16 @@ function candidate(
     expectedManifestSha256,
     expectedVersion,
     moduleId: 'notes',
+  }
+}
+
+function service(): jest.Mocked<
+  Pick<ModuleService, 'install' | 'setEnabled' | 'uninstall'>
+> {
+  return {
+    install: jest.fn().mockResolvedValue({ reloadRequired: true }),
+    setEnabled: jest.fn().mockResolvedValue({ reloadRequired: true }),
+    uninstall: jest.fn().mockResolvedValue({ reloadRequired: false }),
   }
 }
 
@@ -89,237 +84,83 @@ describe('ModulesTab product actions', () => {
     expect(getModuleProductActions(module, true)).toEqual(expected)
   })
 
-  it.each(['development', 'bundled'])(
-    'hides product actions in %s mode even when product methods exist',
-    () => {
-      const host = capabilities()
-      host.hasModuleProductCapabilities = jest.fn(() => false)
-
-      expect(hasModuleProductCapabilities(host)).toBe(false)
-      expect(
-        getModuleProductActions(moduleRecord({ id: 'notes' }), false),
-      ).toEqual([])
-    },
-  )
-
-  it('does not infer product availability from methods alone', () => {
-    const host = capabilities()
-    delete host.hasModuleProductCapabilities
-
-    expect(hasModuleProductCapabilities(host)).toBe(false)
-    expect(getModuleProductActions(moduleRecord({ id: 'notes' }))).toEqual([])
-  })
-
-  it('shows the unchanged product actions in production mode', () => {
-    const host = capabilities()
-
-    expect(hasModuleProductCapabilities(host)).toBe(true)
+  it('hides product actions when official management is unavailable', () => {
     expect(
-      getModuleProductActions(moduleRecord({ id: 'notes' }), true),
-    ).toEqual(['install'])
+      getModuleProductActions(moduleRecord({ id: 'notes' }), false),
+    ).toEqual([])
   })
 
-  it('hides and rejects unsafe product actions for incompatible modules', async () => {
-    const host = capabilities()
-    const incompatible = moduleRecord({
+  it('hides install and enable for incompatible modules', () => {
+    const unavailable = moduleRecord({
       compatibilityIssues: [{ kind: 'host-api' }],
       id: 'notes',
     })
-
-    expect(getModuleProductActions(incompatible, true)).toEqual([])
-    await expect(
-      executeModuleProductAction(host, incompatible, 'install', candidate()),
-    ).rejects.toThrow('Module notes is incompatible: host-api')
-    expect(host.setModuleDesiredInstalled).not.toHaveBeenCalled()
-  })
-
-  it('requires confirmation only for install and uninstall', () => {
-    expect(requiresModuleProductConfirmation('install')).toBe(true)
-    expect(requiresModuleProductConfirmation('uninstall')).toBe(true)
-    expect(requiresModuleProductConfirmation('enable')).toBe(false)
-    expect(requiresModuleProductConfirmation('disable')).toBe(false)
-  })
-
-  it('establishes install intent before submitting the confirmed candidate', async () => {
-    const host = capabilities()
-    const confirmedCandidate = candidate()
-    await executeModuleProductAction(
-      host,
-      moduleRecord({ id: 'notes' }),
-      'install',
-      confirmedCandidate,
-    )
-
-    expect(host.setModuleDesiredInstalled).toHaveBeenCalledWith('notes', true)
-    expect(host.installConfirmedModuleCandidate).toHaveBeenCalledWith(
-      confirmedCandidate,
-    )
-    expect(
-      host.setModuleDesiredInstalled.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      host.installConfirmedModuleCandidate.mock.invocationCallOrder[0],
-    )
-  })
-
-  it('submits the candidate fixed at confirmation when the catalog changes', async () => {
-    const host = capabilities()
-    const confirmedCandidate = candidate('1.0.0', 'a'.repeat(64))
-    host.getModuleInstallCandidate
-      .mockReturnValueOnce(confirmedCandidate)
-      .mockReturnValue(candidate('2.0.0', 'b'.repeat(64)))
-
-    const candidateAtConfirmation = host.getModuleInstallCandidate('notes')
-    expect(candidateAtConfirmation).toBe(confirmedCandidate)
-
-    await executeModuleProductAction(
-      host,
-      moduleRecord({ id: 'notes' }),
-      'install',
-      candidateAtConfirmation,
-    )
-
-    expect(host.getModuleInstallCandidate).toHaveBeenCalledTimes(1)
-    expect(host.installConfirmedModuleCandidate).toHaveBeenCalledWith(
-      confirmedCandidate,
-    )
-    expect(host.installConfirmedModuleCandidate).not.toHaveBeenCalledWith(
-      candidate('2.0.0', 'b'.repeat(64)),
-    )
-  })
-
-  it('enables the module only after durable transition preparation', async () => {
-    const host = capabilities()
-    const prepareConfirmedModuleTransition = jest
-      .fn()
-      .mockResolvedValue(undefined)
-    const confirmedCandidate = candidate()
-
-    await prepareModuleTransitionForReload(
-      { ...host, prepareConfirmedModuleTransition },
-      confirmedCandidate,
-    )
-
-    expect(prepareConfirmedModuleTransition).toHaveBeenCalledWith(
-      confirmedCandidate,
-    )
-    expect(host.setModuleEnabled).toHaveBeenCalledWith('notes', true)
-    expect(
-      prepareConfirmedModuleTransition.mock.invocationCallOrder[0],
-    ).toBeLessThan(host.setModuleEnabled.mock.invocationCallOrder[0])
-  })
-
-  it('does not enable a module when transition preparation fails', async () => {
-    const host = capabilities()
-    const prepareConfirmedModuleTransition = jest
-      .fn()
-      .mockRejectedValue(new Error('prepare failed'))
-
-    await expect(
-      prepareModuleTransitionForReload(
-        { ...host, prepareConfirmedModuleTransition },
-        candidate(),
-      ),
-    ).rejects.toThrow('prepare failed')
-    expect(host.setModuleEnabled).not.toHaveBeenCalled()
-  })
-
-  it('changes only enable intent and requires reload', async () => {
-    const host = capabilities()
-    const module = moduleRecord({
+    const disabled = moduleRecord({
+      compatibilityIssues: [{ kind: 'data-schema' }],
+      desiredInstalled: true,
+      enabled: false,
       id: 'notes',
-      installed: { active: true, id: 'notes', version: '1.0.0' },
-      status: 'active',
+      installed: { id: 'notes', version: '1.0.0' },
     })
 
-    await expect(
-      executeModuleProductAction(host, module, 'disable'),
-    ).resolves.toEqual({ reloadRequired: true })
-    expect(host.setModuleEnabled).toHaveBeenCalledWith('notes', false)
-    expect(host.setModuleDesiredInstalled).not.toHaveBeenCalled()
-    expect(host.uninstallInactiveModule).not.toHaveBeenCalled()
+    expect(getModuleProductActions(unavailable, true)).toEqual([])
+    expect(getModuleProductActions(disabled, true)).toEqual(['uninstall'])
   })
 
-  it('clears uninstall intent but keeps an active module for reload', async () => {
-    const host = capabilities()
-    const active = moduleRecord({
-      id: 'notes',
-      installed: { active: true, id: 'notes', version: '1.0.0' },
-      status: 'active',
-    })
-
-    await expect(
-      executeModuleProductAction(host, active, 'uninstall'),
-    ).resolves.toEqual({ reloadRequired: true })
-    expect(host.setModuleDesiredInstalled).toHaveBeenCalledWith('notes', false)
-    expect(host.uninstallInactiveModule).not.toHaveBeenCalled()
-  })
-
-  it('clears intent before safely uninstalling an inactive module', async () => {
-    const host = capabilities()
-    const inactive = moduleRecord({
-      id: 'notes',
-      installed: { active: false, id: 'notes', version: '1.0.0' },
-      status: 'disabled',
-    })
-
-    await executeModuleProductAction(host, inactive, 'uninstall')
-    expect(
-      host.setModuleDesiredInstalled.mock.invocationCallOrder[0],
-    ).toBeLessThan(host.uninstallInactiveModule.mock.invocationCallOrder[0])
-  })
-
-  it('surfaces a failed candidate installation and allows a real retry', async () => {
-    const host = capabilities()
-    host.installConfirmedModuleCandidate
-      .mockRejectedValueOnce(new Error('network unavailable'))
-      .mockResolvedValueOnce(undefined)
-    const available = moduleRecord({ id: 'notes' })
-    const confirmedCandidate = candidate()
+  it('submits the exact candidate captured by the confirmation', async () => {
+    const modules = service()
+    const confirmed = candidate('1.0.0', 'a'.repeat(64))
 
     await expect(
       executeModuleProductAction(
-        host,
-        available,
-        'install',
-        confirmedCandidate,
-      ),
-    ).rejects.toThrow('network unavailable')
-    await expect(
-      executeModuleProductAction(
-        host,
-        available,
-        'install',
-        confirmedCandidate,
-      ),
-    ).resolves.toEqual({ reloadRequired: false })
-    expect(host.installConfirmedModuleCandidate).toHaveBeenCalledTimes(2)
-    expect(host.setModuleDesiredInstalled).toHaveBeenCalledTimes(2)
-  })
-
-  it('fails explicitly when a required host capability is absent', async () => {
-    await expect(
-      executeModuleProductAction(
-        { hasModuleProductCapabilities: () => true },
+        modules,
         moduleRecord({ id: 'notes' }),
         'install',
-        candidate(),
+        confirmed,
       ),
-    ).rejects.toThrow(
-      'Module host capability is unavailable: setModuleDesiredInstalled',
-    )
+    ).resolves.toEqual({ reloadRequired: true })
+    expect(modules.install).toHaveBeenCalledTimes(1)
+    expect(modules.install).toHaveBeenCalledWith(confirmed)
   })
 
-  it('rejects product actions when the host marks them unavailable', async () => {
-    const host = capabilities()
-    host.hasModuleProductCapabilities = jest.fn(() => false)
+  it('rejects install without a matching confirmed candidate', async () => {
+    const modules = service()
 
     await expect(
       executeModuleProductAction(
-        host,
+        modules,
         moduleRecord({ id: 'notes' }),
         'install',
+        { ...candidate(), moduleId: 'other' },
       ),
-    ).rejects.toThrow('Module product capabilities are unavailable')
-    expect(host.setModuleDesiredInstalled).not.toHaveBeenCalled()
+    ).rejects.toThrow('No confirmed install candidate is available for notes')
+    expect(modules.install).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['enable', true],
+    ['disable', false],
+  ] as const)('delegates %s to the service', async (action, enabled) => {
+    const modules = service()
+
+    await executeModuleProductAction(
+      modules,
+      moduleRecord({ id: 'notes' }),
+      action,
+    )
+
+    expect(modules.setEnabled).toHaveBeenCalledWith('notes', enabled)
+  })
+
+  it('delegates the complete uninstall decision to the service', async () => {
+    const modules = service()
+
+    await executeModuleProductAction(
+      modules,
+      moduleRecord({ id: 'notes' }),
+      'uninstall',
+    )
+
+    expect(modules.uninstall).toHaveBeenCalledWith('notes')
   })
 })

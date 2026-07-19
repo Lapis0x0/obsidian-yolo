@@ -132,12 +132,10 @@ function resolveStatus(
   installed: InstalledModuleState | undefined,
 ): ModuleStatus {
   if (!installed) return 'available'
-  if (installed.pendingVersion || installed.transitionPhase) {
-    return 'activation-pending'
-  }
-  if (installed.disabled) return 'disabled'
-  if (installed.candidateVersion) return 'ready-to-apply'
   if (installed.error) return 'failed'
+  if (installed.pendingVersion || installed.activationPhase)
+    return 'activation-pending'
+  if (installed.disabled) return 'disabled'
   if (catalog && compareVersions(installed.version, catalog.version) < 0) {
     return 'update-available'
   }
@@ -175,14 +173,11 @@ function buildRecords(
         ...(catalog && status === 'update-available'
           ? { availableVersion: catalog.version }
           : {}),
-        ...(installed?.candidateVersion
-          ? { candidateVersion: installed.candidateVersion }
-          : {}),
         ...(installed?.pendingVersion
           ? { pendingVersion: installed.pendingVersion }
           : {}),
-        ...(installed?.transitionPhase
-          ? { transitionPhase: installed.transitionPhase }
+        ...(installed?.activationPhase
+          ? { activationPhase: installed.activationPhase }
           : {}),
         ...(installed?.error ? { error: installed.error } : {}),
         ...(catalog?.compatibilityIssues

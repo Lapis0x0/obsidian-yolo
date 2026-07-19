@@ -540,35 +540,22 @@ export const zh: TranslationKeys = {
       availableVersion: '可更新至 {version}',
       install: '安装',
       update: '更新',
+      installAndReload: '安装并重载',
+      updateAndReload: '更新并重载',
       installing: '正在安装…',
       updating: '正在更新…',
-      applyAndReload: '应用并重载',
-      preparing: '正在准备…',
       reload: '重载',
       reloading: '正在重载…',
       confirmInstallTitle: '安装 {name}',
       confirmUpdateTitle: '更新 {name}',
       confirmMessage:
-        '下载前请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，但此版本暂时不会启用。',
-      confirmApplyTitle: '应用 {name}',
-      confirmApplyMessage:
-        '请确认重载后要启用的已校验模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\nYOLO 会先持久化准备此版本，再重载 Obsidian；模块将在下次启动期间启用。',
-      applyWithdrawnWarning:
-        '警告：此模块已不在当前官方目录中。已下载版本仍通过本地校验，但可能已被撤回。',
-      applyCatalogUnavailableWarning:
-        '警告：当前无法访问官方目录，因此无法确认此版本目前是否仍然可用。',
+        '请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，随后 Obsidian 会重载以启用此版本。',
       candidateUnavailable:
         '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
-      transitionCandidateUnavailable:
-        '目前无法应用 {name}。已下载版本可能已经变化，或另一个操作正在进行。',
-      installSuccess: '已下载并校验 {name} {version}，但尚未启用。',
-      updateSuccess: '已下载并校验 {name} {version} 更新，但尚未启用。',
       installError: '无法安装 {name}：{error}',
       updateError: '无法更新 {name}：{error}',
-      applyError: '无法准备启用 {name}：{error}',
       reloadError:
         '{name} {version} 已准备完成，但无法自动重载 Obsidian：{error}。请手动重载 Obsidian 以继续。',
-      readyToApplyDetail: '已下载并校验版本 {version}，可以应用。',
       activationPendingDetail:
         '版本 {version} 已准备完成。重载以继续启用或恢复。',
       intentLabel: '操作意图',
@@ -590,10 +577,8 @@ export const zh: TranslationKeys = {
         dataSchema: '数据架构',
       },
       retry: '重试',
-      actionReloadSuccess: '已保存 {name} 的操作意图。重载 Obsidian 后生效。',
       actionError: '无法更改 {name}：{error}',
       actionSuccess: {
-        install: '{name} 已安装并在本机就绪。',
         enable: '已将 {name} 标记为启用。',
         disable: '已将 {name} 标记为停用；模块文件和数据均已保留。',
         uninstall: '已从本机安全卸载 {name}。',
@@ -609,9 +594,6 @@ export const zh: TranslationKeys = {
         uninstallBusy: '正在卸载…',
       },
       confirmProduct: {
-        installTitle: '安装 {name}',
-        installMessage:
-          '要安装 {name} 吗？YOLO 会先保存安装意图，再为本机下载并校验兼容的模块文件。',
         uninstallTitle: '卸载 {name}',
         uninstallMessage:
           '要卸载 {name} 吗？YOLO 会先清除安装意图。如果模块仍在运行，其文件和数据会保留到 Obsidian 重载；如果模块未运行，则只安全移除本机模块程序文件和安装状态。',
@@ -622,7 +604,6 @@ export const zh: TranslationKeys = {
         active: '已启用',
         disabled: '已停用',
         updateAvailable: '有可用更新',
-        readyToApply: '待应用',
         activationPending: '等待重载',
         failed: '失败',
       },

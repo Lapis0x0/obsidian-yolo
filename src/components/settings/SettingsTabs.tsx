@@ -45,6 +45,14 @@ type SettingsTab = {
   component: FC<SettingsTabsProps>
 }
 
+const ModulesSettingsTab: FC<SettingsTabsProps> = ({ app, plugin }) => (
+  <ModulesTab
+    app={app}
+    service={plugin.getModuleService()}
+    removeLearningData={() => plugin.uninstallAndRemoveLearningData()}
+  />
+)
+
 const SETTINGS_TABS: SettingsTab[] = [
   {
     id: 'models',
@@ -74,7 +82,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   {
     id: 'modules',
     labelKey: 'settings.tabs.modules',
-    component: ModulesTab,
+    component: ModulesSettingsTab,
   },
   {
     id: 'others',

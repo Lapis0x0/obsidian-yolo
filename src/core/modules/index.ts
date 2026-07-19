@@ -47,28 +47,12 @@ export {
   type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
 export {
-  ModuleDataRemovalCoordinator,
-  type LearningCanonicalContentDataDescriptor,
-  type LearningImportJournalDataDescriptor,
-  type LearningSrsDataDescriptor,
-  type ModuleConfigDocumentDataDescriptor,
-  type ModuleDataOwnershipPort,
-  type ModuleDataRemovalAuthorizationPort,
-  type ModuleDataRemovalAuthorizationRequest,
-  type ModuleDataRemovalCoordinatorOptions,
-  type ModuleDataRemovalJournal,
-  type ModuleDataRemovalJournalPort,
-  type ModuleDataRemovalResult,
-  type ModuleOwnedDataDescriptor,
-  type ModuleOwnedDataRemovalPort,
-  type ModulePrivateNamespaceDataDescriptor,
-} from './moduleDataRemovalCoordinator'
-export {
-  createLearningOwnedDataDescriptors,
-  createLearningOwnedDataRemovalPort,
-  createModuleDataRemovalJournalPort,
-  isLearningOwnedDataDescriptor,
+  LearningModuleDataRemovalService,
+  type LearningDataRemovalJournal,
+  type LearningDataRemovalTarget,
+  type LearningModuleDataRemovalServiceOptions,
 } from './learningModuleDataRemoval'
+export { type ModuleOperationResult, type ModuleService } from './moduleService'
 export {
   ModuleIntentStore,
   ModuleIntentWriteUncertainError,
@@ -213,20 +197,6 @@ export {
   type ModuleDeviceStateStoreBackend,
   type ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
-export {
-  MAX_MODULE_TRANSITION_SETTINGS_SNAPSHOT_BYTES,
-  advanceModuleTransitionPhase,
-  hashModuleTransitionSettingsSnapshot,
-  parseModuleTransitionJournal,
-  parseModuleTransitionSettingsLocation,
-  verifyModuleTransitionJournalSnapshot,
-  type ModuleTransitionJournal,
-  type ModuleTransitionJournalBinding,
-  type ModuleTransitionPhase,
-  type ModuleTransitionSettingsLocation,
-  type ModuleTransitionSettingsSnapshot,
-  type SnapshotVerifiedModuleTransitionJournal,
-} from './moduleTransitionJournal'
 export { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 export {
   OfficialModuleCatalogSource,
@@ -354,14 +324,10 @@ export {
 export {
   createObsidianModuleConfigBackendFactory,
   createObsidianModuleConfigCreateIfAbsent,
-  createObsidianModuleTransitionSettingsBackend,
-  type CapturedModuleSettingsLocation,
-  type CapturedModuleTransitionSettings,
   type ObsidianModuleConfigBackendFactoryOptions,
   type ObsidianModuleConfigBackendFactory,
   type ObsidianModuleConfigCreateIfAbsent,
   type ObsidianModuleConfigSettings,
-  type ObsidianModuleTransitionSettingsBackend,
 } from './obsidianModuleConfigBackend'
 export {
   handoffLearningLegacySettings,

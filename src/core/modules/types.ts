@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import type { ModuleConfigV1 } from './moduleConfig'
 import type { ModulePrivateStorageV1 } from './modulePrivateStorage'
 import type { YoloModuleSettingsV1 } from './moduleSettingsContributions'
-import type { ModuleTransitionPhase } from './moduleTransitionJournal'
 import type { YoloModuleWorkersV1 } from './moduleWorkerHost'
 
 export type ModuleDisposer = () => void
@@ -329,7 +328,6 @@ export type ModuleStatus =
   | 'active'
   | 'disabled'
   | 'update-available'
-  | 'ready-to-apply'
   | 'activation-pending'
   | 'failed'
 
@@ -348,9 +346,8 @@ export type ModuleCatalogEntry = {
 export type InstalledModuleState = {
   id: string
   version: string
-  candidateVersion?: string
   pendingVersion?: string
-  transitionPhase?: ModuleTransitionPhase
+  activationPhase?: 'pending' | 'activation-started'
   active?: boolean
   disabled?: boolean
   error?: string
@@ -382,9 +379,8 @@ export type ModuleRecord = Readonly<{
   description: string
   version: string
   availableVersion?: string
-  candidateVersion?: string
   pendingVersion?: string
-  transitionPhase?: ModuleTransitionPhase
+  activationPhase?: 'pending' | 'activation-started'
   error?: string
   compatibilityIssues?: readonly ModuleCompatibilityIssue[]
   status: ModuleStatus
