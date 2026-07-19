@@ -60,7 +60,7 @@ test('preserves schema declarations from a real Learning build', async () => {
     const builtManifest = JSON.parse(
       await readFile(path.join(artifactDir, 'module.json'), 'utf8'),
     )
-    assert.equal(catalog.modules[0].versions[0].hostApi, '^1.1.0')
+    assert.equal(catalog.modules[0].versions[0].hostApi, '^1.2.0')
     assert.deepEqual(
       catalog.modules[0].versions[0].dataSchemas,
       builtManifest.dataSchemas,
@@ -153,7 +153,7 @@ test('refuses to replace an existing equivalent version with a different hash', 
 })
 
 test('does not write when any published artifact is unavailable or corrupt', async () => {
-  for (const mode of ['missing-ready', 'corrupt-file']) {
+  for (const mode of ['missing-file', 'corrupt-file']) {
     const fixture = releaseFixture(mode)
     const directory = await mkdtemp(path.join(os.tmpdir(), 'module-catalog-'))
     const catalogPath = path.join(directory, 'catalog.json')
@@ -251,35 +251,18 @@ function releaseFixture(mode) {
       ],
     })),
   }
-  const assets = new Map([
-    [
+  const assets = new Map()
+  if (mode !== 'missing-file') {
+    assets.set(
       `${root}/entry.js`,
       mode === 'corrupt-file' ? Buffer.from('bad') : fileBytes,
-    ],
-  ])
+    )
+  }
   let manifestHash
   const replaceManifest = (value) => {
-    for (const key of [...assets.keys()])
-      if (key.includes('/ready.')) assets.delete(key)
     const manifestBytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`)
     manifestHash = hash(manifestBytes)
     assets.set(`${root}/module.json`, manifestBytes)
-    for (const platform of ['desktop', 'mobile']) {
-      assets.set(
-        `${root}/ready.${platform}.${manifestHash}.json`,
-        Buffer.from(
-          JSON.stringify({
-            schemaVersion: 1,
-            id: 'learning',
-            version: '0.1.0',
-            platform,
-            manifestSha256: manifestHash,
-          }),
-        ),
-      )
-    }
-    if (mode === 'missing-ready')
-      assets.delete(`${root}/ready.mobile.${manifestHash}.json`)
   }
   replaceManifest(manifest)
   const requests = []

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "learning",
   "version": "0.1.0",
-  "hostApi": "^1.1.0",
+  "hostApi": "^1.2.0",
   "dataSchemas": {
     "settings": {
       "readMin": 0,
@@ -19,8 +19,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 1008739,
-          "sha256": "0edf20daa5e842ef85aa7a002a979fe03297a9925ea901db36d09bde02bd41b7",
+          "byteSize": 1008724,
+          "sha256": "e0010cc4be2d291bd5d458aceaeea9ee63c0630ca299b9a8b3093271b5fa45d9",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js",
           "storage": "module"
         },
@@ -43,8 +43,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 1008739,
-          "sha256": "0edf20daa5e842ef85aa7a002a979fe03297a9925ea901db36d09bde02bd41b7",
+          "byteSize": 1008724,
+          "sha256": "e0010cc4be2d291bd5d458aceaeea9ee63c0630ca299b9a8b3093271b5fa45d9",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/entry.js",
           "storage": "module"
         },

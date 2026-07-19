@@ -256,6 +256,17 @@ describe('Host Anki shared sidecars', () => {
           )
           .map((path) => getEntry(path)!)
       },
+      stat: jest.fn(async (path: string) => getEntry(path)),
+      list: jest.fn(async (directory: string) => {
+        const prefix = `${directory}/`
+        return [...files.keys(), ...folders]
+          .filter(
+            (path) =>
+              path.startsWith(prefix) &&
+              !path.slice(prefix.length).includes('/'),
+          )
+          .map((path) => getEntry(path)!)
+      }),
       ensureFolder: jest.fn(async (path: string) => void folders.add(path)),
       exists: jest.fn(async (path: string) => getEntry(path) !== null),
       readText: jest.fn(async (path: string) => files.get(path)!),

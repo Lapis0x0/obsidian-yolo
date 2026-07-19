@@ -104,15 +104,16 @@ export const createHostAnkiJournalFilePort = (
     return normalized
   }
 
-  const listDirectory = (directory: string): readonly string[] => {
-    const entry = vault.getEntry(directory)
+  const listDirectory = async (
+    directory: string,
+  ): Promise<readonly string[]> => {
+    const entry = await vault.stat(directory)
     if (entry === null) return []
     if (entry.kind !== 'folder') {
       throw new Error(`Anki journal directory is not a folder: ${directory}`)
     }
     const prefix = `${directory}/`
-    return vault
-      .listChildren(directory)
+    return (await vault.list(directory))
       .filter(
         (child) =>
           child.kind === 'file' &&
@@ -128,14 +129,14 @@ export const createHostAnkiJournalFilePort = (
       const entry = normalized.endsWith(`/${ANKI_IMPORT_JOURNAL_DIR_NAME}`)
         ? await assertDirectory(normalized)
         : await assertFile(normalized)
-      return vault.getEntry(entry) !== null
+      return vault.exists(entry)
     },
     mkdir: async (path) => {
       await vault.ensureFolder(await assertDirectory(path))
     },
     write: async (path, content) => {
       const normalized = await assertFile(path)
-      const entry = vault.getEntry(normalized)
+      const entry = await vault.stat(normalized)
       if (entry === null) {
         await vault.createText(normalized, content)
         return
@@ -148,7 +149,8 @@ export const createHostAnkiJournalFilePort = (
     list: async (path) => {
       const current = await assertDirectory(path)
       const directories = [...new Set([current, ...legacyDirectories])]
-      return { files: directories.flatMap(listDirectory).sort() }
+      const files = (await Promise.all(directories.map(listDirectory))).flat()
+      return { files: files.sort() }
     },
     read: (path) =>
       assertFile(path).then((normalized) => vault.readText(normalized)),

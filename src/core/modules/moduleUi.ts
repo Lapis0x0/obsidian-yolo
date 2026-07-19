@@ -238,7 +238,7 @@ export class ObsidianModuleUiCapabilityProvider
         assertActive()
         const component = new Component()
         let loaded = true
-        const pendingRenders = new Set<(error: Error) => void>()
+        const pendingRenders = new Set<() => void>()
         component.load()
 
         const renderer: OwnedRenderer & YoloModuleMarkdownRendererV1 = {
@@ -260,20 +260,13 @@ export class ObsidianModuleUiCapabilityProvider
               sourcePath,
               component,
             )
-            let rejectCancelled!: (error: Error) => void
-            const cancelled = new Promise<never>((_resolve, reject) => {
-              rejectCancelled = reject
+            let cancelRender!: () => void
+            const cancelled = new Promise<void>((resolve) => {
+              cancelRender = resolve
             })
-            pendingRenders.add(rejectCancelled)
+            pendingRenders.add(cancelRender)
             const finish = (): void => {
-              pendingRenders.delete(rejectCancelled)
-              if (!loaded) {
-                try {
-                  component.unload()
-                } catch (error) {
-                  this.report(moduleId, error)
-                }
-              }
+              pendingRenders.delete(cancelRender)
             }
             const publish = render.then(() => {
               assertActive()
@@ -290,7 +283,7 @@ export class ObsidianModuleUiCapabilityProvider
             if (!loaded) return
             loaded = false
             renderers.delete(renderer)
-            for (const reject of pendingRenders) reject(inactiveError())
+            for (const cancel of pendingRenders) cancel()
             pendingRenders.clear()
             component.unload()
           },

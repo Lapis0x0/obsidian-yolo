@@ -46,6 +46,14 @@ class MemoryVault {
     ]
   }
 
+  async stat(path: string): Promise<VaultEntry> {
+    return this.getEntry(path)
+  }
+
+  async list(folderPath: string): Promise<readonly NonNullable<VaultEntry>[]> {
+    return this.listChildren(folderPath)
+  }
+
   async exists(path: string) {
     return this.getEntry(path) !== null
   }

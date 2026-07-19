@@ -21,7 +21,7 @@ type PendingVaultOperation = {
 
 type VaultSnapshotRecord = {
   readonly path: string
-  readonly file: TFile
+  readonly file: TFile | null
   readonly content: string
   readonly creationReceipt?: symbol
 }
@@ -102,6 +102,8 @@ const UNAVAILABLE_MODULE_VAULT_API: YoloModuleVaultV1 = Object.freeze({
   getEntry: () => unavailable(),
   listChildren: () => unavailable(),
   listMarkdownFiles: () => unavailable(),
+  stat: () => Promise.reject(new Error('Module vault is unavailable')),
+  list: () => Promise.reject(new Error('Module vault is unavailable')),
   exists: () => Promise.reject(new Error('Module vault is unavailable')),
   readText: () => Promise.reject(new Error('Module vault is unavailable')),
   readBinary: () => Promise.reject(new Error('Module vault is unavailable')),
@@ -197,13 +199,14 @@ function createObsidianModuleVaultCapability({
     }
   }
   const createSnapshot = (
-    file: TFile,
+    file: TFile | null,
+    path: string,
     content: string,
     creationReceipt?: symbol,
   ): YoloModuleVaultTextSnapshotV1 => {
-    const snapshot = Object.freeze({ path: file.path, content })
+    const snapshot = Object.freeze({ path, content })
     snapshotRecords.set(snapshot, {
-      path: file.path,
+      path,
       file,
       content,
       creationReceipt,
@@ -237,18 +240,56 @@ function createObsidianModuleVaultCapability({
       assertAvailable()
       return Object.freeze(app.vault.getMarkdownFiles().map(describeFile))
     },
+    stat: async (rawPath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(rawPath, true)
+      const indexed = app.vault.getAbstractFileByPath(path)
+      if (isVaultEntry(indexed)) return describeEntry(indexed)
+      const entry = await app.vault.adapter.stat(path)
+      assertAvailable()
+      return entry ? describeAdapterEntry(path, entry) : null
+    },
+    list: async (rawPath) => {
+      assertAvailable()
+      const path = normalizeModuleVaultPath(rawPath, true)
+      const indexed = app.vault.getAbstractFileByPath(path)
+      if (indexed instanceof TFolder) {
+        return Object.freeze(indexed.children.map(describeEntry))
+      }
+      const entry = await app.vault.adapter.stat(path)
+      assertAvailable()
+      if (!entry) return Object.freeze([])
+      if (entry.type !== 'folder') {
+        throw new Error(`Module vault path is not a folder: ${path}`)
+      }
+      const listing = await app.vault.adapter.list(path)
+      assertAvailable()
+      const entries = await Promise.all(
+        [...listing.folders, ...listing.files].map(async (childPath) => {
+          const child = await app.vault.adapter.stat(childPath)
+          if (!child) {
+            throw new Error(`Module vault entry disappeared: ${childPath}`)
+          }
+          return describeAdapterEntry(childPath, child)
+        }),
+      )
+      assertAvailable()
+      return Object.freeze(entries.sort((a, b) => a.path.localeCompare(b.path)))
+    },
     exists: async (path) => {
       assertAvailable()
-      return Boolean(
-        app.vault.getAbstractFileByPath(normalizeModuleVaultPath(path, true)),
+      const exists = await app.vault.adapter.exists(
+        normalizeModuleVaultPath(path, true),
       )
+      assertAvailable()
+      return exists
     },
     readText: async (filePath) => {
       assertAvailable()
       const path = normalizeModuleVaultPath(filePath)
       const entry = app.vault.getAbstractFileByPath(path)
       if (!(entry instanceof TFile)) {
-        throw new Error(`Module vault file not found: ${path}`)
+        return readAdapterTextFile(app, path, assertAvailable)
       }
       return app.vault.cachedRead(entry)
     },
@@ -257,7 +298,7 @@ function createObsidianModuleVaultCapability({
       const path = normalizeModuleVaultPath(filePath)
       const entry = app.vault.getAbstractFileByPath(path)
       if (!(entry instanceof TFile)) {
-        throw new Error(`Module vault file not found: ${path}`)
+        return readAdapterBinaryFile(app, path, assertAvailable)
       }
       const bytes = await app.vault.readBinary(entry)
       return bytes.slice(0)
@@ -276,8 +317,9 @@ function createObsidianModuleVaultCapability({
       const path = normalizeModuleVaultPath(folderPath)
       await serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
-        assertManagedParentFolder(app, path)
-        await app.vault.createFolder(path)
+        await assertParentFolder(app, path)
+        if (isHiddenVaultPath(path)) await app.vault.adapter.mkdir(path)
+        else await app.vault.createFolder(path)
       })
     },
     createText: async (filePath, content) => {
@@ -286,7 +328,15 @@ function createObsidianModuleVaultCapability({
       requireString(content, 'Module vault text content')
       return serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
-        assertManagedParentFolder(app, path)
+        await assertParentFolder(app, path)
+        if (isHiddenVaultPath(path)) {
+          if (await app.vault.adapter.exists(path)) {
+            throw new Error(`Module vault destination already exists: ${path}`)
+          }
+          await app.vault.adapter.write(path, content)
+          assertAvailable()
+          return freezeAdapterWrittenFile(app, path)
+        }
         const file = await app.vault.create(path, content)
         return freezeWrittenFile(file)
       })
@@ -302,7 +352,14 @@ function createObsidianModuleVaultCapability({
       const bytes = content.slice(0)
       await serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
-        assertManagedParentFolder(app, path)
+        await assertParentFolder(app, path)
+        if (isHiddenVaultPath(path)) {
+          if (await app.vault.adapter.exists(path)) {
+            throw new Error(`Module vault destination already exists: ${path}`)
+          }
+          await app.vault.adapter.writeBinary(path, bytes)
+          return
+        }
         await app.vault.createBinary(path, bytes)
       })
     },
@@ -314,7 +371,10 @@ function createObsidianModuleVaultCapability({
         assertAvailable()
         const entry = app.vault.getAbstractFileByPath(path)
         if (!(entry instanceof TFile)) {
-          throw new Error(`Module vault file not found: ${path}`)
+          await assertAdapterFile(app, path)
+          await app.vault.adapter.write(path, content)
+          assertAvailable()
+          return freezeAdapterWrittenFile(app, path)
         }
         await app.vault.modify(entry, content)
         return freezeWrittenFile(entry)
@@ -339,7 +399,7 @@ function createObsidianModuleVaultCapability({
               `Module vault destination already exists: ${destinationPath}`,
             )
           }
-          assertManagedParentFolder(app, destinationPath)
+          await assertParentFolder(app, destinationPath)
           await app.fileManager.renameFile(entry, destinationPath)
         },
       )
@@ -361,7 +421,14 @@ function createObsidianModuleVaultCapability({
       return serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
         const entry = app.vault.getAbstractFileByPath(path)
-        if (!(entry instanceof TFile)) return false
+        if (!(entry instanceof TFile)) {
+          const stat = await app.vault.adapter.stat(path)
+          assertAvailable()
+          if (stat?.type !== 'file') return false
+          await app.vault.adapter.remove(path)
+          assertAvailable()
+          return true
+        }
         // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated file.
         await app.vault.delete(entry, true)
         return true
@@ -373,9 +440,20 @@ function createObsidianModuleVaultCapability({
       return serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
         const entry = app.vault.getAbstractFileByPath(path)
-        if (!(entry instanceof TFolder) || entry.children.length > 0) {
-          return false
+        if (!(entry instanceof TFolder)) {
+          const stat = await app.vault.adapter.stat(path)
+          assertAvailable()
+          if (stat?.type !== 'folder') return false
+          const listing = await app.vault.adapter.list(path)
+          assertAvailable()
+          if (listing.files.length > 0 || listing.folders.length > 0) {
+            return false
+          }
+          await app.vault.adapter.rmdir(path, false)
+          assertAvailable()
+          return true
         }
+        if (entry.children.length > 0) return false
         // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated empty folder.
         await app.vault.delete(entry, false)
         return true
@@ -387,11 +465,21 @@ function createObsidianModuleVaultCapability({
       return serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
         const entry = app.vault.getAbstractFileByPath(path)
-        if (!entry) return null
+        if (!entry) {
+          const stat = await app.vault.adapter.stat(path)
+          assertAvailable()
+          if (!stat) return null
+          if (stat.type !== 'file') {
+            throw new Error(`Module vault path is not a file: ${path}`)
+          }
+          const content = await app.vault.adapter.read(path)
+          assertAvailable()
+          return createSnapshot(null, path, content)
+        }
         if (!(entry instanceof TFile)) {
           throw new Error(`Module vault path is not a file: ${path}`)
         }
-        return createSnapshot(entry, await app.vault.read(entry))
+        return createSnapshot(entry, path, await app.vault.read(entry))
       })
     },
     createTextIfAbsent: async (filePath, content) => {
@@ -400,12 +488,18 @@ function createObsidianModuleVaultCapability({
       requireString(content, 'Module vault text content')
       return serializeVaultPaths(writeState, [path], async () => {
         assertAvailable()
-        if (app.vault.getAbstractFileByPath(path)) return null
-        assertManagedParentFolder(app, path)
+        if (await app.vault.adapter.exists(path)) return null
+        await assertParentFolder(app, path)
+        if (isHiddenVaultPath(path)) {
+          await app.vault.adapter.write(path, content)
+          const creationReceipt = Symbol(path)
+          activeCreationReceipts.add(creationReceipt)
+          return createSnapshot(null, path, content, creationReceipt)
+        }
         const file = await app.vault.create(path, content)
         const creationReceipt = Symbol(path)
         activeCreationReceipts.add(creationReceipt)
-        return createSnapshot(file, content, creationReceipt)
+        return createSnapshot(file, path, content, creationReceipt)
       })
     },
     replaceTextIfUnchanged: async (expected, content) => {
@@ -415,7 +509,19 @@ function createObsidianModuleVaultCapability({
       if (!record) return null
       return serializeVaultPaths(writeState, [record.path], async () => {
         assertAvailable()
-        if (!isCurrentSnapshot(app, record)) return null
+        if (record.file) {
+          if (!isCurrentIndexedSnapshot(app, record)) return null
+        } else if (!(await isCurrentAdapterSnapshot(app, record))) return null
+        if (!record.file) {
+          await app.vault.adapter.write(record.path, content)
+          assertAvailable()
+          const creationReceipt =
+            record.creationReceipt &&
+            activeCreationReceipts.has(record.creationReceipt)
+              ? record.creationReceipt
+              : undefined
+          return createSnapshot(null, record.path, content, creationReceipt)
+        }
         try {
           await app.vault.process(record.file, (current) => {
             if (current !== record.content) throw processMismatch
@@ -425,13 +531,20 @@ function createObsidianModuleVaultCapability({
           if (error === processMismatch) return null
           throw error
         }
-        if (!isCurrentSnapshot(app, record)) return null
+        if (record.file) {
+          if (!isCurrentIndexedSnapshot(app, record)) return null
+        } else if (!(await isCurrentAdapterSnapshot(app, record))) return null
         const creationReceipt =
           record.creationReceipt &&
           activeCreationReceipts.has(record.creationReceipt)
             ? record.creationReceipt
             : undefined
-        return createSnapshot(record.file, content, creationReceipt)
+        return createSnapshot(
+          record.file,
+          record.path,
+          content,
+          creationReceipt,
+        )
       })
     },
     revertOwnedCreatedTextIfUnchanged: async (
@@ -460,7 +573,17 @@ function createObsidianModuleVaultCapability({
         async () => {
           assertAvailable()
           if (!activeCreationReceipts.has(creationReceipt)) return null
-          if (!isCurrentSnapshot(app, expectedRecord)) return null
+          if (expectedRecord.file) {
+            if (!isCurrentIndexedSnapshot(app, expectedRecord)) return null
+          } else if (!(await isCurrentAdapterSnapshot(app, expectedRecord))) {
+            return null
+          }
+          if (!expectedRecord.file) {
+            await app.vault.adapter.write(expectedRecord.path, fallbackContent)
+            assertAvailable()
+            activeCreationReceipts.delete(creationReceipt)
+            return createSnapshot(null, expectedRecord.path, fallbackContent)
+          }
           try {
             await app.vault.process(expectedRecord.file, (current) => {
               if (current !== expectedRecord.content) throw processMismatch
@@ -471,10 +594,14 @@ function createObsidianModuleVaultCapability({
             throw error
           }
           activeCreationReceipts.delete(creationReceipt)
-          if (!isCurrentSnapshot(app, expectedRecord)) {
+          if (!isCurrentIndexedSnapshot(app, expectedRecord)) {
             return null
           }
-          return createSnapshot(expectedRecord.file, fallbackContent)
+          return createSnapshot(
+            expectedRecord.file,
+            expectedRecord.path,
+            fallbackContent,
+          )
         },
       )
     },
@@ -755,31 +882,73 @@ async function ensureVaultFolder(
     const currentPath = segments.slice(0, index).join('/')
     await serializeVaultPaths(state, [currentPath], async () => {
       assertAvailable()
-      const existing = app.vault.getAbstractFileByPath(currentPath)
-      if (existing instanceof TFolder) return
+      const existing = await app.vault.adapter.stat(currentPath)
+      assertAvailable()
+      if (existing?.type === 'folder') return
       if (existing) {
         throw new Error(`Module vault path is not a folder: ${currentPath}`)
       }
-      try {
+      if (isHiddenVaultPath(currentPath)) {
+        await app.vault.adapter.mkdir(currentPath)
+      } else {
         await app.vault.createFolder(currentPath)
-      } catch (error) {
-        if (
-          !(app.vault.getAbstractFileByPath(currentPath) instanceof TFolder)
-        ) {
-          throw error
-        }
       }
     })
   }
 }
 
-function assertManagedParentFolder(app: App, path: string): void {
+async function assertParentFolder(app: App, path: string): Promise<void> {
   const separator = path.lastIndexOf('/')
   if (separator < 0) return
   const parentPath = path.slice(0, separator)
-  if (!(app.vault.getAbstractFileByPath(parentPath) instanceof TFolder)) {
+  const parent = await app.vault.adapter.stat(parentPath)
+  if (parent?.type !== 'folder') {
     throw new Error(`Module vault parent folder not found: ${parentPath}`)
   }
+}
+
+function isHiddenVaultPath(path: string): boolean {
+  return path.split('/').some((segment) => segment.startsWith('.'))
+}
+
+async function assertAdapterFile(app: App, path: string): Promise<void> {
+  const stat = await app.vault.adapter.stat(path)
+  if (stat?.type !== 'file') {
+    throw new Error(`Module vault file not found: ${path}`)
+  }
+}
+
+async function readAdapterTextFile(
+  app: App,
+  path: string,
+  assertAvailable: () => void,
+): Promise<string> {
+  await assertAdapterFile(app, path)
+  const content = await app.vault.adapter.read(path)
+  assertAvailable()
+  return content
+}
+
+async function readAdapterBinaryFile(
+  app: App,
+  path: string,
+  assertAvailable: () => void,
+): Promise<ArrayBuffer> {
+  await assertAdapterFile(app, path)
+  const content = await app.vault.adapter.readBinary(path)
+  assertAvailable()
+  return content.slice(0)
+}
+
+async function freezeAdapterWrittenFile(
+  app: App,
+  path: string,
+): Promise<Readonly<{ path: string; mtime: number }>> {
+  const stat = await app.vault.adapter.stat(path)
+  if (stat?.type !== 'file') {
+    throw new Error(`Module vault file not found after write: ${path}`)
+  }
+  return Object.freeze({ path, mtime: stat.mtime })
 }
 
 function freezeWrittenFile(file: TFile): Readonly<{
@@ -789,11 +958,44 @@ function freezeWrittenFile(file: TFile): Readonly<{
   return Object.freeze({ path: file.path, mtime: file.stat?.mtime ?? 0 })
 }
 
-function isCurrentSnapshot(app: App, record: VaultSnapshotRecord): boolean {
-  return (
-    record.file.path === record.path &&
-    app.vault.getAbstractFileByPath(record.path) === record.file
+function isCurrentIndexedSnapshot(
+  app: App,
+  record: VaultSnapshotRecord,
+): boolean {
+  return Boolean(
+    record.file &&
+      record.file.path === record.path &&
+      app.vault.getAbstractFileByPath(record.path) === record.file,
   )
+}
+
+async function isCurrentAdapterSnapshot(
+  app: App,
+  record: VaultSnapshotRecord,
+): Promise<boolean> {
+  const stat = await app.vault.adapter.stat(record.path)
+  if (stat?.type !== 'file') return false
+  return (await app.vault.adapter.read(record.path)) === record.content
+}
+
+function describeAdapterEntry(
+  path: string,
+  stat: Readonly<{
+    type: 'file' | 'folder'
+    ctime: number
+    mtime: number
+  }>,
+): YoloModuleVaultEntryV1 {
+  const name = path.split('/').at(-1) ?? ''
+  return stat.type === 'file'
+    ? Object.freeze({
+        kind: 'file' as const,
+        path,
+        name,
+        ctime: stat.ctime,
+        mtime: stat.mtime,
+      })
+    : Object.freeze({ kind: 'folder' as const, path, name })
 }
 
 function requireString(value: unknown, label: string): asserts value is string {

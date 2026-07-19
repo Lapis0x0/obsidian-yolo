@@ -297,7 +297,7 @@ async function createFixture({
     schemaVersion: 1,
     id: 'learning',
     version: '1.2.3',
-    hostApi: '^1.1.0',
+    hostApi: '^1.2.0',
     dataSchemas: {
       settings: { readMin: 0, readMax: 1, write: 1 },
     },
@@ -312,21 +312,9 @@ async function createFixture({
   }
   const moduleBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
   const manifestSha256 = hash(moduleBytes)
-  const ready = (platform) =>
-    Buffer.from(
-      `${JSON.stringify({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.2.3',
-        platform,
-        manifestSha256,
-      })}\n`,
-    )
   const assets = new Map([
     ['entry.js', entry],
     ['module.json', moduleBytes],
-    [`ready.desktop.${manifestSha256}.json`, ready('desktop')],
-    [`ready.mobile.${manifestSha256}.json`, ready('mobile')],
     ['style.css', style],
   ])
   for (const [name, bytes] of assets) {

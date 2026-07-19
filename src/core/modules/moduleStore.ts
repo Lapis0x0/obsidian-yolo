@@ -45,14 +45,6 @@ export type ModuleArtifactFile = Readonly<{
   storage: 'module' | 'device'
 }>
 
-export type ModuleReadyMarker = Readonly<{
-  schemaVersion: 1
-  id: string
-  version: string
-  platform: ModuleArtifactPlatform
-  manifestSha256: string
-}>
-
 export const MAX_MODULE_ARTIFACT_FILE_BYTES = 64 * 1024 * 1024
 export const MAX_MODULE_ARTIFACT_TOTAL_BYTES = 128 * 1024 * 1024
 export const MAX_MODULE_MANIFEST_BYTES = 1024 * 1024
@@ -265,11 +257,7 @@ function parseVariantFiles(
     const path = normalizeModuleArtifactFilePath(file.path)
     const canonicalPath = canonicalArtifactPath(path)
     const canonicalName = canonicalArtifactPath(file.name)
-    if (
-      canonicalPath === 'module.json' ||
-      canonicalPath === 'ready.json' ||
-      /^ready\.(?:desktop|mobile)\.[a-f0-9]{64}\.json$/.test(canonicalPath)
-    ) {
+    if (canonicalPath === 'module.json') {
       throw new Error(`Module artifact file path "${path}" is reserved`)
     }
     if (paths.has(canonicalPath)) {
@@ -315,47 +303,6 @@ function parseVariantFiles(
     }
   }
   return Object.freeze(files)
-}
-
-export function parseModuleReadyMarker(value: unknown): ModuleReadyMarker {
-  const marker = asPlainObject(value, 'Module ready marker')
-  assertExactKeys(
-    marker,
-    ['schemaVersion', 'id', 'version', 'platform', 'manifestSha256'],
-    'Module ready marker',
-  )
-  if (
-    marker.schemaVersion !== 1 ||
-    typeof marker.id !== 'string' ||
-    typeof marker.version !== 'string' ||
-    (marker.platform !== 'desktop' && marker.platform !== 'mobile') ||
-    typeof marker.manifestSha256 !== 'string' ||
-    !/^[a-fA-F0-9]{64}$/.test(marker.manifestSha256)
-  ) {
-    throw new Error('Module ready marker is invalid')
-  }
-  assertModuleId(marker.id, 'Module id')
-  assertModulePathSegment(marker.version, 'Module version')
-  return Object.freeze({
-    schemaVersion: 1,
-    id: marker.id,
-    version: marker.version,
-    platform: marker.platform,
-    manifestSha256: marker.manifestSha256.toLowerCase(),
-  })
-}
-
-export function moduleReadyMarkerFileName(
-  platform: ModuleArtifactPlatform,
-  manifestSha256: string,
-): string {
-  if (
-    (platform !== 'desktop' && platform !== 'mobile') ||
-    !/^[a-fA-F0-9]{64}$/.test(manifestSha256)
-  ) {
-    throw new Error('Module ready marker identity is invalid')
-  }
-  return `ready.${platform}.${manifestSha256.toLowerCase()}.json`
 }
 
 export function moduleArtifactReleaseParent(url: string): string | null {
@@ -584,19 +531,6 @@ export class ModuleStore {
 
   async readBundledIndexBytes(): Promise<Uint8Array> {
     return await this.readBytes(`${this.pluginDir}/modules/bundled.json`)
-  }
-
-  async readReadyMarkerBytes(
-    moduleId: string,
-    version: string,
-    platform: ModuleArtifactPlatform,
-    manifestSha256: string,
-  ): Promise<Uint8Array> {
-    assertModuleId(moduleId, 'Module id')
-    assertModulePathSegment(version, 'Module version')
-    return await this.readBytes(
-      `${this.pluginDir}/modules/${moduleId}/${version}/${moduleReadyMarkerFileName(platform, manifestSha256)}`,
-    )
   }
 
   async readEntryBytes(

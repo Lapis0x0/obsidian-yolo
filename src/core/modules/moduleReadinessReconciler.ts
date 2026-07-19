@@ -303,10 +303,6 @@ function guardArtifactReads(
       guardArtifactAccess('manifest read', () =>
         store.readManifestBytes(...args),
       ),
-    readReadyMarkerBytes: (...args) =>
-      guardArtifactAccess('ready marker read', () =>
-        store.readReadyMarkerBytes(...args),
-      ),
     readEntryBytes: (...args) =>
       guardArtifactAccess('entry read', () => store.readEntryBytes(...args)),
     listVersionFiles: (...args) =>

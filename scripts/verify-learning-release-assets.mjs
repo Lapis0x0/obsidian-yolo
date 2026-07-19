@@ -162,9 +162,6 @@ export async function verifyLearningReleaseAssets({
     }
   }
 
-  for (const platform of platforms) {
-    expectedNames.add(`ready.${platform}.${manifestSha256}.json`)
-  }
   assertSetEqual(
     new Set(remoteAssets.keys()),
     expectedNames,
@@ -204,18 +201,6 @@ export async function verifyLearningReleaseAssets({
         `${downloadBase}/${encodedTag}/${encodeURIComponent(name)}`,
         `${name} manifest URL`,
       )
-    } else if (name.startsWith('ready.')) {
-      const ready = parseJson(bytes, name)
-      assertEqual(
-        ready.manifestSha256,
-        manifestSha256,
-        `${name} manifest SHA-256`,
-      )
-      assertEqual(ready.id, manifest.id, `${name} module id`)
-      assertEqual(ready.version, manifest.version, `${name} module version`)
-      if (!platforms.has(ready.platform)) {
-        throw new Error(`${name} has unexpected platform ${ready.platform}`)
-      }
     }
     const localBytes = await readFile(path.join(assetDir, name))
     assertEqual(

@@ -147,13 +147,6 @@ function createArtifact(
   }
 }
 
-function readyPath(
-  artifact: ReturnType<typeof createArtifact>,
-  platform: 'desktop' | 'mobile' = 'desktop',
-): string {
-  return `plugin/modules/learning/0.1.0/ready.${platform}.${artifact.descriptor.manifest.sha256}.json`
-}
-
 function createInstaller(
   adapter: MemoryAdapter,
   download: (url: string) => Promise<Uint8Array>,
@@ -223,11 +216,6 @@ describe('ModuleArtifactInstaller', () => {
         id: 'learning',
         version: '0.1.0',
       },
-    )
-    expect(adapter.files.has(readyPath(artifact))).toBe(true)
-    expect(adapter.files.has(readyPath(artifact, 'mobile'))).toBe(true)
-    expect(adapter.files.has('plugin/modules/learning/0.1.0/ready.json')).toBe(
-      false,
     )
     expect(adapter.files.has('plugin/modules/learning/0.1.0/entry.js')).toBe(
       true,
@@ -306,7 +294,7 @@ describe('ModuleArtifactInstaller', () => {
 
     const entryPath = 'plugin/modules/learning/0.1.0/entry.js'
     const original = new Uint8Array(await adapter.readBinary(entryPath))
-    adapter.failReadOnce = readyPath(artifact)
+    adapter.failReadOnce = entryPath
 
     await expect(installer.install(artifact.descriptor)).resolves.toMatchObject(
       {
@@ -509,13 +497,14 @@ describe('ModuleArtifactInstaller', () => {
     await expect(
       mismatched.install({ ...artifact.descriptor, hostApi: '^2.0.0' }),
     ).rejects.toThrow('descriptor mismatch')
-    expect([...adapter.files.keys()].includes(readyPath(artifact))).toBe(true)
-    const ready = JSON.parse(
-      new TextDecoder().decode(
-        new Uint8Array(await adapter.readBinary(readyPath(artifact))),
-      ),
-    ) as { platform: string }
-    expect(ready.platform).toBe('desktop')
+    expect(
+      [...adapter.files.keys()]
+        .filter((path) => path.startsWith('plugin/modules/learning/0.1.0/'))
+        .sort(),
+    ).toEqual([
+      'plugin/modules/learning/0.1.0/entry.js',
+      'plugin/modules/learning/0.1.0/module.json',
+    ])
   })
 
   it('installs and verifies the immutable union for both platform variants', async () => {
@@ -571,10 +560,15 @@ describe('ModuleArtifactInstaller', () => {
     expect(adapter.files.has('plugin/modules/learning/0.1.0/mobile.js')).toBe(
       true,
     )
-    expect(adapter.files.has(readyPath({ ...artifact, descriptor }))).toBe(true)
     expect(
-      adapter.files.has(readyPath({ ...artifact, descriptor }, 'mobile')),
-    ).toBe(true)
+      [...adapter.files.keys()]
+        .filter((path) => path.startsWith('plugin/modules/learning/0.1.0/'))
+        .sort(),
+    ).toEqual([
+      'plugin/modules/learning/0.1.0/entry.js',
+      'plugin/modules/learning/0.1.0/mobile.js',
+      'plugin/modules/learning/0.1.0/module.json',
+    ])
 
     await installer.install({ ...descriptor, platform: 'mobile' })
     expect(download).toHaveBeenCalledTimes(3)

@@ -15,10 +15,8 @@ import {
   assertModuleId,
   assertModulePathSegment,
   isModuleHostApiRange,
-  moduleReadyMarkerFileName,
   normalizeModuleArtifactFilePath,
   parseModuleArtifactManifest,
-  parseModuleReadyMarker,
   selectModuleManifestVariant,
 } from './moduleStore'
 
@@ -177,20 +175,6 @@ export class ModuleArtifactInstaller {
         files,
         subtleCrypto,
       )
-      for (const markerVariant of manifest.variants) {
-        const readyBytes = createReadyMarkerBytes(
-          descriptor,
-          markerVariant.platform,
-        )
-        await adapter.writeBinary(
-          normalizePath(
-            `${stagingDir}/${moduleReadyMarkerFileName(markerVariant.platform, descriptor.manifest.sha256)}`,
-          ),
-          toArrayBuffer(readyBytes),
-        )
-      }
-      await verifyStagingMarkers(adapter, stagingDir, descriptor, manifest)
-
       if (await adapter.exists(targetDir)) {
         throw new Error(
           `Module "${descriptor.id}" version directory appeared during install`,
@@ -372,16 +356,7 @@ export class ModuleArtifactInstaller {
       files,
       subtleCrypto,
     )
-    for (const variant of manifest.variants) {
-      await adapter.writeBinary(
-        normalizePath(
-          `${stagingDir}/${moduleReadyMarkerFileName(variant.platform, descriptor.manifest.sha256)}`,
-        ),
-        toArrayBuffer(createReadyMarkerBytes(descriptor, variant.platform)),
-      )
-    }
-    await verifyStagingMarkers(adapter, stagingDir, descriptor, manifest)
-    await verifyStagingClosure(adapter, stagingDir, manifest, files, descriptor)
+    await verifyStagingClosure(adapter, stagingDir, files, descriptor)
     return manifest
   }
 
@@ -444,48 +419,13 @@ async function verifyStagingArtifacts(
   }
 }
 
-async function verifyStagingMarkers(
-  adapter: DataAdapter,
-  stagingDir: string,
-  descriptor: ModuleArtifactDescriptor,
-  manifest: ModuleArtifactManifest,
-): Promise<void> {
-  for (const variant of manifest.variants) {
-    const readyBytes = new Uint8Array(
-      await adapter.readBinary(
-        normalizePath(
-          `${stagingDir}/${moduleReadyMarkerFileName(variant.platform, descriptor.manifest.sha256)}`,
-        ),
-      ),
-    )
-    const marker = parseModuleReadyMarker(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readyBytes)),
-    )
-    if (
-      marker.id !== descriptor.id ||
-      marker.version !== descriptor.version ||
-      marker.platform !== variant.platform ||
-      marker.manifestSha256 !== descriptor.manifest.sha256
-    ) {
-      throw new Error(`Module "${descriptor.id}" staging marker mismatch`)
-    }
-  }
-}
-
 async function verifyStagingClosure(
   adapter: DataAdapter,
   stagingDir: string,
-  manifest: ModuleArtifactManifest,
   files: readonly ModuleArtifactFile[],
   descriptor: ModuleArtifactDescriptor,
 ): Promise<void> {
-  const expected = new Set([
-    'module.json',
-    ...files.map((file) => file.path),
-    ...manifest.variants.map((variant) =>
-      moduleReadyMarkerFileName(variant.platform, descriptor.manifest.sha256),
-    ),
-  ])
+  const expected = new Set(['module.json', ...files.map((file) => file.path)])
   const actual = await listRelativeFiles(adapter, stagingDir)
   if (
     actual.length !== expected.size ||
@@ -556,21 +496,6 @@ function moduleLockKey(pluginDir: string, moduleId: string): string {
 function nextTransactionId(): string {
   transactionSequence = (transactionSequence + 1) % Number.MAX_SAFE_INTEGER
   return transactionSequence.toString(36)
-}
-
-function createReadyMarkerBytes(
-  descriptor: ModuleArtifactDescriptor,
-  platform: 'desktop' | 'mobile',
-): Uint8Array {
-  return new TextEncoder().encode(
-    `${JSON.stringify({
-      schemaVersion: 1,
-      id: descriptor.id,
-      version: descriptor.version,
-      platform,
-      manifestSha256: descriptor.manifest.sha256,
-    })}\n`,
-  )
 }
 
 function snapshotDescriptor(

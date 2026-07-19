@@ -7,7 +7,6 @@ import * as path from 'node:path'
 
 import {
   parseModuleArtifactManifest,
-  parseModuleReadyMarker,
   selectModuleManifestVariant,
 } from './moduleStore'
 import {
@@ -18,29 +17,10 @@ import {
 describe('host API conformance artifact boundary', () => {
   const artifactDir = path.resolve('modules/host-api-conformance/1.0.0')
 
-  const readyFileName = (
-    directory: string,
-    platform: 'desktop' | 'mobile',
-  ): string => {
-    const matches = readdirSync(directory).filter((name) =>
-      new RegExp(`^ready\\.${platform}\\.[a-f0-9]{64}\\.json$`).test(name),
-    )
-    expect(matches).toHaveLength(1)
-    return matches[0]
-  }
-
   it('records the exact entry byte size and SHA-256', () => {
     const manifestBytes = readFileSync(path.join(artifactDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
-    )
-    const ready = parseModuleReadyMarker(
-      JSON.parse(
-        readFileSync(
-          path.join(artifactDir, readyFileName(artifactDir, 'desktop')),
-          'utf8',
-        ),
-      ),
     )
     const variant = selectModuleManifestVariant(manifest, 'desktop')
     const mobileVariant = selectModuleManifestVariant(manifest, 'mobile')
@@ -49,23 +29,7 @@ describe('host API conformance artifact boundary', () => {
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('host-api-conformance')
     expect(manifest.version).toBe('1.0.0')
-    expect(ready).toMatchObject({
-      id: manifest.id,
-      version: manifest.version,
-      platform: 'desktop',
-      manifestSha256: createHash('sha256').update(manifestBytes).digest('hex'),
-    })
     expect(mobileVariant.files).toEqual(variant.files)
-    expect(
-      parseModuleReadyMarker(
-        JSON.parse(
-          readFileSync(
-            path.join(artifactDir, readyFileName(artifactDir, 'mobile')),
-            'utf8',
-          ),
-        ),
-      ).platform,
-    ).toBe('mobile')
     expect(entryFile.byteSize).toBe(entry.byteLength)
     expect(entryFile.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),
@@ -100,14 +64,6 @@ describe('host API conformance artifact boundary', () => {
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
     )
-    const ready = parseModuleReadyMarker(
-      JSON.parse(
-        readFileSync(
-          path.join(learningDir, readyFileName(learningDir, 'desktop')),
-          'utf8',
-        ),
-      ),
-    )
     const variant = selectModuleManifestVariant(manifest, 'desktop')
     const entryFile = variant.files.find((file) => file.role === 'entry')!
     const entry = readFileSync(path.join(learningDir, entryFile.path))
@@ -119,7 +75,6 @@ describe('host API conformance artifact boundary', () => {
       byteSize: manifestBytes.byteLength,
       sha256: createHash('sha256').update(manifestBytes).digest('hex'),
     })
-    expect(ready.manifestSha256).toBe(bundled.modules[0]?.manifest.sha256)
     expect(entryFile.byteSize).toBe(entry.byteLength)
     expect(entryFile.sha256).toBe(
       createHash('sha256').update(entry).digest('hex'),
@@ -131,13 +86,10 @@ describe('host API conformance artifact boundary', () => {
     expect(readdirSync(learningDir).sort()).toEqual([
       'entry.js',
       'module.json',
-      `ready.desktop.${bundled.modules[0]?.manifest.sha256}.json`,
-      `ready.mobile.${bundled.modules[0]?.manifest.sha256}.json`,
       'style.css',
     ])
-    expect(readdirSync(learningDir)).not.toContain('ready.json')
     expect(style).toBeDefined()
-    expect(manifest.hostApi).toBe('^1.1.0')
+    expect(manifest.hostApi).toBe('^1.2.0')
     expect(manifest.dataSchemas).toEqual({
       settings: { readMin: 0, readMax: 1, write: 1 },
     })
@@ -210,7 +162,7 @@ describe('host API conformance artifact boundary', () => {
     )
     expect(
       selectInitialCompatibleVersion(catalog.modules[0], {
-        hostApi: '1.1.0',
+        hostApi: '1.2.0',
         platform: 'desktop',
       })?.version,
     ).toBe('0.1.0')

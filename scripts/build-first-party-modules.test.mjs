@@ -71,14 +71,12 @@ test('builds and loads the complete Learning UI entry with the Host React identi
   }
 })
 
-test('builds a Host-consumable Anki worker inside the five-file Learning artifact', async () => {
+test('builds a Host-consumable Anki worker inside the Learning artifact', async () => {
   const fixture = await buildFixture()
   try {
     assert.deepEqual((await readdir(fixture.artifactDir)).sort(), [
       'entry.js',
       'module.json',
-      `ready.desktop.${fixture.manifestSha256}.json`,
-      `ready.mobile.${fixture.manifestSha256}.json`,
       'style.css',
     ])
 
@@ -109,7 +107,7 @@ test('builds a Host-consumable Anki worker inside the five-file Learning artifac
   }
 })
 
-test('keeps hashes, ready markers, and the module metafile self-contained', async () => {
+test('keeps hashes and the module metafile self-contained', async () => {
   const fixture = await buildFixture()
   try {
     const manifest = JSON.parse(
@@ -129,17 +127,6 @@ test('keeps hashes, ready markers, and the module metafile self-contained', asyn
         assert.equal(file.byteSize, bytes.byteLength)
         assert.equal(file.sha256, hash(bytes))
       }
-      const ready = JSON.parse(
-        await readFile(
-          path.join(
-            fixture.artifactDir,
-            `ready.${variant.platform}.${fixture.manifestSha256}.json`,
-          ),
-          'utf8',
-        ),
-      )
-      assert.equal(ready.manifestSha256, fixture.manifestSha256)
-      assert.equal(ready.platform, variant.platform)
     }
 
     const metafile = JSON.parse(await readFile(fixture.metafilePath, 'utf8'))

@@ -287,27 +287,6 @@ async function buildModule({
     sha256: createHash('sha256').update(manifestBytes).digest('hex'),
   }
   await writeFile(path.join(artifactDir, 'module.json'), manifestBytes)
-  await Promise.all(
-    artifactPlatforms.map((platform) =>
-      writeFile(
-        path.join(
-          artifactDir,
-          `ready.${platform}.${manifestMetadata.sha256}.json`,
-        ),
-        `${JSON.stringify(
-          {
-            schemaVersion: 1,
-            id,
-            version,
-            platform,
-            manifestSha256: manifestMetadata.sha256,
-          },
-          null,
-          2,
-        )}\n`,
-      ),
-    ),
-  )
   return {
     hostApi,
     dataSchemas,

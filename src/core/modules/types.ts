@@ -246,6 +246,8 @@ export type YoloModuleVaultV1 = {
   getEntry(path: string): YoloModuleVaultEntryV1 | null
   listChildren(folderPath: string): readonly YoloModuleVaultEntryV1[]
   listMarkdownFiles(): readonly YoloModuleVaultFileV1[]
+  stat(path: string): Promise<YoloModuleVaultEntryV1 | null>
+  list(folderPath: string): Promise<readonly YoloModuleVaultEntryV1[]>
   exists(path: string): Promise<boolean>
   readText(filePath: string): Promise<string>
   readBinary(filePath: string): Promise<ArrayBuffer>

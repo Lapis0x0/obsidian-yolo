@@ -32,6 +32,9 @@ describe('owner Learning lifecycle ports', () => {
     Object.assign(ownerWindow, { setTimeout, clearTimeout })
     Object.assign(ownerDocument, {
       defaultView: ownerWindow,
+      DOCUMENT_NODE: 9,
+      nodeType: 9,
+      ownerDocument: null,
       visibilityState: 'hidden',
     })
     const lifecycle = createOwnerLearningLifecyclePorts(

@@ -19,7 +19,7 @@ import type {
   YoloModuleWorkspaceV1,
 } from './types'
 
-class ModuleItemView extends ItemView {
+abstract class ModuleItemView extends ItemView {
   private root: Root | null = null
   private mountedHost: HTMLElement | null = null
   private mountedDocument: Document | null = null
@@ -31,10 +31,11 @@ class ModuleItemView extends ItemView {
   constructor(
     leaf: WorkspaceLeaf,
     private readonly plugin: Plugin,
-    private readonly declaration: YoloModuleViewV1,
   ) {
     super(leaf)
   }
+
+  protected abstract get declaration(): YoloModuleViewV1
 
   getViewType(): string {
     return this.declaration.type
@@ -129,6 +130,18 @@ class ModuleItemView extends ItemView {
       this.render()
     })
   }
+}
+
+function createModuleItemView(
+  leaf: WorkspaceLeaf,
+  plugin: Plugin,
+  declaration: YoloModuleViewV1,
+): ModuleItemView {
+  return new (class extends ModuleItemView {
+    protected get declaration(): YoloModuleViewV1 {
+      return declaration
+    }
+  })(leaf, plugin)
 }
 
 export type ModuleContributionRegistrar = {
@@ -434,9 +447,8 @@ export class ObsidianModuleContributionRegistrar
     }
 
     if (view) {
-      this.plugin.registerView(
-        view.type,
-        (leaf) => new ModuleItemView(leaf, this.plugin, view),
+      this.plugin.registerView(view.type, (leaf) =>
+        createModuleItemView(leaf, this.plugin, view),
       )
       this.viewTypes.add(view.type)
       this.viewTypeByModuleId.set(moduleId, view.type)

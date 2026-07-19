@@ -58,16 +58,6 @@ function fixture(versions: readonly string[] = ['1.0.0']) {
     assets.set(manifestUrl, manifestBytes)
     assets.set(`${root}/entry.js`, entryBytes)
     assets.set(`${root}/style.css`, styleBytes)
-    assets.set(
-      `${root}/ready.desktop.${manifestSha256}.json`,
-      encode({
-        schemaVersion: 1,
-        id: 'learning',
-        version,
-        platform: 'desktop',
-        manifestSha256,
-      }),
-    )
     return {
       version,
       hostApi: '>=1.0.0 <2.0.0',
@@ -147,15 +137,6 @@ describe('authorizeOfficialModuleArtifactRemoval', () => {
     await expect(authorize(value, ['1.0.0'])).resolves.toBe(false)
   })
 
-  it('rejects when the current-platform ready marker is missing', async () => {
-    const value = fixture()
-    for (const url of value.assets.keys()) {
-      if (url.includes('/ready.desktop.')) value.assets.delete(url)
-    }
-
-    await expect(authorize(value, ['1.0.0'])).resolves.toBe(false)
-  })
-
   it('rejects all removal when one requested old version fails', async () => {
     const value = fixture(['1.0.0', '2.0.0'])
     value.assets.delete(
@@ -182,7 +163,7 @@ describe('authorizeOfficialModuleArtifactRemoval', () => {
     })
 
     await expect(authorize(value, ['1.0.0', '2.0.0'])).resolves.toBe(true)
-    expect(value.requestUrl).toHaveBeenCalledTimes(8)
+    expect(value.requestUrl).toHaveBeenCalledTimes(6)
     expect(maximumRequestsInFlight).toBe(1)
   })
 

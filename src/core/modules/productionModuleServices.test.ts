@@ -6,7 +6,7 @@ import type { DataAdapter, RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import type { ModuleIntent } from './moduleIntentStore'
 import { ModuleRuntimeReservation } from './moduleRuntimeReservation'
-import { ModuleStore, moduleReadyMarkerFileName } from './moduleStore'
+import { ModuleStore } from './moduleStore'
 import { createOfficialModuleCompatibilityProvider } from './officialModuleCompatibilityProvider'
 import {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
@@ -189,19 +189,6 @@ function artifact() {
     })}\n`,
   )
   const manifestSha256 = sha256(manifestBytes)
-  const readyMarkerBytes = encode(
-    `${JSON.stringify({
-      schemaVersion: 1,
-      id: 'learning',
-      version: '1.2.3',
-      platform: 'desktop',
-      manifestSha256,
-    })}\n`,
-  )
-  const readyMarkerUrl = `${releaseRoot}/${moduleReadyMarkerFileName(
-    'desktop',
-    manifestSha256,
-  )}`
   const catalog = JSON.stringify({
     schemaVersion: 1,
     modules: [
@@ -233,8 +220,6 @@ function artifact() {
     manifestBytes,
     manifestUrl,
     manifestSha256,
-    readyMarkerBytes,
-    readyMarkerUrl,
   }
 }
 
@@ -279,8 +264,6 @@ function createHarness() {
     if (request.url === fixture.manifestUrl)
       return response(fixture.manifestBytes)
     if (request.url === fixture.entryUrl) return response(fixture.entryBytes)
-    if (request.url === fixture.readyMarkerUrl)
-      return response(fixture.readyMarkerBytes)
     return response('', 404)
   })
   const isActive = jest.fn(

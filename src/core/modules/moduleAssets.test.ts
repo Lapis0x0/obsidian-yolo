@@ -165,7 +165,7 @@ describe('ModuleAssetsCapabilityProvider', () => {
     ['private.dat', 'not declared as style, worker, or wasm'],
     ['missing.css', 'not declared as style, worker, or wasm'],
     ['module.json', 'metadata'],
-    ['READY.JSON', 'metadata'],
+    ['READY.JSON', 'not declared as style, worker, or wasm'],
     ['../styles/theme.css', 'relative file path'],
     ['/styles/theme.css', 'relative file path'],
     ['styles/../theme.css', 'relative file path'],

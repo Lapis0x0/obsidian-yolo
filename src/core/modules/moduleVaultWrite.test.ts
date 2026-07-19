@@ -69,7 +69,11 @@ function createWritableApp(initial: Record<string, string> = {}) {
     }
   }
   const vault = {
-    getAbstractFileByPath: jest.fn((path: string) => entries.get(path) ?? null),
+    getAbstractFileByPath: jest.fn((path: string) =>
+      path.split('/').some((segment) => segment.startsWith('.'))
+        ? null
+        : (entries.get(path) ?? null),
+    ),
     getMarkdownFiles: jest.fn(() => []),
     cachedRead: jest.fn(async (file: TFile) => text.get(file.path) ?? ''),
     read: jest.fn(async (file: TFile) => text.get(file.path) ?? ''),
@@ -96,6 +100,53 @@ function createWritableApp(initial: Record<string, string> = {}) {
     }),
     process: jest.fn(processFile),
     delete: jest.fn(deleteEntry),
+    adapter: {
+      exists: jest.fn(async (path: string) => entries.has(path)),
+      stat: jest.fn(async (path: string) => {
+        const entry = entries.get(path)
+        if (!entry) return null
+        return entry instanceof TFile
+          ? { type: 'file', ...entry.stat }
+          : { type: 'folder', ctime: 0, mtime: 0, size: 0 }
+      }),
+      list: jest.fn(async (path: string) => {
+        const prefix = `${path}/`
+        const direct = [...entries.values()].filter(
+          (entry) =>
+            entry.path.startsWith(prefix) &&
+            !entry.path.slice(prefix.length).includes('/'),
+        )
+        return {
+          files: direct
+            .filter((entry) => entry instanceof TFile)
+            .map((entry) => entry.path),
+          folders: direct
+            .filter((entry) => entry instanceof TFolder)
+            .map((entry) => entry.path),
+        }
+      }),
+      read: jest.fn(async (path: string) => text.get(path) ?? ''),
+      readBinary: jest.fn(
+        async (path: string) => binary.get(path) ?? new ArrayBuffer(0),
+      ),
+      write: jest.fn(async (path: string, content: string) => {
+        if (!entries.has(path)) addFile(path, content)
+        else text.set(path, content)
+      }),
+      writeBinary: jest.fn(async (path: string, content: ArrayBuffer) => {
+        if (!entries.has(path)) addFile(path, '')
+        binary.set(path, content)
+      }),
+      mkdir: jest.fn(async (path: string) => void addFolder(path)),
+      remove: jest.fn(async (path: string) => {
+        const entry = entries.get(path)
+        if (entry) await deleteEntry(entry)
+      }),
+      rmdir: jest.fn(async (path: string) => {
+        const entry = entries.get(path)
+        if (entry) await deleteEntry(entry)
+      }),
+    },
     on: jest.fn(() => ({})),
     offref: jest.fn(),
   }
@@ -129,6 +180,36 @@ function createWritableApp(initial: Record<string, string> = {}) {
 }
 
 describe('module vault writes', () => {
+  it('reads and writes hidden Vault sidecars outside the Obsidian index', async () => {
+    const { app, addFolder, entries, text, vault } = createWritableApp()
+    addFolder('YOLO')
+    const lifecycle = new ModuleLifecycleScope()
+    const api = new ObsidianModuleVaultCapabilityProvider(app).create(
+      'learning',
+      lifecycle,
+    ).api
+    const root = 'YOLO/.yolo_json_db/learning-srs'
+    const path = `${root}/project.json`
+
+    await api.ensureFolder(root)
+    const created = await api.createTextIfAbsent(path, 'v1')
+    expect(created).toEqual({ path, content: 'v1' })
+    expect(await api.readText(path)).toBe('v1')
+    expect(await api.stat(root)).toMatchObject({ kind: 'folder', path: root })
+    expect(await api.list(root)).toEqual([
+      expect.objectContaining({ kind: 'file', path }),
+    ])
+
+    const updated = await api.replaceTextIfUnchanged(created!, 'v2')
+    expect(updated).toEqual({ path, content: 'v2' })
+    expect(text.get(path)).toBe('v2')
+    expect(vault.createFolder).not.toHaveBeenCalledWith(
+      expect.stringContaining('.yolo_json_db'),
+    )
+    expect(entries.has(path)).toBe(true)
+    lifecycle.dispose()
+  })
+
   it('supports managed folders, files, rename, trash, and safe removal', async () => {
     const { app, binary, entries, fileManager, text } = createWritableApp()
     const lifecycle = new ModuleLifecycleScope()

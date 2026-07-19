@@ -51,6 +51,19 @@ function createHostVault() {
       },
     ],
     listMarkdownFiles: () => [],
+    stat: async (path) =>
+      path === 'p'
+        ? { kind: 'folder', path, name: 'p' }
+        : { kind: 'file', path, name: 'cards.md', ctime: 1, mtime: 2 },
+    list: async () => [
+      {
+        kind: 'file',
+        path: 'p/cards.md',
+        name: 'cards.md',
+        ctime: 1,
+        mtime: 2,
+      },
+    ],
     exists: async () => true,
     readText: async () => '',
     readBinary: async () => new ArrayBuffer(0),

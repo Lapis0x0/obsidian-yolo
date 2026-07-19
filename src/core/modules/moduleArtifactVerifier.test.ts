@@ -55,31 +55,13 @@ function fixture() {
     },
   }
   const store = {
-    readReadyMarkerBytes: async (
-      _id: string,
-      _version: string,
-      platform: 'desktop' | 'mobile',
-    ) =>
-      encode({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        platform,
-        manifestSha256: descriptor.manifest.sha256,
-      }),
     readManifestBytes: async () => manifestBytes,
     readEntryBytes: async (_id: string, _version: string, path: string) => {
       if (path === 'mobile.js') return mobileEntry
       if (path === 'desktop.js') return desktopEntry
       throw new Error('unexpected path')
     },
-    listVersionFiles: async () => [
-      'desktop.js',
-      'mobile.js',
-      'module.json',
-      `ready.desktop.${descriptor.manifest.sha256}.json`,
-      `ready.mobile.${descriptor.manifest.sha256}.json`,
-    ],
+    listVersionFiles: async () => ['desktop.js', 'mobile.js', 'module.json'],
   }
   return { descriptor, store }
 }
@@ -105,24 +87,7 @@ describe('verifyInstalledModuleArtifact', () => {
     )
   })
 
-  it('rejects marker platform, descriptor metadata, and file closure drift', async () => {
-    const markerMismatch = fixture()
-    markerMismatch.store.readReadyMarkerBytes = async () =>
-      encode({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        platform: 'desktop',
-        manifestSha256: markerMismatch.descriptor.manifest.sha256,
-      })
-    await expect(
-      verifyInstalledModuleArtifact(
-        markerMismatch.store,
-        markerMismatch.descriptor,
-        webcrypto.subtle as unknown as SubtleCrypto,
-      ),
-    ).rejects.toThrow('ready marker mismatch')
-
+  it('rejects descriptor metadata and file closure drift', async () => {
     const descriptorMismatch = fixture()
     await expect(
       verifyInstalledModuleArtifact(
@@ -138,8 +103,6 @@ describe('verifyInstalledModuleArtifact', () => {
       'extra.js',
       'mobile.js',
       'module.json',
-      `ready.desktop.${closureMismatch.descriptor.manifest.sha256}.json`,
-      `ready.mobile.${closureMismatch.descriptor.manifest.sha256}.json`,
     ]
     await expect(
       verifyInstalledModuleArtifact(
@@ -160,18 +123,6 @@ describe('verifyInstalledModuleArtifact', () => {
     device.descriptor.manifest.byteSize = manifestBytes.byteLength
     device.descriptor.manifest.sha256 = hash(manifestBytes)
     device.store.readManifestBytes = async () => manifestBytes
-    device.store.readReadyMarkerBytes = async (
-      _id: string,
-      _version: string,
-      platform: 'desktop' | 'mobile',
-    ) =>
-      encode({
-        schemaVersion: 1,
-        id: 'learning',
-        version: '1.0.0',
-        platform,
-        manifestSha256: device.descriptor.manifest.sha256,
-      })
 
     await expect(
       verifyInstalledModuleArtifact(

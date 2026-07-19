@@ -4,7 +4,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const repository = 'Lapis0x0/obsidian-yolo'
-const hostApi = '^1.1.0'
+const hostApi = '^1.2.0'
 const dataSchemas = {
   settings: { readMin: 0, readMax: 1, write: 1 },
 }
@@ -169,27 +169,6 @@ for (const [variantIndex, variant] of manifest.variants.entries()) {
     variant.files.filter(({ role }) => role === 'entry').length,
     1,
     `${platform} entry role count`,
-  )
-}
-
-const manifestSha256 = sha256(manifestBytes)
-for (const platform of artifactPlatforms) {
-  const readyName = `ready.${platform}.${manifestSha256}.json`
-  expectedFiles.add(readyName)
-  const ready = await readJson(path.join(artifactDir, readyName))
-  assertKeys(
-    ready,
-    ['schemaVersion', 'id', 'version', 'platform', 'manifestSha256'],
-    readyName,
-  )
-  assertEqual(ready.schemaVersion, 1, `${readyName} schemaVersion`)
-  assertEqual(ready.id, 'learning', `${readyName} id`)
-  assertEqual(ready.version, version, `${readyName} version`)
-  assertEqual(ready.platform, platform, `${readyName} platform`)
-  assertEqual(
-    ready.manifestSha256,
-    manifestSha256,
-    `${readyName} manifestSha256`,
   )
 }
 

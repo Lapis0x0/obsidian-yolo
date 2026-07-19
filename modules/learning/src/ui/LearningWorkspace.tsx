@@ -311,19 +311,13 @@ export function resolveNavigationTarget(
 }
 
 export function connectLearningWorkspaceLifecycle({
-  eventBus,
   navigation,
   onNavigate,
 }: {
-  eventBus: ProjectEventBus
   navigation: LearningWorkspacePorts['navigation']
   onNavigate: LearningNavigationHandler
 }): () => void {
-  const unregisterNavigation = navigation.register(onNavigate)
-  return () => {
-    unregisterNavigation()
-    eventBus.dispose()
-  }
+  return navigation.register(onNavigate)
 }
 
 export function subscribeLearningWorkspaceEvents(
@@ -441,7 +435,6 @@ export function LearningWorkspace({ ports }: LearningWorkspaceProps) {
     const onNavigate: LearningNavigationHandler = (target) =>
       dispatch({ type: 'queue-navigation', target })
     return connectLearningWorkspaceLifecycle({
-      eventBus,
       navigation: ports.navigation,
       onNavigate,
     })

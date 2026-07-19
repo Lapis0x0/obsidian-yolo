@@ -58,32 +58,6 @@ export async function updateModuleCatalog({
       assertEqual(sha256(bytes), file.sha256, `${file.name} sha256`)
     }),
   )
-  await Promise.all(
-    manifest.variants.map(async ({ platform }) => {
-      const name = `ready.${platform}.${manifestHash}.json`
-      const bytes = await fetchBytes(
-        `${release.urlRoot}/${name}`,
-        MAX_MANIFEST_BYTES,
-        `${platform} ready marker`,
-        fetchImpl,
-      )
-      const marker = asObject(
-        parseJson(bytes, `${platform} ready marker`),
-        name,
-      )
-      assertExactKeys(
-        marker,
-        ['schemaVersion', 'id', 'version', 'platform', 'manifestSha256'],
-        name,
-      )
-      assertEqual(marker.schemaVersion, 1, `${name} schemaVersion`)
-      assertEqual(marker.id, manifest.id, `${name} id`)
-      assertEqual(marker.version, manifest.version, `${name} version`)
-      assertEqual(marker.platform, platform, `${name} platform`)
-      assertEqual(marker.manifestSha256, manifestHash, `${name} manifestSha256`)
-    }),
-  )
-
   const currentText = await readFile(catalogPath, 'utf8')
   if (Buffer.byteLength(currentText) > 1_000_000) {
     throw new Error('Catalog exceeds its size limit')
@@ -308,8 +282,6 @@ function parseManifest(value) {
       const canonicalName = file.name.toLowerCase()
       if (
         canonicalPath === 'module.json' ||
-        canonicalPath === 'ready.json' ||
-        /^ready\.(?:desktop|mobile)\.[a-f0-9]{64}\.json$/.test(canonicalPath) ||
         paths.has(canonicalPath) ||
         names.has(canonicalName)
       ) {

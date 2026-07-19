@@ -8,9 +8,7 @@ import {
   type ModuleStore,
   collectModuleManifestFiles,
   moduleArtifactReleaseParent,
-  moduleReadyMarkerFileName,
   parseModuleArtifactManifest,
-  parseModuleReadyMarker,
   selectModuleManifestVariant,
 } from './moduleStore'
 
@@ -29,10 +27,7 @@ export type ModuleArtifactDescriptor = Readonly<{
 
 export type ModuleArtifactReadStore = Pick<
   ModuleStore,
-  | 'readReadyMarkerBytes'
-  | 'readManifestBytes'
-  | 'readEntryBytes'
-  | 'listVersionFiles'
+  'readManifestBytes' | 'readEntryBytes' | 'listVersionFiles'
 >
 
 export type VerifiedModuleArtifact = Readonly<{
@@ -70,26 +65,6 @@ export async function verifyInstalledModuleArtifact(
   const variant = selectModuleManifestVariant(manifest, descriptor.platform)
   const files = collectInstallableModuleFiles(manifest, descriptor.manifestUrl)
 
-  for (const markerVariant of manifest.variants) {
-    const markerBytes = await store.readReadyMarkerBytes(
-      descriptor.id,
-      descriptor.version,
-      markerVariant.platform,
-      descriptor.manifest.sha256,
-    )
-    const marker = parseModuleReadyMarker(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(markerBytes)),
-    )
-    if (
-      marker.id !== descriptor.id ||
-      marker.version !== descriptor.version ||
-      marker.platform !== markerVariant.platform ||
-      marker.manifestSha256 !== descriptor.manifest.sha256
-    ) {
-      throw new Error(`Module "${descriptor.id}" ready marker mismatch`)
-    }
-  }
-
   let entryBytes: Uint8Array | null = null
   for (const file of files) {
     const bytes = await store.readEntryBytes(
@@ -109,16 +84,7 @@ export async function verifyInstalledModuleArtifact(
   }
   if (!entryBytes) throw new Error(`Module "${manifest.id}" entry is missing`)
   const expectedPaths = new Set(
-    [
-      'module.json',
-      ...manifest.variants.map((candidate) =>
-        moduleReadyMarkerFileName(
-          candidate.platform,
-          descriptor.manifest.sha256,
-        ),
-      ),
-      ...files.map((file) => file.path),
-    ].map(canonicalPath),
+    ['module.json', ...files.map((file) => file.path)].map(canonicalPath),
   )
   const actualPaths = await store.listVersionFiles(
     manifest.id,

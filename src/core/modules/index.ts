@@ -221,9 +221,7 @@ export {
   collectModuleManifestFiles,
   isModuleHostApiRange,
   moduleArtifactReleaseParent,
-  moduleReadyMarkerFileName,
   parseModuleArtifactManifest,
-  parseModuleReadyMarker,
   selectModuleManifestVariant,
   type ModuleArtifactDataSchema,
   type ModuleArtifactDataSchemas,
@@ -232,7 +230,6 @@ export {
   type ModuleArtifactVariant,
   type ModuleStoreOptions,
   type ModuleArtifactManifest,
-  type ModuleReadyMarker,
   resolveModulePluginDir,
 } from './moduleStore'
 export {

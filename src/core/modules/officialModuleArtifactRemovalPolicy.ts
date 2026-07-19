@@ -4,9 +4,7 @@ import {
 } from './moduleArtifactVerifier'
 import { verifyModuleBytes } from './moduleIntegrity'
 import {
-  moduleReadyMarkerFileName,
   parseModuleArtifactManifest,
-  parseModuleReadyMarker,
   selectModuleManifestVariant,
 } from './moduleStore'
 import {
@@ -130,28 +128,6 @@ async function verifyRemoteArtifact(
   selectModuleManifestVariant(manifest, descriptor.platform)
   const files = collectInstallableModuleFiles(manifest, descriptor.manifestUrl)
 
-  const markerName = moduleReadyMarkerFileName(
-    descriptor.platform,
-    descriptor.manifest.sha256,
-  )
-  const markerUrl = `${descriptor.manifestUrl.slice(0, descriptor.manifestUrl.lastIndexOf('/') + 1)}${markerName}`
-  const expectedMarkerBytes = encodeReadyMarker(descriptor)
-  const markerBytes = await download({
-    kind: 'manifest',
-    url: markerUrl,
-    byteSize: expectedMarkerBytes.byteLength,
-    ...signalOption,
-  })
-  const marker = parseModuleReadyMarker(decodeJson(markerBytes))
-  if (
-    marker.id !== descriptor.id ||
-    marker.version !== descriptor.version ||
-    marker.platform !== descriptor.platform ||
-    marker.manifestSha256 !== descriptor.manifest.sha256
-  ) {
-    throw new Error(`Module "${descriptor.id}" ready marker mismatch`)
-  }
-
   for (const file of files) {
     const bytes = await download({
       kind: 'artifact',
@@ -166,18 +142,6 @@ async function verifyRemoteArtifact(
       subtleCrypto,
     )
   }
-}
-
-function encodeReadyMarker(descriptor: ModuleArtifactDescriptor): Uint8Array {
-  return new TextEncoder().encode(
-    `${JSON.stringify({
-      schemaVersion: 1,
-      id: descriptor.id,
-      version: descriptor.version,
-      platform: descriptor.platform,
-      manifestSha256: descriptor.manifest.sha256,
-    })}\n`,
-  )
 }
 
 function decodeJson(bytes: Uint8Array): unknown {

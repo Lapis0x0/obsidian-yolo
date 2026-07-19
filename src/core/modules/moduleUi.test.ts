@@ -271,7 +271,7 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     )
   })
 
-  it('rejects a pending render when its lifecycle is disposed', async () => {
+  it('cancels a pending render when its lifecycle is disposed', async () => {
     let finishRender!: () => void
     markdownRender.mockImplementationOnce(
       () =>
@@ -287,11 +287,11 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
 
     lifecycle.dispose()
 
-    await expect(result).rejects.toThrow('no longer active')
+    await expect(result).resolves.toBeUndefined()
     finishRender()
     await Promise.resolve()
     await Promise.resolve()
-    expect(componentUnload).toHaveBeenCalledTimes(2)
+    expect(componentUnload).toHaveBeenCalledTimes(1)
     expect(container.textContent).toBe('original')
   })
 

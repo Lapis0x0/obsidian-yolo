@@ -49,9 +49,6 @@ describe('ModuleReadinessReconciler', () => {
         readManifestBytes: async () => {
           throw new Error('not installed')
         },
-        readReadyMarkerBytes: async () => {
-          throw new Error('not installed')
-        },
         readEntryBytes: async () => {
           throw new Error('not installed')
         },
@@ -137,7 +134,6 @@ describe('ModuleReadinessReconciler', () => {
       },
       artifactStore: {
         readManifestBytes: async () => new Uint8Array([0]),
-        readReadyMarkerBytes: async () => new Uint8Array([0]),
         readEntryBytes: async () => new Uint8Array([0]),
         listVersionFiles: async () => [],
         removeVersionArtifacts: async () => undefined,

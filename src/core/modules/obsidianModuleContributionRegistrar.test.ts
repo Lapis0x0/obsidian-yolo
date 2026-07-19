@@ -1,4 +1,14 @@
-jest.mock('obsidian', () => ({ ItemView: class {} }))
+jest.mock('obsidian', () => ({
+  ItemView: class {
+    readonly constructedViewType: string
+
+    constructor() {
+      this.constructedViewType = (
+        this as unknown as { getViewType(): string }
+      ).getViewType()
+    }
+  },
+}))
 
 import type { Plugin, WorkspaceLeaf } from 'obsidian'
 
@@ -13,6 +23,30 @@ const view = {
 }
 
 describe('ObsidianModuleContributionRegistrar', () => {
+  it('provides the view declaration during the ItemView base constructor', () => {
+    const registerView = jest.fn()
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: { workspace: {} },
+      registerView,
+    } as unknown as Plugin)
+    registrar.commit('notes', { view }, new ModuleLifecycleScope())
+
+    const factory = registerView.mock.calls[0]?.[1] as (
+      leaf: WorkspaceLeaf,
+    ) => {
+      constructedViewType: string
+      getViewType(): string
+      getDisplayText(): string
+      getIcon(): string
+    }
+    const itemView = factory({} as WorkspaceLeaf)
+
+    expect(itemView.constructedViewType).toBe(view.type)
+    expect(itemView.getViewType()).toBe(view.type)
+    expect(itemView.getDisplayText()).toBe(view.name)
+    expect(itemView.getIcon()).toBe(view.icon)
+  })
+
   it('reuses and reveals an existing module view', async () => {
     const existingLeaf = {} as WorkspaceLeaf
     const workspace = {

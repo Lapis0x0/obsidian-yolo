@@ -64,6 +64,33 @@ function createApp(entries: Array<TFile | TFolder>) {
     }),
     adapter: {
       exists: jest.fn(async (path: string) => byPath.has(path)),
+      stat: jest.fn(async (path: string) => {
+        const entry = byPath.get(path)
+        if (!entry) return null
+        return entry instanceof TFile
+          ? { type: 'file', ...entry.stat }
+          : { type: 'folder', ctime: 0, mtime: 0, size: 0 }
+      }),
+      list: jest.fn(async (path: string) => {
+        const prefix = `${path}/`
+        const direct = [...byPath.values()].filter(
+          (entry) =>
+            entry.path.startsWith(prefix) &&
+            !entry.path.slice(prefix.length).includes('/'),
+        )
+        return {
+          files: direct
+            .filter((entry) => entry instanceof TFile)
+            .map((entry) => entry.path),
+          folders: direct
+            .filter((entry) => entry instanceof TFolder)
+            .map((entry) => entry.path),
+        }
+      }),
+      read: jest.fn(async (path: string) => `content:${path}`),
+      readBinary: jest.fn(async () => binary),
+      remove: jest.fn(async (path: string) => void byPath.delete(path)),
+      rmdir: jest.fn(async (path: string) => void byPath.delete(path)),
     },
     on: jest.fn(registerRef),
     offref: jest.fn((ref: VaultRef) => {
@@ -150,7 +177,7 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
     await expect(
       capability.api.readBinary('unindexed/secret.json'),
     ).rejects.toThrow('file not found')
-    expect(vault.adapter.exists).not.toHaveBeenCalled()
+    expect(vault.adapter.exists).toHaveBeenCalled()
     lifecycle.dispose()
     expect(() => capability.api.getEntry('notes')).toThrow('not active')
     await expect(capability.api.exists('notes')).rejects.toThrow('not active')

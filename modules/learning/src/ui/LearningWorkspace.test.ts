@@ -159,14 +159,11 @@ describe('LearningWorkspace state', () => {
 })
 
 describe('LearningWorkspace lifecycle', () => {
-  it('unregisters only its navigation handler and disposes its event bus', () => {
-    const dispose = jest.fn()
-    const eventBus = { dispose } as unknown as ProjectEventBus
+  it('unregisters only its navigation handler', () => {
     const unregister = jest.fn()
     const register = jest.fn(() => unregister)
     const abortAll = jest.fn()
     const lifecyclePorts = {
-      eventBus,
       navigation: { register },
       generation: { createWorkflow: jest.fn(), abortAll },
       onNavigate: jest.fn(),
@@ -179,7 +176,6 @@ describe('LearningWorkspace lifecycle', () => {
 
     expect(unregister).toHaveBeenCalledTimes(1)
     expect(abortAll).not.toHaveBeenCalled()
-    expect(dispose).toHaveBeenCalledTimes(1)
   })
 
   it('keeps sibling navigation and event subscriptions alive in either close order', () => {
@@ -210,7 +206,6 @@ describe('LearningWorkspace lifecycle', () => {
       const onRefresh = jest.fn()
       const unsubscribe = subscribeLearningWorkspaceEvents(eventBus, onRefresh)
       const cleanup = connectLearningWorkspaceLifecycle({
-        eventBus,
         navigation,
         onNavigate,
       })
@@ -260,8 +255,8 @@ describe('LearningWorkspace lifecycle', () => {
 
     second.cleanup()
     expect(handlers.size).toBe(0)
-    expect(first.dispose).toHaveBeenCalledTimes(1)
-    expect(second.dispose).toHaveBeenCalledTimes(1)
+    expect(first.dispose).not.toHaveBeenCalled()
+    expect(second.dispose).not.toHaveBeenCalled()
 
     const reverseFirst = createMount()
     const reverseSecond = createMount()

@@ -242,11 +242,7 @@ function normalizeAssetRequestPath(path: string): string {
   }
   const normalized = normalizeModuleArtifactFilePath(path)
   const canonicalPath = canonicalize(normalized)
-  if (
-    canonicalPath === 'module.json' ||
-    canonicalPath === 'ready.json' ||
-    /^ready\.(?:desktop|mobile)\.[a-f0-9]{64}\.json$/.test(canonicalPath)
-  ) {
+  if (canonicalPath === 'module.json') {
     throw new Error('Module artifact metadata is not available as an asset')
   }
   return normalized

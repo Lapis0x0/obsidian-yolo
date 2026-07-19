@@ -28,7 +28,7 @@ export function createOwnerLearningLifecyclePorts(
 }
 
 function getOwnerDocument(owner: LearningOwner): Document {
-  if (!('ownerDocument' in owner)) return owner
+  if (owner.nodeType === owner.DOCUMENT_NODE) return owner as Document
   if (!owner.ownerDocument) {
     throw new Error('Learning owner element has no document')
   }

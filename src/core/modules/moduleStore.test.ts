@@ -61,13 +61,11 @@ describe('ModuleStore', () => {
 
   it('reads exact manifest and nested entry bytes through DataAdapter', async () => {
     const index = Uint8Array.from([9, 8, 7])
-    const ready = Uint8Array.from([6, 5, 4])
     const manifest = Uint8Array.from([0, 255, 1])
     const entry = Uint8Array.from([4, 3, 2, 1])
     const readBinary = jest
       .fn<Promise<ArrayBuffer>, [string]>()
       .mockResolvedValueOnce(index.buffer)
-      .mockResolvedValueOnce(ready.buffer)
       .mockResolvedValueOnce(manifest.buffer)
       .mockResolvedValueOnce(entry.buffer)
     const store = new ModuleStore({
@@ -77,9 +75,6 @@ describe('ModuleStore', () => {
     })
 
     await expect(store.readBundledIndexBytes()).resolves.toEqual(index)
-    await expect(
-      store.readReadyMarkerBytes('notes', '1.2.0', 'mobile', 'a'.repeat(64)),
-    ).resolves.toEqual(ready)
     await expect(store.readManifestBytes('notes', '1.2.0')).resolves.toEqual(
       manifest,
     )
@@ -92,14 +87,10 @@ describe('ModuleStore', () => {
     )
     expect(readBinary).toHaveBeenNthCalledWith(
       2,
-      `.config/plugins/yolo/modules/notes/1.2.0/ready.mobile.${'a'.repeat(64)}.json`,
-    )
-    expect(readBinary).toHaveBeenNthCalledWith(
-      3,
       '.config/plugins/yolo/modules/notes/1.2.0/module.json',
     )
     expect(readBinary).toHaveBeenNthCalledWith(
-      4,
+      3,
       '.config/plugins/yolo/modules/notes/1.2.0/dist/entry.js',
     )
   })
