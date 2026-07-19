@@ -72,6 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: write
       contents: write
     outputs:
       release_id: ${{ steps.verify.outputs.release_id }}
@@ -168,6 +169,32 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/releases/${{ steps.create.outputs.release_id }}" \
             -F draft=false \
             --jq '.html_url'
+
+      - name: Independently verify published Release assets
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/verify-learning-release-assets.mjs \
+            --allow-published \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$LEARNING_RELEASE_TAG" \
+            --release-id "${{ steps.create.outputs.release_id }}" \
+            --target-commit "$GITHUB_SHA" \
+            --asset-dir modules/learning/release \
+            --metadata-out learning-release-published-metadata.json
+
+      - name: Dispatch verified catalog update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run module-catalog.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "${{ github.event.repository.default_branch }}" \
+            -f manifest_url="${{ steps.published.outputs.manifest_url }}" \
+            -f module_id=learning \
+            -f version="${{ steps.published.outputs.release_version }}"
+          echo 'Dispatched module-catalog.yml; its pull request remains subject to review.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove this run's failed draft Release
         if: ${{ failure() || cancelled() }}

@@ -77,6 +77,7 @@ export async function verifyLearningReleaseAssets({
   downloadBase = `https://github.com/${repository}/releases/download`,
   fetchImpl = fetch,
   githubOutput,
+  expectedDraft = true,
 }) {
   if (!/^[^/]+\/[^/]+$/.test(repository)) {
     throw new Error(`Invalid GitHub repository: ${repository}`)
@@ -92,7 +93,7 @@ export async function verifyLearningReleaseAssets({
   assertEqual(String(release.id), String(releaseId), 'Release id')
   assertEqual(release.tag_name, tag, 'Release tag')
   assertEqual(release.target_commitish, targetCommit, 'Release target commit')
-  assertEqual(release.draft, true, 'Release draft state')
+  assertEqual(release.draft, expectedDraft, 'Release draft state')
   assertEqual(release.prerelease, false, 'Release prerelease state')
   if (!Array.isArray(release.assets))
     throw new Error('Release assets must be an array')
@@ -256,6 +257,7 @@ export async function verifyLearningReleaseAssets({
       manifest_url: metadata.manifest.url,
       manifest_byte_size: metadata.manifest.byteSize,
       manifest_sha256: metadata.manifest.sha256,
+      release_version: metadata.version,
       metadata_path: metadataOut,
     }
     await appendFile(
@@ -383,8 +385,10 @@ function parseArgs(
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const cleanup = process.argv[2] === '--cleanup-owned-draft'
+  const allowPublished = process.argv.includes('--allow-published')
+  const rawArgs = process.argv.slice(cleanup ? 3 : 2)
   const args = parseArgs(
-    process.argv.slice(cleanup ? 3 : 2),
+    rawArgs.filter((arg) => arg !== '--allow-published'),
     cleanup
       ? ['repository', 'tag', 'target-commit', 'owner-marker']
       : undefined,
@@ -413,7 +417,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       metadataOut: path.resolve(args['metadata-out']),
       token: process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
       githubOutput: process.env.GITHUB_OUTPUT,
+      expectedDraft: !allowPublished,
     })
-    console.log(`Verified draft Learning Release ${args.tag}`)
+    console.log(
+      `Verified ${allowPublished ? 'published' : 'draft'} Learning Release ${args.tag}`,
+    )
   }
 }

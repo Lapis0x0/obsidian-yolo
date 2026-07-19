@@ -52,6 +52,30 @@ test('verifies the remote release closure and writes catalog metadata', async ()
   }
 })
 
+test('independently verifies published release assets', async () => {
+  const fixture = await createFixture({ draft: false })
+  try {
+    const metadata = await verifyLearningReleaseAssets({
+      repository,
+      tag,
+      releaseId,
+      targetCommit: 'test-commit',
+      assetDir: fixture.directory,
+      metadataOut: fixture.metadataPath,
+      token: 'test-token',
+      apiBase,
+      downloadBase,
+      fetchImpl: fixture.fetchImpl,
+      expectedDraft: false,
+    })
+
+    assert.equal(metadata.version, '1.2.3')
+    assert.equal(metadata.manifest.url, `${downloadBase}/${encodeURIComponent(tag)}/module.json`)
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true })
+  }
+})
+
 test('rejects an undeclared remote asset', async () => {
   const fixture = await createFixture({ extraAsset: true })
   try {
@@ -158,6 +182,37 @@ for (const [name, change, error] of [
   })
 }
 
+test('release workflow verifies publication before dispatching catalog review', async () => {
+  const workflowPath = path.resolve('.github/workflows/learning-release.yml')
+  const source = await readFile(workflowPath, 'utf8')
+  const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
+  const release = workflow.jobs.release
+  const steps = release.steps
+  const publishIndex = steps.findIndex(
+    ({ name }) => name === 'Publish verified GitHub Release',
+  )
+  const verificationIndex = steps.findIndex(
+    ({ name }) => name === 'Independently verify published Release assets',
+  )
+  const dispatchIndex = steps.findIndex(
+    ({ name }) => name === 'Dispatch verified catalog update',
+  )
+  const cleanupIndex = steps.findIndex(
+    ({ name }) => name === "Remove this run's failed draft Release",
+  )
+
+  assert.equal(release.permissions.actions, 'write')
+  assert.equal(release.permissions.contents, 'write')
+  assert.ok(publishIndex < verificationIndex)
+  assert.ok(verificationIndex < dispatchIndex)
+  assert.ok(dispatchIndex < cleanupIndex)
+  assert.match(steps[verificationIndex].run, /--allow-published/)
+  assert.match(steps[verificationIndex].run, /verify-learning-release-assets\.mjs/)
+  assert.match(steps[dispatchIndex].run, /gh workflow run module-catalog\.yml/)
+  assert.match(steps[dispatchIndex].run, /steps\.published\.outputs\.manifest_url/)
+  assert.match(steps[dispatchIndex].run, /review/)
+})
+
 test('release workflow keeps guarded cleanup after the publish attempt', async () => {
   const workflowPath = path.resolve('.github/workflows/learning-release.yml')
   const source = await readFile(workflowPath, 'utf8')
@@ -172,7 +227,7 @@ test('release workflow keeps guarded cleanup after the publish attempt', async (
   )
 
   assert.equal(release.permissions.contents, 'write')
-  assert.equal(publishIndex, steps.length - 2)
+  assert.ok(publishIndex < cleanupIndex)
   assert.equal(cleanupIndex, steps.length - 1)
   assert.equal(steps[cleanupIndex].if, '${{ failure() || cancelled() }}')
   assert.match(steps[cleanupIndex].run, /--cleanup-owned-draft/)
@@ -197,6 +252,7 @@ function cleanupRelease() {
 async function createFixture({
   extraAsset = false,
   corruptEntryDownload = false,
+  draft = true,
 } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-release-'))
   const entry = Buffer.from('export default true\n')
@@ -253,7 +309,7 @@ async function createFixture({
   const release = {
     id: releaseId,
     tag_name: tag,
-    draft: true,
+    draft,
     prerelease: false,
     html_url: `https://github.com/${repository}/releases/tag/${encodedTag}`,
     target_commitish: 'test-commit',
