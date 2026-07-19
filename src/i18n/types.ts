@@ -208,8 +208,6 @@ export type TranslationKeys = {
       availableVersion: string
       install: string
       update: string
-      installAndReload: string
-      updateAndReload: string
       installing: string
       updating: string
       reload: string
@@ -220,7 +218,6 @@ export type TranslationKeys = {
       candidateUnavailable: string
       installError: string
       updateError: string
-      reloadError: string
       activationPendingDetail: string
       intentLabel: string
       intentUnknown: string
@@ -243,6 +240,8 @@ export type TranslationKeys = {
       retry: string
       actionError: string
       actionSuccess: {
+        install: string
+        update: string
         enable: string
         disable: string
         uninstall: string

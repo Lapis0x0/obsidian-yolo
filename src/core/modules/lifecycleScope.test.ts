@@ -120,4 +120,23 @@ describe('ModuleLifecycleScope', () => {
     expect(calls).toEqual(['first'])
     scope.dispose()
   })
+
+  it('waits for registered quiescence once before disposal', async () => {
+    const scope = new ModuleLifecycleScope()
+    let finish!: () => void
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const quiesce = jest.fn(() => pending)
+    scope.onQuiesce(quiesce)
+    scope.closeWhenActiveRegistration()
+    await scope.runWhenActiveCallbacks(() => false)
+
+    const first = scope.quiesce()
+    const second = scope.quiesce()
+    expect(quiesce).toHaveBeenCalledTimes(1)
+    finish()
+    await Promise.all([first, second])
+    scope.dispose()
+  })
 })

@@ -37,6 +37,66 @@ describe('ModuleRuntime', () => {
     expect(runtime.isActive('learning')).toBe(false)
   })
 
+  it('quiesces and deactivates one module without disposing the runtime', async () => {
+    const calls: string[] = []
+    let finish!: () => void
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const registrar = {
+      commit: jest.fn(),
+      deactivate: jest.fn(() => calls.push('registrar')),
+    }
+    const runtime = createRuntime(registrar)
+    await runtime.activate({
+      id: 'learning',
+      activate: ({ lifecycle }) => {
+        lifecycle.onQuiesce(async () => {
+          calls.push('quiesce')
+          await pending
+        })
+        lifecycle.add(() => calls.push('dispose'))
+      },
+    })
+
+    const deactivation = runtime.deactivate('learning', { closeViews: true })
+    await Promise.resolve()
+    expect(runtime.isActive('learning')).toBe(true)
+    expect(calls).toEqual(['quiesce'])
+    finish()
+    await deactivation
+
+    expect(runtime.isActive('learning')).toBe(false)
+    expect(registrar.deactivate).toHaveBeenCalledWith('learning', true)
+    expect(calls).toEqual(['quiesce', 'registrar', 'dispose'])
+    await runtime.activate({ id: 'learning', activate: () => undefined })
+    expect(runtime.isActive('learning')).toBe(true)
+    runtime.dispose()
+  })
+
+  it('keeps the module active when quiescence is aborted', async () => {
+    const registrar = { commit: jest.fn(), deactivate: jest.fn() }
+    const runtime = createRuntime(registrar)
+    await runtime.activate({
+      id: 'learning',
+      activate: ({ lifecycle }) => {
+        lifecycle.onQuiesce(() => new Promise<void>(() => undefined))
+      },
+    })
+    const controller = new AbortController()
+    const deactivation = runtime.deactivate(
+      'learning',
+      { closeViews: true },
+      controller.signal,
+    )
+    controller.abort()
+
+    await expect(deactivation).rejects.toThrow('deactivation was aborted')
+    expect(runtime.isActive('learning')).toBe(true)
+    expect(registrar.deactivate).not.toHaveBeenCalled()
+    runtime.dispose()
+  })
+
   it('rolls back a hanging activation when its signal is aborted', async () => {
     const runtime = createRuntime({ commit: jest.fn() })
     const controller = new AbortController()
@@ -127,7 +187,7 @@ describe('ModuleRuntime', () => {
     await runtime.activate({
       id: 'config-timing',
       activate: (host) => {
-        expect(YOLO_HOST_API_VERSION).toBe('1.2.0')
+        expect(YOLO_HOST_API_VERSION).toBe('1.3.0')
         expect(host.version).toBe(1)
         expect(typeof host.lifecycle.whenActive).toBe('function')
         expect(() => host.config.getSnapshot()).toThrow('config is unavailable')

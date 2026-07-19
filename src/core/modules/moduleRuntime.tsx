@@ -19,6 +19,53 @@ import type {
   YoloModuleWorkspaceV1,
 } from './types'
 
+type ModuleViewSlotListener = (
+  declaration: YoloModuleViewV1 | null,
+  previous: YoloModuleViewV1 | null,
+) => void
+
+class ModuleViewSlot {
+  private declaration: YoloModuleViewV1 | null = null
+  private readonly listeners = new Set<ModuleViewSlotListener>()
+
+  constructor(
+    readonly moduleId: string,
+    readonly type: string,
+    readonly name: string,
+    readonly icon: string,
+  ) {}
+
+  get(): YoloModuleViewV1 | null {
+    return this.declaration
+  }
+
+  bind(declaration: YoloModuleViewV1): void {
+    if (this.declaration) {
+      throw new Error(`Module view type "${this.type}" is already active`)
+    }
+    if (declaration.type !== this.type) {
+      throw new Error(
+        `Module "${this.moduleId}" changed view type from "${this.type}" to "${declaration.type}"`,
+      )
+    }
+    const previous = this.declaration
+    this.declaration = declaration
+    for (const listener of this.listeners) listener(declaration, previous)
+  }
+
+  unbind(expected?: YoloModuleViewV1): void {
+    if (!this.declaration || (expected && this.declaration !== expected)) return
+    const previous = this.declaration
+    this.declaration = null
+    for (const listener of this.listeners) listener(null, previous)
+  }
+
+  subscribe(listener: ModuleViewSlotListener): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+}
+
 abstract class ModuleItemView extends ItemView {
   private root: Root | null = null
   private mountedHost: HTMLElement | null = null
@@ -26,6 +73,9 @@ abstract class ModuleItemView extends ItemView {
   private observer: MutationObserver | null = null
   private windowMigratedDisposer: (() => void) | null = null
   private rebuildRaf: number | null = null
+  private declaration: YoloModuleViewV1 | null = null
+  private lastState: Record<string, unknown> = {}
+  private unsubscribeSlot: (() => void) | null = null
   private closed = false
 
   constructor(
@@ -35,22 +85,26 @@ abstract class ModuleItemView extends ItemView {
     super(leaf)
   }
 
-  protected abstract get declaration(): YoloModuleViewV1
+  protected abstract get slot(): ModuleViewSlot
 
   getViewType(): string {
-    return this.declaration.type
+    return this.slot.type
   }
 
   getDisplayText(): string {
-    return this.declaration.name
+    return this.declaration?.name ?? this.slot.name
   }
 
   getIcon(): string {
-    return this.declaration.icon
+    return this.declaration?.icon ?? this.slot.icon
   }
 
   onOpen(): Promise<void> {
     this.closed = false
+    this.declaration = this.slot.get()
+    this.unsubscribeSlot = this.slot.subscribe((declaration, previous) => {
+      void this.replaceDeclaration(declaration, previous)
+    })
     this.render()
     this.windowMigratedDisposer = this.containerEl.onWindowMigrated(() =>
       this.scheduleRebuild(),
@@ -75,6 +129,8 @@ abstract class ModuleItemView extends ItemView {
 
   onClose(): Promise<void> {
     this.closed = true
+    this.unsubscribeSlot?.()
+    this.unsubscribeSlot = null
     if (this.rebuildRaf !== null) {
       this.containerEl.win.cancelAnimationFrame(this.rebuildRaf)
       this.rebuildRaf = null
@@ -91,12 +147,15 @@ abstract class ModuleItemView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return snapshotViewState(this.declaration.getState?.()) ?? {}
+    const state = snapshotViewState(this.declaration?.getState?.())
+    if (state) this.lastState = state
+    return { ...this.lastState }
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
     await super.setState(state, result)
-    await this.declaration.setState?.(snapshotViewState(state) ?? {})
+    this.lastState = snapshotViewState(state) ?? {}
+    await this.declaration?.setState?.({ ...this.lastState })
   }
 
   private render(): void {
@@ -108,8 +167,28 @@ abstract class ModuleItemView extends ItemView {
       this.mountedDocument = host.ownerDocument
     }
     this.root.render(
-      <React.StrictMode>{this.declaration.render()}</React.StrictMode>,
+      <React.StrictMode>
+        {this.declaration ? (
+          this.declaration.render()
+        ) : (
+          <div className="yolo-module-view-transition" role="status" />
+        )}
+      </React.StrictMode>,
     )
+  }
+
+  private async replaceDeclaration(
+    declaration: YoloModuleViewV1 | null,
+    previous: YoloModuleViewV1 | null,
+  ): Promise<void> {
+    if (this.closed) return
+    const state = snapshotViewState(previous?.getState?.())
+    if (state) this.lastState = state
+    this.root?.unmount()
+    this.root = null
+    this.declaration = declaration
+    if (declaration) await declaration.setState?.({ ...this.lastState })
+    if (!this.closed) this.render()
   }
 
   private scheduleRebuild(): void {
@@ -135,11 +214,11 @@ abstract class ModuleItemView extends ItemView {
 function createModuleItemView(
   leaf: WorkspaceLeaf,
   plugin: Plugin,
-  declaration: YoloModuleViewV1,
+  slot: ModuleViewSlot,
 ): ModuleItemView {
   return new (class extends ModuleItemView {
-    protected get declaration(): YoloModuleViewV1 {
-      return declaration
+    protected get slot(): ModuleViewSlot {
+      return slot
     }
   })(leaf, plugin)
 }
@@ -150,6 +229,7 @@ export type ModuleContributionRegistrar = {
     contributions: StagedModuleContributions,
     lifecycle: ModuleLifecycleScope,
   ): void
+  deactivate?(moduleId: string, closeViews: boolean): void
   openView?(
     moduleId: string,
     options?: YoloModuleOpenViewOptionsV1,
@@ -345,6 +425,22 @@ export class ModuleRuntime {
     }
   }
 
+  async deactivate(
+    moduleId: string,
+    options: Readonly<{ closeViews?: boolean }> = {},
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (this.disposed) throw new Error('Module runtime is disposed')
+    const lifecycle = this.scopes.get(moduleId)
+    if (!lifecycle) return
+    await waitForQuiescence(lifecycle.quiesce(), signal)
+    if (signal?.aborted) throw new Error('Module deactivation was aborted')
+    this.registrar.deactivate?.(moduleId, options.closeViews === true)
+    this.scopes.delete(moduleId)
+    this.activeVersions.delete(moduleId)
+    lifecycle.dispose()
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -372,15 +468,15 @@ export class ModuleRuntime {
 }
 
 /**
- * Obsidian has no public unregisterView API. Registered view types therefore
- * live until plugin reload. Module disposal removes resources that have public
- * cleanup APIs; Obsidian preserves and restores view leaves across reloads.
+ * Obsidian has no public unregisterView API. Each view type therefore keeps a
+ * host-owned slot for the plugin lifetime while module declarations are bound
+ * and released independently across activation changes.
  */
 export class ObsidianModuleContributionRegistrar
   implements ModuleContributionRegistrar
 {
-  private readonly viewTypes = new Set<string>()
-  private readonly viewTypeByModuleId = new Map<string, string>()
+  private readonly viewSlotsByType = new Map<string, ModuleViewSlot>()
+  private readonly viewSlotByModuleId = new Map<string, ModuleViewSlot>()
   private readonly openingViewByModuleId = new Map<string, Promise<void>>()
 
   constructor(private readonly plugin: Plugin) {}
@@ -391,7 +487,11 @@ export class ObsidianModuleContributionRegistrar
     lifecycle: ModuleLifecycleScope,
   ): void {
     const view = contributions.view
-    if (view && this.viewTypes.has(view.type)) {
+    const existingSlot = this.viewSlotByModuleId.get(moduleId)
+    if (view && existingSlot?.get()) {
+      throw new Error(`Module view type "${view.type}" is already active`)
+    }
+    if (view && !existingSlot && this.viewSlotsByType.has(view.type)) {
       throw new Error(`Module view type "${view.type}" is already registered`)
     }
 
@@ -447,12 +547,26 @@ export class ObsidianModuleContributionRegistrar
     }
 
     if (view) {
-      this.plugin.registerView(view.type, (leaf) =>
-        createModuleItemView(leaf, this.plugin, view),
-      )
-      this.viewTypes.add(view.type)
-      this.viewTypeByModuleId.set(moduleId, view.type)
+      const slot =
+        existingSlot ??
+        new ModuleViewSlot(moduleId, view.type, view.name, view.icon)
+      if (!existingSlot) {
+        this.plugin.registerView(view.type, (leaf) =>
+          createModuleItemView(leaf, this.plugin, slot),
+        )
+        this.viewSlotsByType.set(view.type, slot)
+        this.viewSlotByModuleId.set(moduleId, slot)
+      }
+      slot.bind(view)
+      lifecycle.add(() => slot.unbind(view))
     }
+  }
+
+  deactivate(moduleId: string, closeViews: boolean): void {
+    const slot = this.viewSlotByModuleId.get(moduleId)
+    if (!slot) return
+    slot.unbind()
+    if (closeViews) this.plugin.app.workspace.detachLeavesOfType(slot.type)
   }
 
   async openView(
@@ -460,10 +574,11 @@ export class ObsidianModuleContributionRegistrar
     options?: YoloModuleOpenViewOptionsV1,
     isActive: () => boolean = () => true,
   ): Promise<void> {
-    const viewType = this.viewTypeByModuleId.get(moduleId)
-    if (!viewType) {
+    const slot = this.viewSlotByModuleId.get(moduleId)
+    if (!slot?.get()) {
       throw new Error(`Module "${moduleId}" has no registered view`)
     }
+    const viewType = slot.type
     assertModuleWorkspaceActive(moduleId, isActive)
     if (options?.newLeaf) {
       return this.openViewNow(moduleId, viewType, options, isActive)
@@ -580,6 +695,33 @@ function assertModuleWorkspaceActive(
   if (!isActive()) {
     throw new Error(`Module "${moduleId}" workspace is not active`)
   }
+}
+
+function waitForQuiescence(
+  operation: Promise<void>,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!signal) return operation
+  if (signal.aborted)
+    return Promise.reject(new Error('Module deactivation was aborted'))
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup()
+      reject(new Error('Module deactivation was aborted'))
+    }
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    signal.addEventListener('abort', onAbort, { once: true })
+    operation.then(
+      () => {
+        cleanup()
+        resolve()
+      },
+      (error) => {
+        cleanup()
+        reject(toError(error))
+      },
+    )
+  })
 }
 
 function toError(error: unknown): Error {

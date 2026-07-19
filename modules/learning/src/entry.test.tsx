@@ -177,6 +177,7 @@ function createHost() {
   const host = {
     lifecycle: {
       add: (dispose: () => void) => lifecycleDisposers.push(dispose),
+      onQuiesce: jest.fn(),
       whenActive: (callback: () => void | Promise<void>) => {
         activeCallbacks.push(callback)
       },

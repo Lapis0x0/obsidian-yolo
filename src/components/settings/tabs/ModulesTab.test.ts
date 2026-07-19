@@ -41,9 +41,9 @@ function service(): jest.Mocked<
   Pick<ModuleService, 'install' | 'setEnabled' | 'uninstall'>
 > {
   return {
-    install: jest.fn().mockResolvedValue({ reloadRequired: true }),
-    setEnabled: jest.fn().mockResolvedValue({ reloadRequired: true }),
-    uninstall: jest.fn().mockResolvedValue({ reloadRequired: false }),
+    install: jest.fn().mockResolvedValue({}),
+    setEnabled: jest.fn().mockResolvedValue({}),
+    uninstall: jest.fn().mockResolvedValue({}),
   }
 }
 
@@ -128,7 +128,7 @@ describe('ModulesTab product actions', () => {
         'install',
         confirmed,
       ),
-    ).resolves.toEqual({ reloadRequired: true })
+    ).resolves.toEqual({})
     expect(modules.install).toHaveBeenCalledTimes(1)
     expect(modules.install).toHaveBeenCalledWith(confirmed)
   })

@@ -479,16 +479,15 @@ export function ModulesTab({
   ) => {
     const name = module.catalog?.name ?? module.id
     try {
-      const result = await executeModuleProductAction(
-        service,
-        module,
-        'install',
-        candidate,
+      await executeModuleProductAction(service, module, 'install', candidate)
+      new Notice(
+        t(
+          isUpdate
+            ? 'settings.modules.actionSuccess.update'
+            : 'settings.modules.actionSuccess.install',
+        ).replace('{name}', name),
+        8000,
       )
-      if (result.reloadRequired) {
-        reloadPendingActivation(module, candidate.expectedVersion)
-        return
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       new Notice(
@@ -537,9 +536,7 @@ export function ModulesTab({
         .replace('{version}', candidate.expectedVersion)
         .replace('{sha256}', candidate.expectedManifestSha256),
       ctaText: t(
-        isUpdate
-          ? 'settings.modules.updateAndReload'
-          : 'settings.modules.installAndReload',
+        isUpdate ? 'settings.modules.update' : 'settings.modules.install',
       ),
       onConfirm: () => {
         if (
@@ -561,29 +558,6 @@ export function ModulesTab({
     modal.open()
   }
 
-  const reloadPendingActivation = (
-    module: ModuleRecord,
-    preparedVersion?: string,
-  ) => {
-    const name = module.catalog?.name ?? module.id
-    const version = preparedVersion ?? module.pendingVersion ?? module.version
-    setOperation({ action: 'reload', moduleId: module.id })
-    try {
-      window.location.reload()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      new Notice(
-        t('settings.modules.reloadError')
-          .replace('{name}', name)
-          .replace('{version}', version)
-          .replace('{error}', message),
-        8000,
-      )
-    } finally {
-      clearOperation(module.id)
-    }
-  }
-
   const runProductAction = async (
     module: ModuleRecord,
     action: ModuleProductAction,
@@ -592,16 +566,12 @@ export function ModulesTab({
     const name = module.catalog?.name ?? module.id
     setOperation({ action, moduleId: module.id })
     try {
-      const result = await executeModuleProductAction(
+      await executeModuleProductAction(
         service,
         module,
         action,
         confirmedInstallCandidate,
       )
-      if (result.reloadRequired) {
-        reloadPendingActivation(module, result.version)
-        return
-      }
       new Notice(
         t(`settings.modules.actionSuccess.${action}`).replace('{name}', name),
         8000,
@@ -748,7 +718,7 @@ export function ModulesTab({
       void runProductAction(module, action)
       return
     }
-    reloadPendingActivation(module)
+    void runProductAction(module, 'enable')
   }
 
   return (

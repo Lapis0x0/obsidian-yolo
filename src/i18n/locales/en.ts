@@ -583,24 +583,20 @@ export const en: TranslationKeys = {
       availableVersion: 'Update {version}',
       install: 'Install',
       update: 'Update',
-      installAndReload: 'Install and reload',
-      updateAndReload: 'Update and reload',
       installing: 'Installing…',
       updating: 'Updating…',
-      reload: 'Reload',
-      reloading: 'Reloading…',
+      reload: 'Retry activation',
+      reloading: 'Activating…',
       confirmInstallTitle: 'Install {name}',
       confirmUpdateTitle: 'Update {name}',
       confirmMessage:
-        'Confirm the exact module release.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded and verified, then Obsidian will reload to activate this version.',
+        'Confirm the exact module release.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded, verified, and activated in place.',
       candidateUnavailable:
         '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
       installError: 'Could not install {name}: {error}',
       updateError: 'Could not update {name}: {error}',
-      reloadError:
-        '{name} {version} is prepared, but Obsidian could not reload automatically: {error}. Reload Obsidian to continue.',
       activationPendingDetail:
-        'Version {version} is prepared. Reload to continue activation or recovery.',
+        'Version {version} is prepared and can be activated again.',
       intentLabel: 'Intent',
       intentUnknown: 'Unavailable',
       intentInstalledEnabled: 'Installed · enabled',
@@ -622,6 +618,8 @@ export const en: TranslationKeys = {
       retry: 'Retry',
       actionError: 'Could not change {name}: {error}',
       actionSuccess: {
+        install: '{name} was installed and enabled.',
+        update: '{name} was updated and enabled.',
         enable: '{name} is marked enabled.',
         disable: '{name} is marked disabled; its files and data were kept.',
         uninstall: '{name} was safely uninstalled from this device.',
@@ -639,7 +637,7 @@ export const en: TranslationKeys = {
       confirmProduct: {
         uninstallTitle: 'Uninstall {name}',
         uninstallMessage:
-          'Uninstall {name}? The installation intent will be cleared first. If the module is active, its files and data will be kept until Obsidian reloads. Otherwise, only the local module program files and installation state will be removed safely.',
+          'Uninstall {name}? YOLO will safely stop the module, then remove its local program files and installation state. Module data will be kept.',
       },
       statuses: {
         available: 'Available',

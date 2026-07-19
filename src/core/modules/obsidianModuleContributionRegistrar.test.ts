@@ -47,6 +47,34 @@ describe('ObsidianModuleContributionRegistrar', () => {
     expect(itemView.getIcon()).toBe(view.icon)
   })
 
+  it('rebinds a module view without registering another Obsidian view type', async () => {
+    const registerView = jest.fn()
+    const workspace = {
+      getLeavesOfType: jest.fn(() => [{}]),
+      revealLeaf: jest.fn(async () => undefined),
+    }
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: { workspace },
+      registerView,
+    } as unknown as Plugin)
+    const first = new ModuleLifecycleScope()
+    registrar.commit('notes', { view }, first)
+    registrar.deactivate('notes', false)
+    first.dispose()
+
+    const second = new ModuleLifecycleScope()
+    registrar.commit(
+      'notes',
+      { view: { ...view, name: 'Updated module view' } },
+      second,
+    )
+    await expect(registrar.openView('notes')).resolves.toBeUndefined()
+
+    expect(registerView).toHaveBeenCalledTimes(1)
+    expect(workspace.revealLeaf).toHaveBeenCalledTimes(1)
+    second.dispose()
+  })
+
   it('reuses and reveals an existing module view', async () => {
     const existingLeaf = {} as WorkspaceLeaf
     const workspace = {

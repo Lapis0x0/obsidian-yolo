@@ -3687,17 +3687,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       reportActivationError: (moduleId, error) => {
         console.error(`[YOLO] Module "${moduleId}" activation failed`, error)
       },
-      requestReload: (moduleId) => {
-        this.showActionToast({
-          id: `module-reload-required:${moduleId}`,
-          tone: 'warning',
-          title: 'Module change pending',
-          message: `Reload Obsidian to apply synchronized changes for "${moduleId}".`,
-          actionLabel: 'Reload',
-          dismissLabel: 'Later',
-          onAction: () => window.location.reload(),
-        })
-      },
       reportStartupError: (error, moduleId) => {
         console.error(
           moduleId

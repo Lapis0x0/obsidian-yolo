@@ -60,7 +60,7 @@ test('preserves schema declarations from a real Learning build', async () => {
     const builtManifest = JSON.parse(
       await readFile(path.join(artifactDir, 'module.json'), 'utf8'),
     )
-    assert.equal(catalog.modules[0].versions[0].hostApi, '^1.2.0')
+    assert.equal(catalog.modules[0].versions[0].hostApi, '^1.3.0')
     assert.deepEqual(
       catalog.modules[0].versions[0].dataSchemas,
       builtManifest.dataSchemas,

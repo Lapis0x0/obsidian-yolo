@@ -587,24 +587,20 @@ export const it: TranslationKeys = {
       availableVersion: 'Aggiornamento {version}',
       install: 'Installa',
       update: 'Aggiorna',
-      installAndReload: 'Installa e ricarica',
-      updateAndReload: 'Aggiorna e ricarica',
       installing: 'Installazione…',
       updating: 'Aggiornamento…',
-      reload: 'Ricarica',
-      reloading: 'Ricaricamento…',
+      reload: 'Riprova attivazione',
+      reloading: 'Attivazione…',
       confirmInstallTitle: 'Installa {name}',
       confirmUpdateTitle: 'Aggiorna {name}',
       confirmMessage:
-        'Conferma la versione esatta del modulo.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati e verificati, quindi Obsidian verrà ricaricato per attivare questa versione.',
+        'Conferma la versione esatta del modulo.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati, verificati e attivati direttamente.',
       candidateUnavailable:
         'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
       installError: 'Impossibile installare {name}: {error}',
       updateError: 'Impossibile aggiornare {name}: {error}',
-      reloadError:
-        'La versione {version} di {name} è pronta, ma Obsidian non è stato ricaricato automaticamente: {error}. Ricarica Obsidian per continuare.',
       activationPendingDetail:
-        'La versione {version} è pronta. Ricarica per continuare l’attivazione o il ripristino.',
+        'La versione {version} è pronta e può essere attivata di nuovo.',
       intentLabel: 'Intento',
       intentUnknown: 'Non disponibile',
       intentInstalledEnabled: 'Installato · abilitato',
@@ -626,6 +622,8 @@ export const it: TranslationKeys = {
       retry: 'Riprova',
       actionError: 'Impossibile modificare {name}: {error}',
       actionSuccess: {
+        install: '{name} è stato installato e abilitato.',
+        update: '{name} è stato aggiornato e abilitato.',
         enable: '{name} è contrassegnato come abilitato.',
         disable:
           '{name} è contrassegnato come disabilitato; file e dati sono stati conservati.',
@@ -644,7 +642,7 @@ export const it: TranslationKeys = {
       confirmProduct: {
         uninstallTitle: 'Disinstalla {name}',
         uninstallMessage:
-          'Disinstallare {name}? L’intento di installazione verrà prima cancellato. Se il modulo è attivo, file e dati saranno conservati fino al riavvio di Obsidian. Altrimenti verranno rimossi in sicurezza solo i file del programma e lo stato di installazione locali.',
+          'Disinstallare {name}? YOLO arresterà il modulo in sicurezza, quindi rimuoverà i file del programma e lo stato di installazione locali. I dati del modulo verranno conservati.',
       },
       statuses: {
         available: 'Disponibile',

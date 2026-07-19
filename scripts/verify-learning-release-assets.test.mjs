@@ -95,7 +95,10 @@ test('independently verifies published release assets', async () => {
     })
 
     assert.equal(metadata.version, '1.2.3')
-    assert.equal(metadata.manifest.url, `${downloadBase}/${encodeURIComponent(tag)}/module.json`)
+    assert.equal(
+      metadata.manifest.url,
+      `${downloadBase}/${encodeURIComponent(tag)}/module.json`,
+    )
   } finally {
     await rm(fixture.directory, { recursive: true, force: true })
   }
@@ -237,9 +240,15 @@ test('release workflow verifies publication before dispatching catalog review', 
   assert.ok(verificationIndex < dispatchIndex)
   assert.ok(dispatchIndex < cleanupIndex)
   assert.match(steps[verificationIndex].run, /--allow-published/)
-  assert.match(steps[verificationIndex].run, /verify-learning-release-assets\.mjs/)
+  assert.match(
+    steps[verificationIndex].run,
+    /verify-learning-release-assets\.mjs/,
+  )
   assert.match(steps[dispatchIndex].run, /gh workflow run module-catalog\.yml/)
-  assert.match(steps[dispatchIndex].run, /steps\.published\.outputs\.manifest_url/)
+  assert.match(
+    steps[dispatchIndex].run,
+    /steps\.published\.outputs\.manifest_url/,
+  )
   assert.match(steps[dispatchIndex].run, /review/)
 })
 
@@ -297,7 +306,7 @@ async function createFixture({
     schemaVersion: 1,
     id: 'learning',
     version: '1.2.3',
-    hostApi: '^1.2.0',
+    hostApi: '^1.3.0',
     dataSchemas: {
       settings: { readMin: 0, readMax: 1, write: 1 },
     },

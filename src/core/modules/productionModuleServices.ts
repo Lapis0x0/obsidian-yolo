@@ -52,9 +52,12 @@ export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
 export const OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS = 6 * 60 * 60 * 1_000
 export const OFFICIAL_MODULE_CATALOG_TIMEOUT_MS = 10_000
 export const OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS = 30_000
+export const MODULE_QUIESCENCE_TIMEOUT_MS = 30_000
 
 export type ProductionModuleRuntimeReservation = Readonly<{
+  isActive(moduleId: string): boolean
   activate: ModuleActivationCoordinatorOptions['runtime']['activate']
+  deactivate: ModuleRuntimeQuiescence['deactivate']
   runWithModuleQuiesced: ModuleRuntimeQuiescence['runWithModuleQuiesced']
 }>
 
@@ -101,7 +104,6 @@ export type ProductionModuleServicesOptions = Readonly<{
   reportCleanupError?: (error: unknown) => void
   reportRefreshError?: (error: unknown) => void
   reportActivationError?: (moduleId: string, error: unknown) => void
-  requestReload: (moduleId: string) => void
   reportStartupError?: (error: unknown, moduleId?: string) => void
 }>
 
@@ -287,10 +289,10 @@ export function createProductionModuleServices(
     intentStore: startupIntentStore,
     readinessReconciler,
     activationCoordinator,
+    runtime: runtimeReservation,
     manager,
     scheduleSafeUninstall: (moduleId: string) =>
       uninstallCoordinator.uninstall(moduleId),
-    requestReload: options.requestReload,
     ...(options.reportStartupError
       ? { reportError: options.reportStartupError }
       : {}),
@@ -334,6 +336,59 @@ export function createProductionModuleServices(
     )
   }
 
+  const getRunningDescriptor = async (moduleId: string) => {
+    const state = await options.deviceStateStore.read(moduleId)
+    const descriptors = [state?.pending?.descriptor, state?.active].filter(
+      (descriptor): descriptor is NonNullable<typeof descriptor> =>
+        descriptor !== null && descriptor !== undefined,
+    )
+    return (
+      descriptors.find((descriptor) =>
+        options.isActive(moduleId, descriptor.version),
+      ) ?? null
+    )
+  }
+
+  const deactivateModule = async (
+    moduleId: string,
+    closeViews: boolean,
+  ): Promise<boolean> => {
+    if (!(await getRunningDescriptor(moduleId))) return false
+    const controller = new AbortController()
+    const timeout = setTimeout(
+      () => controller.abort(),
+      MODULE_QUIESCENCE_TIMEOUT_MS,
+    )
+    try {
+      await runtimeReservation.deactivate(
+        moduleId,
+        { closeViews },
+        controller.signal,
+      )
+      verifiedArtifactRegistry.clear(moduleId)
+      return true
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          `Module "${moduleId}" could not safely stop within ${MODULE_QUIESCENCE_TIMEOUT_MS} ms`,
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  const activateInstalledModule = async (moduleId: string): Promise<string> => {
+    const result = await activationCoordinator.activateModule(moduleId)
+    if (result.status !== 'activated' || !result.version) {
+      throw new Error(
+        result.error ?? `Module "${moduleId}" could not be activated`,
+      )
+    }
+    return result.version
+  }
+
   return Object.freeze({
     getSnapshot: manager.getSnapshot,
     subscribe: manager.subscribe,
@@ -370,6 +425,7 @@ export function createProductionModuleServices(
     },
     install(candidate: ConfirmedModuleCandidate) {
       return runModuleOperation(candidate.moduleId, async () => {
+        const previousRunning = await getRunningDescriptor(candidate.moduleId)
         const result = await coordinator.installConfirmedCandidate(candidate)
         try {
           await options.intentStore.set(candidate.moduleId, 'enabled')
@@ -389,13 +445,41 @@ export function createProductionModuleServices(
           }
           throw intentError
         }
-        await manager.refresh()
-        return Object.freeze({
-          reloadRequired: true,
-          version:
-            result.state.pending?.descriptor.version ??
-            candidate.expectedVersion,
-        })
+        const preparedVersion =
+          result.state.pending?.descriptor.version ?? candidate.expectedVersion
+        if (previousRunning) {
+          try {
+            await deactivateModule(candidate.moduleId, false)
+          } catch (error) {
+            await cancelMatchingPendingVersion(
+              candidate.moduleId,
+              preparedVersion,
+            )
+            await manager.refresh()
+            throw error
+          }
+        }
+        try {
+          const version = await activateInstalledModule(candidate.moduleId)
+          await manager.refresh()
+          return Object.freeze({ version })
+        } catch (activationError) {
+          if (previousRunning) {
+            await cancelMatchingPendingVersion(
+              candidate.moduleId,
+              preparedVersion,
+            )
+            try {
+              await activateInstalledModule(candidate.moduleId)
+            } catch (rollbackError) {
+              throw new Error(
+                `Module "${candidate.moduleId}" update failed and its previous version could not be restored: ${errorMessage(activationError)}; rollback: ${errorMessage(rollbackError)}`,
+              )
+            }
+          }
+          await manager.refresh()
+          throw activationError
+        }
       })
     },
     setEnabled(moduleId: string, enabled: boolean) {
@@ -408,21 +492,34 @@ export function createProductionModuleServices(
           moduleId,
           enabled ? 'enabled' : 'disabled',
         )
+        try {
+          if (enabled) await activateInstalledModule(moduleId)
+          else await deactivateModule(moduleId, true)
+        } catch (error) {
+          await options.intentStore.set(moduleId, current)
+          await manager.refresh()
+          throw error
+        }
         await manager.refresh()
-        return Object.freeze({ reloadRequired: true })
+        return Object.freeze({})
       })
     },
     uninstall(moduleId: string) {
       return runModuleOperation(moduleId, async () => {
+        const current = await options.intentStore.get(moduleId)
+        if (current === undefined || current === 'uninstalled') {
+          throw new Error(`Module "${moduleId}" is not installed`)
+        }
         await options.intentStore.set(moduleId, 'uninstalled')
-        await manager.refresh()
-        const state = await options.deviceStateStore.read(moduleId)
-        const isActive = Boolean(
-          state?.active && options.isActive(moduleId, state.active.version),
-        )
-        if (isActive) return Object.freeze({ reloadRequired: true })
+        try {
+          await deactivateModule(moduleId, true)
+        } catch (error) {
+          await options.intentStore.set(moduleId, current)
+          await manager.refresh()
+          throw error
+        }
         await uninstallCoordinator.uninstall(moduleId)
-        return Object.freeze({ reloadRequired: false })
+        return Object.freeze({})
       })
     },
     async start() {
@@ -469,7 +566,9 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     (options.platform !== 'desktop' && options.platform !== 'mobile') ||
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
+    typeof options.runtimeReservation?.isActive !== 'function' ||
     typeof options.runtimeReservation?.activate !== 'function' ||
+    typeof options.runtimeReservation?.deactivate !== 'function' ||
     typeof options.runtimeReservation?.runWithModuleQuiesced !== 'function' ||
     typeof options.intentStore?.get !== 'function' ||
     typeof options.intentStore?.set !== 'function' ||
@@ -492,12 +591,15 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       typeof options.reportRefreshError !== 'function') ||
     (options.reportActivationError !== undefined &&
       typeof options.reportActivationError !== 'function') ||
-    typeof options.requestReload !== 'function' ||
     (options.reportStartupError !== undefined &&
       typeof options.reportStartupError !== 'function')
   ) {
     throw new TypeError('Production module services options are invalid')
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function createGuardedReadinessReconciler(

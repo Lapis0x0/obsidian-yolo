@@ -539,24 +539,19 @@ export const zh: TranslationKeys = {
       availableVersion: '可更新至 {version}',
       install: '安装',
       update: '更新',
-      installAndReload: '安装并重载',
-      updateAndReload: '更新并重载',
       installing: '正在安装…',
       updating: '正在更新…',
-      reload: '重载',
-      reloading: '正在重载…',
+      reload: '重试激活',
+      reloading: '正在激活…',
       confirmInstallTitle: '安装 {name}',
       confirmUpdateTitle: '更新 {name}',
       confirmMessage:
-        '请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，随后 Obsidian 会重载以启用此版本。',
+        '请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，随后直接启用此版本。',
       candidateUnavailable:
         '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
       installError: '无法安装 {name}：{error}',
       updateError: '无法更新 {name}：{error}',
-      reloadError:
-        '{name} {version} 已准备完成，但无法自动重载 Obsidian：{error}。请手动重载 Obsidian 以继续。',
-      activationPendingDetail:
-        '版本 {version} 已准备完成。重载以继续启用或恢复。',
+      activationPendingDetail: '版本 {version} 已准备完成，可以重试激活。',
       intentLabel: '操作意图',
       intentUnknown: '不可用',
       intentInstalledEnabled: '已安装 · 启用',
@@ -578,6 +573,8 @@ export const zh: TranslationKeys = {
       retry: '重试',
       actionError: '无法更改 {name}：{error}',
       actionSuccess: {
+        install: '已安装并启用 {name}。',
+        update: '已更新并启用 {name}。',
         enable: '已将 {name} 标记为启用。',
         disable: '已将 {name} 标记为停用；模块文件和数据均已保留。',
         uninstall: '已从本机安全卸载 {name}。',
@@ -595,7 +592,7 @@ export const zh: TranslationKeys = {
       confirmProduct: {
         uninstallTitle: '卸载 {name}',
         uninstallMessage:
-          '要卸载 {name} 吗？YOLO 会先清除安装意图。如果模块仍在运行，其文件和数据会保留到 Obsidian 重载；如果模块未运行，则只安全移除本机模块程序文件和安装状态。',
+          '要卸载 {name} 吗？YOLO 会先安全停止模块，再移除本机模块程序文件和安装状态。模块数据会保留。',
       },
       statuses: {
         available: '可用',
@@ -603,7 +600,7 @@ export const zh: TranslationKeys = {
         active: '已启用',
         disabled: '已停用',
         updateAvailable: '有可用更新',
-        activationPending: '等待重载',
+        activationPending: '等待激活',
         failed: '失败',
       },
     },

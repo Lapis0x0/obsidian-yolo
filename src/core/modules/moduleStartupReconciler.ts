@@ -20,11 +20,18 @@ export type ModuleStartupReconcilerOptions = Readonly<{
   readinessReconciler: Pick<ModuleReadinessReconciler, 'ensureModuleReady'>
   activationCoordinator: Pick<
     ModuleActivationCoordinator,
-    'activatePersistedModules'
+    'activatePersistedModules' | 'activateModule'
   >
+  runtime: Readonly<{
+    isActive(moduleId: string): boolean
+    deactivate(
+      moduleId: string,
+      options?: Readonly<{ closeViews?: boolean }>,
+      signal?: AbortSignal,
+    ): Promise<void>
+  }>
   manager: Pick<ModuleManager, 'refresh'>
   scheduleSafeUninstall?: (moduleId: string) => Promise<void>
-  requestReload: (moduleId: string) => void
   reportError?: (error: unknown, moduleId?: string) => void
 }>
 
@@ -48,10 +55,12 @@ export class ModuleStartupReconciler {
       typeof options.readinessReconciler?.ensureModuleReady !== 'function' ||
       typeof options.activationCoordinator?.activatePersistedModules !==
         'function' ||
+      typeof options.activationCoordinator?.activateModule !== 'function' ||
+      typeof options.runtime?.isActive !== 'function' ||
+      typeof options.runtime?.deactivate !== 'function' ||
       typeof options.manager?.refresh !== 'function' ||
       (options.scheduleSafeUninstall !== undefined &&
         typeof options.scheduleSafeUninstall !== 'function') ||
-      typeof options.requestReload !== 'function' ||
       (options.reportError !== undefined &&
         typeof options.reportError !== 'function')
     ) {
@@ -171,7 +180,10 @@ export class ModuleStartupReconciler {
   private async reconcilePending(): Promise<void> {
     const moduleIds = [...this.pendingModuleIds].sort()
     this.pendingModuleIds.clear()
-    const reloadIds: string[] = []
+    const liveIntents: Array<{
+      moduleId: string
+      intent: ModuleIntent | null
+    }> = []
     const uninstallIds: string[] = []
 
     for (const moduleId of moduleIds) {
@@ -208,10 +220,11 @@ export class ModuleStartupReconciler {
       }
 
       if (
+        this.startupComplete &&
         previous !== undefined &&
         isLiveEligible(previous) !== isLiveEligible(current)
       ) {
-        reloadIds.push(moduleId)
+        liveIntents.push({ moduleId, intent: current })
       }
     }
 
@@ -223,17 +236,27 @@ export class ModuleStartupReconciler {
     }
     if (this.disposed) return
 
-    for (const moduleId of uninstallIds) {
+    for (const { moduleId, intent } of liveIntents) {
       try {
-        await this.options.scheduleSafeUninstall?.(moduleId)
+        if (intent === 'enabled') {
+          if (!this.options.runtime.isActive(moduleId)) {
+            const result =
+              await this.options.activationCoordinator.activateModule(moduleId)
+            if (result.status === 'failed') {
+              throw new Error(result.error ?? 'Module activation failed')
+            }
+          }
+        } else if (this.options.runtime.isActive(moduleId)) {
+          await this.options.runtime.deactivate(moduleId, { closeViews: true })
+        }
       } catch (error) {
         this.report(error, moduleId)
       }
     }
     if (this.disposed) return
-    for (const moduleId of reloadIds) {
+    for (const moduleId of uninstallIds) {
       try {
-        this.options.requestReload(moduleId)
+        await this.options.scheduleSafeUninstall?.(moduleId)
       } catch (error) {
         this.report(error, moduleId)
       }

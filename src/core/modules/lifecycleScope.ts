@@ -1,4 +1,8 @@
-import type { ModuleDisposer, YoloModuleLifecycle } from './types'
+import type {
+  ModuleDisposer,
+  ModuleQuiescenceCallback,
+  YoloModuleLifecycle,
+} from './types'
 
 export class ModuleCleanupError extends Error {
   constructor(
@@ -23,6 +27,8 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 export class ModuleLifecycleScope implements YoloModuleLifecycle {
   private disposers: ModuleDisposer[] = []
   private activeCallbacks: Array<() => void | Promise<void>> = []
+  private quiescenceCallbacks: ModuleQuiescenceCallback[] = []
+  private quiescence: Promise<void> | null = null
   private activeCallbackState:
     | 'registering'
     | 'ready'
@@ -53,6 +59,18 @@ export class ModuleLifecycleScope implements YoloModuleLifecycle {
       )
     }
     this.activeCallbacks.push(callback)
+  }
+
+  onQuiesce(callback: ModuleQuiescenceCallback): void {
+    if (this.disposed || this.activeCallbackState !== 'registering') {
+      throw new Error(
+        'Module lifecycle quiescence callbacks can only be registered during module activation',
+      )
+    }
+    if (typeof callback !== 'function') {
+      throw new TypeError('Module quiescence callback must be a function')
+    }
+    this.quiescenceCallbacks.push(callback)
   }
 
   closeWhenActiveRegistration(): void {
@@ -111,10 +129,24 @@ export class ModuleLifecycleScope implements YoloModuleLifecycle {
     }
   }
 
+  quiesce(): Promise<void> {
+    if (this.disposed) {
+      return Promise.reject(new Error('Cannot quiesce a disposed module'))
+    }
+    this.quiescence ??= (async () => {
+      for (const callback of this.quiescenceCallbacks) await callback()
+    })().catch((error) => {
+      this.quiescence = null
+      throw error
+    })
+    return this.quiescence
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
     this.activeCallbacks = []
+    this.quiescenceCallbacks = []
     const errors = this.releaseFrom(0)
     if (errors.length > 0) {
       throw new ModuleCleanupError(

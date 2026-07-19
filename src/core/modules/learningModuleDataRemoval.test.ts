@@ -121,6 +121,7 @@ function fixture() {
       },
     },
     runtime: {
+      deactivate: async () => undefined,
       runWithModuleQuiesced: async (_moduleId, operation) => {
         events.push('quiesced')
         return operation()

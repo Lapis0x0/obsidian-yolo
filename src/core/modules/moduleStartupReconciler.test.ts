@@ -21,6 +21,7 @@ function createHarness(
 ) {
   const intents = new Map(Object.entries(initial))
   const listeners = new Set<(moduleId: string) => void>()
+  const active = new Set<string>()
   const log: string[] = []
   const listKnownModuleIds = jest.fn(async () => {
     log.push('list')
@@ -44,17 +45,33 @@ function createHarness(
   const activatePersistedModules = jest.fn(
     async (): Promise<readonly ModuleActivationResult[]> => {
       log.push('activate')
+      for (const [moduleId, intent] of intents) {
+        if (intent === 'enabled') active.add(moduleId)
+      }
       return Object.freeze([])
     },
   )
+  const activateModule = jest.fn(async (moduleId: string) => {
+    log.push(`activate:${moduleId}`)
+    active.add(moduleId)
+    return Object.freeze({
+      moduleId,
+      status: 'activated' as const,
+      version: '1.0.0',
+    })
+  })
+  const runtime = {
+    isActive: jest.fn((moduleId: string) => active.has(moduleId)),
+    deactivate: jest.fn(async (moduleId: string) => {
+      log.push(`deactivate:${moduleId}`)
+      active.delete(moduleId)
+    }),
+  }
   const refresh = jest.fn(async () => {
     log.push('refresh')
   })
   const scheduleSafeUninstall = jest.fn(async (moduleId: string) => {
     log.push(`uninstall:${moduleId}`)
-  })
-  const requestReload = jest.fn((moduleId: string) => {
-    log.push(`reload:${moduleId}`)
   })
   const reportError = jest.fn()
   const reconciler = new ModuleStartupReconciler({
@@ -66,10 +83,10 @@ function createHarness(
       }),
     },
     readinessReconciler: { ensureModuleReady },
-    activationCoordinator: { activatePersistedModules },
+    activationCoordinator: { activatePersistedModules, activateModule },
+    runtime,
     manager: { refresh },
     scheduleSafeUninstall,
-    requestReload,
     reportError,
   })
   return {
@@ -79,9 +96,10 @@ function createHarness(
     listKnownModuleIds,
     ensureModuleReady,
     activatePersistedModules,
+    activateModule,
+    runtime,
     refresh,
     scheduleSafeUninstall,
-    requestReload,
     reportError,
     emit(moduleId: string) {
       for (const listener of [...listeners]) listener(moduleId)
@@ -113,7 +131,6 @@ describe('ModuleStartupReconciler', () => {
       harness.log.indexOf('refresh'),
     )
     expect(harness.scheduleSafeUninstall).toHaveBeenCalledWith('absent')
-    expect(harness.requestReload).not.toHaveBeenCalled()
   })
 
   test('calls the activation owner seam for a disabled transition', async () => {
@@ -135,7 +152,6 @@ describe('ModuleStartupReconciler', () => {
 
     expect(harness.activatePersistedModules).toHaveBeenCalledTimes(1)
     expect(restoredOwners).toEqual(['notes'])
-    expect(harness.requestReload).not.toHaveBeenCalled()
   })
 
   test('calls activation when there are no known or live modules', async () => {
@@ -185,7 +201,7 @@ describe('ModuleStartupReconciler', () => {
     expect(harness.ensureModuleReady).toHaveBeenCalledTimes(1)
     expect(harness.refresh).toHaveBeenCalledTimes(1)
     expect(maximumActive).toBe(1)
-    expect(harness.requestReload).toHaveBeenCalledWith('notes')
+    expect(harness.activateModule).toHaveBeenCalledWith('notes')
   })
 
   test('isolates module failures and continues startup', async () => {
@@ -269,7 +285,6 @@ describe('ModuleStartupReconciler', () => {
       }),
       'notes',
     )
-    expect(harness.requestReload).not.toHaveBeenCalled()
   })
 
   test('unsubscribes when startup fails', async () => {
@@ -329,11 +344,10 @@ describe('ModuleStartupReconciler', () => {
       expect(harness.ensureModuleReady).toHaveBeenCalledTimes(readiness)
       expect(harness.activatePersistedModules).toHaveBeenCalledTimes(activation)
       expect(harness.scheduleSafeUninstall).toHaveBeenCalledTimes(uninstall)
-      expect(harness.requestReload).not.toHaveBeenCalled()
     },
   )
 
-  test('refreshes and explicitly requests reload when live eligibility changes', async () => {
+  test('deactivates in place when live eligibility changes', async () => {
     const harness = createHarness({
       notes: 'enabled',
     })
@@ -344,13 +358,15 @@ describe('ModuleStartupReconciler', () => {
     harness.emit('notes')
     await harness.reconciler.whenIdle()
 
-    expect(harness.requestReload).toHaveBeenCalledWith('notes')
-    expect(harness.log.indexOf('reload:notes')).toBeGreaterThan(
+    expect(harness.runtime.deactivate).toHaveBeenCalledWith('notes', {
+      closeViews: true,
+    })
+    expect(harness.log.indexOf('deactivate:notes')).toBeGreaterThan(
       harness.log.indexOf('refresh'),
     )
   })
 
-  test('requests reload for an eligibility update during startup', async () => {
+  test('folds an eligibility update during startup into initial activation', async () => {
     const harness = createHarness({
       notes: 'enabled',
     })
@@ -375,10 +391,9 @@ describe('ModuleStartupReconciler', () => {
     await startup
 
     expect(harness.ensureModuleReady).toHaveBeenCalledTimes(1)
-    expect(harness.requestReload).toHaveBeenCalledWith('notes')
-    expect(harness.log.indexOf('reload:notes')).toBeLessThan(
-      harness.log.indexOf('activate'),
-    )
+    expect(harness.activateModule).not.toHaveBeenCalled()
+    expect(harness.runtime.deactivate).not.toHaveBeenCalled()
+    expect(harness.runtime.isActive('notes')).toBe(false)
   })
 
   test('deduplicates repeated source ids', async () => {

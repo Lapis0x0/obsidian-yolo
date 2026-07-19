@@ -37,7 +37,10 @@ describe('ModuleUninstallCoordinator', () => {
         get: async () => 'uninstalled',
       },
       manager: { refresh: async () => undefined },
-      runtime: { runWithModuleQuiesced: async (_id, operation) => operation() },
+      runtime: {
+        deactivate: async () => undefined,
+        runWithModuleQuiesced: async (_id, operation) => operation(),
+      },
       authorizeArtifactRemoval: async () => true,
       platform: 'desktop',
     })

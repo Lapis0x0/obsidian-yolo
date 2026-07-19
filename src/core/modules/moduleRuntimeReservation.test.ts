@@ -23,6 +23,9 @@ function fixture(activeIds: readonly string[] = []) {
   const runtime = {
     isActive: jest.fn((moduleId: string) => active.has(moduleId)),
     activate,
+    deactivate: jest.fn(async (moduleId: string) => {
+      active.delete(moduleId)
+    }),
   }
   return {
     active,

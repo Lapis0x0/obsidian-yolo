@@ -6,10 +6,12 @@ import type { YoloModuleSettingsV1 } from './moduleSettingsContributions'
 import type { YoloModuleWorkersV1 } from './moduleWorkerHost'
 
 export type ModuleDisposer = () => void
+export type ModuleQuiescenceCallback = () => void | Promise<void>
 
 export type YoloModuleLifecycle = {
   add(disposer: ModuleDisposer): void
   whenActive(callback: () => void | Promise<void>): void
+  onQuiesce(callback: ModuleQuiescenceCallback): void
 }
 
 export type YoloModuleViewV1 = Readonly<{

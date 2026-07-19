@@ -3,7 +3,6 @@ import type { ConfirmedModuleCandidate } from './moduleInstallationCoordinator'
 import type { ModuleManagerSnapshot } from './types'
 
 export type ModuleOperationResult = Readonly<{
-  reloadRequired: boolean
   version?: string
 }>
 

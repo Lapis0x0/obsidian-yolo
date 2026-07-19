@@ -7,6 +7,11 @@ export type ModuleRuntimeReservationTarget = Readonly<{
     version?: string,
     signal?: AbortSignal,
   ): Promise<void>
+  deactivate(
+    moduleId: string,
+    options?: Readonly<{ closeViews?: boolean }>,
+    signal?: AbortSignal,
+  ): Promise<void>
 }>
 
 export type ModuleRuntimeReservationOptions = Readonly<{
@@ -15,6 +20,11 @@ export type ModuleRuntimeReservationOptions = Readonly<{
 
 /** The narrow runtime surface consumed by ModuleUninstallCoordinator. */
 export type ModuleRuntimeQuiescence = Readonly<{
+  deactivate(
+    moduleId: string,
+    options?: Readonly<{ closeViews?: boolean }>,
+    signal?: AbortSignal,
+  ): Promise<void>
   runWithModuleQuiesced<T>(
     moduleId: string,
     operation: () => Promise<T>,
@@ -34,10 +44,15 @@ export class ModuleRuntimeReservation implements ModuleRuntimeQuiescence {
     if (
       !options ||
       typeof options.runtime?.isActive !== 'function' ||
-      typeof options.runtime?.activate !== 'function'
+      typeof options.runtime?.activate !== 'function' ||
+      typeof options.runtime?.deactivate !== 'function'
     ) {
       throw new Error('Module runtime reservation options are invalid')
     }
+  }
+
+  isActive(moduleId: string): boolean {
+    return !this.disposed && this.options.runtime.isActive(moduleId)
   }
 
   activate(
@@ -56,6 +71,17 @@ export class ModuleRuntimeReservation implements ModuleRuntimeQuiescence {
       this.options.runtime.activate(definition, version, signal),
     )
     return activation.finally(() => this.releaseActivation(moduleId))
+  }
+
+  deactivate(
+    moduleId: string,
+    options?: Readonly<{ closeViews?: boolean }>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (this.disposed) return Promise.reject(disposedError())
+    return this.enqueue(moduleId, () =>
+      this.options.runtime.deactivate(moduleId, options, signal),
+    )
   }
 
   runWithModuleQuiesced<T>(

@@ -39,6 +39,7 @@ export type LearningAssemblyRoot = Readonly<{
   open(target?: LearningNavigationTarget): Promise<void>
   readStyle(): Promise<string>
   ready(): Promise<void>
+  quiesce(): Promise<void>
   dispose(): void
 }>
 
@@ -47,7 +48,7 @@ export function createLearningAssemblyRoot(
 ): LearningAssemblyRoot {
   const backgroundOwner = document
   const srsStore = resolveHostLearningSrsStore(host)
-  const ankiImport = createHostAnkiImportService(host, { srsStore })
+  const rawAnkiImport = createHostAnkiImportService(host, { srsStore })
   const settingsModelPromise = createLearningSettingsModel({
     config: host.config,
     settings: host.settings,
@@ -55,6 +56,39 @@ export function createLearningAssemblyRoot(
       reportError(host, 'Failed to update Learning settings', error),
   })
   const controllers = new Set<AbortController>()
+  const inFlightTasks = new Set<Promise<unknown>>()
+  const trackTask = <Result,>(operation: Promise<Result>): Promise<Result> => {
+    inFlightTasks.add(operation)
+    void operation.then(
+      () => inFlightTasks.delete(operation),
+      () => inFlightTasks.delete(operation),
+    )
+    return operation
+  }
+  const trackAbortable = <Input extends { signal: AbortSignal }, Result>(
+    input: Input,
+    operation: (tracked: Input) => Promise<Result>,
+  ): Promise<Result> => {
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    input.signal.addEventListener('abort', abort, { once: true })
+    if (input.signal.aborted) controller.abort()
+    controllers.add(controller)
+    const task = operation({ ...input, signal: controller.signal }).finally(
+      () => {
+        input.signal.removeEventListener('abort', abort)
+        controllers.delete(controller)
+      },
+    )
+    return trackTask(task)
+  }
+  const ankiImport: AnkiImportService = Object.freeze({
+    runtime: rawAnkiImport.runtime,
+    listExistingProjectSlugs: rawAnkiImport.listExistingProjectSlugs,
+    prepare: (input) => trackAbortable(input, rawAnkiImport.prepare),
+    commit: (input) => trackAbortable(input, rawAnkiImport.commit),
+    recover: () => trackTask(rawAnkiImport.recover()),
+  })
   const mounts = new Set<LearningMountAssembly>()
   let pendingNavigation: LearningNavigationTarget | null = null
   let settingsModel: LearningSettingsModel | null = null
@@ -124,6 +158,7 @@ export function createLearningAssemblyRoot(
         settingsModelPromise,
         stats,
         controllers,
+        inFlightTasks,
         recoveryPromise,
         openProject: (projectId) =>
           open({
@@ -152,6 +187,10 @@ export function createLearningAssemblyRoot(
     ready: async () => {
       await Promise.all([settingsModelPromise, recoveryPromise])
     },
+    quiesce: async () => {
+      for (const controller of controllers) controller.abort()
+      await Promise.allSettled([...inFlightTasks])
+    },
     dispose: () => {
       if (disposed) return
       disposed = true
@@ -176,6 +215,7 @@ function createMountAssembly({
   settingsModelPromise,
   stats,
   controllers,
+  inFlightTasks,
   recoveryPromise,
   openProject,
   onDispose,
@@ -187,6 +227,7 @@ function createMountAssembly({
   settingsModelPromise: Promise<LearningSettingsModel>
   stats: ReturnType<RuntimeAdapter['runtime']['getStatsService']>
   controllers: Set<AbortController>
+  inFlightTasks: Set<Promise<unknown>>
   recoveryPromise: Promise<void>
   openProject: (projectId: string) => Promise<void>
   onDispose: () => void
@@ -238,6 +279,7 @@ function createMountAssembly({
           ui.createOutlineBuilderWorkflow(events),
           runtimeAdapter,
           controllers,
+          inFlightTasks,
         ),
       abortAll: () => undefined,
     },
@@ -303,6 +345,7 @@ function trackGenerationWorkflow(
   workflow: OutlineBuilderWorkflow,
   adapter: RuntimeAdapter,
   controllers: Set<AbortController>,
+  inFlightTasks: Set<Promise<unknown>>,
 ): OutlineBuilderWorkflow {
   const track = <T extends { signal: AbortSignal }, Result>(
     input: T,
@@ -314,11 +357,16 @@ function trackGenerationWorkflow(
     if (input.signal.aborted) controller.abort()
     controllers.add(controller)
     adapter.runtime.trackGeneration(controller)
-    return operation({ ...input, signal: controller.signal }).finally(() => {
-      input.signal.removeEventListener('abort', abort)
-      controllers.delete(controller)
-      adapter.runtime.releaseGeneration(controller)
-    })
+    const task = operation({ ...input, signal: controller.signal }).finally(
+      () => {
+        input.signal.removeEventListener('abort', abort)
+        controllers.delete(controller)
+        adapter.runtime.releaseGeneration(controller)
+        inFlightTasks.delete(task)
+      },
+    )
+    inFlightTasks.add(task)
+    return task
   }
   return {
     generateOutline: (input) => track(input, workflow.generateOutline),
@@ -410,6 +458,7 @@ yolo.registerModule({
     const deferredRoot = createDeferredLearningRoot(host)
     const root = deferredRoot.facade
     host.lifecycle.add(deferredRoot.dispose)
+    host.lifecycle.onQuiesce(deferredRoot.quiesce)
     getActiveLifecycle(host).whenActive(deferredRoot.initialize)
     const openHome = (): Promise<void> => root.open(HOME_TARGET)
 
@@ -454,6 +503,7 @@ function getActiveLifecycle(host: YoloModuleHostApiV1): ActiveLifecycle {
 function createDeferredLearningRoot(host: YoloModuleHostApiV1): Readonly<{
   facade: LearningAssemblyRoot
   initialize(): Promise<void>
+  quiesce(): Promise<void>
   dispose(): void
 }> {
   let candidate: LearningAssemblyRoot | null = null
@@ -475,6 +525,7 @@ function createDeferredLearningRoot(host: YoloModuleHostApiV1): Readonly<{
     open: async (target) => requireRoot().open(target),
     readStyle: async () => requireRoot().readStyle(),
     ready: async () => requireRoot().ready(),
+    quiesce: async () => requireRoot().quiesce(),
     dispose: () => dispose(),
   })
 
@@ -504,7 +555,11 @@ function createDeferredLearningRoot(host: YoloModuleHostApiV1): Readonly<{
     activeRoot = null
   }
 
-  return Object.freeze({ facade, initialize, dispose })
+  const quiesce = async (): Promise<void> => {
+    if (activeRoot) await activeRoot.quiesce()
+  }
+
+  return Object.freeze({ facade, initialize, quiesce, dispose })
 }
 
 function toError(error: unknown): Error {

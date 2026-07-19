@@ -109,6 +109,30 @@ export class ModuleActivationCoordinator {
     return this.errors.get(moduleId)
   }
 
+  activateModule(moduleId: string): Promise<ModuleActivationResult> {
+    if (this.disposed) return Promise.reject(disposedError())
+    const controller = new AbortController()
+    this.controllers.add(controller)
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, this.startupTimeoutMs)
+    return this.activateModuleWithSignal(moduleId, controller.signal)
+      .catch((error) => {
+        if (timedOut) {
+          throw new Error(
+            `Module "${moduleId}" activation timed out after ${this.startupTimeoutMs} ms`,
+          )
+        }
+        throw error
+      })
+      .finally(() => {
+        clearTimeout(timeout)
+        this.controllers.delete(controller)
+      })
+  }
+
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
@@ -137,7 +161,7 @@ export class ModuleActivationCoordinator {
           [...states]
             .sort((left, right) => left.moduleId.localeCompare(right.moduleId))
             .map((state) =>
-              this.activateModule(state.moduleId, controller.signal),
+              this.activateModuleWithSignal(state.moduleId, controller.signal),
             ),
         ),
         controller.signal,
@@ -156,7 +180,7 @@ export class ModuleActivationCoordinator {
     }
   }
 
-  private async activateModule(
+  private async activateModuleWithSignal(
     moduleId: string,
     signal: AbortSignal,
   ): Promise<ModuleActivationResult> {
