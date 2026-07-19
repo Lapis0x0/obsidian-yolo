@@ -66,7 +66,9 @@ function moduleCompatibilityReason(
     .join(', ')
 }
 
-function hasCompatibilityIssues(module: Pick<ModuleRecord, 'compatibilityIssues'>): boolean {
+function hasCompatibilityIssues(
+  module: Pick<ModuleRecord, 'compatibilityIssues'>,
+): boolean {
   return (module.compatibilityIssues?.length ?? 0) > 0
 }
 
@@ -227,7 +229,6 @@ function ModuleCard({
     productCapabilitiesAvailable,
   )
   const incompatibilityReason = moduleCompatibilityReason(module, t)
-  const isIncompatible = incompatibilityReason !== undefined
   const isOperating = operation?.moduleId === module.id && !operation.error
   const hasOperation = operation !== null && !operation.error
   const intentInstalled = module.desiredInstalled

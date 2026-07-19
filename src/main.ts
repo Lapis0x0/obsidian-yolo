@@ -8,7 +8,6 @@ import {
   Plugin,
   TFile,
   TFolder,
-  type WorkspaceLeaf,
   addIcon,
   getLanguage,
   normalizePath,

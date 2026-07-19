@@ -138,24 +138,16 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
       if (selected) {
         resolvedVersions[module.id] = selected
         entries.push(catalogEntry(module, selected.version))
-      } else if (compatibility.activeVersion !== undefined) {
-        entries.push(
-          catalogEntry(
-            module,
-            compatibility.activeVersion,
-            getOfficialModuleCompatibilityIssues(module, compatibility).map(
-              (kind) => Object.freeze({ kind }),
-            ),
-          ),
-        )
       } else {
+        const compatibilityIssues = getOfficialModuleCompatibilityIssues(
+          module,
+          compatibility,
+        ).map((kind) => Object.freeze({ kind }))
         entries.push(
           catalogEntry(
             module,
-            '',
-            getOfficialModuleCompatibilityIssues(module, compatibility).map(
-              (kind) => Object.freeze({ kind }),
-            ),
+            compatibility.activeVersion ?? '',
+            compatibilityIssues,
           ),
         )
       }

@@ -16,6 +16,7 @@ type ModuleInput = Readonly<{
   description?: string
   versions: readonly string[]
   platform?: 'desktop' | 'mobile'
+  hostApiByVersion?: Readonly<Record<string, string>>
 }>
 
 function parsedCatalog(
@@ -32,7 +33,7 @@ function parsedCatalog(
           : { description: module.description }),
         versions: module.versions.map((version) => ({
           version,
-          hostApi: '>=1.0.0 <2.0.0',
+          hostApi: module.hostApiByVersion?.[version] ?? '>=1.0.0 <2.0.0',
           platforms: [module.platform ?? 'desktop'],
           dataSchemas: { core: { readMin: 0, readMax: 2, write: 2 } },
           manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/v${version}/${module.id}.json`,
@@ -189,6 +190,48 @@ describe('OfficialModuleCatalogSource', () => {
       },
     ])
     expect(fixture.source.getResolvedVersion('learning')).toBeUndefined()
+  })
+
+  it('does not mark a compatible active version incompatible because a newer version is unsupported', async () => {
+    const fixture = source(
+      parsedCatalog([
+        {
+          id: 'learning',
+          versions: ['1.0.0', '2.0.0'],
+          hostApiByVersion: { '2.0.0': '>=2.0.0 <3.0.0' },
+        },
+      ]),
+      () => compatibility('1.0.0'),
+    )
+
+    await expect(fixture.source.load()).resolves.toEqual([
+      { id: 'learning', version: '1.0.0' },
+    ])
+    expect(fixture.source.getResolvedVersion('learning')).toBeUndefined()
+  })
+
+  it('projects incompatibility of the active version without borrowing issues from other versions', async () => {
+    const fixture = source(
+      parsedCatalog([
+        {
+          id: 'learning',
+          versions: ['1.0.0', '2.0.0'],
+          hostApiByVersion: {
+            '1.0.0': '>=2.0.0 <3.0.0',
+            '2.0.0': '>=3.0.0 <4.0.0',
+          },
+        },
+      ]),
+      () => compatibility('1.0.0'),
+    )
+
+    await expect(fixture.source.load()).resolves.toEqual([
+      {
+        id: 'learning',
+        version: '1.0.0',
+        compatibilityIssues: [{ kind: 'host-api' }],
+      },
+    ])
   })
 
   it('fails the full load when a compatibility callback fails', async () => {

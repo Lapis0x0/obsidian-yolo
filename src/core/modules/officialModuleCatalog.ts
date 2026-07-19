@@ -175,24 +175,19 @@ export function getOfficialModuleCompatibilityIssues(
   compatibility: OfficialModuleCompatibility,
 ): readonly OfficialModuleCompatibilityIssue[] {
   const context = parseCompatibility(compatibility)
-  const issues = new Set<OfficialModuleCompatibilityIssue>()
-  for (const candidate of module.versions) {
-    if (!candidate.platforms.includes(context.platform)) {
-      issues.add('platform')
-      continue
-    }
-    if (!satisfiesRange(context.hostApi, candidate.hostApi)) {
-      issues.add('host-api')
-      continue
-    }
-    if (
-      !schemasAreCompatible(
-        candidate.dataSchemas,
-        context.dataSchemas,
-        context.supportedDataNamespaces,
+  const candidates = context.activeVersion
+    ? module.versions.filter(
+        (candidate) =>
+          compareSemver(
+            parseSemver(candidate.version)!,
+            context.activeVersion!,
+          ) === 0,
       )
-    ) {
-      issues.add('data-schema')
+    : module.versions
+  const issues = new Set<OfficialModuleCompatibilityIssue>()
+  for (const candidate of candidates) {
+    for (const issue of candidateCompatibilityIssues(candidate, context)) {
+      issues.add(issue)
     }
   }
   return Object.freeze([...issues].sort())
@@ -272,6 +267,26 @@ function parseCompatibility(
   }
 }
 
+function candidateCompatibilityIssues(
+  candidate: OfficialModuleCatalogVersion,
+  compatibility: CompatibilityContext,
+): readonly OfficialModuleCompatibilityIssue[] {
+  if (!candidate.platforms.includes(compatibility.platform)) return ['platform']
+  if (!satisfiesRange(compatibility.hostApi, candidate.hostApi)) {
+    return ['host-api']
+  }
+  if (
+    !schemasAreCompatible(
+      candidate.dataSchemas,
+      compatibility.dataSchemas,
+      compatibility.supportedDataNamespaces,
+    )
+  ) {
+    return ['data-schema']
+  }
+  return []
+}
+
 function findHighestCompatible(
   module: OfficialModuleCatalogModule,
   compatibility: CompatibilityContext,
@@ -282,14 +297,8 @@ function findHighestCompatible(
     const candidateVersion = parseSemver(candidate.version)
     if (
       !candidateVersion ||
-      !candidate.platforms.includes(compatibility.platform) ||
-      !satisfiesRange(compatibility.hostApi, candidate.hostApi) ||
-      (newerThan && compareSemver(candidateVersion, newerThan) <= 0) ||
-      !schemasAreCompatible(
-        candidate.dataSchemas,
-        compatibility.dataSchemas,
-        compatibility.supportedDataNamespaces,
-      )
+      candidateCompatibilityIssues(candidate, compatibility).length > 0 ||
+      (newerThan && compareSemver(candidateVersion, newerThan) <= 0)
     ) {
       continue
     }
