@@ -107,6 +107,18 @@ function createHarness(initialBaseDir = 'One') {
 }
 
 describe('Learning module settings handoff integration', () => {
+  it('seeds an empty config when no legacy Learning settings exist', async () => {
+    const harness = createHarness()
+
+    await expect(
+      handoffLearningLegacySettings(harness.factory.createIfAbsent, undefined),
+    ).resolves.toBe('created')
+    await expect(harness.factory('learning').read()).resolves.toEqual({
+      schemaVersion: 0,
+      data: {},
+    })
+  })
+
   it('seeds an absent config and carries the legacy values through the module config activation', async () => {
     const harness = createHarness()
     const legacy = {

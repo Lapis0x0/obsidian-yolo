@@ -31,4 +31,28 @@ describe('handoffLearningLegacySettings', () => {
     ).resolves.toBe('already-present')
     expect(createIfAbsent).toHaveBeenCalledTimes(1)
   })
+
+  it('omits absent legacy values so a fresh install produces valid JSON', async () => {
+    const createIfAbsent = jest.fn().mockResolvedValue('created')
+
+    await expect(
+      handoffLearningLegacySettings(createIfAbsent, undefined),
+    ).resolves.toBe('created')
+    expect(createIfAbsent).toHaveBeenCalledWith('learning', {
+      schemaVersion: 0,
+      data: {},
+    })
+  })
+
+  it('preserves the legacy values that are present without adding absent ones', async () => {
+    const createIfAbsent = jest.fn().mockResolvedValue('created')
+
+    await handoffLearningLegacySettings(createIfAbsent, {
+      betaNoticeAcknowledged: false,
+    })
+    expect(createIfAbsent).toHaveBeenCalledWith('learning', {
+      schemaVersion: 0,
+      data: { betaNoticeAcknowledged: false },
+    })
+  })
 })

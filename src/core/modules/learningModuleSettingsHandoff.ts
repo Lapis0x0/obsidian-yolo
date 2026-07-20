@@ -19,11 +19,13 @@ export function handoffLearningLegacySettings(
     legacy && typeof legacy === 'object'
       ? (legacy as Record<string, unknown>)
       : {}
+  const data: Record<string, unknown> = {}
+  if (raw.modelId !== undefined) data.modelId = raw.modelId
+  if (raw.betaNoticeAcknowledged !== undefined) {
+    data.betaNoticeAcknowledged = raw.betaNoticeAcknowledged
+  }
   return createIfAbsent(LEARNING_MODULE_ID, {
     schemaVersion: 0,
-    data: {
-      modelId: raw.modelId,
-      betaNoticeAcknowledged: raw.betaNoticeAcknowledged,
-    },
+    data,
   })
 }

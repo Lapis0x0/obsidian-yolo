@@ -1,6 +1,7 @@
 import type { LearningLifecyclePorts } from '../domain/stats/ports'
 
 type LearningOwner = Document | HTMLElement
+const DOCUMENT_NODE = 9
 
 export function createOwnerLearningLifecyclePorts(
   owner: LearningOwner,
@@ -28,7 +29,7 @@ export function createOwnerLearningLifecyclePorts(
 }
 
 function getOwnerDocument(owner: LearningOwner): Document {
-  if (owner.nodeType === owner.DOCUMENT_NODE) return owner as Document
+  if (owner.nodeType === DOCUMENT_NODE) return owner as Document
   if (!owner.ownerDocument) {
     throw new Error('Learning owner element has no document')
   }

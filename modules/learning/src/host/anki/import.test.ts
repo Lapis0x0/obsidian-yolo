@@ -296,7 +296,7 @@ describe('Host Anki import service', () => {
     const srsStore = new LearningSrsStore(createHostLearningSrsStorage(h.host))
     const runtime = createHostLearningRuntimeAdapter({
       host: h.host as YoloModuleHostApiV1,
-      owner: { defaultView: {} } as Document,
+      owner: { defaultView: {}, nodeType: 9 } as unknown as Document,
       srsStore,
     })
     const runtimeStore = runtime.runtime.getSrsStore()
