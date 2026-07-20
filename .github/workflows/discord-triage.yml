@@ -1,0 +1,130 @@
+name: Discord Triage
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run Codex even when the lightweight probe finds no activity
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: discord-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: write
+      contents: read
+      issues: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Probe Discord activity
+        id: probe
+        env:
+          YOLO_DISCORD_BOT_TOKEN: ${{ secrets.YOLO_DISCORD_BOT_TOKEN }}
+          YOLO_DISCORD_TRIAGE_CURSOR: ${{ vars.YOLO_DISCORD_TRIAGE_CURSOR }}
+          FORCE_DISCORD_TRIAGE: ${{ inputs.force == true && 'true' || 'false' }}
+        run: node scripts/discord-triage-activity.mjs probe
+
+      - name: Save baseline or empty-run cursor
+        if: steps.probe.outputs.has_activity != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+          WATERMARK: ${{ steps.probe.outputs.watermark }}
+        run: gh variable set YOLO_DISCORD_TRIAGE_CURSOR --body "$WATERMARK" --repo "$GITHUB_REPOSITORY"
+
+      - name: Use Node.js
+        if: steps.probe.outputs.has_activity == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Restore Codex config
+        if: steps.probe.outputs.has_activity == 'true'
+        env:
+          YOLO_CODEX_API_KEY: ${{ secrets.YOLO_CODEX_API_KEY }}
+          YOLO_CODEX_BASE_URL: ${{ secrets.YOLO_CODEX_BASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$YOLO_CODEX_API_KEY"
+          test -n "$YOLO_CODEX_BASE_URL"
+          mkdir -p "$HOME/.codex"
+          {
+            printf '%s\n' 'model_provider = "custom"'
+            printf '%s\n' 'disable_response_storage = true'
+            printf '%s\n' '[model_providers.custom]'
+            printf '%s\n' 'name = "custom"'
+            printf '%s\n' 'wire_api = "responses"'
+            printf '%s\n' 'requires_openai_auth = true'
+            printf 'base_url = "%s"\n' "$YOLO_CODEX_BASE_URL"
+            printf 'experimental_bearer_token = "%s"\n' "$YOLO_CODEX_API_KEY"
+            printf '%s\n' '[projects."/"]'
+            printf '%s\n' 'trust_level = "trusted"'
+          } > "$HOME/.codex/config.toml"
+          chmod 600 "$HOME/.codex/config.toml"
+
+      - name: Install Codex and gh
+        if: steps.probe.outputs.has_activity == 'true'
+        run: |
+          set -euo pipefail
+          npm install -g @openai/codex@0.139.0
+          if ! command -v gh >/dev/null 2>&1; then
+            type -p curl >/dev/null || sudo apt-get update -qq
+            type -p curl >/dev/null || sudo apt-get install -y curl
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg |
+              sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" |
+              sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+            sudo apt-get update -qq
+            sudo apt-get install -y gh
+          fi
+          codex --version
+          gh --version | head -1
+
+      - name: Build Discord triage prompt
+        if: steps.probe.outputs.has_activity == 'true'
+        env:
+          CURSOR: ${{ steps.probe.outputs.cursor }}
+          WATERMARK: ${{ steps.probe.outputs.watermark }}
+        run: |
+          set -euo pipefail
+          cp .github/prompts/obsidian-yolo-discord-triage.md /tmp/discord-triage-prompt.md
+          {
+            printf '\n<discord-triage-payload>\n'
+            jq -n --arg cursor "$CURSOR" --arg watermark "$WATERMARK" \
+              '{cursor: $cursor, watermark: $watermark}'
+            printf '</discord-triage-payload>\n'
+          } >> /tmp/discord-triage-prompt.md
+
+      - name: Run Codex Discord triage
+        if: steps.probe.outputs.has_activity == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+          YOLO_DISCORD_BOT_TOKEN: ${{ secrets.YOLO_DISCORD_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          codex exec \
+            --model gpt-5.6-terra \
+            --sandbox danger-full-access \
+            --ephemeral \
+            --cd "$GITHUB_WORKSPACE" \
+            - < /tmp/discord-triage-prompt.md
+
+      - name: Save processed cursor
+        if: steps.probe.outputs.has_activity == 'true' && success()
+        env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
+          WATERMARK: ${{ steps.probe.outputs.watermark }}
+        run: gh variable set YOLO_DISCORD_TRIAGE_CURSOR --body "$WATERMARK" --repo "$GITHUB_REPOSITORY"
