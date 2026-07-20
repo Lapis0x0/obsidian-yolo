@@ -1,4 +1,11 @@
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
+import {
+  MODULE_CATALOG_LOCALES,
+  type ModuleCatalogLocale,
+  type ModuleCatalogLocalizations,
+  parseModuleCatalogLocalizations,
+  resolveModuleCatalogPresentation,
+} from './moduleCatalogPresentation'
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 import {
   type ModuleArtifactDataSchemas,
@@ -13,8 +20,7 @@ import type { ModuleCatalogEntry, ModuleCatalogSource } from './types'
 export type BundledModuleDescriptor = Readonly<{
   id: string
   version: string
-  name: string
-  description: string
+  localizations: ModuleCatalogLocalizations
   hostApi: string
   dataSchemas: ModuleArtifactDataSchemas
   platforms: readonly ModuleArtifactPlatform[]
@@ -35,6 +41,7 @@ export type BundledModuleCatalogSourceOptions = {
     readBundledIndexBytes(): Promise<Uint8Array>
   }
   platform: ModuleArtifactPlatform
+  locale: ModuleCatalogLocale
 }
 
 export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
@@ -51,8 +58,7 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
       [
         'id',
         'version',
-        'name',
-        'description',
+        'localizations',
         'hostApi',
         'dataSchemas',
         'platforms',
@@ -76,12 +82,10 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
       throw new Error(`Bundled module index contains duplicate id "${id}"`)
     }
     ids.add(canonicalId)
-    if (typeof descriptor.name !== 'string' || !descriptor.name.trim()) {
-      throw new Error('Bundled module name must be a non-empty string')
-    }
-    if (typeof descriptor.description !== 'string') {
-      throw new Error('Bundled module description must be a string')
-    }
+    const localizations = parseModuleCatalogLocalizations(
+      descriptor.localizations,
+      'Bundled module localizations',
+    )
     if (
       !isModuleHostApiRange(descriptor.hostApi) ||
       !Array.isArray(descriptor.platforms) ||
@@ -117,8 +121,7 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
     return Object.freeze({
       id,
       version,
-      name: descriptor.name,
-      description: descriptor.description,
+      localizations,
       hostApi: descriptor.hostApi,
       dataSchemas,
       platforms: Object.freeze(
@@ -149,6 +152,9 @@ export class BundledModuleCatalogSource implements ModuleCatalogSource {
     if (options.platform !== 'desktop' && options.platform !== 'mobile') {
       throw new Error('Bundled module runtime platform is invalid')
     }
+    if (!MODULE_CATALOG_LOCALES.includes(options.locale)) {
+      throw new Error('Bundled module catalog locale is invalid')
+    }
   }
 
   async load(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
@@ -157,10 +163,12 @@ export class BundledModuleCatalogSource implements ModuleCatalogSource {
     return Object.freeze(
       index.modules.map((module) => {
         if (!module.platforms.includes(this.options.platform)) {
-          return catalogEntry(module, [{ kind: 'platform' }])
+          return catalogEntry(module, this.options.locale, [
+            { kind: 'platform' },
+          ])
         }
         this.resolvedVersions.set(module.id, resolvedVersion(module))
-        return catalogEntry(module)
+        return catalogEntry(module, this.options.locale)
       }),
     )
   }
@@ -213,13 +221,18 @@ export class BundledModuleCatalogSource implements ModuleCatalogSource {
 
 function catalogEntry(
   module: BundledModuleDescriptor,
+  locale: ModuleCatalogLocale,
   compatibilityIssues: ModuleCatalogEntry['compatibilityIssues'] = [],
 ): ModuleCatalogEntry {
+  const presentation = resolveModuleCatalogPresentation(
+    module.localizations,
+    locale,
+  )
   return Object.freeze({
     id: module.id,
     version: module.version,
-    name: module.name,
-    description: module.description,
+    name: presentation.name,
+    description: presentation.description,
     ...(compatibilityIssues.length > 0
       ? { compatibilityIssues: Object.freeze(compatibilityIssues) }
       : {}),

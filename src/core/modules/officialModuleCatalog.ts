@@ -1,3 +1,12 @@
+import {
+  type ModuleCatalogLocalizations,
+  parseModuleCatalogLocalizations,
+} from './moduleCatalogPresentation'
+import {
+  moduleReleaseRepositoryKey,
+  parseModuleReleaseUrl,
+} from './moduleReleaseUrl'
+
 export type OfficialModulePlatform = 'desktop' | 'mobile'
 
 export type OfficialModuleDataSchema = Readonly<{
@@ -20,8 +29,7 @@ export type OfficialModuleCatalogVersion = Readonly<{
 
 export type OfficialModuleCatalogModule = Readonly<{
   id: string
-  name?: string
-  description?: string
+  localizations: ModuleCatalogLocalizations
   versions: readonly OfficialModuleCatalogVersion[]
 }>
 
@@ -29,6 +37,11 @@ export type OfficialModuleCatalogV1 = Readonly<{
   schemaVersion: 1
   modules: readonly OfficialModuleCatalogModule[]
 }>
+
+export type OfficialModuleCatalogCandidate = Pick<
+  OfficialModuleCatalogModule,
+  'id' | 'versions'
+>
 
 export type OfficialModuleCompatibility = Readonly<{
   hostApi: string
@@ -110,15 +123,11 @@ export function parseOfficialModuleCatalog(
   const modules = catalog.modules.map((value, index) => {
     const label = `Official module catalog module ${index}`
     const module = asObject(value, label)
-    assertKeys(module, ['id', 'name', 'description', 'versions'], label)
+    assertKeys(module, ['id', 'localizations', 'versions'], label)
     if (
       typeof module.id !== 'string' ||
       !MODULE_ID.test(module.id) ||
-      (module.name !== undefined && typeof module.name !== 'string') ||
-      (module.description !== undefined &&
-        typeof module.description !== 'string') ||
       !Array.isArray(module.versions) ||
-      module.versions.length === 0 ||
       module.versions.length > limits.maxVersionsPerModule
     ) {
       throw new Error(`${label} is invalid`)
@@ -127,6 +136,10 @@ export function parseOfficialModuleCatalog(
       throw new Error(`Duplicate official module id "${module.id}"`)
     }
     moduleIds.add(module.id)
+    const localizations = parseModuleCatalogLocalizations(
+      module.localizations,
+      `${label} localizations`,
+    )
 
     const versions = new Map<string, string>()
     const parsedVersions = module.versions.map((value, versionIndex) => {
@@ -150,10 +163,7 @@ export function parseOfficialModuleCatalog(
     parsedVersions.sort(compareCatalogVersions)
     return frozenRecord({
       id: module.id,
-      ...(module.name !== undefined ? { name: module.name } : {}),
-      ...(module.description !== undefined
-        ? { description: module.description }
-        : {}),
+      localizations,
       versions: Object.freeze(parsedVersions),
     }) as OfficialModuleCatalogModule
   })
@@ -166,7 +176,7 @@ export function parseOfficialModuleCatalog(
 export type OfficialModuleCompatibilityIssue = 'platform' | 'host-api'
 
 export function getOfficialModuleCompatibilityIssues(
-  module: OfficialModuleCatalogModule,
+  module: OfficialModuleCatalogCandidate,
   compatibility: OfficialModuleCompatibility,
 ): readonly OfficialModuleCompatibilityIssue[] {
   const context = parseCompatibility(compatibility)
@@ -189,7 +199,7 @@ export function getOfficialModuleCompatibilityIssues(
 }
 
 export function selectInitialCompatibleVersion(
-  module: OfficialModuleCatalogModule,
+  module: OfficialModuleCatalogCandidate,
   compatibility: OfficialModuleCompatibility,
 ): OfficialModuleCatalogVersion | null {
   const context = parseCompatibility(compatibility)
@@ -198,7 +208,7 @@ export function selectInitialCompatibleVersion(
 }
 
 export function findCompatibleUpdate(
-  module: OfficialModuleCatalogModule,
+  module: OfficialModuleCatalogCandidate,
   compatibility: OfficialModuleCompatibility,
 ): OfficialModuleCatalogVersion | null {
   const context = parseCompatibility(compatibility)
@@ -250,7 +260,7 @@ function candidateCompatibilityIssues(
 }
 
 function findHighestCompatible(
-  module: OfficialModuleCatalogModule,
+  module: OfficialModuleCatalogCandidate,
   compatibility: CompatibilityContext,
   newerThan?: Semver,
 ): OfficialModuleCatalogVersion | null {
@@ -715,7 +725,3 @@ function sameCore(left: Semver, right: Semver): boolean {
     left.patch === right.patch
   )
 }
-import {
-  moduleReleaseRepositoryKey,
-  parseModuleReleaseUrl,
-} from './moduleReleaseUrl'

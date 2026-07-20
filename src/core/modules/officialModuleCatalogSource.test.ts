@@ -27,10 +27,15 @@ function parsedCatalog(
       schemaVersion: 1,
       modules: modules.map((module) => ({
         id: module.id,
-        ...(module.name === undefined ? {} : { name: module.name }),
-        ...(module.description === undefined
-          ? {}
-          : { description: module.description }),
+        localizations: Object.fromEntries(
+          ['en', 'zh', 'it'].map((locale) => [
+            locale,
+            {
+              name: module.name ?? module.id,
+              description: module.description ?? `${module.id} description`,
+            },
+          ]),
+        ),
         versions: module.versions.map((version) => ({
           version,
           hostApi: module.hostApiByVersion?.[version] ?? '>=1.0.0 <2.0.0',
@@ -62,7 +67,11 @@ function source(
   const client = { load: jest.fn(async () => catalog) }
   return {
     client,
-    source: new OfficialModuleCatalogSource({ client, getCompatibility }),
+    source: new OfficialModuleCatalogSource({
+      client,
+      getCompatibility,
+      locale: 'en',
+    }),
   }
 }
 
@@ -144,7 +153,12 @@ describe('OfficialModuleCatalogSource', () => {
     const fixture = source(catalog, () => compatibility('1.0.0'))
 
     await expect(fixture.source.load()).resolves.toEqual([
-      { id: 'learning', version: '2.0.0' },
+      {
+        id: 'learning',
+        version: '2.0.0',
+        name: 'learning',
+        description: 'learning description',
+      },
     ])
     expect(fixture.source.getResolvedVersion('learning')?.version).toBe('2.0.0')
   })
@@ -160,6 +174,8 @@ describe('OfficialModuleCatalogSource', () => {
       {
         id: 'mobile-only',
         version: '',
+        name: 'mobile-only',
+        description: 'mobile-only description',
         compatibilityIssues: [{ kind: 'platform' }],
       },
     ])
@@ -203,7 +219,12 @@ describe('OfficialModuleCatalogSource', () => {
     )
 
     await expect(fixture.source.load()).resolves.toEqual([
-      { id: 'learning', version: '1.0.0' },
+      {
+        id: 'learning',
+        version: '1.0.0',
+        name: 'learning',
+        description: 'learning description',
+      },
     ])
     expect(fixture.source.getResolvedVersion('learning')).toBeUndefined()
   })
@@ -227,6 +248,8 @@ describe('OfficialModuleCatalogSource', () => {
       {
         id: 'learning',
         version: '1.0.0',
+        name: 'learning',
+        description: 'learning description',
         compatibilityIssues: [{ kind: 'host-api' }],
       },
     ])
@@ -289,8 +312,18 @@ describe('OfficialModuleCatalogSource', () => {
     const second = fixture.source.load()
     expect(second).toBe(first)
     await expect(first).resolves.toEqual([
-      { id: 'alpha', version: '1.0.0' },
-      { id: 'zeta', version: '1.0.0' },
+      {
+        id: 'alpha',
+        version: '1.0.0',
+        name: 'alpha',
+        description: 'alpha description',
+      },
+      {
+        id: 'zeta',
+        version: '1.0.0',
+        name: 'zeta',
+        description: 'zeta description',
+      },
     ])
     expect(fixture.client.load).toHaveBeenCalledTimes(1)
     expect(visited).toEqual(['alpha', 'zeta'])

@@ -31,6 +31,9 @@ const jsxRuntimeExports = Object.keys(jsxRuntime).filter(
 const learningPackage = JSON.parse(
   await readFile(path.resolve('modules', 'learning', 'package.json'), 'utf8'),
 )
+const moduleCatalog = JSON.parse(
+  await readFile(path.resolve('modules', 'catalog-v1.json'), 'utf8'),
+)
 const learningPreviewVersion = learningPackage.yoloModule.previewVersion
 const learningPreviewTag = learningPackage.yoloModule.previewTag
 const learningReleaseTag = `${learningPackage.yoloModule.releaseTagPrefix}${learningPackage.version}`
@@ -69,11 +72,7 @@ const moduleDefinitions = [
         path: 'style.css',
       },
     ],
-    bundled: {
-      name: 'Learning module preview',
-      description:
-        'Read-only module boundary preview for existing Learning data.',
-    },
+    bundled: true,
   },
 ]
 
@@ -170,11 +169,13 @@ if (!options.moduleId) {
           .filter((moduleDefinition) => moduleDefinition.bundled)
           .map((moduleDefinition) => {
             const result = buildResults.get(moduleDefinition.id)
+            const localizations = getModuleCatalogLocalizations(
+              moduleDefinition.id,
+            )
             return {
               id: moduleDefinition.id,
               version: moduleDefinition.version,
-              name: moduleDefinition.bundled.name,
-              description: moduleDefinition.bundled.description,
+              localizations,
               hostApi: result.hostApi,
               dataSchemas: result.dataSchemas,
               platforms: artifactPlatforms,
@@ -187,6 +188,16 @@ if (!options.moduleId) {
       2,
     )}\n`,
   )
+}
+
+function getModuleCatalogLocalizations(moduleId) {
+  const module = moduleCatalog.modules?.find(({ id }) => id === moduleId)
+  if (!module?.localizations) {
+    throw new Error(
+      `Bundled module metadata is missing from the official catalog: ${moduleId}`,
+    )
+  }
+  return module.localizations
 }
 
 async function buildModule({

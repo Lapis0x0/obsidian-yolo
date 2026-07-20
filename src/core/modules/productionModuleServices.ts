@@ -6,6 +6,7 @@ import {
   ModuleArtifactInstaller,
   type ModuleArtifactInstallerOptions,
 } from './moduleArtifactInstaller'
+import type { ModuleCatalogLocale } from './moduleCatalogPresentation'
 import { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import {
@@ -84,6 +85,7 @@ export type ProductionModuleServicesOptions = Readonly<{
   deviceStateStore: ModuleDeviceStateStore
   catalogCacheAdapter: OfficialModuleCatalogCacheAdapter
   platform: ModuleArtifactPlatform
+  locale: ModuleCatalogLocale
   getCompatibility: OfficialModuleCompatibilityProvider
   isActive(moduleId: string, version: string): boolean
   /** Shared reservation owned and disposed by the composition root. */
@@ -133,6 +135,7 @@ export function createProductionModuleServices(
     options.catalogSource ??
     new OfficialModuleCatalogSource({
       client: catalogClient,
+      locale: options.locale,
       getCompatibility: async (module) => {
         const compatibility = await options.getCompatibility(module)
         if (compatibility.platform !== options.platform) {

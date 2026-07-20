@@ -1,5 +1,5 @@
 import type {
-  OfficialModuleCatalogModule,
+  OfficialModuleCatalogCandidate,
   OfficialModuleCompatibility,
   OfficialModulePlatform,
 } from './officialModuleCatalog'
@@ -28,7 +28,7 @@ export type OfficialModuleCompatibilityProviderOptions = Readonly<{
 export function createOfficialModuleCompatibilityProvider(
   options: OfficialModuleCompatibilityProviderOptions,
 ): (
-  module: OfficialModuleCatalogModule,
+  module: OfficialModuleCatalogCandidate,
 ) => Promise<OfficialModuleCompatibility> {
   if (
     !options ||

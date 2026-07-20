@@ -194,7 +194,12 @@ function artifact() {
     modules: [
       {
         id: 'learning',
-        name: 'Learning',
+        localizations: Object.fromEntries(
+          ['en', 'zh', 'it'].map((locale) => [
+            locale,
+            { name: 'Learning', description: 'Learning description' },
+          ]),
+        ),
         versions: [
           {
             version: '1.2.3',
@@ -280,6 +285,7 @@ function createHarness() {
     deviceStateStore,
     catalogCacheAdapter: cacheAdapter,
     platform: 'desktop',
+    locale: 'en',
     getCompatibility: createOfficialModuleCompatibilityProvider({
       platform: 'desktop',
       readDeviceState: async (moduleId) => {

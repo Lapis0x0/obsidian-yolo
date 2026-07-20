@@ -1,10 +1,10 @@
-import type { OfficialModuleCatalogModule } from './officialModuleCatalog'
+import type { OfficialModuleCatalogCandidate } from './officialModuleCatalog'
 import {
   YOLO_HOST_API_VERSION,
   createOfficialModuleCompatibilityProvider,
 } from './officialModuleCompatibilityProvider'
 
-const catalogModule: OfficialModuleCatalogModule = {
+const catalogModule: OfficialModuleCatalogCandidate = {
   id: 'learning',
   versions: [],
 }

@@ -13,22 +13,25 @@ const descriptorMetadata = (id: string, version: string) => ({
   manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-${id}-v${version}/module.json`,
 })
 
+const localizations = (name: string, description: string) =>
+  Object.fromEntries(
+    ['en', 'zh', 'it'].map((locale) => [locale, { name, description }]),
+  )
+
 const index = {
   schemaVersion: 1,
   modules: [
     {
       id: 'learning',
       version: '0.1.0',
-      name: 'Learning',
-      description: 'Learn from notes',
+      localizations: localizations('Learning', 'Learn from notes'),
       ...descriptorMetadata('learning', '0.1.0'),
       manifest: { byteSize: 100, sha256: 'a'.repeat(64) },
     },
     {
       id: 'second',
       version: '1.0.0',
-      name: 'Second',
-      description: '',
+      localizations: localizations('Second', 'Second description'),
       ...descriptorMetadata('second', '1.0.0'),
       manifest: { byteSize: 200, sha256: 'b'.repeat(64) },
     },
@@ -41,6 +44,7 @@ describe('BundledModuleCatalogSource', () => {
     const source = new BundledModuleCatalogSource({
       store: { readBundledIndexBytes },
       platform: 'desktop',
+      locale: 'en',
     })
 
     await expect(source.load()).resolves.toEqual([
@@ -54,7 +58,7 @@ describe('BundledModuleCatalogSource', () => {
         id: 'second',
         version: '1.0.0',
         name: 'Second',
-        description: '',
+        description: 'Second description',
       },
     ])
     expect(source.getResolvedVersion('learning')).toEqual({
@@ -93,6 +97,7 @@ describe('BundledModuleCatalogSource', () => {
           }),
       },
       platform: 'mobile',
+      locale: 'en',
     })
 
     await expect(source.load()).resolves.toEqual([
@@ -111,6 +116,7 @@ describe('BundledModuleCatalogSource', () => {
     const source = new BundledModuleCatalogSource({
       store: { readBundledIndexBytes: async () => encode(index) },
       platform: 'desktop',
+      locale: 'en',
     })
     await source.load()
 

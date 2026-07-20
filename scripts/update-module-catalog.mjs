@@ -64,10 +64,12 @@ export async function updateModuleCatalog({
   }
   const catalog = validateCatalog(JSON.parse(currentText))
   const moduleIndex = catalog.modules.findIndex(({ id }) => id === manifest.id)
-  const moduleEntry =
-    moduleIndex === -1
-      ? { id: manifest.id, versions: [] }
-      : catalog.modules[moduleIndex]
+  if (moduleIndex === -1) {
+    throw new Error(
+      `Add localized catalog metadata before publishing module ${manifest.id}`,
+    )
+  }
+  const moduleEntry = catalog.modules[moduleIndex]
   const versionIndex = moduleEntry.versions.findIndex(
     ({ version }) => semverKey(version) === semverKey(manifest.version),
   )
@@ -121,21 +123,18 @@ export function validateCatalog(value) {
   const modules = catalog.modules.map((rawModule, moduleIndex) => {
     const label = `Catalog module ${moduleIndex}`
     const module = asObject(rawModule, label)
-    assertAllowedKeys(module, ['id', 'name', 'description', 'versions'], label)
+    assertExactKeys(module, ['id', 'localizations', 'versions'], label)
     if (
       typeof module.id !== 'string' ||
       !MODULE_ID.test(module.id) ||
-      (module.name !== undefined && typeof module.name !== 'string') ||
-      (module.description !== undefined &&
-        typeof module.description !== 'string') ||
       !Array.isArray(module.versions) ||
-      module.versions.length === 0 ||
       module.versions.length > 200
     ) {
       throw new Error(`${label} is invalid`)
     }
     if (ids.has(module.id)) throw new Error(`Duplicate module id ${module.id}`)
     ids.add(module.id)
+    const localizations = parseLocalizations(module.localizations, label)
     const versionKeys = new Set()
     const versions = module.versions.map((rawVersion, versionIndex) => {
       const versionLabel = `${label} version ${versionIndex}`
@@ -203,15 +202,42 @@ export function validateCatalog(value) {
     versions.sort(compareVersionsDescending)
     return {
       id: module.id,
-      ...(module.name !== undefined ? { name: module.name } : {}),
-      ...(module.description !== undefined
-        ? { description: module.description }
-        : {}),
+      localizations,
       versions,
     }
   })
   modules.sort((left, right) => left.id.localeCompare(right.id, 'en'))
   return { schemaVersion: 1, modules }
+}
+
+function parseLocalizations(value, label) {
+  const localizations = asObject(value, `${label} localizations`)
+  assertExactKeys(localizations, ['en', 'zh', 'it'], `${label} localizations`)
+  return Object.fromEntries(
+    ['en', 'zh', 'it'].map((locale) => {
+      const localized = asObject(
+        localizations[locale],
+        `${label} localization ${locale}`,
+      )
+      assertExactKeys(
+        localized,
+        ['name', 'description'],
+        `${label} localization ${locale}`,
+      )
+      if (
+        typeof localized.name !== 'string' ||
+        !localized.name.trim() ||
+        typeof localized.description !== 'string' ||
+        !localized.description.trim()
+      ) {
+        throw new Error(`${label} localization ${locale} is invalid`)
+      }
+      return [
+        locale,
+        { name: localized.name, description: localized.description },
+      ]
+    }),
+  )
 }
 
 function parseManifest(value) {
@@ -488,11 +514,6 @@ function assertExactKeys(value, keys, label) {
   const missing = keys.find((key) => !actual.includes(key))
   if (unknown) throw new Error(`${label} has unknown field ${unknown}`)
   if (missing) throw new Error(`${label} is missing field ${missing}`)
-}
-
-function assertAllowedKeys(value, keys, label) {
-  const unknown = Object.keys(value).find((key) => !keys.includes(key))
-  if (unknown) throw new Error(`${label} has unknown field ${unknown}`)
 }
 
 function assertBoundedStrings(value) {

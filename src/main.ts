@@ -3826,7 +3826,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     )
     const bundledCatalogSource =
       process.env.NODE_ENV === 'development'
-        ? new BundledModuleCatalogSource({ store, platform })
+        ? new BundledModuleCatalogSource({
+            store,
+            platform,
+            locale: this.resolveObsidianLanguage(),
+          })
         : undefined
     const serviceIntentStore = bundledCatalogSource
       ? {
@@ -3865,6 +3869,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       deviceStateStore,
       catalogCacheAdapter: deviceLocalAdapter,
       platform,
+      locale: this.resolveObsidianLanguage(),
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,

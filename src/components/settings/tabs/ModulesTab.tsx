@@ -126,8 +126,7 @@ function ModuleCard({
   removeLearningDataAvailable: boolean
 }) {
   const { t } = useLanguage()
-  const name = module.catalog?.name ?? module.id
-  const description = module.catalog?.description
+  const { name, description } = module
   const version = module.installed?.version ?? module.catalog?.version
   const availableVersion =
     module.status === 'update-available' ? module.catalog?.version : undefined
@@ -477,7 +476,7 @@ export function ModulesTab({
     candidate: ConfirmedModuleCandidate,
     isUpdate: boolean,
   ) => {
-    const name = module.catalog?.name ?? module.id
+    const { name } = module
     try {
       await executeModuleProductAction(service, module, 'install', candidate)
       new Notice(
@@ -506,7 +505,7 @@ export function ModulesTab({
   }
 
   const openInstallConfirmation = (module: ModuleRecord) => {
-    const name = module.catalog?.name ?? module.id
+    const { name } = module
     const candidate = service.getInstallCandidate(module.id)
     if (
       !candidate ||
@@ -563,7 +562,7 @@ export function ModulesTab({
     action: ModuleProductAction,
     confirmedInstallCandidate?: ConfirmedModuleCandidate,
   ) => {
-    const name = module.catalog?.name ?? module.id
+    const { name } = module
     setOperation({ action, moduleId: module.id })
     try {
       await executeModuleProductAction(
@@ -594,7 +593,7 @@ export function ModulesTab({
     module: ModuleRecord,
     action: 'uninstall',
   ) => {
-    const name = module.catalog?.name ?? module.id
+    const { name } = module
     const generation = ++operationGenerationRef.current
     setOperation({ action, moduleId: module.id })
     const confirmationMessage = t(
@@ -628,7 +627,7 @@ export function ModulesTab({
   }
 
   const runDataRemoval = async (module: ModuleRecord) => {
-    const name = module.catalog?.name ?? module.id
+    const { name } = module
     setOperation({ action: 'remove-data', moduleId: module.id })
     try {
       if (!removeLearningData) {
@@ -652,7 +651,7 @@ export function ModulesTab({
   }
 
   const openDataRemovalConfirmation = (module: ModuleRecord) => {
-    const name = module.catalog?.name ?? module.id
+    const { name } = module
     const generation = ++operationGenerationRef.current
     setOperation({ action: 'remove-data', moduleId: module.id })
     const first = new ConfirmModal(app, {

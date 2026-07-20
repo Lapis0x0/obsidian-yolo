@@ -4,8 +4,20 @@
     {
       "id": "learning",
       "version": "0.1.0",
-      "name": "Learning module preview",
-      "description": "Read-only module boundary preview for existing Learning data.",
+      "localizations": {
+        "en": {
+          "name": "Learning mode",
+          "description": "Build lasting knowledge from your notes with guided learning plans, spaced repetition, and review."
+        },
+        "zh": {
+          "name": "学习模式",
+          "description": "通过学习计划、间隔重复与复习，把笔记转化为能够长期掌握的知识。"
+        },
+        "it": {
+          "name": "Modalità di apprendimento",
+          "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
+        }
+      },
       "hostApi": "^1.3.0",
       "dataSchemas": {
         "settings": {

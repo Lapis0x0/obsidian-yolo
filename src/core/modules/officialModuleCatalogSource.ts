@@ -1,5 +1,11 @@
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import {
+  MODULE_CATALOG_LOCALES,
+  type ModuleCatalogLocale,
+  resolveModuleCatalogPresentation,
+} from './moduleCatalogPresentation'
+import {
+  type OfficialModuleCatalogCandidate,
   type OfficialModuleCatalogModule,
   type OfficialModuleCatalogV1,
   type OfficialModuleCatalogVersion,
@@ -16,12 +22,13 @@ const EMPTY_RESOLVED_VERSIONS = Object.freeze(
 )
 
 export type OfficialModuleCompatibilityProvider = (
-  module: OfficialModuleCatalogModule,
+  module: OfficialModuleCatalogCandidate,
 ) => OfficialModuleCompatibility | Promise<OfficialModuleCompatibility>
 
 export type OfficialModuleCatalogSourceOptions = Readonly<{
   client: Pick<OfficialModuleCatalogClient, 'load'>
   getCompatibility: OfficialModuleCompatibilityProvider
+  locale: ModuleCatalogLocale
 }>
 
 /** Resolves the trusted official catalog against the current host and module state. */
@@ -36,7 +43,8 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
       !options ||
       !options.client ||
       typeof options.client.load !== 'function' ||
-      typeof options.getCompatibility !== 'function'
+      typeof options.getCompatibility !== 'function' ||
+      !MODULE_CATALOG_LOCALES.includes(options.locale)
     ) {
       throw new Error('Official module catalog source options are invalid')
     }
@@ -137,7 +145,9 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
 
       if (selected) {
         resolvedVersions[module.id] = selected
-        entries.push(catalogEntry(module, selected.version))
+        entries.push(
+          catalogEntry(module, selected.version, this.options.locale),
+        )
       } else {
         const compatibilityIssues = getOfficialModuleCompatibilityIssues(
           module,
@@ -147,6 +157,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
           catalogEntry(
             module,
             compatibility.activeVersion ?? '',
+            this.options.locale,
             compatibilityIssues,
           ),
         )
@@ -163,23 +174,28 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
 function sortedModules(
   catalog: OfficialModuleCatalogV1,
 ): readonly OfficialModuleCatalogModule[] {
-  return [...catalog.modules].sort((left, right) =>
-    left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
-  )
+  return [...catalog.modules]
+    .sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    )
+    .filter((module) => module.versions.length > 0)
 }
 
 function catalogEntry(
   module: OfficialModuleCatalogModule,
   version: string,
+  locale: ModuleCatalogLocale,
   compatibilityIssues: ModuleCatalogEntry['compatibilityIssues'] = [],
 ): ModuleCatalogEntry {
+  const presentation = resolveModuleCatalogPresentation(
+    module.localizations,
+    locale,
+  )
   return Object.freeze({
     id: module.id,
     version,
-    ...(module.name !== undefined ? { name: module.name } : {}),
-    ...(module.description !== undefined
-      ? { description: module.description }
-      : {}),
+    name: presentation.name,
+    description: presentation.description,
     ...(compatibilityIssues.length > 0 ? { compatibilityIssues } : {}),
   })
 }

@@ -10,6 +10,17 @@ import { updateModuleCatalog } from './update-module-catalog.mjs'
 
 const root =
   'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0'
+const localizations = Object.fromEntries(
+  ['en', 'zh', 'it'].map((locale) => [
+    locale,
+    { name: 'Learning', description: 'Learning description' },
+  ]),
+)
+const catalogModule = (versions = []) => ({
+  id: 'learning',
+  localizations,
+  versions,
+})
 
 test('preserves schema declarations from a real Learning build', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-build-'))
@@ -30,7 +41,10 @@ test('preserves schema declarations from a real Learning build', async () => {
       { encoding: 'utf8' },
     )
     assert.equal(build.status, 0, build.stderr || build.stdout)
-    await writeFile(catalogPath, '{"schemaVersion":1,"modules":[]}')
+    await writeFile(
+      catalogPath,
+      JSON.stringify({ schemaVersion: 1, modules: [catalogModule()] }),
+    )
     const assets = new Map(
       await Promise.all(
         (await readdir(artifactDir)).map(async (name) => [
@@ -79,7 +93,7 @@ test('verifies the complete remote release and deterministically preserves versi
   const catalogPath = path.join(directory, 'catalog.json')
   await writeFile(
     catalogPath,
-    `${JSON.stringify({ schemaVersion: 1, modules: [{ id: 'learning', name: 'Learning', versions: [oldVersion()] }] }, null, 2)}\n`,
+    `${JSON.stringify({ schemaVersion: 1, modules: [catalogModule([oldVersion()])] }, null, 2)}\n`,
   )
   try {
     const first = await updateModuleCatalog({
@@ -91,7 +105,7 @@ test('verifies the complete remote release and deterministically preserves versi
     })
     assert.equal(first.changed, true)
     const catalog = JSON.parse(await readFile(catalogPath, 'utf8'))
-    assert.equal(catalog.modules[0].name, 'Learning')
+    assert.equal(catalog.modules[0].localizations.en.name, 'Learning')
     assert.deepEqual(
       catalog.modules[0].versions.map(({ version }) => version),
       ['0.1.0', '0.0.9'],
@@ -128,7 +142,7 @@ test('refuses to replace an existing equivalent version with a different hash', 
     catalogPath,
     JSON.stringify({
       schemaVersion: 1,
-      modules: [{ id: 'learning', versions: [conflicting] }],
+      modules: [catalogModule([conflicting])],
     }),
   )
   try {
@@ -209,7 +223,10 @@ test('refuses manifests that cannot satisfy the Core catalog schema', async () =
   fixture.replaceManifest(manifest)
   const directory = await mkdtemp(path.join(os.tmpdir(), 'module-catalog-'))
   const catalogPath = path.join(directory, 'catalog.json')
-  await writeFile(catalogPath, '{"schemaVersion":1,"modules":[]}')
+  await writeFile(
+    catalogPath,
+    JSON.stringify({ schemaVersion: 1, modules: [catalogModule()] }),
+  )
   try {
     await assert.rejects(
       updateModuleCatalog({

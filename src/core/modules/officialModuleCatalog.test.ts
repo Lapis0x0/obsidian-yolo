@@ -28,7 +28,33 @@ function version(
 }
 
 function catalog(modules: unknown[]): unknown {
-  return { schemaVersion: 1, modules }
+  return {
+    schemaVersion: 1,
+    modules: modules.map((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return value
+      }
+      const module = value as Record<string, unknown>
+      const { name, description, ...rest } = module
+      return {
+        ...rest,
+        localizations:
+          module.localizations ??
+          Object.fromEntries(
+            ['en', 'zh', 'it'].map((locale) => [
+              locale,
+              {
+                name: typeof name === 'string' ? name : 'Learning',
+                description:
+                  typeof description === 'string'
+                    ? description
+                    : 'Learning description',
+              },
+            ]),
+          ),
+      }
+    }),
+  }
 }
 
 function parse(input: unknown, options = OPTIONS) {
