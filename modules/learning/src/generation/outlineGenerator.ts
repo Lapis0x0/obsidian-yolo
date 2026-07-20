@@ -224,14 +224,14 @@ function parseJsonObject(text: string): unknown {
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) {
       throw new Error(
-        `无法解析大纲 JSON（未找到 JSON 对象）。原始文本前 500 字符：\n${text.slice(0, 500)}`,
+        `Cannot parse outline JSON (no JSON object found). First 500 characters of the raw text:\n${text.slice(0, 500)}`,
       )
     }
     try {
       return JSON.parse(match[0])
     } catch (error) {
       throw new Error(
-        `无法解析大纲 JSON：${error instanceof Error ? error.message : String(error)}。提取的 JSON 片段前 500 字符：\n${match[0].slice(0, 500)}`,
+        `Cannot parse outline JSON: ${error instanceof Error ? error.message : String(error)}. First 500 characters of the extracted JSON fragment:\n${match[0].slice(0, 500)}`,
       )
     }
   }

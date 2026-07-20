@@ -123,7 +123,7 @@ describe('generateCardsForChapter streaming', () => {
       if (preexistingRollbackShell) {
         const cardsFile = { path: cardsPath }
         files.set(cardsPath, cardsFile)
-        contents.set(cardsPath, '---\ntitle: Chapter - 卡片\n---\n')
+        contents.set(cardsPath, '---\ntitle: Chapter\n---\n')
       }
       let generatedContent = ''
       const create = jest.fn(async (path: string, content: string) => {
@@ -137,7 +137,9 @@ describe('generateCardsForChapter streaming', () => {
         return { path, content: written, identity: file }
       })
       let streamRun = 0
-      const stream = jest.fn(async function* () {
+      const requests: unknown[] = []
+      const stream = jest.fn(async function* (request: unknown) {
+        requests.push(request)
         streamRun += 1
         if (retryWithExternalEdit && streamRun === 2) {
           contents.set(cardsPath, `${generatedContent}\nuser edit\n`)
@@ -256,6 +258,7 @@ describe('generateCardsForChapter streaming', () => {
       expect(written).toContain('A?\n\n---\n\nA!')
       expect(written).not.toContain(CARD_END_MARKER)
       if (retryWithExternalEdit) expect(written).toContain('user edit')
+      expect(written).not.toMatch(/[\u4e00-\u9fff]/)
       expect(create).toHaveBeenCalledTimes(preexistingRollbackShell ? 0 : 1)
       expect(stream).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -263,6 +266,17 @@ describe('generateCardsForChapter streaming', () => {
           capability: 'edit-vault',
         }),
       )
+      if (retryWithExternalEdit) {
+        const retryRequest = requests[1] as {
+          messages: Array<{ promptContent?: string }>
+        }
+        expect(retryRequest.messages.at(-1)?.promptContent).toContain(
+          'The following cards are incorrectly formatted',
+        )
+        expect(retryRequest.messages.at(-1)?.promptContent).not.toMatch(
+          /[\u4e00-\u9fff]/,
+        )
+      }
     },
   )
 
@@ -421,7 +435,7 @@ describe('generateCardsForChapter streaming', () => {
       await expect(generation).rejects.toThrow(
         `Knowledge file changed during generation: ${knowledgePath}`,
       )
-      expect(contents.get(cardsPath)).toBe('---\ntitle: Chapter - 卡片\n---\n')
+      expect(contents.get(cardsPath)).toBe('---\ntitle: Chapter\n---\n')
     }
   })
 })
@@ -463,9 +477,9 @@ title: 测试
 
     expect(result.valid).toHaveLength(0)
     expect(result.invalid[0]?.errors).toEqual([
-      '缺少标题',
-      '分隔线前缺少正面内容',
-      '分隔线后缺少背面内容',
+      'missing title',
+      'missing front content before the separator',
+      'missing back content after the separator',
     ])
   })
 
@@ -504,11 +518,11 @@ C`)
     expect(result.invalid).toEqual([
       expect.objectContaining({
         cardUuid: '11111111',
-        errors: ['card UUID 重复'],
+        errors: ['duplicate card UUID'],
       }),
       expect.objectContaining({
         cardUuid: '22222222',
-        errors: ['缺少该 card UUID'],
+        errors: ['missing this card UUID'],
       }),
     ])
     expect(result.discardedCount).toBe(3)
