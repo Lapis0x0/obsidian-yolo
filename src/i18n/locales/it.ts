@@ -801,6 +801,18 @@ export const it: TranslationKeys = {
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
       yoloBaseDirPlaceholder: 'YOLO',
+      yoloBaseDirHiddenPath:
+        'La cartella base YOLO non può usare cartelle nascoste. Rimuovi il punto iniziale dal nome, ad esempio cambia .yolo in yolo.',
+      yoloBaseDirMigrated:
+        'La cartella base YOLO ora usa {target}, che Obsidian può indicizzare.',
+      yoloBaseDirMigrationConflict:
+        'La cartella base YOLO non è stata spostata perché {target} esiste già. Le impostazioni esistenti sono state mantenute.',
+      yoloBaseDirMigrationFailed:
+        'Impossibile migrare la cartella base YOLO. Le impostazioni esistenti sono state mantenute.',
+      yoloBaseDirMigrationRollbackFailed:
+        'YOLO è stato spostato da {source} a {target}, ma non è stato possibile aggiornare le impostazioni né annullare lo spostamento. Sposta manualmente la cartella in {source} prima di continuare.',
+      yoloBaseDirMigrationManualRepair:
+        'La cartella base YOLO {source} è nascosta ma non può essere migrata automaticamente in sicurezza. Scegli una cartella visibile e sposta manualmente i file YOLO.',
       skillsSourcePath:
         'Origine: skill integrate + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: 'Aggiorna',
@@ -1799,6 +1811,18 @@ export const it: TranslationKeys = {
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
+      yoloBaseDirHiddenPath:
+        'La cartella base YOLO non può usare cartelle nascoste. Rimuovi il punto iniziale dal nome, ad esempio cambia .yolo in yolo.',
+      yoloBaseDirMigrated:
+        'La cartella base YOLO ora usa {target}, che Obsidian può indicizzare.',
+      yoloBaseDirMigrationConflict:
+        'La cartella base YOLO non è stata spostata perché {target} esiste già. Le impostazioni esistenti sono state mantenute.',
+      yoloBaseDirMigrationFailed:
+        'Impossibile migrare la cartella base YOLO. Le impostazioni esistenti sono state mantenute.',
+      yoloBaseDirMigrationRollbackFailed:
+        'YOLO è stato spostato da {source} a {target}, ma non è stato possibile aggiornare le impostazioni né annullare lo spostamento. Sposta manualmente la cartella in {source} prima di continuare.',
+      yoloBaseDirMigrationManualRepair:
+        'La cartella base YOLO {source} è nascosta ma non può essere migrata automaticamente in sicurezza. Scegli una cartella visibile e sposta manualmente i file YOLO.',
       ribbonClickAction: 'Icona ribbon apre la chat in',
       ribbonClickActionDesc:
         'Dove l’icona ribbon di YOLO apre la vista Chat. Se nella posizione scelta esiste già una chat viene attivata; altrimenti ne viene creata una nuova.',

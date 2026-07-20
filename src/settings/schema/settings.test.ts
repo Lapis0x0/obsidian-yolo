@@ -99,6 +99,15 @@ describe('parseYoloSettings', () => {
     })
   })
 
+  it('preserves a legacy hidden YOLO root for the startup filesystem migration', () => {
+    expect(
+      parseYoloSettings({
+        version: SETTINGS_SCHEMA_VERSION,
+        yolo: { baseDir: '.yolo' },
+      }).yolo.baseDir,
+    ).toBe('.yolo')
+  })
+
   it('migrates applyModelId to chatTitleModelId for legacy settings', () => {
     const result = parseYoloSettings({
       version: 38,

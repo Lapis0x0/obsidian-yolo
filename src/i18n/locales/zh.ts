@@ -744,6 +744,17 @@ export const zh: TranslationKeys = {
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。',
       yoloBaseDirPlaceholder: 'YOLO',
+      yoloBaseDirHiddenPath:
+        'YOLO 根目录不能使用隐藏文件夹。请移除文件夹名称开头的“.”，例如将 .yolo 改为 yolo。',
+      yoloBaseDirMigrated:
+        'YOLO 根目录现已使用 {target}，Obsidian 可以正常索引它。',
+      yoloBaseDirMigrationConflict:
+        'YOLO 根目录未移动，因为 {target} 已存在；已保留原有设置。',
+      yoloBaseDirMigrationFailed: 'YOLO 根目录迁移失败；已保留原有设置。',
+      yoloBaseDirMigrationRollbackFailed:
+        'YOLO 已从 {source} 移动到 {target}，但设置更新失败且无法回滚。请先手动将目录移回 {source}。',
+      yoloBaseDirMigrationManualRepair:
+        'YOLO 根目录 {source} 是隐藏目录，但无法安全自动迁移。请选择可见根目录并手动移动其中的 YOLO 文件。',
       skillsSourcePath: '来源：内置技能 + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: '刷新',
       skillsEmptyHint: '未发现技能。请在 {path} 下创建 .md 技能文件。',
@@ -1784,6 +1795,17 @@ export const zh: TranslationKeys = {
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。当前技能目录：{path}。',
       yoloBaseDirPlaceholder: 'YOLO',
+      yoloBaseDirHiddenPath:
+        'YOLO 根目录不能使用隐藏文件夹。请移除文件夹名称开头的“.”，例如将 .yolo 改为 yolo。',
+      yoloBaseDirMigrated:
+        'YOLO 根目录现已使用 {target}，Obsidian 可以正常索引它。',
+      yoloBaseDirMigrationConflict:
+        'YOLO 根目录未移动，因为 {target} 已存在；已保留原有设置。',
+      yoloBaseDirMigrationFailed: 'YOLO 根目录迁移失败；已保留原有设置。',
+      yoloBaseDirMigrationRollbackFailed:
+        'YOLO 已从 {source} 移动到 {target}，但设置更新失败且无法回滚。请先手动将目录移回 {source}。',
+      yoloBaseDirMigrationManualRepair:
+        'YOLO 根目录 {source} 是隐藏目录，但无法安全自动迁移。请选择可见根目录并手动移动其中的 YOLO 文件。',
       ribbonClickAction: '侧边栏图标点击位置',
       ribbonClickActionDesc:
         '选择点击左侧边栏 YOLO 图标时，Chat 视图在哪里打开。若选定位置已有 Chat 视图会直接激活复用，否则新建。',

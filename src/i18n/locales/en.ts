@@ -792,6 +792,18 @@ export const en: TranslationKeys = {
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
       yoloBaseDirPlaceholder: 'YOLO',
+      yoloBaseDirHiddenPath:
+        'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
+      yoloBaseDirMigrated:
+        'YOLO root now uses {target} so Obsidian can index it.',
+      yoloBaseDirMigrationConflict:
+        'YOLO root was not moved because {target} already exists. Your existing setting was kept.',
+      yoloBaseDirMigrationFailed:
+        'YOLO root could not be migrated. Your existing setting was kept.',
+      yoloBaseDirMigrationRollbackFailed:
+        'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
+      yoloBaseDirMigrationManualRepair:
+        'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
       skillsSourcePath:
         'Source: built-in skills + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: 'Refresh',
@@ -1915,6 +1927,18 @@ export const en: TranslationKeys = {
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
       yoloBaseDirPlaceholder: 'YOLO',
+      yoloBaseDirHiddenPath:
+        'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
+      yoloBaseDirMigrated:
+        'YOLO root now uses {target} so Obsidian can index it.',
+      yoloBaseDirMigrationConflict:
+        'YOLO root was not moved because {target} already exists. Your existing setting was kept.',
+      yoloBaseDirMigrationFailed:
+        'YOLO root could not be migrated. Your existing setting was kept.',
+      yoloBaseDirMigrationRollbackFailed:
+        'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
+      yoloBaseDirMigrationManualRepair:
+        'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
       ribbonClickAction: 'Ribbon icon opens chat in',
       ribbonClickActionDesc:
         'Where the YOLO ribbon icon opens the Chat view. If a chat already exists in the chosen location it is activated; otherwise a new one is created.',

@@ -23,6 +23,8 @@ type YoloSettingsLike = {
   }
 }
 
+const RESERVED_HIDDEN_VAULT_ROOTS = new Set(['.git', '.trash'])
+
 export const normalizeVaultRelativeDir = (
   value: string | undefined,
 ): string => {
@@ -47,6 +49,56 @@ export const normalizeVaultRelativeDir = (
 
 export const getYoloBaseDir = (settings?: YoloSettingsLike | null): string => {
   return normalizeVaultRelativeDir(settings?.yolo?.baseDir)
+}
+
+/** True when a vault-relative path contains a segment Obsidian will not index. */
+export const hasHiddenYoloBaseDirSegment = (value: string): boolean =>
+  normalizePath(value.trim())
+    .replace(/^(\.\/)+/, '')
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')
+    .split('/')
+    .some((segment) => segment.startsWith('.'))
+
+/** Never switch an already-running plugin to a hidden root from external data. */
+export const resolveExternalYoloBaseDir = (
+  currentBaseDir: string,
+  incomingBaseDir: string,
+): string =>
+  currentBaseDir !== incomingBaseDir &&
+  hasHiddenYoloBaseDirSegment(incomingBaseDir)
+    ? currentBaseDir
+    : incomingBaseDir
+
+/**
+ * Returns the indexed equivalent of a historical hidden YOLO root, or null
+ * when every segment is already visible. A segment made only of dots has no
+ * safe name to migrate to, so it is deliberately left for manual repair.
+ */
+export const getVisibleYoloBaseDir = (
+  value: string,
+  options?: { reservedRoots?: readonly string[] },
+): string | null => {
+  const source = normalizeVaultRelativeDir(value)
+  const firstSegment = source.split('/')[0]
+  if (
+    RESERVED_HIDDEN_VAULT_ROOTS.has(firstSegment) ||
+    options?.reservedRoots?.includes(firstSegment)
+  ) {
+    return null
+  }
+  const targetSegments = source
+    .split('/')
+    .map((segment) =>
+      segment.startsWith('.') ? segment.replace(/^\.+/, '') : segment,
+    )
+
+  if (targetSegments.some((segment) => segment.length === 0)) {
+    return null
+  }
+
+  const target = targetSegments.join('/')
+  return target === source ? null : target
 }
 
 export const getYoloSkillsDir = (

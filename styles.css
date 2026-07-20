@@ -127,6 +127,37 @@
   line-height: 1;
 }
 
+.yolo-settings-field.is-invalid .yolo-settings-card.setting-item {
+  margin-bottom: 0;
+  border-color: color-mix(
+    in srgb,
+    var(--text-error) 24%,
+    transparent
+  ) !important;
+  border-radius: var(--radius-m) var(--radius-m) 0 0;
+}
+
+.yolo-settings-field.is-invalid .yolo-settings-card input {
+  border-color: color-mix(in srgb, var(--text-error) 42%, transparent);
+}
+
+.yolo-settings-inline-error {
+  margin-bottom: var(--size-4-3);
+  padding: 10px var(--size-4-3);
+  border: 1px solid color-mix(in srgb, var(--text-error) 24%, transparent);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-m) var(--radius-m);
+  background: color-mix(
+    in srgb,
+    var(--text-error) 8%,
+    var(--background-primary)
+  );
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  line-height: 1.35;
+}
+
 .yolo-settings-loading {
   padding: var(--size-4-6) var(--size-4-4);
   color: var(--text-muted);

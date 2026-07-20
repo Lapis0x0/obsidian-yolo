@@ -91,6 +91,7 @@ import {
 } from './core/modules'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
+import { migrateHiddenYoloBaseDir } from './core/paths/yoloBaseDirMigration'
 import {
   type YoloDataMeta,
   extractYoloDataMeta,
@@ -99,7 +100,12 @@ import {
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
-import { getYoloBaseDir, getYoloJsonDbRootDir } from './core/paths/yoloPaths'
+import {
+  getYoloBaseDir,
+  getYoloJsonDbRootDir,
+  hasHiddenYoloBaseDirSegment,
+  resolveExternalYoloBaseDir,
+} from './core/paths/yoloPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -1941,6 +1947,7 @@ export default class YoloPlugin extends Plugin {
     await loadLocale(this.resolveObsidianLanguage())
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
+    await this.migrateHiddenYoloBaseDirIfNeeded()
     try {
       await this.learningModuleSettingsHandoff?.()
     } catch (error) {
@@ -2506,6 +2513,92 @@ export default class YoloPlugin extends Plugin {
     )
   }
 
+  /** Migrate old hidden roots before any service can open files beneath them. */
+  private async migrateHiddenYoloBaseDirIfNeeded(): Promise<void> {
+    const previousSettings = this.settings
+    let result
+    try {
+      result = await migrateHiddenYoloBaseDir({
+        app: this.app,
+        settings: previousSettings,
+        persistTargetBaseDir: async (baseDir) => {
+          const nextSettings: YoloSettings = {
+            ...previousSettings,
+            yolo: { ...previousSettings.yolo, baseDir },
+          }
+          await this.persistPluginDirSettings(nextSettings)
+        },
+      })
+    } catch (error) {
+      console.error('[YOLO] Hidden YOLO root migration crashed', error)
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationFailed',
+          'YOLO root could not be migrated. Your existing setting was kept.',
+        ),
+      )
+      return
+    }
+
+    if (result.status === 'not-needed') return
+    if (result.status === 'manual-repair') {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationManualRepair',
+          'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
+        ).replace('{source}', result.source),
+        0,
+      )
+      return
+    }
+    if (result.status === 'migrated' || result.status === 'source-missing') {
+      this.settings = {
+        ...previousSettings,
+        yolo: { ...previousSettings.yolo, baseDir: result.target },
+      }
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrated',
+          'YOLO root now uses {target} so Obsidian can index it.',
+        ).replace('{target}', result.target),
+      )
+      return
+    }
+    if (result.status === 'target-exists') {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationConflict',
+          'YOLO root was not moved because {target} already exists. Your existing setting was kept.',
+        ).replace('{target}', result.target),
+      )
+      return
+    }
+
+    if (result.status === 'failed') {
+      console.error('[YOLO] Failed to migrate hidden YOLO root', result.error)
+      if (result.rollbackFailed) {
+        new Notice(
+          this.t(
+            'settings.agent.yoloBaseDirMigrationRollbackFailed',
+            'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
+          )
+            .split('{source}')
+            .join(result.source)
+            .split('{target}')
+            .join(result.target),
+          0,
+        )
+        return
+      }
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationFailed',
+          'YOLO root could not be migrated. Your existing setting was kept.',
+        ),
+      )
+    }
+  }
+
   private getDeviceId(): string {
     if (this.deviceId) {
       return this.deviceId
@@ -2635,11 +2728,22 @@ export default class YoloPlugin extends Plugin {
     const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
       settingsWithDefaultAssistant.chatModels,
     )
-    const normalizedSettings = changed
+    let normalizedSettings = changed
       ? { ...settingsWithDefaultAssistant, chatModels }
       : settingsWithDefaultAssistant
 
     const previousSettings = this.settings
+    const externalBaseDir = resolveExternalYoloBaseDir(
+      previousSettings.yolo.baseDir,
+      normalizedSettings.yolo.baseDir,
+    )
+    if (externalBaseDir !== normalizedSettings.yolo.baseDir) {
+      normalizedSettings = {
+        ...normalizedSettings,
+        yolo: { ...normalizedSettings.yolo, baseDir: externalBaseDir },
+      }
+      new Notice(this.t('settings.agent.yoloBaseDirHiddenPath'))
+    }
     const baseDirChanged =
       previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
 
@@ -2858,6 +2962,21 @@ export default class YoloPlugin extends Plugin {
     if (!validationResult.success) {
       new Notice(`Invalid settings:
 ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
+      return
+    }
+
+    const previousBaseDir = this.settings?.yolo?.baseDir
+    const nextBaseDir = normalizedSettings.yolo.baseDir
+    if (
+      nextBaseDir !== previousBaseDir &&
+      hasHiddenYoloBaseDirSegment(nextBaseDir)
+    ) {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirHiddenPath',
+          'YOLO root cannot contain a folder name starting with a dot because Obsidian does not index hidden folders.',
+        ),
+      )
       return
     }
 

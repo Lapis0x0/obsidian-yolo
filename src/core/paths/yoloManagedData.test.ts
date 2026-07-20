@@ -1,5 +1,6 @@
 import { App, Stat } from 'obsidian'
 
+import { migrateHiddenYoloBaseDir } from './yoloBaseDirMigration'
 import {
   YOLO_DATA_META_KEY,
   ensureJsonDbRootDir,
@@ -10,17 +11,25 @@ import {
   relocateYoloManagedData,
   stampYoloDataMeta,
 } from './yoloManagedData'
+import {
+  getVisibleYoloBaseDir,
+  hasHiddenYoloBaseDirSegment,
+  resolveExternalYoloBaseDir,
+} from './yoloPaths'
 
 type Listing = {
   files: string[]
   folders: string[]
 }
 
+const CONFIG_DIR = '.vault-config'
+
 class MockAdapter {
   private readonly files = new Map<string, string | ArrayBuffer>()
   private readonly folders = new Set<string>()
   private failWriteBinaryPaths = new Set<string>()
   private failRemovePaths = new Set<string>()
+  private failRenamePaths = new Set<string>()
 
   async exists(path: string): Promise<boolean> {
     return this.files.has(path) || this.folders.has(path)
@@ -128,6 +137,30 @@ class MockAdapter {
     }
   }
 
+  async rename(from: string, to: string): Promise<void> {
+    if (this.failRenamePaths.has(`${from}->${to}`)) {
+      throw new Error(`Mock rename failure: ${from} -> ${to}`)
+    }
+    if (!(await this.exists(from)))
+      throw new Error(`Source does not exist: ${from}`)
+    if (await this.exists(to)) throw new Error(`Target exists: ${to}`)
+
+    const movePath = (path: string) =>
+      path === from ? to : `${to}${path.slice(from.length)}`
+    for (const [path, content] of Array.from(this.files)) {
+      if (path === from || path.startsWith(`${from}/`)) {
+        this.files.delete(path)
+        this.files.set(movePath(path), content)
+      }
+    }
+    for (const path of Array.from(this.folders)) {
+      if (path === from || path.startsWith(`${from}/`)) {
+        this.folders.delete(path)
+        this.folders.add(movePath(path))
+      }
+    }
+  }
+
   async list(path: string): Promise<Listing> {
     const prefix = path ? `${path}/` : ''
     const files = Array.from(this.files.keys()).filter((filePath) => {
@@ -157,6 +190,10 @@ class MockAdapter {
     this.failRemovePaths.delete(path)
   }
 
+  failRename(from: string, to: string): void {
+    this.failRenamePaths.add(`${from}->${to}`)
+  }
+
   private async ensureParent(path: string): Promise<void> {
     const slashIndex = path.lastIndexOf('/')
     if (slashIndex <= 0) {
@@ -170,8 +207,246 @@ const createMockApp = (adapter: MockAdapter): App =>
   ({
     vault: {
       adapter,
+      configDir: CONFIG_DIR,
     },
   }) as unknown as App
+
+describe('hidden YOLO base directory migration', () => {
+  test('identifies hidden segments and derives their indexed target', () => {
+    expect(hasHiddenYoloBaseDirSegment('.yolo')).toBe(true)
+    expect(hasHiddenYoloBaseDirSegment('Config/.yolo')).toBe(true)
+    expect(hasHiddenYoloBaseDirSegment('.')).toBe(true)
+    expect(hasHiddenYoloBaseDirSegment('Config/YOLO')).toBe(false)
+    expect(getVisibleYoloBaseDir('.yolo')).toBe('yolo')
+    expect(getVisibleYoloBaseDir('Config/.yolo')).toBe('Config/yolo')
+    expect(getVisibleYoloBaseDir('.Config/.yolo')).toBe('Config/yolo')
+    expect(
+      getVisibleYoloBaseDir(CONFIG_DIR, { reservedRoots: [CONFIG_DIR] }),
+    ).toBeNull()
+    expect(
+      getVisibleYoloBaseDir(`${CONFIG_DIR}/plugins`, {
+        reservedRoots: [CONFIG_DIR],
+      }),
+    ).toBeNull()
+    expect(getVisibleYoloBaseDir('.git')).toBeNull()
+    expect(getVisibleYoloBaseDir('.trash')).toBeNull()
+    expect(getVisibleYoloBaseDir('Config/YOLO')).toBeNull()
+    expect(resolveExternalYoloBaseDir('YOLO', '.yolo')).toBe('YOLO')
+    expect(resolveExternalYoloBaseDir('YOLO', 'Notes/YOLO')).toBe('Notes/YOLO')
+  })
+
+  test('leaves an already indexed base directory unchanged', async () => {
+    const persistTargetBaseDir = jest.fn()
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(new MockAdapter()),
+        settings: { yolo: { baseDir: 'Config/YOLO' } },
+        persistTargetBaseDir,
+      }),
+    ).resolves.toEqual({ status: 'not-needed' })
+    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+  })
+
+  test('requires manual repair for reserved hidden vault roots', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write(`${CONFIG_DIR}/plugins/example/main.js`, 'plugin')
+    const persistTargetBaseDir = jest.fn()
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: CONFIG_DIR } },
+        persistTargetBaseDir,
+      }),
+    ).resolves.toEqual({ status: 'manual-repair', source: CONFIG_DIR })
+    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+    await expect(
+      adapter.read(`${CONFIG_DIR}/plugins/example/main.js`),
+    ).resolves.toBe('plugin')
+  })
+
+  test('moves the whole hidden root before persisting the target setting', async () => {
+    const adapter = new MockAdapter()
+    const persisted: string[] = []
+    await adapter.write('Config/.yolo/skills/example.md', 'skill')
+    const result = await migrateHiddenYoloBaseDir({
+      app: createMockApp(adapter),
+      settings: { yolo: { baseDir: 'Config/.yolo' } },
+      persistTargetBaseDir: async (baseDir) => {
+        persisted.push(baseDir)
+      },
+    })
+
+    expect(result).toEqual({
+      status: 'migrated',
+      source: 'Config/.yolo',
+      target: 'Config/yolo',
+    })
+    expect(persisted).toEqual(['Config/yolo'])
+    await expect(adapter.exists('Config/.yolo')).resolves.toBe(false)
+    await expect(adapter.read('Config/yolo/skills/example.md')).resolves.toBe(
+      'skill',
+    )
+  })
+
+  test('keeps the source and old setting when the target already exists', async () => {
+    const adapter = new MockAdapter()
+    const persistTargetBaseDir = jest.fn()
+    await adapter.write('.yolo/a.md', 'source')
+    await adapter.write('yolo/a.md', 'target')
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir,
+      }),
+    ).resolves.toMatchObject({ status: 'target-exists' })
+    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+    await expect(adapter.read('.yolo/a.md')).resolves.toBe('source')
+    await expect(adapter.read('yolo/a.md')).resolves.toBe('target')
+  })
+
+  test('keeps settings and source when the adapter move fails', async () => {
+    const adapter = new MockAdapter()
+    const persistTargetBaseDir = jest.fn()
+    await adapter.write('.yolo/a.md', 'source')
+    adapter.failRename('.yolo', 'yolo')
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir,
+      }),
+    ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
+    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+    await expect(adapter.read('.yolo/a.md')).resolves.toBe('source')
+  })
+
+  test('cleans newly created parents when the adapter move fails', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('.config/.yolo/a.md', 'source')
+    adapter.failRename('.config/.yolo', 'config/yolo')
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.config/.yolo' } },
+        persistTargetBaseDir: jest.fn(),
+      }),
+    ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
+    await expect(adapter.exists('config')).resolves.toBe(false)
+  })
+
+  test('does not move a file that occupies the configured root path', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('.yolo', 'not a folder')
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir: jest.fn(),
+      }),
+    ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
+    await expect(adapter.read('.yolo')).resolves.toBe('not a folder')
+    await expect(adapter.exists('yolo')).resolves.toBe(false)
+  })
+
+  test('rolls the directory back when persisting the new setting fails', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('.yolo/a.md', 'source')
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir: async () => {
+          throw new Error('save failed')
+        },
+      }),
+    ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
+    await expect(adapter.read('.yolo/a.md')).resolves.toBe('source')
+    await expect(adapter.exists('yolo')).resolves.toBe(false)
+  })
+
+  test('updates a hidden setting safely when its source no longer exists', async () => {
+    const adapter = new MockAdapter()
+    const persistTargetBaseDir = jest.fn().mockResolvedValue(undefined)
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir,
+      }),
+    ).resolves.toEqual({
+      status: 'source-missing',
+      source: '.yolo',
+      target: 'yolo',
+    })
+    expect(persistTargetBaseDir).toHaveBeenCalledWith('yolo')
+  })
+
+  test('does not adopt an existing target when the hidden source is missing', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('yolo/unrelated.md', 'keep')
+    const persistTargetBaseDir = jest.fn()
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir,
+      }),
+    ).resolves.toMatchObject({ status: 'target-exists' })
+    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+  })
+
+  test('creates missing visible parents for every hidden path segment', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('.config/.yolo/a.md', 'source')
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.config/.yolo' } },
+        persistTargetBaseDir: jest.fn().mockResolvedValue(undefined),
+      }),
+    ).resolves.toMatchObject({ status: 'migrated', target: 'config/yolo' })
+    await expect(adapter.read('config/yolo/a.md')).resolves.toBe('source')
+  })
+
+  test('cleans migration-created empty parents after persistence rollback', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('.config/.yolo/a.md', 'source')
+    await migrateHiddenYoloBaseDir({
+      app: createMockApp(adapter),
+      settings: { yolo: { baseDir: '.config/.yolo' } },
+      persistTargetBaseDir: async () => {
+        throw new Error('save failed')
+      },
+    })
+    await expect(adapter.exists('config')).resolves.toBe(false)
+  })
+
+  test('reports when both persistence and directory rollback fail', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('.yolo/a.md', 'source')
+    adapter.failRename('yolo', '.yolo')
+
+    await expect(
+      migrateHiddenYoloBaseDir({
+        app: createMockApp(adapter),
+        settings: { yolo: { baseDir: '.yolo' } },
+        persistTargetBaseDir: async () => {
+          throw new Error('save failed')
+        },
+      }),
+    ).resolves.toMatchObject({ status: 'failed', rollbackFailed: true })
+    await expect(adapter.read('yolo/a.md')).resolves.toBe('source')
+    await expect(adapter.exists('.yolo')).resolves.toBe(false)
+  })
+})
 
 describe('yoloManagedData', () => {
   test('creates YOLO base dir even before chat data exists', async () => {

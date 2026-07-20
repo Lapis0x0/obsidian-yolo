@@ -11,6 +11,7 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
+import { hasHiddenYoloBaseDirSegment } from '../../../core/paths/yoloPaths'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
@@ -169,6 +170,12 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     chatSnapshotBytes: null,
   })
   const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
+  const yoloBaseDirError = hasHiddenYoloBaseDirSegment(yoloBaseDirInput)
+    ? t(
+        'settings.etc.yoloBaseDirHiddenPath',
+        'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
+      )
+    : null
 
   useEffect(() => {
     setYoloBaseDirInput(yoloBaseDir)
@@ -204,6 +211,8 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     const normalized = normalizePath(value.trim()).replace(/^\/+/, '') || 'YOLO'
     setYoloBaseDirInput(normalized)
     if (normalized === yoloBaseDir) return
+
+    if (hasHiddenYoloBaseDirSegment(normalized)) return
 
     void setSettings({
       ...settings,
@@ -508,21 +517,30 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
-            desc={t(
-              'settings.etc.yoloBaseDirDesc',
-              '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
-            ).replace('{path}', `${yoloBaseDir}/skills`)}
-            className="yolo-settings-card"
+          <div
+            className={`yolo-settings-field ${yoloBaseDirError ? 'is-invalid' : ''}`}
           >
-            <ObsidianTextInput
-              value={yoloBaseDirInput}
-              placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
-              onChange={setYoloBaseDirInput}
-              onBlur={handleYoloBaseDirBlur}
-            />
-          </ObsidianSetting>
+            <ObsidianSetting
+              name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
+              desc={t(
+                'settings.etc.yoloBaseDirDesc',
+                '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
+              ).replace('{path}', `${yoloBaseDir}/skills`)}
+              className="yolo-settings-card"
+            >
+              <ObsidianTextInput
+                value={yoloBaseDirInput}
+                placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
+                onChange={setYoloBaseDirInput}
+                onBlur={handleYoloBaseDirBlur}
+              />
+            </ObsidianSetting>
+            {yoloBaseDirError && (
+              <div className="yolo-settings-inline-error" role="alert">
+                {yoloBaseDirError}
+              </div>
+            )}
+          </div>
 
           <ObsidianSetting
             name={t('settings.etc.captureRawRequestDebug')}
