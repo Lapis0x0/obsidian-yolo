@@ -47,13 +47,13 @@ export async function generateOutline({
   }
   const debug = new PhaseDebugCollector()
   const refSection = referenceFiles?.length
-    ? `\n参考资料（请用 fs_read 读取以下文件，路径已给出）：\n${referenceFiles.map((file) => `- ${file.name}（路径：${file.vaultPath}）`).join('\n')}`
+    ? `\nReference materials (use fs_read to read these files at the provided paths):\n${referenceFiles.map((file) => `- ${file.name} (path: ${file.vaultPath})`).join('\n')}`
     : ''
-  const prompt = `请为以下学习需求生成大纲：
+  const prompt = `Generate an outline for the following learning request:
 
-主题：${topic}
-当前水平：${level}
-学习目标：${goal}
+Topic: ${topic}
+Current level: ${level}
+Learning goal: ${goal}
 ${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.trim()
   for await (const event of host.agent.stream({
     prompt,

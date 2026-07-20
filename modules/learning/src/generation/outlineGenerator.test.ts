@@ -191,8 +191,10 @@ describe('generateOutline language propagation', () => {
     expect(request.systemPromptOverride).toContain(
       "language of the user's topic and goal",
     )
-    // Language propagation: for a language-neutral topic ("Python") the user
-    // goal carries the language, and it must reach the outline request.
-    expect(request.prompt).toContain('build real projects independently')
+    expect(request.prompt).toContain(`Topic: Python`)
+    expect(request.prompt).toContain(
+      'Learning goal: build real projects independently',
+    )
+    expect(request.prompt).not.toMatch(/[\u4e00-\u9fff]/)
   })
 })
