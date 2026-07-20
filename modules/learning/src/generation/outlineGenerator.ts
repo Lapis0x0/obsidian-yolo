@@ -47,13 +47,13 @@ export async function generateOutline({
   }
   const debug = new PhaseDebugCollector()
   const refSection = referenceFiles?.length
-    ? `\n参考资料（请用 fs_read 读取以下文件，路径已给出）：\n${referenceFiles.map((file) => `- ${file.name}（路径：${file.vaultPath}）`).join('\n')}`
+    ? `\nReference materials (use fs_read to read these files at the provided paths):\n${referenceFiles.map((file) => `- ${file.name} (path: ${file.vaultPath})`).join('\n')}`
     : ''
-  const prompt = `请为以下学习需求生成大纲：
+  const prompt = `Generate an outline for the following learning request:
 
-主题：${topic}
-当前水平：${level}
-学习目标：${goal}
+Topic: ${topic}
+Current level: ${level}
+Learning goal: ${goal}
 ${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.trim()
   for await (const event of host.agent.stream({
     prompt,
@@ -224,14 +224,14 @@ function parseJsonObject(text: string): unknown {
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) {
       throw new Error(
-        `无法解析大纲 JSON（未找到 JSON 对象）。原始文本前 500 字符：\n${text.slice(0, 500)}`,
+        `Cannot parse outline JSON (no JSON object found). First 500 characters of the raw text:\n${text.slice(0, 500)}`,
       )
     }
     try {
       return JSON.parse(match[0])
     } catch (error) {
       throw new Error(
-        `无法解析大纲 JSON：${error instanceof Error ? error.message : String(error)}。提取的 JSON 片段前 500 字符：\n${match[0].slice(0, 500)}`,
+        `Cannot parse outline JSON: ${error instanceof Error ? error.message : String(error)}. First 500 characters of the extracted JSON fragment:\n${match[0].slice(0, 500)}`,
       )
     }
   }

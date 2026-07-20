@@ -71,16 +71,16 @@ export async function generateKnowledgePointsForChapter({
     }
   }
   const refSection = referenceDir
-    ? `\n参考资料目录：${referenceDir}（如契约中注明了参考文件，用 fs_read 读取对应路径）`
+    ? `\nReference materials directory: ${referenceDir} (when the contract names reference files, use fs_read at their corresponding paths)`
     : ''
-  const prompt = `请为以下章节生成知识点：
+  const prompt = `Generate knowledge points for the following chapter:
 
-项目主题：${projectTopic}
-章节标题：${chapterTitle}
-章节契约：
+Project topic: ${projectTopic}
+Chapter title: ${chapterTitle}
+Chapter contract:
 ${chapterContract}
 
-用户当前水平：${level}${refSection}`
+User's current level: ${level}${refSection}`
   for await (const event of host.agent.stream({
     prompt,
     modelId,

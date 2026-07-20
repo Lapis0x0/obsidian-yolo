@@ -7,7 +7,9 @@ import { generateKnowledgePointsForChapter } from './knowledgePointGenerator'
 describe('generateKnowledgePointsForChapter', () => {
   it('uses the explicit learning model', async () => {
     const markdown = '## Variables\n\nA variable stores a value.'
-    const stream = jest.fn(async function* () {
+    const requests: unknown[] = []
+    const stream = jest.fn(async function* (request: unknown) {
+      requests.push(request)
       yield { type: 'completed' as const, text: markdown }
     })
     const host: LearningGenerationHost = {
@@ -36,6 +38,13 @@ describe('generateKnowledgePointsForChapter', () => {
         capability: 'none',
       }),
     )
+    expect(stream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('Project topic: Python'),
+      }),
+    )
+    const request = requests[0] as { prompt: string }
+    expect(request.prompt).not.toMatch(/[\u4e00-\u9fff]/)
   })
 
   it('rejects explicitly aborted partial markdown', async () => {
