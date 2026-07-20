@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Probe Discord activity
         id: probe
@@ -46,7 +46,7 @@ jobs:
 
       - name: Use Node.js
         if: steps.probe.outputs.has_activity == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
 
