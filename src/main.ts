@@ -92,11 +92,11 @@ import {
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import { migrateHiddenYoloBaseDir } from './core/paths/yoloBaseDirMigration'
+import { relocateYoloBaseDir } from './core/paths/yoloBaseDirRelocation'
 import {
   type YoloDataMeta,
   extractYoloDataMeta,
   readVaultDataJson,
-  relocateYoloManagedData,
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
@@ -2599,6 +2599,43 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
+  private confirmAdoptExistingYoloRoot(target: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      new ConfirmModal(this.app, {
+        title: this.t(
+          'settings.agent.yoloBaseDirAdoptTitle',
+          'Use existing YOLO root?',
+        ),
+        message: this.t(
+          'settings.agent.yoloBaseDirAdoptMessage',
+          'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
+        ).replace('{target}', target),
+        ctaText: this.t(
+          'settings.agent.yoloBaseDirAdoptConfirm',
+          'Use this folder',
+        ),
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      }).open()
+    })
+  }
+
+  private showYoloRootRelocationConflict(target: string): void {
+    new ConfirmModal(this.app, {
+      title: this.t(
+        'settings.agent.yoloBaseDirConflictTitle',
+        'YOLO root was not moved',
+      ),
+      message: this.t(
+        'settings.agent.yoloBaseDirConflictMessage',
+        '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
+      ).replace('{target}', target),
+      ctaText: this.t('common.confirm', 'OK'),
+      showCancel: false,
+      onConfirm: () => undefined,
+    }).open()
+  }
+
   private getDeviceId(): string {
     if (this.deviceId) {
       return this.deviceId
@@ -3000,8 +3037,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     const previousSettings = this.settings
-    const yoloBaseDirChanged =
-      previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+    const sourceBaseDir = getYoloBaseDir(previousSettings)
+    const targetBaseDir = getYoloBaseDir(normalizedSettings)
+    const yoloBaseDirChanged = sourceBaseDir !== targetBaseDir
+    const settingsToApply = yoloBaseDirChanged
+      ? {
+          ...normalizedSettings,
+          yolo: { ...normalizedSettings.yolo, baseDir: targetBaseDir },
+        }
+      : normalizedSettings
 
     if (yoloBaseDirChanged) {
       if (this.dbManager) {
@@ -3022,27 +3066,60 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           return
         }
       }
-      const relocate = () =>
-        relocateYoloManagedData({
-          app: this.app,
-          fromSettings: previousSettings,
-          toSettings: normalizedSettings,
-        })
-      const migrated = await runManagedModuleDataExclusive(
+      const relocation = await runManagedModuleDataExclusive(
         this.app.vault,
         managedModuleDataNamespace('learning', 'managed-data'),
         async () => {
-          const succeeded = await relocate()
-          if (succeeded) {
-            this.settings = normalizedSettings
+          const result = await relocateYoloBaseDir({
+            app: this.app,
+            source: sourceBaseDir,
+            target: targetBaseDir,
+            persistTargetBaseDir: async () => {
+              await this.persistPluginDirSettings(settingsToApply)
+            },
+            confirmAdoptExistingTarget: (target) =>
+              this.confirmAdoptExistingYoloRoot(target),
+          })
+          if (
+            result.status === 'migrated' ||
+            result.status === 'adopted' ||
+            result.status === 'created'
+          ) {
+            this.settings = settingsToApply
             this.publishManagedModulePathChange()
           }
-          return succeeded
+          return result
         },
       )
-      if (!migrated) {
+
+      if (relocation.status === 'cancelled') return
+      if (relocation.status === 'target-conflict') {
+        this.showYoloRootRelocationConflict(relocation.target)
+        return
+      }
+      if (relocation.status === 'protected-source') {
         new Notice(
-          'Failed to move YOLO managed data. Keeping previous YOLO root folder.',
+          this.t(
+            'settings.agent.yoloBaseDirMigrationManualRepair',
+            'The current YOLO root is a protected hidden folder and cannot be moved automatically. Move the YOLO files manually, then choose the new root.',
+          ),
+          0,
+        )
+        return
+      }
+      if (relocation.status === 'failed') {
+        console.error('[YOLO] Failed to relocate YOLO root', relocation.error)
+        new Notice(
+          relocation.rollbackFailed
+            ? this.t(
+                'settings.agent.yoloBaseDirMigrationRollbackFailed',
+                'YOLO root moved, but the setting could not be saved and the move could not be rolled back. Restore the previous folder manually before continuing.',
+              )
+            : this.t(
+                'settings.agent.yoloBaseDirMigrationFailed',
+                'YOLO root could not be moved. Your existing setting was kept.',
+              ),
+          relocation.rollbackFailed ? 0 : undefined,
         )
         return
       }
@@ -3053,26 +3130,28 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       }
     }
 
-    this.settings = normalizedSettings
-    await this.persistPluginDirSettings(normalizedSettings)
-    this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
+    this.settings = settingsToApply
+    if (!yoloBaseDirChanged) {
+      await this.persistPluginDirSettings(settingsToApply)
+    }
+    this.markPromptSourceSettingsChange(previousSettings, settingsToApply)
     setLLMDebugCaptureEnabled(
       this.settings.debug?.captureRawRequestDebug ?? false,
     )
 
-    this.syncOAuthRuntimesFromSettings(normalizedSettings)
-    this.ragCoordinator?.updateSettings(normalizedSettings)
+    this.syncOAuthRuntimesFromSettings(settingsToApply)
+    this.ragCoordinator?.updateSettings(settingsToApply)
 
     // When RAG is disabled, stop all pending auto-update timers and clear
     // any retry_scheduled state so the background-activity UI disappears.
-    const ragIsEnabled = normalizedSettings.ragOptions.enabled
+    const ragIsEnabled = settingsToApply.ragOptions.enabled
     if (!ragIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
       this.ragIndexService?.refreshActivity()
     }
 
     this.settingsChangeListeners.forEach((listener) => {
-      listener(normalizedSettings)
+      listener(settingsToApply)
     })
   }
 

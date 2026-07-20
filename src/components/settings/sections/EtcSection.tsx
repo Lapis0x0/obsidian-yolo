@@ -214,13 +214,22 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
 
     if (hasHiddenYoloBaseDirSegment(normalized)) return
 
-    void setSettings({
-      ...settings,
-      yolo: {
-        ...(settings.yolo ?? { baseDir: 'YOLO' }),
-        baseDir: normalized,
-      },
-    })
+    void Promise.resolve(
+      setSettings({
+        ...settings,
+        yolo: {
+          ...(settings.yolo ?? { baseDir: 'YOLO' }),
+          baseDir: normalized,
+        },
+      }),
+    )
+      .catch((error: unknown) => {
+        console.error('[YOLO] Failed to change YOLO root', error)
+        new Notice(t('common.error', 'Something went wrong.'))
+      })
+      .finally(() => {
+        setYoloBaseDirInput(plugin.settings.yolo.baseDir)
+      })
   }
 
   const isDebugLogsExcludedFromKnowledgeBase = (): boolean => {

@@ -334,6 +334,11 @@ export type TranslationKeys = {
       yoloBaseDirMigrationFailed?: string
       yoloBaseDirMigrationRollbackFailed?: string
       yoloBaseDirMigrationManualRepair?: string
+      yoloBaseDirAdoptTitle?: string
+      yoloBaseDirAdoptMessage?: string
+      yoloBaseDirAdoptConfirm?: string
+      yoloBaseDirConflictTitle?: string
+      yoloBaseDirConflictMessage?: string
       skillsSourcePath?: string
       refreshSkills?: string
       skillsEmptyHint?: string
@@ -1258,6 +1263,11 @@ export type TranslationKeys = {
       yoloBaseDirMigrationFailed?: string
       yoloBaseDirMigrationRollbackFailed?: string
       yoloBaseDirMigrationManualRepair?: string
+      yoloBaseDirAdoptTitle?: string
+      yoloBaseDirAdoptMessage?: string
+      yoloBaseDirAdoptConfirm?: string
+      yoloBaseDirConflictTitle?: string
+      yoloBaseDirConflictMessage?: string
       ribbonClickAction?: string
       ribbonClickActionDesc?: string
       ribbonClickActionSidebar?: string

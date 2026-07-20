@@ -813,6 +813,13 @@ export const it: TranslationKeys = {
         'YOLO è stato spostato da {source} a {target}, ma non è stato possibile aggiornare le impostazioni né annullare lo spostamento. Sposta manualmente la cartella in {source} prima di continuare.',
       yoloBaseDirMigrationManualRepair:
         'La cartella base YOLO {source} è nascosta ma non può essere migrata automaticamente in sicurezza. Scegli una cartella visibile e sposta manualmente i file YOLO.',
+      yoloBaseDirAdoptTitle: 'Usare la cartella base YOLO esistente?',
+      yoloBaseDirAdoptMessage:
+        'La cartella base YOLO precedente non esiste più, ma {target} contiene già dei file. Usare questa cartella come nuova base YOLO?',
+      yoloBaseDirAdoptConfirm: 'Usa questa cartella',
+      yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
+      yoloBaseDirConflictMessage:
+        '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
       skillsSourcePath:
         'Origine: skill integrate + {path}/*.md + {path}/**/SKILL.md',
       refreshSkills: 'Aggiorna',
@@ -1823,6 +1830,13 @@ export const it: TranslationKeys = {
         'YOLO è stato spostato da {source} a {target}, ma non è stato possibile aggiornare le impostazioni né annullare lo spostamento. Sposta manualmente la cartella in {source} prima di continuare.',
       yoloBaseDirMigrationManualRepair:
         'La cartella base YOLO {source} è nascosta ma non può essere migrata automaticamente in sicurezza. Scegli una cartella visibile e sposta manualmente i file YOLO.',
+      yoloBaseDirAdoptTitle: 'Usare la cartella base YOLO esistente?',
+      yoloBaseDirAdoptMessage:
+        'La cartella base YOLO precedente non esiste più, ma {target} contiene già dei file. Usare questa cartella come nuova base YOLO?',
+      yoloBaseDirAdoptConfirm: 'Usa questa cartella',
+      yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
+      yoloBaseDirConflictMessage:
+        '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
       ribbonClickAction: 'Icona ribbon apre la chat in',
       ribbonClickActionDesc:
         'Dove l’icona ribbon di YOLO apre la vista Chat. Se nella posizione scelta esiste già una chat viene attivata; altrimenti ne viene creata una nuova.',

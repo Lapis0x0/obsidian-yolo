@@ -8,6 +8,7 @@ export type ConfirmModalOptions = {
   message: string
   ctaText?: string
   cancelText?: string
+  showCancel?: boolean
   onConfirm: () => void
   onCancel?: () => void
 }
@@ -16,6 +17,7 @@ type ConfirmModalComponentProps = {
   message: string
   ctaText?: string
   cancelText?: string
+  showCancel?: boolean
   onConfirm: () => void
   onCancel?: () => void
   settledRef: { current: boolean }
@@ -36,6 +38,7 @@ export class ConfirmModal extends ReactModal<ConfirmModalComponentProps> {
         message: options.message,
         ctaText: options.ctaText,
         cancelText: options.cancelText,
+        showCancel: options.showCancel,
         onConfirm: options.onConfirm,
         onCancel: options.onCancel,
         settledRef,
@@ -61,6 +64,7 @@ function ConfirmModalComponent({
   message,
   ctaText,
   cancelText,
+  showCancel = true,
   onConfirm,
   onCancel,
   settledRef,
@@ -84,19 +88,21 @@ function ConfirmModalComponent({
         >
           {ctaText ?? t('common.confirm', 'Confirm')}
         </button>
-        <button
-          className="mod-cancel"
-          onClick={() => {
-            settledRef.current = true
-            try {
-              onCancel?.()
-            } finally {
-              onClose()
-            }
-          }}
-        >
-          {cancelText ?? t('common.cancel', 'Cancel')}
-        </button>
+        {showCancel && (
+          <button
+            className="mod-cancel"
+            onClick={() => {
+              settledRef.current = true
+              try {
+                onCancel?.()
+              } finally {
+                onClose()
+              }
+            }}
+          >
+            {cancelText ?? t('common.cancel', 'Cancel')}
+          </button>
+        )}
       </div>
     </div>
   )
