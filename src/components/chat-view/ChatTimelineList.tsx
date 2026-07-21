@@ -615,9 +615,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
 
   return (
     <div
-      ref={(element) => {
-        handleScrollerRef(element)
-      }}
+      ref={handleScrollerRef}
       className={scrollContainerClassName}
       style={scrollContainerStyle}
     >
