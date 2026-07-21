@@ -1,16 +1,10 @@
 export type Language = 'en' | 'zh' | 'it'
 
-type TranslationBranch = {
-  [key: string]: string | TranslationBranch
-}
-
 export type TranslationKeys = {
   // Commands
   commands: {
     openChat: string
     openChatSidebar: string
-    openLearningMode: string
-    learningModeLabel: string
     newChatCurrentView: string
     openYoloNewChat: string
     openNewChatTab: string
@@ -141,8 +135,6 @@ export type TranslationKeys = {
     mentionContextLabel?: string
   }
 
-  learning?: TranslationBranch
-
   // Settings
   settings: {
     title: string
@@ -181,16 +173,18 @@ export type TranslationKeys = {
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
     }
-    learning: {
-      generationTitle: string
-      generationModel: string
-      generationModelDesc: string
-    }
     modules: {
       title: string
       description: string
-      refresh: string
-      refreshing: string
+      manage: string
+      manageDescription: string
+      navigation: string
+      enabled: string
+      enabledEmpty: string
+      disabled: string
+      disabledEmpty: string
+      settings: string
+      updateAndEnable: string
       loading: string
       loadError: string
       settingsSaveError: string
@@ -1838,9 +1832,6 @@ export type TranslationKeys = {
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
-    learningReviewLabel?: string
-    learningReviewTitle?: string
-    learningReviewDetail?: string
     ragAutoUpdateRunning?: string
     ragAutoUpdateRunningDetail?: string
     ragAutoUpdateFailed?: string

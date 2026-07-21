@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useSyncExternalStore } from 'react'
 
 import type { LearningNavigationTarget } from './domain/runtime/learningNavigation'
 import { createHostAnkiImportService } from './host/anki/import'
@@ -11,7 +11,11 @@ import {
 import { resolveHostLearningSrsStore } from './host/srsStorage'
 import { createLearningUiServices } from './host/ui'
 import {
-  type LearningLocale,
+  createLearningLocalizedText,
+  createLearningTranslation,
+  normalizeLearningLocale,
+} from './i18n'
+import {
   LearningWorkspace,
   type LearningWorkspacePorts,
 } from './ui/LearningWorkspace'
@@ -41,6 +45,8 @@ export type LearningAssemblyRoot = Readonly<{
   ready(): Promise<void>
   quiesce(): Promise<void>
   dispose(): void
+  getLocaleSnapshot(): Readonly<{ locale: string }>
+  subscribeLocale(listener: () => void): () => void
 }>
 
 export function createLearningAssemblyRoot(
@@ -202,6 +208,8 @@ export function createLearningAssemblyRoot(
       runtimeAdapter.dispose()
       settingsModel?.dispose()
     },
+    getLocaleSnapshot: host.i18n.getSnapshot,
+    subscribeLocale: host.i18n.subscribe,
   })
 
   return root
@@ -252,8 +260,8 @@ function createMountAssembly({
 
   const ports = {
     ownerDocument,
-    locale: resolveLocale(ownerDocument),
-    t: (_key: string, fallback: string) => fallback,
+    locale: normalizeLearningLocale(host.i18n.getSnapshot().locale),
+    t: createLearningTranslation(host.i18n.getSnapshot().locale),
     configuration: {
       getLearningBaseDir: () =>
         runtimeAdapter.settings.getSnapshot().learningBaseDir,
@@ -378,6 +386,11 @@ function LearningModuleView({ root }: { root: LearningAssemblyRoot }) {
   const [ownerElement, setOwnerElement] = useState<HTMLDivElement | null>(null)
   const [mount, setMount] = useState<LearningMountAssembly | null>(null)
   const [styleText, setStyleText] = useState('')
+  const locale = useSyncExternalStore(
+    root.subscribeLocale,
+    root.getLocaleSnapshot,
+    root.getLocaleSnapshot,
+  ).locale
 
   useEffect(() => {
     if (!ownerElement) return
@@ -407,16 +420,17 @@ function LearningModuleView({ root }: { root: LearningAssemblyRoot }) {
   return (
     <div className="yolo-learning-module-root" ref={setOwnerElement}>
       {styleText ? <style>{styleText}</style> : null}
-      {mount ? <LearningWorkspace ports={mount.ports} /> : null}
+      {mount ? (
+        <LearningWorkspace
+          ports={{
+            ...mount.ports,
+            locale: normalizeLearningLocale(locale),
+            t: createLearningTranslation(locale),
+          }}
+        />
+      ) : null}
     </div>
   )
-}
-
-function resolveLocale(ownerDocument: Document): LearningLocale {
-  const language = ownerDocument.documentElement.lang.toLowerCase()
-  if (language.startsWith('zh')) return 'zh'
-  if (language.startsWith('it')) return 'it'
-  return 'en'
 }
 
 async function acknowledgeBetaNotice(
@@ -424,12 +438,12 @@ async function acknowledgeBetaNotice(
   model: LearningSettingsModel,
 ): Promise<boolean> {
   if (model.getSnapshot().betaNoticeAcknowledged) return true
+  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
   const confirmed = await host.ui.confirm({
-    title: 'Learning mode public beta notice',
-    message:
-      'Learning mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some learning mode features will become part of paid plans in the future. Free users will still be able to use learning mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.',
-    ctaText: 'I understand, enter learning mode',
-    cancelText: 'Not now',
+    title: t('learning.betaNotice.title'),
+    message: t('learning.betaNotice.description'),
+    ctaText: t('learning.betaNotice.confirm'),
+    cancelText: t('learning.betaNotice.cancel'),
   })
   if (!confirmed) return false
   await model.acknowledgeBetaNotice()
@@ -446,8 +460,11 @@ function reportError(
   error: unknown,
 ): void {
   console.error(`[YOLO] ${message}:`, error)
+  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
   host.ui.notice(
-    `${message}: ${error instanceof Error ? error.message : String(error)}`,
+    `${t('learning.common.operationFailed')}: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
   )
 }
 
@@ -464,7 +481,7 @@ yolo.registerModule({
 
     host.workspace.registerView({
       type: VIEW_TYPE,
-      name: 'Learning mode',
+      name: createLearningLocalizedText('module.name'),
       icon: 'graduation-cap',
       render: () => <LearningModuleView root={root} />,
       setState: async (state) => {
@@ -476,7 +493,7 @@ yolo.registerModule({
     })
     host.workspace.registerRibbonAction({
       icon: 'graduation-cap',
-      title: 'Open learning mode',
+      title: createLearningLocalizedText('module.open'),
       onClick: () => {
         void openHome().catch((error) =>
           reportError(host, 'Failed to open Learning mode', error),
@@ -485,7 +502,7 @@ yolo.registerModule({
     })
     host.workspace.registerCommand({
       id: 'open-learning-mode',
-      name: 'Open learning mode',
+      name: createLearningLocalizedText('module.open'),
       callback: openHome,
     })
   },
@@ -527,6 +544,8 @@ function createDeferredLearningRoot(host: YoloModuleHostApiV1): Readonly<{
     ready: async () => requireRoot().ready(),
     quiesce: async () => requireRoot().quiesce(),
     dispose: () => dispose(),
+    getLocaleSnapshot: host.i18n.getSnapshot,
+    subscribeLocale: host.i18n.subscribe,
   })
 
   const initialize = (): Promise<void> => {

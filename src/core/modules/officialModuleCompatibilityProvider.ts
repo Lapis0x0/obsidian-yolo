@@ -4,7 +4,7 @@ import type {
   OfficialModulePlatform,
 } from './officialModuleCatalog'
 
-export const YOLO_HOST_API_VERSION = '1.3.0'
+export const YOLO_HOST_API_VERSION = '1.4.0'
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 

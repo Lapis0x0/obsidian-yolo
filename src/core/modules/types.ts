@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { ModuleConfigV1 } from './moduleConfig'
+import type { LocalizedTextV1 } from './moduleI18n'
 import type { ModulePrivateStorageV1 } from './modulePrivateStorage'
 import type { YoloModuleSettingsV1 } from './moduleSettingsContributions'
 import type { YoloModuleWorkersV1 } from './moduleWorkerHost'
@@ -16,7 +17,7 @@ export type YoloModuleLifecycle = {
 
 export type YoloModuleViewV1 = Readonly<{
   type: string
-  name: string
+  name: LocalizedTextV1
   icon: string
   render(): ReactNode
   getState?(): Readonly<Record<string, unknown>>
@@ -25,13 +26,13 @@ export type YoloModuleViewV1 = Readonly<{
 
 export type YoloModuleRibbonActionV1 = Readonly<{
   icon: string
-  title: string
+  title: LocalizedTextV1
   onClick(): void
 }>
 
 export type YoloModuleCommandV1 = Readonly<{
   id: string
-  name: string
+  name: LocalizedTextV1
   callback(): void | Promise<void>
 }>
 
@@ -127,6 +128,13 @@ export type YoloModuleAgentV1 = {
 
 export type YoloModulePathsSnapshotV1 = Readonly<{
   contentRoot: string
+}>
+
+export type YoloModuleLocaleSnapshotV1 = Readonly<{ locale: string }>
+
+export type YoloModuleI18nV1 = Readonly<{
+  getSnapshot(): YoloModuleLocaleSnapshotV1
+  subscribe(listener: () => void): ModuleDisposer
 }>
 
 export type YoloModulePathsV1 = {
@@ -295,6 +303,7 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   assets: YoloModuleAssetsV1
   background: YoloModuleBackgroundV1
   config: ModuleConfigV1
+  i18n: YoloModuleI18nV1
   paths: YoloModulePathsV1
   privateStorage: ModulePrivateStorageV1
   settings: YoloModuleSettingsV1

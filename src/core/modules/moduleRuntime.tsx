@@ -7,10 +7,13 @@ import {
 import React from 'react'
 import { type Root, createRoot } from 'react-dom/client'
 
+import { type LocaleStore, localeStore } from '../i18n/localeStore'
+
 import type { StagedModuleContributions } from './contributionStager'
 import { ModuleContributionStager } from './contributionStager'
 import type { ModuleHostCapabilityProviderV1 } from './hostCapabilities'
 import { ModuleLifecycleScope } from './lifecycleScope'
+import { resolveLocalizedText } from './moduleI18n'
 import { installYoloModuleRuntimeBridge } from './runtimeBridge'
 import type {
   YoloModuleDefinition,
@@ -31,9 +34,17 @@ class ModuleViewSlot {
   constructor(
     readonly moduleId: string,
     readonly type: string,
-    readonly name: string,
+    readonly name: YoloModuleViewV1['name'],
     readonly icon: string,
+    private readonly locales: LocaleStore,
   ) {}
+
+  getName(): string {
+    return resolveLocalizedText(
+      this.declaration?.name ?? this.name,
+      this.locales.getSnapshot().locale,
+    )
+  }
 
   get(): YoloModuleViewV1 | null {
     return this.declaration
@@ -92,7 +103,7 @@ abstract class ModuleItemView extends ItemView {
   }
 
   getDisplayText(): string {
-    return this.declaration?.name ?? this.slot.name
+    return this.slot.getName()
   }
 
   getIcon(): string {
@@ -339,6 +350,7 @@ export class ModuleRuntime {
             assets: capabilityActivation.capabilities.assets,
             background: capabilityActivation.capabilities.background,
             config: capabilityActivation.capabilities.config,
+            i18n: capabilityActivation.capabilities.i18n,
             paths: capabilityActivation.capabilities.paths,
             privateStorage: capabilityActivation.capabilities.privateStorage,
             settings: capabilityActivation.capabilities.settings,
@@ -479,7 +491,10 @@ export class ObsidianModuleContributionRegistrar
   private readonly viewSlotByModuleId = new Map<string, ModuleViewSlot>()
   private readonly openingViewByModuleId = new Map<string, Promise<void>>()
 
-  constructor(private readonly plugin: Plugin) {}
+  constructor(
+    private readonly plugin: Plugin,
+    private readonly locales: LocaleStore = localeStore,
+  ) {}
 
   commit(
     moduleId: string,
@@ -498,9 +513,12 @@ export class ObsidianModuleContributionRegistrar
     for (const command of contributions.commands ?? []) {
       const commandId = `module:${moduleId}:${command.id}`
       let commandActive = true
-      this.plugin.addCommand({
+      const declaration = {
         id: commandId,
-        name: command.name,
+        name: resolveLocalizedText(
+          command.name,
+          this.locales.getSnapshot().locale,
+        ),
         callback: () => {
           if (!commandActive) return
           try {
@@ -520,9 +538,17 @@ export class ObsidianModuleContributionRegistrar
             )
           }
         },
+      }
+      this.plugin.addCommand(declaration)
+      const unsubscribeLocale = this.locales.subscribe(() => {
+        declaration.name = resolveLocalizedText(
+          command.name,
+          this.locales.getSnapshot().locale,
+        )
       })
       lifecycle.add(() => {
         commandActive = false
+        unsubscribeLocale()
         this.plugin.removeCommand(commandId)
       })
     }
@@ -531,7 +557,7 @@ export class ObsidianModuleContributionRegistrar
       const action = contributions.ribbonAction
       const ribbon = this.plugin.addRibbonIcon(
         action.icon,
-        action.title,
+        resolveLocalizedText(action.title, this.locales.getSnapshot().locale),
         () => {
           try {
             action.onClick()
@@ -543,13 +569,30 @@ export class ObsidianModuleContributionRegistrar
           }
         },
       )
-      lifecycle.add(() => ribbon.remove())
+      const unsubscribeLocale = this.locales.subscribe(() => {
+        const title = resolveLocalizedText(
+          action.title,
+          this.locales.getSnapshot().locale,
+        )
+        ribbon.setAttribute('aria-label', title)
+        ribbon.setAttribute('data-tooltip-position', 'right')
+      })
+      lifecycle.add(() => {
+        unsubscribeLocale()
+        ribbon.remove()
+      })
     }
 
     if (view) {
       const slot =
         existingSlot ??
-        new ModuleViewSlot(moduleId, view.type, view.name, view.icon)
+        new ModuleViewSlot(
+          moduleId,
+          view.type,
+          view.name,
+          view.icon,
+          this.locales,
+        )
       if (!existingSlot) {
         this.plugin.registerView(view.type, (leaf) =>
           createModuleItemView(leaf, this.plugin, slot),
@@ -558,7 +601,13 @@ export class ObsidianModuleContributionRegistrar
         this.viewSlotByModuleId.set(moduleId, slot)
       }
       slot.bind(view)
-      lifecycle.add(() => slot.unbind(view))
+      const unsubscribeLocale = this.locales.subscribe(() => {
+        this.plugin.app.workspace.trigger('layout-change')
+      })
+      lifecycle.add(() => {
+        unsubscribeLocale()
+        slot.unbind(view)
+      })
     }
   }
 

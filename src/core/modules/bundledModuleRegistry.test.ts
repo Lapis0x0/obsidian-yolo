@@ -13,10 +13,11 @@ const descriptorMetadata = (id: string, version: string) => ({
   manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-${id}-v${version}/module.json`,
 })
 
-const localizations = (name: string, description: string) =>
-  Object.fromEntries(
-    ['en', 'zh', 'it'].map((locale) => [locale, { name, description }]),
-  )
+const localizations = (name: string, description: string) => ({
+  en: { name, description },
+  zh: { name: `ZH ${name}`, description: `ZH ${description}` },
+  it: { name: `IT ${name}`, description: `IT ${description}` },
+})
 
 const index = {
   schemaVersion: 1,
@@ -85,6 +86,19 @@ describe('BundledModuleCatalogSource', () => {
 
     await source.load()
     expect(readBundledIndexBytes).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads the current locale for every load', async () => {
+    let locale: 'en' | 'zh' = 'en'
+    const source = new BundledModuleCatalogSource({
+      store: { readBundledIndexBytes: async () => encode(index) },
+      platform: 'desktop',
+      locale: () => locale,
+    })
+
+    expect((await source.load())[0]?.name).toBe('Learning')
+    locale = 'zh'
+    expect((await source.load())[0]?.name).toBe('ZH Learning')
   })
 
   it('publishes a platform issue instead of resolving an unsupported artifact', async () => {

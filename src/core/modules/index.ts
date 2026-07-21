@@ -46,12 +46,6 @@ export {
   type ModuleInstallationCoordinatorOptions,
   type ModuleInstallationResult,
 } from './moduleInstallationCoordinator'
-export {
-  LearningModuleDataRemovalService,
-  type LearningDataRemovalJournal,
-  type LearningDataRemovalTarget,
-  type LearningModuleDataRemovalServiceOptions,
-} from './learningModuleDataRemoval'
 export { type ModuleOperationResult, type ModuleService } from './moduleService'
 export {
   ModuleIntentStore,

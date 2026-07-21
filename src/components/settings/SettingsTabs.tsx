@@ -9,13 +9,8 @@ import React, {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import type {
-  ModuleSettingsContributionRegistry,
-  RegisteredModuleSettingsContributionV1,
-} from '../../core/modules/moduleSettingsContributions'
 import YoloPlugin from '../../main'
 
-import { ModuleSettingsSection } from './sections/ModuleSettingsSection'
 import { AgentTab } from './tabs/AgentTab'
 import { EditorTab } from './tabs/EditorTab'
 import { KnowledgeTab } from './tabs/KnowledgeTab'
@@ -39,16 +34,8 @@ export type SettingsTabId =
 type SettingsTab = {
   id: SettingsTabId
   labelKey: string
-  component: FC<SettingsTabsProps>
+  component?: FC<SettingsTabsProps>
 }
-
-const ModulesSettingsTab: FC<SettingsTabsProps> = ({ app, plugin }) => (
-  <ModulesTab
-    app={app}
-    service={plugin.getModuleService()}
-    removeLearningData={() => plugin.uninstallAndRemoveLearningData()}
-  />
-)
 
 const SETTINGS_TABS: SettingsTab[] = [
   {
@@ -74,7 +61,6 @@ const SETTINGS_TABS: SettingsTab[] = [
   {
     id: 'modules',
     labelKey: 'settings.tabs.modules',
-    component: ModulesSettingsTab,
   },
   {
     id: 'others',
@@ -84,13 +70,6 @@ const SETTINGS_TABS: SettingsTab[] = [
 ]
 
 const STORAGE_KEY = 'yolo_settings_active_tab'
-
-const EMPTY_MODULE_SETTINGS_SNAPSHOT: readonly RegisteredModuleSettingsContributionV1[] =
-  Object.freeze([])
-const EMPTY_MODULE_SETTINGS_REGISTRY = {
-  getSnapshot: () => EMPTY_MODULE_SETTINGS_SNAPSHOT,
-  subscribe: () => () => undefined,
-}
 
 export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const { t } = useLanguage()
@@ -108,13 +87,7 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
     }
     return 'models'
   })
-  const registry =
-    (
-      plugin as YoloPlugin & {
-        getModuleSettingsContributionRegistry?: () => ModuleSettingsContributionRegistry
-      }
-    ).getModuleSettingsContributionRegistry?.() ??
-    EMPTY_MODULE_SETTINGS_REGISTRY
+  const registry = plugin.getModuleSettingsContributionRegistry()
   const moduleSettings = useSyncExternalStore(
     registry.subscribe,
     registry.getSnapshot,
@@ -218,10 +191,15 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
         ))}
       </div>
       <div className="yolo-settings-tabs-content">
-        <ActiveComponent app={app} plugin={plugin} />
-        {activeTab === 'modules' && moduleSettings.length > 0 ? (
-          <ModuleSettingsSection registrations={moduleSettings} />
-        ) : null}
+        {activeTab === 'modules' ? (
+          <ModulesTab
+            app={app}
+            service={plugin.getModuleService()}
+            registrations={moduleSettings}
+          />
+        ) : (
+          <ActiveComponent app={app} plugin={plugin} />
+        )}
       </div>
     </div>
   )

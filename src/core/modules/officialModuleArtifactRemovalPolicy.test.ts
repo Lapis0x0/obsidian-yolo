@@ -72,7 +72,17 @@ function fixture(versions: readonly string[] = ['1.0.0']) {
   })
   const raw = JSON.stringify({
     schemaVersion: 1,
-    modules: [{ id: 'learning', versions: catalogVersions }],
+    modules: [
+      {
+        id: 'learning',
+        localizations: {
+          en: { name: 'Learning', description: 'Learning module' },
+          zh: { name: '学习', description: '学习模块' },
+          it: { name: 'Apprendimento', description: 'Modulo apprendimento' },
+        },
+        versions: catalogVersions,
+      },
+    ],
   })
   const catalog = parseOfficialModuleCatalog(raw, {
     allowedRepositories: OFFICIAL_MODULE_RELEASE_REPOSITORIES,

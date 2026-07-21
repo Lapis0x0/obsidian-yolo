@@ -4,7 +4,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const repository = 'Lapis0x0/obsidian-yolo'
-const hostApi = '^1.3.0'
+const hostApi = '^1.4.0'
 const dataSchemas = {
   settings: { readMin: 0, readMax: 1, write: 1 },
 }

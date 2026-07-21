@@ -6,6 +6,7 @@ import type {
   RegisteredModuleSettingsContributionV1,
   YoloModuleSettingFieldV1,
 } from '../../../core/modules/moduleSettingsContributions'
+import { resolveSettingsContribution } from '../../../core/modules/moduleSettingsContributions'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 
 type ModuleSettingsSectionProps = {
@@ -32,7 +33,11 @@ function ModuleSettingsContribution({
 }: {
   registration: RegisteredModuleSettingsContributionV1
 }) {
-  const { t } = useLanguage()
+  const { language, t } = useLanguage()
+  const localized = resolveSettingsContribution(
+    registration.contribution,
+    language,
+  )
   const [snapshot, setSnapshot] =
     useState<ModuleSettingsFieldSnapshotV1 | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -82,10 +87,8 @@ function ModuleSettingsContribution({
 
   return (
     <section className="yolo-module-settings-block">
-      <div className="yolo-settings-sub-header">
-        {registration.contribution.title}
-      </div>
-      {registration.contribution.fields.map((field) => (
+      <div className="yolo-settings-sub-header">{localized.title}</div>
+      {localized.fields.map((field) => (
         <ObsidianSetting
           key={field.key}
           name={field.name}
@@ -126,6 +129,7 @@ function ModuleSettingControl({
   disabled: boolean
   onChange: (value: string | boolean) => void
 }) {
+  const { t } = useLanguage()
   const value = snapshot.values[field.key]
   if (field.type === 'toggle') {
     return (
@@ -157,7 +161,9 @@ function ModuleSettingControl({
       onChange={(event) => onChange(event.currentTarget.value)}
     >
       {!snapshot.models.models.some((model) => model.id === value) ? (
-        <option value="">{snapshot.models.defaultModelId || 'Default'}</option>
+        <option value="">
+          {snapshot.models.defaultModelId || t('common.default')}
+        </option>
       ) : null}
       {snapshot.models.models.map((model) => (
         <option key={model.id} value={model.id}>

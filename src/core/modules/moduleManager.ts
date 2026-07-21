@@ -85,7 +85,7 @@ function parseVersion(value: string): ParsedVersion | null {
   }
 }
 
-function compareVersions(left: string, right: string): number {
+export function compareModuleVersions(left: string, right: string): number {
   const leftVersion = parseVersion(left)
   const rightVersion = parseVersion(right)
   if (!leftVersion || !rightVersion) {
@@ -135,7 +135,10 @@ function resolveStatus(
   if (installed.error) return 'failed'
   if (installed.pendingVersion) return 'activation-pending'
   if (installed.disabled) return 'disabled'
-  if (catalog && compareVersions(installed.version, catalog.version) < 0) {
+  if (
+    catalog &&
+    compareModuleVersions(installed.version, catalog.version) < 0
+  ) {
     return 'update-available'
   }
   if (installed.active) return 'active'

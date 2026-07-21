@@ -2,8 +2,10 @@ import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import {
   MODULE_CATALOG_LOCALES,
   type ModuleCatalogLocale,
+  type ModuleCatalogLocaleSource,
   type ModuleCatalogLocalizations,
   parseModuleCatalogLocalizations,
+  readModuleCatalogLocale,
   resolveModuleCatalogPresentation,
 } from './moduleCatalogPresentation'
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
@@ -41,7 +43,7 @@ export type BundledModuleCatalogSourceOptions = {
     readBundledIndexBytes(): Promise<Uint8Array>
   }
   platform: ModuleArtifactPlatform
-  locale: ModuleCatalogLocale
+  locale: ModuleCatalogLocaleSource
 }
 
 export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
@@ -152,23 +154,25 @@ export class BundledModuleCatalogSource implements ModuleCatalogSource {
     if (options.platform !== 'desktop' && options.platform !== 'mobile') {
       throw new Error('Bundled module runtime platform is invalid')
     }
-    if (!MODULE_CATALOG_LOCALES.includes(options.locale)) {
+    if (
+      typeof options.locale !== 'function' &&
+      !MODULE_CATALOG_LOCALES.includes(options.locale)
+    ) {
       throw new Error('Bundled module catalog locale is invalid')
     }
   }
 
   async load(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
     const index = await this.loadIndex()
+    const locale = readModuleCatalogLocale(this.options.locale)
     this.resolvedVersions.clear()
     return Object.freeze(
       index.modules.map((module) => {
         if (!module.platforms.includes(this.options.platform)) {
-          return catalogEntry(module, this.options.locale, [
-            { kind: 'platform' },
-          ])
+          return catalogEntry(module, locale, [{ kind: 'platform' }])
         }
         this.resolvedVersions.set(module.id, resolvedVersion(module))
-        return catalogEntry(module, this.options.locale)
+        return catalogEntry(module, locale)
       }),
     )
   }

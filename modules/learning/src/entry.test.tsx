@@ -197,6 +197,10 @@ function createHost() {
       ),
     },
     config: {},
+    i18n: {
+      getSnapshot: () => ({ locale: 'en' }),
+      subscribe: jest.fn(() => jest.fn()),
+    },
     settings: {
       contribute: jest.fn(),
       getModelSnapshot: () =>
@@ -277,7 +281,11 @@ describe('production Learning module entry', () => {
     expect(harness.getView()).toEqual(
       expect.objectContaining({
         type: 'yolo-learning-view',
-        name: 'Learning mode',
+        name: expect.objectContaining({
+          en: 'Learning mode',
+          zh: '学习模式',
+          it: 'Modalità apprendimento',
+        }),
         icon: 'graduation-cap',
       }),
     )
@@ -569,7 +577,7 @@ describe('production Learning module entry', () => {
 
     expect(mockRecoverAnkiImports).toHaveBeenCalledTimes(1)
     expect(harness.notice).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to recover Anki imports'),
+      expect.stringContaining('Learning action failed'),
     )
     expect(harness.getView()).not.toBeNull()
     consoleError.mockRestore()

@@ -2,6 +2,8 @@ import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import {
   MODULE_CATALOG_LOCALES,
   type ModuleCatalogLocale,
+  type ModuleCatalogLocaleSource,
+  readModuleCatalogLocale,
   resolveModuleCatalogPresentation,
 } from './moduleCatalogPresentation'
 import {
@@ -28,7 +30,7 @@ export type OfficialModuleCompatibilityProvider = (
 export type OfficialModuleCatalogSourceOptions = Readonly<{
   client: Pick<OfficialModuleCatalogClient, 'load'>
   getCompatibility: OfficialModuleCompatibilityProvider
-  locale: ModuleCatalogLocale
+  locale: ModuleCatalogLocaleSource
 }>
 
 /** Resolves the trusted official catalog against the current host and module state. */
@@ -44,7 +46,8 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
       !options.client ||
       typeof options.client.load !== 'function' ||
       typeof options.getCompatibility !== 'function' ||
-      !MODULE_CATALOG_LOCALES.includes(options.locale)
+      (typeof options.locale !== 'function' &&
+        !MODULE_CATALOG_LOCALES.includes(options.locale))
     ) {
       throw new Error('Official module catalog source options are invalid')
     }
@@ -115,6 +118,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
 
   private async loadOnce(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
     const catalog = await this.options.client.load()
+    const locale = readModuleCatalogLocale(this.options.locale)
     const entries: ModuleCatalogEntry[] = []
     const resolvedVersions = Object.create(null) as Record<
       string,
@@ -145,9 +149,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
 
       if (selected) {
         resolvedVersions[module.id] = selected
-        entries.push(
-          catalogEntry(module, selected.version, this.options.locale),
-        )
+        entries.push(catalogEntry(module, selected.version, locale))
       } else {
         const compatibilityIssues = getOfficialModuleCompatibilityIssues(
           module,
@@ -157,7 +159,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
           catalogEntry(
             module,
             compatibility.activeVersion ?? '',
-            this.options.locale,
+            locale,
             compatibilityIssues,
           ),
         )

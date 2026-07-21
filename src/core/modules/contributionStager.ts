@@ -1,3 +1,4 @@
+import { snapshotLocalizedText } from './moduleI18n'
 import type {
   YoloModuleCommandV1,
   YoloModuleRibbonActionV1,
@@ -16,7 +17,7 @@ export type StagedModuleContributions = Readonly<{
   commands?: readonly YoloModuleCommandV1[]
 }>
 
-function requireText(value: string, label: string): void {
+function requireText(value: unknown, label: string): void {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${label} must be a non-empty string`)
   }
@@ -34,12 +35,12 @@ export class ModuleContributionStager {
       this.assertOpen()
       if (this.view) throw new Error('A module may register only one view')
       requireText(view?.type, 'Module view type')
-      requireText(view?.name, 'Module view name')
+      const name = snapshotLocalizedText(view?.name, 'Module view name')
       requireText(view?.icon, 'Module view icon')
       if (typeof view?.render !== 'function') {
         throw new Error('Module view render must be a function')
       }
-      this.view = Object.freeze({ ...view })
+      this.view = Object.freeze({ ...view, name })
     },
     registerRibbonAction: (action) => {
       this.assertOpen()
@@ -47,16 +48,16 @@ export class ModuleContributionStager {
         throw new Error('A module may register only one ribbon action')
       }
       requireText(action?.icon, 'Module ribbon icon')
-      requireText(action?.title, 'Module ribbon title')
+      const title = snapshotLocalizedText(action?.title, 'Module ribbon title')
       if (typeof action?.onClick !== 'function') {
         throw new Error('Module ribbon onClick must be a function')
       }
-      this.ribbonAction = Object.freeze({ ...action })
+      this.ribbonAction = Object.freeze({ ...action, title })
     },
     registerCommand: (command) => {
       this.assertOpen()
       requireText(command?.id, 'Module command id')
-      requireText(command?.name, 'Module command name')
+      const name = snapshotLocalizedText(command?.name, 'Module command name')
       if (!/^[a-z0-9][a-z0-9:_-]*$/.test(command.id)) {
         throw new Error('Module command id is invalid')
       }
@@ -68,7 +69,7 @@ export class ModuleContributionStager {
       if (typeof command?.callback !== 'function') {
         throw new Error('Module command callback must be a function')
       }
-      this.commands.set(command.id, Object.freeze({ ...command }))
+      this.commands.set(command.id, Object.freeze({ ...command, name }))
     },
   }
 

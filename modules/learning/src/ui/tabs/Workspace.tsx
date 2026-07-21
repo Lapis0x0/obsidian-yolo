@@ -136,6 +136,7 @@ export function Workspace({
         ) : null}
         <div className="yolo-learning-workspace-header-spacer" />
         <LearningTabs
+          ariaLabel={t('learning.workspace.ariaLabel')}
           disabledTabs={['习题']}
           labels={tabLabels}
           onChange={onTabChange}

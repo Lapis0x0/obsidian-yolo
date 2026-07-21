@@ -61,13 +61,13 @@ export class LearningRuntime<
         this.ports.background?.upsert({
           id: LEARNING_REVIEW_REMINDER_ID,
           kind: 'learning-review',
-          title: translate('statusBar.learningReviewTitle', 'YOLO Learning'),
+          title: translate('learning.background.reviewTitle', 'YOLO Learning'),
           detail: translate(
-            'statusBar.learningReviewDetail',
+            'learning.background.reviewDetail',
             '{count} cards to review',
           ).replace('{count}', String(dueCards)),
           summary: translate(
-            'statusBar.learningReviewLabel',
+            'learning.background.reviewLabel',
             'YOLO Learning: {count} cards due today',
           ).replace('{count}', String(dueCards)),
           icon: 'graduation-cap',

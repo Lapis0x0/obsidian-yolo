@@ -3,6 +3,7 @@ import { LearningRuntime } from '../domain/runtime/learningRuntime'
 import type { LearningRuntimePorts } from '../domain/runtime/ports'
 import { LearningSrsStore } from '../domain/srs/srsStore'
 import { LearningStatsService } from '../domain/stats/learningStatsService'
+import { createLearningTranslation } from '../i18n'
 
 import { createHostLearningBackgroundPort } from './background'
 import { createOwnerLearningLifecyclePorts } from './lifecycle'
@@ -27,6 +28,13 @@ export type HostLearningRuntimeAdapter = Readonly<{
   dispose(): void
 }>
 
+export function createHostLearningTranslation(
+  host: Pick<YoloModuleHostApiV1, 'i18n'>,
+): (keyPath: string, fallback: string) => string {
+  return (keyPath, fallback) =>
+    createLearningTranslation(host.i18n.getSnapshot().locale)(keyPath, fallback)
+}
+
 export function createHostLearningRuntimeAdapter({
   host,
   owner,
@@ -47,13 +55,14 @@ export function createHostLearningRuntimeAdapter({
     srsStore,
     srsStorage,
   })
+  const translateLatest = translate ?? createHostLearningTranslation(host)
   const ports: LearningRuntimePorts<LearningSrsStore, LearningStatsService> = {
     createSrsStore: () => sharedSrsStore,
     createStatsService: (srsStore) =>
       new LearningStatsService({ vault, projects, srsStore, lifecycle }),
     background: createHostLearningBackgroundPort(host.background),
     openLearningHome,
-    translate,
+    translate: translateLatest,
     clock: { now: Date.now },
   }
   const runtime = new LearningRuntime(ports)

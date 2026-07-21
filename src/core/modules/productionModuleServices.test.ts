@@ -13,7 +13,9 @@ import {
   OFFICIAL_MODULE_CATALOG_CACHE_PATH,
   OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS,
   OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
+  type ProductionModuleServicesOptions,
   createProductionModuleServices,
+  isInstallCandidateState,
 } from './productionModuleServices'
 
 const encode = (value: string): Uint8Array => new TextEncoder().encode(value)
@@ -194,12 +196,14 @@ function artifact() {
     modules: [
       {
         id: 'learning',
-        localizations: Object.fromEntries(
-          ['en', 'zh', 'it'].map((locale) => [
-            locale,
-            { name: 'Learning', description: 'Learning description' },
-          ]),
-        ),
+        localizations: {
+          en: { name: 'Learning', description: 'Learning description' },
+          zh: { name: '学习', description: '学习说明' },
+          it: {
+            name: 'Apprendimento',
+            description: 'Descrizione apprendimento',
+          },
+        },
         versions: [
           {
             version: '1.2.3',
@@ -228,7 +232,12 @@ function artifact() {
   }
 }
 
-function createHarness() {
+function createHarness(
+  localeOptions: Pick<
+    ProductionModuleServicesOptions,
+    'locale' | 'subscribeLocale'
+  > = { locale: 'en' },
+) {
   const fixture = artifact()
   const adapter = new MemoryAdapter()
   const cacheAdapter = new MemoryAdapter()
@@ -285,7 +294,7 @@ function createHarness() {
     deviceStateStore,
     catalogCacheAdapter: cacheAdapter,
     platform: 'desktop',
-    locale: 'en',
+    ...localeOptions,
     getCompatibility: createOfficialModuleCompatibilityProvider({
       platform: 'desktop',
       readDeviceState: async (moduleId) => {
@@ -324,6 +333,7 @@ function createHarness() {
     intentStore,
     reportCleanupError,
     reportRefreshError,
+    runtime,
     services,
   }
 }
@@ -336,6 +346,56 @@ async function install(harness: ReturnType<typeof createHarness>) {
 }
 
 describe('createProductionModuleServices', () => {
+  it('refreshes the manager snapshot when the shared locale changes', async () => {
+    let locale: 'en' | 'zh' = 'en'
+    let localeListener: (() => void) | undefined
+    const unsubscribe = jest.fn()
+    const harness = createHarness({
+      locale: () => locale,
+      subscribeLocale: (listener) => {
+        localeListener = listener
+        return unsubscribe
+      },
+    })
+    await harness.services.refresh()
+    expect(harness.services.getSnapshot().modules[0]?.name).toBe('Learning')
+    const localized = new Promise<void>((resolve) => {
+      harness.services.subscribe(() => {
+        if (harness.services.getSnapshot().modules[0]?.name === '学习')
+          resolve()
+      })
+    })
+
+    locale = 'zh'
+    localeListener?.()
+    await localized
+    expect(harness.services.getSnapshot().modules[0]).toMatchObject({
+      name: '学习',
+      description: '学习说明',
+    })
+    harness.services.dispose()
+    expect(unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers the catalog candidate for a disabled older installation', () => {
+    expect(
+      isInstallCandidateState(
+        {
+          id: 'learning',
+          name: 'Learning',
+          description: '',
+          version: '1.0.0',
+          status: 'disabled',
+          desiredInstalled: true,
+          enabled: false,
+          installed: { id: 'learning', version: '1.0.0' },
+          catalog: { id: 'learning', version: '1.1.0' },
+        },
+        '1.1.0',
+      ),
+    ).toBe(true)
+  })
+
   it('keeps production constants stable', () => {
     expect(OFFICIAL_MODULE_CATALOG_CACHE_PATH).toBe(
       'official-module-catalog/catalog-v1.json',
@@ -355,7 +415,6 @@ describe('createProductionModuleServices', () => {
         'getSnapshot',
         'getVerifiedArtifact',
         'install',
-        'learningDataRemovalDependencies',
         'refresh',
         'setEnabled',
         'start',
@@ -403,6 +462,25 @@ describe('createProductionModuleServices', () => {
       harness.services.setEnabled('learning', true),
     ).resolves.toEqual({})
     expect(harness.intents.get('learning')).toBe('enabled')
+  })
+
+  it('restores disabled intent when installing and enabling fails', async () => {
+    const harness = createHarness()
+    harness.intents.set('learning', 'disabled')
+    await harness.services.refresh()
+    harness.runtime.activate.mockRejectedValueOnce(
+      new Error('activation failed'),
+    )
+    const candidate = {
+      moduleId: 'learning',
+      expectedVersion: '1.2.3',
+      expectedManifestSha256: harness.fixture.manifestSha256,
+    }
+
+    await expect(harness.services.install(candidate)).rejects.toThrow(
+      'activation failed',
+    )
+    expect(harness.intents.get('learning')).toBe('disabled')
   })
 
   it('clears intent and safely removes an inactive pending installation', async () => {

@@ -19,10 +19,22 @@ export type YoloModuleSettingFieldV1 = Readonly<{
   description?: string
 }>
 
+export type YoloModuleSettingFieldLocalizationV1 = Readonly<{
+  name: string
+  description?: string
+}>
+
+export type YoloModuleSettingsLocalizationV1 = Readonly<{
+  title: string
+  fields: Readonly<Record<string, YoloModuleSettingFieldLocalizationV1>>
+}>
+
 export type YoloModuleSettingsContributionV1 = Readonly<{
   id: string
+  icon?: string
   title: string
   fields: readonly YoloModuleSettingFieldV1[]
+  localizations?: Readonly<Record<string, YoloModuleSettingsLocalizationV1>>
 }>
 
 export type YoloModuleSettingsV1 = Readonly<{
@@ -82,6 +94,19 @@ export class ModuleSettingsContributionRegistry
     contribution: YoloModuleSettingsContributionV1,
     fields = UNAVAILABLE_MODULE_SETTINGS_FIELD_ADAPTER,
   ): void {
+    const icon = contribution.icon
+    for (const registered of this.contributions.values()) {
+      if (
+        registered.moduleId === moduleId &&
+        registered.contribution.icon !== undefined &&
+        icon !== undefined &&
+        registered.contribution.icon !== icon
+      ) {
+        throw new Error(
+          `Module "${moduleId}" settings contributions declare conflicting icons`,
+        )
+      }
+    }
     this.contributions.set(
       contributionKey(moduleId, contribution.id),
       Object.freeze({ moduleId, contribution, fields }),
@@ -395,16 +420,51 @@ export const UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER: ModuleSettingsCapa
     }),
   })
 
-function snapshotContribution(
+export function resolveSettingsContribution(
+  contribution: YoloModuleSettingsContributionV1,
+  locale: string,
+): Readonly<{
+  title: string
+  fields: readonly YoloModuleSettingFieldV1[]
+}> {
+  const normalized = locale.toLowerCase()
+  const localization =
+    contribution.localizations?.[normalized] ??
+    contribution.localizations?.[normalized.split('-')[0] ?? ''] ??
+    contribution.localizations?.en
+  if (!localization) {
+    return Object.freeze({
+      title: contribution.title,
+      fields: contribution.fields,
+    })
+  }
+  return Object.freeze({
+    title: localization.title,
+    fields: Object.freeze(
+      contribution.fields.map((field) => {
+        const translated = localization.fields[field.key]
+        return Object.freeze({
+          ...field,
+          name: translated?.name ?? field.name,
+          description: translated?.description ?? field.description,
+        })
+      }),
+    ),
+  })
+}
+
+export function snapshotContribution(
   value: YoloModuleSettingsContributionV1,
 ): YoloModuleSettingsContributionV1 {
   if (!value || typeof value !== 'object')
     throw new TypeError('Settings contribution must be an object')
   const id = value.id
   const title = value.title
+  const icon = value.icon
   const declaredFields = value.fields
   requireText(id, 'Settings contribution id')
   requireText(title, 'Settings contribution title')
+  if (icon !== undefined) requireText(icon, 'Settings contribution icon')
   if (!Array.isArray(declaredFields))
     throw new TypeError('Settings contribution fields must be an array')
   const keys = new Set<string>()
@@ -422,16 +482,96 @@ function snapshotContribution(
     if (type !== 'toggle' && type !== 'text' && type !== 'model') {
       throw new Error('Settings field type is invalid')
     }
-    if (description !== undefined && typeof description !== 'string') {
-      throw new TypeError('Settings field description must be a string')
-    }
+    if (description !== undefined)
+      requireText(description, 'Settings field description')
     return Object.freeze({ key, type, name, description })
   })
+  const localizations = snapshotLocalizations(value.localizations, fields)
   return Object.freeze({
     id,
+    ...(icon !== undefined ? { icon } : {}),
     title,
     fields: Object.freeze(fields),
+    ...(localizations !== undefined ? { localizations } : {}),
   })
+}
+
+function snapshotLocalizations(
+  value: YoloModuleSettingsContributionV1['localizations'],
+  fields: readonly YoloModuleSettingFieldV1[],
+): YoloModuleSettingsContributionV1['localizations'] {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Settings localizations must be a locale map')
+  }
+  const locales = Object.entries(value)
+  if (locales.length === 0) throw new Error('Settings localizations are empty')
+  const fieldKeys = new Set(fields.map((field) => field.key))
+  const localizations: Record<string, YoloModuleSettingsLocalizationV1> = {}
+  for (const [locale, localization] of locales) {
+    requireText(locale, 'Settings localization locale')
+    if (!localization || typeof localization !== 'object') {
+      throw new TypeError(`Settings localization "${locale}" must be an object`)
+    }
+    requireText(localization.title, `Settings localization "${locale}" title`)
+    if (
+      !localization.fields ||
+      typeof localization.fields !== 'object' ||
+      Array.isArray(localization.fields)
+    ) {
+      throw new TypeError(
+        `Settings localization "${locale}" fields must be a map`,
+      )
+    }
+    for (const key of Object.keys(localization.fields)) {
+      if (!fieldKeys.has(key)) {
+        throw new Error(
+          `Settings localization "${locale}" contains unknown field "${key}"`,
+        )
+      }
+    }
+    const localizedFields: Record<
+      string,
+      YoloModuleSettingFieldLocalizationV1
+    > = {}
+    for (const field of fields) {
+      const translated = localization.fields[field.key]
+      if (!translated || typeof translated !== 'object') {
+        throw new Error(
+          `Settings localization "${locale}" is missing field "${field.key}"`,
+        )
+      }
+      requireText(
+        translated.name,
+        `Settings localization "${locale}" field "${field.key}" name`,
+      )
+      if (field.description !== undefined) {
+        requireText(
+          translated.description,
+          `Settings localization "${locale}" field "${field.key}" description`,
+        )
+      } else if (translated.description !== undefined) {
+        requireText(
+          translated.description,
+          `Settings localization "${locale}" field "${field.key}" description`,
+        )
+      }
+      localizedFields[field.key] = Object.freeze({
+        name: translated.name,
+        ...(translated.description !== undefined
+          ? { description: translated.description }
+          : {}),
+      })
+    }
+    localizations[locale.toLowerCase()] = Object.freeze({
+      title: localization.title,
+      fields: Object.freeze(localizedFields),
+    })
+  }
+  if (!localizations.en) {
+    throw new Error('Settings localizations must include an English fallback')
+  }
+  return Object.freeze(localizations)
 }
 
 function snapshotModels(

@@ -12,6 +12,8 @@ jest.mock('obsidian', () => ({
 
 import type { Plugin, WorkspaceLeaf } from 'obsidian'
 
+import { LocaleStore } from '../i18n/localeStore'
+
 import { ModuleLifecycleScope } from './lifecycleScope'
 import { ObsidianModuleContributionRegistrar } from './moduleRuntime'
 
@@ -278,5 +280,72 @@ describe('ObsidianModuleContributionRegistrar', () => {
     await Promise.resolve()
     expect(consoleError).toHaveBeenCalledTimes(2)
     consoleError.mockRestore()
+  })
+
+  it('updates localized view, ribbon, and command labels without changing identities', () => {
+    let locale = 'en'
+    const locales = new LocaleStore({ readLocale: () => locale })
+    const addCommand = jest.fn()
+    const ribbon = {
+      remove: jest.fn(),
+      setAttribute: jest.fn(),
+    }
+    const addRibbonIcon = jest.fn(() => ribbon)
+    const registerView = jest.fn()
+    const trigger = jest.fn()
+    const lifecycle = new ModuleLifecycleScope()
+    const registrar = new ObsidianModuleContributionRegistrar(
+      {
+        app: { workspace: { trigger } },
+        addCommand,
+        addRibbonIcon,
+        registerView,
+        removeCommand: jest.fn(),
+      } as unknown as Plugin,
+      locales,
+    )
+    const callback = jest.fn()
+    registrar.commit(
+      'learning',
+      {
+        view: { ...view, name: { en: 'Learning', zh: '学习' } },
+        ribbonAction: {
+          icon: 'graduation-cap',
+          title: { en: 'Open Learning', zh: '打开学习' },
+          onClick: callback,
+        },
+        commands: [
+          {
+            id: 'open',
+            name: { en: 'Open Learning', zh: '打开学习' },
+            callback,
+          },
+        ],
+      },
+      lifecycle,
+    )
+    const factory = registerView.mock.calls[0]?.[1] as (
+      leaf: WorkspaceLeaf,
+    ) => { getDisplayText(): string }
+    const itemView = factory({} as WorkspaceLeaf)
+    const command = addCommand.mock.calls[0]?.[0] as {
+      id: string
+      name: string
+    }
+
+    expect(itemView.getDisplayText()).toBe('Learning')
+    expect(command).toMatchObject({
+      id: 'module:learning:open',
+      name: 'Open Learning',
+    })
+    locale = 'zh-CN'
+    locales.refresh()
+
+    expect(itemView.getDisplayText()).toBe('学习')
+    expect(command.name).toBe('打开学习')
+    expect(ribbon.setAttribute).toHaveBeenCalledWith('aria-label', '打开学习')
+    expect(trigger).toHaveBeenCalledWith('layout-change')
+    lifecycle.dispose()
+    expect(ribbon.remove).toHaveBeenCalledTimes(1)
   })
 })

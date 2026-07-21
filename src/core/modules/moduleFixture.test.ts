@@ -89,7 +89,7 @@ describe('host API conformance artifact boundary', () => {
       'style.css',
     ])
     expect(style).toBeDefined()
-    expect(manifest.hostApi).toBe('^1.3.0')
+    expect(manifest.hostApi).toBe('^1.4.0')
     expect(manifest.dataSchemas).toEqual({
       settings: { readMin: 0, readMax: 1, write: 1 },
     })
@@ -132,6 +132,14 @@ describe('host API conformance artifact boundary', () => {
         modules: [
           {
             id: manifest.id,
+            localizations: {
+              en: { name: 'Learning', description: 'Learning module' },
+              zh: { name: '学习', description: '学习模块' },
+              it: {
+                name: 'Apprendimento',
+                description: 'Modulo apprendimento',
+              },
+            },
             versions: [
               {
                 version: manifest.version,
@@ -162,7 +170,7 @@ describe('host API conformance artifact boundary', () => {
     )
     expect(
       selectInitialCompatibleVersion(catalog.modules[0], {
-        hostApi: '1.3.0',
+        hostApi: '1.4.0',
         platform: 'desktop',
       })?.version,
     ).toBe('0.1.0')

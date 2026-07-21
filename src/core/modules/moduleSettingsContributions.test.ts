@@ -2,6 +2,7 @@ import { ModuleLifecycleScope } from './lifecycleScope'
 import {
   ModuleSettingsCapabilityProvider,
   ModuleSettingsContributionRegistry,
+  resolveSettingsContribution,
 } from './moduleSettingsContributions'
 
 describe('ModuleSettingsCapabilityProvider', () => {
@@ -101,6 +102,86 @@ describe('ModuleSettingsCapabilityProvider', () => {
     ).toThrow('Duplicate settings field')
     activation.activate()
     expect(() => activation.api.getModelSnapshot()).toThrow('Model id')
+    lifecycle.dispose()
+  })
+
+  it('copies, freezes, validates, and resolves localized declarations', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const add = jest.fn()
+    const activation = new ModuleSettingsCapabilityProvider({
+      sink: { add, remove: jest.fn() },
+      getModelSnapshot: () => ({ defaultModelId: '', models: [] }),
+      subscribeModels: () => () => undefined,
+    }).create('learning', lifecycle)
+    const localizations = {
+      en: {
+        title: 'Generation',
+        fields: { modelId: { name: 'Model', description: 'Generate content' } },
+      },
+      zh: {
+        title: '内容生成',
+        fields: { modelId: { name: '模型', description: '生成内容' } },
+      },
+    }
+    activation.api.contribute({
+      id: 'generation',
+      icon: 'graduation-cap',
+      title: 'Generation',
+      fields: [
+        {
+          key: 'modelId',
+          type: 'model',
+          name: 'Model',
+          description: 'Generate content',
+        },
+      ],
+      localizations,
+    })
+    localizations.zh.title = 'Changed'
+    activation.activate()
+    activation.commit()
+    const contribution = add.mock.calls[0]?.[1]
+
+    expect(resolveSettingsContribution(contribution, 'zh-CN')).toEqual({
+      title: '内容生成',
+      fields: [
+        {
+          key: 'modelId',
+          type: 'model',
+          name: '模型',
+          description: '生成内容',
+        },
+      ],
+    })
+    expect(Object.isFrozen(contribution.localizations.zh.fields)).toBe(true)
+
+    expect(() =>
+      activation.api.contribute({
+        id: 'late',
+        title: 'Late',
+        fields: [],
+      }),
+    ).toThrow('already committed')
+    lifecycle.dispose()
+  })
+
+  it('rejects missing and unknown localized fields', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ModuleSettingsCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+      getModelSnapshot: () => ({ defaultModelId: '', models: [] }),
+      subscribeModels: () => () => undefined,
+    }).create('learning', lifecycle)
+    expect(() =>
+      activation.api.contribute({
+        id: 'generation',
+        title: 'Generation',
+        fields: [{ key: 'modelId', type: 'model', name: 'Model' }],
+        localizations: {
+          en: { title: 'Generation', fields: { other: { name: 'Other' } } },
+        },
+      }),
+    ).toThrow('unknown field')
     lifecycle.dispose()
   })
 
@@ -215,5 +296,23 @@ describe('ModuleSettingsContributionRegistry', () => {
     unsubscribe()
     registry.clear()
     expect(listener).toHaveBeenCalledTimes(5)
+  })
+
+  it('rejects conflicting icons for one module', () => {
+    const registry = new ModuleSettingsContributionRegistry()
+    registry.add('learning', {
+      id: 'general',
+      icon: 'graduation-cap',
+      title: 'General',
+      fields: [],
+    })
+    expect(() =>
+      registry.add('learning', {
+        id: 'advanced',
+        icon: 'brain',
+        title: 'Advanced',
+        fields: [],
+      }),
+    ).toThrow('conflicting icons')
   })
 })

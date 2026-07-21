@@ -13,6 +13,7 @@ export function LearningTabs({
   disabledTabs = [],
   badges,
   className,
+  ariaLabel,
 }: {
   value: LearningTabKey
   onChange: (tab: LearningTabKey) => void
@@ -21,10 +22,11 @@ export function LearningTabs({
   disabledTabs?: readonly LearningTabKey[]
   badges?: Partial<Record<LearningTabKey, number>>
   className?: string
+  ariaLabel: string
 }) {
   return (
     <div
-      aria-label="Learning workspace"
+      aria-label={ariaLabel}
       className={cx('yolo-learning-segmented', className)}
       role="tablist"
     >

@@ -6,7 +6,7 @@ import {
   ModuleArtifactInstaller,
   type ModuleArtifactInstallerOptions,
 } from './moduleArtifactInstaller'
-import type { ModuleCatalogLocale } from './moduleCatalogPresentation'
+import type { ModuleCatalogLocaleSource } from './moduleCatalogPresentation'
 import { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import {
@@ -16,7 +16,7 @@ import {
 import { SynchronizedModuleIntentStateSource } from './moduleIntentStateSource'
 import type { ModuleIntentStore } from './moduleIntentStore'
 import { ModuleLoader } from './moduleLoader'
-import { ModuleManager } from './moduleManager'
+import { ModuleManager, compareModuleVersions } from './moduleManager'
 import {
   ModuleReadinessReconciler,
   type ModuleReadinessResult,
@@ -46,6 +46,7 @@ import {
 } from './officialModuleCatalogSource'
 import { YOLO_HOST_API_VERSION } from './officialModuleCompatibilityProvider'
 import { DomBlobModuleScriptExecutor } from './scriptExecutor'
+import type { ModuleRecord } from './types'
 import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
 export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
@@ -85,7 +86,8 @@ export type ProductionModuleServicesOptions = Readonly<{
   deviceStateStore: ModuleDeviceStateStore
   catalogCacheAdapter: OfficialModuleCatalogCacheAdapter
   platform: ModuleArtifactPlatform
-  locale: ModuleCatalogLocale
+  locale: ModuleCatalogLocaleSource
+  subscribeLocale?: (listener: () => void) => () => void
   getCompatibility: OfficialModuleCompatibilityProvider
   isActive(moduleId: string, version: string): boolean
   /** Shared reservation owned and disposed by the composition root. */
@@ -109,14 +111,22 @@ export type ProductionModuleServicesOptions = Readonly<{
   reportStartupError?: (error: unknown, moduleId?: string) => void
 }>
 
-export type ProductionModuleServices = ModuleService &
-  Readonly<{
-    learningDataRemovalDependencies: Readonly<{
-      intentStore: ProductionModuleIntentStore
-      artifactUninstaller: ModuleUninstallCoordinator
-      runtime: ProductionModuleRuntimeReservation
-    }>
-  }>
+export type ProductionModuleServices = ModuleService
+
+export function isInstallCandidateState(
+  displayed: ModuleRecord | undefined,
+  resolvedVersion: string,
+): boolean {
+  return Boolean(
+    displayed &&
+      (displayed.status === 'available' ||
+        displayed.status === 'update-available' ||
+        (displayed.status === 'disabled' &&
+          displayed.installed &&
+          compareModuleVersions(displayed.installed.version, resolvedVersion) <
+            0)),
+  )
+}
 
 /** Composes the production official-module discovery and installation pipeline. */
 export function createProductionModuleServices(
@@ -302,6 +312,12 @@ export function createProductionModuleServices(
   })
   const inFlightModuleIds = new Set<string>()
   let disposed = false
+  const unsubscribeLocale = options.subscribeLocale?.(() => {
+    if (disposed) return
+    void manager.refresh().catch((error: unknown) => {
+      options.reportRefreshError?.(error)
+    })
+  })
 
   const runModuleOperation = async <T>(
     moduleId: string,
@@ -398,11 +414,6 @@ export function createProductionModuleServices(
     refresh: () => manager.refresh(),
     getVerifiedArtifact: (moduleId) =>
       verifiedArtifactRegistry.getVerifiedArtifact(moduleId),
-    learningDataRemovalDependencies: Object.freeze({
-      intentStore: options.intentStore,
-      artifactUninstaller: uninstallCoordinator,
-      runtime: runtimeReservation,
-    }),
     getInstallCandidate(moduleId: string) {
       assertModuleId(moduleId, 'Module id')
       if (disposed || inFlightModuleIds.has(moduleId)) return undefined
@@ -414,9 +425,8 @@ export function createProductionModuleServices(
       const resolved = catalogSource.getResolvedVersion(moduleId)
       if (
         !resolved ||
-        (displayed?.status !== 'available' &&
-          displayed?.status !== 'update-available') ||
-        displayed.catalog?.version !== resolved.version
+        !isInstallCandidateState(displayed, resolved.version) ||
+        displayed?.catalog?.version !== resolved.version
       ) {
         return undefined
       }
@@ -428,6 +438,7 @@ export function createProductionModuleServices(
     },
     install(candidate: ConfirmedModuleCandidate) {
       return runModuleOperation(candidate.moduleId, async () => {
+        const previousIntent = await options.intentStore.get(candidate.moduleId)
         const previousRunning = await getRunningDescriptor(candidate.moduleId)
         const result = await coordinator.installConfirmedCandidate(candidate)
         try {
@@ -458,6 +469,10 @@ export function createProductionModuleServices(
               candidate.moduleId,
               preparedVersion,
             )
+            await options.intentStore.set(
+              candidate.moduleId,
+              previousIntent ?? 'uninstalled',
+            )
             await manager.refresh()
             throw error
           }
@@ -467,6 +482,10 @@ export function createProductionModuleServices(
           await manager.refresh()
           return Object.freeze({ version })
         } catch (activationError) {
+          await options.intentStore.set(
+            candidate.moduleId,
+            previousIntent ?? 'uninstalled',
+          )
           if (previousRunning) {
             await cancelMatchingPendingVersion(
               candidate.moduleId,
@@ -550,6 +569,7 @@ export function createProductionModuleServices(
     },
     dispose: () => {
       disposed = true
+      unsubscribeLocale?.()
       startupReconciler.dispose()
       readinessReconciler.dispose()
       activationCoordinator.dispose()
@@ -588,6 +608,8 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       typeof options.catalogRequest !== 'function') ||
     (options.artifactRequest !== undefined &&
       typeof options.artifactRequest !== 'function') ||
+    (options.subscribeLocale !== undefined &&
+      typeof options.subscribeLocale !== 'function') ||
     (options.reportCleanupError !== undefined &&
       typeof options.reportCleanupError !== 'function') ||
     (options.reportRefreshError !== undefined &&

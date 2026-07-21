@@ -17,6 +17,10 @@ import type {
   ModuleConfigV1,
 } from './moduleConfig'
 import {
+  ModuleI18nCapabilityProvider,
+  type ModuleI18nCapabilityProviderV1,
+} from './moduleI18n'
+import {
   type ModulePathsCapabilityProviderV1,
   UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
 } from './modulePaths'
@@ -153,6 +157,7 @@ type CoreModuleHostCapabilityProviderOptions = {
   assets?: ModuleAssetsCapabilityProviderV1
   backgroundActivities: BackgroundActivityBatchSink
   config?: ModuleConfigCapabilityProviderV1
+  i18n?: ModuleI18nCapabilityProviderV1
   paths?: ModulePathsCapabilityProviderV1
   privateStorage?: ModulePrivateStorageCapabilityProviderV1
   settings?: ModuleSettingsCapabilityProviderV1
@@ -171,6 +176,7 @@ export class CoreModuleHostCapabilityProvider
   private readonly backgroundActivities: BackgroundActivityBatchSink
   private readonly config: ModuleConfigCapabilityProviderV1
   private readonly now: () => number
+  private readonly i18n: ModuleI18nCapabilityProviderV1
   private readonly paths: ModulePathsCapabilityProviderV1
   private readonly privateStorage: ModulePrivateStorageCapabilityProviderV1
   private readonly settings: ModuleSettingsCapabilityProviderV1
@@ -187,6 +193,7 @@ export class CoreModuleHostCapabilityProvider
     assets = UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
     backgroundActivities,
     config = UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
+    i18n = new ModuleI18nCapabilityProvider(),
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
     privateStorage = UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER,
     settings = UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
@@ -205,6 +212,7 @@ export class CoreModuleHostCapabilityProvider
     this.assets = assets
     this.backgroundActivities = backgroundActivities
     this.config = config
+    this.i18n = i18n
     this.paths = paths
     this.privateStorage = privateStorage
     this.settings = settings
@@ -229,6 +237,7 @@ export class CoreModuleHostCapabilityProvider
       reportCallbackError: this.reportCallbackError,
     })
     const config = this.config.create(moduleId, lifecycle)
+    const i18n = this.i18n.create(moduleId, lifecycle)
     const paths = this.paths.create(moduleId, lifecycle)
     const privateStorage = this.privateStorage.create(moduleId, lifecycle)
     const settings = this.settings.create(moduleId, lifecycle)
@@ -241,6 +250,7 @@ export class CoreModuleHostCapabilityProvider
         assets: assets.api,
         background: background.api,
         config: config.api,
+        i18n: i18n.api,
         paths: paths.api,
         privateStorage: privateStorage.api,
         settings: settings.api,

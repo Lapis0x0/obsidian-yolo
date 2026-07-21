@@ -1,6 +1,9 @@
 export const MODULE_CATALOG_LOCALES = ['en', 'zh', 'it'] as const
 
 export type ModuleCatalogLocale = (typeof MODULE_CATALOG_LOCALES)[number]
+export type ModuleCatalogLocaleSource =
+  | ModuleCatalogLocale
+  | (() => ModuleCatalogLocale)
 
 export type ModuleCatalogPresentation = Readonly<{
   name: string
@@ -51,6 +54,25 @@ export function resolveModuleCatalogPresentation(
   locale: ModuleCatalogLocale,
 ): ModuleCatalogPresentation {
   return localizations[locale] ?? localizations.en
+}
+
+export function readModuleCatalogLocale(
+  source: ModuleCatalogLocaleSource,
+): ModuleCatalogLocale {
+  const locale = typeof source === 'function' ? source() : source
+  if (!MODULE_CATALOG_LOCALES.includes(locale)) {
+    throw new Error('Module catalog locale is invalid')
+  }
+  return locale
+}
+
+export function normalizeModuleCatalogLocale(
+  locale: string,
+): ModuleCatalogLocale {
+  const normalized = locale.trim().toLowerCase()
+  if (normalized.startsWith('zh')) return 'zh'
+  if (normalized.startsWith('it')) return 'it'
+  return 'en'
 }
 
 function asPlainObject(value: unknown, label: string): Record<string, unknown> {

@@ -47,6 +47,7 @@ import {
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import { localeStore } from './core/i18n/localeStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type {
@@ -61,7 +62,6 @@ import {
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   IndexedDbDataAdapter,
-  LearningModuleDataRemovalService,
   ManagedModulePathsCapabilityProvider,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
@@ -89,6 +89,7 @@ import {
   runExclusive as runManagedModuleDataExclusive,
   selectModuleManifestVariant,
 } from './core/modules'
+import { normalizeModuleCatalogLocale } from './core/modules/moduleCatalogPresentation'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
 import { migrateHiddenYoloBaseDir } from './core/paths/yoloBaseDirMigration'
@@ -270,7 +271,6 @@ export default class YoloPlugin extends Plugin {
   private rawLearningLegacySettings: unknown = undefined
   private learningModuleSettingsHandoffReady = false
   private readonly managedModulePathChangeListeners = new Set<() => void>()
-  private removeLearningModuleDataOperation: (() => Promise<void>) | null = null
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
@@ -2396,7 +2396,6 @@ export default class YoloPlugin extends Plugin {
     this.rawLearningLegacySettings = undefined
     this.learningModuleSettingsHandoffReady = false
     this.managedModulePathChangeListeners.clear()
-    this.removeLearningModuleDataOperation = null
     this.moduleRuntimeReservation?.dispose()
     this.moduleRuntimeReservation = null
     this.moduleRuntime?.dispose()
@@ -3666,11 +3665,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleService
   }
 
-  async uninstallAndRemoveLearningData(): Promise<void> {
-    if (!this.removeLearningModuleDataOperation) {
-      throw new Error('[YOLO] Learning data removal is unavailable')
-    }
-    await this.removeLearningModuleDataOperation()
+  getModuleSettingsContributionRegistry(): ModuleSettingsContributionRegistry {
+    return this.moduleSettingsContributions
   }
 
   private initializeModuleSystem(): void {
@@ -3829,7 +3825,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         ? new BundledModuleCatalogSource({
             store,
             platform,
-            locale: this.resolveObsidianLanguage(),
+            locale: () =>
+              normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
           })
         : undefined
     const serviceIntentStore = bundledCatalogSource
@@ -3869,7 +3866,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       deviceStateStore,
       catalogCacheAdapter: deviceLocalAdapter,
       platform,
-      locale: this.resolveObsidianLanguage(),
+      locale: () =>
+        normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
+      subscribeLocale: localeStore.subscribe,
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,
@@ -3900,14 +3899,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       },
     })
     servicesReference.current = services
-    const learningDataRemoval = new LearningModuleDataRemovalService({
-      app: this.app,
-      getSettings: () => this.settings,
-      deviceLocal: deviceLocalAdapter,
-      ...services.learningDataRemovalDependencies,
-    })
-    this.removeLearningModuleDataOperation = () =>
-      learningDataRemoval.uninstallAndRemoveData()
     this.moduleService = services
   }
 

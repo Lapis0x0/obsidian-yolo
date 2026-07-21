@@ -21,6 +21,11 @@ function catalog(
     modules: [
       {
         id: 'learning',
+        localizations: {
+          en: { name: 'Learning', description: 'Learning module' },
+          zh: { name: '学习', description: '学习模块' },
+          it: { name: 'Apprendimento', description: 'Modulo apprendimento' },
+        },
         versions: [
           {
             version,

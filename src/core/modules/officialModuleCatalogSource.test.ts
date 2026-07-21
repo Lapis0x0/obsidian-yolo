@@ -27,15 +27,20 @@ function parsedCatalog(
       schemaVersion: 1,
       modules: modules.map((module) => ({
         id: module.id,
-        localizations: Object.fromEntries(
-          ['en', 'zh', 'it'].map((locale) => [
-            locale,
-            {
-              name: module.name ?? module.id,
-              description: module.description ?? `${module.id} description`,
-            },
-          ]),
-        ),
+        localizations: {
+          en: {
+            name: module.name ?? module.id,
+            description: module.description ?? `${module.id} description`,
+          },
+          zh: {
+            name: `ZH ${module.name ?? module.id}`,
+            description: `ZH ${module.description ?? `${module.id} description`}`,
+          },
+          it: {
+            name: `IT ${module.name ?? module.id}`,
+            description: `IT ${module.description ?? `${module.id} description`}`,
+          },
+        },
         versions: module.versions.map((version) => ({
           version,
           hostApi: module.hostApiByVersion?.[version] ?? '>=1.0.0 <2.0.0',
@@ -115,6 +120,26 @@ describe('OfficialModuleCatalogSource', () => {
         'https://github.com/Lapis0x0/obsidian-yolo/releases/download/v1.2.0/learning.json',
       manifest: { byteSize: 10, sha256: HASH },
     })
+  })
+
+  it('reads the current locale for every load', async () => {
+    let locale: 'en' | 'zh' = 'en'
+    const client = {
+      load: jest.fn(async () =>
+        parsedCatalog([
+          { id: 'learning', name: 'Learning', versions: ['1.0.0'] },
+        ]),
+      ),
+    }
+    const catalogSource = new OfficialModuleCatalogSource({
+      client,
+      getCompatibility: () => compatibility(),
+      locale: () => locale,
+    })
+
+    expect((await catalogSource.load())[0]?.name).toBe('Learning')
+    locale = 'zh'
+    expect((await catalogSource.load())[0]?.name).toBe('ZH Learning')
   })
 
   it('binds installer lookup to the displayed version and selected platform', async () => {

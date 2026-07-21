@@ -187,7 +187,7 @@ describe('ModuleRuntime', () => {
     await runtime.activate({
       id: 'config-timing',
       activate: (host) => {
-        expect(YOLO_HOST_API_VERSION).toBe('1.3.0')
+        expect(YOLO_HOST_API_VERSION).toBe('1.4.0')
         expect(host.version).toBe(1)
         expect(typeof host.lifecycle.whenActive).toBe('function')
         expect(() => host.config.getSnapshot()).toThrow('config is unavailable')
