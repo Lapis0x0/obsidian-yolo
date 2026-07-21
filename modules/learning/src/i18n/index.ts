@@ -14,17 +14,6 @@ export type LearningLocalizedTextKey =
 export const LEARNING_LOCALES = ['en', 'zh', 'it'] as const
 const resources = { en, zh, it } as const
 
-const common = {
-  en: { cancel: 'Cancel', close: 'Close', delete: 'Delete', remove: 'Remove' },
-  zh: { cancel: '取消', close: '关闭', delete: '删除', remove: '移除' },
-  it: {
-    cancel: 'Annulla',
-    close: 'Chiudi',
-    delete: 'Elimina',
-    remove: 'Rimuovi',
-  },
-} as const
-
 export function normalizeLearningLocale(locale: string): LearningLocale {
   const normalized = locale.trim().toLowerCase()
   if (normalized.startsWith('zh')) return 'zh'
@@ -35,14 +24,6 @@ export function normalizeLearningLocale(locale: string): LearningLocale {
 export function createLearningTranslation(locale: string): LearningTranslation {
   const language = normalizeLearningLocale(locale)
   return (key, fallback) => {
-    if (key.startsWith('common.')) {
-      const commonKey = key.slice(
-        'common.'.length,
-      ) as keyof (typeof common)['en']
-      return (
-        common[language][commonKey] ?? common.en[commonKey] ?? fallback ?? key
-      )
-    }
     const path = key.startsWith('learning.')
       ? key.slice('learning.'.length).split('.')
       : key.split('.')

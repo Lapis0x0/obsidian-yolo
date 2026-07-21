@@ -22,6 +22,10 @@ export const zh = {
     cancel: '暂不进入',
   },
   common: {
+    cancel: '取消',
+    close: '关闭',
+    delete: '删除',
+    remove: '移除',
     loading: '加载中…',
     all: '全部',
     allChapters: '全部章节',

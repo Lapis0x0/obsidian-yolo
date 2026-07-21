@@ -171,35 +171,6 @@ export function projectModuleSettingsNavigation(
   )
 }
 
-export function getModuleProductActions(
-  module: Pick<
-    ModuleRecord,
-    | 'desiredInstalled'
-    | 'enabled'
-    | 'installed'
-    | 'catalog'
-    | 'compatibilityIssues'
-    | 'status'
-  >,
-  productCapabilitiesAvailable = false,
-): readonly ModuleProductAction[] {
-  if (!productCapabilitiesAvailable) return []
-  const incompatible = (module.compatibilityIssues?.length ?? 0) > 0
-  if (!module.installed) {
-    if (module.desiredInstalled === true) {
-      if (module.enabled === true || incompatible) return []
-      return ['enable', 'uninstall']
-    }
-    return incompatible ? [] : ['install']
-  }
-  if (module.desiredInstalled === false) return ['uninstall']
-  const actions: ModuleProductAction[] = []
-  if (module.enabled === true) actions.push('disable')
-  if (module.enabled === false && !incompatible) actions.push('enable')
-  actions.push('uninstall')
-  return actions
-}
-
 export async function executeModuleProductAction(
   service: Pick<ModuleService, 'install' | 'setEnabled' | 'uninstall'>,
   module: Pick<ModuleRecord, 'id'>,

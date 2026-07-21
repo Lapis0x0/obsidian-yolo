@@ -22,6 +22,10 @@ export const en = {
     cancel: 'Not now',
   },
   common: {
+    cancel: 'Cancel',
+    close: 'Close',
+    delete: 'Delete',
+    remove: 'Remove',
     loading: 'Loading…',
     all: 'All',
     allChapters: 'All chapters',

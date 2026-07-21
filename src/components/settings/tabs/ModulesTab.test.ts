@@ -13,7 +13,6 @@ import {
   createFailedOperation,
   executeModuleProductAction,
   getModuleManagementView,
-  getModuleProductActions,
   getModuleShelfActions,
   getRetryAction,
   hasModuleUpdate,
@@ -55,75 +54,6 @@ function service(): jest.Mocked<
 }
 
 describe('ModulesTab product actions', () => {
-  it.each([
-    ['available', moduleRecord({ id: 'notes' }), ['install']],
-    [
-      'enabled installation',
-      moduleRecord({
-        desiredInstalled: true,
-        enabled: true,
-        id: 'notes',
-        installed: { id: 'notes', version: '1.0.0' },
-      }),
-      ['disable', 'uninstall'],
-    ],
-    [
-      'disabled installation',
-      moduleRecord({
-        desiredInstalled: true,
-        enabled: false,
-        id: 'notes',
-        installed: { id: 'notes', version: '1.0.0' },
-      }),
-      ['enable', 'uninstall'],
-    ],
-    [
-      'disabled synchronized intent without local artifacts',
-      moduleRecord({
-        desiredInstalled: true,
-        enabled: false,
-        id: 'notes',
-        status: 'disabled',
-      }),
-      ['enable', 'uninstall'],
-    ],
-    [
-      'uninstall pending',
-      moduleRecord({
-        desiredInstalled: false,
-        enabled: false,
-        id: 'notes',
-        installed: { id: 'notes', version: '1.0.0' },
-      }),
-      ['uninstall'],
-    ],
-  ])('derives the %s action matrix', (_label, module, expected) => {
-    expect(getModuleProductActions(module, true)).toEqual(expected)
-  })
-
-  it('hides product actions when official management is unavailable', () => {
-    expect(
-      getModuleProductActions(moduleRecord({ id: 'notes' }), false),
-    ).toEqual([])
-  })
-
-  it('hides install and enable for incompatible modules', () => {
-    const unavailable = moduleRecord({
-      compatibilityIssues: [{ kind: 'host-api' }],
-      id: 'notes',
-    })
-    const disabled = moduleRecord({
-      compatibilityIssues: [{ kind: 'data-schema' }],
-      desiredInstalled: true,
-      enabled: false,
-      id: 'notes',
-      installed: { id: 'notes', version: '1.0.0' },
-    })
-
-    expect(getModuleProductActions(unavailable, true)).toEqual([])
-    expect(getModuleProductActions(disabled, true)).toEqual(['uninstall'])
-  })
-
   it('submits the exact candidate captured by the confirmation', async () => {
     const modules = service()
     const confirmed = candidate('1.0.0', 'a'.repeat(64))

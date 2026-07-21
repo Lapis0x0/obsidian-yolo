@@ -22,6 +22,10 @@ export const it = {
     cancel: 'Non ora',
   },
   common: {
+    cancel: 'Annulla',
+    close: 'Chiudi',
+    delete: 'Elimina',
+    remove: 'Rimuovi',
     loading: 'Caricamento…',
     all: 'Tutti',
     allChapters: 'Tutti i capitoli',
