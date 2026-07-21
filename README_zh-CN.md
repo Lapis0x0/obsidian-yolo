@@ -28,6 +28,28 @@
   QQ 群: <code>793057867</code> | <a href="./assets/wechat-group.png">微信群</a>
 </p>
 
+## Sponsors
+
+<table>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.atlascloud.ai/logo-white.svg">
+      <img src="https://www.atlascloud.ai/logo.svg" alt="Atlas Cloud" width="163">
+    </picture>
+  </a>
+</td>
+<td valign="middle">
+  <b><a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">Atlas Cloud</a></b> 为开发者提供覆盖语言、图像与视频生成的统一 AI API。一次接入即可使用横跨多种模态的 300+ 精选模型，无需分别维护不同模型供应商的集成。从 LLM Agent 到图像和视频生成，Atlas Cloud 让模型探索、效果比较与生产接入更加简单。
+  <br><br>
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo"><b>探索 Atlas Cloud →</b></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://www.atlascloud.ai/console/coding-plan"><b>查看 Coding Plan →</b></a>
+</td>
+</tr>
+</table>
+
 ## 最近更新
 
 - **`1.6`**：推出全新的学习模式，可根据学习主题、目标和参考资料生成个性化学习项目，包括结构化大纲、知识点、闪卡与交互式知识地图；并通过 FSRS 间隔复习和 Anki 卡包导入，将知识整理、学习与长期复习串成完整工作流

@@ -30,6 +30,28 @@
   </a>
 </p>
 
+## Sponsors
+
+<table>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.atlascloud.ai/logo-white.svg">
+      <img src="https://www.atlascloud.ai/logo.svg" alt="Atlas Cloud" width="163">
+    </picture>
+  </a>
+</td>
+<td valign="middle">
+  <b><a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">Atlas Cloud</a></b> ofrece a los desarrolladores una API unificada para crear con IA de lenguaje, imagen y vídeo. Una sola integración permite explorar más de 300 modelos seleccionados para todas las modalidades, sin tener que mantener conexiones separadas con cada proveedor. Desde agentes basados en LLM hasta generación de imágenes y vídeo, Atlas Cloud facilita la experimentación, la comparación de modelos y la incorporación de IA multimodal a producción.
+  <br><br>
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo"><b>Explora Atlas Cloud →</b></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://www.atlascloud.ai/console/coding-plan"><b>Descubre el Coding Plan →</b></a>
+</td>
+</tr>
+</table>
+
 ## Novedades
 
 - **`1.6`**: Presenta el nuevo Modo de Aprendizaje: convierte cualquier tema y material de referencia en un proyecto de aprendizaje personalizado con esquemas estructurados, puntos de conocimiento, tarjetas de estudio y un mapa de conocimiento interactivo. La repetición espaciada FSRS integrada y la importación de `.apkg` de Anki ayudan a convertir el conocimiento en un flujo de repaso sostenible.
