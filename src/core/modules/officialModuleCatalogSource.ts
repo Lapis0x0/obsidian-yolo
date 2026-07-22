@@ -28,7 +28,7 @@ export type OfficialModuleCompatibilityProvider = (
 ) => OfficialModuleCompatibility | Promise<OfficialModuleCompatibility>
 
 export type OfficialModuleCatalogSourceOptions = Readonly<{
-  client: Pick<OfficialModuleCatalogClient, 'load'>
+  client: Pick<OfficialModuleCatalogClient, 'load' | 'loadFresh'>
   getCompatibility: OfficialModuleCompatibilityProvider
   locale: ModuleCatalogLocaleSource
 }>
@@ -39,12 +39,16 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
     Record<string, OfficialModuleCatalogVersion>
   > = EMPTY_RESOLVED_VERSIONS
   private inFlight: Promise<ReadonlyArray<ModuleCatalogEntry>> | null = null
+  private freshInFlight: Promise<ReadonlyArray<ModuleCatalogEntry>> | null =
+    null
+  private catalog: OfficialModuleCatalogV1 | null = null
 
   constructor(private readonly options: OfficialModuleCatalogSourceOptions) {
     if (
       !options ||
       !options.client ||
       typeof options.client.load !== 'function' ||
+      typeof options.client.loadFresh !== 'function' ||
       typeof options.getCompatibility !== 'function' ||
       (typeof options.locale !== 'function' &&
         !MODULE_CATALOG_LOCALES.includes(options.locale))
@@ -54,6 +58,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
   }
 
   load(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
+    if (this.catalog) return this.resolve(this.catalog)
     if (this.inFlight) return this.inFlight
 
     const load = this.loadOnce()
@@ -64,6 +69,22 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
       },
       () => {
         if (this.inFlight === load) this.inFlight = null
+      },
+    )
+    return load
+  }
+
+  loadFresh(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
+    if (this.freshInFlight) return this.freshInFlight
+
+    const load = this.loadFreshOnce()
+    this.freshInFlight = load
+    void load.then(
+      () => {
+        if (this.freshInFlight === load) this.freshInFlight = null
+      },
+      () => {
+        if (this.freshInFlight === load) this.freshInFlight = null
       },
     )
     return load
@@ -118,6 +139,21 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
 
   private async loadOnce(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
     const catalog = await this.options.client.load()
+    const entries = await this.resolve(catalog)
+    this.catalog = catalog
+    return entries
+  }
+
+  private async loadFreshOnce(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
+    const catalog = await this.options.client.loadFresh()
+    const entries = await this.resolve(catalog)
+    this.catalog = catalog
+    return entries
+  }
+
+  private async resolve(
+    catalog: OfficialModuleCatalogV1,
+  ): Promise<ReadonlyArray<ModuleCatalogEntry>> {
     const locale = readModuleCatalogLocale(this.options.locale)
     const entries: ModuleCatalogEntry[] = []
     const resolvedVersions = Object.create(null) as Record<

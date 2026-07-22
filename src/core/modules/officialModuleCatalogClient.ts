@@ -43,7 +43,6 @@ export type OfficialModuleCatalogClientOptions = Readonly<{
   adapter: OfficialModuleCatalogCacheAdapter
   cachePath: string
   timeoutMs: number
-  cacheTtlMs: number
   now?: () => number
   requestUrl?: OfficialModuleCatalogRequest
 }>
@@ -79,9 +78,7 @@ export class OfficialModuleCatalogClient {
       !options ||
       !Number.isSafeInteger(options.timeoutMs) ||
       options.timeoutMs <= 0 ||
-      options.timeoutMs > MAX_TIMER_DELAY_MS ||
-      !Number.isSafeInteger(options.cacheTtlMs) ||
-      options.cacheTtlMs < 0
+      options.timeoutMs > MAX_TIMER_DELAY_MS
     ) {
       throw new Error('Official module catalog client options are invalid')
     }
@@ -90,6 +87,7 @@ export class OfficialModuleCatalogClient {
     this.request = options.requestUrl ?? requestUrl
   }
 
+  /** Loads the last validated snapshot, reaching the network only to bootstrap it. */
   load(): Promise<OfficialModuleCatalogV1> {
     if (this.inFlight) return this.inFlight
 
@@ -132,14 +130,11 @@ export class OfficialModuleCatalogClient {
     }
 
     const cached = await this.readCache(currentTime)
-    if (cached && currentTime - cached.fetchedAt <= this.options.cacheTtlMs) {
-      return cached.catalog
-    }
+    if (cached) return cached.catalog
 
     try {
       return await this.requestFresh(currentTime)
     } catch {
-      if (cached) return cached.catalog
       throw new OfficialModuleCatalogUnavailableError()
     }
   }

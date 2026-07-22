@@ -11,7 +11,6 @@ import { createOfficialModuleCompatibilityProvider } from './officialModuleCompa
 import {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
   OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-  OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS,
   OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
   type ProductionModuleServicesOptions,
   createProductionModuleServices,
@@ -334,6 +333,7 @@ function createHarness(
     reportCleanupError,
     reportRefreshError,
     runtime,
+    catalogRequest,
     services,
   }
 }
@@ -400,7 +400,6 @@ describe('createProductionModuleServices', () => {
     expect(OFFICIAL_MODULE_CATALOG_CACHE_PATH).toBe(
       'official-module-catalog/catalog-v1.json',
     )
-    expect(OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS).toBe(21_600_000)
     expect(OFFICIAL_MODULE_CATALOG_TIMEOUT_MS).toBe(10_000)
     expect(OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS).toBe(30_000)
   })
@@ -411,6 +410,7 @@ describe('createProductionModuleServices', () => {
     expect(Object.keys(services).sort()).toEqual(
       [
         'dispose',
+        'checkForUpdates',
         'getInstallCandidate',
         'getSnapshot',
         'getVerifiedArtifact',
@@ -506,6 +506,34 @@ describe('createProductionModuleServices', () => {
 
     await expect(harness.services.start()).resolves.toBeUndefined()
     expect(harness.services.getSnapshot().status).toBe('ready')
+  })
+
+  it('checks the official catalog fresh and publishes the newer candidate', async () => {
+    const harness = createHarness()
+    await harness.services.refresh()
+    expect(harness.services.getSnapshot().modules[0]?.catalog?.version).toBe(
+      '1.2.3',
+    )
+
+    const latest = JSON.parse(harness.fixture.catalog) as {
+      modules: Array<{
+        versions: Array<Record<string, unknown>>
+      }>
+    }
+    latest.modules[0]?.versions.unshift({
+      ...latest.modules[0]?.versions[0],
+      version: '1.2.4',
+    })
+    harness.catalogRequest.mockResolvedValueOnce(
+      response(JSON.stringify(latest)),
+    )
+
+    await harness.services.checkForUpdates()
+
+    expect(harness.catalogRequest).toHaveBeenCalledTimes(2)
+    expect(harness.services.getSnapshot().modules[0]?.catalog?.version).toBe(
+      '1.2.4',
+    )
   })
 
   it('activates a pending target and commits it as active', async () => {

@@ -51,7 +51,6 @@ import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry
 
 export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
   'official-module-catalog/catalog-v1.json'
-export const OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS = 6 * 60 * 60 * 1_000
 export const OFFICIAL_MODULE_CATALOG_TIMEOUT_MS = 10_000
 export const OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS = 30_000
 export const MODULE_QUIESCENCE_TIMEOUT_MS = 30_000
@@ -79,7 +78,8 @@ type ProductionModuleIntentStore = Pick<
 export type ModuleCatalogResolutionSource = Pick<
   OfficialModuleCatalogSource,
   'load' | 'getResolvedVersion' | 'getResolvedArtifactDescriptor'
->
+> &
+  Partial<Pick<OfficialModuleCatalogSource, 'loadFresh'>>
 
 export type ProductionModuleServicesOptions = Readonly<{
   store: ModuleStore
@@ -138,7 +138,6 @@ export function createProductionModuleServices(
     adapter: options.catalogCacheAdapter,
     cachePath: OFFICIAL_MODULE_CATALOG_CACHE_PATH,
     timeoutMs: OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
-    cacheTtlMs: OFFICIAL_MODULE_CATALOG_CACHE_TTL_MS,
     ...(options.catalogRequest ? { requestUrl: options.catalogRequest } : {}),
   })
   const catalogSource =
@@ -412,6 +411,16 @@ export function createProductionModuleServices(
     getSnapshot: manager.getSnapshot,
     subscribe: manager.subscribe,
     refresh: () => manager.refresh(),
+    async checkForUpdates() {
+      if (disposed) return
+      try {
+        if (catalogSource.loadFresh) await catalogSource.loadFresh()
+        await manager.refresh()
+      } catch (error) {
+        options.reportRefreshError?.(error)
+        throw error
+      }
+    },
     getVerifiedArtifact: (moduleId) =>
       verifiedArtifactRegistry.getVerifiedArtifact(moduleId),
     getInstallCandidate(moduleId: string) {

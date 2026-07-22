@@ -121,7 +121,6 @@ function options(
     adapter: adapter as unknown as DataAdapter,
     cachePath: CACHE_PATH,
     timeoutMs: 100,
-    cacheTtlMs: 1_000,
     now: () => 10_000,
     requestUrl: jest.fn(async () => response(catalog())),
     ...overrides,
@@ -226,12 +225,12 @@ describe('OfficialModuleCatalogClient', () => {
     await flushPromises()
     expect(adapter.statPaths).toEqual([cachePath])
     expect(adapter.readPaths).toEqual([cachePath])
-    expect(adapter.writes[0]?.[0]).toBe(cachePath)
+    expect(adapter.writes).toHaveLength(0)
   })
 
-  it('returns a fresh validated cache without requesting the network', async () => {
+  it('returns the last validated snapshot without requesting the network', async () => {
     const adapter = new FakeAdapter()
-    adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 9_500))
+    adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 1))
     const request = jest.fn(async () => response(catalog()))
     const client = new OfficialModuleCatalogClient(
       options(adapter, { requestUrl: request }),
@@ -261,31 +260,22 @@ describe('OfficialModuleCatalogClient', () => {
     expect(request).toHaveBeenCalledTimes(1)
   })
 
-  it.each([
-    ['network rejection', () => Promise.reject(new Error('offline'))],
-    ['non-2xx response', () => Promise.resolve(response('no', 300))],
-    ['invalid remote catalog', () => Promise.resolve(response('{'))],
-    [
-      'oversized declared response',
-      () =>
-        Promise.resolve(
-          response(catalog(), 200, { 'Content-Length': '1000001' }),
-        ),
-    ],
-  ])('uses a validated stale cache after %s', async (_label, request) => {
+  it('keeps snapshot loading independent from the update endpoint', async () => {
     const adapter = new FakeAdapter()
     adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 1))
+    const request = jest.fn(async () => response(catalog('2.0.0')))
     const client = new OfficialModuleCatalogClient(
-      options(adapter, { requestUrl: jest.fn(request) }),
+      options(adapter, { requestUrl: request }),
     )
 
     await expect(client.load()).resolves.toMatchObject({
       modules: [{ versions: [{ version: '1.1.0' }] }],
     })
+    expect(request).not.toHaveBeenCalled()
     expect(adapter.writes).toHaveLength(0)
   })
 
-  it('never falls back to a stale cache when a fresh load is required', async () => {
+  it('never falls back to the snapshot when a fresh load is required', async () => {
     const adapter = new FakeAdapter()
     adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 1))
     const request = jest.fn(async () => {

@@ -11,6 +11,7 @@ export type ModuleService = Readonly<{
   getSnapshot(): ModuleManagerSnapshot
   subscribe(listener: () => void): () => void
   refresh(): Promise<void>
+  checkForUpdates(): Promise<void>
   getInstallCandidate(moduleId: string): ConfirmedModuleCandidate | undefined
   install(candidate: ConfirmedModuleCandidate): Promise<ModuleOperationResult>
   setEnabled(moduleId: string, enabled: boolean): Promise<ModuleOperationResult>

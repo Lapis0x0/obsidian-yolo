@@ -71,7 +71,10 @@ function source(
   catalog: OfficialModuleCatalogV1,
   getCompatibility: OfficialModuleCompatibilityProvider = () => compatibility(),
 ) {
-  const client = { load: jest.fn(async () => catalog) }
+  const client = {
+    load: jest.fn(async () => catalog),
+    loadFresh: jest.fn(async () => catalog),
+  }
   return {
     client,
     source: new OfficialModuleCatalogSource({
@@ -134,6 +137,11 @@ describe('OfficialModuleCatalogSource', () => {
           { id: 'learning', name: 'Learning', versions: ['1.0.0'] },
         ]),
       ),
+      loadFresh: jest.fn(async () =>
+        parsedCatalog([
+          { id: 'learning', name: 'Learning', versions: ['1.0.0'] },
+        ]),
+      ),
     }
     const catalogSource = new OfficialModuleCatalogSource({
       client,
@@ -144,6 +152,48 @@ describe('OfficialModuleCatalogSource', () => {
     expect((await catalogSource.load())[0]?.name).toBe('Learning')
     locale = 'zh'
     expect((await catalogSource.load())[0]?.name).toBe('ZH Learning')
+  })
+
+  it('replaces the local snapshot only after a fresh catalog succeeds', async () => {
+    const previous = parsedCatalog([{ id: 'learning', versions: ['1.0.0'] }])
+    const latest = parsedCatalog([
+      { id: 'learning', versions: ['1.0.0', '1.1.0'] },
+    ])
+    const client = {
+      load: jest.fn(async () => previous),
+      loadFresh: jest.fn(async () => latest),
+    }
+    const catalogSource = new OfficialModuleCatalogSource({
+      client,
+      getCompatibility: () => compatibility(),
+      locale: 'en',
+    })
+
+    expect((await catalogSource.load())[0]?.version).toBe('1.0.0')
+    expect((await catalogSource.loadFresh())[0]?.version).toBe('1.1.0')
+    expect((await catalogSource.load())[0]?.version).toBe('1.1.0')
+    expect(client.load).toHaveBeenCalledTimes(1)
+    expect(client.loadFresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains the last usable snapshot when a fresh request fails', async () => {
+    const previous = parsedCatalog([{ id: 'learning', versions: ['1.0.0'] }])
+    const client = {
+      load: jest.fn(async () => previous),
+      loadFresh: jest.fn(async () => {
+        throw new Error('offline')
+      }),
+    }
+    const catalogSource = new OfficialModuleCatalogSource({
+      client,
+      getCompatibility: () => compatibility(),
+      locale: 'en',
+    })
+
+    await catalogSource.load()
+    await expect(catalogSource.loadFresh()).rejects.toThrow('offline')
+    expect((await catalogSource.load())[0]?.version).toBe('1.0.0')
+    expect(client.load).toHaveBeenCalledTimes(1)
   })
 
   it('binds installer lookup to the displayed version and selected platform', async () => {

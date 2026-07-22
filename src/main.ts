@@ -225,7 +225,7 @@ export default class YoloPlugin extends Plugin {
   private deviceId: string | null = null
   private currentSettingsMeta: YoloDataMeta | null = null
   updateCheckResult: UpdateCheckResult | null = null
-  private hasCheckedForUpdate = false
+  private hasCheckedForUpdates = false
   private updateCheckListeners: (() => void)[] = []
   pluginUpdateState: PluginUpdateState = { status: 'idle' }
   private pluginUpdateListeners: (() => void)[] = []
@@ -1045,7 +1045,7 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
-  /** Re-notify banner subscribers when chat opens (aligned with checkForUpdateOnce). */
+  /** Re-notify banner subscribers when chat opens (aligned with checkForUpdatesOnce). */
   refreshInstallationIncompleteBanner(): void {
     this.notifyInstallationIncompleteListeners()
   }
@@ -2037,7 +2037,7 @@ export default class YoloPlugin extends Plugin {
     this.updateToastCleanup = mountUpdateToast(this)
     // The toast is anchored to the window (not a chat view), so trigger the
     // check at load time rather than waiting for a chat view to open.
-    this.checkForUpdateOnce()
+    this.checkForUpdatesOnce()
     let shouldStartAgentNotifications = true
     void this.warmupAgentService()
       .then(() => {
@@ -3535,29 +3535,32 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
-  checkForUpdateOnce(): void {
-    if (this.hasCheckedForUpdate) {
+  checkForUpdatesOnce(): void {
+    if (this.hasCheckedForUpdates) {
       return
     }
-    this.hasCheckedForUpdate = true
-    void (async () => {
-      const fetched = await checkForUpdate(this.manifest.version)
-      if (fetched?.hasUpdate) {
-        if (this.isUpdateVersionMuted(fetched.latestVersion)) {
-          return
+    this.hasCheckedForUpdates = true
+    void Promise.allSettled([
+      (async () => {
+        const fetched = await checkForUpdate(this.manifest.version)
+        if (fetched?.hasUpdate) {
+          if (this.isUpdateVersionMuted(fetched.latestVersion)) {
+            return
+          }
+          this.updateCheckResult = fetched
+          this.notifyUpdateCheckListeners()
+          await this.refreshPluginUpdateStaging(fetched.latestVersion)
+          if (
+            this.settings.pluginUpdateAutoDownloadEnabled &&
+            canSelfUpdate(this) &&
+            fetched.assets
+          ) {
+            void this.startPluginUpdateDownload()
+          }
         }
-        this.updateCheckResult = fetched
-        this.notifyUpdateCheckListeners()
-        await this.refreshPluginUpdateStaging(fetched.latestVersion)
-        if (
-          this.settings.pluginUpdateAutoDownloadEnabled &&
-          canSelfUpdate(this) &&
-          fetched.assets
-        ) {
-          void this.startPluginUpdateDownload()
-        }
-      }
-    })()
+      })(),
+      this.moduleService?.checkForUpdates() ?? Promise.resolve(),
+    ])
   }
 
   async openChatView(options?: {
