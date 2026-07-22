@@ -210,7 +210,7 @@ for (const [name, change, error] of [
   })
 }
 
-test('release workflow verifies publication before dispatching catalog review', async () => {
+test('release workflow verifies publication before dispatching catalog publication', async () => {
   const workflowPath = path.resolve('.github/workflows/learning-release.yml')
   const source = await readFile(workflowPath, 'utf8')
   const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
@@ -249,7 +249,32 @@ test('release workflow verifies publication before dispatching catalog review', 
     steps[dispatchIndex].run,
     /steps\.published\.outputs\.manifest_url/,
   )
-  assert.match(steps[dispatchIndex].run, /review/)
+  assert.match(steps[dispatchIndex].run, /published directly/)
+})
+
+test('catalog workflow serializes and publishes only the verified catalog to main', async () => {
+  const workflowPath = path.resolve('.github/workflows/module-catalog.yml')
+  const source = await readFile(workflowPath, 'utf8')
+  const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
+  const steps = workflow.jobs.update.steps
+  const publish = steps.find(
+    ({ name }) => name === 'Publish verified catalog update',
+  )
+
+  assert.equal(workflow.concurrency.group, 'module-catalog-publish')
+  assert.equal(workflow.permissions.contents, 'write')
+  assert.equal(workflow.permissions['pull-requests'], undefined)
+  assert.ok(publish)
+  assert.match(publish.run, /git add modules\/catalog-v1\.json/)
+  assert.match(
+    publish.run,
+    /git push origin "HEAD:\$\{\{ github\.event\.repository\.default_branch \}\}"/,
+  )
+  assert.doesNotMatch(publish.run, /--force/)
+  assert.equal(
+    steps.some(({ run = '' }) => /gh pr create/.test(run)),
+    false,
+  )
 })
 
 test('release workflow keeps guarded cleanup after the publish attempt', async () => {

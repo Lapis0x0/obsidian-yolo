@@ -17,19 +17,16 @@ on:
         type: string
 
 concurrency:
-  group: module-catalog-${{ inputs.module_id }}-${{ inputs.version }}
+  group: module-catalog-publish
   cancel-in-progress: false
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      UPDATE_BRANCH: automation/module-catalog-${{ inputs.module_id }}-v${{ inputs.version }}
     steps:
       - name: Checkout default branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -71,33 +68,15 @@ jobs:
             git diff --check -- modules/catalog-v1.json
           fi
 
-      - name: Commit verified update
+      - name: Publish verified catalog update
         if: steps.changes.outputs.changed == 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git switch -c "$UPDATE_BRANCH"
           git add modules/catalog-v1.json
           git commit -m "chore(modules): catalog $MODULE_ID $MODULE_VERSION"
-          git push --force-with-lease origin "HEAD:$UPDATE_BRANCH"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          echo 'Published the verified module release to the official catalog.' >> "$GITHUB_STEP_SUMMARY"
         env:
           MODULE_ID: ${{ inputs.module_id }}
           MODULE_VERSION: ${{ inputs.version }}
-
-      - name: Create or report pull request
-        if: steps.changes.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MODULE_ID: ${{ inputs.module_id }}
-          MODULE_VERSION: ${{ inputs.version }}
-        run: |
-          existing_pr="$(gh pr list --base "${{ github.event.repository.default_branch }}" --head "$UPDATE_BRANCH" --state open --json url --jq '.[0].url')"
-          if [[ -n "$existing_pr" ]]; then
-            echo "Updated existing pull request: $existing_pr" | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            gh pr create \
-              --base "${{ github.event.repository.default_branch }}" \
-              --head "$UPDATE_BRANCH" \
-              --title "chore(modules): catalog $MODULE_ID $MODULE_VERSION" \
-              --body "Verified the complete published release closure before updating the official module catalog. Dispatch: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          fi

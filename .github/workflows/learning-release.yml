@@ -194,7 +194,7 @@ jobs:
             -f manifest_url="${{ steps.published.outputs.manifest_url }}" \
             -f module_id=learning \
             -f version="${{ steps.published.outputs.release_version }}"
-          echo 'Dispatched module-catalog.yml; its pull request remains subject to review.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Dispatched module-catalog.yml; the verified release will be published directly to the official catalog.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove this run's failed draft Release
         if: ${{ failure() || cancelled() }}
