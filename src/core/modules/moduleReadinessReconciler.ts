@@ -1,3 +1,4 @@
+import type { ModuleArtifactArrivalGrace } from './moduleArtifactArrivalGrace'
 import type { ModuleArtifactInstaller } from './moduleArtifactInstaller'
 import {
   type ModuleArtifactDescriptor,
@@ -12,8 +13,12 @@ import type {
 import type { ModuleIntentStore } from './moduleIntentStore'
 import { schedulePendingModule } from './modulePendingInstallation'
 import type { ModuleArtifactPlatform, ModuleStore } from './moduleStore'
-import { assertModuleId } from './moduleStore'
+import { ModuleArtifactMissingError, assertModuleId } from './moduleStore'
 import type { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
+
+const MODULE_READINESS_SUPERSEDED = Object.freeze({
+  kind: 'module-readiness-superseded',
+})
 
 export type ModuleReadinessResult = Readonly<{
   moduleId: string
@@ -34,6 +39,7 @@ export type ModuleReadinessReconcilerOptions = Readonly<{
   artifactStore: ModuleArtifactReadStore &
     Pick<ModuleStore, 'removeVersionArtifacts'>
   installer: Pick<ModuleArtifactInstaller, 'install' | 'repair'>
+  artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
   platform: ModuleArtifactPlatform
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
 }>
@@ -41,6 +47,7 @@ export type ModuleReadinessReconcilerOptions = Readonly<{
 /** Reconciles synchronized intent with exact, device-local ready artifacts. */
 export class ModuleReadinessReconciler {
   private readonly controllers = new Set<AbortController>()
+  private readonly graceControllers = new Map<string, AbortController>()
   private disposed = false
 
   constructor(private readonly options: ModuleReadinessReconcilerOptions) {
@@ -55,26 +62,50 @@ export class ModuleReadinessReconciler {
       typeof options.artifactStore.removeVersionArtifacts !== 'function' ||
       typeof options.installer?.install !== 'function' ||
       typeof options.installer?.repair !== 'function' ||
+      (options.artifactArrivalGrace !== undefined &&
+        typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
       (options.platform !== 'desktop' && options.platform !== 'mobile')
     ) {
       throw new Error('Module readiness reconciler options are invalid')
     }
   }
 
-  ensureModuleReady(moduleId: string): Promise<ModuleReadinessResult> {
+  ensureModuleReady(
+    moduleId: string,
+    options: Readonly<{ waitForSynchronizedArtifact?: boolean }> = {},
+  ): Promise<ModuleReadinessResult> {
     assertModuleId(moduleId, 'Module id')
     if (this.disposed) {
       return Promise.reject(
         new Error('Module readiness reconciler is disposed'),
       )
     }
+    const waitForSynchronizedArtifact =
+      options.waitForSynchronizedArtifact === true
+    if (!waitForSynchronizedArtifact) {
+      this.graceControllers.get(moduleId)?.abort(MODULE_READINESS_SUPERSEDED)
+    }
     const controller = new AbortController()
     this.controllers.add(controller)
+    if (waitForSynchronizedArtifact) {
+      this.graceControllers.get(moduleId)?.abort(MODULE_READINESS_SUPERSEDED)
+      this.graceControllers.set(moduleId, controller)
+    }
     return this.options.deviceStateStore
       .runExclusive(moduleId, (transaction) =>
-        this.ensureTransaction(moduleId, transaction, controller.signal),
+        this.ensureTransaction(
+          moduleId,
+          transaction,
+          controller.signal,
+          waitForSynchronizedArtifact,
+        ),
       )
-      .finally(() => this.controllers.delete(controller))
+      .finally(() => {
+        this.controllers.delete(controller)
+        if (this.graceControllers.get(moduleId) === controller) {
+          this.graceControllers.delete(moduleId)
+        }
+      })
   }
 
   async reconcile(
@@ -112,12 +143,14 @@ export class ModuleReadinessReconciler {
     this.disposed = true
     for (const controller of this.controllers) controller.abort()
     this.controllers.clear()
+    this.graceControllers.clear()
   }
 
   private async ensureTransaction(
     moduleId: string,
     transaction: ModuleDeviceStateTransaction,
     signal: AbortSignal,
+    waitForSynchronizedArtifact: boolean,
   ): Promise<ModuleReadinessResult> {
     this.throwIfUnavailable(signal)
     const state = await transaction.read()
@@ -161,7 +194,27 @@ export class ModuleReadinessReconciler {
       )
     }
 
-    await this.installDescriptor(descriptor, signal)
+    const synchronizedArtifactReady =
+      waitForSynchronizedArtifact && this.options.artifactArrivalGrace
+        ? await this.options.artifactArrivalGrace.waitForArtifact(
+            descriptor.id,
+            descriptor.version,
+            () => this.isDescriptorReady(descriptor, signal),
+            signal,
+          )
+        : false
+    if (signal.aborted && signal.reason === MODULE_READINESS_SUPERSEDED) {
+      return readinessResult({
+        moduleId,
+        status: 'skipped',
+        versions: [],
+        repairedVersions: [],
+      })
+    }
+    this.throwIfUnavailable(signal)
+    if (!synchronizedArtifactReady) {
+      await this.installDescriptor(descriptor, signal)
+    }
     this.throwIfUnavailable(signal)
     // Once the durable commit starts, dispose must not report cancellation for
     // an installation that may already have become visible.
@@ -250,8 +303,37 @@ export class ModuleReadinessReconciler {
       return false
     } catch (error) {
       if (signal.aborted || this.disposed) throw disposedError()
-      if (error instanceof ArtifactAccessError) throw error
+      if (error instanceof ArtifactAccessError) {
+        if (error.accessCause instanceof ModuleArtifactMissingError) {
+          return this.installDescriptor(descriptor, signal)
+        }
+        throw error
+      }
       return this.repairDescriptor(descriptor, signal)
+    }
+  }
+
+  private async isDescriptorReady(
+    descriptor: ModuleArtifactDescriptor,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    this.throwIfUnavailable(signal)
+    const subtleCrypto =
+      this.options.subtleCrypto ?? globalThis.crypto?.subtle ?? null
+    if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
+    try {
+      await withAbort(
+        verifyInstalledModuleArtifact(
+          this.options.artifactStore,
+          descriptor,
+          guardArtifactCrypto(subtleCrypto),
+        ),
+        signal,
+      )
+      return true
+    } catch {
+      if (signal.aborted || this.disposed) throw disposedError()
+      return false
     }
   }
 
@@ -289,8 +371,11 @@ export class ModuleReadinessReconciler {
 }
 
 class ArtifactAccessError extends Error {
-  constructor(operation: string, error: unknown) {
-    super(`Module artifact ${operation} failed: ${errorMessage(error)}`)
+  constructor(
+    operation: string,
+    readonly accessCause: unknown,
+  ) {
+    super(`Module artifact ${operation} failed: ${errorMessage(accessCause)}`)
     this.name = 'ArtifactAccessError'
   }
 }

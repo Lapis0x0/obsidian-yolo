@@ -41,6 +41,13 @@ export {
   type ModuleArtifactInstallerOptions,
 } from './moduleArtifactInstaller'
 export {
+  MODULE_ARTIFACT_ARRIVAL_GRACE_MS,
+  MODULE_ARTIFACT_ARRIVAL_POLL_MS,
+  MODULE_ARTIFACT_ARRIVAL_QUIET_MS,
+  ModuleArtifactArrivalGrace,
+  type ModuleArtifactArrivalGraceOptions,
+} from './moduleArtifactArrivalGrace'
+export {
   ModuleInstallationCoordinator,
   type ConfirmedModuleCandidate,
   type ModuleInstallationCoordinatorOptions,
@@ -211,6 +218,7 @@ export {
   type ProductionModuleServicesOptions,
 } from './productionModuleServices'
 export {
+  ModuleArtifactMissingError,
   ModuleStore,
   collectModuleManifestFiles,
   isModuleHostApiRange,

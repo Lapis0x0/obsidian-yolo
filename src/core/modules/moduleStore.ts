@@ -1,4 +1,4 @@
-import { type DataAdapter, normalizePath } from 'obsidian'
+import { type DataAdapter, type ListedFiles, normalizePath } from 'obsidian'
 
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 
@@ -6,6 +6,13 @@ export type ModuleStoreOptions = {
   adapter: DataAdapter
   manifest: Readonly<{ id: string; dir?: string }>
   configDir: string
+}
+
+export class ModuleArtifactMissingError extends Error {
+  constructor(readonly path: string) {
+    super(`Module artifact is missing: ${path}`)
+    this.name = 'ModuleArtifactMissingError'
+  }
 }
 
 export type ModuleArtifactManifest = Readonly<{
@@ -561,7 +568,7 @@ export class ModuleStore {
     let entryCount = 0
     while (pending.length > 0) {
       const folder = pending.pop()!
-      const listing = await this.options.adapter.list(folder.path)
+      const listing = await this.listFolder(folder.path)
       for (const file of listing.files) {
         const normalized = normalizePortablePath(file)
         files.push(relativeVersionPath(root, normalized))
@@ -635,10 +642,36 @@ export class ModuleStore {
   }
 
   private async readBytes(path: string): Promise<Uint8Array> {
-    const bytes = await this.options.adapter.readBinary(
-      normalizePortablePath(path),
-    )
-    return new Uint8Array(bytes)
+    const normalized = normalizePortablePath(path)
+    try {
+      const bytes = await this.options.adapter.readBinary(normalized)
+      return new Uint8Array(bytes)
+    } catch (error) {
+      return await this.throwIfMissing(normalized, error)
+    }
+  }
+
+  private async listFolder(path: string): Promise<ListedFiles> {
+    try {
+      return await this.options.adapter.list(path)
+    } catch (error) {
+      return await this.throwIfMissing(path, error)
+    }
+  }
+
+  private async throwIfMissing(
+    path: string,
+    original: unknown,
+  ): Promise<never> {
+    try {
+      if ((await this.options.adapter.stat(path)) === null) {
+        throw new ModuleArtifactMissingError(path)
+      }
+    } catch (error) {
+      if (error instanceof ModuleArtifactMissingError) throw error
+      // Preserve the original read/list failure when absence cannot be proven.
+    }
+    throw original
   }
 }
 

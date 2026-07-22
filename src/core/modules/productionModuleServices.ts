@@ -2,6 +2,7 @@ import {
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
 } from './moduleActivationCoordinator'
+import type { ModuleArtifactArrivalGrace } from './moduleArtifactArrivalGrace'
 import {
   ModuleArtifactInstaller,
   type ModuleArtifactInstallerOptions,
@@ -65,7 +66,10 @@ export type ProductionModuleRuntimeReservation = Readonly<{
 }>
 
 export type ProductionModuleReadinessReconciler = Readonly<{
-  ensureModuleReady(moduleId: string): Promise<ModuleReadinessResult>
+  ensureModuleReady(
+    moduleId: string,
+    options?: Readonly<{ waitForSynchronizedArtifact?: boolean }>,
+  ): Promise<ModuleReadinessResult>
   reconcile(
     moduleIds: readonly string[],
   ): Promise<readonly ModuleReadinessResult[]>
@@ -97,6 +101,7 @@ export type ProductionModuleServicesOptions = Readonly<{
   intentStore: ProductionModuleIntentStore
   catalogSource?: ModuleCatalogResolutionSource
   artifactDownloader?: ModuleArtifactInstallerOptions['download']
+  artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
   authorizeArtifactRemoval?: (
     moduleId: string,
     versions: readonly string[],
@@ -235,6 +240,9 @@ export function createProductionModuleServices(
     catalogSource,
     artifactStore: options.store,
     installer,
+    ...(options.artifactArrivalGrace
+      ? { artifactArrivalGrace: options.artifactArrivalGrace }
+      : {}),
     platform: options.platform,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
   })
@@ -308,7 +316,12 @@ export function createProductionModuleServices(
       subscribe: (listener) => startupIntentStore.subscribeAll(listener),
     },
     intentStore: startupIntentStore,
-    readinessReconciler,
+    readinessReconciler: {
+      ensureModuleReady: (moduleId) =>
+        readinessReconciler.ensureModuleReady(moduleId, {
+          waitForSynchronizedArtifact: true,
+        }),
+    },
     activationCoordinator,
     runtime: runtimeReservation,
     manager,
@@ -667,6 +680,8 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       typeof options.catalogRequest !== 'function') ||
     (options.artifactRequest !== undefined &&
       typeof options.artifactRequest !== 'function') ||
+    (options.artifactArrivalGrace !== undefined &&
+      typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
     (options.subscribeLocale !== undefined &&
       typeof options.subscribeLocale !== 'function') ||
     (options.reportCleanupError !== undefined &&
@@ -701,11 +716,14 @@ function createGuardedReadinessReconciler(
     )
     return result
   }
-  const ensureModuleReady = async (moduleId: string) => {
+  const ensureModuleReady = async (
+    moduleId: string,
+    options?: Readonly<{ waitForSynchronizedArtifact?: boolean }>,
+  ) => {
     try {
       return record(
         await runtime.runWithModuleQuiesced(moduleId, () =>
-          reconciler.ensureModuleReady(moduleId),
+          reconciler.ensureModuleReady(moduleId, options),
         ),
       )
     } catch (error) {

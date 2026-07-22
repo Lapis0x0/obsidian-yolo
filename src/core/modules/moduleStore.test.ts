@@ -2,6 +2,7 @@ import type { DataAdapter } from 'obsidian'
 
 import {
   MAX_MODULE_ARTIFACT_FILE_BYTES,
+  ModuleArtifactMissingError,
   ModuleStore,
   moduleArtifactReleaseParent,
   parseModuleArtifactManifest,
@@ -93,6 +94,42 @@ describe('ModuleStore', () => {
       3,
       '.config/plugins/yolo/modules/notes/1.2.0/dist/entry.js',
     )
+  })
+
+  it('classifies a failed read as missing only when stat confirms absence', async () => {
+    const missing = new ModuleStore({
+      adapter: {
+        readBinary: jest.fn(async () => {
+          throw new Error('ENOENT')
+        }),
+        stat: jest.fn(async () => null),
+      } as unknown as DataAdapter,
+      manifest: { id: 'yolo' },
+      configDir: '.config',
+    })
+    await expect(
+      missing.readManifestBytes('learning', '1.0.0'),
+    ).rejects.toBeInstanceOf(ModuleArtifactMissingError)
+
+    const accessFailure = new Error('permission denied')
+    const inaccessible = new ModuleStore({
+      adapter: {
+        readBinary: jest.fn(async () => {
+          throw accessFailure
+        }),
+        stat: jest.fn(async () => ({
+          type: 'file' as const,
+          ctime: 0,
+          mtime: 0,
+          size: 1,
+        })),
+      } as unknown as DataAdapter,
+      manifest: { id: 'yolo' },
+      configDir: '.config',
+    })
+    await expect(
+      inaccessible.readManifestBytes('learning', '1.0.0'),
+    ).rejects.toBe(accessFailure)
   })
 
   it('rejects module and entry paths that can escape the module directory', async () => {

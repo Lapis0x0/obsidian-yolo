@@ -63,6 +63,7 @@ import {
   DomBlobModuleScriptExecutor,
   IndexedDbDataAdapter,
   ManagedModulePathsCapabilityProvider,
+  ModuleArtifactArrivalGrace,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
   ModuleDeviceStateStore,
@@ -1975,7 +1976,7 @@ export default class YoloPlugin extends Plugin {
       console.error('[YOLO] Learning legacy install migration failed', error)
     }
     this.warnIfInstallationIncomplete()
-    if (!(await this.activateModules())) return
+    this.activateModules()
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -3728,6 +3729,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       manifest: this.manifest,
       configDir: this.app.vault.configDir,
     })
+    const artifactArrivalGrace = new ModuleArtifactArrivalGrace({
+      adapter: store.adapter,
+      pluginDir: store.pluginDir,
+    })
     const createConfigBackend = createObsidianModuleConfigBackendFactory({
       app: this.app,
       getSettings: () => this.settings,
@@ -3935,6 +3940,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,
       intentStore: serviceIntentStore,
+      artifactArrivalGrace,
       ...(bundledCatalogSource
         ? {
             catalogSource: bundledCatalogSource,
@@ -3979,14 +3985,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     })
   }
 
-  private async activateModules(): Promise<boolean> {
-    try {
-      await this.getModuleService().start()
-    } catch (error) {
-      console.error('[YOLO] Failed to start modules', error)
-      return true
-    }
-    return true
+  private activateModules(): void {
+    void this.getModuleService()
+      .start()
+      .catch((error) => {
+        console.error('[YOLO] Failed to start modules', error)
+      })
   }
 
   private async activateLocalConformanceModule(): Promise<void> {
