@@ -5,6 +5,10 @@ import {
   DEFAULT_CHAT_TITLE_MODEL_ID,
 } from '../../constants'
 import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConfig'
+import {
+  getYoloAudioFileFallbackNotePathTemplate,
+  getYoloReadAloudDir,
+} from '../../core/paths/yoloPaths'
 import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
@@ -316,7 +320,7 @@ const tabCompletionTriggerSchema = z
  * pattern: one outer list, no two-layer split, drag to reorder, gear to
  * edit. The pre-list shape (`selectedAsrApiFormat + asrProviderProfiles`,
  * which existed briefly during feature development on this branch) is
- * converted into list entries by the v75→v76 migration.
+ * converted into list entries by the v76→v77 migration.
  */
 export const ASR_API_FORMATS = [
   'openai-compatible-transcription',
@@ -432,7 +436,7 @@ export type ReadAloudSourceMode = (typeof READ_ALOUD_SOURCE_MODES)[number]
 
 export const READ_ALOUD_MARKDOWN_MODES = ['readable', 'raw'] as const
 export type ReadAloudMarkdownMode = (typeof READ_ALOUD_MARKDOWN_MODES)[number]
-export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = 'YOLO/read_aloud'
+export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = getYoloReadAloudDir()
 
 /**
  * Single ASR configuration entry. Mirrors the provider/model pattern (one
@@ -442,7 +446,7 @@ export const DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR = 'YOLO/read_aloud'
  * IMPORTANT: this schema must keep `.catch` defaults on every field so
  * partial / older blobs survive load. The legacy `OpenAiCompatibleTranscriptionProfile`
  * and `OpenAiCompatibleChatAudioAsrProfile` shapes have been removed —
- * the v75→v76 migration converts them into entries of this schema.
+ * the v76→v77 migration converts them into entries of this schema.
  */
 const asrConfigSchema = z
   .object({
@@ -663,8 +667,7 @@ export const DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS = {
   audioFileChunkHeaderMode: 'none' as AudioFileChunkHeaderMode,
   audioFileOutputMetadataMode:
     'metadata-timestamps' as AudioFileOutputMetadataMode,
-  audioFileFallbackNotePathTemplate:
-    'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md',
+  audioFileFallbackNotePathTemplate: getYoloAudioFileFallbackNotePathTemplate(),
   audioFileChunkTargetDurationSec: 120,
   audioFileWavMaxDurationSec: 60 * 60,
   audioFileMaxConcurrentChunks: 5,
@@ -849,6 +852,9 @@ export const yoloSettingsSchema = z.object({
   // 更新提示:同版本第二次关闭后记录被静音的版本号,只有出现更高版本才会再次提示。
   mutedUpdateVersion: z.string().catch(''),
 
+  // 模块更新提示:按模块记录被静音的版本,更高版本仍会重新提示。
+  mutedModuleUpdateVersions: z.record(z.string(), z.string()).catch({}),
+
   /** 检测到新版本时在后台自动下载 release 文件；安装仍需用户确认。 */
   pluginUpdateAutoDownloadEnabled: z.boolean().catch(true),
 
@@ -1031,15 +1037,7 @@ export const yoloSettingsSchema = z.object({
 
   notificationOptions: notificationOptionsSchema,
 
-  learningOptions: z
-    .object({
-      modelId: z.string().catch(''),
-      betaNoticeAcknowledged: z.boolean().catch(false),
-    })
-    .catch({
-      modelId: '',
-      betaNoticeAcknowledged: false,
-    }),
+  learningOptions: z.unknown().optional(),
 
   // Continuation (续写) options
   continuationOptions: z

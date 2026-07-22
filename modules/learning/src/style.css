@@ -1,0 +1,13 @@
+@import './styles/tokens.css';
+@import './styles/primitives.css';
+@import './styles/shell.css';
+@import './styles/home.css';
+@import './styles/modal.css';
+@import './styles/anki-import.css';
+@import './styles/wizard.css';
+@import './styles/outline-builder.css';
+@import './styles/outline.css';
+@import './styles/cards.css';
+@import './styles/exercises.css';
+@import './styles/workspace.css';
+@import './styles/knowledge-graph.css';

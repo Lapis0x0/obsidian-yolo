@@ -1,5 +1,6 @@
 import { Editor, MarkdownView, Notice } from 'obsidian'
 
+import { getYoloReadAloudDir } from '../../../../core/paths/yoloPaths'
 import { applyAudioOutputDevice } from '../../../../core/tts/audioOutput'
 import {
   getTtsProvider,
@@ -9,10 +10,7 @@ import type {
   TtsProvider,
   TtsSynthesisFileResult,
 } from '../../../../core/tts/types'
-import {
-  DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR,
-  type YoloSettings,
-} from '../../../../settings/schema/setting.types'
+import type { YoloSettings } from '../../../../settings/schema/setting.types'
 import type { VoiceInputStatus, VoiceReadAloudStatus } from '../voiceStatus'
 
 import {
@@ -115,6 +113,7 @@ export class ReadAloudController {
   private session: ReadAloudSession | null = null
   private pendingStart: ReadAloudPendingStart | null = null
   private readonly generatedAudioStore: GeneratedAudioStore
+  private readonly pendingManagedWrites = new Set<Promise<void>>()
   private readonly cache = new Map<string, TtsSynthesisFileResult>()
   private lastGeneratedDragSegment: GeneratedAudioDragSegment | null = null
   private completionTimeout: number | null = null
@@ -269,6 +268,13 @@ export class ReadAloudController {
 
   hasGeneratedAudio(): boolean {
     return !!this.resolveDragSegment()
+  }
+
+  /** Wait until writes already targeting the managed root have settled. */
+  async waitForPendingWrites(): Promise<void> {
+    while (this.pendingManagedWrites.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingManagedWrites))
+    }
   }
 
   private captureTextSnapshot(
@@ -462,7 +468,7 @@ export class ReadAloudController {
     const abortController = new AbortController()
     const saveDir =
       options.readAloudGeneratedAudioSaveDir.trim() ||
-      DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR
+      getYoloReadAloudDir(settings)
     const saveSession = saveDir
       ? this.generatedAudioStore.createSession({
           saveDir,
@@ -581,7 +587,20 @@ export class ReadAloudController {
     await this.saveSegment(session, segment)
   }
 
-  private async saveSegment(
+  private saveSegment(
+    session: ReadAloudSession,
+    segment: ReadAloudGeneratedSegment,
+  ): Promise<void> {
+    const operation = this.performSaveSegment(session, segment)
+    this.pendingManagedWrites.add(operation)
+    void operation.then(
+      () => this.pendingManagedWrites.delete(operation),
+      () => this.pendingManagedWrites.delete(operation),
+    )
+    return operation
+  }
+
+  private async performSaveSegment(
     session: ReadAloudSession,
     segment: ReadAloudGeneratedSegment,
   ): Promise<void> {

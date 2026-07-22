@@ -27,9 +27,6 @@ export function normalizeYoloSettingsReferences(
     return true
   })
   const validChatModelIds = new Set(chatModels.map((model) => model.id))
-  const enabledChatModelIds = new Set(
-    chatModels.filter((model) => model.enable ?? true).map((model) => model.id),
-  )
   const validEmbeddingModelIds = new Set(
     embeddingModels.map((model) => model.id),
   )
@@ -68,10 +65,6 @@ export function normalizeYoloSettingsReferences(
       validChatModelIds,
       fallbackChatModelId,
     ) ?? ''
-  const learningFallbackModelId = enabledChatModelIds.has(normalizedChatModelId)
-    ? normalizedChatModelId
-    : fallbackChatModelId
-
   const normalized: YoloSettings = {
     ...settings,
     chatModels,
@@ -102,14 +95,16 @@ export function normalizeYoloSettingsReferences(
         fallbackChatModelId,
       ),
     },
-    learningOptions: {
-      ...settings.learningOptions,
-      modelId:
+    contextVoiceInputOptions: {
+      ...settings.contextVoiceInputOptions,
+      // An empty selection intentionally delegates to voice's existing
+      // default-model fallback instead of pinning a replacement model here.
+      polishModelId:
         normalizeModelReference(
-          settings.learningOptions.modelId,
-          enabledChatModelIds,
-          learningFallbackModelId,
-        ) || learningFallbackModelId,
+          settings.contextVoiceInputOptions.polishModelId,
+          validChatModelIds,
+          '',
+        ) ?? '',
     },
     assistants,
     currentAssistantId:

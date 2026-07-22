@@ -11,6 +11,10 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
+import {
+  getYoloLogsDir,
+  hasHiddenYoloBaseDirSegment,
+} from '../../../core/paths/yoloPaths'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
@@ -46,7 +50,6 @@ const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
-const DEBUG_LOGS_DIR = 'YOLO/logs'
 /** Legacy cache dir from removed delegate_external_agent tool. */
 const LEGACY_EXTERNAL_AGENT_PROGRESS_DIR = 'external_agent_progress'
 
@@ -169,6 +172,12 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     chatSnapshotBytes: null,
   })
   const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
+  const yoloBaseDirError = hasHiddenYoloBaseDirSegment(yoloBaseDirInput)
+    ? t(
+        'settings.etc.yoloBaseDirHiddenPath',
+        'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
+      )
+    : null
 
   useEffect(() => {
     setYoloBaseDirInput(yoloBaseDir)
@@ -205,19 +214,31 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     setYoloBaseDirInput(normalized)
     if (normalized === yoloBaseDir) return
 
-    void setSettings({
-      ...settings,
-      yolo: {
-        ...(settings.yolo ?? { baseDir: 'YOLO' }),
-        baseDir: normalized,
-      },
-    })
+    if (hasHiddenYoloBaseDirSegment(normalized)) return
+
+    void Promise.resolve(
+      setSettings({
+        ...settings,
+        yolo: {
+          ...(settings.yolo ?? { baseDir: 'YOLO' }),
+          baseDir: normalized,
+        },
+      }),
+    )
+      .catch((error: unknown) => {
+        console.error('[YOLO] Failed to change YOLO root', error)
+        new Notice(t('common.error', 'Something went wrong.'))
+      })
+      .finally(() => {
+        setYoloBaseDirInput(plugin.settings.yolo.baseDir)
+      })
   }
 
   const isDebugLogsExcludedFromKnowledgeBase = (): boolean => {
+    if (settings.ragOptions.excludeYoloBaseDir) return true
     return includePatternsToFolderPaths(
       settings.ragOptions.excludePatterns,
-    ).includes(DEBUG_LOGS_DIR)
+    ).includes(getYoloLogsDir(settings))
   }
 
   const excludeDebugLogsFromKnowledgeBase = async () => {
@@ -225,7 +246,11 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     const excludeFolders = includePatternsToFolderPaths(
       currentSettings.ragOptions.excludePatterns,
     )
-    if (excludeFolders.includes(DEBUG_LOGS_DIR)) {
+    const debugLogsDir = getYoloLogsDir(currentSettings)
+    if (
+      currentSettings.ragOptions.excludeYoloBaseDir ||
+      excludeFolders.includes(debugLogsDir)
+    ) {
       return
     }
 
@@ -239,14 +264,14 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
         ...currentSettings.ragOptions,
         excludePatterns: folderPathsToIncludePatterns([
           ...excludeFolders,
-          DEBUG_LOGS_DIR,
+          debugLogsDir,
         ]),
       },
     })
     new Notice(
       t('settings.etc.captureRawRequestDebugExcludeLogsSuccess').replace(
         '{{path}}',
-        DEBUG_LOGS_DIR,
+        debugLogsDir,
       ),
     )
   }
@@ -282,7 +307,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
         title: t('settings.etc.captureRawRequestDebugExcludeLogsTitle'),
         message: t(
           'settings.etc.captureRawRequestDebugExcludeLogsMessage',
-        ).replace('{{path}}', DEBUG_LOGS_DIR),
+        ).replace('{{path}}', getYoloLogsDir(settings)),
         ctaText: t('settings.etc.captureRawRequestDebugExcludeLogsCta'),
         cancelText: t('common.cancel', 'Cancel'),
         onConfirm: () => {
@@ -456,7 +481,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
                   )
                 : t(
                     'settings.etc.pluginAutoUpdateDescUnavailable',
-                    '一键安装仅在桌面端且插件目录可写时可用；当前设备请通过社区插件或 GitHub 手动更新。',
+                    '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
                   )
             }
             className="yolo-settings-card"
@@ -464,7 +489,6 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
             <ObsidianToggle
               value={settings.pluginUpdateAutoDownloadEnabled ?? true}
               onChange={handlePluginAutoUpdateChange}
-              disabled={!Platform.isDesktop || !canSelfUpdate}
             />
           </ObsidianSetting>
 
@@ -508,21 +532,30 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
             />
           </ObsidianSetting>
 
-          <ObsidianSetting
-            name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
-            desc={t(
-              'settings.etc.yoloBaseDirDesc',
-              '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
-            ).replace('{path}', `${yoloBaseDir}/skills`)}
-            className="yolo-settings-card"
+          <div
+            className={`yolo-settings-field ${yoloBaseDirError ? 'is-invalid' : ''}`}
           >
-            <ObsidianTextInput
-              value={yoloBaseDirInput}
-              placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
-              onChange={setYoloBaseDirInput}
-              onBlur={handleYoloBaseDirBlur}
-            />
-          </ObsidianSetting>
+            <ObsidianSetting
+              name={t('settings.etc.yoloBaseDir', 'YOLO 根目录')}
+              desc={t(
+                'settings.etc.yoloBaseDirDesc',
+                '用于存放 YOLO 管理文件的库内相对目录（例如：Config/YOLO）。技能将从 {path} 加载。',
+              ).replace('{path}', `${yoloBaseDir}/skills`)}
+              className="yolo-settings-card"
+            >
+              <ObsidianTextInput
+                value={yoloBaseDirInput}
+                placeholder={t('settings.etc.yoloBaseDirPlaceholder', 'YOLO')}
+                onChange={setYoloBaseDirInput}
+                onBlur={handleYoloBaseDirBlur}
+              />
+            </ObsidianSetting>
+            {yoloBaseDirError && (
+              <div className="yolo-settings-inline-error" role="alert">
+                {yoloBaseDirError}
+              </div>
+            )}
+          </div>
 
           <ObsidianSetting
             name={t('settings.etc.captureRawRequestDebug')}

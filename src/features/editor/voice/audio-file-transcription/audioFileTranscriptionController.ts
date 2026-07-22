@@ -2,6 +2,7 @@
 import type { EditorView } from '@codemirror/view'
 import { Editor, MarkdownView, Notice } from 'obsidian'
 
+import { getYoloAudioFileFallbackNotePathTemplate } from '../../../../core/paths/yoloPaths'
 import type { YoloSettings } from '../../../../settings/schema/setting.types'
 import type { VoiceInputState } from '../voiceStatus'
 
@@ -98,6 +99,7 @@ const STREAMING_PROGRESS_MESSAGE_MIN_VISIBLE_MS = 3000
 
 export class AudioFileTranscriptionController {
   private session: AudioFileSession | null = null
+  private readonly pendingManagedWrites = new Set<Promise<unknown>>()
 
   constructor(private readonly deps: AudioFileTranscriptionControllerDeps) {}
 
@@ -284,6 +286,22 @@ export class AudioFileTranscriptionController {
     this.deps.setVoiceInputInProgress(false)
     this.deps.updateStatus('idle')
     return true
+  }
+
+  /** Wait until fallback-note writes already targeting the old root settle. */
+  async waitForPendingWrites(): Promise<void> {
+    while (this.pendingManagedWrites.size > 0) {
+      await Promise.allSettled(Array.from(this.pendingManagedWrites))
+    }
+  }
+
+  private trackManagedWrite<T>(operation: Promise<T>): Promise<T> {
+    this.pendingManagedWrites.add(operation)
+    void operation.then(
+      () => this.pendingManagedWrites.delete(operation),
+      () => this.pendingManagedWrites.delete(operation),
+    )
+    return operation
   }
 
   private tFormat(
@@ -771,14 +789,15 @@ export class AudioFileTranscriptionController {
       // Once provider data has returned, the first fallback write must contain
       // the transcript itself. Creating an empty note and appending afterward
       // would add a second failure point that can lose long-audio results.
-      session.fallbackPath = await this.deps.createFallbackMarkdownFile(
-        desiredPath,
-        text,
+      session.fallbackPath = await this.trackManagedWrite(
+        this.deps.createFallbackMarkdownFile(desiredPath, text),
       )
       this.showFallbackNotice(session)
       return
     }
-    await this.deps.appendToMarkdownFile(session.fallbackPath, text)
+    await this.trackManagedWrite(
+      this.deps.appendToMarkdownFile(session.fallbackPath, text),
+    )
     this.showFallbackNotice(session)
   }
 
@@ -886,10 +905,10 @@ export class AudioFileTranscriptionController {
     const min = String(now.getMinutes()).padStart(2, '0')
     const ss = String(now.getSeconds()).padStart(2, '0')
     const baseName = stripFileExtension(plan?.fileName ?? session.source.name)
+    const settings = this.deps.getSettings()
     const template =
-      this.deps.getSettings().contextVoiceInputOptions
-        .audioFileFallbackNotePathTemplate ||
-      'YOLO/transcriptions/{{date}} {{time}} {{basename}}.md'
+      settings.contextVoiceInputOptions.audioFileFallbackNotePathTemplate ||
+      getYoloAudioFileFallbackNotePathTemplate(settings)
     return template
       .replace(/\{\{date\}\}/g, `${yyyy}-${mm}-${dd}`)
       .replace(/\{\{time\}\}/g, `${hh}-${min}-${ss}`)

@@ -8,7 +8,6 @@ import {
   Plugin,
   TFile,
   TFolder,
-  type WorkspaceLeaf,
   addIcon,
   getLanguage,
   normalizePath,
@@ -21,9 +20,9 @@ import {
   type ActionToastOptions,
   mountActionToast,
 } from './components/ActionToast'
-import { AcknowledgementModal } from './components/modals/AcknowledgementModal'
+import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
-import { CHAT_VIEW_TYPE, LEARNING_VIEW_TYPE } from './constants'
+import { CHAT_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
 import type { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
 import type {
@@ -52,17 +51,7 @@ import {
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
-import type {
-  LearningNavigationHandler,
-  LearningNavigationTarget,
-} from './core/learning/learningNavigation'
-import {
-  LearningStatsService,
-  getTotalDueCards,
-} from './core/learning/learningStatsService'
-import type { LearningStatsSnapshot } from './core/learning/learningStatsService'
-import type { ProjectEventBus } from './core/learning/projectEventBus'
-import { LearningSrsStore } from './core/learning/srs/srsStore'
+import { localeStore } from './core/i18n/localeStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type {
@@ -71,17 +60,60 @@ import type {
 } from './core/mcp/localMcpServerConfig'
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
+import {
+  BundledModuleCatalogSource,
+  CoreModuleAgentCapabilityProvider,
+  CoreModuleHostCapabilityProvider,
+  DomBlobModuleScriptExecutor,
+  IndexedDbDataAdapter,
+  ManagedModulePathsCapabilityProvider,
+  ModuleAssetsCapabilityProvider,
+  ModuleConfigCapabilityProvider,
+  ModuleDeviceStateStore,
+  ModuleIntentStore,
+  ModuleLoader,
+  ModulePrivateStorageCapabilityProvider,
+  ModuleRuntime,
+  ModuleRuntimeReservation,
+  type ModuleService,
+  ModuleSettingsCapabilityProvider,
+  ModuleSettingsContributionRegistry,
+  ModuleStore,
+  ObsidianModuleContributionRegistrar,
+  ObsidianModuleUiCapabilityProvider,
+  ObsidianModuleVaultCapabilityProvider,
+  createObsidianModuleConfigBackendFactory,
+  createObsidianModuleConfigCreateIfAbsent,
+  createObsidianModuleIntentBackend,
+  createOfficialModuleCompatibilityProvider,
+  createProductionModuleServices,
+  handoffLearningLegacySettings,
+  managedModuleDataNamespace,
+  migrateLearningLegacyInstallIntent,
+  parseModuleArtifactManifest,
+  runExclusive as runManagedModuleDataExclusive,
+  selectModuleManifestVariant,
+} from './core/modules'
+import { normalizeModuleCatalogLocale } from './core/modules/moduleCatalogPresentation'
 import { AgentNotificationCoordinator } from './core/notifications/agentNotificationCoordinator'
 import { NotificationService } from './core/notifications/notificationService'
+import { migrateHiddenYoloBaseDir } from './core/paths/yoloBaseDirMigration'
+import { relocateYoloBaseDir } from './core/paths/yoloBaseDirRelocation'
 import {
   type YoloDataMeta,
   extractYoloDataMeta,
   readVaultDataJson,
-  relocateYoloManagedData,
   removeVaultDataJson,
   stampYoloDataMeta,
 } from './core/paths/yoloManagedData'
-import { getYoloLearningDir } from './core/paths/yoloPaths'
+import {
+  getYoloBaseDir,
+  getYoloJsonDbRootDir,
+  getYoloTranscriptionsDir,
+  hasHiddenYoloBaseDirSegment,
+  resolveExternalYoloBaseDir,
+} from './core/paths/yoloPaths'
+import { rebaseYoloDebugLogExclusions } from './core/paths/yoloSettingsPaths'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
 import type { RAGEngine } from './core/rag/ragEngine'
@@ -97,6 +129,10 @@ import {
   type ReleaseFileName,
   checkInstallationIntegrityLayer1And2,
 } from './core/update/installationIntegrity'
+import {
+  ModuleUpdateController,
+  type ModuleUpdateOffer,
+} from './core/update/moduleUpdateController'
 import {
   type PluginUpdateState,
   applyRepairFiles,
@@ -160,11 +196,11 @@ import type { VoicePrefixCacheManager } from './features/editor/voice/context-in
 import type { VoiceFloatingIslandController } from './features/editor/voice/floating-island/voiceFloatingIslandController'
 import { GENERATED_AUDIO_DRAG_MIME } from './features/editor/voice/read-aloud/generatedAudioDragSource'
 import type { VoiceController } from './features/editor/voice/voiceController'
+import { rebaseVoiceManagedPaths } from './features/editor/voice/voiceManagedPaths'
 import type { ActiveVoiceModeId } from './features/editor/voice/voiceModes'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
-import { LearningView } from './LearningView'
 import {
   YoloSettings,
   yoloSettingsSchema,
@@ -200,10 +236,11 @@ export type {
 export type { PluginUpdateState } from './core/update/pluginUpdater'
 
 const STARTUP_GRACE_MS = 30 * 1000
+const MODULE_PRIVATE_STORAGE_DIR = 'module-private'
+const MODULE_DEVICE_LOCAL_VIRTUAL_ROOT = 'module-private-device-local'
+const MODULE_DEVICE_STATE_ROOT = 'module-device-state-v2'
 type TranslateFn = (keyPath: string, fallback?: string) => string
-type BackgroundStatusPanelAction =
-  | BackgroundActivityAction
-  | { type: 'open-learning-home' }
+type BackgroundStatusPanelAction = BackgroundActivityAction
 
 type VoiceModules = {
   VoiceController: typeof import('./features/editor/voice/voiceController').VoiceController
@@ -222,13 +259,15 @@ export default class YoloPlugin extends Plugin {
   private deviceId: string | null = null
   private currentSettingsMeta: YoloDataMeta | null = null
   updateCheckResult: UpdateCheckResult | null = null
-  private hasCheckedForUpdate = false
+  private hasCheckedForUpdates = false
   private updateCheckListeners: (() => void)[] = []
   pluginUpdateState: PluginUpdateState = { status: 'idle' }
   private pluginUpdateListeners: (() => void)[] = []
   private pluginUpdateDownloadPromise: Promise<void> | null = null
   private updateToastCleanup: (() => void) | null = null
   private actionToastController: ActionToastController | null = null
+  private readonly moduleSettingsContributions =
+    new ModuleSettingsContributionRegistry()
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -243,7 +282,6 @@ export default class YoloPlugin extends Plugin {
   private isContinuationInProgress = false
   private isVoiceInputInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
-  private learningGenerationAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
   private voiceController: VoiceController | null = null
@@ -253,6 +291,7 @@ export default class YoloPlugin extends Plugin {
   private voicePrefixCacheManager: VoicePrefixCacheManager | null = null
   private voiceModules: VoiceModules | null = null
   private voiceModulesPromise: Promise<VoiceModules> | null = null
+  private managedPathTransitionDepth = 0
   private voiceAudioDragRevealCache: {
     dataTransfer: DataTransfer
     dragKind: AudioFileDragKind | null
@@ -275,15 +314,19 @@ export default class YoloPlugin extends Plugin {
   private ragCoordinator: RagCoordinator | null = null
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
+  private moduleService: ModuleService | null = null
+  private moduleUpdateController: ModuleUpdateController | null = null
+  private moduleRuntime: ModuleRuntime | null = null
+  private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
+  private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
+  private learningLegacyInstallMigration: (() => Promise<void>) | null = null
+  private rawLearningLegacySettings: unknown = undefined
+  private learningModuleSettingsHandoffReady = false
+  private readonly managedModulePathChangeListeners = new Set<() => void>()
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
-  private learningEventBus: ProjectEventBus | null = null
-  private learningSrsStore: LearningSrsStore | null = null
-  private learningStatsService: LearningStatsService | null = null
-  private learningNavigationHandler: LearningNavigationHandler | null = null
-  private pendingLearningNavigation: LearningNavigationTarget | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -302,7 +345,6 @@ export default class YoloPlugin extends Plugin {
   private backgroundStatusPanelList: HTMLElement | null = null
   private backgroundStatusPanelEmpty: HTMLElement | null = null
   private latestBackgroundActivities = new Map<string, BackgroundActivity>()
-  private latestLearningStats: LearningStatsSnapshot | null = null
   private backgroundStatusPanelRenderVersion = 0
   private isUnloaded = false
   private backgroundStatusPanelItems = new Map<
@@ -370,132 +412,18 @@ export default class YoloPlugin extends Plugin {
     return this.chatLeafSessionManager
   }
 
-  /**
-   * Registers (or clears) the active LearningView's ProjectEventBus. The
-   * workspace component calls this on mount / unmount so plugin-level
-   * commands (e.g. mock replay) can reach the bus that's currently driving
-   * the on-screen graph.
-   */
-  setLearningEventBus(bus: ProjectEventBus | null): void {
-    this.learningEventBus = bus
-  }
-
-  setLearningNavigationHandler(
-    handler: LearningNavigationHandler | null,
-  ): void {
-    this.learningNavigationHandler = handler
-    this.flushLearningNavigation()
+  private publishManagedModulePathChange(): void {
+    for (const listener of this.managedModulePathChangeListeners) {
+      try {
+        listener()
+      } catch (error) {
+        console.error('[YOLO] Managed module path publication failed', error)
+      }
+    }
   }
 
   showActionToast(toast: ActionToastOptions): void {
     this.actionToastController?.show(toast)
-  }
-
-  trackLearningGeneration(controller: AbortController): void {
-    this.learningGenerationAbortControllers.add(controller)
-  }
-
-  releaseLearningGeneration(controller: AbortController): void {
-    this.learningGenerationAbortControllers.delete(controller)
-  }
-
-  private flushLearningNavigation(): void {
-    if (!this.learningNavigationHandler || !this.pendingLearningNavigation) {
-      return
-    }
-    const target = this.pendingLearningNavigation
-    this.pendingLearningNavigation = null
-    this.learningNavigationHandler(target)
-  }
-
-  getLearningSrsStore(): LearningSrsStore {
-    if (!this.learningSrsStore) {
-      this.learningSrsStore = new LearningSrsStore(
-        this.app,
-        () => this.settings,
-      )
-    }
-    return this.learningSrsStore
-  }
-
-  getLearningStatsService(): LearningStatsService {
-    if (!this.learningStatsService) {
-      this.learningStatsService = new LearningStatsService({
-        app: this.app,
-        getLearningBaseDir: () => getYoloLearningDir(this.settings),
-        srsStore: this.getLearningSrsStore(),
-      })
-    }
-    return this.learningStatsService
-  }
-
-  /**
-   * Opens the LearningView in the main workspace (new tab). Activates an
-   * existing leaf if one is already open.
-   */
-  async openLearningView(target?: LearningNavigationTarget): Promise<void> {
-    const leaf = await this.revealLearningView(target)
-
-    if (!this.settings.learningOptions.betaNoticeAcknowledged) {
-      new AcknowledgementModal(this.app, {
-        title: this.t(
-          'learning.betaNotice.title',
-          'Learning mode public beta notice',
-        ),
-        messages: [
-          this.t(
-            'learning.betaNotice.description',
-            'Learning mode is currently in public beta. Some features are still being refined and may be unstable or contain bugs. Some learning mode features will become part of paid plans in the future. Free users will still be able to use learning mode, but limits may apply to the number of learning projects they can create. Existing projects beyond the free allowance may become read-only, but they will not be deleted automatically.',
-          ),
-        ],
-        centered: true,
-        confirmText: this.t(
-          'learning.betaNotice.confirm',
-          'I understand, enter learning mode',
-        ),
-        cancelText: this.t('learning.betaNotice.cancel', 'Not now'),
-        onConfirm: () => {
-          void this.acknowledgeLearningBetaNotice()
-        },
-        onDismiss: () => {
-          if (leaf.view.getViewType() === LEARNING_VIEW_TYPE) leaf.detach()
-        },
-      }).open()
-    }
-  }
-
-  private async acknowledgeLearningBetaNotice(): Promise<void> {
-    try {
-      await this.setSettings({
-        ...this.settings,
-        learningOptions: {
-          ...this.settings.learningOptions,
-          betaNoticeAcknowledged: true,
-        },
-      })
-    } catch (error: unknown) {
-      console.error(
-        'Failed to persist learning beta notice confirmation',
-        error,
-      )
-    }
-  }
-
-  private async revealLearningView(
-    target?: LearningNavigationTarget,
-  ): Promise<WorkspaceLeaf> {
-    if (target) this.pendingLearningNavigation = target
-    const existing = this.app.workspace.getLeavesOfType(LEARNING_VIEW_TYPE)[0]
-    if (existing) {
-      this.app.workspace.revealLeaf(existing)
-      this.flushLearningNavigation()
-      return existing
-    }
-    const leaf = this.app.workspace.getLeaf('tab')
-    await leaf.setViewState({ type: LEARNING_VIEW_TYPE, active: true })
-    this.app.workspace.revealLeaf(leaf)
-    this.flushLearningNavigation()
-    return leaf
   }
 
   private getModelListCacheKey(
@@ -1167,7 +1095,7 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
-  /** Re-notify banner subscribers when chat opens (aligned with checkForUpdateOnce). */
+  /** Re-notify banner subscribers when chat opens (aligned with checkForUpdatesOnce). */
   refreshInstallationIncompleteBanner(): void {
     this.notifyInstallationIncompleteListeners()
   }
@@ -1294,29 +1222,44 @@ export default class YoloPlugin extends Plugin {
    * import resolves once and is cached.
    */
   private loadVoiceModules(): Promise<VoiceModules> {
+    if (this.isUnloaded) {
+      return Promise.reject(
+        new Error('[YOLO] Plugin unloaded before voice modules were ready'),
+      )
+    }
     if (this.voiceModules) return Promise.resolve(this.voiceModules)
     if (!this.voiceModulesPromise) {
       this.voiceModulesPromise = (async () => {
-        const [ctrl, summary, island, prefix] = await Promise.all([
-          import('./features/editor/voice/voiceController'),
-          import(
-            './features/editor/voice/context-input/documentSummaryManager'
-          ),
-          import(
-            './features/editor/voice/floating-island/voiceFloatingIslandController'
-          ),
-          import(
-            './features/editor/voice/context-input/voicePrefixCacheManager'
-          ),
-        ])
-        const modules: VoiceModules = {
-          VoiceController: ctrl.VoiceController,
-          DocumentSummaryManager: summary.DocumentSummaryManager,
-          VoiceFloatingIslandController: island.VoiceFloatingIslandController,
-          VoicePrefixCacheManager: prefix.VoicePrefixCacheManager,
+        try {
+          const [ctrl, summary, island, prefix] = await Promise.all([
+            import('./features/editor/voice/voiceController'),
+            import(
+              './features/editor/voice/context-input/documentSummaryManager'
+            ),
+            import(
+              './features/editor/voice/floating-island/voiceFloatingIslandController'
+            ),
+            import(
+              './features/editor/voice/context-input/voicePrefixCacheManager'
+            ),
+          ])
+          if (this.isUnloaded) {
+            throw new Error('[YOLO] Plugin unloaded during voice module warmup')
+          }
+          const modules: VoiceModules = {
+            VoiceController: ctrl.VoiceController,
+            DocumentSummaryManager: summary.DocumentSummaryManager,
+            VoiceFloatingIslandController: island.VoiceFloatingIslandController,
+            VoicePrefixCacheManager: prefix.VoicePrefixCacheManager,
+          }
+          this.voiceModules = modules
+          return modules
+        } catch (error) {
+          // A transient chunk-load failure must remain retryable, and an
+          // unload must never let a late dynamic import revive the feature.
+          this.voiceModulesPromise = null
+          throw error
         }
-        this.voiceModules = modules
-        return modules
       })()
     }
     return this.voiceModulesPromise
@@ -1332,6 +1275,9 @@ export default class YoloPlugin extends Plugin {
       return this.voiceFloatingIslandController
     }
     const modules = await this.loadVoiceModules()
+    if (this.isUnloaded) {
+      throw new Error('[YOLO] Plugin unloaded before voice UI initialization')
+    }
     if (this.voiceFloatingIslandController) {
       return this.voiceFloatingIslandController
     }
@@ -1938,12 +1884,6 @@ export default class YoloPlugin extends Plugin {
         this.latestBackgroundActivities = new Map(activities)
         this.updateBackgroundStatusBar()
       })
-    const unsubscribeLearningStats = this.getLearningStatsService().subscribe(
-      (snapshot) => {
-        this.latestLearningStats = snapshot
-        this.updateBackgroundStatusBar()
-      },
-    )
     let isActive = true
     let unsubscribeAgentSummaries: (() => void) | null = null
     void this.warmupAgentService()
@@ -1963,7 +1903,6 @@ export default class YoloPlugin extends Plugin {
     this.register(() => {
       isActive = false
       unsubscribeActivities()
-      unsubscribeLearningStats()
       unsubscribeAgentSummaries?.()
       this.backgroundStatusBarItem = null
       this.backgroundStatusBarRing = null
@@ -1974,7 +1913,6 @@ export default class YoloPlugin extends Plugin {
       this.backgroundStatusPanelRenderVersion += 1
       this.backgroundStatusPanelItems.clear()
       this.latestBackgroundActivities.clear()
-      this.latestLearningStats = null
       this.backgroundActivityRegistry?.clear()
       this.backgroundActivityRegistry = null
     })
@@ -2009,13 +1947,12 @@ export default class YoloPlugin extends Plugin {
             : this.t('statusBar.agentStatusRunning', '运行中')),
         status: summary.isWaitingApproval ? 'waiting' : 'running',
         updatedAt: Date.now(),
-        action:
-          summary.activity?.action === 'open-learning-view'
-            ? { type: 'open-learning-view' }
-            : {
-                type: 'open-agent-conversation',
-                conversationId: summary.conversationId,
-              },
+        action: summary.activity?.kind.startsWith('module:')
+          ? undefined
+          : {
+              type: 'open-agent-conversation',
+              conversationId: summary.conversationId,
+            },
       })
     }
 
@@ -2040,12 +1977,8 @@ export default class YoloPlugin extends Plugin {
     }
     this.backgroundStatusPanelRenderVersion += 1
 
-    const dueCards = this.latestLearningStats
-      ? getTotalDueCards(this.latestLearningStats)
-      : 0
     const model = buildBackgroundStatusModel(
       this.latestBackgroundActivities.values(),
-      dueCards,
     )
 
     if (!model.visible) {
@@ -2058,13 +1991,7 @@ export default class YoloPlugin extends Plugin {
       return
     }
 
-    const label =
-      model.activities.length > 0
-        ? this.buildBackgroundStatusBarLabel(model.activities)
-        : this.t(
-            'statusBar.learningReviewLabel',
-            'YOLO Learning：今日有 {count} 张待复习卡片',
-          ).replace('{count}', String(dueCards))
+    const label = this.buildBackgroundStatusBarLabel(model.activities)
 
     this.backgroundStatusBarLabel.setText(label)
     this.backgroundStatusBarItem.removeAttribute('title')
@@ -2073,13 +2000,16 @@ export default class YoloPlugin extends Plugin {
       'is-running',
       'is-waiting',
       'is-failed',
-      'is-review',
+      'is-reminder',
     )
     if (model.tone) {
       this.backgroundStatusBarRing.classList.add(`is-${model.tone}`)
     }
-    if (model.tone === 'review') {
-      setIcon(this.backgroundStatusBarRing, 'graduation-cap')
+    if (model.tone === 'reminder') {
+      const reminderIcon =
+        model.activities.find((activity) => activity.status === 'reminder')
+          ?.icon ?? 'bell'
+      setIcon(this.backgroundStatusBarRing, reminderIcon)
     }
     this.backgroundStatusBarItem.show()
 
@@ -2098,28 +2028,15 @@ export default class YoloPlugin extends Plugin {
     const failedActivities = activities.filter(
       (activity) => activity.status === 'failed',
     )
+    const reminderActivities = activities.filter(
+      (activity) => activity.status === 'reminder',
+    )
     const agentActivities = runningActivities.filter(
       (activity) => activity.kind === 'agent',
-    )
-    const learningActivities = runningActivities.filter(
-      (activity) => activity.kind === 'learning-agent',
     )
     const waitingApprovalCount = runningActivities.filter(
       (activity) => activity.status === 'waiting',
     ).length
-
-    if (
-      runningActivities.length > 0 &&
-      learningActivities.length === runningActivities.length
-    ) {
-      if (learningActivities.length === 1) {
-        return learningActivities[0].detail || learningActivities[0].title
-      }
-      return this.t(
-        'statusBar.learningTasksRunning',
-        '学习模式有 {count} 个任务正在运行',
-      ).replace('{count}', String(learningActivities.length))
-    }
 
     if (
       runningActivities.length > 0 &&
@@ -2150,6 +2067,11 @@ export default class YoloPlugin extends Plugin {
         'statusBar.backgroundTasksRunning',
         '当前有 {count} 个后台任务正在运行',
       ).replace('{count}', String(runningActivities.length))
+    }
+
+    if (failedActivities.length === 0 && reminderActivities.length === 1) {
+      const [reminder] = reminderActivities
+      return reminder.summary || reminder.detail || reminder.title
     }
 
     return this.t(
@@ -2212,12 +2134,8 @@ export default class YoloPlugin extends Plugin {
     }
 
     const renderVersion = ++this.backgroundStatusPanelRenderVersion
-    const dueCards = this.latestLearningStats
-      ? getTotalDueCards(this.latestLearningStats)
-      : 0
     const model = buildBackgroundStatusModel(
       this.latestBackgroundActivities.values(),
-      dueCards,
     )
     const activities = model.activities
 
@@ -2285,46 +2203,14 @@ export default class YoloPlugin extends Plugin {
         'is-running',
         'is-waiting',
         'is-failed',
-        'is-review',
+        'is-reminder',
       )
       itemRecord.indicator.empty()
       itemRecord.indicator.classList.add(`is-${activity.status}`)
+      const indicatorIcon =
+        activity.icon ?? (activity.status === 'reminder' ? 'bell' : undefined)
+      if (indicatorIcon) setIcon(itemRecord.indicator, indicatorIcon)
 
-      if (itemRecord.item !== insertBeforeNode) {
-        this.backgroundStatusPanelList.insertBefore(
-          itemRecord.item,
-          insertBeforeNode,
-        )
-      }
-      insertBeforeNode = itemRecord.item.nextSibling
-    }
-
-    if (model.showReviewReminder) {
-      const reminderId = 'reminder:learning-review'
-      nextActivityIds.add(reminderId)
-      const title = this.t('statusBar.learningReviewTitle', 'YOLO Learning')
-      const detail = this.t(
-        'statusBar.learningReviewDetail',
-        '{count} 张卡片待复习',
-      ).replace('{count}', String(dueCards))
-      const itemRecord =
-        this.backgroundStatusPanelItems.get(reminderId) ??
-        this.createBackgroundStatusPanelItem(reminderId, {
-          type: 'open-learning-home',
-        })
-      itemRecord.action = { type: 'open-learning-home' }
-      itemRecord.title.setText(title)
-      itemRecord.title.setAttribute('title', title)
-      itemRecord.detail.setText(detail)
-      itemRecord.detail.hidden = false
-      itemRecord.indicator.classList.remove(
-        'is-running',
-        'is-waiting',
-        'is-failed',
-      )
-      itemRecord.indicator.classList.add('is-review')
-      itemRecord.indicator.empty()
-      setIcon(itemRecord.indicator, 'graduation-cap')
       if (itemRecord.item !== insertBeforeNode) {
         this.backgroundStatusPanelList.insertBefore(
           itemRecord.item,
@@ -2377,7 +2263,13 @@ export default class YoloPlugin extends Plugin {
     const indicator = row.createDiv({
       cls: 'yolo-background-activity-status-panel-item-indicator',
     })
-    const record = {
+    const record: {
+      item: HTMLElement
+      title: HTMLElement
+      detail: HTMLElement
+      indicator: HTMLElement
+      action?: BackgroundStatusPanelAction
+    } = {
       item,
       title,
       detail,
@@ -2388,7 +2280,9 @@ export default class YoloPlugin extends Plugin {
     const openAction = () => {
       this.closeBackgroundStatusPanel()
       const currentAction = record.action
-      if (!currentAction) {
+      if (!currentAction) return
+      if (currentAction.type === 'callback') {
+        currentAction.run()
         return
       }
       if (currentAction.type === 'open-agent-conversation') {
@@ -2402,13 +2296,6 @@ export default class YoloPlugin extends Plugin {
       if (currentAction.type === 'open-knowledge-settings') {
         this.openKnowledgeSettings()
         return
-      }
-      if (currentAction.type === 'open-learning-view') {
-        void this.openLearningView()
-        return
-      }
-      if (currentAction.type === 'open-learning-home') {
-        void this.openLearningView({ type: 'home' })
       }
     }
 
@@ -2570,6 +2457,11 @@ export default class YoloPlugin extends Plugin {
       return this.voiceController
     }
     const modules = await this.loadVoiceModules()
+    if (this.isUnloaded) {
+      throw new Error(
+        '[YOLO] Plugin unloaded before voice controller initialization',
+      )
+    }
     if (this.voiceController) {
       return this.voiceController
     }
@@ -2602,6 +2494,8 @@ export default class YoloPlugin extends Plugin {
         this.createVoiceFallbackMarkdownFile(desiredPath, content),
       appendToMarkdownFile: (path, content) =>
         this.appendToVoiceFallbackMarkdownFile(path, content),
+      isManagedPathTransitionInProgress: () =>
+        this.managedPathTransitionDepth > 0,
       t: (key, fallback) => this.t(key, fallback),
     })
     controller.setSummaryManager(this.ensureDocumentSummaryManager(modules))
@@ -2683,12 +2577,12 @@ export default class YoloPlugin extends Plugin {
   }
 
   private normalizeMarkdownPath(path: string): string {
-    const trimmed =
-      path.trim().replace(/[\\:*?"<>|]/g, '-') || 'YOLO/transcriptions/audio'
+    const fallbackPath = `${getYoloTranscriptionsDir(this.settings)}/audio`
+    const trimmed = path.trim().replace(/[\\:*?"<>|]/g, '-') || fallbackPath
     const withExtension = trimmed.toLowerCase().endsWith('.md')
       ? trimmed
       : `${trimmed}.md`
-    return normalizePath(withExtension || 'YOLO/transcriptions/audio.md')
+    return normalizePath(withExtension || `${fallbackPath}.md`)
   }
 
   private async ensureVaultFolderForPath(path: string): Promise<void> {
@@ -2861,15 +2755,47 @@ export default class YoloPlugin extends Plugin {
 
   async onload() {
     this.isUnloaded = false
+    this.actionToastController = mountActionToast()
+    this.initializeModuleSystem()
+    if (process.env.NODE_ENV === 'development') {
+      this.addCommand({
+        id: 'dev-activate-host-api-conformance-module',
+        name: '[Development] Activate host API conformance module',
+        callback: () => {
+          void this.activateLocalConformanceModule()
+        },
+      })
+    }
     ensureBufferByteLengthCompat()
     clearRequestTransportMemory()
     addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
 
     await this.loadSettings()
+    let moduleAutoDownloadEnabled =
+      this.settings.pluginUpdateAutoDownloadEnabled
+    this.addSettingsChangeListener((settings) => {
+      const next = settings.pluginUpdateAutoDownloadEnabled
+      if (next && !moduleAutoDownloadEnabled) {
+        void this.moduleUpdateController?.refresh()
+      }
+      moduleAutoDownloadEnabled = next
+    })
     await loadLocale(this.resolveObsidianLanguage())
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
+    await this.migrateHiddenYoloBaseDirIfNeeded()
+    try {
+      await this.learningModuleSettingsHandoff?.()
+    } catch (error) {
+      console.error('[YOLO] Learning module settings handoff failed', error)
+    }
+    try {
+      await this.learningLegacyInstallMigration?.()
+    } catch (error) {
+      console.error('[YOLO] Learning legacy install migration failed', error)
+    }
     this.warnIfInstallationIncomplete()
+    if (!(await this.activateModules())) return
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -2889,9 +2815,6 @@ export default class YoloPlugin extends Plugin {
     // sub-second transient; the migration is idempotent so it always converges.
     this.app.workspace.onLayoutReady(() => {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
-    })
-    this.app.workspace.onLayoutReady(() => {
-      this.getLearningStatsService().start()
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2922,10 +2845,6 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this))
-    this.registerView(
-      LEARNING_VIEW_TYPE,
-      (leaf) => new LearningView(leaf, this),
-    )
     this.startWebviewSelectionBridge()
 
     this.newTabEmptyStateEnhancer = new NewTabEmptyStateEnhancer(this)
@@ -2964,20 +2883,12 @@ export default class YoloPlugin extends Plugin {
     this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
     })
-    this.addRibbonIcon(
-      'graduation-cap',
-      this.t('commands.learningModeLabel'),
-      () => {
-        void this.openLearningView()
-      },
-    )
 
     this.setupBackgroundActivityStatusBar()
-    this.actionToastController = mountActionToast()
     this.updateToastCleanup = mountUpdateToast(this)
     // The toast is anchored to the window (not a chat view), so trigger the
     // check at load time rather than waiting for a chat view to open.
-    this.checkForUpdateOnce()
+    this.checkForUpdatesOnce()
     let shouldStartAgentNotifications = true
     void this.warmupAgentService()
       .then(() => {
@@ -3043,14 +2954,6 @@ export default class YoloPlugin extends Plugin {
           openNewChat: true,
           forceNewLeaf: true,
         })
-      },
-    })
-
-    this.addCommand({
-      id: 'open-learning-mode',
-      name: this.t('commands.openLearningMode'),
-      callback: () => {
-        void this.openLearningView()
       },
     })
 
@@ -3429,18 +3332,23 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
-    for (const controller of this.learningGenerationAbortControllers) {
-      controller.abort()
-    }
-    this.learningGenerationAbortControllers.clear()
+    this.moduleUpdateController?.dispose()
+    this.moduleUpdateController = null
+    this.moduleService?.dispose()
+    this.moduleService = null
+    this.learningModuleSettingsHandoff = null
+    this.learningLegacyInstallMigration = null
+    this.rawLearningLegacySettings = undefined
+    this.learningModuleSettingsHandoffReady = false
+    this.managedModulePathChangeListeners.clear()
+    this.moduleRuntimeReservation?.dispose()
+    this.moduleRuntimeReservation = null
+    this.moduleRuntime?.dispose()
+    this.moduleRuntime = null
     this.updateToastCleanup?.()
     this.updateToastCleanup = null
     this.actionToastController?.destroy()
     this.actionToastController = null
-    this.learningNavigationHandler = null
-    this.pendingLearningNavigation = null
-    this.learningStatsService?.dispose()
-    this.learningStatsService = null
     this.closeSmartSpace()
 
     // Selection chat cleanup
@@ -3454,6 +3362,8 @@ export default class YoloPlugin extends Plugin {
     this.voiceController = null
     this.voiceFloatingIslandController?.destroy()
     this.voiceFloatingIslandController = null
+    this.voiceModules = null
+    this.voiceModulesPromise = null
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null
@@ -3530,6 +3440,7 @@ export default class YoloPlugin extends Plugin {
     const rawPluginData = (await this.loadData()) as unknown
     const pluginExtract = extractYoloDataMeta(rawPluginData)
     const sourceRaw = pluginExtract?.raw ?? null
+    this.rawLearningLegacySettings = sourceRaw?.learningOptions
     const sourceMeta = pluginExtract?.meta ?? null
 
     const parsedSettings = parseYoloSettings(sourceRaw)
@@ -3550,6 +3461,150 @@ export default class YoloPlugin extends Plugin {
     setLLMDebugCaptureEnabled(
       this.settings.debug?.captureRawRequestDebug ?? false,
     )
+  }
+
+  /** Migrate old hidden roots before any service can open files beneath them. */
+  private async migrateHiddenYoloBaseDirIfNeeded(): Promise<void> {
+    const previousSettings = this.settings
+    const sourceBaseDir = getYoloBaseDir(previousSettings)
+    let migratedSettings: YoloSettings | null = null
+    let result
+    try {
+      result = await migrateHiddenYoloBaseDir({
+        app: this.app,
+        settings: previousSettings,
+        persistTargetBaseDir: async (baseDir) => {
+          const nextSettings = rebaseYoloDebugLogExclusions(
+            rebaseVoiceManagedPaths(
+              {
+                ...previousSettings,
+                yolo: { ...previousSettings.yolo, baseDir },
+              },
+              sourceBaseDir,
+              baseDir,
+            ),
+            sourceBaseDir,
+            baseDir,
+          )
+          await this.persistPluginDirSettings(nextSettings)
+          migratedSettings = nextSettings
+        },
+      })
+    } catch (error) {
+      console.error('[YOLO] Hidden YOLO root migration crashed', error)
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationFailed',
+          'YOLO root could not be migrated. Your existing setting was kept.',
+        ),
+      )
+      return
+    }
+
+    if (result.status === 'not-needed') return
+    if (result.status === 'manual-repair') {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationManualRepair',
+          'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
+        ).replace('{source}', result.source),
+        0,
+      )
+      return
+    }
+    if (result.status === 'migrated' || result.status === 'source-missing') {
+      this.settings =
+        migratedSettings ??
+        rebaseYoloDebugLogExclusions(
+          rebaseVoiceManagedPaths(
+            {
+              ...previousSettings,
+              yolo: { ...previousSettings.yolo, baseDir: result.target },
+            },
+            sourceBaseDir,
+            result.target,
+          ),
+          sourceBaseDir,
+          result.target,
+        )
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrated',
+          'YOLO root now uses {target} so Obsidian can index it.',
+        ).replace('{target}', result.target),
+      )
+      return
+    }
+    if (result.status === 'target-exists') {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationConflict',
+          'YOLO root was not moved because {target} already exists. Your existing setting was kept.',
+        ).replace('{target}', result.target),
+      )
+      return
+    }
+
+    if (result.status === 'failed') {
+      console.error('[YOLO] Failed to migrate hidden YOLO root', result.error)
+      if (result.rollbackFailed) {
+        new Notice(
+          this.t(
+            'settings.agent.yoloBaseDirMigrationRollbackFailed',
+            'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
+          )
+            .split('{source}')
+            .join(result.source)
+            .split('{target}')
+            .join(result.target),
+          0,
+        )
+        return
+      }
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirMigrationFailed',
+          'YOLO root could not be migrated. Your existing setting was kept.',
+        ),
+      )
+    }
+  }
+
+  private confirmAdoptExistingYoloRoot(target: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      new ConfirmModal(this.app, {
+        title: this.t(
+          'settings.agent.yoloBaseDirAdoptTitle',
+          'Use existing YOLO root?',
+        ),
+        message: this.t(
+          'settings.agent.yoloBaseDirAdoptMessage',
+          'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
+        ).replace('{target}', target),
+        ctaText: this.t(
+          'settings.agent.yoloBaseDirAdoptConfirm',
+          'Use this folder',
+        ),
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      }).open()
+    })
+  }
+
+  private showYoloRootRelocationConflict(target: string): void {
+    new ConfirmModal(this.app, {
+      title: this.t(
+        'settings.agent.yoloBaseDirConflictTitle',
+        'YOLO root was not moved',
+      ),
+      message: this.t(
+        'settings.agent.yoloBaseDirConflictMessage',
+        '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
+      ).replace('{target}', target),
+      ctaText: this.t('common.confirm', 'OK'),
+      showCancel: false,
+      onConfirm: () => undefined,
+    }).open()
   }
 
   private getDeviceId(): string {
@@ -3681,18 +3736,47 @@ export default class YoloPlugin extends Plugin {
     const { chatModels, changed } = applyKnownMaxContextTokensToChatModels(
       settingsWithDefaultAssistant.chatModels,
     )
-    const normalizedSettings = changed
+    let normalizedSettings = changed
       ? { ...settingsWithDefaultAssistant, chatModels }
       : settingsWithDefaultAssistant
 
     const previousSettings = this.settings
-    const baseDirChanged =
-      previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+    const externalBaseDir = resolveExternalYoloBaseDir(
+      previousSettings.yolo.baseDir,
+      normalizedSettings.yolo.baseDir,
+    )
+    if (externalBaseDir !== normalizedSettings.yolo.baseDir) {
+      normalizedSettings = {
+        ...normalizedSettings,
+        yolo: { ...normalizedSettings.yolo, baseDir: externalBaseDir },
+      }
+      new Notice(this.t('settings.agent.yoloBaseDirHiddenPath'))
+    }
+    const sourceBaseDir = getYoloBaseDir(previousSettings)
+    const targetBaseDir = getYoloBaseDir(normalizedSettings)
+    const baseDirChanged = sourceBaseDir !== targetBaseDir
 
-    if (baseDirChanged && this.learningSrsStore) {
-      await this.learningSrsStore.runExclusive(async () => {
-        this.settings = normalizedSettings
-      })
+    if (baseDirChanged) {
+      // External settings do not move files locally, but active voice tasks
+      // may still hold destinations beneath the old root. Stop them before
+      // publishing the authoritative external path snapshot. Do not rebase
+      // its voice fields here: unlike a local relocation, an external payload
+      // may intentionally keep destinations outside its new managed root.
+      this.managedPathTransitionDepth += 1
+      try {
+        this.voiceController?.cancelActiveSession('base-dir-changed')
+        await this.voiceController?.waitForManagedWrites()
+        await runManagedModuleDataExclusive(
+          this.app.vault,
+          managedModuleDataNamespace('learning', 'managed-data'),
+          async () => {
+            this.settings = normalizedSettings
+            this.publishManagedModulePathChange()
+          },
+        )
+      } finally {
+        this.managedPathTransitionDepth -= 1
+      }
     } else {
       this.settings = normalizedSettings
     }
@@ -3714,7 +3798,6 @@ export default class YoloPlugin extends Plugin {
       new Notice(
         'YOLO: detected a `baseDir` change in data.json. Reloaded settings against the new path.',
       )
-      this.learningStatsService?.restart()
     }
 
     this.syncOAuthRuntimesFromSettings(normalizedSettings)
@@ -3903,6 +3986,21 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       return
     }
 
+    const previousBaseDir = this.settings?.yolo?.baseDir
+    const nextBaseDir = normalizedSettings.yolo.baseDir
+    if (
+      nextBaseDir !== previousBaseDir &&
+      hasHiddenYoloBaseDirSegment(nextBaseDir)
+    ) {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirHiddenPath',
+          'YOLO root cannot contain a folder name starting with a dot because Obsidian does not index hidden folders.',
+        ),
+      )
+      return
+    }
+
     // Read-before-write conflict check. If the file on disk has been
     // mutated externally (Sync push, third-party sync replay, manual
     // paste, …) since we last committed memory, the in-memory
@@ -3923,75 +4021,157 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
 
     const previousSettings = this.settings
-    const yoloBaseDirChanged =
-      previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+    const sourceBaseDir = getYoloBaseDir(previousSettings)
+    const targetBaseDir = getYoloBaseDir(normalizedSettings)
+    const yoloBaseDirChanged = sourceBaseDir !== targetBaseDir
+    if (
+      yoloBaseDirChanged &&
+      (this.managedPathTransitionDepth > 0 || this.voiceController?.isBusy())
+    ) {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirVoiceBusy',
+          'Finish the current voice task before changing the YOLO root.',
+        ),
+      )
+      return
+    }
+    const normalizedSettingsWithManagedPaths = yoloBaseDirChanged
+      ? rebaseYoloDebugLogExclusions(
+          rebaseVoiceManagedPaths(
+            normalizedSettings,
+            sourceBaseDir,
+            targetBaseDir,
+            previousSettings,
+          ),
+          sourceBaseDir,
+          targetBaseDir,
+          previousSettings,
+        )
+      : normalizedSettings
+    const settingsToApply = yoloBaseDirChanged
+      ? {
+          ...normalizedSettingsWithManagedPaths,
+          yolo: {
+            ...normalizedSettingsWithManagedPaths.yolo,
+            baseDir: targetBaseDir,
+          },
+        }
+      : normalizedSettingsWithManagedPaths
 
     if (yoloBaseDirChanged) {
-      if (this.dbManager) {
-        // Snapshot the in-memory DB to the OLD location before relocating.
-        // If this fails (#408 OOM, disk full, etc.), the move would carry a
-        // stale snapshot to the new location and silently lose embeddings —
-        // abort the relocation and keep the user on the previous root.
-        try {
-          await this.dbManager.save()
-        } catch (error) {
-          console.error(
-            '[YOLO] Failed to snapshot vector database before base-dir change; aborting move.',
-            error,
-          )
+      this.managedPathTransitionDepth += 1
+      try {
+        // Cancellation changes status immediately; wait separately for Vault
+        // writes that already crossed the cancellation boundary.
+        await this.voiceController?.waitForManagedWrites()
+        if (this.dbManager) {
+          // Snapshot the in-memory DB to the OLD location before relocating.
+          // If this fails (#408 OOM, disk full, etc.), the move would carry a
+          // stale snapshot to the new location and silently lose embeddings —
+          // abort the relocation and keep the user on the previous root.
+          try {
+            await this.dbManager.save()
+          } catch (error) {
+            console.error(
+              '[YOLO] Failed to snapshot vector database before base-dir change; aborting move.',
+              error,
+            )
+            new Notice(
+              'Failed to snapshot YOLO vector database. Keeping previous YOLO root folder.',
+            )
+            return
+          }
+        }
+        const relocation = await runManagedModuleDataExclusive(
+          this.app.vault,
+          managedModuleDataNamespace('learning', 'managed-data'),
+          async () => {
+            const result = await relocateYoloBaseDir({
+              app: this.app,
+              source: sourceBaseDir,
+              target: targetBaseDir,
+              persistTargetBaseDir: async () => {
+                await this.persistPluginDirSettings(settingsToApply)
+              },
+              confirmAdoptExistingTarget: (target) =>
+                this.confirmAdoptExistingYoloRoot(target),
+            })
+            if (
+              result.status === 'migrated' ||
+              result.status === 'adopted' ||
+              result.status === 'created'
+            ) {
+              this.settings = settingsToApply
+              this.publishManagedModulePathChange()
+            }
+            return result
+          },
+        )
+
+        if (relocation.status === 'cancelled') return
+        if (relocation.status === 'target-conflict') {
+          this.showYoloRootRelocationConflict(relocation.target)
+          return
+        }
+        if (relocation.status === 'protected-source') {
           new Notice(
-            'Failed to snapshot YOLO vector database. Keeping previous YOLO root folder.',
+            this.t(
+              'settings.agent.yoloBaseDirMigrationManualRepair',
+              'The current YOLO root is a protected hidden folder and cannot be moved automatically. Move the YOLO files manually, then choose the new root.',
+            ),
+            0,
           )
           return
         }
-      }
-      const relocate = () =>
-        relocateYoloManagedData({
-          app: this.app,
-          fromSettings: previousSettings,
-          toSettings: normalizedSettings,
-        })
-      const migrated = this.learningSrsStore
-        ? await this.learningSrsStore.runExclusive(async () => {
-            const succeeded = await relocate()
-            if (succeeded) this.settings = normalizedSettings
-            return succeeded
-          })
-        : await relocate()
-      if (!migrated) {
-        new Notice(
-          'Failed to move YOLO managed data. Keeping previous YOLO root folder.',
-        )
-        return
-      }
-      if (this.dbManager) {
-        await this.dbManager.cleanup()
-        this.dbManager = null
-        this.dbManagerInitPromise = null
+        if (relocation.status === 'failed') {
+          console.error('[YOLO] Failed to relocate YOLO root', relocation.error)
+          new Notice(
+            relocation.rollbackFailed
+              ? this.t(
+                  'settings.agent.yoloBaseDirMigrationRollbackFailed',
+                  'YOLO root moved, but the setting could not be saved and the move could not be rolled back. Restore the previous folder manually before continuing.',
+                )
+              : this.t(
+                  'settings.agent.yoloBaseDirMigrationFailed',
+                  'YOLO root could not be moved. Your existing setting was kept.',
+                ),
+            relocation.rollbackFailed ? 0 : undefined,
+          )
+          return
+        }
+        if (this.dbManager) {
+          await this.dbManager.cleanup()
+          this.dbManager = null
+          this.dbManagerInitPromise = null
+        }
+      } finally {
+        this.managedPathTransitionDepth -= 1
       }
     }
 
-    this.settings = normalizedSettings
-    if (yoloBaseDirChanged) this.learningStatsService?.restart()
-    await this.persistPluginDirSettings(normalizedSettings)
-    this.markPromptSourceSettingsChange(previousSettings, normalizedSettings)
+    this.settings = settingsToApply
+    if (!yoloBaseDirChanged) {
+      await this.persistPluginDirSettings(settingsToApply)
+    }
+    this.markPromptSourceSettingsChange(previousSettings, settingsToApply)
     setLLMDebugCaptureEnabled(
       this.settings.debug?.captureRawRequestDebug ?? false,
     )
 
-    this.syncOAuthRuntimesFromSettings(normalizedSettings)
-    this.ragCoordinator?.updateSettings(normalizedSettings)
+    this.syncOAuthRuntimesFromSettings(settingsToApply)
+    this.ragCoordinator?.updateSettings(settingsToApply)
 
     // When RAG is disabled, stop all pending auto-update timers and clear
     // any retry_scheduled state so the background-activity UI disappears.
-    const ragIsEnabled = normalizedSettings.ragOptions.enabled
+    const ragIsEnabled = settingsToApply.ragOptions.enabled
     if (!ragIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
       this.ragIndexService?.refreshActivity()
     }
 
     this.settingsChangeListeners.forEach((listener) => {
-      listener(normalizedSettings)
+      listener(settingsToApply)
     })
   }
 
@@ -4368,29 +4548,40 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
-  checkForUpdateOnce(): void {
-    if (this.hasCheckedForUpdate) {
+  dismissUpdateForSession(): void {
+    this.updateCheckResult = null
+    this.notifyUpdateCheckListeners()
+  }
+
+  checkForUpdatesOnce(): void {
+    if (this.hasCheckedForUpdates) {
       return
     }
-    this.hasCheckedForUpdate = true
-    void (async () => {
-      const fetched = await checkForUpdate(this.manifest.version)
-      if (fetched?.hasUpdate) {
-        if (this.isUpdateVersionMuted(fetched.latestVersion)) {
-          return
+    this.hasCheckedForUpdates = true
+    void Promise.allSettled([
+      (async () => {
+        const fetched = await checkForUpdate(this.manifest.version)
+        if (fetched?.hasUpdate) {
+          if (this.isUpdateVersionMuted(fetched.latestVersion)) {
+            return
+          }
+          this.updateCheckResult = fetched
+          this.notifyUpdateCheckListeners()
+          await this.refreshPluginUpdateStaging(fetched.latestVersion)
+          if (
+            this.settings.pluginUpdateAutoDownloadEnabled &&
+            canSelfUpdate(this) &&
+            fetched.assets
+          ) {
+            void this.startPluginUpdateDownload()
+          }
         }
-        this.updateCheckResult = fetched
-        this.notifyUpdateCheckListeners()
-        await this.refreshPluginUpdateStaging(fetched.latestVersion)
-        if (
-          this.settings.pluginUpdateAutoDownloadEnabled &&
-          canSelfUpdate(this) &&
-          fetched.assets
-        ) {
-          void this.startPluginUpdateDownload()
-        }
-      }
-    })()
+      })(),
+      (async () => {
+        await this.moduleService?.checkForUpdates()
+        await this.moduleUpdateController?.refresh()
+      })(),
+    ])
   }
 
   async openChatView(options?: {
@@ -4497,6 +4688,354 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
 
     // if initialization is running, wait for it to complete instead of creating a new initialization promise
     return this.dbManagerInitPromise
+  }
+
+  getModuleService(): ModuleService {
+    if (!this.moduleService) {
+      throw new Error('[YOLO] Module service is unavailable')
+    }
+    return this.moduleService
+  }
+
+  getModuleUpdateSnapshot = (): readonly ModuleUpdateOffer[] =>
+    this.moduleUpdateController?.getSnapshot() ?? []
+
+  subscribeModuleUpdates = (listener: () => void): (() => void) =>
+    this.moduleUpdateController?.subscribe(listener) ?? (() => undefined)
+
+  dismissModuleUpdateForSession(key: string): void {
+    this.moduleUpdateController?.dismissForSession(key)
+  }
+
+  async muteModuleUpdate(key: string): Promise<void> {
+    await this.moduleUpdateController?.mute(key)
+  }
+
+  async applyModuleUpdate(key: string): Promise<void> {
+    await this.moduleUpdateController?.update(key)
+  }
+
+  getModuleSettingsContributionRegistry(): ModuleSettingsContributionRegistry {
+    return this.moduleSettingsContributions
+  }
+
+  private initializeModuleSystem(): void {
+    const store = new ModuleStore({
+      adapter: this.app.vault.adapter,
+      manifest: this.manifest,
+      configDir: this.app.vault.configDir,
+    })
+    const createConfigBackend = createObsidianModuleConfigBackendFactory({
+      app: this.app,
+      getSettings: () => this.settings,
+      subscribeSettingsChange: (listener) =>
+        this.addSettingsChangeListener(() => listener()),
+    })
+    const createConfigIfAbsent = createObsidianModuleConfigCreateIfAbsent({
+      app: this.app,
+      getSettings: () => this.settings,
+    })
+    this.learningModuleSettingsHandoffReady = false
+    this.learningModuleSettingsHandoff = async () => {
+      this.learningModuleSettingsHandoffReady = false
+      await handoffLearningLegacySettings(
+        createConfigIfAbsent,
+        this.rawLearningLegacySettings,
+      )
+      this.learningModuleSettingsHandoffReady = true
+    }
+    const deviceLocalAdapter = new IndexedDbDataAdapter(this.app)
+    this.register(() => deviceLocalAdapter.close())
+    const servicesReference: { current: ModuleService | null } = {
+      current: null,
+    }
+    const runtime = new ModuleRuntime(
+      new ObsidianModuleContributionRegistrar(this),
+      new CoreModuleHostCapabilityProvider({
+        agent: new CoreModuleAgentCapabilityProvider({
+          getAgentApi: async () => {
+            await this.warmupAgentService()
+            return this.getAgentApi()
+          },
+        }),
+        assets: new ModuleAssetsCapabilityProvider({
+          store,
+          getVerifiedArtifact: (moduleId) =>
+            servicesReference.current?.getVerifiedArtifact(moduleId),
+        }),
+        backgroundActivities: this.getBackgroundActivityRegistry(),
+        config: new ModuleConfigCapabilityProvider({
+          createBackend: (moduleId) => {
+            if (
+              moduleId === 'learning' &&
+              !this.learningModuleSettingsHandoffReady
+            ) {
+              throw new Error('Learning module settings handoff is incomplete')
+            }
+            return createConfigBackend(moduleId)
+          },
+          reportCallbackError: (moduleId, error) => {
+            console.error(
+              `[YOLO] Module "${moduleId}" config callback failed`,
+              error,
+            )
+          },
+        }),
+        paths: new ManagedModulePathsCapabilityProvider({
+          vaultIdentity: this.app.vault,
+          getBaseDir: () => getYoloBaseDir(this.settings),
+          subscribe: (listener) => {
+            this.managedModulePathChangeListeners.add(listener)
+            return () => this.managedModulePathChangeListeners.delete(listener)
+          },
+          reportCallbackError: (moduleId, error) => {
+            console.error(
+              `[YOLO] Module "${moduleId}" managed-path callback failed`,
+              error,
+            )
+          },
+        }),
+        privateStorage: new ModulePrivateStorageCapabilityProvider({
+          synchronized: {
+            adapter: this.app.vault.adapter,
+            getRootPath: () =>
+              normalizePath(
+                `${getYoloJsonDbRootDir(this.settings)}/${MODULE_PRIVATE_STORAGE_DIR}`,
+              ),
+          },
+          deviceLocal: {
+            adapter: deviceLocalAdapter,
+            getRootPath: () => MODULE_DEVICE_LOCAL_VIRTUAL_ROOT,
+          },
+        }),
+        settings: new ModuleSettingsCapabilityProvider({
+          sink: this.moduleSettingsContributions,
+          createConfigAdapter: (moduleId) => {
+            const backend = createConfigBackend(moduleId)
+            return {
+              read: () => backend.read(),
+              replace: (next) => backend.write(next),
+              subscribe: (listener) => backend.subscribe(listener),
+            }
+          },
+          getModelSnapshot: () => ({
+            defaultModelId: this.settings.chatModelId,
+            models: this.settings.chatModels
+              .filter((model) => model.enable ?? true)
+              .map((model) => ({
+                id: model.id,
+                name: model.name ?? model.model,
+                providerId: model.providerId,
+              })),
+          }),
+          subscribeModels: (listener) =>
+            this.addSettingsChangeListener(() => listener()),
+        }),
+        ui: new ObsidianModuleUiCapabilityProvider({
+          app: this.app,
+          createConfirmModal: (app, options) => new ConfirmModal(app, options),
+          actionToasts: {
+            show: (toast) => {
+              if (!this.actionToastController) {
+                throw new Error('[YOLO] Action toast host is unavailable')
+              }
+              this.actionToastController.show(toast)
+            },
+            dismiss: (id) => this.actionToastController?.dismiss(id),
+          },
+          reportCleanupError: (moduleId, error) => {
+            console.error(
+              `[YOLO] Module "${moduleId}" UI cleanup failed`,
+              error,
+            )
+          },
+        }),
+        vault: new ObsidianModuleVaultCapabilityProvider(this.app),
+      }),
+    )
+    const runtimeReservation = new ModuleRuntimeReservation({ runtime })
+    this.moduleRuntime = runtime
+    this.moduleRuntimeReservation = runtimeReservation
+    const platform = Platform.isDesktop ? 'desktop' : 'mobile'
+    const deviceStateStore = new ModuleDeviceStateStore({
+      kind: 'device-local-runtime-state',
+      adapter: deviceLocalAdapter,
+      rootPath: MODULE_DEVICE_STATE_ROOT,
+    })
+    const intentStore = new ModuleIntentStore(
+      createObsidianModuleIntentBackend({
+        app: this.app,
+        getSettings: () => this.settings,
+        subscribeSettingsChange: (listener) =>
+          this.addSettingsChangeListener(() => listener()),
+      }),
+    )
+    this.learningLegacyInstallMigration = async () => {
+      await migrateLearningLegacyInstallIntent({
+        adapter: this.app.vault.adapter,
+        settings: this.settings,
+        legacySettings: this.rawLearningLegacySettings,
+        enableIfAbsent: (moduleId) =>
+          intentStore.setIfAbsent(moduleId, 'enabled'),
+      })
+    }
+    const bundledCatalogSource =
+      process.env.NODE_ENV === 'development'
+        ? new BundledModuleCatalogSource({
+            store,
+            platform,
+            locale: () =>
+              normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
+          })
+        : undefined
+    const serviceIntentStore = bundledCatalogSource
+      ? {
+          get: async (moduleId: string) => {
+            const explicit = await intentStore.get(moduleId)
+            if (explicit !== undefined) return explicit
+            await bundledCatalogSource.load()
+            return bundledCatalogSource.getResolvedVersion(moduleId)
+              ? ('enabled' as const)
+              : undefined
+          },
+          set: (
+            moduleId: string,
+            state: 'uninstalled' | 'disabled' | 'enabled',
+          ) => intentStore.set(moduleId, state),
+          listModuleIds: () => intentStore.listModuleIds(),
+          subscribeAll: (listener: (moduleId: string) => void) =>
+            intentStore.subscribeAll(listener),
+        }
+      : intentStore
+    const getCompatibility = createOfficialModuleCompatibilityProvider({
+      platform,
+      readDeviceState: async (moduleId) => {
+        const state = await deviceStateStore.read(moduleId)
+        return state
+          ? {
+              moduleId,
+              platform: state.platform,
+              activeVersion: state.active?.version ?? null,
+            }
+          : null
+      },
+    })
+    const services = createProductionModuleServices({
+      store,
+      deviceStateStore,
+      catalogCacheAdapter: deviceLocalAdapter,
+      platform,
+      locale: () =>
+        normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
+      subscribeLocale: localeStore.subscribe,
+      getCompatibility,
+      isActive: (moduleId, version) => runtime.isActive(moduleId, version),
+      runtimeReservation,
+      intentStore: serviceIntentStore,
+      ...(bundledCatalogSource
+        ? {
+            catalogSource: bundledCatalogSource,
+            authorizeArtifactRemoval: async () => true,
+            removeVersionArtifacts: async () => undefined,
+          }
+        : {}),
+      reportCleanupError: (error) => {
+        console.error('[YOLO] Module artifact cleanup failed', error)
+      },
+      reportRefreshError: (error) => {
+        console.error('[YOLO] Module manager refresh failed', error)
+      },
+      reportActivationError: (moduleId, error) => {
+        console.error(`[YOLO] Module "${moduleId}" activation failed`, error)
+      },
+      reportStartupError: (error, moduleId) => {
+        console.error(
+          moduleId
+            ? `[YOLO] Module "${moduleId}" startup reconciliation failed`
+            : '[YOLO] Module startup reconciliation failed',
+          error,
+        )
+      },
+    })
+    servicesReference.current = services
+    this.moduleService = services
+    this.moduleUpdateController = new ModuleUpdateController({
+      service: services,
+      getAutoDownloadEnabled: () =>
+        this.settings.pluginUpdateAutoDownloadEnabled,
+      getMutedVersions: () => this.settings.mutedModuleUpdateVersions,
+      muteVersion: async (moduleId, version) => {
+        await this.setSettings({
+          ...this.settings,
+          mutedModuleUpdateVersions: {
+            ...this.settings.mutedModuleUpdateVersions,
+            [moduleId]: version,
+          },
+        })
+      },
+    })
+  }
+
+  private async activateModules(): Promise<boolean> {
+    try {
+      await this.getModuleService().start()
+    } catch (error) {
+      console.error('[YOLO] Failed to start modules', error)
+      return true
+    }
+    return true
+  }
+
+  private async activateLocalConformanceModule(): Promise<void> {
+    const moduleId = 'host-api-conformance'
+    const version = '1.0.0'
+    try {
+      const store = new ModuleStore({
+        adapter: this.app.vault.adapter,
+        manifest: this.manifest,
+        configDir: this.app.vault.configDir,
+      })
+      const manifestBytes = await store.readManifestBytes(moduleId, version)
+      const manifest = parseModuleArtifactManifest(
+        JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes),
+        ),
+      )
+      if (manifest.id !== moduleId || manifest.version !== version) {
+        throw new Error('Conformance module manifest identity mismatch')
+      }
+      const variant = selectModuleManifestVariant(
+        manifest,
+        Platform.isDesktop ? 'desktop' : 'mobile',
+      )
+      const entry = variant.files.find((file) => file.role === 'entry')!
+      const entryBytes = await store.readEntryBytes(
+        manifest.id,
+        manifest.version,
+        entry.path,
+      )
+      if (!this.moduleRuntimeReservation) {
+        throw new Error('Module runtime reservation is unavailable')
+      }
+      const definition = await new ModuleLoader({
+        executor: new DomBlobModuleScriptExecutor(),
+      }).load(
+        {
+          id: manifest.id,
+          byteSize: entry.byteSize,
+          sha256: entry.sha256,
+        },
+        entryBytes,
+      )
+      await this.moduleRuntimeReservation.activate(definition, version)
+      await this.moduleService?.refresh()
+      new Notice('Host API conformance module activated')
+    } catch (error) {
+      console.error('[YOLO] Conformance module activation failed', error)
+      new Notice(
+        `Host API conformance module unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 
   async tryGetVectorManager(): Promise<VectorManager | null> {

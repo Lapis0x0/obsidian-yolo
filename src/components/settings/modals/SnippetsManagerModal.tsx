@@ -162,7 +162,7 @@ function SnippetsManagerModalContent({
         {t(
           'settings.editor.snippets.modalCallout',
           'Snippets live in YOLO/snippets.md. Trigger the chat input with / and pick one to insert its body.',
-        )}
+        ).replace('YOLO/snippets.md', snippetsPath)}
       </div>
 
       <div className="yolo-agent-skills-toolbar">

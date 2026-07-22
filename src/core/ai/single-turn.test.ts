@@ -146,6 +146,46 @@ describe('executeSingleTurn', () => {
     )
   })
 
+  it('omits reasoning configuration when using provider defaults', async () => {
+    const provider = new MockProvider()
+    provider.generateResponseMock.mockResolvedValue({
+      id: 'aux-1',
+      model: TEST_MODEL.model,
+      object: 'chat.completion',
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: { role: 'assistant', content: 'Title' },
+        },
+      ],
+    })
+
+    await executeSingleTurn({
+      providerClient: provider,
+      model: {
+        ...TEST_MODEL,
+        reasoningType: 'openai',
+      },
+      request: {
+        ...TEST_REQUEST,
+        reasoningLevel: 'off',
+      },
+      deliveryMode: 'buffered',
+      purpose: 'lightweight',
+      reasoningPolicy: 'omit',
+    })
+
+    expect(provider.generateResponseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasoningType: undefined,
+      }),
+      expect.objectContaining({
+        reasoningLevel: undefined,
+      }),
+      expect.any(Object),
+    )
+  })
+
   it('uses streamed write tool calls without forcing non-stream refresh', async () => {
     const provider = new MockProvider()
     provider.streamResponseMock.mockResolvedValue(

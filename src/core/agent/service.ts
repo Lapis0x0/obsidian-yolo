@@ -75,10 +75,9 @@ export type AgentConversationState = {
 }
 
 export type AgentRunActivity = {
-  kind: 'learning-agent'
+  kind: `module:${string}`
   title: string
   detail?: string
-  action?: 'open-learning-view'
 }
 
 const createEmptyConversationState = (

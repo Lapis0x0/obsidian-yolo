@@ -21,12 +21,34 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> | <b>简体中文</b> | <a href="./README_it.md">Italiano</a>
+  <a href="./README.md">English</a> | <b>简体中文</b> | <a href="./README_it.md">Italiano</a> | <a href="./README_es.md">Español</a>
 </p>
 
 <p align="center">
   QQ 群: <code>793057867</code> | <a href="./assets/wechat-group.png">微信群</a>
 </p>
+
+## Sponsors
+
+<table>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://www.atlascloud.ai/logo-white.svg">
+      <img src="https://www.atlascloud.ai/logo.svg" alt="Atlas Cloud" width="163">
+    </picture>
+  </a>
+</td>
+<td valign="middle">
+  <b><a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo">Atlas Cloud</a></b> 为开发者提供覆盖语言、图像与视频生成的统一 AI API。一次接入即可使用横跨多种模态的 300+ 精选模型，无需分别维护不同模型供应商的集成。从 LLM Agent 到图像和视频生成，Atlas Cloud 让模型探索、效果比较与生产接入更加简单。
+  <br><br>
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=obsidian-yolo"><b>探索 Atlas Cloud →</b></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://www.atlascloud.ai/console/coding-plan"><b>查看 Coding Plan →</b></a>
+</td>
+</tr>
+</table>
 
 ## 最近更新
 

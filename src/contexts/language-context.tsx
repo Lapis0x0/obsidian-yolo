@@ -1,18 +1,16 @@
-import { getLanguage } from 'obsidian'
 import React, {
   ReactNode,
   createContext,
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
 } from 'react'
 
-import { Language, createTranslationFunction } from '../i18n'
+import { localeStore } from '../core/i18n/localeStore'
+import { Language, createTranslationFunction, loadLocale } from '../i18n'
 
-const resolveObsidianLanguage = (): Language => {
-  const rawLanguage = String(getLanguage() ?? '')
-    .trim()
-    .toLowerCase()
+const resolveLanguage = (rawLanguage: string): Language => {
   if (rawLanguage.startsWith('zh')) return 'zh'
   if (rawLanguage.startsWith('it')) return 'it'
   return 'en'
@@ -30,15 +28,23 @@ type LanguageProviderProps = {
 }
 
 export function LanguageProvider({ children }: LanguageProviderProps) {
-  const resolveLanguage = () => resolveObsidianLanguage()
-  const [language, setLanguageState] = useState<Language>(resolveLanguage)
+  const locale = useSyncExternalStore(
+    localeStore.subscribe,
+    localeStore.getSnapshot,
+    localeStore.getSnapshot,
+  ).locale
+  const language = resolveLanguage(locale)
+  const [, setTranslationRevision] = useState(0)
 
   useEffect(() => {
-    const updateLanguage = () => {
-      setLanguageState(resolveLanguage())
+    let current = true
+    void loadLocale(language).then(() => {
+      if (current) setTranslationRevision((revision) => revision + 1)
+    })
+    return () => {
+      current = false
     }
-    updateLanguage()
-  }, [])
+  }, [language])
 
   const t = createTranslationFunction(language)
 

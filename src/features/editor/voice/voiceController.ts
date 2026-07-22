@@ -1,6 +1,6 @@
 ﻿import type { ChangeDesc } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
-import type { App, Editor, MarkdownView } from 'obsidian'
+import { type App, type Editor, type MarkdownView, Notice } from 'obsidian'
 
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
@@ -46,6 +46,7 @@ type VoiceControllerDeps = {
     content: string,
   ) => Promise<string>
   appendToMarkdownFile: (path: string, content: string) => Promise<void>
+  isManagedPathTransitionInProgress: () => boolean
   getDocumentSummary?: (input: {
     filePath: string
     content: string
@@ -147,6 +148,7 @@ export class VoiceController {
     input: File | AudioFileSource,
     editor: Editor | null,
   ): Promise<void> {
+    if (!this.canStartManagedPathTask()) return
     await this.audioFileTranscriptionController.start(input, editor)
   }
 
@@ -155,14 +157,17 @@ export class VoiceController {
   }
 
   async startReadAloudSelectionOrDocument(): Promise<void> {
+    if (!this.canStartManagedPathTask()) return
     await this.readAloudController.start('selection-or-document')
   }
 
   async startReadAloudSelection(): Promise<void> {
+    if (!this.canStartManagedPathTask()) return
     await this.readAloudController.start('selection')
   }
 
   async startReadAloudDocument(): Promise<void> {
+    if (!this.canStartManagedPathTask()) return
     await this.readAloudController.start('document')
   }
 
@@ -261,6 +266,25 @@ export class VoiceController {
     if (reason === 'shutdown') {
       this.setStatus(IDLE_VOICE_INPUT_STATUS)
     }
+  }
+
+  /** Drain writes that could otherwise recreate the old root after a move. */
+  async waitForManagedWrites(): Promise<void> {
+    await Promise.all([
+      this.readAloudController.waitForPendingWrites(),
+      this.audioFileTranscriptionController.waitForPendingWrites(),
+    ])
+  }
+
+  private canStartManagedPathTask(): boolean {
+    if (!this.deps.isManagedPathTransitionInProgress()) return true
+    new Notice(
+      this.deps.t(
+        'voiceInput.managedPathTransitionNotice',
+        'YOLO files are moving. Try again when the move finishes.',
+      ),
+    )
+    return false
   }
 
   private updateStatus(

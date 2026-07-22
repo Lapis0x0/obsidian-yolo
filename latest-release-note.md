@@ -1,41 +1,39 @@
-## 1.6.0.3 External Agent Access & Chat Reliability ✨
+## 1.6.1 Modular Architecture Overhaul 🧩
 
-### 🤖 External Agent Integration
+### 🧩 Modular Architecture
 
-- YOLO now provides a local MCP server for external Agents, exposing Vault search and delegation to YOLO Agent tasks (#268).
+- **A new module foundation**: YOLO Core now provides a versioned module runtime and Host API, allowing large optional capabilities to be installed, enabled, and released independently without being bundled into the main plugin.
+- **Learning is now an independent module**: Learning mode has been fully separated from Core while preserving its complete experience. Existing Learning users are migrated automatically with their settings, projects, cards, and review progress intact; users who have never used Learning will not install it automatically.
+- **Secure and recoverable delivery**: Official module releases now use compatibility checks, immutable artifacts, SHA-256 verification, isolated storage, and recoverable version switching across desktop and mobile.
+- **Unified management and updates**: Modules can be installed, enabled, disabled, updated, or removed from the new module settings page without restarting YOLO. Core and module updates now share the same notification, release history, and automatic download preference, while installation still requires user confirmation.
 
-### 💬 Chat & Quick Ask
+### ✨ Experience & Feature Improvements
 
-- Interrupted model responses can now be resumed from the existing content by clicking “Continue generating” in the error message, without regenerating the entire response (#450).
-- Reworked auto-follow in Chat and Quick Ask. Scrolling upward during a streaming response no longer pulls the view back to the bottom or causes scrollbar jitter; auto-follow pauses when you leave the bottom and resumes when you return.
-- Math formulas now render live while responses are streaming. The `$` and `$$` output formats have also been unified for more stable display of complex formulas.
-- Improved Quick Ask focus behavior: arrow keys work normally after returning to the editor, and typing `@` again returns to the existing panel without resetting the current draft or conversation.
-- Fixed Skills selected from quick access being inserted in reverse order. They now follow the click order and are inserted at the current cursor position.
-- Refined the conversation history dialog with separate “My Chats” and “Task Conversations” categories, along with smoother interaction behavior.
-
-### 🎓 Learning & Interface
-
-- Fixed Learning view tabs and related entry points still appearing in Chinese when Obsidian is set to English.
-- Fixed the model selector being clipped when the window does not have enough available space.
+- YOLO now uses the new Orbit entry icon and supports themes such as Border that display icons in new tabs. Sidebar labels for Chat and Learning mode have also been refined.
+- Fixed Learning generation unexpectedly following the old default Chinese prompt, and completed missing English, Chinese, and Italian interface translations. Thanks @RazonIn4K (#464).
+- Fixed Skills import and other features breaking when the YOLO root directory was hidden. Hidden root directories are now disallowed, existing configurations migrate automatically, and invalid paths are reported immediately in Settings (#469).
+- Improved YOLO root directory relocation so Skills, snippets, Learning data, and all other managed content move together. If the destination already contains files, YOLO now warns and stops before overwriting anything.
+- Fixed the Chat view occasionally turning blank when reopening the editor for a historical user message (#475).
+- Fixed automatic conversation titles failing with some models or compatible APIs. Title generation now follows each provider's default reasoning behavior instead of sending unsupported reasoning-disable parameters (#476).
+- Reduced the conversation navigator threshold from seven user messages to three, making navigation available earlier in a conversation (#477).
 
 ---
 
-## 1.6.0.3 外部 Agent 接入与对话可靠性 ✨
+## 1.6.1 架构模块化改造 🧩
 
-### 🤖 外部 Agent 接入
+### 🧩 模块化架构
 
-- YOLO 新增供外部 Agent 接入的本地 MCP 服务，可对外提供 Vault 搜索和 YOLO Agent 任务委派能力 (#268)。
+- **全新模块底座**：YOLO Core 现在提供带版本的模块运行时与 Host API，大型可选能力可以独立安装、启用和发布，不再必须打包进主插件。
+- **Learning 成为独立模块**：学习模式已完整从 Core 中拆分，同时保留全部学习体验。已使用学习模式的用户会自动迁移，原有设置、学习项目、卡片和复习进度都会完整保留；从未使用过学习模式的用户不会被自动安装。
+- **安全且可恢复的交付机制**：官方模块现在具备兼容性检查、不可变制品、SHA-256 完整性验证、隔离存储与可恢复版本切换，并同时支持桌面端和移动端。
+- **统一的管理与更新体验**：可以在新的模块设置页中安装、启用、停用、更新或卸载模块，无需重启 YOLO。Core 与模块更新现在共用同一套提示、历史记录和自动下载设置，实际安装仍需用户确认。
 
-### 💬 Chat 与 Quick Ask
+### ✨ 体验优化与功能改进
 
-- 模型回复中途断开时，现在可以点击错误提示中的“继续生成”，从已有内容处接着回答，无需重新生成整段回复 (#450)。
-- 重构 Chat 与 Quick Ask 的自动跟随机制。模型流式回复时向上滚动不再被拉回底部，也不会出现滚动条抖动；离开底部后会暂停自动跟随，返回底部后自动恢复。
-- 数学公式现在会在回复生成过程中实时渲染，并统一 `$` 与 `$$` 输出格式，使复杂公式的流式显示更加稳定。
-- 优化 Quick Ask 焦点交互：返回编辑器后可正常使用方向键，再次输入 `@` 会回到现有面板，不再重置当前草稿或对话。
-- 修复快捷入口 Skill 插入顺序颠倒的问题，现在会按照点击顺序插入到输入框当前光标位置。
-- 优化历史记录弹窗，新增“我的对话”和“任务会话”分类，并改进整体交互逻辑。
-
-### 🎓 学习与界面体验
-
-- 修复英文环境下学习模式标签页及相关入口仍显示中文的问题。
-- 修复模型选择下拉框在窗口空间不足时显示不全的问题。
+- YOLO 现已采用全新的 Orbit 入口图标，并兼容 Border 等使用图标式新标签页的主题。同时优化 Chat 与学习模式的侧边栏提示文案。
+- 修复学习模式因旧默认中文 prompt 导致生成语言异常的问题，并补全英文、中文及意大利语界面的缺失翻译。感谢 @RazonIn4K (#464)。
+- 修复隐藏 YOLO 根目录导致 Skills 导入等功能失效的问题。现在禁止隐藏 YOLO 根目录，升级后会自动迁移旧配置，并在设置中即时提示无效路径 (#469)。
+- 优化 YOLO 根目录的整体迁移逻辑。修改根目录时，Skills、snippets、Learning 等所有受管内容都会一起迁移；如果目标目录已有文件，YOLO 会先提醒并停止，避免意外覆盖数据。
+- 修复再次点击历史用户消息编辑框时，Chat 页面可能变为空白的问题 (#475)。
+- 修复部分模型或兼容接口无法自动生成对话标题的问题。对话命名现在遵循模型服务商的默认推理行为，避免因不支持的关闭推理参数导致请求失败 (#476)。
+- 将对话导航器的最小用户消息数从 7 条降低到 3 条，让导航功能更早出现 (#477)。

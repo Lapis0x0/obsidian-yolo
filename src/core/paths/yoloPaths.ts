@@ -4,6 +4,9 @@ export const DEFAULT_YOLO_BASE_DIR = 'YOLO'
 export const YOLO_SKILLS_SUBDIR = 'skills'
 export const YOLO_SKILLS_INDEX_FILE_NAME = 'Skills.md'
 export const YOLO_SNIPPETS_FILE_NAME = 'snippets.md'
+export const YOLO_TRANSCRIPTIONS_SUBDIR = 'transcriptions'
+export const YOLO_READ_ALOUD_SUBDIR = 'read_aloud'
+export const YOLO_LOGS_SUBDIR = 'logs'
 export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
 export const YOLO_VECTOR_DB_FILE_NAME = '.yolo_vector_db.tar.gz'
 export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
@@ -22,6 +25,8 @@ type YoloSettingsLike = {
     baseDir?: string
   }
 }
+
+const RESERVED_HIDDEN_VAULT_ROOTS = new Set(['.git', '.trash'])
 
 export const normalizeVaultRelativeDir = (
   value: string | undefined,
@@ -49,6 +54,56 @@ export const getYoloBaseDir = (settings?: YoloSettingsLike | null): string => {
   return normalizeVaultRelativeDir(settings?.yolo?.baseDir)
 }
 
+/** True when a vault-relative path contains a segment Obsidian will not index. */
+export const hasHiddenYoloBaseDirSegment = (value: string): boolean =>
+  normalizePath(value.trim())
+    .replace(/^(\.\/)+/, '')
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '')
+    .split('/')
+    .some((segment) => segment.startsWith('.'))
+
+/** Never switch an already-running plugin to a hidden root from external data. */
+export const resolveExternalYoloBaseDir = (
+  currentBaseDir: string,
+  incomingBaseDir: string,
+): string =>
+  currentBaseDir !== incomingBaseDir &&
+  hasHiddenYoloBaseDirSegment(incomingBaseDir)
+    ? currentBaseDir
+    : incomingBaseDir
+
+/**
+ * Returns the indexed equivalent of a historical hidden YOLO root, or null
+ * when every segment is already visible. A segment made only of dots has no
+ * safe name to migrate to, so it is deliberately left for manual repair.
+ */
+export const getVisibleYoloBaseDir = (
+  value: string,
+  options?: { reservedRoots?: readonly string[] },
+): string | null => {
+  const source = normalizeVaultRelativeDir(value)
+  const firstSegment = source.split('/')[0]
+  if (
+    RESERVED_HIDDEN_VAULT_ROOTS.has(firstSegment) ||
+    options?.reservedRoots?.includes(firstSegment)
+  ) {
+    return null
+  }
+  const targetSegments = source
+    .split('/')
+    .map((segment) =>
+      segment.startsWith('.') ? segment.replace(/^\.+/, '') : segment,
+    )
+
+  if (targetSegments.some((segment) => segment.length === 0)) {
+    return null
+  }
+
+  const target = targetSegments.join('/')
+  return target === source ? null : target
+}
+
 export const getYoloSkillsDir = (
   settings?: YoloSettingsLike | null,
 ): string => {
@@ -73,6 +128,50 @@ export const getYoloSnippetsPath = (
   settings?: YoloSettingsLike | null,
 ): string => {
   return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_SNIPPETS_FILE_NAME}`)
+}
+
+export const getYoloTranscriptionsDir = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(
+    `${getYoloBaseDir(settings)}/${YOLO_TRANSCRIPTIONS_SUBDIR}`,
+  )
+}
+
+export const getYoloAudioFileFallbackNotePathTemplate = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(
+    `${getYoloTranscriptionsDir(settings)}/{{date}} {{time}} {{basename}}.md`,
+  )
+}
+
+export const getYoloReadAloudDir = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_READ_ALOUD_SUBDIR}`)
+}
+
+export const getYoloLogsDir = (settings?: YoloSettingsLike | null): string => {
+  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_LOGS_SUBDIR}`)
+}
+
+/**
+ * Keep a stored path aligned when the complete managed root is renamed.
+ * Paths outside that root are user-owned destinations and remain untouched.
+ */
+export const rebasePathWithinYoloBaseDir = (
+  value: string,
+  sourceBaseDir: string,
+  targetBaseDir: string,
+): string => {
+  const normalizedValue = normalizePath(value.trim()).replace(/^\/+/, '')
+  const source = normalizeVaultRelativeDir(sourceBaseDir)
+  const target = normalizeVaultRelativeDir(targetBaseDir)
+
+  if (normalizedValue === source) return target
+  if (!normalizedValue.startsWith(`${source}/`)) return value
+  return normalizePath(`${target}/${normalizedValue.slice(source.length + 1)}`)
 }
 
 export const getYoloLearningDir = (

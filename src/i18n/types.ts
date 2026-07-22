@@ -1,16 +1,10 @@
 export type Language = 'en' | 'zh' | 'it'
 
-type TranslationBranch = {
-  [key: string]: string | TranslationBranch
-}
-
 export type TranslationKeys = {
   // Commands
   commands: {
     openChat: string
     openChatSidebar: string
-    openLearningMode: string
-    learningModeLabel: string
     newChatCurrentView: string
     openYoloNewChat: string
     openNewChatTab: string
@@ -146,8 +140,6 @@ export type TranslationKeys = {
     mentionContextLabel?: string
   }
 
-  learning?: TranslationBranch
-
   // Settings
   settings: {
     title: string
@@ -158,7 +150,7 @@ export type TranslationKeys = {
       knowledge: string
       tools: string
       agent: string
-      learning: string
+      modules: string
       others: string
     }
     supportYolo: {
@@ -187,10 +179,86 @@ export type TranslationKeys = {
       tabCompletionSystemPrompt?: string
       tabCompletionSystemPromptDesc?: string
     }
-    learning: {
-      generationTitle: string
-      generationModel: string
-      generationModelDesc: string
+    modules: {
+      title: string
+      description: string
+      manage: string
+      manageDescription: string
+      navigation: string
+      enabled: string
+      enabledEmpty: string
+      disabled: string
+      disabledEmpty: string
+      settings: string
+      updateAndEnable: string
+      loading: string
+      loadError: string
+      settingsSaveError: string
+      catalogError: string
+      installedError: string
+      intentError: string
+      empty: string
+      installed: string
+      installedDescription: string
+      installedEmpty: string
+      available: string
+      availableDescription: string
+      availableEmpty: string
+      version: string
+      availableVersion: string
+      install: string
+      update: string
+      installing: string
+      updating: string
+      reload: string
+      reloading: string
+      candidateUnavailable: string
+      installError: string
+      updateError: string
+      activationPendingDetail: string
+      intentLabel: string
+      intentUnknown: string
+      intentInstalledEnabled: string
+      intentInstalledDisabled: string
+      intentUninstalled: string
+      readinessLabel: string
+      readiness: {
+        notInstalled: string
+        pending: string
+        ready: string
+        failed: string
+      }
+      incompatibleReason: string
+      compatibility: {
+        platform: string
+        hostApi: string
+        dataSchema: string
+      }
+      retry: string
+      actionError: string
+      actions: {
+        install: string
+        installBusy: string
+        enable: string
+        enableBusy: string
+        disable: string
+        disableBusy: string
+        uninstall: string
+        uninstallBusy: string
+      }
+      confirmProduct: {
+        uninstallTitle: string
+        uninstallMessage: string
+      }
+      statuses: {
+        available: string
+        installed: string
+        active: string
+        disabled: string
+        updateAvailable: string
+        activationPending: string
+        failed: string
+      }
     }
     chatPreferences: {
       title: string
@@ -250,6 +318,18 @@ export type TranslationKeys = {
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
+      yoloBaseDirHiddenPath?: string
+      yoloBaseDirVoiceBusy?: string
+      yoloBaseDirMigrated?: string
+      yoloBaseDirMigrationConflict?: string
+      yoloBaseDirMigrationFailed?: string
+      yoloBaseDirMigrationRollbackFailed?: string
+      yoloBaseDirMigrationManualRepair?: string
+      yoloBaseDirAdoptTitle?: string
+      yoloBaseDirAdoptMessage?: string
+      yoloBaseDirAdoptConfirm?: string
+      yoloBaseDirConflictTitle?: string
+      yoloBaseDirConflictMessage?: string
       skillsSourcePath?: string
       refreshSkills?: string
       skillsEmptyHint?: string
@@ -1276,6 +1356,17 @@ export type TranslationKeys = {
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
+      yoloBaseDirHiddenPath?: string
+      yoloBaseDirMigrated?: string
+      yoloBaseDirMigrationConflict?: string
+      yoloBaseDirMigrationFailed?: string
+      yoloBaseDirMigrationRollbackFailed?: string
+      yoloBaseDirMigrationManualRepair?: string
+      yoloBaseDirAdoptTitle?: string
+      yoloBaseDirAdoptMessage?: string
+      yoloBaseDirAdoptConfirm?: string
+      yoloBaseDirConflictTitle?: string
+      yoloBaseDirConflictMessage?: string
       ribbonClickAction?: string
       ribbonClickActionDesc?: string
       ribbonClickActionSidebar?: string
@@ -1756,6 +1847,7 @@ export type TranslationKeys = {
     recorderUnsupported?: string
     recordingCancelled?: string
     finishCurrentTaskNotice?: string
+    managedPathTransitionNotice?: string
     audioFileDisabledNotice?: string
     failed?: string
     failedWithMessage?: string
@@ -2225,10 +2317,6 @@ export type TranslationKeys = {
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
     backgroundTasksNeedAttention?: string
-    learningTasksRunning?: string
-    learningReviewLabel?: string
-    learningReviewTitle?: string
-    learningReviewDetail?: string
     ragAutoUpdateRunning?: string
     ragAutoUpdateRunningDetail?: string
     ragAutoUpdateFailed?: string

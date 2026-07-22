@@ -129,11 +129,13 @@ import {
   callJsSandboxTool,
   getJsSandboxTool,
 } from './jsSandboxTool'
+import { LOCAL_FILE_TOOL_SERVER } from './localFileToolNames'
 import { parseToolName } from './tool-name-utils'
+
+export { getLocalFileToolServerName } from './localFileToolNames'
 
 export { recoverLikelyEscapedBackslashSequences }
 
-const LOCAL_FILE_TOOL_SERVER = 'yolo_local'
 export const TERMINAL_COMMAND_TOOL_NAME = 'terminal_command'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
@@ -587,10 +589,6 @@ const sliceLinesForFsReadOperation = (
     hasMoreBelow,
     nextStartLine: hasMoreBelow ? endExclusive + 1 : null,
   }
-}
-
-export function getLocalFileToolServerName(): string {
-  return LOCAL_FILE_TOOL_SERVER
 }
 
 export const LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME = 'load_tool_schemas'

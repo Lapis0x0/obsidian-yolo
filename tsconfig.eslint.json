@@ -4,6 +4,9 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "__mocks__/**/*.ts",
+    "modules/**/*.d.ts",
+    "modules/*/src/**/*.ts",
+    "modules/*/src/**/*.tsx",
     "*.ts",
     "*.tsx"
   ]

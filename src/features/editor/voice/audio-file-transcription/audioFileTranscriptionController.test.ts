@@ -1,6 +1,7 @@
 jest.mock('obsidian', () => ({
   Notice: jest.fn(),
   Platform: { isDesktop: true, isMobile: false },
+  normalizePath: (path: string) => path.replace(/\\/g, '/'),
 }))
 
 jest.mock('./audioFileTranscriptionService', () => {
@@ -275,6 +276,54 @@ describe('AudioFileTranscriptionController fallback insertion', () => {
       expect.stringContaining('meeting.md'),
       expect.stringContaining('转写结果'),
     )
+  })
+
+  it('lets root relocation wait for an in-flight fallback write', async () => {
+    const { controller, createFallbackMarkdownFile } = createController()
+    let finishWrite: ((path: string) => void) | undefined
+    createFallbackMarkdownFile.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          finishWrite = resolve
+        }),
+    )
+    const session = {
+      source: { name: 'meeting.wav' },
+      editor: null,
+      appendOffset: null,
+      plan: {
+        fileName: 'meeting.wav',
+        mode: 'long-audio-upload',
+        providerConfig: {
+          name: 'Local',
+          model: 'asr',
+          format: 'funasr-local',
+        },
+        schedule: null,
+      },
+      previousInsertedText: '',
+      hasInsertedText: false,
+      fallbackPath: null,
+      fallbackNoticeShown: false,
+    }
+    controller.session = session
+
+    const insertPromise = controller.insertText(session, {
+      text: 'pending transcript',
+      chunkIndex: null,
+      chunkStartMs: null,
+    })
+    await Promise.resolve()
+    let drained = false
+    const drainPromise = controller.waitForPendingWrites().then(() => {
+      drained = true
+    })
+
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    finishWrite?.('YOLO/transcriptions/meeting.md')
+    await Promise.all([insertPromise, drainPromise])
+    expect(drained).toBe(true)
   })
 })
 

@@ -6,6 +6,7 @@ import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getAudioFileChunkDurationAdvisory } from '../../../core/asr/capabilities'
 import { hasConfiguredAudioFileAsrConfig } from '../../../core/asr/configStatus'
+import { getYoloAudioFileFallbackNotePathTemplate } from '../../../core/paths/yoloPaths'
 import type {
   AsrConfig,
   AudioFileChunkHeaderMode,
@@ -385,7 +386,9 @@ export function AudioFileTranscriptionSection() {
                       'audioFileFallbackNotePathTemplate',
                     )
                   }
-                  placeholder="YOLO/transcriptions/{{date}} {{time}} {{basename}}.md"
+                  placeholder={getYoloAudioFileFallbackNotePathTemplate(
+                    settings,
+                  )}
                 />
               </ObsidianSetting>
 

@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "host-api-conformance",
+  "version": "1.0.0",
+  "hostApi": "^1.1.0",
+  "dataSchemas": {},
+  "variants": [
+    {
+      "platform": "desktop",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 2758,
+          "sha256": "b54b021f5279de4c57c3af9cf5358fb95c19080b2ab6a9388c502c21033db375",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-host-api-conformance-v1.0.0/entry.js",
+          "storage": "module"
+        }
+      ]
+    },
+    {
+      "platform": "mobile",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 2758,
+          "sha256": "b54b021f5279de4c57c3af9cf5358fb95c19080b2ab6a9388c502c21033db375",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-host-api-conformance-v1.0.0/entry.js",
+          "storage": "module"
+        }
+      ]
+    }
+  ]
+}

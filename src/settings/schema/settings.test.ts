@@ -26,12 +26,8 @@ describe('parseYoloSettings', () => {
     expect(result.systemPrompt).toBe('')
     expect(result.softDismissedUpdateVersion).toBe('')
     expect(result.mutedUpdateVersion).toBe('')
+    expect(result.mutedModuleUpdateVersions).toEqual({})
     expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
-    expect(result.learningOptions).toEqual({
-      modelId: '',
-      betaNoticeAcknowledged: false,
-    })
-
     expect(result.ragOptions).toMatchObject({
       enabled: true,
       chunkSize: 1000,
@@ -146,6 +142,15 @@ describe('parseYoloSettings', () => {
         approvalMode: 'require_approval',
       },
     })
+  })
+
+  it('preserves a legacy hidden YOLO root for the startup filesystem migration', () => {
+    expect(
+      parseYoloSettings({
+        version: SETTINGS_SCHEMA_VERSION,
+        yolo: { baseDir: '.yolo' },
+      }).yolo.baseDir,
+    ).toBe('.yolo')
   })
 
   it('migrates applyModelId to chatTitleModelId for legacy settings', () => {
@@ -489,6 +494,9 @@ describe('parseYoloSettings', () => {
         continuationModelId: 'missing/model',
         tabCompletionModelId: 'missing/model',
       },
+      contextVoiceInputOptions: {
+        polishModelId: 'missing/model',
+      },
       learningOptions: { modelId: 'missing/model' },
       assistants: [
         {
@@ -515,7 +523,8 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
     expect(result.continuationOptions.continuationModelId).toBe('openai/gpt-5')
     expect(result.continuationOptions.tabCompletionModelId).toBe('openai/gpt-5')
-    expect(result.learningOptions.modelId).toBe('openai/gpt-5')
+    expect(result.contextVoiceInputOptions.polishModelId).toBe('')
+    expect(result.learningOptions).toEqual({ modelId: 'missing/model' })
     expect(result.assistants).toEqual([
       {
         id: 'assistant-1',
@@ -528,53 +537,18 @@ describe('parseYoloSettings', () => {
     expect(result.quickAskAssistantId).toBeUndefined()
   })
 
-  it('copies the default chat model when the learning model is missing or disabled', () => {
-    const base = {
-      version: SETTINGS_SCHEMA_VERSION,
-      providers: [
-        {
-          id: 'openai',
-          presetType: 'openai',
-          apiKey: 'token',
-        },
-      ],
-      chatModels: [
-        {
-          providerId: 'openai',
-          id: 'openai/gpt-5',
-          model: 'gpt-5',
-          enable: true,
-        },
-        {
-          providerId: 'openai',
-          id: 'openai/disabled',
-          model: 'disabled',
-          enable: false,
-        },
-      ],
-      chatModelId: 'openai/gpt-5',
+  it('preserves legacy learning settings as an opaque handoff payload', () => {
+    const learningOptions = {
+      modelId: 'openai/disabled',
+      betaNoticeAcknowledged: true,
+      futureField: { enabled: true },
     }
-
-    expect(parseYoloSettings(base).learningOptions.modelId).toBe('openai/gpt-5')
-    expect(
-      parseYoloSettings({
-        ...base,
-        learningOptions: { modelId: 'openai/disabled' },
-      }).learningOptions.modelId,
-    ).toBe('openai/gpt-5')
-  })
-
-  it('initializes and preserves the learning beta notice acknowledgement', () => {
-    expect(
-      parseYoloSettings({ learningOptions: { modelId: '' } }).learningOptions
-        .betaNoticeAcknowledged,
-    ).toBe(false)
     expect(
       parseYoloSettings({
         version: SETTINGS_SCHEMA_VERSION,
-        learningOptions: { modelId: '', betaNoticeAcknowledged: true },
-      }).learningOptions.betaNoticeAcknowledged,
-    ).toBe(true)
+        learningOptions,
+      }).learningOptions,
+    ).toEqual(learningOptions)
   })
 
   it('clears invalid model references when no valid models remain after parsing', () => {
@@ -620,7 +594,7 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
     expect(result.continuationOptions.continuationModelId).toBe('')
     expect(result.continuationOptions.tabCompletionModelId).toBe('')
-    expect(result.learningOptions.modelId).toBe('')
+    expect(result.learningOptions).toEqual({ modelId: 'broken/model' })
   })
 
   it('deduplicates embedding models with the same provider and model', () => {

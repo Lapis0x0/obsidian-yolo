@@ -4,6 +4,8 @@ import {
   buildReleaseAssets,
   checkForUpdate,
   compareVersions,
+  fetchReleaseHistoryPage,
+  locateReleaseHistoryPage,
   normalizePluginVersion,
   parseChangelog,
   parseLatestVersionFromVersionsJson,
@@ -519,5 +521,82 @@ describe('parseChangelog', () => {
     ).sections[0].items[0]
     expect(item.title).toBe('js_eval UMD 加载与调试报错')
     expect(item.ref).toBe('#354、#355')
+  })
+})
+
+describe('release history products', () => {
+  beforeEach(() => {
+    mockedRequestUrl.mockReset()
+  })
+
+  it('mixes Core and official module releases while excluding unrelated tags', async () => {
+    mockedRequestUrl.mockResolvedValue(
+      createRequestUrlResponse(
+        JSON.stringify([
+          {
+            tag_name: 'learning/v0.1.0',
+            body: '## 0.1.0 Learning update',
+            html_url: 'https://example.test/learning',
+            draft: false,
+            prerelease: false,
+          },
+          {
+            tag_name: '1.6.0.4',
+            body: '## 1.6.0.4 Core update',
+            html_url: 'https://example.test/core',
+            draft: false,
+            prerelease: false,
+          },
+          {
+            tag_name: 'runtime/v1.0.0',
+            body: 'runtime',
+            draft: false,
+            prerelease: true,
+          },
+          {
+            tag_name: 'internal-build',
+            body: 'internal',
+            draft: false,
+            prerelease: false,
+          },
+        ]),
+      ),
+    )
+
+    await expect(fetchReleaseHistoryPage(1)).resolves.toMatchObject({
+      entries: [
+        {
+          productId: 'learning',
+          productName: 'Learning',
+          version: '0.1.0',
+        },
+        {
+          productId: 'core',
+          productName: 'YOLO Core',
+          version: '1.6.0.4',
+        },
+      ],
+      hasNext: false,
+    })
+  })
+
+  it('does not mistake a module version for the installed Core version', async () => {
+    mockedRequestUrl.mockResolvedValue(
+      createRequestUrlResponse(
+        JSON.stringify([
+          {
+            tag_name: 'learning/v0.1.0',
+            body: '## 0.1.0 Learning update',
+            draft: false,
+            prerelease: false,
+          },
+        ]),
+      ),
+    )
+
+    await expect(locateReleaseHistoryPage('0.1.0')).resolves.toMatchObject({
+      pageIndex: 0,
+      found: false,
+    })
   })
 })
