@@ -1279,7 +1279,7 @@ export const zh: TranslationKeys = {
       snippets: {
         sectionTitle: '快捷指令',
         sectionDesc:
-          '在聊天输入框中输入 / 后选中即可插入预设的 prompt 片段。片段存储在 YOLO/snippets.md。',
+          '在聊天输入框中输入 / 后选中即可插入预设的 prompt 片段。片段存储在 {{path}}。',
         cardName: '快捷指令库',
         cardDescCount: '{count} 条快捷指令',
         cardDescMissing: '暂无 snippets.md 文件',
@@ -1287,7 +1287,7 @@ export const zh: TranslationKeys = {
         initBtn: '初始化快捷指令',
         modalTitle: '管理快捷指令',
         modalCallout:
-          '快捷指令存储在 YOLO/snippets.md。通过聊天输入框 / 触发后选中即插入正文。',
+          '快捷指令存储在 {{path}}。通过聊天输入框 / 触发后选中即插入正文。',
         openFileBtn: '打开 snippets.md',
         createFileBtn: '创建 snippets.md',
         empty: '还没有快捷指令',
@@ -2079,6 +2079,8 @@ export const zh: TranslationKeys = {
     recordingCancelled: '录音已取消。',
     finishCurrentTaskNotice: '请先完成当前语音任务，再转写文件。',
     managedPathTransitionNotice: 'YOLO 文件正在移动，请稍后再试。',
+    managedPathWriteTimeoutNotice:
+      '语音文件仍在保存，YOLO 根目录未更改。请等待保存完成后重试。',
     audioFileDisabledNotice: '音频文件转写未在语音输入设置中启用。',
     failed: '语音输入失败。',
     failedWithMessage: '语音输入失败：{{message}}',

@@ -3674,6 +3674,27 @@ export default class YoloPlugin extends Plugin {
     return meta
   }
 
+  private async waitForVoiceManagedWritesBeforePathChange(): Promise<boolean> {
+    try {
+      await this.voiceController?.waitForManagedWrites()
+      return true
+    } catch (error) {
+      // Moving while an old-root write may still complete can recreate files
+      // at the abandoned path, so a drain timeout must fail closed.
+      console.error(
+        '[YOLO] Voice writes did not settle before the managed-root change.',
+        error,
+      )
+      new Notice(
+        this.t(
+          'voiceInput.managedPathWriteTimeoutNotice',
+          'Voice files are still being saved, so the YOLO root was not changed. Try again after saving finishes.',
+        ),
+      )
+      return false
+    }
+  }
+
   /**
    * Adopt an externally-written `data.json` payload into in-memory state.
    *
@@ -3765,7 +3786,7 @@ export default class YoloPlugin extends Plugin {
       this.managedPathTransitionDepth += 1
       try {
         this.voiceController?.cancelActiveSession('base-dir-changed')
-        await this.voiceController?.waitForManagedWrites()
+        if (!(await this.waitForVoiceManagedWritesBeforePathChange())) return
         await runManagedModuleDataExclusive(
           this.app.vault,
           managedModuleDataNamespace('learning', 'managed-data'),
@@ -3774,6 +3795,7 @@ export default class YoloPlugin extends Plugin {
             this.publishManagedModulePathChange()
           },
         )
+        this.voiceController?.clearManagedPathCaches()
       } finally {
         this.managedPathTransitionDepth -= 1
       }
@@ -4062,9 +4084,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     if (yoloBaseDirChanged) {
       this.managedPathTransitionDepth += 1
       try {
-        // Cancellation changes status immediately; wait separately for Vault
-        // writes that already crossed the cancellation boundary.
-        await this.voiceController?.waitForManagedWrites()
+        // A completed voice session can still have final Vault writes even
+        // though the busy-state guard above already reports idle.
+        if (!(await this.waitForVoiceManagedWritesBeforePathChange())) return
         if (this.dbManager) {
           // Snapshot the in-memory DB to the OLD location before relocating.
           // If this fails (#408 OOM, disk full, etc.), the move would carry a
@@ -4140,6 +4162,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           )
           return
         }
+        this.voiceController?.clearManagedPathCaches()
         if (this.dbManager) {
           await this.dbManager.cleanup()
           this.dbManager = null

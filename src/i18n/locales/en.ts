@@ -1374,7 +1374,7 @@ export const en: TranslationKeys = {
       snippets: {
         sectionTitle: 'Snippets',
         sectionDesc:
-          'Type / in the chat input and pick a snippet to insert a preset prompt. Snippets live in YOLO/snippets.md.',
+          'Type / in the chat input and pick a snippet to insert a preset prompt. Snippets live in {{path}}.',
         cardName: 'Snippet library',
         cardDescCount: '{count} snippets',
         cardDescMissing: 'No snippets.md file yet',
@@ -1382,7 +1382,7 @@ export const en: TranslationKeys = {
         initBtn: 'Initialize snippets',
         modalTitle: 'Manage snippets',
         modalCallout:
-          'Snippets live in YOLO/snippets.md. Trigger the chat input with / and pick one to insert its body.',
+          'Snippets live in {{path}}. Trigger the chat input with / and pick one to insert its body.',
         openFileBtn: 'Open snippets.md',
         createFileBtn: 'Create snippets.md',
         empty: 'No snippets yet',
@@ -2249,6 +2249,8 @@ export const en: TranslationKeys = {
       'Finish the current voice task before transcribing a file.',
     managedPathTransitionNotice:
       'YOLO files are moving. Try again when the move finishes.',
+    managedPathWriteTimeoutNotice:
+      'Voice files are still being saved, so the YOLO root was not changed. Try again after saving finishes.',
     audioFileDisabledNotice:
       'Audio file transcription is disabled in voice input settings.',
     failed: 'Voice input failed.',

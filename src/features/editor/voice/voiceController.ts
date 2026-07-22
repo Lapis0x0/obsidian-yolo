@@ -184,10 +184,12 @@ export class VoiceController {
   }
 
   prepareGeneratedAudioDrag(event: DragEvent): boolean {
+    if (this.deps.isManagedPathTransitionInProgress()) return false
     return this.readAloudController.prepareGeneratedAudioDrag(event)
   }
 
   hasGeneratedAudio(): boolean {
+    if (this.deps.isManagedPathTransitionInProgress()) return false
     return this.readAloudController.hasGeneratedAudio()
   }
 
@@ -274,6 +276,11 @@ export class VoiceController {
       this.readAloudController.waitForPendingWrites(),
       this.audioFileTranscriptionController.waitForPendingWrites(),
     ])
+  }
+
+  /** Drop paths captured before a successful managed-root transition. */
+  clearManagedPathCaches(): void {
+    this.readAloudController.clearGeneratedAudioDragCache()
   }
 
   private canStartManagedPathTask(): boolean {

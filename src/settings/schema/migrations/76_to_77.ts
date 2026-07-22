@@ -245,7 +245,6 @@ const normalizeAudioFileOutputMetadataMode = (value: unknown): string => {
   if (value === 'title' || value === 'full' || value === 'metadata') {
     return 'metadata'
   }
-  if (value === 'metadata-timestamps') return 'metadata-timestamps'
   return 'metadata-timestamps'
 }
 

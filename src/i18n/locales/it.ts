@@ -1404,7 +1404,7 @@ export const it: TranslationKeys = {
       snippets: {
         sectionTitle: 'Snippet',
         sectionDesc:
-          "Digita / nell'input della chat e scegli uno snippet per inserire un prompt predefinito. Gli snippet sono in YOLO/snippets.md.",
+          "Digita / nell'input della chat e scegli uno snippet per inserire un prompt predefinito. Gli snippet sono in {{path}}.",
         cardName: 'Libreria snippet',
         cardDescCount: '{count} snippet',
         cardDescMissing: 'Nessun file snippets.md',
@@ -1412,7 +1412,7 @@ export const it: TranslationKeys = {
         initBtn: 'Inizializza snippet',
         modalTitle: 'Gestisci snippet',
         modalCallout:
-          "Gli snippet sono in YOLO/snippets.md. Attiva l'input della chat con / e selezionane uno per inserire il corpo.",
+          "Gli snippet sono in {{path}}. Attiva l'input della chat con / e selezionane uno per inserire il corpo.",
         openFileBtn: 'Apri snippets.md',
         createFileBtn: 'Crea snippets.md',
         empty: 'Nessuno snippet',
@@ -1677,6 +1677,10 @@ export const it: TranslationKeys = {
 
   voiceInput: {
     buttonCancel: 'Annulla input vocale',
+    managedPathTransitionNotice:
+      'I file YOLO sono in fase di spostamento. Riprova al termine dello spostamento.',
+    managedPathWriteTimeoutNotice:
+      'I file vocali sono ancora in fase di salvataggio, quindi la cartella principale YOLO non è stata modificata. Riprova al termine del salvataggio.',
     modeSwitchToHold: 'Passa a premi-per-parlare',
     modeSwitchToAudioFile: 'Passa alla modalita file audio',
     modeSwitchToReadAloud: 'Passa alla lettura ad alta voce',

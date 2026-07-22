@@ -4,6 +4,7 @@ import { Editor, MarkdownView, Notice } from 'obsidian'
 
 import { getYoloAudioFileFallbackNotePathTemplate } from '../../../../core/paths/yoloPaths'
 import type { YoloSettings } from '../../../../settings/schema/setting.types'
+import { PendingWriteTracker } from '../pendingWriteTracker'
 import type { VoiceInputState } from '../voiceStatus'
 
 import {
@@ -99,7 +100,7 @@ const STREAMING_PROGRESS_MESSAGE_MIN_VISIBLE_MS = 3000
 
 export class AudioFileTranscriptionController {
   private session: AudioFileSession | null = null
-  private readonly pendingManagedWrites = new Set<Promise<unknown>>()
+  private readonly pendingManagedWrites = new PendingWriteTracker()
 
   constructor(private readonly deps: AudioFileTranscriptionControllerDeps) {}
 
@@ -290,18 +291,11 @@ export class AudioFileTranscriptionController {
 
   /** Wait until fallback-note writes already targeting the old root settle. */
   async waitForPendingWrites(): Promise<void> {
-    while (this.pendingManagedWrites.size > 0) {
-      await Promise.allSettled(Array.from(this.pendingManagedWrites))
-    }
+    await this.pendingManagedWrites.waitForSettled()
   }
 
   private trackManagedWrite<T>(operation: Promise<T>): Promise<T> {
-    this.pendingManagedWrites.add(operation)
-    void operation.then(
-      () => this.pendingManagedWrites.delete(operation),
-      () => this.pendingManagedWrites.delete(operation),
-    )
-    return operation
+    return this.pendingManagedWrites.track(operation)
   }
 
   private tFormat(

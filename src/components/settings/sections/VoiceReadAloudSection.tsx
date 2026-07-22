@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { getYoloReadAloudDir } from '../../../core/paths/yoloPaths'
 import {
   type AudioOutputDevice,
   applyAudioOutputDevice,
@@ -15,10 +16,7 @@ import type {
   ReadAloudMarkdownMode,
   TtsConfig,
 } from '../../../settings/schema/setting.types'
-import {
-  DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR,
-  READ_ALOUD_MARKDOWN_MODES,
-} from '../../../settings/schema/setting.types'
+import { READ_ALOUD_MARKDOWN_MODES } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -37,9 +35,9 @@ export function VoiceReadAloudSection() {
   const voice = settings.contextVoiceInputOptions
   const ttsReady = hasConfiguredTtsConfig(voice)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const defaultGeneratedAudioSaveDir = getYoloReadAloudDir(settings)
   const generatedAudioSaveDir =
-    voice.readAloudGeneratedAudioSaveDir ||
-    DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR
+    voice.readAloudGeneratedAudioSaveDir || defaultGeneratedAudioSaveDir
   const [numberInputs, setNumberInputs] = useState({
     readAloudChunkTargetChars: String(voice.readAloudChunkTargetChars),
     readAloudPreloadSegments: String(voice.readAloudPreloadSegments),
@@ -356,7 +354,7 @@ export function VoiceReadAloudSection() {
                       'readAloudGeneratedAudioSaveDir',
                     )
                   }
-                  placeholder={DEFAULT_READ_ALOUD_GENERATED_AUDIO_SAVE_DIR}
+                  placeholder={defaultGeneratedAudioSaveDir}
                 />
               </ObsidianSetting>
 

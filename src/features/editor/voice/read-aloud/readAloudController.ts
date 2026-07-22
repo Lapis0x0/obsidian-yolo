@@ -11,6 +11,7 @@ import type {
   TtsSynthesisFileResult,
 } from '../../../../core/tts/types'
 import type { YoloSettings } from '../../../../settings/schema/setting.types'
+import { PendingWriteTracker } from '../pendingWriteTracker'
 import type { VoiceInputStatus, VoiceReadAloudStatus } from '../voiceStatus'
 
 import {
@@ -113,7 +114,7 @@ export class ReadAloudController {
   private session: ReadAloudSession | null = null
   private pendingStart: ReadAloudPendingStart | null = null
   private readonly generatedAudioStore: GeneratedAudioStore
-  private readonly pendingManagedWrites = new Set<Promise<void>>()
+  private readonly pendingManagedWrites = new PendingWriteTracker()
   private readonly cache = new Map<string, TtsSynthesisFileResult>()
   private lastGeneratedDragSegment: GeneratedAudioDragSegment | null = null
   private completionTimeout: number | null = null
@@ -272,9 +273,12 @@ export class ReadAloudController {
 
   /** Wait until writes already targeting the managed root have settled. */
   async waitForPendingWrites(): Promise<void> {
-    while (this.pendingManagedWrites.size > 0) {
-      await Promise.allSettled(Array.from(this.pendingManagedWrites))
-    }
+    await this.pendingManagedWrites.waitForSettled()
+  }
+
+  /** A root move invalidates the saved Vault path kept for post-playback drag. */
+  clearGeneratedAudioDragCache(): void {
+    this.lastGeneratedDragSegment = null
   }
 
   private captureTextSnapshot(
@@ -591,13 +595,9 @@ export class ReadAloudController {
     session: ReadAloudSession,
     segment: ReadAloudGeneratedSegment,
   ): Promise<void> {
-    const operation = this.performSaveSegment(session, segment)
-    this.pendingManagedWrites.add(operation)
-    void operation.then(
-      () => this.pendingManagedWrites.delete(operation),
-      () => this.pendingManagedWrites.delete(operation),
+    return this.pendingManagedWrites.track(
+      this.performSaveSegment(session, segment),
     )
-    return operation
   }
 
   private async performSaveSegment(

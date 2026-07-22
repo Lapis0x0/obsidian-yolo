@@ -1848,6 +1848,7 @@ export type TranslationKeys = {
     recordingCancelled?: string
     finishCurrentTaskNotice?: string
     managedPathTransitionNotice?: string
+    managedPathWriteTimeoutNotice?: string
     audioFileDisabledNotice?: string
     failed?: string
     failedWithMessage?: string
