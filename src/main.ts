@@ -57,7 +57,6 @@ import type {
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
-  BundledModuleCatalogSource,
   CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
@@ -3887,34 +3886,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           intentStore.setIfAbsent(moduleId, 'enabled'),
       })
     }
-    const bundledCatalogSource =
-      process.env.NODE_ENV === 'development'
-        ? new BundledModuleCatalogSource({
-            store,
-            platform,
-            locale: () =>
-              normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
-          })
-        : undefined
-    const serviceIntentStore = bundledCatalogSource
-      ? {
-          get: async (moduleId: string) => {
-            const explicit = await intentStore.get(moduleId)
-            if (explicit !== undefined) return explicit
-            await bundledCatalogSource.load()
-            return bundledCatalogSource.getResolvedVersion(moduleId)
-              ? ('enabled' as const)
-              : undefined
-          },
-          set: (
-            moduleId: string,
-            state: 'uninstalled' | 'disabled' | 'enabled',
-          ) => intentStore.set(moduleId, state),
-          listModuleIds: () => intentStore.listModuleIds(),
-          subscribeAll: (listener: (moduleId: string) => void) =>
-            intentStore.subscribeAll(listener),
-        }
-      : intentStore
     const getCompatibility = createOfficialModuleCompatibilityProvider({
       platform,
       readDeviceState: async (moduleId) => {
@@ -3939,15 +3910,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,
-      intentStore: serviceIntentStore,
+      intentStore,
       artifactArrivalGrace,
-      ...(bundledCatalogSource
-        ? {
-            catalogSource: bundledCatalogSource,
-            authorizeArtifactRemoval: async () => true,
-            removeVersionArtifacts: async () => undefined,
-          }
-        : {}),
       reportCleanupError: (error) => {
         console.error('[YOLO] Module artifact cleanup failed', error)
       },

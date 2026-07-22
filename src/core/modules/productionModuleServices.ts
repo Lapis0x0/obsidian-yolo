@@ -36,7 +36,6 @@ import {
   type OfficialModuleArtifactRequest,
   createOfficialModuleArtifactDownloader,
 } from './officialModuleArtifactDownloader'
-import { authorizeOfficialModuleArtifactRemoval } from './officialModuleArtifactRemovalPolicy'
 import { resolveOfficialModuleArtifactSources } from './officialModuleArtifactSources'
 import {
   type OfficialModuleCatalogCacheAdapter,
@@ -102,11 +101,6 @@ export type ProductionModuleServicesOptions = Readonly<{
   catalogSource?: ModuleCatalogResolutionSource
   artifactDownloader?: ModuleArtifactInstallerOptions['download']
   artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
-  authorizeArtifactRemoval?: (
-    moduleId: string,
-    versions: readonly string[],
-  ) => Promise<boolean>
-  removeVersionArtifacts?: (moduleId: string, version: string) => Promise<void>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
@@ -126,7 +120,7 @@ export function isInstallCandidateState(
 ): boolean {
   return Boolean(
     displayed &&
-      (displayed.status === 'available' ||
+      (displayed.desiredInstalled !== true ||
         displayed.status === 'update-available' ||
         (displayed.status === 'disabled' &&
           displayed.installed &&
@@ -255,34 +249,11 @@ export function createProductionModuleServices(
     },
   )
   const uninstallCoordinator = new ModuleUninstallCoordinator({
-    artifactStore: {
-      removeVersionArtifacts:
-        options.removeVersionArtifacts ??
-        ((moduleId, version) =>
-          options.store.removeVersionArtifacts(moduleId, version)),
-    },
+    artifactStore: options.store,
     deviceStateStore: options.deviceStateStore,
     intentStore: options.intentStore,
     manager,
     runtime: runtimeReservation,
-    authorizeArtifactRemoval:
-      options.authorizeArtifactRemoval ??
-      ((moduleId, versions) =>
-        authorizeOfficialModuleArtifactRemoval(
-          catalogClient,
-          moduleId,
-          versions,
-          options.platform,
-          {
-            timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-            ...(options.artifactRequest
-              ? { requestUrl: options.artifactRequest }
-              : {}),
-            ...(options.subtleCrypto
-              ? { subtleCrypto: options.subtleCrypto }
-              : {}),
-          },
-        )),
     platform: options.platform,
   })
   const startupIntentStore = options.intentStore

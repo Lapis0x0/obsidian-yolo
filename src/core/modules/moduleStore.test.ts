@@ -162,7 +162,8 @@ describe('ModuleStore', () => {
   })
 
   it('recursively removes only the resolved version root and verifies absence', async () => {
-    const root = '.config/plugins/yolo/modules/notes/1.2.0'
+    const root =
+      '.config/plugins/obsidian-smart-composer/modules/notes/1.2.0'
     let present = true
     const stat = jest.fn(async (path: string) =>
       path === root && present ? { type: 'folder' as const } : null,
@@ -172,7 +173,10 @@ describe('ModuleStore', () => {
     })
     const store = new ModuleStore({
       adapter: { stat, rmdir } as unknown as DataAdapter,
-      manifest: { id: 'yolo', dir: '.config/plugins/yolo' },
+      manifest: {
+        id: 'yolo',
+        dir: '.config/plugins/obsidian-smart-composer',
+      },
       configDir: '.config',
     })
 
@@ -267,11 +271,6 @@ describe('ModuleStore', () => {
     {
       label: 'separator alias',
       manifest: { id: 'yolo', dir: '.config\\plugins\\yolo' },
-      configDir: '.config',
-    },
-    {
-      label: 'case alias',
-      manifest: { id: 'yolo', dir: '.config/plugins/YOLO' },
       configDir: '.config',
     },
     {

@@ -698,18 +698,29 @@ function resolveDestructiveModulePluginDir(
   } catch {
     throw new Error('Module artifact removal config directory is unsafe')
   }
-  const expected = `${configDir}/plugins/${options.manifest.id}`
+  const pluginsRoot = `${configDir}/plugins`
+  const pluginDir = options.manifest.dir ?? `${pluginsRoot}/${options.manifest.id}`
+  const pluginDirPrefix = `${pluginsRoot}/`
   if (
-    options.manifest.dir !== undefined &&
-    (options.manifest.dir !== expected ||
-      options.manifest.dir.normalize('NFKC') !== options.manifest.dir ||
-      normalizePortablePath(options.manifest.dir) !== options.manifest.dir)
+    pluginDir.normalize('NFKC') !== pluginDir ||
+    normalizePortablePath(pluginDir) !== pluginDir ||
+    !pluginDir.startsWith(pluginDirPrefix)
   ) {
     throw new Error(
-      'Module artifact removal manifest directory is outside the expected plugin root',
+      'Module artifact removal manifest directory is outside the expected plugins root',
     )
   }
-  return expected
+  try {
+    assertModulePathSegment(
+      pluginDir.slice(pluginDirPrefix.length),
+      'Plugin directory',
+    )
+  } catch {
+    throw new Error(
+      'Module artifact removal manifest directory is outside the expected plugins root',
+    )
+  }
+  return pluginDir
 }
 
 function relativeVersionPath(root: string, path: string): string {

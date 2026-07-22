@@ -318,7 +318,6 @@ function createHarness(
     runtimeReservation,
     catalogRequest,
     artifactRequest,
-    authorizeArtifactRemoval: async () => true,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
     reportCleanupError,
     reportRefreshError,
@@ -390,6 +389,25 @@ describe('createProductionModuleServices', () => {
           desiredInstalled: true,
           enabled: false,
           installed: { id: 'learning', version: '1.0.0' },
+          catalog: { id: 'learning', version: '1.1.0' },
+        },
+        '1.1.0',
+      ),
+    ).toBe(true)
+  })
+
+  it('offers the catalog candidate when uninstall intent still has local artifacts', () => {
+    expect(
+      isInstallCandidateState(
+        {
+          id: 'learning',
+          name: 'Learning',
+          description: '',
+          version: '1.1.0',
+          status: 'installed',
+          desiredInstalled: false,
+          enabled: false,
+          installed: { id: 'learning', version: '1.1.0' },
           catalog: { id: 'learning', version: '1.1.0' },
         },
         '1.1.0',

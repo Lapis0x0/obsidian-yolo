@@ -187,10 +187,6 @@ export {
   type OfficialModuleCatalogRequest,
 } from './officialModuleCatalogClient'
 export {
-  authorizeOfficialModuleArtifactRemoval,
-  type OfficialModuleArtifactRemovalCatalogLoader,
-} from './officialModuleArtifactRemovalPolicy'
-export {
   ModuleDeviceStateCorruptionError,
   ModuleDeviceStateStore,
   type ModuleDeviceState,
