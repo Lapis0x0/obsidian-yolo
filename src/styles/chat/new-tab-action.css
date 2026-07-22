@@ -4,6 +4,17 @@
   height: 20px;
 }
 
+.yolo-new-tab-action::before {
+  content: none !important;
+  display: none !important;
+}
+
+.yolo-new-tab-action--icon-only {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .yolo-new-tab-action--icon-only .yolo-new-tab-action-icon {
   display: block;
 }
