@@ -22,8 +22,12 @@ const releaseNoteSource = path.resolve(
 const learningPackage = await readJson('modules/learning/package.json')
 const version = learningPackage.version
 
-if (!/^\d+\.\d+\.\d+$/.test(learningPackage.yoloModule.previewVersion)) {
-  throw new Error('Learning preview version must be X.Y.Z')
+if (
+  !/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(
+    learningPackage.yoloModule.previewVersion,
+  )
+) {
+  throw new Error('Learning preview version must be a prerelease semver')
 }
 assertEqual(
   learningPackage.yoloModule.previewTag,

@@ -57,12 +57,7 @@ const moduleDefinitions = [
   {
     id: 'learning',
     version: learningPreviewVersion,
-    declarationPath: path.resolve(
-      'modules',
-      'learning',
-      learningPreviewVersion,
-      'module.json',
-    ),
+    declarationPath: path.resolve('modules', 'learning', 'compatibility.json'),
     releaseTag: learningPreviewTag,
     workers: learningPackage.yoloModule.workers,
     assets: [

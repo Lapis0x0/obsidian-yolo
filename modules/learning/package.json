@@ -3,8 +3,8 @@
   "version": "0.1.1",
   "private": true,
   "yoloModule": {
-    "previewVersion": "0.1.0",
-    "previewTag": "module-learning-v0.1.0",
+    "previewVersion": "0.1.2-dev.0",
+    "previewTag": "module-learning-v0.1.2-dev.0",
     "releaseTagPrefix": "learning/v",
     "workers": {
       "ankiParser": "anki/worker/entry.ts"

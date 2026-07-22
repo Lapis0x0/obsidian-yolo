@@ -3,7 +3,7 @@
   "modules": [
     {
       "id": "learning",
-      "version": "0.1.0",
+      "version": "0.1.2-dev.0",
       "icon": "graduation-cap",
       "localizations": {
         "en": {
@@ -31,10 +31,10 @@
         "desktop",
         "mobile"
       ],
-      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/module.json",
+      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.2-dev.0/module.json",
       "manifest": {
-        "byteSize": 1880,
-        "sha256": "4ea91fd41edb097642f37743ad8ad9a5f28b4ef1d59bad6772ac283787f19168"
+        "byteSize": 1910,
+        "sha256": "dcbb59f6b964e57fcabac280de28e0a2a41cd3d3fdc862f457485fc2a923bad8"
       }
     }
   ]

@@ -1,7 +1,17 @@
 // eslint-disable-next-line import/no-nodejs-modules -- artifact integrity test runs only in Jest/Node
 import { createHash } from 'node:crypto'
+// eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test builds an isolated generated fixture
+import { execFileSync } from 'node:child_process'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test reads generated build files
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs'
+// eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test creates an isolated temporary fixture
+import { tmpdir } from 'node:os'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test resolves repository fixtures
 import * as path from 'node:path'
 
@@ -16,6 +26,32 @@ import {
 
 describe('host API conformance artifact boundary', () => {
   const artifactDir = path.resolve('modules/host-api-conformance/1.0.0')
+  const learningPackage = JSON.parse(
+    readFileSync('modules/learning/package.json', 'utf8'),
+  ) as { yoloModule: { previewVersion: string } }
+  const learningVersion = learningPackage.yoloModule.previewVersion
+  const learningFixtureRoot = mkdtempSync(
+    path.join(tmpdir(), 'yolo-learning-fixture-'),
+  )
+  const learningDir = path.join(learningFixtureRoot, learningVersion)
+
+  beforeAll(() => {
+    execFileSync(
+      process.execPath,
+      [
+        'scripts/build-first-party-modules.mjs',
+        '--module',
+        'learning',
+        '--output-dir',
+        learningDir,
+      ],
+      { cwd: process.cwd(), stdio: 'pipe' },
+    )
+  })
+
+  afterAll(() => {
+    rmSync(learningFixtureRoot, { recursive: true, force: true })
+  })
 
   it('records the exact entry byte size and SHA-256', () => {
     const manifestBytes = readFileSync(path.join(artifactDir, 'module.json'))
@@ -51,15 +87,17 @@ describe('host API conformance artifact boundary', () => {
       modules: Array<{
         id: string
         version: string
+        manifestUrl: string
         manifest: { byteSize: number; sha256: string }
       }>
     }
     expect(bundled).toEqual({
       schemaVersion: 1,
-      modules: [expect.objectContaining({ id: 'learning', version: '0.1.0' })],
+      modules: [
+        expect.objectContaining({ id: 'learning', version: learningVersion }),
+      ],
     })
 
-    const learningDir = path.resolve('modules/learning/0.1.0')
     const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
@@ -70,7 +108,7 @@ describe('host API conformance artifact boundary', () => {
     const style = variant.files.find((file) => file.role === 'style')
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('learning')
-    expect(manifest.version).toBe('0.1.0')
+    expect(manifest.version).toBe(learningVersion)
     expect(bundled.modules[0]?.manifest).toEqual({
       byteSize: manifestBytes.byteLength,
       sha256: createHash('sha256').update(manifestBytes).digest('hex'),
@@ -122,7 +160,12 @@ describe('host API conformance artifact boundary', () => {
   })
 
   it('preserves real Learning build schema declarations through the catalog parser', () => {
-    const manifestBytes = readFileSync('modules/learning/0.1.0/module.json')
+    const bundledModule = (
+      JSON.parse(readFileSync('modules/bundled.json', 'utf8')) as {
+        modules: Array<{ manifestUrl: string }>
+      }
+    ).modules[0]!
+    const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
     )
@@ -146,8 +189,7 @@ describe('host API conformance artifact boundary', () => {
                 hostApi: manifest.hostApi,
                 platforms: manifest.variants.map(({ platform }) => platform),
                 dataSchemas: manifest.dataSchemas,
-                manifestUrl:
-                  'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.0/module.json',
+                manifestUrl: bundledModule.manifestUrl,
                 manifest: {
                   byteSize: manifestBytes.byteLength,
                   sha256: createHash('sha256')
@@ -173,7 +215,7 @@ describe('host API conformance artifact boundary', () => {
         hostApi: '1.4.0',
         platform: 'desktop',
       })?.version,
-    ).toBe('0.1.0')
+    ).toBe(learningVersion)
   })
 
   it('keeps fixture source and artifacts out of production main metadata', () => {
