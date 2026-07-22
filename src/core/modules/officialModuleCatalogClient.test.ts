@@ -1,6 +1,12 @@
-import type { DataAdapter, RequestUrlResponse, Stat } from 'obsidian'
+import type {
+  DataAdapter,
+  RequestUrlParam,
+  RequestUrlResponse,
+  Stat,
+} from 'obsidian'
 
 import {
+  OFFICIAL_MODULE_CATALOG_FALLBACK_URL,
   OFFICIAL_MODULE_CATALOG_URL,
   OFFICIAL_MODULE_RELEASE_REPOSITORIES,
   OfficialModuleCatalogClient,
@@ -148,6 +154,9 @@ describe('OfficialModuleCatalogClient', () => {
 
   it('uses fixed code-owned catalog and release repository trust anchors', async () => {
     expect(OFFICIAL_MODULE_CATALOG_URL).toBe(
+      'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/catalog-v1.json',
+    )
+    expect(OFFICIAL_MODULE_CATALOG_FALLBACK_URL).toBe(
       'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/modules/catalog-v1.json',
     )
     expect(OFFICIAL_MODULE_RELEASE_REPOSITORIES).toEqual([
@@ -278,7 +287,7 @@ describe('OfficialModuleCatalogClient', () => {
   it('never falls back to the snapshot when a fresh load is required', async () => {
     const adapter = new FakeAdapter()
     adapter.files.set(CACHE_PATH, envelope(catalog('1.1.0'), 1))
-    const request = jest.fn(async () => {
+    const request = jest.fn(async (_input: RequestUrlParam) => {
       throw new Error('offline')
     })
     const client = new OfficialModuleCatalogClient(
@@ -288,11 +297,10 @@ describe('OfficialModuleCatalogClient', () => {
     await expect(client.loadFresh()).rejects.toBeInstanceOf(
       OfficialModuleCatalogUnavailableError,
     )
-    expect(request).toHaveBeenCalledWith({
-      url: OFFICIAL_MODULE_CATALOG_URL,
-      method: 'GET',
-      throw: false,
-    })
+    expect(request.mock.calls.map(([input]) => input.url)).toEqual([
+      OFFICIAL_MODULE_CATALOG_URL,
+      OFFICIAL_MODULE_CATALOG_FALLBACK_URL,
+    ])
     expect(adapter.statPaths).toHaveLength(0)
     expect(adapter.readPaths).toHaveLength(0)
     expect(adapter.writes).toHaveLength(0)
@@ -316,6 +324,27 @@ describe('OfficialModuleCatalogClient', () => {
     expect(JSON.parse(adapter.writes[0]?.[1] ?? '').catalog).toBe(
       catalog('2.0.0'),
     )
+  })
+
+  it('falls back to GitHub Raw when jsDelivr is unavailable', async () => {
+    const adapter = new FakeAdapter()
+    const request = jest
+      .fn<Promise<RequestUrlResponse>, [RequestUrlParam]>()
+      .mockRejectedValueOnce(new Error('cdn unavailable'))
+      .mockResolvedValueOnce(response(catalog('2.0.0')))
+    const client = new OfficialModuleCatalogClient(
+      options(adapter, {
+        requestUrl: request,
+      }),
+    )
+
+    await expect(client.loadFresh()).resolves.toMatchObject({
+      modules: [{ versions: [{ version: '2.0.0' }] }],
+    })
+    expect(request.mock.calls.map(([input]) => input.url)).toEqual([
+      OFFICIAL_MODULE_CATALOG_URL,
+      OFFICIAL_MODULE_CATALOG_FALLBACK_URL,
+    ])
   })
 
   it('accepts small clock skew but rejects cache timestamps too far ahead', async () => {
@@ -491,7 +520,7 @@ describe('OfficialModuleCatalogClient', () => {
     )
     const load = client.load()
 
-    await jest.advanceTimersByTimeAsync(100)
+    await jest.advanceTimersByTimeAsync(200)
     await expect(load).rejects.toBeInstanceOf(
       OfficialModuleCatalogUnavailableError,
     )
@@ -550,6 +579,7 @@ describe('OfficialModuleCatalogClient', () => {
     const request = jest
       .fn<Promise<RequestUrlResponse>, []>()
       .mockImplementationOnce(() => pending.promise)
+      .mockRejectedValueOnce(new Error('offline fallback'))
       .mockResolvedValueOnce(response(catalog('2.0.0')))
     const client = new OfficialModuleCatalogClient(
       options(adapter, { requestUrl: request }),
@@ -564,10 +594,11 @@ describe('OfficialModuleCatalogClient', () => {
     await expect(first).rejects.toBeInstanceOf(
       OfficialModuleCatalogUnavailableError,
     )
+    expect(request).toHaveBeenCalledTimes(2)
 
     await expect(client.load()).resolves.toMatchObject({
       modules: [{ versions: [{ version: '2.0.0' }] }],
     })
-    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenCalledTimes(3)
   })
 })

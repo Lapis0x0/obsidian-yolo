@@ -31,6 +31,13 @@ export type ModuleArtifactInstallerOptions = {
   adapter: DataAdapter
   store: ModuleStore
   download(request: ModuleArtifactDownloadRequest): Promise<Uint8Array>
+  resolveDownloadSources?(
+    request: Readonly<{
+      descriptor: ModuleArtifactDescriptor
+      canonicalUrl: string
+      path: string
+    }>,
+  ): readonly string[]
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   reportCleanupError?: (error: unknown) => void
 }
@@ -122,18 +129,15 @@ export class ModuleArtifactInstaller {
     await removeDir(adapter, stagingDir)
     await ensureDir(adapter, stagingDir)
     try {
-      const manifestBytes = await this.options.download({
-        kind: 'manifest',
-        url: descriptor.manifestUrl,
-        byteSize: descriptor.manifest.byteSize,
-        ...(signal ? { signal } : {}),
-      })
-      throwIfAborted(signal)
-      await verifyModuleBytes(
-        manifestBytes,
+      const manifestBytes = await this.downloadVerified(
+        'manifest',
+        descriptor,
+        descriptor.manifestUrl,
+        'module.json',
         descriptor.manifest,
         `Module "${descriptor.id}" manifest`,
         subtleCrypto,
+        signal,
       )
       const manifest = parseModuleArtifactManifest(
         JSON.parse(
@@ -157,18 +161,15 @@ export class ModuleArtifactInstaller {
       reportProgress(onProgress, (completedBytes / totalBytes) * 100)
 
       for (const file of files) {
-        const bytes = await this.options.download({
-          kind: 'artifact',
-          url: file.url,
-          byteSize: file.byteSize,
-          ...(signal ? { signal } : {}),
-        })
-        throwIfAborted(signal)
-        await verifyModuleBytes(
-          bytes,
+        const bytes = await this.downloadVerified(
+          'artifact',
+          descriptor,
+          file.url,
+          file.path,
           file,
           `Module "${descriptor.id}" file "${file.path}"`,
           subtleCrypto,
+          signal,
         )
         const target = normalizePath(`${stagingDir}/${file.path}`)
         throwIfAborted(signal)
@@ -316,18 +317,15 @@ export class ModuleArtifactInstaller {
     onProgress?: ModuleArtifactProgressListener,
   ): Promise<ModuleArtifactManifest> {
     const adapter = this.options.adapter
-    const manifestBytes = await this.options.download({
-      kind: 'manifest',
-      url: descriptor.manifestUrl,
-      byteSize: descriptor.manifest.byteSize,
-      ...(signal ? { signal } : {}),
-    })
-    throwIfAborted(signal)
-    await verifyModuleBytes(
-      manifestBytes,
+    const manifestBytes = await this.downloadVerified(
+      'manifest',
+      descriptor,
+      descriptor.manifestUrl,
+      'module.json',
       descriptor.manifest,
       `Module "${descriptor.id}" manifest`,
       subtleCrypto,
+      signal,
     )
     const manifest = parseModuleArtifactManifest(
       JSON.parse(
@@ -348,18 +346,15 @@ export class ModuleArtifactInstaller {
     let completedBytes = manifestBytes.byteLength
     reportProgress(onProgress, (completedBytes / totalBytes) * 100)
     for (const file of files) {
-      const bytes = await this.options.download({
-        kind: 'artifact',
-        url: file.url,
-        byteSize: file.byteSize,
-        ...(signal ? { signal } : {}),
-      })
-      throwIfAborted(signal)
-      await verifyModuleBytes(
-        bytes,
+      const bytes = await this.downloadVerified(
+        'artifact',
+        descriptor,
+        file.url,
+        file.path,
         file,
         `Module "${descriptor.id}" file "${file.path}"`,
         subtleCrypto,
+        signal,
       )
       await ensureParentDirs(adapter, stagingDir, file.path)
       await adapter.writeBinary(
@@ -383,6 +378,54 @@ export class ModuleArtifactInstaller {
     await verifyStagingClosure(adapter, stagingDir, files, descriptor)
     reportProgress(onProgress, 100)
     return manifest
+  }
+
+  private async downloadVerified(
+    kind: ModuleArtifactDownloadRequest['kind'],
+    descriptor: ModuleArtifactDescriptor,
+    canonicalUrl: string,
+    path: string,
+    metadata: Readonly<{ byteSize: number; sha256: string }>,
+    label: string,
+    subtleCrypto: Pick<SubtleCrypto, 'digest'>,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
+    const resolved = this.options.resolveDownloadSources?.({
+      descriptor,
+      canonicalUrl,
+      path,
+    }) ?? [canonicalUrl]
+    if (
+      !Array.isArray(resolved) ||
+      resolved.length === 0 ||
+      resolved.some((url) => typeof url !== 'string') ||
+      new Set(resolved).size !== resolved.length ||
+      !resolved.includes(canonicalUrl)
+    ) {
+      throw new Error('Module artifact download sources are invalid')
+    }
+    const failures: string[] = []
+    for (const url of resolved) {
+      throwIfAborted(signal)
+      try {
+        const bytes = await this.options.download({
+          kind,
+          url,
+          byteSize: metadata.byteSize,
+          ...(signal ? { signal } : {}),
+        })
+        throwIfAborted(signal)
+        await verifyModuleBytes(bytes, metadata, label, subtleCrypto)
+        return bytes
+      } catch (error) {
+        if (signal?.aborted) throw error
+        failures.push(describeError(error))
+      }
+    }
+    if (failures.length === 1) throw new Error(failures[0])
+    throw new Error(
+      `${label} download failed from all official sources: ${failures.join('; ')}`,
+    )
   }
 
   private async cleanupDir(path: string): Promise<void> {

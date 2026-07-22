@@ -170,6 +170,7 @@ export {
 } from './officialModuleCatalog'
 export {
   OFFICIAL_MODULE_CATALOG_URL,
+  OFFICIAL_MODULE_CATALOG_FALLBACK_URL,
   OFFICIAL_MODULE_RELEASE_REPOSITORIES,
   OfficialModuleCatalogClient,
   OfficialModuleCatalogUnavailableError,

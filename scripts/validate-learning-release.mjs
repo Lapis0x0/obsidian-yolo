@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFile, readdir, readFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 
 const repository = 'Lapis0x0/obsidian-yolo'
@@ -56,8 +56,18 @@ assertEqual(
 )
 
 const args = process.argv.slice(2)
-if (args.some((arg) => arg !== '--build')) {
-  throw new Error(`Unknown option: ${args.find((arg) => arg !== '--build')}`)
+const allowedArgs = new Set([
+  '--build',
+  '--materialize-version',
+  '--verify-versioned',
+])
+if (args.some((arg) => !allowedArgs.has(arg))) {
+  throw new Error(
+    `Unknown option: ${args.find((arg) => !allowedArgs.has(arg))}`,
+  )
+}
+if (args.includes('--materialize-version') && !args.includes('--build')) {
+  throw new Error('--materialize-version requires --build')
 }
 if (args.includes('--build')) {
   const build = spawnSync(
@@ -195,10 +205,70 @@ assertJsonEqual(
   'release asset closure',
 )
 
+const versionedArtifactDir = path.resolve('modules', 'learning', version)
+const versionedFiles = [...expectedFiles]
+  .filter((name) => name !== 'release-note.md')
+  .sort()
+if (args.includes('--materialize-version')) {
+  const catalog = await readJson('modules/catalog-v1.json')
+  const alreadyPublished = catalog.modules?.some(
+    (module) =>
+      module.id === 'learning' &&
+      module.versions?.some((entry) => entry.version === version),
+  )
+  if (alreadyPublished) {
+    throw new Error(`Learning ${version} is already published in the catalog`)
+  }
+  await rm(versionedArtifactDir, { recursive: true, force: true })
+  await mkdir(versionedArtifactDir, { recursive: true })
+  await Promise.all(
+    versionedFiles.map((name) =>
+      copyFile(
+        path.join(artifactDir, name),
+        path.join(versionedArtifactDir, name),
+      ),
+    ),
+  )
+}
+if (
+  args.includes('--materialize-version') ||
+  args.includes('--verify-versioned')
+) {
+  await verifyVersionedArtifacts(
+    artifactDir,
+    versionedArtifactDir,
+    versionedFiles,
+  )
+}
+
 console.log(`Validated Learning ${version} release assets for ${tag}`)
 console.log(
   `Core parity target: ${releaseRoot}/<asset>; the release workflow exercises generated URLs against the shared Core parser.`,
 )
+
+async function verifyVersionedArtifacts(releaseDir, versionDir, files) {
+  const entries = await readdir(versionDir, { withFileTypes: true })
+  if (
+    entries.some((entry) => !entry.isFile()) ||
+    JSON.stringify(entries.map(({ name }) => name).sort()) !==
+      JSON.stringify(files)
+  ) {
+    throw new Error(
+      `Learning ${version} versioned artifact closure does not match the release`,
+    )
+  }
+  for (const name of files) {
+    const [releaseBytes, versionedBytes] = await Promise.all([
+      readFile(path.join(releaseDir, name)),
+      readFile(path.join(versionDir, name)),
+    ])
+    if (!releaseBytes.equals(versionedBytes)) {
+      throw new Error(
+        `Learning ${version} versioned artifact ${name} differs from the release`,
+      )
+    }
+  }
+}
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')

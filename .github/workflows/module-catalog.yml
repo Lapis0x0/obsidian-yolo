@@ -80,3 +80,9 @@ jobs:
         env:
           MODULE_ID: ${{ inputs.module_id }}
           MODULE_VERSION: ${{ inputs.version }}
+
+      - name: Purge jsDelivr catalog cache
+        run: >-
+          curl --fail --show-error --silent
+          --retry 3 --retry-all-errors
+          https://purge.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/catalog-v1.json

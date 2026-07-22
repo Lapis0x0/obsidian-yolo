@@ -14,6 +14,8 @@ const RELEASE_ROOT =
   'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v1.0.0'
 const ARTIFACT_URL = `${RELEASE_ROOT}/entry.js`
 const MANIFEST_URL = `${RELEASE_ROOT}/module.json`
+const JSD_ARTIFACT_URL =
+  'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/learning/1.0.0/entry.js'
 
 function response(
   bytes: Uint8Array,
@@ -64,6 +66,18 @@ describe('createOfficialModuleArtifactDownloader', () => {
     ).resolves.toEqual(new Uint8Array([1, 2, 3]))
     expect(request).toHaveBeenCalledWith({
       url: encodedUrl,
+      method: 'GET',
+      throw: false,
+    })
+  })
+
+  it('downloads from the code-owned jsDelivr repository path', async () => {
+    const { download, request } = setup()
+    await expect(
+      download({ kind: 'artifact', url: JSD_ARTIFACT_URL, byteSize: 3 }),
+    ).resolves.toEqual(new Uint8Array([1, 2, 3]))
+    expect(request).toHaveBeenCalledWith({
+      url: JSD_ARTIFACT_URL,
       method: 'GET',
       throw: false,
     })
@@ -179,6 +193,16 @@ describe('createOfficialModuleArtifactDownloader', () => {
       url: 'https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2F../entry.js',
       byteSize: 1,
     },
+    {
+      kind: 'artifact',
+      url: 'https://cdn.jsdelivr.net/gh/other/project@main/modules/learning/1.0.0/entry.js',
+      byteSize: 1,
+    },
+    {
+      kind: 'artifact',
+      url: `${JSD_ARTIFACT_URL}?token=x`,
+      byteSize: 1,
+    },
     { kind: 'unknown', url: ARTIFACT_URL, byteSize: 1 },
     { kind: 'artifact', url: ARTIFACT_URL, byteSize: 0 },
     { kind: 'artifact', url: ARTIFACT_URL, byteSize: 1.5 },
@@ -264,12 +288,15 @@ describe('createOfficialModuleArtifactDownloader', () => {
     ).rejects.toThrow('timed out')
   })
 
-  it('does not stack retries while a timed-out transport is still running', async () => {
+  it('allows another source after a transport times out', async () => {
     let resolveRequest!: (value: RequestUrlResponse) => void
     const pending = new Promise<RequestUrlResponse>((resolve) => {
       resolveRequest = resolve
     })
-    const request = jest.fn(() => pending)
+    const request = jest
+      .fn<Promise<RequestUrlResponse>, [RequestUrlParam]>()
+      .mockReturnValueOnce(pending)
+      .mockResolvedValueOnce(response(new Uint8Array([1])))
     const download = createOfficialModuleArtifactDownloader({
       requestUrl: request,
       timeoutMs: 1,
@@ -277,22 +304,24 @@ describe('createOfficialModuleArtifactDownloader', () => {
     const input = { kind: 'artifact' as const, url: ARTIFACT_URL, byteSize: 1 }
 
     await expect(download(input)).rejects.toThrow('timed out')
-    await expect(download(input)).rejects.toThrow('still in progress')
-    expect(request).toHaveBeenCalledTimes(1)
+    await expect(
+      download({ ...input, url: JSD_ARTIFACT_URL }),
+    ).resolves.toEqual(new Uint8Array([1]))
+    expect(request).toHaveBeenCalledTimes(2)
 
     resolveRequest(response(new Uint8Array([1])))
     await pending
-    await Promise.resolve()
-    await expect(download(input)).resolves.toEqual(new Uint8Array([1]))
-    expect(request).toHaveBeenCalledTimes(2)
   })
 
-  it('rejects promptly on abort without stacking another transport', async () => {
+  it('allows another source after an unabortable transport is abandoned', async () => {
     let resolveRequest!: (value: RequestUrlResponse) => void
     const pending = new Promise<RequestUrlResponse>((resolve) => {
       resolveRequest = resolve
     })
-    const request = jest.fn(() => pending)
+    const request = jest
+      .fn<Promise<RequestUrlResponse>, [RequestUrlParam]>()
+      .mockReturnValueOnce(pending)
+      .mockResolvedValueOnce(response(new Uint8Array([1])))
     const download = createOfficialModuleArtifactDownloader({
       requestUrl: request,
       timeoutMs: 30_000,
@@ -310,9 +339,9 @@ describe('createOfficialModuleArtifactDownloader', () => {
     controller.abort()
     await expect(downloading).rejects.toThrow('aborted')
     await expect(
-      download({ kind: 'artifact', url: ARTIFACT_URL, byteSize: 1 }),
-    ).rejects.toThrow('still in progress')
-    expect(request).toHaveBeenCalledTimes(1)
+      download({ kind: 'artifact', url: JSD_ARTIFACT_URL, byteSize: 1 }),
+    ).resolves.toEqual(new Uint8Array([1]))
+    expect(request).toHaveBeenCalledTimes(2)
 
     resolveRequest(response(new Uint8Array([1])))
     await pending

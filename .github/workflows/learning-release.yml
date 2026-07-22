@@ -54,7 +54,12 @@ jobs:
         run: npm --prefix modules/learning test
 
       - name: Build and validate release assets
-        run: node scripts/validate-learning-release.mjs --build
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/learning/v* ]]; then
+            node scripts/validate-learning-release.mjs --build --verify-versioned
+          else
+            node scripts/validate-learning-release.mjs --build
+          fi
 
       - name: Test remote Release asset verification
         run: node --test scripts/verify-learning-release-assets.test.mjs
@@ -101,7 +106,7 @@ jobs:
         run: npm ci
 
       - name: Package and validate release assets
-        run: node scripts/validate-learning-release.mjs --build
+        run: node scripts/validate-learning-release.mjs --build --verify-versioned
 
       - name: Create draft GitHub Release
         id: create

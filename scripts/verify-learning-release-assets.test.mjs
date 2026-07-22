@@ -219,6 +219,9 @@ test('release workflow verifies publication before dispatching catalog publicati
   const createIndex = steps.findIndex(
     ({ name }) => name === 'Create draft GitHub Release',
   )
+  const packageIndex = steps.findIndex(
+    ({ name }) => name === 'Package and validate release assets',
+  )
   const publishIndex = steps.findIndex(
     ({ name }) => name === 'Publish verified GitHub Release',
   )
@@ -234,6 +237,8 @@ test('release workflow verifies publication before dispatching catalog publicati
 
   assert.equal(release.permissions.actions, 'write')
   assert.equal(release.permissions.contents, 'write')
+  assert.match(steps[packageIndex].run, /--build --verify-versioned/)
+  assert.ok(packageIndex < createIndex)
   assert.match(steps[createIndex].run, /gh api --paginate/)
   assert.doesNotMatch(steps[createIndex].run, /--slurp/)
   assert.ok(publishIndex < verificationIndex)
@@ -260,11 +265,21 @@ test('catalog workflow serializes and publishes only the verified catalog to mai
   const publish = steps.find(
     ({ name }) => name === 'Publish verified catalog update',
   )
+  const publishIndex = steps.indexOf(publish)
+  const purgeIndex = steps.findIndex(
+    ({ name }) => name === 'Purge jsDelivr catalog cache',
+  )
 
   assert.equal(workflow.concurrency.group, 'module-catalog-publish')
   assert.equal(workflow.permissions.contents, 'write')
   assert.equal(workflow.permissions['pull-requests'], undefined)
   assert.ok(publish)
+  assert.ok(publishIndex < purgeIndex)
+  assert.match(
+    steps[purgeIndex].run,
+    /purge\.jsdelivr\.net\/gh\/Lapis0x0\/obsidian-yolo@main\/modules\/catalog-v1\.json/,
+  )
+  assert.match(steps[purgeIndex].run, /--retry 3 --retry-all-errors/)
   assert.match(publish.run, /git add modules\/catalog-v1\.json/)
   assert.match(
     publish.run,

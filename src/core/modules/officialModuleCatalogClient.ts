@@ -11,6 +11,8 @@ import {
 } from './officialModuleCatalog'
 
 export const OFFICIAL_MODULE_CATALOG_URL =
+  'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/catalog-v1.json'
+export const OFFICIAL_MODULE_CATALOG_FALLBACK_URL =
   'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/modules/catalog-v1.json'
 export const OFFICIAL_MODULE_RELEASE_REPOSITORIES = Object.freeze([
   Object.freeze({ owner: 'Lapis0x0', repo: 'obsidian-yolo' }),
@@ -155,12 +157,28 @@ export class OfficialModuleCatalogClient {
      * endpoint, Content-Length check, and parser limits validate that buffer;
      * they are not a streaming transport cap.
      */
+    let lastError: unknown
+    for (const url of [
+      OFFICIAL_MODULE_CATALOG_URL,
+      OFFICIAL_MODULE_CATALOG_FALLBACK_URL,
+    ]) {
+      try {
+        return await this.requestCatalogSource(url, fetchedAt)
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Official module catalog request failed')
+  }
+
+  private async requestCatalogSource(
+    url: string,
+    fetchedAt: number,
+  ): Promise<OfficialModuleCatalogV1> {
     const response = await withTimeout(
-      this.request({
-        url: OFFICIAL_MODULE_CATALOG_URL,
-        method: 'GET',
-        throw: false,
-      }),
+      this.request({ url, method: 'GET', throw: false }),
       this.options.timeoutMs,
     )
     if (

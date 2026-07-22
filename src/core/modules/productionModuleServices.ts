@@ -35,6 +35,7 @@ import {
   createOfficialModuleArtifactDownloader,
 } from './officialModuleArtifactDownloader'
 import { authorizeOfficialModuleArtifactRemoval } from './officialModuleArtifactRemovalPolicy'
+import { resolveOfficialModuleArtifactSources } from './officialModuleArtifactSources'
 import {
   type OfficialModuleCatalogCacheAdapter,
   OfficialModuleCatalogClient,
@@ -209,6 +210,7 @@ export function createProductionModuleServices(
           ? { requestUrl: options.artifactRequest }
           : {}),
       }),
+    resolveDownloadSources: resolveOfficialModuleArtifactSources,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportCleanupError
       ? { reportCleanupError: options.reportCleanupError }
