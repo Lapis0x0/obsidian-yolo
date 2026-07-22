@@ -235,11 +235,6 @@ export const zh: TranslationKeys = {
         uninstall: '卸载',
         uninstallBusy: '正在卸载…',
       },
-      confirmProduct: {
-        uninstallTitle: '卸载 {name}',
-        uninstallMessage:
-          '要卸载 {name} 吗？YOLO 会先安全停止模块，再移除本机模块程序文件和安装状态。模块数据会保留。',
-      },
       statuses: {
         available: '可用',
         installed: '已安装',

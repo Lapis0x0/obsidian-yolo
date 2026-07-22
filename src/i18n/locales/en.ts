@@ -266,11 +266,6 @@ export const en: TranslationKeys = {
         uninstall: 'Uninstall',
         uninstallBusy: 'Uninstalling…',
       },
-      confirmProduct: {
-        uninstallTitle: 'Uninstall {name}',
-        uninstallMessage:
-          'Uninstall {name}? YOLO will safely stop the module, then remove its local program files and installation state. Module data will be kept.',
-      },
       statuses: {
         available: 'Available',
         installed: 'Installed',

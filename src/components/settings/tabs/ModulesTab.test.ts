@@ -1,7 +1,6 @@
 jest.mock('../../../contexts/language-context', () => ({
   useLanguage: () => ({ t: (key: string) => key }),
 }))
-jest.mock('../../modals/ConfirmModal', () => ({ ConfirmModal: jest.fn() }))
 
 import type {
   ConfirmedModuleCandidate,

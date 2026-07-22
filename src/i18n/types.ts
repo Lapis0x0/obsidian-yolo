@@ -240,10 +240,6 @@ export type TranslationKeys = {
         uninstall: string
         uninstallBusy: string
       }
-      confirmProduct: {
-        uninstallTitle: string
-        uninstallMessage: string
-      }
       statuses: {
         available: string
         installed: string

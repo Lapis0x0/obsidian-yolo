@@ -265,11 +265,6 @@ export const it: TranslationKeys = {
         uninstall: 'Disinstalla',
         uninstallBusy: 'Disinstallazione…',
       },
-      confirmProduct: {
-        uninstallTitle: 'Disinstalla {name}',
-        uninstallMessage:
-          'Disinstallare {name}? YOLO arresterà il modulo in sicurezza, quindi rimuoverà i file del programma e lo stato di installazione locali. I dati del modulo verranno conservati.',
-      },
       statuses: {
         available: 'Disponibile',
         installed: 'Installato',

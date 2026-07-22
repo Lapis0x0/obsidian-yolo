@@ -1,5 +1,5 @@
 import { LoaderCircle, PackageOpen, TriangleAlert } from 'lucide-react'
-import { App, Notice, setIcon } from 'obsidian'
+import { Notice, setIcon } from 'obsidian'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -14,11 +14,9 @@ import type {
   ModuleService,
 } from '../../../core/modules/moduleService'
 import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modules/moduleSettingsContributions'
-import { ConfirmModal } from '../../modals/ConfirmModal'
 import { ModuleSettingsSection } from '../sections/ModuleSettingsSection'
 
 type ModulesTabProps = {
-  app: App
   service: ModuleService
   registrations: readonly RegisteredModuleSettingsContributionV1[]
 }
@@ -188,7 +186,7 @@ export async function executeModuleProductAction(
   return service.uninstall(module.id)
 }
 
-export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
+export function ModulesTab({ service, registrations }: ModulesTabProps) {
   const { t } = useLanguage()
   const snapshot = useSyncExternalStore(
     service.subscribe,
@@ -202,14 +200,11 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null)
   const [operation, setOperation] = useState<OperationState | null>(null)
   const mounted = useRef(true)
-  const modal = useRef<ConfirmModal | null>(null)
 
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
-      modal.current?.close()
-      modal.current = null
     }
   }, [])
 
@@ -284,31 +279,6 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
     )
   }
 
-  const confirmUninstall = (module: ModuleRecord) => {
-    setOperation({ action: 'uninstall', moduleId: module.id })
-    const confirmation = new ConfirmModal(app, {
-      title: t('settings.modules.confirmProduct.uninstallTitle').replace(
-        '{name}',
-        module.name,
-      ),
-      message: t('settings.modules.confirmProduct.uninstallMessage').replace(
-        '{name}',
-        module.name,
-      ),
-      ctaText: t('settings.modules.actions.uninstall'),
-      onConfirm: () => {
-        modal.current = null
-        void runAction(module, 'uninstall')
-      },
-      onCancel: () => {
-        modal.current = null
-        clearOperation(module.id)
-      },
-    })
-    modal.current = confirmation
-    confirmation.open()
-  }
-
   const handleAction = (module: ModuleRecord, action: ModuleShelfAction) => {
     if (action === 'settings') {
       setSelectedModuleId(module.id)
@@ -323,7 +293,7 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
       return
     }
     if (action === 'uninstall') {
-      confirmUninstall(module)
+      void runAction(module, 'uninstall')
       return
     }
     void runAction(
