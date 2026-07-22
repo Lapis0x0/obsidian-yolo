@@ -70,6 +70,13 @@ class VaultEvents {
 
   constructor(readonly adapter: DataAdapter) {}
 
+  async create(path: string, data: string): Promise<{ path: string }> {
+    const memory = this.adapter as unknown as MemoryAdapter
+    if (memory.files.has(path)) throw new Error(`File already exists: ${path}`)
+    memory.files.set(path, data)
+    return { path }
+  }
+
   on(event: VaultEvent, handler: EventHandler): EventRef {
     this.registrations += 1
     if (this.registrations === this.failOnRegistration) {
@@ -148,6 +155,19 @@ function createHarness(baseDir = 'YOLO') {
 }
 
 describe('createObsidianModuleIntentBackend', () => {
+  it('supports create-if-absent without replacing a synchronized decision', async () => {
+    const harness = createHarness('First')
+
+    await expect(
+      harness.store.setIfAbsent('learning', 'enabled'),
+    ).resolves.toBe('created')
+    await harness.store.set('learning', 'uninstalled')
+    await expect(
+      harness.store.setIfAbsent('learning', 'enabled'),
+    ).resolves.toBe('already-present')
+    await expect(harness.store.get('learning')).resolves.toBe('uninstalled')
+  })
+
   it('writes each module to its own file under the current JSON root', async () => {
     const harness = createHarness('First')
 

@@ -53,10 +53,14 @@ export function createObsidianModuleIntentBackend(
 
   return Object.freeze({
     capture: () => {
+      const capturedRoot = rootPath()
       const captured = Object.freeze({
         kind: 'synchronized-intent' as const,
         adapter: options.app.vault.adapter,
-        rootPath: rootPath(),
+        create: async (path: string, data: string) => {
+          await options.app.vault.create(path, data)
+        },
+        rootPath: capturedRoot,
       })
       new ModuleSettingsStore(captured)
       return captured

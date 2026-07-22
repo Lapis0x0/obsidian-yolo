@@ -1,4 +1,5 @@
 import {
+  type ModuleCreateIfAbsentResult,
   ModuleSettingsCorruptionError,
   ModuleSettingsStore,
   type SynchronizedModuleSettingsBackend,
@@ -40,6 +41,25 @@ export class ModuleIntentStore {
       moduleId,
       next,
     )
+  }
+
+  async setIfAbsent(
+    moduleId: string,
+    next: ModuleIntent,
+  ): Promise<ModuleCreateIfAbsentResult> {
+    assertModuleId(moduleId, 'Module id')
+    assertModuleIntent(next)
+    const store = new ModuleSettingsStore(this.backend.capture())
+    const result = await store.createIfAbsent(moduleId, {
+      schemaVersion: SCHEMA_VERSION,
+      data: { state: next },
+    })
+    const current = await store.read(moduleId)
+    if (current === null) {
+      throw new Error(`Module intent disappeared after creation: ${moduleId}`)
+    }
+    parseEnvelope(current.schemaVersion, current.data)
+    return result
   }
 
   subscribe(moduleId: string, listener: () => void): ModuleDisposer {

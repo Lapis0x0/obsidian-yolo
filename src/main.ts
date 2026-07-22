@@ -85,6 +85,7 @@ import {
   createProductionModuleServices,
   handoffLearningLegacySettings,
   managedModuleDataNamespace,
+  migrateLearningLegacyInstallIntent,
   parseModuleArtifactManifest,
   runExclusive as runManagedModuleDataExclusive,
   selectModuleManifestVariant,
@@ -268,6 +269,7 @@ export default class YoloPlugin extends Plugin {
   private moduleRuntime: ModuleRuntime | null = null
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
+  private learningLegacyInstallMigration: (() => Promise<void>) | null = null
   private rawLearningLegacySettings: unknown = undefined
   private learningModuleSettingsHandoffReady = false
   private readonly managedModulePathChangeListeners = new Set<() => void>()
@@ -1953,6 +1955,11 @@ export default class YoloPlugin extends Plugin {
     } catch (error) {
       console.error('[YOLO] Learning module settings handoff failed', error)
     }
+    try {
+      await this.learningLegacyInstallMigration?.()
+    } catch (error) {
+      console.error('[YOLO] Learning legacy install migration failed', error)
+    }
     this.warnIfInstallationIncomplete()
     if (!(await this.activateModules())) return
     this.syncOAuthRuntimesFromSettings()
@@ -2393,6 +2400,7 @@ export default class YoloPlugin extends Plugin {
     this.moduleService?.dispose()
     this.moduleService = null
     this.learningModuleSettingsHandoff = null
+    this.learningLegacyInstallMigration = null
     this.rawLearningLegacySettings = undefined
     this.learningModuleSettingsHandoffReady = false
     this.managedModulePathChangeListeners.clear()
@@ -3820,6 +3828,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           this.addSettingsChangeListener(() => listener()),
       }),
     )
+    this.learningLegacyInstallMigration = async () => {
+      await migrateLearningLegacyInstallIntent({
+        adapter: this.app.vault.adapter,
+        settings: this.settings,
+        legacySettings: this.rawLearningLegacySettings,
+        enableIfAbsent: (moduleId) =>
+          intentStore.setIfAbsent(moduleId, 'enabled'),
+      })
+    }
     const bundledCatalogSource =
       process.env.NODE_ENV === 'development'
         ? new BundledModuleCatalogSource({

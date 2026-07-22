@@ -36,6 +36,11 @@ class MemoryAdapter {
   async remove(path: string): Promise<void> {
     this.files.delete(path)
   }
+
+  async create(path: string, data: string): Promise<void> {
+    if (this.files.has(path)) throw new Error(`File already exists: ${path}`)
+    this.files.set(path, data)
+  }
 }
 
 function createBackend(
@@ -46,6 +51,7 @@ function createBackend(
     capture: (): SynchronizedModuleSettingsBackend => ({
       kind: 'synchronized-intent',
       adapter,
+      create: (path, data) => adapter.create(path, data),
       rootPath: getRoot(),
     }),
     listModuleIds: async () => [],
@@ -86,6 +92,21 @@ describe('ModuleIntentStore', () => {
         JSON.parse(harness.adapter.files.get(harness.path('notes')) ?? ''),
       ).toEqual({ schemaVersion: 1, data: { state } })
     }
+  })
+
+  it('creates an intent only when no decision already exists', async () => {
+    const harness = createHarness()
+
+    await expect(
+      harness.store.setIfAbsent('learning', 'enabled'),
+    ).resolves.toBe('created')
+    await expect(harness.store.get('learning')).resolves.toBe('enabled')
+
+    await harness.store.set('learning', 'disabled')
+    await expect(
+      harness.store.setIfAbsent('learning', 'enabled'),
+    ).resolves.toBe('already-present')
+    await expect(harness.store.get('learning')).resolves.toBe('disabled')
   })
 
   it.each([

@@ -271,7 +271,7 @@ describe('production Learning module entry', () => {
     Reflect.deleteProperty(globalThis, 'document')
   })
 
-  it('registers the production view identity, ribbon, command, and settings', async () => {
+  it('preserves the 1.6.0.3 view identity and registers module contributions', async () => {
     const harness = createHost()
 
     await definition.activate(harness.host)
@@ -294,6 +294,28 @@ describe('production Learning module entry', () => {
       expect.objectContaining({ id: 'open-learning-mode' }),
     )
     expect(mockResolveSrsStore).not.toHaveBeenCalled()
+  })
+
+  it('restores a persisted 1.6.0.3 Learning leaf with empty view state', async () => {
+    const legacyLeaf = {
+      type: 'yolo-learning-view',
+      state: {},
+    } as const
+    const harness = createHost()
+
+    await definition.activate(harness.host)
+    await harness.runWhenActive()
+    const view = harness.getView()
+    if (!view) throw new Error('Learning view was not registered')
+
+    expect(view.type).toBe(legacyLeaf.type)
+    await expect(view.setState?.(legacyLeaf.state)).resolves.toBeUndefined()
+    const node = view.render() as ReactElement<{
+      root: { attach(element: HTMLElement): unknown }
+    }>
+    expect(
+      node.props.root.attach({ ownerDocument: ownerDocument() } as HTMLElement),
+    ).toBeDefined()
   })
 
   it('assembles once post-active and starts recovery without opening a view', async () => {

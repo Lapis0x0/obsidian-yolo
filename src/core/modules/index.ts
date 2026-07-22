@@ -316,3 +316,10 @@ export {
   handoffLearningLegacySettings,
   type ModuleConfigCreateIfAbsent,
 } from './learningModuleSettingsHandoff'
+export {
+  hasLegacyLearningSettingsEvidence,
+  migrateLearningLegacyInstallIntent,
+  type LearningIntentEnableIfAbsent,
+  type LearningLegacyInstallMigrationOptions,
+  type LearningLegacyInstallMigrationResult,
+} from './learningLegacyInstallMigration'
