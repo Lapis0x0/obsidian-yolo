@@ -94,6 +94,13 @@ type SingleTurnExecutionInput = {
    * should not inherit hosted tools or heavyweight model customizations.
    */
   purpose?: 'standard' | 'lightweight'
+  /**
+   * `configured` (default): let the provider adapter translate the model's
+   * reasoning configuration.
+   * `omit`: send no YOLO-generated reasoning parameters and leave the
+   * provider/model on its native default behavior.
+   */
+  reasoningPolicy?: 'configured' | 'omit'
   onStreamDelta?: (delta: {
     contentDelta: string
     reasoningDelta: string
@@ -268,6 +275,7 @@ export async function executeSingleTurn({
   geminiTools,
   debugTraceId,
   purpose = 'standard',
+  reasoningPolicy = 'configured',
   onStreamDelta,
 }: SingleTurnExecutionInput): Promise<SingleTurnExecutionResult> {
   const resolvedToolChoice: RequestToolChoice | undefined =
@@ -280,7 +288,14 @@ export async function executeSingleTurn({
         options: baseProviderOptions,
       })
     : { model, options: baseProviderOptions }
-  const effectiveModel = effectivePolicy.model
+  const effectiveModel =
+    reasoningPolicy === 'omit'
+      ? { ...effectivePolicy.model, reasoningType: undefined }
+      : effectivePolicy.model
+  const effectiveRequest =
+    reasoningPolicy === 'omit'
+      ? { ...request, reasoningLevel: undefined }
+      : request
   const effectiveProviderOptions = effectivePolicy.options
   const executionMode =
     providerClient.resolveResponseExecutionMode(deliveryMode)
@@ -290,12 +305,12 @@ export async function executeSingleTurn({
     systemHint: string | undefined,
   ): LLMRequestBase => {
     if (!systemHint) {
-      return request
+      return effectiveRequest
     }
-    const [firstMessage, ...restMessages] = request.messages
+    const [firstMessage, ...restMessages] = effectiveRequest.messages
     if (firstMessage?.role === 'system') {
       return {
-        ...request,
+        ...effectiveRequest,
         messages: [
           {
             ...firstMessage,
@@ -306,8 +321,11 @@ export async function executeSingleTurn({
       }
     }
     return {
-      ...request,
-      messages: [{ role: 'system', content: systemHint }, ...request.messages],
+      ...effectiveRequest,
+      messages: [
+        { role: 'system', content: systemHint },
+        ...effectiveRequest.messages,
+      ],
     }
   }
   const runNonStreaming = async (options?: {
@@ -435,7 +453,7 @@ export async function executeSingleTurn({
       const streamIterator = await providerClient.streamResponse(
         effectiveModel,
         {
-          ...request,
+          ...effectiveRequest,
           tools,
           tool_choice: resolvedToolChoice,
           stream: true,
