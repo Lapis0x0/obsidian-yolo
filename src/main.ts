@@ -1945,13 +1945,6 @@ export default class YoloPlugin extends Plugin {
           void this.activateLocalConformanceModule()
         },
       })
-      this.addCommand({
-        id: 'dev-preview-update-toast',
-        name: '[Development] Preview update toast',
-        callback: () => {
-          this.showUpdateToastPreview()
-        },
-      })
     }
     ensureBufferByteLengthCompat()
     clearRequestTransportMemory()
@@ -3592,43 +3585,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         await this.moduleUpdateController?.refresh()
       })(),
     ])
-  }
-
-  private showUpdateToastPreview(): void {
-    const currentVersion = normalizePluginVersion(this.manifest.version)
-    const segments = currentVersion.split('.')
-    const last = Number.parseInt(segments.at(-1) ?? '', 10)
-    const latestVersion = Number.isSafeInteger(last)
-      ? [...segments.slice(0, -1), String(last + 1)].join('.')
-      : '1.0.1'
-
-    this.updateCheckResult = {
-      hasUpdate: true,
-      latestVersion,
-      releaseNotes: {
-        en: `## ${latestVersion} Update preview ✨
-
-### ✨ Product improvements
-
-- **Update experience**: Preview the real YOLO update notification without publishing a release.
-
-### 🔧 Reliability
-
-- **Safer delivery**: Exercise the complete toast layout, language switcher, and update actions.`,
-        zh: `## ${latestVersion} 更新提示预览 ✨
-
-### ✨ 产品体验
-
-- **更新体验**：无需发布正式版本，即可预览 YOLO 的真实更新提示。
-
-### 🔧 稳定性
-
-- **更安全的交付**：检查完整弹窗布局、语言切换与更新操作。`,
-      },
-      releaseUrl: 'https://github.com/Lapis0x0/obsidian-yolo/releases',
-      assets: null,
-    }
-    this.notifyUpdateCheckListeners()
   }
 
   async openChatView(options?: {
