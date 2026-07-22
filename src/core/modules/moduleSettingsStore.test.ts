@@ -174,6 +174,42 @@ describe('ModuleSettingsStore', () => {
     await expect(store.read('notes')).resolves.toBeNull()
   })
 
+  it('accepts Unicode storage roots while preserving portable path rules', async () => {
+    const adapter = new MemoryAdapter()
+    const store = new ModuleSettingsStore({
+      kind: 'synchronized-intent',
+      adapter,
+      rootPath: '19AI资料/YOLO/.yolo_json_db/module-intent-v1',
+    })
+
+    await store.write('learning', {
+      schemaVersion: 1,
+      data: { state: 'enabled' },
+    })
+
+    expect(
+      adapter.files.has(
+        '19AI资料/YOLO/.yolo_json_db/module-intent-v1/learning.json',
+      ),
+    ).toBe(true)
+
+    for (const rootPath of [
+      'YOLO/bad:name',
+      'YOLO/CON',
+      'YOLO/trailing.',
+      'YOLO/control\u0000character',
+    ]) {
+      expect(
+        () =>
+          new ModuleSettingsStore({
+            kind: 'synchronized-intent',
+            adapter,
+            rootPath,
+          }),
+      ).toThrow('unsupported path segment')
+    }
+  })
+
   it('rejects JSON lookalikes without invoking accessors', async () => {
     const adapter = new MemoryAdapter()
     const store = new ModuleSettingsStore({

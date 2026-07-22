@@ -1446,6 +1446,8 @@ export const it: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'La cartella base YOLO non può usare cartelle nascoste. Rimuovi il punto iniziale dal nome, ad esempio cambia .yolo in yolo.',
+      yoloBaseDirInvalidPath:
+        'La cartella base YOLO contiene un nome non supportato su tutti i dispositivi. Evita caratteri di controllo, nomi riservati di Windows e i caratteri <>:"\\|?*.',
       yoloBaseDirMigrated:
         'La cartella base YOLO ora usa {target}, che Obsidian può indicizzare.',
       yoloBaseDirMigrationConflict:

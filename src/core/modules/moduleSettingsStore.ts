@@ -1,4 +1,6 @@
-import { assertModuleId, assertModulePathSegment } from './moduleStore'
+import { assertPortableVaultPathSegment } from '../paths/portableVaultPath'
+
+import { assertModuleId } from './moduleStore'
 
 /**
  * Logical placement contract supplied by the caller. It does not make a path
@@ -554,10 +556,7 @@ function normalizeStorageRoot(value: string): string {
     throw new Error('Module storage root must be a safe vault-relative path')
   }
   for (const part of parts) {
-    assertModulePathSegment(
-      part.startsWith('.') ? `root${part}` : part,
-      'Module storage root',
-    )
+    assertPortableVaultPathSegment(part, 'Module storage root')
   }
   return parts.join('/')
 }

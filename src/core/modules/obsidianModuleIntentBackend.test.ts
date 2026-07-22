@@ -185,6 +185,16 @@ describe('createObsidianModuleIntentBackend', () => {
     ])
   })
 
+  it('supports a Unicode YOLO base directory', async () => {
+    const harness = createHarness('19AI资料/YOLO')
+
+    await harness.store.set('learning', 'enabled')
+
+    expect(harness.adapter.writes).toEqual([
+      '19AI资料/YOLO/.yolo_json_db/module-intent-v1/learning.json',
+    ])
+  })
+
   it('keeps an in-flight operation on its synchronously captured root', async () => {
     const harness = createHarness('Old')
     let release!: () => void

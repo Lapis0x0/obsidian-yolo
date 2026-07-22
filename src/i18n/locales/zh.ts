@@ -1450,6 +1450,8 @@ export const zh: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'YOLO 根目录不能使用隐藏文件夹。请移除文件夹名称开头的“.”，例如将 .yolo 改为 yolo。',
+      yoloBaseDirInvalidPath:
+        'YOLO 根目录包含跨设备不支持的文件夹名称。请勿使用控制字符、Windows 保留名称或字符 <>:"\\|?*。',
       yoloBaseDirMigrated:
         'YOLO 根目录现已使用 {target}，Obsidian 可以正常索引它。',
       yoloBaseDirMigrationConflict:

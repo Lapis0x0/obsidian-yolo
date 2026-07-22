@@ -10,6 +10,7 @@ import {
 } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { isPortableVaultPathSegment } from '../../../core/paths/portableVaultPath'
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
 import { hasHiddenYoloBaseDirSegment } from '../../../core/paths/yoloPaths'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
@@ -160,6 +161,9 @@ const StorageBadge = ({ value }: { value: number | null }) => {
   )
 }
 
+const normalizeYoloBaseDirInput = (value: string): string =>
+  normalizePath(value.trim()).replace(/^\/+/, '') || 'YOLO'
+
 export function EtcSection({ app, plugin, className }: EtcSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
@@ -170,12 +174,20 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     chatSnapshotBytes: null,
   })
   const [yoloBaseDirInput, setYoloBaseDirInput] = useState(yoloBaseDir)
+  const normalizedYoloBaseDirInput = normalizeYoloBaseDirInput(yoloBaseDirInput)
   const yoloBaseDirError = hasHiddenYoloBaseDirSegment(yoloBaseDirInput)
     ? t(
         'settings.etc.yoloBaseDirHiddenPath',
         'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
       )
-    : null
+    : normalizedYoloBaseDirInput
+          .split('/')
+          .some((segment) => !isPortableVaultPathSegment(segment))
+      ? t(
+          'settings.etc.yoloBaseDirInvalidPath',
+          'YOLO root contains a folder name that is not supported across devices. Avoid control characters, Windows reserved names, and the characters <>:"\\|?*.',
+        )
+      : null
 
   useEffect(() => {
     setYoloBaseDirInput(yoloBaseDir)
@@ -208,11 +220,17 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
   useEffect(() => refreshStorageUsage(), [refreshStorageUsage])
 
   const handleYoloBaseDirBlur = (value: string) => {
-    const normalized = normalizePath(value.trim()).replace(/^\/+/, '') || 'YOLO'
+    const normalized = normalizeYoloBaseDirInput(value)
     setYoloBaseDirInput(normalized)
+    if (
+      hasHiddenYoloBaseDirSegment(normalized) ||
+      normalized
+        .split('/')
+        .some((segment) => !isPortableVaultPathSegment(segment))
+    ) {
+      return
+    }
     if (normalized === yoloBaseDir) return
-
-    if (hasHiddenYoloBaseDirSegment(normalized)) return
 
     void Promise.resolve(
       setSettings({

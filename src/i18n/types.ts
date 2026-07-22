@@ -1242,6 +1242,7 @@ export type TranslationKeys = {
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
       yoloBaseDirHiddenPath?: string
+      yoloBaseDirInvalidPath?: string
       yoloBaseDirMigrated?: string
       yoloBaseDirMigrationConflict?: string
       yoloBaseDirMigrationFailed?: string

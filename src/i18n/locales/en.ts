@@ -1568,6 +1568,8 @@ export const en: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
+      yoloBaseDirInvalidPath:
+        'YOLO root contains a folder name that is not supported across devices. Avoid control characters, Windows reserved names, and the characters <>:"\\|?*.',
       yoloBaseDirMigrated:
         'YOLO root now uses {target} so Obsidian can index it.',
       yoloBaseDirMigrationConflict:
