@@ -54,7 +54,7 @@ function service(): jest.Mocked<
 }
 
 describe('ModulesTab product actions', () => {
-  it('submits the exact candidate captured by the confirmation', async () => {
+  it('submits the exact current install candidate', async () => {
     const modules = service()
     const confirmed = candidate('1.0.0', 'a'.repeat(64))
 
@@ -70,7 +70,7 @@ describe('ModulesTab product actions', () => {
     expect(modules.install).toHaveBeenCalledWith(confirmed)
   })
 
-  it('rejects install without a matching confirmed candidate', async () => {
+  it('rejects install without a matching candidate', async () => {
     const modules = service()
 
     await expect(
@@ -80,7 +80,7 @@ describe('ModulesTab product actions', () => {
         'install',
         { ...candidate(), moduleId: 'other' },
       ),
-    ).rejects.toThrow('No confirmed install candidate is available for notes')
+    ).rejects.toThrow('No matching install candidate is available for notes')
     expect(modules.install).not.toHaveBeenCalled()
   })
 
@@ -158,7 +158,7 @@ describe('module shelf projections', () => {
     ])
   })
 
-  it('uses the confirmed action matrix and preserves uninstall for incompatible disabled modules', () => {
+  it('uses explicit lifecycle actions and preserves uninstall for incompatible disabled modules', () => {
     expect(
       getModuleShelfActions(
         moduleRecord({
@@ -171,6 +171,29 @@ describe('module shelf projections', () => {
         true,
       ),
     ).toEqual(['settings', 'disable'])
+    expect(
+      getModuleShelfActions(
+        moduleRecord({
+          id: 'notes',
+          desiredInstalled: true,
+          enabled: true,
+          installed,
+          catalog,
+        }),
+      ),
+    ).toEqual(['update', 'disable'])
+    expect(
+      getModuleShelfActions(
+        moduleRecord({
+          id: 'notes',
+          desiredInstalled: true,
+          enabled: true,
+          installed,
+          catalog,
+          status: 'activation-pending',
+        }),
+      ),
+    ).toEqual(['reload', 'disable'])
     expect(
       getModuleShelfActions(
         moduleRecord({

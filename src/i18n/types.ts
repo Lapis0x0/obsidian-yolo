@@ -206,9 +206,6 @@ export type TranslationKeys = {
       updating: string
       reload: string
       reloading: string
-      confirmInstallTitle: string
-      confirmUpdateTitle: string
-      confirmMessage: string
       candidateUnavailable: string
       installError: string
       updateError: string
@@ -233,13 +230,6 @@ export type TranslationKeys = {
       }
       retry: string
       actionError: string
-      actionSuccess: {
-        install: string
-        update: string
-        enable: string
-        disable: string
-        uninstall: string
-      }
       actions: {
         install: string
         installBusy: string

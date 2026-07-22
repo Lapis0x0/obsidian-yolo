@@ -2,7 +2,9 @@
 
 .yolo-modules-page {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  box-sizing: border-box;
   gap: var(--size-4-3);
 }
 
@@ -17,6 +19,7 @@
 
 .yolo-module-shelf {
   display: grid;
+  flex: 1;
   grid-template-columns: 128px minmax(0, 1fr);
   align-items: stretch;
   width: calc(
@@ -66,7 +69,6 @@ button.yolo-module-shelf-nav.is-active {
 
 button.yolo-module-shelf-nav:focus-visible,
 button.yolo-module-shelf-action:focus-visible,
-button.yolo-module-shelf-more:focus-visible,
 .yolo-modules-state button:focus-visible {
   outline: 2px solid var(--background-modifier-border-focus);
   outline-offset: 2px;
@@ -268,7 +270,7 @@ button.yolo-module-shelf-action {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--button-radius);
   background: var(--interactive-normal);
-  box-shadow: var(--input-shadow);
+  box-shadow: none;
   color: var(--text-normal);
   font: inherit;
   font-size: var(--font-ui-small);
@@ -286,37 +288,27 @@ button.yolo-module-shelf-action.mod-cta {
   color: var(--text-on-accent);
 }
 
-button.yolo-module-shelf-action:disabled,
-button.yolo-module-shelf-more:disabled {
+button.yolo-module-shelf-action:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-button.yolo-module-shelf-action svg,
-button.yolo-module-shelf-more svg {
+button.yolo-module-shelf-action svg {
   width: var(--icon-s);
   height: var(--icon-s);
 }
 
-button.yolo-module-shelf-more {
-  appearance: none;
-  display: inline-grid;
-  place-items: center;
-  width: var(--input-height);
-  height: var(--input-height);
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--button-radius);
+button.yolo-module-shelf-uninstall {
+  border-color: transparent;
   background: transparent;
   box-shadow: none;
   color: var(--text-muted);
-  cursor: pointer;
 }
 
-button.yolo-module-shelf-more:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+button.yolo-module-shelf-uninstall:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text-error) 8%, transparent);
+  color: var(--text-error);
 }
 
 .yolo-module-shelf-empty {

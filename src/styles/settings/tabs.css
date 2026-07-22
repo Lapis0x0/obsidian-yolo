@@ -157,6 +157,8 @@
 }
 
 .yolo-settings-tabs-content--modules {
+  display: flex;
+  flex-direction: column;
   width: calc(100% + var(--size-4-12) + var(--size-4-12));
   max-width: none;
   margin-inline: calc(0px - var(--size-4-12));

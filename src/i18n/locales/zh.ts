@@ -200,10 +200,6 @@ export const zh: TranslationKeys = {
       updating: '正在更新…',
       reload: '重试激活',
       reloading: '正在激活…',
-      confirmInstallTitle: '安装 {name}',
-      confirmUpdateTitle: '更新 {name}',
-      confirmMessage:
-        '请确认准确的模块版本。\n\n模块：{name}\n版本：{version}\nManifest SHA-256：{sha256}\n\n文件将被下载并校验，随后直接启用此版本。',
       candidateUnavailable:
         '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
       installError: '无法安装 {name}：{error}',
@@ -229,13 +225,6 @@ export const zh: TranslationKeys = {
       },
       retry: '重试',
       actionError: '无法更改 {name}：{error}',
-      actionSuccess: {
-        install: '已安装并启用 {name}。',
-        update: '已更新并启用 {name}。',
-        enable: '已将 {name} 标记为启用。',
-        disable: '已将 {name} 标记为停用；模块文件和数据均已保留。',
-        uninstall: '已从本机安全卸载 {name}。',
-      },
       actions: {
         install: '安装',
         installBusy: '正在安装…',

@@ -229,10 +229,6 @@ export const it: TranslationKeys = {
       updating: 'Aggiornamento…',
       reload: 'Riprova attivazione',
       reloading: 'Attivazione…',
-      confirmInstallTitle: 'Installa {name}',
-      confirmUpdateTitle: 'Aggiorna {name}',
-      confirmMessage:
-        'Conferma la versione esatta del modulo.\n\nModulo: {name}\nVersione: {version}\nSHA-256 del manifest: {sha256}\n\nI file verranno scaricati, verificati e attivati direttamente.',
       candidateUnavailable:
         'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
       installError: 'Impossibile installare {name}: {error}',
@@ -259,14 +255,6 @@ export const it: TranslationKeys = {
       },
       retry: 'Riprova',
       actionError: 'Impossibile modificare {name}: {error}',
-      actionSuccess: {
-        install: '{name} è stato installato e abilitato.',
-        update: '{name} è stato aggiornato e abilitato.',
-        enable: '{name} è contrassegnato come abilitato.',
-        disable:
-          '{name} è contrassegnato come disabilitato; file e dati sono stati conservati.',
-        uninstall: '{name} è stato disinstallato in sicurezza dal dispositivo.',
-      },
       actions: {
         install: 'Installa',
         installBusy: 'Installazione…',

@@ -230,10 +230,6 @@ export const en: TranslationKeys = {
       updating: 'Updating…',
       reload: 'Retry activation',
       reloading: 'Activating…',
-      confirmInstallTitle: 'Install {name}',
-      confirmUpdateTitle: 'Update {name}',
-      confirmMessage:
-        'Confirm the exact module release.\n\nModule: {name}\nVersion: {version}\nManifest SHA-256: {sha256}\n\nThe files will be downloaded, verified, and activated in place.',
       candidateUnavailable:
         '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
       installError: 'Could not install {name}: {error}',
@@ -260,13 +256,6 @@ export const en: TranslationKeys = {
       },
       retry: 'Retry',
       actionError: 'Could not change {name}: {error}',
-      actionSuccess: {
-        install: '{name} was installed and enabled.',
-        update: '{name} was updated and enabled.',
-        enable: '{name} is marked enabled.',
-        disable: '{name} is marked disabled; its files and data were kept.',
-        uninstall: '{name} was safely uninstalled from this device.',
-      },
       actions: {
         install: 'Install',
         installBusy: 'Installing…',

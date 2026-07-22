@@ -1,10 +1,5 @@
-import {
-  Ellipsis,
-  LoaderCircle,
-  PackageOpen,
-  TriangleAlert,
-} from 'lucide-react'
-import { App, Menu, Notice, setIcon } from 'obsidian'
+import { LoaderCircle, PackageOpen, TriangleAlert } from 'lucide-react'
+import { App, Notice, setIcon } from 'obsidian'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -19,7 +14,6 @@ import type {
   ModuleService,
 } from '../../../core/modules/moduleService'
 import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modules/moduleSettingsContributions'
-import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { ModuleSettingsSection } from '../sections/ModuleSettingsSection'
 
@@ -124,10 +118,9 @@ export function getModuleShelfActions(
     const actions: ModuleShelfAction[] = []
     if (hasSettings) actions.push('settings')
     if (module.status === 'activation-pending') actions.push('reload')
-    else if (module.status === 'failed' && !incompatible) {
-      actions.push('reload', 'disable')
-    } else if (update && !incompatible) actions.push('update')
-    else actions.push('disable')
+    else if (module.status === 'failed' && !incompatible) actions.push('reload')
+    else if (update && !incompatible) actions.push('update')
+    actions.push('disable')
     return actions
   }
   return [
@@ -184,7 +177,7 @@ export async function executeModuleProductAction(
       confirmedInstallCandidate.moduleId !== module.id
     ) {
       throw new Error(
-        `No confirmed install candidate is available for ${module.id}`,
+        `No matching install candidate is available for ${module.id}`,
       )
     }
     return service.install(confirmedInstallCandidate)
@@ -252,16 +245,6 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
     setOperation({ action: displayAction, moduleId: module.id })
     try {
       await executeModuleProductAction(service, module, action, candidate)
-      new Notice(
-        t(
-          `settings.modules.actionSuccess.${
-            displayAction === 'update' || displayAction === 'update-enable'
-              ? 'update'
-              : action
-          }`,
-        ).replace('{name}', module.name),
-        8000,
-      )
       clearOperation(module.id)
     } catch (error) {
       if (!mounted.current) return
@@ -277,7 +260,7 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
     }
   }
 
-  const confirmInstall = (module: ModuleRecord) => {
+  const installModule = (module: ModuleRecord) => {
     const candidate = service.getInstallCandidate(module.id)
     const isUpdate = hasModuleUpdate(module)
     if (!candidate || candidate.expectedVersion !== module.catalog?.version) {
@@ -289,52 +272,16 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
       )
       return
     }
-    setOperation({
-      action:
-        isUpdate && module.enabled !== true
-          ? 'update-enable'
-          : isUpdate
-            ? 'update'
-            : 'install',
-      moduleId: module.id,
-    })
-    const confirmation = new ConfirmModal(app, {
-      title: t(
-        isUpdate
-          ? 'settings.modules.confirmUpdateTitle'
-          : 'settings.modules.confirmInstallTitle',
-      ).replace('{name}', module.name),
-      message: t('settings.modules.confirmMessage')
-        .replace('{name}', module.name)
-        .replace('{version}', candidate.expectedVersion)
-        .replace('{sha256}', candidate.expectedManifestSha256),
-      ctaText: t(
-        isUpdate && module.enabled !== true
-          ? 'settings.modules.updateAndEnable'
-          : isUpdate
-            ? 'settings.modules.update'
-            : 'settings.modules.install',
-      ),
-      onConfirm: () => {
-        modal.current = null
-        void runAction(
-          module,
-          'install',
-          candidate,
-          isUpdate && module.enabled !== true
-            ? 'update-enable'
-            : isUpdate
-              ? 'update'
-              : 'install',
-        )
-      },
-      onCancel: () => {
-        modal.current = null
-        clearOperation(module.id)
-      },
-    })
-    modal.current = confirmation
-    confirmation.open()
+    void runAction(
+      module,
+      'install',
+      candidate,
+      isUpdate && module.enabled !== true
+        ? 'update-enable'
+        : isUpdate
+          ? 'update'
+          : 'install',
+    )
   }
 
   const confirmUninstall = (module: ModuleRecord) => {
@@ -372,7 +319,7 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
       action === 'update' ||
       action === 'update-enable'
     ) {
-      confirmInstall(module)
+      installModule(module)
       return
     }
     if (action === 'uninstall') {
@@ -573,28 +520,12 @@ function ModuleRow({
   )
   const updating = hasModuleUpdate(module)
   const visibleActions = actions.filter(
-    (action) =>
-      action === 'install' ||
-      action === 'update' ||
-      action === 'update-enable' ||
-      action === 'reload',
+    (action) => action !== 'settings' && action !== 'uninstall',
   )
-  const installed = module.desiredInstalled === true
-  const canEnable = (module.compatibilityIssues?.length ?? 0) === 0
+  const canUninstall = actions.includes('uninstall')
   const status = updating
     ? t('settings.modules.statuses.updateAvailable')
     : t(`settings.modules.statuses.${statusKey(module.status)}`)
-
-  const openMoreMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const menu = new Menu()
-    menu.addItem((item) =>
-      item
-        .setTitle(t('settings.modules.actions.uninstall'))
-        .setIcon('trash-2')
-        .onClick(() => onAction(module, 'uninstall')),
-    )
-    menu.showAtMouseEvent(event.nativeEvent)
-  }
 
   return (
     <article className="yolo-module-shelf-row" data-module-id={module.id}>
@@ -652,7 +583,7 @@ function ModuleRow({
           <button
             key={action}
             type="button"
-            className={`yolo-module-shelf-action ${action === 'install' || action.startsWith('update') ? 'mod-cta' : ''}`}
+            className={`yolo-module-shelf-action ${action === 'install' || action === 'enable' || action.startsWith('update') ? 'mod-cta' : ''}`}
             disabled={busy}
             aria-busy={
               operation?.moduleId === module.id && !operation.error
@@ -669,28 +600,26 @@ function ModuleRow({
             {actionLabel(action, t)}
           </button>
         ))}
-        {installed ? (
-          <ObsidianToggle
-            value={module.enabled === true}
-            disabled={busy || (module.enabled !== true && !canEnable)}
-            onChange={(enabled) =>
-              onAction(
-                module,
-                enabled ? (updating ? 'update-enable' : 'enable') : 'disable',
-              )
-            }
-          />
-        ) : null}
-        {installed && module.enabled !== true ? (
+        {canUninstall ? (
           <button
             type="button"
-            className="yolo-module-shelf-more"
-            aria-label={t('settings.modules.actions.uninstall')}
-            title={t('settings.modules.actions.uninstall')}
+            className="yolo-module-shelf-action yolo-module-shelf-uninstall"
             disabled={busy}
-            onClick={openMoreMenu}
+            aria-busy={
+              operation?.moduleId === module.id &&
+              operation.action === 'uninstall' &&
+              !operation.error
+                ? true
+                : undefined
+            }
+            onClick={() => onAction(module, 'uninstall')}
           >
-            <Ellipsis aria-hidden="true" />
+            {operation?.moduleId === module.id &&
+            operation.action === 'uninstall' &&
+            !operation.error ? (
+              <LoaderCircle className="is-spinning" aria-hidden="true" />
+            ) : null}
+            {actionLabel('uninstall', t)}
           </button>
         ) : null}
       </div>
