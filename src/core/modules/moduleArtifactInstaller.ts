@@ -35,6 +35,8 @@ export type ModuleArtifactInstallerOptions = {
   reportCleanupError?: (error: unknown) => void
 }
 
+export type ModuleArtifactProgressListener = (progress: number) => void
+
 const adapterQueues = new WeakMap<object, Map<string, Promise<void>>>()
 let transactionSequence = 0
 
@@ -49,6 +51,7 @@ export class ModuleArtifactInstaller {
   install(
     descriptor: ModuleArtifactDescriptor,
     signal?: AbortSignal,
+    onProgress?: ModuleArtifactProgressListener,
   ): Promise<ModuleArtifactManifest> {
     assertAbortSignal(signal)
     throwIfAborted(signal)
@@ -58,7 +61,7 @@ export class ModuleArtifactInstaller {
     return enqueue(
       this.options.adapter,
       moduleLockKey(this.options.store.pluginDir, snapshot.id),
-      () => this.installUnlocked(snapshot, subtleCrypto, signal),
+      () => this.installUnlocked(snapshot, subtleCrypto, signal, onProgress),
     )
   }
 
@@ -82,7 +85,9 @@ export class ModuleArtifactInstaller {
     descriptor: ModuleArtifactDescriptor,
     subtleCrypto: Pick<SubtleCrypto, 'digest'>,
     signal?: AbortSignal,
+    onProgress?: ModuleArtifactProgressListener,
   ): Promise<ModuleArtifactManifest> {
+    reportProgress(onProgress, 0)
     throwIfAborted(signal)
     const adapter = this.options.adapter
     const moduleRoot = normalizePath(
@@ -106,10 +111,11 @@ export class ModuleArtifactInstaller {
           subtleCrypto,
         )
         await this.cleanupDir(stagingDir)
+        reportProgress(onProgress, 100)
         return verified.manifest
       } catch {
         await this.cleanupDir(stagingDir)
-        return this.repairUnlocked(descriptor, subtleCrypto, signal)
+        return this.repairUnlocked(descriptor, subtleCrypto, signal, onProgress)
       }
     }
 
@@ -144,6 +150,11 @@ export class ModuleArtifactInstaller {
         manifest,
         descriptor.manifestUrl,
       )
+      const totalBytes =
+        manifestBytes.byteLength +
+        files.reduce((total, file) => total + file.byteSize, 0)
+      let completedBytes = manifestBytes.byteLength
+      reportProgress(onProgress, (completedBytes / totalBytes) * 100)
 
       for (const file of files) {
         const bytes = await this.options.download({
@@ -163,6 +174,8 @@ export class ModuleArtifactInstaller {
         throwIfAborted(signal)
         await ensureParentDirs(adapter, stagingDir, file.path)
         await adapter.writeBinary(target, toArrayBuffer(bytes))
+        completedBytes += bytes.byteLength
+        reportProgress(onProgress, (completedBytes / totalBytes) * 100)
       }
       await adapter.writeBinary(
         normalizePath(`${stagingDir}/module.json`),
@@ -187,6 +200,7 @@ export class ModuleArtifactInstaller {
         descriptor,
         subtleCrypto,
       )
+      reportProgress(onProgress, 100)
       return verified.manifest
     } finally {
       // Never delete a target after rename: DataAdapter does not guarantee an
@@ -199,6 +213,7 @@ export class ModuleArtifactInstaller {
     descriptor: ModuleArtifactDescriptor,
     subtleCrypto: Pick<SubtleCrypto, 'digest'>,
     signal?: AbortSignal,
+    onProgress?: ModuleArtifactProgressListener,
   ): Promise<ModuleArtifactManifest> {
     throwIfAborted(signal)
     const adapter = this.options.adapter
@@ -248,6 +263,7 @@ export class ModuleArtifactInstaller {
         descriptor,
         subtleCrypto,
         signal,
+        onProgress,
       )
       throwIfAborted(signal)
       originalMoved = true
@@ -297,6 +313,7 @@ export class ModuleArtifactInstaller {
     descriptor: ModuleArtifactDescriptor,
     subtleCrypto: Pick<SubtleCrypto, 'digest'>,
     signal?: AbortSignal,
+    onProgress?: ModuleArtifactProgressListener,
   ): Promise<ModuleArtifactManifest> {
     const adapter = this.options.adapter
     const manifestBytes = await this.options.download({
@@ -325,6 +342,11 @@ export class ModuleArtifactInstaller {
       manifest,
       descriptor.manifestUrl,
     )
+    const totalBytes =
+      manifestBytes.byteLength +
+      files.reduce((total, file) => total + file.byteSize, 0)
+    let completedBytes = manifestBytes.byteLength
+    reportProgress(onProgress, (completedBytes / totalBytes) * 100)
     for (const file of files) {
       const bytes = await this.options.download({
         kind: 'artifact',
@@ -344,6 +366,8 @@ export class ModuleArtifactInstaller {
         normalizePath(`${stagingDir}/${file.path}`),
         toArrayBuffer(bytes),
       )
+      completedBytes += bytes.byteLength
+      reportProgress(onProgress, (completedBytes / totalBytes) * 100)
     }
     await adapter.writeBinary(
       normalizePath(`${stagingDir}/module.json`),
@@ -357,6 +381,7 @@ export class ModuleArtifactInstaller {
       subtleCrypto,
     )
     await verifyStagingClosure(adapter, stagingDir, files, descriptor)
+    reportProgress(onProgress, 100)
     return manifest
   }
 
@@ -370,6 +395,17 @@ export class ModuleArtifactInstaller {
         // Cleanup diagnostics cannot alter an already-decided install result.
       }
     }
+  }
+}
+
+function reportProgress(
+  listener: ModuleArtifactProgressListener | undefined,
+  progress: number,
+): void {
+  try {
+    listener?.(Math.max(0, Math.min(100, progress)))
+  } catch {
+    // Presentation progress must not affect artifact integrity.
   }
 }
 

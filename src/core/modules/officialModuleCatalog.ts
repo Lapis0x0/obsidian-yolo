@@ -15,6 +15,12 @@ export type OfficialModuleDataSchema = Readonly<{
   write: number
 }>
 
+export type OfficialModuleReleaseNotes = Readonly<{
+  url: string
+  byteSize: number
+  sha256: string
+}>
+
 export type OfficialModuleCatalogVersion = Readonly<{
   version: string
   hostApi: string
@@ -25,6 +31,7 @@ export type OfficialModuleCatalogVersion = Readonly<{
     byteSize: number
     sha256: string
   }>
+  releaseNotes?: OfficialModuleReleaseNotes
 }>
 
 export type OfficialModuleCatalogModule = Readonly<{
@@ -305,6 +312,7 @@ function parseCatalogVersion(
       'dataSchemas',
       'manifestUrl',
       'manifest',
+      'releaseNotes',
     ],
     label,
   )
@@ -337,6 +345,32 @@ function parseCatalogVersion(
   ) {
     throw new Error(`${label} manifest is invalid`)
   }
+  let releaseNotes: OfficialModuleReleaseNotes | undefined
+  if (version.releaseNotes !== undefined) {
+    const value = asObject(version.releaseNotes, `${label} releaseNotes`)
+    assertKeys(value, ['url', 'byteSize', 'sha256'], `${label} releaseNotes`)
+    const manifestRelease = parseModuleReleaseUrl(version.manifestUrl)
+    const noteRelease =
+      typeof value.url === 'string' ? parseModuleReleaseUrl(value.url) : null
+    if (
+      !manifestRelease ||
+      !noteRelease ||
+      manifestRelease.tag !== noteRelease.tag ||
+      noteRelease.assetName !== 'release-note.md' ||
+      !Number.isSafeInteger(value.byteSize) ||
+      (value.byteSize as number) <= 0 ||
+      (value.byteSize as number) > 64 * 1024 ||
+      typeof value.sha256 !== 'string' ||
+      !SHA256.test(value.sha256)
+    ) {
+      throw new Error(`${label} releaseNotes is invalid`)
+    }
+    releaseNotes = frozenRecord({
+      url: value.url,
+      byteSize: value.byteSize as number,
+      sha256: value.sha256.toLowerCase(),
+    }) as OfficialModuleReleaseNotes
+  }
   return frozenRecord({
     version: version.version,
     hostApi: version.hostApi,
@@ -349,6 +383,7 @@ function parseCatalogVersion(
       byteSize: manifest.byteSize as number,
       sha256: manifest.sha256.toLowerCase(),
     }),
+    ...(releaseNotes ? { releaseNotes } : {}),
   }) as OfficialModuleCatalogVersion
 }
 

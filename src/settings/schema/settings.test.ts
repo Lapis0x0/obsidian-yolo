@@ -26,6 +26,7 @@ describe('parseYoloSettings', () => {
     expect(result.systemPrompt).toBe('')
     expect(result.softDismissedUpdateVersion).toBe('')
     expect(result.mutedUpdateVersion).toBe('')
+    expect(result.mutedModuleUpdateVersions).toEqual({})
     expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
     expect(result.ragOptions).toMatchObject({
       enabled: true,
@@ -91,7 +92,7 @@ describe('parseYoloSettings', () => {
       },
     })
 
-    expect(result.version).toBe(75)
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
     expect(result.mcp.localServer).toEqual({
       enabled: false,
       port: DEFAULT_LOCAL_MCP_SERVER_PORT,

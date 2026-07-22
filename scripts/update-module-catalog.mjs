@@ -21,6 +21,7 @@ const FILE_ROLES = new Set([
   'data',
 ])
 const MAX_MANIFEST_BYTES = 1024 * 1024
+const MAX_RELEASE_NOTE_BYTES = 64 * 1024
 const MAX_FILE_BYTES = 64 * 1024 * 1024
 const MAX_TOTAL_BYTES = 128 * 1024 * 1024
 
@@ -59,6 +60,14 @@ export async function updateModuleCatalog({
       assertEqual(sha256(bytes), file.sha256, `${file.name} sha256`)
     }),
   )
+  const releaseNoteUrl = `${release.urlRoot}/release-note.md`
+  const releaseNoteBytes = await fetchBytes(
+    releaseNoteUrl,
+    MAX_RELEASE_NOTE_BYTES,
+    'release note',
+    fetchImpl,
+  )
+  validateReleaseNote(releaseNoteBytes, manifest.version)
   const currentText = await readFile(catalogPath, 'utf8')
   if (Buffer.byteLength(currentText) > 1_000_000) {
     throw new Error('Catalog exceeds its size limit')
@@ -88,6 +97,11 @@ export async function updateModuleCatalog({
     dataSchemas: sortObject(manifest.dataSchemas),
     manifestUrl,
     manifest: { byteSize: manifestBytes.byteLength, sha256: manifestHash },
+    releaseNotes: {
+      url: releaseNoteUrl,
+      byteSize: releaseNoteBytes.byteLength,
+      sha256: sha256(releaseNoteBytes),
+    },
   }
   const versions = [...moduleEntry.versions]
   if (versionIndex === -1) versions.push(nextVersion)
@@ -147,7 +161,20 @@ export function validateCatalog(value) {
     const versions = module.versions.map((rawVersion, versionIndex) => {
       const versionLabel = `${label} version ${versionIndex}`
       const entry = asObject(rawVersion, versionLabel)
-      assertExactKeys(
+      assertAllowedKeys(
+        entry,
+        [
+          'version',
+          'hostApi',
+          'platforms',
+          'dataSchemas',
+          'manifestUrl',
+          'manifest',
+          'releaseNotes',
+        ],
+        versionLabel,
+      )
+      assertRequiredKeys(
         entry,
         [
           'version',
@@ -198,6 +225,9 @@ export function validateCatalog(value) {
       ) {
         throw new Error(`${versionLabel} manifest is invalid`)
       }
+      const releaseNotes = entry.releaseNotes
+        ? parseReleaseNotesDescriptor(entry.releaseNotes, release, versionLabel)
+        : undefined
       return {
         version: entry.version,
         hostApi: entry.hostApi,
@@ -205,6 +235,7 @@ export function validateCatalog(value) {
         dataSchemas: parseDataSchemas(entry.dataSchemas, versionLabel, false),
         manifestUrl: entry.manifestUrl,
         manifest: { byteSize: manifest.byteSize, sha256: manifest.sha256 },
+        ...(releaseNotes ? { releaseNotes } : {}),
       }
     })
     versions.sort(compareVersionsDescending)
@@ -217,6 +248,49 @@ export function validateCatalog(value) {
   })
   modules.sort((left, right) => left.id.localeCompare(right.id, 'en'))
   return { schemaVersion: 1, modules }
+}
+
+function parseReleaseNotesDescriptor(value, release, label) {
+  const descriptor = asObject(value, `${label} releaseNotes`)
+  assertExactKeys(
+    descriptor,
+    ['url', 'byteSize', 'sha256'],
+    `${label} releaseNotes`,
+  )
+  const parsed = parseOfficialUrl(descriptor.url, 'release-note.md')
+  if (
+    parsed.tag !== release.tag ||
+    !Number.isSafeInteger(descriptor.byteSize) ||
+    descriptor.byteSize <= 0 ||
+    descriptor.byteSize > MAX_RELEASE_NOTE_BYTES ||
+    typeof descriptor.sha256 !== 'string' ||
+    !SHA256.test(descriptor.sha256)
+  ) {
+    throw new Error(`${label} releaseNotes is invalid`)
+  }
+  return {
+    url: descriptor.url,
+    byteSize: descriptor.byteSize,
+    sha256: descriptor.sha256,
+  }
+}
+
+function validateReleaseNote(bytes, version) {
+  let text
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    throw new Error('Release note is not valid UTF-8')
+  }
+  const parts = text.split(/^---$/m)
+  if (parts.length !== 2 || parts.some((part) => !part.trim())) {
+    throw new Error('Release note must contain English and Chinese blocks')
+  }
+  for (const part of parts) {
+    if (part.match(/^##\s+(\d+\.\d+\.\d+)\b/m)?.[1] !== version) {
+      throw new Error(`Release note version must be ${version}`)
+    }
+  }
 }
 
 function parseLocalizations(value, label) {

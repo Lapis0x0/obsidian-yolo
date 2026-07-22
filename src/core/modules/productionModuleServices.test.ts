@@ -326,6 +326,7 @@ function createHarness(
   return {
     activeVersions,
     adapter,
+    artifactRequest,
     deviceStateStore,
     fixture,
     intents,
@@ -415,6 +416,7 @@ describe('createProductionModuleServices', () => {
         'getSnapshot',
         'getVerifiedArtifact',
         'install',
+        'prepare',
         'refresh',
         'setEnabled',
         'start',
@@ -436,6 +438,22 @@ describe('createProductionModuleServices', () => {
       pending: null,
     })
     expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+  })
+
+  it('prepares an update artifact without changing module intent or device state', async () => {
+    const harness = createHarness()
+    await harness.services.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+
+    await expect(harness.services.prepare(candidate)).resolves.toEqual({
+      version: '1.2.3',
+    })
+
+    expect(harness.intents.get('learning')).toBe('uninstalled')
+    expect(await harness.deviceStateStore.read('learning')).toBeNull()
+    const downloadsAfterPrepare = harness.artifactRequest.mock.calls.length
+    await harness.services.install(candidate)
+    expect(harness.artifactRequest).toHaveBeenCalledTimes(downloadsAfterPrepare)
   })
 
   it('cancels only the matching pending pointer when intent persistence fails', async () => {

@@ -34,6 +34,8 @@ export type ReleaseNotesByLanguage = {
 }
 
 export type ReleaseHistoryEntry = {
+  productId: string
+  productName: string
   version: string
   releaseNotes: ReleaseNotesByLanguage
   releaseUrl: string
@@ -127,7 +129,11 @@ export async function locateReleaseHistoryPage(
     const pageIndex = githubPage - 1
     pageCache.set(pageIndex, fetched)
 
-    if (fetched.entries.some((entry) => entry.version === normalized)) {
+    if (
+      fetched.entries.some(
+        (entry) => entry.productId === 'core' && entry.version === normalized,
+      )
+    ) {
       return { pageIndex, pageCache, found: true }
     }
 
@@ -669,14 +675,14 @@ function parseReleaseHistoryEntries(
     }
 
     const tag = typeof release.tag_name === 'string' ? release.tag_name : ''
-    const version = stripVersionPrefix(tag)
-    if (!version) {
-      continue
-    }
+    const product = parseProductReleaseTag(tag)
+    if (!product) continue
 
     const body = typeof release.body === 'string' ? release.body : ''
     entries.push({
-      version,
+      productId: product.id,
+      productName: product.name,
+      version: product.version,
       releaseNotes: body
         ? splitReleaseNotesByLanguage(body)
         : { en: null, zh: null },
@@ -686,4 +692,23 @@ function parseReleaseHistoryEntries(
     })
   }
   return entries
+}
+
+function parseProductReleaseTag(
+  tag: string,
+): Readonly<{ id: string; name: string; version: string }> | null {
+  const core = normalizePluginVersion(tag)
+  if (/^\d+(?:\.\d+){2,3}$/.test(core)) {
+    return { id: 'core', name: 'YOLO Core', version: core }
+  }
+  const module = tag.match(
+    /^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)\/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/,
+  )
+  if (!module) return null
+  const id = module[1]
+  return {
+    id,
+    name: id === 'learning' ? 'Learning' : id,
+    version: module[2],
+  }
 }

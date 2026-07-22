@@ -1397,7 +1397,7 @@ export const it: TranslationKeys = {
       pluginAutoUpdateDesc:
         'Se attivo, le nuove versioni rilevate vengono scaricate automaticamente in background.',
       pluginAutoUpdateDescUnavailable:
-        'L’installazione con un clic è disponibile solo su desktop con cartella plugin scrivibile. Su questo dispositivo aggiorna tramite Community plugins o GitHub.',
+        'Gli aggiornamenti dei moduli vengono scaricati automaticamente; l’installazione del Core con un clic richiede ancora desktop e una cartella plugin scrivibile.',
       resetSettings: 'Ripristina impostazioni',
       resetSettingsDesc:
         'Ripristina tutte le impostazioni ai valori predefiniti.',

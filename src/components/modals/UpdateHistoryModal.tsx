@@ -11,6 +11,7 @@ import {
   normalizePluginVersion,
   parseChangelog,
 } from '../../core/update/updateChecker'
+import { useModuleUpdates } from '../../hooks/useModuleUpdates'
 import { usePluginUpdatePrimaryCta } from '../../hooks/usePluginUpdatePrimaryCta'
 import YoloPlugin from '../../main'
 import { ReactModal } from '../common/ReactModal'
@@ -25,14 +26,20 @@ import {
 type UpdateHistoryModalComponentProps = {
   plugin: YoloPlugin
   title: string
+  updateTarget?: Readonly<{ kind: 'module'; key: string }>
 }
 
 export class UpdateHistoryModal extends ReactModal<UpdateHistoryModalComponentProps> {
-  constructor(app: App, plugin: YoloPlugin, title: string) {
+  constructor(
+    app: App,
+    plugin: YoloPlugin,
+    title: string,
+    updateTarget?: Readonly<{ kind: 'module'; key: string }>,
+  ) {
     super({
       app,
       Component: UpdateHistoryModalComponent,
-      props: { plugin, title },
+      props: { plugin, title, ...(updateTarget ? { updateTarget } : {}) },
       plugin,
     })
     this.modalEl.classList.add('yolo-modal--wide', 'yolo-update-history-modal')
@@ -42,6 +49,7 @@ export class UpdateHistoryModal extends ReactModal<UpdateHistoryModalComponentPr
 function UpdateHistoryModalComponent({
   title,
   plugin,
+  updateTarget,
   onClose,
 }: UpdateHistoryModalComponentProps & { onClose: () => void }) {
   const { language, t } = useLanguage()
@@ -57,6 +65,28 @@ function UpdateHistoryModalComponent({
   } = usePluginUpdatePrimaryCta({
     onOpenCommunityPlugins: onClose,
   })
+  const moduleOffers = useModuleUpdates()
+  const moduleOffer = updateTarget
+    ? moduleOffers.find((offer) => offer.key === updateTarget.key)
+    : undefined
+  const moduleBusy =
+    moduleOffer?.status === 'downloading' ||
+    moduleOffer?.status === 'applying' ||
+    moduleOffer?.status === 'success'
+  const moduleCtaLabel = moduleOffer
+    ? moduleOffer.status === 'downloading'
+      ? t('update.downloading', 'Downloading {{progress}}%').replace(
+          '{{progress}}',
+          String(Math.round(moduleOffer.progress)),
+        )
+      : moduleOffer.status === 'applying'
+        ? t('update.applying', 'Installing…')
+        : moduleOffer.status === 'error'
+          ? t('common.retry', 'Retry')
+          : moduleOffer.status === 'success'
+            ? t('update.currentVersion', 'Current')
+            : t('update.goUpdate', 'Update')
+    : ''
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [entries, setEntries] = useState<ReleaseHistoryEntry[]>([])
@@ -232,17 +262,18 @@ function UpdateHistoryModalComponent({
                 lang,
               )
               const parsed = parseChangelog(notes)
-              const isCurrent = entry.version === currentVersion
+              const isCurrent =
+                entry.productId === 'core' && entry.version === currentVersion
               return (
                 <section
                   className={`yolo-update-history-entry${
                     isCurrent ? ' is-current' : ''
                   }`}
-                  key={entry.version}
+                  key={`${entry.productId}@${entry.version}`}
                 >
                   <div className="yolo-update-history-entry-head">
                     <span className="yolo-update-history-entry-version">
-                      {entry.version}
+                      {entry.productName} {entry.version}
                     </span>
                     <div className="yolo-update-history-entry-head-main">
                       {parsed.subtitle ? (
@@ -270,11 +301,13 @@ function UpdateHistoryModalComponent({
               )
             })}
           </div>
-          {showDownloadProgress ? (
+          {showDownloadProgress || moduleOffer?.status === 'downloading' ? (
             <div className="yolo-update-toast-progress" aria-hidden="true">
               <div
                 className="yolo-update-toast-progress-fill"
-                style={{ width: `${downloadProgress}%` }}
+                style={{
+                  width: `${moduleOffer?.status === 'downloading' ? moduleOffer.progress : downloadProgress}%`,
+                }}
               />
             </div>
           ) : null}
@@ -309,7 +342,7 @@ function UpdateHistoryModalComponent({
               </div>
             ) : null}
             <div className="yolo-update-history-footer-actions">
-              {showCommunityPluginsFallback && hasSelfUpdate ? (
+              {!moduleOffer && showCommunityPluginsFallback && hasSelfUpdate ? (
                 <button
                   type="button"
                   className="yolo-update-toast-secondary-btn"
@@ -325,18 +358,24 @@ function UpdateHistoryModalComponent({
                   )}
                 </button>
               ) : null}
-              <button
-                type="button"
-                className={`yolo-update-toast-cta yolo-update-history-update-btn${primaryCta.disabled ? ' is-disabled' : ''}`}
-                title={primaryCta.label}
-                disabled={primaryCta.disabled}
-                onClick={primaryCta.onClick}
-              >
-                {primaryCta.label}
-              </button>
+              {moduleOffer || !updateTarget ? (
+                <button
+                  type="button"
+                  className={`yolo-update-toast-cta yolo-update-history-update-btn${moduleOffer ? (moduleBusy ? ' is-disabled' : '') : primaryCta.disabled ? ' is-disabled' : ''}`}
+                  title={moduleOffer ? moduleCtaLabel : primaryCta.label}
+                  disabled={moduleOffer ? moduleBusy : primaryCta.disabled}
+                  onClick={() => {
+                    if (moduleOffer)
+                      void plugin.applyModuleUpdate(moduleOffer.key)
+                    else primaryCta.onClick()
+                  }}
+                >
+                  {moduleOffer ? moduleCtaLabel : primaryCta.label}
+                </button>
+              ) : null}
             </div>
           </div>
-          {isSelfUpdateError && releaseUrl ? (
+          {!moduleOffer && isSelfUpdateError && releaseUrl ? (
             <button
               type="button"
               className="yolo-update-toast-manual-link"

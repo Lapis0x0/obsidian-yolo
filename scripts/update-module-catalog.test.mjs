@@ -54,6 +54,10 @@ test('preserves schema declarations from a real Learning build', async () => {
         ]),
       ),
     )
+    assets.set(
+      `${root}/release-note.md`,
+      await readFile('modules/learning/latest-release-note.md'),
+    )
 
     await updateModuleCatalog({
       catalogPath,
@@ -80,6 +84,10 @@ test('preserves schema declarations from a real Learning build', async () => {
     assert.deepEqual(
       catalog.modules[0].versions[0].dataSchemas,
       builtManifest.dataSchemas,
+    )
+    assert.equal(
+      catalog.modules[0].versions[0].releaseNotes.url,
+      `${root}/release-note.md`,
     )
     assert.deepEqual(builtManifest.dataSchemas, {
       settings: { readMin: 0, readMax: 1, write: 1 },
@@ -271,6 +279,10 @@ function releaseFixture(mode) {
     })),
   }
   const assets = new Map()
+  const releaseNote = Buffer.from(
+    '## 0.1.0 Learning update\n\n- Update\n\n---\n\n## 0.1.0 学习模式更新\n\n- 更新\n',
+  )
+  assets.set(`${root}/release-note.md`, releaseNote)
   if (mode !== 'missing-file') {
     assets.set(
       `${root}/entry.js`,

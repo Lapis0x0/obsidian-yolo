@@ -345,10 +345,14 @@ async function createFixture({
     })),
   }
   const moduleBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`)
+  const releaseNote = Buffer.from(
+    '## 1.2.3 Learning update\n\n- Update\n\n---\n\n## 1.2.3 学习模式更新\n\n- 更新\n',
+  )
   const manifestSha256 = hash(moduleBytes)
   const assets = new Map([
     ['entry.js', entry],
     ['module.json', moduleBytes],
+    ['release-note.md', releaseNote],
     ['style.css', style],
   ])
   for (const [name, bytes] of assets) {
@@ -368,6 +372,7 @@ async function createFixture({
     prerelease: false,
     html_url: `https://github.com/${repository}/releases/tag/${encodedTag}`,
     target_commitish: 'test-commit',
+    body: `<!-- ${ownerMarker} -->\n\n${releaseNote.toString('utf8')}`,
     assets: [...downloadedAssets].map(([name, bytes], index) => ({
       id: 1000 + index,
       name,

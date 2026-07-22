@@ -474,7 +474,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
                   )
                 : t(
                     'settings.etc.pluginAutoUpdateDescUnavailable',
-                    '一键安装仅在桌面端且插件目录可写时可用；当前设备请通过社区插件或 GitHub 手动更新。',
+                    '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
                   )
             }
             className="yolo-settings-card"
@@ -482,7 +482,6 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
             <ObsidianToggle
               value={settings.pluginUpdateAutoDownloadEnabled ?? true}
               onChange={handlePluginAutoUpdateChange}
-              disabled={!Platform.isDesktop || !canSelfUpdate}
             />
           </ObsidianSetting>
 

@@ -123,6 +123,10 @@ import {
   checkInstallationIntegrityLayer1And2,
 } from './core/update/installationIntegrity'
 import {
+  ModuleUpdateController,
+  type ModuleUpdateOffer,
+} from './core/update/moduleUpdateController'
+import {
   type PluginUpdateState,
   applyRepairFiles,
   applyStagedUpdate,
@@ -266,6 +270,7 @@ export default class YoloPlugin extends Plugin {
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
+  private moduleUpdateController: ModuleUpdateController | null = null
   private moduleRuntime: ModuleRuntime | null = null
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
@@ -1940,12 +1945,28 @@ export default class YoloPlugin extends Plugin {
           void this.activateLocalConformanceModule()
         },
       })
+      this.addCommand({
+        id: 'dev-preview-update-toast',
+        name: '[Development] Preview update toast',
+        callback: () => {
+          this.showUpdateToastPreview()
+        },
+      })
     }
     ensureBufferByteLengthCompat()
     clearRequestTransportMemory()
     addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
 
     await this.loadSettings()
+    let moduleAutoDownloadEnabled =
+      this.settings.pluginUpdateAutoDownloadEnabled
+    this.addSettingsChangeListener((settings) => {
+      const next = settings.pluginUpdateAutoDownloadEnabled
+      if (next && !moduleAutoDownloadEnabled) {
+        void this.moduleUpdateController?.refresh()
+      }
+      moduleAutoDownloadEnabled = next
+    })
     await loadLocale(this.resolveObsidianLanguage())
     this._tCache = undefined
     await this.migrateLegacyVaultMirrorIfNeeded()
@@ -2397,6 +2418,8 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    this.moduleUpdateController?.dispose()
+    this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
     this.learningModuleSettingsHandoff = null
@@ -3535,6 +3558,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
+  dismissUpdateForSession(): void {
+    this.updateCheckResult = null
+    this.notifyUpdateCheckListeners()
+  }
+
   checkForUpdatesOnce(): void {
     if (this.hasCheckedForUpdates) {
       return
@@ -3559,8 +3587,48 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           }
         }
       })(),
-      this.moduleService?.checkForUpdates() ?? Promise.resolve(),
+      (async () => {
+        await this.moduleService?.checkForUpdates()
+        await this.moduleUpdateController?.refresh()
+      })(),
     ])
+  }
+
+  private showUpdateToastPreview(): void {
+    const currentVersion = normalizePluginVersion(this.manifest.version)
+    const segments = currentVersion.split('.')
+    const last = Number.parseInt(segments.at(-1) ?? '', 10)
+    const latestVersion = Number.isSafeInteger(last)
+      ? [...segments.slice(0, -1), String(last + 1)].join('.')
+      : '1.0.1'
+
+    this.updateCheckResult = {
+      hasUpdate: true,
+      latestVersion,
+      releaseNotes: {
+        en: `## ${latestVersion} Update preview ✨
+
+### ✨ Product improvements
+
+- **Update experience**: Preview the real YOLO update notification without publishing a release.
+
+### 🔧 Reliability
+
+- **Safer delivery**: Exercise the complete toast layout, language switcher, and update actions.`,
+        zh: `## ${latestVersion} 更新提示预览 ✨
+
+### ✨ 产品体验
+
+- **更新体验**：无需发布正式版本，即可预览 YOLO 的真实更新提示。
+
+### 🔧 稳定性
+
+- **更安全的交付**：检查完整弹窗布局、语言切换与更新操作。`,
+      },
+      releaseUrl: 'https://github.com/Lapis0x0/obsidian-yolo/releases',
+      assets: null,
+    }
+    this.notifyUpdateCheckListeners()
   }
 
   async openChatView(options?: {
@@ -3674,6 +3742,24 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       throw new Error('[YOLO] Module service is unavailable')
     }
     return this.moduleService
+  }
+
+  getModuleUpdateSnapshot = (): readonly ModuleUpdateOffer[] =>
+    this.moduleUpdateController?.getSnapshot() ?? []
+
+  subscribeModuleUpdates = (listener: () => void): (() => void) =>
+    this.moduleUpdateController?.subscribe(listener) ?? (() => undefined)
+
+  dismissModuleUpdateForSession(key: string): void {
+    this.moduleUpdateController?.dismissForSession(key)
+  }
+
+  async muteModuleUpdate(key: string): Promise<void> {
+    await this.moduleUpdateController?.mute(key)
+  }
+
+  async applyModuleUpdate(key: string): Promise<void> {
+    await this.moduleUpdateController?.update(key)
   }
 
   getModuleSettingsContributionRegistry(): ModuleSettingsContributionRegistry {
@@ -3920,6 +4006,21 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     })
     servicesReference.current = services
     this.moduleService = services
+    this.moduleUpdateController = new ModuleUpdateController({
+      service: services,
+      getAutoDownloadEnabled: () =>
+        this.settings.pluginUpdateAutoDownloadEnabled,
+      getMutedVersions: () => this.settings.mutedModuleUpdateVersions,
+      muteVersion: async (moduleId, version) => {
+        await this.setSettings({
+          ...this.settings,
+          mutedModuleUpdateVersions: {
+            ...this.settings.mutedModuleUpdateVersions,
+            [moduleId]: version,
+          },
+        })
+      },
+    })
   }
 
   private async activateModules(): Promise<boolean> {

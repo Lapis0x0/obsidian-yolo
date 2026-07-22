@@ -367,6 +367,26 @@ export function createProductionModuleServices(
     )
   }
 
+  const resolveCandidateDescriptor = (candidate: ConfirmedModuleCandidate) => {
+    const descriptor = catalogSource.getResolvedArtifactDescriptor(
+      candidate.moduleId,
+      candidate.expectedVersion,
+      options.platform,
+    )
+    if (
+      !descriptor ||
+      descriptor.id !== candidate.moduleId ||
+      descriptor.version !== candidate.expectedVersion ||
+      descriptor.platform !== options.platform ||
+      descriptor.manifest.sha256 !== candidate.expectedManifestSha256
+    ) {
+      throw new Error(
+        `Official module "${candidate.moduleId}" candidate changed after confirmation`,
+      )
+    }
+    return descriptor
+  }
+
   const deactivateModule = async (
     moduleId: string,
     closeViews: boolean,
@@ -443,6 +463,13 @@ export function createProductionModuleServices(
         moduleId,
         expectedVersion: resolved.version,
         expectedManifestSha256: resolved.manifest.sha256,
+      })
+    },
+    prepare(candidate, onProgress) {
+      return runModuleOperation(candidate.moduleId, async () => {
+        const descriptor = resolveCandidateDescriptor(candidate)
+        await installer.install(descriptor, undefined, onProgress)
+        return Object.freeze({ version: descriptor.version })
       })
     },
     install(candidate: ConfirmedModuleCandidate) {

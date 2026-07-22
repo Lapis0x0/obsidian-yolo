@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { copyFile, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const repository = 'Lapis0x0/obsidian-yolo'
@@ -14,6 +14,11 @@ const expectedArtifactRoles = new Map([
   ['style.css', 'style'],
 ])
 const artifactDir = path.resolve('modules', 'learning', 'release')
+const releaseNoteSource = path.resolve(
+  'modules',
+  'learning',
+  'latest-release-note.md',
+)
 const learningPackage = await readJson('modules/learning/package.json')
 const version = learningPackage.version
 
@@ -71,7 +76,13 @@ if (args.includes('--build')) {
   if (build.status !== 0) {
     throw new Error(`Learning release build failed with status ${build.status}`)
   }
+  await copyFile(releaseNoteSource, path.join(artifactDir, 'release-note.md'))
 }
+
+const releaseNoteBytes = await readFile(
+  path.join(artifactDir, 'release-note.md'),
+)
+validateReleaseNote(releaseNoteBytes, version)
 
 const manifestPath = path.join(artifactDir, 'module.json')
 const manifestBytes = await readFile(manifestPath)
@@ -89,7 +100,7 @@ assertJsonEqual(manifest.dataSchemas, dataSchemas, 'manifest dataSchemas')
 assertArray(manifest.variants, 'manifest variants')
 assertEqual(manifest.variants.length, artifactPlatforms.length, 'variant count')
 
-const expectedFiles = new Set(['module.json'])
+const expectedFiles = new Set(['module.json', 'release-note.md'])
 const canonicalFiles = new Map()
 const releaseRoot = `https://github.com/${repository}/releases/download/${encodedTag}`
 for (const [variantIndex, variant] of manifest.variants.entries()) {
@@ -191,6 +202,27 @@ console.log(
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
+}
+
+function validateReleaseNote(bytes, expectedVersion) {
+  if (bytes.byteLength === 0 || bytes.byteLength > 64 * 1024) {
+    throw new Error('Learning release note has invalid byte size')
+  }
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  const parts = text.split(/^---$/m)
+  if (parts.length !== 2 || parts.some((part) => !part.trim())) {
+    throw new Error(
+      'Learning release note must contain English and Chinese blocks',
+    )
+  }
+  for (const [index, part] of parts.entries()) {
+    const heading = part.match(/^##\s+(\d+\.\d+\.\d+)\b/m)
+    if (heading?.[1] !== expectedVersion) {
+      throw new Error(
+        `Learning release note ${index === 0 ? 'English' : 'Chinese'} version must be ${expectedVersion}`,
+      )
+    }
+  }
 }
 
 async function readJson(filePath) {

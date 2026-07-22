@@ -118,15 +118,19 @@ jobs:
             exit 1
           fi
 
+          release_body="$(
+            printf '<!-- %s -->\n\n' "$LEARNING_RELEASE_OWNER"
+            cat modules/learning/latest-release-note.md
+          )"
+
           release="$(
             gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
               -f tag_name="$LEARNING_RELEASE_TAG" \
               -f name="$LEARNING_RELEASE_TAG" \
               -f target_commitish="$GITHUB_SHA" \
-              -f body="<!-- ${LEARNING_RELEASE_OWNER} -->" \
+              -f body="$release_body" \
               -F draft=true \
-              -F prerelease=false \
-              -F generate_release_notes=true
+              -F prerelease=false
           )"
           release_id="$(jq -r '.id' <<<"$release")"
           if [[ ! "$release_id" =~ ^[0-9]+$ ]]; then

@@ -354,6 +354,11 @@ export type ModuleCatalogEntry = {
   icon?: string
   name?: string
   description?: string
+  releaseNotes?: Readonly<{
+    url: string
+    byteSize: number
+    sha256: string
+  }>
   compatibilityIssues?: readonly ModuleCompatibilityIssue[]
 }
 

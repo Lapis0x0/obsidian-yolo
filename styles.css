@@ -11447,6 +11447,13 @@ button.yolo-chat-quick-access-picker-row > svg {
   scrollbar-color: transparent transparent;
 }
 
+.yolo-update-toast-success {
+  padding: 18px 0;
+  color: var(--text-success);
+  font-weight: 600;
+  text-align: center;
+}
+
 .yolo-update-toast-body:hover,
 .yolo-update-toast-body:focus-within {
   scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)

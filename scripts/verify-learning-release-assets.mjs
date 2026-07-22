@@ -134,7 +134,7 @@ export async function verifyLearningReleaseAssets({
     throw new Error('module.json variants must be a non-empty array')
   }
 
-  const expectedNames = new Set(['module.json'])
+  const expectedNames = new Set(['module.json', 'release-note.md'])
   const declarations = new Map()
   const platforms = new Set()
   for (const variant of manifest.variants) {
@@ -168,6 +168,15 @@ export async function verifyLearningReleaseAssets({
     'remote asset closure',
   )
 
+  const releaseNoteBytes = await fetchBytes(
+    requireAsset(remoteAssets, 'release-note.md').url,
+    token,
+    fetchImpl,
+  )
+  const releaseNote = releaseNoteBytes.toString('utf8')
+  const expectedBody = release.body.replace(/^<!-- .*? -->\s*/s, '').trim()
+  assertEqual(releaseNote.trim(), expectedBody, 'Release note body')
+
   const localEntries = await readdir(assetDir, { withFileTypes: true })
   if (localEntries.some((entry) => !entry.isFile())) {
     throw new Error('Local release asset directory contains a non-file entry')
@@ -184,7 +193,9 @@ export async function verifyLearningReleaseAssets({
     const bytes =
       name === 'module.json'
         ? moduleBytes
-        : await fetchBytes(asset.url, token, fetchImpl)
+        : name === 'release-note.md'
+          ? releaseNoteBytes
+          : await fetchBytes(asset.url, token, fetchImpl)
     verifyApiSize(asset, bytes)
     const digest = sha256(bytes)
 

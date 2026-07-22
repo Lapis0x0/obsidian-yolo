@@ -1,3 +1,4 @@
+import type { ModuleArtifactProgressListener } from './moduleArtifactInstaller'
 import type { VerifiedModuleArtifact } from './moduleArtifactVerifier'
 import type { ConfirmedModuleCandidate } from './moduleInstallationCoordinator'
 import type { ModuleManagerSnapshot } from './types'
@@ -13,6 +14,10 @@ export type ModuleService = Readonly<{
   refresh(): Promise<void>
   checkForUpdates(): Promise<void>
   getInstallCandidate(moduleId: string): ConfirmedModuleCandidate | undefined
+  prepare(
+    candidate: ConfirmedModuleCandidate,
+    onProgress?: ModuleArtifactProgressListener,
+  ): Promise<ModuleOperationResult>
   install(candidate: ConfirmedModuleCandidate): Promise<ModuleOperationResult>
   setEnabled(moduleId: string, enabled: boolean): Promise<ModuleOperationResult>
   uninstall(moduleId: string): Promise<ModuleOperationResult>

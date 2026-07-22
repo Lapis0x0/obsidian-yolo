@@ -715,12 +715,6 @@ function ModuleError({
   )
 }
 
-function statusKey(status: ModuleRecord['status']): string {
-  if (status === 'update-available') return 'updateAvailable'
-  if (status === 'activation-pending') return 'activationPending'
-  return status
-}
-
 function actionLabel(
   action: ModuleShelfAction,
   t: (key: string) => string,

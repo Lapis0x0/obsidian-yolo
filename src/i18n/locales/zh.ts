@@ -1403,7 +1403,7 @@ export const zh: TranslationKeys = {
       pluginAutoUpdate: '自动下载更新',
       pluginAutoUpdateDesc: '开启后检测到新版本会自动在后台加载。',
       pluginAutoUpdateDescUnavailable:
-        '一键安装仅在桌面端且插件目录可写时可用；当前设备请通过社区插件或 GitHub 手动更新。',
+        '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
       exportConfig: '导出配置',
       exportConfigDesc:
         '将当前插件配置导出为 JSON 文件，方便在其他笔记库中导入使用。',

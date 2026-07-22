@@ -229,12 +229,18 @@ function catalogEntry(
     module.localizations,
     locale,
   )
+  const selected = module.versions.find(
+    (candidate) => candidate.version === version,
+  )
   return Object.freeze({
     id: module.id,
     version,
     ...(module.icon ? { icon: module.icon } : {}),
     name: presentation.name,
     description: presentation.description,
+    ...(selected?.releaseNotes
+      ? { releaseNotes: Object.freeze({ ...selected.releaseNotes }) }
+      : {}),
     ...(compatibilityIssues.length > 0 ? { compatibilityIssues } : {}),
   })
 }

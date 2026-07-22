@@ -1514,7 +1514,7 @@ export const en: TranslationKeys = {
       pluginAutoUpdateDesc:
         'When enabled, new versions are downloaded automatically in the background when detected.',
       pluginAutoUpdateDescUnavailable:
-        'One-click install is only available on desktop with a writable plugin folder. On this device, update via Community plugins or GitHub.',
+        'Module updates are downloaded automatically; one-click Core installation still requires desktop and a writable plugin folder.',
       exportConfig: 'Export settings',
       exportConfigDesc:
         'Export current plugin settings to a JSON file for use in other vaults.',

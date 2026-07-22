@@ -324,6 +324,9 @@ export const yoloSettingsSchema = z.object({
   // 更新提示:同版本第二次关闭后记录被静音的版本号,只有出现更高版本才会再次提示。
   mutedUpdateVersion: z.string().catch(''),
 
+  // 模块更新提示:按模块记录被静音的版本,更高版本仍会重新提示。
+  mutedModuleUpdateVersions: z.record(z.string(), z.string()).catch({}),
+
   /** 检测到新版本时在后台自动下载 release 文件；安装仍需用户确认。 */
   pluginUpdateAutoDownloadEnabled: z.boolean().catch(true),
 
