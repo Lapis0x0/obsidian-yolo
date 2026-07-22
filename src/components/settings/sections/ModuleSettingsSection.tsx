@@ -7,7 +7,9 @@ import type {
   YoloModuleSettingFieldV1,
 } from '../../../core/modules/moduleSettingsContributions'
 import { resolveSettingsContribution } from '../../../core/modules/moduleSettingsContributions'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 
 type ModuleSettingsSectionProps = {
@@ -87,34 +89,42 @@ function ModuleSettingsContribution({
   }
 
   return (
-    <section className="yolo-module-settings-block">
-      <div className="yolo-settings-sub-header">{localized.title}</div>
-      {localized.fields.map((field) => (
-        <ObsidianSetting
-          key={field.key}
-          name={field.name}
-          desc={field.description}
-          className="yolo-module-settings-field"
-        >
-          {snapshot ? (
-            <ModuleSettingControl
-              field={field}
-              snapshot={snapshot}
-              disabled={savingKey === field.key}
-              onChange={(value) => write(field.key, value)}
-            />
-          ) : null}
-        </ObsidianSetting>
-      ))}
-      {error ? (
-        <div className="yolo-module-settings-error" role="alert">
-          {t(
-            'settings.modules.settingsSaveError',
-            'Unable to save module settings',
-          )}
-          {`: ${error}`}
+    <section className="yolo-models-block yolo-module-settings-block">
+      <div className="yolo-models-block-head">
+        <div className="yolo-models-block-head-title-row">
+          <div className="yolo-settings-sub-header yolo-models-block-title">
+            {localized.title}
+          </div>
         </div>
-      ) : null}
+      </div>
+      <div className="yolo-models-block-content">
+        {localized.fields.map((field) => (
+          <ObsidianSetting
+            key={field.key}
+            name={field.name}
+            desc={field.description}
+            className="yolo-models-select-card yolo-module-settings-field"
+          >
+            {snapshot ? (
+              <ModuleSettingControl
+                field={field}
+                snapshot={snapshot}
+                disabled={savingKey === field.key}
+                onChange={(value) => write(field.key, value)}
+              />
+            ) : null}
+          </ObsidianSetting>
+        ))}
+        {error ? (
+          <div className="yolo-module-settings-error" role="alert">
+            {t(
+              'settings.modules.settingsSaveError',
+              'Unable to save module settings',
+            )}
+            {`: ${error}`}
+          </div>
+        ) : null}
+      </div>
     </section>
   )
 }
@@ -143,33 +153,32 @@ function ModuleSettingControl({
   }
   if (field.type === 'text') {
     return (
-      <input
-        className="yolo-module-settings-text"
-        type="text"
-        defaultValue={typeof value === 'string' ? value : ''}
+      <ObsidianTextInput
+        value={typeof value === 'string' ? value : ''}
         disabled={disabled}
-        onBlur={(event) => onChange(event.currentTarget.value)}
+        onChange={() => undefined}
+        onBlur={onChange}
       />
     )
   }
+  const hasSelectedModel = snapshot.models.models.some(
+    (model) => model.id === value,
+  )
+  const options = Object.fromEntries([
+    ...(!hasSelectedModel
+      ? [['', snapshot.models.defaultModelId || t('common.default')] as const]
+      : []),
+    ...snapshot.models.models.map(
+      (model) => [model.id, `${model.name} (${model.providerId})`] as const,
+    ),
+  ])
   return (
-    <select
-      className="yolo-module-settings-select"
-      value={typeof value === 'string' ? value : ''}
+    <ObsidianDropdown
+      value={hasSelectedModel && typeof value === 'string' ? value : ''}
+      options={options}
       disabled={disabled}
-      onChange={(event) => onChange(event.currentTarget.value)}
-    >
-      {!snapshot.models.models.some((model) => model.id === value) ? (
-        <option value="">
-          {snapshot.models.defaultModelId || t('common.default')}
-        </option>
-      ) : null}
-      {snapshot.models.models.map((model) => (
-        <option key={model.id} value={model.id}>
-          {model.name} ({model.providerId})
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+    />
   )
 }
 

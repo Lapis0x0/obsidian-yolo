@@ -369,11 +369,7 @@ export function ModulesTab({ app, service, registrations }: ModulesTabProps) {
         </nav>
         <main className="yolo-module-shelf-canvas">
           {selected ? (
-            <ModuleSettingsPanel
-              module={selected.module}
-              registrations={selected.registrations}
-              icon={selected.icon}
-            />
+            <ModuleSettingsPanel registrations={selected.registrations} />
           ) : (
             <ModuleManagementPanel
               snapshot={snapshot}
@@ -523,9 +519,8 @@ function ModuleRow({
     (action) => action !== 'settings' && action !== 'uninstall',
   )
   const canUninstall = actions.includes('uninstall')
-  const status = updating
-    ? t('settings.modules.statuses.updateAvailable')
-    : t(`settings.modules.statuses.${statusKey(module.status)}`)
+  const currentVersion =
+    module.installed?.version ?? module.catalog?.version ?? module.version
 
   return (
     <article className="yolo-module-shelf-row" data-module-id={module.id}>
@@ -536,25 +531,14 @@ function ModuleRow({
       <div className="yolo-module-shelf-row-copy">
         <div className="yolo-module-shelf-row-heading">
           <strong>{module.name}</strong>
+          <span
+            className={`yolo-module-shelf-version ${updating ? 'is-update' : ''}`}
+          >
+            v{currentVersion}
+            {updating ? ` → v${module.catalog?.version ?? ''}` : ''}
+          </span>
         </div>
         <p>{module.description}</p>
-        <span className="yolo-module-shelf-meta">
-          <span
-            className={`${module.status === 'failed' ? 'is-error' : ''} ${updating ? 'is-update' : ''}`}
-          >
-            {status}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {t('settings.modules.version').replace(
-              '{version}',
-              module.installed?.version ??
-                module.catalog?.version ??
-                module.version,
-            )}
-          </span>
-          {updating ? ` → ${module.catalog?.version ?? ''}` : ''}
-        </span>
         {module.installed?.error || module.error ? (
           <span className="yolo-module-shelf-error" role="alert">
             {module.installed?.error ?? module.error}
@@ -628,32 +612,12 @@ function ModuleRow({
 }
 
 function ModuleSettingsPanel({
-  module,
   registrations,
-  icon,
 }: {
-  module: ModuleRecord
   registrations: readonly RegisteredModuleSettingsContributionV1[]
-  icon?: string
 }) {
-  const { t } = useLanguage()
   return (
     <section className="yolo-module-shelf-panel">
-      <header className="yolo-module-shelf-header yolo-module-shelf-header--settings">
-        <div className="yolo-module-shelf-module-title">
-          <ModuleGlyph moduleId={module.id} icon={icon} />
-          <div>
-            <h2>{module.name}</h2>
-            <p>
-              {t(`settings.modules.statuses.${statusKey(module.status)}`)} ·{' '}
-              {t('settings.modules.version').replace(
-                '{version}',
-                module.installed?.version ?? module.version,
-              )}
-            </p>
-          </div>
-        </div>
-      </header>
       <ModuleSettingsSection registrations={registrations} />
     </section>
   )
@@ -662,11 +626,9 @@ function ModuleSettingsPanel({
 function ModuleGlyph({
   moduleId,
   icon = 'package',
-  compact = false,
 }: {
   moduleId: string
   icon?: string
-  compact?: boolean
 }) {
   const ref = useRef<HTMLSpanElement | null>(null)
   useEffect(() => {
@@ -675,7 +637,7 @@ function ModuleGlyph({
   return (
     <span
       ref={ref}
-      className={`yolo-module-shelf-glyph ${compact ? 'is-compact' : ''}`}
+      className="yolo-module-shelf-glyph"
       data-module-id={moduleId}
       aria-hidden="true"
     />

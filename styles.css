@@ -7221,7 +7221,7 @@ button.yolo-agent-chip--more:hover {
 .yolo-module-shelf {
   display: grid;
   flex: 1;
-  grid-template-columns: 128px minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr);
   align-items: stretch;
   width: calc(
     100% + var(--size-4-12) + var(--size-4-12) + var(--size-4-6) +
@@ -7290,7 +7290,7 @@ button.yolo-module-shelf-action:focus-visible,
   stroke-width: 1.8;
 }
 
-.yolo-module-shelf-glyph:not(.is-compact) {
+.yolo-module-shelf-glyph {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-s);
@@ -7341,12 +7341,6 @@ button.yolo-module-shelf-action:focus-visible,
   line-height: var(--line-height-normal);
 }
 
-.yolo-module-shelf-module-title {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-3);
-}
-
 .yolo-module-shelf-groups {
   display: grid;
   gap: var(--size-4-6);
@@ -7387,6 +7381,7 @@ button.yolo-module-shelf-action:focus-visible,
 .yolo-module-shelf-row-heading {
   display: flex;
   align-items: center;
+  gap: var(--size-4-2);
   min-width: 0;
 }
 
@@ -7410,22 +7405,15 @@ button.yolo-module-shelf-action:focus-visible,
   white-space: nowrap;
 }
 
-.yolo-module-shelf-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-4-1);
-  margin-top: var(--size-4-1);
+.yolo-module-shelf-version {
+  flex: 0 0 auto;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
   font-variant-numeric: tabular-nums;
 }
 
-.yolo-module-shelf-meta .is-error {
-  color: var(--text-error);
-}
-
-.yolo-module-shelf-meta .is-update {
+.yolo-module-shelf-version.is-update {
   color: var(--text-accent);
 }
 
@@ -7564,18 +7552,6 @@ button.yolo-module-shelf-uninstall:hover {
   align-items: center;
 }
 
-select.yolo-module-settings-select,
-input.yolo-module-settings-text {
-  box-sizing: border-box;
-  min-width: 220px;
-  max-width: 100%;
-}
-
-select.yolo-module-settings-select {
-  appearance: auto;
-  font: inherit;
-}
-
 .yolo-module-settings-error {
   margin-top: var(--size-4-2);
   color: var(--text-error);
@@ -7594,6 +7570,7 @@ select.yolo-module-settings-select {
 
 @container (max-width: 620px) {
   .yolo-module-shelf {
+    align-content: start;
     grid-template-columns: 1fr;
   }
 
@@ -7627,11 +7604,6 @@ select.yolo-module-settings-select {
 }
 
 @container (max-width: 480px) {
-  .yolo-module-shelf {
-    width: 100%;
-    margin-inline: 0;
-  }
-
   .yolo-module-shelf-row {
     grid-template-columns: auto minmax(0, 1fr);
   }
