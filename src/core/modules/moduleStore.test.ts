@@ -162,8 +162,7 @@ describe('ModuleStore', () => {
   })
 
   it('recursively removes only the resolved version root and verifies absence', async () => {
-    const root =
-      '.config/plugins/obsidian-smart-composer/modules/notes/1.2.0'
+    const root = '.config/plugins/obsidian-smart-composer/modules/notes/1.2.0'
     let present = true
     const stat = jest.fn(async (path: string) =>
       path === root && present ? { type: 'folder' as const } : null,

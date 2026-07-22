@@ -699,7 +699,8 @@ function resolveDestructiveModulePluginDir(
     throw new Error('Module artifact removal config directory is unsafe')
   }
   const pluginsRoot = `${configDir}/plugins`
-  const pluginDir = options.manifest.dir ?? `${pluginsRoot}/${options.manifest.id}`
+  const pluginDir =
+    options.manifest.dir ?? `${pluginsRoot}/${options.manifest.id}`
   const pluginDirPrefix = `${pluginsRoot}/`
   if (
     pluginDir.normalize('NFKC') !== pluginDir ||

@@ -1,27 +1,21 @@
-## 1.6.1.1 Module Reliability & Regional Connectivity 🛠️
+## 1.6.1.2 Streamlined Module Lifecycle & New Tab Polish 🛠️
 
-### 🧩 Module Delivery & Recovery
+### 🧩 Module Installation & Uninstallation
 
-- Module update checks and downloads now prefer jsDelivr, with automatic fallback to GitHub when unavailable, improving installation and update reliability in mainland China and other network-restricted regions.
-- Module failures now report actionable causes such as download timeouts, integrity verification errors, and activation failures. Retrying performs a fresh download and verification instead of ending with a generic activation error.
-- Modules synchronized from another device are reconciled in the background without delaying YOLO startup. Missing module files are automatically downloaded and repaired, while an explicit user action immediately takes priority over background waiting.
-- Uninstalling a module now starts immediately after clicking “Uninstall”, without an unnecessary second confirmation dialog.
+- Development and production environments now consistently install modules from official remote releases. Uninstalling no longer waits for redundant remote verification, and reinstalling recovers cleanly from artifacts left by an incomplete uninstall.
 
-### 📁 Path Compatibility
+### 🎨 Interface Fixes
 
-- YOLO root directories now support paths containing Chinese and other Unicode characters.
+- Fixed duplicate icons and misaligned layout for the YOLO entry on new tabs with certain themes.
 
 ---
 
-## 1.6.1.1 模块可靠性与区域网络优化 🛠️
+## 1.6.1.2 模块流程精简与新标签页优化 🛠️
 
-### 🧩 模块交付与恢复
+### 🧩 模块安装与卸载
 
-- 模块更新检查与下载现在会优先使用 jsDelivr，并在不可用时自动切换至 GitHub，提升中国大陆及其他网络受限地区的安装和更新速度与成功率。
-- 模块失败时现在会明确展示下载超时、文件校验或启动失败等具体原因；重试会重新执行下载与校验，不再只显示模糊的“无法激活”错误。
-- 从其他设备同步到达的模块会在后台完成协调，不再拖慢 YOLO 启动。模块文件缺失时会自动重新下载修复，用户主动操作也会立即优先于后台等待。
-- 点击“卸载”后会立即执行模块卸载，不再显示多余的二次确认弹窗。
+- 开发与正式环境现在统一使用远程官方版本；卸载无需再等待冗余的远程校验，并修复卸载残留导致无法重新安装的问题。
 
-### 📁 路径兼容性
+### 🎨 界面修复
 
-- YOLO 根目录现在支持包含中文及其他 Unicode 字符的路径。
+- 修复部分主题下新标签页的 YOLO 入口出现重复图标和布局错位的问题。
