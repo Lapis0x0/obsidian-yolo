@@ -20,9 +20,37 @@
       },
       "versions": [
         {
+          "version": "0.1.1",
+          "hostApi": "^1.4.0",
+          "platforms": [
+            "desktop",
+            "mobile"
+          ],
+          "dataSchemas": {
+            "settings": {
+              "readMin": 0,
+              "readMax": 1,
+              "write": 1
+            }
+          },
+          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/module.json",
+          "manifest": {
+            "byteSize": 1860,
+            "sha256": "48e21c7960df8cb7adadffaed54c8dff7b8aa51bac7cc0b1afb427d9e3c4daba"
+          },
+          "releaseNotes": {
+            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/release-note.md",
+            "byteSize": 733,
+            "sha256": "e74823b2661eacb5f60c0b749fcf3cb269d75001c1ec40089fe16ce1357bb1ca"
+          }
+        },
+        {
           "version": "0.1.0",
           "hostApi": "^1.1.0",
-          "platforms": ["desktop", "mobile"],
+          "platforms": [
+            "desktop",
+            "mobile"
+          ],
           "dataSchemas": {
             "settings": {
               "readMin": 0,
