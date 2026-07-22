@@ -24,6 +24,12 @@ const catalogModule = (versions = []) => ({
 })
 
 test('preserves schema declarations from a real Learning build', async () => {
+  const learningPackage = JSON.parse(
+    await readFile('modules/learning/package.json', 'utf8'),
+  )
+  const version = learningPackage.version
+  const releaseTag = `learning/v${version}`
+  const releaseRoot = `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${encodeURIComponent(releaseTag)}`
   const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-build-'))
   const catalogPath = path.join(directory, 'catalog.json')
   const artifactDir = path.join(directory, 'artifact')
@@ -37,7 +43,7 @@ test('preserves schema declarations from a real Learning build', async () => {
         '--output-dir',
         artifactDir,
         '--release-tag',
-        'learning/v0.1.0',
+        releaseTag,
       ],
       { encoding: 'utf8' },
     )
@@ -49,21 +55,21 @@ test('preserves schema declarations from a real Learning build', async () => {
     const assets = new Map(
       await Promise.all(
         (await readdir(artifactDir)).map(async (name) => [
-          `${root}/${name}`,
+          `${releaseRoot}/${name}`,
           await readFile(path.join(artifactDir, name)),
         ]),
       ),
     )
     assets.set(
-      `${root}/release-note.md`,
+      `${releaseRoot}/release-note.md`,
       await readFile('modules/learning/latest-release-note.md'),
     )
 
     await updateModuleCatalog({
       catalogPath,
-      manifestUrl: `${root}/module.json`,
+      manifestUrl: `${releaseRoot}/module.json`,
       expectedId: 'learning',
-      expectedVersion: '0.1.0',
+      expectedVersion: version,
       fetchImpl: async (url) => {
         const bytes = assets.get(url)
         return {
@@ -87,7 +93,7 @@ test('preserves schema declarations from a real Learning build', async () => {
     )
     assert.equal(
       catalog.modules[0].versions[0].releaseNotes.url,
-      `${root}/release-note.md`,
+      `${releaseRoot}/release-note.md`,
     )
     assert.deepEqual(builtManifest.dataSchemas, {
       settings: { readMin: 0, readMax: 1, write: 1 },
