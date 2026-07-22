@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "learning",
+  "version": "0.1.1",
+  "hostApi": "^1.4.0",
+  "dataSchemas": {
+    "settings": {
+      "readMin": 0,
+      "readMax": 1,
+      "write": 1
+    }
+  },
+  "variants": [
+    {
+      "platform": "desktop",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 1055281,
+          "sha256": "725d6cb15d4b9674bdc58df23210b6a8b063d17db22571856e8937904b306bcd",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/entry.js",
+          "storage": "module"
+        },
+        {
+          "role": "style",
+          "name": "style.css",
+          "path": "style.css",
+          "byteSize": 106760,
+          "sha256": "096f1c5a2df1fa07d8f420aa70487cb4803fb764b4180043ba4e7dd5d45a8da8",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/style.css",
+          "storage": "module"
+        }
+      ]
+    },
+    {
+      "platform": "mobile",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 1055281,
+          "sha256": "725d6cb15d4b9674bdc58df23210b6a8b063d17db22571856e8937904b306bcd",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/entry.js",
+          "storage": "module"
+        },
+        {
+          "role": "style",
+          "name": "style.css",
+          "path": "style.css",
+          "byteSize": 106760,
+          "sha256": "096f1c5a2df1fa07d8f420aa70487cb4803fb764b4180043ba4e7dd5d45a8da8",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/style.css",
+          "storage": "module"
+        }
+      ]
+    }
+  ]
+}

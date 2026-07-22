@@ -441,15 +441,17 @@ function ModuleManagementPanel({
               busy={busy}
               onAction={onAction}
             />
-            <ModuleGroup
-              title={t('settings.modules.disabled')}
-              modules={sections.disabled}
-              empty={t('settings.modules.disabledEmpty')}
-              operation={operation}
-              settingsIconsByModuleId={settingsIconsByModuleId}
-              busy={busy}
-              onAction={onAction}
-            />
+            {sections.disabled.length > 0 ? (
+              <ModuleGroup
+                title={t('settings.modules.disabled')}
+                modules={sections.disabled}
+                empty={t('settings.modules.disabledEmpty')}
+                operation={operation}
+                settingsIconsByModuleId={settingsIconsByModuleId}
+                busy={busy}
+                onAction={onAction}
+              />
+            ) : null}
             <ModuleGroup
               title={t('settings.modules.available')}
               modules={sections.available}
