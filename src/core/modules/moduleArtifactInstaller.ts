@@ -5,6 +5,7 @@ import {
   collectInstallableModuleFiles,
   verifyInstalledModuleArtifact,
 } from './moduleArtifactVerifier'
+import { ModuleArtifactDownloadError } from './moduleFailure'
 import { verifyModuleBytes } from './moduleIntegrity'
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 import {
@@ -404,7 +405,7 @@ export class ModuleArtifactInstaller {
     ) {
       throw new Error('Module artifact download sources are invalid')
     }
-    const failures: string[] = []
+    const failures: Array<{ source: string; error: string }> = []
     for (const url of resolved) {
       throwIfAborted(signal)
       try {
@@ -419,13 +420,14 @@ export class ModuleArtifactInstaller {
         return bytes
       } catch (error) {
         if (signal?.aborted) throw error
-        failures.push(describeError(error))
+        failures.push({
+          source: downloadSourceName(url),
+          error: describeError(error),
+        })
       }
     }
-    if (failures.length === 1) throw new Error(failures[0])
-    throw new Error(
-      `${label} download failed from all official sources: ${failures.join('; ')}`,
-    )
+    if (failures.length === 1) throw new Error(failures[0].error)
+    throw new ModuleArtifactDownloadError(label, failures)
   }
 
   private async cleanupDir(path: string): Promise<void> {
@@ -702,6 +704,12 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function downloadSourceName(url: string): string {
+  if (url.startsWith('https://cdn.jsdelivr.net/')) return 'jsDelivr'
+  if (url.startsWith('https://github.com/')) return 'GitHub'
+  return 'official source'
 }
 
 function enqueue<T>(

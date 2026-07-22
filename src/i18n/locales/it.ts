@@ -227,8 +227,8 @@ export const it: TranslationKeys = {
       update: 'Aggiorna',
       installing: 'Installazione…',
       updating: 'Aggiornamento…',
-      reload: 'Riprova attivazione',
-      reloading: 'Attivazione…',
+      reload: 'Riprova',
+      reloading: 'Nuovo tentativo…',
       candidateUnavailable:
         'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
       installError: 'Impossibile installare {name}: {error}',
@@ -255,6 +255,18 @@ export const it: TranslationKeys = {
       },
       retry: 'Riprova',
       actionError: 'Impossibile modificare {name}: {error}',
+      failure: {
+        downloadTimeout:
+          'Il download del modulo è scaduto sia su jsDelivr sia su GitHub. Controlla la rete o il proxy e riprova.',
+        download:
+          'Impossibile scaricare il modulo da jsDelivr o GitHub. Controlla la rete o il proxy e riprova.',
+        integrity:
+          'Il modulo scaricato non ha superato il controllo di integrità, quindi l’installazione è stata interrotta. Riprova e contatta lo sviluppatore se il problema persiste.',
+        activation:
+          'Il modulo è stato scaricato ma non può essere avviato. Riprova e contatta lo sviluppatore se il problema persiste.',
+        unknown: 'Operazione del modulo non riuscita.',
+        diagnostic: 'Dettagli: {detail}',
+      },
       actions: {
         install: 'Installa',
         installBusy: 'Installazione…',

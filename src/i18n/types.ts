@@ -230,6 +230,14 @@ export type TranslationKeys = {
       }
       retry: string
       actionError: string
+      failure: {
+        downloadTimeout: string
+        download: string
+        integrity: string
+        activation: string
+        unknown: string
+        diagnostic: string
+      }
       actions: {
         install: string
         installBusy: string

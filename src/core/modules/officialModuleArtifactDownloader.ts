@@ -77,11 +77,14 @@ export function createOfficialModuleArtifactDownloader(
     if (
       !response ||
       typeof response !== 'object' ||
-      !Number.isInteger(response.status) ||
-      response.status < 200 ||
-      response.status >= 300
+      !Number.isInteger(response.status)
     ) {
-      throw new Error('Official module artifact request was not successful')
+      throw new Error('Official module artifact response status is invalid')
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(
+        `Official module artifact request failed with HTTP ${response.status}`,
+      )
     }
 
     const contentLength = readContentLength(response.headers)
@@ -156,7 +159,11 @@ function withTimeout<T>(
     }
     const timer = setTimeout(() => {
       finish(() =>
-        reject(new Error('Official module artifact request timed out')),
+        reject(
+          new Error(
+            `Official module artifact request timed out after ${timeoutMs} ms`,
+          ),
+        ),
       )
     }, timeoutMs)
     if (signal?.aborted) {

@@ -11,6 +11,7 @@ import type { ModuleService } from '../../../core/modules/moduleService'
 import {
   createFailedOperation,
   executeModuleProductAction,
+  formatModuleFailure,
   getModuleManagementView,
   getModuleShelfActions,
   getRetryAction,
@@ -53,6 +54,19 @@ function service(): jest.Mocked<
 }
 
 describe('ModulesTab product actions', () => {
+  it('formats a localized actionable failure while preserving diagnostics', () => {
+    const translations: Record<string, string> = {
+      'settings.modules.failure.downloadTimeout': '下载超时，请检查网络。',
+      'settings.modules.failure.diagnostic': '诊断信息：{detail}',
+    }
+    expect(
+      formatModuleFailure(
+        { kind: 'download-timeout', detail: 'jsDelivr: timeout' },
+        (key) => translations[key] ?? key,
+      ),
+    ).toBe('下载超时，请检查网络。 诊断信息：jsDelivr: timeout')
+  })
+
   it('submits the exact current install candidate', async () => {
     const modules = service()
     const confirmed = candidate('1.0.0', 'a'.repeat(64))

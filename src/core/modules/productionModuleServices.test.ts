@@ -482,6 +482,27 @@ describe('createProductionModuleServices', () => {
     expect(harness.intents.get('learning')).toBe('enabled')
   })
 
+  it('preserves startup readiness failure and retries preparation before activation', async () => {
+    const harness = createHarness()
+    harness.intents.set('learning', 'enabled')
+    harness.artifactRequest.mockRejectedValueOnce(new Error('network offline'))
+
+    await harness.services.start()
+
+    expect(harness.services.getSnapshot().modules[0]).toMatchObject({
+      status: 'failed',
+      enabled: true,
+      failure: { kind: 'unknown', detail: 'network offline' },
+    })
+    expect(await harness.deviceStateStore.read('learning')).toBeNull()
+
+    await expect(
+      harness.services.setEnabled('learning', true),
+    ).resolves.toEqual({})
+    expect(harness.activeVersions.get('learning')).toBe('1.2.3')
+    expect(harness.services.getSnapshot().modules[0]?.failure).toBeUndefined()
+  })
+
   it('restores disabled intent when installing and enabling fails', async () => {
     const harness = createHarness()
     harness.intents.set('learning', 'disabled')

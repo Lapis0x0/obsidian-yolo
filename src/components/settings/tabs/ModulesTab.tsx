@@ -8,6 +8,10 @@ import type {
   ModuleManagerSnapshot,
   ModuleRecord,
 } from '../../../core/modules'
+import {
+  type ModuleFailure,
+  describeModuleFailure,
+} from '../../../core/modules/moduleFailure'
 import { compareModuleVersions } from '../../../core/modules/moduleManager'
 import type {
   ModuleOperationResult,
@@ -60,6 +64,19 @@ export function createFailedOperation(
   error: string,
 ): OperationState {
   return Object.freeze({ moduleId, action, error })
+}
+
+export function formatModuleFailure(
+  failure: ModuleFailure,
+  t: (keyPath: string, fallback?: string) => string,
+): string {
+  const key =
+    failure.kind === 'download-timeout' ? 'downloadTimeout' : failure.kind
+  const summary = t(`settings.modules.failure.${key}`)
+  return `${summary} ${t('settings.modules.failure.diagnostic').replace(
+    '{detail}',
+    failure.detail,
+  )}`
 }
 
 export type ModuleSections = Readonly<{
@@ -249,7 +266,10 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
           displayAction,
           t('settings.modules.actionError')
             .replace('{name}', module.name)
-            .replace('{error}', errorMessage(error)),
+            .replace(
+              '{error}',
+              formatModuleFailure(describeModuleFailure(error), t),
+            ),
         ),
       )
     }
@@ -491,6 +511,9 @@ function ModuleRow({
     (action) => action !== 'settings' && action !== 'uninstall',
   )
   const canUninstall = actions.includes('uninstall')
+  const hasOperationError = Boolean(
+    operation?.moduleId === module.id && operation.error,
+  )
   const currentVersion =
     module.installed?.version ?? module.catalog?.version ?? module.version
 
@@ -511,9 +534,12 @@ function ModuleRow({
           </span>
         </div>
         <p>{module.description}</p>
-        {module.installed?.error || module.error ? (
+        {module.error && !hasOperationError ? (
           <span className="yolo-module-shelf-error" role="alert">
-            {module.installed?.error ?? module.error}
+            {formatModuleFailure(
+              module.failure ?? describeModuleFailure(module.error),
+              t,
+            )}
           </span>
         ) : null}
         {(module.compatibilityIssues?.length ?? 0) > 0 ? (
@@ -696,8 +722,4 @@ function actionLabel(
   if (action === 'update-enable') return t('settings.modules.updateAndEnable')
   if (action === 'reload') return t('settings.modules.reload')
   return t(`settings.modules.actions.${action}`)
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

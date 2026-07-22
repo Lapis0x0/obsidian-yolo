@@ -198,8 +198,8 @@ export const zh: TranslationKeys = {
       update: '更新',
       installing: '正在安装…',
       updating: '正在更新…',
-      reload: '重试激活',
-      reloading: '正在激活…',
+      reload: '重试',
+      reloading: '正在重试…',
       candidateUnavailable:
         '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
       installError: '无法安装 {name}：{error}',
@@ -225,6 +225,18 @@ export const zh: TranslationKeys = {
       },
       retry: '重试',
       actionError: '无法更改 {name}：{error}',
+      failure: {
+        downloadTimeout:
+          'jsDelivr 和 GitHub 均连接超时，无法下载模块。请检查网络或代理设置后重试。',
+        download:
+          '无法从 jsDelivr 或 GitHub 下载模块。请检查网络或代理设置后重试。',
+        integrity:
+          '下载的模块文件未通过完整性校验，已停止安装。请重试；若问题持续，请联系开发者。',
+        activation:
+          '模块已经下载，但无法启动。请重试；若问题持续，请联系开发者。',
+        unknown: '模块操作失败。',
+        diagnostic: '诊断信息：{detail}',
+      },
       actions: {
         install: '安装',
         installBusy: '正在安装…',

@@ -9,6 +9,7 @@ import {
 import type { ModuleCatalogLocaleSource } from './moduleCatalogPresentation'
 import { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
+import { type ModuleFailure, describeModuleFailure } from './moduleFailure'
 import {
   type ConfirmedModuleCandidate,
   ModuleInstallationCoordinator,
@@ -194,10 +195,12 @@ export function createProductionModuleServices(
     isActive: options.isActive,
     getError: (moduleId) => activationCoordinator.getError(moduleId),
   })
+  const readinessFailures = new Map<string, ModuleFailure>()
   const manager = new ModuleManager({
     catalogSource,
     installedStateSource,
     intentStateSource,
+    getModuleFailure: (moduleId) => readinessFailures.get(moduleId),
   })
   const installer = new ModuleArtifactInstaller({
     adapter: options.store.adapter,
@@ -238,6 +241,10 @@ export function createProductionModuleServices(
   const readinessReconciler = createGuardedReadinessReconciler(
     ownedReadinessReconciler,
     runtimeReservation,
+    (moduleId, failure) => {
+      if (failure) readinessFailures.set(moduleId, failure)
+      else readinessFailures.delete(moduleId)
+    },
   )
   const uninstallCoordinator = new ModuleUninstallCoordinator({
     artifactStore: {
@@ -517,6 +524,7 @@ export function createProductionModuleServices(
         }
         try {
           const version = await activateInstalledModule(candidate.moduleId)
+          readinessFailures.delete(candidate.moduleId)
           await manager.refresh()
           return Object.freeze({ version })
         } catch (activationError) {
@@ -553,8 +561,19 @@ export function createProductionModuleServices(
           enabled ? 'enabled' : 'disabled',
         )
         try {
-          if (enabled) await activateInstalledModule(moduleId)
-          else await deactivateModule(moduleId, true)
+          if (enabled) {
+            const readiness =
+              await readinessReconciler.ensureModuleReady(moduleId)
+            if (readiness.status === 'failed') {
+              throw new Error(
+                readiness.error ?? `Module "${moduleId}" is not ready`,
+              )
+            }
+            await activateInstalledModule(moduleId)
+          } else {
+            readinessFailures.delete(moduleId)
+            await deactivateModule(moduleId, true)
+          }
         } catch (error) {
           await options.intentStore.set(moduleId, current)
           await manager.refresh()
@@ -579,6 +598,7 @@ export function createProductionModuleServices(
           throw error
         }
         await uninstallCoordinator.uninstall(moduleId)
+        readinessFailures.delete(moduleId)
         return Object.freeze({})
       })
     },
@@ -612,6 +632,7 @@ export function createProductionModuleServices(
       readinessReconciler.dispose()
       activationCoordinator.dispose()
       verifiedArtifactRegistry.clearAll()
+      readinessFailures.clear()
       coordinator.dispose()
       manager.dispose()
     },
@@ -668,12 +689,30 @@ function errorMessage(error: unknown): string {
 function createGuardedReadinessReconciler(
   reconciler: ModuleReadinessReconciler,
   runtime: ProductionModuleRuntimeReservation,
+  setFailure: (moduleId: string, failure?: ModuleFailure) => void,
 ): ProductionModuleReadinessReconciler {
   let disposed = false
-  const ensureModuleReady = (moduleId: string) =>
-    runtime.runWithModuleQuiesced(moduleId, () =>
-      reconciler.ensureModuleReady(moduleId),
+  const record = (result: ModuleReadinessResult): ModuleReadinessResult => {
+    setFailure(
+      result.moduleId,
+      result.status === 'failed'
+        ? describeModuleFailure(result.error ?? 'Module readiness failed')
+        : undefined,
     )
+    return result
+  }
+  const ensureModuleReady = async (moduleId: string) => {
+    try {
+      return record(
+        await runtime.runWithModuleQuiesced(moduleId, () =>
+          reconciler.ensureModuleReady(moduleId),
+        ),
+      )
+    } catch (error) {
+      setFailure(moduleId, describeModuleFailure(error))
+      throw error
+    }
+  }
 
   return Object.freeze({
     ensureModuleReady,

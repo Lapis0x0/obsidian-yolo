@@ -98,13 +98,23 @@ describe('createOfficialModuleArtifactDownloader', () => {
     expect(downloaded.buffer).not.toBe(result.arrayBuffer)
   })
 
-  it.each([199, 300, 404, Number.NaN, 200.5])(
-    'rejects invalid or unsuccessful status %s',
+  it.each([199, 300, 404])(
+    'reports unsuccessful HTTP status %s',
     async (status) => {
       const { download } = setup(response(new Uint8Array([1]), status))
       await expect(
         download({ kind: 'artifact', url: ARTIFACT_URL, byteSize: 1 }),
-      ).rejects.toThrow('not successful')
+      ).rejects.toThrow(`HTTP ${status}`)
+    },
+  )
+
+  it.each([Number.NaN, 200.5])(
+    'rejects invalid response status %s',
+    async (status) => {
+      const { download } = setup(response(new Uint8Array([1]), status))
+      await expect(
+        download({ kind: 'artifact', url: ARTIFACT_URL, byteSize: 1 }),
+      ).rejects.toThrow('status is invalid')
     },
   )
 

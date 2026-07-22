@@ -228,8 +228,8 @@ export const en: TranslationKeys = {
       update: 'Update',
       installing: 'Installing…',
       updating: 'Updating…',
-      reload: 'Retry activation',
-      reloading: 'Activating…',
+      reload: 'Retry',
+      reloading: 'Retrying…',
       candidateUnavailable:
         '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
       installError: 'Could not install {name}: {error}',
@@ -256,6 +256,18 @@ export const en: TranslationKeys = {
       },
       retry: 'Retry',
       actionError: 'Could not change {name}: {error}',
+      failure: {
+        downloadTimeout:
+          'The module download timed out on both jsDelivr and GitHub. Check your network or proxy, then retry.',
+        download:
+          'The module could not be downloaded from jsDelivr or GitHub. Check your network or proxy, then retry.',
+        integrity:
+          'The downloaded module failed its integrity check, so installation was stopped. Retry, and contact the developer if it keeps happening.',
+        activation:
+          'The module was downloaded but could not start. Retry, and contact the developer if it keeps happening.',
+        unknown: 'The module operation failed.',
+        diagnostic: 'Details: {detail}',
+      },
       actions: {
         install: 'Install',
         installBusy: 'Installing…',
