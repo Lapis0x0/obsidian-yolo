@@ -1,7 +1,7 @@
-// eslint-disable-next-line import/no-nodejs-modules -- artifact integrity test runs only in Jest/Node
-import { createHash } from 'node:crypto'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test builds an isolated generated fixture
 import { execFileSync } from 'node:child_process'
+// eslint-disable-next-line import/no-nodejs-modules -- artifact integrity test runs only in Jest/Node
+import { createHash } from 'node:crypto'
 // eslint-disable-next-line import/no-nodejs-modules -- artifact boundary test reads generated build files
 import {
   existsSync,
@@ -164,7 +164,7 @@ describe('host API conformance artifact boundary', () => {
       JSON.parse(readFileSync('modules/bundled.json', 'utf8')) as {
         modules: Array<{ manifestUrl: string }>
       }
-    ).modules[0]!
+    ).modules[0]
     const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
