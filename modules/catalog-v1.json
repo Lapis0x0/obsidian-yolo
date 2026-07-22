@@ -3,6 +3,7 @@
   "modules": [
     {
       "id": "learning",
+      "icon": "graduation-cap",
       "localizations": {
         "en": {
           "name": "Learning mode",

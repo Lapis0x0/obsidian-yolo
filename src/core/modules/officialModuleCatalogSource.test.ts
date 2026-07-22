@@ -12,6 +12,7 @@ const REPOSITORIES = [{ owner: 'Lapis0x0', repo: 'obsidian-yolo' }]
 
 type ModuleInput = Readonly<{
   id: string
+  icon?: string
   name?: string
   description?: string
   versions: readonly string[]
@@ -27,6 +28,7 @@ function parsedCatalog(
       schemaVersion: 1,
       modules: modules.map((module) => ({
         id: module.id,
+        ...(module.icon ? { icon: module.icon } : {}),
         localizations: {
           en: {
             name: module.name ?? module.id,
@@ -85,6 +87,7 @@ describe('OfficialModuleCatalogSource', () => {
     const catalog = parsedCatalog([
       {
         id: 'learning',
+        icon: 'graduation-cap',
         name: 'Learning',
         description: 'Spaced repetition',
         versions: ['1.0.0', '1.2.0', '1.1.0'],
@@ -96,6 +99,7 @@ describe('OfficialModuleCatalogSource', () => {
       {
         id: 'learning',
         version: '1.2.0',
+        icon: 'graduation-cap',
         name: 'Learning',
         description: 'Spaced repetition',
       },

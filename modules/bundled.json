@@ -4,6 +4,7 @@
     {
       "id": "learning",
       "version": "0.1.0",
+      "icon": "graduation-cap",
       "localizations": {
         "en": {
           "name": "Learning mode",
@@ -26,10 +27,7 @@
           "write": 1
         }
       },
-      "platforms": [
-        "desktop",
-        "mobile"
-      ],
+      "platforms": ["desktop", "mobile"],
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.0/module.json",
       "manifest": {
         "byteSize": 1880,

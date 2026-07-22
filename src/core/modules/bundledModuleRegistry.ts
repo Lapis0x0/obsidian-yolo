@@ -22,6 +22,7 @@ import type { ModuleCatalogEntry, ModuleCatalogSource } from './types'
 export type BundledModuleDescriptor = Readonly<{
   id: string
   version: string
+  icon: string
   localizations: ModuleCatalogLocalizations
   hostApi: string
   dataSchemas: ModuleArtifactDataSchemas
@@ -60,6 +61,7 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
       [
         'id',
         'version',
+        'icon',
         'localizations',
         'hostApi',
         'dataSchemas',
@@ -74,6 +76,12 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
     }
     if (typeof descriptor.version !== 'string') {
       throw new Error('Bundled module version must be a string')
+    }
+    if (
+      typeof descriptor.icon !== 'string' ||
+      !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(descriptor.icon)
+    ) {
+      throw new Error('Bundled module icon must be an icon id')
     }
     assertModuleId(descriptor.id, 'Bundled module id')
     assertModulePathSegment(descriptor.version, 'Bundled module version')
@@ -123,6 +131,7 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
     return Object.freeze({
       id,
       version,
+      icon: descriptor.icon,
       localizations,
       hostApi: descriptor.hostApi,
       dataSchemas,
@@ -235,6 +244,7 @@ function catalogEntry(
   return Object.freeze({
     id: module.id,
     version: module.version,
+    icon: module.icon,
     name: presentation.name,
     description: presentation.description,
     ...(compatibilityIssues.length > 0

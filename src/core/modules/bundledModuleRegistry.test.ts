@@ -25,6 +25,7 @@ const index = {
     {
       id: 'learning',
       version: '0.1.0',
+      icon: 'graduation-cap',
       localizations: localizations('Learning', 'Learn from notes'),
       ...descriptorMetadata('learning', '0.1.0'),
       manifest: { byteSize: 100, sha256: 'a'.repeat(64) },
@@ -32,6 +33,7 @@ const index = {
     {
       id: 'second',
       version: '1.0.0',
+      icon: 'box',
       localizations: localizations('Second', 'Second description'),
       ...descriptorMetadata('second', '1.0.0'),
       manifest: { byteSize: 200, sha256: 'b'.repeat(64) },
@@ -52,12 +54,14 @@ describe('BundledModuleCatalogSource', () => {
       {
         id: 'learning',
         version: '0.1.0',
+        icon: 'graduation-cap',
         name: 'Learning',
         description: 'Learn from notes',
       },
       {
         id: 'second',
         version: '1.0.0',
+        icon: 'box',
         name: 'Second',
         description: 'Second description',
       },

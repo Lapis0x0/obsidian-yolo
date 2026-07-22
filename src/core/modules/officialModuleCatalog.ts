@@ -29,6 +29,7 @@ export type OfficialModuleCatalogVersion = Readonly<{
 
 export type OfficialModuleCatalogModule = Readonly<{
   id: string
+  icon?: string
   localizations: ModuleCatalogLocalizations
   versions: readonly OfficialModuleCatalogVersion[]
 }>
@@ -89,6 +90,7 @@ const DEFAULT_LIMITS: OfficialModuleCatalogLimits = Object.freeze({
   maxManifestBytes: 1024 * 1024,
 })
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
+const ICON_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
 const DANGEROUS_NAMESPACES = new Set(['__proto__', 'prototype', 'constructor'])
 const SHA256 = /^[a-fA-F0-9]{64}$/
@@ -123,10 +125,12 @@ export function parseOfficialModuleCatalog(
   const modules = catalog.modules.map((value, index) => {
     const label = `Official module catalog module ${index}`
     const module = asObject(value, label)
-    assertKeys(module, ['id', 'localizations', 'versions'], label)
+    assertKeys(module, ['id', 'icon', 'localizations', 'versions'], label)
     if (
       typeof module.id !== 'string' ||
       !MODULE_ID.test(module.id) ||
+      (module.icon !== undefined &&
+        (typeof module.icon !== 'string' || !ICON_ID.test(module.icon))) ||
       !Array.isArray(module.versions) ||
       module.versions.length > limits.maxVersionsPerModule
     ) {
@@ -163,6 +167,7 @@ export function parseOfficialModuleCatalog(
     parsedVersions.sort(compareCatalogVersions)
     return frozenRecord({
       id: module.id,
+      ...(module.icon !== undefined ? { icon: module.icon } : {}),
       localizations,
       versions: Object.freeze(parsedVersions),
     }) as OfficialModuleCatalogModule

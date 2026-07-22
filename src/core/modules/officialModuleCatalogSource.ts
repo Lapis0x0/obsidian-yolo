@@ -196,6 +196,7 @@ function catalogEntry(
   return Object.freeze({
     id: module.id,
     version,
+    ...(module.icon ? { icon: module.icon } : {}),
     name: presentation.name,
     description: presentation.description,
     ...(compatibilityIssues.length > 0 ? { compatibilityIssues } : {}),

@@ -4659,6 +4659,13 @@ button.yolo-assistant-selector-footer-btn:hover {
     transparent;
 }
 
+.yolo-settings-tabs-content--modules {
+  width: calc(100% + var(--size-4-12) + var(--size-4-12));
+  max-width: none;
+  margin-inline: calc(0px - var(--size-4-12));
+  padding-inline: calc(var(--size-4-12) + var(--size-4-6));
+}
+
 .yolo-settings-tabs-content::-webkit-scrollbar {
   width: 8px;
 }
@@ -4707,6 +4714,12 @@ button.yolo-assistant-selector-footer-btn:hover {
   .yolo-settings-tab-button {
     padding: 6px 8px;
     font-size: var(--font-ui-smaller);
+  }
+
+  .yolo-settings-tabs-content--modules {
+    width: 100%;
+    margin-inline: 0;
+    padding-inline: var(--size-4-6);
   }
 }
 
@@ -7184,21 +7197,39 @@ button.yolo-agent-chip--more:hover {
   flex: 0 0 auto;
 }
 
-/* Module shelf */
+/* Modules settings */
+
+.yolo-modules-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-modules-intro {
+  margin-top: calc(var(--size-4-1) * -1);
+}
+
+.yolo-modules-page > .yolo-settings-header,
+.yolo-modules-intro {
+  margin-inline-start: calc(0px - var(--size-4-12) - var(--size-4-6));
+}
 
 .yolo-module-shelf {
   display: grid;
-  grid-template-columns: 172px minmax(0, 1fr);
-  min-height: 540px;
-  margin: calc(var(--size-4-4) * -1);
-  border-top: 1px solid var(--background-modifier-border);
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: stretch;
+  width: calc(
+    100% + var(--size-4-12) + var(--size-4-12) + var(--size-4-6) +
+      var(--size-4-6)
+  );
+  min-width: 0;
+  margin-inline: calc(0px - var(--size-4-12) - var(--size-4-6));
 }
 
 .yolo-module-shelf-rail {
   min-width: 0;
-  padding: var(--size-4-4) var(--size-4-2);
+  padding: 0 var(--size-4-4) 0 0;
   border-right: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
 }
 
 button.yolo-module-shelf-nav {
@@ -7207,9 +7238,9 @@ button.yolo-module-shelf-nav {
   align-items: center;
   gap: var(--size-4-2);
   width: 100%;
-  min-height: 40px;
+  min-height: 34px;
   margin: 0 0 2px;
-  padding: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2);
   border: 0;
   border-radius: var(--radius-s);
   background: transparent;
@@ -7227,75 +7258,40 @@ button.yolo-module-shelf-nav:hover {
 }
 
 button.yolo-module-shelf-nav.is-active {
-  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
-  color: var(--text-accent);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
 }
 
 button.yolo-module-shelf-nav:focus-visible,
 button.yolo-module-shelf-action:focus-visible,
+button.yolo-module-shelf-more:focus-visible,
 .yolo-modules-state button:focus-visible {
   outline: 2px solid var(--background-modifier-border-focus);
   outline-offset: 2px;
 }
 
-.yolo-module-shelf-manage-icon,
 .yolo-module-shelf-glyph {
   display: grid;
   place-items: center;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-m);
-  color: var(--text-on-accent);
-}
-
-.yolo-module-shelf-manage-icon {
-  width: 25px;
-  height: 25px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-primary-alt);
   color: var(--text-muted);
 }
 
-.yolo-module-shelf-manage-icon svg,
 .yolo-module-shelf-glyph svg {
   width: 16px;
   height: 16px;
+  stroke-width: 1.8;
 }
 
-.yolo-module-shelf-glyph.is-compact {
-  width: 25px;
-  height: 25px;
+.yolo-module-shelf-glyph:not(.is-compact) {
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-s);
-}
-
-.yolo-module-shelf-glyph--0 {
-  background: linear-gradient(145deg, var(--color-purple), var(--color-pink));
-}
-
-.yolo-module-shelf-glyph--1 {
-  background: linear-gradient(145deg, var(--color-blue), var(--color-cyan));
-}
-
-.yolo-module-shelf-glyph--2 {
-  background: linear-gradient(145deg, var(--color-orange), var(--color-red));
-}
-
-.yolo-module-shelf-glyph--3 {
-  background: linear-gradient(145deg, var(--color-green), var(--color-cyan));
-}
-
-.yolo-module-shelf-glyph--4 {
-  background: linear-gradient(
-    145deg,
-    var(--interactive-accent),
-    var(--color-purple)
-  );
-}
-
-.yolo-module-shelf-glyph--5 {
-  background: linear-gradient(145deg, var(--text-muted), var(--color-blue));
+  background: var(--background-secondary);
+  color: var(--text-normal);
 }
 
 .yolo-module-shelf-nav-label {
@@ -7307,49 +7303,38 @@ button.yolo-module-shelf-action:focus-visible,
 }
 
 .yolo-module-shelf-live-dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--color-green);
+  display: none;
 }
 
 .yolo-module-shelf-divider {
   height: 1px;
-  margin: var(--size-4-3) var(--size-4-2);
+  margin: var(--size-4-2);
   background: var(--background-modifier-border);
 }
 
 .yolo-module-shelf-canvas {
   min-width: 0;
-  padding: var(--size-4-6) calc(var(--size-4-4) + var(--size-4-3))
-    var(--size-4-8);
-}
-
-.yolo-module-shelf-panel {
-  animation: yolo-module-panel-in 0.2s ease both;
+  padding: 0 0 0 var(--size-4-4);
 }
 
 .yolo-module-shelf-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--size-4-4);
-  margin-bottom: var(--size-4-5);
+  margin-bottom: var(--size-4-6);
 }
 
 .yolo-module-shelf-header h2 {
   margin: 0 0 var(--size-4-1);
   padding: 0;
   color: var(--text-normal);
-  font-size: var(--h2-size);
-  font-weight: var(--h2-weight);
+  font-size: var(--h4-size);
+  font-weight: var(--h4-weight);
 }
 
 .yolo-module-shelf-header p {
+  max-width: 60ch;
   margin: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
 }
 
 .yolo-module-shelf-module-title {
@@ -7360,29 +7345,19 @@ button.yolo-module-shelf-action:focus-visible,
 
 .yolo-module-shelf-groups {
   display: grid;
-  gap: var(--size-4-5);
+  gap: var(--size-4-6);
 }
 
 .yolo-module-shelf-group h3 {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-3);
-  margin: 0 0 var(--size-4-2);
+  margin: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
 }
 
-.yolo-module-shelf-group h3::after {
-  content: '';
-  height: 1px;
-  flex: 1;
-  background: var(--background-modifier-border);
-}
-
 .yolo-module-shelf-list {
-  display: grid;
-  gap: var(--size-4-2);
+  display: flex;
+  flex-direction: column;
 }
 
 .yolo-module-shelf-row {
@@ -7391,18 +7366,11 @@ button.yolo-module-shelf-action:focus-visible,
   align-items: center;
   gap: var(--size-4-3);
   min-width: 0;
+  margin-top: var(--size-4-2);
   padding: var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  background: color-mix(
-    in srgb,
-    var(--background-primary) 74%,
-    var(--background-secondary)
-  );
-}
-
-.yolo-module-shelf-row:hover {
-  border-color: var(--background-modifier-border-hover);
+  background: var(--background-primary);
 }
 
 .yolo-module-shelf-row-copy {
@@ -7415,59 +7383,68 @@ button.yolo-module-shelf-action:focus-visible,
 .yolo-module-shelf-row-heading {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
   min-width: 0;
 }
 
 .yolo-module-shelf-row-heading strong {
   color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-medium);
+  line-height: var(--line-height-tight);
   overflow-wrap: anywhere;
 }
 
 .yolo-module-shelf-row-copy p {
   width: 100%;
-  max-width: 62ch;
+  max-width: 60ch;
   margin: var(--size-4-1) 0 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.yolo-module-shelf-badge {
-  flex: 0 0 auto;
-  padding: 2px var(--size-4-2);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-green) 12%, transparent);
-  color: var(--color-green);
-  font-size: var(--font-ui-smaller);
-}
-
-.yolo-module-shelf-badge.is-update {
-  background: color-mix(in srgb, var(--color-orange) 12%, transparent);
-  color: var(--color-orange);
-}
-
-.yolo-module-shelf-version {
+.yolo-module-shelf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-1);
   margin-top: var(--size-4-1);
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
 
+.yolo-module-shelf-meta .is-error {
+  color: var(--text-error);
+}
+
+.yolo-module-shelf-meta .is-update {
+  color: var(--text-accent);
+}
+
 .yolo-module-shelf-error {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   gap: var(--size-4-2);
-  margin-top: var(--size-4-1);
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-left: 2px solid var(--text-error);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  background: color-mix(in srgb, var(--text-error) 7%, transparent);
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-normal);
   overflow-wrap: anywhere;
 }
 
 .yolo-module-shelf-error button {
   flex: 0 0 auto;
+  margin-left: auto;
   font-size: inherit;
 }
 
@@ -7508,21 +7485,42 @@ button.yolo-module-shelf-action.mod-cta {
   color: var(--text-on-accent);
 }
 
-button.yolo-module-shelf-action:disabled {
+button.yolo-module-shelf-action:disabled,
+button.yolo-module-shelf-more:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-button.yolo-module-shelf-action svg {
+button.yolo-module-shelf-action svg,
+button.yolo-module-shelf-more svg {
   width: var(--icon-s);
   height: var(--icon-s);
 }
 
+button.yolo-module-shelf-more {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--input-height);
+  height: var(--input-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--button-radius);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.yolo-module-shelf-more:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 .yolo-module-shelf-empty {
   margin: 0;
-  padding: var(--size-4-3);
-  border: 1px dashed var(--background-modifier-border);
-  border-radius: var(--radius-s);
+  padding: var(--size-4-2) 0 0;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
 }
@@ -7532,10 +7530,7 @@ button.yolo-module-shelf-action svg {
   align-items: center;
   justify-content: center;
   gap: var(--size-4-3);
-  min-height: 160px;
-  padding: var(--size-4-5);
-  border: 1px dashed var(--background-modifier-border);
-  border-radius: var(--radius-m);
+  min-height: 140px;
   color: var(--text-muted);
   text-align: center;
 }
@@ -7553,6 +7548,9 @@ button.yolo-module-shelf-action svg {
   justify-content: flex-start;
   min-height: 0;
   margin-bottom: var(--size-4-4);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-left: 2px solid var(--text-error);
+  background: color-mix(in srgb, var(--text-error) 7%, transparent);
   text-align: left;
 }
 
@@ -7561,31 +7559,37 @@ button.yolo-module-shelf-action svg {
 }
 
 .yolo-settings-section.yolo-module-settings {
-  overflow: hidden;
   margin-top: 0;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-primary);
-}
-
-.yolo-module-settings-block {
-  padding: 0 var(--size-4-4) var(--size-4-4);
 }
 
 .yolo-module-settings-block:not(:first-child) {
-  margin-top: 0;
-  border-top: 1px solid var(--background-modifier-border);
+  margin-top: var(--size-4-8);
+}
+
+.yolo-module-settings-field.setting-item {
+  align-items: center;
+}
+
+select.yolo-module-settings-select,
+input.yolo-module-settings-text {
+  box-sizing: border-box;
+  min-width: 220px;
+  max-width: 100%;
+}
+
+select.yolo-module-settings-select {
+  appearance: auto;
+  font: inherit;
+}
+
+.yolo-module-settings-error {
+  margin-top: var(--size-4-2);
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
 }
 
 .is-spinning {
   animation: yolo-modules-spin 0.8s linear infinite;
-}
-
-@keyframes yolo-module-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
 }
 
 @keyframes yolo-modules-spin {
@@ -7594,17 +7598,7 @@ button.yolo-module-shelf-action svg {
   }
 }
 
-@media (max-width: 780px) {
-  .yolo-module-shelf {
-    grid-template-columns: 134px minmax(0, 1fr);
-  }
-
-  .yolo-module-shelf-canvas {
-    padding: var(--size-4-5) var(--size-4-4);
-  }
-}
-
-@media (max-width: 520px) {
+@container (max-width: 620px) {
   .yolo-module-shelf {
     grid-template-columns: 1fr;
   }
@@ -7613,7 +7607,7 @@ button.yolo-module-shelf-action svg {
     display: flex;
     gap: var(--size-4-1);
     overflow-x: auto;
-    padding: var(--size-4-2);
+    padding: 0 0 var(--size-4-3);
     border-right: 0;
     border-bottom: 1px solid var(--background-modifier-border);
   }
@@ -7622,10 +7616,26 @@ button.yolo-module-shelf-action svg {
     width: auto;
     min-width: max-content;
     margin: 0;
+    padding-inline: var(--size-4-2);
+  }
+
+  .yolo-module-shelf-nav-label {
+    display: block;
   }
 
   .yolo-module-shelf-divider {
     display: none;
+  }
+
+  .yolo-module-shelf-canvas {
+    padding: var(--size-4-5) 0 0;
+  }
+}
+
+@container (max-width: 480px) {
+  .yolo-module-shelf {
+    width: 100%;
+    margin-inline: 0;
   }
 
   .yolo-module-shelf-row {
@@ -7638,19 +7648,26 @@ button.yolo-module-shelf-action svg {
     flex-wrap: wrap;
   }
 
-  .yolo-module-shelf-header--settings {
-    flex-direction: column;
-  }
-
   .yolo-module-shelf-row-copy p {
     white-space: normal;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yolo-module-shelf-panel,
   .is-spinning {
     animation-duration: 0.01ms;
+  }
+}
+
+@media (max-width: 768px) {
+  .yolo-modules-page > .yolo-settings-header,
+  .yolo-modules-intro {
+    margin-inline-start: 0;
+  }
+
+  .yolo-module-shelf {
+    width: 100%;
+    margin-inline: 0;
   }
 }
 

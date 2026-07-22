@@ -156,6 +156,13 @@
     transparent;
 }
 
+.yolo-settings-tabs-content--modules {
+  width: calc(100% + var(--size-4-12) + var(--size-4-12));
+  max-width: none;
+  margin-inline: calc(0px - var(--size-4-12));
+  padding-inline: calc(var(--size-4-12) + var(--size-4-6));
+}
+
 .yolo-settings-tabs-content::-webkit-scrollbar {
   width: 8px;
 }
@@ -203,5 +210,11 @@
   .yolo-settings-tab-button {
     padding: 6px 8px;
     font-size: var(--font-ui-smaller);
+  }
+
+  .yolo-settings-tabs-content--modules {
+    width: 100%;
+    margin-inline: 0;
+    padding-inline: var(--size-4-6);
   }
 }

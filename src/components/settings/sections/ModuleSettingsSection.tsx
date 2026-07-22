@@ -8,6 +8,7 @@ import type {
 } from '../../../core/modules/moduleSettingsContributions'
 import { resolveSettingsContribution } from '../../../core/modules/moduleSettingsContributions'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 
 type ModuleSettingsSectionProps = {
   registrations: readonly RegisteredModuleSettingsContributionV1[]
@@ -133,12 +134,10 @@ function ModuleSettingControl({
   const value = snapshot.values[field.key]
   if (field.type === 'toggle') {
     return (
-      <input
-        className="yolo-module-settings-toggle"
-        type="checkbox"
-        checked={value === true}
+      <ObsidianToggle
+        value={value === true}
         disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
+        onChange={onChange}
       />
     )
   }

@@ -190,7 +190,11 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
           </button>
         ))}
       </div>
-      <div className="yolo-settings-tabs-content">
+      <div
+        className={`yolo-settings-tabs-content ${
+          activeTab === 'modules' ? 'yolo-settings-tabs-content--modules' : ''
+        }`}
+      >
         {activeTab === 'modules' ? (
           <ModulesTab
             app={app}

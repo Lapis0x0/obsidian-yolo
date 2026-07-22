@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 const OFFICIAL_REPOSITORY = 'Lapis0x0/obsidian-yolo'
 const RELEASE_ROOT = `https://github.com/${OFFICIAL_REPOSITORY}/releases/download/`
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
+const ICON_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 const SHA256 = /^[a-f0-9]{64}$/
@@ -123,10 +124,17 @@ export function validateCatalog(value) {
   const modules = catalog.modules.map((rawModule, moduleIndex) => {
     const label = `Catalog module ${moduleIndex}`
     const module = asObject(rawModule, label)
-    assertExactKeys(module, ['id', 'localizations', 'versions'], label)
+    assertAllowedKeys(
+      module,
+      ['id', 'icon', 'localizations', 'versions'],
+      label,
+    )
+    assertRequiredKeys(module, ['id', 'localizations', 'versions'], label)
     if (
       typeof module.id !== 'string' ||
       !MODULE_ID.test(module.id) ||
+      (module.icon !== undefined &&
+        (typeof module.icon !== 'string' || !ICON_ID.test(module.icon))) ||
       !Array.isArray(module.versions) ||
       module.versions.length > 200
     ) {
@@ -202,6 +210,7 @@ export function validateCatalog(value) {
     versions.sort(compareVersionsDescending)
     return {
       id: module.id,
+      ...(module.icon !== undefined ? { icon: module.icon } : {}),
       localizations,
       versions,
     }
@@ -513,6 +522,16 @@ function assertExactKeys(value, keys, label) {
   const unknown = actual.find((key) => !keys.includes(key))
   const missing = keys.find((key) => !actual.includes(key))
   if (unknown) throw new Error(`${label} has unknown field ${unknown}`)
+  if (missing) throw new Error(`${label} is missing field ${missing}`)
+}
+
+function assertAllowedKeys(value, keys, label) {
+  const unknown = Object.keys(value).find((key) => !keys.includes(key))
+  if (unknown) throw new Error(`${label} has unknown field ${unknown}`)
+}
+
+function assertRequiredKeys(value, keys, label) {
+  const missing = keys.find((key) => !Object.hasOwn(value, key))
   if (missing) throw new Error(`${label} is missing field ${missing}`)
 }
 

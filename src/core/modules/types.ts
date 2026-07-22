@@ -351,6 +351,7 @@ export type ModuleCompatibilityIssue = Readonly<{
 export type ModuleCatalogEntry = {
   id: string
   version: string
+  icon?: string
   name?: string
   description?: string
   compatibilityIssues?: readonly ModuleCompatibilityIssue[]

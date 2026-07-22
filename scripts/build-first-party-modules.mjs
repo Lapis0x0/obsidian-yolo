@@ -169,13 +169,14 @@ if (!options.moduleId) {
           .filter((moduleDefinition) => moduleDefinition.bundled)
           .map((moduleDefinition) => {
             const result = buildResults.get(moduleDefinition.id)
-            const localizations = getModuleCatalogLocalizations(
+            const catalogMetadata = getModuleCatalogMetadata(
               moduleDefinition.id,
             )
             return {
               id: moduleDefinition.id,
               version: moduleDefinition.version,
-              localizations,
+              icon: catalogMetadata.icon,
+              localizations: catalogMetadata.localizations,
               hostApi: result.hostApi,
               dataSchemas: result.dataSchemas,
               platforms: artifactPlatforms,
@@ -190,14 +191,14 @@ if (!options.moduleId) {
   )
 }
 
-function getModuleCatalogLocalizations(moduleId) {
+function getModuleCatalogMetadata(moduleId) {
   const module = moduleCatalog.modules?.find(({ id }) => id === moduleId)
-  if (!module?.localizations) {
+  if (!module?.icon || !module.localizations) {
     throw new Error(
       `Bundled module metadata is missing from the official catalog: ${moduleId}`,
     )
   }
-  return module.localizations
+  return { icon: module.icon, localizations: module.localizations }
 }
 
 async function buildModule({
