@@ -6,6 +6,7 @@ import {
   applyStagedUpdate,
   clearStagingRoot,
   downloadReleaseToStaging,
+  downloadRepairFilesToStaging,
   getRepairMetaPath,
   getRepairStagingStatus,
   getStagingDir,
@@ -186,6 +187,52 @@ describe('signed update downloads', () => {
       ),
     ).resolves.toMatchObject({ ready: true, version: '1.7.0' })
     expect(mockedRequestUrl).toHaveBeenCalledTimes(6)
+  })
+
+  it('falls back to GitHub when the Pages request never settles', async () => {
+    jest.useFakeTimers()
+    try {
+      const adapter = new MockAdapter()
+      const bytes = new TextEncoder().encode('style')
+      let notifyPagesStarted!: () => void
+      const pagesStarted = new Promise<void>((resolve) => {
+        notifyPagesStarted = resolve
+      })
+      mockedRequestUrl.mockImplementation((request) => {
+        const url = typeof request === 'string' ? request : request.url
+        if (url.startsWith('https://updates.')) {
+          notifyPagesStarted()
+          return new Promise(() => undefined) as never
+        }
+        return Promise.resolve({
+          status: 200,
+          headers: {},
+          text: 'style',
+          arrayBuffer: bytes.slice().buffer,
+          json: null,
+        }) as never
+      })
+      const asset = {
+        url: 'https://github.com/styles.css',
+        mirrorUrl: 'https://updates.yoloapp.dev/styles.css',
+        size: bytes.byteLength,
+      }
+
+      const downloading = downloadRepairFilesToStaging({
+        adapter: adapter as unknown as DataAdapter,
+        pluginDir: MOCK_PLUGIN_DIR,
+        version: '1.7.0',
+        assets: { mainJs: asset, manifestJson: asset, stylesCss: asset },
+        files: [RELEASE_FILE_NAMES.stylesCss],
+      })
+      await pagesStarted
+      await jest.advanceTimersByTimeAsync(30_000)
+
+      await expect(downloading).resolves.toBeUndefined()
+      expect(mockedRequestUrl).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })
 

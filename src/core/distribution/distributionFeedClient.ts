@@ -123,6 +123,9 @@ export class DistributionFeedClient {
   }
 
   private async loadFreshOnce(): Promise<DistributionFeedV1> {
+    const cached = this.latestValidated ?? (await this.readCache())
+    if (cached && !this.latestValidated) this.accept(cached)
+
     let lastError: unknown
     for (const source of [
       [DISTRIBUTION_FEED_URL, DISTRIBUTION_FEED_SIGNATURE_URL],
@@ -140,11 +143,7 @@ export class DistributionFeedClient {
         lastError = error
       }
     }
-    const cached = this.latestValidated ?? (await this.readCache())
-    if (cached) {
-      this.accept(cached)
-      return cached.feed
-    }
+    if (this.latestValidated) return this.latestValidated.feed
     void lastError
     throw new DistributionFeedUnavailableError()
   }

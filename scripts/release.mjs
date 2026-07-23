@@ -5,6 +5,8 @@ import { pathToFileURL } from 'node:url'
 const CORE_VERSION = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,3}$/
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const MODULE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
+const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
+const DANGEROUS_NAMES = new Set(['__proto__', 'prototype', 'constructor'])
 
 export async function prepareRelease(root, product, id, version) {
   if (product === 'core') {
@@ -82,7 +84,7 @@ function normalizeTarget(product, id, version) {
   return { product, id, version, tag: `${id}/v${version}` }
 }
 
-function validateModuleConfig(config, expectedId) {
+export function validateModuleConfig(config, expectedId) {
   if (
     config.id !== expectedId ||
     typeof config.icon !== 'string' ||
@@ -109,6 +111,22 @@ function validateModuleConfig(config, expectedId) {
       !locale.description
     ) {
       throw new Error(`Module localization is invalid: ${expectedId}`)
+    }
+  }
+  for (const [namespace, value] of Object.entries(config.dataSchemas)) {
+    if (
+      !SCHEMA_NAMESPACE.test(namespace) ||
+      DANGEROUS_NAMES.has(namespace) ||
+      !isPlainRecord(value) ||
+      !hasExactKeys(value, ['readMin', 'readMax', 'write']) ||
+      !isSchemaVersion(value.readMin) ||
+      !isSchemaVersion(value.readMax) ||
+      !isSchemaVersion(value.write) ||
+      value.readMin > value.readMax ||
+      value.write < value.readMin ||
+      value.write > value.readMax
+    ) {
+      throw new Error(`Module data schema is invalid: ${expectedId}`)
     }
   }
 }
@@ -155,6 +173,17 @@ function assertString(value, label) {
 
 function isPlainRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function hasExactKeys(value, expected) {
+  return (
+    JSON.stringify(Object.keys(value).sort()) ===
+    JSON.stringify([...expected].sort())
+  )
+}
+
+function isSchemaVersion(value) {
+  return Number.isSafeInteger(value) && value >= 0
 }
 
 async function readJson(root, relativePath) {

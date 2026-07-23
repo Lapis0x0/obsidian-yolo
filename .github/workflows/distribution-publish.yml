@@ -78,6 +78,7 @@ jobs:
               git fetch origin "$branch"
               git checkout --detach "origin/$branch"
               node scripts/distribution.mjs reconcile
+              npx jest src/core/distribution/generatedDistribution.test.ts --runInBand
               git diff --check
             fi
             if [[ -z "$(git status --porcelain -- distribution modules/catalog-v1.json)" ]]; then

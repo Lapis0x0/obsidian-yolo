@@ -22,6 +22,7 @@ import {
 
 const STAGING_ROOT = '.yolo-update-staging'
 const REPAIR_META_FILE = 'repair-meta.json'
+const UPDATE_SOURCE_TIMEOUT_MS = 30_000
 
 const RELEASE_FILES = {
   mainJs: RELEASE_FILE_NAMES.mainJs,
@@ -282,7 +283,10 @@ async function downloadAsset(
     (value): value is string => Boolean(value),
   )) {
     try {
-      const response = await requestUrl({ url, method: 'GET', throw: false })
+      const response = await withTimeout(
+        requestUrl({ url, method: 'GET', throw: false }),
+        UPDATE_SOURCE_TIMEOUT_MS,
+      )
       if (response.status < 200 || response.status >= 300) {
         throw new Error(`Download failed (${response.status})`)
       }
@@ -299,6 +303,31 @@ async function downloadAsset(
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Download failed')
+}
+
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = globalThis.setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('Update download request timed out'))
+    }, timeoutMs)
+    operation.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        globalThis.clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        globalThis.clearTimeout(timer)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      },
+    )
+  })
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {

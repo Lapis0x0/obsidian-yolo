@@ -111,6 +111,21 @@ function client(
   })
 }
 
+function seedCache(
+  cache: MemoryCache,
+  signed: ReturnType<typeof createSignedFeed>,
+) {
+  cache.files.set(
+    'distribution/feed-v1.json',
+    JSON.stringify({
+      schemaVersion: 1,
+      fetchedAt: 1,
+      feed: signed.raw,
+      signature: signed.signature,
+    }),
+  )
+}
+
 describe('DistributionFeedClient', () => {
   it('loads the signed Cloudflare source first', async () => {
     const signed = createSignedFeed()
@@ -160,17 +175,50 @@ describe('DistributionFeedClient', () => {
   it('uses only a previously validated cache after both networks fail', async () => {
     const signed = createSignedFeed()
     const cache = new MemoryCache()
-    const online = jest.fn(async ({ url }: RequestUrlParam) =>
-      response(url.endsWith('.sig') ? signed.signature : signed.raw),
-    )
-    await client(cache, online, signed).loadFresh()
-    await Promise.resolve()
+    seedCache(cache, signed)
 
     const offline = jest.fn(async () => response('', 503))
     await expect(
       client(cache, offline, signed).loadFresh(),
     ).resolves.toMatchObject({ revision: 1 })
     expect(offline).toHaveBeenCalledTimes(4)
+  })
+
+  it('uses the validated disk revision as a floor before accepting Cloudflare', async () => {
+    const cached = createSignedFeed(10)
+    const cloudflare = createSignedFeed(9)
+    const github = createSignedFeed(11)
+    const cache = new MemoryCache()
+    seedCache(cache, cached)
+    const request = jest.fn(async ({ url }: RequestUrlParam) => {
+      const source = url.startsWith('https://updates.yoloapp.dev')
+        ? cloudflare
+        : github
+      return response(url.endsWith('.sig') ? source.signature : source.raw)
+    })
+
+    await expect(
+      client(cache, request, cached).loadFresh(),
+    ).resolves.toMatchObject({ revision: 11 })
+    expect(request).toHaveBeenCalledTimes(4)
+  })
+
+  it('keeps the validated cache when every network source is older', async () => {
+    const cached = createSignedFeed(10)
+    const older = createSignedFeed(9)
+    const cache = new MemoryCache()
+    seedCache(cache, cached)
+    const request = jest.fn(async ({ url }: RequestUrlParam) =>
+      response(url.endsWith('.sig') ? older.signature : older.raw),
+    )
+
+    await expect(
+      client(cache, request, cached).loadFresh(),
+    ).resolves.toMatchObject({ revision: 10 })
+    expect(request).toHaveBeenCalledTimes(4)
+    expect(
+      JSON.parse(cache.files.get('distribution/feed-v1.json') ?? '{}').feed,
+    ).toBe(cached.raw)
   })
 
   it('rejects unsigned or tampered metadata without a validated cache', async () => {

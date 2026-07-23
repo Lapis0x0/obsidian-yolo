@@ -4,7 +4,26 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { prepareRelease } from './release.mjs'
+import { prepareRelease, validateModuleConfig } from './release.mjs'
+
+test('validateModuleConfig rejects schemas the client cannot parse', () => {
+  const config = {
+    id: 'learning',
+    icon: 'graduation-cap',
+    localizations: {
+      en: { name: 'Learning', description: 'Learn.' },
+    },
+    hostApi: '^1.4.0',
+    platforms: ['desktop', 'mobile'],
+    dataSchemas: {
+      settings: { readMin: '0', readMax: 1, write: 1 },
+    },
+  }
+  assert.throws(
+    () => validateModuleConfig(config, 'learning'),
+    /data schema is invalid/,
+  )
+})
 
 test('prepareRelease synchronizes Core version sources', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'yolo-release-'))

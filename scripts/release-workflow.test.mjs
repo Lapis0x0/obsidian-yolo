@@ -110,5 +110,9 @@ test('distribution treats dispatch as a wake-up and reconciles full state', asyn
   assert.match(distributionSource, /scripts\/distribution\.mjs/)
   assert.match(distributionSource, /git status --porcelain -- distribution/)
   assert.match(distributionSource, /for attempt in 1 2 3/)
+  assert.match(
+    distributionSource,
+    /node scripts\/distribution\.mjs reconcile\s+npx jest src\/core\/distribution\/generatedDistribution\.test\.ts --runInBand/,
+  )
   assert.doesNotMatch(distributionSource, /force.push|--force/)
 })
