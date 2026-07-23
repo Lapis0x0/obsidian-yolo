@@ -214,7 +214,8 @@ function ImportConfigModalComponent({
         mergeStrategy,
       })
 
-      await plugin.setSettings(result)
+      const saved = await plugin.setSettings(result)
+      if (!saved) return
       new Notice(t('configTransfer.import.noticeSuccess', '配置导入成功'))
 
       if (importData.redacted) {

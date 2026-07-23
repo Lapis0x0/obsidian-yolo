@@ -1,7 +1,7 @@
 import { App, TFolder } from 'obsidian'
 
 export type YoloBaseDirRelocationResult =
-  | { status: 'not-needed' | 'cancelled' }
+  | { status: 'not-needed' }
   | {
       status: 'migrated' | 'adopted' | 'created'
       source: string
@@ -11,7 +11,7 @@ export type YoloBaseDirRelocationResult =
       status: 'target-conflict'
       source: string
       target: string
-      reason: 'file' | 'non-empty-folder' | 'nested-target'
+      reason: 'file' | 'nested-target'
     }
   | { status: 'protected-source'; source: string; target: string }
   | {
@@ -27,19 +27,18 @@ type RelocationOptions = {
   source: string
   target: string
   persistTargetBaseDir: (baseDir: string) => Promise<void>
-  confirmAdoptExistingTarget: (target: string) => Promise<boolean>
 }
 
 /**
  * Moves the complete YOLO workspace and commits its new setting as one
- * recoverable operation. Existing non-empty targets are never merged.
+ * recoverable operation. Existing non-empty targets are adopted as-is and
+ * never merged with or overwritten by the current workspace.
  */
 export async function relocateYoloBaseDir({
   app,
   source,
   target,
   persistTargetBaseDir,
-  confirmAdoptExistingTarget,
 }: RelocationOptions): Promise<YoloBaseDirRelocationResult> {
   if (source === target) return { status: 'not-needed' }
   if (target.startsWith(`${source}/`)) {
@@ -49,15 +48,6 @@ export async function relocateYoloBaseDir({
       target,
       reason: 'nested-target',
     }
-  }
-
-  const sourceRoot = source.split('/')[0]
-  if (
-    sourceRoot === app.vault.configDir ||
-    sourceRoot === '.git' ||
-    sourceRoot === '.trash'
-  ) {
-    return { status: 'protected-source', source, target }
   }
 
   const adapter = app.vault.adapter
@@ -76,11 +66,25 @@ export async function relocateYoloBaseDir({
         ? await isFolderNonEmpty(app, target)
         : false
 
-    if (!sourceStat) {
-      if (targetIsNonEmpty && !(await confirmAdoptExistingTarget(target))) {
-        return { status: 'cancelled' }
+    // `baseDir` is the requested target state. If it already contains data,
+    // adopt it without touching the current source so settings can point at
+    // an independently synced workspace without merging the two directories.
+    if (targetIsNonEmpty) {
+      try {
+        await persistTargetBaseDir(target)
+        return { status: 'adopted', source, target }
+      } catch (error) {
+        return {
+          status: 'failed',
+          source,
+          target,
+          error,
+          rollbackFailed: false,
+        }
       }
+    }
 
+    if (!sourceStat) {
       const createdFolders: string[] = []
       if (!targetStat) await ensureFolder(app, target, createdFolders)
       try {
@@ -111,15 +115,14 @@ export async function relocateYoloBaseDir({
         rollbackFailed: false,
       }
     }
-    if (targetIsNonEmpty) {
-      return {
-        status: 'target-conflict',
-        source,
-        target,
-        reason: 'non-empty-folder',
-      }
+    const sourceRoot = source.split('/')[0]
+    if (
+      sourceRoot === app.vault.configDir ||
+      sourceRoot === '.git' ||
+      sourceRoot === '.trash'
+    ) {
+      return { status: 'protected-source', source, target }
     }
-
     const createdParents: string[] = []
     await ensureParentFolders(app, target, createdParents)
     const replacedEmptyTarget = targetStat?.type === 'folder'

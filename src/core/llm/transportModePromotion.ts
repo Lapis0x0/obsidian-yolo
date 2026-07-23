@@ -21,7 +21,7 @@ export const promoteProviderTransportModeToObsidian = async ({
   mode,
 }: {
   getSettings: () => YoloSettings
-  setSettings: (newSettings: YoloSettings) => void | Promise<void>
+  setSettings: (newSettings: YoloSettings) => Promise<boolean>
   providerId: string
   mode: AutoPromotedTransportMode
 }): Promise<void> => {

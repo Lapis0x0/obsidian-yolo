@@ -408,10 +408,6 @@ export const zh: TranslationKeys = {
         'YOLO 已从 {source} 移动到 {target}，但设置更新失败且无法回滚。请先手动将目录移回 {source}。',
       yoloBaseDirMigrationManualRepair:
         'YOLO 根目录 {source} 是隐藏目录，但无法安全自动迁移。请选择可见根目录并手动移动其中的 YOLO 文件。',
-      yoloBaseDirAdoptTitle: '使用已有的 YOLO 根目录？',
-      yoloBaseDirAdoptMessage:
-        '原 YOLO 根目录已不存在，但 {target} 中已有文件。是否直接将这个目录作为新的 YOLO 根目录？',
-      yoloBaseDirAdoptConfirm: '使用这个目录',
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',
@@ -1468,10 +1464,6 @@ export const zh: TranslationKeys = {
         'YOLO 已从 {source} 移动到 {target}，但设置更新失败且无法回滚。请先手动将目录移回 {source}。',
       yoloBaseDirMigrationManualRepair:
         'YOLO 根目录 {source} 是隐藏目录，但无法安全自动迁移。请选择可见根目录并手动移动其中的 YOLO 文件。',
-      yoloBaseDirAdoptTitle: '使用已有的 YOLO 根目录？',
-      yoloBaseDirAdoptMessage:
-        '原 YOLO 根目录已不存在，但 {target} 中已有文件。是否直接将这个目录作为新的 YOLO 根目录？',
-      yoloBaseDirAdoptConfirm: '使用这个目录',
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',

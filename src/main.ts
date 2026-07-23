@@ -2622,27 +2622,6 @@ export default class YoloPlugin extends Plugin {
     }
   }
 
-  private confirmAdoptExistingYoloRoot(target: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      new ConfirmModal(this.app, {
-        title: this.t(
-          'settings.agent.yoloBaseDirAdoptTitle',
-          'Use existing YOLO root?',
-        ),
-        message: this.t(
-          'settings.agent.yoloBaseDirAdoptMessage',
-          'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
-        ).replace('{target}', target),
-        ctaText: this.t(
-          'settings.agent.yoloBaseDirAdoptConfirm',
-          'Use this folder',
-        ),
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-      }).open()
-    })
-  }
-
   private showYoloRootRelocationConflict(target: string): void {
     new ConfirmModal(this.app, {
       title: this.t(
@@ -3010,7 +2989,7 @@ export default class YoloPlugin extends Plugin {
     )
   }
 
-  async setSettings(newSettings: YoloSettings) {
+  async setSettings(newSettings: YoloSettings): Promise<boolean> {
     const { ensureDefaultAssistantInSettings } = await import(
       './core/agent/default-assistant'
     )
@@ -3022,7 +3001,7 @@ export default class YoloPlugin extends Plugin {
     if (!validationResult.success) {
       new Notice(`Invalid settings:
 ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
-      return
+      return false
     }
 
     const previousBaseDir = this.settings?.yolo?.baseDir
@@ -3037,7 +3016,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           'YOLO root cannot contain a folder name starting with a dot because Obsidian does not index hidden folders.',
         ),
       )
-      return
+      return false
     }
 
     // Read-before-write conflict check. If the file on disk has been
@@ -3056,7 +3035,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       new Notice(
         'YOLO: settings were updated externally (sync, another device, or manual edit). Your last change was not saved — please redo it.',
       )
-      return
+      return false
     }
 
     const previousSettings = this.settings
@@ -3086,7 +3065,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           new Notice(
             'Failed to snapshot YOLO vector database. Keeping previous YOLO root folder.',
           )
-          return
+          return false
         }
       }
       const relocation = await runManagedModuleDataExclusive(
@@ -3100,8 +3079,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             persistTargetBaseDir: async () => {
               await this.persistPluginDirSettings(settingsToApply)
             },
-            confirmAdoptExistingTarget: (target) =>
-              this.confirmAdoptExistingYoloRoot(target),
           })
           if (
             result.status === 'migrated' ||
@@ -3115,10 +3092,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         },
       )
 
-      if (relocation.status === 'cancelled') return
       if (relocation.status === 'target-conflict') {
         this.showYoloRootRelocationConflict(relocation.target)
-        return
+        return false
       }
       if (relocation.status === 'protected-source') {
         new Notice(
@@ -3128,7 +3104,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           ),
           0,
         )
-        return
+        return false
       }
       if (relocation.status === 'failed') {
         console.error('[YOLO] Failed to relocate YOLO root', relocation.error)
@@ -3144,7 +3120,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
               ),
           relocation.rollbackFailed ? 0 : undefined,
         )
-        return
+        return false
       }
       if (this.dbManager) {
         await this.dbManager.cleanup()
@@ -3176,6 +3152,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.settingsChangeListeners.forEach((listener) => {
       listener(settingsToApply)
     })
+    return true
   }
 
   addSettingsChangeListener(listener: (newSettings: YoloSettings) => void) {

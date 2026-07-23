@@ -16,7 +16,7 @@ export type AutoUpdateRunRequest =
 
 type RagAutoUpdateServiceDeps = {
   getSettings: () => YoloSettings
-  setSettings: (settings: YoloSettings) => Promise<void>
+  setSettings: (settings: YoloSettings) => Promise<boolean>
   runIndex: (request: AutoUpdateRunRequest) => Promise<void>
   markRetryScheduled: (input: {
     retryAt: number
@@ -33,7 +33,7 @@ export class RagAutoUpdateService {
   private static readonly RETRY_BACKOFF_CAP_MS = 30 * 60 * 1000
 
   private readonly getSettings: () => YoloSettings
-  private readonly setSettings: (settings: YoloSettings) => Promise<void>
+  private readonly setSettings: (settings: YoloSettings) => Promise<boolean>
   private readonly runIndex: (request: AutoUpdateRunRequest) => Promise<void>
   private readonly markRetryScheduled: (input: {
     retryAt: number

@@ -443,10 +443,6 @@ export const en: TranslationKeys = {
         'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
       yoloBaseDirMigrationManualRepair:
         'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
-      yoloBaseDirAdoptTitle: 'Use existing YOLO root?',
-      yoloBaseDirAdoptMessage:
-        'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
-      yoloBaseDirAdoptConfirm: 'Use this folder',
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
@@ -1587,10 +1583,6 @@ export const en: TranslationKeys = {
         'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
       yoloBaseDirMigrationManualRepair:
         'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
-      yoloBaseDirAdoptTitle: 'Use existing YOLO root?',
-      yoloBaseDirAdoptMessage:
-        'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
-      yoloBaseDirAdoptConfirm: 'Use this folder',
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',

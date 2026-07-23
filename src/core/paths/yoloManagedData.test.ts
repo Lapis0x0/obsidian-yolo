@@ -474,7 +474,6 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'Config/YOLO',
         persistTargetBaseDir,
-        confirmAdoptExistingTarget: jest.fn(),
       }),
     ).resolves.toMatchObject({ status: 'migrated' })
     expect(persistTargetBaseDir).toHaveBeenCalledWith('Config/YOLO')
@@ -498,7 +497,6 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'Config/YOLO',
         persistTargetBaseDir: jest.fn().mockResolvedValue(undefined),
-        confirmAdoptExistingTarget: jest.fn(),
       }),
     ).resolves.toMatchObject({ status: 'migrated' })
     await expect(adapter.read('Config/YOLO/skills/example.md')).resolves.toBe(
@@ -506,7 +504,7 @@ describe('YOLO base directory relocation', () => {
     )
   })
 
-  test('refuses to merge into a non-empty target folder', async () => {
+  test('adopts a non-empty target without moving or merging the source', async () => {
     const adapter = new MockAdapter()
     await adapter.write('YOLO/skills/source.md', 'source')
     await adapter.write('Config/YOLO/skills/target.md', 'target')
@@ -518,23 +516,18 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'Config/YOLO',
         persistTargetBaseDir,
-        confirmAdoptExistingTarget: jest.fn(),
       }),
-    ).resolves.toMatchObject({
-      status: 'target-conflict',
-      reason: 'non-empty-folder',
-    })
-    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({ status: 'adopted' })
+    expect(persistTargetBaseDir).toHaveBeenCalledWith('Config/YOLO')
     await expect(adapter.read('YOLO/skills/source.md')).resolves.toBe('source')
     await expect(adapter.read('Config/YOLO/skills/target.md')).resolves.toBe(
       'target',
     )
   })
 
-  test('adopts an existing target only after confirmation when source is missing', async () => {
+  test('adopts an existing target when source is missing', async () => {
     const adapter = new MockAdapter()
     await adapter.write('Config/YOLO/skills/existing.md', 'existing')
-    const confirmAdoptExistingTarget = jest.fn().mockResolvedValue(true)
     const persistTargetBaseDir = jest.fn().mockResolvedValue(undefined)
 
     await expect(
@@ -543,17 +536,63 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'Config/YOLO',
         persistTargetBaseDir,
-        confirmAdoptExistingTarget,
       }),
     ).resolves.toMatchObject({ status: 'adopted' })
-    expect(confirmAdoptExistingTarget).toHaveBeenCalledWith('Config/YOLO')
     expect(persistTargetBaseDir).toHaveBeenCalledWith('Config/YOLO')
   })
 
-  test('keeps the previous setting when adopting an existing target is cancelled', async () => {
+  test('adopts a non-empty target without touching a protected source', async () => {
     const adapter = new MockAdapter()
+    const source = `${CONFIG_DIR}/YOLO`
+    const target = 'Config/YOLO'
+    await adapter.write(`${source}/source.md`, 'source')
+    await adapter.write(`${target}/target.md`, 'target')
+    const persistTargetBaseDir = jest.fn().mockResolvedValue(undefined)
+
+    await expect(
+      relocateYoloBaseDir({
+        app: createMockApp(adapter),
+        source,
+        target,
+        persistTargetBaseDir,
+      }),
+    ).resolves.toMatchObject({ status: 'adopted' })
+    expect(persistTargetBaseDir).toHaveBeenCalledWith(target)
+    await expect(adapter.read(`${source}/source.md`)).resolves.toBe('source')
+    await expect(adapter.read(`${target}/target.md`)).resolves.toBe('target')
+  })
+
+  test('does not move a protected source into an empty or missing target', async () => {
+    for (const target of ['Config/YOLO', 'Missing/YOLO']) {
+      const adapter = new MockAdapter()
+      const source = `${CONFIG_DIR}/YOLO`
+      await adapter.write(`${source}/source.md`, 'source')
+      if (target === 'Config/YOLO') await adapter.mkdir(target)
+      const persistTargetBaseDir = jest.fn()
+
+      await expect(
+        relocateYoloBaseDir({
+          app: createMockApp(adapter),
+          source,
+          target,
+          persistTargetBaseDir,
+        }),
+      ).resolves.toMatchObject({ status: 'protected-source' })
+      expect(persistTargetBaseDir).not.toHaveBeenCalled()
+      await expect(adapter.read(`${source}/source.md`)).resolves.toBe('source')
+      await expect(adapter.exists(target)).resolves.toBe(
+        target === 'Config/YOLO',
+      )
+    }
+  })
+
+  test('keeps both workspaces unchanged when adopting an existing target cannot be persisted', async () => {
+    const adapter = new MockAdapter()
+    await adapter.write('YOLO/skills/source.md', 'source')
     await adapter.write('Config/YOLO/skills/existing.md', 'existing')
-    const persistTargetBaseDir = jest.fn()
+    const persistTargetBaseDir = jest.fn(async () => {
+      throw new Error('save failed')
+    })
 
     await expect(
       relocateYoloBaseDir({
@@ -561,10 +600,13 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'Config/YOLO',
         persistTargetBaseDir,
-        confirmAdoptExistingTarget: jest.fn().mockResolvedValue(false),
       }),
-    ).resolves.toEqual({ status: 'cancelled' })
-    expect(persistTargetBaseDir).not.toHaveBeenCalled()
+    ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
+    expect(persistTargetBaseDir).toHaveBeenCalledWith('Config/YOLO')
+    await expect(adapter.read('YOLO/skills/source.md')).resolves.toBe('source')
+    await expect(adapter.read('Config/YOLO/skills/existing.md')).resolves.toBe(
+      'existing',
+    )
   })
 
   test('rolls the complete workspace back when settings persistence fails', async () => {
@@ -580,7 +622,6 @@ describe('YOLO base directory relocation', () => {
         persistTargetBaseDir: async () => {
           throw new Error('save failed')
         },
-        confirmAdoptExistingTarget: jest.fn(),
       }),
     ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
     await expect(adapter.read('YOLO/skills/example.md')).resolves.toBe('skill')
@@ -602,7 +643,6 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'Config/YOLO',
         persistTargetBaseDir: jest.fn(),
-        confirmAdoptExistingTarget: jest.fn(),
       }),
     ).resolves.toMatchObject({ status: 'failed', rollbackFailed: false })
     await expect(adapter.read('YOLO/skills/example.md')).resolves.toBe('skill')
@@ -616,7 +656,6 @@ describe('YOLO base directory relocation', () => {
         source: 'YOLO',
         target: 'YOLO/Archive',
         persistTargetBaseDir: jest.fn(),
-        confirmAdoptExistingTarget: jest.fn(),
       }),
     ).resolves.toMatchObject({
       status: 'target-conflict',

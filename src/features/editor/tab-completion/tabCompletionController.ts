@@ -40,7 +40,7 @@ type ActiveInlineSuggestion = {
 
 type TabCompletionDeps = {
   getSettings: () => YoloSettings
-  setSettings: (newSettings: YoloSettings) => Promise<void>
+  setSettings: (newSettings: YoloSettings) => Promise<boolean>
   getEditorView: (editor: Editor) => EditorView | null
   getActiveMarkdownView: () => MarkdownView | null
   getActiveConversationOverrides: () => ConversationOverrideSettings | undefined
