@@ -4,7 +4,9 @@ import React, { useMemo, useState } from 'react'
 import { ReactModal } from '../../../components/common/ReactModal'
 import { ConfirmModal } from '../../../components/modals/ConfirmModal'
 import { useLanguage } from '../../../contexts/language-context'
+import { readObsidianModuleConfigEnvelopes } from '../../../core/modules/obsidianModuleConfigBackend'
 import { getYoloBaseDir } from '../../../core/paths/yoloPaths'
+import { MODULE_CONFIG_TRANSFER_KEY } from '../../../core/persistence/persistentDataRegistry'
 import YoloPlugin from '../../../main'
 import { EXPORTABLE_CONFIG_KEYS } from '../config-keys'
 import { buildExportData } from '../export-config'
@@ -89,7 +91,11 @@ function ExportConfigModalComponent({
 }: ExportConfigModalComponentProps & { onClose: () => void }) {
   const { t } = useLanguage()
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
-    new Set(EXPORTABLE_CONFIG_KEYS.map((k) => k.key)),
+    new Set(
+      EXPORTABLE_CONFIG_KEYS.filter((key) => !key.unredactedOnly).map(
+        (key) => key.key,
+      ),
+    ),
   )
   const [redacted, setRedacted] = useState(true)
 
@@ -118,7 +124,13 @@ function ExportConfigModalComponent({
   }
 
   const selectAll = () => {
-    setSelectedKeys(new Set(EXPORTABLE_CONFIG_KEYS.map((k) => k.key)))
+    setSelectedKeys(
+      new Set(
+        EXPORTABLE_CONFIG_KEYS.filter(
+          (key) => !redacted || !key.unredactedOnly,
+        ).map((key) => key.key),
+      ),
+    )
   }
 
   const selectNone = () => {
@@ -167,12 +179,17 @@ function ExportConfigModalComponent({
       }
 
       const manifest = plugin.manifest
+      const moduleConfigs =
+        !redacted && selectedKeys.has(MODULE_CONFIG_TRANSFER_KEY)
+          ? await readObsidianModuleConfigEnvelopes(plugin.app, plugin.settings)
+          : undefined
 
       const exportData = await buildExportData({
         keys: Array.from(selectedKeys),
         settingsData,
         pluginVersion: manifest.version,
         redacted,
+        moduleConfigs,
       })
 
       const json = JSON.stringify(exportData, null, 2)
@@ -222,6 +239,7 @@ function ExportConfigModalComponent({
             <input
               type="checkbox"
               checked={selectedKeys.has(item.key)}
+              disabled={redacted && item.unredactedOnly}
               onChange={() => toggleKey(item.key)}
             />
             <span className="yolo-config-transfer-item-label">
@@ -241,13 +259,31 @@ function ExportConfigModalComponent({
         <input
           type="checkbox"
           checked={redacted}
-          onChange={(e) => setRedacted(e.target.checked)}
+          onChange={(e) => {
+            const nextRedacted = e.target.checked
+            setRedacted(nextRedacted)
+            if (nextRedacted) {
+              setSelectedKeys((previous) => {
+                const next = new Set(previous)
+                next.delete(MODULE_CONFIG_TRANSFER_KEY)
+                return next
+              })
+            }
+          }}
         />
         {t(
           'configTransfer.export.redactedOption',
           '脱敏导出（替换 API Key / 密码 / Header / 环境变量等凭证为随机字符串）',
         )}
       </label>
+      {redacted && (
+        <div className="yolo-config-transfer-desc">
+          {t(
+            'configTransfer.export.moduleConfigsUnredactedOnly',
+            '模块配置可能包含模块私有凭证，脱敏导出不会包含它们。',
+          )}
+        </div>
+      )}
 
       <div className="modal-button-container">
         <button className="mod-cta" onClick={() => void handleExport()}>

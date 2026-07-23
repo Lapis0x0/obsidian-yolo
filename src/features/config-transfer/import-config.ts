@@ -1,4 +1,9 @@
 import { ensureDefaultAssistantInSettings } from '../../core/agent/default-assistant'
+import {
+  MODULE_CONFIG_PERSISTENT_DATA,
+  MODULE_CONFIG_TRANSFER_KEY,
+  canTransferPersistentData,
+} from '../../core/persistence/persistentDataRegistry'
 import { SETTINGS_SCHEMA_VERSION } from '../../settings/schema/migrations'
 import {
   YoloSettings,
@@ -9,11 +14,23 @@ import {
   normalizeYoloSettingsReferences,
 } from '../../settings/schema/settings'
 
-import { EXCLUDED_KEYS, EXPORTABLE_CONFIG_KEYS } from './config-keys'
+import {
+  EXCLUDED_KEYS,
+  EXPORTABLE_CONFIG_KEYS,
+  HOST_CONFIG_KEYS,
+} from './config-keys'
 import { computeChecksum } from './export-config'
 import { deepMerge } from './merge-utils'
 import { clearSensitive } from './redact'
-import { ConfigExportFile, ImportErrorKey, MergeStrategy } from './types'
+import {
+  CONFIG_EXPORT_FORMAT_VERSION,
+  ConfigExportFile,
+  ImportErrorKey,
+  MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+  MODULE_CONFIG_EXPORT_SCHEMA,
+  MergeStrategy,
+} from './types'
+import { isModuleConfigTransferData } from './vault-module-configs'
 
 export type ValidationFailure = {
   valid: false
@@ -46,14 +63,19 @@ export async function validateExportFile(
 
   const obj = raw as Record<string, unknown>
 
-  if (obj.$schema !== 'yolo-config-export') {
+  const isLegacySchema = obj.$schema === 'yolo-config-export'
+  const isModuleConfigSchema = obj.$schema === MODULE_CONFIG_EXPORT_SCHEMA
+  if (!isLegacySchema && !isModuleConfigSchema) {
     return failure(
       'errorNotExportFile',
       '该文件不是 YOLO 插件的配置导出文件，请选择通过「导出配置」功能生成的 .json 文件。',
     )
   }
 
-  if (typeof obj.formatVersion !== 'number' || obj.formatVersion < 1) {
+  const expectedFormatVersion = isModuleConfigSchema
+    ? MODULE_CONFIG_EXPORT_FORMAT_VERSION
+    : CONFIG_EXPORT_FORMAT_VERSION
+  if (obj.formatVersion !== expectedFormatVersion) {
     return failure(
       'errorInvalidFormatVersion',
       '配置文件格式版本不合法，可能已损坏。',
@@ -89,6 +111,9 @@ export async function validateExportFile(
   if (!obj.data || typeof obj.data !== 'object') {
     return failure('errorMissingData', '配置文件中的数据字段缺失或不合法。')
   }
+  if (typeof obj.redacted !== 'boolean') {
+    return failure('errorTampered', '配置文件的脱敏标记无效。')
+  }
 
   // 校验 keys 与 data 的一致性
   const dataKeys = Object.keys(obj.data as Record<string, unknown>)
@@ -100,6 +125,48 @@ export async function validateExportFile(
       `配置文件数据与声明不一致：data 中包含未在 keys 中声明的字段（${undeclaredKeys.join(', ')}），文件可能已被篡改。`,
       { fields: undeclaredKeys.join(', ') },
     )
+  }
+
+  const supportedKeys = new Set(HOST_CONFIG_KEYS)
+  if (isModuleConfigSchema) supportedKeys.add(MODULE_CONFIG_TRANSFER_KEY)
+  const unsupportedKeys = Array.from(declaredKeys).filter(
+    (key) => !supportedKeys.has(key),
+  )
+  if (unsupportedKeys.length > 0) {
+    return failure(
+      'errorTampered',
+      `配置文件包含当前格式不支持的配置项：${unsupportedKeys.join(', ')}`,
+      { fields: unsupportedKeys.join(', ') },
+    )
+  }
+  if (isModuleConfigSchema && !declaredKeys.has(MODULE_CONFIG_TRANSFER_KEY)) {
+    return failure('errorTampered', '模块配置导出缺少模块配置数据。', {
+      fields: MODULE_CONFIG_TRANSFER_KEY,
+    })
+  }
+
+  if (obj.redacted === true && declaredKeys.has(MODULE_CONFIG_TRANSFER_KEY)) {
+    return failure('errorTampered', '脱敏配置导出不能包含模块配置。', {
+      fields: MODULE_CONFIG_TRANSFER_KEY,
+    })
+  }
+  if (
+    declaredKeys.has(MODULE_CONFIG_TRANSFER_KEY) &&
+    !canTransferPersistentData(MODULE_CONFIG_PERSISTENT_DATA, false)
+  ) {
+    return failure('errorTampered', '当前配置传输策略不允许导出模块配置。', {
+      fields: MODULE_CONFIG_TRANSFER_KEY,
+    })
+  }
+  if (
+    declaredKeys.has(MODULE_CONFIG_TRANSFER_KEY) &&
+    !isModuleConfigTransferData(
+      (obj.data as Record<string, unknown>)[MODULE_CONFIG_TRANSFER_KEY],
+    )
+  ) {
+    return failure('errorTampered', '模块配置数据不是有效的配置 envelope。', {
+      fields: MODULE_CONFIG_TRANSFER_KEY,
+    })
   }
 
   // 校验 checksum 完整性
@@ -161,7 +228,7 @@ export function parseVaultData(
   const data: Record<string, unknown> = {}
   const keys: string[] = []
   for (const [key, value] of Object.entries(migrated)) {
-    if (EXCLUDED_KEYS.has(key)) continue
+    if (!HOST_CONFIG_KEYS.has(key) || EXCLUDED_KEYS.has(key)) continue
     if (!exportableKeySet.has(key)) continue
     data[key] = value
     keys.push(key)
@@ -239,6 +306,22 @@ export class ImportValidationError extends Error {
   ) {
     super(fallback)
     this.name = 'ImportValidationError'
+  }
+}
+
+/**
+ * Host settings were committed, but a later module-config write failed.
+ * This is intentionally distinct from a rejected import: data.json cannot be
+ * rolled back safely after another synchronized store has begun writing.
+ */
+export class ModuleConfigImportPartialError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `Host settings were imported, but module configuration import failed: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    )
+    this.name = 'ModuleConfigImportPartialError'
   }
 }
 

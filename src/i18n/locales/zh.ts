@@ -2130,6 +2130,8 @@ export const zh: TranslationKeys = {
       sensitive: '含凭证',
       redactedOption:
         '脱敏导出（替换 API Key / 密码 / Header / 环境变量等凭证为随机字符串）',
+      moduleConfigsUnredactedOnly:
+        '模块配置可能包含模块私有凭证，脱敏导出不会包含它们。',
       confirmUnredactedTitle: '确认导出',
       confirmUnredacted:
         '未脱敏导出会把 API Key / 密码 / Header / 环境变量等敏感信息保存到当前库内文件。确定继续吗？',
@@ -2168,6 +2170,8 @@ export const zh: TranslationKeys = {
       noticeAtLeastOne: '请至少选择一项配置',
       noticeSuccess: '配置导入成功',
       noticeFailed: '配置导入失败',
+      noticePartialModuleConfig:
+        'Host 配置已导入，但模块配置导入失败；部分模块配置可能已写入，未自动回滚。',
     },
     errors: {
       errorNotJson: '文件内容不是有效的 JSON 对象',
@@ -2212,6 +2216,9 @@ export const zh: TranslationKeys = {
       assistants: 'Agent 配置',
       currentAssistantId: '当前 Agent',
       quickAskAssistantId: 'Quick Ask Agent',
+      jsSandbox: 'JS 沙箱权限',
+      pluginUpdateAutoDownloadEnabled: '插件自动下载更新',
+      moduleConfigs: '模块配置',
     },
   },
 

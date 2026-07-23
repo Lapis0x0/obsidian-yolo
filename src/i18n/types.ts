@@ -1,5 +1,11 @@
 export type Language = 'en' | 'zh' | 'it'
 
+export type DeepPartial<T> = {
+  [K in keyof T]?: NonNullable<T[K]> extends object
+    ? DeepPartial<NonNullable<T[K]>>
+    : T[K]
+}
+
 export type TranslationKeys = {
   // Commands
   commands: {
@@ -1958,6 +1964,7 @@ export type TranslationKeys = {
       selectNone: string
       sensitive: string
       redactedOption: string
+      moduleConfigsUnredactedOnly: string
       confirmUnredactedTitle: string
       confirmUnredacted: string
       submit: string
@@ -1992,6 +1999,7 @@ export type TranslationKeys = {
       noticeAtLeastOne: string
       noticeSuccess: string
       noticeFailed: string
+      noticePartialModuleConfig: string
     }
     errors: {
       errorNotJson: string
@@ -2030,6 +2038,9 @@ export type TranslationKeys = {
       assistants: string
       currentAssistantId: string
       quickAskAssistantId: string
+      jsSandbox: string
+      pluginUpdateAutoDownloadEnabled: string
+      moduleConfigs: string
     }
   }
 

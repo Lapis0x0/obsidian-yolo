@@ -6,7 +6,11 @@ import {
   hasNonEmptyCredentials,
   redactSensitive,
 } from './redact'
-import { CONFIG_EXPORT_FORMAT_VERSION } from './types'
+import {
+  CONFIG_EXPORT_FORMAT_VERSION,
+  MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+  MODULE_CONFIG_EXPORT_SCHEMA,
+} from './types'
 
 describe('redactSensitive', () => {
   it('replaces apiKey/password with equal-length random strings', () => {
@@ -31,6 +35,21 @@ describe('redactSensitive', () => {
     const result = redactSensitive(data) as Record<string, unknown>
     expect(result.apiKey).toBe('')
     expect(result.password).toBe('')
+  })
+
+  it('redacts only the local MCP authentication token', () => {
+    const data = {
+      mcp: { localServer: { token: 'local-secret' } },
+      unrelated: { token: 'business-value' },
+    }
+    const result = redactSensitive(data) as Record<
+      string,
+      Record<string, unknown>
+    >
+    expect((result.mcp.localServer as Record<string, unknown>).token).not.toBe(
+      'local-secret',
+    )
+    expect(result.unrelated.token).toBe('business-value')
   })
 
   it('recursively redacts apiKey in nested objects/arrays', () => {
@@ -146,6 +165,7 @@ describe('clearSensitive', () => {
       ],
       webSearch: { password: 'pw' },
       mcp: {
+        localServer: { token: 'local-secret' },
         servers: [
           {
             parameters: {
@@ -169,6 +189,14 @@ describe('clearSensitive', () => {
     const params = mcpServers[0].parameters as Record<string, unknown>
     expect((params.headers as Record<string, string>).Authorization).toBe('')
     expect((params.env as Record<string, string>).TOKEN).toBe('')
+    expect(
+      (
+        (result.mcp as Record<string, unknown>).localServer as Record<
+          string,
+          string
+        >
+      ).token,
+    ).toBe('')
   })
 })
 
@@ -249,6 +277,15 @@ describe('hasNonEmptyCredentials', () => {
         ],
       }),
     ).toBe(true)
+  })
+
+  it('recognizes only the local MCP token path as a credential', () => {
+    expect(
+      hasNonEmptyCredentials({ mcp: { localServer: { token: 'secret' } } }),
+    ).toBe(true)
+    expect(hasNonEmptyCredentials({ unrelated: { token: 'not-secret' } })).toBe(
+      false,
+    )
   })
 
   it('returns false for typical category without configured credentials (Ollama-only providers)', () => {
@@ -419,6 +456,7 @@ describe('buildExportData', () => {
       pluginVersion: '1.5.7.5',
     })
 
+    expect(result.keys).not.toContain('nonExistentKey')
     expect(result.data).not.toHaveProperty('nonExistentKey')
     expect(result.data).toHaveProperty('chatModelId')
   })
@@ -430,7 +468,7 @@ describe('buildExportData', () => {
       pluginVersion: '1.5.7.5',
     })
 
-    expect(result.keys).toEqual(['nonExistent1', 'nonExistent2'])
+    expect(result.keys).toEqual([])
     expect(Object.keys(result.data)).toHaveLength(0)
   })
 
@@ -443,5 +481,33 @@ describe('buildExportData', () => {
 
     expect(result.keys).toEqual([])
     expect(Object.keys(result.data)).toHaveLength(0)
+  })
+
+  it('includes raw module configuration only in an unredacted export', async () => {
+    const moduleConfigs = {
+      learning: {
+        schemaVersion: 1,
+        data: { modelId: 'model', token: 'private' },
+      },
+    }
+    const redacted = await buildExportData({
+      keys: ['moduleConfigs'],
+      settingsData: mockSettings,
+      moduleConfigs,
+      pluginVersion: '1.5.7.5',
+      redacted: true,
+    })
+    expect(redacted.keys).not.toContain('moduleConfigs')
+    expect(redacted.data).not.toHaveProperty('moduleConfigs')
+
+    const unredacted = await buildExportData({
+      keys: ['moduleConfigs'],
+      settingsData: mockSettings,
+      moduleConfigs,
+      pluginVersion: '1.5.7.5',
+    })
+    expect(unredacted.data).toMatchObject({ moduleConfigs })
+    expect(unredacted.$schema).toBe(MODULE_CONFIG_EXPORT_SCHEMA)
+    expect(unredacted.formatVersion).toBe(MODULE_CONFIG_EXPORT_FORMAT_VERSION)
   })
 })

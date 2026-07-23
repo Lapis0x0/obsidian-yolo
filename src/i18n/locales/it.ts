@@ -1,6 +1,6 @@
-import type { TranslationKeys } from '../types'
+import type { DeepPartial, TranslationKeys } from '../types'
 
-export const it: TranslationKeys = {
+export const it: DeepPartial<TranslationKeys> = {
   commands: {
     openChat: 'Apri chat',
     openChatSidebar: 'Apri chat (barra laterale)',
@@ -23,6 +23,26 @@ export const it: TranslationKeys = {
     triggerTabCompletion: 'Attiva completamento tab',
     acceptInlineSuggestion: 'Accetta completamento',
     capturePdfRegion: 'Cattura regione PDF nella chat',
+  },
+
+  // Italian does not yet translate the full config-transfer surface. Keep
+  // these newly selectable catalog labels localized while other strings use
+  // their call-site fallbacks.
+  configTransfer: {
+    export: {
+      moduleConfigsUnredactedOnly:
+        'La configurazione dei moduli può contenere credenziali private del modulo ed è esclusa dalle esportazioni oscurate.',
+    },
+    import: {
+      noticePartialModuleConfig:
+        'Le impostazioni Host sono state importate, ma la configurazione dei moduli non è riuscita. Alcune impostazioni dei moduli potrebbero essere state scritte e non sono state annullate.',
+    },
+    keyLabels: {
+      jsSandbox: 'Autorizzazioni sandbox JS',
+      pluginUpdateAutoDownloadEnabled:
+        'Scarica automaticamente gli aggiornamenti del plugin',
+      moduleConfigs: 'Configurazione moduli',
+    },
   },
 
   common: {

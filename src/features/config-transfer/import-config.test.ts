@@ -9,7 +9,12 @@ import {
   renderImportError,
   validateExportFile,
 } from './import-config'
-import { CONFIG_EXPORT_FORMAT_VERSION, ConfigExportFile } from './types'
+import {
+  CONFIG_EXPORT_FORMAT_VERSION,
+  ConfigExportFile,
+  MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+  MODULE_CONFIG_EXPORT_SCHEMA,
+} from './types'
 
 describe('validateExportFile', () => {
   // 不含 checksum 的基础文件（跳过 checksum 校验）
@@ -182,13 +187,87 @@ describe('validateExportFile', () => {
     expect(result.valid).toBe(true)
   })
 
-  it('should accept a file with higher formatVersion (forward compatible)', async () => {
+  it('should reject a file with a newer unsupported formatVersion', async () => {
     const futureFile = {
       ...validFile,
       formatVersion: 99,
     }
     const result = await validateExportFile(futureFile)
+    expect(result.valid).toBe(false)
+    if (!result.valid) {
+      expect(result.errorKey).toBe('errorInvalidFormatVersion')
+    }
+  })
+
+  it('keeps v1 Host-only export files compatible', async () => {
+    const result = await validateExportFile({
+      ...validFile,
+      formatVersion: 1,
+    })
     expect(result.valid).toBe(true)
+  })
+
+  it('accepts v2 module configuration and rejects it in v1', async () => {
+    const v2 = {
+      ...validFile,
+      $schema: MODULE_CONFIG_EXPORT_SCHEMA,
+      formatVersion: MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+      keys: ['moduleConfigs'],
+      data: {
+        moduleConfigs: {
+          learning: { schemaVersion: 1, data: { modelId: 'model-a' } },
+        },
+      },
+    }
+    await expect(validateExportFile(v2)).resolves.toMatchObject({ valid: true })
+    await expect(
+      validateExportFile({ ...v2, formatVersion: 1 }),
+    ).resolves.toMatchObject({
+      valid: false,
+      errorKey: 'errorInvalidFormatVersion',
+    })
+  })
+
+  it('rejects module configuration in a redacted export', async () => {
+    const result = await validateExportFile({
+      ...validFile,
+      $schema: MODULE_CONFIG_EXPORT_SCHEMA,
+      formatVersion: MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+      redacted: true,
+      keys: ['moduleConfigs'],
+      data: { moduleConfigs: {} },
+    })
+    expect(result).toMatchObject({ valid: false, errorKey: 'errorTampered' })
+  })
+
+  it('rejects a non-boolean redacted flag', async () => {
+    const result = await validateExportFile({
+      ...validFile,
+      redacted: 'yes',
+    })
+    expect(result).toMatchObject({ valid: false, errorKey: 'errorTampered' })
+  })
+
+  it('requires module data in the module export schema', async () => {
+    const result = await validateExportFile({
+      ...validFile,
+      $schema: MODULE_CONFIG_EXPORT_SCHEMA,
+      formatVersion: MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+      keys: ['providers'],
+      data: { providers: [] },
+    })
+    expect(result).toMatchObject({ valid: false, errorKey: 'errorTampered' })
+  })
+
+  it('rejects malformed module configuration before settings are applied', async () => {
+    const result = await validateExportFile({
+      ...validFile,
+      $schema: MODULE_CONFIG_EXPORT_SCHEMA,
+      formatVersion: MODULE_CONFIG_EXPORT_FORMAT_VERSION,
+      keys: ['moduleConfigs'],
+      data: { moduleConfigs: { learning: { schemaVersion: -1, data: {} } } },
+    })
+    expect(result).toMatchObject({ valid: false, errorKey: 'errorTampered' })
   })
 
   it('should validate checksum end-to-end with buildExportData', async () => {
@@ -333,8 +412,10 @@ describe('applyImport', () => {
   })
 
   const makeImportData = (
-    overrides: Partial<ConfigExportFile>,
-  ): ConfigExportFile => ({
+    overrides: Partial<
+      Extract<ConfigExportFile, { $schema: 'yolo-config-export' }>
+    >,
+  ): Extract<ConfigExportFile, { $schema: 'yolo-config-export' }> => ({
     $schema: 'yolo-config-export',
     formatVersion: 1,
     settingsVersion: SETTINGS_SCHEMA_VERSION,

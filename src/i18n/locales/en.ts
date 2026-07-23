@@ -2277,6 +2277,8 @@ export const en: TranslationKeys = {
       sensitive: 'Contains credentials',
       redactedOption:
         'Redact credentials (replace API keys / passwords / headers / env vars with random strings)',
+      moduleConfigsUnredactedOnly:
+        'Module configuration may contain module-private credentials and is excluded from redacted exports.',
       confirmUnredactedTitle: 'Confirm export',
       confirmUnredacted:
         'This unredacted export will save API keys / passwords / headers / env vars and other sensitive data to a file in the current vault. Continue?',
@@ -2317,6 +2319,8 @@ export const en: TranslationKeys = {
       noticeAtLeastOne: 'Please select at least one item',
       noticeSuccess: 'Settings imported successfully',
       noticeFailed: 'Failed to import settings',
+      noticePartialModuleConfig:
+        'Host settings were imported, but module configuration import failed. Some module settings may have been written and were not rolled back.',
     },
     errors: {
       errorNotJson: 'File content is not a valid JSON object.',
@@ -2367,6 +2371,9 @@ export const en: TranslationKeys = {
       assistants: 'Agents',
       currentAssistantId: 'Current agent',
       quickAskAssistantId: 'Quick Ask agent',
+      jsSandbox: 'JS sandbox permissions',
+      pluginUpdateAutoDownloadEnabled: 'Automatically download plugin updates',
+      moduleConfigs: 'Module configuration',
     },
   },
 

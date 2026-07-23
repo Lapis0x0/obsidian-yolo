@@ -21,6 +21,35 @@ const EMPTY_MODULE_CONFIG = Object.freeze({
   schemaVersion: 0,
   data: Object.freeze({}),
 })
+const configWriteListeners = new WeakMap<App, Map<string, Set<() => void>>>()
+
+function publishConfigWrite(app: App, path: string): void {
+  for (const listener of configWriteListeners.get(app)?.get(path) ?? []) {
+    try {
+      listener()
+    } catch (error) {
+      console.error('[YOLO] Module config write listener failed', {
+        path,
+        error,
+      })
+    }
+  }
+}
+
+function subscribeConfigWrite(app: App, path: string, listener: () => void) {
+  let byPath = configWriteListeners.get(app)
+  if (!byPath) {
+    byPath = new Map()
+    configWriteListeners.set(app, byPath)
+  }
+  const listeners = byPath.get(path) ?? new Set<() => void>()
+  listeners.add(listener)
+  byPath.set(path, listeners)
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0) byPath.delete(path)
+  }
+}
 
 export type ObsidianModuleConfigSettings = Readonly<{
   yolo?: Readonly<{
@@ -80,6 +109,7 @@ export function createObsidianModuleConfigBackendFactory<T = unknown>(
 
         let subscribed = true
         let settingsPath = targetPath()
+        let unsubscribeWrite: (() => void) | undefined
         const refs: EventRef[] = []
         let unsubscribeSettings: ModuleDisposer | undefined
         const publishIfCurrent = (entry: TAbstractFile): void => {
@@ -105,6 +135,8 @@ export function createObsidianModuleConfigBackendFactory<T = unknown>(
             firstError ??=
               error instanceof Error ? error : new Error(String(error))
           }
+          unsubscribeWrite?.()
+          unsubscribeWrite = undefined
           if (firstError !== undefined) throw firstError
         }
 
@@ -128,8 +160,19 @@ export function createObsidianModuleConfigBackendFactory<T = unknown>(
             const nextPath = targetPath()
             if (nextPath === settingsPath) return
             settingsPath = nextPath
+            unsubscribeWrite?.()
+            unsubscribeWrite = subscribeConfigWrite(
+              options.app,
+              settingsPath,
+              listener,
+            )
             listener()
           })
+          unsubscribeWrite = subscribeConfigWrite(
+            options.app,
+            settingsPath,
+            listener,
+          )
         } catch (error) {
           try {
             unsubscribe()
@@ -174,5 +217,63 @@ export function createObsidianModuleConfigCreateIfAbsent<T = unknown>(
       rootPath: capturedRoot,
     })
     return store.createIfAbsent(moduleId, envelope)
+  }
+}
+
+/**
+ * Reads every synchronized module configuration envelope without knowing any
+ * module implementation. Module intent and module-private storage deliberately
+ * use different roots and are not included here.
+ */
+export async function readObsidianModuleConfigEnvelopes(
+  app: App,
+  settings: ObsidianModuleConfigSettings | null,
+): Promise<Record<string, ModuleDataEnvelope>> {
+  const rootPath = normalizePath(
+    `${getYoloJsonDbRootDir(settings)}/${MODULE_SETTINGS_DIR_NAME}`,
+  )
+  const adapter = app.vault.adapter
+  if (!(await adapter.exists(rootPath))) return {}
+  const listing = await adapter.list(rootPath)
+  const store = new ModuleSettingsStore({
+    kind: 'synchronized-intent',
+    adapter,
+    rootPath,
+  })
+  const entries: Record<string, ModuleDataEnvelope> = {}
+  for (const path of listing.files) {
+    if (!path.startsWith(`${rootPath}/`) || !path.endsWith('.json')) continue
+    const moduleId = path.slice(rootPath.length + 1, -'.json'.length)
+    assertModuleId(moduleId, 'Module config id')
+    const envelope = await store.read(moduleId)
+    if (envelope !== null) entries[moduleId] = envelope
+  }
+  return entries
+}
+
+/**
+ * Writes imported synchronized module configuration to the supplied settings
+ * root. Each envelope is verified by ModuleSettingsStore; callers must report
+ * a later failure as a partial import because Host and module stores cannot be
+ * made transactional across sync backends. Each listed module id is replaced;
+ * module ids absent from the import are intentionally left unchanged.
+ */
+export async function writeObsidianModuleConfigEnvelopes(
+  app: App,
+  settings: ObsidianModuleConfigSettings | null,
+  entries: Readonly<Record<string, ModuleDataEnvelope>>,
+): Promise<void> {
+  const rootPath = normalizePath(
+    `${getYoloJsonDbRootDir(settings)}/${MODULE_SETTINGS_DIR_NAME}`,
+  )
+  const store = new ModuleSettingsStore({
+    kind: 'synchronized-intent',
+    adapter: app.vault.adapter,
+    rootPath,
+  })
+  for (const [moduleId, envelope] of Object.entries(entries)) {
+    assertModuleId(moduleId, 'Module config id')
+    await store.write(moduleId, envelope)
+    publishConfigWrite(app, normalizePath(`${rootPath}/${moduleId}.json`))
   }
 }
