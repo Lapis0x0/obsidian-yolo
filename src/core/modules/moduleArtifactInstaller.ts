@@ -707,7 +707,7 @@ function describeError(error: unknown): string {
 }
 
 function downloadSourceName(url: string): string {
-  if (url.startsWith('https://cdn.jsdelivr.net/')) return 'jsDelivr'
+  if (url.startsWith('https://updates.yoloapp.dev/')) return 'Cloudflare Pages'
   if (url.startsWith('https://github.com/')) return 'GitHub'
   return 'official source'
 }

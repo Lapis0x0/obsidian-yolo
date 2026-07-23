@@ -7,11 +7,11 @@ import { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import type { ModuleIntent } from './moduleIntentStore'
 import { ModuleRuntimeReservation } from './moduleRuntimeReservation'
 import { ModuleStore } from './moduleStore'
+import { parseOfficialModuleCatalog } from './officialModuleCatalog'
+import { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
 import { createOfficialModuleCompatibilityProvider } from './officialModuleCompatibilityProvider'
 import {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-  OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-  OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
   type ProductionModuleServicesOptions,
   createProductionModuleServices,
   isInstallCandidateState,
@@ -239,7 +239,6 @@ function createHarness(
 ) {
   const fixture = artifact()
   const adapter = new MemoryAdapter()
-  const cacheAdapter = new MemoryAdapter()
   const store = new ModuleStore({
     adapter: adapter as unknown as DataAdapter,
     manifest: { id: 'yolo', dir: 'config/plugins/yolo' },
@@ -288,25 +287,35 @@ function createHarness(
   )
   const reportCleanupError = jest.fn()
   const reportRefreshError = jest.fn()
+  const getCompatibility = createOfficialModuleCompatibilityProvider({
+    platform: 'desktop',
+    readDeviceState: async (moduleId) => {
+      const state = await deviceStateStore.read(moduleId)
+      return state
+        ? {
+            moduleId,
+            platform: state.platform,
+            activeVersion: state.active?.version ?? null,
+          }
+        : null
+    },
+  })
+  const loadCatalog = async () =>
+    parseOfficialModuleCatalog((await catalogRequest()).text, {
+      allowedRepositories: [{ owner: 'Lapis0x0', repo: 'obsidian-yolo' }],
+    })
+  const catalogSource = new OfficialModuleCatalogSource({
+    client: { load: loadCatalog, loadFresh: loadCatalog },
+    getCompatibility,
+    locale: localeOptions.locale,
+  })
   const services = createProductionModuleServices({
     store,
     deviceStateStore,
-    catalogCacheAdapter: cacheAdapter,
+    catalogSource,
     platform: 'desktop',
     ...localeOptions,
-    getCompatibility: createOfficialModuleCompatibilityProvider({
-      platform: 'desktop',
-      readDeviceState: async (moduleId) => {
-        const state = await deviceStateStore.read(moduleId)
-        return state
-          ? {
-              moduleId,
-              platform: state.platform,
-              activeVersion: state.active?.version ?? null,
-            }
-          : null
-      },
-    }),
+    getCompatibility,
     isActive,
     intentStore,
     activationLoader: {
@@ -316,7 +325,6 @@ function createHarness(
       })),
     },
     runtimeReservation,
-    catalogRequest,
     artifactRequest,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
     reportCleanupError,
@@ -415,11 +423,7 @@ describe('createProductionModuleServices', () => {
     ).toBe(true)
   })
 
-  it('keeps production constants stable', () => {
-    expect(OFFICIAL_MODULE_CATALOG_CACHE_PATH).toBe(
-      'official-module-catalog/catalog-v1.json',
-    )
-    expect(OFFICIAL_MODULE_CATALOG_TIMEOUT_MS).toBe(10_000)
+  it('keeps the artifact timeout stable', () => {
     expect(OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS).toBe(30_000)
   })
 

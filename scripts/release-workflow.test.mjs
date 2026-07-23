@@ -49,7 +49,7 @@ test('Core release validates the tag before checkout and build', () => {
     uses?.startsWith('actions/checkout@'),
   )
   const buildIndex = build.steps.findIndex(
-    ({ name }) => name === 'Build plugin',
+    ({ name }) => name === 'Build and test Core',
   )
 
   assert.equal(guardIndex, 0)
@@ -61,11 +61,54 @@ test('Core release validates the tag before checkout and build', () => {
 
 test('Core release keeps least-privilege permissions and pinned actions', () => {
   assert.deepEqual(workflow.permissions, { contents: 'read' })
-  assert.deepEqual(build.permissions, { contents: 'write' })
+  assert.deepEqual(build.permissions, {
+    actions: 'write',
+    contents: 'write',
+  })
 
   const actions = build.steps.filter(({ uses }) => uses)
   assert.ok(actions.length > 0)
   for (const step of actions) {
     assert.match(step.uses, /^[^@]+@[a-f0-9]{40}$/)
   }
+})
+
+test('Core release is immutable and wakes the central reconcile', () => {
+  const sourceText = source
+  assert.equal(workflow.concurrency.group, 'core-release')
+  assert.doesNotMatch(sourceText, /--clobber/)
+  assert.match(sourceText, /Create immutable draft Release/)
+  assert.match(sourceText, /Verify published Release/)
+  assert.match(sourceText, /distribution-publish\.yml/)
+})
+
+test('all first-party modules share one tag workflow', async () => {
+  const moduleSource = await readFile(
+    path.resolve('.github/workflows/module-release.yml'),
+    'utf8',
+  )
+  const moduleWorkflow = yaml.load(moduleSource, { schema: yaml.JSON_SCHEMA })
+  assert.deepEqual(moduleWorkflow.on.push.tags, ['*/v*'])
+  assert.equal(moduleWorkflow.concurrency.group, 'module-release')
+  assert.match(moduleSource, /validate-module-release\.mjs/)
+  assert.match(moduleSource, /distribution-publish\.yml/)
+  assert.doesNotMatch(moduleSource, /module-catalog\.yml/)
+})
+
+test('distribution treats dispatch as a wake-up and reconciles full state', async () => {
+  const distributionSource = await readFile(
+    path.resolve('.github/workflows/distribution-publish.yml'),
+    'utf8',
+  )
+  const distributionWorkflow = yaml.load(distributionSource, {
+    schema: yaml.JSON_SCHEMA,
+  })
+  assert.equal(distributionWorkflow.concurrency.group, 'distribution-publish')
+  assert.equal(distributionWorkflow.concurrency['cancel-in-progress'], false)
+  assert.ok(distributionWorkflow.on.schedule)
+  assert.match(distributionSource, /args=\(reconcile\)/)
+  assert.match(distributionSource, /scripts\/distribution\.mjs/)
+  assert.match(distributionSource, /git status --porcelain -- distribution/)
+  assert.match(distributionSource, /for attempt in 1 2 3/)
+  assert.doesNotMatch(distributionSource, /force.push|--force/)
 })

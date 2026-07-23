@@ -270,16 +270,16 @@ export const it: DeepPartial<TranslationKeys> = {
       incompatibleReason: 'Non compatibile: {reason}',
       compatibility: {
         platform: 'piattaforma',
-        hostApi: 'API host',
+        hostApi: 'aggiorna YOLO Core',
         dataSchema: 'schema dei dati',
       },
       retry: 'Riprova',
       actionError: 'Impossibile modificare {name}: {error}',
       failure: {
         downloadTimeout:
-          'Il download del modulo è scaduto sia su jsDelivr sia su GitHub. Controlla la rete o il proxy e riprova.',
+          'Il download del modulo è scaduto sia su Cloudflare sia su GitHub. Controlla la rete o il proxy e riprova.',
         download:
-          'Impossibile scaricare il modulo da jsDelivr o GitHub. Controlla la rete o il proxy e riprova.',
+          'Impossibile scaricare il modulo da Cloudflare o GitHub. Controlla la rete o il proxy e riprova.',
         integrity:
           'Il modulo scaricato non ha superato il controllo di integrità, quindi l’installazione è stata interrotta. Riprova e contatta lo sviluppatore se il problema persiste.',
         activation:

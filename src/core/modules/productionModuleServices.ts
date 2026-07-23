@@ -1,3 +1,6 @@
+import { projectDistributionFeedCatalog } from '../distribution/distributionFeed'
+import type { DistributionFeedClient } from '../distribution/distributionFeedClient'
+
 import {
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
@@ -38,11 +41,6 @@ import {
 } from './officialModuleArtifactDownloader'
 import { resolveOfficialModuleArtifactSources } from './officialModuleArtifactSources'
 import {
-  type OfficialModuleCatalogCacheAdapter,
-  OfficialModuleCatalogClient,
-  type OfficialModuleCatalogRequest,
-} from './officialModuleCatalogClient'
-import {
   OfficialModuleCatalogSource,
   type OfficialModuleCompatibilityProvider,
 } from './officialModuleCatalogSource'
@@ -51,9 +49,6 @@ import { DomBlobModuleScriptExecutor } from './scriptExecutor'
 import type { ModuleRecord } from './types'
 import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
-export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
-  'official-module-catalog/catalog-v1.json'
-export const OFFICIAL_MODULE_CATALOG_TIMEOUT_MS = 10_000
 export const OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS = 30_000
 export const MODULE_QUIESCENCE_TIMEOUT_MS = 30_000
 
@@ -89,7 +84,7 @@ export type ModuleCatalogResolutionSource = Pick<
 export type ProductionModuleServicesOptions = Readonly<{
   store: ModuleStore
   deviceStateStore: ModuleDeviceStateStore
-  catalogCacheAdapter: OfficialModuleCatalogCacheAdapter
+  distributionFeedClient?: Pick<DistributionFeedClient, 'load' | 'loadFresh'>
   platform: ModuleArtifactPlatform
   locale: ModuleCatalogLocaleSource
   subscribeLocale?: (listener: () => void) => () => void
@@ -102,7 +97,6 @@ export type ProductionModuleServicesOptions = Readonly<{
   artifactDownloader?: ModuleArtifactInstallerOptions['download']
   artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
-  catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   verifiedArtifactRegistry?: VerifiedModuleArtifactRegistry
@@ -135,16 +129,19 @@ export function createProductionModuleServices(
 ): ProductionModuleServices {
   assertOptions(options)
 
-  const catalogClient = new OfficialModuleCatalogClient({
-    adapter: options.catalogCacheAdapter,
-    cachePath: OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-    timeoutMs: OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
-    ...(options.catalogRequest ? { requestUrl: options.catalogRequest } : {}),
-  })
   const catalogSource =
     options.catalogSource ??
     new OfficialModuleCatalogSource({
-      client: catalogClient,
+      client: {
+        load: async () =>
+          projectDistributionFeedCatalog(
+            await options.distributionFeedClient!.load(),
+          ),
+        loadFresh: async () =>
+          projectDistributionFeedCatalog(
+            await options.distributionFeedClient!.loadFresh(),
+          ),
+      },
       locale: options.locale,
       getCompatibility: async (module) => {
         const compatibility = await options.getCompatibility(module)
@@ -628,7 +625,7 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     !options ||
     !options.store ||
     !options.deviceStateStore ||
-    !options.catalogCacheAdapter ||
+    (!options.distributionFeedClient && !options.catalogSource) ||
     (options.platform !== 'desktop' && options.platform !== 'mobile') ||
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
@@ -647,8 +644,6 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
         options.verifiedArtifactRegistry instanceof
         VerifiedModuleArtifactRegistry
       )) ||
-    (options.catalogRequest !== undefined &&
-      typeof options.catalogRequest !== 'function') ||
     (options.artifactRequest !== undefined &&
       typeof options.artifactRequest !== 'function') ||
     (options.artifactArrivalGrace !== undefined &&

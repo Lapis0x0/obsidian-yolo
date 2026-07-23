@@ -16,7 +16,7 @@ const descriptor: ModuleArtifactDescriptor = {
 }
 
 describe('official module artifact sources', () => {
-  it('prefers jsDelivr and preserves GitHub Release as fallback', () => {
+  it('prefers Cloudflare Pages and preserves GitHub Release as fallback', () => {
     expect(
       resolveOfficialModuleArtifactSources({
         descriptor,
@@ -24,7 +24,7 @@ describe('official module artifact sources', () => {
         path: 'module.json',
       }),
     ).toEqual([
-      'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/learning/0.1.1/module.json',
+      'https://updates.yoloapp.dev/modules/learning/0.1.1/module.json',
       descriptor.manifestUrl,
     ])
   })
@@ -42,17 +42,16 @@ describe('official module artifact sources', () => {
   })
 
   it.each([
-    'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/learning/0.1.1/entry.js',
+    'https://updates.yoloapp.dev/modules/learning/0.1.1/entry.js',
     descriptor.manifestUrl,
   ])('accepts an owned artifact source %s', (url) => {
     expect(isOfficialModuleArtifactSourceUrl(url)).toBe(true)
   })
 
   it.each([
-    'http://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/learning/0.1.1/entry.js',
-    'https://cdn.jsdelivr.net/gh/other/repo@main/modules/learning/0.1.1/entry.js',
-    'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@latest/modules/learning/0.1.1/entry.js',
-    'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/learning/0.1.1/../entry.js',
+    'http://updates.yoloapp.dev/modules/learning/0.1.1/entry.js',
+    'https://other.example/modules/learning/0.1.1/entry.js',
+    'https://updates.yoloapp.dev/modules/learning/0.1.1/../entry.js',
   ])('rejects an unowned artifact source %s', (url) => {
     expect(isOfficialModuleArtifactSourceUrl(url)).toBe(false)
   })

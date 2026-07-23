@@ -4,7 +4,6 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import yaml from 'js-yaml'
 
 import {
   cleanupOwnedDraftRelease,
@@ -210,114 +209,6 @@ for (const [name, change, error] of [
   })
 }
 
-test('release workflow verifies publication before dispatching catalog publication', async () => {
-  const workflowPath = path.resolve('.github/workflows/learning-release.yml')
-  const source = await readFile(workflowPath, 'utf8')
-  const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
-  const release = workflow.jobs.release
-  const steps = release.steps
-  const createIndex = steps.findIndex(
-    ({ name }) => name === 'Create draft GitHub Release',
-  )
-  const packageIndex = steps.findIndex(
-    ({ name }) => name === 'Package and validate release assets',
-  )
-  const publishIndex = steps.findIndex(
-    ({ name }) => name === 'Publish verified GitHub Release',
-  )
-  const verificationIndex = steps.findIndex(
-    ({ name }) => name === 'Independently verify published Release assets',
-  )
-  const dispatchIndex = steps.findIndex(
-    ({ name }) => name === 'Dispatch verified catalog update',
-  )
-  const cleanupIndex = steps.findIndex(
-    ({ name }) => name === "Remove this run's failed draft Release",
-  )
-
-  assert.equal(release.permissions.actions, 'write')
-  assert.equal(release.permissions.contents, 'write')
-  assert.match(steps[packageIndex].run, /--build --verify-versioned/)
-  assert.ok(packageIndex < createIndex)
-  assert.match(steps[createIndex].run, /gh api --paginate/)
-  assert.doesNotMatch(steps[createIndex].run, /--slurp/)
-  assert.ok(publishIndex < verificationIndex)
-  assert.ok(verificationIndex < dispatchIndex)
-  assert.ok(dispatchIndex < cleanupIndex)
-  assert.match(steps[verificationIndex].run, /--allow-published/)
-  assert.match(
-    steps[verificationIndex].run,
-    /verify-learning-release-assets\.mjs/,
-  )
-  assert.match(steps[dispatchIndex].run, /gh workflow run module-catalog\.yml/)
-  assert.match(
-    steps[dispatchIndex].run,
-    /steps\.published\.outputs\.manifest_url/,
-  )
-  assert.match(steps[dispatchIndex].run, /published directly/)
-})
-
-test('catalog workflow serializes and publishes only the verified catalog to main', async () => {
-  const workflowPath = path.resolve('.github/workflows/module-catalog.yml')
-  const source = await readFile(workflowPath, 'utf8')
-  const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
-  const steps = workflow.jobs.update.steps
-  const publish = steps.find(
-    ({ name }) => name === 'Publish verified catalog update',
-  )
-  const publishIndex = steps.indexOf(publish)
-  const purgeIndex = steps.findIndex(
-    ({ name }) => name === 'Purge jsDelivr catalog cache',
-  )
-
-  assert.equal(workflow.concurrency.group, 'module-catalog-publish')
-  assert.equal(workflow.permissions.contents, 'write')
-  assert.equal(workflow.permissions['pull-requests'], undefined)
-  assert.ok(publish)
-  assert.ok(publishIndex < purgeIndex)
-  assert.match(
-    steps[purgeIndex].run,
-    /purge\.jsdelivr\.net\/gh\/Lapis0x0\/obsidian-yolo@main\/modules\/catalog-v1\.json/,
-  )
-  assert.match(steps[purgeIndex].run, /--retry 3 --retry-all-errors/)
-  assert.match(publish.run, /git add modules\/catalog-v1\.json/)
-  assert.match(
-    publish.run,
-    /git push origin "HEAD:\$\{\{ github\.event\.repository\.default_branch \}\}"/,
-  )
-  assert.doesNotMatch(publish.run, /--force/)
-  assert.equal(
-    steps.some(({ run = '' }) => /gh pr create/.test(run)),
-    false,
-  )
-})
-
-test('release workflow keeps guarded cleanup after the publish attempt', async () => {
-  const workflowPath = path.resolve('.github/workflows/learning-release.yml')
-  const source = await readFile(workflowPath, 'utf8')
-  const workflow = yaml.load(source, { schema: yaml.JSON_SCHEMA })
-  const release = workflow.jobs.release
-  const steps = release.steps
-  const cleanupIndex = steps.findIndex(
-    ({ name }) => name === "Remove this run's failed draft Release",
-  )
-  const publishIndex = steps.findIndex(
-    ({ name }) => name === 'Publish verified GitHub Release',
-  )
-
-  assert.equal(release.permissions.contents, 'write')
-  assert.ok(publishIndex < cleanupIndex)
-  assert.equal(cleanupIndex, steps.length - 1)
-  assert.equal(steps[cleanupIndex].if, '${{ failure() || cancelled() }}')
-  assert.match(steps[cleanupIndex].run, /--cleanup-owned-draft/)
-  assert.match(steps[cleanupIndex].run, /--owner-marker/)
-  assert.match(release.env.LEARNING_RELEASE_OWNER, /github\.run_id/)
-  assert.match(release.env.LEARNING_RELEASE_OWNER, /github\.run_attempt/)
-  for (const step of steps.filter(({ uses }) => uses)) {
-    assert.match(step.uses, /@[a-f0-9]{40}$/)
-  }
-})
-
 function cleanupRelease() {
   return {
     id: releaseId,
@@ -363,9 +254,24 @@ async function createFixture({
   const releaseNote = Buffer.from(
     '## 1.2.3 Learning update\n\n- Update\n\n---\n\n## 1.2.3 学习模式更新\n\n- 更新\n',
   )
+  const moduleConfig = Buffer.from(
+    `${JSON.stringify({
+      id: 'learning',
+      icon: 'graduation-cap',
+      localizations: {
+        en: { name: 'Learning', description: 'Learn.' },
+        zh: { name: '学习', description: '学习。' },
+        it: { name: 'Apprendimento', description: 'Impara.' },
+      },
+      hostApi: '^1.3.0',
+      platforms: ['desktop', 'mobile'],
+      dataSchemas: manifest.dataSchemas,
+    })}\n`,
+  )
   const manifestSha256 = hash(moduleBytes)
   const assets = new Map([
     ['entry.js', entry],
+    ['module-config.json', moduleConfig],
     ['module.json', moduleBytes],
     ['release-note.md', releaseNote],
     ['style.css', style],

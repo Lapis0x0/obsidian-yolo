@@ -6,14 +6,14 @@ import {
 describe('module failure diagnostics', () => {
   it('classifies a timeout across all official sources', () => {
     const error = new ModuleArtifactDownloadError('Learning manifest', [
-      { source: 'jsDelivr', error: 'request timed out' },
+      { source: 'Cloudflare Pages', error: 'request timed out' },
       { source: 'GitHub', error: 'request timed out' },
     ])
 
     expect(describeModuleFailure(error)).toEqual({
       kind: 'download-timeout',
       detail:
-        'Learning manifest download failed from all official sources: jsDelivr: request timed out; GitHub: request timed out',
+        'Learning manifest download failed from all official sources: Cloudflare Pages: request timed out; GitHub: request timed out',
     })
   })
 
@@ -21,7 +21,7 @@ describe('module failure diagnostics', () => {
     expect(
       describeModuleFailure(
         new ModuleArtifactDownloadError('Learning entry', [
-          { source: 'jsDelivr', error: 'SHA-256 mismatch' },
+          { source: 'Cloudflare Pages', error: 'SHA-256 mismatch' },
           { source: 'GitHub', error: 'HTTP 503' },
         ]),
       ).kind,
@@ -29,7 +29,7 @@ describe('module failure diagnostics', () => {
     expect(
       describeModuleFailure(
         new ModuleArtifactDownloadError('Learning entry', [
-          { source: 'jsDelivr', error: 'request timed out' },
+          { source: 'Cloudflare Pages', error: 'request timed out' },
           { source: 'GitHub', error: 'HTTP 503' },
         ]),
       ).kind,

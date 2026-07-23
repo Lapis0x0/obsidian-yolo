@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,21 +35,10 @@ const reactExports = Object.keys(React).filter((name) =>
 const jsxRuntimeExports = Object.keys(jsxRuntime).filter(
   (name) => name !== 'default' && identifierPattern.test(name),
 )
-const learningPackage = JSON.parse(
-  await readFile(path.resolve('modules', 'learning', 'package.json'), 'utf8'),
+const officialModules = await loadOfficialModules()
+const officialModuleById = new Map(
+  officialModules.map((definition) => [definition.id, definition]),
 )
-const moduleCatalog = JSON.parse(
-  await readFile(path.resolve('modules', 'catalog-v1.json'), 'utf8'),
-)
-const learningPreviewVersion = learningPackage.yoloModule.previewVersion
-const learningPreviewTag = learningPackage.yoloModule.previewTag
-const learningReleaseTag = `${learningPackage.yoloModule.releaseTagPrefix}${learningPackage.version}`
-if (learningPreviewTag !== `module-learning-v${learningPreviewVersion}`) {
-  throw new Error('Learning preview tag must match its pinned preview version')
-}
-if (learningPackage.yoloModule.releaseTagPrefix !== 'learning/v') {
-  throw new Error('Learning release tag prefix must remain learning/v')
-}
 const moduleDefinitions = [
   {
     id: 'host-api-conformance',
@@ -54,21 +50,7 @@ const moduleDefinitions = [
       'module.json',
     ),
   },
-  {
-    id: 'learning',
-    version: learningPreviewVersion,
-    declarationPath: path.resolve('modules', 'learning', 'compatibility.json'),
-    releaseTag: learningPreviewTag,
-    workers: learningPackage.yoloModule.workers,
-    assets: [
-      {
-        role: 'style',
-        source: 'style.css',
-        path: 'style.css',
-      },
-    ],
-    bundled: true,
-  },
+  ...officialModules,
 ]
 
 const options = parseOptions(process.argv.slice(2))
@@ -88,15 +70,19 @@ if (options.releaseTag && selectedDefinitions.length !== 1) {
 if (options.metafileOutput && selectedDefinitions.length !== 1) {
   throw new Error('--metafile-output requires exactly one --module')
 }
-if (options.releaseTag && options.moduleId === 'learning') {
-  if (options.releaseTag !== learningReleaseTag) {
+if (options.releaseTag && options.moduleId) {
+  const official = officialModuleById.get(options.moduleId)
+  if (!official)
+    throw new Error(`Cannot release non-product module: ${options.moduleId}`)
+  const expectedTag = `${official.id}/v${official.package.version}`
+  if (options.releaseTag !== expectedTag) {
     throw new Error(
-      `Learning release tag must be ${learningReleaseTag}, received: ${options.releaseTag}`,
+      `${official.id} release tag must be ${expectedTag}, received: ${options.releaseTag}`,
     )
   }
   selectedDefinitions[0] = {
     ...selectedDefinitions[0],
-    version: learningPackage.version,
+    version: official.package.version,
   }
 }
 
@@ -164,17 +150,15 @@ if (!options.moduleId) {
           .filter((moduleDefinition) => moduleDefinition.bundled)
           .map((moduleDefinition) => {
             const result = buildResults.get(moduleDefinition.id)
-            const catalogMetadata = getModuleCatalogMetadata(
-              moduleDefinition.id,
-            )
+            const config = getModuleConfig(moduleDefinition.id)
             return {
               id: moduleDefinition.id,
               version: moduleDefinition.version,
-              icon: catalogMetadata.icon,
-              localizations: catalogMetadata.localizations,
+              icon: config.icon,
+              localizations: config.localizations,
               hostApi: result.hostApi,
               dataSchemas: result.dataSchemas,
-              platforms: artifactPlatforms,
+              platforms: result.platforms,
               manifestUrl: result.manifestUrl,
               manifest: result.manifest,
             }
@@ -186,14 +170,68 @@ if (!options.moduleId) {
   )
 }
 
-function getModuleCatalogMetadata(moduleId) {
-  const module = moduleCatalog.modules?.find(({ id }) => id === moduleId)
-  if (!module?.icon || !module.localizations) {
-    throw new Error(
-      `Bundled module metadata is missing from the official catalog: ${moduleId}`,
+function getModuleConfig(moduleId) {
+  const definition = officialModuleById.get(moduleId)
+  if (definition) return definition.config
+  throw new Error(`Module config is unavailable: ${moduleId}`)
+}
+
+async function loadOfficialModules() {
+  const entries = await readdir(path.resolve('modules'), {
+    withFileTypes: true,
+  })
+  const definitions = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const moduleDir = path.resolve('modules', entry.name)
+    let config
+    let packageJson
+    try {
+      ;[config, packageJson] = await Promise.all([
+        readJson(path.join(moduleDir, 'module.config.json')),
+        readJson(path.join(moduleDir, 'package.json')),
+      ])
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      throw error
+    }
+    if (config.id !== entry.name) {
+      throw new Error(
+        `Module config id does not match directory: ${entry.name}`,
+      )
+    }
+    const previewVersion = packageJson.yoloModule?.previewVersion
+    const previewTag = packageJson.yoloModule?.previewTag
+    if (
+      typeof previewVersion !== 'string' ||
+      previewTag !== `module-${config.id}-v${previewVersion}`
+    ) {
+      throw new Error(`${config.id} preview tag must match its pinned version`)
+    }
+    const styleSource = path.join(moduleDir, 'src', 'style.css')
+    const hasStyle = await access(styleSource).then(
+      () => true,
+      () => false,
     )
+    definitions.push({
+      id: config.id,
+      version: previewVersion,
+      declarationPath: path.join(moduleDir, 'module.config.json'),
+      releaseTag: previewTag,
+      workers: packageJson.yoloModule?.workers ?? {},
+      assets: hasStyle
+        ? [{ role: 'style', source: 'style.css', path: 'style.css' }]
+        : [],
+      bundled: true,
+      config,
+      package: packageJson,
+    })
   }
-  return { icon: module.icon, localizations: module.localizations }
+  return definitions.sort((left, right) => left.id.localeCompare(right.id))
+}
+
+async function readJson(filePath) {
+  return JSON.parse(await readFile(filePath, 'utf8'))
 }
 
 async function buildModule({
@@ -216,6 +254,14 @@ async function buildModule({
     throw new Error(`Invalid compatibility declaration for module: ${id}`)
   }
   const { hostApi, dataSchemas } = declaration
+  const platforms = declaration.platforms ?? artifactPlatforms
+  if (
+    !Array.isArray(platforms) ||
+    platforms.length === 0 ||
+    platforms.some((platform) => !artifactPlatforms.includes(platform))
+  ) {
+    throw new Error(`Invalid platform declaration for module: ${id}`)
+  }
   const sourceDir = path.resolve('modules', id, 'src')
   const artifactDir = outputDir
     ? path.resolve(outputDir)
@@ -282,7 +328,7 @@ async function buildModule({
     version,
     hostApi,
     dataSchemas,
-    variants: artifactPlatforms.map((platform) => ({
+    variants: platforms.map((platform) => ({
       platform,
       entry: entryFile.path,
       files,
@@ -297,6 +343,7 @@ async function buildModule({
   return {
     hostApi,
     dataSchemas,
+    platforms,
     entryImports: Object.values(entryResult.metafile.outputs).flatMap(
       ({ imports }) => imports,
     ),

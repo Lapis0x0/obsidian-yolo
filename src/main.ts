@@ -47,6 +47,7 @@ import {
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
@@ -270,6 +271,7 @@ export default class YoloPlugin extends Plugin {
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
+  private distributionFeedClient: DistributionFeedClient | null = null
   private moduleUpdateController: ModuleUpdateController | null = null
   private moduleRuntime: ModuleRuntime | null = null
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
@@ -2415,6 +2417,7 @@ export default class YoloPlugin extends Plugin {
     this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
+    this.distributionFeedClient = null
     this.learningModuleSettingsHandoff = null
     this.learningLegacyInstallMigration = null
     this.rawLearningLegacySettings = undefined
@@ -3540,7 +3543,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.hasCheckedForUpdates = true
     void Promise.allSettled([
       (async () => {
-        const fetched = await checkForUpdate(this.manifest.version)
+        if (!this.distributionFeedClient) return
+        const fetched = await checkForUpdate(
+          this.manifest.version,
+          this.distributionFeedClient,
+        )
         if (fetched?.hasUpdate) {
           if (this.isUpdateVersionMuted(fetched.latestVersion)) {
             return
@@ -3876,10 +3883,16 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           : null
       },
     })
+    const distributionFeedClient = new DistributionFeedClient({
+      adapter: deviceLocalAdapter,
+      cachePath: 'distribution/feed-v1.json',
+      timeoutMs: 10_000,
+    })
+    this.distributionFeedClient = distributionFeedClient
     const services = createProductionModuleServices({
       store,
       deviceStateStore,
-      catalogCacheAdapter: deviceLocalAdapter,
+      distributionFeedClient,
       platform,
       locale: () =>
         normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),

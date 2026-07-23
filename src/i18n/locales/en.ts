@@ -251,16 +251,16 @@ export const en: TranslationKeys = {
       incompatibleReason: 'Incompatible: {reason}',
       compatibility: {
         platform: 'platform',
-        hostApi: 'Host API',
+        hostApi: 'update YOLO Core',
         dataSchema: 'data schema',
       },
       retry: 'Retry',
       actionError: 'Could not change {name}: {error}',
       failure: {
         downloadTimeout:
-          'The module download timed out on both jsDelivr and GitHub. Check your network or proxy, then retry.',
+          'The module download timed out on both Cloudflare and GitHub. Check your network or proxy, then retry.',
         download:
-          'The module could not be downloaded from jsDelivr or GitHub. Check your network or proxy, then retry.',
+          'The module could not be downloaded from Cloudflare or GitHub. Check your network or proxy, then retry.',
         integrity:
           'The downloaded module failed its integrity check, so installation was stopped. Retry, and contact the developer if it keeps happening.',
         activation:

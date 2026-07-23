@@ -176,16 +176,9 @@ export {
   type OfficialModulePlatform,
 } from './officialModuleCatalog'
 export {
-  OFFICIAL_MODULE_CATALOG_URL,
-  OFFICIAL_MODULE_CATALOG_FALLBACK_URL,
   OFFICIAL_MODULE_RELEASE_REPOSITORIES,
-  OfficialModuleCatalogClient,
-  OfficialModuleCatalogUnavailableError,
   isOfficialModuleReleaseUrl,
-  type OfficialModuleCatalogCacheAdapter,
-  type OfficialModuleCatalogClientOptions,
-  type OfficialModuleCatalogRequest,
-} from './officialModuleCatalogClient'
+} from './moduleReleaseUrl'
 export {
   ModuleDeviceStateCorruptionError,
   ModuleDeviceStateStore,
@@ -207,8 +200,6 @@ export {
 } from './officialModuleCompatibilityProvider'
 export {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-  OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-  OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
   createProductionModuleServices,
   type ProductionModuleServices,
   type ProductionModuleServicesOptions,

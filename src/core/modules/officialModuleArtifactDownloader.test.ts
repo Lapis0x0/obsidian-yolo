@@ -14,8 +14,8 @@ const RELEASE_ROOT =
   'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v1.0.0'
 const ARTIFACT_URL = `${RELEASE_ROOT}/entry.js`
 const MANIFEST_URL = `${RELEASE_ROOT}/module.json`
-const JSD_ARTIFACT_URL =
-  'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/learning/1.0.0/entry.js'
+const PAGES_ARTIFACT_URL =
+  'https://updates.yoloapp.dev/modules/learning/1.0.0/entry.js'
 
 function response(
   bytes: Uint8Array,
@@ -71,13 +71,13 @@ describe('createOfficialModuleArtifactDownloader', () => {
     })
   })
 
-  it('downloads from the code-owned jsDelivr repository path', async () => {
+  it('downloads from the code-owned Cloudflare Pages path', async () => {
     const { download, request } = setup()
     await expect(
-      download({ kind: 'artifact', url: JSD_ARTIFACT_URL, byteSize: 3 }),
+      download({ kind: 'artifact', url: PAGES_ARTIFACT_URL, byteSize: 3 }),
     ).resolves.toEqual(new Uint8Array([1, 2, 3]))
     expect(request).toHaveBeenCalledWith({
-      url: JSD_ARTIFACT_URL,
+      url: PAGES_ARTIFACT_URL,
       method: 'GET',
       throw: false,
     })
@@ -210,7 +210,7 @@ describe('createOfficialModuleArtifactDownloader', () => {
     },
     {
       kind: 'artifact',
-      url: `${JSD_ARTIFACT_URL}?token=x`,
+      url: `${PAGES_ARTIFACT_URL}?token=x`,
       byteSize: 1,
     },
     { kind: 'unknown', url: ARTIFACT_URL, byteSize: 1 },
@@ -315,7 +315,7 @@ describe('createOfficialModuleArtifactDownloader', () => {
 
     await expect(download(input)).rejects.toThrow('timed out')
     await expect(
-      download({ ...input, url: JSD_ARTIFACT_URL }),
+      download({ ...input, url: PAGES_ARTIFACT_URL }),
     ).resolves.toEqual(new Uint8Array([1]))
     expect(request).toHaveBeenCalledTimes(2)
 
@@ -349,7 +349,7 @@ describe('createOfficialModuleArtifactDownloader', () => {
     controller.abort()
     await expect(downloading).rejects.toThrow('aborted')
     await expect(
-      download({ kind: 'artifact', url: JSD_ARTIFACT_URL, byteSize: 1 }),
+      download({ kind: 'artifact', url: PAGES_ARTIFACT_URL, byteSize: 1 }),
     ).resolves.toEqual(new Uint8Array([1]))
     expect(request).toHaveBeenCalledTimes(2)
 

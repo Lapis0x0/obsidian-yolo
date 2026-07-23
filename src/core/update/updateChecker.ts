@@ -1,28 +1,15 @@
 import { requestUrl } from 'obsidian'
 
+import type { DistributionFeedClient } from '../distribution/distributionFeedClient'
+
 const GITHUB_RELEASES_URL =
   'https://api.github.com/repos/Lapis0x0/obsidian-yolo/releases'
 
 const GITHUB_RELEASE_DOWNLOAD_BASE =
   'https://github.com/Lapis0x0/obsidian-yolo/releases/download'
 
-const GITHUB_RELEASE_PAGE_BASE =
-  'https://github.com/Lapis0x0/obsidian-yolo/releases/tag'
-
-const GITHUB_VERSIONS_URL =
-  'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/versions.json'
-
-const GITHUB_LATEST_RELEASE_NOTE_URL =
-  'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/main/latest-release-note.md'
-
-const LATEST_RELEASE_NOTE_RETRY_DELAYS_MS = [800, 2000] as const
-
 function releaseTagUrl(version: string): string {
   return `${GITHUB_RELEASES_URL}/tags/${encodeURIComponent(version)}`
-}
-
-function releasePageUrl(version: string): string {
-  return `${GITHUB_RELEASE_PAGE_BASE}/${encodeURIComponent(version)}`
 }
 
 /** Matches the UI page size and GitHub `per_page` for on-demand loading. */
@@ -50,6 +37,8 @@ export type ReleaseHistoryPageResult = {
 export type ReleaseAssetMeta = {
   url: string
   size: number
+  mirrorUrl?: string
+  sha256?: string
 }
 
 export type ReleaseAssets = {
@@ -208,81 +197,6 @@ export function parseReleaseNoteVersion(markdown: string): string | null {
     return match ? normalizePluginVersion(match[1]) : null
   }
   return null
-}
-
-async function fetchLatestReleaseNotes(
-  latestVersion: string,
-): Promise<ReleaseNotesByLanguage> {
-  const empty = { en: null, zh: null }
-
-  let lastFailureReason = 'unknown error'
-  const attempts = LATEST_RELEASE_NOTE_RETRY_DELAYS_MS.length + 1
-
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const result = await fetchLatestReleaseNotesOnce(latestVersion)
-    if (result.ok) {
-      return result.releaseNotes
-    }
-
-    lastFailureReason = result.reason
-    const retryDelayMs = LATEST_RELEASE_NOTE_RETRY_DELAYS_MS[attempt]
-    if (retryDelayMs !== undefined) {
-      await delay(retryDelayMs)
-    }
-  }
-
-  console.warn(
-    `[YOLO] Plugin update release note fetch failed after ${attempts} attempts: ${lastFailureReason}`,
-  )
-  return empty
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    globalThis.setTimeout(resolve, ms)
-  })
-}
-
-type LatestReleaseNotesFetchResult =
-  | { ok: true; releaseNotes: ReleaseNotesByLanguage }
-  | { ok: false; reason: string }
-
-async function fetchLatestReleaseNotesOnce(
-  latestVersion: string,
-): Promise<LatestReleaseNotesFetchResult> {
-  const normalizedLatestVersion = normalizePluginVersion(latestVersion)
-
-  try {
-    const response = await requestUrl({
-      url: GITHUB_LATEST_RELEASE_NOTE_URL,
-      method: 'GET',
-    })
-
-    if (response.status < 200 || response.status >= 300) {
-      return {
-        ok: false,
-        reason: `latest-release-note.md returned HTTP ${response.status}.`,
-      }
-    }
-
-    const body = response.text.trim()
-    if (!body) {
-      return { ok: false, reason: 'latest-release-note.md is empty.' }
-    }
-
-    const noteVersion = parseReleaseNoteVersion(body)
-    if (noteVersion !== normalizedLatestVersion) {
-      return {
-        ok: false,
-        reason: `latest-release-note.md version ${noteVersion ?? 'unknown'} does not match ${normalizedLatestVersion}.`,
-      }
-    }
-
-    return { ok: true, releaseNotes: splitReleaseNotesByLanguage(body) }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { ok: false, reason: message }
-  }
 }
 
 /**
@@ -587,44 +501,47 @@ export async function fetchReleaseByVersion(version: string): Promise<{
  */
 export async function checkForUpdate(
   currentVersion: string,
+  feedClient: Pick<DistributionFeedClient, 'loadFresh'>,
 ): Promise<UpdateCheckResult | null> {
   try {
-    const response = await requestUrl({
-      url: GITHUB_VERSIONS_URL,
-      method: 'GET',
-    })
-
-    if (response.status < 200 || response.status >= 300) {
-      console.warn(
-        `[YOLO] Plugin update check failed: versions.json returned HTTP ${response.status}.`,
-      )
-      return null
-    }
-
-    const latestVersion = parseLatestVersionFromVersionsJson(response.text)
-    if (!latestVersion) {
-      console.warn(
-        '[YOLO] Plugin update check failed: versions.json does not contain a valid version.',
-      )
-      return null
-    }
-
+    const core = (await feedClient.loadFresh()).core
+    const latestVersion = core.version
     const hasUpdate = compareVersions(currentVersion, latestVersion)
-    const releaseNotes = hasUpdate
-      ? await fetchLatestReleaseNotes(latestVersion)
+    const releaseNotes: ReleaseNotesByLanguage = hasUpdate
+      ? core.releaseNotes
       : { en: null, zh: null }
 
     return {
       hasUpdate,
       latestVersion,
       releaseNotes,
-      releaseUrl: releasePageUrl(latestVersion),
-      assets: buildReleaseAssets(latestVersion),
+      releaseUrl: core.releaseUrl,
+      assets: {
+        mainJs: feedReleaseAsset(core.assets.mainJs),
+        manifestJson: feedReleaseAsset(core.assets.manifestJson),
+        stylesCss: feedReleaseAsset(core.assets.stylesCss),
+      },
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.warn(`[YOLO] Plugin update check failed: ${message}`)
     return null
+  }
+}
+
+function feedReleaseAsset(
+  asset: Readonly<{
+    canonicalUrl: string
+    mirrorPath: string
+    byteSize: number
+    sha256: string
+  }>,
+): ReleaseAssetMeta {
+  return {
+    url: asset.canonicalUrl,
+    mirrorUrl: `https://updates.yoloapp.dev/${asset.mirrorPath}`,
+    size: asset.byteSize,
+    sha256: asset.sha256,
   }
 }
 

@@ -1,14 +1,15 @@
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
-import { parseModuleReleaseUrl } from './moduleReleaseUrl'
+import {
+  isOfficialModuleReleaseUrl,
+  parseModuleReleaseUrl,
+} from './moduleReleaseUrl'
 import {
   assertModuleId,
   assertModulePathSegment,
   normalizeModuleArtifactFilePath,
 } from './moduleStore'
-import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
 
-const JSD_ROOT =
-  'https://cdn.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/'
+const PAGES_ROOT = 'https://updates.yoloapp.dev/modules/'
 
 export type ModuleArtifactSourceRequest = Readonly<{
   descriptor: ModuleArtifactDescriptor
@@ -32,7 +33,7 @@ export function resolveOfficialModuleArtifactSources(
   assertModuleId(descriptor.id, 'Module id')
   assertModulePathSegment(descriptor.version, 'Module version')
   const path = normalizeModuleArtifactFilePath(request.path)
-  const mirrorUrl = `${JSD_ROOT}${[
+  const mirrorUrl = `${PAGES_ROOT}${[
     descriptor.id,
     descriptor.version,
     ...path.split('/'),
@@ -46,8 +47,8 @@ export function isOfficialModuleArtifactSourceUrl(
   value: unknown,
 ): value is string {
   if (isOfficialModuleReleaseUrl(value)) return true
-  if (typeof value !== 'string' || !value.startsWith(JSD_ROOT)) return false
-  const suffix = value.slice(JSD_ROOT.length)
+  if (typeof value !== 'string' || !value.startsWith(PAGES_ROOT)) return false
+  const suffix = value.slice(PAGES_ROOT.length)
   const parts = suffix.split('/')
   if (parts.length < 3 || parts.some((part) => !part)) return false
   try {
@@ -57,7 +58,7 @@ export function isOfficialModuleArtifactSourceUrl(
     const path = normalizeModuleArtifactFilePath(decoded.slice(2).join('/'))
     return (
       value ===
-      `${JSD_ROOT}${[decoded[0], decoded[1], ...path.split('/')]
+      `${PAGES_ROOT}${[decoded[0], decoded[1], ...path.split('/')]
         .map(encodeURIComponent)
         .join('/')}`
     )

@@ -8,24 +8,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: core-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
+      actions: write
       contents: write
     env:
       CORE_RELEASE_TAG_PATTERN: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))?$'
-
+      CORE_RELEASE_OWNER: core-release-owner:${{ github.run_id }}:${{ github.run_attempt }}
     steps:
       - name: Validate Core release tag
         shell: bash
         run: |
           if [[ ! "$GITHUB_REF_NAME" =~ $CORE_RELEASE_TAG_PATTERN ]]; then
-            echo "::error::Core release tag must be a numeric version in the root tag namespace"
+            echo '::error::Core release tag must be a numeric root version'
             exit 1
           fi
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
@@ -33,40 +40,105 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
+          cache: npm
 
-      - name: Set Tag variable
-        run: |
-          echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build plugin
+      - name: Validate release sources
+        run: npm run release:check -- core "$GITHUB_REF_NAME"
+
+      - name: Build and test Core
         run: |
-          npm install
-          npm run styles:build
+          npm run type:check
+          npx jest --runInBand
           npm run build
+          mkdir core-release
+          cp main.js manifest.json styles.css core-release/
+          cp latest-release-note.md core-release/release-note.md
 
-      - name: Create release
-        id: release
+      - name: Require a monotonically newer Core version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/distribution.mjs assert-new-release --tag "$GITHUB_REF_NAME"
+
+      - name: Create immutable draft Release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "created=false" >> "$GITHUB_OUTPUT"
-            gh release upload "$tag" \
-              main.js manifest.json styles.css \
-              --clobber
-          else
-            gh release create "$tag" \
-              --title="$tag" \
-              --notes-file latest-release-note.md \
-              main.js manifest.json styles.css
-            echo "created=true" >> "$GITHUB_OUTPUT"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::Release $GITHUB_REF_NAME already exists"
+            exit 1
           fi
+          body="$(printf '<!-- %s -->\n\n' "$CORE_RELEASE_OWNER"; cat latest-release-note.md)"
+          release="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f body="$body" -F draft=true -F prerelease=false)"
+          echo "release_id=$(jq -r '.id' <<<"$release")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload draft assets without replacement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" core-release/*
+
+      - name: Verify draft assets by Release id
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/verify-core-release-assets.mjs
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$GITHUB_REF_NAME"
+          --release-id "${{ steps.create.outputs.release_id }}"
+          --target-commit "$GITHUB_SHA"
+          --asset-dir core-release
+
+      - name: Publish verified Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api --method PATCH
+          "repos/$GITHUB_REPOSITORY/releases/${{ steps.create.outputs.release_id }}"
+          -F draft=false --jq '.html_url'
+
+      - name: Verify published Release
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/verify-core-release-assets.mjs --allow-published
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$GITHUB_REF_NAME"
+          --release-id "${{ steps.create.outputs.release_id }}"
+          --target-commit "$GITHUB_SHA"
+          --asset-dir core-release
+
+      - name: Wake distribution reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run distribution-publish.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref "${{ github.event.repository.default_branch }}"
+          -f trigger_release_id="${{ steps.create.outputs.release_id }}"
 
       - name: Notify Discord
-        if: steps.release.outputs.created == 'true'
         env:
           DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
         run: node scripts/notify-discord-release.mjs
+
+      - name: Remove this run's failed draft Release
+        if: ${{ failure() || cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/verify-learning-release-assets.mjs --cleanup-owned-draft
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$GITHUB_REF_NAME"
+          --release-id "${{ steps.create.outputs.release_id }}"
+          --target-commit "$GITHUB_SHA"
+          --owner-marker "$CORE_RELEASE_OWNER"

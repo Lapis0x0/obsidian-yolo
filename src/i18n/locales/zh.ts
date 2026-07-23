@@ -220,16 +220,16 @@ export const zh: TranslationKeys = {
       incompatibleReason: '不兼容：{reason}',
       compatibility: {
         platform: '平台',
-        hostApi: '宿主 API',
+        hostApi: '需要更新 YOLO Core',
         dataSchema: '数据架构',
       },
       retry: '重试',
       actionError: '无法更改 {name}：{error}',
       failure: {
         downloadTimeout:
-          'jsDelivr 和 GitHub 均连接超时，无法下载模块。请检查网络或代理设置后重试。',
+          'Cloudflare 和 GitHub 均连接超时，无法下载模块。请检查网络或代理设置后重试。',
         download:
-          '无法从 jsDelivr 或 GitHub 下载模块。请检查网络或代理设置后重试。',
+          '无法从 Cloudflare 或 GitHub 下载模块。请检查网络或代理设置后重试。',
         integrity:
           '下载的模块文件未通过完整性校验，已停止安装。请重试；若问题持续，请联系开发者。',
         activation:

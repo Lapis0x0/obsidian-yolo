@@ -1,4 +1,5 @@
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
+import { isOfficialModuleReleaseUrl } from './moduleReleaseUrl'
 import {
   type DeviceLocalModuleRuntimeStateBackend,
   ModuleRuntimeStateStore,
@@ -9,7 +10,6 @@ import {
   assertModuleId,
   isModuleHostApiRange,
 } from './moduleStore'
-import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
 
 const SCHEMA_VERSION = 1
 const SEMVER =
