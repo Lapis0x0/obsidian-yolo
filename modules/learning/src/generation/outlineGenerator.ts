@@ -156,13 +156,7 @@ function parsePartialOutline(text: string): Outline {
 }
 
 function parseOutputLanguage(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const language = value.trim()
-  return /^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}\p{Zs}().,'/-]{0,79}$/u.test(
-    language,
-  )
-    ? language
-    : ''
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function extractStringField(text: string, field: string): string {

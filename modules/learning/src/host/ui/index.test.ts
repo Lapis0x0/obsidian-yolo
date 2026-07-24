@@ -363,7 +363,10 @@ describe('createLearningUiServices memory host', () => {
       projectName: 'Generated',
       projectGoal: 'Understand it',
       outputLanguage: 'English',
-      chapters: [{ title: 'Chapter one', contract: 'Explain point one' }],
+      chapters: [
+        { title: 'Chapter one', contract: 'Explain point one' },
+        { title: 'Chapter two', contract: 'Explain point two' },
+      ],
       signal: new AbortController().signal,
       onProjectStarted,
       onChapterProgress,
@@ -393,9 +396,12 @@ describe('createLearningUiServices memory host', () => {
       title: '正在生成学习项目',
       detail: 'Chapter one',
     })
-    expect(memory.agentRequests[0]?.prompt).toContain(
-      'Required output language: English',
-    )
+    expect(memory.agentRequests).toHaveLength(2)
+    expect(
+      memory.agentRequests.every((request) =>
+        request.prompt?.includes('Required output language: English'),
+      ),
+    ).toBe(true)
   })
 
   it('streams card events in order and opens the successful project for study', async () => {

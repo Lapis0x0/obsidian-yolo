@@ -1,9 +1,9 @@
 // Output-language strategy (no stored setting).
 //
-// The outline follows the user's topic and goal. Its chapter contract carries
-// that language to knowledge-point generation, and knowledge.md carries it to
-// card generation. Each stage names that inherited content as its language
-// source, so no separate language setting or repeated inference is needed.
+// The outline resolves the user's language once from the topic and goal. That
+// explicit value is carried to every knowledge-point request, while cards
+// follow the completed knowledge.md they are derived from. No user-facing
+// language setting is needed.
 
 export const OUTLINE_GENERATOR_PROMPT = `You are a learning-content architect. Given the user's learning topic, current level, and goal, design a chapter-level learning outline.
 
