@@ -8,6 +8,15 @@
 
 /* ── Root / page shell ──────────────────────────────────────────────────── */
 
+.yolo-learning-module-root {
+  /* The React mount root must fill .view-content. Without an explicit
+     height it is display:block / height:auto and collapses to content
+     height, which starves the flex chain
+     (workspace-main -> graph-root -> graph-canvas) so the knowledge-map
+     canvas resolves to 0px height and the map renders blank. See #482. */
+  height: 100%;
+}
+
 .yolo-learning-root {
   height: 100%;
   position: relative;
