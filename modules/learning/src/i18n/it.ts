@@ -22,6 +22,9 @@ export const it = {
     cancel: 'Non ora',
   },
   common: {
+    back: 'Indietro',
+    edit: 'Modifica',
+    retry: 'Riprova',
     cancel: 'Annulla',
     close: 'Chiudi',
     delete: 'Elimina',
@@ -202,6 +205,12 @@ export const it = {
     },
   },
   outlineBuilder: {
+    chapterRequired: 'È necessario almeno un capitolo valido',
+    generatingPoint: 'Generazione in corso',
+    knowledgeComplete: 'Punti di conoscenza generati',
+    newChapter: 'Nuovo capitolo',
+    newChapterContract:
+      'Descrivi ambito, confini e punti di conoscenza stimati di questo capitolo.',
     estimatedKnowledgePoints: 'Punti di conoscenza stimati',
     failed: 'Generazione non riuscita',
     failedDescription: 'Impossibile continuare la generazione. Riprova.',
@@ -236,6 +245,7 @@ export const it = {
     generating: 'Generazione...',
   },
   outline: {
+    resizeSidebar: 'Ridimensiona barra laterale struttura',
     emptyBody: 'Questo punto di conoscenza non ha ancora contenuto',
     emptyProject:
       'Questo progetto non ha ancora punti di conoscenza. La scaletta apparirà qui al termine della generazione.',

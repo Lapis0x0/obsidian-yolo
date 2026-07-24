@@ -61,6 +61,7 @@ export type OutlineBuilderWorkflow = {
     goal: string
     projectName: string
     projectGoal: string
+    outputLanguage: string
     chapters: readonly OutlineChapter[]
     stagingDir?: string
     referenceFiles?: readonly StagedReference[]
@@ -99,6 +100,7 @@ export function OutlineBuilder({
   const [chapters, setChapters] = useState<EditableChapter[]>([])
   const [projectName, setProjectName] = useState('')
   const [projectGoal, setProjectGoal] = useState('')
+  const [outputLanguage, setOutputLanguage] = useState('')
   const [estimatedKnowledgePoints, setEstimatedKnowledgePoints] = useState(0)
   const [phase, setPhase] = useState<Phase>('outline')
   const [structuring, setStructuring] = useState(false)
@@ -115,6 +117,7 @@ export function OutlineBuilder({
   const reconcileOutline = (outline: Outline) => {
     setProjectName(outline.projectName)
     setProjectGoal(outline.projectGoal)
+    setOutputLanguage(outline.outputLanguage)
     setEstimatedKnowledgePoints(outline.estimatedKnowledgePoints)
     setChapters((current) =>
       outline.chapters.map((chapter, index) => ({
@@ -135,6 +138,7 @@ export function OutlineBuilder({
     setChapters([])
     setProjectName('')
     setProjectGoal('')
+    setOutputLanguage('')
     setEstimatedKnowledgePoints(0)
     nextChapterIdRef.current = 0
     void workflow
@@ -193,6 +197,7 @@ export function OutlineBuilder({
         goal,
         projectName: projectName || topic,
         projectGoal,
+        outputLanguage,
         chapters: validChapters,
         stagingDir,
         referenceFiles,

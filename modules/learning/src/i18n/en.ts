@@ -22,6 +22,9 @@ export const en = {
     cancel: 'Not now',
   },
   common: {
+    back: 'Back',
+    edit: 'Edit',
+    retry: 'Retry',
     cancel: 'Cancel',
     close: 'Close',
     delete: 'Delete',
@@ -199,6 +202,12 @@ export const en = {
     },
   },
   outlineBuilder: {
+    chapterRequired: 'At least one valid chapter is required',
+    generatingPoint: 'Generating',
+    knowledgeComplete: 'Knowledge points generated',
+    newChapter: 'New chapter',
+    newChapterContract:
+      'Describe the scope, boundaries, and estimated knowledge points for this chapter.',
     estimatedKnowledgePoints: 'Estimated knowledge points',
     failed: 'Generation failed',
     failedDescription: 'Unable to continue generation. Please try again.',
@@ -233,6 +242,7 @@ export const en = {
     generating: 'Generating...',
   },
   outline: {
+    resizeSidebar: 'Resize outline sidebar',
     emptyBody: 'This knowledge point has no content yet',
     emptyProject:
       'This project has no knowledge points yet. The outline will appear here once generation completes.',

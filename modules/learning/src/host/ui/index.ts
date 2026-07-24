@@ -388,6 +388,7 @@ function buildOutlineBuilderWorkflow({
               projectTopic: input.projectName || input.topic,
               chapterTitle: chapter.title,
               chapterContract: chapter.contract,
+              outputLanguage: input.outputLanguage,
               level: input.level,
               workspaceScope,
               referenceDir,

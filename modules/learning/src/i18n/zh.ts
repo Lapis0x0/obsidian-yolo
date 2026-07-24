@@ -22,6 +22,9 @@ export const zh = {
     cancel: '暂不进入',
   },
   common: {
+    back: '返回',
+    edit: '编辑',
+    retry: '重试',
     cancel: '取消',
     close: '关闭',
     delete: '删除',
@@ -195,6 +198,11 @@ export const zh = {
     },
   },
   outlineBuilder: {
+    chapterRequired: '至少需要一个有效章节',
+    generatingPoint: '正在生成',
+    knowledgeComplete: '知识点生成完成',
+    newChapter: '新章节',
+    newChapterContract: '说明本章覆盖范围、边界和预计知识点。',
     estimatedKnowledgePoints: '预计知识点',
     failed: '生成失败',
     failedDescription: '无法继续生成，请重试。',
@@ -228,6 +236,7 @@ export const zh = {
     generating: '生成中...',
   },
   outline: {
+    resizeSidebar: '调整大纲侧栏宽度',
     emptyBody: '这个知识点还没有正文内容',
     emptyProject: '这个项目还没有知识点。生成完成后会在这里显示大纲。',
     noPointSelected: '请选择一个知识点',
