@@ -6,6 +6,7 @@ export type OutlineChapter = {
 export type Outline = {
   projectName: string
   projectGoal: string
+  outputLanguage: string
   chapters: OutlineChapter[]
   estimatedKnowledgePoints: number
 }

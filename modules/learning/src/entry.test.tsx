@@ -34,6 +34,7 @@ const mockUiServices: Array<ReturnType<typeof createUiServices>> = []
 const mockOutline = {
   projectName: 'Project',
   projectGoal: 'Learn',
+  outputLanguage: 'English',
   chapters: [],
   estimatedKnowledgePoints: 0,
 }

@@ -23,6 +23,7 @@ class MemoryLearningHost {
   agentText = JSON.stringify({
     projectName: 'Memory project',
     projectGoal: 'Test adapters',
+    outputLanguage: 'English',
     chapters: [{ title: 'One', contract: 'Learn one' }],
     estimatedKnowledgePoints: 2,
   })
@@ -32,6 +33,7 @@ class MemoryLearningHost {
   readonly actionToasts: YoloModuleHostActionToastV1[] = []
   readonly agentRequests: Array<{
     activity?: { title: string; detail?: string }
+    prompt?: string
   }> = []
   confirmResult = true
   private readonly entries = new Map<string, NonNullable<VaultEntry>>()
@@ -360,6 +362,7 @@ describe('createLearningUiServices memory host', () => {
       goal: 'Understand it',
       projectName: 'Generated',
       projectGoal: 'Understand it',
+      outputLanguage: 'English',
       chapters: [{ title: 'Chapter one', contract: 'Explain point one' }],
       signal: new AbortController().signal,
       onProjectStarted,
@@ -390,6 +393,9 @@ describe('createLearningUiServices memory host', () => {
       title: '正在生成学习项目',
       detail: 'Chapter one',
     })
+    expect(memory.agentRequests[0]?.prompt).toContain(
+      'Required output language: English',
+    )
   })
 
   it('streams card events in order and opens the successful project for study', async () => {
@@ -589,6 +595,7 @@ function projectGenerationInput(signal = new AbortController().signal) {
     goal: 'Understand it',
     projectName: 'Generated',
     projectGoal: 'Understand it',
+    outputLanguage: 'English',
     chapters: [{ title: 'Chapter one', contract: 'Explain point one' }],
     signal,
     onProjectStarted: jest.fn(async () => undefined),
