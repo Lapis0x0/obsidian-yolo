@@ -16,6 +16,7 @@ Output exactly one JSON object (do not wrap it in a markdown code block, and do 
 {
   "projectName": "<normalized learning-topic name>",
   "projectGoal": "<one sentence describing what the user will be able to do after finishing this plan>",
+  "outputLanguage": "<the concise name of the language used for all generated learning content>",
   "chapters": [
     {
       "title": "<chapter title>",
@@ -32,6 +33,10 @@ Normalize the user's learning topic: fix capitalization and complete missing pro
 ## projectGoal
 
 Combine the user's learning goal, current level, and any additional requirements into a single learning goal suitable for long-term display. Describe what the user will be able to do after completing the plan, using clear, concrete outcome statements; do not restate timing, learning preferences, or exclusions, and do not use vague, unverifiable wording such as "learn" or "understand".
+
+## outputLanguage
+
+Determine the language from the user's topic and goal once. Return its concise standard name (for example, "English", "Simplified Chinese", or "Brazilian Portuguese"). All generated outline content and all later learning content must use this exact language.
 
 ## chapters and how to divide them
 
@@ -68,7 +73,7 @@ If there are no reference materials, generate from your own knowledge and do not
 
 export const KNOWLEDGE_POINT_GENERATOR_PROMPT = `You are a learning-content author. Given a chapter contract, generate the knowledge points for that chapter.
 
-Write the knowledge points in the language of the chapter contract.
+Write every knowledge point in the required output language provided by the user. Never switch to another language.
 
 ## Your output
 

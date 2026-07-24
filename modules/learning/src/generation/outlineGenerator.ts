@@ -42,6 +42,7 @@ export async function generateOutline({
   let streamedOutline: Outline = {
     projectName: '',
     projectGoal: '',
+    outputLanguage: '',
     chapters: [],
     estimatedKnowledgePoints: 0,
   }
@@ -114,6 +115,7 @@ function parseOutline(text: string): Outline {
     typeof record.projectName === 'string' ? record.projectName.trim() : ''
   const projectGoal =
     typeof record.projectGoal === 'string' ? record.projectGoal.trim() : ''
+  const outputLanguage = parseOutputLanguage(record.outputLanguage)
   const chapters = parseChapters(record.chapters)
   const estimatedKnowledgePoints =
     typeof record.estimatedKnowledgePoints === 'number'
@@ -125,10 +127,19 @@ function parseOutline(text: string): Outline {
   if (!projectGoal) {
     throw new Error('Outline generation result is missing projectGoal')
   }
+  if (!outputLanguage) {
+    throw new Error('Outline generation result is missing outputLanguage')
+  }
   if (chapters.length === 0) {
     throw new Error('Outline generation result has no usable chapters')
   }
-  return { projectName, projectGoal, chapters, estimatedKnowledgePoints }
+  return {
+    projectName,
+    projectGoal,
+    outputLanguage,
+    chapters,
+    estimatedKnowledgePoints,
+  }
 }
 
 function parsePartialOutline(text: string): Outline {
@@ -136,9 +147,20 @@ function parsePartialOutline(text: string): Outline {
   return {
     projectName: extractStringField(text, 'projectName'),
     projectGoal: extractStringField(text, 'projectGoal'),
+    outputLanguage: parseOutputLanguage(extractStringField(text, 'outputLanguage')),
     chapters: extractChapters(text),
     estimatedKnowledgePoints: match ? Number(match[1]) : 0,
   }
+}
+
+function parseOutputLanguage(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const language = value.trim()
+  return /^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N}\p{Zs}().,'/-]{0,79}$/u.test(
+    language,
+  )
+    ? language
+    : ''
 }
 
 function extractStringField(text: string, field: string): string {
@@ -207,6 +229,7 @@ function isOutlineEqual(a: Outline, b: Outline): boolean {
   return (
     a.projectName === b.projectName &&
     a.projectGoal === b.projectGoal &&
+    a.outputLanguage === b.outputLanguage &&
     a.estimatedKnowledgePoints === b.estimatedKnowledgePoints &&
     a.chapters.length === b.chapters.length &&
     a.chapters.every(

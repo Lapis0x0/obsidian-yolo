@@ -26,6 +26,7 @@ describe('generateKnowledgePointsForChapter', () => {
       projectTopic: 'Python',
       chapterTitle: 'Basics',
       chapterContract: 'Cover variables',
+      outputLanguage: 'English',
       level: 'beginner',
     })
 
@@ -44,6 +45,7 @@ describe('generateKnowledgePointsForChapter', () => {
       }),
     )
     const request = requests[0] as { prompt: string }
+    expect(request.prompt).toContain('Required output language: English')
     expect(request.prompt).not.toMatch(/[\u4e00-\u9fff]/)
   })
 
@@ -70,6 +72,7 @@ describe('generateKnowledgePointsForChapter', () => {
         projectTopic: 'Python',
         chapterTitle: 'Basics',
         chapterContract: 'Cover variables',
+        outputLanguage: 'English',
         level: 'beginner',
       }),
     ).rejects.toThrow('Knowledge point generation aborted: Basics')

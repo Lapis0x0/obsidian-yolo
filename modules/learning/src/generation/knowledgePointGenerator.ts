@@ -22,6 +22,7 @@ export type GenerateKnowledgePointsForChapterOptions = {
   projectTopic: string
   chapterTitle: string
   chapterContract: string
+  outputLanguage: string
   level: string
   workspaceScope?: LearningWorkspaceScope
   referenceDir?: string
@@ -39,6 +40,7 @@ export async function generateKnowledgePointsForChapter({
   projectTopic,
   chapterTitle,
   chapterContract,
+  outputLanguage,
   level,
   workspaceScope,
   referenceDir,
@@ -79,6 +81,8 @@ Project topic: ${projectTopic}
 Chapter title: ${chapterTitle}
 Chapter contract:
 ${chapterContract}
+
+Required output language: ${outputLanguage}
 
 User's current level: ${level}${refSection}`
   for await (const event of host.agent.stream({
@@ -127,6 +131,7 @@ export type GenerateKnowledgePointsParallelOptions = {
   host: LearningGenerationHost
   modelId?: string
   projectTopic: string
+  outputLanguage: string
   chapters: OutlineChapter[]
   level: string
   workspaceScope?: LearningWorkspaceScope
@@ -139,6 +144,7 @@ export async function generateKnowledgePointsParallel({
   host,
   modelId,
   projectTopic,
+  outputLanguage,
   chapters,
   level,
   workspaceScope,
@@ -161,6 +167,7 @@ export async function generateKnowledgePointsParallel({
           projectTopic,
           chapterTitle: chapter.title,
           chapterContract: chapter.contract,
+          outputLanguage,
           level,
           workspaceScope,
           referenceDir,
