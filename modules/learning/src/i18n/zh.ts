@@ -269,6 +269,7 @@ export const zh = {
     generationFailedTitle: '学习卡片生成失败',
     generationFailedSummary: '未能生成学习卡片，请查看章节状态。',
     startLearning: '开始学习',
+    browseCards: '浏览卡片',
     viewGenerationDetails: '查看详情',
     filteredTo: '已筛选至：',
     sortDue: '按到期时间',

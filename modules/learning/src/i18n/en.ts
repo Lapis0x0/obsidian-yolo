@@ -279,6 +279,7 @@ export const en = {
     generationFailedSummary:
       'No learning cards were generated. View the chapter status for details.',
     startLearning: 'Start learning',
+    browseCards: 'Browse cards',
     viewGenerationDetails: 'View details',
     filteredTo: 'Filtered to: ',
     sortDue: 'Due date',

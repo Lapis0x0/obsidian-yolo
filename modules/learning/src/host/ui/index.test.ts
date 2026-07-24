@@ -48,6 +48,10 @@ class MemoryLearningHost {
     settings: {
       getModelSnapshot: () => ({ defaultModelId: 'memory-model', models: [] }),
     },
+    i18n: {
+      getSnapshot: () => ({ locale: 'en' }),
+      subscribe: () => () => undefined,
+    },
     agent: {
       stream: (request: { activity?: { title: string; detail?: string } }) => {
         this.agentRequests.push(request)
@@ -465,7 +469,7 @@ describe('createLearningUiServices memory host', () => {
     expect(memory.actionToasts).toHaveLength(1)
     expect(memory.actionToasts[0]).toMatchObject({
       tone: 'success',
-      actionLabel: '开始学习',
+      actionLabel: 'Start learning',
     })
     await memory.actionToasts[0].onAction()
     expect(openProjectCards).toHaveBeenCalledWith(projectId, '学习')
@@ -506,7 +510,7 @@ describe('createLearningUiServices memory host', () => {
     )
     expect(memory.actionToasts[0]).toMatchObject({
       tone: 'warning',
-      actionLabel: '浏览卡片',
+      actionLabel: 'Browse cards',
     })
     await memory.actionToasts[0].onAction()
     expect(openProjectCards).toHaveBeenCalledWith(
@@ -533,7 +537,7 @@ describe('createLearningUiServices memory host', () => {
 
     expect(memory.actionToasts[0]).toMatchObject({
       tone: 'error',
-      actionLabel: '浏览卡片',
+      actionLabel: 'Browse cards',
     })
     await memory.actionToasts[0].onAction()
     expect(openProjectCards).toHaveBeenCalledWith(

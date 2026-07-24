@@ -24,6 +24,7 @@ import {
   validateReferenceFile,
   writeReferenceToStaging,
 } from '../../generation/referenceStaging'
+import { createLearningTranslation } from '../../i18n'
 import type { CardsViewServices } from '../../ui/cards/CardsView'
 import type { ExercisesViewServices } from '../../ui/exercises/ExercisesView'
 import type { HomeProjectActions } from '../../ui/home/HomeView'
@@ -487,6 +488,10 @@ function buildOutlineBuilderWorkflow({
               (total, result) => total + result.cards.length,
               0,
             ),
+            chapterCount: results.length,
+            notFinishedCount: results.filter(
+              (result) => result.status !== 'generated',
+            ).length,
           })
         } catch (error) {
           if (!input.signal.aborted) {
@@ -497,6 +502,8 @@ function buildOutlineBuilderWorkflow({
               runId,
               outcome: 'failed',
               cardCount: 0,
+              chapterCount: 0,
+              notFinishedCount: 0,
             })
           }
           throw error
@@ -538,6 +545,8 @@ function showCardGenerationToast({
   runId,
   outcome,
   cardCount,
+  chapterCount,
+  notFinishedCount,
 }: {
   host: YoloModuleHostApiV1
   projectGeneration?: LearningUiProjectGenerationPort
@@ -545,31 +554,39 @@ function showCardGenerationToast({
   runId: string
   outcome: 'success' | 'partial' | 'failed'
   cardCount: number
+  chapterCount: number
+  notFinishedCount: number
 }): void {
+  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
   const mode = outcome === 'success' ? '学习' : '浏览'
   const copy =
     outcome === 'success'
       ? {
           tone: 'success' as const,
-          title: '学习卡片生成完成',
-          message: `已生成 ${cardCount} 张卡片，可以开始学习。`,
+          title: t('cards.generationCompleteTitle'),
+          message: t('cards.generationCompleteSummary')
+            .replace('{chapters}', String(chapterCount))
+            .replace('{cards}', String(cardCount)),
         }
       : outcome === 'partial'
         ? {
             tone: 'warning' as const,
-            title: '部分学习卡片生成完成',
-            message: `已保留 ${cardCount} 张可用卡片，可先浏览生成结果。`,
+            title: t('cards.generationPartialTitle'),
+            message: t('cards.generationPartialSummary')
+              .replace('{cards}', String(cardCount))
+              .replace('{count}', String(notFinishedCount)),
           }
         : {
             tone: 'error' as const,
-            title: '学习卡片生成失败',
-            message: '未能生成可用卡片，请稍后重试。',
+            title: t('cards.generationFailedTitle'),
+            message: t('cards.generationFailedSummary'),
           }
   host.ui.showActionToast({
     id: `card-generation-${runId}`,
     ...copy,
-    actionLabel: mode === '学习' ? '开始学习' : '浏览卡片',
-    dismissLabel: '关闭',
+    actionLabel:
+      outcome === 'success' ? t('cards.startLearning') : t('cards.browseCards'),
+    dismissLabel: t('common.close'),
     onAction: () => projectGeneration?.openProjectCards?.(projectId, mode),
   })
 }
