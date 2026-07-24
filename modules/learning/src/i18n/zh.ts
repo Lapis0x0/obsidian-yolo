@@ -9,6 +9,14 @@ export const zh = {
     generationModelDescription:
       '用于生成大纲、知识点和卡片；此选择独立于当前助理模型。',
   },
+  generation: {
+    outlineActivity: '正在生成学习项目大纲',
+    knowledgePointsActivity: '正在生成学习项目',
+    cardsActivity: '正在生成学习卡片',
+    unsupportedFileType:
+      '不支持的文件类型：{ext}（支持 PDF、Word、Markdown、文本）',
+    fileTooLarge: '文件过大：{size}MB（上限 20MB）',
+  },
   background: {
     reviewTitle: 'YOLO Learning',
     reviewDetail: '{count} 张卡片待复习',

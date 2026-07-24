@@ -342,7 +342,7 @@ describe('createLearningUiServices memory host', () => {
     expect(onOutline).toHaveBeenCalled()
     expect(onProgress).toHaveBeenCalled()
     expect(memory.agentRequests[0]?.activity).toEqual({
-      title: '正在生成学习项目大纲',
+      title: 'Generating outline',
       detail: 'Adapters',
     })
   })
@@ -397,7 +397,7 @@ describe('createLearningUiServices memory host', () => {
       memory.api.vault.readText(knowledge?.path ?? ''),
     ).resolves.toContain('## Point one <!--kp:')
     expect(memory.agentRequests[0]?.activity).toEqual({
-      title: '正在生成学习项目',
+      title: 'Generating knowledge points',
       detail: 'Chapter one',
     })
     expect(memory.agentRequests).toHaveLength(2)
@@ -461,7 +461,7 @@ describe('createLearningUiServices memory host', () => {
         runId,
         projectId,
         activity: expect.objectContaining({
-          title: '正在生成学习卡片',
+          title: 'Generating cards',
           detail: 'Generated',
         }),
       }),

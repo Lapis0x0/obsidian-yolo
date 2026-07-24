@@ -9,6 +9,14 @@ export const it = {
     generationModelDescription:
       'Usato per generare scalette, punti di conoscenza e schede. Questa scelta è indipendente dall’assistente corrente.',
   },
+  generation: {
+    outlineActivity: 'Generazione della struttura',
+    knowledgePointsActivity: 'Generazione dei punti di conoscenza',
+    cardsActivity: 'Generazione delle carte',
+    unsupportedFileType:
+      'Tipo di file non supportato: {ext} (supportati PDF, Word, Markdown, testo)',
+    fileTooLarge: 'File troppo grande: {size}MB (limite 20MB)',
+  },
   background: {
     reviewTitle: 'YOLO Learning',
     reviewDetail: '{count} carte da ripassare',

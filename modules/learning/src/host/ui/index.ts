@@ -154,12 +154,16 @@ export function createLearningUiServices(
       }
     },
     confirmDelete: (project, onConfirm) => {
+      const t = createLearningTranslation(host.i18n.getSnapshot().locale)
       void host.ui
         .confirm({
-          title: '删除学习项目？',
-          message: `“${project.topic}”及其复习数据将移入回收站。`,
-          ctaText: '删除',
-          cancelText: '取消',
+          title: t('home.deleteConfirmTitle'),
+          message: t('home.deleteConfirmMessage').replace(
+            '{project}',
+            project.topic,
+          ),
+          ctaText: t('common.delete'),
+          cancelText: t('common.cancel'),
         })
         .then((confirmed) => {
           if (confirmed) onConfirm()
@@ -184,7 +188,11 @@ export function createLearningUiServices(
       await host.vault.ensureFolder(path)
       return path
     },
-    validateFile: validateReferenceFile,
+    validateFile: (file) =>
+      validateReferenceFile(
+        file,
+        createLearningTranslation(host.i18n.getSnapshot().locale),
+      ),
     writeFile: async (stagingDir, file) => {
       assertPathInRoot(stagingDir, getLearningBaseDir(), '_staging')
       return writeReferenceToStaging(
@@ -309,6 +317,7 @@ function buildOutlineBuilderWorkflow({
   events?: LearningWorkspaceGenerationEvents
 }): OutlineBuilderWorkflow {
   const vault = generationHost.vault
+  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
   const writer: ProjectWriterPort = {
     ensureFolder: (path) => host.vault.ensureFolder(path),
     listChildNames: async (path) =>
@@ -339,7 +348,10 @@ function buildOutlineBuilderWorkflow({
         })),
         workspaceScope,
         abortSignal: input.signal,
-        activity: generationActivity('正在生成学习项目大纲', input.topic),
+        activity: generationActivity(
+          t('generation.outlineActivity'),
+          input.topic,
+        ),
         onOutline: input.onOutline,
         onProgress: () => input.onProgress(),
       })
@@ -394,7 +406,10 @@ function buildOutlineBuilderWorkflow({
               workspaceScope,
               referenceDir,
               abortSignal: input.signal,
-              activity: generationActivity('正在生成学习项目', chapter.title),
+              activity: generationActivity(
+                t('generation.knowledgePointsActivity'),
+                chapter.title,
+              ),
               onProgress: (_delta, fullText) => {
                 input.onChapterProgress({
                   chapterIndex,
@@ -463,7 +478,7 @@ function buildOutlineBuilderWorkflow({
             workspaceScope,
             abortSignal: input.signal,
             activity: generationActivity(
-              '正在生成学习卡片',
+              t('generation.cardsActivity'),
               input.projectName || input.topic,
             ),
             runId,

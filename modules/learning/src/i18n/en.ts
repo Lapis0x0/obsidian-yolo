@@ -9,6 +9,14 @@ export const en = {
     generationModelDescription:
       'Used to generate outlines, knowledge points, and cards. This selection is independent of the current assistant.',
   },
+  generation: {
+    outlineActivity: 'Generating outline',
+    knowledgePointsActivity: 'Generating knowledge points',
+    cardsActivity: 'Generating cards',
+    unsupportedFileType:
+      'Unsupported file type: {ext} (PDF, Word, Markdown, text supported)',
+    fileTooLarge: 'File too large: {size}MB (max 20MB)',
+  },
   background: {
     reviewTitle: 'YOLO Learning',
     reviewDetail: '{count} cards to review',
