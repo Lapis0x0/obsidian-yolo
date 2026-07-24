@@ -488,9 +488,15 @@ function buildOutlineBuilderWorkflow({
               (total, result) => total + result.cards.length,
               0,
             ),
-            chapterCount: results.length,
+            generatedCount: results.filter(
+              (result) => result.status === 'generated',
+            ).length,
+            skippedCount: results.filter(
+              (result) => result.status === 'skipped',
+            ).length,
             notFinishedCount: results.filter(
-              (result) => result.status !== 'generated',
+              (result) =>
+                result.status === 'partial' || result.status === 'failed',
             ).length,
           })
         } catch (error) {
@@ -502,7 +508,8 @@ function buildOutlineBuilderWorkflow({
               runId,
               outcome: 'failed',
               cardCount: 0,
-              chapterCount: 0,
+              generatedCount: 0,
+              skippedCount: 0,
               notFinishedCount: 0,
             })
           }
@@ -545,7 +552,8 @@ function showCardGenerationToast({
   runId,
   outcome,
   cardCount,
-  chapterCount,
+  generatedCount,
+  skippedCount,
   notFinishedCount,
 }: {
   host: YoloModuleHostApiV1
@@ -554,20 +562,29 @@ function showCardGenerationToast({
   runId: string
   outcome: 'success' | 'partial' | 'failed'
   cardCount: number
-  chapterCount: number
+  generatedCount: number
+  skippedCount: number
   notFinishedCount: number
 }): void {
   const t = createLearningTranslation(host.i18n.getSnapshot().locale)
   const mode = outcome === 'success' ? '学习' : '浏览'
   const copy =
     outcome === 'success'
-      ? {
-          tone: 'success' as const,
-          title: t('cards.generationCompleteTitle'),
-          message: t('cards.generationCompleteSummary')
-            .replace('{chapters}', String(chapterCount))
-            .replace('{cards}', String(cardCount)),
-        }
+      ? skippedCount > 0
+        ? {
+            tone: 'success' as const,
+            title: t('cards.generationCompleteTitle'),
+            message: t('cards.generationExistingSummary')
+              .replace('{chapters}', String(generatedCount + skippedCount))
+              .replace('{cards}', String(cardCount)),
+          }
+        : {
+            tone: 'success' as const,
+            title: t('cards.generationCompleteTitle'),
+            message: t('cards.generationCompleteSummary')
+              .replace('{chapters}', String(generatedCount))
+              .replace('{cards}', String(cardCount)),
+          }
       : outcome === 'partial'
         ? {
             tone: 'warning' as const,

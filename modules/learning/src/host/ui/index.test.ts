@@ -475,6 +475,34 @@ describe('createLearningUiServices memory host', () => {
     expect(openProjectCards).toHaveBeenCalledWith(projectId, '学习')
   })
 
+  it('uses the existing-cards summary when some chapters were skipped', async () => {
+    const memory = new MemoryLearningHost()
+    memory.agentText = '## Point one\n\nA durable explanation.'
+    const { runtime } = createRuntime()
+    const openProjectCards = jest.fn()
+    generateCardsParallelMock.mockImplementation(async (options) => {
+      const generated = cardResult('generated', [
+        cardEvent(options.runId ?? '', options.projectId ?? '').card,
+      ])
+      const skipped = cardResult('skipped')
+      options.onChapterSettled?.(generated)
+      options.onChapterSettled?.(skipped)
+      return [generated, skipped]
+    })
+    const services = createLearningUiServices(memory.api, {
+      runtime: runtime as never,
+      ownerDocument: {} as Document,
+      generation: { openProjectCards },
+    })
+    await services
+      .createOutlineBuilderWorkflow()
+      .generateProject(projectGenerationInput())
+    expect(memory.actionToasts[0]).toMatchObject({ tone: 'success' })
+    expect(memory.actionToasts[0].message).toBe(
+      'Cards for 2 chapters are ready; 1 new cards were added.',
+    )
+  })
+
   it('reports partial card generation and targets browsing', async () => {
     const memory = new MemoryLearningHost()
     memory.agentText = '## Point one\n\nA durable explanation.'
