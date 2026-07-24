@@ -147,7 +147,9 @@ function parsePartialOutline(text: string): Outline {
   return {
     projectName: extractStringField(text, 'projectName'),
     projectGoal: extractStringField(text, 'projectGoal'),
-    outputLanguage: parseOutputLanguage(extractStringField(text, 'outputLanguage')),
+    outputLanguage: parseOutputLanguage(
+      extractStringField(text, 'outputLanguage'),
+    ),
     chapters: extractChapters(text),
     estimatedKnowledgePoints: match ? Number(match[1]) : 0,
   }
