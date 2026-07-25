@@ -353,7 +353,7 @@ describe('executeSingleTurn', () => {
                     id: 'tool-read-1',
                     type: 'function',
                     function: {
-                      name: 'yolo_local__fs_read',
+                      name: 'test__nested_object',
                       arguments: '{"paths":["foo.md"],"operation":',
                     },
                   },
@@ -407,7 +407,7 @@ describe('executeSingleTurn', () => {
     expect(result.toolCalls).toEqual([
       {
         id: 'tool-read-1',
-        name: 'yolo_local__fs_read',
+        name: 'test__nested_object',
         arguments: completeArgs(
           {
             paths: ['foo.md'],

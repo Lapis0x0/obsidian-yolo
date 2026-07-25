@@ -956,7 +956,7 @@ describe('local fs tool action helpers', () => {
     })
   })
 
-  it('supports fs_read full operation', async () => {
+  it('reads the full file when range fields are omitted', async () => {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
       stat: { size: 20 },
@@ -974,9 +974,6 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_read',
       args: {
         paths: ['note.md'],
-        operation: {
-          type: 'full',
-        },
       },
     })
 
@@ -1012,7 +1009,7 @@ describe('local fs tool action helpers', () => {
     })
   })
 
-  it('defaults fs_read to full operation when operation is omitted', async () => {
+  it('defaults fs_read to a full read', async () => {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
       stat: { size: 20 },
@@ -1095,12 +1092,9 @@ describe('local fs tool action helpers', () => {
         toolName: 'fs_read',
         args: {
           paths: [pagePath],
-          operation: {
-            type: 'lines',
-            startLine: 2,
-            maxLines: 1,
-            format: 'readable',
-          },
+          startLine: 2,
+          maxLines: 1,
+          format: 'readable',
         },
       })
 
@@ -1159,9 +1153,6 @@ describe('local fs tool action helpers', () => {
         toolName: 'fs_read',
         args: {
           paths: [pagePath],
-          operation: {
-            type: 'full',
-          },
         },
       })
 
@@ -1195,10 +1186,7 @@ describe('local fs tool action helpers', () => {
         toolName: 'fs_read',
         args: {
           paths: [pagePath],
-          operation: {
-            type: 'full',
-            format: 'key_visible_info',
-          },
+          format: 'key_visible_info',
         },
       })
 
@@ -1219,7 +1207,6 @@ describe('local fs tool action helpers', () => {
         toolName: 'fs_read',
         args: {
           paths: [pagePath],
-          operation: { type: 'full' },
         },
       })
 
@@ -1294,9 +1281,6 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_read',
       args: {
         paths: [hiddenPath],
-        operation: {
-          type: 'full',
-        },
       },
       allowedSkillPaths: [hiddenPath],
       settings: {} as YoloSettings,
@@ -1367,7 +1351,6 @@ describe('local fs tool action helpers', () => {
         toolName: 'fs_read',
         args: {
           paths: ['note.md'],
-          operation: { type: 'full' as const },
         },
         settings,
         chatModelId: modelId,
@@ -1446,9 +1429,6 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_read',
       args: {
         paths: ['long-note.md'],
-        operation: {
-          type: 'full',
-        },
       },
     })
 
@@ -1494,11 +1474,8 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_read',
       args: {
         paths: ['note.md'],
-        operation: {
-          type: 'lines',
-          startLine: 2,
-          maxLines: 2,
-        },
+        startLine: 2,
+        maxLines: 2,
       },
     })
 
@@ -1536,7 +1513,7 @@ describe('local fs tool action helpers', () => {
     })
   })
 
-  it('rejects removed top-level fs_read line arguments', async () => {
+  it('rejects removed nested fs_read arguments', async () => {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
       stat: { size: 20 },
@@ -1553,19 +1530,78 @@ describe('local fs tool action helpers', () => {
       toolName: 'fs_read',
       args: {
         paths: ['note.md'],
-        startLine: 1,
-        maxLines: 2,
+        operation: {
+          type: 'lines',
+          startLine: 1,
+          maxLines: 2,
+        },
       },
     })
 
     expect(result.status).toBe(ToolCallResponseStatus.Error)
     if (result.status === ToolCallResponseStatus.Error) {
-      expect(result.error).toContain('operation must be a nested JSON object')
+      expect(result.error).toContain('fs_read uses flat range parameters')
+    }
+  })
+
+  it('rejects the removed top-level fs_read type discriminator', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: { getFileByPath: jest.fn() },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        type: 'lines',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain('fs_read uses flat range parameters')
+    }
+  })
+
+  it('requires startLine for a targeted fs_read', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: { getFileByPath: jest.fn() },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        maxLines: 20,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain('startLine is required')
+    }
+  })
+
+  it('rejects ambiguous endLine and maxLines combinations', async () => {
+    const result = await callLocalFileTool({
+      app: {
+        vault: { getFileByPath: jest.fn() },
+      } as unknown as App,
+      toolName: 'fs_read',
+      args: {
+        paths: ['note.md'],
+        startLine: 1,
+        endLine: 10,
+        maxLines: 10,
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toContain('cannot be used together')
     }
   })
 
   describe('fs_read modality parsing', () => {
-    const callRead = async (operation: unknown) => {
+    const callRead = async (readArgs: Record<string, unknown>) => {
       const file = Object.assign(new TFile(), {
         path: 'note.md',
         stat: { size: 5 },
@@ -1579,7 +1615,7 @@ describe('local fs tool action helpers', () => {
           },
         } as unknown as App,
         toolName: 'fs_read',
-        args: { paths: ['note.md'], operation },
+        args: { paths: ['note.md'], ...readArgs },
       })
     }
 
@@ -1601,36 +1637,24 @@ describe('local fs tool action helpers', () => {
     }
 
     it('echoes undefined when modality is omitted', async () => {
-      expectModality(await callRead({ type: 'full' }), undefined)
+      expectModality(await callRead({}), undefined)
     })
 
     it('treats null / empty / whitespace-only modality as omitted', async () => {
-      expectModality(
-        await callRead({ type: 'full', modality: null }),
-        undefined,
-      )
-      expectModality(
-        await callRead({ type: 'full', modality: '   ' }),
-        undefined,
-      )
+      expectModality(await callRead({ modality: null }), undefined)
+      expectModality(await callRead({ modality: '   ' }), undefined)
     })
 
     it('accepts modality case-insensitively and trims whitespace', async () => {
-      expectModality(
-        await callRead({ type: 'full', modality: 'IMAGE' }),
-        'image',
-      )
-      expectModality(
-        await callRead({ type: 'full', modality: '  Text  ' }),
-        'text',
-      )
+      expectModality(await callRead({ modality: 'IMAGE' }), 'image')
+      expectModality(await callRead({ modality: '  Text  ' }), 'text')
     })
 
     it('rejects non-string modality values', async () => {
-      const result = await callRead({ type: 'full', modality: 123 })
+      const result = await callRead({ modality: 123 })
       expect(result.status).toBe(ToolCallResponseStatus.Error)
       if (result.status === ToolCallResponseStatus.Error) {
-        expect(result.error).toMatch(/operation\.modality must be/)
+        expect(result.error).toMatch(/modality must be/)
       }
     })
 
@@ -1638,10 +1662,10 @@ describe('local fs tool action helpers', () => {
       // 'pdf' is intentionally NOT in this list — it's a valid value used by
       // the PDF-capable schema branch.
       for (const bad of ['video', 'auto', 'random-junk']) {
-        const result = await callRead({ type: 'full', modality: bad })
+        const result = await callRead({ modality: bad })
         expect(result.status).toBe(ToolCallResponseStatus.Error)
         if (result.status === ToolCallResponseStatus.Error) {
-          expect(result.error).toMatch(/operation\.modality must be/)
+          expect(result.error).toMatch(/modality must be/)
         }
       }
     })
@@ -1650,10 +1674,7 @@ describe('local fs tool action helpers', () => {
       // Non-PDF files ignore modality at the rendering layer (no image branch
       // exists for .md), but the request payload still echoes what the model
       // asked for, so silent no-ops remain observable.
-      expectModality(
-        await callRead({ type: 'full', modality: 'image' }),
-        'image',
-      )
+      expectModality(await callRead({ modality: 'image' }), 'image')
     })
   })
 
@@ -3037,14 +3058,16 @@ describe('delegate_subagent model selection', () => {
 describe('fs_read modality schema is tailored per model capability', () => {
   type FsReadInputSchema = {
     properties?: {
-      operation?: {
-        properties?: {
-          modality?: {
-            type?: string
-            enum?: string[]
-            description?: string
-          }
-        }
+      operation?: unknown
+      type?: unknown
+      startLine?: unknown
+      endLine?: unknown
+      maxLines?: unknown
+      format?: unknown
+      modality?: {
+        type?: string
+        enum?: string[]
+        description?: string
       }
     }
   }
@@ -3053,8 +3076,26 @@ describe('fs_read modality schema is tailored per model capability', () => {
     const fsRead = tools.find((t) => t.name === 'fs_read')
     if (!fsRead) throw new Error('fs_read not found')
     const schema = fsRead.inputSchema as FsReadInputSchema
-    return schema.properties?.operation?.properties?.modality
+    return schema.properties?.modality
   }
+
+  it('exposes one flat read contract without operation or type', () => {
+    const fsRead = getLocalFileTools().find((tool) => tool.name === 'fs_read')
+    if (!fsRead) throw new Error('fs_read not found')
+    const schema = fsRead.inputSchema as FsReadInputSchema
+
+    expect(schema.properties).toEqual(
+      expect.objectContaining({
+        startLine: expect.any(Object),
+        endLine: expect.any(Object),
+        maxLines: expect.any(Object),
+        format: expect.any(Object),
+        modality: expect.any(Object),
+      }),
+    )
+    expect(schema.properties?.operation).toBeUndefined()
+    expect(schema.properties?.type).toBeUndefined()
+  })
 
   it('exposes the full superset (text/image/pdf) when no model context is passed', () => {
     // The UI / persistence call sites use this branch so the user-facing
@@ -3176,7 +3217,7 @@ describe('fs_read PDF vision-downgrade warning', () => {
       toolCallId: 'tc-pdf',
       args: {
         paths: ['doc.pdf'],
-        operation: { type: 'full', modality },
+        modality,
       },
       settings: buildSettings(modalities),
       chatModelId: 'provider/model',
@@ -3315,11 +3356,7 @@ describe('fs_read PDF native slice', () => {
     endLine = 2,
   ) => {
     const file = makePdfFile()
-    const baseOp =
-      operationType === 'full'
-        ? { type: 'full' as const }
-        : { type: 'lines' as const, startLine, endLine }
-    const operation = modality === undefined ? baseOp : { ...baseOp, modality }
+    const rangeArgs = operationType === 'full' ? {} : { startLine, endLine }
     return callLocalFileTool({
       app: {
         vault: {
@@ -3332,7 +3369,8 @@ describe('fs_read PDF native slice', () => {
       toolCallId: 'tc-pdf-native',
       args: {
         paths: ['report.pdf'],
-        operation,
+        ...rangeArgs,
+        ...(modality === undefined ? {} : { modality }),
       },
       settings: buildSettings(modalities),
       chatModelId: 'provider/model',
@@ -3414,12 +3452,9 @@ describe('fs_read PDF native slice', () => {
       toolCallId: 'tc-no-model',
       args: {
         paths: ['report.pdf'],
-        operation: {
-          type: 'lines',
-          startLine: 1,
-          endLine: 2,
-          // modality intentionally omitted
-        },
+        startLine: 1,
+        endLine: 2,
+        // modality intentionally omitted
       },
       // No settings / chatModelId supplied
     })
@@ -3489,11 +3524,8 @@ describe('fs_read PDF native slice', () => {
       toolCallId: 'tc-no-endline',
       args: {
         paths: ['report.pdf'],
-        operation: {
-          type: 'lines',
-          startLine: 2,
-          // endLine and modality intentionally omitted
-        },
+        startLine: 2,
+        // endLine, maxLines, and modality intentionally omitted
       },
       settings: buildSettings(['text', 'vision', 'pdf']),
       chatModelId: 'provider/model',
@@ -3507,6 +3539,33 @@ describe('fs_read PDF native slice', () => {
     expect(sliceMock).toHaveBeenCalledWith(expect.any(Uint8Array), {
       startPage: 2,
       endPage: 2,
+    })
+  })
+
+  it('treats maxLines as a page count for PDF reads', async () => {
+    const file = makePdfFile()
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(file),
+          readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(4)),
+        },
+      } as unknown as App,
+      toolName: 'fs_read',
+      toolCallId: 'tc-max-pages',
+      args: {
+        paths: ['report.pdf'],
+        startLine: 2,
+        maxLines: 2,
+      },
+      settings: buildSettings(['text', 'vision', 'pdf']),
+      chatModelId: 'provider/model',
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    expect(sliceMock).toHaveBeenCalledWith(expect.any(Uint8Array), {
+      startPage: 2,
+      endPage: 3,
     })
   })
 
@@ -3589,7 +3648,7 @@ describe('fs_read PDF native slice', () => {
         toolCallId: 'tc-invalid-modality',
         args: {
           paths: ['report.pdf'],
-          operation: { type: 'full', modality: invalidValue },
+          modality: invalidValue,
         },
         settings: buildSettings(['text', 'vision', 'pdf']),
         chatModelId: 'provider/model',

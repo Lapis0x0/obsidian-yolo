@@ -135,9 +135,6 @@ describe('McpManager mobile built-in tool behavior', () => {
         name: 'yolo_local__fs_read',
         args: {
           paths: ['note.md'],
-          operation: {
-            type: 'full',
-          },
         },
       }),
     ).resolves.toMatchObject({

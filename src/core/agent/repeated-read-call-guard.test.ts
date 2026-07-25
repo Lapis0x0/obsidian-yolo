@@ -105,7 +105,7 @@ describe('repeated read call guard', () => {
         id: 'call-1',
         args: {
           paths: ['Daily.md'],
-          operation: { type: 'lines', startLine: 1 },
+          startLine: 1,
         },
       },
     ])
@@ -113,7 +113,7 @@ describe('repeated read call guard', () => {
       {
         id: 'call-2',
         args: {
-          operation: { startLine: 1, type: 'lines' },
+          startLine: 1,
           paths: ['Daily.md'],
         },
       },
@@ -124,7 +124,7 @@ describe('repeated read call guard', () => {
         id: 'call-3',
         args: {
           paths: ['Daily.md'],
-          operation: { type: 'lines', startLine: 1 },
+          startLine: 1,
         },
       },
     ])
@@ -142,7 +142,7 @@ describe('repeated read call guard', () => {
         id: 'call-3',
         args: {
           paths: ['Daily.md'],
-          operation: { type: 'lines', startLine: 1 },
+          startLine: 1,
         },
       },
     ])

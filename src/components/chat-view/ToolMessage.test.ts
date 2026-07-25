@@ -163,7 +163,7 @@ describe('ToolMessage rendering', () => {
                 arguments: createCompleteToolCallArguments({
                   value: {
                     paths: ['docs/large.md'],
-                    operation: { type: 'lines', startLine: 1 },
+                    startLine: 1,
                     padding: 'x'.repeat(100_000),
                   },
                 }),
@@ -444,9 +444,6 @@ describe('ToolMessage headline helpers', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               paths: ['docs/plan.md'],
-              operation: {
-                type: 'full',
-              },
             },
           }),
         },
@@ -476,7 +473,6 @@ describe('ToolMessage headline helpers', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               paths: ['docs/one.md', 'docs/two.md'],
-              operation: { type: 'full' },
             },
           }),
         },
@@ -509,7 +505,6 @@ describe('ToolMessage headline helpers', () => {
                 'docs/four.md',
                 'docs/five.md',
               ],
-              operation: { type: 'full' },
             },
           }),
         },
@@ -536,10 +531,7 @@ describe('ToolMessage headline helpers', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               paths: ['docs/plan.md'],
-              operation: {
-                type: 'lines',
-                startLine: 12,
-              },
+              startLine: 12,
             },
           }),
         },
@@ -584,10 +576,7 @@ describe('ToolMessage headline helpers', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               paths: ['docs/paper.pdf'],
-              operation: {
-                type: 'lines',
-                startLine: 1,
-              },
+              startLine: 1,
             },
           }),
         },
@@ -634,7 +623,7 @@ describe('ToolMessage headline helpers', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               paths: ['docs/large.md'],
-              operation: { type: 'lines', startLine: 1 },
+              startLine: 1,
             },
           }),
         },
@@ -670,7 +659,7 @@ describe('ToolMessage headline helpers', () => {
           arguments: createCompleteToolCallArguments({
             value: {
               paths: ['docs/plan.md'],
-              operation: { type: 'lines', startLine: 12 },
+              startLine: 12,
             },
           }),
         },

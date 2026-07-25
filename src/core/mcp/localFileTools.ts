@@ -247,7 +247,7 @@ type FsReadOperation =
       type: 'lines'
       startLine: number
       endLine?: number
-      maxLines: number
+      maxLines?: number
       modality?: FsReadModality
       format?: BrowserReadFormat
     }
@@ -356,10 +356,6 @@ const asErrorMessage = (error: unknown): string => {
     return error.message
   }
   return typeof error === 'string' ? error : JSON.stringify(error)
-}
-
-const asOptionalString = (value: unknown): string => {
-  return typeof value === 'string' ? value : ''
 }
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
@@ -572,7 +568,8 @@ const sliceLinesForFsReadOperation = (
   const startIndex = Math.min(Math.max(operation.startLine - 1, 0), totalLines)
   const endExclusive = Math.min(
     totalLines,
-    operation.endLine ?? startIndex + operation.maxLines,
+    operation.endLine ??
+      startIndex + (operation.maxLines ?? DEFAULT_READ_MAX_LINES),
   )
   const selectedLines = lines.slice(startIndex, endExclusive)
   const outputContent = selectedLines
@@ -764,7 +761,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_read',
       description:
-        'Read vault files, skill instructions, or open Obsidian web pages. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Prefer lines for targeted reads. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
+        'Read vault files, skill instructions, or open Obsidian web pages. Omit range fields for a full read. For a targeted read, pass startLine and optionally endLine or maxLines. Lines are 1-based; for PDFs they are page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -775,39 +772,28 @@ export function getLocalFileTools(options?: {
             },
             description: `Vault-relative file paths, skill paths (builtin://), or browser://<page_id> copied exactly from <browser_context>. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
           },
-          operation: {
-            type: 'object',
+          startLine: {
+            type: 'integer',
             description:
-              'Read strategy. Omit for full. full: whole file/page. lines: targeted range (PDFs use page numbers). format applies only to browser:// paths.',
-            properties: {
-              type: {
-                type: 'string',
-                enum: ['full', 'lines'],
-              },
-              startLine: {
-                type: 'integer',
-                description: `Start line/page (1-based). Defaults to ${DEFAULT_READ_START_LINE}.`,
-              },
-              endLine: {
-                type: 'integer',
-                description:
-                  'Inclusive end line/page. If set, maxLines is ignored.',
-              },
-              maxLines: {
-                type: 'integer',
-                description:
-                  'Max lines/pages in the range when endLine is unset.',
-              },
-              format: {
-                type: 'string',
-                enum: ['readable', 'key_visible_info'],
-                description:
-                  'Browser pages only. key_visible_info (default): compact visible headings, text blocks, tables, code, and formulas — prefer for long pages. readable: fuller Markdown-like text.',
-              },
-              ...(modalitySchema ? { modality: modalitySchema } : {}),
-            },
-            required: ['type'],
+              'Start line/page (1-based). Providing this selects a targeted read; omit all range fields for a full read.',
           },
+          endLine: {
+            type: 'integer',
+            description:
+              'Inclusive end line/page. Requires startLine and cannot be combined with maxLines.',
+          },
+          maxLines: {
+            type: 'integer',
+            description:
+              'Maximum lines/pages to return. Requires startLine and cannot be combined with endLine. When both endLine and maxLines are omitted, text-like content defaults to 50 lines and PDFs default to one page.',
+          },
+          format: {
+            type: 'string',
+            enum: ['readable', 'key_visible_info'],
+            description:
+              'Browser pages only. key_visible_info (default): compact visible headings, text blocks, tables, code, and formulas — prefer for long pages. readable: fuller Markdown-like text.',
+          },
+          ...(modalitySchema ? { modality: modalitySchema } : {}),
         },
         required: ['paths'],
       },
@@ -2137,27 +2123,11 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
 }
 
 const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
-  const topLevelOperationKeys = [
-    'type',
-    'startLine',
-    'endLine',
-    'maxLines',
-    'format',
-    'modality',
-  ]
-  const hasTopLevelOperationKey = topLevelOperationKeys.some(
-    (key) => args[key] !== undefined,
-  )
-
-  if (
-    (args.operation === undefined || args.operation === null) &&
-    !hasTopLevelOperationKey
-  ) {
-    return { type: 'full' }
+  if (args.operation !== undefined || args.type !== undefined) {
+    throw new Error(
+      'fs_read uses flat range parameters. Omit range fields for a full read, or pass startLine with optional endLine or maxLines.',
+    )
   }
-
-  const parsedOperation = coerceOperationObject(args.operation)
-  const type = asOptionalString(parsedOperation.type).trim().toLowerCase()
 
   // Strict modality parsing: accept undefined / null / empty string (→ unset,
   // use default per active model) or one of 'text' / 'image' / 'pdf'. Numbers,
@@ -2171,12 +2141,12 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
   // request to a sensible effective modality given the active model — a
   // model that somehow sends 'image' to a PDF-capable model gets upgraded to
   // native PDF rather than rejected, which is the more conservative path.
-  const rawModalityValue = parsedOperation.modality
+  const rawModalityValue = args.modality
   let modality: FsReadModality | undefined
   if (rawModalityValue !== undefined && rawModalityValue !== null) {
     if (typeof rawModalityValue !== 'string') {
       throw new Error(
-        "operation.modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
+        "modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
       )
     }
     const normalized = rawModalityValue.trim().toLowerCase()
@@ -2190,17 +2160,17 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
       modality = normalized
     } else {
       throw new Error(
-        "operation.modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
+        "modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
       )
     }
   }
 
   let format: BrowserReadFormat | undefined
-  const rawFormatValue = parsedOperation.format
+  const rawFormatValue = args.format
   if (rawFormatValue !== undefined && rawFormatValue !== null) {
     if (typeof rawFormatValue !== 'string') {
       throw new Error(
-        "operation.format must be 'readable' or 'key_visible_info' (or omitted).",
+        "format must be 'readable' or 'key_visible_info' (or omitted).",
       )
     }
     const normalizedFormat = rawFormatValue.trim().toLowerCase()
@@ -2213,62 +2183,67 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
       format = normalizedFormat
     } else {
       throw new Error(
-        "operation.format must be 'readable' or 'key_visible_info' (or omitted).",
+        "format must be 'readable' or 'key_visible_info' (or omitted).",
       )
     }
   }
 
-  if (type === 'full') {
+  const hasStartLine = args.startLine !== undefined
+  const hasEndLine = args.endLine !== undefined
+  const hasMaxLines = args.maxLines !== undefined
+  const hasRange = hasStartLine || hasEndLine || hasMaxLines
+
+  if (!hasRange) {
     return { type: 'full', modality, format }
   }
 
-  if (type === 'lines') {
-    const startLine = getOptionalIntegerArg({
-      args: parsedOperation,
-      key: 'startLine',
-      defaultValue: DEFAULT_READ_START_LINE,
-      min: 1,
-      max: MAX_READ_LINE_INDEX,
-    })
-
-    const maxLines = getOptionalIntegerArg({
-      args: parsedOperation,
-      key: 'maxLines',
-      defaultValue: DEFAULT_READ_MAX_LINES,
-      min: 1,
-      max: MAX_READ_MAX_LINES,
-    })
-
-    const endLine = getOptionalBoundedIntegerArg({
-      args: parsedOperation,
-      key: 'endLine',
-      min: 1,
-      max: MAX_READ_LINE_INDEX,
-    })
-
-    if (endLine !== undefined && endLine < startLine) {
-      throw new Error(
-        'operation.endLine must be greater than or equal to operation.startLine.',
-      )
-    }
-
-    if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
-      throw new Error(
-        `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
-      )
-    }
-
-    return {
-      type: 'lines',
-      startLine,
-      endLine,
-      maxLines,
-      modality,
-      format,
-    }
+  if (!hasStartLine) {
+    throw new Error('startLine is required when endLine or maxLines is set.')
+  }
+  if (hasEndLine && hasMaxLines) {
+    throw new Error('endLine and maxLines cannot be used together.')
   }
 
-  throw new Error('operation.type must be one of: full, lines.')
+  const startLine = getOptionalIntegerArg({
+    args,
+    key: 'startLine',
+    defaultValue: DEFAULT_READ_START_LINE,
+    min: 1,
+    max: MAX_READ_LINE_INDEX,
+  })
+  const endLine = getOptionalBoundedIntegerArg({
+    args,
+    key: 'endLine',
+    min: 1,
+    max: MAX_READ_LINE_INDEX,
+  })
+  const maxLines = hasMaxLines
+    ? getOptionalIntegerArg({
+        args,
+        key: 'maxLines',
+        defaultValue: DEFAULT_READ_MAX_LINES,
+        min: 1,
+        max: MAX_READ_MAX_LINES,
+      })
+    : undefined
+
+  if (endLine !== undefined && endLine < startLine) {
+    throw new Error('endLine must be greater than or equal to startLine.')
+  }
+  if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
+    throw new Error(
+      `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
+    )
+  }
+
+  return {
+    type: 'lines',
+    startLine,
+    endLine,
+    maxLines,
+    modality,
+    format,
+  }
 }
 
 const ensureParentFolderExists = async (
@@ -3341,11 +3316,15 @@ export async function callLocalFileTool({
             if (resolvedModality === 'pdf') {
               const reqStart =
                 operation.type === 'lines' ? operation.startLine : 1
-              // lines 模式无 endLine 时语义与 image/text 分支一致：只读单页。
+              // 范围读取显式给 maxLines 时按页数计算；未给 endLine/maxLines
+              // 时保留低成本探查语义，只读 startLine 对应的单页。
               // full 模式的 endPage 留空，由 slicePdfPages 自动取到文档末页。
               const reqEnd =
                 operation.type === 'lines'
-                  ? (operation.endLine ?? operation.startLine)
+                  ? (operation.endLine ??
+                    (operation.maxLines !== undefined
+                      ? operation.startLine + operation.maxLines - 1
+                      : operation.startLine))
                   : undefined
 
               // Attempt to slice the PDF. slicePdfPages loads the source once
@@ -3501,15 +3480,18 @@ export async function callLocalFileTool({
             if (resolvedModality === 'image') {
               // Mirror text-mode semantics where it makes sense:
               //   - `full`  → render every page (matches "full = whole file").
-              //   - `lines` without `endLine` → render only `startLine`. This
-              //     gives the model a cheap peek that returns `totalPages`,
-              //     so it can ask for a precise range on the next call
-              //     instead of guessing.
+              //   - targeted read with maxLines → render that many pages.
+              //   - targeted read without endLine/maxLines → render only
+              //     startLine. This gives the model a cheap peek that returns
+              //     totalPages before it asks for a precise range.
               const reqStart =
                 operation.type === 'lines' ? operation.startLine : 1
               const reqEnd =
                 operation.type === 'lines'
-                  ? (operation.endLine ?? operation.startLine)
+                  ? (operation.endLine ??
+                    (operation.maxLines !== undefined
+                      ? operation.startLine + operation.maxLines - 1
+                      : operation.startLine))
                   : undefined
 
               let renderResult: Awaited<
@@ -3614,20 +3596,21 @@ export async function callLocalFileTool({
             let rangeEndPageInclusive = totalPageCount
             if (operation.type === 'lines') {
               rangeStartPage = operation.startLine
-              // PDF defaults to a single page when endLine is omitted —
-              // a PDF page carries far more content than a markdown line,
-              // so the markdown-style `maxLines=50` default is too aggressive
-              // here. The model can paginate explicitly when it wants more.
+              // PDF defaults to a single page when neither endLine nor
+              // maxLines is provided — a PDF page carries far more content
+              // than a markdown line. Explicit maxLines counts pages.
               rangeEndPageInclusive = Math.min(
-                operation.endLine ?? rangeStartPage,
+                operation.endLine ??
+                  (operation.maxLines !== undefined
+                    ? rangeStartPage + operation.maxLines - 1
+                    : rangeStartPage),
                 totalPageCount,
               )
               if (rangeEndPageInclusive < rangeStartPage) {
                 results.push({
                   path,
                   ok: false,
-                  error:
-                    'operation.endLine must be greater than or equal to operation.startLine.',
+                  error: 'endLine must be greater than or equal to startLine.',
                 })
                 continue
               }
