@@ -126,7 +126,7 @@ button.yolo-module-shelf-action:focus-visible,
 }
 
 .yolo-module-shelf-header {
-  margin-bottom: var(--size-4-6);
+  margin-bottom: 6px;
 }
 
 .yolo-module-shelf-header h2 {
@@ -152,6 +152,7 @@ button.yolo-module-shelf-action:focus-visible,
 
 .yolo-module-shelf-group h3 {
   margin: 0;
+  padding: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);

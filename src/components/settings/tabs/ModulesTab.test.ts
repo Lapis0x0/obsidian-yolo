@@ -15,6 +15,7 @@ import {
   getModuleManagementView,
   getModuleShelfActions,
   getRetryAction,
+  getVisibleRuntimeComponentStatus,
   hasModuleUpdate,
   partitionModules,
   projectModuleSettingsNavigation,
@@ -274,5 +275,25 @@ describe('module shelf projections', () => {
     expect(getModuleManagementView({ status: 'error', modules: [] })).toBe(
       'error',
     )
+  })
+})
+
+describe('runtime component status presentation', () => {
+  it.each(['downloading', 'failed'] as const)(
+    'shows the actionable %s status',
+    (status) => {
+      expect(getVisibleRuntimeComponentStatus(status)).toBe(status)
+    },
+  )
+
+  it.each([
+    'missing',
+    'ready',
+    'loading',
+    'active',
+    'quiescing',
+    'disabled',
+  ] as const)('hides the internal %s status', (status) => {
+    expect(getVisibleRuntimeComponentStatus(status)).toBeUndefined()
   })
 })

@@ -258,8 +258,7 @@ export const zh: TranslationKeys = {
       },
       runtimeComponents: {
         title: '运行组件',
-        description:
-          '核心引擎会在本机后台安装，并且只在相关功能实际使用时加载。',
+        description: '这些组件将会为 YOLO 的某些功能提供支持。',
         tokenizer: {
           name: '分词器',
           description: '为 Agent 上下文和工具计算 token 数量。',

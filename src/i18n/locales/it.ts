@@ -309,7 +309,7 @@ export const it: DeepPartial<TranslationKeys> = {
       runtimeComponents: {
         title: 'Componenti runtime',
         description:
-          'I motori principali vengono installati in background sul dispositivo e caricati solo quando servono.',
+          'Questi componenti supportano alcune funzionalità di YOLO.',
         tokenizer: {
           name: 'Tokenizer',
           description: 'Conta i token del contesto e degli strumenti Agent.',

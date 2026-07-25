@@ -289,8 +289,7 @@ export const en: TranslationKeys = {
       },
       runtimeComponents: {
         title: 'Runtime components',
-        description:
-          'Core engines are installed on this device in the background and loaded only when a feature needs them.',
+        description: 'These components support certain YOLO features.',
         tokenizer: {
           name: 'Tokenizer',
           description: 'Counts context and tool tokens for Agent workflows.',

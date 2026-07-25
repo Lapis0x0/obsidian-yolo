@@ -21,6 +21,7 @@ import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modul
 import type {
   RuntimeComponentRecord,
   RuntimeComponentService,
+  RuntimeComponentStatus,
 } from '../../../core/runtime-components'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ModuleSettingsSection } from '../sections/ModuleSettingsSection'
@@ -478,11 +479,13 @@ function RuntimeComponentsPanel({
             <div className="yolo-module-shelf-row-copy">
               <div className="yolo-module-shelf-row-heading">
                 <strong>{t(record.descriptor.nameKey)}</strong>
-                <span className="yolo-module-shelf-version">
-                  {t(
-                    `settings.modules.runtimeComponents.statuses.${record.status}`,
-                  )}
-                </span>
+                {getVisibleRuntimeComponentStatus(record.status) ? (
+                  <span className="yolo-module-shelf-version">
+                    {t(
+                      `settings.modules.runtimeComponents.statuses.${record.status}`,
+                    )}
+                  </span>
+                ) : null}
               </div>
               <p>{t(record.descriptor.descriptionKey)}</p>
               {record.error || errors[record.descriptor.id] ? (
@@ -506,6 +509,12 @@ function RuntimeComponentsPanel({
       </div>
     </section>
   )
+}
+
+export function getVisibleRuntimeComponentStatus(
+  status: RuntimeComponentStatus,
+): 'downloading' | 'failed' | undefined {
+  return status === 'downloading' || status === 'failed' ? status : undefined
 }
 
 function runtimeComponentIcon(componentId: string): string {
