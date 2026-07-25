@@ -240,6 +240,81 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     )
   })
 
+  it('marks selected vault text with its source range', async () => {
+    const file = createMockFile('notes/selected.md')
+    const app = createMockApp({
+      files: [file],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compileUserMessagePrompt({
+      message: {
+        ...createUserMessage([
+          {
+            type: 'block',
+            file,
+            content: 'Alpha\nBeta',
+            startLine: 12,
+            endLine: 13,
+          },
+        ]),
+        content: createTextEditorState('Explain this selection'),
+      },
+    })
+
+    expect(getTextContent(result.promptContent)).toContain(
+      [
+        '<user_selected_content path="notes/selected.md" startLine="12" endLine="13">',
+        '```notes/selected.md',
+        '12|Alpha',
+        '13|Beta',
+        '```',
+        '</user_selected_content>',
+      ].join('\n'),
+    )
+  })
+
+  it('marks PDF and table selections with source-specific metadata', async () => {
+    const pdf = createMockFile('docs/paper.pdf')
+    const table = createMockFile('notes/table.md')
+    const app = createMockApp({
+      files: [pdf, table],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compilePlainUserMessagePrompt({
+      prompt: 'Compare these selections',
+      mentionables: [
+        {
+          type: 'block',
+          file: pdf,
+          content: 'Selected PDF text',
+          startLine: 0,
+          endLine: 0,
+          pageNumber: 3,
+        },
+        {
+          type: 'block',
+          file: table,
+          content: '| A | B |\n| - | - |',
+          startLine: 20,
+          endLine: 21,
+          contentFormat: 'markdown-table',
+        },
+      ],
+    })
+
+    const textContent = getTextContent(result.promptContent)
+    expect(textContent).toContain(
+      '<user_selected_content path="docs/paper.pdf" page="3">',
+    )
+    expect(textContent).toContain(
+      '<user_selected_content path="notes/table.md" startLine="20" endLine="21" format="markdown-table">',
+    )
+  })
+
   it('reuses file mention compilation for plain prompts', async () => {
     const explicitFile = createMockFile('notes/explicit.md')
     const app = createMockApp({
@@ -2028,6 +2103,12 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
     const systemContent = getSystemContent(messages)
     expect(systemContent).toContain('You have access to tools')
+    expect(systemContent).toContain(
+      'Before calling file-reading tools, use relevant content already present in the conversation, especially <user_selected_content> and prior tool results.',
+    )
+    expect(systemContent).toContain(
+      'Do not re-read the same or an overlapping range; if more context is necessary, read only the smallest missing range.',
+    )
     expect(systemContent).not.toContain(
       'If available skills are listed, use yolo_local__fs_read',
     )
