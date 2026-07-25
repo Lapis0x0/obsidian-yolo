@@ -201,7 +201,7 @@ button.yolo-module-shelf-action:focus-visible,
 .yolo-module-shelf-row-copy p {
   width: 100%;
   max-width: 60ch;
-  margin: var(--size-4-1) 0 0;
+  margin: 0;
   overflow: hidden;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
