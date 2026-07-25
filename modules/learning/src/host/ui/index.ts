@@ -24,7 +24,6 @@ import {
   validateReferenceFile,
   writeReferenceToStaging,
 } from '../../generation/referenceStaging'
-import { createLearningTranslation } from '../../i18n'
 import type { CardsViewServices } from '../../ui/cards/CardsView'
 import type { ExercisesViewServices } from '../../ui/exercises/ExercisesView'
 import type { HomeProjectActions } from '../../ui/home/HomeView'
@@ -32,7 +31,10 @@ import type { LearningWorkspaceGenerationEvents } from '../../ui/LearningWorkspa
 import type { OutlineBuilderWorkflow } from '../../ui/outline/OutlineBuilder'
 import type { OutlineViewHost } from '../../ui/outline/OutlineView'
 import type { WizardReferenceHost } from '../../ui/wizard/Wizard'
-import type { HostLearningRuntimeAdapter } from '../runtime'
+import {
+  type HostLearningRuntimeAdapter,
+  createHostLearningTranslation,
+} from '../runtime'
 
 type Runtime = HostLearningRuntimeAdapter['runtime']
 
@@ -91,6 +93,7 @@ export function createLearningUiServices(
   host: YoloModuleHostApiV1,
   options: CreateLearningUiServicesOptions,
 ): LearningUiServices {
+  const t = createHostLearningTranslation(host)
   const vault = createHostLearningVaultReadApi(host.vault)
   const hostWriter = createHostLearningVaultWriteApi(host.vault)
   const cardFiles = new LearningCardFileStore(vault, hostWriter)
@@ -156,10 +159,13 @@ export function createLearningUiServices(
     confirmDelete: (project, onConfirm) => {
       void host.ui
         .confirm({
-          title: '删除学习项目？',
-          message: `“${project.topic}”及其复习数据将移入回收站。`,
-          ctaText: '删除',
-          cancelText: '取消',
+          title: t('home.deleteConfirmTitle'),
+          message: t('home.deleteConfirmMessage').replace(
+            '{project}',
+            project.topic,
+          ),
+          ctaText: t('common.delete'),
+          cancelText: t('common.cancel'),
         })
         .then((confirmed) => {
           if (confirmed) onConfirm()
@@ -184,7 +190,7 @@ export function createLearningUiServices(
       await host.vault.ensureFolder(path)
       return path
     },
-    validateFile: validateReferenceFile,
+    validateFile: (file) => validateReferenceFile(file, t),
     writeFile: async (stagingDir, file) => {
       assertPathInRoot(stagingDir, getLearningBaseDir(), '_staging')
       return writeReferenceToStaging(
@@ -309,6 +315,7 @@ function buildOutlineBuilderWorkflow({
   events?: LearningWorkspaceGenerationEvents
 }): OutlineBuilderWorkflow {
   const vault = generationHost.vault
+  const t = createHostLearningTranslation(host)
   const writer: ProjectWriterPort = {
     ensureFolder: (path) => host.vault.ensureFolder(path),
     listChildNames: async (path) =>
@@ -339,7 +346,10 @@ function buildOutlineBuilderWorkflow({
         })),
         workspaceScope,
         abortSignal: input.signal,
-        activity: generationActivity('正在生成学习项目大纲', input.topic),
+        activity: generationActivity(
+          t('generation.outlineActivity'),
+          input.topic,
+        ),
         onOutline: input.onOutline,
         onProgress: () => input.onProgress(),
       })
@@ -394,7 +404,10 @@ function buildOutlineBuilderWorkflow({
               workspaceScope,
               referenceDir,
               abortSignal: input.signal,
-              activity: generationActivity('正在生成学习项目', chapter.title),
+              activity: generationActivity(
+                t('generation.knowledgePointsActivity'),
+                chapter.title,
+              ),
               onProgress: (_delta, fullText) => {
                 input.onChapterProgress({
                   chapterIndex,
@@ -463,7 +476,7 @@ function buildOutlineBuilderWorkflow({
             workspaceScope,
             abortSignal: input.signal,
             activity: generationActivity(
-              '正在生成学习卡片',
+              t('generation.cardsActivity'),
               input.projectName || input.topic,
             ),
             runId,
@@ -566,7 +579,7 @@ function showCardGenerationToast({
   skippedCount: number
   notFinishedCount: number
 }): void {
-  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
+  const t = createHostLearningTranslation(host)
   const mode = outcome === 'success' ? '学习' : '浏览'
   const copy =
     outcome === 'success'

@@ -20,6 +20,7 @@ type HostTextSnapshot = NonNullable<
 
 class MemoryLearningHost {
   contentRoot = 'First/learning'
+  locale = 'en'
   agentText = JSON.stringify({
     projectName: 'Memory project',
     projectGoal: 'Test adapters',
@@ -49,7 +50,7 @@ class MemoryLearningHost {
       getModelSnapshot: () => ({ defaultModelId: 'memory-model', models: [] }),
     },
     i18n: {
-      getSnapshot: () => ({ locale: 'en' }),
+      getSnapshot: () => ({ locale: this.locale }),
       subscribe: () => () => undefined,
     },
     agent: {
@@ -342,9 +343,33 @@ describe('createLearningUiServices memory host', () => {
     expect(onOutline).toHaveBeenCalled()
     expect(onProgress).toHaveBeenCalled()
     expect(memory.agentRequests[0]?.activity).toEqual({
-      title: '正在生成学习项目大纲',
+      title: 'Generating outline',
       detail: 'Adapters',
     })
+  })
+
+  it('uses the current locale when a long-lived workflow starts', async () => {
+    const memory = new MemoryLearningHost()
+    const { runtime } = createRuntime()
+    const services = createLearningUiServices(memory.api, {
+      runtime: runtime as never,
+      ownerDocument: {} as Document,
+      generation: { generateCards: false },
+    })
+    memory.locale = 'zh-CN'
+
+    await services.outlineBuilderWorkflow.generateOutline({
+      topic: 'Adapters',
+      level: 'familiar',
+      goal: 'Ship',
+      signal: new AbortController().signal,
+      onOutline: jest.fn(),
+      onProgress: jest.fn(),
+    })
+
+    expect(memory.agentRequests[0]?.activity?.title).toBe(
+      '正在生成学习项目大纲',
+    )
   })
 
   it('writes a project from the knowledge generation stream', async () => {
@@ -397,7 +422,7 @@ describe('createLearningUiServices memory host', () => {
       memory.api.vault.readText(knowledge?.path ?? ''),
     ).resolves.toContain('## Point one <!--kp:')
     expect(memory.agentRequests[0]?.activity).toEqual({
-      title: '正在生成学习项目',
+      title: 'Generating knowledge points',
       detail: 'Chapter one',
     })
     expect(memory.agentRequests).toHaveLength(2)
@@ -461,7 +486,7 @@ describe('createLearningUiServices memory host', () => {
         runId,
         projectId,
         activity: expect.objectContaining({
-          title: '正在生成学习卡片',
+          title: 'Generating cards',
           detail: 'Generated',
         }),
       }),
