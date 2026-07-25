@@ -24,7 +24,6 @@ import {
   validateReferenceFile,
   writeReferenceToStaging,
 } from '../../generation/referenceStaging'
-import { createLearningTranslation } from '../../i18n'
 import type { CardsViewServices } from '../../ui/cards/CardsView'
 import type { ExercisesViewServices } from '../../ui/exercises/ExercisesView'
 import type { HomeProjectActions } from '../../ui/home/HomeView'
@@ -32,7 +31,10 @@ import type { LearningWorkspaceGenerationEvents } from '../../ui/LearningWorkspa
 import type { OutlineBuilderWorkflow } from '../../ui/outline/OutlineBuilder'
 import type { OutlineViewHost } from '../../ui/outline/OutlineView'
 import type { WizardReferenceHost } from '../../ui/wizard/Wizard'
-import type { HostLearningRuntimeAdapter } from '../runtime'
+import {
+  type HostLearningRuntimeAdapter,
+  createHostLearningTranslation,
+} from '../runtime'
 
 type Runtime = HostLearningRuntimeAdapter['runtime']
 
@@ -91,6 +93,7 @@ export function createLearningUiServices(
   host: YoloModuleHostApiV1,
   options: CreateLearningUiServicesOptions,
 ): LearningUiServices {
+  const t = createHostLearningTranslation(host)
   const vault = createHostLearningVaultReadApi(host.vault)
   const hostWriter = createHostLearningVaultWriteApi(host.vault)
   const cardFiles = new LearningCardFileStore(vault, hostWriter)
@@ -154,7 +157,6 @@ export function createLearningUiServices(
       }
     },
     confirmDelete: (project, onConfirm) => {
-      const t = createLearningTranslation(host.i18n.getSnapshot().locale)
       void host.ui
         .confirm({
           title: t('home.deleteConfirmTitle'),
@@ -188,11 +190,7 @@ export function createLearningUiServices(
       await host.vault.ensureFolder(path)
       return path
     },
-    validateFile: (file) =>
-      validateReferenceFile(
-        file,
-        createLearningTranslation(host.i18n.getSnapshot().locale),
-      ),
+    validateFile: (file) => validateReferenceFile(file, t),
     writeFile: async (stagingDir, file) => {
       assertPathInRoot(stagingDir, getLearningBaseDir(), '_staging')
       return writeReferenceToStaging(
@@ -317,7 +315,7 @@ function buildOutlineBuilderWorkflow({
   events?: LearningWorkspaceGenerationEvents
 }): OutlineBuilderWorkflow {
   const vault = generationHost.vault
-  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
+  const t = createHostLearningTranslation(host)
   const writer: ProjectWriterPort = {
     ensureFolder: (path) => host.vault.ensureFolder(path),
     listChildNames: async (path) =>
@@ -581,7 +579,7 @@ function showCardGenerationToast({
   skippedCount: number
   notFinishedCount: number
 }): void {
-  const t = createLearningTranslation(host.i18n.getSnapshot().locale)
+  const t = createHostLearningTranslation(host)
   const mode = outcome === 'success' ? '学习' : '浏览'
   const copy =
     outcome === 'success'

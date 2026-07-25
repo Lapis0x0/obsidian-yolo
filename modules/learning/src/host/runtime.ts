@@ -3,7 +3,7 @@ import { LearningRuntime } from '../domain/runtime/learningRuntime'
 import type { LearningRuntimePorts } from '../domain/runtime/ports'
 import { LearningSrsStore } from '../domain/srs/srsStore'
 import { LearningStatsService } from '../domain/stats/learningStatsService'
-import { createLearningTranslation } from '../i18n'
+import { type LearningTranslation, createLearningTranslation } from '../i18n'
 
 import { createHostLearningBackgroundPort } from './background'
 import { createOwnerLearningLifecyclePorts } from './lifecycle'
@@ -30,7 +30,7 @@ export type HostLearningRuntimeAdapter = Readonly<{
 
 export function createHostLearningTranslation(
   host: Pick<YoloModuleHostApiV1, 'i18n'>,
-): (keyPath: string, fallback: string) => string {
+): LearningTranslation {
   return (keyPath, fallback) =>
     createLearningTranslation(host.i18n.getSnapshot().locale)(keyPath, fallback)
 }

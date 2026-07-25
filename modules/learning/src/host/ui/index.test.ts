@@ -20,6 +20,7 @@ type HostTextSnapshot = NonNullable<
 
 class MemoryLearningHost {
   contentRoot = 'First/learning'
+  locale = 'en'
   agentText = JSON.stringify({
     projectName: 'Memory project',
     projectGoal: 'Test adapters',
@@ -49,7 +50,7 @@ class MemoryLearningHost {
       getModelSnapshot: () => ({ defaultModelId: 'memory-model', models: [] }),
     },
     i18n: {
-      getSnapshot: () => ({ locale: 'en' }),
+      getSnapshot: () => ({ locale: this.locale }),
       subscribe: () => () => undefined,
     },
     agent: {
@@ -345,6 +346,30 @@ describe('createLearningUiServices memory host', () => {
       title: 'Generating outline',
       detail: 'Adapters',
     })
+  })
+
+  it('uses the current locale when a long-lived workflow starts', async () => {
+    const memory = new MemoryLearningHost()
+    const { runtime } = createRuntime()
+    const services = createLearningUiServices(memory.api, {
+      runtime: runtime as never,
+      ownerDocument: {} as Document,
+      generation: { generateCards: false },
+    })
+    memory.locale = 'zh-CN'
+
+    await services.outlineBuilderWorkflow.generateOutline({
+      topic: 'Adapters',
+      level: 'familiar',
+      goal: 'Ship',
+      signal: new AbortController().signal,
+      onOutline: jest.fn(),
+      onProgress: jest.fn(),
+    })
+
+    expect(memory.agentRequests[0]?.activity?.title).toBe(
+      '正在生成学习项目大纲',
+    )
   })
 
   it('writes a project from the knowledge generation stream', async () => {

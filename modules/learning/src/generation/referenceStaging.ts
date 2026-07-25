@@ -9,19 +9,15 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.md', '.markdown', '.txt']
 
 export function validateReferenceFile(
   file: File,
-  t?: LearningTranslation,
+  t: LearningTranslation,
 ): string | null {
   const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? ''
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
-    return t
-      ? t('generation.unsupportedFileType').replace('{ext}', ext)
-      : `Unsupported file type: ${ext} (PDF, Word, Markdown, text supported)`
+    return t('generation.unsupportedFileType').replace('{ext}', ext)
   }
   if (file.size > MAX_FILE_SIZE) {
     const size = (file.size / 1024 / 1024).toFixed(1)
-    return t
-      ? t('generation.fileTooLarge').replace('{size}', size)
-      : `File too large: ${size}MB (max 20MB)`
+    return t('generation.fileTooLarge').replace('{size}', size)
   }
   return null
 }
