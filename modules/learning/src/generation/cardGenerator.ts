@@ -12,6 +12,7 @@ import { LearningGenerationAbortError } from './abortError'
 import {
   type ChapterDebugData,
   PhaseDebugCollector,
+  emitCardFailureDiagnostics,
   emitChaptersDebugLog,
 } from './debugLog'
 import type {
@@ -198,6 +199,13 @@ export async function generateCardsForChapter({
   }
   throwIfAborted(abortSignal)
   if (assignedDrafts.length === 0) {
+    emitCardFailureDiagnostics({
+      chapterTitle,
+      reason: 'no-drafts',
+      streamedDrafts: 0,
+      discardedCount: streamParser.discardedCount,
+      output: firstRun.text,
+    })
     if (firstRun.error) throw firstRun.error
     throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
   }
@@ -271,6 +279,17 @@ export async function generateCardsForChapter({
     const discardedCount =
       validation.discardedCount + streamParser.discardedCount
     if (validation.valid.length === 0) {
+      emitCardFailureDiagnostics({
+        chapterTitle,
+        reason: 'no-valid-cards',
+        streamedDrafts: assignedDrafts.length,
+        discardedCount: validation.discardedCount + streamParser.discardedCount,
+        invalid: validation.invalid.map((entry) => ({
+          cardUuid: entry.cardUuid,
+          errors: entry.errors,
+        })),
+        output: cardsSnapshot.content,
+      })
       throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
     }
     if (discardedCount > 0 && cleanupExpected) {
