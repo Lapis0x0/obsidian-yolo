@@ -104,13 +104,6 @@
 > [!WARNING]
 > YOLO 无法与 [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer) 共存，请在使用前禁用或卸载 Smart Composer。
 
-## 移动端说明
-
-受限于 Obsidian 移动端与桌面端之间的能力差异，YOLO 在移动端暂时无法完整对齐桌面端的全部功能与体验。再加上个人维护精力有限，我目前只能保证移动端可用，而难以保证所有功能都能达到桌面端同等水准。
-
-如果你在移动端使用 YOLO，可能会遇到部分功能暂不可用、体验不一致或适配尚不完善的情况，还请理解。
-
-
 ## Roadmap
 
 - [x] 更好，更强的 Vault AI 搜索

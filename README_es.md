@@ -104,12 +104,6 @@ Consulta el Inicio rápido más arriba.
 > [!WARNING]
 > YOLO no puede coexistir con [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer). Desactiva o desinstala Smart Composer antes de usar YOLO.
 
-## Nota sobre el soporte móvil
-
-Debido a la diferencia de capacidades entre Obsidian en móvil y en escritorio, YOLO no puede igualar por completo el conjunto de funciones ni la experiencia de escritorio en móvil a corto plazo. Con un tiempo de mantenimiento personal limitado, por ahora solo puedo garantizar que YOLO siga siendo utilizable en móvil, no que todas las funciones alcancen la paridad con el escritorio.
-
-Si usas YOLO en móvil, aún podrías encontrar funciones no disponibles, comportamientos inconsistentes o adaptaciones incompletas en algunos flujos de trabajo. Ten en cuenta esa expectativa.
-
 ## Hoja de ruta
 
 - [x] Búsqueda con IA en el Vault mejorada y más potente
