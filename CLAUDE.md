@@ -60,6 +60,7 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - All CSS classes must use the `yolo-` prefix. Host styles live in `src/styles/**`; module styles live with their module.
 - When styling native controls, assume Obsidian core and theme styles apply globally. Use component-scoped `element.yolo-*` selectors, explicitly reset affected properties, and use `!important` only for a confirmed host-style collision.
 - Organize host styles by responsibility as documented in `src/styles/README.md`. Before changing popovers or dropdowns, read the ownership rules in `src/styles/popover/surface.css`.
+- Never hardcode user-visible text; route it through i18n, and resolve the current locale at use time rather than caching a locale-bound translator.
 
 ## Verification
 
