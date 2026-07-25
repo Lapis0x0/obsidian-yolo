@@ -1,21 +1,33 @@
-## 1.6.1.2 Streamlined Module Lifecycle & New Tab Polish 🛠️
+## 1.6.1.3 Safer Updates & More Complete Configuration Transfer 🛡️
 
-### 🧩 Module Installation & Uninstallation
+### ⚙️ Configuration Transfer
 
-- Development and production environments now consistently install modules from official remote releases. Uninstalling no longer waits for redundant remote verification, and reinstalling recovers cleanly from artifacts left by an incomplete uninstall.
+- Fixed configuration imports incorrectly treating an existing YOLO root directory as a migration conflict. Import and export now cover registered feature data consistently, reducing the chance that newer settings are left behind.
 
-### 🎨 Interface Fixes
+### 🔄 Reliable Update Distribution
 
-- Fixed duplicate icons and misaligned layout for the YOLO entry on new tabs with certain themes.
+- Core and module updates now prefer the Cloudflare Pages mirror and automatically fall back to GitHub when needed. Signed feeds, rollback protection, and integrity verification secure the update path while improving reliability on constrained networks.
+- Automatic updates are more stable on slower connections and now show accurate background download states instead of a progress indicator that could appear stuck.
+- Successful module upgrades clean up replaced local artifacts without compromising rollback when an update fails.
+
+### 💬 Chat Editing
+
+- Fixed a large blank area appearing below long AI responses while editing, which could push later messages far down the conversation.
 
 ---
 
-## 1.6.1.2 模块流程精简与新标签页优化 🛠️
+## 1.6.1.3 更安全可靠的更新与更完整的配置迁移 🛡️
 
-### 🧩 模块安装与卸载
+### ⚙️ 配置迁移
 
-- 开发与正式环境现在统一使用远程官方版本；卸载无需再等待冗余的远程校验，并修复卸载残留导致无法重新安装的问题。
+- 修复导入配置时将已有 YOLO 根目录误判为迁移冲突的问题。配置导入导出现在会统一覆盖已注册的功能数据，降低后续新增配置被遗漏的风险。
 
-### 🎨 界面修复
+### 🔄 可靠的更新分发
 
-- 修复部分主题下新标签页的 YOLO 入口出现重复图标和布局错位的问题。
+- Core 与模块更新现在优先使用 Cloudflare Pages 镜像，并在异常时自动回退 GitHub；同时通过签名 Feed、版本防回退和完整性校验保障更新安全，改善受限网络环境下的可靠性。
+- 提升较慢网络下自动更新的下载稳定性，并以准确的后台下载状态替代容易产生卡顿感的进度显示。
+- 模块升级成功后会清理已被替换的本地制品，同时在升级失败时保留安全回滚能力。
+
+### 💬 聊天编辑
+
+- 修复编辑较长的 AI 回复时下方出现大块空白、将后续消息推远的问题。

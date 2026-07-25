@@ -417,6 +417,23 @@ export function createProductionModuleServices(
     return result.version
   }
 
+  const cleanupReplacedVersion = async (
+    moduleId: string,
+    previousVersion: string | undefined,
+    activeVersion: string,
+  ): Promise<void> => {
+    if (!previousVersion || previousVersion === activeVersion) return
+    try {
+      await options.store.removeVersionArtifacts(moduleId, previousVersion)
+    } catch (error) {
+      try {
+        options.reportCleanupError?.(error)
+      } catch {
+        // Cleanup diagnostics cannot turn a completed update into a failure.
+      }
+    }
+  }
+
   return Object.freeze({
     getSnapshot: manager.getSnapshot,
     subscribe: manager.subscribe,
@@ -507,6 +524,11 @@ export function createProductionModuleServices(
           const version = await activateInstalledModule(candidate.moduleId)
           readinessFailures.delete(candidate.moduleId)
           await manager.refresh()
+          await cleanupReplacedVersion(
+            candidate.moduleId,
+            previousRunning?.version,
+            version,
+          )
           return Object.freeze({ version })
         } catch (activationError) {
           await options.intentStore.set(

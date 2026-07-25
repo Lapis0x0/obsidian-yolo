@@ -353,6 +353,31 @@ async function install(harness: ReturnType<typeof createHarness>) {
   return harness.services.install(candidate)
 }
 
+async function seedActiveVersion(
+  harness: ReturnType<typeof createHarness>,
+  version: string,
+) {
+  const artifactRoot = `config/plugins/yolo/modules/learning/${version}`
+  await harness.adapter.mkdir(artifactRoot)
+  await harness.deviceStateStore.write({
+    moduleId: 'learning',
+    platform: 'desktop',
+    active: {
+      id: 'learning',
+      version,
+      hostApi: '>=1.0.0 <2.0.0',
+      dataSchemas: { settings: { readMin: 0, readMax: 1, write: 1 } },
+      platform: 'desktop',
+      manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv${version}/module.json`,
+      manifest: { byteSize: 1, sha256: 'a'.repeat(64) },
+    },
+    pending: null,
+  })
+  harness.intents.set('learning', 'enabled')
+  harness.activeVersions.set('learning', version)
+  return artifactRoot
+}
+
 describe('createProductionModuleServices', () => {
   it('refreshes the manager snapshot when the shared locale changes', async () => {
     let locale: 'en' | 'zh' = 'en'
@@ -460,6 +485,69 @@ describe('createProductionModuleServices', () => {
       pending: null,
     })
     expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+  })
+
+  it('removes the replaced version only after an update succeeds', async () => {
+    const harness = createHarness()
+    const previousRoot = await seedActiveVersion(harness, '1.2.2')
+
+    await expect(install(harness)).resolves.toEqual({ version: '1.2.3' })
+
+    expect(await harness.adapter.exists(previousRoot)).toBe(false)
+    expect(
+      await harness.adapter.exists(
+        'config/plugins/yolo/modules/learning/1.2.3',
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps the previous version when an update cannot stop the runtime', async () => {
+    const harness = createHarness()
+    const previousRoot = await seedActiveVersion(harness, '1.2.2')
+    harness.runtime.deactivate.mockRejectedValueOnce(
+      new Error('deactivation failed'),
+    )
+
+    await expect(install(harness)).rejects.toThrow('deactivation failed')
+
+    expect(await harness.adapter.exists(previousRoot)).toBe(true)
+  })
+
+  it('rejects a stale same-version candidate without removing active artifacts', async () => {
+    const harness = createHarness()
+    await harness.services.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+    await harness.services.install(candidate)
+
+    await expect(harness.services.install(candidate)).rejects.toThrow(
+      'candidate changed after confirmation',
+    )
+
+    expect(
+      await harness.adapter.exists(
+        'config/plugins/yolo/modules/learning/1.2.3',
+      ),
+    ).toBe(true)
+  })
+
+  it('reports old-version cleanup failure without failing the update', async () => {
+    const harness = createHarness()
+    const previousRoot = await seedActiveVersion(harness, '1.2.2')
+    const cleanupError = new Error('cleanup failed')
+    const rmdir = harness.adapter.rmdir.bind(harness.adapter)
+    jest
+      .spyOn(harness.adapter, 'rmdir')
+      .mockImplementation((path, recursive) =>
+        path === previousRoot
+          ? Promise.reject(cleanupError)
+          : rmdir(path, recursive),
+      )
+
+    await expect(install(harness)).resolves.toEqual({ version: '1.2.3' })
+
+    expect(harness.reportCleanupError).toHaveBeenCalledWith(cleanupError)
+    expect(await harness.adapter.exists(previousRoot)).toBe(true)
+    expect(harness.activeVersions.get('learning')).toBe('1.2.3')
   })
 
   it('prepares an update artifact without changing module intent or device state', async () => {
