@@ -50,6 +50,7 @@ jobs:
       - name: Validate generated metadata
         run: |
           npx jest src/core/distribution --runInBand
+          node --test scripts/distribution.test.mjs
           node --test scripts/release.test.mjs
           git diff --check
 

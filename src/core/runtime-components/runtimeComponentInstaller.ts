@@ -5,10 +5,11 @@ import { verifyModuleBytes } from '../modules/moduleIntegrity'
 import type { RuntimeComponentDescriptor } from './runtimeComponentManifest'
 import { RuntimeComponentStore } from './runtimeComponentStore'
 
-export type RuntimeComponentDownload = (
-  descriptor: RuntimeComponentDescriptor,
-  signal?: AbortSignal,
-) => Promise<Uint8Array>
+export type RuntimeComponentDownload = (request: {
+  descriptor: RuntimeComponentDescriptor
+  source: string
+  signal?: AbortSignal
+}) => Promise<Uint8Array>
 
 const queues = new WeakMap<object, Map<string, Promise<void>>>()
 let transaction = 0
@@ -18,6 +19,9 @@ export class RuntimeComponentInstaller {
     private readonly options: Readonly<{
       store: RuntimeComponentStore
       download: RuntimeComponentDownload
+      resolveDownloadSources?: (
+        descriptor: RuntimeComponentDescriptor,
+      ) => readonly string[]
       subtleCrypto?: Pick<SubtleCrypto, 'digest'>
       reportCleanupError?: (error: unknown) => void
     }>,
@@ -164,21 +168,52 @@ export class RuntimeComponentInstaller {
     signal?: AbortSignal,
   ): Promise<Uint8Array> {
     throwIfAborted(signal)
-    const bytes = await this.options.download(descriptor, signal)
-    throwIfAborted(signal)
-    if (!(bytes instanceof Uint8Array)) {
-      throw new TypeError('Runtime component download must return Uint8Array')
+    const sources = this.options.resolveDownloadSources?.(descriptor) ?? [
+      descriptor.entry,
+    ]
+    if (
+      !Array.isArray(sources) ||
+      sources.length === 0 ||
+      sources.some((source) => typeof source !== 'string' || !source) ||
+      new Set(sources).size !== sources.length
+    ) {
+      throw new Error('Runtime component download sources are invalid')
     }
-    if (bytes.byteLength !== descriptor.byteSize) {
-      throw new Error(`Runtime component "${descriptor.id}" byte size mismatch`)
+    const failures: string[] = []
+    for (const source of sources) {
+      throwIfAborted(signal)
+      try {
+        const bytes = await this.options.download({
+          descriptor,
+          source,
+          ...(signal ? { signal } : {}),
+        })
+        throwIfAborted(signal)
+        if (!(bytes instanceof Uint8Array)) {
+          throw new TypeError(
+            'Runtime component download must return Uint8Array',
+          )
+        }
+        if (bytes.byteLength !== descriptor.byteSize) {
+          throw new Error(
+            `Runtime component "${descriptor.id}" byte size mismatch`,
+          )
+        }
+        await verifyModuleBytes(
+          bytes,
+          descriptor,
+          `Runtime component "${descriptor.id}"`,
+          subtle,
+        )
+        return bytes
+      } catch (error) {
+        if (signal?.aborted) throw error
+        failures.push(`${sourceName(source)}: ${describeError(error)}`)
+      }
     }
-    await verifyModuleBytes(
-      bytes,
-      descriptor,
-      `Runtime component "${descriptor.id}"`,
-      subtle,
+    throw new Error(
+      `Runtime component "${descriptor.id}" download failed from all sources: ${failures.join('; ')}`,
     )
-    return bytes
   }
 
   async verifyInstalled(
@@ -209,6 +244,18 @@ export class RuntimeComponentInstaller {
       // Diagnostics cannot replace the primary artifact failure.
     }
   }
+}
+
+function sourceName(source: string): string {
+  try {
+    return new URL(source).hostname
+  } catch {
+    return source
+  }
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 async function verifyPath(

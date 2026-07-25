@@ -1,5 +1,6 @@
 import {
   parseRuntimeComponentRegistry,
+  resolveRuntimeComponentArtifactSources,
   runtimeComponentReleaseUrl,
 } from './runtimeComponentManifest'
 
@@ -38,5 +39,14 @@ describe('runtime component manifest', () => {
     expect(() =>
       runtimeComponentReleaseUrl(descriptor as never, 'latest'),
     ).toThrow('numeric Git tag')
+  })
+
+  it('prefers the latest-only Cloudflare mirror and preserves Git Raw fallback', () => {
+    expect(
+      resolveRuntimeComponentArtifactSources(descriptor as never, '1.6.1.4'),
+    ).toEqual([
+      'https://updates.yoloapp.dev/runtime-components/1.6.1.4/tokenizer/entry.js',
+      'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/1.6.1.4/runtime-components/tokenizer/dist/entry.js',
+    ])
   })
 })

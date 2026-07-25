@@ -11,7 +11,6 @@ import {
   addIcon,
   getLanguage,
   normalizePath,
-  requestUrl,
   setIcon,
 } from 'obsidian'
 
@@ -127,7 +126,8 @@ import {
   RuntimeComponentRuntime,
   RuntimeComponentService,
   RuntimeComponentStore,
-  runtimeComponentReleaseUrl,
+  createRuntimeComponentDownloader,
+  resolveRuntimeComponentArtifactSources,
   setRuntimeComponentService,
 } from './core/runtime-components'
 import { migrateVaultSkillFrontmatter } from './core/skills/liteSkills'
@@ -3985,10 +3985,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       adapter: deviceAdapter,
       rootPath: 'component-device-state-v1',
     })
-    const download = async (
-      descriptor: (typeof BAKED_RUNTIME_COMPONENT_REGISTRY.components)[number],
-      signal?: AbortSignal,
-    ): Promise<Uint8Array> => {
+    const remoteDownload = createRuntimeComponentDownloader()
+    const download = async ({
+      descriptor,
+      source,
+      signal,
+    }: Parameters<typeof remoteDownload>[0]): Promise<Uint8Array> => {
       if (signal?.aborted) {
         throw new DOMException(
           'Runtime component download aborted',
@@ -4002,27 +4004,26 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           ),
         )
       }
-      const response = await requestUrl({
-        url: runtimeComponentReleaseUrl(descriptor, BAKED_PLUGIN_VERSION),
-        method: 'GET',
-        throw: false,
+      return remoteDownload({
+        descriptor,
+        source,
+        ...(signal ? { signal } : {}),
       })
-      if (response.status < 200 || response.status >= 300) {
-        throw new Error(
-          `Runtime component download failed with HTTP ${response.status}`,
-        )
-      }
-      if (signal?.aborted) {
-        throw new DOMException(
-          'Runtime component download aborted',
-          'AbortError',
-        )
-      }
-      return new Uint8Array(response.arrayBuffer)
     }
     const installer = new RuntimeComponentInstaller({
       store,
       download,
+      ...(process.env.NODE_ENV === 'production'
+        ? {
+            resolveDownloadSources: (
+              descriptor: (typeof BAKED_RUNTIME_COMPONENT_REGISTRY.components)[number],
+            ) =>
+              resolveRuntimeComponentArtifactSources(
+                descriptor,
+                BAKED_PLUGIN_VERSION,
+              ),
+          }
+        : {}),
       reportCleanupError: (error) => {
         console.error('[YOLO] Runtime component artifact cleanup failed', error)
       },

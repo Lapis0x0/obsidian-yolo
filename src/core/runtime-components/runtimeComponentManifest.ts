@@ -104,10 +104,32 @@ export function runtimeComponentReleaseUrl(
   descriptor: RuntimeComponentDescriptor,
   bakedVersion: string,
 ): string {
-  if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(bakedVersion)) {
+  assertRuntimeComponentVersion(bakedVersion)
+  return `https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/${bakedVersion}/${descriptor.entry}`
+}
+
+export function runtimeComponentMirrorUrl(
+  descriptor: RuntimeComponentDescriptor,
+  bakedVersion: string,
+): string {
+  assertRuntimeComponentVersion(bakedVersion)
+  return `https://updates.yoloapp.dev/runtime-components/${bakedVersion}/${descriptor.id}/entry.js`
+}
+
+export function resolveRuntimeComponentArtifactSources(
+  descriptor: RuntimeComponentDescriptor,
+  bakedVersion: string,
+): readonly string[] {
+  return Object.freeze([
+    runtimeComponentMirrorUrl(descriptor, bakedVersion),
+    runtimeComponentReleaseUrl(descriptor, bakedVersion),
+  ])
+}
+
+function assertRuntimeComponentVersion(version: string): void {
+  if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version)) {
     throw new Error('Production runtime components require a numeric Git tag')
   }
-  return `https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/${bakedVersion}/${descriptor.entry}`
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

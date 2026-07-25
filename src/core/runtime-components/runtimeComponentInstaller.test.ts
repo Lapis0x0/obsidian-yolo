@@ -123,4 +123,51 @@ describe('RuntimeComponentInstaller', () => {
       false,
     )
   })
+
+  it('falls back when a preferred source fails integrity verification', async () => {
+    const bytes = new TextEncoder().encode('trusted component entry')
+    const digest = new Uint8Array(
+      await globalThis.crypto.subtle.digest('SHA-256', bytes),
+    )
+    const descriptor: RuntimeComponentDescriptor = {
+      id: 'tokenizer',
+      platforms: ['desktop', 'mobile'],
+      nameKey: 'name',
+      descriptionKey: 'description',
+      impactKey: 'impact',
+      entry: 'runtime-components/tokenizer/dist/entry.js',
+      byteSize: bytes.byteLength,
+      sha256: [...digest]
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join(''),
+    }
+    const adapter = new MemoryAdapter()
+    const store = new RuntimeComponentStore(
+      adapter as unknown as DataAdapter,
+      { id: 'yolo', dir: 'config/plugins/yolo' },
+      'config',
+    )
+    const sources = [
+      'https://updates.example/entry.js',
+      'https://raw.example/entry.js',
+    ]
+    const download = jest.fn(async ({ source }: { source: string }) =>
+      source === sources[0]
+        ? new Uint8Array(descriptor.byteSize).fill(1)
+        : bytes.slice(),
+    )
+    const installer = new RuntimeComponentInstaller({
+      store,
+      download,
+      resolveDownloadSources: () => sources,
+      subtleCrypto: globalThis.crypto.subtle,
+    })
+
+    await installer.ensure(descriptor)
+
+    expect(download.mock.calls.map(([request]) => request.source)).toEqual(
+      sources,
+    )
+    await expect(installer.verifyInstalled(descriptor)).resolves.toBeUndefined()
+  })
 })
