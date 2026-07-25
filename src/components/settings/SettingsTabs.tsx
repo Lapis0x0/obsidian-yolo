@@ -198,6 +198,7 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
         {activeTab === 'modules' ? (
           <ModulesTab
             service={plugin.getModuleService()}
+            runtimeComponents={plugin.getRuntimeComponentService()}
             registrations={moduleSettings}
           />
         ) : (

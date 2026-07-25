@@ -1,4 +1,4 @@
-import { loadPdfjs } from './pdfjsLoader'
+import { acquireRuntimeComponent } from '../../core/runtime-components/runtimeComponentAccess'
 
 type PdfTextItem = {
   str: string
@@ -89,36 +89,16 @@ export async function loadPdfPages(
   options: LoadPdfPagesOptions,
 ): Promise<LoadedPdfPages> {
   const { maxPages, maybeYield, signal } = options
-
-  const pdfjs = await loadPdfjs()
-
-  const loadingTask = pdfjs.getDocument({
-    data,
-    useWorkerFetch: false,
-    isEvalSupported: false,
-  })
-
-  const pdf = await loadingTask.promise
-  const totalPages = pdf.numPages
-  const limit = Math.min(totalPages, maxPages)
-  const pages: { page: number; text: string }[] = []
-
-  for (let i = 1; i <= limit; i++) {
-    if (signal?.aborted) {
-      throw new DOMException('PDF extraction aborted', 'AbortError')
-    }
-    if (maybeYield) {
-      await maybeYield()
-    }
-    const page = await pdf.getPage(i)
-    const textContent = await page.getTextContent()
-    pages.push({
-      page: i,
-      text: pageItemsToText(textContent.items as unknown[]),
-    })
+  if (signal?.aborted) {
+    throw new DOMException('PDF extraction aborted', 'AbortError')
   }
-
-  return { totalPages, pages }
+  await maybeYield?.()
+  const lease = await acquireRuntimeComponent('pdf-engine')
+  try {
+    return await lease.api.extractPages(data, { maxPages, signal })
+  } finally {
+    lease.release()
+  }
 }
 
 /**
@@ -139,13 +119,10 @@ export async function getPdfPageCount(
     await maybeYield()
   }
 
-  const pdfjs = await loadPdfjs()
-
-  const loadingTask = pdfjs.getDocument({
-    data,
-    useWorkerFetch: false,
-    isEvalSupported: false,
-  })
-  const pdf = await loadingTask.promise
-  return pdf.numPages
+  const lease = await acquireRuntimeComponent('pdf-engine')
+  try {
+    return await lease.api.getPageCount(data, signal)
+  } finally {
+    lease.release()
+  }
 }

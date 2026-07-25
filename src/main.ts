@@ -11,6 +11,7 @@ import {
   addIcon,
   getLanguage,
   normalizePath,
+  requestUrl,
   setIcon,
 } from 'obsidian'
 
@@ -117,6 +118,18 @@ import {
   RagIndexRunSnapshot,
   RagIndexService,
 } from './core/rag/ragIndexService'
+import {
+  BAKED_RUNTIME_COMPONENT_REGISTRY,
+  RuntimeComponentDeviceStateStore,
+  RuntimeComponentInstaller,
+  RuntimeComponentIntentStore,
+  RuntimeComponentLoader,
+  RuntimeComponentRuntime,
+  RuntimeComponentService,
+  RuntimeComponentStore,
+  runtimeComponentReleaseUrl,
+  setRuntimeComponentService,
+} from './core/runtime-components'
 import { migrateVaultSkillFrontmatter } from './core/skills/liteSkills'
 import {
   type InstallationIncompleteDetail,
@@ -271,6 +284,7 @@ export default class YoloPlugin extends Plugin {
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
+  private runtimeComponentService: RuntimeComponentService | null = null
   private distributionFeedClient: DistributionFeedClient | null = null
   private moduleUpdateController: ModuleUpdateController | null = null
   private moduleRuntime: ModuleRuntime | null = null
@@ -1939,6 +1953,7 @@ export default class YoloPlugin extends Plugin {
     this.isUnloaded = false
     this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
+    this.initializeRuntimeComponentSystem()
     if (process.env.NODE_ENV === 'development') {
       this.addCommand({
         id: 'dev-activate-host-api-conformance-module',
@@ -1997,6 +2012,11 @@ export default class YoloPlugin extends Plugin {
     // sub-second transient; the migration is idempotent so it always converges.
     this.app.workspace.onLayoutReady(() => {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
+    })
+    this.app.workspace.onLayoutReady(() => {
+      void this.runtimeComponentService?.start().catch((error) => {
+        console.error('[YOLO] Runtime component startup failed', error)
+      })
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2417,6 +2437,9 @@ export default class YoloPlugin extends Plugin {
     this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
+    setRuntimeComponentService(null)
+    this.runtimeComponentService?.stop()
+    this.runtimeComponentService = null
     this.distributionFeedClient = null
     this.learningModuleSettingsHandoff = null
     this.learningLegacyInstallMigration = null
@@ -2494,13 +2517,6 @@ export default class YoloPlugin extends Plugin {
     this.clearTabCompletionTimer()
     this.cancelTabCompletionRequest()
     this.clearInlineSuggestion()
-
-    // Release the pdfjs worker Blob URL we may have created during this
-    // session. Outstanding workers already spawned keep running; this only
-    // prevents future fetches and lets the GC collect the source string.
-    void import('./utils/pdf/pdfjsLoader').then(({ disposePdfjsWorker }) =>
-      disposePdfjsWorker(),
-    )
   }
 
   async loadSettings() {
@@ -3684,6 +3700,13 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleService
   }
 
+  getRuntimeComponentService(): RuntimeComponentService {
+    if (!this.runtimeComponentService) {
+      throw new Error('[YOLO] Runtime component service is unavailable')
+    }
+    return this.runtimeComponentService
+  }
+
   getModuleUpdateSnapshot = (): readonly ModuleUpdateOffer[] =>
     this.moduleUpdateController?.getSnapshot() ?? []
 
@@ -3937,6 +3960,101 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         })
       },
     })
+  }
+
+  private initializeRuntimeComponentSystem(): void {
+    const store = new RuntimeComponentStore(
+      this.app.vault.adapter,
+      this.manifest,
+      this.app.vault.configDir,
+    )
+    const deviceAdapter = new IndexedDbDataAdapter(this.app)
+    this.register(() => deviceAdapter.close())
+    const platform = Platform.isDesktop ? 'desktop' : 'mobile'
+    const intentStore = new RuntimeComponentIntentStore(
+      createObsidianModuleIntentBackend({
+        app: this.app,
+        getSettings: () => this.settings,
+        subscribeSettingsChange: (listener) =>
+          this.addSettingsChangeListener(() => listener()),
+        directoryName: 'component-intent-v1',
+      }),
+    )
+    const deviceStateStore = new RuntimeComponentDeviceStateStore({
+      kind: 'device-local-runtime-state',
+      adapter: deviceAdapter,
+      rootPath: 'component-device-state-v1',
+    })
+    const download = async (
+      descriptor: (typeof BAKED_RUNTIME_COMPONENT_REGISTRY.components)[number],
+      signal?: AbortSignal,
+    ): Promise<Uint8Array> => {
+      if (signal?.aborted) {
+        throw new DOMException(
+          'Runtime component download aborted',
+          'AbortError',
+        )
+      }
+      if (process.env.NODE_ENV !== 'production') {
+        return new Uint8Array(
+          await this.app.vault.adapter.readBinary(
+            normalizePath(`${store.pluginDir}/${descriptor.entry}`),
+          ),
+        )
+      }
+      const response = await requestUrl({
+        url: runtimeComponentReleaseUrl(descriptor, BAKED_PLUGIN_VERSION),
+        method: 'GET',
+        throw: false,
+      })
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(
+          `Runtime component download failed with HTTP ${response.status}`,
+        )
+      }
+      if (signal?.aborted) {
+        throw new DOMException(
+          'Runtime component download aborted',
+          'AbortError',
+        )
+      }
+      return new Uint8Array(response.arrayBuffer)
+    }
+    const installer = new RuntimeComponentInstaller({
+      store,
+      download,
+      reportCleanupError: (error) => {
+        console.error('[YOLO] Runtime component artifact cleanup failed', error)
+      },
+    })
+    const service = new RuntimeComponentService({
+      registry: BAKED_RUNTIME_COMPONENT_REGISTRY,
+      platform,
+      store,
+      installer,
+      loader: new RuntimeComponentLoader(),
+      runtime: new RuntimeComponentRuntime(),
+      intentStore,
+      deviceStateStore,
+      reportError: (id, error) => {
+        console.error(`[YOLO] Runtime component "${id}" failed`, error)
+      },
+    })
+    service.registerQuiesceParticipant('pglite-engine', async () => {
+      this.ragIndexService?.cancelActiveRun()
+      await this.ragIndexService?.waitForIdle()
+      this.ragCoordinator?.cleanup()
+      const pending = this.dbManagerInitPromise
+      if (pending) await pending.catch(() => undefined)
+      try {
+        await this.dbManager?.quiesceAndCleanup()
+      } finally {
+        this.dbManager = null
+        this.dbManagerInitPromise = null
+      }
+    })
+    this.runtimeComponentService = service
+    setRuntimeComponentService(service)
   }
 
   private activateModules(): void {

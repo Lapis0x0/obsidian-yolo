@@ -6,7 +6,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockEmbeddingModelIds } from '../../../core/llm/bedrockCatalog'
 import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
 import { getProviderClient } from '../../../core/llm/manager'
-import { supportedDimensionsForIndex } from '../../../database/schema'
+import { supportedDimensionsForIndex } from '../../../database/vectorConstants'
 import YoloPlugin from '../../../main'
 import {
   EmbeddingModel,

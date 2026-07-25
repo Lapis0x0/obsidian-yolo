@@ -1,4 +1,4 @@
-import type { VectorMetaData } from '../../database/schema'
+import type { VectorMetaData } from '../../core/runtime-components'
 
 /** Identity of a chunk within one file: md `start:end`, pdf `page:start:end`. */
 export function embeddingChunkLineKey(meta: VectorMetaData): string {

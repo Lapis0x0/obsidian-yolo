@@ -1,16 +1,12 @@
 import type { App, TFile } from 'obsidian'
 
+import { acquireRuntimeComponent } from '../../core/runtime-components/runtimeComponentAccess'
 import {
   batchLookupImageCache,
   batchWriteImageCache,
   buildPdfPageImageCacheKey,
 } from '../../database/json/chat/imageCacheStore'
 import type { YoloSettingsLike } from '../../database/json/chat/imageCacheStore'
-
-import { loadPdfjs } from './pdfjsLoader'
-
-/** Fixed render scale (2× = ~144 dpi at 72 dpi baseline). */
-const RENDER_SCALE = 2
 
 export type RenderedPdfPage = {
   page: number
@@ -43,17 +39,11 @@ export async function renderPdfPagesToImages(
   endPage: number | undefined,
   settings?: YoloSettingsLike | null,
 ): Promise<RenderPdfPagesResult> {
-  const pdfjs = await loadPdfjs()
-
   const buf = await app.vault.readBinary(file)
-  const loadingTask = pdfjs.getDocument({
-    data: new Uint8Array(buf),
-    useWorkerFetch: false,
-    isEvalSupported: false,
-  })
-  const pdf = await loadingTask.promise
+  const bytes = new Uint8Array(buf)
+  const lease = await acquireRuntimeComponent('pdf-engine')
   try {
-    const totalPages = pdf.numPages
+    const totalPages = await lease.api.getPageCount(bytes)
 
     const resolvedStart = Math.max(1, startPage)
     const resolvedEnd = Math.min(totalPages, endPage ?? totalPages)
@@ -84,35 +74,23 @@ export async function renderPdfPagesToImages(
 
     const freshDataUrls = new Map<number, string>()
 
-    for (const i of missedIndices) {
-      const pageNum = pages[i]
-      const pdfPage = await pdf.getPage(pageNum)
-      try {
-        const viewport = pdfPage.getViewport({ scale: RENDER_SCALE })
-
-        const canvas = document.createElement('canvas')
-        try {
-          canvas.width = viewport.width
-          canvas.height = viewport.height
-
-          const ctx = canvas.getContext('2d')
-          if (!ctx) {
-            throw new Error(
-              `[YOLO] Failed to get 2D canvas context for PDF page ${pageNum}.`,
-            )
-          }
-
-          await pdfPage.render({ canvasContext: ctx, viewport }).promise
-          freshDataUrls.set(pageNum, canvas.toDataURL('image/png'))
-        } finally {
-          // Free the GPU/RAM-backed canvas buffer immediately. Without this
-          // a tight render loop on a multi-page PDF can hold tens of MB of
-          // pixel data alive until GC kicks in.
-          canvas.width = 0
-          canvas.height = 0
-        }
-      } finally {
-        pdfPage.cleanup()
+    const missedPages = missedIndices.map((index) => pages[index])
+    const ranges: Array<{ startPage: number; endPage: number }> = []
+    for (const page of missedPages) {
+      const previous = ranges[ranges.length - 1]
+      if (previous && page === previous.endPage + 1) {
+        previous.endPage = page
+      } else {
+        ranges.push({ startPage: page, endPage: page })
+      }
+    }
+    for (const range of ranges) {
+      const result = await lease.api.renderPages(bytes, {
+        startPage: range.startPage,
+        endPage: range.endPage,
+      })
+      for (const rendered of result.rendered) {
+        freshDataUrls.set(rendered.page, rendered.dataUrl)
       }
     }
 
@@ -133,6 +111,6 @@ export async function renderPdfPagesToImages(
 
     return { totalPages, rendered }
   } finally {
-    await pdf.destroy()
+    lease.release()
   }
 }

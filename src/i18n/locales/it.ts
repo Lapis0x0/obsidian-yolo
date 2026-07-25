@@ -306,6 +306,40 @@ export const it: DeepPartial<TranslationKeys> = {
         activationPending: 'Attivazione in attesa',
         failed: 'Non riuscito',
       },
+      runtimeComponents: {
+        title: 'Componenti runtime',
+        description:
+          'I motori principali vengono installati in background sul dispositivo e caricati solo quando servono.',
+        tokenizer: {
+          name: 'Tokenizer',
+          description: 'Conta i token del contesto e degli strumenti Agent.',
+          impact:
+            'Disattivandolo, il budget preciso dei token non è disponibile.',
+        },
+        pdfEngine: {
+          name: 'Motore PDF',
+          description:
+            'Estrae testo, renderizza pagine e prepara intervalli PDF.',
+          impact:
+            'Disattivandolo, la lettura PDF e gli strumenti pagina non funzionano.',
+        },
+        pgliteEngine: {
+          name: 'Motore PGlite',
+          description: 'Archivia e cerca l’indice locale della knowledge base.',
+          impact:
+            'Disattivandolo, indicizzazione e ricerca semantica non funzionano.',
+        },
+        statuses: {
+          missing: 'In attesa di installazione',
+          downloading: 'Download in corso',
+          ready: 'Pronto',
+          loading: 'Caricamento',
+          active: 'In uso',
+          quiescing: 'Completamento attività in corso',
+          disabled: 'Disabilitato',
+          failed: 'Nuovo tentativo automatico',
+        },
+      },
     },
     smartSpace: {
       quickActionsTitle: 'Azioni rapide smart space',

@@ -1,4 +1,3 @@
-import { PgliteDatabase } from 'drizzle-orm/pglite'
 import { backOff } from 'exponential-backoff'
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { minimatch } from 'minimatch'
@@ -17,6 +16,12 @@ import {
   type ReconcileScope,
   planReconcile,
 } from '../../../core/rag/reconciler'
+import type {
+  VectorInsert,
+  VectorMetaData,
+  VectorSelect,
+  VectorStore,
+} from '../../../core/runtime-components'
 import {
   EmbeddingDbStats,
   EmbeddingModelClient,
@@ -31,9 +36,6 @@ import {
   PDF_INDEX_MAX_PAGES,
   extractPdfText,
 } from '../../../utils/pdf/extractPdfText'
-import { InsertEmbedding, SelectEmbedding, VectorMetaData } from '../../schema'
-
-import { VectorRepository } from './VectorRepository'
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
@@ -93,7 +95,10 @@ export type ReconcileResult = {
 
 export class VectorManager {
   private app: App
-  private repository: VectorRepository
+  private repository: VectorStore
+  private acceptingOperations = true
+  private activeOperations = 0
+  private readonly idleWaiters = new Set<() => void>()
   private saveCallback: (() => Promise<void>) | null = null
   private vacuumCallback: (() => Promise<void>) | null = null
 
@@ -128,9 +133,9 @@ export class VectorManager {
     }
   }
 
-  constructor(app: App, db: PgliteDatabase) {
+  constructor(app: App, repository: VectorStore) {
     this.app = app
-    this.repository = new VectorRepository(app, db)
+    this.repository = repository
   }
 
   setSaveCallback(callback: () => Promise<void>) {
@@ -153,15 +158,20 @@ export class VectorManager {
       }
     },
   ): Promise<
-    (Omit<SelectEmbedding, 'embedding'> & {
+    (VectorSelect & {
       similarity: number
     })[]
   > {
-    return await this.repository.performSimilaritySearch(
-      queryVector,
-      embeddingModel,
-      options,
-    )
+    const release = this.enterOperation()
+    try {
+      return await this.repository.performSimilaritySearch(
+        queryVector,
+        embeddingModel,
+        options,
+      )
+    } finally {
+      release()
+    }
   }
 
   /**
@@ -180,275 +190,324 @@ export class VectorManager {
     config: ReconcileConfig,
     options: ReconcileOptions,
   ): Promise<ReconcileResult> {
-    const { signal, scope, truncate, onProgress } = options
+    const releaseOperation = this.enterOperation()
+    try {
+      const { signal, scope, truncate, onProgress } = options
 
-    if (truncate) {
-      await this.repository.truncateModel(embeddingModel.id)
-      await this.requestVacuum()
-    }
-
-    // 1. Determine the candidate file universe for this reconcile pass.
-    const allCandidates = this.listIndexableFiles(config)
-    const candidateFiles =
-      scope.kind === 'all'
-        ? allCandidates
-        : (() => {
-            const inScope = new Set(scope.paths)
-            return allCandidates.filter((f) => inScope.has(f.path))
-          })()
-    const candidateSet = new Set(candidateFiles.map((f) => f.path))
-
-    // 2. mtime map (used to skip unchanged files and to find removed paths).
-    const mtimeMap = truncate
-      ? new Map<string, number>()
-      : await this.repository.getFileMtimes(embeddingModel.id)
-
-    // 3. Partition candidates by mtime.
-    //
-    // Skip 0-byte files: they would chunkify into 0 chunks → no DB row →
-    // mtime-based partition would flag them as "new" forever, wasting a
-    // chunkify pass on every sync. Daily-note plugins commonly create empty
-    // placeholder notes; without this guard they'd flicker through the
-    // progress UI on every config change.
-    const filesToChunkify: TFile[] = []
-    let newFilesCount = 0
-    let updatedFilesCount = 0
-    for (const file of candidateFiles) {
-      if (file.stat.size === 0) continue
-      const existingMtime = mtimeMap.get(file.path)
-      if (existingMtime === undefined) {
-        filesToChunkify.push(file)
-        newFilesCount += 1
-      } else if (file.stat.mtime !== existingMtime) {
-        filesToChunkify.push(file)
-        updatedFilesCount += 1
+      if (truncate) {
+        await this.repository.truncateModel(embeddingModel.id)
+        await this.requestVacuum()
       }
-      // else: stable, leave actual rows alone.
-    }
 
-    // 4. Removed paths: in actual but no longer a candidate (and within scope).
-    const removedPaths: string[] = []
-    if (!truncate) {
-      const inScope = (path: string): boolean =>
-        scope.kind === 'all' ? true : scope.paths.includes(path)
-      for (const path of mtimeMap.keys()) {
-        if (!candidateSet.has(path) && inScope(path)) {
-          removedPaths.push(path)
+      // 1. Determine the candidate file universe for this reconcile pass.
+      const allCandidates = this.listIndexableFiles(config)
+      const candidateFiles =
+        scope.kind === 'all'
+          ? allCandidates
+          : (() => {
+              const inScope = new Set(scope.paths)
+              return allCandidates.filter((f) => inScope.has(f.path))
+            })()
+      const candidateSet = new Set(candidateFiles.map((f) => f.path))
+
+      // 2. mtime map (used to skip unchanged files and to find removed paths).
+      const storedMtimes = truncate
+        ? null
+        : await this.repository.getFileMtimes(embeddingModel.id)
+      const mtimeMap =
+        storedMtimes === null
+          ? new Map<string, number>()
+          : storedMtimes instanceof Map
+            ? storedMtimes
+            : new Map(Object.entries(storedMtimes))
+
+      // 3. Partition candidates by mtime.
+      //
+      // Skip 0-byte files: they would chunkify into 0 chunks → no DB row →
+      // mtime-based partition would flag them as "new" forever, wasting a
+      // chunkify pass on every sync. Daily-note plugins commonly create empty
+      // placeholder notes; without this guard they'd flicker through the
+      // progress UI on every config change.
+      const filesToChunkify: TFile[] = []
+      let newFilesCount = 0
+      let updatedFilesCount = 0
+      for (const file of candidateFiles) {
+        if (file.stat.size === 0) continue
+        const existingMtime = mtimeMap.get(file.path)
+        if (existingMtime === undefined) {
+          filesToChunkify.push(file)
+          newFilesCount += 1
+        } else if (file.stat.mtime !== existingMtime) {
+          filesToChunkify.push(file)
+          updatedFilesCount += 1
+        }
+        // else: stable, leave actual rows alone.
+      }
+
+      // 4. Removed paths: in actual but no longer a candidate (and within scope).
+      const removedPaths: string[] = []
+      if (!truncate) {
+        const inScope = (path: string): boolean =>
+          scope.kind === 'all' ? true : scope.paths.includes(path)
+        for (const path of mtimeMap.keys()) {
+          if (!candidateSet.has(path) && inScope(path)) {
+            removedPaths.push(path)
+          }
         }
       }
-    }
-    const removedFilesCount = removedPaths.length
+      const removedFilesCount = removedPaths.length
 
-    // 5. Chunkify and read actual for the diff scope.
-    const diffPaths = [...filesToChunkify.map((f) => f.path), ...removedPaths]
+      // 5. Chunkify and read actual for the diff scope.
+      const diffPaths = [...filesToChunkify.map((f) => f.path), ...removedPaths]
 
-    if (filesToChunkify.length === 0 && removedPaths.length === 0) {
-      // Nothing to do (everything is stable). Persist any truncate effect.
-      if (truncate) await this.requestSave()
-      return { permanentFailedPaths: [], chunkifyFailedPaths: [] }
-    }
-
-    const textSplitter = RecursiveCharacterTextSplitter.fromLanguage(
-      'markdown',
-      { chunkSize: config.chunkSize },
-    )
-
-    const desired: DesiredChunk[] = []
-    const failedFiles: { path: string; error: string }[] = []
-    let completedFilesCount = 0
-    const folderProgress: Record<
-      string,
-      {
-        completedFiles: number
-        totalFiles: number
-        completedChunks: number
-        totalChunks: number
+      if (filesToChunkify.length === 0 && removedPaths.length === 0) {
+        // Nothing to do (everything is stable). Persist any truncate effect.
+        if (truncate) await this.requestSave()
+        return { permanentFailedPaths: [], chunkifyFailedPaths: [] }
       }
-    > = {}
 
-    const folderOf = (path: string) =>
-      path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : ''
-    const ancestorsOf = (folder: string): string[] => {
-      if (!folder) return []
-      const parts = folder.split('/')
-      const out: string[] = []
-      for (let i = parts.length; i >= 1; i--) {
-        out.push(parts.slice(0, i).join('/'))
-      }
-      return out
-    }
+      const textSplitter = RecursiveCharacterTextSplitter.fromLanguage(
+        'markdown',
+        { chunkSize: config.chunkSize },
+      )
 
-    for (const file of filesToChunkify) {
-      const folder = folderOf(file.path)
-      if (!folderProgress[folder]) {
-        folderProgress[folder] = {
-          completedFiles: 0,
-          totalFiles: 0,
-          completedChunks: 0,
-          totalChunks: 0,
+      const desired: DesiredChunk[] = []
+      const failedFiles: { path: string; error: string }[] = []
+      let completedFilesCount = 0
+      const folderProgress: Record<
+        string,
+        {
+          completedFiles: number
+          totalFiles: number
+          completedChunks: number
+          totalChunks: number
         }
+      > = {}
+
+      const folderOf = (path: string) =>
+        path.includes('/') ? path.substring(0, path.lastIndexOf('/')) : ''
+      const ancestorsOf = (folder: string): string[] => {
+        if (!folder) return []
+        const parts = folder.split('/')
+        const out: string[] = []
+        for (let i = parts.length; i >= 1; i--) {
+          out.push(parts.slice(0, i).join('/'))
+        }
+        return out
       }
-      folderProgress[folder].totalFiles += 1
-      for (const anc of ancestorsOf(folder).slice(1)) {
-        if (!folderProgress[anc]) {
-          folderProgress[anc] = {
+
+      for (const file of filesToChunkify) {
+        const folder = folderOf(file.path)
+        if (!folderProgress[folder]) {
+          folderProgress[folder] = {
             completedFiles: 0,
             totalFiles: 0,
             completedChunks: 0,
             totalChunks: 0,
           }
         }
-      }
-    }
-
-    const maybeYield = createYieldController(10)
-    for (const file of filesToChunkify) {
-      if (signal?.aborted) {
-        await this.tryFlush('chunkify abort')
-        throw new DOMException('Indexing cancelled by user', 'AbortError')
-      }
-      await maybeYield()
-
-      const folder = folderOf(file.path)
-      onProgress?.({
-        completedChunks: 0,
-        totalChunks: 0,
-        totalFiles: filesToChunkify.length,
-        completedFiles: completedFilesCount,
-        currentFile: file.path,
-        currentFolder: folder,
-        folderProgress,
-        newFilesCount,
-        updatedFilesCount,
-        removedFilesCount,
-      })
-
-      try {
-        const fileChunks = await this.chunkifyFile(
-          file,
-          textSplitter,
-          config.chunkSize,
-          signal,
-          config.settings ?? null,
-        )
-        desired.push(...fileChunks)
-        folderProgress[folder].completedFiles += 1
-        folderProgress[folder].totalChunks += fileChunks.length
+        folderProgress[folder].totalFiles += 1
         for (const anc of ancestorsOf(folder).slice(1)) {
-          folderProgress[anc].totalChunks += fileChunks.length
+          if (!folderProgress[anc]) {
+            folderProgress[anc] = {
+              completedFiles: 0,
+              totalFiles: 0,
+              completedChunks: 0,
+              totalChunks: 0,
+            }
+          }
         }
-        completedFilesCount += 1
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          await this.tryFlush('chunkify abort (caught)')
-          throw error
-        }
-        failedFiles.push({
-          path: file.path,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
       }
-    }
 
-    // Chunkify failures are soft (self-healing): the files are excluded from the
-    // diff (their old index is preserved and mtime not advanced), so the next
-    // reconcile retries them. We log details for diagnostics and report the
-    // paths up to the caller, but never throw or pop a modal here.
-    const chunkifyFailedPaths = failedFiles.map((f) => f.path)
-    if (failedFiles.length > 0) {
-      const errorDetails = failedFiles
-        .map(({ path, error }) => `File: ${path}\nError: ${error}`)
-        .join('\n\n')
-      console.warn(
-        `[YOLO] Failed to chunkify ${failedFiles.length} file(s) (will retry next reconcile):\n\n${errorDetails}`,
-      )
-    }
+      const maybeYield = createYieldController(10)
+      for (const file of filesToChunkify) {
+        if (signal?.aborted) {
+          await this.tryFlush('chunkify abort')
+          throw new DOMException('Indexing cancelled by user', 'AbortError')
+        }
+        await maybeYield()
 
-    // 6. Read actual rows over the diff scope and plan.
-    //
-    // Critical: exclude failed-to-chunkify paths from the diff. Their `desired`
-    // is empty (chunking threw) but their existing rows must NOT be treated as
-    // "no longer desired" — that would silently delete a user's index after a
-    // transient I/O error. Skip them; next reconcile will retry.
-    const failedPaths = new Set(failedFiles.map((f) => f.path))
-    const safeDiffPaths = diffPaths.filter((p) => !failedPaths.has(p))
-    const actualRows = truncate
-      ? []
-      : await this.repository.listChunksForPaths(
-          embeddingModel.id,
-          safeDiffPaths,
+        const folder = folderOf(file.path)
+        onProgress?.({
+          completedChunks: 0,
+          totalChunks: 0,
+          totalFiles: filesToChunkify.length,
+          completedFiles: completedFilesCount,
+          currentFile: file.path,
+          currentFolder: folder,
+          folderProgress,
+          newFilesCount,
+          updatedFilesCount,
+          removedFilesCount,
+        })
+
+        try {
+          const fileChunks = await this.chunkifyFile(
+            file,
+            textSplitter,
+            config.chunkSize,
+            signal,
+            config.settings ?? null,
+          )
+          desired.push(...fileChunks)
+          folderProgress[folder].completedFiles += 1
+          folderProgress[folder].totalChunks += fileChunks.length
+          for (const anc of ancestorsOf(folder).slice(1)) {
+            folderProgress[anc].totalChunks += fileChunks.length
+          }
+          completedFilesCount += 1
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            await this.tryFlush('chunkify abort (caught)')
+            throw error
+          }
+          failedFiles.push({
+            path: file.path,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })
+        }
+      }
+
+      // Chunkify failures are soft (self-healing): the files are excluded from the
+      // diff (their old index is preserved and mtime not advanced), so the next
+      // reconcile retries them. We log details for diagnostics and report the
+      // paths up to the caller, but never throw or pop a modal here.
+      const chunkifyFailedPaths = failedFiles.map((f) => f.path)
+      if (failedFiles.length > 0) {
+        const errorDetails = failedFiles
+          .map(({ path, error }) => `File: ${path}\nError: ${error}`)
+          .join('\n\n')
+        console.warn(
+          `[YOLO] Failed to chunkify ${failedFiles.length} file(s) (will retry next reconcile):\n\n${errorDetails}`,
         )
-    const actual = actualRows.map((row) => ({
-      id: row.id,
-      path: row.path,
-      contentHash: row.content_hash,
-      metadata: row.metadata,
-      mtime: row.mtime,
-    }))
-    const plan = planReconcile(desired, actual)
+      }
 
-    // 7. Apply deletions and mtime bumps before embedding so that on-disk
-    //    state converges monotonically toward `desired`.
-    if (plan.toDeleteIds.length > 0) {
-      await this.repository.deleteVectorsByIds(plan.toDeleteIds)
+      // 6. Read actual rows over the diff scope and plan.
+      //
+      // Critical: exclude failed-to-chunkify paths from the diff. Their `desired`
+      // is empty (chunking threw) but their existing rows must NOT be treated as
+      // "no longer desired" — that would silently delete a user's index after a
+      // transient I/O error. Skip them; next reconcile will retry.
+      const failedPaths = new Set(failedFiles.map((f) => f.path))
+      const safeDiffPaths = diffPaths.filter((p) => !failedPaths.has(p))
+      const actualRows = truncate
+        ? []
+        : await this.repository.listChunksForPaths(
+            embeddingModel.id,
+            safeDiffPaths,
+          )
+      const actual = actualRows.map((row) => ({
+        id: row.id,
+        path: row.path,
+        contentHash: row.content_hash,
+        metadata: row.metadata,
+        mtime: row.mtime,
+      }))
+      const plan = planReconcile(desired, actual)
+
+      // 7. Apply deletions and mtime bumps before embedding so that on-disk
+      //    state converges monotonically toward `desired`.
+      if (plan.toDeleteIds.length > 0) {
+        await this.repository.deleteVectorsByIds(plan.toDeleteIds)
+      }
+      if (plan.toBumpMtime.length > 0) {
+        await this.repository.bumpMtimeByIds(plan.toBumpMtime)
+      }
+
+      if (plan.toEmbed.length === 0) {
+        await this.requestSave()
+        onProgress?.({
+          completedChunks: 0,
+          totalChunks: 0,
+          totalFiles: filesToChunkify.length,
+          completedFiles: completedFilesCount,
+          folderProgress,
+          newFilesCount,
+          updatedFilesCount,
+          removedFilesCount,
+        })
+        return { permanentFailedPaths: [], chunkifyFailedPaths }
+      }
+
+      // 8. Embed in batches with rate-limit aware retry.
+      const { permanentFailedPaths } = await this.embedAndInsertBatches(
+        plan.toEmbed,
+        embeddingModel,
+        {
+          signal,
+          maxConcurrency: config.embeddingConcurrency,
+          onProgress: (snapshot) =>
+            onProgress?.({
+              ...snapshot,
+              totalFiles: filesToChunkify.length,
+              completedFiles: completedFilesCount,
+              folderProgress,
+              newFilesCount,
+              updatedFilesCount,
+              removedFilesCount,
+            }),
+        },
+      )
+
+      return { permanentFailedPaths, chunkifyFailedPaths }
+    } finally {
+      releaseOperation()
     }
-    if (plan.toBumpMtime.length > 0) {
-      await this.repository.bumpMtimeByIds(plan.toBumpMtime)
-    }
-
-    if (plan.toEmbed.length === 0) {
-      await this.requestSave()
-      onProgress?.({
-        completedChunks: 0,
-        totalChunks: 0,
-        totalFiles: filesToChunkify.length,
-        completedFiles: completedFilesCount,
-        folderProgress,
-        newFilesCount,
-        updatedFilesCount,
-        removedFilesCount,
-      })
-      return { permanentFailedPaths: [], chunkifyFailedPaths }
-    }
-
-    // 8. Embed in batches with rate-limit aware retry.
-    const { permanentFailedPaths } = await this.embedAndInsertBatches(
-      plan.toEmbed,
-      embeddingModel,
-      {
-        signal,
-        maxConcurrency: config.embeddingConcurrency,
-        onProgress: (snapshot) =>
-          onProgress?.({
-            ...snapshot,
-            totalFiles: filesToChunkify.length,
-            completedFiles: completedFilesCount,
-            folderProgress,
-            newFilesCount,
-            updatedFilesCount,
-            removedFilesCount,
-          }),
-      },
-    )
-
-    return { permanentFailedPaths, chunkifyFailedPaths }
   }
 
   /** Truncate one model's namespace (used by manual "remove index" actions). */
   async clearAllVectors(embeddingModel: EmbeddingModelClient) {
-    await this.repository.truncateModel(embeddingModel.id)
-    await this.requestVacuum()
-    await this.requestSave()
+    const release = this.enterOperation()
+    try {
+      await this.repository.truncateModel(embeddingModel.id)
+      await this.requestVacuum()
+      await this.requestSave()
+    } finally {
+      release()
+    }
   }
 
   async clearVectorsByModelIds(modelIds: string[]) {
-    await this.repository.clearVectorsByModelIds(modelIds)
-    await this.requestVacuum()
-    await this.requestSave()
+    const release = this.enterOperation()
+    try {
+      await this.repository.clearVectorsByModelIds(modelIds)
+      await this.requestVacuum()
+      await this.requestSave()
+    } finally {
+      release()
+    }
   }
 
   async getEmbeddingStats(): Promise<EmbeddingDbStats[]> {
-    return await this.repository.getEmbeddingStats()
+    const release = this.enterOperation()
+    try {
+      return await this.repository.getEmbeddingStats()
+    } finally {
+      release()
+    }
+  }
+
+  async quiesce(): Promise<void> {
+    this.acceptingOperations = false
+    if (this.activeOperations === 0) return
+    await new Promise<void>((resolve) => this.idleWaiters.add(resolve))
+  }
+
+  private enterOperation(): () => void {
+    if (!this.acceptingOperations) {
+      throw new Error('PGlite engine is quiescing')
+    }
+    this.activeOperations += 1
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.activeOperations -= 1
+      if (this.activeOperations === 0) {
+        for (const resolve of this.idleWaiters) resolve()
+        this.idleWaiters.clear()
+      }
+    }
   }
 
   // ---------- internals ----------
@@ -662,7 +721,7 @@ export class VectorManager {
 
     const embedOne = async (
       chunk: DesiredChunk,
-    ): Promise<InsertEmbedding | null> => {
+    ): Promise<VectorInsert | null> => {
       if (signal?.aborted) return null
       try {
         return await backOff(
@@ -763,7 +822,7 @@ export class VectorManager {
         }
         await yieldToMain()
 
-        let validRows: InsertEmbedding[] = []
+        let validRows: VectorInsert[] = []
         let attempt = 0
         while (attempt < 2) {
           attempt += 1
@@ -773,7 +832,7 @@ export class VectorManager {
           // fails attempt 1 but succeeds attempt 2 would still be rolled back.
           const failureStart = failedChunks.length
           const results = await Promise.all(batch.map((c) => embedOne(c)))
-          validRows = results.filter((r): r is InsertEmbedding => r !== null)
+          validRows = results.filter((r): r is VectorInsert => r !== null)
           if (validRows.length > 0) {
             if (
               validRows.length !== batch.length &&

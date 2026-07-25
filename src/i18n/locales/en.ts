@@ -287,6 +287,36 @@ export const en: TranslationKeys = {
         activationPending: 'Activation pending',
         failed: 'Failed',
       },
+      runtimeComponents: {
+        title: 'Runtime components',
+        description:
+          'Core engines are installed on this device in the background and loaded only when a feature needs them.',
+        tokenizer: {
+          name: 'Tokenizer',
+          description: 'Counts context and tool tokens for Agent workflows.',
+          impact: 'Turning this off disables accurate token budgeting.',
+        },
+        pdfEngine: {
+          name: 'PDF engine',
+          description: 'Extracts text, renders pages, and prepares PDF ranges.',
+          impact: 'Turning this off disables PDF reading and page tools.',
+        },
+        pgliteEngine: {
+          name: 'PGlite engine',
+          description: 'Stores and searches the local knowledge-base index.',
+          impact: 'Turning this off disables indexing and semantic search.',
+        },
+        statuses: {
+          missing: 'Waiting to install',
+          downloading: 'Downloading',
+          ready: 'Ready',
+          loading: 'Loading',
+          active: 'In use',
+          quiescing: 'Finishing current work',
+          disabled: 'Disabled',
+          failed: 'Will retry automatically',
+        },
+      },
     },
     smartSpace: {
       quickActionsTitle: 'Smart space quick actions',

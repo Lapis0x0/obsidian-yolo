@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "pglite-engine",
+  "platforms": ["desktop", "mobile"],
+  "nameKey": "settings.modules.runtimeComponents.pgliteEngine.name",
+  "descriptionKey": "settings.modules.runtimeComponents.pgliteEngine.description",
+  "impactKey": "settings.modules.runtimeComponents.pgliteEngine.impact",
+  "entry": "dist/entry.js"
+}

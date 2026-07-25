@@ -263,6 +263,23 @@ export type TranslationKeys = {
         activationPending: string
         failed: string
       }
+      runtimeComponents: {
+        title: string
+        description: string
+        tokenizer: { name: string; description: string; impact: string }
+        pdfEngine: { name: string; description: string; impact: string }
+        pgliteEngine: { name: string; description: string; impact: string }
+        statuses: {
+          missing: string
+          downloading: string
+          ready: string
+          loading: string
+          active: string
+          quiescing: string
+          disabled: string
+          failed: string
+        }
+      }
     }
     chatPreferences: {
       title: string

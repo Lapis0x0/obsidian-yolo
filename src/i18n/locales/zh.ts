@@ -256,6 +256,36 @@ export const zh: TranslationKeys = {
         activationPending: '等待激活',
         failed: '失败',
       },
+      runtimeComponents: {
+        title: '运行组件',
+        description:
+          '核心引擎会在本机后台安装，并且只在相关功能实际使用时加载。',
+        tokenizer: {
+          name: '分词器',
+          description: '为 Agent 上下文和工具计算 token 数量。',
+          impact: '关闭后将无法进行精确的 token 预算。',
+        },
+        pdfEngine: {
+          name: 'PDF 引擎',
+          description: '提取 PDF 文本、渲染页面并生成页码范围。',
+          impact: '关闭后将无法读取 PDF 或使用页面工具。',
+        },
+        pgliteEngine: {
+          name: 'PGlite 引擎',
+          description: '保存并检索本地知识库索引。',
+          impact: '关闭后将无法建立索引或进行语义检索。',
+        },
+        statuses: {
+          missing: '等待安装',
+          downloading: '正在下载',
+          ready: '已就绪',
+          loading: '正在加载',
+          active: '使用中',
+          quiescing: '正在结束当前任务',
+          disabled: '已停用',
+          failed: '失败，将自动重试',
+        },
+      },
     },
     smartSpace: {
       quickActionsTitle: 'Smart Space 快捷选项',

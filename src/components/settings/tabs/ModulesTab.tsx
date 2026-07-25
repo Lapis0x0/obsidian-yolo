@@ -18,12 +18,22 @@ import type {
   ModuleService,
 } from '../../../core/modules/moduleService'
 import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modules/moduleSettingsContributions'
+import type {
+  RuntimeComponentRecord,
+  RuntimeComponentService,
+} from '../../../core/runtime-components'
 import { ModuleSettingsSection } from '../sections/ModuleSettingsSection'
 
 type ModulesTabProps = {
   service: ModuleService
+  runtimeComponents: RuntimeComponentService
   registrations: readonly RegisteredModuleSettingsContributionV1[]
 }
+
+type ModuleShelfSelection =
+  | Readonly<{ kind: 'management' }>
+  | Readonly<{ kind: 'components' }>
+  | Readonly<{ kind: 'module'; moduleId: string }>
 
 export type ModuleProductAction = 'install' | 'enable' | 'disable' | 'uninstall'
 export type ModuleShelfAction =
@@ -203,7 +213,11 @@ export async function executeModuleProductAction(
   return service.uninstall(module.id)
 }
 
-export function ModulesTab({ service, registrations }: ModulesTabProps) {
+export function ModulesTab({
+  service,
+  runtimeComponents,
+  registrations,
+}: ModulesTabProps) {
   const { t } = useLanguage()
   const snapshot = useSyncExternalStore(
     service.subscribe,
@@ -214,7 +228,14 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
     snapshot.modules,
     registrations,
   )
-  const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null)
+  const runtimeSnapshot = useSyncExternalStore(
+    runtimeComponents.subscribe,
+    runtimeComponents.getSnapshot,
+    runtimeComponents.getSnapshot,
+  )
+  const [selection, setSelection] = useState<ModuleShelfSelection>({
+    kind: 'management',
+  })
   const [operation, setOperation] = useState<OperationState | null>(null)
   const mounted = useRef(true)
 
@@ -227,15 +248,16 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
 
   useEffect(() => {
     if (
-      selectedModuleId &&
-      !navigation.some(({ module }) => module.id === selectedModuleId)
+      selection.kind === 'module' &&
+      !navigation.some(({ module }) => module.id === selection.moduleId)
     ) {
-      setSelectedModuleId(null)
+      setSelection({ kind: 'management' })
     }
-  }, [navigation, selectedModuleId])
+  }, [navigation, selection])
 
   const selected = navigation.find(
-    ({ module }) => module.id === selectedModuleId,
+    ({ module }) =>
+      selection.kind === 'module' && module.id === selection.moduleId,
   )
   const settingsIconsByModuleId = new Map(
     navigation.map(({ module, icon }) => [module.id, icon]),
@@ -301,7 +323,7 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
 
   const handleAction = (module: ModuleRecord, action: ModuleShelfAction) => {
     if (action === 'settings') {
-      setSelectedModuleId(module.id)
+      setSelection({ kind: 'module', moduleId: module.id })
       return
     }
     if (
@@ -334,12 +356,22 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
         <nav className="yolo-module-shelf-rail">
           <button
             type="button"
-            className={`yolo-module-shelf-nav ${selectedModuleId === null ? 'is-active' : ''}`}
-            aria-current={selectedModuleId === null ? 'page' : undefined}
-            onClick={() => setSelectedModuleId(null)}
+            className={`yolo-module-shelf-nav ${selection.kind === 'management' ? 'is-active' : ''}`}
+            aria-current={selection.kind === 'management' ? 'page' : undefined}
+            onClick={() => setSelection({ kind: 'management' })}
           >
             <span className="yolo-module-shelf-nav-label">
               {t('settings.modules.manage')}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`yolo-module-shelf-nav ${selection.kind === 'components' ? 'is-active' : ''}`}
+            aria-current={selection.kind === 'components' ? 'page' : undefined}
+            onClick={() => setSelection({ kind: 'components' })}
+          >
+            <span className="yolo-module-shelf-nav-label">
+              {t('settings.modules.runtimeComponents.title')}
             </span>
           </button>
           {navigation.length > 0 ? (
@@ -349,16 +381,27 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
             <button
               key={module.id}
               type="button"
-              className={`yolo-module-shelf-nav ${selectedModuleId === module.id ? 'is-active' : ''}`}
-              aria-current={selectedModuleId === module.id ? 'page' : undefined}
-              onClick={() => setSelectedModuleId(module.id)}
+              className={`yolo-module-shelf-nav ${selection.kind === 'module' && selection.moduleId === module.id ? 'is-active' : ''}`}
+              aria-current={
+                selection.kind === 'module' && selection.moduleId === module.id
+                  ? 'page'
+                  : undefined
+              }
+              onClick={() =>
+                setSelection({ kind: 'module', moduleId: module.id })
+              }
             >
               <span className="yolo-module-shelf-nav-label">{module.name}</span>
             </button>
           ))}
         </nav>
         <main className="yolo-module-shelf-canvas">
-          {selected ? (
+          {selection.kind === 'components' ? (
+            <RuntimeComponentsPanel
+              records={runtimeSnapshot}
+              service={runtimeComponents}
+            />
+          ) : selected ? (
             <ModuleSettingsPanel registrations={selected.registrations} />
           ) : (
             <ModuleManagementPanel
@@ -374,6 +417,91 @@ export function ModulesTab({ service, registrations }: ModulesTabProps) {
         </main>
       </div>
     </div>
+  )
+}
+
+function RuntimeComponentsPanel({
+  records,
+  service,
+}: {
+  records: readonly RuntimeComponentRecord[]
+  service: Pick<RuntimeComponentService, 'setEnabled'>
+}) {
+  const { t } = useLanguage()
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  const [errors, setErrors] = useState<Readonly<Record<string, string>>>({})
+
+  const setEnabled = (record: RuntimeComponentRecord, enabled: boolean) => {
+    setBusy((current) => new Set(current).add(record.descriptor.id))
+    setErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) => id !== record.descriptor.id),
+      ),
+    )
+    void service
+      .setEnabled(record.descriptor.id, enabled)
+      .catch((error) => {
+        setErrors((current) => ({
+          ...current,
+          [record.descriptor.id]:
+            error instanceof Error ? error.message : String(error),
+        }))
+      })
+      .finally(() => {
+        setBusy((current) => {
+          const next = new Set(current)
+          next.delete(record.descriptor.id)
+          return next
+        })
+      })
+  }
+
+  return (
+    <section className="yolo-module-shelf-panel">
+      <header className="yolo-module-shelf-header">
+        <div>
+          <h2>{t('settings.modules.runtimeComponents.title')}</h2>
+          <p>{t('settings.modules.runtimeComponents.description')}</p>
+        </div>
+      </header>
+      <div className="yolo-runtime-component-list">
+        {records.map((record) => (
+          <article
+            className="yolo-runtime-component-row"
+            key={record.descriptor.id}
+          >
+            <div className="yolo-runtime-component-copy">
+              <div className="yolo-runtime-component-heading">
+                <strong>{t(record.descriptor.nameKey)}</strong>
+                <span className="yolo-runtime-component-status">
+                  {t(
+                    `settings.modules.runtimeComponents.statuses.${record.status}`,
+                  )}
+                </span>
+              </div>
+              <p>{t(record.descriptor.descriptionKey)}</p>
+              <span className="yolo-runtime-component-impact">
+                {t(record.descriptor.impactKey)}
+              </span>
+              {record.error || errors[record.descriptor.id] ? (
+                <span className="yolo-module-shelf-error" role="alert">
+                  {errors[record.descriptor.id] ?? record.error}
+                </span>
+              ) : null}
+            </div>
+            <label className="yolo-runtime-component-toggle">
+              <input
+                type="checkbox"
+                checked={record.enabled}
+                disabled={busy.has(record.descriptor.id)}
+                onChange={(event) => setEnabled(record, event.target.checked)}
+                aria-label={t(record.descriptor.nameKey)}
+              />
+            </label>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }
 

@@ -25,6 +25,7 @@ export type ObsidianModuleIntentBackendOptions = Readonly<{
   app: App
   getSettings(): ObsidianModuleIntentSettings | null
   subscribeSettingsChange(listener: () => void): ModuleDisposer
+  directoryName?: 'module-intent-v1' | 'component-intent-v1'
 }>
 
 export class ModuleIntentSubscriptionRegistrationError extends Error {
@@ -44,9 +45,10 @@ export class ModuleIntentSubscriptionRegistrationError extends Error {
 export function createObsidianModuleIntentBackend(
   options: ObsidianModuleIntentBackendOptions,
 ): ModuleIntentBackend {
+  const directoryName = options.directoryName ?? MODULE_INTENT_DIR_NAME
   const rootPath = (): string =>
     normalizePath(
-      `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_INTENT_DIR_NAME}`,
+      `${getYoloJsonDbRootDir(options.getSettings())}/${directoryName}`,
     )
   const targetPath = (moduleId: string): string =>
     normalizePath(`${rootPath()}/${moduleId}.json`)

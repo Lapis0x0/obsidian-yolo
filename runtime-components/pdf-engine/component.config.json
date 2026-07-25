@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "pdf-engine",
+  "platforms": ["desktop", "mobile"],
+  "nameKey": "settings.modules.runtimeComponents.pdfEngine.name",
+  "descriptionKey": "settings.modules.runtimeComponents.pdfEngine.description",
+  "impactKey": "settings.modules.runtimeComponents.pdfEngine.impact",
+  "entry": "dist/entry.js"
+}

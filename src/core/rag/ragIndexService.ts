@@ -225,6 +225,21 @@ export class RagIndexService {
     this.currentAbortController?.abort()
   }
 
+  async waitForIdle(): Promise<void> {
+    if (!this.currentAbortController) return
+    await new Promise<void>((resolve) => {
+      const unsubscribe = this.subscribe(() => {
+        if (this.currentAbortController) return
+        unsubscribe()
+        resolve()
+      })
+      if (!this.currentAbortController) {
+        unsubscribe()
+        resolve()
+      }
+    })
+  }
+
   /**
    * Re-issue a previously scheduled retry. Path-scoped runs can't be retried
    * losslessly because we don't persist the path list — they fall back to a

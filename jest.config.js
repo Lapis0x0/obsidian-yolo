@@ -2,6 +2,7 @@
 module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/modules'],
   testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/__mocks__/runtimeComponentTestSetup.ts'],
   transform: {
     '^.+.tsx?$': ['ts-jest', { isolatedModules: true }],
   },

@@ -1,5 +1,5 @@
-import type { VectorMetaData } from '../../database/schema'
 import { embeddingChunkLineKey } from '../../utils/vector/embedding-chunk-keys'
+import type { VectorMetaData } from '../runtime-components'
 
 /**
  * The "shape" of a reconcile pass. Determines how the universe of paths is

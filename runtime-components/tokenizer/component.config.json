@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "tokenizer",
+  "platforms": ["desktop", "mobile"],
+  "nameKey": "settings.modules.runtimeComponents.tokenizer.name",
+  "descriptionKey": "settings.modules.runtimeComponents.tokenizer.description",
+  "impactKey": "settings.modules.runtimeComponents.tokenizer.impact",
+  "entry": "dist/entry.js"
+}
