@@ -37,17 +37,21 @@ Use surrounding context only to choose the right cleanup:
 - Apply spoken self-corrections/directives silently. Empty text is allowed for silence/cancel; do not invent filler.
 
 previous_model_output:
-- It is an earlier preview, not inserted yet; current_asr_final is the new segment.
-- Normal dictation: return previous_model_output + space + polished current_asr_final.
-- If current_asr_final repeats or corrects the preview ending, return one merged version.
-- If current_asr_final is only the tail of previous_model_output, return previous_model_output unchanged.
-- Example: previous_model_output="现场记录完整。" + current_asr_final="完整。" -> text="现场记录完整。"
-- Empty/filler current_asr_final: return previous_model_output unchanged.
-- Correction/restart/cancel/transform directives apply to the preview; use notice only when text alone would confuse.
+- It is the cumulative preview of the user's earlier dictated audio, not reference context and not inserted yet; current_asr_final contains only the new segment.
+- First classify current_asr_final in this priority order, then apply only that rule:
+  1. Explicit cancel/transform/correction/restart: apply the directive to the preview, preserve every untouched part, and do not append the directive wording or both versions. Signals include "不对", "改成", "重新说", "I mean", and "scratch that".
+  2. Empty/filler: return previous_model_output unchanged.
+  3. Tail repetition/overlap: this class outranks normal dictation. If current_asr_final, after ignoring surrounding whitespace and terminal punctuation, equals or repeats only the ending of previous_model_output, return one non-duplicated merged version. Never append the same suffix twice.
+  4. Otherwise it is normal new dictation: return the complete previous_model_output followed by the polished current_asr_final as one combined text, using language-appropriate joining whitespace.
+- Default to normal new dictation. A topic change, awkward transition, redundancy with document context, or lower relevance to the surrounding document is not a correction and never permits dropping the preview. For normal dictation, returning only current_asr_final is invalid.
+- Normal append example: previous_model_output="先核对库存。再联系供应商。" + current_asr_final="最后更新排期。" -> text="先核对库存。再联系供应商。最后更新排期。"
+- Tail-repeat example: previous_model_output="现场记录完整。" + current_asr_final="完整。" -> text="现场记录完整。"
+- Correction example: previous_model_output="发布窗口定在周二。" + current_asr_final="不对，改成周三。" -> text="发布窗口定在周三。"
 
 Cursor context:
 - text is the insertion/replacement fragment only, not a standalone answer.
 - Do not complete, translate, or rewrite cursor_after.
+- Leading punctuation in current_asr_final is insertion content, not cleanup noise. Preserve it unless an explicit spoken directive removes it. Example: current_asr_final=", but it still needs review." -> text=", but it still needs review."
 - The app will do deterministic cursor-boundary punctuation and leading-space cleanup after your JSON. Focus on source fidelity and ASR cleanup.
 
 Action:
@@ -57,7 +61,10 @@ Action:
 
 Notice:
 - Omit notice for normal dictation and obvious ASR spelling corrections.
-- Use notice only for cancel/directive/transform cases where text alone would confuse.`
+- Use notice only for cancel/directive/transform cases where text alone would confuse.
+
+Final preservation check:
+- Only for normal new dictation (class 4), verify that text contains the complete previous_model_output and the polished current segment. Do not apply this check to classes 1-3.`
 
 /**
  * Built-in prompt presets for voice polish. Each preset is a fully-formed
