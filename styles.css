@@ -7403,56 +7403,9 @@ button.yolo-module-shelf-action:focus-visible,
   background: var(--background-modifier-border);
 }
 
-.yolo-runtime-component-list {
-  display: grid;
-  gap: var(--size-4-3);
-}
-
-.yolo-runtime-component-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--size-4-4);
-  padding: var(--size-4-4);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-primary);
-}
-
-.yolo-runtime-component-copy {
-  min-width: 0;
-}
-
-.yolo-runtime-component-heading {
-  display: flex;
-  align-items: baseline;
-  gap: var(--size-4-2);
-}
-
-.yolo-runtime-component-heading strong {
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-}
-
-.yolo-runtime-component-status,
-.yolo-runtime-component-impact {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-}
-
-.yolo-runtime-component-copy p {
-  margin: var(--size-4-1) 0;
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-}
-
 .yolo-runtime-component-toggle {
   display: flex;
   align-items: center;
-}
-
-.yolo-runtime-component-toggle input[type='checkbox'] {
-  margin: 0;
 }
 
 .yolo-module-shelf-canvas {
@@ -7743,19 +7696,17 @@ button.yolo-module-shelf-uninstall:hover {
 }
 
 @container (max-width: 480px) {
-  .yolo-runtime-component-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    padding: var(--size-4-3);
-  }
-
-  .yolo-runtime-component-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
-  }
-
   .yolo-module-shelf-row {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .yolo-module-shelf-row.yolo-runtime-component-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .yolo-runtime-component-row .yolo-module-shelf-actions {
+    grid-column: auto;
+    width: auto;
   }
 
   .yolo-module-shelf-actions {

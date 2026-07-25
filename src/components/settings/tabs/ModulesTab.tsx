@@ -22,6 +22,7 @@ import type {
   RuntimeComponentRecord,
   RuntimeComponentService,
 } from '../../../core/runtime-components'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ModuleSettingsSection } from '../sections/ModuleSettingsSection'
 
 type ModulesTabProps = {
@@ -464,45 +465,60 @@ function RuntimeComponentsPanel({
           <p>{t('settings.modules.runtimeComponents.description')}</p>
         </div>
       </header>
-      <div className="yolo-runtime-component-list">
+      <div className="yolo-module-shelf-list">
         {records.map((record) => (
           <article
-            className="yolo-runtime-component-row"
+            className="yolo-module-shelf-row yolo-runtime-component-row"
             key={record.descriptor.id}
           >
-            <div className="yolo-runtime-component-copy">
-              <div className="yolo-runtime-component-heading">
+            <ModuleGlyph
+              moduleId={record.descriptor.id}
+              icon={runtimeComponentIcon(record.descriptor.id)}
+            />
+            <div className="yolo-module-shelf-row-copy">
+              <div className="yolo-module-shelf-row-heading">
                 <strong>{t(record.descriptor.nameKey)}</strong>
-                <span className="yolo-runtime-component-status">
+                <span className="yolo-module-shelf-version">
                   {t(
                     `settings.modules.runtimeComponents.statuses.${record.status}`,
                   )}
                 </span>
               </div>
               <p>{t(record.descriptor.descriptionKey)}</p>
-              <span className="yolo-runtime-component-impact">
-                {t(record.descriptor.impactKey)}
-              </span>
               {record.error || errors[record.descriptor.id] ? (
                 <span className="yolo-module-shelf-error" role="alert">
                   {errors[record.descriptor.id] ?? record.error}
                 </span>
               ) : null}
             </div>
-            <label className="yolo-runtime-component-toggle">
-              <input
-                type="checkbox"
-                checked={record.enabled}
-                disabled={busy.has(record.descriptor.id)}
-                onChange={(event) => setEnabled(record, event.target.checked)}
-                aria-label={t(record.descriptor.nameKey)}
-              />
-            </label>
+            <div className="yolo-module-shelf-actions">
+              <div className="yolo-runtime-component-toggle">
+                <ObsidianToggle
+                  value={record.enabled}
+                  disabled={busy.has(record.descriptor.id)}
+                  onChange={(enabled) => setEnabled(record, enabled)}
+                  ariaLabel={t(record.descriptor.nameKey)}
+                />
+              </div>
+            </div>
           </article>
         ))}
       </div>
     </section>
   )
+}
+
+function runtimeComponentIcon(componentId: string): string {
+  switch (componentId) {
+    case 'pdf-engine':
+      return 'file-text'
+    case 'pglite-engine':
+      return 'database'
+    case 'tokenizer':
+      return 'binary'
+    default:
+      return 'component'
+  }
 }
 
 function ModuleManagementPanel({
