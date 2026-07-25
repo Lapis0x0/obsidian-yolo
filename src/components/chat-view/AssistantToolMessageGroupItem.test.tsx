@@ -279,6 +279,40 @@ describe('AssistantToolMessageGroupItem', () => {
     )
   })
 
+  it('does not preserve the rendered message height while editing a long group', () => {
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-long',
+      content: 'long response\n'.repeat(500),
+      metadata: {
+        generationState: 'completed',
+      },
+    }
+
+    const html = renderToStaticMarkup(
+      <AssistantToolMessageGroupItem
+        messages={[assistantMessage]}
+        conversationId="conversation-1"
+        editingAssistantMessageId={assistantMessage.id}
+        isApplying={false}
+        activeApplyRequestKey={null}
+        onApply={() => {}}
+        onToolMessageUpdate={() => {}}
+        onEditStart={() => {}}
+        onEditCancel={() => {}}
+        onEditSave={() => {}}
+        onDeleteGroup={() => {}}
+        onRetryGroup={() => {}}
+        onBranchGroup={() => {}}
+        onQuoteAssistantSelection={() => {}}
+        onOpenEditSummaryFile={() => {}}
+      />,
+    )
+
+    expect(html).toContain('yolo-assistant-group-editor')
+    expect(html).not.toContain('min-height')
+  })
+
   it('hides the footer while the owning foreground run is active', () => {
     const assistantMessage: ChatAssistantMessage = {
       role: 'assistant',

@@ -301,10 +301,10 @@ function AssistantToolMessageGroupItem({
     scrollContainer: HTMLElement
     scrollTop: number
   } | null>(null)
-  const groupBodyRef = useRef<HTMLDivElement | null>(null)
-  const [editBodyMinHeight, setEditBodyMinHeight] = useState<number | null>(
-    null,
-  )
+  const pendingEditLayoutAnchorRef = useRef<{
+    scrollContainer: HTMLElement
+    bottom: number
+  } | null>(null)
   const branchGroups = useMemo(() => {
     const groups = new Map<
       string,
@@ -456,22 +456,48 @@ function AssistantToolMessageGroupItem({
   })
   const isRunActive =
     groupRunState === 'streaming' || groupRunState === 'waiting-approval'
+
+  // Keep the action area stationary while the rendered group and its capped
+  // editor exchange heights, without preserving the full message height.
+  const captureEditLayoutAnchor = useCallback(() => {
+    const container = containerRef.current
+    const scrollContainer = container?.closest<HTMLElement>(
+      '.yolo-chat-messages',
+    )
+    if (!container || !scrollContainer) {
+      pendingEditLayoutAnchorRef.current = null
+      return
+    }
+
+    pendingEditLayoutAnchorRef.current = {
+      scrollContainer,
+      bottom: container.getBoundingClientRect().bottom,
+    }
+  }, [])
+
   const handleEditStart = useCallback(() => {
     if (!groupAnchorMessageId || isRunActive) {
       return
     }
 
-    setEditBodyMinHeight(
-      groupBodyRef.current?.getBoundingClientRect().height ?? null,
-    )
-
+    captureEditLayoutAnchor()
     onEditStart(groupAnchorMessageId)
-  }, [groupAnchorMessageId, isRunActive, onEditStart])
+  }, [captureEditLayoutAnchor, groupAnchorMessageId, isRunActive, onEditStart])
 
-  useEffect(() => {
-    if (!isEditingGroup) {
-      setEditBodyMinHeight(null)
+  useLayoutEffect(() => {
+    const pendingAnchor = pendingEditLayoutAnchorRef.current
+    if (!pendingAnchor) {
+      return
     }
+
+    pendingEditLayoutAnchorRef.current = null
+    const container = containerRef.current
+    if (!container || !pendingAnchor.scrollContainer.contains(container)) {
+      return
+    }
+
+    const nextBottom = container.getBoundingClientRect().bottom
+    pendingAnchor.scrollContainer.scrollTop += nextBottom - pendingAnchor.bottom
   }, [isEditingGroup])
   const hasPendingAssistantShell = assistantMessages.some(
     (message) =>
@@ -650,14 +676,17 @@ function AssistantToolMessageGroupItem({
           })}
         </div>
       )}
-      <div className="yolo-assistant-group-body" ref={groupBodyRef}>
+      <div className="yolo-assistant-group-body">
         {isEditingGroup ? (
           <AssistantGroupEditor
             messages={displayedMessages}
-            minHeight={editBodyMinHeight}
-            onCancel={onEditCancel}
+            onCancel={() => {
+              captureEditLayoutAnchor()
+              onEditCancel()
+            }}
             onSave={(replacementMessages) => {
               if (!groupAnchorMessageId) return
+              captureEditLayoutAnchor()
               onEditSave(groupAnchorMessageId, replacementMessages)
             }}
           />
