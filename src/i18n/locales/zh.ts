@@ -1038,6 +1038,11 @@ export const zh: TranslationKeys = {
       maxContextTokensDesc:
         '识别到常见模型时会自动填充；如果你的提供商实际限制不同，可以手动修改。',
       maxOutputTokens: '最大输出 token',
+      requestParameters: '请求参数',
+      requestParametersDesc: '通常无需调整；未启用的字段使用 Provider 默认值。',
+      requestParametersEnabledCount: '已启用 {count} 项请求参数',
+      clearRequestParameterOverrides: '清除覆盖',
+      additionalParameters: '其他参数',
       customParameters: '自定义参数',
       customParametersDesc:
         '为请求附加额外字段，值支持纯文本或 JSON（例如 {"type":"enabled"} 或 0.7）。',

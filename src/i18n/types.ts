@@ -892,6 +892,11 @@ export type TranslationKeys = {
       maxContextTokens?: string
       maxContextTokensDesc?: string
       maxOutputTokens?: string
+      requestParameters?: string
+      requestParametersDesc?: string
+      requestParametersEnabledCount?: string
+      clearRequestParameterOverrides?: string
+      additionalParameters?: string
       customParameters?: string
       customParametersDesc?: string
       customParametersAdd?: string

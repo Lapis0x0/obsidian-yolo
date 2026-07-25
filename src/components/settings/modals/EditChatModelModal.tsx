@@ -24,6 +24,7 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
+import { ModelRequestParametersDisclosure } from '../common/ModelRequestParametersDisclosure'
 
 type EditChatModelModalComponentProps = {
   plugin: YoloPlugin
@@ -290,21 +291,19 @@ function EditChatModelModalComponent({
           }))
       : [],
   )
+  const enabledRequestParameterCount =
+    Number(temperature !== undefined) +
+    Number(topP !== undefined) +
+    Number(maxOutputTokens !== undefined) +
+    sanitizeCustomParameters(customParameters).filter(
+      (entry) => !isReservedCustomParameterKey(entry.key),
+    ).length
 
-  const resetModelParams = () => {
-    setModelParamCache({
-      temperature: MODEL_SAMPLING_DEFAULTS.temperature,
-      topP: MODEL_SAMPLING_DEFAULTS.topP,
-      maxContextTokens:
-        resolveKnownMaxContextTokens(formData.model) ??
-        MODEL_SAMPLING_DEFAULTS.maxContextTokens,
-      maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
-    })
-    setTemperature(MODEL_SAMPLING_DEFAULTS.temperature)
-    setTopP(MODEL_SAMPLING_DEFAULTS.topP)
-    setMaxContextTokens(resolveKnownMaxContextTokens(formData.model))
-    setMaxOutputTokens(MODEL_SAMPLING_DEFAULTS.maxOutputTokens)
-    setHasManualMaxContextTokens(false)
+  const clearRequestParameterOverrides = () => {
+    setTemperature(undefined)
+    setTopP(undefined)
+    setMaxOutputTokens(undefined)
+    setCustomParameters([])
   }
 
   React.useEffect(() => {
@@ -841,20 +840,7 @@ function EditChatModelModalComponent({
         </div>
       )}
 
-      <div className="yolo-agent-tools-panel yolo-agent-model-panel">
-        <div className="yolo-agent-tools-panel-head yolo-agent-model-panel-head">
-          <div className="yolo-agent-tools-panel-title">
-            {t('settings.models.customParameters', 'Custom parameters')}
-          </div>
-          <button
-            type="button"
-            className="yolo-agent-model-reset"
-            onClick={resetModelParams}
-          >
-            {t('settings.models.restoreDefaults', 'Restore defaults')}
-          </button>
-        </div>
-
+      <div className="yolo-agent-model-context">
         <div className="yolo-agent-model-controls">
           <div
             className={`yolo-agent-model-control${
@@ -943,7 +929,14 @@ function EditChatModelModalComponent({
               </div>
             )}
           </div>
+        </div>
+      </div>
 
+      <ModelRequestParametersDisclosure
+        enabledCount={enabledRequestParameterCount}
+        onClear={clearRequestParameterOverrides}
+      >
+        <div className="yolo-agent-model-controls">
           <div
             className={`yolo-agent-model-control${
               temperature === undefined ? ' is-disabled' : ''
@@ -1135,89 +1128,91 @@ function EditChatModelModalComponent({
             )}
           </div>
         </div>
-      </div>
 
-      <ObsidianSetting
-        name={t('settings.models.customParameters')}
-        desc={t('settings.models.customParametersDesc')}
-      >
-        <ObsidianButton
-          text={t('settings.models.customParametersAdd')}
-          onClick={() =>
-            setCustomParameters((prev) => [
-              ...prev,
-              {
-                uid: createCustomParameterUid(),
-                key: '',
-                value: '',
-                type: 'text',
-              },
-            ])
-          }
-        />
-      </ObsidianSetting>
-
-      {customParameters.map((param, index) => (
         <ObsidianSetting
-          key={param.uid}
-          className="yolo-settings-kv-entry yolo-settings-kv-entry--inline"
+          name={t('settings.models.additionalParameters')}
+          desc={t('settings.models.customParametersDesc')}
         >
-          <ObsidianTextInput
-            value={param.key}
-            placeholder={t('settings.models.customParametersKeyPlaceholder')}
-            onChange={(value: string) =>
-              setCustomParameters((prev) => {
-                const next = [...prev]
-                next[index] = { ...next[index], key: value }
-                return next
-              })
-            }
-          />
-          <ObsidianDropdown
-            value={normalizeCustomParameterType(param.type)}
-            options={Object.fromEntries(
-              CUSTOM_PARAMETER_TYPES.map((type) => [
-                type,
-                t(
-                  `settings.models.customParameterType${
-                    type.charAt(0).toUpperCase() + type.slice(1)
-                  }`,
-                  type,
-                ),
-              ]),
-            )}
-            onChange={(value: string) =>
-              setCustomParameters((prev) => {
-                const next = [...prev]
-                next[index] = {
-                  ...next[index],
-                  type: normalizeCustomParameterType(value),
-                }
-                return next
-              })
-            }
-          />
-          <ObsidianTextInput
-            value={param.value}
-            placeholder={t('settings.models.customParametersValuePlaceholder')}
-            onChange={(value: string) =>
-              setCustomParameters((prev) => {
-                const next = [...prev]
-                next[index] = { ...next[index], value }
-                return next
-              })
-            }
-          />
           <ObsidianButton
-            text={t('common.remove')}
+            text={t('settings.models.customParametersAdd')}
             onClick={() =>
-              setCustomParameters((prev) =>
-                prev.filter((_, removeIndex) => removeIndex !== index),
-              )
+              setCustomParameters((prev) => [
+                ...prev,
+                {
+                  uid: createCustomParameterUid(),
+                  key: '',
+                  value: '',
+                  type: 'text',
+                },
+              ])
             }
           />
         </ObsidianSetting>
-      ))}
+
+        {customParameters.map((param, index) => (
+          <ObsidianSetting
+            key={param.uid}
+            className="yolo-settings-kv-entry yolo-settings-kv-entry--inline"
+          >
+            <ObsidianTextInput
+              value={param.key}
+              placeholder={t('settings.models.customParametersKeyPlaceholder')}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = { ...next[index], key: value }
+                  return next
+                })
+              }
+            />
+            <ObsidianDropdown
+              value={normalizeCustomParameterType(param.type)}
+              options={Object.fromEntries(
+                CUSTOM_PARAMETER_TYPES.map((type) => [
+                  type,
+                  t(
+                    `settings.models.customParameterType${
+                      type.charAt(0).toUpperCase() + type.slice(1)
+                    }`,
+                    type,
+                  ),
+                ]),
+              )}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = {
+                    ...next[index],
+                    type: normalizeCustomParameterType(value),
+                  }
+                  return next
+                })
+              }
+            />
+            <ObsidianTextInput
+              value={param.value}
+              placeholder={t(
+                'settings.models.customParametersValuePlaceholder',
+              )}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = { ...next[index], value }
+                  return next
+                })
+              }
+            />
+            <ObsidianButton
+              text={t('common.remove')}
+              onClick={() =>
+                setCustomParameters((prev) =>
+                  prev.filter((_, removeIndex) => removeIndex !== index),
+                )
+              }
+            />
+          </ObsidianSetting>
+        ))}
+      </ModelRequestParametersDisclosure>
 
       <ObsidianSetting>
         <ObsidianButton text={t('common.save')} onClick={handleSubmit} cta />

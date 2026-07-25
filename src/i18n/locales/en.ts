@@ -1115,6 +1115,12 @@ export const en: TranslationKeys = {
       maxContextTokensDesc:
         'Auto-filled when this model is recognized. Adjust it if your provider uses a different limit.',
       maxOutputTokens: 'Max output tokens',
+      requestParameters: 'Request parameters',
+      requestParametersDesc:
+        'Usually no adjustment is needed. Fields left disabled use the provider defaults.',
+      requestParametersEnabledCount: '{count} request parameters enabled',
+      clearRequestParameterOverrides: 'Clear overrides',
+      additionalParameters: 'Other parameters',
       customParameters: 'Custom parameters',
       customParametersDesc:
         'Attach additional request fields; values accept plain text or JSON (for example, {"thinking": {"type": "enabled"}}).',

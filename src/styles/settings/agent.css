@@ -812,6 +812,93 @@ button.yolo-agent-chip--more:hover {
   align-items: center;
 }
 
+.yolo-agent-model-context {
+  margin-top: var(--size-4-3);
+}
+
+.yolo-agent-model-request-parameters {
+  margin: var(--size-4-3) 0 var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.yolo-agent-model-request-parameters-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.yolo-agent-model-request-parameters-summary::-webkit-details-marker {
+  display: none;
+}
+
+.yolo-agent-model-request-parameters-meta {
+  min-width: 0;
+}
+
+.yolo-agent-model-request-parameters-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-agent-model-request-parameters-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  line-height: 1;
+}
+
+.yolo-agent-model-request-parameters-desc {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-agent-model-request-parameters-chevron {
+  color: var(--text-muted);
+  transition: transform 140ms ease;
+}
+
+.yolo-agent-model-request-parameters[open]
+  .yolo-agent-model-request-parameters-chevron {
+  transform: rotate(180deg);
+}
+
+.yolo-agent-model-request-parameters-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-agent-model-request-parameters-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.yolo-agent-model-request-parameters-content > .setting-item {
+  border-top: 0;
+}
+
 .yolo-agent-model-reset {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
