@@ -97,6 +97,23 @@ describe('CardStreamParser', () => {
     expect(cards).toHaveLength(1)
     expect(cards[0]?.back).toContain(CARD_END_MARKER)
   })
+
+  it('recovers cards when the model drops the HTML-comment brackets', () => {
+    const cards: CardDraft[] = []
+    const parser = new CardStreamParser(new Set(['aaaaaaaa']), (card) =>
+      cards.push(card),
+    )
+    // Angle brackets dropped on both the kp comment and the end marker.
+    parser.push(
+      '## Predict first !--kp:aaaaaaaa--\n\nWhy predict?\n\n---\n\nTo expose the model.\n\n!--yolo-card-end--\n',
+    )
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({
+      kpUuid: 'aaaaaaaa',
+      title: 'Predict first',
+    })
+    expect(parser.discardedCount).toBe(0)
+  })
 })
 
 describe('generateCardsForChapter streaming', () => {

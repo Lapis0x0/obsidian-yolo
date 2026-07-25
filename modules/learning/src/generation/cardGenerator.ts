@@ -34,10 +34,18 @@ import type {
 
 const KNOWLEDGE_POINT_UUID_RE = /<!--\s*kp:([0-9a-fA-F]{8})\s*-->/g
 const CARD_HEADING_RE = /^##[ \t]+([^\r\n]+)$/gm
-const CARD_KP_UUID_RE = /<!--\s*kp:([0-9a-fA-F]{8})\s*-->/
+const CARD_KP_UUID_RE = /<?!?-{2,}\s*kp:\s*([0-9a-fA-F]{8})\s*-{2,}!?>?/
 const WRITTEN_CARD_COMMENT_RE =
   /<!--\s*card:([0-9a-fA-F]{8})(?:\s+kp:([0-9a-fA-F]{8}))?\s*-->/
 export const CARD_END_MARKER = '<!--yolo-card-end-->'
+
+// Models frequently mangle the HTML-comment markers (dropping the angle
+// brackets or adding whitespace), which otherwise discards every card in the
+// block. Accept the common malformed variants of the standalone end marker.
+const CARD_END_MARKER_RE = /^\s*<?!?-{2,}\s*yolo-card-end\s*-{2,}!?>?\s*$/
+function isCardEndMarker(line: string): boolean {
+  return line === CARD_END_MARKER || CARD_END_MARKER_RE.test(line)
+}
 
 type WrittenCardEntry = CardDraft & { cardUuid: string; block: string }
 type WrittenCardValidation = {
@@ -551,7 +559,7 @@ export class CardStreamParser {
       const rawLine = this.pending.slice(0, newlineIndex)
       this.pending = this.pending.slice(newlineIndex + 1)
       const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
-      if (line === CARD_END_MARKER) this.publishBlock()
+      if (isCardEndMarker(line)) this.publishBlock()
       else this.block += `${line}\n`
       newlineIndex = this.pending.indexOf('\n')
     }
@@ -561,7 +569,7 @@ export class CardStreamParser {
     const line = this.pending.endsWith('\r')
       ? this.pending.slice(0, -1)
       : this.pending
-    if (line === CARD_END_MARKER) this.publishBlock()
+    if (isCardEndMarker(line)) this.publishBlock()
     this.pending = ''
     this.block = ''
   }

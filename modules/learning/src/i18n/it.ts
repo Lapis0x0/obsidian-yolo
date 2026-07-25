@@ -281,6 +281,7 @@ export const it = {
     generationFailedSummary:
       'Nessuna carta è stata generata. Controlla lo stato dei capitoli.',
     startLearning: 'Inizia a studiare',
+    browseCards: 'Sfoglia le carte',
     viewGenerationDetails: 'Vedi dettagli',
     filteredTo: 'Filtrato su: ',
     sortDue: 'Scadenza',
