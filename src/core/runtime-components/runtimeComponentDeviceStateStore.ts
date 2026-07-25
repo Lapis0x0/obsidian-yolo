@@ -16,6 +16,13 @@ export type RuntimeComponentDeviceState = Readonly<{
   activeHash: string | null
   pending: RuntimeComponentDescriptor | null
   error: string | null
+  retry: RuntimeComponentRetryState | null
+}>
+
+export type RuntimeComponentRetryState = Readonly<{
+  descriptorHash: string
+  automaticRetryCount: number
+  retryAt: number | null
 }>
 
 export class RuntimeComponentDeviceStateStore {
@@ -30,12 +37,14 @@ export class RuntimeComponentDeviceStateStore {
   ): Promise<RuntimeComponentDeviceState | null> {
     const envelope = await this.store.read(id)
     if (envelope === null) return null
-    if (envelope.schemaVersion !== 1) {
+    if (envelope.schemaVersion !== 1 && envelope.schemaVersion !== 2) {
       throw new ModuleSettingsCorruptionError(
         `Runtime component device state for "${id}" has unsupported schema`,
       )
     }
-    return parseState(envelope.data, id)
+    return envelope.schemaVersion === 1
+      ? parseLegacyState(envelope.data, id)
+      : parseState(envelope.data, id)
   }
 
   async write(
@@ -43,7 +52,7 @@ export class RuntimeComponentDeviceStateStore {
   ): Promise<RuntimeComponentDeviceState> {
     const parsed = parseState(state, state.componentId)
     const written = await this.store.write(parsed.componentId, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       data: parsed,
     })
     return parseState(written.data, parsed.componentId)
@@ -61,20 +70,27 @@ function parseState(
   }
   const state = value as Record<string, unknown>
   const pending = state.pending
+  const retry = state.retry
   if (
     Object.keys(state).some(
       (key) =>
-        !['componentId', 'platform', 'activeHash', 'pending', 'error'].includes(
-          key,
-        ),
+        ![
+          'componentId',
+          'platform',
+          'activeHash',
+          'pending',
+          'error',
+          'retry',
+        ].includes(key),
     ) ||
-    Object.keys(state).length !== 5 ||
+    Object.keys(state).length !== 6 ||
     state.componentId !== id ||
     (state.platform !== 'desktop' && state.platform !== 'mobile') ||
     (state.activeHash !== null &&
       (typeof state.activeHash !== 'string' ||
         !/^[a-f0-9]{64}$/.test(state.activeHash))) ||
     (state.error !== null && typeof state.error !== 'string') ||
+    (retry !== null && !isRetryState(retry)) ||
     (pending !== null && !isDescriptor(pending, id))
   ) {
     throw new ModuleSettingsCorruptionError(
@@ -87,7 +103,36 @@ function parseState(
     activeHash: state.activeHash,
     pending,
     error: state.error,
+    retry,
   }) as RuntimeComponentDeviceState
+}
+
+function parseLegacyState(
+  value: unknown,
+  id: RuntimeComponentId,
+): RuntimeComponentDeviceState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ModuleSettingsCorruptionError(
+      'Runtime component state is invalid',
+    )
+  }
+  const state = value as Record<string, unknown>
+  return parseState({ ...state, retry: null }, id)
+}
+
+function isRetryState(value: unknown): value is RuntimeComponentRetryState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const retry = value as Record<string, unknown>
+  return (
+    Object.keys(retry).length === 3 &&
+    typeof retry.descriptorHash === 'string' &&
+    /^[a-f0-9]{64}$/.test(retry.descriptorHash) &&
+    Number.isSafeInteger(retry.automaticRetryCount) &&
+    (retry.automaticRetryCount as number) >= 0 &&
+    (retry.automaticRetryCount as number) <= 3 &&
+    (retry.retryAt === null ||
+      (Number.isSafeInteger(retry.retryAt) && (retry.retryAt as number) >= 0))
+  )
 }
 
 function isDescriptor(

@@ -282,7 +282,7 @@ export const zh: TranslationKeys = {
           active: '使用中',
           quiescing: '正在结束当前任务',
           disabled: '已停用',
-          failed: '失败，将自动重试',
+          failed: '失败',
         },
       },
     },

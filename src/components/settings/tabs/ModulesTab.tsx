@@ -427,7 +427,7 @@ function RuntimeComponentsPanel({
   service,
 }: {
   records: readonly RuntimeComponentRecord[]
-  service: Pick<RuntimeComponentService, 'setEnabled'>
+  service: Pick<RuntimeComponentService, 'retry' | 'setEnabled'>
 }) {
   const { t } = useLanguage()
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
@@ -442,6 +442,31 @@ function RuntimeComponentsPanel({
     )
     void service
       .setEnabled(record.descriptor.id, enabled)
+      .catch((error) => {
+        setErrors((current) => ({
+          ...current,
+          [record.descriptor.id]:
+            error instanceof Error ? error.message : String(error),
+        }))
+      })
+      .finally(() => {
+        setBusy((current) => {
+          const next = new Set(current)
+          next.delete(record.descriptor.id)
+          return next
+        })
+      })
+  }
+
+  const retry = (record: RuntimeComponentRecord) => {
+    setBusy((current) => new Set(current).add(record.descriptor.id))
+    setErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) => id !== record.descriptor.id),
+      ),
+    )
+    void service
+      .retry(record.descriptor.id)
       .catch((error) => {
         setErrors((current) => ({
           ...current,
@@ -495,6 +520,16 @@ function RuntimeComponentsPanel({
               ) : null}
             </div>
             <div className="yolo-module-shelf-actions">
+              {record.status === 'failed' ? (
+                <button
+                  type="button"
+                  className="yolo-module-shelf-action"
+                  disabled={busy.has(record.descriptor.id)}
+                  onClick={() => retry(record)}
+                >
+                  {t('settings.modules.retry')}
+                </button>
+              ) : null}
               <div className="yolo-runtime-component-toggle">
                 <ObsidianToggle
                   value={record.enabled}

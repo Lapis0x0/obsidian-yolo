@@ -337,7 +337,7 @@ export const it: DeepPartial<TranslationKeys> = {
           active: 'In uso',
           quiescing: 'Completamento attività in corso',
           disabled: 'Disabilitato',
-          failed: 'Nuovo tentativo automatico',
+          failed: 'Non riuscito',
         },
       },
     },

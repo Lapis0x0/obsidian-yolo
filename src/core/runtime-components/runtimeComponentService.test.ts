@@ -21,6 +21,10 @@ const pdfDescriptor: RuntimeComponentDescriptor = {
 }
 
 describe('RuntimeComponentService desired intent', () => {
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
   it('persists disabled before quiescing and removes the record before enabling', async () => {
     const events: string[] = []
     let enabled = true
@@ -238,5 +242,120 @@ describe('RuntimeComponentService desired intent', () => {
     ;(await tokenizer).release()
     ;(await pdf).release()
     expect(maxActiveDownloads).toBe(1)
+  })
+
+  it('stops after three automatic retries for a transient failure', async () => {
+    jest.useFakeTimers()
+    const ensure = jest.fn().mockRejectedValue(new Error('network timeout'))
+    const write = jest.fn(async (state: Record<string, unknown>) => state)
+    const service = new RuntimeComponentService({
+      registry: { schemaVersion: 1, components: [descriptor] },
+      platform: 'desktop',
+      store: { hasPlausibleEntry: async () => false } as never,
+      installer: { ensure } as never,
+      loader: {} as never,
+      runtime: new RuntimeComponentRuntime(),
+      intentStore: {} as never,
+      deviceStateStore: { write } as never,
+    })
+
+    await expect(service.retry('tokenizer')).rejects.toThrow('network timeout')
+    expect(ensure).toHaveBeenCalledTimes(1)
+
+    await jest.advanceTimersByTimeAsync(10_000)
+    expect(ensure).toHaveBeenCalledTimes(2)
+    await jest.advanceTimersByTimeAsync(60_000)
+    expect(ensure).toHaveBeenCalledTimes(3)
+    await jest.advanceTimersByTimeAsync(5 * 60_000)
+    expect(ensure).toHaveBeenCalledTimes(4)
+
+    await jest.advanceTimersByTimeAsync(60 * 60_000)
+    expect(ensure).toHaveBeenCalledTimes(4)
+    expect(write.mock.calls.at(-1)?.[0]).toMatchObject({
+      error: 'network timeout',
+      retry: {
+        automaticRetryCount: 3,
+        retryAt: null,
+      },
+    })
+    service.stop()
+    jest.useRealTimers()
+  })
+
+  it('does not retry a permanent failure automatically', async () => {
+    jest.useFakeTimers()
+    const ensure = jest
+      .fn()
+      .mockRejectedValue(new Error('Downloaded component SHA-256 mismatch'))
+    const service = new RuntimeComponentService({
+      registry: { schemaVersion: 1, components: [descriptor] },
+      platform: 'desktop',
+      store: { hasPlausibleEntry: async () => false } as never,
+      installer: { ensure } as never,
+      loader: {} as never,
+      runtime: new RuntimeComponentRuntime(),
+      intentStore: {} as never,
+      deviceStateStore: { write: async () => undefined } as never,
+    })
+
+    await expect(service.retry('tokenizer')).rejects.toThrow('SHA-256 mismatch')
+    await jest.advanceTimersByTimeAsync(60 * 60_000)
+    expect(ensure).toHaveBeenCalledTimes(1)
+    service.stop()
+    jest.useRealTimers()
+  })
+
+  it('restores a scheduled retry without resetting its persisted budget', async () => {
+    jest.useFakeTimers()
+    const retryAt = Date.now() + 60_000
+    const ensure = jest.fn().mockResolvedValue(undefined)
+    const service = new RuntimeComponentService({
+      registry: { schemaVersion: 1, components: [descriptor] },
+      platform: 'desktop',
+      store: { hasPlausibleEntry: async () => false } as never,
+      installer: { ensure } as never,
+      loader: {} as never,
+      runtime: new RuntimeComponentRuntime(),
+      intentStore: {
+        isEnabled: async () => true,
+        subscribe: () => () => undefined,
+      } as never,
+      deviceStateStore: {
+        read: async () => ({
+          componentId: 'tokenizer',
+          platform: 'desktop',
+          activeHash: null,
+          pending: null,
+          error: 'network timeout',
+          retry: {
+            descriptorHash: descriptor.sha256,
+            automaticRetryCount: 2,
+            retryAt,
+          },
+        }),
+        write: async (state: Record<string, unknown>) => state,
+      } as never,
+      scheduleIdle: (callback) => {
+        callback()
+        return () => undefined
+      },
+    })
+
+    await service.start()
+    expect(service.getSnapshot()[0]).toMatchObject({
+      status: 'failed',
+      error: 'network timeout',
+    })
+    expect(ensure).not.toHaveBeenCalled()
+
+    await jest.advanceTimersByTimeAsync(59_999)
+    expect(ensure).not.toHaveBeenCalled()
+    await jest.advanceTimersByTimeAsync(1)
+    expect(ensure).toHaveBeenCalledTimes(1)
+    expect(service.getSnapshot()[0]).toMatchObject({
+      status: 'ready',
+      error: null,
+    })
+    service.stop()
   })
 })

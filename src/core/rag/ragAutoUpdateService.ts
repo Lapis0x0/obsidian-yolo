@@ -2,6 +2,11 @@ import { minimatch } from 'minimatch'
 import { TAbstractFile, TFile, TFolder } from 'obsidian'
 
 import { YoloSettings } from '../../settings/schema/setting.types'
+import {
+  type AutomaticRetrySchedule,
+  MAX_AUTOMATIC_RETRIES,
+  getNextAutomaticRetry,
+} from '../retry/limitedAutomaticRetry'
 
 import { classifyRagIndexError } from './ragIndexErrors'
 
@@ -18,8 +23,10 @@ type RagAutoUpdateServiceDeps = {
   getSettings: () => YoloSettings
   setSettings: (settings: YoloSettings) => Promise<boolean>
   runIndex: (request: AutoUpdateRunRequest) => Promise<void>
+  getRetryCount: () => number
   markRetryScheduled: (input: {
     retryAt: number
+    retryCount: number
     failureMessage?: string
   }) => Promise<void>
   clearRetryScheduled: () => Promise<void>
@@ -29,14 +36,19 @@ export class RagAutoUpdateService {
   private static readonly EDIT_IDLE_WINDOW_MS = 5 * 60 * 1000
   private static readonly WINDOW_BLUR_GRACE_MS = 15 * 1000
   private static readonly SUCCESS_COOLDOWN_MS = 2 * 60 * 1000
-  private static readonly FAILURE_RETRY_DELAY_MS = 5 * 60 * 1000
-  private static readonly RETRY_BACKOFF_CAP_MS = 30 * 60 * 1000
+  private static readonly RETRY_SCHEDULE = [
+    5 * 60_000,
+    15 * 60_000,
+    30 * 60_000,
+  ] as const satisfies AutomaticRetrySchedule
 
   private readonly getSettings: () => YoloSettings
   private readonly setSettings: (settings: YoloSettings) => Promise<boolean>
   private readonly runIndex: (request: AutoUpdateRunRequest) => Promise<void>
+  private readonly getRetryCount: () => number
   private readonly markRetryScheduled: (input: {
     retryAt: number
+    retryCount: number
     failureMessage?: string
   }) => Promise<void>
   private readonly clearRetryScheduled: () => Promise<void>
@@ -50,7 +62,6 @@ export class RagAutoUpdateService {
   private lastRelevantEditAt: number | null = null
   private lastRunFinishedAt: number | null = null
   private lastRunError: string | null = null
-  private consecutiveTransientFailures = 0
   /** True while a transient-failure retry timer is pending (for onOnline). */
   private hasPendingTransientRetry = false
 
@@ -58,6 +69,7 @@ export class RagAutoUpdateService {
     this.getSettings = deps.getSettings
     this.setSettings = deps.setSettings
     this.runIndex = deps.runIndex
+    this.getRetryCount = deps.getRetryCount
     this.markRetryScheduled = deps.markRetryScheduled
     this.clearRetryScheduled = deps.clearRetryScheduled
   }
@@ -71,7 +83,6 @@ export class RagAutoUpdateService {
     this.hasPendingChangesDuringRun = false
     this.hasRecoveredRetry = false
     this.requiresFullScan = false
-    this.consecutiveTransientFailures = 0
     this.hasPendingTransientRetry = false
   }
 
@@ -175,6 +186,7 @@ export class RagAutoUpdateService {
   private markDirty(path: string, options?: { requiresFullScan?: boolean }) {
     const settings = this.getSettings()
     if (!this.isAutoUpdateEnabled(settings)) return
+    if (this.getRetryCount() >= MAX_AUTOMATIC_RETRIES) return
     if (
       !options?.requiresFullScan &&
       !this.isPathSelectedByIncludeExclude(path, settings)
@@ -280,7 +292,6 @@ export class RagAutoUpdateService {
       })
       this.lastRunFinishedAt = Date.now()
       this.lastRunError = null
-      this.consecutiveTransientFailures = 0
     } catch (e) {
       console.error('Auto update index failed:', e)
       this.lastRunFinishedAt = Date.now()
@@ -297,13 +308,16 @@ export class RagAutoUpdateService {
       const wasAllScope = requiresFullScanSnapshot || recoveredRetrySnapshot
 
       if (failureKind === 'transient') {
-        this.consecutiveTransientFailures += 1
-        const delay = Math.min(
-          RagAutoUpdateService.FAILURE_RETRY_DELAY_MS *
-            2 ** (this.consecutiveTransientFailures - 1),
-          RagAutoUpdateService.RETRY_BACKOFF_CAP_MS,
-        )
-        const retryAt = Date.now() + delay
+        const nextRetry = this.isAutoUpdateEnabled(this.getSettings())
+          ? getNextAutomaticRetry(
+              this.getRetryCount(),
+              RagAutoUpdateService.RETRY_SCHEDULE,
+            )
+          : null
+        if (!nextRetry) {
+          return
+        }
+        const retryAt = Date.now() + nextRetry.delayMs
         if (wasAllScope) {
           // Keep next run vault-wide. Reuse requiresFullScan when the original
           // 'all' came from a folder rename/delete; otherwise carry the
@@ -319,18 +333,16 @@ export class RagAutoUpdateService {
         }
         await this.markRetryScheduled({
           retryAt,
+          retryCount: nextRetry.retryCount,
           failureMessage: this.lastRunError,
         })
-        this.scheduleAutoUpdate(delay)
+        this.scheduleAutoUpdate(nextRetry.delayMs)
         hasScheduledTransientRetry = true
         this.hasPendingTransientRetry = true
       } else if (failureKind === 'aborted') {
-        this.consecutiveTransientFailures = 0
         shouldRescheduleDirtyWork = true
       } else {
-        // permanent / unknown terminal state: do not retry; reset backoff so a
-        // later unrelated transient failure starts fresh.
-        this.consecutiveTransientFailures = 0
+        // Permanent / unknown failures are terminal until the user retries.
       }
     } finally {
       this.isAutoUpdating = false

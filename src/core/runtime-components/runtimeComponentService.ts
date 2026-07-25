@@ -1,5 +1,11 @@
+import {
+  type AutomaticRetrySchedule,
+  getNextAutomaticRetry,
+} from '../retry/limitedAutomaticRetry'
+
 import type { RuntimeComponentId, RuntimeComponentLease } from './contracts'
 import { RuntimeComponentDeviceStateStore } from './runtimeComponentDeviceStateStore'
+import { isTransientRuntimeComponentError } from './runtimeComponentErrors'
 import { RuntimeComponentInstaller } from './runtimeComponentInstaller'
 import { RuntimeComponentIntentStore } from './runtimeComponentIntentStore'
 import { RuntimeComponentLoader } from './runtimeComponentLoader'
@@ -10,6 +16,12 @@ import type {
 } from './runtimeComponentManifest'
 import { RuntimeComponentRuntime } from './runtimeComponentRuntime'
 import { RuntimeComponentStore } from './runtimeComponentStore'
+
+const RUNTIME_COMPONENT_RETRY_SCHEDULE = [
+  10_000,
+  60_000,
+  5 * 60_000,
+] as const satisfies AutomaticRetrySchedule
 
 export type RuntimeComponentStatus =
   | 'missing'
@@ -36,6 +48,8 @@ type MutableRecord = {
   enabled: boolean
   status: RuntimeComponentStatus
   error: string | null
+  automaticRetryCount: number
+  retryAt: number | null
 }
 
 type InstallJob = {
@@ -56,7 +70,6 @@ export class RuntimeComponentService {
     RuntimeComponentId,
     Set<RuntimeComponentQuiesceParticipant>
   >()
-  private readonly retryAttempts = new Map<RuntimeComponentId, number>()
   private readonly retryTimers = new Map<
     RuntimeComponentId,
     ReturnType<typeof setTimeout>
@@ -92,6 +105,8 @@ export class RuntimeComponentService {
         enabled: true,
         status: 'missing',
         error: null,
+        automaticRetryCount: 0,
+        retryAt: null,
       })
     }
     this.snapshot = this.buildSnapshot()
@@ -101,7 +116,14 @@ export class RuntimeComponentService {
 
   private buildSnapshot(): RuntimeComponentSnapshot {
     return Object.freeze(
-      [...this.records.values()].map((record) => Object.freeze({ ...record })),
+      [...this.records.values()].map((record) =>
+        Object.freeze({
+          descriptor: record.descriptor,
+          enabled: record.enabled,
+          status: record.status,
+          error: record.error,
+        }),
+      ),
     )
   }
 
@@ -116,7 +138,9 @@ export class RuntimeComponentService {
         this.options.intentStore.subscribe(record.descriptor.id, () => {
           void this.enqueueTransition(record.descriptor.id, () =>
             this.reconcileIntent(record.descriptor.id),
-          ).catch((error) => this.fail(record.descriptor.id, error))
+          ).catch((error) =>
+            this.recordFailure(this.requireRecord(record.descriptor.id), error),
+          )
         }),
       )
       try {
@@ -124,7 +148,7 @@ export class RuntimeComponentService {
           this.reconcileIntent(record.descriptor.id, false),
         )
       } catch (error) {
-        this.fail(record.descriptor.id, error)
+        await this.recordFailure(record, error)
       }
     }
     this.schedulePrefetch()
@@ -137,6 +161,11 @@ export class RuntimeComponentService {
     if (!record.enabled) {
       throw new Error(`Runtime component "${id}" is disabled`)
     }
+    if (record.status === 'failed') {
+      throw new Error(
+        record.error ?? `Runtime component "${id}" failed to initialize`,
+      )
+    }
     try {
       if (!this.options.runtime.isActive(id)) {
         this.update(record, { status: 'loading', error: null })
@@ -145,7 +174,7 @@ export class RuntimeComponentService {
         // Runtime activation deduplicates this callback, so the artifact is
         // verified exactly once per in-memory instance instead of once per
         // short-lived lease (token counting can acquire many times per turn).
-        await this.ensureInstalled(record, true)
+        await this.ensureInstalledWithFailureHandling(record, true)
         if (
           !record.enabled ||
           this.options.runtime.isQuiescing(record.descriptor.id)
@@ -172,8 +201,9 @@ export class RuntimeComponentService {
       ) {
         throw error
       }
-      this.fail(id, error)
-      this.scheduleRetry(id)
+      if (record.error !== describe(error)) {
+        await this.recordFailure(record, error)
+      }
       throw error
     }
   }
@@ -188,6 +218,36 @@ export class RuntimeComponentService {
       }
       await this.reconcileIntent(id)
     })
+  }
+
+  retry(id: RuntimeComponentId): Promise<void> {
+    return this.enqueueTransition(id, async () => {
+      const record = this.requireRecord(id)
+      if (!record.enabled) {
+        throw new Error(`Runtime component "${id}" is disabled`)
+      }
+      this.clearRetryTimer(id)
+      record.automaticRetryCount = 0
+      record.retryAt = null
+      this.update(record, { status: 'missing', error: null })
+      await this.writeDeviceState(record, null)
+      await this.ensureInstalledWithFailureHandling(record, false)
+    })
+  }
+
+  async onOnline(): Promise<void> {
+    for (const record of this.records.values()) {
+      if (!record.enabled || !this.retryTimers.has(record.descriptor.id)) {
+        continue
+      }
+      this.clearRetryTimer(record.descriptor.id)
+      record.retryAt = Date.now()
+      try {
+        await this.writeDeviceState(record, null)
+      } finally {
+        this.armRetryTimer(record, 0)
+      }
+    }
   }
 
   registerQuiesceParticipant(
@@ -237,7 +297,9 @@ export class RuntimeComponentService {
     const enabled = await this.options.intentStore.isEnabled(id)
     if (!enabled) {
       record.enabled = false
-      this.clearRetry(id)
+      this.clearRetryTimer(id)
+      record.automaticRetryCount = 0
+      record.retryAt = null
       this.options.runtime.beginQuiesce(id)
       this.update(record, { status: 'quiescing', error: null })
       let participantError: unknown
@@ -262,21 +324,46 @@ export class RuntimeComponentService {
     this.options.runtime.endQuiesce(id)
     if (!installWhenEnabled) {
       const deviceState = await this.options.deviceStateStore.read(id)
+      const retryState =
+        deviceState?.retry?.descriptorHash === record.descriptor.sha256
+          ? deviceState.retry
+          : null
+      record.automaticRetryCount = retryState?.automaticRetryCount ?? 0
+      record.retryAt = retryState?.retryAt ?? null
       const plausible = await this.options.store.hasPlausibleEntry(
         record.descriptor,
       )
+      const restoredFailure = retryState && deviceState?.error
       this.update(record, {
-        status:
-          deviceState?.platform === this.options.platform &&
-          deviceState.activeHash === record.descriptor.sha256 &&
-          plausible
+        status: restoredFailure
+          ? 'failed'
+          : deviceState?.platform === this.options.platform &&
+              deviceState.activeHash === record.descriptor.sha256 &&
+              plausible
             ? 'ready'
             : 'missing',
-        error: deviceState?.error ?? null,
+        error: restoredFailure ? deviceState.error : null,
       })
+      if (restoredFailure && record.retryAt !== null) {
+        this.armRetryTimer(record, Math.max(0, record.retryAt - Date.now()))
+      }
       return
     }
-    await this.ensureInstalled(record, false)
+    record.automaticRetryCount = 0
+    record.retryAt = null
+    await this.ensureInstalledWithFailureHandling(record, false)
+  }
+
+  private async ensureInstalledWithFailureHandling(
+    record: MutableRecord,
+    demand: boolean,
+  ): Promise<void> {
+    try {
+      await this.ensureInstalled(record, demand)
+    } catch (error) {
+      await this.recordFailure(record, error)
+      throw error
+    }
   }
 
   private async ensureInstalled(
@@ -290,32 +377,37 @@ export class RuntimeComponentService {
       record.descriptor,
     )
     if (plausible) {
-      await this.options.installer.verifyInstalled(record.descriptor)
-      await this.writeDeviceState(record, record.descriptor.sha256)
-      if (!this.options.runtime.isActive(record.descriptor.id)) {
-        this.update(record, { status: 'ready', error: null })
+      let verified = false
+      try {
+        await this.options.installer.verifyInstalled(record.descriptor)
+        verified = true
+      } catch {
+        // A present but invalid artifact is repaired through the same verified
+        // installer path instead of being verified forever on every retry.
       }
-      return
+      if (verified) {
+        await this.finishInstall(record)
+        return
+      }
     }
     this.update(record, { status: 'downloading', error: null })
     await this.writeDeviceState(record, null)
-    try {
-      await this.enqueueInstall(record.descriptor, demand)
-      if (
-        !record.enabled ||
-        this.options.runtime.isQuiescing(record.descriptor.id)
-      ) {
-        return
-      }
-      await this.writeDeviceState(record, record.descriptor.sha256)
-      this.retryAttempts.delete(record.descriptor.id)
-      this.update(record, { status: 'ready', error: null })
-    } catch (error) {
-      this.fail(record.descriptor.id, error)
-      await this.writeDeviceState(record, null).catch(() => undefined)
-      if (!demand) this.scheduleRetry(record.descriptor.id)
-      throw error
+    await this.enqueueInstall(record.descriptor, demand)
+    if (
+      !record.enabled ||
+      this.options.runtime.isQuiescing(record.descriptor.id)
+    ) {
+      return
     }
+    await this.finishInstall(record)
+  }
+
+  private async finishInstall(record: MutableRecord): Promise<void> {
+    this.clearRetryTimer(record.descriptor.id)
+    record.automaticRetryCount = 0
+    record.retryAt = null
+    this.update(record, { status: 'ready', error: null })
+    await this.writeDeviceState(record, record.descriptor.sha256)
   }
 
   private async writeDeviceState(
@@ -328,6 +420,16 @@ export class RuntimeComponentService {
       activeHash,
       pending: record.status === 'downloading' ? record.descriptor : null,
       error: record.error,
+      retry:
+        record.error !== null ||
+        record.automaticRetryCount > 0 ||
+        record.retryAt !== null
+          ? {
+              descriptorHash: record.descriptor.sha256,
+              automaticRetryCount: record.automaticRetryCount,
+              retryAt: record.retryAt,
+            }
+          : null,
     })
   }
 
@@ -350,10 +452,10 @@ export class RuntimeComponentService {
       this.cancelScheduledPrefetch = null
       if (this.stopped) return
       for (const record of this.records.values()) {
-        if (!record.enabled) continue
+        if (!record.enabled || record.status === 'failed') continue
         this.prefetchTail = this.prefetchTail
           .catch(() => undefined)
-          .then(() => this.ensureInstalled(record, false))
+          .then(() => this.ensureInstalledWithFailureHandling(record, false))
           .catch((error) =>
             this.options.reportError?.(record.descriptor.id, error),
           )
@@ -361,21 +463,46 @@ export class RuntimeComponentService {
     })
   }
 
-  private scheduleRetry(id: RuntimeComponentId): void {
+  private async recordFailure(
+    record: MutableRecord,
+    error: unknown,
+  ): Promise<void> {
+    this.update(record, { status: 'failed', error: describe(error) })
+    this.options.reportError?.(record.descriptor.id, error)
+    this.clearRetryTimer(record.descriptor.id)
+    const next = isTransientRuntimeComponentError(error)
+      ? getNextAutomaticRetry(
+          record.automaticRetryCount,
+          RUNTIME_COMPONENT_RETRY_SCHEDULE,
+        )
+      : null
+    if (next) {
+      record.automaticRetryCount = next.retryCount
+      record.retryAt = Date.now() + next.delayMs
+    } else {
+      record.retryAt = null
+    }
+    await this.writeDeviceState(record, null).catch((stateError) => {
+      this.options.reportError?.(record.descriptor.id, stateError)
+    })
+    if (next) this.armRetryTimer(record, next.delayMs)
+  }
+
+  private armRetryTimer(record: MutableRecord, delayMs: number): void {
+    const id = record.descriptor.id
     if (this.stopped || this.retryTimers.has(id)) return
-    const attempt = (this.retryAttempts.get(id) ?? 0) + 1
-    this.retryAttempts.set(id, attempt)
-    const delay = Math.min(5 * 60_000, 1000 * 2 ** Math.min(attempt - 1, 8))
     const timer = setTimeout(() => {
       this.retryTimers.delete(id)
       void this.enqueueTransition(id, async () => {
-        const record = this.requireRecord(id)
-        if (record.enabled) await this.ensureInstalled(record, false)
+        const current = this.requireRecord(id)
+        current.retryAt = null
+        if (current.enabled) {
+          await this.ensureInstalledWithFailureHandling(current, false)
+        }
       }).catch((error) => {
-        this.fail(id, error)
-        this.scheduleRetry(id)
+        this.options.reportError?.(id, error)
       })
-    }, delay)
+    }, delayMs)
     this.retryTimers.set(id, timer)
   }
 
@@ -434,11 +561,10 @@ export class RuntimeComponentService {
       })
   }
 
-  private clearRetry(id: RuntimeComponentId): void {
+  private clearRetryTimer(id: RuntimeComponentId): void {
     const timer = this.retryTimers.get(id)
     if (timer) clearTimeout(timer)
     this.retryTimers.delete(id)
-    this.retryAttempts.delete(id)
   }
 
   private enqueueTransition<T>(
@@ -466,12 +592,6 @@ export class RuntimeComponentService {
       )
     }
     return record
-  }
-
-  private fail(id: RuntimeComponentId, error: unknown): void {
-    const record = this.requireRecord(id)
-    this.update(record, { status: 'failed', error: describe(error) })
-    this.options.reportError?.(id, error)
   }
 
   private update(

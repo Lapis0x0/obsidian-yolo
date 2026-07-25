@@ -313,7 +313,7 @@ export const en: TranslationKeys = {
           active: 'In use',
           quiescing: 'Finishing current work',
           disabled: 'Disabled',
-          failed: 'Will retry automatically',
+          failed: 'Failed',
         },
       },
     },

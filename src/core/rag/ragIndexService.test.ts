@@ -245,6 +245,82 @@ describe('RagIndexService', () => {
     })
   })
 
+  it('stops a manual run after three automatic retries', async () => {
+    jest.useFakeTimers()
+    const updateVaultIndex = jest
+      .fn()
+      .mockRejectedValue(new Error('network timeout'))
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    await expect(
+      service.runIndex({
+        mode: 'sync',
+        scope: { kind: 'all' },
+        trigger: 'manual',
+        retryPolicy: 'transient',
+      }),
+    ).rejects.toThrow('network timeout')
+
+    await jest.advanceTimersByTimeAsync(5 * 60_000)
+    await jest.advanceTimersByTimeAsync(15 * 60_000)
+    await jest.advanceTimersByTimeAsync(30 * 60_000)
+
+    expect(updateVaultIndex).toHaveBeenCalledTimes(4)
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'failed',
+      retryCount: 3,
+    })
+    await jest.advanceTimersByTimeAsync(60 * 60_000)
+    expect(updateVaultIndex).toHaveBeenCalledTimes(4)
+  })
+
+  it('brings a pending manual retry forward on reconnect without resetting its budget', async () => {
+    jest.useFakeTimers()
+    const updateVaultIndex = jest
+      .fn()
+      .mockRejectedValue(new Error('network timeout'))
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    await expect(
+      service.runIndex({
+        mode: 'sync',
+        scope: { kind: 'all' },
+        trigger: 'manual',
+        retryPolicy: 'transient',
+      }),
+    ).rejects.toThrow('network timeout')
+    expect(service.getSnapshot()).toMatchObject({ retryCount: 1 })
+
+    service.onOnline()
+    await jest.advanceTimersByTimeAsync(0)
+
+    expect(updateVaultIndex).toHaveBeenCalledTimes(2)
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'retry_scheduled',
+      retryCount: 2,
+    })
+  })
+
   it('does not schedule retry for permanent manual failures', async () => {
     const permanentError = Object.assign(new Error('invalid api key'), {
       status: 401,
@@ -350,6 +426,46 @@ describe('RagIndexService', () => {
     expect(updateVaultIndex).toHaveBeenCalledTimes(1)
     expect(service.getSnapshot()).toMatchObject({
       status: 'completed',
+    })
+  })
+
+  it('resets an exhausted retry episode only on explicit reset', async () => {
+    const saved: Record<string, string> = {
+      yolo_rag_index_run: JSON.stringify({
+        runId: 'failed-run',
+        status: 'failed',
+        mode: 'sync',
+        trigger: 'auto',
+        retryPolicy: 'transient',
+        retryCount: 3,
+        failureKind: 'transient',
+        failureMessage: 'network timeout',
+      }),
+    }
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn((key: string) => saved[key] ?? null),
+        saveLocalStorage: jest.fn((key: string, value: string) => {
+          saved[key] = value
+        }),
+      } as never,
+      getRagEngine: jest.fn(),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'failed',
+      retryCount: 3,
+    })
+
+    await service.resetRetryState()
+    expect(service.getSnapshot()).toMatchObject({
+      status: 'idle',
+      retryPolicy: 'none',
+      retryCount: 0,
     })
   })
 

@@ -818,17 +818,27 @@ export default class YoloPlugin extends Plugin {
           // Background auto-update never surfaces partial failures (product
           // decision: settings page shows them durably via the snapshot). The
           // reconcile result is intentionally discarded here.
-          await this.getRagIndexService().runIndex({
-            mode: 'sync',
-            scope: request,
-            trigger: 'auto',
-            retryPolicy: 'transient',
-          })
+          const indexService = this.getRagIndexService()
+          const snapshot = indexService.getSnapshot()
+          await indexService.runIndex(
+            {
+              mode: 'sync',
+              scope: request,
+              trigger: 'auto',
+              // RagAutoUpdateService owns the finite automatic retry policy.
+              retryPolicy: 'none',
+            },
+            snapshot.trigger === 'auto' && snapshot.retryCount > 0
+              ? 'automatic-retry'
+              : 'new',
+          )
         },
+        getRetryCount: () => this.getRagIndexService().getSnapshot().retryCount,
         markRetryScheduled: (input) =>
           this.getRagIndexService().markRetryScheduled({
             mode: 'sync',
             retryAt: input.retryAt,
+            retryCount: input.retryCount,
             failureMessage: input.failureMessage,
           }),
         clearRetryScheduled: () =>
@@ -2257,6 +2267,10 @@ export default class YoloPlugin extends Plugin {
     })
     this.registerDomEvent(window, 'online', () => {
       this.getRagAutoUpdateService().onOnline()
+      this.ragIndexService?.onOnline()
+      void this.runtimeComponentService?.onOnline().catch((error) => {
+        console.error('[YOLO] Failed to resume runtime component retry', error)
+      })
     })
 
     this.addCommand({
@@ -3163,9 +3177,17 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     // When RAG is disabled, stop all pending auto-update timers and clear
     // any retry_scheduled state so the background-activity UI disappears.
     const ragIsEnabled = settingsToApply.ragOptions.enabled
+    const autoUpdateWasEnabled = previousSettings.ragOptions.autoUpdateEnabled
+    const autoUpdateIsEnabled = settingsToApply.ragOptions.autoUpdateEnabled
     if (!ragIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
+      await this.ragIndexService?.resetRetryState()
       this.ragIndexService?.refreshActivity()
+    } else if (autoUpdateWasEnabled && !autoUpdateIsEnabled) {
+      this.ragAutoUpdateService?.cleanup()
+      if (this.ragIndexService?.getSnapshot().trigger === 'auto') {
+        await this.ragIndexService.resetRetryState()
+      }
     }
 
     this.settingsChangeListeners.forEach((listener) => {

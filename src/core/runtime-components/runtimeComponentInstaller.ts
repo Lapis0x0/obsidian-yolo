@@ -2,6 +2,10 @@ import { type DataAdapter, normalizePath } from 'obsidian'
 
 import { verifyModuleBytes } from '../modules/moduleIntegrity'
 
+import {
+  RuntimeComponentInstallError,
+  isTransientRuntimeComponentError,
+} from './runtimeComponentErrors'
 import type { RuntimeComponentDescriptor } from './runtimeComponentManifest'
 import { RuntimeComponentStore } from './runtimeComponentStore'
 
@@ -180,6 +184,7 @@ export class RuntimeComponentInstaller {
       throw new Error('Runtime component download sources are invalid')
     }
     const failures: string[] = []
+    let hasTransientFailure = false
     for (const source of sources) {
       throwIfAborted(signal)
       try {
@@ -208,11 +213,14 @@ export class RuntimeComponentInstaller {
         return bytes
       } catch (error) {
         if (signal?.aborted) throw error
+        hasTransientFailure ||= isTransientRuntimeComponentError(error)
         failures.push(`${sourceName(source)}: ${describeError(error)}`)
       }
     }
-    throw new Error(
-      `Runtime component "${descriptor.id}" download failed from all sources: ${failures.join('; ')}`,
+    throw new RuntimeComponentInstallError(
+      descriptor.id,
+      hasTransientFailure,
+      failures,
     )
   }
 

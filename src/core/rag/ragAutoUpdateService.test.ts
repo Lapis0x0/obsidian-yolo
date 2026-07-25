@@ -35,15 +35,23 @@ describe('RagAutoUpdateService', () => {
         indexPdf: true,
       },
     } as unknown as YoloSettings
-    const runIndex = jest.fn().mockResolvedValue(undefined)
+    let retryCount = 0
+    const runIndex = jest.fn().mockImplementation(async () => {
+      retryCount = 0
+    })
     const setSettings = jest.fn().mockResolvedValue(undefined)
-    const markRetryScheduled = jest.fn().mockResolvedValue(undefined)
+    const markRetryScheduled = jest
+      .fn()
+      .mockImplementation(async ({ retryCount: nextRetryCount }) => {
+        retryCount = nextRetryCount
+      })
     const clearRetryScheduled = jest.fn().mockResolvedValue(undefined)
 
     const service = new RagAutoUpdateService({
       getSettings: () => settings,
       setSettings,
       runIndex,
+      getRetryCount: () => retryCount,
       markRetryScheduled,
       clearRetryScheduled,
     })
@@ -55,6 +63,9 @@ describe('RagAutoUpdateService', () => {
       setSettings,
       markRetryScheduled,
       clearRetryScheduled,
+      setRetryCount: (value: number) => {
+        retryCount = value
+      },
       cleanup: () => undefined,
     }
   }
@@ -208,7 +219,7 @@ describe('RagAutoUpdateService', () => {
     cleanup()
   })
 
-  it('grows the retry delay exponentially and caps at 30 minutes', async () => {
+  it('stops after three automatic retries', async () => {
     const transientError = new Error('network timeout')
     const { service, runIndex, markRetryScheduled, cleanup } = createService()
     // Always fail transiently.
@@ -218,10 +229,8 @@ describe('RagAutoUpdateService', () => {
 
     const expectedDelaysMs = [
       5 * 60_000, // 5m
-      10 * 60_000, // 10m
-      20 * 60_000, // 20m
-      30 * 60_000, // capped at 30m
-      30 * 60_000, // still capped
+      15 * 60_000, // 15m
+      30 * 60_000, // 30m
     ]
 
     // Advance by the EDIT_IDLE_WINDOW first to trigger the initial run.
@@ -242,24 +251,35 @@ describe('RagAutoUpdateService', () => {
       await flushAsync()
     }
 
+    expect(runIndex).toHaveBeenCalledTimes(4)
+    expect(markRetryScheduled).toHaveBeenCalledTimes(3)
+    jest.advanceTimersByTime(60 * 60_000)
+    await flushAsync()
+    expect(runIndex).toHaveBeenCalledTimes(4)
+    service.onVaultPathChanged('after-exhaustion.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+    expect(runIndex).toHaveBeenCalledTimes(4)
+
     cleanup()
   })
 
   it('resets the backoff counter after a successful run', async () => {
     const transientError = new Error('network timeout')
-    const { service, runIndex, markRetryScheduled, cleanup } = createService()
+    const { service, runIndex, markRetryScheduled, setRetryCount, cleanup } =
+      createService()
     runIndex
       .mockRejectedValueOnce(transientError) // run 1: fail (delay 5m)
-      .mockRejectedValueOnce(transientError) // run 2: fail (delay 10m)
-      .mockResolvedValueOnce(undefined) // run 3: success (reset)
+      .mockRejectedValueOnce(transientError) // run 2: fail (delay 15m)
+      .mockImplementationOnce(async () => setRetryCount(0)) // run 3: success
       .mockRejectedValueOnce(transientError) // run 5: fail again → delay 5m
 
     service.onVaultPathChanged('foo.md')
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
-    jest.advanceTimersByTime(5 * 60_000) // retry 1 fails → 10m
+    jest.advanceTimersByTime(5 * 60_000) // retry 1 fails → 15m
     await flushAsync()
-    jest.advanceTimersByTime(10 * 60_000) // retry 2 succeeds, counter reset
+    jest.advanceTimersByTime(15 * 60_000) // retry 2 succeeds, counter reset
     await flushAsync()
 
     // Cooldown is 2m after the successful run; a new edit + idle triggers run.
@@ -275,7 +295,7 @@ describe('RagAutoUpdateService', () => {
     cleanup()
   })
 
-  it('resets the backoff counter after an aborted terminal run', async () => {
+  it('does not reset the retry budget after an aborted run', async () => {
     const transientError = new Error('network timeout')
     const abortError = Object.assign(new Error('Indexing cancelled by user'), {
       name: 'AbortError',
@@ -283,7 +303,7 @@ describe('RagAutoUpdateService', () => {
     const { service, runIndex, markRetryScheduled, cleanup } = createService()
     runIndex
       .mockRejectedValueOnce(transientError) // run 1: fail → backoff counter = 1 (delay 5m)
-      .mockRejectedValueOnce(abortError) // retry 1: aborted terminal → counter reset
+      .mockRejectedValueOnce(abortError) // retry 1: aborted without reset
       .mockRejectedValueOnce(transientError) // run after a new edit → fresh failure
 
     service.onVaultPathChanged('foo.md')
@@ -301,18 +321,17 @@ describe('RagAutoUpdateService', () => {
     const lastCall = markRetryScheduled.mock.calls.at(-1)?.[0] as {
       retryAt: number
     }
-    // If the aborted run had not reset the counter, the delay would be 10m.
-    expect(lastCall.retryAt - Date.now()).toBe(5 * 60_000)
+    expect(lastCall.retryAt - Date.now()).toBe(15 * 60_000)
     cleanup()
   })
 
-  it('resets the backoff counter after an unknown terminal run', async () => {
+  it('does not reset the retry budget after an unknown terminal run', async () => {
     const transientError = new Error('network timeout')
     const unknownError = new Error('totally unexpected failure')
     const { service, runIndex, markRetryScheduled, cleanup } = createService()
     runIndex
       .mockRejectedValueOnce(transientError) // run 1: fail → backoff counter = 1 (delay 5m)
-      .mockRejectedValueOnce(unknownError) // retry 1: unknown terminal → counter reset, no retry
+      .mockRejectedValueOnce(unknownError) // retry 1: unknown terminal, no retry
       .mockRejectedValueOnce(transientError) // run after a new edit → fresh failure
 
     service.onVaultPathChanged('foo.md')
@@ -333,8 +352,7 @@ describe('RagAutoUpdateService', () => {
     const lastCall = markRetryScheduled.mock.calls.at(-1)?.[0] as {
       retryAt: number
     }
-    // Unknown reset the counter, so the fresh transient failure restarts at 5m.
-    expect(lastCall.retryAt - Date.now()).toBe(5 * 60_000)
+    expect(lastCall.retryAt - Date.now()).toBe(15 * 60_000)
     cleanup()
   })
 

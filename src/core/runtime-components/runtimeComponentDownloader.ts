@@ -4,6 +4,7 @@ import {
   requestUrl,
 } from 'obsidian'
 
+import { RuntimeComponentRequestError } from './runtimeComponentErrors'
 import type { RuntimeComponentDownload } from './runtimeComponentInstaller'
 
 export const RUNTIME_COMPONENT_SOURCE_TIMEOUT_MS = 30_000
@@ -37,8 +38,13 @@ export function createRuntimeComponentDownloader(
       signal,
     )
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(
+      throw new RuntimeComponentRequestError(
         `Runtime component request failed with HTTP ${response.status}`,
+        response.status === 408 ||
+          response.status === 425 ||
+          response.status === 429 ||
+          response.status >= 500,
+        response.status,
       )
     }
     if (!(response.arrayBuffer instanceof ArrayBuffer)) {
@@ -63,13 +69,21 @@ function withTimeout<T>(
       settle()
     }
     const abort = (): void => {
-      finish(() => reject(new Error('Runtime component request aborted')))
+      finish(() =>
+        reject(
+          new RuntimeComponentRequestError(
+            'Runtime component request aborted',
+            false,
+          ),
+        ),
+      )
     }
     const timer = setTimeout(() => {
       finish(() =>
         reject(
-          new Error(
+          new RuntimeComponentRequestError(
             `Runtime component request timed out after ${timeoutMs} ms`,
+            true,
           ),
         ),
       )
