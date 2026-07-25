@@ -9,6 +9,14 @@ export const it = {
     generationModelDescription:
       'Usato per generare scalette, punti di conoscenza e schede. Questa scelta è indipendente dall’assistente corrente.',
   },
+  generation: {
+    outlineActivity: 'Generazione della struttura',
+    knowledgePointsActivity: 'Generazione dei punti di conoscenza',
+    cardsActivity: 'Generazione delle carte',
+    unsupportedFileType:
+      'Tipo di file non supportato: {ext} (supportati PDF, Word, Markdown, testo)',
+    fileTooLarge: 'File troppo grande: {size}MB (limite 20MB)',
+  },
   background: {
     reviewTitle: 'YOLO Learning',
     reviewDetail: '{count} carte da ripassare',
@@ -22,6 +30,9 @@ export const it = {
     cancel: 'Non ora',
   },
   common: {
+    back: 'Indietro',
+    edit: 'Modifica',
+    retry: 'Riprova',
     cancel: 'Annulla',
     close: 'Chiudi',
     delete: 'Elimina',
@@ -202,6 +213,12 @@ export const it = {
     },
   },
   outlineBuilder: {
+    chapterRequired: 'È necessario almeno un capitolo valido',
+    generatingPoint: 'Generazione in corso',
+    knowledgeComplete: 'Punti di conoscenza generati',
+    newChapter: 'Nuovo capitolo',
+    newChapterContract:
+      'Descrivi ambito, confini e punti di conoscenza stimati di questo capitolo.',
     estimatedKnowledgePoints: 'Punti di conoscenza stimati',
     failed: 'Generazione non riuscita',
     failedDescription: 'Impossibile continuare la generazione. Riprova.',
@@ -236,6 +253,7 @@ export const it = {
     generating: 'Generazione...',
   },
   outline: {
+    resizeSidebar: 'Ridimensiona barra laterale struttura',
     emptyBody: 'Questo punto di conoscenza non ha ancora contenuto',
     emptyProject:
       'Questo progetto non ha ancora punti di conoscenza. La scaletta apparirà qui al termine della generazione.',
@@ -271,6 +289,7 @@ export const it = {
     generationFailedSummary:
       'Nessuna carta è stata generata. Controlla lo stato dei capitoli.',
     startLearning: 'Inizia a studiare',
+    browseCards: 'Sfoglia le carte',
     viewGenerationDetails: 'Vedi dettagli',
     filteredTo: 'Filtrato su: ',
     sortDue: 'Scadenza',

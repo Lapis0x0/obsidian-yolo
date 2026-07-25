@@ -1,0 +1,27 @@
+{
+  "id": "learning",
+  "icon": "graduation-cap",
+  "localizations": {
+    "en": {
+      "name": "Learning mode",
+      "description": "Build lasting knowledge from your notes with guided learning plans, spaced repetition, and review."
+    },
+    "zh": {
+      "name": "学习模式",
+      "description": "通过学习计划、间隔重复与复习，把笔记转化为能够长期掌握的知识。"
+    },
+    "it": {
+      "name": "Modalità di apprendimento",
+      "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
+    }
+  },
+  "hostApi": "^1.4.0",
+  "platforms": ["desktop", "mobile"],
+  "dataSchemas": {
+    "settings": {
+      "readMin": 0,
+      "readMax": 1,
+      "write": 1
+    }
+  }
+}

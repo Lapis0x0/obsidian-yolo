@@ -65,8 +65,6 @@ function UpdateToast() {
     hasSelfUpdate,
     isSelfUpdateError,
     showCommunityPluginsFallback,
-    showDownloadProgress,
-    downloadProgress,
     releaseUrl,
     openCommunityPlugins,
   } = usePluginUpdatePrimaryCta({
@@ -239,12 +237,12 @@ function UpdateToast() {
         )}
       </div>
 
-      {showDownloadProgress || moduleOffer?.status === 'downloading' ? (
+      {moduleOffer?.status === 'downloading' ? (
         <div className="yolo-update-toast-progress" aria-hidden="true">
           <div
             className="yolo-update-toast-progress-fill"
             style={{
-              width: `${moduleOffer?.status === 'downloading' ? moduleOffer.progress : downloadProgress}%`,
+              width: `${moduleOffer.progress}%`,
             }}
           />
         </div>

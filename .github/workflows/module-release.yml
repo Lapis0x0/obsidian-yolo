@@ -1,0 +1,158 @@
+name: Release first-party module
+
+on:
+  push:
+    tags:
+      - '*/v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: module-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: write
+      contents: write
+    env:
+      MODULE_RELEASE_TAG: ${{ github.ref_name }}
+      MODULE_RELEASE_OWNER: module-release-owner:${{ github.run_id }}:${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve module identity
+        id: module
+        shell: bash
+        run: |
+          id="${GITHUB_REF_NAME%%/v*}"
+          version="${GITHUB_REF_NAME#*/v}"
+          if [[ ! "$id" =~ ^[a-z][a-z0-9-]*$ || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo '::error::Module tag must be <id>/v<stable-semver>'
+            exit 1
+          fi
+          test -f "modules/$id/module.config.json"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "asset_dir=modules/$id/release" >> "$GITHUB_OUTPUT"
+
+      - name: Use Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate release sources
+        run: >-
+          npm run release:check -- module
+          "${{ steps.module.outputs.id }}"
+          "${{ steps.module.outputs.version }}"
+
+      - name: Test module
+        run: |
+          npm run module:typecheck
+          npm --prefix "modules/${{ steps.module.outputs.id }}" test
+          npm --prefix "modules/${{ steps.module.outputs.id }}" run test:boundary
+
+      - name: Build and validate immutable assets
+        run: >-
+          node scripts/validate-module-release.mjs --build
+          --module "${{ steps.module.outputs.id }}"
+
+      - name: Require a monotonically newer module version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/distribution.mjs assert-new-release
+          --tag "$MODULE_RELEASE_TAG"
+
+      - name: Test remote verification
+        run: node --test scripts/verify-learning-release-assets.test.mjs
+
+      - name: Create immutable draft Release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$MODULE_RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release $MODULE_RELEASE_TAG already exists"
+            exit 1
+          fi
+          note="modules/${{ steps.module.outputs.id }}/latest-release-note.md"
+          body="$(printf '<!-- %s -->\n\n' "$MODULE_RELEASE_OWNER"; cat "$note")"
+          release="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$MODULE_RELEASE_TAG" \
+            -f name="$MODULE_RELEASE_TAG" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f body="$body" -F draft=true -F prerelease=false)"
+          echo "release_id=$(jq -r '.id' <<<"$release")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload assets without replacement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release upload "$MODULE_RELEASE_TAG"
+          "${{ steps.module.outputs.asset_dir }}"/*
+
+      - name: Verify draft assets by Release id
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/verify-learning-release-assets.mjs
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$MODULE_RELEASE_TAG"
+          --release-id "${{ steps.create.outputs.release_id }}"
+          --target-commit "$GITHUB_SHA"
+          --asset-dir "${{ steps.module.outputs.asset_dir }}"
+          --metadata-out module-release-metadata.json
+
+      - name: Publish verified Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api --method PATCH
+          "repos/$GITHUB_REPOSITORY/releases/${{ steps.create.outputs.release_id }}"
+          -F draft=false --jq '.html_url'
+
+      - name: Verify published Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/verify-learning-release-assets.mjs --allow-published
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$MODULE_RELEASE_TAG"
+          --release-id "${{ steps.create.outputs.release_id }}"
+          --target-commit "$GITHUB_SHA"
+          --asset-dir "${{ steps.module.outputs.asset_dir }}"
+          --metadata-out module-release-published-metadata.json
+
+      - name: Wake distribution reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run distribution-publish.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref "${{ github.event.repository.default_branch }}"
+          -f trigger_release_id="${{ steps.create.outputs.release_id }}"
+
+      - name: Remove this run's failed draft Release
+        if: ${{ failure() || cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          node scripts/verify-learning-release-assets.mjs --cleanup-owned-draft
+          --repository "$GITHUB_REPOSITORY"
+          --tag "$MODULE_RELEASE_TAG"
+          --release-id "${{ steps.create.outputs.release_id }}"
+          --target-commit "$GITHUB_SHA"
+          --owner-marker "$MODULE_RELEASE_OWNER"

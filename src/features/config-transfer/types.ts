@@ -2,12 +2,7 @@
  * 配置导入/导出功能的类型定义
  */
 
-/** 导出文件的顶层结构 */
-export type ConfigExportFile = {
-  /** 固定标识，用于校验文件格式 */
-  $schema: 'yolo-config-export'
-  /** 导出文件格式版本（未来格式变更时递增） */
-  formatVersion: number
+type ConfigExportFileBase = {
   /** 导出时的 SETTINGS_SCHEMA_VERSION，导入时用于驱动迁移链 */
   settingsVersion: number
   /** 导出时间 ISO 字符串 */
@@ -24,6 +19,17 @@ export type ConfigExportFile = {
   checksum: string
 }
 
+/** Legacy Host-only file and the module bundle are intentionally disjoint. */
+export type ConfigExportFile =
+  | (ConfigExportFileBase & {
+      $schema: 'yolo-config-export'
+      formatVersion: 1
+    })
+  | (ConfigExportFileBase & {
+      $schema: 'yolo-config-export-v2'
+      formatVersion: 2
+    })
+
 /** 导入来源类型 */
 export type ImportSource = 'file' | 'vault'
 
@@ -36,10 +42,14 @@ export type ConfigKeyMeta = {
   key: string
   /** i18n 缺失时使用的可读默认 label（中文） */
   fallbackLabel: string
+  /** The entry cannot be safely redacted by Host-owned code. */
+  unredactedOnly?: boolean
 }
 
-/** 当前导出文件格式版本 */
+/** Legacy Host-only format. Keep emitting it when no module config is present. */
 export const CONFIG_EXPORT_FORMAT_VERSION = 1
+export const MODULE_CONFIG_EXPORT_SCHEMA = 'yolo-config-export-v2'
+export const MODULE_CONFIG_EXPORT_FORMAT_VERSION = 2
 
 /**
  * 导入/校验失败时使用的错误 key，配合 `configTransfer.errors.*` 翻译条目。

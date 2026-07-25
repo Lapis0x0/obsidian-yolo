@@ -234,8 +234,8 @@ export const en: TranslationKeys = {
       update: 'Update',
       installing: 'Installing…',
       updating: 'Updating…',
-      reload: 'Retry activation',
-      reloading: 'Activating…',
+      reload: 'Retry',
+      reloading: 'Retrying…',
       candidateUnavailable:
         '{name} cannot be installed right now. It may already be downloading or the catalog may have changed.',
       installError: 'Could not install {name}: {error}',
@@ -257,11 +257,23 @@ export const en: TranslationKeys = {
       incompatibleReason: 'Incompatible: {reason}',
       compatibility: {
         platform: 'platform',
-        hostApi: 'Host API',
+        hostApi: 'update YOLO Core',
         dataSchema: 'data schema',
       },
       retry: 'Retry',
       actionError: 'Could not change {name}: {error}',
+      failure: {
+        downloadTimeout:
+          'The module download timed out on both Cloudflare and GitHub. Check your network or proxy, then retry.',
+        download:
+          'The module could not be downloaded from Cloudflare or GitHub. Check your network or proxy, then retry.',
+        integrity:
+          'The downloaded module failed its integrity check, so installation was stopped. Retry, and contact the developer if it keeps happening.',
+        activation:
+          'The module was downloaded but could not start. Retry, and contact the developer if it keeps happening.',
+        unknown: 'The module operation failed.',
+        diagnostic: 'Details: {detail}',
+      },
       actions: {
         install: 'Install',
         installBusy: 'Installing…',
@@ -271,11 +283,6 @@ export const en: TranslationKeys = {
         disableBusy: 'Disabling…',
         uninstall: 'Uninstall',
         uninstallBusy: 'Uninstalling…',
-      },
-      confirmProduct: {
-        uninstallTitle: 'Uninstall {name}',
-        uninstallMessage:
-          'Uninstall {name}? YOLO will safely stop the module, then remove its local program files and installation state. Module data will be kept.',
       },
       statuses: {
         available: 'Available',
@@ -444,10 +451,6 @@ export const en: TranslationKeys = {
         'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
       yoloBaseDirMigrationManualRepair:
         'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
-      yoloBaseDirAdoptTitle: 'Use existing YOLO root?',
-      yoloBaseDirAdoptMessage:
-        'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
-      yoloBaseDirAdoptConfirm: 'Use this folder',
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
@@ -1576,6 +1579,8 @@ export const en: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
+      yoloBaseDirInvalidPath:
+        'YOLO root contains a folder name that is not supported across devices. Avoid control characters, Windows reserved names, and the characters <>:"\\|?*.',
       yoloBaseDirMigrated:
         'YOLO root now uses {target} so Obsidian can index it.',
       yoloBaseDirMigrationConflict:
@@ -1586,10 +1591,6 @@ export const en: TranslationKeys = {
         'YOLO moved from {source} to {target}, but its setting could not be updated and the move could not be rolled back. Move the folder back to {source} manually before continuing.',
       yoloBaseDirMigrationManualRepair:
         'YOLO root {source} is hidden but cannot be migrated safely. Choose a visible YOLO root and move its YOLO files manually.',
-      yoloBaseDirAdoptTitle: 'Use existing YOLO root?',
-      yoloBaseDirAdoptMessage:
-        'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
-      yoloBaseDirAdoptConfirm: 'Use this folder',
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
@@ -2911,6 +2912,8 @@ export const en: TranslationKeys = {
       sensitive: 'Contains credentials',
       redactedOption:
         'Redact credentials (replace API keys / passwords / headers / env vars with random strings)',
+      moduleConfigsUnredactedOnly:
+        'Module configuration may contain module-private credentials and is excluded from redacted exports.',
       confirmUnredactedTitle: 'Confirm export',
       confirmUnredacted:
         'This unredacted export will save API keys / passwords / headers / env vars and other sensitive data to a file in the current vault. Continue?',
@@ -2951,6 +2954,8 @@ export const en: TranslationKeys = {
       noticeAtLeastOne: 'Please select at least one item',
       noticeSuccess: 'Settings imported successfully',
       noticeFailed: 'Failed to import settings',
+      noticePartialModuleConfig:
+        'Host settings were imported, but module configuration import failed. Some module settings may have been written and were not rolled back.',
     },
     errors: {
       errorNotJson: 'File content is not a valid JSON object.',
@@ -3001,6 +3006,9 @@ export const en: TranslationKeys = {
       assistants: 'Agents',
       currentAssistantId: 'Current agent',
       quickAskAssistantId: 'Quick Ask agent',
+      jsSandbox: 'JS sandbox permissions',
+      pluginUpdateAutoDownloadEnabled: 'Automatically download plugin updates',
+      moduleConfigs: 'Module configuration',
     },
   },
 
@@ -3033,6 +3041,7 @@ export const en: TranslationKeys = {
     repairAndReload: 'Repair and reload',
     downloadUpdate: 'Download update',
     downloading: 'Downloading {{progress}}%',
+    backgroundDownloading: 'Downloading in background…',
     installAndReload: 'Install and reload',
     applying: 'Installing…',
     downloadFailed: 'Download failed',

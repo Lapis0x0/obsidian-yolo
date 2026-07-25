@@ -1,6 +1,10 @@
 import type { App, DataAdapter, EventRef, Vault } from 'obsidian'
 
-import { createObsidianModuleConfigBackendFactory } from './obsidianModuleConfigBackend'
+import {
+  createObsidianModuleConfigBackendFactory,
+  readObsidianModuleConfigEnvelopes,
+  writeObsidianModuleConfigEnvelopes,
+} from './obsidianModuleConfigBackend'
 
 class MemoryAdapter {
   readonly files = new Map<string, string>()
@@ -24,6 +28,13 @@ class MemoryAdapter {
   }
   async remove(path: string) {
     this.files.delete(path)
+  }
+  async list(path: string) {
+    const prefix = `${path}/`
+    return {
+      files: [...this.files.keys()].filter((file) => file.startsWith(prefix)),
+      folders: [],
+    }
   }
 }
 
@@ -65,5 +76,84 @@ describe('createObsidianModuleConfigBackendFactory', () => {
       subscribeSettingsChange: () => () => undefined,
     })
     expect(() => factory('../notes')).toThrow('path segment')
+  })
+
+  test('transfers generic module settings at the supplied final baseDir', async () => {
+    const adapter = new MemoryAdapter()
+    const app = { vault: { adapter } } as unknown as App
+    await writeObsidianModuleConfigEnvelopes(
+      app,
+      { yolo: { baseDir: 'Restored/YOLO' } },
+      { learning: { schemaVersion: 1, data: { modelId: 'model-a' } } },
+    )
+
+    expect(
+      adapter.files.has(
+        'Restored/YOLO/.yolo_json_db/module-settings/learning.json',
+      ),
+    ).toBe(true)
+    await expect(
+      readObsidianModuleConfigEnvelopes(app, {
+        yolo: { baseDir: 'Restored/YOLO' },
+      }),
+    ).resolves.toEqual({
+      learning: { schemaVersion: 1, data: { modelId: 'model-a' } },
+    })
+  })
+
+  test('publishes imported config writes to an active backend subscription', async () => {
+    const adapter = new MemoryAdapter()
+    const vault = {
+      adapter: adapter as unknown as DataAdapter,
+      on: () => ({}) as EventRef,
+      offref: () => undefined,
+    } as unknown as Vault
+    const app = { vault } as App
+    const factory = createObsidianModuleConfigBackendFactory({
+      app,
+      getSettings: () => ({ yolo: { baseDir: 'YOLO' } }),
+      subscribeSettingsChange: () => () => undefined,
+    })
+    const listener = jest.fn()
+    const unsubscribe = factory('learning').subscribe(listener)
+    await writeObsidianModuleConfigEnvelopes(
+      app,
+      { yolo: { baseDir: 'YOLO' } },
+      {
+        learning: { schemaVersion: 1, data: { modelId: 'model-a' } },
+      },
+    )
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsubscribe()
+  })
+
+  test('isolates throwing config write listeners', async () => {
+    const adapter = new MemoryAdapter()
+    const vault = {
+      adapter: adapter as unknown as DataAdapter,
+      on: () => ({}),
+      offref: () => undefined,
+    } as unknown as Vault
+    const app = { vault } as App
+    const factory = createObsidianModuleConfigBackendFactory({
+      app,
+      getSettings: () => ({ yolo: { baseDir: 'YOLO' } }),
+      subscribeSettingsChange: () => () => undefined,
+    })
+    const throwing = factory('learning').subscribe(() => {
+      throw new Error('listener')
+    })
+    const observed = jest.fn()
+    const unsubscribe = factory('learning').subscribe(observed)
+    await expect(
+      writeObsidianModuleConfigEnvelopes(
+        app,
+        { yolo: { baseDir: 'YOLO' } },
+        { learning: { schemaVersion: 1, data: {} } },
+      ),
+    ).resolves.toBeUndefined()
+    expect(observed).toHaveBeenCalledTimes(1)
+    throwing()
+    unsubscribe()
   })
 })

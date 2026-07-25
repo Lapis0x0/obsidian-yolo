@@ -51,6 +51,7 @@ import {
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
 import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
@@ -61,12 +62,12 @@ import type {
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
-  BundledModuleCatalogSource,
   CoreModuleAgentCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   IndexedDbDataAdapter,
   ManagedModulePathsCapabilityProvider,
+  ModuleArtifactArrivalGrace,
   ModuleAssetsCapabilityProvider,
   ModuleConfigCapabilityProvider,
   ModuleDeviceStateStore,
@@ -315,6 +316,7 @@ export default class YoloPlugin extends Plugin {
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
+  private distributionFeedClient: DistributionFeedClient | null = null
   private moduleUpdateController: ModuleUpdateController | null = null
   private moduleRuntime: ModuleRuntime | null = null
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
@@ -2795,7 +2797,7 @@ export default class YoloPlugin extends Plugin {
       console.error('[YOLO] Learning legacy install migration failed', error)
     }
     this.warnIfInstallationIncomplete()
-    if (!(await this.activateModules())) return
+    this.activateModules()
     this.syncOAuthRuntimesFromSettings()
     await this.initializeLocalMcpServer().catch((error) => {
       console.error('[YOLO] Failed to initialize local MCP server', error)
@@ -3336,6 +3338,7 @@ export default class YoloPlugin extends Plugin {
     this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
+    this.distributionFeedClient = null
     this.learningModuleSettingsHandoff = null
     this.learningLegacyInstallMigration = null
     this.rawLearningLegacySettings = undefined
@@ -3568,27 +3571,6 @@ export default class YoloPlugin extends Plugin {
         ),
       )
     }
-  }
-
-  private confirmAdoptExistingYoloRoot(target: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      new ConfirmModal(this.app, {
-        title: this.t(
-          'settings.agent.yoloBaseDirAdoptTitle',
-          'Use existing YOLO root?',
-        ),
-        message: this.t(
-          'settings.agent.yoloBaseDirAdoptMessage',
-          'The previous YOLO root no longer exists, but {target} already contains files. Use this existing folder as the new YOLO root?',
-        ).replace('{target}', target),
-        ctaText: this.t(
-          'settings.agent.yoloBaseDirAdoptConfirm',
-          'Use this folder',
-        ),
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-      }).open()
-    })
   }
 
   private showYoloRootRelocationConflict(target: string): void {
@@ -3993,7 +3975,7 @@ export default class YoloPlugin extends Plugin {
     )
   }
 
-  async setSettings(newSettings: YoloSettings) {
+  async setSettings(newSettings: YoloSettings): Promise<boolean> {
     const { ensureDefaultAssistantInSettings } = await import(
       './core/agent/default-assistant'
     )
@@ -4005,7 +3987,7 @@ export default class YoloPlugin extends Plugin {
     if (!validationResult.success) {
       new Notice(`Invalid settings:
 ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
-      return
+      return false
     }
 
     const previousBaseDir = this.settings?.yolo?.baseDir
@@ -4020,7 +4002,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           'YOLO root cannot contain a folder name starting with a dot because Obsidian does not index hidden folders.',
         ),
       )
-      return
+      return false
     }
 
     // Read-before-write conflict check. If the file on disk has been
@@ -4039,7 +4021,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       new Notice(
         'YOLO: settings were updated externally (sync, another device, or manual edit). Your last change was not saved — please redo it.',
       )
-      return
+      return false
     }
 
     const previousSettings = this.settings
@@ -4056,7 +4038,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           'Finish the current voice task before changing the YOLO root.',
         ),
       )
-      return
+      return false
     }
     const normalizedSettingsWithManagedPaths = yoloBaseDirChanged
       ? rebaseYoloDebugLogExclusions(
@@ -4086,7 +4068,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       try {
         // A completed voice session can still have final Vault writes even
         // though the busy-state guard above already reports idle.
-        if (!(await this.waitForVoiceManagedWritesBeforePathChange())) return
+        if (!(await this.waitForVoiceManagedWritesBeforePathChange())) {
+          return false
+        }
         if (this.dbManager) {
           // Snapshot the in-memory DB to the OLD location before relocating.
           // If this fails (#408 OOM, disk full, etc.), the move would carry a
@@ -4102,7 +4086,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             new Notice(
               'Failed to snapshot YOLO vector database. Keeping previous YOLO root folder.',
             )
-            return
+            return false
           }
         }
         const relocation = await runManagedModuleDataExclusive(
@@ -4116,8 +4100,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
               persistTargetBaseDir: async () => {
                 await this.persistPluginDirSettings(settingsToApply)
               },
-              confirmAdoptExistingTarget: (target) =>
-                this.confirmAdoptExistingYoloRoot(target),
             })
             if (
               result.status === 'migrated' ||
@@ -4131,10 +4113,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           },
         )
 
-        if (relocation.status === 'cancelled') return
         if (relocation.status === 'target-conflict') {
           this.showYoloRootRelocationConflict(relocation.target)
-          return
+          return false
         }
         if (relocation.status === 'protected-source') {
           new Notice(
@@ -4144,7 +4125,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             ),
             0,
           )
-          return
+          return false
         }
         if (relocation.status === 'failed') {
           console.error('[YOLO] Failed to relocate YOLO root', relocation.error)
@@ -4160,7 +4141,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
                 ),
             relocation.rollbackFailed ? 0 : undefined,
           )
-          return
+          return false
         }
         this.voiceController?.clearManagedPathCaches()
         if (this.dbManager) {
@@ -4196,6 +4177,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.settingsChangeListeners.forEach((listener) => {
       listener(settingsToApply)
     })
+    return true
   }
 
   addSettingsChangeListener(listener: (newSettings: YoloSettings) => void) {
@@ -4583,7 +4565,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.hasCheckedForUpdates = true
     void Promise.allSettled([
       (async () => {
-        const fetched = await checkForUpdate(this.manifest.version)
+        if (!this.distributionFeedClient) return
+        const fetched = await checkForUpdate(
+          this.manifest.version,
+          this.distributionFeedClient,
+        )
         if (fetched?.hasUpdate) {
           if (this.isUpdateVersionMuted(fetched.latestVersion)) {
             return
@@ -4748,6 +4734,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       manifest: this.manifest,
       configDir: this.app.vault.configDir,
     })
+    const artifactArrivalGrace = new ModuleArtifactArrivalGrace({
+      adapter: store.adapter,
+      pluginDir: store.pluginDir,
+    })
     const createConfigBackend = createObsidianModuleConfigBackendFactory({
       app: this.app,
       getSettings: () => this.settings,
@@ -4902,34 +4892,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           intentStore.setIfAbsent(moduleId, 'enabled'),
       })
     }
-    const bundledCatalogSource =
-      process.env.NODE_ENV === 'development'
-        ? new BundledModuleCatalogSource({
-            store,
-            platform,
-            locale: () =>
-              normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
-          })
-        : undefined
-    const serviceIntentStore = bundledCatalogSource
-      ? {
-          get: async (moduleId: string) => {
-            const explicit = await intentStore.get(moduleId)
-            if (explicit !== undefined) return explicit
-            await bundledCatalogSource.load()
-            return bundledCatalogSource.getResolvedVersion(moduleId)
-              ? ('enabled' as const)
-              : undefined
-          },
-          set: (
-            moduleId: string,
-            state: 'uninstalled' | 'disabled' | 'enabled',
-          ) => intentStore.set(moduleId, state),
-          listModuleIds: () => intentStore.listModuleIds(),
-          subscribeAll: (listener: (moduleId: string) => void) =>
-            intentStore.subscribeAll(listener),
-        }
-      : intentStore
     const getCompatibility = createOfficialModuleCompatibilityProvider({
       platform,
       readDeviceState: async (moduleId) => {
@@ -4943,10 +4905,16 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           : null
       },
     })
+    const distributionFeedClient = new DistributionFeedClient({
+      adapter: deviceLocalAdapter,
+      cachePath: 'distribution/feed-v1.json',
+      timeoutMs: 10_000,
+    })
+    this.distributionFeedClient = distributionFeedClient
     const services = createProductionModuleServices({
       store,
       deviceStateStore,
-      catalogCacheAdapter: deviceLocalAdapter,
+      distributionFeedClient,
       platform,
       locale: () =>
         normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
@@ -4954,14 +4922,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,
-      intentStore: serviceIntentStore,
-      ...(bundledCatalogSource
-        ? {
-            catalogSource: bundledCatalogSource,
-            authorizeArtifactRemoval: async () => true,
-            removeVersionArtifacts: async () => undefined,
-          }
-        : {}),
+      intentStore,
+      artifactArrivalGrace,
       reportCleanupError: (error) => {
         console.error('[YOLO] Module artifact cleanup failed', error)
       },
@@ -4999,14 +4961,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     })
   }
 
-  private async activateModules(): Promise<boolean> {
-    try {
-      await this.getModuleService().start()
-    } catch (error) {
-      console.error('[YOLO] Failed to start modules', error)
-      return true
-    }
-    return true
+  private activateModules(): void {
+    void this.getModuleService()
+      .start()
+      .catch((error) => {
+        console.error('[YOLO] Failed to start modules', error)
+      })
   }
 
   private async activateLocalConformanceModule(): Promise<void> {

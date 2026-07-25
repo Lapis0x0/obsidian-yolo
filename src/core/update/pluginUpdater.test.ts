@@ -1,10 +1,12 @@
-import { type DataAdapter, Stat } from 'obsidian'
+import { type DataAdapter, Stat, requestUrl } from 'obsidian'
 
 import { RELEASE_FILE_NAMES } from './installationIntegrity'
 import {
   applyRepairFiles,
   applyStagedUpdate,
   clearStagingRoot,
+  downloadReleaseToStaging,
+  downloadRepairFilesToStaging,
   getRepairMetaPath,
   getRepairStagingStatus,
   getStagingDir,
@@ -12,6 +14,8 @@ import {
   getStagingStatus,
   meetsMinAppVersion,
 } from './pluginUpdater'
+
+const mockedRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>
 
 // eslint-disable-next-line obsidianmd/hardcoded-config-path -- mock Vault#configDir for adapter paths
 const MOCK_PLUGIN_DIR = 'vault/.obsidian/plugins/yolo'
@@ -114,6 +118,169 @@ describe('meetsMinAppVersion', () => {
 
   it('returns true when minAppVersion is empty', () => {
     expect(meetsMinAppVersion('1.0.0', '')).toBe(true)
+  })
+})
+
+describe('signed update downloads', () => {
+  beforeEach(() => mockedRequestUrl.mockReset())
+
+  it('falls back from Pages and verifies every signed asset', async () => {
+    const adapter = new MockAdapter()
+    const values = {
+      mainJs: new TextEncoder().encode('main'),
+      manifestJson: new TextEncoder().encode(
+        JSON.stringify({ version: '1.7.0', minAppVersion: '1.8.0' }),
+      ),
+      stylesCss: new TextEncoder().encode('style'),
+    }
+    const digest = async (bytes: Uint8Array) =>
+      [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join('')
+    const asset = async (key: keyof typeof values, name: string) => ({
+      url: `https://github.com/${name}`,
+      mirrorUrl: `https://updates.yoloapp.dev/${name}`,
+      size: values[key].byteLength,
+      sha256: await digest(values[key]),
+    })
+    mockedRequestUrl.mockImplementation((request) => {
+      const url = typeof request === 'string' ? request : request.url
+      if (url.startsWith('https://updates.')) {
+        return Promise.resolve({
+          status: 503,
+          headers: {},
+          text: '',
+          arrayBuffer: new ArrayBuffer(0),
+          json: null,
+        }) as never
+      }
+      const name = url.split('/').at(-1)
+      const bytes =
+        name === 'main.js'
+          ? values.mainJs
+          : name === 'manifest.json'
+            ? values.manifestJson
+            : values.stylesCss
+      return Promise.resolve({
+        status: 200,
+        headers: {},
+        text: new TextDecoder().decode(bytes),
+        arrayBuffer: bytes.slice().buffer,
+        json: null,
+      }) as never
+    })
+    await downloadReleaseToStaging({
+      adapter: adapter as unknown as DataAdapter,
+      pluginDir: MOCK_PLUGIN_DIR,
+      version: '1.7.0',
+      assets: {
+        mainJs: await asset('mainJs', 'main.js'),
+        manifestJson: await asset('manifestJson', 'manifest.json'),
+        stylesCss: await asset('stylesCss', 'styles.css'),
+      },
+    })
+    await expect(
+      getStagingStatus(
+        adapter as unknown as DataAdapter,
+        getStagingDir(MOCK_PLUGIN_DIR, '1.7.0'),
+        '1.7.0',
+      ),
+    ).resolves.toMatchObject({ ready: true, version: '1.7.0' })
+    expect(mockedRequestUrl).toHaveBeenCalledTimes(6)
+  })
+
+  it('falls back to GitHub when the Pages request never settles', async () => {
+    jest.useFakeTimers()
+    try {
+      const adapter = new MockAdapter()
+      const bytes = new TextEncoder().encode('style')
+      let notifyPagesStarted!: () => void
+      const pagesStarted = new Promise<void>((resolve) => {
+        notifyPagesStarted = resolve
+      })
+      mockedRequestUrl.mockImplementation((request) => {
+        const url = typeof request === 'string' ? request : request.url
+        if (url.startsWith('https://updates.')) {
+          notifyPagesStarted()
+          return new Promise(() => undefined) as never
+        }
+        return Promise.resolve({
+          status: 200,
+          headers: {},
+          text: 'style',
+          arrayBuffer: bytes.slice().buffer,
+          json: null,
+        }) as never
+      })
+      const asset = {
+        url: 'https://github.com/styles.css',
+        mirrorUrl: 'https://updates.yoloapp.dev/styles.css',
+        size: bytes.byteLength,
+      }
+
+      const downloading = downloadRepairFilesToStaging({
+        adapter: adapter as unknown as DataAdapter,
+        pluginDir: MOCK_PLUGIN_DIR,
+        version: '1.7.0',
+        assets: { mainJs: asset, manifestJson: asset, stylesCss: asset },
+        files: [RELEASE_FILE_NAMES.stylesCss],
+      })
+      await pagesStarted
+      await jest.advanceTimersByTimeAsync(30_000)
+
+      await expect(downloading).resolves.toBeUndefined()
+      expect(mockedRequestUrl).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('allows 90 seconds for main.js before falling back to GitHub', async () => {
+    jest.useFakeTimers()
+    try {
+      const adapter = new MockAdapter()
+      const bytes = new TextEncoder().encode('main')
+      let notifyPagesStarted!: () => void
+      const pagesStarted = new Promise<void>((resolve) => {
+        notifyPagesStarted = resolve
+      })
+      mockedRequestUrl.mockImplementation((request) => {
+        const url = typeof request === 'string' ? request : request.url
+        if (url.startsWith('https://updates.')) {
+          notifyPagesStarted()
+          return new Promise(() => undefined) as never
+        }
+        return Promise.resolve({
+          status: 200,
+          headers: {},
+          text: 'main',
+          arrayBuffer: bytes.slice().buffer,
+          json: null,
+        }) as never
+      })
+      const asset = {
+        url: 'https://github.com/main.js',
+        mirrorUrl: 'https://updates.yoloapp.dev/main.js',
+        size: bytes.byteLength,
+      }
+
+      const downloading = downloadRepairFilesToStaging({
+        adapter: adapter as unknown as DataAdapter,
+        pluginDir: MOCK_PLUGIN_DIR,
+        version: '1.7.0',
+        assets: { mainJs: asset, manifestJson: asset, stylesCss: asset },
+        files: [RELEASE_FILE_NAMES.mainJs],
+      })
+      await pagesStarted
+      await jest.advanceTimersByTimeAsync(30_000)
+      expect(mockedRequestUrl).toHaveBeenCalledTimes(1)
+
+      await jest.advanceTimersByTimeAsync(60_000)
+      await expect(downloading).resolves.toBeUndefined()
+      expect(mockedRequestUrl).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })
 

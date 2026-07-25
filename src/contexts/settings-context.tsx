@@ -4,7 +4,7 @@ import { YoloSettings } from '../settings/schema/setting.types'
 
 type SettingsContextType = {
   settings: YoloSettings
-  setSettings: (newSettings: YoloSettings) => void | Promise<void>
+  setSettings: (newSettings: YoloSettings) => Promise<boolean>
 }
 
 // Settings context
@@ -20,7 +20,7 @@ export const SettingsProvider = ({
 }: {
   children: React.ReactNode
   settings: YoloSettings
-  setSettings: (newSettings: YoloSettings) => void | Promise<void>
+  setSettings: (newSettings: YoloSettings) => Promise<boolean>
   addSettingsChangeListener: (
     listener: (newSettings: YoloSettings) => void,
   ) => () => void

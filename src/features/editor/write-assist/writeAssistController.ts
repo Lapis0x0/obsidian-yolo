@@ -21,7 +21,7 @@ import {
 type WriteAssistDeps = {
   app: App
   getSettings: () => YoloSettings
-  setSettings: (newSettings: YoloSettings) => Promise<void>
+  setSettings: (newSettings: YoloSettings) => Promise<boolean>
   t: (key: string, fallback?: string) => string
   getActiveConversationOverrides: () => ConversationOverrideSettings | undefined
   resolveContinuationParams: (overrides?: ConversationOverrideSettings) => {

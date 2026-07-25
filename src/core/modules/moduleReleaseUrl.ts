@@ -19,6 +19,15 @@ const REPOSITORY = /^[A-Za-z0-9._-]+$/
 const TAG_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/
 const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/
 
+export const OFFICIAL_MODULE_RELEASE_REPOSITORIES = Object.freeze([
+  Object.freeze({ owner: 'Lapis0x0', repo: 'obsidian-yolo' }),
+])
+
+/** Checks a release URL against the code-owned first-party repository list. */
+export function isOfficialModuleReleaseUrl(value: unknown): value is string {
+  return isModuleReleaseUrlAllowed(value, OFFICIAL_MODULE_RELEASE_REPOSITORIES)
+}
+
 /** Parses the one canonical GitHub Release asset URL form accepted by modules. */
 export function parseModuleReleaseUrl(
   value: unknown,

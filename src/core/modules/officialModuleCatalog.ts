@@ -210,6 +210,31 @@ export function getOfficialModuleCompatibilityIssues(
   return Object.freeze([...issues].sort())
 }
 
+/** Evaluates the one latest candidate exposed by the signed distribution Feed. */
+export function getOfficialModuleVersionCompatibilityIssues(
+  candidate: OfficialModuleCatalogVersion,
+  compatibility: OfficialModuleCompatibility,
+): readonly OfficialModuleCompatibilityIssue[] {
+  return Object.freeze([
+    ...candidateCompatibilityIssues(
+      candidate,
+      parseCompatibility(compatibility),
+    ),
+  ])
+}
+
+export function compareOfficialModuleVersions(
+  left: string,
+  right: string,
+): number {
+  const leftVersion = parseSemver(left)
+  const rightVersion = parseSemver(right)
+  if (!leftVersion || !rightVersion) {
+    throw new Error('Official module version is invalid')
+  }
+  return compareSemver(leftVersion, rightVersion)
+}
+
 export function selectInitialCompatibleVersion(
   module: OfficialModuleCatalogCandidate,
   compatibility: OfficialModuleCompatibility,

@@ -23,8 +23,6 @@ export type UsePluginUpdatePrimaryCtaResult = {
   hasSelfUpdate: boolean
   isSelfUpdateError: boolean
   showCommunityPluginsFallback: boolean
-  showDownloadProgress: boolean
-  downloadProgress: number
   releaseUrl: string | null
   latestVersion: string | null
   openCommunityPlugins: () => void
@@ -92,10 +90,7 @@ export function usePluginUpdatePrimaryCta(
 
     if (updateState.status === 'downloading' && isSameVersion) {
       return {
-        label: t('update.downloading', 'Downloading {{progress}}%').replace(
-          '{{progress}}',
-          String(Math.round(updateState.progress)),
-        ),
+        label: t('update.backgroundDownloading', 'Downloading in background…'),
         disabled: true,
         onClick: () => {},
       }
@@ -143,19 +138,11 @@ export function usePluginUpdatePrimaryCta(
 
   const showCommunityPluginsFallback = !hasSelfUpdate || isSelfUpdateError
 
-  const showDownloadProgress =
-    hasSelfUpdate &&
-    updateState.status === 'downloading' &&
-    updateState.version === (latestVersion ?? '')
-
   return {
     primaryCta,
     hasSelfUpdate,
     isSelfUpdateError,
     showCommunityPluginsFallback,
-    showDownloadProgress,
-    downloadProgress:
-      updateState.status === 'downloading' ? updateState.progress : 0,
     releaseUrl,
     latestVersion,
     openCommunityPlugins,

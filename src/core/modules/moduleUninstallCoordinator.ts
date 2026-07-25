@@ -19,14 +19,6 @@ export type ModuleUninstallCoordinatorOptions = Readonly<{
   manager: Pick<ModuleManager, 'refresh'>
   /** Shared with every activation path; it does not deactivate a live module. */
   runtime: ModuleRuntimeQuiescence
-  /**
-   * Product-policy gate only. It cannot detect other devices. Production must
-   * not authorize until missing artifacts can be verified and redownloaded.
-   */
-  authorizeArtifactRemoval(
-    moduleId: string,
-    versions: readonly string[],
-  ): Promise<boolean>
   platform: ModuleArtifactPlatform
 }>
 
@@ -54,7 +46,6 @@ export class ModuleUninstallCoordinator {
       typeof options.intentStore?.get !== 'function' ||
       typeof options.manager?.refresh !== 'function' ||
       typeof options.runtime?.runWithModuleQuiesced !== 'function' ||
-      typeof options.authorizeArtifactRemoval !== 'function' ||
       (options.platform !== 'desktop' && options.platform !== 'mobile')
     ) {
       throw new Error('Module uninstall coordinator options are invalid')
@@ -83,15 +74,6 @@ export class ModuleUninstallCoordinator {
               moduleId,
               this.options.platform,
             )
-            const authorized = await this.options.authorizeArtifactRemoval(
-              moduleId,
-              versions,
-            )
-            if (authorized !== true) {
-              throw new Error(
-                `Module "${moduleId}" artifact removal is not authorized by product policy`,
-              )
-            }
             for (const version of versions) {
               await this.options.artifactStore.removeVersionArtifacts(
                 moduleId,

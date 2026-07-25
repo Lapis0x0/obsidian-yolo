@@ -204,8 +204,8 @@ export const zh: TranslationKeys = {
       update: '更新',
       installing: '正在安装…',
       updating: '正在更新…',
-      reload: '重试激活',
-      reloading: '正在激活…',
+      reload: '重试',
+      reloading: '正在重试…',
       candidateUnavailable:
         '目前无法安装 {name}。它可能正在下载，或模块目录已经发生变化。',
       installError: '无法安装 {name}：{error}',
@@ -226,11 +226,23 @@ export const zh: TranslationKeys = {
       incompatibleReason: '不兼容：{reason}',
       compatibility: {
         platform: '平台',
-        hostApi: '宿主 API',
+        hostApi: '需要更新 YOLO Core',
         dataSchema: '数据架构',
       },
       retry: '重试',
       actionError: '无法更改 {name}：{error}',
+      failure: {
+        downloadTimeout:
+          'Cloudflare 和 GitHub 均连接超时，无法下载模块。请检查网络或代理设置后重试。',
+        download:
+          '无法从 Cloudflare 或 GitHub 下载模块。请检查网络或代理设置后重试。',
+        integrity:
+          '下载的模块文件未通过完整性校验，已停止安装。请重试；若问题持续，请联系开发者。',
+        activation:
+          '模块已经下载，但无法启动。请重试；若问题持续，请联系开发者。',
+        unknown: '模块操作失败。',
+        diagnostic: '诊断信息：{detail}',
+      },
       actions: {
         install: '安装',
         installBusy: '正在安装…',
@@ -240,11 +252,6 @@ export const zh: TranslationKeys = {
         disableBusy: '正在停用…',
         uninstall: '卸载',
         uninstallBusy: '正在卸载…',
-      },
-      confirmProduct: {
-        uninstallTitle: '卸载 {name}',
-        uninstallMessage:
-          '要卸载 {name} 吗？YOLO 会先安全停止模块，再移除本机模块程序文件和安装状态。模块数据会保留。',
       },
       statuses: {
         available: '可用',
@@ -408,10 +415,6 @@ export const zh: TranslationKeys = {
         'YOLO 已从 {source} 移动到 {target}，但设置更新失败且无法回滚。请先手动将目录移回 {source}。',
       yoloBaseDirMigrationManualRepair:
         'YOLO 根目录 {source} 是隐藏目录，但无法安全自动迁移。请选择可见根目录并手动移动其中的 YOLO 文件。',
-      yoloBaseDirAdoptTitle: '使用已有的 YOLO 根目录？',
-      yoloBaseDirAdoptMessage:
-        '原 YOLO 根目录已不存在，但 {target} 中已有文件。是否直接将这个目录作为新的 YOLO 根目录？',
-      yoloBaseDirAdoptConfirm: '使用这个目录',
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',
@@ -1457,6 +1460,8 @@ export const zh: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'YOLO 根目录不能使用隐藏文件夹。请移除文件夹名称开头的“.”，例如将 .yolo 改为 yolo。',
+      yoloBaseDirInvalidPath:
+        'YOLO 根目录包含跨设备不支持的文件夹名称。请勿使用控制字符、Windows 保留名称或字符 <>:"\\|?*。',
       yoloBaseDirMigrated:
         'YOLO 根目录现已使用 {target}，Obsidian 可以正常索引它。',
       yoloBaseDirMigrationConflict:
@@ -1466,10 +1471,6 @@ export const zh: TranslationKeys = {
         'YOLO 已从 {source} 移动到 {target}，但设置更新失败且无法回滚。请先手动将目录移回 {source}。',
       yoloBaseDirMigrationManualRepair:
         'YOLO 根目录 {source} 是隐藏目录，但无法安全自动迁移。请选择可见根目录并手动移动其中的 YOLO 文件。',
-      yoloBaseDirAdoptTitle: '使用已有的 YOLO 根目录？',
-      yoloBaseDirAdoptMessage:
-        '原 YOLO 根目录已不存在，但 {target} 中已有文件。是否直接将这个目录作为新的 YOLO 根目录？',
-      yoloBaseDirAdoptConfirm: '使用这个目录',
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',
@@ -2707,6 +2708,8 @@ export const zh: TranslationKeys = {
       sensitive: '含凭证',
       redactedOption:
         '脱敏导出（替换 API Key / 密码 / Header / 环境变量等凭证为随机字符串）',
+      moduleConfigsUnredactedOnly:
+        '模块配置可能包含模块私有凭证，脱敏导出不会包含它们。',
       confirmUnredactedTitle: '确认导出',
       confirmUnredacted:
         '未脱敏导出会把 API Key / 密码 / Header / 环境变量等敏感信息保存到当前库内文件。确定继续吗？',
@@ -2745,6 +2748,8 @@ export const zh: TranslationKeys = {
       noticeAtLeastOne: '请至少选择一项配置',
       noticeSuccess: '配置导入成功',
       noticeFailed: '配置导入失败',
+      noticePartialModuleConfig:
+        'Host 配置已导入，但模块配置导入失败；部分模块配置可能已写入，未自动回滚。',
     },
     errors: {
       errorNotJson: '文件内容不是有效的 JSON 对象',
@@ -2789,6 +2794,9 @@ export const zh: TranslationKeys = {
       assistants: 'Agent 配置',
       currentAssistantId: '当前 Agent',
       quickAskAssistantId: 'Quick Ask Agent',
+      jsSandbox: 'JS 沙箱权限',
+      pluginUpdateAutoDownloadEnabled: '插件自动下载更新',
+      moduleConfigs: '模块配置',
     },
   },
 
@@ -2821,6 +2829,7 @@ export const zh: TranslationKeys = {
     repairAndReload: '修复并重启',
     downloadUpdate: '下载更新',
     downloading: '下载中 {{progress}}%',
+    backgroundDownloading: '正在后台下载…',
     installAndReload: '安装并重启',
     applying: '正在安装…',
     downloadFailed: '下载失败',

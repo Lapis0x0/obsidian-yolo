@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "keyId": "yolo-distribution-2026-01",
+  "core": {
+    "version": "1.6.1.2",
+    "minAppVersion": "1.8.7",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.1.2",
+    "releaseNotes": {
+      "en": "## 1.6.1.2 Streamlined Module Lifecycle & New Tab Polish 🛠️\n\n### 🧩 Module Installation & Uninstallation\n\n- Development and production environments now consistently install modules from official remote releases. Uninstalling no longer waits for redundant remote verification, and reinstalling recovers cleanly from artifacts left by an incomplete uninstall.\n\n### 🎨 Interface Fixes\n\n- Fixed duplicate icons and misaligned layout for the YOLO entry on new tabs with certain themes.",
+      "zh": "## 1.6.1.2 模块流程精简与新标签页优化 🛠️\n\n### 🧩 模块安装与卸载\n\n- 开发与正式环境现在统一使用远程官方版本；卸载无需再等待冗余的远程校验，并修复卸载残留导致无法重新安装的问题。\n\n### 🎨 界面修复\n\n- 修复部分主题下新标签页的 YOLO 入口出现重复图标和布局错位的问题。"
+    },
+    "assets": {
+      "mainJs": {
+        "name": "main.js",
+        "mirrorPath": "core/1.6.1.2/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.2/main.js",
+        "byteSize": 12016204,
+        "sha256": "00b2e20432797ab9a9f47fef4f6b69396a732c5d43c77004e08f41804e99f47e"
+      },
+      "manifestJson": {
+        "name": "manifest.json",
+        "mirrorPath": "core/1.6.1.2/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.2/manifest.json",
+        "byteSize": 329,
+        "sha256": "fb6e0881581468231a8fe1af63fc6f12c72e88c026cb1340b1bf181649714c78"
+      },
+      "stylesCss": {
+        "name": "styles.css",
+        "mirrorPath": "core/1.6.1.2/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.2/styles.css",
+        "byteSize": 559894,
+        "sha256": "561c11d1f7523b879d1bbb8002c044f2cc879c62287b9a6761f3bdda3ae7d5ae"
+      }
+    }
+  },
+  "modules": [
+    {
+      "id": "learning",
+      "icon": "graduation-cap",
+      "localizations": {
+        "en": {
+          "name": "Learning mode",
+          "description": "Build lasting knowledge from your notes with guided learning plans, spaced repetition, and review."
+        },
+        "zh": {
+          "name": "学习模式",
+          "description": "通过学习计划、间隔重复与复习，把笔记转化为能够长期掌握的知识。"
+        },
+        "it": {
+          "name": "Modalità di apprendimento",
+          "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
+        }
+      },
+      "version": "0.1.1",
+      "hostApi": "^1.4.0",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "dataSchemas": {
+        "settings": {
+          "readMin": 0,
+          "readMax": 1,
+          "write": 1
+        }
+      },
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.1",
+      "releaseNotes": {
+        "en": "## 0.1.1 Seamless module migration ✨\n\n### ✨ Independent Learning module\n\n- **Independent delivery**: Learning can now be installed and updated independently from YOLO Core while keeping the existing Learning experience intact.\n\n### 🔧 Upgrade reliability\n\n- **Seamless migration**: Existing Learning settings, study projects, and review progress are preserved when moving to the standalone module.",
+        "zh": "## 0.1.1 无感模块迁移 ✨\n\n### ✨ 独立学习模块\n\n- **独立交付**：学习模式现在可以独立于 YOLO Core 安装与更新，原有学习体验保持不变。\n\n### 🔧 升级稳定性\n\n- **无感迁移**：迁移到独立模块时，已有学习设置、学习项目与复习进度都会完整保留。"
+      },
+      "releaseNote": {
+        "name": "release-note.md",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/release-note.md",
+        "byteSize": 733,
+        "sha256": "e74823b2661eacb5f60c0b749fcf3cb269d75001c1ec40089fe16ce1357bb1ca"
+      },
+      "manifest": {
+        "name": "module.json",
+        "mirrorPath": "modules/learning/0.1.1/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/module.json",
+        "byteSize": 1860,
+        "sha256": "48e21c7960df8cb7adadffaed54c8dff7b8aa51bac7cc0b1afb427d9e3c4daba"
+      }
+    }
+  ]
+}

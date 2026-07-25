@@ -20,9 +20,11 @@ type HostTextSnapshot = NonNullable<
 
 class MemoryLearningHost {
   contentRoot = 'First/learning'
+  locale = 'en'
   agentText = JSON.stringify({
     projectName: 'Memory project',
     projectGoal: 'Test adapters',
+    outputLanguage: 'English',
     chapters: [{ title: 'One', contract: 'Learn one' }],
     estimatedKnowledgePoints: 2,
   })
@@ -32,6 +34,7 @@ class MemoryLearningHost {
   readonly actionToasts: YoloModuleHostActionToastV1[] = []
   readonly agentRequests: Array<{
     activity?: { title: string; detail?: string }
+    prompt?: string
   }> = []
   confirmResult = true
   private readonly entries = new Map<string, NonNullable<VaultEntry>>()
@@ -45,6 +48,10 @@ class MemoryLearningHost {
     },
     settings: {
       getModelSnapshot: () => ({ defaultModelId: 'memory-model', models: [] }),
+    },
+    i18n: {
+      getSnapshot: () => ({ locale: this.locale }),
+      subscribe: () => () => undefined,
     },
     agent: {
       stream: (request: { activity?: { title: string; detail?: string } }) => {
@@ -336,9 +343,33 @@ describe('createLearningUiServices memory host', () => {
     expect(onOutline).toHaveBeenCalled()
     expect(onProgress).toHaveBeenCalled()
     expect(memory.agentRequests[0]?.activity).toEqual({
-      title: '正在生成学习项目大纲',
+      title: 'Generating outline',
       detail: 'Adapters',
     })
+  })
+
+  it('uses the current locale when a long-lived workflow starts', async () => {
+    const memory = new MemoryLearningHost()
+    const { runtime } = createRuntime()
+    const services = createLearningUiServices(memory.api, {
+      runtime: runtime as never,
+      ownerDocument: {} as Document,
+      generation: { generateCards: false },
+    })
+    memory.locale = 'zh-CN'
+
+    await services.outlineBuilderWorkflow.generateOutline({
+      topic: 'Adapters',
+      level: 'familiar',
+      goal: 'Ship',
+      signal: new AbortController().signal,
+      onOutline: jest.fn(),
+      onProgress: jest.fn(),
+    })
+
+    expect(memory.agentRequests[0]?.activity?.title).toBe(
+      '正在生成学习项目大纲',
+    )
   })
 
   it('writes a project from the knowledge generation stream', async () => {
@@ -360,7 +391,11 @@ describe('createLearningUiServices memory host', () => {
       goal: 'Understand it',
       projectName: 'Generated',
       projectGoal: 'Understand it',
-      chapters: [{ title: 'Chapter one', contract: 'Explain point one' }],
+      outputLanguage: 'English',
+      chapters: [
+        { title: 'Chapter one', contract: 'Explain point one' },
+        { title: 'Chapter two', contract: 'Explain point two' },
+      ],
       signal: new AbortController().signal,
       onProjectStarted,
       onChapterProgress,
@@ -387,9 +422,15 @@ describe('createLearningUiServices memory host', () => {
       memory.api.vault.readText(knowledge?.path ?? ''),
     ).resolves.toContain('## Point one <!--kp:')
     expect(memory.agentRequests[0]?.activity).toEqual({
-      title: '正在生成学习项目',
+      title: 'Generating knowledge points',
       detail: 'Chapter one',
     })
+    expect(memory.agentRequests).toHaveLength(2)
+    expect(
+      memory.agentRequests.every((request) =>
+        request.prompt?.includes('Required output language: English'),
+      ),
+    ).toBe(true)
   })
 
   it('streams card events in order and opens the successful project for study', async () => {
@@ -445,7 +486,7 @@ describe('createLearningUiServices memory host', () => {
         runId,
         projectId,
         activity: expect.objectContaining({
-          title: '正在生成学习卡片',
+          title: 'Generating cards',
           detail: 'Generated',
         }),
       }),
@@ -453,10 +494,38 @@ describe('createLearningUiServices memory host', () => {
     expect(memory.actionToasts).toHaveLength(1)
     expect(memory.actionToasts[0]).toMatchObject({
       tone: 'success',
-      actionLabel: '开始学习',
+      actionLabel: 'Start learning',
     })
     await memory.actionToasts[0].onAction()
     expect(openProjectCards).toHaveBeenCalledWith(projectId, '学习')
+  })
+
+  it('uses the existing-cards summary when some chapters were skipped', async () => {
+    const memory = new MemoryLearningHost()
+    memory.agentText = '## Point one\n\nA durable explanation.'
+    const { runtime } = createRuntime()
+    const openProjectCards = jest.fn()
+    generateCardsParallelMock.mockImplementation(async (options) => {
+      const generated = cardResult('generated', [
+        cardEvent(options.runId ?? '', options.projectId ?? '').card,
+      ])
+      const skipped = cardResult('skipped')
+      options.onChapterSettled?.(generated)
+      options.onChapterSettled?.(skipped)
+      return [generated, skipped]
+    })
+    const services = createLearningUiServices(memory.api, {
+      runtime: runtime as never,
+      ownerDocument: {} as Document,
+      generation: { openProjectCards },
+    })
+    await services
+      .createOutlineBuilderWorkflow()
+      .generateProject(projectGenerationInput())
+    expect(memory.actionToasts[0]).toMatchObject({ tone: 'success' })
+    expect(memory.actionToasts[0].message).toBe(
+      'Cards for 2 chapters are ready; 1 new cards were added.',
+    )
   })
 
   it('reports partial card generation and targets browsing', async () => {
@@ -494,7 +563,7 @@ describe('createLearningUiServices memory host', () => {
     )
     expect(memory.actionToasts[0]).toMatchObject({
       tone: 'warning',
-      actionLabel: '浏览卡片',
+      actionLabel: 'Browse cards',
     })
     await memory.actionToasts[0].onAction()
     expect(openProjectCards).toHaveBeenCalledWith(
@@ -521,7 +590,7 @@ describe('createLearningUiServices memory host', () => {
 
     expect(memory.actionToasts[0]).toMatchObject({
       tone: 'error',
-      actionLabel: '浏览卡片',
+      actionLabel: 'Browse cards',
     })
     await memory.actionToasts[0].onAction()
     expect(openProjectCards).toHaveBeenCalledWith(
@@ -589,6 +658,7 @@ function projectGenerationInput(signal = new AbortController().signal) {
     goal: 'Understand it',
     projectName: 'Generated',
     projectGoal: 'Understand it',
+    outputLanguage: 'English',
     chapters: [{ title: 'Chapter one', contract: 'Explain point one' }],
     signal,
     onProjectStarted: jest.fn(async () => undefined),

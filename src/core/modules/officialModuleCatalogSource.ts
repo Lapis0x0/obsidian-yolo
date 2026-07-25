@@ -12,11 +12,9 @@ import {
   type OfficialModuleCatalogV1,
   type OfficialModuleCatalogVersion,
   type OfficialModuleCompatibility,
-  findCompatibleUpdate,
-  getOfficialModuleCompatibilityIssues,
-  selectInitialCompatibleVersion,
+  compareOfficialModuleVersions,
+  getOfficialModuleVersionCompatibilityIssues,
 } from './officialModuleCatalog'
-import type { OfficialModuleCatalogClient } from './officialModuleCatalogClient'
 import type { ModuleCatalogEntry, ModuleCatalogSource } from './types'
 
 const EMPTY_RESOLVED_VERSIONS = Object.freeze(
@@ -28,7 +26,10 @@ export type OfficialModuleCompatibilityProvider = (
 ) => OfficialModuleCompatibility | Promise<OfficialModuleCompatibility>
 
 export type OfficialModuleCatalogSourceOptions = Readonly<{
-  client: Pick<OfficialModuleCatalogClient, 'load' | 'loadFresh'>
+  client: Readonly<{
+    load(): Promise<OfficialModuleCatalogV1>
+    loadFresh(): Promise<OfficialModuleCatalogV1>
+  }>
   getCompatibility: OfficialModuleCompatibilityProvider
   locale: ModuleCatalogLocaleSource
 }>
@@ -171,26 +172,30 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
         )
       }
 
-      let selected: OfficialModuleCatalogVersion | null
+      let latest: OfficialModuleCatalogVersion
+      let compatibilityIssues: ModuleCatalogEntry['compatibilityIssues']
       try {
-        selected =
-          compatibility.activeVersion !== undefined
-            ? findCompatibleUpdate(module, compatibility)
-            : selectInitialCompatibleVersion(module, compatibility)
+        latest = module.versions[0]
+        compatibilityIssues = getOfficialModuleVersionCompatibilityIssues(
+          latest,
+          compatibility,
+        ).map((kind) => Object.freeze({ kind }))
       } catch (error) {
         throw new Error(
           `Could not resolve compatibility for official module "${module.id}": ${errorMessage(error)}`,
         )
       }
 
-      if (selected) {
-        resolvedVersions[module.id] = selected
-        entries.push(catalogEntry(module, selected.version, locale))
+      const newerThanActive =
+        compatibility.activeVersion === undefined ||
+        compareOfficialModuleVersions(
+          latest.version,
+          compatibility.activeVersion,
+        ) > 0
+      if (compatibilityIssues.length === 0 && newerThanActive) {
+        resolvedVersions[module.id] = latest
+        entries.push(catalogEntry(module, latest.version, locale))
       } else {
-        const compatibilityIssues = getOfficialModuleCompatibilityIssues(
-          module,
-          compatibility,
-        ).map((kind) => Object.freeze({ kind }))
         entries.push(
           catalogEntry(
             module,

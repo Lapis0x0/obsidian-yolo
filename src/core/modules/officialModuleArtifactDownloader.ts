@@ -9,7 +9,7 @@ import {
   MAX_MODULE_ARTIFACT_FILE_BYTES,
   MAX_MODULE_MANIFEST_BYTES,
 } from './moduleStore'
-import { isOfficialModuleReleaseUrl } from './officialModuleCatalogClient'
+import { isOfficialModuleArtifactSourceUrl } from './officialModuleArtifactSources'
 
 export type OfficialModuleArtifactRequest = (
   request: RequestUrlParam,
@@ -60,31 +60,14 @@ export function createOfficialModuleArtifactDownloader(
     throw new TypeError('Official module artifact timeout is invalid')
   }
   const validatedTimeoutMs = timeoutMs as number
-  let requestInFlight: Promise<RequestUrlResponse> | null = null
-
   return async (downloadRequest) => {
     assertDownloadRequest(downloadRequest)
-    if (requestInFlight) {
-      throw new Error(
-        'A previous official module artifact request is still in progress',
-      )
-    }
-
     const transport = Promise.resolve().then(() =>
       request({
         url: downloadRequest.url,
         method: 'GET',
         throw: false,
       }),
-    )
-    requestInFlight = transport
-    void transport.then(
-      () => {
-        if (requestInFlight === transport) requestInFlight = null
-      },
-      () => {
-        if (requestInFlight === transport) requestInFlight = null
-      },
     )
     const response = await withTimeout(
       transport,
@@ -94,11 +77,14 @@ export function createOfficialModuleArtifactDownloader(
     if (
       !response ||
       typeof response !== 'object' ||
-      !Number.isInteger(response.status) ||
-      response.status < 200 ||
-      response.status >= 300
+      !Number.isInteger(response.status)
     ) {
-      throw new Error('Official module artifact request was not successful')
+      throw new Error('Official module artifact response status is invalid')
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(
+        `Official module artifact request failed with HTTP ${response.status}`,
+      )
     }
 
     const contentLength = readContentLength(response.headers)
@@ -136,7 +122,7 @@ function assertDownloadRequest(value: unknown): asserts value is Readonly<{
     (keys.length === 4 && !keys.includes('signal')) ||
     (value.kind !== 'manifest' && value.kind !== 'artifact') ||
     typeof value.url !== 'string' ||
-    !isOfficialModuleReleaseUrl(value.url) ||
+    !isOfficialModuleArtifactSourceUrl(value.url) ||
     !Number.isSafeInteger(value.byteSize) ||
     (value.byteSize as number) <= 0 ||
     (value.byteSize as number) > maximumBytesFor(value.kind) ||
@@ -173,7 +159,11 @@ function withTimeout<T>(
     }
     const timer = setTimeout(() => {
       finish(() =>
-        reject(new Error('Official module artifact request timed out')),
+        reject(
+          new Error(
+            `Official module artifact request timed out after ${timeoutMs} ms`,
+          ),
+        ),
       )
     }, timeoutMs)
     if (signal?.aborted) {

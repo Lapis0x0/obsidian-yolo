@@ -1,3 +1,4 @@
+import type { ModuleFailure } from './moduleFailure'
 import type {
   InstalledModuleState,
   InstalledModuleStateSource,
@@ -14,6 +15,7 @@ export type ModuleManagerOptions = {
   catalogSource: ModuleCatalogSource
   installedStateSource: InstalledModuleStateSource
   intentStateSource?: ModuleIntentStateSource
+  getModuleFailure?(moduleId: string): ModuleFailure | undefined
 }
 
 const EMPTY_ERRORS = Object.freeze({})
@@ -149,6 +151,7 @@ function buildRecords(
   catalogValues: ReadonlyArray<ModuleCatalogEntry>,
   installedValues: ReadonlyArray<InstalledModuleState>,
   intentValues: ReadonlyArray<ModuleIntentState>,
+  getModuleFailure?: (moduleId: string) => ModuleFailure | undefined,
 ): ReadonlyArray<ModuleRecord> {
   const catalogById = indexById(catalogValues, 'Catalog source')
   const installedById = indexById(installedValues, 'Installed-state source')
@@ -166,8 +169,11 @@ function buildRecords(
         ? Object.freeze({ ...installedValue })
         : undefined
       const intent = intentValue ? Object.freeze({ ...intentValue }) : undefined
-      const status =
-        intent?.state === 'disabled'
+      const failure =
+        intent?.state === 'enabled' ? getModuleFailure?.(id) : undefined
+      const status = failure
+        ? 'failed'
+        : intent?.state === 'disabled'
           ? 'disabled'
           : resolveStatus(catalog, installed)
       return Object.freeze({
@@ -181,7 +187,11 @@ function buildRecords(
         ...(installed?.pendingVersion
           ? { pendingVersion: installed.pendingVersion }
           : {}),
-        ...(installed?.error ? { error: installed.error } : {}),
+        ...(failure
+          ? { error: failure.detail, failure }
+          : installed?.error
+            ? { error: installed.error }
+            : {}),
         ...(catalog?.compatibilityIssues
           ? { compatibilityIssues: catalog.compatibilityIssues }
           : {}),
@@ -300,7 +310,14 @@ export class ModuleManager {
     if (nextIntent) this.intent = nextIntent
     this.publish(
       Object.keys(errors).length === 0 ? 'ready' : 'error',
-      buildRecords(this.catalog, this.installed, this.intent),
+      buildRecords(
+        this.catalog,
+        this.installed,
+        this.intent,
+        this.options.getModuleFailure
+          ? (moduleId) => this.options.getModuleFailure?.(moduleId)
+          : undefined,
+      ),
       Object.freeze(errors),
     )
   }

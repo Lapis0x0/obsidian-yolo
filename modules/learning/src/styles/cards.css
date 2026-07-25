@@ -762,13 +762,8 @@ button.yolo-learning-card-menu-item.is-confirming {
   font-variant-numeric: tabular-nums;
 }
 
-.yolo-learning-cards-review-total,
-.yolo-learning-cards-review-timer {
+.yolo-learning-cards-review-total {
   color: var(--yolo-muted-foreground);
-}
-
-.yolo-learning-cards-review-timer {
-  font-variant-numeric: tabular-nums;
 }
 
 .yolo-learning-cards-review-progress {

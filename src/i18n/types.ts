@@ -1,5 +1,11 @@
 export type Language = 'en' | 'zh' | 'it'
 
+export type DeepPartial<T> = {
+  [K in keyof T]?: NonNullable<T[K]> extends object
+    ? DeepPartial<NonNullable<T[K]>>
+    : T[K]
+}
+
 export type TranslationKeys = {
   // Commands
   commands: {
@@ -236,6 +242,14 @@ export type TranslationKeys = {
       }
       retry: string
       actionError: string
+      failure: {
+        downloadTimeout: string
+        download: string
+        integrity: string
+        activation: string
+        unknown: string
+        diagnostic: string
+      }
       actions: {
         install: string
         installBusy: string
@@ -245,10 +259,6 @@ export type TranslationKeys = {
         disableBusy: string
         uninstall: string
         uninstallBusy: string
-      }
-      confirmProduct: {
-        uninstallTitle: string
-        uninstallMessage: string
       }
       statuses: {
         available: string
@@ -325,9 +335,6 @@ export type TranslationKeys = {
       yoloBaseDirMigrationFailed?: string
       yoloBaseDirMigrationRollbackFailed?: string
       yoloBaseDirMigrationManualRepair?: string
-      yoloBaseDirAdoptTitle?: string
-      yoloBaseDirAdoptMessage?: string
-      yoloBaseDirAdoptConfirm?: string
       yoloBaseDirConflictTitle?: string
       yoloBaseDirConflictMessage?: string
       skillsSourcePath?: string
@@ -1357,14 +1364,12 @@ export type TranslationKeys = {
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
       yoloBaseDirHiddenPath?: string
+      yoloBaseDirInvalidPath?: string
       yoloBaseDirMigrated?: string
       yoloBaseDirMigrationConflict?: string
       yoloBaseDirMigrationFailed?: string
       yoloBaseDirMigrationRollbackFailed?: string
       yoloBaseDirMigrationManualRepair?: string
-      yoloBaseDirAdoptTitle?: string
-      yoloBaseDirAdoptMessage?: string
-      yoloBaseDirAdoptConfirm?: string
       yoloBaseDirConflictTitle?: string
       yoloBaseDirConflictMessage?: string
       ribbonClickAction?: string
@@ -2455,6 +2460,7 @@ export type TranslationKeys = {
       selectNone: string
       sensitive: string
       redactedOption: string
+      moduleConfigsUnredactedOnly: string
       confirmUnredactedTitle: string
       confirmUnredacted: string
       submit: string
@@ -2489,6 +2495,7 @@ export type TranslationKeys = {
       noticeAtLeastOne: string
       noticeSuccess: string
       noticeFailed: string
+      noticePartialModuleConfig: string
     }
     errors: {
       errorNotJson: string
@@ -2527,6 +2534,9 @@ export type TranslationKeys = {
       assistants: string
       currentAssistantId: string
       quickAskAssistantId: string
+      jsSandbox: string
+      pluginUpdateAutoDownloadEnabled: string
+      moduleConfigs: string
     }
   }
 
@@ -2558,6 +2568,7 @@ export type TranslationKeys = {
     repairAndReload: string
     downloadUpdate: string
     downloading: string
+    backgroundDownloading: string
     installAndReload: string
     applying: string
     downloadFailed: string

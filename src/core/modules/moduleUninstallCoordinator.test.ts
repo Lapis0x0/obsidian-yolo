@@ -41,7 +41,6 @@ describe('ModuleUninstallCoordinator', () => {
         deactivate: async () => undefined,
         runWithModuleQuiesced: async (_id, operation) => operation(),
       },
-      authorizeArtifactRemoval: async () => true,
       platform: 'desktop',
     })
     await expect(coordinator.uninstall('learning')).resolves.toBeUndefined()

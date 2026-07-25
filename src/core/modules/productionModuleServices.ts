@@ -1,7 +1,11 @@
+import { projectDistributionFeedCatalog } from '../distribution/distributionFeed'
+import type { DistributionFeedClient } from '../distribution/distributionFeedClient'
+
 import {
   ModuleActivationCoordinator,
   type ModuleActivationCoordinatorOptions,
 } from './moduleActivationCoordinator'
+import type { ModuleArtifactArrivalGrace } from './moduleArtifactArrivalGrace'
 import {
   ModuleArtifactInstaller,
   type ModuleArtifactInstallerOptions,
@@ -9,6 +13,7 @@ import {
 import type { ModuleCatalogLocaleSource } from './moduleCatalogPresentation'
 import { ModuleDeviceStateInstalledStateSource } from './moduleDeviceStateInstalledStateSource'
 import type { ModuleDeviceStateStore } from './moduleDeviceStateStore'
+import { type ModuleFailure, describeModuleFailure } from './moduleFailure'
 import {
   type ConfirmedModuleCandidate,
   ModuleInstallationCoordinator,
@@ -34,12 +39,7 @@ import {
   type OfficialModuleArtifactRequest,
   createOfficialModuleArtifactDownloader,
 } from './officialModuleArtifactDownloader'
-import { authorizeOfficialModuleArtifactRemoval } from './officialModuleArtifactRemovalPolicy'
-import {
-  type OfficialModuleCatalogCacheAdapter,
-  OfficialModuleCatalogClient,
-  type OfficialModuleCatalogRequest,
-} from './officialModuleCatalogClient'
+import { resolveOfficialModuleArtifactSources } from './officialModuleArtifactSources'
 import {
   OfficialModuleCatalogSource,
   type OfficialModuleCompatibilityProvider,
@@ -49,9 +49,6 @@ import { DomBlobModuleScriptExecutor } from './scriptExecutor'
 import type { ModuleRecord } from './types'
 import { VerifiedModuleArtifactRegistry } from './verifiedModuleArtifactRegistry'
 
-export const OFFICIAL_MODULE_CATALOG_CACHE_PATH =
-  'official-module-catalog/catalog-v1.json'
-export const OFFICIAL_MODULE_CATALOG_TIMEOUT_MS = 10_000
 export const OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS = 30_000
 export const MODULE_QUIESCENCE_TIMEOUT_MS = 30_000
 
@@ -63,7 +60,10 @@ export type ProductionModuleRuntimeReservation = Readonly<{
 }>
 
 export type ProductionModuleReadinessReconciler = Readonly<{
-  ensureModuleReady(moduleId: string): Promise<ModuleReadinessResult>
+  ensureModuleReady(
+    moduleId: string,
+    options?: Readonly<{ waitForSynchronizedArtifact?: boolean }>,
+  ): Promise<ModuleReadinessResult>
   reconcile(
     moduleIds: readonly string[],
   ): Promise<readonly ModuleReadinessResult[]>
@@ -84,7 +84,7 @@ export type ModuleCatalogResolutionSource = Pick<
 export type ProductionModuleServicesOptions = Readonly<{
   store: ModuleStore
   deviceStateStore: ModuleDeviceStateStore
-  catalogCacheAdapter: OfficialModuleCatalogCacheAdapter
+  distributionFeedClient?: Pick<DistributionFeedClient, 'load' | 'loadFresh'>
   platform: ModuleArtifactPlatform
   locale: ModuleCatalogLocaleSource
   subscribeLocale?: (listener: () => void) => () => void
@@ -95,13 +95,8 @@ export type ProductionModuleServicesOptions = Readonly<{
   intentStore: ProductionModuleIntentStore
   catalogSource?: ModuleCatalogResolutionSource
   artifactDownloader?: ModuleArtifactInstallerOptions['download']
-  authorizeArtifactRemoval?: (
-    moduleId: string,
-    versions: readonly string[],
-  ) => Promise<boolean>
-  removeVersionArtifacts?: (moduleId: string, version: string) => Promise<void>
+  artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
-  catalogRequest?: OfficialModuleCatalogRequest
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
   verifiedArtifactRegistry?: VerifiedModuleArtifactRegistry
@@ -119,7 +114,7 @@ export function isInstallCandidateState(
 ): boolean {
   return Boolean(
     displayed &&
-      (displayed.status === 'available' ||
+      (displayed.desiredInstalled !== true ||
         displayed.status === 'update-available' ||
         (displayed.status === 'disabled' &&
           displayed.installed &&
@@ -134,16 +129,19 @@ export function createProductionModuleServices(
 ): ProductionModuleServices {
   assertOptions(options)
 
-  const catalogClient = new OfficialModuleCatalogClient({
-    adapter: options.catalogCacheAdapter,
-    cachePath: OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-    timeoutMs: OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
-    ...(options.catalogRequest ? { requestUrl: options.catalogRequest } : {}),
-  })
   const catalogSource =
     options.catalogSource ??
     new OfficialModuleCatalogSource({
-      client: catalogClient,
+      client: {
+        load: async () =>
+          projectDistributionFeedCatalog(
+            await options.distributionFeedClient!.load(),
+          ),
+        loadFresh: async () =>
+          projectDistributionFeedCatalog(
+            await options.distributionFeedClient!.loadFresh(),
+          ),
+      },
       locale: options.locale,
       getCompatibility: async (module) => {
         const compatibility = await options.getCompatibility(module)
@@ -193,10 +191,12 @@ export function createProductionModuleServices(
     isActive: options.isActive,
     getError: (moduleId) => activationCoordinator.getError(moduleId),
   })
+  const readinessFailures = new Map<string, ModuleFailure>()
   const manager = new ModuleManager({
     catalogSource,
     installedStateSource,
     intentStateSource,
+    getModuleFailure: (moduleId) => readinessFailures.get(moduleId),
   })
   const installer = new ModuleArtifactInstaller({
     adapter: options.store.adapter,
@@ -209,6 +209,7 @@ export function createProductionModuleServices(
           ? { requestUrl: options.artifactRequest }
           : {}),
       }),
+    resolveDownloadSources: resolveOfficialModuleArtifactSources,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportCleanupError
       ? { reportCleanupError: options.reportCleanupError }
@@ -230,42 +231,26 @@ export function createProductionModuleServices(
     catalogSource,
     artifactStore: options.store,
     installer,
+    ...(options.artifactArrivalGrace
+      ? { artifactArrivalGrace: options.artifactArrivalGrace }
+      : {}),
     platform: options.platform,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
   })
   const readinessReconciler = createGuardedReadinessReconciler(
     ownedReadinessReconciler,
     runtimeReservation,
+    (moduleId, failure) => {
+      if (failure) readinessFailures.set(moduleId, failure)
+      else readinessFailures.delete(moduleId)
+    },
   )
   const uninstallCoordinator = new ModuleUninstallCoordinator({
-    artifactStore: {
-      removeVersionArtifacts:
-        options.removeVersionArtifacts ??
-        ((moduleId, version) =>
-          options.store.removeVersionArtifacts(moduleId, version)),
-    },
+    artifactStore: options.store,
     deviceStateStore: options.deviceStateStore,
     intentStore: options.intentStore,
     manager,
     runtime: runtimeReservation,
-    authorizeArtifactRemoval:
-      options.authorizeArtifactRemoval ??
-      ((moduleId, versions) =>
-        authorizeOfficialModuleArtifactRemoval(
-          catalogClient,
-          moduleId,
-          versions,
-          options.platform,
-          {
-            timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-            ...(options.artifactRequest
-              ? { requestUrl: options.artifactRequest }
-              : {}),
-            ...(options.subtleCrypto
-              ? { subtleCrypto: options.subtleCrypto }
-              : {}),
-          },
-        )),
     platform: options.platform,
   })
   const startupIntentStore = options.intentStore
@@ -299,7 +284,12 @@ export function createProductionModuleServices(
       subscribe: (listener) => startupIntentStore.subscribeAll(listener),
     },
     intentStore: startupIntentStore,
-    readinessReconciler,
+    readinessReconciler: {
+      ensureModuleReady: (moduleId) =>
+        readinessReconciler.ensureModuleReady(moduleId, {
+          waitForSynchronizedArtifact: true,
+        }),
+    },
     activationCoordinator,
     runtime: runtimeReservation,
     manager,
@@ -427,6 +417,23 @@ export function createProductionModuleServices(
     return result.version
   }
 
+  const cleanupReplacedVersion = async (
+    moduleId: string,
+    previousVersion: string | undefined,
+    activeVersion: string,
+  ): Promise<void> => {
+    if (!previousVersion || previousVersion === activeVersion) return
+    try {
+      await options.store.removeVersionArtifacts(moduleId, previousVersion)
+    } catch (error) {
+      try {
+        options.reportCleanupError?.(error)
+      } catch {
+        // Cleanup diagnostics cannot turn a completed update into a failure.
+      }
+    }
+  }
+
   return Object.freeze({
     getSnapshot: manager.getSnapshot,
     subscribe: manager.subscribe,
@@ -515,7 +522,13 @@ export function createProductionModuleServices(
         }
         try {
           const version = await activateInstalledModule(candidate.moduleId)
+          readinessFailures.delete(candidate.moduleId)
           await manager.refresh()
+          await cleanupReplacedVersion(
+            candidate.moduleId,
+            previousRunning?.version,
+            version,
+          )
           return Object.freeze({ version })
         } catch (activationError) {
           await options.intentStore.set(
@@ -551,8 +564,19 @@ export function createProductionModuleServices(
           enabled ? 'enabled' : 'disabled',
         )
         try {
-          if (enabled) await activateInstalledModule(moduleId)
-          else await deactivateModule(moduleId, true)
+          if (enabled) {
+            const readiness =
+              await readinessReconciler.ensureModuleReady(moduleId)
+            if (readiness.status === 'failed') {
+              throw new Error(
+                readiness.error ?? `Module "${moduleId}" is not ready`,
+              )
+            }
+            await activateInstalledModule(moduleId)
+          } else {
+            readinessFailures.delete(moduleId)
+            await deactivateModule(moduleId, true)
+          }
         } catch (error) {
           await options.intentStore.set(moduleId, current)
           await manager.refresh()
@@ -577,6 +601,7 @@ export function createProductionModuleServices(
           throw error
         }
         await uninstallCoordinator.uninstall(moduleId)
+        readinessFailures.delete(moduleId)
         return Object.freeze({})
       })
     },
@@ -610,6 +635,7 @@ export function createProductionModuleServices(
       readinessReconciler.dispose()
       activationCoordinator.dispose()
       verifiedArtifactRegistry.clearAll()
+      readinessFailures.clear()
       coordinator.dispose()
       manager.dispose()
     },
@@ -621,7 +647,7 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     !options ||
     !options.store ||
     !options.deviceStateStore ||
-    !options.catalogCacheAdapter ||
+    (!options.distributionFeedClient && !options.catalogSource) ||
     (options.platform !== 'desktop' && options.platform !== 'mobile') ||
     typeof options.getCompatibility !== 'function' ||
     typeof options.isActive !== 'function' ||
@@ -640,10 +666,10 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
         options.verifiedArtifactRegistry instanceof
         VerifiedModuleArtifactRegistry
       )) ||
-    (options.catalogRequest !== undefined &&
-      typeof options.catalogRequest !== 'function') ||
     (options.artifactRequest !== undefined &&
       typeof options.artifactRequest !== 'function') ||
+    (options.artifactArrivalGrace !== undefined &&
+      typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
     (options.subscribeLocale !== undefined &&
       typeof options.subscribeLocale !== 'function') ||
     (options.reportCleanupError !== undefined &&
@@ -666,12 +692,33 @@ function errorMessage(error: unknown): string {
 function createGuardedReadinessReconciler(
   reconciler: ModuleReadinessReconciler,
   runtime: ProductionModuleRuntimeReservation,
+  setFailure: (moduleId: string, failure?: ModuleFailure) => void,
 ): ProductionModuleReadinessReconciler {
   let disposed = false
-  const ensureModuleReady = (moduleId: string) =>
-    runtime.runWithModuleQuiesced(moduleId, () =>
-      reconciler.ensureModuleReady(moduleId),
+  const record = (result: ModuleReadinessResult): ModuleReadinessResult => {
+    setFailure(
+      result.moduleId,
+      result.status === 'failed'
+        ? describeModuleFailure(result.error ?? 'Module readiness failed')
+        : undefined,
     )
+    return result
+  }
+  const ensureModuleReady = async (
+    moduleId: string,
+    options?: Readonly<{ waitForSynchronizedArtifact?: boolean }>,
+  ) => {
+    try {
+      return record(
+        await runtime.runWithModuleQuiesced(moduleId, () =>
+          reconciler.ensureModuleReady(moduleId, options),
+        ),
+      )
+    } catch (error) {
+      setFailure(moduleId, describeModuleFailure(error))
+      throw error
+    }
+  }
 
   return Object.freeze({
     ensureModuleReady,

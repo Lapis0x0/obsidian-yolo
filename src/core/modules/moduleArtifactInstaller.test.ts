@@ -3,7 +3,10 @@ import { createHash, webcrypto } from 'node:crypto'
 
 import type { DataAdapter } from 'obsidian'
 
-import { ModuleArtifactInstaller } from './moduleArtifactInstaller'
+import {
+  ModuleArtifactInstaller,
+  type ModuleArtifactInstallerOptions,
+} from './moduleArtifactInstaller'
 import { ModuleStore } from './moduleStore'
 
 const encode = (value: string): Uint8Array => new TextEncoder().encode(value)
@@ -150,6 +153,7 @@ function createArtifact(
 function createInstaller(
   adapter: MemoryAdapter,
   download: (url: string) => Promise<Uint8Array>,
+  resolveDownloadSources?: ModuleArtifactInstallerOptions['resolveDownloadSources'],
 ) {
   const dataAdapter = adapter as unknown as DataAdapter
   const store = new ModuleStore({
@@ -161,6 +165,7 @@ function createInstaller(
     adapter: dataAdapter,
     store,
     download: (request) => download(request.url),
+    ...(resolveDownloadSources ? { resolveDownloadSources } : {}),
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
   })
 }
@@ -174,6 +179,43 @@ function artifactDownload(artifact: ReturnType<typeof createArtifact>) {
 }
 
 describe('ModuleArtifactInstaller', () => {
+  it('falls back when the preferred source fails integrity verification', async () => {
+    const artifact = createArtifact()
+    const adapter = new MemoryAdapter()
+    const mirrorManifest = 'https://cdn.example/module.json'
+    const mirrorEntry = 'https://cdn.example/entry.js'
+    const requested: string[] = []
+    const installer = createInstaller(
+      adapter,
+      async (url) => {
+        requested.push(url)
+        if (url === mirrorManifest || url === mirrorEntry) {
+          return encode('corrupt')
+        }
+        return url === artifact.descriptor.manifestUrl
+          ? artifact.manifestBytes
+          : artifact.entryBytes
+      },
+      ({ canonicalUrl, path }) => [
+        path === 'module.json' ? mirrorManifest : mirrorEntry,
+        canonicalUrl,
+      ],
+    )
+
+    await expect(installer.install(artifact.descriptor)).resolves.toMatchObject(
+      {
+        id: 'learning',
+        version: '0.1.0',
+      },
+    )
+    expect(requested).toEqual([
+      mirrorManifest,
+      artifact.descriptor.manifestUrl,
+      mirrorEntry,
+      artifact.descriptor.manifestUrl.replace('module.json', 'entry.js'),
+    ])
+  })
+
   it('cleans staging and refuses promotion when an install is aborted', async () => {
     const artifact = createArtifact()
     const adapter = new MemoryAdapter()

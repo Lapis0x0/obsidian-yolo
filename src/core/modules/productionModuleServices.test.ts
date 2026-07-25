@@ -7,11 +7,11 @@ import { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import type { ModuleIntent } from './moduleIntentStore'
 import { ModuleRuntimeReservation } from './moduleRuntimeReservation'
 import { ModuleStore } from './moduleStore'
+import { parseOfficialModuleCatalog } from './officialModuleCatalog'
+import { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
 import { createOfficialModuleCompatibilityProvider } from './officialModuleCompatibilityProvider'
 import {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-  OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-  OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
   type ProductionModuleServicesOptions,
   createProductionModuleServices,
   isInstallCandidateState,
@@ -239,7 +239,6 @@ function createHarness(
 ) {
   const fixture = artifact()
   const adapter = new MemoryAdapter()
-  const cacheAdapter = new MemoryAdapter()
   const store = new ModuleStore({
     adapter: adapter as unknown as DataAdapter,
     manifest: { id: 'yolo', dir: 'config/plugins/yolo' },
@@ -288,25 +287,35 @@ function createHarness(
   )
   const reportCleanupError = jest.fn()
   const reportRefreshError = jest.fn()
+  const getCompatibility = createOfficialModuleCompatibilityProvider({
+    platform: 'desktop',
+    readDeviceState: async (moduleId) => {
+      const state = await deviceStateStore.read(moduleId)
+      return state
+        ? {
+            moduleId,
+            platform: state.platform,
+            activeVersion: state.active?.version ?? null,
+          }
+        : null
+    },
+  })
+  const loadCatalog = async () =>
+    parseOfficialModuleCatalog((await catalogRequest()).text, {
+      allowedRepositories: [{ owner: 'Lapis0x0', repo: 'obsidian-yolo' }],
+    })
+  const catalogSource = new OfficialModuleCatalogSource({
+    client: { load: loadCatalog, loadFresh: loadCatalog },
+    getCompatibility,
+    locale: localeOptions.locale,
+  })
   const services = createProductionModuleServices({
     store,
     deviceStateStore,
-    catalogCacheAdapter: cacheAdapter,
+    catalogSource,
     platform: 'desktop',
     ...localeOptions,
-    getCompatibility: createOfficialModuleCompatibilityProvider({
-      platform: 'desktop',
-      readDeviceState: async (moduleId) => {
-        const state = await deviceStateStore.read(moduleId)
-        return state
-          ? {
-              moduleId,
-              platform: state.platform,
-              activeVersion: state.active?.version ?? null,
-            }
-          : null
-      },
-    }),
+    getCompatibility,
     isActive,
     intentStore,
     activationLoader: {
@@ -316,9 +325,7 @@ function createHarness(
       })),
     },
     runtimeReservation,
-    catalogRequest,
     artifactRequest,
-    authorizeArtifactRemoval: async () => true,
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
     reportCleanupError,
     reportRefreshError,
@@ -344,6 +351,31 @@ async function install(harness: ReturnType<typeof createHarness>) {
   const candidate = harness.services.getInstallCandidate('learning')
   if (!candidate) throw new Error('Missing install candidate')
   return harness.services.install(candidate)
+}
+
+async function seedActiveVersion(
+  harness: ReturnType<typeof createHarness>,
+  version: string,
+) {
+  const artifactRoot = `config/plugins/yolo/modules/learning/${version}`
+  await harness.adapter.mkdir(artifactRoot)
+  await harness.deviceStateStore.write({
+    moduleId: 'learning',
+    platform: 'desktop',
+    active: {
+      id: 'learning',
+      version,
+      hostApi: '>=1.0.0 <2.0.0',
+      dataSchemas: { settings: { readMin: 0, readMax: 1, write: 1 } },
+      platform: 'desktop',
+      manifestUrl: `https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv${version}/module.json`,
+      manifest: { byteSize: 1, sha256: 'a'.repeat(64) },
+    },
+    pending: null,
+  })
+  harness.intents.set('learning', 'enabled')
+  harness.activeVersions.set('learning', version)
+  return artifactRoot
 }
 
 describe('createProductionModuleServices', () => {
@@ -397,11 +429,26 @@ describe('createProductionModuleServices', () => {
     ).toBe(true)
   })
 
-  it('keeps production constants stable', () => {
-    expect(OFFICIAL_MODULE_CATALOG_CACHE_PATH).toBe(
-      'official-module-catalog/catalog-v1.json',
-    )
-    expect(OFFICIAL_MODULE_CATALOG_TIMEOUT_MS).toBe(10_000)
+  it('offers the catalog candidate when uninstall intent still has local artifacts', () => {
+    expect(
+      isInstallCandidateState(
+        {
+          id: 'learning',
+          name: 'Learning',
+          description: '',
+          version: '1.1.0',
+          status: 'installed',
+          desiredInstalled: false,
+          enabled: false,
+          installed: { id: 'learning', version: '1.1.0' },
+          catalog: { id: 'learning', version: '1.1.0' },
+        },
+        '1.1.0',
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps the artifact timeout stable', () => {
     expect(OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS).toBe(30_000)
   })
 
@@ -438,6 +485,69 @@ describe('createProductionModuleServices', () => {
       pending: null,
     })
     expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+  })
+
+  it('removes the replaced version only after an update succeeds', async () => {
+    const harness = createHarness()
+    const previousRoot = await seedActiveVersion(harness, '1.2.2')
+
+    await expect(install(harness)).resolves.toEqual({ version: '1.2.3' })
+
+    expect(await harness.adapter.exists(previousRoot)).toBe(false)
+    expect(
+      await harness.adapter.exists(
+        'config/plugins/yolo/modules/learning/1.2.3',
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps the previous version when an update cannot stop the runtime', async () => {
+    const harness = createHarness()
+    const previousRoot = await seedActiveVersion(harness, '1.2.2')
+    harness.runtime.deactivate.mockRejectedValueOnce(
+      new Error('deactivation failed'),
+    )
+
+    await expect(install(harness)).rejects.toThrow('deactivation failed')
+
+    expect(await harness.adapter.exists(previousRoot)).toBe(true)
+  })
+
+  it('rejects a stale same-version candidate without removing active artifacts', async () => {
+    const harness = createHarness()
+    await harness.services.refresh()
+    const candidate = harness.services.getInstallCandidate('learning')!
+    await harness.services.install(candidate)
+
+    await expect(harness.services.install(candidate)).rejects.toThrow(
+      'candidate changed after confirmation',
+    )
+
+    expect(
+      await harness.adapter.exists(
+        'config/plugins/yolo/modules/learning/1.2.3',
+      ),
+    ).toBe(true)
+  })
+
+  it('reports old-version cleanup failure without failing the update', async () => {
+    const harness = createHarness()
+    const previousRoot = await seedActiveVersion(harness, '1.2.2')
+    const cleanupError = new Error('cleanup failed')
+    const rmdir = harness.adapter.rmdir.bind(harness.adapter)
+    jest
+      .spyOn(harness.adapter, 'rmdir')
+      .mockImplementation((path, recursive) =>
+        path === previousRoot
+          ? Promise.reject(cleanupError)
+          : rmdir(path, recursive),
+      )
+
+    await expect(install(harness)).resolves.toEqual({ version: '1.2.3' })
+
+    expect(harness.reportCleanupError).toHaveBeenCalledWith(cleanupError)
+    expect(await harness.adapter.exists(previousRoot)).toBe(true)
+    expect(harness.activeVersions.get('learning')).toBe('1.2.3')
   })
 
   it('prepares an update artifact without changing module intent or device state', async () => {
@@ -480,6 +590,27 @@ describe('createProductionModuleServices', () => {
       harness.services.setEnabled('learning', true),
     ).resolves.toEqual({})
     expect(harness.intents.get('learning')).toBe('enabled')
+  })
+
+  it('preserves startup readiness failure and retries preparation before activation', async () => {
+    const harness = createHarness()
+    harness.intents.set('learning', 'enabled')
+    harness.artifactRequest.mockRejectedValueOnce(new Error('network offline'))
+
+    await harness.services.start()
+
+    expect(harness.services.getSnapshot().modules[0]).toMatchObject({
+      status: 'failed',
+      enabled: true,
+      failure: { kind: 'unknown', detail: 'network offline' },
+    })
+    expect(await harness.deviceStateStore.read('learning')).toBeNull()
+
+    await expect(
+      harness.services.setEnabled('learning', true),
+    ).resolves.toEqual({})
+    expect(harness.activeVersions.get('learning')).toBe('1.2.3')
+    expect(harness.services.getSnapshot().modules[0]?.failure).toBeUndefined()
   })
 
   it('restores disabled intent when installing and enabling fails', async () => {

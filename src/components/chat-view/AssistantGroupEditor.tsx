@@ -21,7 +21,6 @@ type AssistantGroupEditorProps = {
   onSave: (replacementMessages: ChatMessage[]) => void
   onCancel: () => void
   disabled?: boolean
-  minHeight?: number | null
 }
 
 export default function AssistantGroupEditor({
@@ -29,7 +28,6 @@ export default function AssistantGroupEditor({
   onSave,
   onCancel,
   disabled = false,
-  minHeight = null,
 }: AssistantGroupEditorProps) {
   const { t } = useLanguage()
   const initialValue = useMemo(
@@ -98,10 +96,7 @@ export default function AssistantGroupEditor({
   }
 
   return (
-    <div
-      className="yolo-assistant-group-editor"
-      style={minHeight ? { minHeight } : undefined}
-    >
+    <div className="yolo-assistant-group-editor">
       <textarea
         ref={textareaRef}
         className="yolo-assistant-group-editor-textarea"

@@ -1,8 +1,8 @@
 import {
+  OFFICIAL_MODULE_RELEASE_REPOSITORIES,
   isModuleReleaseUrlAllowed,
   parseModuleReleaseUrl,
 } from './moduleReleaseUrl'
-import { OFFICIAL_MODULE_RELEASE_REPOSITORIES } from './officialModuleCatalogClient'
 
 const repository = [{ owner: 'Lapis0x0', repo: 'obsidian-yolo' }]
 const root = 'https://github.com/Lapis0x0/obsidian-yolo/releases/download'

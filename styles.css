@@ -1,4 +1,4 @@
-/* @yolo-version: 1.6.1 */
+/* @yolo-version: 1.6.1.3 */
 
 /* Settings */
 
@@ -20033,6 +20033,17 @@ button.yolo-todo-panel__icon-button svg {
   display: none;
   width: 20px;
   height: 20px;
+}
+
+.yolo-new-tab-action::before {
+  content: none !important;
+  display: none !important;
+}
+
+.yolo-new-tab-action--icon-only {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .yolo-new-tab-action--icon-only .yolo-new-tab-action-icon {

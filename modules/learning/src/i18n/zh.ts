@@ -9,6 +9,14 @@ export const zh = {
     generationModelDescription:
       '用于生成大纲、知识点和卡片；此选择独立于当前助理模型。',
   },
+  generation: {
+    outlineActivity: '正在生成学习项目大纲',
+    knowledgePointsActivity: '正在生成学习项目',
+    cardsActivity: '正在生成学习卡片',
+    unsupportedFileType:
+      '不支持的文件类型：{ext}（支持 PDF、Word、Markdown、文本）',
+    fileTooLarge: '文件过大：{size}MB（上限 20MB）',
+  },
   background: {
     reviewTitle: 'YOLO Learning',
     reviewDetail: '{count} 张卡片待复习',
@@ -22,6 +30,9 @@ export const zh = {
     cancel: '暂不进入',
   },
   common: {
+    back: '返回',
+    edit: '编辑',
+    retry: '重试',
     cancel: '取消',
     close: '关闭',
     delete: '删除',
@@ -195,6 +206,11 @@ export const zh = {
     },
   },
   outlineBuilder: {
+    chapterRequired: '至少需要一个有效章节',
+    generatingPoint: '正在生成',
+    knowledgeComplete: '知识点生成完成',
+    newChapter: '新章节',
+    newChapterContract: '说明本章覆盖范围、边界和预计知识点。',
     estimatedKnowledgePoints: '预计知识点',
     failed: '生成失败',
     failedDescription: '无法继续生成，请重试。',
@@ -228,6 +244,7 @@ export const zh = {
     generating: '生成中...',
   },
   outline: {
+    resizeSidebar: '调整大纲侧栏宽度',
     emptyBody: '这个知识点还没有正文内容',
     emptyProject: '这个项目还没有知识点。生成完成后会在这里显示大纲。',
     noPointSelected: '请选择一个知识点',
@@ -260,6 +277,7 @@ export const zh = {
     generationFailedTitle: '学习卡片生成失败',
     generationFailedSummary: '未能生成学习卡片，请查看章节状态。',
     startLearning: '开始学习',
+    browseCards: '浏览卡片',
     viewGenerationDetails: '查看详情',
     filteredTo: '已筛选至：',
     sortDue: '按到期时间',

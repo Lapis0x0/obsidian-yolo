@@ -99,7 +99,7 @@ type ActiveSession = {
 
 type ContextVoiceInputWorkflowDeps = {
   getSettings: () => YoloSettings
-  setSettings: (next: YoloSettings) => Promise<void>
+  setSettings: (next: YoloSettings) => Promise<boolean>
   getEditorView: (editor: Editor) => EditorView | null
   getActiveMarkdownView: () => MarkdownView | null
   setInlineSuggestionGhost: (

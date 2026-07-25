@@ -41,6 +41,13 @@ export {
   type ModuleArtifactInstallerOptions,
 } from './moduleArtifactInstaller'
 export {
+  MODULE_ARTIFACT_ARRIVAL_GRACE_MS,
+  MODULE_ARTIFACT_ARRIVAL_POLL_MS,
+  MODULE_ARTIFACT_ARRIVAL_QUIET_MS,
+  ModuleArtifactArrivalGrace,
+  type ModuleArtifactArrivalGraceOptions,
+} from './moduleArtifactArrivalGrace'
+export {
   ModuleInstallationCoordinator,
   type ConfirmedModuleCandidate,
   type ModuleInstallationCoordinatorOptions,
@@ -169,19 +176,9 @@ export {
   type OfficialModulePlatform,
 } from './officialModuleCatalog'
 export {
-  OFFICIAL_MODULE_CATALOG_URL,
   OFFICIAL_MODULE_RELEASE_REPOSITORIES,
-  OfficialModuleCatalogClient,
-  OfficialModuleCatalogUnavailableError,
   isOfficialModuleReleaseUrl,
-  type OfficialModuleCatalogCacheAdapter,
-  type OfficialModuleCatalogClientOptions,
-  type OfficialModuleCatalogRequest,
-} from './officialModuleCatalogClient'
-export {
-  authorizeOfficialModuleArtifactRemoval,
-  type OfficialModuleArtifactRemovalCatalogLoader,
-} from './officialModuleArtifactRemovalPolicy'
+} from './moduleReleaseUrl'
 export {
   ModuleDeviceStateCorruptionError,
   ModuleDeviceStateStore,
@@ -203,13 +200,12 @@ export {
 } from './officialModuleCompatibilityProvider'
 export {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
-  OFFICIAL_MODULE_CATALOG_CACHE_PATH,
-  OFFICIAL_MODULE_CATALOG_TIMEOUT_MS,
   createProductionModuleServices,
   type ProductionModuleServices,
   type ProductionModuleServicesOptions,
 } from './productionModuleServices'
 export {
+  ModuleArtifactMissingError,
   ModuleStore,
   collectModuleManifestFiles,
   isModuleHostApiRange,

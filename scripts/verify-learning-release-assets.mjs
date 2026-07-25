@@ -134,7 +134,11 @@ export async function verifyLearningReleaseAssets({
     throw new Error('module.json variants must be a non-empty array')
   }
 
-  const expectedNames = new Set(['module.json', 'release-note.md'])
+  const expectedNames = new Set([
+    'module.json',
+    'module-config.json',
+    'release-note.md',
+  ])
   const declarations = new Map()
   const platforms = new Set()
   for (const variant of manifest.variants) {

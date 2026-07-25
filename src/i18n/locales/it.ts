@@ -1,6 +1,6 @@
-import type { TranslationKeys } from '../types'
+import type { DeepPartial, TranslationKeys } from '../types'
 
-export const it: TranslationKeys = {
+export const it: DeepPartial<TranslationKeys> = {
   commands: {
     openChat: 'Apri chat',
     openChatSidebar: 'Apri chat (barra laterale)',
@@ -28,6 +28,26 @@ export const it: TranslationKeys = {
     readAloudSelection: 'Leggi selezione ad alta voce',
     readAloudCurrentFile: 'Leggi file corrente ad alta voce',
     stopReadAloud: 'Ferma lettura ad alta voce',
+  },
+
+  // Italian does not yet translate the full config-transfer surface. Keep
+  // these newly selectable catalog labels localized while other strings use
+  // their call-site fallbacks.
+  configTransfer: {
+    export: {
+      moduleConfigsUnredactedOnly:
+        'La configurazione dei moduli può contenere credenziali private del modulo ed è esclusa dalle esportazioni oscurate.',
+    },
+    import: {
+      noticePartialModuleConfig:
+        'Le impostazioni Host sono state importate, ma la configurazione dei moduli non è riuscita. Alcune impostazioni dei moduli potrebbero essere state scritte e non sono state annullate.',
+    },
+    keyLabels: {
+      jsSandbox: 'Autorizzazioni sandbox JS',
+      pluginUpdateAutoDownloadEnabled:
+        'Scarica automaticamente gli aggiornamenti del plugin',
+      moduleConfigs: 'Configurazione moduli',
+    },
   },
 
   common: {
@@ -233,8 +253,8 @@ export const it: TranslationKeys = {
       update: 'Aggiorna',
       installing: 'Installazione…',
       updating: 'Aggiornamento…',
-      reload: 'Riprova attivazione',
-      reloading: 'Attivazione…',
+      reload: 'Riprova',
+      reloading: 'Nuovo tentativo…',
       candidateUnavailable:
         'Al momento non è possibile installare {name}. Il download potrebbe essere già in corso oppure il catalogo potrebbe essere cambiato.',
       installError: 'Impossibile installare {name}: {error}',
@@ -256,11 +276,23 @@ export const it: TranslationKeys = {
       incompatibleReason: 'Non compatibile: {reason}',
       compatibility: {
         platform: 'piattaforma',
-        hostApi: 'API host',
+        hostApi: 'aggiorna YOLO Core',
         dataSchema: 'schema dei dati',
       },
       retry: 'Riprova',
       actionError: 'Impossibile modificare {name}: {error}',
+      failure: {
+        downloadTimeout:
+          'Il download del modulo è scaduto sia su Cloudflare sia su GitHub. Controlla la rete o il proxy e riprova.',
+        download:
+          'Impossibile scaricare il modulo da Cloudflare o GitHub. Controlla la rete o il proxy e riprova.',
+        integrity:
+          'Il modulo scaricato non ha superato il controllo di integrità, quindi l’installazione è stata interrotta. Riprova e contatta lo sviluppatore se il problema persiste.',
+        activation:
+          'Il modulo è stato scaricato ma non può essere avviato. Riprova e contatta lo sviluppatore se il problema persiste.',
+        unknown: 'Operazione del modulo non riuscita.',
+        diagnostic: 'Dettagli: {detail}',
+      },
       actions: {
         install: 'Installa',
         installBusy: 'Installazione…',
@@ -270,11 +302,6 @@ export const it: TranslationKeys = {
         disableBusy: 'Disabilitazione…',
         uninstall: 'Disinstalla',
         uninstallBusy: 'Disinstallazione…',
-      },
-      confirmProduct: {
-        uninstallTitle: 'Disinstalla {name}',
-        uninstallMessage:
-          'Disinstallare {name}? YOLO arresterà il modulo in sicurezza, quindi rimuoverà i file del programma e lo stato di installazione locali. I dati del modulo verranno conservati.',
       },
       statuses: {
         available: 'Disponibile',
@@ -447,10 +474,6 @@ export const it: TranslationKeys = {
         'YOLO è stato spostato da {source} a {target}, ma non è stato possibile aggiornare le impostazioni né annullare lo spostamento. Sposta manualmente la cartella in {source} prima di continuare.',
       yoloBaseDirMigrationManualRepair:
         'La cartella base YOLO {source} è nascosta ma non può essere migrata automaticamente in sicurezza. Scegli una cartella visibile e sposta manualmente i file YOLO.',
-      yoloBaseDirAdoptTitle: 'Usare la cartella base YOLO esistente?',
-      yoloBaseDirAdoptMessage:
-        'La cartella base YOLO precedente non esiste più, ma {target} contiene già dei file. Usare questa cartella come nuova base YOLO?',
-      yoloBaseDirAdoptConfirm: 'Usa questa cartella',
       yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
@@ -1602,6 +1625,8 @@ export const it: TranslationKeys = {
       yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'La cartella base YOLO non può usare cartelle nascoste. Rimuovi il punto iniziale dal nome, ad esempio cambia .yolo in yolo.',
+      yoloBaseDirInvalidPath:
+        'La cartella base YOLO contiene un nome non supportato su tutti i dispositivi. Evita caratteri di controllo, nomi riservati di Windows e i caratteri <>:"\\|?*.',
       yoloBaseDirMigrated:
         'La cartella base YOLO ora usa {target}, che Obsidian può indicizzare.',
       yoloBaseDirMigrationConflict:
@@ -1612,10 +1637,6 @@ export const it: TranslationKeys = {
         'YOLO è stato spostato da {source} a {target}, ma non è stato possibile aggiornare le impostazioni né annullare lo spostamento. Sposta manualmente la cartella in {source} prima di continuare.',
       yoloBaseDirMigrationManualRepair:
         'La cartella base YOLO {source} è nascosta ma non può essere migrata automaticamente in sicurezza. Scegli una cartella visibile e sposta manualmente i file YOLO.',
-      yoloBaseDirAdoptTitle: 'Usare la cartella base YOLO esistente?',
-      yoloBaseDirAdoptMessage:
-        'La cartella base YOLO precedente non esiste più, ma {target} contiene già dei file. Usare questa cartella come nuova base YOLO?',
-      yoloBaseDirAdoptConfirm: 'Usa questa cartella',
       yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
@@ -2388,6 +2409,7 @@ export const it: TranslationKeys = {
     repairAndReload: 'Ripara e ricarica',
     downloadUpdate: 'Scarica aggiornamento',
     downloading: 'Download {{progress}}%',
+    backgroundDownloading: 'Download in background…',
     installAndReload: 'Installa e ricarica',
     applying: 'Installazione…',
     downloadFailed: 'Download non riuscito',

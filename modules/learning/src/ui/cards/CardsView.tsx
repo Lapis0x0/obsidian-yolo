@@ -3585,7 +3585,6 @@ function ReviewMode({
             / {queue.length}
           </span>
         </span>
-        <span className="yolo-learning-cards-review-timer">2:34</span>
       </div>
       <div className="yolo-learning-cards-review-progress">
         <div

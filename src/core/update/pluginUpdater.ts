@@ -22,6 +22,8 @@ import {
 
 const STAGING_ROOT = '.yolo-update-staging'
 const REPAIR_META_FILE = 'repair-meta.json'
+const UPDATE_SOURCE_TIMEOUT_MS = 30_000
+const UPDATE_MAIN_JS_SOURCE_TIMEOUT_MS = 90_000
 
 const RELEASE_FILES = {
   mainJs: RELEASE_FILE_NAMES.mainJs,
@@ -274,20 +276,75 @@ export async function clearStagingRoot(
   await removeStagingDir(adapter, getStagingRoot(pluginDir))
 }
 
-async function downloadBinary(url: string): Promise<ArrayBuffer> {
-  const response = await requestUrl({ url, method: 'GET' })
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Download failed (${response.status})`)
+async function downloadAsset(
+  asset: ReleaseAssets[keyof ReleaseAssets],
+  timeoutMs = UPDATE_SOURCE_TIMEOUT_MS,
+): Promise<ArrayBuffer> {
+  let lastError: unknown
+  for (const url of [asset.mirrorUrl, asset.url].filter(
+    (value): value is string => Boolean(value),
+  )) {
+    try {
+      const response = await withTimeout(
+        requestUrl({ url, method: 'GET', throw: false }),
+        timeoutMs,
+      )
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Download failed (${response.status})`)
+      }
+      const bytes = new Uint8Array(response.arrayBuffer)
+      if (asset.size > 0 && bytes.byteLength !== asset.size) {
+        throw new Error('Download byte size does not match the signed Feed')
+      }
+      if (asset.sha256 && (await sha256(bytes)) !== asset.sha256) {
+        throw new Error('Download SHA-256 does not match the signed Feed')
+      }
+      return bytes.slice().buffer
+    } catch (error) {
+      lastError = error
+    }
   }
-  return response.arrayBuffer
+  throw lastError instanceof Error ? lastError : new Error('Download failed')
 }
 
-async function downloadText(url: string): Promise<string> {
-  const response = await requestUrl({ url, method: 'GET' })
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Download failed (${response.status})`)
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = globalThis.setTimeout(() => {
+      if (settled) return
+      settled = true
+      reject(new Error('Update download request timed out'))
+    }, timeoutMs)
+    operation.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        globalThis.clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        if (settled) return
+        settled = true
+        globalThis.clearTimeout(timer)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      },
+    )
+  })
+}
+
+async function sha256(bytes: Uint8Array): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+  return [...new Uint8Array(digest)]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+function decodeUtf8(bytes: ArrayBuffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    throw new Error('Downloaded text is not valid UTF-8')
   }
-  return response.text
 }
 
 export async function downloadReleaseToStaging(params: {
@@ -305,21 +362,24 @@ export async function downloadReleaseToStaging(params: {
 
   try {
     onProgress?.(0)
-    const mainBuffer = await downloadBinary(assets.mainJs.url)
+    const mainBuffer = await downloadAsset(
+      assets.mainJs,
+      UPDATE_MAIN_JS_SOURCE_TIMEOUT_MS,
+    )
     await adapter.writeBinary(
       normalizePath(`${stagingDir}/${RELEASE_FILES.mainJs}`),
       mainBuffer,
     )
     onProgress?.(60)
 
-    const stylesText = await downloadText(assets.stylesCss.url)
+    const stylesText = decodeUtf8(await downloadAsset(assets.stylesCss))
     await adapter.write(
       normalizePath(`${stagingDir}/${RELEASE_FILES.stylesCss}`),
       stylesText,
     )
     onProgress?.(80)
 
-    const manifestText = await downloadText(assets.manifestJson.url)
+    const manifestText = decodeUtf8(await downloadAsset(assets.manifestJson))
     await adapter.write(
       normalizePath(`${stagingDir}/${RELEASE_FILES.manifestJson}`),
       manifestText,
@@ -339,7 +399,7 @@ export async function downloadReleaseToStaging(params: {
 function assetForFile(
   assets: ReleaseAssets,
   fileName: ReleaseFileName,
-): { url: string } {
+): ReleaseAssets[keyof ReleaseAssets] {
   switch (fileName) {
     case RELEASE_FILE_NAMES.mainJs:
       return assets.mainJs
@@ -375,13 +435,16 @@ export async function downloadRepairFilesToStaging(params: {
       const fileName = uniqueFiles[index]
       const asset = assetForFile(assets, fileName)
       if (fileName === RELEASE_FILE_NAMES.mainJs) {
-        const mainBuffer = await downloadBinary(asset.url)
+        const mainBuffer = await downloadAsset(
+          asset,
+          UPDATE_MAIN_JS_SOURCE_TIMEOUT_MS,
+        )
         await adapter.writeBinary(
           normalizePath(`${stagingDir}/${fileName}`),
           mainBuffer,
         )
       } else {
-        const text = await downloadText(asset.url)
+        const text = decodeUtf8(await downloadAsset(asset))
         await adapter.write(normalizePath(`${stagingDir}/${fileName}`), text)
       }
       onProgress?.(Math.round(step * (index + 1)))

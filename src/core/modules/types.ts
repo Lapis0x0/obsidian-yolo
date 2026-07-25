@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { ModuleConfigV1 } from './moduleConfig'
+import type { ModuleFailure } from './moduleFailure'
 import type { LocalizedTextV1 } from './moduleI18n'
 import type { ModulePrivateStorageV1 } from './modulePrivateStorage'
 import type { YoloModuleSettingsV1 } from './moduleSettingsContributions'
@@ -398,6 +399,7 @@ export type ModuleRecord = Readonly<{
   availableVersion?: string
   pendingVersion?: string
   error?: string
+  failure?: ModuleFailure
   compatibilityIssues?: readonly ModuleCompatibilityIssue[]
   status: ModuleStatus
   desiredInstalled?: boolean
