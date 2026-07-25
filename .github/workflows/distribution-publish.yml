@@ -7,8 +7,6 @@ on:
         description: Published Release id that woke this reconcile
         required: false
         type: string
-  schedule:
-    - cron: '17 * * * *'
 
 permissions:
   contents: write
@@ -107,13 +105,19 @@ jobs:
         run: node scripts/distribution.mjs verify-pages
 
       - name: Build latest-only Pages snapshot
+        id: pages_build
         if: steps.pages.outcome != 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/distribution.mjs build-pages
 
       - name: Deploy Cloudflare Pages snapshot
-        if: steps.pages.outcome != 'success'
+        id: pages_deploy
+        if: >-
+          steps.pages.outcome != 'success' &&
+          steps.pages_build.outcome == 'success'
+        continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -121,14 +125,19 @@ jobs:
           npx wrangler pages deploy .distribution-pages
           --project-name yolo-updates --branch main
 
-      - name: Verify deployed revision and assets
-        if: steps.pages.outcome != 'success'
-        run: node scripts/distribution.mjs verify-pages
-
       - name: Summarize distribution state
         run: |
           revision="$(node -p "require('./distribution/feed-v1.json').revision")"
+          if [[ "${{ steps.pages.outcome }}" == 'success' ]]; then
+            pages_status='verified current'
+          elif [[ "${{ steps.pages_build.outcome }}" != 'success' ]]; then
+            pages_status='degraded (snapshot build failed; rerun reconcile to retry)'
+          elif [[ "${{ steps.pages_deploy.outcome }}" == 'success' ]]; then
+            pages_status='deployment submitted; verification deferred to a later reconcile'
+          else
+            pages_status='degraded (deployment failed; rerun reconcile to retry)'
+          fi
           echo "### Distribution revision $revision" >> "$GITHUB_STEP_SUMMARY"
           echo '- GitHub Release archive: authoritative' >> "$GITHUB_STEP_SUMMARY"
           echo '- Signed GitHub Raw Feed: current' >> "$GITHUB_STEP_SUMMARY"
-          echo '- Cloudflare Pages mirror: verified' >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare Pages mirror: $pages_status" >> "$GITHUB_STEP_SUMMARY"
