@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 2,
+  "revision": 3,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.1.3",
@@ -52,7 +52,7 @@
           "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
         }
       },
-      "version": "0.1.1",
+      "version": "0.1.2",
       "hostApi": "^1.4.0",
       "platforms": [
         "desktop",
@@ -65,23 +65,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.1",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.2",
       "releaseNotes": {
-        "en": "## 0.1.1 Seamless module migration ✨\n\n### ✨ Independent Learning module\n\n- **Independent delivery**: Learning can now be installed and updated independently from YOLO Core while keeping the existing Learning experience intact.\n\n### 🔧 Upgrade reliability\n\n- **Seamless migration**: Existing Learning settings, study projects, and review progress are preserved when moving to the standalone module.",
-        "zh": "## 0.1.1 无感模块迁移 ✨\n\n### ✨ 独立学习模块\n\n- **独立交付**：学习模式现在可以独立于 YOLO Core 安装与更新，原有学习体验保持不变。\n\n### 🔧 升级稳定性\n\n- **无感迁移**：迁移到独立模块时，已有学习设置、学习项目与复习进度都会完整保留。"
+        "en": "## 0.1.2 More Consistent Learning Content & Cards 📚\n\n### 🌐 Language & Presentation\n\n- Learning content now stays in the language selected when the project is created. Missing interface translations and Chinese fallback text have been completed for a more consistent experience.\n- Fixed the knowledge map appearing blank with certain themes.\n\n### 🗂️ Card Experience\n\n- Card generation now tolerates minor formatting variations more reliably, and the review screen no longer displays a non-functional placeholder timer.\n\nRefs #480, #482",
+        "zh": "## 0.1.2 更一致的学习内容与卡片体验 📚\n\n### 🌐 语言与展示\n\n- 学习内容现在会始终使用创建项目时选择的语言，并补齐缺失的界面翻译与中文回退文案，让生成和展示体验更加一致。\n- 修复特定主题下知识地图显示为空白的问题。\n\n### 🗂️ 卡片体验\n\n- 卡片生成现在能更可靠地兼容轻微的格式变化，同时移除了复习界面中没有实际功能的占位计时。\n\nRefs #480, #482"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/release-note.md",
-        "byteSize": 733,
-        "sha256": "e74823b2661eacb5f60c0b749fcf3cb269d75001c1ec40089fe16ce1357bb1ca"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.2/release-note.md",
+        "byteSize": 1034,
+        "sha256": "bc9598fe36c398e0c3c83ea9a432de4c54bebc62232661900a650c5b3de83344"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/learning/0.1.1/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/module.json",
+        "mirrorPath": "modules/learning/0.1.2/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.2/module.json",
         "byteSize": 1860,
-        "sha256": "48e21c7960df8cb7adadffaed54c8dff7b8aa51bac7cc0b1afb427d9e3c4daba"
+        "sha256": "385cd89ebb5bacbd2f3eef6d85d4f6313ca7fb0c615c979ad3978aa9a111015a"
       }
     }
   ]
