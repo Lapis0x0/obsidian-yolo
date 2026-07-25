@@ -129,6 +129,56 @@ export function emitChaptersDebugLog(
   console.groupEnd()
 }
 
+export type CardFailureDiagnostics = {
+  chapterTitle: string
+  reason: 'no-drafts' | 'no-valid-cards'
+  streamedDrafts: number
+  discardedCount: number
+  invalid?: Array<{ cardUuid: string; errors: string[] }>
+  output: string
+}
+
+const CARD_FAILURE_OUTPUT_LIMIT = 1200
+
+/**
+ * Report why a chapter produced zero usable cards.
+ *
+ * Unlike the grouped diagnostics above this is intentionally NOT gated on
+ * `isDebugEnabled()`: a chapter that yields no cards is a hard, user-visible
+ * failure, and without this there is no signal anywhere about which rule
+ * rejected the drafts. It only runs on that failure path, so it cannot become
+ * log noise during normal generation.
+ */
+export function emitCardFailureDiagnostics(data: CardFailureDiagnostics): void {
+  const summary =
+    data.reason === 'no-drafts'
+      ? 'the model produced no parseable card blocks'
+      : 'every parsed card failed validation'
+  const output = data.output.trim()
+  const truncated =
+    output.length > CARD_FAILURE_OUTPUT_LIMIT
+      ? `${output.slice(0, CARD_FAILURE_OUTPUT_LIMIT)}… (+${output.length - CARD_FAILURE_OUTPUT_LIMIT} chars)`
+      : output
+
+  console.warn(
+    `[yolo-learning] card generation failed for "${data.chapterTitle}": ${summary} ` +
+      `(streamed drafts: ${data.streamedDrafts}, discarded: ${data.discardedCount})`,
+  )
+  if (data.invalid?.length) {
+    console.warn(
+      'rejected cards:',
+      data.invalid.map((entry) => ({
+        cardUuid: entry.cardUuid,
+        errors: entry.errors,
+      })),
+    )
+  }
+
+  console.warn(
+    `model output (${output.length} chars):\n${truncated || '(empty)'}`,
+  )
+}
+
 function formatToolCallArgs(tc: ToolCallRecord): string {
   if (!tc.arguments) return ''
   const parts: string[] = []
