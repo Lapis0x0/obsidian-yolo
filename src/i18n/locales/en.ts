@@ -3002,6 +3002,7 @@ export const en: TranslationKeys = {
       debug: 'Debug settings',
       chatOptions: 'Chat preferences',
       notificationOptions: 'Notifications',
+      contextVoiceInputOptions: 'Voice settings',
       continuationOptions: 'Continuation & completion',
       assistants: 'Agents',
       currentAssistantId: 'Current agent',

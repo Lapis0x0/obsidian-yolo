@@ -2790,6 +2790,7 @@ export const zh: TranslationKeys = {
       debug: '调试设置',
       chatOptions: '对话偏好',
       notificationOptions: '通知设置',
+      contextVoiceInputOptions: '语音设置',
       continuationOptions: '续写与补全',
       assistants: 'Agent 配置',
       currentAssistantId: '当前 Agent',

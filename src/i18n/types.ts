@@ -2530,6 +2530,7 @@ export type TranslationKeys = {
       debug: string
       chatOptions: string
       notificationOptions: string
+      contextVoiceInputOptions: string
       continuationOptions: string
       assistants: string
       currentAssistantId: string

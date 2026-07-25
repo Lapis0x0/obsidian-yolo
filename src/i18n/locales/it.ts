@@ -43,6 +43,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Le impostazioni Host sono state importate, ma la configurazione dei moduli non è riuscita. Alcune impostazioni dei moduli potrebbero essere state scritte e non sono state annullate.',
     },
     keyLabels: {
+      contextVoiceInputOptions: 'Impostazioni vocali',
       jsSandbox: 'Autorizzazioni sandbox JS',
       pluginUpdateAutoDownloadEnabled:
         'Scarica automaticamente gli aggiornamenti del plugin',
