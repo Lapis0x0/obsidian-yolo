@@ -175,6 +175,8 @@ YOLO 用的是 PGlite + Drizzle ORM。如果你的改动涉及 schema：
 
 - Owner 用业余时间 review，第一次回复一般在一天到两周之间，大改动会更久。
 - 你可以在评论里 @Lapis0x1 来召唤审查 bot，它可以被视为 Lapis0x0 的回复。
+- Bot 可能留下普通建议，也可能提交具有阻塞意义的 **Changes requested**。请自行判断每条反馈：合理的问题应当修复，不适用的建议则说明理由。
+- 处理完反馈后，可以通过 GitHub 的 **Re-request review** 操作请求复审，也可以再次在评论里 @Lapis0x1。这不是强制步骤，但当你希望确认修改后的 PR 已没有剩余阻塞问题时会很有用；仅仅 push 新提交不会自动请求复审。
 
 ---
 
