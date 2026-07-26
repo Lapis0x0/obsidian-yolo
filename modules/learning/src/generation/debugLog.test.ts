@@ -11,50 +11,58 @@ describe('emitCardFailureDiagnostics', () => {
     warn.mockRestore()
   })
 
-  it('reports why a chapter produced no parseable card blocks', () => {
+  it('reports counts for a stream that produced no parseable block', () => {
     emitCardFailureDiagnostics({
       chapterTitle: 'Integer Remainders',
       reason: 'no-drafts',
-      streamedDrafts: 0,
-      discardedCount: 3,
-      output: '## A card without an end marker',
+      publishedCards: 0,
+      discardedBlocks: 3,
+      inspectedLength: 812,
+      inspectedSource: 'stream-output',
     })
 
-    const messages = warn.mock.calls.map((call) => String(call[0]))
-    expect(messages[0]).toContain('Integer Remainders')
-    expect(messages[0]).toContain('no parseable card blocks')
-    expect(messages[0]).toContain('discarded: 3')
-    expect(messages.join('\n')).toContain('## A card without an end marker')
+    const message = String(warn.mock.calls[0][0])
+    expect(message).toContain('Integer Remainders')
+    expect(message).toContain('without producing a parseable card block')
+    expect(message).toContain('published: 0')
+    expect(message).toContain('discarded: 3')
+    expect(message).toContain('stream-output length: 812')
   })
 
-  it('lists per-card rejection reasons when validation drops every card', () => {
+  it('lists card identifiers and validation labels when every card is rejected', () => {
     emitCardFailureDiagnostics({
       chapterTitle: 'Modulo Basics',
       reason: 'no-valid-cards',
-      streamedDrafts: 2,
-      discardedCount: 2,
-      invalid: [{ cardUuid: 'aaaaaaaa', errors: ['missing kp UUID'] }],
-      output: '## Card\n\nfront\n\n---\n\nback',
+      publishedCards: 2,
+      discardedBlocks: 2,
+      inspectedLength: 480,
+      inspectedSource: 'cards-file',
+      rejected: [{ cardUuid: 'aaaaaaaa', errors: ['missing kp UUID'] }],
     })
 
     expect(String(warn.mock.calls[0][0])).toContain('every parsed card failed')
+    expect(String(warn.mock.calls[0][0])).toContain('cards-file length: 480')
     expect(warn.mock.calls[1][1]).toEqual([
       { cardUuid: 'aaaaaaaa', errors: ['missing kp UUID'] },
     ])
   })
 
-  it('truncates very long model output', () => {
+  it('never logs model output, card text, or knowledge content', () => {
+    const secret = 'SENSITIVE-CARD-BODY'
     emitCardFailureDiagnostics({
-      chapterTitle: 'Long',
+      chapterTitle: 'Chapter',
       reason: 'no-drafts',
-      streamedDrafts: 0,
-      discardedCount: 0,
-      output: 'x'.repeat(5000),
+      publishedCards: 0,
+      discardedBlocks: 1,
+      inspectedLength: secret.length,
+      inspectedSource: 'stream-output',
     })
 
-    const outputMessage = String(warn.mock.calls[warn.mock.calls.length - 1][0])
-    expect(outputMessage).toContain('5000 chars')
-    expect(outputMessage).toContain('chars)')
-    expect(outputMessage.length).toBeLessThan(2000)
+    const logged = warn.mock.calls
+      .map((call) =>
+        call.map((part: unknown) => JSON.stringify(part)).join(' '),
+      )
+      .join('\n')
+    expect(logged).not.toContain(secret)
   })
 })

@@ -132,51 +132,53 @@ export function emitChaptersDebugLog(
 export type CardFailureDiagnostics = {
   chapterTitle: string
   reason: 'no-drafts' | 'no-valid-cards'
-  streamedDrafts: number
-  discardedCount: number
-  invalid?: Array<{ cardUuid: string; errors: string[] }>
-  output: string
+  /** Cards published by the stream parser before validation. */
+  publishedCards: number
+  /** Blocks dropped by the stream parser and/or written-card validation. */
+  discardedBlocks: number
+  /** Size of the text this stage inspected. Length only - never the text. */
+  inspectedLength: number
+  /** What `inspectedLength` measured, so the number is not misread. */
+  inspectedSource: 'stream-output' | 'cards-file'
+  /** Card identifiers plus the fixed validation labels that rejected them. */
+  rejected?: ReadonlyArray<{ cardUuid: string; errors: readonly string[] }>
 }
-
-const CARD_FAILURE_OUTPUT_LIMIT = 1200
 
 /**
  * Report why a chapter produced zero usable cards.
  *
- * Unlike the grouped diagnostics above this is intentionally NOT gated on
- * `isDebugEnabled()`: a chapter that yields no cards is a hard, user-visible
- * failure, and without this there is no signal anywhere about which rule
- * rejected the drafts. It only runs on that failure path, so it cannot become
- * log noise during normal generation.
+ * This is deliberately limited to non-content metadata - counts, lengths,
+ * generated identifiers, and the fixed validation labels produced by
+ * `validateWrittenCards`. No model output, card text, or knowledge content is
+ * logged, so it does not bypass the host's opt-in LLM debug-capture setting
+ * (which the module Host API cannot currently read). Raw-content capture
+ * belongs to the coordinated Host API design discussed in #494.
+ *
+ * It runs only on the zero-card failure path, so it cannot become log noise
+ * during normal generation.
  */
 export function emitCardFailureDiagnostics(data: CardFailureDiagnostics): void {
   const summary =
     data.reason === 'no-drafts'
-      ? 'the model produced no parseable card blocks'
+      ? 'the stream completed without producing a parseable card block'
       : 'every parsed card failed validation'
-  const output = data.output.trim()
-  const truncated =
-    output.length > CARD_FAILURE_OUTPUT_LIMIT
-      ? `${output.slice(0, CARD_FAILURE_OUTPUT_LIMIT)}… (+${output.length - CARD_FAILURE_OUTPUT_LIMIT} chars)`
-      : output
-
+  const parts = [
+    `published: ${data.publishedCards}`,
+    `discarded: ${data.discardedBlocks}`,
+    `${data.inspectedSource} length: ${data.inspectedLength}`,
+  ]
   console.warn(
-    `[yolo-learning] card generation failed for "${data.chapterTitle}": ${summary} ` +
-      `(streamed drafts: ${data.streamedDrafts}, discarded: ${data.discardedCount})`,
+    `[yolo-learning] card generation failed for "${data.chapterTitle}": ${summary} (${parts.join(', ')})`,
   )
-  if (data.invalid?.length) {
+  if (data.rejected?.length) {
     console.warn(
       'rejected cards:',
-      data.invalid.map((entry) => ({
+      data.rejected.map((entry) => ({
         cardUuid: entry.cardUuid,
-        errors: entry.errors,
+        errors: [...entry.errors],
       })),
     )
   }
-
-  console.warn(
-    `model output (${output.length} chars):\n${truncated || '(empty)'}`,
-  )
 }
 
 function formatToolCallArgs(tc: ToolCallRecord): string {
