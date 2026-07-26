@@ -6647,27 +6647,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           bottomSpacerHeight={inputOverlayHeight}
           footerContent={
             <>
-              {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===
-                'badge' &&
-                displayMentionablesForInput.length > 0 && (
-                  <div className="yolo-chat-user-input-files">
-                    {displayMentionablesForInput.map((mentionable) => {
-                      const mentionableKey = getMentionableKey(
-                        serializeMentionable(mentionable),
-                      )
-                      return (
-                        <MentionableBadge
-                          key={mentionableKey}
-                          mentionable={mentionable}
-                          onDelete={() =>
-                            handleMentionableDeleteFromAll(mentionable)
-                          }
-                          onClick={() => {}}
-                        />
-                      )
-                    })}
-                  </div>
-                )}
               <div className="yolo-chat-input-wrapper">
                 <div
                   ref={setInputOverlayElement}
@@ -6772,6 +6751,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     queuedMessageCount={queuedUserMessages.length}
                   />
                 </div>
+                {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===
+                  'badge' &&
+                  displayMentionablesForInput.length > 0 && (
+                    <div className="yolo-chat-user-input-files">
+                      {displayMentionablesForInput.map((mentionable) => {
+                        const mentionableKey = getMentionableKey(
+                          serializeMentionable(mentionable),
+                        )
+                        return (
+                          <MentionableBadge
+                            key={mentionableKey}
+                            mentionable={mentionable}
+                            onDelete={() =>
+                              handleMentionableDeleteFromAll(mentionable)
+                            }
+                            onClick={() => {}}
+                          />
+                        )
+                      })}
+                    </div>
+                  )}
                 <ChatUserInput
                   key={inputMessage.id}
                   ref={handleMainInputRef}
