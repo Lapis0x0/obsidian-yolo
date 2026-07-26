@@ -1,55 +1,47 @@
 import { MarkdownView } from 'obsidian'
-import type { TFile, Workspace } from 'obsidian'
+import type { Workspace, WorkspaceLeaf } from 'obsidian'
 
 type InsertionWorkspace = Pick<
   Workspace,
   'getActiveViewOfType' | 'getLeavesOfType'
-> & {
-  lastActiveFile?: TFile | null
-}
+>
 
-export function getMarkdownInsertionTarget(
-  workspace: InsertionWorkspace,
-  ownerDocument: Document | null | undefined,
-): MarkdownView | null {
-  const lastActiveFile = workspace.lastActiveFile
-  const matchingViews = lastActiveFile
-    ? workspace
-        .getLeavesOfType('markdown')
-        .map((leaf) => leaf.view)
-        .filter(
-          (view): view is MarkdownView =>
-            view instanceof MarkdownView &&
-            view.file?.path === lastActiveFile.path &&
-            isMarkdownViewVisible(view),
-        )
-    : []
+export class MarkdownInsertionTargetTracker {
+  private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null
 
-  const sameWindowView = matchingViews.find(
-    (view) => view.containerEl.ownerDocument === ownerDocument,
-  )
-  if (sameWindowView) {
-    return sameWindowView
+  constructor(private readonly workspace: InsertionWorkspace) {}
+
+  captureCurrentLeaf(): void {
+    const activeView = this.workspace.getActiveViewOfType(MarkdownView)
+    if (!activeView) {
+      return
+    }
+
+    const activeLeaf = this.workspace
+      .getLeavesOfType('markdown')
+      .find((leaf) => leaf.view === activeView)
+    this.trackActiveLeaf(activeLeaf ?? null)
   }
 
-  if (matchingViews.length > 0) {
-    return matchingViews[0]
+  trackActiveLeaf(leaf: WorkspaceLeaf | null): void {
+    if (leaf?.view instanceof MarkdownView) {
+      this.lastActiveMarkdownLeaf = leaf
+    }
   }
 
-  const activeMarkdownView = workspace.getActiveViewOfType(MarkdownView)
-  return activeMarkdownView && isMarkdownViewVisible(activeMarkdownView)
-    ? activeMarkdownView
-    : null
-}
+  getTarget(): MarkdownView | null {
+    const trackedLeaf = this.lastActiveMarkdownLeaf
+    if (!trackedLeaf) {
+      return null
+    }
 
-function isMarkdownViewVisible(view: MarkdownView): boolean {
-  const { containerEl } = view
-  const maybeIsShown = (containerEl as HTMLElement & { isShown?: unknown })
-    .isShown
-  if (typeof maybeIsShown === 'function') {
-    return maybeIsShown.call(containerEl) as boolean
+    const openLeaf = this.workspace
+      .getLeavesOfType('markdown')
+      .find((leaf) => leaf === trackedLeaf)
+    if (!(openLeaf?.view instanceof MarkdownView)) {
+      return null
+    }
+
+    return openLeaf.view.containerEl.isShown() ? openLeaf.view : null
   }
-  return (
-    containerEl.offsetParent !== null || containerEl.getClientRects().length > 0
-  )
 }

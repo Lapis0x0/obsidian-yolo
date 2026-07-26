@@ -3,116 +3,103 @@ jest.mock('obsidian', () => ({
 }))
 
 import { MarkdownView } from 'obsidian'
-import type { TFile, Workspace } from 'obsidian'
+import type { Workspace, WorkspaceLeaf } from 'obsidian'
 
-import { getMarkdownInsertionTarget } from './markdownInsertionTarget'
+import { MarkdownInsertionTargetTracker } from './markdownInsertionTarget'
 
 type InsertionWorkspace = Pick<
   Workspace,
   'getActiveViewOfType' | 'getLeavesOfType'
-> & { lastActiveFile?: TFile | null }
+>
 
 function createMarkdownView({
   path,
-  ownerDocument,
   visible = true,
 }: {
   path: string
-  ownerDocument: Document
   visible?: boolean
 }): MarkdownView {
   return Object.assign(Object.create(MarkdownView.prototype), {
     file: { path },
     containerEl: {
-      ownerDocument,
       isShown: () => visible,
     },
   }) as MarkdownView
 }
 
+function createLeaf(view: unknown): WorkspaceLeaf {
+  return { view } as WorkspaceLeaf
+}
+
 function createWorkspace({
-  lastActivePath,
-  views,
+  leaves,
   activeView = null,
 }: {
-  lastActivePath: string | null
-  views: MarkdownView[]
+  leaves: WorkspaceLeaf[]
   activeView?: MarkdownView | null
 }): InsertionWorkspace {
   return {
-    lastActiveFile: lastActivePath ? { path: lastActivePath } : null,
-    getLeavesOfType: () => views.map((view) => ({ view })),
+    getLeavesOfType: () => leaves,
     getActiveViewOfType: () => activeView,
   } as unknown as InsertionWorkspace
 }
 
-describe('getMarkdownInsertionTarget', () => {
-  it('uses the visible view for the last active file instead of the first markdown leaf', () => {
-    const mainWindow = {} as Document
-    const popoutWindow = {} as Document
-    const firstMainView = createMarkdownView({
-      path: 'main.md',
-      ownerDocument: mainWindow,
+describe('MarkdownInsertionTargetTracker', () => {
+  it('captures the exact active markdown leaf', () => {
+    const firstView = createMarkdownView({ path: 'shared.md' })
+    const activeView = createMarkdownView({ path: 'shared.md' })
+    const workspace = createWorkspace({
+      leaves: [createLeaf(firstView), createLeaf(activeView)],
+      activeView,
     })
-    const lastActivePopoutView = createMarkdownView({
-      path: 'popout.md',
-      ownerDocument: popoutWindow,
-    })
+    const tracker = new MarkdownInsertionTargetTracker(workspace)
 
-    const target = getMarkdownInsertionTarget(
-      createWorkspace({
-        lastActivePath: 'popout.md',
-        views: [firstMainView, lastActivePopoutView],
-      }),
-      popoutWindow,
-    )
+    tracker.captureCurrentLeaf()
 
-    expect(target).toBe(lastActivePopoutView)
+    expect(tracker.getTarget()).toBe(activeView)
   })
 
-  it('prefers the last active file view in the chat window when it is open in multiple windows', () => {
-    const mainWindow = {} as Document
-    const popoutWindow = {} as Document
-    const mainView = createMarkdownView({
-      path: 'shared.md',
-      ownerDocument: mainWindow,
-    })
-    const popoutView = createMarkdownView({
-      path: 'shared.md',
-      ownerDocument: popoutWindow,
-    })
-
-    const target = getMarkdownInsertionTarget(
-      createWorkspace({
-        lastActivePath: 'shared.md',
-        views: [mainView, popoutView],
-      }),
-      popoutWindow,
+  it('keeps the last markdown leaf when the chat leaf becomes active', () => {
+    const markdownView = createMarkdownView({ path: 'popout.md' })
+    const markdownLeaf = createLeaf(markdownView)
+    const tracker = new MarkdownInsertionTargetTracker(
+      createWorkspace({ leaves: [markdownLeaf] }),
     )
 
-    expect(target).toBe(popoutView)
+    tracker.trackActiveLeaf(markdownLeaf)
+    tracker.trackActiveLeaf(createLeaf({ type: 'chat' }))
+
+    expect(tracker.getTarget()).toBe(markdownView)
   })
 
-  it('does not insert into an unrelated visible note when the last active view is hidden', () => {
-    const mainWindow = {} as Document
-    const hiddenLastActiveView = createMarkdownView({
-      path: 'last-active.md',
-      ownerDocument: mainWindow,
+  it('does not use another leaf for the same file after the target closes', () => {
+    const closedView = createMarkdownView({ path: 'shared.md' })
+    const closedLeaf = createLeaf(closedView)
+    const remainingView = createMarkdownView({ path: 'shared.md' })
+    const remainingLeaf = createLeaf(remainingView)
+    const leaves = [closedLeaf, remainingLeaf]
+    const tracker = new MarkdownInsertionTargetTracker(
+      createWorkspace({ leaves }),
+    )
+
+    tracker.trackActiveLeaf(closedLeaf)
+    leaves.splice(leaves.indexOf(closedLeaf), 1)
+
+    expect(tracker.getTarget()).toBeNull()
+  })
+
+  it('does not return a hidden markdown view', () => {
+    const hiddenView = createMarkdownView({
+      path: 'hidden.md',
       visible: false,
     })
-    const unrelatedVisibleView = createMarkdownView({
-      path: 'unrelated.md',
-      ownerDocument: mainWindow,
-    })
-
-    const target = getMarkdownInsertionTarget(
-      createWorkspace({
-        lastActivePath: 'last-active.md',
-        views: [unrelatedVisibleView, hiddenLastActiveView],
-      }),
-      mainWindow,
+    const hiddenLeaf = createLeaf(hiddenView)
+    const tracker = new MarkdownInsertionTargetTracker(
+      createWorkspace({ leaves: [hiddenLeaf] }),
     )
 
-    expect(target).toBeNull()
+    tracker.trackActiveLeaf(hiddenLeaf)
+
+    expect(tracker.getTarget()).toBeNull()
   })
 })

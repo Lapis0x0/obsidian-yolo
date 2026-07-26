@@ -12,8 +12,8 @@ import { Notice, htmlToMarkdown } from 'obsidian'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
@@ -25,7 +25,6 @@ import {
   hasLLMDebugCacheForTraceIds,
   hasLLMDebugMetadataForMessages,
 } from './LLMDebugButton'
-import { getMarkdownInsertionTarget } from './markdownInsertionTarget'
 import { getToolMessageContent } from './ToolMessage'
 
 function ActionIconButton({
@@ -111,7 +110,7 @@ function CopyButton({ messages }: { messages: AssistantToolMessageGroup }) {
 }
 
 function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
-  const app = useApp()
+  const plugin = usePlugin()
   const { t } = useLanguage()
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const content = useMemo(() => {
@@ -179,10 +178,7 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
       return
     }
 
-    const markdownView = getMarkdownInsertionTarget(
-      app.workspace,
-      buttonRef.current?.ownerDocument,
-    )
+    const markdownView = plugin.getMarkdownInsertionTarget()
 
     if (!markdownView) {
       new Notice(t('chat.insertUnavailable', 'No active markdown editor found'))
