@@ -30,7 +30,7 @@ export type ApplyViewState = {
   originalContent: string
   newContent: string
   reviewEdits?: ApplyReviewEdit[]
-  viewMode?: 'apply' | 'revert-review'
+  viewMode?: 'apply' | 'applied-review'
   reviewMode?: 'full' | 'selection-focus'
   selectionRange?: ApplyViewSelectionRange
   callbacks?: ApplyViewCallbacks

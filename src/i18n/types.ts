@@ -1871,16 +1871,20 @@ export type TranslationKeys = {
     reviewTitle?: string
     changesResolved?: string
     acceptAllIncoming?: string
+    acceptAllChanges?: string
     keepAllChanges?: string
     rejectAll?: string
+    rejectAllChanges?: string
     revertAllChanges?: string
     prevChange?: string
     nextChange?: string
     reset?: string
     applyAndClose?: string
     acceptIncoming?: string
+    acceptChange?: string
     keepChange?: string
     acceptCurrent?: string
+    rejectChange?: string
     revertChange?: string
     acceptBoth?: string
     acceptedIncoming?: string

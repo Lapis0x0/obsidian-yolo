@@ -1606,6 +1606,21 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   );
 }
 
+.yolo-inline-review-current.is-applied {
+  color: var(--text-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 60%,
+    transparent
+  );
+}
+
+.yolo-inline-review-current.is-applied.is-active {
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
 .yolo-inline-review-content {
   display: flex;
   flex-direction: column;
@@ -1637,6 +1652,19 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
     var(--interactive-accent) 60%,
     transparent
   );
+  text-underline-offset: 2px;
+}
+
+.yolo-inline-review-widget .yolo-inline-diff-remove {
+  color: color-mix(in srgb, var(--text-faint) 80%, var(--text-muted) 20%);
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-border) 60%,
+    transparent
+  );
+  text-decoration-line: underline line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--text-faint) 70%, transparent);
   text-underline-offset: 2px;
 }
 

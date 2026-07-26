@@ -39,6 +39,7 @@ class InlineReviewWidget extends WidgetType {
   constructor(
     private readonly suggestion: ReviewSuggestion,
     private readonly onHover: (suggestionId: number) => void,
+    private readonly isAppliedReview: boolean,
   ) {
     super()
   }
@@ -46,7 +47,8 @@ class InlineReviewWidget extends WidgetType {
   override eq(other: InlineReviewWidget): boolean {
     return (
       other.suggestion.id === this.suggestion.id &&
-      other.suggestion.modifiedValue === this.suggestion.modifiedValue
+      other.suggestion.modifiedValue === this.suggestion.modifiedValue &&
+      other.isAppliedReview === this.isAppliedReview
     )
   }
 
@@ -64,7 +66,12 @@ class InlineReviewWidget extends WidgetType {
       placeholder.className = 'yolo-inline-review-deletion-placeholder'
       content.appendChild(placeholder)
     } else {
-      content.appendChild(createBlockSection(this.suggestion.modifiedValue))
+      content.appendChild(
+        createBlockSection(
+          this.suggestion.modifiedValue,
+          this.isAppliedReview ? 'is-removed' : 'is-added',
+        ),
+      )
     }
 
     root.appendChild(content)
@@ -86,14 +93,21 @@ function createTokenElement(text: string): HTMLElement {
   return span
 }
 
-function createBlockSection(text: string): HTMLElement {
+function createBlockSection(
+  text: string,
+  state: 'is-added' | 'is-removed',
+): HTMLElement {
   const section = document.createElement('div')
-  section.className = 'yolo-inline-review-section is-added'
+  section.className = `yolo-inline-review-section ${state}`
 
   text.split('\n').forEach((line) => {
     const lineEl = document.createElement('div')
     lineEl.className = 'yolo-inline-review-line'
-    lineEl.appendChild(createTokenElement(line))
+    const token = createTokenElement(line)
+    if (state === 'is-removed') {
+      token.classList.replace('yolo-inline-diff-add', 'yolo-inline-diff-remove')
+    }
+    lineEl.appendChild(token)
     section.appendChild(lineEl)
   })
 
@@ -181,13 +195,13 @@ export class InlineDiffReviewOverlay {
   private onAbort: (() => void) | null = null
 
   constructor(private readonly options: InlineDiffReviewOverlayOptions) {
-    const isRevertReview = options.state.viewMode === 'revert-review'
+    const isAppliedReview = options.state.viewMode === 'applied-review'
     const currentContent = options.view.state.doc.toString()
-    const suggestedContent = isRevertReview
+    const suggestedContent = isAppliedReview
       ? options.state.originalContent
       : options.state.newContent
     const exactSuggestions =
-      !isRevertReview &&
+      !isAppliedReview &&
       currentContent === options.state.originalContent &&
       options.state.reviewEdits
         ? buildReviewSuggestionsFromEdits(
@@ -251,8 +265,8 @@ export class InlineDiffReviewOverlay {
     this.options.onActionsReady?.({
       goToPreviousDiff: () => this.goToPrevious(),
       goToNextDiff: () => this.goToNext(),
-      acceptIncomingActive: () => this.acceptIncomingActive(),
-      acceptCurrentActive: () => this.acceptCurrentActive(),
+      acceptIncomingActive: () => this.acceptDisplayedActive(),
+      acceptCurrentActive: () => this.rejectDisplayedActive(),
       close: () => void this.completeAndClose(),
     })
   }
@@ -289,12 +303,12 @@ export class InlineDiffReviewOverlay {
     actions.style.transition = FLOATING_ACTIONS_POSITION_TRANSITION
     actions.appendChild(
       createActionButton('×', this.getRejectActiveLabel(), () =>
-        this.acceptCurrentActive(),
+        this.rejectDisplayedActive(),
       ),
     )
     actions.appendChild(
       createActionButton('✓', this.getAcceptActiveLabel(), () =>
-        this.acceptIncomingActive(),
+        this.acceptDisplayedActive(),
       ),
     )
     root.appendChild(actions)
@@ -364,7 +378,7 @@ export class InlineDiffReviewOverlay {
         'yolo-toolbar-btn yolo-accept',
         this.getAcceptAllLabel(),
         this.getAcceptAllLabel(),
-        () => this.acceptAllIncoming(),
+        () => this.acceptAllDisplayed(),
       ),
     )
     actions.appendChild(
@@ -372,7 +386,7 @@ export class InlineDiffReviewOverlay {
         'yolo-toolbar-btn yolo-exclude',
         this.getRejectAllLabel(),
         this.getRejectAllLabel(),
-        () => this.rejectAll(),
+        () => this.rejectAllDisplayed(),
       ),
     )
     pill.appendChild(actions)
@@ -512,13 +526,19 @@ export class InlineDiffReviewOverlay {
 
     if (!fromRect && !widgetRect) return
 
-    const top = Math.max(
-      6,
-      (fromRect?.top ?? widgetRect?.top ?? hostRect.top) - hostRect.top,
-    )
+    const hasCurrentContent = active.displayTo > active.displayFrom
+    const trackCurrentContent = this.isAppliedReview() && hasCurrentContent
+    const trackTop = trackCurrentContent
+      ? (fromRect?.top ?? widgetRect?.bottom)
+      : (fromRect?.top ?? widgetRect?.top)
+    const trackBottom = trackCurrentContent
+      ? (toRect?.bottom ?? fromRect?.bottom)
+      : (widgetRect?.bottom ?? toRect?.bottom)
+
+    const top = Math.max(6, (trackTop ?? hostRect.top) - hostRect.top)
     const bottom = Math.min(
       hostRect.height - 6,
-      (widgetRect?.bottom ?? toRect?.bottom ?? hostRect.bottom) - hostRect.top,
+      (trackBottom ?? hostRect.bottom) - hostRect.top,
     )
     const contentRect = this.options.view.contentDOM.getBoundingClientRect()
     const preferredRailLeft = contentRect.right - hostRect.left + 8
@@ -584,6 +604,22 @@ export class InlineDiffReviewOverlay {
     this.removeCurrentSuggestion()
   }
 
+  private acceptDisplayedActive(): void {
+    if (this.isAppliedReview()) {
+      this.acceptCurrentActive()
+      return
+    }
+    this.acceptIncomingActive()
+  }
+
+  private rejectDisplayedActive(): void {
+    if (this.isAppliedReview()) {
+      this.acceptIncomingActive()
+      return
+    }
+    this.acceptCurrentActive()
+  }
+
   private applySuggestion(suggestion: ReviewSuggestion): void {
     const change = resolveSuggestionChange(
       this.options.view.state.doc.toString(),
@@ -642,6 +678,22 @@ export class InlineDiffReviewOverlay {
   private rejectAll(): void {
     this.suggestions = []
     void this.completeAndClose()
+  }
+
+  private acceptAllDisplayed(): void {
+    if (this.isAppliedReview()) {
+      this.rejectAll()
+      return
+    }
+    this.acceptAllIncoming()
+  }
+
+  private rejectAllDisplayed(): void {
+    if (this.isAppliedReview()) {
+      this.acceptAllIncoming()
+      return
+    }
+    this.rejectAll()
   }
 
   private async completeAndClose(): Promise<void> {
@@ -704,13 +756,16 @@ export class InlineDiffReviewOverlay {
   }
 
   private renderSuggestions(options: { ensureVisible: boolean }): void {
+    const isAppliedReview = this.isAppliedReview()
     const ranges = this.suggestions.flatMap((suggestion, index) => {
       const isActive = index === this.currentIndex
       const decorations = []
       if (suggestion.displayFrom < suggestion.displayTo) {
         decorations.push(
           Decoration.mark({
-            class: `yolo-inline-review-current${isActive ? ' is-active' : ''}`,
+            class: `yolo-inline-review-current${
+              isAppliedReview ? ' is-applied' : ''
+            }${isActive ? ' is-active' : ''}`,
             attributes: {
               'data-yolo-review-id': String(suggestion.id),
             },
@@ -719,12 +774,16 @@ export class InlineDiffReviewOverlay {
       }
       decorations.push(
         Decoration.widget({
-          widget: new InlineReviewWidget(suggestion, (id) =>
-            this.handleHoverActive(id),
+          widget: new InlineReviewWidget(
+            suggestion,
+            (id) => this.handleHoverActive(id),
+            isAppliedReview,
           ),
-          side: 1,
+          side: isAppliedReview ? -1 : 1,
           block: true,
-        }).range(suggestion.displayTo),
+        }).range(
+          isAppliedReview ? suggestion.displayFrom : suggestion.displayTo,
+        ),
       )
       return decorations
     })
@@ -757,20 +816,23 @@ export class InlineDiffReviewOverlay {
   }
 
   private getAcceptActiveLabel(): string {
-    return this.options.state.viewMode === 'revert-review'
-      ? this.options.plugin.t('applyView.revertChange', 'Revert this change')
+    return this.isAppliedReview()
+      ? this.options.plugin.t('applyView.acceptChange', 'Accept change')
       : this.options.plugin.t('applyView.acceptIncoming', 'Accept incoming')
   }
 
   private getRejectActiveLabel(): string {
-    return this.options.state.viewMode === 'revert-review'
-      ? this.options.plugin.t('applyView.keepChange', 'Keep this change')
+    return this.isAppliedReview()
+      ? this.options.plugin.t('applyView.rejectChange', 'Reject change')
       : this.options.plugin.t('applyView.acceptCurrent', 'Accept current')
   }
 
   private getAcceptAllLabel(): string {
-    return this.options.state.viewMode === 'revert-review'
-      ? this.options.plugin.t('applyView.revertAllChanges', 'Revert all')
+    return this.isAppliedReview()
+      ? this.options.plugin.t(
+          'applyView.acceptAllChanges',
+          'Accept all changes',
+        )
       : this.options.plugin.t(
           'applyView.acceptAllIncoming',
           'Accept all incoming',
@@ -778,8 +840,15 @@ export class InlineDiffReviewOverlay {
   }
 
   private getRejectAllLabel(): string {
-    return this.options.state.viewMode === 'revert-review'
-      ? this.options.plugin.t('applyView.keepAllChanges', 'Keep all')
+    return this.isAppliedReview()
+      ? this.options.plugin.t(
+          'applyView.rejectAllChanges',
+          'Reject all changes',
+        )
       : this.options.plugin.t('applyView.rejectAll', 'Reject all')
+  }
+
+  private isAppliedReview(): boolean {
+    return this.options.state.viewMode === 'applied-review'
   }
 }

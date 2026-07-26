@@ -4375,7 +4375,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           file: targetFile,
           originalContent: firstSnapshot.beforeContent,
           newContent: latestSnapshot.afterContent,
-          viewMode: 'revert-review',
+          viewMode: 'applied-review',
           reviewMode: 'full',
         })
         return
