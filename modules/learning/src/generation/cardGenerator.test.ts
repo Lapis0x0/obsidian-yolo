@@ -82,6 +82,19 @@ describe('CardStreamParser', () => {
 
     expect(cards).toEqual([])
     expect(parser.discardedCount).toBe(2)
+    expect(parser.rejections).toEqual([
+      {
+        blockIndex: 1,
+        errors: [
+          'missing front content before the separator',
+          'missing back content after the separator',
+        ],
+      },
+      {
+        blockIndex: 2,
+        errors: ['kp:bbbbbbbb does not belong to this chapter'],
+      },
+    ])
   })
 
   it('does not treat marker text inside card content as a closing line', () => {
@@ -233,7 +246,6 @@ describe('generateCardsForChapter streaming', () => {
       const host: LearningGenerationHost = {
         vault,
         vaultWriter,
-        isDebugEnabled: () => false,
         agent: {
           stream: stream as LearningGenerationHost['agent']['stream'],
         },
@@ -318,7 +330,6 @@ describe('generateCardsForChapter streaming', () => {
         }),
         createTextIfAbsent: jest.fn(),
       } as unknown as LearningVaultWriteApi,
-      isDebugEnabled: () => false,
       agent: {
         stream: async function* () {
           yield { type: 'error' as const, message: 'provider exploded' }
@@ -369,7 +380,6 @@ describe('generateCardsForChapter streaming', () => {
         }),
         createTextIfAbsent: jest.fn(),
       } as unknown as LearningVaultWriteApi,
-      isDebugEnabled: () => false,
       agent: {
         stream: async function* () {
           yield {
@@ -399,7 +409,7 @@ describe('generateCardsForChapter streaming', () => {
     ).rejects.toThrow('No card drafts generated for chapter: Chapter')
 
     const message = String(warn.mock.calls[0][0])
-    expect(message).toContain('without producing a parseable card block')
+    expect(message).toContain('without a complete card block')
     expect(message).toContain(`stream-output length: ${unparseable.length}`)
     const logged = warn.mock.calls
       .map((call) =>
@@ -407,6 +417,64 @@ describe('generateCardsForChapter streaming', () => {
       )
       .join('\n')
     expect(logged).not.toContain(unparseable)
+    warn.mockRestore()
+  })
+
+  it('reports why every completed stream block was rejected', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const rejected = `${cardBlock('Foreign', 'bbbbbbbb')}${CARD_END_MARKER}\n`
+    const host: LearningGenerationHost = {
+      vault: {
+        getEntry: () => ({
+          kind: 'file',
+          path: knowledgePath,
+          name: 'knowledge.md',
+          ctime: 0,
+          mtime: 0,
+        }),
+      } as unknown as LearningVaultReadApi,
+      vaultWriter: {
+        readTextSnapshot: async () => ({
+          path: knowledgePath,
+          content: '## KP <!--kp:aaaaaaaa-->\n\nBody',
+          identity: { path: knowledgePath },
+        }),
+        createTextIfAbsent: jest.fn(),
+      } as unknown as LearningVaultWriteApi,
+      agent: {
+        stream: async function* () {
+          yield { type: 'text' as const, text: rejected, delta: rejected }
+        },
+      },
+    }
+
+    await expect(
+      generateCardsForChapter({
+        host,
+        chapterIndex: 0,
+        projectTopic: 'Topic',
+        chapterTitle: 'Chapter',
+        chapterContract: 'Contract',
+        knowledgePath,
+        cardsPath: 'project/chapter/cards.md',
+        level: 'beginner',
+        usedCardUuids: new Set(),
+        runId: 'run',
+        projectId: 'project',
+        chapterId: 'chapter',
+      }),
+    ).rejects.toThrow('No card drafts generated for chapter: Chapter')
+
+    expect(String(warn.mock.calls[0][0])).toContain(
+      'every completed card block was rejected',
+    )
+    expect(warn.mock.calls[1][1]).toEqual([
+      {
+        blockIndex: 1,
+        errors: ['kp:bbbbbbbb does not belong to this chapter'],
+      },
+    ])
     warn.mockRestore()
   })
 
@@ -433,7 +501,6 @@ describe('generateCardsForChapter streaming', () => {
         }),
         createTextIfAbsent,
       } as unknown as LearningVaultWriteApi,
-      isDebugEnabled: () => false,
       agent: {
         stream: async function* () {
           const text = `${cardBlock('Partial')}${CARD_END_MARKER}\n`
@@ -531,7 +598,6 @@ describe('generateCardsForChapter streaming', () => {
             : null,
       } as unknown as LearningVaultReadApi,
       vaultWriter,
-      isDebugEnabled: () => false,
       agent: {
         stream: async function* () {
           const text = `${cardBlock('A')}${CARD_END_MARKER}\n`

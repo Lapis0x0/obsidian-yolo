@@ -15,14 +15,12 @@ describe('generateKnowledgePointsForChapter', () => {
     const host: LearningGenerationHost = {
       vault: {} as LearningVaultReadApi,
       vaultWriter: {} as LearningVaultWriteApi,
-      isDebugEnabled: () => false,
       agent: { stream: stream as LearningGenerationHost['agent']['stream'] },
     }
 
     const result = await generateKnowledgePointsForChapter({
       host,
       modelId: 'learning-model',
-      chapterIndex: 0,
       projectTopic: 'Python',
       chapterTitle: 'Basics',
       chapterContract: 'Cover variables',
@@ -61,14 +59,12 @@ describe('generateKnowledgePointsForChapter', () => {
     const host: LearningGenerationHost = {
       vault: {} as LearningVaultReadApi,
       vaultWriter: {} as LearningVaultWriteApi,
-      isDebugEnabled: () => false,
       agent: { stream },
     }
 
     await expect(
       generateKnowledgePointsForChapter({
         host,
-        chapterIndex: 0,
         projectTopic: 'Python',
         chapterTitle: 'Basics',
         chapterContract: 'Cover variables',
