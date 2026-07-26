@@ -20,6 +20,7 @@ import {
   type ActionToastOptions,
   mountActionToast,
 } from './components/ActionToast'
+import { MarkdownInsertionTargetTracker } from './components/chat-view/markdownInsertionTarget'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE } from './constants'
@@ -278,6 +279,8 @@ export default class YoloPlugin extends Plugin {
   private selectionChatCommandsFingerprint: string | null = null
   private chatViewNavigator: ChatViewNavigator | null = null
   private chatLeafSessionManager: ChatLeafSessionManager | null = null
+  private markdownInsertionTargetTracker: MarkdownInsertionTargetTracker | null =
+    null
   private newTabEmptyStateEnhancer: NewTabEmptyStateEnhancer | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
@@ -381,6 +384,10 @@ export default class YoloPlugin extends Plugin {
       this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
     }
     return this.chatLeafSessionManager
+  }
+
+  getMarkdownInsertionTarget(): MarkdownView | null {
+    return this.markdownInsertionTargetTracker?.getTarget() ?? null
   }
 
   private publishManagedModulePathChange(): void {
@@ -2404,10 +2411,16 @@ export default class YoloPlugin extends Plugin {
 
     // removed templates JSON migration
 
+    this.markdownInsertionTargetTracker = new MarkdownInsertionTargetTracker(
+      this.app.workspace,
+    )
+    this.markdownInsertionTargetTracker.captureCurrentLeaf()
+
     // Handle tab completion trigger
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         try {
+          this.markdownInsertionTargetTracker?.trackActiveLeaf(leaf)
           if (leaf?.view instanceof ChatView) {
             this.getChatLeafSessionManager().touchLeafActive(leaf)
           }
@@ -2476,6 +2489,7 @@ export default class YoloPlugin extends Plugin {
     this.selectionChatController?.destroy()
     this.selectionChatController = null
     this.chatViewNavigator = null
+    this.markdownInsertionTargetTracker = null
     this.newTabEmptyStateEnhancer = null
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
