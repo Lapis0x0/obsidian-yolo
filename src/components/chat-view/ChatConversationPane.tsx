@@ -185,8 +185,11 @@ export function ChatConversationPane({
         onLoadNewer={onLoadNewer}
         bottomSpacerHeight={bottomSpacerHeight}
       />
+      {/* Animate only the empty-state layout transition. Internal composer
+       * changes such as mounting the first badge must not move the footer. */}
       <motion.div
         layout="position"
+        layoutDependency={showEmptyState}
         className="yolo-chat-footer"
         transition={{
           layout: {
