@@ -180,7 +180,7 @@ import {
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
-import { buildSnapshotReviewSuggestions } from './features/editor/diff-review/review-model'
+import { buildSnapshotReviewPlan } from './features/editor/diff-review/review-model'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
@@ -1857,10 +1857,10 @@ export default class YoloPlugin extends Plugin {
     // If the diff that the overlay would display has zero modified blocks,
     // skip the overlay entirely — otherwise the UI renders "0/0" with every
     // button disabled and no auto-close path, stranding the user.
-    const reviewSuggestions = buildSnapshotReviewSuggestions(
+    const reviewSuggestions = buildSnapshotReviewPlan(
       state.originalContent,
       state.newContent,
-    )
+    ).suggestions
     if (reviewSuggestions.length === 0) {
       if (state.originalContent !== state.newContent) {
         await this.app.vault.modify(state.file, state.newContent)

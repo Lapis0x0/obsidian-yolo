@@ -1,15 +1,18 @@
+import type { ChangeDesc } from '@codemirror/state'
+
 import type { ApplyReviewEdit } from '../../../types/apply-view.types'
 import { type DiffBlock, createLineDiffBlocks } from '../../../utils/chat/diff'
 
 export type ReviewSuggestion = {
   id: number
+  /** The live range in the editor's current (proposed) document. */
   from: number
   to: number
-  displayFrom: number
-  displayTo: number
-  insert: string
   startLine: number
   endLine: number
+  /** Full source text restored when this suggestion is rejected. */
+  originalText: string
+  /** Display-only source and initial proposed values. */
   originalValue?: string
   modifiedValue?: string
 }
@@ -20,6 +23,17 @@ export type SuggestionChange = {
   insert: string
 }
 
+export type ReviewPlan = {
+  content: string
+  changes: SuggestionChange[]
+  suggestions: ReviewSuggestion[]
+}
+
+export type ReviewSuggestionUpdate = {
+  suggestions: ReviewSuggestion[]
+  removedIds: number[]
+}
+
 type ParagraphStructure = {
   leading: string
   paragraphs: Array<{ text: string; from: number; to: number }>
@@ -28,27 +42,23 @@ type ParagraphStructure = {
 }
 
 type NormalizedReviewEdit = ApplyReviewEdit & {
-  displayFrom: number
-  displayTo: number
   originalValue: string
   modifiedValue: string
 }
 
-export function buildSnapshotReviewSuggestions(
-  currentContent: string,
-  incomingContent: string,
-): ReviewSuggestion[] {
-  const edits = buildSnapshotReviewEdits(
-    currentContent,
-    createLineDiffBlocks(currentContent, incomingContent),
-  )
-  return buildReviewSuggestionsFromEdits(currentContent, edits) ?? []
+type DocumentChange = {
+  from: number
+  to: number
 }
 
-export function buildReviewSuggestionsFromEdits(
-  currentContent: string,
+/**
+ * Builds a review plan whose suggestions point into the materialized proposed
+ * document. The source text remains metadata used only for display and reject.
+ */
+export function buildReviewPlanFromEdits(
+  originalContent: string,
   edits: ApplyReviewEdit[],
-): ReviewSuggestion[] | null {
+): ReviewPlan | null {
   const orderedEdits = [...edits].sort((left, right) => left.from - right.from)
   let previousEnd = 0
 
@@ -59,39 +69,37 @@ export function buildReviewSuggestionsFromEdits(
       edit.from < previousEnd ||
       edit.from < 0 ||
       edit.to < edit.from ||
-      edit.to > currentContent.length
+      edit.to > originalContent.length
     ) {
       return null
     }
     previousEnd = edit.to
   }
 
-  const normalizedEdits = orderedEdits.flatMap((edit) =>
-    splitEditByParagraphStructure(currentContent, edit),
-  )
-
-  return normalizedEdits.map((edit, index) => {
-    const startLine = offsetToLine(currentContent, edit.displayFrom)
-    const endLine = offsetToLine(
-      currentContent,
-      edit.displayTo > edit.displayFrom ? edit.displayTo - 1 : edit.displayFrom,
+  const normalizedEdits = orderedEdits
+    .flatMap((edit) => splitEditByParagraphStructure(originalContent, edit))
+    .filter(
+      (edit) => originalContent.slice(edit.from, edit.to) !== edit.replacement,
     )
 
-    return {
-      id: index,
-      from: edit.from,
-      to: edit.to,
-      displayFrom: edit.displayFrom,
-      displayTo: edit.displayTo,
-      insert: edit.replacement,
-      startLine,
-      endLine,
-      originalValue:
-        edit.displayFrom === edit.displayTo ? undefined : edit.originalValue,
-      modifiedValue:
-        edit.modifiedValue.length > 0 ? edit.modifiedValue : undefined,
+  return materializeReviewEdits(originalContent, normalizedEdits)
+}
+
+export function buildSnapshotReviewPlan(
+  originalContent: string,
+  incomingContent: string,
+): ReviewPlan {
+  const edits = buildSnapshotReviewEdits(
+    originalContent,
+    createLineDiffBlocks(originalContent, incomingContent),
+  )
+  return (
+    buildReviewPlanFromEdits(originalContent, edits) ?? {
+      content: originalContent,
+      changes: [],
+      suggestions: [],
     }
-  })
+  )
 }
 
 export function resolveSuggestionChange(
@@ -100,7 +108,152 @@ export function resolveSuggestionChange(
 ): SuggestionChange {
   const from = Math.max(0, Math.min(suggestion.from, currentContent.length))
   const to = Math.max(from, Math.min(suggestion.to, currentContent.length))
-  return { from, to, insert: suggestion.insert }
+  return { from, to, insert: suggestion.originalText }
+}
+
+/**
+ * Applies one ordinary editor transaction to pending review ranges.
+ *
+ * Boundary insertions are deliberately excluded from a range. A transaction
+ * may retain a touched suggestion only when all of its changes are contained
+ * by that one suggestion. Cross-boundary and multi-suggestion edits settle the
+ * touched suggestions while preserving the user's document changes.
+ */
+export function updateReviewSuggestions(
+  suggestions: ReviewSuggestion[],
+  changes: ChangeDesc,
+): ReviewSuggestionUpdate {
+  const documentChanges = readDocumentChanges(changes)
+  if (documentChanges.length === 0) {
+    return { suggestions, removedIds: [] }
+  }
+
+  const touched = suggestions.filter((suggestion) =>
+    documentChanges.some((change) =>
+      changeTouchesSuggestion(change, suggestion),
+    ),
+  )
+  const mayRetainTouched =
+    touched.length === 1 &&
+    documentChanges.every((change) =>
+      changeIsInsideSuggestion(change, touched[0]),
+    )
+  const removedIds = mayRetainTouched
+    ? []
+    : touched.map((suggestion) => suggestion.id)
+  const removedIdSet = new Set(removedIds)
+
+  return {
+    suggestions: suggestions
+      .filter((suggestion) => !removedIdSet.has(suggestion.id))
+      .map((suggestion) =>
+        mapSuggestion(
+          suggestion,
+          changes,
+          mayRetainTouched && suggestion.id === touched[0]?.id,
+        ),
+      ),
+    removedIds,
+  }
+}
+
+/** Map ranges for an overlay-owned transaction without resolving review items. */
+export function mapReviewSuggestions(
+  suggestions: ReviewSuggestion[],
+  changes: ChangeDesc,
+): ReviewSuggestion[] {
+  return suggestions.map((suggestion) =>
+    mapSuggestion(suggestion, changes, false),
+  )
+}
+
+function materializeReviewEdits(
+  originalContent: string,
+  edits: NormalizedReviewEdit[],
+): ReviewPlan {
+  const suggestions: ReviewSuggestion[] = []
+  const changes: SuggestionChange[] = []
+  let sourceCursor = 0
+  let content = ''
+
+  edits.forEach((edit, id) => {
+    content += originalContent.slice(sourceCursor, edit.from)
+    const from = content.length
+    content += edit.replacement
+    const to = content.length
+    const startLine = offsetToLine(originalContent, edit.from)
+    const endLine = offsetToLine(
+      originalContent,
+      edit.to > edit.from ? edit.to - 1 : edit.from,
+    )
+
+    suggestions.push({
+      id,
+      from,
+      to,
+      startLine,
+      endLine,
+      originalText: originalContent.slice(edit.from, edit.to),
+      originalValue: edit.originalValue || undefined,
+      modifiedValue: edit.modifiedValue || undefined,
+    })
+    changes.push({ from: edit.from, to: edit.to, insert: edit.replacement })
+    sourceCursor = edit.to
+  })
+
+  content += originalContent.slice(sourceCursor)
+  return { content, changes, suggestions }
+}
+
+function readDocumentChanges(changes: ChangeDesc): DocumentChange[] {
+  const result: DocumentChange[] = []
+  changes.iterChangedRanges((fromA, toA) => {
+    result.push({ from: fromA, to: toA })
+  })
+  return result
+}
+
+function changeTouchesSuggestion(
+  change: DocumentChange,
+  suggestion: ReviewSuggestion,
+): boolean {
+  if (change.from === change.to) {
+    return change.from > suggestion.from && change.from < suggestion.to
+  }
+  if (suggestion.from === suggestion.to) {
+    return change.from < suggestion.from && change.to > suggestion.to
+  }
+  return change.from < suggestion.to && change.to > suggestion.from
+}
+
+function changeIsInsideSuggestion(
+  change: DocumentChange,
+  suggestion: ReviewSuggestion,
+): boolean {
+  if (change.from === change.to) {
+    return change.from > suggestion.from && change.from < suggestion.to
+  }
+  return change.from >= suggestion.from && change.to <= suggestion.to
+}
+
+function mapSuggestion(
+  suggestion: ReviewSuggestion,
+  changes: ChangeDesc,
+  includeChangedBoundaries: boolean,
+): ReviewSuggestion {
+  if (suggestion.from === suggestion.to) {
+    // A source-only (deleted) suggestion is rendered before the caret at its
+    // anchor. Keep boundary input after that virtual source text so rejecting
+    // restores the source before, rather than after, what the user typed.
+    const anchor = changes.mapPos(suggestion.from, -1)
+    return { ...suggestion, from: anchor, to: anchor }
+  }
+
+  return {
+    ...suggestion,
+    from: changes.mapPos(suggestion.from, includeChangedBoundaries ? -1 : 1),
+    to: changes.mapPos(suggestion.to, includeChangedBoundaries ? 1 : -1),
+  }
 }
 
 function buildSnapshotReviewEdits(
@@ -193,8 +346,6 @@ function splitEditByParagraphStructure(
     return [
       {
         ...edit,
-        displayFrom: edit.from,
-        displayTo: edit.to,
         originalValue: originalText,
         modifiedValue: edit.replacement,
       },
@@ -226,8 +377,6 @@ function splitEditByParagraphStructure(
         from: edit.from + originalFrom,
         to: edit.from + originalTo,
         replacement,
-        displayFrom: edit.from + originalParagraph.from,
-        displayTo: edit.from + originalParagraph.to,
         originalValue: originalParagraph.text,
         modifiedValue: modifiedParagraph.text,
       },
