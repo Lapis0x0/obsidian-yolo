@@ -38,7 +38,6 @@ const FLOATING_CONTROLS_EDGE_INSET = 2
 class InlineReviewWidget extends WidgetType {
   constructor(
     private readonly suggestion: ReviewSuggestion,
-    private readonly isActive: boolean,
     private readonly onHover: (suggestionId: number) => void,
   ) {
     super()
@@ -47,14 +46,13 @@ class InlineReviewWidget extends WidgetType {
   override eq(other: InlineReviewWidget): boolean {
     return (
       other.suggestion.id === this.suggestion.id &&
-      other.suggestion.modifiedValue === this.suggestion.modifiedValue &&
-      other.isActive === this.isActive
+      other.suggestion.modifiedValue === this.suggestion.modifiedValue
     )
   }
 
   override toDOM(): HTMLElement {
     const root = document.createElement('div')
-    root.className = `yolo-inline-review-widget${this.isActive ? ' is-active' : ''}`
+    root.className = 'yolo-inline-review-widget'
     root.setAttribute('data-review-id', String(this.suggestion.id))
 
     const content = document.createElement('div')
@@ -440,7 +438,14 @@ export class InlineDiffReviewOverlay {
 
   private handleViewUpdate(update: ViewUpdate): void {
     if (this.closed) return
-    if (update.geometryChanged) this.queuePositionUpdate()
+    const refreshedReviewDecorations = update.transactions.some((transaction) =>
+      transaction.effects.some((effect) =>
+        effect.is(this.setDecorationsEffect),
+      ),
+    )
+    if (update.geometryChanged && !refreshedReviewDecorations) {
+      this.queuePositionUpdate()
+    }
     if (!update.docChanged) return
     this.suggestions = this.suggestions.map((suggestion) => ({
       ...suggestion,
@@ -714,7 +719,7 @@ export class InlineDiffReviewOverlay {
       }
       decorations.push(
         Decoration.widget({
-          widget: new InlineReviewWidget(suggestion, isActive, (id) =>
+          widget: new InlineReviewWidget(suggestion, (id) =>
             this.handleHoverActive(id),
           ),
           side: 1,
