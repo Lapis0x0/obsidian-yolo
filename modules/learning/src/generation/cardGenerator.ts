@@ -199,14 +199,18 @@ export async function generateCardsForChapter({
   }
   throwIfAborted(abortSignal)
   if (assignedDrafts.length === 0) {
+    // Preserve the original error boundary: a stream/provider/tool failure is
+    // not evidence about the model's card formatting, so it must not be
+    // reported as a parser result.
+    if (firstRun.error) throw firstRun.error
     emitCardFailureDiagnostics({
       chapterTitle,
       reason: 'no-drafts',
-      streamedDrafts: 0,
-      discardedCount: streamParser.discardedCount,
-      output: firstRun.text,
+      publishedCards: 0,
+      discardedBlocks: streamParser.discardedCount,
+      inspectedLength: firstRun.text.length,
+      inspectedSource: 'stream-output',
     })
-    if (firstRun.error) throw firstRun.error
     throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
   }
 
@@ -282,13 +286,17 @@ export async function generateCardsForChapter({
       emitCardFailureDiagnostics({
         chapterTitle,
         reason: 'no-valid-cards',
-        streamedDrafts: assignedDrafts.length,
-        discardedCount: validation.discardedCount + streamParser.discardedCount,
-        invalid: validation.invalid.map((entry) => ({
+        publishedCards: assignedDrafts.length,
+        discardedBlocks:
+          validation.discardedCount + streamParser.discardedCount,
+        // This stage validates the cards file after tool writes and any
+        // correction pass, not the raw stream, so label it as such.
+        inspectedLength: cardsSnapshot.content.length,
+        inspectedSource: 'cards-file',
+        rejected: validation.invalid.map((entry) => ({
           cardUuid: entry.cardUuid,
           errors: entry.errors,
         })),
-        output: cardsSnapshot.content,
       })
       throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
     }

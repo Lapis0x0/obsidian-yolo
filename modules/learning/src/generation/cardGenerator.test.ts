@@ -297,6 +297,119 @@ describe('generateCardsForChapter streaming', () => {
     },
   )
 
+  it('does not classify a stream error as a parser result', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const host: LearningGenerationHost = {
+      vault: {
+        getEntry: () => ({
+          kind: 'file',
+          path: knowledgePath,
+          name: 'knowledge.md',
+          ctime: 0,
+          mtime: 0,
+        }),
+      } as unknown as LearningVaultReadApi,
+      vaultWriter: {
+        readTextSnapshot: async () => ({
+          path: knowledgePath,
+          content: '## KP <!--kp:aaaaaaaa-->\n\nBody',
+          identity: { path: knowledgePath },
+        }),
+        createTextIfAbsent: jest.fn(),
+      } as unknown as LearningVaultWriteApi,
+      isDebugEnabled: () => false,
+      agent: {
+        stream: async function* () {
+          yield { type: 'error' as const, message: 'provider exploded' }
+        },
+      },
+    }
+
+    await expect(
+      generateCardsForChapter({
+        host,
+        chapterIndex: 0,
+        projectTopic: 'Topic',
+        chapterTitle: 'Chapter',
+        chapterContract: 'Contract',
+        knowledgePath,
+        cardsPath: 'project/chapter/cards.md',
+        level: 'beginner',
+        usedCardUuids: new Set(),
+        runId: 'run',
+        projectId: 'project',
+        chapterId: 'chapter',
+      }),
+    ).rejects.toThrow('provider exploded')
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('reports a no-drafts diagnostic when the stream succeeds but parses nothing', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const unparseable = 'I will use a tool instead of writing cards.'
+    const host: LearningGenerationHost = {
+      vault: {
+        getEntry: () => ({
+          kind: 'file',
+          path: knowledgePath,
+          name: 'knowledge.md',
+          ctime: 0,
+          mtime: 0,
+        }),
+      } as unknown as LearningVaultReadApi,
+      vaultWriter: {
+        readTextSnapshot: async () => ({
+          path: knowledgePath,
+          content: '## KP <!--kp:aaaaaaaa-->\n\nBody',
+          identity: { path: knowledgePath },
+        }),
+        createTextIfAbsent: jest.fn(),
+      } as unknown as LearningVaultWriteApi,
+      isDebugEnabled: () => false,
+      agent: {
+        stream: async function* () {
+          yield {
+            type: 'text' as const,
+            text: unparseable,
+            delta: unparseable,
+          }
+        },
+      },
+    }
+
+    await expect(
+      generateCardsForChapter({
+        host,
+        chapterIndex: 0,
+        projectTopic: 'Topic',
+        chapterTitle: 'Chapter',
+        chapterContract: 'Contract',
+        knowledgePath,
+        cardsPath: 'project/chapter/cards.md',
+        level: 'beginner',
+        usedCardUuids: new Set(),
+        runId: 'run',
+        projectId: 'project',
+        chapterId: 'chapter',
+      }),
+    ).rejects.toThrow('No card drafts generated for chapter: Chapter')
+
+    const message = String(warn.mock.calls[0][0])
+    expect(message).toContain('without producing a parseable card block')
+    expect(message).toContain(`stream-output length: ${unparseable.length}`)
+    const logged = warn.mock.calls
+      .map((call) =>
+        call.map((part: unknown) => JSON.stringify(part)).join(' '),
+      )
+      .join('\n')
+    expect(logged).not.toContain(unparseable)
+    warn.mockRestore()
+  })
+
   it('rejects an explicit abort before writing streamed cards', async () => {
     const knowledgePath = 'project/chapter/knowledge.md'
     const cardsPath = 'project/chapter/cards.md'
