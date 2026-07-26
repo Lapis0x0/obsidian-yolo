@@ -447,9 +447,7 @@ export function useChatStreamManager({
             message.metadata?.generationState === 'streaming',
         )
       ) {
-        requestAnimationFrame(() => {
-          autoScrollToBottom()
-        })
+        autoScrollToBottom()
       }
     }
 

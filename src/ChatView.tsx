@@ -52,6 +52,7 @@ export class ChatView extends ItemView {
   private runtimeSnapshot: ChatRuntimeSnapshot | null = null
   private rebuildScheduled = false
   private rebuildRafId: number | null = null
+  private rebuildRafWindow: Window | null = null
   private isClosed = false
   private isApplyingPersistedViewState = false
   private pendingRestoredConversationId?: string
@@ -175,8 +176,11 @@ export class ChatView extends ItemView {
     this.runtimeSnapshot =
       this.chatRef.current?.getRuntimeSnapshot() ?? this.runtimeSnapshot
     if (this.rebuildRafId !== null) {
-      window.cancelAnimationFrame(this.rebuildRafId)
+      ;(this.rebuildRafWindow ?? this.containerEl.win).cancelAnimationFrame(
+        this.rebuildRafId,
+      )
       this.rebuildRafId = null
+      this.rebuildRafWindow = null
     }
     this.rebuildScheduled = false
     this.plugin.getChatLeafSessionManager().unregisterLeaf(this.leaf)
@@ -197,8 +201,11 @@ export class ChatView extends ItemView {
     if (this.isClosed) return
     if (this.rebuildScheduled) return
     this.rebuildScheduled = true
-    this.rebuildRafId = window.requestAnimationFrame(() => {
+    const ownerWindow = this.containerEl.win
+    this.rebuildRafWindow = ownerWindow
+    this.rebuildRafId = ownerWindow.requestAnimationFrame(() => {
       this.rebuildRafId = null
+      this.rebuildRafWindow = null
       this.rebuildScheduled = false
       // Bail out if the view was closed between scheduling and firing.
       if (this.isClosed) return

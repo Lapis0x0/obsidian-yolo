@@ -14,6 +14,7 @@ import { spawn as crossSpawn } from 'cross-spawn'
 import { v4 as uuidv4 } from 'uuid'
 
 import type { TaskSource } from '../../../types/chat'
+import { acquireBackgroundExecution } from '../../background/backgroundExecutionController'
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
 import { liveTaskStreamBus } from '../live-stream/taskStreamBus'
 
@@ -80,6 +81,7 @@ type ActiveCommand = {
   backgroundCompletedEmitted?: boolean
   backgroundIdleTimer?: ReturnType<typeof setTimeout> | null
   backgroundCompletionTimer?: ReturnType<typeof setTimeout> | null
+  releaseBackgroundExecution?: (() => void) | null
   lastWaitingStdoutBytes: number
   lastWaitingStderrBytes: number
 }
@@ -477,6 +479,13 @@ const clearBackgroundCompletionTimer = (active: ActiveCommand | null): void => {
   active.backgroundCompletionTimer = null
 }
 
+const releaseCommandBackgroundExecution = (
+  active: ActiveCommand | null,
+): void => {
+  active?.releaseBackgroundExecution?.()
+  if (active) active.releaseBackgroundExecution = null
+}
+
 const pushLiveCommandStatus = (
   active: ActiveCommand | null,
   status: 'starting' | 'running' | 'done',
@@ -593,6 +602,7 @@ const emitBackgroundCommandCompleted = (session: BashSession): void => {
   })
 
   pushLiveCommandStatus(active, 'done')
+  releaseCommandBackgroundExecution(active)
   session.activeCommand = null
   session.lastUsedAt = Date.now()
 }
@@ -683,6 +693,7 @@ const handleSessionStdout = (session: BashSession, text: string): void => {
       active.exitCode = marker.exitCode
       active.doneAt = Date.now()
       emitBackgroundCommandCompleted(session)
+      releaseCommandBackgroundExecution(active)
       pushLiveCommandStatus(active, 'done')
       notifyWaiters(session)
       continue
@@ -808,6 +819,7 @@ const createSession = async (cwd?: string): Promise<BashSession> => {
       active.doneAt = Date.now()
     }
     emitBackgroundCommandCompleted(session)
+    releaseCommandBackgroundExecution(active)
     pushLiveCommandStatus(active, 'done')
     notifyWaiters(session)
   })
@@ -912,6 +924,7 @@ const waitForCommandState = async ({
       const result = buildResult(session, 'completed', outputSnapshotOptions)
       clearBackgroundIdleTimer(active)
       clearBackgroundCompletionTimer(active)
+      releaseCommandBackgroundExecution(active)
       session.activeCommand = null
       session.lastUsedAt = Date.now()
       pushLiveCommandStatus(active, 'done')
@@ -1164,6 +1177,7 @@ export async function runBash(params: RunBashParams): Promise<RunBashResult> {
     session.activeCommand?.backgroundRecord?.abortController.abort()
     clearBackgroundIdleTimer(session.activeCommand)
     clearBackgroundCompletionTimer(session.activeCommand)
+    releaseCommandBackgroundExecution(session.activeCommand)
     pushLiveCommandStatus(session.activeCommand, 'done')
     session.killProcess()
     sessions.delete(session.id)
@@ -1183,6 +1197,10 @@ export async function runBash(params: RunBashParams): Promise<RunBashResult> {
       )
     }
     const token = makeToken()
+    const releaseBackgroundExecution =
+      params.background === true
+        ? await acquireBackgroundExecution()
+        : undefined
     session.lastSnapshot = null
     session.activeCommand = {
       token,
@@ -1193,6 +1211,7 @@ export async function runBash(params: RunBashParams): Promise<RunBashResult> {
       lastOutputAt: Date.now(),
       backgroundIdleTimer: null,
       backgroundCompletionTimer: null,
+      releaseBackgroundExecution,
       lastWaitingStdoutBytes: 0,
       lastWaitingStderrBytes: 0,
     }
@@ -1247,6 +1266,7 @@ export function killAllBashSessions(): void {
     try {
       clearBackgroundIdleTimer(session.activeCommand)
       clearBackgroundCompletionTimer(session.activeCommand)
+      releaseCommandBackgroundExecution(session.activeCommand)
       session.killProcess()
     } catch {
       // best-effort cleanup

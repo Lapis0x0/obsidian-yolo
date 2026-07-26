@@ -18,6 +18,10 @@ import {
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
+import {
+  acquireBackgroundExecution,
+  runWithBackgroundExecution,
+} from '../background/backgroundExecutionController'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
 import {
   TERMINAL_COMMAND_TOOL_NAME,
@@ -1583,39 +1587,41 @@ export class AgentService {
       messagesBeforeApproval,
       toolCall.request.id,
     )
-    const result = await captureLLMDebugOperation({
-      traceId: debugTraceId,
-      signal: lastRunInput.abortSignal,
-      transportMode: 'mcp',
-      url: `mcp://${toolCall.request.name}`,
-      method: 'callTool',
-      requestBody: {
-        name: toolCall.request.name,
-        args: toolArgs,
-        id: toolCall.request.id,
-        conversationId,
-        roundId: toolMessage.id,
-        chatModelId: lastRunInput.model.id,
-      },
-      responseContentType: 'application/json',
-      run: () =>
-        lastRunInput.mcpManager.callTool({
+    const result = await runWithBackgroundExecution(() =>
+      captureLLMDebugOperation({
+        traceId: debugTraceId,
+        signal: lastRunInput.abortSignal,
+        transportMode: 'mcp',
+        url: `mcp://${toolCall.request.name}`,
+        method: 'callTool',
+        requestBody: {
           name: toolCall.request.name,
           args: toolArgs,
           id: toolCall.request.id,
           conversationId,
-          conversationMessages: runningMessages,
           roundId: toolMessage.id,
           chatModelId: lastRunInput.model.id,
-          workspaceScope: lastRunInput.workspaceScope,
-          runContext: lastRunContext ?? undefined,
-          subagentParentContext: buildSubagentParentContext(
-            lastRunInput,
-            lastLoopConfig,
-          ),
-        }),
-      getResponseBody: (response) => response,
-    })
+        },
+        responseContentType: 'application/json',
+        run: () =>
+          lastRunInput.mcpManager.callTool({
+            name: toolCall.request.name,
+            args: toolArgs,
+            id: toolCall.request.id,
+            conversationId,
+            conversationMessages: runningMessages,
+            roundId: toolMessage.id,
+            chatModelId: lastRunInput.model.id,
+            workspaceScope: lastRunInput.workspaceScope,
+            runContext: lastRunContext ?? undefined,
+            subagentParentContext: buildSubagentParentContext(
+              lastRunInput,
+              lastLoopConfig,
+            ),
+          }),
+        getResponseBody: (response) => response,
+      }),
+    )
 
     const nextMessages = this.updateToolCallResponse({
       conversationId,
@@ -1883,14 +1889,16 @@ export class AgentService {
     const toolArgs = getToolCallArgumentsObject(request.arguments)
     let result: ToolCallResponse
     try {
-      result = await entry.mcpManager.callTool({
-        name: request.name,
-        args: toolArgs,
-        id: request.id,
-        conversationId: entry.parentConversationId,
-        conversationMessages: entry.runtime.getMessages(),
-        roundId: located.toolMessage.id,
-      })
+      result = await runWithBackgroundExecution(() =>
+        entry.mcpManager.callTool({
+          name: request.name,
+          args: toolArgs,
+          id: request.id,
+          conversationId: entry.parentConversationId,
+          conversationMessages: entry.runtime.getMessages(),
+          roundId: located.toolMessage.id,
+        }),
+      )
     } catch (error) {
       result = {
         status: ToolCallResponseStatus.Error,
@@ -2240,6 +2248,7 @@ export class AgentService {
       this.recomputeConversationState(conversationId, publishMode)
     })
 
+    const backgroundExecutionReleasePromise = acquireBackgroundExecution()
     try {
       await runtime.run(runtimeInput)
 
@@ -2295,6 +2304,8 @@ export class AgentService {
         lastRunInput: input,
         lastLoopConfig: loopConfig,
       })
+      const releaseBackgroundExecution = await backgroundExecutionReleasePromise
+      releaseBackgroundExecution()
     }
   }
 

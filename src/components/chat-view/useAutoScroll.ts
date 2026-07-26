@@ -16,6 +16,11 @@ type UseAutoScrollProps = {
   followKey?: string
 }
 
+type ScheduledFrame = {
+  window: Window
+  id: number
+}
+
 type ScrollTransitionInput = {
   isFollowing: boolean
   previousScrollTop: number
@@ -77,8 +82,8 @@ export function useAutoScroll({
   const [autoFollowState, setAutoFollowState] = useState(true)
   const lastObservedScrollTopRef = useRef(0)
   const lastMaxScrollTopRef = useRef(0)
-  const followFrameRef = useRef<number | null>(null)
-  const reattachIntentFrameRef = useRef<number | null>(null)
+  const followFrameRef = useRef<ScheduledFrame | null>(null)
+  const reattachIntentFrameRef = useRef<ScheduledFrame | null>(null)
   const hasReattachIntentRef = useRef(false)
   const pointerDownRef = useRef(false)
   const pointerMomentumRef = useRef(false)
@@ -97,7 +102,9 @@ export function useAutoScroll({
 
   const cancelScheduledFollow = useCallback(() => {
     if (followFrameRef.current !== null) {
-      cancelAnimationFrame(followFrameRef.current)
+      followFrameRef.current.window.cancelAnimationFrame(
+        followFrameRef.current.id,
+      )
       followFrameRef.current = null
     }
   }, [])
@@ -105,7 +112,9 @@ export function useAutoScroll({
   const clearReattachIntent = useCallback(() => {
     hasReattachIntentRef.current = false
     if (reattachIntentFrameRef.current !== null) {
-      cancelAnimationFrame(reattachIntentFrameRef.current)
+      reattachIntentFrameRef.current.window.cancelAnimationFrame(
+        reattachIntentFrameRef.current.id,
+      )
       reattachIntentFrameRef.current = null
     }
   }, [])
@@ -116,11 +125,16 @@ export function useAutoScroll({
       return
     }
 
-    reattachIntentFrameRef.current = requestAnimationFrame(() => {
-      reattachIntentFrameRef.current = null
-      hasReattachIntentRef.current = false
-    })
-  }, [])
+    const scrollContainer = getScrollContainer()
+    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+    reattachIntentFrameRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.requestAnimationFrame(() => {
+        reattachIntentFrameRef.current = null
+        hasReattachIntentRef.current = false
+      }),
+    }
+  }, [getScrollContainer])
 
   const stopAutoFollow = useCallback(() => {
     cancelScheduledFollow()
@@ -159,13 +173,18 @@ export function useAutoScroll({
       return
     }
 
-    followFrameRef.current = requestAnimationFrame(() => {
-      followFrameRef.current = null
-      if (autoFollowRef.current) {
-        scrollToBottom()
-      }
-    })
-  }, [scrollToBottom])
+    const scrollContainer = getScrollContainer()
+    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+    followFrameRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.requestAnimationFrame(() => {
+        followFrameRef.current = null
+        if (autoFollowRef.current) {
+          scrollToBottom()
+        }
+      }),
+    }
+  }, [getScrollContainer, scrollToBottom])
 
   const forceScrollToBottom = useCallback(() => {
     updateAutoFollow(true)

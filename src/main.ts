@@ -45,6 +45,7 @@ import {
   BackgroundActivityAction,
   BackgroundActivityRegistry,
 } from './core/background/backgroundActivityRegistry'
+import { backgroundExecutionController } from './core/background/backgroundExecutionController'
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
@@ -2540,6 +2541,7 @@ export default class YoloPlugin extends Plugin {
     void import('./core/agent/subagent/runner').then(
       ({ abortAllSubagentTasks }) => abortAllSubagentTasks(),
     )
+    backgroundExecutionController.dispose()
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
     this.clearTabCompletionTimer()

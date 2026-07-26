@@ -18,6 +18,7 @@ import remarkMath from 'remark-math'
 
 import { useApp } from '../../contexts/app-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
+import { getNodeWindow } from '../../utils/dom/window-context'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
 
 import {
@@ -206,7 +207,9 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
   const [displayedContent, setDisplayedContent] = useState(content)
   const displayedContentRef = useRef(content)
   const targetContentRef = useRef(content)
+  const containerRef = useRef<HTMLDivElement>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const animationWindowRef = useRef<Window | null>(null)
   const lastFrameTimeRef = useRef<number | null>(null)
 
   const handleInternalLinkClick = useCallback(
@@ -235,9 +238,12 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
 
   const cancelRevealAnimation = useCallback(() => {
     if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current)
+      ;(
+        animationWindowRef.current ?? getNodeWindow(containerRef.current)
+      ).cancelAnimationFrame(animationFrameRef.current)
       animationFrameRef.current = null
     }
+    animationWindowRef.current = null
     lastFrameTimeRef.current = null
   }, [])
 
@@ -245,6 +251,8 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
     if (animationFrameRef.current !== null) {
       return
     }
+    const ownerWindow = getNodeWindow(containerRef.current)
+    animationWindowRef.current = ownerWindow
 
     const tick = (timestamp: number) => {
       const target = targetContentRef.current
@@ -253,6 +261,7 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
 
       if (backlog <= 0) {
         animationFrameRef.current = null
+        animationWindowRef.current = null
         lastFrameTimeRef.current = null
         return
       }
@@ -276,14 +285,17 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
       }
 
       animationFrameRef.current =
-        nextRevealIndex < target.length ? requestAnimationFrame(tick) : null
+        nextRevealIndex < target.length
+          ? ownerWindow.requestAnimationFrame(tick)
+          : null
 
       if (nextRevealIndex >= target.length) {
+        animationWindowRef.current = null
         lastFrameTimeRef.current = null
       }
     }
 
-    animationFrameRef.current = requestAnimationFrame(tick)
+    animationFrameRef.current = ownerWindow.requestAnimationFrame(tick)
   }, [])
 
   useEffect(() => {
@@ -324,6 +336,7 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
 
   return (
     <div
+      ref={containerRef}
       className={`markdown-rendered yolo-markdown-rendered yolo-streaming-markdown yolo-scale-${scale}`}
     >
       <ReactMarkdown
