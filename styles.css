@@ -13553,8 +13553,9 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 .yolo-chat-user-input-file-badge {
   display: flex;
   align-items: center;
-  background-color: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
   border-radius: var(--radius-s);
   font-size: var(--font-smallest);
   padding: var(--size-2-1) var(--size-4-1);
@@ -13581,6 +13582,12 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 
 .yolo-chat-user-input-file-badge:hover {
   background-color: var(--background-modifier-hover);
+}
+
+.yolo-chat-user-input-file-badge:hover:not(
+    .yolo-chat-user-input-file-badge-focused
+  ) {
+  border-color: var(--background-modifier-border);
 }
 
 button.yolo-chat-user-input-file-badge-delete,
@@ -19665,7 +19672,8 @@ button.yolo-subagent-approval__bulk-btn--ghost:focus-visible {
 .yolo-todo-panel {
   display: flex;
   flex-direction: column-reverse;
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
   border-radius: var(--radius-m, 8px);
   background: var(--background-primary);
   font-size: var(--font-ui-small);
@@ -19759,6 +19767,7 @@ button.yolo-todo-panel__icon-button svg {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
+  color: var(--text-normal);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

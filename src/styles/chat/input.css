@@ -4106,8 +4106,9 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 .yolo-chat-user-input-file-badge {
   display: flex;
   align-items: center;
-  background-color: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
   border-radius: var(--radius-s);
   font-size: var(--font-smallest);
   padding: var(--size-2-1) var(--size-4-1);
@@ -4134,6 +4135,12 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 
 .yolo-chat-user-input-file-badge:hover {
   background-color: var(--background-modifier-hover);
+}
+
+.yolo-chat-user-input-file-badge:hover:not(
+    .yolo-chat-user-input-file-badge-focused
+  ) {
+  border-color: var(--background-modifier-border);
 }
 
 button.yolo-chat-user-input-file-badge-delete,
