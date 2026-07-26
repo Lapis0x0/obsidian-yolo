@@ -32,6 +32,8 @@ const FLOATING_RAIL_POSITION_TRANSITION =
 const FLOATING_ACTIONS_POSITION_TRANSITION =
   'top 180ms ease, left 180ms ease, opacity 140ms ease'
 const FLOATING_OPACITY_TRANSITION = 'opacity 140ms ease'
+const FLOATING_ACTIONS_RAIL_OFFSET = 4
+const FLOATING_CONTROLS_EDGE_INSET = 2
 
 class InlineReviewWidget extends WidgetType {
   constructor(
@@ -169,6 +171,7 @@ export class InlineDiffReviewOverlay {
   private closed = false
   private settled = false
   private renderQueued = false
+  private positionUpdateQueued = false
 
   private floatingRoot: HTMLDivElement | null = null
   private floatingRail: HTMLDivElement | null = null
@@ -436,7 +439,9 @@ export class InlineDiffReviewOverlay {
   }
 
   private handleViewUpdate(update: ViewUpdate): void {
-    if (!update.docChanged || this.closed) return
+    if (this.closed) return
+    if (update.geometryChanged) this.queuePositionUpdate()
+    if (!update.docChanged) return
     this.suggestions = this.suggestions.map((suggestion) => ({
       ...suggestion,
       from: update.changes.mapPos(suggestion.from, -1),
@@ -451,6 +456,17 @@ export class InlineDiffReviewOverlay {
       if (!this.closed && this.suggestions.length > 0) {
         this.renderSuggestions({ ensureVisible: false })
       }
+    })
+  }
+
+  private queuePositionUpdate(): void {
+    if (this.positionUpdateQueued) return
+    this.positionUpdateQueued = true
+    queueMicrotask(() => {
+      this.positionUpdateQueued = false
+      if (this.closed) return
+      this.updateFloatingPosition({ animate: false })
+      this.updateToolbarPosition()
     })
   }
 
@@ -501,7 +517,23 @@ export class InlineDiffReviewOverlay {
     )
     const contentRect = this.options.view.contentDOM.getBoundingClientRect()
     const preferredRailLeft = contentRect.right - hostRect.left + 8
-    const railLeft = clampNumber(preferredRailLeft, 16, hostRect.width - 84)
+    const actionsWidth = actions.offsetWidth || 26
+    const scrollRect = this.options.view.scrollDOM.getBoundingClientRect()
+    const scrollbarWidth =
+      this.options.view.scrollDOM.offsetWidth -
+      this.options.view.scrollDOM.clientWidth
+    const controlsRight = Math.min(
+      hostRect.width,
+      scrollRect.right - hostRect.left - scrollbarWidth,
+    )
+    const maxRailLeft = Math.max(
+      16,
+      controlsRight -
+        FLOATING_ACTIONS_RAIL_OFFSET -
+        actionsWidth -
+        FLOATING_CONTROLS_EDGE_INSET,
+    )
+    const railLeft = clampNumber(preferredRailLeft, 16, maxRailLeft)
 
     rail.style.left = `${railLeft}px`
     rail.style.top = `${top}px`
@@ -513,11 +545,10 @@ export class InlineDiffReviewOverlay {
       6,
       Math.max(6, hostRect.height - actionHeight - 6),
     )
-    const actionsWidth = actions.offsetWidth || 26
     actions.style.left = `${clampNumber(
-      railLeft + 14,
+      railLeft + FLOATING_ACTIONS_RAIL_OFFSET,
       20,
-      Math.max(20, hostRect.width - actionsWidth - 8),
+      Math.max(20, controlsRight - actionsWidth - FLOATING_CONTROLS_EDGE_INSET),
     )}px`
     actions.style.top = `${actionTop}px`
   }
