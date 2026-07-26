@@ -17898,7 +17898,9 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 .yolo-inline-review-toolbar {
   position: absolute;
   left: 50%;
-  bottom: var(--size-4-3);
+  bottom: calc(
+    var(--size-4-3) + var(--yolo-inline-review-status-bar-offset, 0px)
+  );
   transform: translateX(-50%);
   display: flex;
   justify-content: center;
@@ -17979,6 +17981,16 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 .yolo-inline-review-toolbar .yolo-exclude {
   color: white;
   background: rgba(var(--yolo-current-color-rgb, 185, 28, 28), 0.8);
+}
+
+.yolo-inline-review-toolbar .yolo-accept:hover {
+  color: white;
+  background: rgba(var(--yolo-incoming-color-rgb, 4, 120, 87), 0.95);
+}
+
+.yolo-inline-review-toolbar .yolo-exclude:hover {
+  color: white;
+  background: rgba(var(--yolo-current-color-rgb, 185, 28, 28), 0.95);
 }
 
 body.is-mobile .yolo-inline-review-toolbar {

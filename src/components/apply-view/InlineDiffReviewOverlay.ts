@@ -303,8 +303,10 @@ export class InlineDiffReviewOverlay {
     this.floatingRail = rail
     this.floatingActions = actions
 
-    this.onViewportChange = () =>
+    this.onViewportChange = () => {
       this.updateFloatingPosition({ animate: false })
+      this.updateToolbarPosition()
+    }
     this.options.view.scrollDOM.addEventListener(
       'scroll',
       this.onViewportChange,
@@ -378,6 +380,32 @@ export class InlineDiffReviewOverlay {
 
     this.toolbarRoot = toolbar
     this.progressElement = progress
+    this.updateToolbarPosition()
+  }
+
+  private updateToolbarPosition(): void {
+    const toolbar = this.toolbarRoot
+    const pill = toolbar?.querySelector<HTMLElement>(
+      '.yolo-inline-review-toolbar-pill',
+    )
+    const statusBar = document.querySelector<HTMLElement>('.status-bar')
+    if (!toolbar || !pill || !statusBar) return
+
+    const hostRect = this.options.view.dom.getBoundingClientRect()
+    const pillRect = pill.getBoundingClientRect()
+    const statusBarRect = statusBar.getBoundingClientRect()
+    const intersectsHorizontally =
+      pillRect.right > statusBarRect.left && pillRect.left < statusBarRect.right
+    const intersectsViewBottom =
+      hostRect.bottom > statusBarRect.top && hostRect.top < statusBarRect.bottom
+    const statusBarOffset =
+      intersectsHorizontally && intersectsViewBottom
+        ? Math.min(statusBarRect.height, hostRect.bottom - statusBarRect.top)
+        : 0
+
+    toolbar.setCssProps({
+      '--yolo-inline-review-status-bar-offset': `${statusBarOffset}px`,
+    })
   }
 
   private unmountControls(): void {
