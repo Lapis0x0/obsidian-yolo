@@ -49,6 +49,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     }
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: async () => agent,
     }).create('learning', lifecycle)
     activation.activate()
@@ -119,6 +120,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
   it('rejects work before activation and after disposal', () => {
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: async () => ({}) as YoloAgentApi,
     }).create('learning', lifecycle)
     const request = {
@@ -149,6 +151,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     } satisfies YoloAgentApi
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: async () => agent,
     }).create('example-module', lifecycle)
     activation.activate()
@@ -179,6 +182,105 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     lifecycle.dispose()
   })
 
+  it('logs module output only under the live host debug-capture opt-in', async () => {
+    const group = jest
+      .spyOn(console, 'groupCollapsed')
+      .mockImplementation(() => undefined)
+    const debug = jest
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined)
+    const groupEnd = jest
+      .spyOn(console, 'groupEnd')
+      .mockImplementation(() => undefined)
+    let enabled = false
+    const agent = {
+      run: jest.fn(),
+      abort: jest.fn(),
+      stream: async function* () {
+        yield {
+          type: 'text' as const,
+          conversationId: 'private',
+          messageId: 'private',
+          text: 'raw model output',
+          delta: 'raw model output',
+          streaming: true,
+        }
+        yield {
+          type: 'completed' as const,
+          conversationId: 'private',
+          text: 'raw model output',
+        }
+      },
+    } satisfies YoloAgentApi
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => enabled,
+      getAgentApi: async () => agent,
+    }).create('learning', lifecycle)
+    activation.activate()
+    const request = {
+      prompt: 'Question',
+      systemPrompt: 'System',
+      capability: 'none' as const,
+      activity: { title: 'Generating cards', detail: 'Chapter one' },
+    }
+
+    await collect(activation.api.stream(request))
+    expect(group).not.toHaveBeenCalled()
+    expect(debug).not.toHaveBeenCalled()
+
+    enabled = true
+    await collect(activation.api.stream(request))
+    expect(group).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '[yolo-module-agent] learning completed · Generating cards — Chapter one',
+      ),
+    )
+    expect(debug).toHaveBeenCalledWith('raw model output')
+
+    lifecycle.dispose()
+    group.mockRestore()
+    debug.mockRestore()
+    groupEnd.mockRestore()
+  })
+
+  it('does not emit an empty debug log for an aborted module request', async () => {
+    const group = jest
+      .spyOn(console, 'groupCollapsed')
+      .mockImplementation(() => undefined)
+    const agent = {
+      run: jest.fn(),
+      abort: jest.fn(),
+      stream: async function* () {
+        yield {
+          type: 'state' as const,
+          conversationId: 'private',
+          status: 'aborted' as const,
+        }
+      },
+    } satisfies YoloAgentApi
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => true,
+      getAgentApi: async () => agent,
+    }).create('learning', lifecycle)
+    activation.activate()
+
+    await expect(
+      collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+        }),
+      ),
+    ).resolves.toEqual([{ type: 'aborted' }])
+    expect(group).not.toHaveBeenCalled()
+
+    lifecycle.dispose()
+    group.mockRestore()
+  })
+
   it('does not misclassify an uncorrelated Core AbortError as cancellation', async () => {
     const abortError = new Error('Core run cancelled')
     abortError.name = 'AbortError'
@@ -192,6 +294,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     } satisfies YoloAgentApi
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: async () => agent,
     }).create('example-module', lifecycle)
     activation.activate()
@@ -234,6 +337,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     } satisfies YoloAgentApi
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: async () => agent,
     }).create('learning', lifecycle)
     activation.activate()
@@ -263,6 +367,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     })
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: () => {
         started()
         return new Promise<YoloAgentApi>(() => undefined)
@@ -307,6 +412,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     } satisfies YoloAgentApi
     const lifecycle = new ModuleLifecycleScope()
     const activation = new CoreModuleAgentCapabilityProvider({
+      isDebugCaptureEnabled: () => false,
       getAgentApi: async () => agent,
     }).create('learning', lifecycle)
     activation.activate()

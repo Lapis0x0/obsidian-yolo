@@ -1,4 +1,4 @@
-import { emitCardFailureDiagnostics } from './debugLog'
+import { emitCardFailureDiagnostics } from './cardFailureDiagnostics'
 
 describe('emitCardFailureDiagnostics', () => {
   let warn: jest.SpyInstance
@@ -11,22 +11,50 @@ describe('emitCardFailureDiagnostics', () => {
     warn.mockRestore()
   })
 
-  it('reports counts for a stream that produced no parseable block', () => {
+  it('reports a stream that produced no complete card block', () => {
     emitCardFailureDiagnostics({
       chapterTitle: 'Integer Remainders',
-      reason: 'no-drafts',
+      reason: 'no-usable-drafts',
       publishedCards: 0,
-      discardedBlocks: 3,
+      discardedBlocks: 0,
       inspectedLength: 812,
       inspectedSource: 'stream-output',
+      parserRejections: [],
     })
 
     const message = String(warn.mock.calls[0][0])
     expect(message).toContain('Integer Remainders')
-    expect(message).toContain('without producing a parseable card block')
+    expect(message).toContain('without a complete card block')
     expect(message).toContain('published: 0')
-    expect(message).toContain('discarded: 3')
+    expect(message).toContain('discarded: 0')
     expect(message).toContain('stream-output length: 812')
+  })
+
+  it('lists the fixed parser rules that rejected completed blocks', () => {
+    emitCardFailureDiagnostics({
+      chapterTitle: 'Integer Remainders',
+      reason: 'no-usable-drafts',
+      publishedCards: 0,
+      discardedBlocks: 1,
+      inspectedLength: 812,
+      inspectedSource: 'stream-output',
+      parserRejections: [
+        {
+          blockIndex: 1,
+          errors: ['kp:bbbbbbbb does not belong to this chapter'],
+        },
+      ],
+    })
+
+    expect(String(warn.mock.calls[0][0])).toContain(
+      'every completed card block was rejected',
+    )
+    expect(warn.mock.calls[1][1]).toEqual([
+      {
+        blockIndex: 1,
+        errors: ['kp:bbbbbbbb does not belong to this chapter'],
+      },
+    ])
   })
 
   it('lists card identifiers and validation labels when every card is rejected', () => {
@@ -37,7 +65,9 @@ describe('emitCardFailureDiagnostics', () => {
       discardedBlocks: 2,
       inspectedLength: 480,
       inspectedSource: 'cards-file',
-      rejected: [{ cardUuid: 'aaaaaaaa', errors: ['missing kp UUID'] }],
+      validationRejections: [
+        { cardUuid: 'aaaaaaaa', errors: ['missing kp UUID'] },
+      ],
     })
 
     expect(String(warn.mock.calls[0][0])).toContain('every parsed card failed')
@@ -51,11 +81,12 @@ describe('emitCardFailureDiagnostics', () => {
     const secret = 'SENSITIVE-CARD-BODY'
     emitCardFailureDiagnostics({
       chapterTitle: 'Chapter',
-      reason: 'no-drafts',
+      reason: 'no-usable-drafts',
       publishedCards: 0,
       discardedBlocks: 1,
       inspectedLength: secret.length,
       inspectedSource: 'stream-output',
+      parserRejections: [{ blockIndex: 1, errors: ['missing title'] }],
     })
 
     const logged = warn.mock.calls

@@ -8,6 +8,7 @@ import { getLocalFileToolServerName } from '../mcp/localFileToolNames'
 import { getToolName } from '../mcp/tool-name-utils'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
+import { ModuleAgentDebugCollector } from './moduleAgentDebugLog'
 import { assertModuleId } from './moduleStore'
 import type {
   YoloModuleAgentCapabilityV1,
@@ -31,6 +32,7 @@ export type ModuleAgentCapabilityProviderV1 = {
 
 export type CoreModuleAgentCapabilityProviderOptions = {
   getAgentApi(): Promise<YoloAgentApi>
+  isDebugCaptureEnabled(): boolean
 }
 
 const localFileToolName = (name: string): string =>
@@ -130,6 +132,7 @@ export class CoreModuleAgentCapabilityProvider
     let terminal = false
     let coreDone = false
     let iterator: AsyncIterator<YoloAgentEvent> | null = null
+    let debug: ModuleAgentDebugCollector | null = null
     try {
       assertAvailable()
       if (controller.signal.aborted) {
@@ -156,6 +159,9 @@ export class CoreModuleAgentCapabilityProvider
       const coreStream = agent.stream(
         mapRequest(request, moduleId, controller.signal),
       )
+      if (this.options.isDebugCaptureEnabled()) {
+        debug = new ModuleAgentDebugCollector(moduleId, request)
+      }
       iterator = coreStream[Symbol.asyncIterator]()
       while (true) {
         const nextResult = await raceAbort(iterator.next(), controller.signal)
@@ -176,6 +182,7 @@ export class CoreModuleAgentCapabilityProvider
         }
         const mapped = mapEvent(event)
         if (!mapped) continue
+        debug?.record(mapped)
         const isTerminal =
           mapped.type === 'completed' ||
           mapped.type === 'aborted' ||
@@ -196,13 +203,16 @@ export class CoreModuleAgentCapabilityProvider
         if (controller.signal.aborted) {
           yield Object.freeze({ type: 'aborted' })
         } else {
-          yield Object.freeze({
+          const mapped = Object.freeze({
             type: 'error',
             message: sanitizeErrorMessage(describeError(error)),
-          })
+          }) satisfies YoloModuleAgentEventV1
+          debug?.record(mapped)
+          yield mapped
         }
       }
     } finally {
+      if (this.options.isDebugCaptureEnabled()) debug?.emit()
       controller.abort()
       if (iterator && !coreDone) safelyReturn(iterator)
       controllers.delete(controller)

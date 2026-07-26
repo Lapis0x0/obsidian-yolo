@@ -49,7 +49,10 @@ import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
 import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
-import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
+import {
+  isLLMDebugCaptureEnabled,
+  setLLMDebugCaptureEnabled,
+} from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type {
   LocalMcpServerRuntime,
@@ -3789,6 +3792,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       new ObsidianModuleContributionRegistrar(this),
       new CoreModuleHostCapabilityProvider({
         agent: new CoreModuleAgentCapabilityProvider({
+          isDebugCaptureEnabled: isLLMDebugCaptureEnabled,
           getAgentApi: async () => {
             await this.warmupAgentService()
             return this.getAgentApi()

@@ -55,7 +55,6 @@ export type CreateLearningUiServicesOptions = Readonly<{
   ownerDocument: Document
   generation?: LearningUiProjectGenerationPort
   getGenerationModelId?: () => string | undefined
-  isGenerationDebugEnabled?: () => boolean
   reportError?: (message: string, error: unknown) => void
 }>
 
@@ -107,7 +106,6 @@ export function createLearningUiServices(
     // does not implement LearningVaultWriteApi's permanent-removal operations.
     vaultWriter: hostWriter as LearningVaultWriteApi,
     agent: createLearningGenerationAgent(host.agent),
-    isDebugEnabled: () => options.isGenerationDebugEnabled?.() ?? false,
   }
 
   const markdown = {
@@ -395,7 +393,6 @@ function buildOutlineBuilderWorkflow({
             const result = await generateKnowledgePointsForChapter({
               host: generationHost,
               modelId: getModelId(),
-              chapterIndex,
               projectTopic: input.projectName || input.topic,
               chapterTitle: chapter.title,
               chapterContract: chapter.contract,
