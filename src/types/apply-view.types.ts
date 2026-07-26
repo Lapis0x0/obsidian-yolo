@@ -12,6 +12,14 @@ export type ApplyViewSelectionRange = {
 
 export type ApplyViewResult = {
   finalContent: string
+  review?: {
+    totalChanges: number
+    rejectedChanges: Array<{
+      index: number
+      originalText: string
+      proposedText: string
+    }>
+  }
 }
 
 export type ApplyReviewEdit = {

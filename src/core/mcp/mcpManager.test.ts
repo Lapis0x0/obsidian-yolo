@@ -2,6 +2,7 @@ jest.mock('obsidian')
 
 import { App, Platform, TFile } from 'obsidian'
 
+import type { ApplyViewState } from '../../types/apply-view.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { McpNotAvailableException } from './exception'
@@ -162,6 +163,42 @@ describe('McpManager mobile built-in tool behavior', () => {
     expect(manager.abortToolCall('tool-call-1')).toBe(true)
     await expect(pendingResult).resolves.toEqual({
       status: ToolCallResponseStatus.Aborted,
+    })
+  })
+
+  it('preserves the rejection reason returned by a reviewed built-in tool', async () => {
+    const manager = createManager(async (state) => {
+      const review = state as ApplyViewState
+      review.callbacks?.onComplete?.({
+        finalContent: 'hello world',
+        review: {
+          totalChanges: 1,
+          rejectedChanges: [
+            {
+              index: 1,
+              originalText: 'hello world',
+              proposedText: 'updated',
+            },
+          ],
+        },
+      })
+      return true
+    })
+
+    await expect(
+      manager.callTool({
+        name: 'yolo_local__fs_edit',
+        args: {
+          path: 'note.md',
+          oldText: 'hello world',
+          newText: 'updated',
+        },
+        requireReview: true,
+      }),
+    ).resolves.toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.',
     })
   })
 

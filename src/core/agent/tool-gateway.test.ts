@@ -1073,6 +1073,8 @@ describe('AgentToolGateway', () => {
     if (followerResponse.status === ToolCallResponseStatus.Success) {
       expect(followerResponse.data.text).toContain('batched fs_edit')
       expect(followerResponse.data.text).toContain('note.md')
+      expect(followerResponse.data.text).toContain('unified review outcome')
+      expect(followerResponse.data.text).not.toContain('Applied')
     }
   })
 

@@ -451,7 +451,10 @@ describe('local fs tool action helpers', () => {
     const modify = jest.fn()
     const read = jest.fn().mockResolvedValue('hello world')
     const openApplyReview = jest.fn().mockImplementation(async (state) => {
-      state.callbacks?.onComplete?.({ finalContent: 'hello changed' })
+      state.callbacks?.onComplete?.({
+        finalContent: 'hello changed',
+        review: { totalChanges: 1, rejectedChanges: [] },
+      })
       return true
     })
 
@@ -489,6 +492,121 @@ describe('local fs tool action helpers', () => {
       totalAddedLines: 1,
       totalRemovedLines: 1,
       undoStatus: 'available',
+    })
+    const payload = JSON.parse(result.text) as Record<string, unknown>
+    expect(payload).toMatchObject({
+      tool: 'fs_edit',
+      path: 'note.md',
+      changed: true,
+      review: { outcome: 'accepted' },
+      message: 'Applied reviewed edit.',
+    })
+    expect(payload).not.toHaveProperty('appliedCount')
+    expect(payload).not.toHaveProperty('operationResults')
+  })
+
+  it('reports partially rejected fs_edit review with compact previews', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const proposedText =
+      'This proposed paragraph is intentionally much longer than forty characters.'
+    const openApplyReview = jest.fn().mockImplementation(async (state) => {
+      state.callbacks?.onComplete?.({
+        finalContent: 'hello changed',
+        review: {
+          totalChanges: 2,
+          rejectedChanges: [
+            {
+              index: 2,
+              originalText: 'world',
+              proposedText,
+            },
+          ],
+        },
+      })
+      return true
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read: jest.fn().mockResolvedValue('hello world'),
+          modify: jest.fn(),
+        },
+      } as unknown as App,
+      openApplyReview,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        oldText: 'world',
+        newText: 'changed',
+      },
+      requireReview: true,
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      review: {
+        outcome: string
+        rejected: Array<{ index: number; preview: string }>
+      }
+      message: string
+    }
+    expect(payload.review.outcome).toBe('partially_rejected')
+    expect(payload.review.rejected[0]?.index).toBe(2)
+    expect(Array.from(payload.review.rejected[0]?.preview ?? '')).toHaveLength(
+      40,
+    )
+    expect(payload.review.rejected[0]?.preview.endsWith('…')).toBe(true)
+    expect(payload.message).toContain('Do not retry')
+  })
+
+  it('returns rejected when every reviewed fs_edit change is declined', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const openApplyReview = jest.fn().mockImplementation(async (state) => {
+      state.callbacks?.onComplete?.({
+        finalContent: 'hello world',
+        review: {
+          totalChanges: 1,
+          rejectedChanges: [
+            { index: 1, originalText: 'world', proposedText: 'changed' },
+          ],
+        },
+      })
+      return true
+    })
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read: jest.fn().mockResolvedValue('hello world'),
+          modify: jest.fn(),
+        },
+      } as unknown as App,
+      openApplyReview,
+      toolName: 'fs_edit',
+      args: {
+        path: 'note.md',
+        oldText: 'world',
+        newText: 'changed',
+      },
+      requireReview: true,
+    })
+
+    expect(result).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.',
     })
   })
 

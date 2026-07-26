@@ -1410,8 +1410,8 @@ export class AgentToolGateway {
         data: {
           type: 'text',
           text:
-            `Applied ${count} operation${plural} to ${path} as part of a batched fs_edit. ` +
-            `The first fs_edit call in this batch carries the unified diff.`,
+            `Processed ${count} operation${plural} for ${path} as part of a batched fs_edit. ` +
+            `The first fs_edit call carries the unified review outcome; do not assume this operation was accepted independently.`,
         },
       }
     })

@@ -246,6 +246,11 @@ export class InlineDiffReviewOverlay {
   >()
   private readonly decorationsField: StateField<DecorationSet>
   private readonly initialChanges: SuggestionChange[]
+  private readonly totalReviewChanges: number
+  private readonly rejectedChanges = new Map<
+    number,
+    { index: number; originalText: string; proposedText: string }
+  >()
   private suggestions: ReviewSuggestion[]
   private currentIndex = 0
   private closed = false
@@ -278,6 +283,7 @@ export class InlineDiffReviewOverlay {
 
     this.initialChanges = isAppliedReview ? [] : plan.changes
     this.suggestions = plan.suggestions
+    this.totalReviewChanges = plan.suggestions.length
     this.currentIndex = findSelectionTargetIndex(
       this.suggestions,
       options.state.selectionRange,
@@ -561,11 +567,21 @@ export class InlineDiffReviewOverlay {
         )
         continue
       }
-      this.suggestions = updateReviewSuggestions(
+      const previousSuggestions = this.suggestions
+      const result = updateReviewSuggestions(
         this.suggestions,
         transaction.changes,
         transaction.newDoc.toString(),
-      ).suggestions
+      )
+      for (const removedId of result.removedIds) {
+        const removed = previousSuggestions.find(
+          (item) => item.id === removedId,
+        )
+        if (removed?.activeSide === 'original') {
+          this.recordRejectedChange(removed)
+        }
+      }
+      this.suggestions = result.suggestions
     }
     this.currentIndex = Math.min(
       this.currentIndex,
@@ -710,6 +726,7 @@ export class InlineDiffReviewOverlay {
     const suggestion = this.suggestions[this.currentIndex]
     if (!suggestion) return
     const captured = this.captureActiveDraft(suggestion)
+    if (side === 'original') this.recordRejectedChange(captured)
     const change = resolveSuggestionChange(
       this.options.view.state.doc.toString(),
       captured,
@@ -764,13 +781,11 @@ export class InlineDiffReviewOverlay {
   private materializePendingSide(side: ReviewSide): void {
     const content = this.options.view.state.doc.toString()
     const changes = this.suggestions
-      .map((suggestion) =>
-        resolveSuggestionChange(
-          content,
-          this.captureActiveDraft(suggestion),
-          side,
-        ),
-      )
+      .map((suggestion) => {
+        const captured = this.captureActiveDraft(suggestion)
+        if (side === 'original') this.recordRejectedChange(captured)
+        return resolveSuggestionChange(content, captured, side)
+      })
       .filter(
         (change) => content.slice(change.from, change.to) !== change.insert,
       )
@@ -798,6 +813,14 @@ export class InlineDiffReviewOverlay {
     )
     if (index >= 0) this.suggestions[index] = captured
     return captured
+  }
+
+  private recordRejectedChange(suggestion: ReviewSuggestion): void {
+    this.rejectedChanges.set(suggestion.id, {
+      index: suggestion.id + 1,
+      originalText: suggestion.originalText,
+      proposedText: suggestion.modifiedText,
+    })
   }
 
   private activateSuggestionSide(
@@ -855,6 +878,12 @@ export class InlineDiffReviewOverlay {
     if (!this.options.state.abortSignal?.aborted) {
       this.options.state.callbacks?.onComplete?.({
         finalContent,
+        review: {
+          totalChanges: this.totalReviewChanges,
+          rejectedChanges: [...this.rejectedChanges.values()].sort(
+            (left, right) => left.index - right.index,
+          ),
+        },
       })
     }
     this.options.onClose()

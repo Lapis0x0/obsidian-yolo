@@ -12,7 +12,10 @@ import {
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { buildPdfPageImageCacheKey } from '../../database/json/chat/imageCacheStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { ApplyViewState } from '../../types/apply-view.types'
+import type {
+  ApplyViewResult,
+  ApplyViewState,
+} from '../../types/apply-view.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import type { ChatModelModality } from '../../types/chat-model.types'
@@ -280,6 +283,7 @@ type LocalToolCallResult =
     }
   | {
       status: ToolCallResponseStatus.Rejected
+      reason?: string
     }
   | {
       status: ToolCallResponseStatus.Error
@@ -310,9 +314,11 @@ type FsEditReviewResult =
   | {
       status: ToolCallResponseStatus.Success
       finalContent: string
+      review: NonNullable<ApplyViewResult['review']>
     }
   | {
       status: ToolCallResponseStatus.Rejected
+      review: NonNullable<ApplyViewResult['review']>
     }
   | {
       status: ToolCallResponseStatus.Aborted
@@ -436,13 +442,21 @@ const waitForFsEditReview = async ({
       selectionRange,
       abortSignal: signal,
       callbacks: {
-        onComplete: ({ finalContent }) => {
+        onComplete: ({ finalContent, review }) => {
+          const resolvedReview = review ?? {
+            totalChanges: 1,
+            rejectedChanges: [],
+          }
           settle(
             finalContent === originalContent
-              ? { status: ToolCallResponseStatus.Rejected }
+              ? {
+                  status: ToolCallResponseStatus.Rejected,
+                  review: resolvedReview,
+                }
               : {
                   status: ToolCallResponseStatus.Success,
                   finalContent,
+                  review: resolvedReview,
                 },
           )
         },
@@ -476,6 +490,37 @@ const waitForFsEditReview = async ({
     }),
   ])
 }
+
+const FS_EDIT_REVIEW_PREVIEW_LENGTH = 40
+
+const buildFsEditReviewPreview = ({
+  originalText,
+  proposedText,
+}: {
+  originalText: string
+  proposedText: string
+}): string => {
+  const normalized = (proposedText || originalText).replace(/\s+/g, ' ').trim()
+  if (!normalized) return '(empty change)'
+  const characters = Array.from(normalized)
+  if (characters.length <= FS_EDIT_REVIEW_PREVIEW_LENGTH) return normalized
+  return `${characters.slice(0, FS_EDIT_REVIEW_PREVIEW_LENGTH - 1).join('')}…`
+}
+
+const buildFsEditReviewPayload = (
+  review: NonNullable<ApplyViewResult['review']>,
+) => {
+  const rejected = review.rejectedChanges.map((change) => ({
+    index: change.index,
+    preview: buildFsEditReviewPreview(change),
+  }))
+  return rejected.length === 0
+    ? { outcome: 'accepted' as const }
+    : { outcome: 'partially_rejected' as const, rejected }
+}
+
+const buildFsEditRejectedReason = (): string =>
+  'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.'
 
 const validateVaultPath = (path: string): string => {
   const normalizedPath = normalizePath(path).trim()
@@ -3981,6 +4026,8 @@ export async function callLocalFileTool({
         }
 
         let appliedContent = nextContent
+        let reviewResultSummary: NonNullable<ApplyViewResult['review']> | null =
+          null
 
         if (requireReview) {
           if (!openApplyReview) {
@@ -4004,10 +4051,14 @@ export async function callLocalFileTool({
             return reviewResult
           }
           if (reviewResult.status === ToolCallResponseStatus.Rejected) {
-            return reviewResult
+            return {
+              status: ToolCallResponseStatus.Rejected,
+              reason: buildFsEditRejectedReason(),
+            }
           }
 
           appliedContent = reviewResult.finalContent
+          reviewResultSummary = reviewResult.review
         } else {
           await maybeWithInternalWrite(promptSourceWatcher, path, () =>
             app.vault.modify(file, nextContent),
@@ -4038,26 +4089,37 @@ export async function callLocalFileTool({
               appliedAt,
             })
 
+        const resultPayload = reviewResultSummary
+          ? {
+              tool: 'fs_edit',
+              path,
+              changed: content !== appliedContent,
+              review: buildFsEditReviewPayload(reviewResultSummary),
+              message:
+                reviewResultSummary.rejectedChanges.length > 0
+                  ? 'Explicit user decision: the listed change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.'
+                  : 'Applied reviewed edit.',
+            }
+          : {
+              tool: 'fs_edit',
+              path,
+              totalOperations: materialized.totalOperations,
+              appliedCount: materialized.appliedCount,
+              operationResults: materialized.operationResults.map((result) => ({
+                type: result.operation.type,
+                changed: result.changed,
+                actualOccurrences: result.actualOccurrences,
+                matchMode: result.matchMode,
+              })),
+              changed: content !== appliedContent,
+              message: overSized
+                ? 'Applied edit (content too large for undo snapshot).'
+                : 'Applied edit.',
+            }
+
         return {
           status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'fs_edit',
-            path,
-            totalOperations: materialized.totalOperations,
-            appliedCount: materialized.appliedCount,
-            operationResults: materialized.operationResults.map((result) => ({
-              type: result.operation.type,
-              changed: result.changed,
-              actualOccurrences: result.actualOccurrences,
-              matchMode: result.matchMode,
-            })),
-            changed: content !== appliedContent,
-            message: overSized
-              ? 'Applied edit (content too large for undo snapshot).'
-              : requireReview
-                ? 'Applied reviewed edit.'
-                : 'Applied edit.',
-          }),
+          text: formatJsonResult(resultPayload),
           metadata,
         }
       }

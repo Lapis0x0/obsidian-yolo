@@ -969,6 +969,9 @@ export class McpManager {
         if (localResult.status === ToolCallResponseStatus.Rejected) {
           return {
             status: ToolCallResponseStatus.Rejected,
+            ...(localResult.reason !== undefined && {
+              reason: localResult.reason,
+            }),
           }
         }
         return {
