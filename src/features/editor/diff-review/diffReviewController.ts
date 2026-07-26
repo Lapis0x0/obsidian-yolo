@@ -1,8 +1,7 @@
-import { Compartment, EditorState, Prec, StateEffect } from '@codemirror/state'
+import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import type { Editor, MarkdownView } from 'obsidian'
 
-import { ApplyReviewOverlay } from '../../../components/apply-view/ApplyReviewOverlay'
 import { InlineDiffReviewOverlay } from '../../../components/apply-view/InlineDiffReviewOverlay'
 import type { ApplyViewActions } from '../../../components/apply-view/types'
 import type YoloPlugin from '../../../main'
@@ -10,10 +9,6 @@ import type {
   ApplyViewCallbacks,
   ApplyViewState,
 } from '../../../types/apply-view.types'
-
-import { buildInlineReviewBlocks, countModifiedBlocks } from './review-model'
-
-const INLINE_DIFF_REVIEW_THRESHOLD = 3
 
 type DiffReviewControllerDeps = {
   plugin: YoloPlugin
@@ -26,52 +21,8 @@ export class DiffReviewController {
   private readonly diffReviewCompartment = new Compartment()
   private readonly extensionViews = new Set<EditorView>()
   private readonly diffReviewExtension = [
-    EditorState.readOnly.of(true),
-    EditorView.editable.of(false),
-    EditorView.theme({
-      '.cm-content': {
-        caretColor: 'transparent',
-      },
-      '.cm-cursorLayer': {
-        display: 'none !important',
-      },
-      '.cm-cursor': {
-        display: 'none !important',
-      },
-      '.cm-fat-cursor': {
-        display: 'none !important',
-      },
-      '.cm-fat-cursor-mark': {
-        display: 'none !important',
-      },
-      '.cm-dropCursor': {
-        display: 'none !important',
-      },
-      '.cm-selectionLayer': {
-        display: 'none !important',
-      },
-      '.cm-selectionBackground': {
-        background: 'transparent !important',
-      },
-    }),
     Prec.high(
       keymap.of([
-        {
-          key: 'Ctrl-ArrowUp',
-          run: () => this.runAction((actions) => actions.goToPreviousDiff()),
-        },
-        {
-          key: 'Ctrl-ArrowDown',
-          run: () => this.runAction((actions) => actions.goToNextDiff()),
-        },
-        {
-          key: 'Mod-ArrowUp',
-          run: () => this.runAction((actions) => actions.goToPreviousDiff()),
-        },
-        {
-          key: 'Mod-ArrowDown',
-          run: () => this.runAction((actions) => actions.goToNextDiff()),
-        },
         {
           key: 'Ctrl-Enter',
           run: () =>
@@ -81,14 +32,6 @@ export class DiffReviewController {
           key: 'Mod-Enter',
           run: () =>
             this.runAction((actions) => actions.acceptIncomingActive()),
-        },
-        {
-          key: 'Ctrl-Backspace',
-          run: () => this.runAction((actions) => actions.acceptCurrentActive()),
-        },
-        {
-          key: 'Mod-Backspace',
-          run: () => this.runAction((actions) => actions.acceptCurrentActive()),
         },
         {
           key: 'Escape',
@@ -121,7 +64,7 @@ export class DiffReviewController {
     const editorView = this.deps.getEditorView(markdownView.editor)
     if (!editorView) return false
 
-    this.startReview(editorView, state)
+    this.startReview(markdownView, editorView, state)
     return true
   }
 
@@ -156,7 +99,11 @@ export class DiffReviewController {
     this.extensionViews.clear()
   }
 
-  private startReview(view: EditorView, state: ApplyViewState): void {
+  private startReview(
+    markdownView: MarkdownView,
+    view: EditorView,
+    state: ApplyViewState,
+  ): void {
     if (this.activeView) {
       this.closeReview()
     }
@@ -185,39 +132,16 @@ export class DiffReviewController {
     this.activeReviewCallbacks = wrappedCallbacks
     this.activeReviewSettled = false
 
-    const modifiedBlockCount = countModifiedBlocks(
-      buildInlineReviewBlocks(
-        reviewStateWithCallbacks.originalContent,
-        reviewStateWithCallbacks.newContent,
-      ),
-    )
-
-    const shouldUseInlineSelectionReview =
-      reviewStateWithCallbacks.reviewMode === 'selection-focus' &&
-      modifiedBlockCount <= INLINE_DIFF_REVIEW_THRESHOLD
-
-    this.activeOverlay = shouldUseInlineSelectionReview
-      ? new InlineDiffReviewOverlay({
-          plugin: this.deps.plugin,
-          view,
-          state: reviewStateWithCallbacks,
-          onClose: () => this.closeReview(),
-          onActionsReady: (actions) => {
-            this.activeActions = actions
-          },
-        })
-      : new ApplyReviewOverlay({
-          plugin: this.deps.plugin,
-          view,
-          state: {
-            ...reviewStateWithCallbacks,
-            reviewMode: 'full',
-          },
-          onClose: () => this.closeReview(),
-          onActionsReady: (actions) => {
-            this.activeActions = actions
-          },
-        })
+    this.activeOverlay = new InlineDiffReviewOverlay({
+      plugin: this.deps.plugin,
+      view,
+      state: reviewStateWithCallbacks,
+      requestSave: () => markdownView.requestSave(),
+      onClose: () => this.closeReview(),
+      onActionsReady: (actions) => {
+        this.activeActions = actions
+      },
+    })
     this.activeOverlay.mount()
   }
 

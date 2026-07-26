@@ -650,11 +650,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   display: block;
 }
 
-/* ApplyView: diff content width */
-.yolo-diff-block-content {
-  width: 100%;
-}
-
 /* Assistants Section */
 .yolo-settings-header-row {
   display: flex;

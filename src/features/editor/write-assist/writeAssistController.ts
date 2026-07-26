@@ -198,6 +198,13 @@ export class WriteAssistController {
         file: activeFile,
         originalContent,
         newContent,
+        reviewEdits: [
+          {
+            from: head.length,
+            to: head.length + selected.length,
+            replacement: rewritten,
+          },
+        ],
         reviewMode: 'selection-focus',
         selectionRange: {
           from,

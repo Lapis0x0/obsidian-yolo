@@ -30,6 +30,9 @@ describe('materializeTextEditPlan', () => {
       start: 0,
       end: 14,
     })
+    expect(result.reviewEdits).toEqual([
+      { from: 6, to: 11, replacement: 'universe' },
+    ])
   })
 
   it('applies insert_after operations', () => {

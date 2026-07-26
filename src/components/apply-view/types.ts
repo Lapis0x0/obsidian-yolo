@@ -3,6 +3,5 @@ export type ApplyViewActions = {
   goToNextDiff: () => void
   acceptIncomingActive: () => void
   acceptCurrentActive: () => void
-  undoActive: () => void
   close: () => void
 }

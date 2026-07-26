@@ -1355,6 +1355,7 @@ export function QuickAskPanel({
           file: targetFile,
           originalContent: targetFileContent,
           newContent: materialized.newContent,
+          reviewEdits: materialized.reviewEdits,
           reviewMode: 'full',
         } satisfies ApplyViewState)
       } catch (error) {
@@ -1465,7 +1466,7 @@ export function QuickAskPanel({
         // runs ~200ms later, after the close animation). Otherwise the
         // pending shimmer keeps painting over the selection through the
         // review and stays visible after the user rejects the diff, because
-        // ApplyView never touches owner='quickask' entries.
+        // the review layer never touches owner='quickask' entries.
         selectionHighlightController.clearByOwner('quickask')
         setIsStreaming(false)
         setRunStatus(null)
@@ -1476,6 +1477,7 @@ export function QuickAskPanel({
           file: targetFile,
           originalContent: currentContent,
           newContent: finalContent,
+          reviewEdits: selectionFrom ? undefined : materialized.reviewEdits,
           reviewMode:
             scopedToSelection && selectionFrom ? 'selection-focus' : undefined,
           selectionRange:

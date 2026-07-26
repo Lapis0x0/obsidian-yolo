@@ -402,6 +402,7 @@ const waitForFsEditReview = async ({
   file,
   originalContent,
   newContent,
+  reviewEdits,
   selectionRange,
   signal,
 }: {
@@ -409,6 +410,7 @@ const waitForFsEditReview = async ({
   file: TFile
   originalContent: string
   newContent: string
+  reviewEdits: ApplyViewState['reviewEdits']
   selectionRange: ApplyViewState['selectionRange']
   signal?: AbortSignal
 }): Promise<FsEditReviewResult> => {
@@ -429,6 +431,7 @@ const waitForFsEditReview = async ({
       file,
       originalContent,
       newContent,
+      reviewEdits,
       reviewMode: selectionRange ? 'selection-focus' : 'full',
       selectionRange,
       abortSignal: signal,
@@ -3989,6 +3992,7 @@ export async function callLocalFileTool({
             file,
             originalContent: content,
             newContent: nextContent,
+            reviewEdits: materialized.reviewEdits,
             selectionRange: getFsEditSelectionRange(
               content,
               materialized.operationResults,

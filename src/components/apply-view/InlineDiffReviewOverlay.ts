@@ -1,25 +1,20 @@
-import {
-  Compartment,
-  RangeSetBuilder,
-  StateEffect,
-  StateField,
-} from '@codemirror/state'
+import { Compartment, StateEffect, StateField } from '@codemirror/state'
 import {
   Decoration,
   DecorationSet,
   EditorView,
+  ViewUpdate,
   WidgetType,
 } from '@codemirror/view'
 
 import {
-  type ReviewDecision,
-  buildInlineReviewBlocks,
-  countOriginalLines,
+  type ReviewSuggestion,
+  buildReviewSuggestionsFromEdits,
+  buildSnapshotReviewSuggestions,
+  resolveSuggestionChange,
 } from '../../features/editor/diff-review/review-model'
-import { ReviewSession } from '../../features/editor/diff-review/review-session'
 import type YoloPlugin from '../../main'
 import type { ApplyViewState } from '../../types/apply-view.types'
-import { type DiffBlock, type InlineDiffToken } from '../../utils/chat/diff'
 
 import type { ApplyViewActions } from './types'
 
@@ -27,17 +22,9 @@ type InlineDiffReviewOverlayOptions = {
   plugin: YoloPlugin
   view: EditorView
   state: ApplyViewState
+  requestSave: () => void
   onClose: () => void
   onActionsReady?: (actions: ApplyViewActions | null) => void
-}
-
-type ModifiedReviewBlock = {
-  blockIndex: number
-  block: Extract<DiffBlock, { type: 'modified' }>
-  from: number
-  to: number
-  startLine: number
-  endLine: number
 }
 
 const FLOATING_RAIL_POSITION_TRANSITION =
@@ -48,76 +35,42 @@ const FLOATING_OPACITY_TRANSITION = 'opacity 140ms ease'
 
 class InlineReviewWidget extends WidgetType {
   constructor(
-    private readonly block: Extract<DiffBlock, { type: 'modified' }>,
-    private readonly reviewIndex: number,
+    private readonly suggestion: ReviewSuggestion,
     private readonly isActive: boolean,
-    private readonly decision: ReviewDecision,
-    private readonly onHover: (reviewIndex: number) => void,
+    private readonly onHover: (suggestionId: number) => void,
   ) {
     super()
   }
 
-  override eq(): boolean {
-    return false
+  override eq(other: InlineReviewWidget): boolean {
+    return (
+      other.suggestion.id === this.suggestion.id &&
+      other.suggestion.modifiedValue === this.suggestion.modifiedValue &&
+      other.isActive === this.isActive
+    )
   }
 
   override toDOM(): HTMLElement {
     const root = document.createElement('div')
     root.className = `yolo-inline-review-widget${this.isActive ? ' is-active' : ''}`
-    root.setAttribute('data-review-index', String(this.reviewIndex))
-
-    if (this.decision !== 'pending') {
-      root.classList.add('is-resolved')
-      const resolved =
-        this.decision === 'incoming'
-          ? (this.block.modifiedValue ?? this.block.originalValue ?? '')
-          : (this.block.originalValue ?? '')
-      const resolvedContainer = document.createElement('div')
-      resolvedContainer.className = 'yolo-inline-review-resolved'
-      const resolvedLines = resolved.split('\n')
-      resolvedLines.forEach((line) => {
-        const lineEl = document.createElement('div')
-        lineEl.className = 'yolo-inline-review-line'
-        lineEl.textContent = line
-        resolvedContainer.appendChild(lineEl)
-      })
-      root.appendChild(resolvedContainer)
-      return root
-    }
+    root.setAttribute('data-review-id', String(this.suggestion.id))
 
     const content = document.createElement('div')
     content.className = 'yolo-inline-review-content'
-    if (this.block.presentation === 'block') {
-      if (this.block.originalValue !== undefined) {
-        content.appendChild(
-          createBlockSection(this.block.originalValue, 'del', 'removed'),
-        )
-      }
-      if (this.block.modifiedValue !== undefined) {
-        content.appendChild(
-          createBlockSection(this.block.modifiedValue, 'add', 'added'),
-        )
-      }
+
+    if (this.suggestion.modifiedValue === undefined) {
+      root.classList.add('is-deletion')
+      const placeholder = document.createElement('div')
+      placeholder.className = 'yolo-inline-review-deletion-placeholder'
+      content.appendChild(placeholder)
     } else {
-      this.block.inlineLines.forEach((line) => {
-        const lineEl = document.createElement('div')
-        lineEl.className = `yolo-inline-review-line is-${line.type}`
-        line.tokens.forEach((token) => {
-          lineEl.appendChild(createTokenElement(token))
-        })
-        content.appendChild(lineEl)
-      })
+      content.appendChild(createBlockSection(this.suggestion.modifiedValue))
     }
+
     root.appendChild(content)
-
-    root.addEventListener('mousedown', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-    })
     root.addEventListener('mouseenter', () => {
-      this.onHover(this.reviewIndex)
+      this.onHover(this.suggestion.id)
     })
-
     return root
   }
 
@@ -126,56 +79,38 @@ class InlineReviewWidget extends WidgetType {
   }
 }
 
-function createTokenElement(token: InlineDiffToken): HTMLElement {
+function createTokenElement(text: string): HTMLElement {
   const span = document.createElement('span')
-  span.textContent = token.text
-  if (token.type === 'add') {
-    span.className = 'yolo-inline-diff yolo-inline-diff-add'
-  } else if (token.type === 'del') {
-    span.className = 'yolo-inline-diff yolo-inline-diff-del'
-  } else {
-    span.className = 'yolo-inline-diff'
-  }
+  span.textContent = text
+  span.className = 'yolo-inline-diff yolo-inline-diff-add'
   return span
 }
 
-function createBlockSection(
-  text: string,
-  tokenType: 'add' | 'del',
-  stateClass: 'added' | 'removed',
-): HTMLElement {
+function createBlockSection(text: string): HTMLElement {
   const section = document.createElement('div')
-  section.className = `yolo-inline-review-section is-${stateClass}`
+  section.className = 'yolo-inline-review-section is-added'
 
   text.split('\n').forEach((line) => {
     const lineEl = document.createElement('div')
     lineEl.className = 'yolo-inline-review-line'
-    lineEl.appendChild(createTokenElement({ type: tokenType, text: line }))
+    lineEl.appendChild(createTokenElement(line))
     section.appendChild(lineEl)
   })
 
   return section
 }
 
-function createActionButton(
-  icon: string,
+function createButton(
+  className: string,
   label: string,
+  content: string,
   onClick: () => void,
 ): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
-  button.className = 'yolo-apply-action'
-  if (icon === '✓') {
-    button.classList.add('yolo-apply-action-accept')
-  }
-  if (icon === '×') {
-    button.classList.add('yolo-apply-action-reject')
-  }
+  button.className = className
   button.setAttribute('aria-label', label)
-  const iconEl = document.createElement('span')
-  iconEl.className = 'yolo-apply-action-icon'
-  iconEl.textContent = icon
-  button.appendChild(iconEl)
+  button.textContent = content
   button.addEventListener('mousedown', (event) => {
     event.preventDefault()
     event.stopPropagation()
@@ -188,68 +123,37 @@ function createActionButton(
   return button
 }
 
+function createActionButton(
+  icon: string,
+  label: string,
+  onClick: () => void,
+): HTMLButtonElement {
+  const button = createButton('yolo-apply-action', label, '', onClick)
+  if (icon === '✓') button.classList.add('yolo-apply-action-accept')
+  if (icon === '×') button.classList.add('yolo-apply-action-reject')
+
+  const iconEl = document.createElement('span')
+  iconEl.className = 'yolo-apply-action-icon'
+  iconEl.textContent = icon
+  button.appendChild(iconEl)
+  return button
+}
+
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
-function lineStartOffset(view: EditorView, line: number): number {
-  if (line >= view.state.doc.lines) return view.state.doc.length
-  return view.state.doc.line(line + 1).from
-}
-
-function lineEndOffset(view: EditorView, line: number): number {
-  if (line >= view.state.doc.lines) return view.state.doc.length
-  return view.state.doc.line(line + 1).to
-}
-
-function resolveModifiedBlocks(
-  view: EditorView,
-  blocks: DiffBlock[],
-): ModifiedReviewBlock[] {
-  const result: ModifiedReviewBlock[] = []
-  let cursorLine = 0
-
-  blocks.forEach((block, blockIndex) => {
-    if (block.type !== 'modified') {
-      cursorLine += countOriginalLines(block)
-      return
-    }
-
-    const lineCount = countOriginalLines(block)
-    const startLine = cursorLine
-    const endLine = lineCount > 0 ? cursorLine + lineCount - 1 : cursorLine
-    const from = lineStartOffset(view, startLine)
-    const to =
-      lineCount > 0
-        ? lineEndOffset(view, endLine)
-        : lineStartOffset(view, cursorLine)
-
-    result.push({
-      blockIndex,
-      block,
-      from,
-      to,
-      startLine,
-      endLine,
-    })
-
-    cursorLine += lineCount
-  })
-
-  return result
-}
-
 function findSelectionTargetIndex(
-  blocks: ModifiedReviewBlock[],
+  suggestions: ReviewSuggestion[],
   selectionRange: ApplyViewState['selectionRange'],
 ): number {
-  if (!selectionRange || blocks.length === 0) return 0
+  if (!selectionRange || suggestions.length === 0) return 0
   const start = Math.min(selectionRange.from.line, selectionRange.to.line)
   const end = Math.max(selectionRange.from.line, selectionRange.to.line)
 
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index]
-    if (block.startLine <= end && block.endLine >= start) {
+  for (let index = 0; index < suggestions.length; index += 1) {
+    const suggestion = suggestions[index]
+    if (suggestion.startLine <= end && suggestion.endLine >= start) {
       return index
     }
   }
@@ -257,46 +161,54 @@ function findSelectionTargetIndex(
 }
 
 export class InlineDiffReviewOverlay {
-  private readonly blocks: DiffBlock[]
-  private readonly session: ReviewSession
-  private readonly modifiedBlocks: ModifiedReviewBlock[]
-  private currentIndex = 0
-  private closed = false
-
   private readonly decorationCompartment = new Compartment()
   private readonly setDecorationsEffect = StateEffect.define<DecorationSet>()
   private readonly decorationsField: StateField<DecorationSet>
+  private suggestions: ReviewSuggestion[]
+  private currentIndex = 0
+  private closed = false
+  private settled = false
+  private renderQueued = false
+
   private floatingRoot: HTMLDivElement | null = null
   private floatingRail: HTMLDivElement | null = null
   private floatingActions: HTMLDivElement | null = null
+  private toolbarRoot: HTMLDivElement | null = null
+  private progressElement: HTMLSpanElement | null = null
   private onViewportChange: (() => void) | null = null
-  private onKeydown: ((event: KeyboardEvent) => void) | null = null
-  private onEditorMouseDownCapture: ((event: MouseEvent) => void) | null = null
-  private previousActiveElement: HTMLElement | null = null
+  private onEditorPointerOver: ((event: Event) => void) | null = null
   private onAbort: (() => void) | null = null
 
   constructor(private readonly options: InlineDiffReviewOverlayOptions) {
-    this.blocks = buildInlineReviewBlocks(
-      options.state.originalContent,
-      options.state.newContent,
-    )
-    this.session = new ReviewSession({
-      file: options.state.file,
-      vault: options.plugin.app.vault,
-      blocks: this.blocks,
-    })
-    this.modifiedBlocks = resolveModifiedBlocks(options.view, this.blocks)
+    const isRevertReview = options.state.viewMode === 'revert-review'
+    const currentContent = options.view.state.doc.toString()
+    const suggestedContent = isRevertReview
+      ? options.state.originalContent
+      : options.state.newContent
+    const exactSuggestions =
+      !isRevertReview &&
+      currentContent === options.state.originalContent &&
+      options.state.reviewEdits
+        ? buildReviewSuggestionsFromEdits(
+            currentContent,
+            options.state.reviewEdits,
+          )
+        : null
+
+    this.suggestions =
+      exactSuggestions ??
+      buildSnapshotReviewSuggestions(currentContent, suggestedContent)
     this.currentIndex = findSelectionTargetIndex(
-      this.modifiedBlocks,
+      this.suggestions,
       options.state.selectionRange,
     )
 
     const setDecorationsEffect = this.setDecorationsEffect
     this.decorationsField = StateField.define<DecorationSet>({
       create: () => Decoration.none,
-      update: (decorations, tr) => {
-        const mapped = decorations.map(tr.changes)
-        for (const effect of tr.effects) {
+      update: (decorations, transaction) => {
+        const mapped = decorations.map(transaction.changes)
+        for (const effect of transaction.effects) {
           if (effect.is(setDecorationsEffect)) return effect.value
         }
         return mapped
@@ -306,8 +218,8 @@ export class InlineDiffReviewOverlay {
   }
 
   mount(): void {
-    if (this.modifiedBlocks.length === 0) {
-      this.options.onClose()
+    if (this.suggestions.length === 0) {
+      void this.completeAndClose()
       return
     }
 
@@ -317,28 +229,30 @@ export class InlineDiffReviewOverlay {
       return
     }
     if (abortSignal) {
-      const onAbort = () => {
-        this.options.onClose()
-      }
-      this.onAbort = onAbort
-      abortSignal.addEventListener('abort', onAbort, { once: true })
+      this.onAbort = () => this.options.onClose()
+      abortSignal.addEventListener('abort', this.onAbort, { once: true })
     }
 
     this.options.view.dispatch({
       effects: StateEffect.appendConfig.of([
-        this.decorationCompartment.of([this.decorationsField]),
+        this.decorationCompartment.of([
+          this.decorationsField,
+          EditorView.updateListener.of((update) =>
+            this.handleViewUpdate(update),
+          ),
+        ]),
       ]),
     })
 
     this.mountFloatingControls()
-    this.renderBlocks({ ensureVisible: true })
+    this.mountToolbar()
+    this.renderSuggestions({ ensureVisible: true })
     this.options.onActionsReady?.({
       goToPreviousDiff: () => this.goToPrevious(),
       goToNextDiff: () => this.goToNext(),
       acceptIncomingActive: () => this.acceptIncomingActive(),
       acceptCurrentActive: () => this.acceptCurrentActive(),
-      undoActive: () => this.undoActive(),
-      close: () => this.options.onClose(),
+      close: () => void this.completeAndClose(),
     })
   }
 
@@ -350,21 +264,18 @@ export class InlineDiffReviewOverlay {
       this.options.state.abortSignal?.removeEventListener('abort', this.onAbort)
       this.onAbort = null
     }
-    this.unmountFloatingControls()
+    this.unmountControls()
     this.options.view.dispatch({
       effects: this.decorationCompartment.reconfigure([]),
     })
   }
 
   private mountFloatingControls(): void {
-    if (this.floatingRoot) return
-
     const host = this.options.view.dom
     host.classList.add('yolo-inline-review-host')
 
     const root = document.createElement('div')
     root.className = 'yolo-inline-review-floating-root'
-    root.tabIndex = -1
     root.setAttribute('aria-label', 'Inline review controls')
 
     const rail = document.createElement('div')
@@ -376,87 +287,100 @@ export class InlineDiffReviewOverlay {
     actions.className = 'yolo-inline-review-floating-actions'
     actions.style.transition = FLOATING_ACTIONS_POSITION_TRANSITION
     actions.appendChild(
-      createActionButton('×', 'Accept current', () =>
+      createActionButton('×', this.getRejectActiveLabel(), () =>
         this.acceptCurrentActive(),
       ),
     )
     actions.appendChild(
-      createActionButton('✓', 'Accept incoming', () =>
+      createActionButton('✓', this.getAcceptActiveLabel(), () =>
         this.acceptIncomingActive(),
       ),
     )
     root.appendChild(actions)
-
     host.appendChild(root)
 
     this.floatingRoot = root
     this.floatingRail = rail
     this.floatingActions = actions
 
-    this.previousActiveElement =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-    this.options.view.contentDOM.blur()
-    root.focus({ preventScroll: true })
-
-    const onEditorMouseDownCapture = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest('.yolo-inline-review-floating-actions')) {
-        return
-      }
-      event.preventDefault()
-      event.stopPropagation()
-      this.options.view.contentDOM.blur()
-      this.floatingRoot?.focus({ preventScroll: true })
-    }
-    this.onEditorMouseDownCapture = onEditorMouseDownCapture
-    this.options.view.contentDOM.addEventListener(
-      'mousedown',
-      onEditorMouseDownCapture,
-      true,
-    )
-
-    const onViewportChange = () =>
+    this.onViewportChange = () =>
       this.updateFloatingPosition({ animate: false })
-    this.onViewportChange = onViewportChange
-    this.options.view.scrollDOM.addEventListener('scroll', onViewportChange, {
-      passive: true,
-    })
-    window.addEventListener('resize', onViewportChange)
+    this.options.view.scrollDOM.addEventListener(
+      'scroll',
+      this.onViewportChange,
+      { passive: true },
+    )
+    window.addEventListener('resize', this.onViewportChange)
 
-    const onKeydown = (event: KeyboardEvent) => {
-      if (this.closed) return
-      const isMod = event.metaKey || event.ctrlKey
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        this.options.onClose()
-        return
-      }
-      if (isMod && event.key === 'Enter') {
-        event.preventDefault()
-        event.stopPropagation()
-        this.acceptIncomingActive()
-        return
-      }
-      if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        event.stopPropagation()
-        this.goToPrevious()
-        return
-      }
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        event.stopPropagation()
-        this.goToNext()
-      }
+    this.onEditorPointerOver = (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const reviewElement = target.closest('[data-yolo-review-id]')
+      const id = Number(reviewElement?.getAttribute('data-yolo-review-id'))
+      if (Number.isInteger(id)) this.handleHoverActive(id)
     }
-    this.onKeydown = onKeydown
-    window.addEventListener('keydown', onKeydown, true)
+    this.options.view.contentDOM.addEventListener(
+      'pointerover',
+      this.onEditorPointerOver,
+    )
   }
 
-  private unmountFloatingControls(): void {
+  private mountToolbar(): void {
+    const toolbar = document.createElement('div')
+    toolbar.className = 'yolo-inline-review-toolbar'
+    const pill = document.createElement('div')
+    pill.className = 'yolo-inline-review-toolbar-pill'
+
+    const nav = document.createElement('div')
+    nav.className = 'yolo-inline-review-toolbar-nav'
+    nav.appendChild(
+      createButton(
+        'yolo-toolbar-icon-btn',
+        this.options.plugin.t('applyView.prevChange', 'Previous change'),
+        '↑',
+        () => this.goToPrevious(),
+      ),
+    )
+    const progress = document.createElement('span')
+    progress.className = 'yolo-apply-progress'
+    nav.appendChild(progress)
+    nav.appendChild(
+      createButton(
+        'yolo-toolbar-icon-btn',
+        this.options.plugin.t('applyView.nextChange', 'Next change'),
+        '↓',
+        () => this.goToNext(),
+      ),
+    )
+    pill.appendChild(nav)
+
+    const actions = document.createElement('div')
+    actions.className = 'yolo-inline-review-toolbar-actions'
+    actions.appendChild(
+      createButton(
+        'yolo-toolbar-btn yolo-accept',
+        this.getAcceptAllLabel(),
+        this.getAcceptAllLabel(),
+        () => this.acceptAllIncoming(),
+      ),
+    )
+    actions.appendChild(
+      createButton(
+        'yolo-toolbar-btn yolo-exclude',
+        this.getRejectAllLabel(),
+        this.getRejectAllLabel(),
+        () => this.rejectAll(),
+      ),
+    )
+    pill.appendChild(actions)
+    toolbar.appendChild(pill)
+    this.options.view.dom.appendChild(toolbar)
+
+    this.toolbarRoot = toolbar
+    this.progressElement = progress
+  }
+
+  private unmountControls(): void {
     if (this.onViewportChange) {
       this.options.view.scrollDOM.removeEventListener(
         'scroll',
@@ -466,32 +390,40 @@ export class InlineDiffReviewOverlay {
     }
     this.onViewportChange = null
 
-    if (this.onKeydown) {
-      window.removeEventListener('keydown', this.onKeydown, true)
-    }
-    this.onKeydown = null
-
-    if (this.onEditorMouseDownCapture) {
+    if (this.onEditorPointerOver) {
       this.options.view.contentDOM.removeEventListener(
-        'mousedown',
-        this.onEditorMouseDownCapture,
-        true,
+        'pointerover',
+        this.onEditorPointerOver,
       )
     }
-    this.onEditorMouseDownCapture = null
-
-    if (this.floatingRoot?.parentNode) {
-      this.floatingRoot.parentNode.removeChild(this.floatingRoot)
-    }
+    this.onEditorPointerOver = null
+    this.floatingRoot?.remove()
+    this.toolbarRoot?.remove()
     this.floatingRoot = null
     this.floatingRail = null
     this.floatingActions = null
+    this.toolbarRoot = null
+    this.progressElement = null
     this.options.view.dom.classList.remove('yolo-inline-review-host')
+  }
 
-    if (this.previousActiveElement?.isConnected) {
-      this.previousActiveElement.focus({ preventScroll: true })
-    }
-    this.previousActiveElement = null
+  private handleViewUpdate(update: ViewUpdate): void {
+    if (!update.docChanged || this.closed) return
+    this.suggestions = this.suggestions.map((suggestion) => ({
+      ...suggestion,
+      from: update.changes.mapPos(suggestion.from, -1),
+      to: update.changes.mapPos(suggestion.to, 1),
+      displayFrom: update.changes.mapPos(suggestion.displayFrom, -1),
+      displayTo: update.changes.mapPos(suggestion.displayTo, 1),
+    }))
+    if (this.renderQueued) return
+    this.renderQueued = true
+    queueMicrotask(() => {
+      this.renderQueued = false
+      if (!this.closed && this.suggestions.length > 0) {
+        this.renderSuggestions({ ensureVisible: false })
+      }
+    })
   }
 
   private setFloatingPositionTransitionEnabled(enabled: boolean): void {
@@ -510,7 +442,7 @@ export class InlineDiffReviewOverlay {
   private updateFloatingPosition(
     options: { animate: boolean } = { animate: false },
   ): void {
-    const active = this.modifiedBlocks[this.currentIndex]
+    const active = this.suggestions[this.currentIndex]
     const root = this.floatingRoot
     const rail = this.floatingRail
     const actions = this.floatingActions
@@ -519,13 +451,14 @@ export class InlineDiffReviewOverlay {
     this.setFloatingPositionTransitionEnabled(options.animate)
 
     const hostRect = this.options.view.dom.getBoundingClientRect()
-    const fromRect = this.options.view.coordsAtPos(active.from)
-    const toProbe = active.to > active.from ? active.to - 1 : active.from
+    const fromRect = this.options.view.coordsAtPos(active.displayFrom)
+    const toProbe =
+      active.displayTo > active.displayFrom
+        ? active.displayTo - 1
+        : active.displayFrom
     const toRect = this.options.view.coordsAtPos(toProbe)
     const widgetRect = this.options.view.dom
-      .querySelector(
-        `.yolo-inline-review-widget[data-review-index="${this.currentIndex}"]`,
-      )
+      .querySelector(`[data-review-id="${active.id}"]`)
       ?.getBoundingClientRect()
 
     if (!fromRect && !widgetRect) return
@@ -536,11 +469,10 @@ export class InlineDiffReviewOverlay {
     )
     const bottom = Math.min(
       hostRect.height - 6,
-      (toRect?.bottom ?? widgetRect?.bottom ?? hostRect.bottom) - hostRect.top,
+      (widgetRect?.bottom ?? toRect?.bottom ?? hostRect.bottom) - hostRect.top,
     )
-
-    const preferredRailLeft =
-      (toRect?.right ?? widgetRect?.right ?? hostRect.right) - hostRect.left + 8
+    const contentRect = this.options.view.contentDOM.getBoundingClientRect()
+    const preferredRailLeft = contentRect.right - hostRect.left + 8
     const railLeft = clampNumber(preferredRailLeft, 16, hostRect.width - 84)
 
     rail.style.left = `${railLeft}px`
@@ -554,168 +486,236 @@ export class InlineDiffReviewOverlay {
       Math.max(6, hostRect.height - actionHeight - 6),
     )
     const actionsWidth = actions.offsetWidth || 26
-    const actionsLeft = clampNumber(
+    actions.style.left = `${clampNumber(
       railLeft + 14,
       20,
       Math.max(20, hostRect.width - actionsWidth - 8),
-    )
-    actions.style.left = `${actionsLeft}px`
+    )}px`
     actions.style.top = `${actionTop}px`
   }
 
   private goToPrevious(): void {
-    if (this.modifiedBlocks.length === 0) return
+    if (this.suggestions.length === 0) return
     this.currentIndex =
       this.currentIndex <= 0
-        ? this.modifiedBlocks.length - 1
+        ? this.suggestions.length - 1
         : this.currentIndex - 1
-    this.renderBlocks({ ensureVisible: true })
+    this.renderSuggestions({ ensureVisible: true })
   }
 
   private goToNext(): void {
-    if (this.modifiedBlocks.length === 0) return
-    this.currentIndex = (this.currentIndex + 1) % this.modifiedBlocks.length
-    this.renderBlocks({ ensureVisible: true })
+    if (this.suggestions.length === 0) return
+    this.currentIndex = (this.currentIndex + 1) % this.suggestions.length
+    this.renderSuggestions({ ensureVisible: true })
   }
 
   private acceptIncomingActive(): void {
-    this.resolveActive('incoming')
+    const suggestion = this.suggestions[this.currentIndex]
+    if (!suggestion) return
+    this.applySuggestion(suggestion)
   }
 
   private acceptCurrentActive(): void {
-    this.resolveActive('current')
+    if (!this.suggestions[this.currentIndex]) return
+    this.removeCurrentSuggestion()
   }
 
-  private undoActive(): void {
-    const item = this.modifiedBlocks[this.currentIndex]
-    if (!item) return
-    this.session.clearDecision(item.blockIndex)
-    this.renderBlocks({ ensureVisible: false })
+  private applySuggestion(suggestion: ReviewSuggestion): void {
+    const change = resolveSuggestionChange(
+      this.options.view.state.doc.toString(),
+      suggestion,
+    )
+    this.removeSuggestionById(suggestion.id, false)
+    if (change.from !== change.to || change.insert.length > 0) {
+      this.options.view.dispatch({
+        changes: change,
+      })
+    }
+    this.finishResolutionStep()
   }
 
-  private resolveActive(decision: 'incoming' | 'current'): void {
-    const item = this.modifiedBlocks[this.currentIndex]
-    if (!item) return
-    this.session.setDecision(item.blockIndex, decision)
+  private removeCurrentSuggestion(): void {
+    const suggestion = this.suggestions[this.currentIndex]
+    if (!suggestion) return
+    this.removeSuggestionById(suggestion.id, false)
+    this.finishResolutionStep()
+  }
 
-    const nextPending = this.findNextPendingIndex(this.currentIndex + 1)
-    if (nextPending !== null) {
-      this.currentIndex = nextPending
-      this.renderBlocks({ ensureVisible: true })
+  private removeSuggestionById(id: number, render: boolean): void {
+    const index = this.suggestions.findIndex((item) => item.id === id)
+    if (index < 0) return
+    this.suggestions.splice(index, 1)
+    this.currentIndex = Math.min(
+      index,
+      Math.max(0, this.suggestions.length - 1),
+    )
+    if (render) this.renderSuggestions({ ensureVisible: false })
+  }
+
+  private finishResolutionStep(): void {
+    if (this.suggestions.length === 0) {
+      void this.completeAndClose()
       return
     }
-
-    void this.persistAndClose()
+    this.renderSuggestions({ ensureVisible: true })
   }
 
-  private findNextPendingIndex(start: number): number | null {
-    for (let index = 0; index < this.modifiedBlocks.length; index += 1) {
-      const candidate = (start + index) % this.modifiedBlocks.length
-      const blockIndex = this.modifiedBlocks[candidate]?.blockIndex
-      if (blockIndex === undefined) continue
-      const decision = this.session.getDecision(blockIndex)
-      if (!decision || decision === 'pending') return candidate
-    }
-    return null
-  }
-
-  private renderBlocks(options: { ensureVisible: boolean }): void {
-    const builder = new RangeSetBuilder<Decoration>()
-    this.modifiedBlocks.forEach((item, reviewIndex) => {
-      const decision = this.session.getDecision(item.blockIndex) ?? 'pending'
-      const widget = new InlineReviewWidget(
-        item.block,
-        reviewIndex,
-        reviewIndex === this.currentIndex,
-        decision,
-        (nextIndex: number) => this.handleHoverActive(nextIndex),
+  private acceptAllIncoming(): void {
+    while (this.suggestions.length > 0 && !this.closed) {
+      const suggestion = this.suggestions[this.suggestions.length - 1]
+      const change = resolveSuggestionChange(
+        this.options.view.state.doc.toString(),
+        suggestion,
       )
+      this.suggestions.pop()
+      if (change.from !== change.to || change.insert.length > 0) {
+        this.options.view.dispatch({ changes: change })
+      }
+    }
+    void this.completeAndClose()
+  }
 
-      if (item.from === item.to) {
-        builder.add(
-          item.from,
-          item.from,
-          Decoration.widget({ widget, side: 1, block: true }),
-        )
-      } else {
-        builder.add(
-          item.from,
-          item.to,
-          Decoration.replace({ widget, block: true }),
+  private rejectAll(): void {
+    this.suggestions = []
+    void this.completeAndClose()
+  }
+
+  private async completeAndClose(): Promise<void> {
+    if (this.closed || this.settled) return
+    this.settled = true
+    this.suggestions = []
+    this.options.onActionsReady?.(null)
+    this.options.view.dispatch({
+      effects: this.setDecorationsEffect.of(Decoration.none),
+    })
+    this.unmountControls()
+
+    const finalContent = await this.waitForEditorSave()
+    if (this.closed || this.options.state.abortSignal?.aborted) return
+    this.options.state.callbacks?.onComplete?.({
+      finalContent,
+    })
+    this.options.onClose()
+  }
+
+  private async waitForEditorSave(): Promise<string> {
+    const { file } = this.options.state
+    const { vault } = this.options.plugin.app
+    const editorContent = this.options.view.state.doc.toString()
+
+    return await new Promise<string>((resolve) => {
+      let finished = false
+      const finish = (content: string) => {
+        if (finished) return
+        finished = true
+        window.clearTimeout(timeoutId)
+        vault.offref(modifyRef)
+        resolve(content)
+      }
+      const readSavedContent = async () => {
+        try {
+          finish(await vault.read(file))
+        } catch {
+          finish(this.options.view.state.doc.toString())
+        }
+      }
+      const modifyRef = vault.on('modify', (modifiedFile) => {
+        if (modifiedFile.path === file.path) void readSavedContent()
+      })
+      const timeoutId = window.setTimeout(() => {
+        finish(this.options.view.state.doc.toString())
+      }, 5000)
+
+      void vault
+        .read(file)
+        .then((savedContent) => {
+          if (savedContent === editorContent) {
+            finish(savedContent)
+            return
+          }
+          this.options.requestSave()
+        })
+        .catch(() => this.options.requestSave())
+    })
+  }
+
+  private renderSuggestions(options: { ensureVisible: boolean }): void {
+    const ranges = this.suggestions.flatMap((suggestion, index) => {
+      const isActive = index === this.currentIndex
+      const decorations = []
+      if (suggestion.displayFrom < suggestion.displayTo) {
+        decorations.push(
+          Decoration.mark({
+            class: `yolo-inline-review-current${isActive ? ' is-active' : ''}`,
+            attributes: {
+              'data-yolo-review-id': String(suggestion.id),
+            },
+          }).range(suggestion.displayFrom, suggestion.displayTo),
         )
       }
+      decorations.push(
+        Decoration.widget({
+          widget: new InlineReviewWidget(suggestion, isActive, (id) =>
+            this.handleHoverActive(id),
+          ),
+          side: 1,
+          block: true,
+        }).range(suggestion.displayTo),
+      )
+      return decorations
     })
 
-    const active = this.modifiedBlocks[this.currentIndex]
-    if (active) {
-      this.collapseSelectionNearActive(active)
-    }
+    this.options.view.dispatch({
+      effects: this.setDecorationsEffect.of(Decoration.set(ranges, true)),
+    })
+
+    const active = this.suggestions[this.currentIndex]
     if (active && options.ensureVisible) {
       this.options.view.dispatch({
-        effects: EditorView.scrollIntoView(active.from, { y: 'nearest' }),
+        effects: EditorView.scrollIntoView(active.displayFrom, {
+          y: 'nearest',
+        }),
       })
     }
-
-    this.options.view.dispatch({
-      effects: this.setDecorationsEffect.of(builder.finish()),
-    })
-
+    if (this.progressElement) {
+      this.progressElement.textContent = `${this.currentIndex + 1}/${this.suggestions.length}`
+    }
     this.updateFloatingPosition({ animate: true })
   }
 
-  private collapseSelectionNearActive(active: ModifiedReviewBlock): void {
-    const docLength = this.options.view.state.doc.length
-    let safePos = active.to
-    if (safePos < docLength) {
-      safePos += 1
-    } else if (active.from > 0) {
-      safePos = active.from - 1
-    }
-    safePos = clampNumber(safePos, 0, docLength)
-
-    const selection = this.options.view.state.selection
-    if (
-      selection.main.from === safePos &&
-      selection.main.to === safePos &&
-      selection.ranges.length === 1
-    ) {
-      return
-    }
-
-    this.options.view.dispatch({
-      selection: {
-        anchor: safePos,
-        head: safePos,
-      },
-    })
-  }
-
-  private handleHoverActive(nextIndex: number): void {
-    if (nextIndex === this.currentIndex) return
-    if (nextIndex < 0 || nextIndex >= this.modifiedBlocks.length) return
+  private handleHoverActive(suggestionId: number): void {
+    const nextIndex = this.suggestions.findIndex(
+      (suggestion) => suggestion.id === suggestionId,
+    )
+    if (nextIndex < 0 || nextIndex === this.currentIndex) return
     this.currentIndex = nextIndex
-    this.updateFloatingPosition({ animate: true })
+    this.renderSuggestions({ ensureVisible: false })
   }
 
-  private async persistAndClose(finalContent?: string): Promise<void> {
-    if (this.closed) return
-    const resolvedContent =
-      finalContent ?? this.session.getFinalContent('current')
-    try {
-      await this.session.persist(
-        resolvedContent,
-        this.options.state.abortSignal,
-      )
-      if (this.options.state.abortSignal?.aborted) {
-        return
-      }
-      this.options.state.callbacks?.onComplete?.({
-        finalContent: resolvedContent,
-      })
-    } catch (error) {
-      console.error('[InlineDiffReview] Failed to persist inline review', error)
-    } finally {
-      this.options.onClose()
-    }
+  private getAcceptActiveLabel(): string {
+    return this.options.state.viewMode === 'revert-review'
+      ? this.options.plugin.t('applyView.revertChange', 'Revert this change')
+      : this.options.plugin.t('applyView.acceptIncoming', 'Accept incoming')
+  }
+
+  private getRejectActiveLabel(): string {
+    return this.options.state.viewMode === 'revert-review'
+      ? this.options.plugin.t('applyView.keepChange', 'Keep this change')
+      : this.options.plugin.t('applyView.acceptCurrent', 'Accept current')
+  }
+
+  private getAcceptAllLabel(): string {
+    return this.options.state.viewMode === 'revert-review'
+      ? this.options.plugin.t('applyView.revertAllChanges', 'Revert all')
+      : this.options.plugin.t(
+          'applyView.acceptAllIncoming',
+          'Accept all incoming',
+        )
+  }
+
+  private getRejectAllLabel(): string {
+    return this.options.state.viewMode === 'revert-review'
+      ? this.options.plugin.t('applyView.keepAllChanges', 'Keep all')
+      : this.options.plugin.t('applyView.rejectAll', 'Reject all')
   }
 }

@@ -4078,6 +4078,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         file: targetFile,
         originalContent: targetFileContent,
         newContent: materialized.newContent,
+        reviewEdits: materialized.reviewEdits,
         reviewMode: selectionRange ? 'selection-focus' : 'full',
         selectionRange,
       } satisfies ApplyViewState)

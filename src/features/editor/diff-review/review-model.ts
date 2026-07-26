@@ -1,264 +1,306 @@
-import type { ApplyViewState } from '../../../types/apply-view.types'
-import {
-  type DiffBlock,
-  type InlineDiffLine,
-  createDiffBlocks,
-  createLineDiffBlocks,
-} from '../../../utils/chat/diff'
+import type { ApplyReviewEdit } from '../../../types/apply-view.types'
+import { type DiffBlock, createLineDiffBlocks } from '../../../utils/chat/diff'
 
-export type ReviewDecision = 'pending' | 'incoming' | 'current'
-
-export type ApplyParagraph = {
-  lines: InlineDiffLine[]
-  hasChanges: boolean
-  isEmpty: boolean
+export type ReviewSuggestion = {
+  id: number
+  from: number
+  to: number
+  displayFrom: number
+  displayTo: number
+  insert: string
+  startLine: number
+  endLine: number
+  originalValue?: string
+  modifiedValue?: string
 }
 
-export function buildInlineReviewBlocks(
-  currentMarkdown: string,
-  incomingMarkdown: string,
-): DiffBlock[] {
-  return createDiffBlocks(currentMarkdown, incomingMarkdown)
+export type SuggestionChange = {
+  from: number
+  to: number
+  insert: string
 }
 
-export function buildFullReviewBlocks(
-  currentMarkdown: string,
-  incomingMarkdown: string,
-): DiffBlock[] {
-  return splitDiffBlocksByParagraph(
-    createLineDiffBlocks(currentMarkdown, incomingMarkdown),
+type ParagraphStructure = {
+  leading: string
+  paragraphs: Array<{ text: string; from: number; to: number }>
+  separators: string[]
+  trailing: string
+}
+
+type NormalizedReviewEdit = ApplyReviewEdit & {
+  displayFrom: number
+  displayTo: number
+  originalValue: string
+  modifiedValue: string
+}
+
+export function buildSnapshotReviewSuggestions(
+  currentContent: string,
+  incomingContent: string,
+): ReviewSuggestion[] {
+  const edits = buildSnapshotReviewEdits(
+    currentContent,
+    createLineDiffBlocks(currentContent, incomingContent),
   )
+  return buildReviewSuggestionsFromEdits(currentContent, edits) ?? []
 }
 
-export function countModifiedBlocks(blocks: DiffBlock[]): number {
-  return blocks.reduce(
-    (count, block) => (block.type === 'modified' ? count + 1 : count),
-    0,
-  )
-}
+export function buildReviewSuggestionsFromEdits(
+  currentContent: string,
+  edits: ApplyReviewEdit[],
+): ReviewSuggestion[] | null {
+  const orderedEdits = [...edits].sort((left, right) => left.from - right.from)
+  let previousEnd = 0
 
-export function generateReviewContent(
-  blocks: DiffBlock[],
-  decisions: ReadonlyMap<number, ReviewDecision>,
-  defaultDecision: 'incoming' | 'current' = 'current',
-): string {
-  return blocks
-    .map((block, index) => {
-      if (block.type === 'unchanged') return block.value
-
-      const original = block.originalValue
-      const incoming = block.modifiedValue
-      const decision = decisions.get(index) ?? defaultDecision
-      const resolvedIncoming = incoming ?? null
-      const resolvedCurrent = original ?? null
-
-      if (decision === 'incoming') return resolvedIncoming
-      if (decision === 'pending' && defaultDecision === 'incoming') {
-        return resolvedIncoming
-      }
-      return resolvedCurrent
-    })
-    .filter((segment): segment is string => segment !== null)
-    .join('\n')
-}
-
-export function splitInlineLinesIntoParagraphs(
-  lines: InlineDiffLine[],
-): ApplyParagraph[] {
-  if (lines.length === 0) return []
-
-  const paragraphs: ApplyParagraph[] = []
-  let currentLines: InlineDiffLine[] = []
-  let currentHasChanges = false
-
-  const pushCurrentParagraph = () => {
-    if (currentLines.length === 0) return
-    paragraphs.push({
-      lines: currentLines,
-      hasChanges: currentHasChanges,
-      isEmpty: false,
-    })
-    currentLines = []
-    currentHasChanges = false
+  for (const edit of orderedEdits) {
+    if (
+      !Number.isInteger(edit.from) ||
+      !Number.isInteger(edit.to) ||
+      edit.from < previousEnd ||
+      edit.from < 0 ||
+      edit.to < edit.from ||
+      edit.to > currentContent.length
+    ) {
+      return null
+    }
+    previousEnd = edit.to
   }
 
-  lines.forEach((line) => {
-    if (isInlineLineEmpty(line)) {
-      pushCurrentParagraph()
-      paragraphs.push({
-        lines: [],
-        hasChanges: false,
-        isEmpty: true,
-      })
-      return
-    }
-
-    currentLines.push(line)
-    currentHasChanges = currentHasChanges || lineHasChanges(line)
-  })
-
-  pushCurrentParagraph()
-
-  const hasAnyChanges = paragraphs.some(
-    (paragraph) => !paragraph.isEmpty && paragraph.hasChanges,
+  const normalizedEdits = orderedEdits.flatMap((edit) =>
+    splitEditByParagraphStructure(currentContent, edit),
   )
-  if (!hasAnyChanges) {
-    const firstContentParagraph = paragraphs.find(
-      (paragraph) => !paragraph.isEmpty,
+
+  return normalizedEdits.map((edit, index) => {
+    const startLine = offsetToLine(currentContent, edit.displayFrom)
+    const endLine = offsetToLine(
+      currentContent,
+      edit.displayTo > edit.displayFrom ? edit.displayTo - 1 : edit.displayFrom,
     )
-    if (firstContentParagraph) {
-      firstContentParagraph.hasChanges = true
+
+    return {
+      id: index,
+      from: edit.from,
+      to: edit.to,
+      displayFrom: edit.displayFrom,
+      displayTo: edit.displayTo,
+      insert: edit.replacement,
+      startLine,
+      endLine,
+      originalValue:
+        edit.displayFrom === edit.displayTo ? undefined : edit.originalValue,
+      modifiedValue:
+        edit.modifiedValue.length > 0 ? edit.modifiedValue : undefined,
     }
-  }
-
-  return paragraphs
+  })
 }
 
-export function countOriginalLines(block: DiffBlock): number {
-  if (block.type === 'unchanged') {
-    return block.value.split('\n').length
-  }
-  if (block.originalValue === undefined) return 0
-  return block.originalValue.split('\n').length
+export function resolveSuggestionChange(
+  currentContent: string,
+  suggestion: ReviewSuggestion,
+): SuggestionChange {
+  const from = Math.max(0, Math.min(suggestion.from, currentContent.length))
+  const to = Math.max(from, Math.min(suggestion.to, currentContent.length))
+  return { from, to, insert: suggestion.insert }
 }
 
-export function findSelectionTargetBlockIndex(
+function buildSnapshotReviewEdits(
+  currentContent: string,
   blocks: DiffBlock[],
-  selectionRange: ApplyViewState['selectionRange'],
-): number | null {
-  if (!selectionRange) return null
-
-  const selectionStartLine = Math.min(
-    selectionRange.from.line,
-    selectionRange.to.line,
-  )
-  const selectionEndLine = Math.max(
-    selectionRange.from.line,
-    selectionRange.to.line,
-  )
-
+): ApplyReviewEdit[] {
+  const edits: ApplyReviewEdit[] = []
+  const lineStarts = getLineStarts(currentContent)
   let cursorLine = 0
-  let fallbackModifiedIndex: number | null = null
 
-  for (let index = 0; index < blocks.length; index += 1) {
-    const block = blocks[index]
-    if (block.type !== 'modified') {
+  for (const block of blocks) {
+    if (block.type === 'unchanged') {
       cursorLine += countOriginalLines(block)
       continue
     }
 
-    if (fallbackModifiedIndex === null) {
-      fallbackModifiedIndex = index
-    }
-
     const lineCount = countOriginalLines(block)
-    const blockStart = cursorLine
-    const blockEnd = lineCount > 0 ? cursorLine + lineCount - 1 : cursorLine
-    const intersects =
-      blockStart <= selectionEndLine && blockEnd >= selectionStartLine
-
-    if (intersects) {
-      return index
-    }
-
+    const from = getLineStartOffset(
+      lineStarts,
+      currentContent.length,
+      cursorLine,
+    )
+    const contentEnd =
+      lineCount > 0
+        ? getLineEndOffset(
+            lineStarts,
+            currentContent.length,
+            cursorLine + lineCount - 1,
+          )
+        : from
+    edits.push(
+      resolveSnapshotBlockEdit(currentContent, {
+        from,
+        to: contentEnd,
+        originalValue: block.originalValue,
+        modifiedValue: block.modifiedValue,
+      }),
+    )
     cursorLine += lineCount
   }
 
-  return fallbackModifiedIndex
+  return edits
 }
 
-function splitDiffBlocksByParagraph(blocks: DiffBlock[]): DiffBlock[] {
-  const paragraphBlocks: DiffBlock[] = []
+function resolveSnapshotBlockEdit(
+  currentContent: string,
+  block: {
+    from: number
+    to: number
+    originalValue?: string
+    modifiedValue?: string
+  },
+): ApplyReviewEdit {
+  let { from, to } = block
+  const replacement = block.modifiedValue ?? ''
 
-  blocks.forEach((block) => {
-    if (block.type === 'unchanged') {
-      paragraphBlocks.push(block)
-      return
+  if (block.originalValue === undefined) {
+    if (currentContent.length === 0) return { from, to, replacement }
+    if (from === currentContent.length) {
+      const prefix = currentContent.endsWith('\n') ? '' : '\n'
+      return { from, to, replacement: `${prefix}${replacement}` }
+    }
+    const suffix = replacement.endsWith('\n') ? '' : '\n'
+    return { from, to, replacement: `${replacement}${suffix}` }
+  }
+
+  if (block.modifiedValue === undefined && from < to) {
+    if (currentContent[to] === '\n') {
+      to += 1
+    } else if (from > 0 && currentContent[from - 1] === '\n') {
+      from -= 1
+    }
+  }
+
+  return { from, to, replacement }
+}
+
+function splitEditByParagraphStructure(
+  currentContent: string,
+  edit: ApplyReviewEdit,
+): NormalizedReviewEdit[] {
+  const originalText = currentContent.slice(edit.from, edit.to)
+  const originalStructure = parseParagraphStructure(originalText)
+  const modifiedStructure = parseParagraphStructure(edit.replacement)
+
+  if (
+    originalStructure.paragraphs.length <= 1 ||
+    originalStructure.paragraphs.length !== modifiedStructure.paragraphs.length
+  ) {
+    return [
+      {
+        ...edit,
+        displayFrom: edit.from,
+        displayTo: edit.to,
+        originalValue: originalText,
+        modifiedValue: edit.replacement,
+      },
+    ]
+  }
+
+  return originalStructure.paragraphs.flatMap((originalParagraph, index) => {
+    const modifiedParagraph = modifiedStructure.paragraphs[index]
+    if (!modifiedParagraph) return []
+
+    const isFirst = index === 0
+    const isLast = index === originalStructure.paragraphs.length - 1
+    const originalFrom = isFirst ? 0 : originalParagraph.from
+    const originalTo = isLast
+      ? originalText.length
+      : originalStructure.paragraphs[index + 1].from
+    const replacement = `${isFirst ? modifiedStructure.leading : ''}${modifiedParagraph.text}${
+      isLast
+        ? modifiedStructure.trailing
+        : (modifiedStructure.separators[index] ?? '')
+    }`
+
+    if (originalText.slice(originalFrom, originalTo) === replacement) {
+      return []
     }
 
-    const paragraphs = splitInlineLinesIntoParagraphs(block.inlineLines)
-    if (paragraphs.length === 0) {
-      paragraphBlocks.push(block)
-      return
-    }
+    return [
+      {
+        from: edit.from + originalFrom,
+        to: edit.from + originalTo,
+        replacement,
+        displayFrom: edit.from + originalParagraph.from,
+        displayTo: edit.from + originalParagraph.to,
+        originalValue: originalParagraph.text,
+        modifiedValue: modifiedParagraph.text,
+      },
+    ]
+  })
+}
 
-    paragraphs.forEach((paragraph) => {
-      if (paragraph.isEmpty) {
-        paragraphBlocks.push({
-          type: 'unchanged',
-          value: '',
-        })
-        return
-      }
+function parseParagraphStructure(text: string): ParagraphStructure {
+  const leading = text.match(/^(?:[\t ]*\n)+/)?.[0] ?? ''
+  const afterLeading = text.slice(leading.length)
+  const trailing = afterLeading.match(/(?:\n[\t ]*)+$/)?.[0] ?? ''
+  const body = text.slice(leading.length, text.length - trailing.length)
+  const paragraphs: ParagraphStructure['paragraphs'] = []
+  const separators: string[] = []
+  const separatorPattern = /\n(?:[\t ]*\n)+/g
+  let cursor = 0
+  let match: RegExpExecArray | null
 
-      if (!paragraph.hasChanges) {
-        paragraphBlocks.push({
-          type: 'unchanged',
-          value: inlineLinesToText(paragraph.lines, 'original'),
-        })
-        return
-      }
-
-      const hasOriginalLines = paragraph.lines.some(
-        (line) => line.type !== 'added',
-      )
-      const hasModifiedLines = paragraph.lines.some(
-        (line) => line.type !== 'removed',
-      )
-      const originalValue = hasOriginalLines
-        ? inlineLinesToText(paragraph.lines, 'original')
-        : undefined
-      const modifiedValue = hasModifiedLines
-        ? inlineLinesToText(paragraph.lines, 'modified')
-        : undefined
-
-      paragraphBlocks.push({
-        type: 'modified',
-        originalValue,
-        modifiedValue,
-        inlineLines: paragraph.lines,
-        presentation: 'inline',
-        blockType: 'paragraph',
-      })
+  while ((match = separatorPattern.exec(body)) !== null) {
+    paragraphs.push({
+      text: body.slice(cursor, match.index),
+      from: leading.length + cursor,
+      to: leading.length + match.index,
     })
+    separators.push(match[0])
+    cursor = match.index + match[0].length
+  }
+
+  paragraphs.push({
+    text: body.slice(cursor),
+    from: leading.length + cursor,
+    to: leading.length + body.length,
   })
 
-  return mergeAdjacentUnchangedBlocks(paragraphBlocks)
+  return { leading, paragraphs, separators, trailing }
 }
 
-function isInlineLineEmpty(line: InlineDiffLine): boolean {
-  const content = line.tokens.map((token) => token.text).join('')
-  return content.trim().length === 0
+function countOriginalLines(block: DiffBlock): number {
+  if (block.type === 'unchanged') return block.value.split('\n').length
+  if (block.originalValue === undefined) return 0
+  return block.originalValue.split('\n').length
 }
 
-function lineHasChanges(line: InlineDiffLine): boolean {
-  if (line.type === 'added' || line.type === 'removed') return true
-  return line.tokens.some(
-    (token) => token.type === 'add' || token.type === 'del',
-  )
+function offsetToLine(content: string, offset: number): number {
+  let line = 0
+  const clampedOffset = Math.max(0, Math.min(offset, content.length))
+  for (let index = 0; index < clampedOffset; index += 1) {
+    if (content[index] === '\n') line += 1
+  }
+  return line
 }
 
-function inlineLinesToText(
-  lines: InlineDiffLine[],
-  variant: 'original' | 'modified',
-): string {
-  return lines
-    .filter((line) =>
-      variant === 'original' ? line.type !== 'added' : line.type !== 'removed',
-    )
-    .map((line) => line.tokens.map((token) => token.text).join(''))
-    .join('\n')
+function getLineStarts(content: string): number[] {
+  const starts = [0]
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === '\n') starts.push(index + 1)
+  }
+  return starts
 }
 
-function mergeAdjacentUnchangedBlocks(blocks: DiffBlock[]): DiffBlock[] {
-  const merged: DiffBlock[] = []
-  blocks.forEach((block) => {
-    const last = merged[merged.length - 1]
-    if (block.type === 'unchanged' && last?.type === 'unchanged') {
-      last.value = `${last.value}\n${block.value}`
-      return
-    }
-    merged.push(block)
-  })
-  return merged
+function getLineStartOffset(
+  lineStarts: number[],
+  contentLength: number,
+  line: number,
+): number {
+  return lineStarts[line] ?? contentLength
+}
+
+function getLineEndOffset(
+  lineStarts: number[],
+  contentLength: number,
+  line: number,
+): number {
+  const nextLineStart = lineStarts[line + 1]
+  return nextLineStart === undefined ? contentLength : nextLineStart - 1
 }
