@@ -3,6 +3,8 @@ import type { ChangeDesc } from '@codemirror/state'
 import type { ApplyReviewEdit } from '../../../types/apply-view.types'
 import { type DiffBlock, createLineDiffBlocks } from '../../../utils/chat/diff'
 
+export type ReviewSide = 'original' | 'modified'
+
 export type ReviewSuggestion = {
   id: number
   /** The live range in the editor's current (proposed) document. */
@@ -10,9 +12,11 @@ export type ReviewSuggestion = {
   to: number
   startLine: number
   endLine: number
-  /** Full source text restored when this suggestion is rejected. */
+  /** The two independently editable drafts for this review item. */
   originalText: string
-  /** Display-only source and initial proposed values. */
+  modifiedText: string
+  activeSide: ReviewSide
+  /** Visible portions of drafts whose surrounding separators stay in the doc. */
   originalValue?: string
   modifiedValue?: string
 }
@@ -105,10 +109,18 @@ export function buildSnapshotReviewPlan(
 export function resolveSuggestionChange(
   currentContent: string,
   suggestion: ReviewSuggestion,
+  side: ReviewSide = 'original',
 ): SuggestionChange {
   const from = Math.max(0, Math.min(suggestion.from, currentContent.length))
   const to = Math.max(from, Math.min(suggestion.to, currentContent.length))
-  return { from, to, insert: suggestion.originalText }
+  return {
+    from,
+    to,
+    insert:
+      side === suggestion.activeSide
+        ? currentContent.slice(from, to)
+        : getReviewDraft(suggestion, side),
+  }
 }
 
 /**
@@ -122,6 +134,7 @@ export function resolveSuggestionChange(
 export function updateReviewSuggestions(
   suggestions: ReviewSuggestion[],
   changes: ChangeDesc,
+  currentContent?: string,
 ): ReviewSuggestionUpdate {
   const documentChanges = readDocumentChanges(changes)
   if (documentChanges.length === 0) {
@@ -146,13 +159,25 @@ export function updateReviewSuggestions(
   return {
     suggestions: suggestions
       .filter((suggestion) => !removedIdSet.has(suggestion.id))
-      .map((suggestion) =>
-        mapSuggestion(
+      .map((suggestion) => {
+        const mapped = mapSuggestion(
           suggestion,
           changes,
           mayRetainTouched && suggestion.id === touched[0]?.id,
-        ),
-      ),
+        )
+        if (
+          currentContent === undefined ||
+          !mayRetainTouched ||
+          suggestion.id !== touched[0]?.id
+        ) {
+          return mapped
+        }
+        return setReviewDraft(
+          mapped,
+          mapped.activeSide,
+          currentContent.slice(mapped.from, mapped.to),
+        )
+      }),
     removedIds,
   }
 }
@@ -165,6 +190,89 @@ export function mapReviewSuggestions(
   return suggestions.map((suggestion) =>
     mapSuggestion(suggestion, changes, false),
   )
+}
+
+/** Map an overlay-owned replacement and make the replacement side editable. */
+export function switchReviewSuggestionSide(
+  suggestions: ReviewSuggestion[],
+  suggestionId: number,
+  side: ReviewSide,
+  changes: ChangeDesc,
+): ReviewSuggestion[] {
+  let switchedRange: { from: number; to: number } | null = null
+  changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    const suggestion = suggestions.find((item) => item.id === suggestionId)
+    if (suggestion && fromA === suggestion.from && toA === suggestion.to) {
+      switchedRange = { from: fromB, to: toB }
+    }
+  })
+
+  return suggestions.map((suggestion) => {
+    if (suggestion.id !== suggestionId) {
+      return mapSuggestion(suggestion, changes, false)
+    }
+    if (!switchedRange) return { ...suggestion, activeSide: side }
+    return {
+      ...suggestion,
+      activeSide: side,
+      from: switchedRange.from,
+      to: switchedRange.to,
+    }
+  })
+}
+
+export function getReviewDraft(
+  suggestion: ReviewSuggestion,
+  side: ReviewSide,
+): string {
+  return side === 'original' ? suggestion.originalText : suggestion.modifiedText
+}
+
+export function getReviewDraftDisplay(
+  suggestion: ReviewSuggestion,
+  side: ReviewSide,
+): { text: string; offset: number } {
+  const draft = getReviewDraft(suggestion, side)
+  const display =
+    side === 'original' ? suggestion.originalValue : suggestion.modifiedValue
+  if (display === undefined) return { text: '', offset: 0 }
+  const offset = draft.indexOf(display)
+  return offset < 0 ? { text: draft, offset: 0 } : { text: display, offset }
+}
+
+export function setReviewDraft(
+  suggestion: ReviewSuggestion,
+  side: ReviewSide,
+  text: string,
+): ReviewSuggestion {
+  const previousDraft = getReviewDraft(suggestion, side)
+  const previousDisplay =
+    side === 'original' ? suggestion.originalValue : suggestion.modifiedValue
+  const display = updateReviewDraftDisplay(previousDraft, previousDisplay, text)
+  return side === 'original'
+    ? { ...suggestion, originalText: text, originalValue: display }
+    : { ...suggestion, modifiedText: text, modifiedValue: display }
+}
+
+function updateReviewDraftDisplay(
+  previousDraft: string,
+  previousDisplay: string | undefined,
+  nextDraft: string,
+): string | undefined {
+  if (previousDisplay === undefined) return nextDraft || undefined
+  const displayFrom = previousDraft.indexOf(previousDisplay)
+  if (displayFrom < 0) return nextDraft || undefined
+  const prefix = previousDraft.slice(0, displayFrom)
+  const suffix = previousDraft.slice(displayFrom + previousDisplay.length)
+  if (
+    nextDraft.startsWith(prefix) &&
+    nextDraft.endsWith(suffix) &&
+    nextDraft.length >= prefix.length + suffix.length
+  ) {
+    const displayTo = nextDraft.length - suffix.length
+    return nextDraft.slice(prefix.length, displayTo) || undefined
+  }
+  return nextDraft || undefined
 }
 
 function materializeReviewEdits(
@@ -194,6 +302,8 @@ function materializeReviewEdits(
       startLine,
       endLine,
       originalText: originalContent.slice(edit.from, edit.to),
+      modifiedText: edit.replacement,
+      activeSide: 'modified',
       originalValue: edit.originalValue || undefined,
       modifiedValue: edit.modifiedValue || undefined,
     })

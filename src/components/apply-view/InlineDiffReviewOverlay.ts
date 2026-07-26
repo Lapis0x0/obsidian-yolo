@@ -14,12 +14,17 @@ import {
 } from '@codemirror/view'
 
 import {
+  type ReviewSide,
   type ReviewSuggestion,
   type SuggestionChange,
   buildReviewPlanFromEdits,
   buildSnapshotReviewPlan,
+  getReviewDraft,
+  getReviewDraftDisplay,
   mapReviewSuggestions,
   resolveSuggestionChange,
+  setReviewDraft,
+  switchReviewSuggestionSide,
   updateReviewSuggestions,
 } from '../../features/editor/diff-review/review-model'
 import type YoloPlugin from '../../main'
@@ -48,6 +53,11 @@ class InlineReviewWidget extends WidgetType {
   constructor(
     private readonly suggestion: ReviewSuggestion,
     private readonly onHover: (suggestionId: number) => void,
+    private readonly onEdit: (
+      suggestionId: number,
+      side: ReviewSide,
+      offset: number,
+    ) => void,
   ) {
     super()
   }
@@ -55,26 +65,38 @@ class InlineReviewWidget extends WidgetType {
   override eq(other: InlineReviewWidget): boolean {
     return (
       other.suggestion.id === this.suggestion.id &&
-      other.suggestion.originalValue === this.suggestion.originalValue
+      other.suggestion.activeSide === this.suggestion.activeSide &&
+      getReviewDraftDisplay(other.suggestion, this.inactiveSide()).text ===
+        getReviewDraftDisplay(this.suggestion, this.inactiveSide()).text
     )
   }
 
+  private inactiveSide(): ReviewSide {
+    return this.suggestion.activeSide === 'modified' ? 'original' : 'modified'
+  }
+
   override toDOM(): HTMLElement {
+    const side = this.inactiveSide()
+    const display = getReviewDraftDisplay(this.suggestion, side)
+    const text = display.text
     const root = document.createElement('div')
-    root.className = 'yolo-inline-review-widget'
+    root.className = `yolo-inline-review-widget is-${side}`
     root.setAttribute('data-review-id', String(this.suggestion.id))
 
     const content = document.createElement('div')
     content.className = 'yolo-inline-review-content'
 
-    if (this.suggestion.originalValue === undefined) {
+    if (text.length === 0) {
       root.classList.add('is-deletion')
       const placeholder = document.createElement('div')
       placeholder.className = 'yolo-inline-review-deletion-placeholder'
       content.appendChild(placeholder)
     } else {
       content.appendChild(
-        createBlockSection(this.suggestion.originalValue, 'is-removed'),
+        createBlockSection(
+          text,
+          side === 'original' ? 'is-removed' : 'is-added',
+        ),
       )
     }
 
@@ -82,12 +104,47 @@ class InlineReviewWidget extends WidgetType {
     root.addEventListener('mouseenter', () => {
       this.onHover(this.suggestion.id)
     })
+    root.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      this.onEdit(
+        this.suggestion.id,
+        side,
+        display.offset + getWidgetTextOffset(root, event),
+      )
+    })
     return root
   }
 
   override ignoreEvent(): boolean {
     return true
   }
+}
+
+function getWidgetTextOffset(root: HTMLElement, event: MouseEvent): number {
+  const caretRangeFromPoint = (
+    document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null
+    }
+  ).caretRangeFromPoint
+  const caret = caretRangeFromPoint?.call(
+    document,
+    event.clientX,
+    event.clientY,
+  )
+  if (!caret || !root.contains(caret.startContainer)) return 0
+
+  const line = (
+    caret.startContainer instanceof Element
+      ? caret.startContainer.closest('.yolo-inline-review-line')
+      : caret.startContainer.parentElement?.closest('.yolo-inline-review-line')
+  ) as HTMLElement | null | undefined
+  if (!line) return 0
+
+  const withinLine = document.createRange()
+  withinLine.selectNodeContents(line)
+  withinLine.setEnd(caret.startContainer, caret.startOffset)
+  return Number(line.dataset.textOffset ?? 0) + withinLine.toString().length
 }
 
 function createTokenElement(text: string): HTMLElement {
@@ -104,15 +161,18 @@ function createBlockSection(
   const section = document.createElement('div')
   section.className = `yolo-inline-review-section ${state}`
 
+  let offset = 0
   text.split('\n').forEach((line) => {
     const lineEl = document.createElement('div')
     lineEl.className = 'yolo-inline-review-line'
+    lineEl.dataset.textOffset = String(offset)
     const token = createTokenElement(line)
     if (state === 'is-removed') {
       token.classList.replace('yolo-inline-diff-add', 'yolo-inline-diff-remove')
     }
     lineEl.appendChild(token)
     section.appendChild(lineEl)
+    offset += line.length + 1
   })
 
   return section
@@ -181,7 +241,9 @@ function findSelectionTargetIndex(
 export class InlineDiffReviewOverlay {
   private readonly decorationCompartment = new Compartment()
   private readonly setDecorationsEffect = StateEffect.define<DecorationSet>()
-  private readonly reviewTransaction = Annotation.define<boolean>()
+  private readonly reviewTransaction = Annotation.define<
+    { kind: 'map' } | { kind: 'switch'; suggestionId: number; side: ReviewSide }
+  >()
   private readonly decorationsField: StateField<DecorationSet>
   private readonly initialChanges: SuggestionChange[]
   private suggestions: ReviewSuggestion[]
@@ -251,7 +313,7 @@ export class InlineDiffReviewOverlay {
       this.options.view.dispatch({
         changes: this.initialChanges,
         annotations: [
-          this.reviewTransaction.of(true),
+          this.reviewTransaction.of({ kind: 'map' }),
           Transaction.addToHistory.of(false),
         ],
       })
@@ -290,11 +352,9 @@ export class InlineDiffReviewOverlay {
     if (this.closed) return
     this.closed = true
     if (!this.settled) {
-      if (this.isAppliedReview()) {
-        this.suggestions = []
-      } else {
-        this.restorePendingSuggestions()
-      }
+      this.materializePendingSide(
+        this.isAppliedReview() ? 'modified' : 'original',
+      )
     }
     if (this.onAbort) {
       this.options.state.abortSignal?.removeEventListener('abort', this.onAbort)
@@ -484,7 +544,17 @@ export class InlineDiffReviewOverlay {
     if (!update.docChanged) return
     for (const transaction of update.transactions) {
       if (!transaction.docChanged) continue
-      if (transaction.annotation(this.reviewTransaction)) {
+      const reviewTransaction = transaction.annotation(this.reviewTransaction)
+      if (reviewTransaction?.kind === 'switch') {
+        this.suggestions = switchReviewSuggestionSide(
+          this.suggestions,
+          reviewTransaction.suggestionId,
+          reviewTransaction.side,
+          transaction.changes,
+        )
+        continue
+      }
+      if (reviewTransaction?.kind === 'map') {
         this.suggestions = mapReviewSuggestions(
           this.suggestions,
           transaction.changes,
@@ -494,6 +564,7 @@ export class InlineDiffReviewOverlay {
       this.suggestions = updateReviewSuggestions(
         this.suggestions,
         transaction.changes,
+        transaction.newDoc.toString(),
       ).suggestions
     }
     this.currentIndex = Math.min(
@@ -559,11 +630,13 @@ export class InlineDiffReviewOverlay {
 
     if (!fromRect && !widgetRect) return
 
-    const hasCurrentContent = active.to > active.from
-    const trackTop = hasCurrentContent
-      ? (fromRect?.top ?? widgetRect?.bottom)
+    const modifiedIsLive = active.activeSide === 'modified'
+    const hasLiveContent = active.to > active.from
+    const trackLiveModified = modifiedIsLive && hasLiveContent
+    const trackTop = trackLiveModified
+      ? (fromRect?.top ?? widgetRect?.top)
       : (widgetRect?.top ?? fromRect?.top)
-    const trackBottom = hasCurrentContent
+    const trackBottom = trackLiveModified
       ? (toRect?.bottom ?? fromRect?.bottom)
       : (widgetRect?.bottom ?? fromRect?.bottom)
 
@@ -626,34 +699,32 @@ export class InlineDiffReviewOverlay {
   }
 
   private acceptDisplayedActive(): void {
-    if (!this.suggestions[this.currentIndex]) return
-    this.removeCurrentSuggestion()
+    this.resolveDisplayedActive('modified')
   }
 
   private rejectDisplayedActive(): void {
+    this.resolveDisplayedActive('original')
+  }
+
+  private resolveDisplayedActive(side: ReviewSide): void {
     const suggestion = this.suggestions[this.currentIndex]
     if (!suggestion) return
+    const captured = this.captureActiveDraft(suggestion)
     const change = resolveSuggestionChange(
       this.options.view.state.doc.toString(),
-      suggestion,
+      captured,
+      side,
     )
-    this.removeSuggestionById(suggestion.id, false)
+    this.removeSuggestionById(captured.id, false)
     if (change.from !== change.to || change.insert.length > 0) {
       this.options.view.dispatch({
         changes: change,
         annotations: [
-          this.reviewTransaction.of(true),
+          this.reviewTransaction.of({ kind: 'map' }),
           Transaction.addToHistory.of(false),
         ],
       })
     }
-    this.finishResolutionStep()
-  }
-
-  private removeCurrentSuggestion(): void {
-    const suggestion = this.suggestions[this.currentIndex]
-    if (!suggestion) return
-    this.removeSuggestionById(suggestion.id, false)
     this.finishResolutionStep()
   }
 
@@ -677,36 +748,99 @@ export class InlineDiffReviewOverlay {
   }
 
   private acceptAllDisplayed(): void {
-    this.suggestions = []
+    this.materializePendingSide('modified')
     void this.completeAndClose()
   }
 
   private rejectAllDisplayed(): void {
-    this.restorePendingSuggestions()
+    this.materializePendingSide('original')
     void this.completeAndClose()
   }
 
   private restorePendingSuggestions(): void {
+    this.materializePendingSide('original')
+  }
+
+  private materializePendingSide(side: ReviewSide): void {
     const content = this.options.view.state.doc.toString()
     const changes = this.suggestions
-      .map((suggestion) => resolveSuggestionChange(content, suggestion))
+      .map((suggestion) =>
+        resolveSuggestionChange(
+          content,
+          this.captureActiveDraft(suggestion),
+          side,
+        ),
+      )
+      .filter(
+        (change) => content.slice(change.from, change.to) !== change.insert,
+      )
       .sort((left, right) => left.from - right.from)
     this.suggestions = []
     if (changes.length === 0) return
     this.options.view.dispatch({
       changes,
       annotations: [
-        this.reviewTransaction.of(true),
+        this.reviewTransaction.of({ kind: 'map' }),
         Transaction.addToHistory.of(false),
       ],
     })
+  }
+
+  private captureActiveDraft(suggestion: ReviewSuggestion): ReviewSuggestion {
+    const content = this.options.view.state.doc.toString()
+    const captured = setReviewDraft(
+      suggestion,
+      suggestion.activeSide,
+      content.slice(suggestion.from, suggestion.to),
+    )
+    const index = this.suggestions.findIndex(
+      (item) => item.id === suggestion.id,
+    )
+    if (index >= 0) this.suggestions[index] = captured
+    return captured
+  }
+
+  private activateSuggestionSide(
+    suggestionId: number,
+    side: ReviewSide,
+    offset: number,
+  ): void {
+    const index = this.suggestions.findIndex((item) => item.id === suggestionId)
+    const suggestion = this.suggestions[index]
+    if (!suggestion || suggestion.activeSide === side) return
+
+    const captured = this.captureActiveDraft(suggestion)
+    const insert = getReviewDraft(captured, side)
+    const anchor = captured.from + Math.max(0, Math.min(offset, insert.length))
+    const current = this.options.view.state.doc.sliceString(
+      captured.from,
+      captured.to,
+    )
+
+    if (current === insert) {
+      this.suggestions[index] = { ...captured, activeSide: side }
+      this.options.view.dispatch({ selection: { anchor } })
+      this.renderSuggestions({ ensureVisible: false })
+      this.options.view.focus()
+      return
+    }
+
+    this.options.view.dispatch({
+      changes: { from: captured.from, to: captured.to, insert },
+      selection: { anchor },
+      annotations: [
+        this.reviewTransaction.of({ kind: 'switch', suggestionId, side }),
+        Transaction.addToHistory.of(false),
+      ],
+    })
+    this.options.view.focus()
   }
 
   private async completeAndClose(): Promise<void> {
     if (this.closed || this.settled) return
     this.settled = true
     if (this.isAppliedReview()) {
-      this.suggestions = []
+      this.materializePendingSide('modified')
     } else if (this.suggestions.length > 0) {
       this.restorePendingSuggestions()
     }
@@ -772,9 +906,11 @@ export class InlineDiffReviewOverlay {
       const isActive = index === this.currentIndex
       const decorations = []
       if (suggestion.from < suggestion.to) {
+        const activeClass =
+          suggestion.activeSide === 'modified' ? ' is-applied' : ''
         decorations.push(
           Decoration.mark({
-            class: `yolo-inline-review-current is-applied${
+            class: `yolo-inline-review-current${activeClass}${
               isActive ? ' is-active' : ''
             }`,
             attributes: {
@@ -783,17 +919,21 @@ export class InlineDiffReviewOverlay {
           }).range(suggestion.from, suggestion.to),
         )
       }
-      if (suggestion.originalValue !== undefined) {
-        decorations.push(
-          Decoration.widget({
-            widget: new InlineReviewWidget(suggestion, (id) =>
-              this.handleHoverActive(id),
-            ),
-            side: -1,
-            block: true,
-          }).range(suggestion.from),
-        )
-      }
+      decorations.push(
+        Decoration.widget({
+          widget: new InlineReviewWidget(
+            suggestion,
+            (id) => this.handleHoverActive(id),
+            (id, side, offset) => this.activateSuggestionSide(id, side, offset),
+          ),
+          side: suggestion.activeSide === 'modified' ? -1 : 1,
+          block: true,
+        }).range(
+          suggestion.activeSide === 'modified'
+            ? suggestion.from
+            : suggestion.to,
+        ),
+      )
       return decorations
     })
 

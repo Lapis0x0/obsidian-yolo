@@ -5,6 +5,7 @@ import {
   buildReviewPlanFromEdits,
   buildSnapshotReviewPlan,
   resolveSuggestionChange,
+  switchReviewSuggestionSide,
   updateReviewSuggestions,
 } from './review-model'
 
@@ -17,6 +18,8 @@ const createSuggestion = (
   startLine: 0,
   endLine: 0,
   originalText: 'old',
+  modifiedText: 'new',
+  activeSide: 'modified',
   originalValue: 'old',
   modifiedValue: 'new',
   ...overrides,
@@ -38,6 +41,8 @@ describe('review plan materialization', () => {
       from: 2,
       to: 19,
       originalText: 'old',
+      modifiedText: 'editable\nproposal',
+      activeSide: 'modified',
       originalValue: 'old',
       modifiedValue: 'editable\nproposal',
     })
@@ -134,6 +139,50 @@ describe('review plan materialization', () => {
     )
 
     expect(applyChanges(plan.content, restore)).toBe(original)
+  })
+})
+
+describe('editable review drafts', () => {
+  it('switches the live range without resolving the suggestion', () => {
+    const suggestion = createSuggestion({})
+    const changes = ChangeSet.of({ from: 2, to: 5, insert: 'old' }, 8)
+
+    expect(
+      switchReviewSuggestionSide(
+        [suggestion],
+        suggestion.id,
+        'original',
+        changes,
+      ),
+    ).toEqual([
+      {
+        ...suggestion,
+        activeSide: 'original',
+        from: 2,
+        to: 5,
+      },
+    ])
+  })
+
+  it('updates only the active draft and can still resolve to either side', () => {
+    const switched = createSuggestion({ activeSide: 'original' })
+    const content = 'xxoldyyy'
+    const changes = ChangeSet.of({ from: 3, to: 4, insert: 'LDER' }, 8)
+    const edited = applyChanges(content, changes)
+    const pending = updateReviewSuggestions([switched], changes, edited)
+      .suggestions[0]
+
+    expect(pending).toMatchObject({
+      originalText: 'oLDERd',
+      modifiedText: 'new',
+      activeSide: 'original',
+    })
+    expect(resolveSuggestionChange(edited, pending, 'original').insert).toBe(
+      'oLDERd',
+    )
+    expect(resolveSuggestionChange(edited, pending, 'modified').insert).toBe(
+      'new',
+    )
   })
 })
 
