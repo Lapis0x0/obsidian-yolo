@@ -1395,6 +1395,9 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletion: 'Completamento tab',
       tabCompletionDesc:
         'Genera suggerimenti quando una regola trigger corrisponde.',
+      tabCompletionMultipleCandidates: 'Genera più suggerimenti',
+      tabCompletionMultipleCandidatesDesc:
+        'Quando attivo, genera tre suggerimenti di completamento.',
       tabCompletionModel: 'Modello completamento tab',
       tabCompletionModelDesc:
         'Modello usato per generare suggerimenti di completamento tab.',

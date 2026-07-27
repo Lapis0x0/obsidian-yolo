@@ -1813,12 +1813,16 @@ export default class YoloPlugin extends Plugin {
           this.resolveContinuationParams(overrides),
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
+        setTabCompletionDisplay: (view, payload) =>
+          inlineSuggestionController.setTabCompletionDisplay(view, payload),
         setInlineSuggestionGhost: (view, payload) =>
           inlineSuggestionController.setInlineSuggestionGhost(view, payload),
         showTabLoadingDots: (view, from) =>
           inlineSuggestionController.showTabLoadingDots(view, from),
         hideTabLoadingDots: (view) =>
           inlineSuggestionController.hideTabLoadingDots(view),
+        getSwitchSuggestionHint: () =>
+          this.t('common.switchSuggestion', '↑↓ 切换建议'),
         clearInlineSuggestion: () =>
           inlineSuggestionController.clearInlineSuggestion(),
         setActiveInlineSuggestion: (suggestion) =>

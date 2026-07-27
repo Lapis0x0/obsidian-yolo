@@ -52,6 +52,7 @@ export type TranslationKeys = {
     success: string
     warning: string
     retry: string
+    switchSuggestion: string
     copy: string
     paste: string
     characters: string
@@ -1235,6 +1236,8 @@ export type TranslationKeys = {
       tabCompletionAdvancedSectionDesc: string
       tabCompletion: string
       tabCompletionDesc: string
+      tabCompletionMultipleCandidates: string
+      tabCompletionMultipleCandidatesDesc: string
       tabCompletionModel: string
       tabCompletionModelDesc: string
       tabCompletionTriggerDelay: string

@@ -786,6 +786,33 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     <div className="yolo-composer-option-info">
                       <div className="yolo-composer-option-title">
                         {t(
+                          'settings.continuation.tabCompletionMultipleCandidates',
+                          '生成多条候选',
+                        )}
+                      </div>
+                      <div className="yolo-composer-option-desc">
+                        {t(
+                          'settings.continuation.tabCompletionMultipleCandidatesDesc',
+                          '开启后将会生成三条补全建议。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="yolo-composer-option-control">
+                      <ObsidianToggle
+                        value={tabCompletionOptions.multipleCandidatesEnabled}
+                        onChange={(value) => {
+                          updateTabCompletionOptions({
+                            multipleCandidatesEnabled: value,
+                          })
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="yolo-composer-option">
+                    <div className="yolo-composer-option-info">
+                      <div className="yolo-composer-option-title">
+                        {t(
                           'settings.continuation.tabCompletionModel',
                           '补全模型',
                         )}

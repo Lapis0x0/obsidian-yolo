@@ -44,6 +44,7 @@ export const en: TranslationKeys = {
     success: 'Success',
     warning: 'Warning',
     retry: 'Retry',
+    switchSuggestion: '↑↓ Switch suggestion',
     copy: 'Copy',
     paste: 'Paste',
     characters: 'Chars',
@@ -1542,6 +1543,9 @@ export const en: TranslationKeys = {
       tabCompletion: 'Enable tab completion',
       tabCompletionDesc:
         'Request a completion when a trigger rule matches, then show it as gray ghost text that can be accepted with the tab key.',
+      tabCompletionMultipleCandidates: 'Generate multiple candidates',
+      tabCompletionMultipleCandidatesDesc:
+        'Generate three completion suggestions when enabled.',
       tabCompletionModel: 'Completion model',
       tabCompletionModelDesc:
         'Choose which model provides tab completion suggestions.',

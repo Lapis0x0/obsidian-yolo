@@ -21,13 +21,23 @@ import {
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
-import type { InlineSuggestionGhostPayload } from '../inline-suggestion/inlineSuggestion'
+import type {
+  InlineSuggestionGhostPayload,
+  TabCompletionCandidateStatus,
+  TabCompletionDisplayPayload,
+} from '../inline-suggestion/inlineSuggestion'
 
 type TabCompletionSuggestion = {
   editor: Editor
   view: EditorView
-  text: string
   cursorOffset: number
+  candidates: Array<{
+    text: string
+    status: TabCompletionCandidateStatus
+  }>
+  selectedIndex: number
+  hasUserNavigated: boolean
+  multipleCandidates: boolean
 }
 
 type ActiveInlineSuggestion = {
@@ -50,12 +60,17 @@ type TabCompletionDeps = {
     stream: boolean
   }
   getActiveFileTitle: () => string
+  setTabCompletionDisplay: (
+    view: EditorView,
+    payload: TabCompletionDisplayPayload,
+  ) => void
   setInlineSuggestionGhost: (
     view: EditorView,
     payload: InlineSuggestionGhostPayload,
   ) => void
   showTabLoadingDots: (view: EditorView, from: number) => void
   hideTabLoadingDots: (view: EditorView) => void
+  getSwitchSuggestionHint: () => string
   clearInlineSuggestion: () => void
   setActiveInlineSuggestion: (suggestion: ActiveInlineSuggestion) => void
   addAbortController: (controller: AbortController) => void
@@ -64,7 +79,29 @@ type TabCompletionDeps = {
 }
 
 const MASK_TAG = '<mask/>'
+const TAB_COMPLETION_CANDIDATE_COUNT = 3
+const TAB_COMPLETION_CANDIDATE_SEPARATOR = '<yolo_next_suggestion/>'
 const TAB_COMPLETION_CONSTRAINTS_BLOCK = `\n\nAdditional constraints:\n${TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER}`
+const TAB_COMPLETION_MULTIPLE_CANDIDATES_CONSTRAINT =
+  `Generate exactly ${TAB_COMPLETION_CANDIDATE_COUNT} candidate completions in sequence. ` +
+  `Separate them with the exact token ${TAB_COMPLETION_CANDIDATE_SEPARATOR}. ` +
+  'Each candidate must independently fit the text before and after the cursor, match the existing language, tone, format, and writing style, and must not refer to the other candidates. ' +
+  'When the context allows, offer meaningfully different continuation directions instead of superficial paraphrases or identical openings. ' +
+  'Never sacrifice correctness, coherence, or direct insertability for variety; if the context strongly supports only one continuation, similar candidates are acceptable. ' +
+  'Do not number or label the candidates, and do not output the separator inside a candidate.'
+
+const trimPartialSeparator = (text: string): string => {
+  const maxPrefixLength = Math.min(
+    text.length,
+    TAB_COMPLETION_CANDIDATE_SEPARATOR.length - 1,
+  )
+  for (let length = maxPrefixLength; length > 0; length--) {
+    if (text.endsWith(TAB_COMPLETION_CANDIDATE_SEPARATOR.slice(0, length))) {
+      return text.slice(0, -length)
+    }
+  }
+  return text
+}
 
 const applyTabCompletionConstraints = (
   prompt: string,
@@ -276,9 +313,13 @@ export class TabCompletionController {
   clearSuggestion() {
     this.hideLoadingDots()
     if (this.tabCompletionSuggestion) {
-      const { view } = this.tabCompletionSuggestion
+      const { multipleCandidates, view } = this.tabCompletionSuggestion
       if (view) {
-        this.deps.setInlineSuggestionGhost(view, null)
+        if (multipleCandidates) {
+          this.deps.setTabCompletionDisplay(view, null)
+        } else {
+          this.deps.setInlineSuggestionGhost(view, null)
+        }
       }
       this.tabCompletionSuggestion = null
     }
@@ -341,6 +382,144 @@ export class TabCompletionController {
       }
       void this.run(editor, cursorOffset)
     }, delay)
+  }
+
+  private cleanCandidateText(text: string, maxLength: number): string {
+    let cleaned = text.replace(/\r\n/g, '\n').replace(/\s+$/, '')
+    if (!cleaned.trim() || /^[\s\n\t]+$/.test(cleaned)) return ''
+    cleaned = cleaned.replace(/^[\s\n\t]+/, '')
+    return cleaned.length > maxLength ? cleaned.slice(0, maxLength) : cleaned
+  }
+
+  private renderSuggestion(suggestion: TabCompletionSuggestion) {
+    if (this.tabCompletionSuggestion !== suggestion) return
+
+    const selected = suggestion.candidates[suggestion.selectedIndex]
+    const availableCount = suggestion.candidates.filter(
+      (candidate) => candidate.text.length > 0,
+    ).length
+
+    if (suggestion.multipleCandidates) {
+      this.deps.setTabCompletionDisplay(suggestion.view, {
+        from: suggestion.cursorOffset,
+        text: selected?.text ?? '',
+        candidateStatuses: suggestion.candidates.map(
+          (candidate) => candidate.status,
+        ),
+        selectedIndex: suggestion.selectedIndex,
+        showSelectionIndicator: suggestion.hasUserNavigated,
+        availableCount,
+        switchHint: this.deps.getSwitchSuggestionHint(),
+      })
+    } else if (selected?.text) {
+      this.hideLoadingDots()
+      this.deps.setInlineSuggestionGhost(suggestion.view, {
+        from: suggestion.cursorOffset,
+        text: selected.text,
+      })
+    } else if (selected?.status === 'generating') {
+      this.showLoadingDots(suggestion.view, suggestion.cursorOffset)
+    } else {
+      this.hideLoadingDots()
+    }
+
+    if (!selected?.text) {
+      this.deps.setActiveInlineSuggestion(null)
+      return
+    }
+    this.deps.setActiveInlineSuggestion({
+      source: 'tab',
+      editor: suggestion.editor,
+      view: suggestion.view,
+      fromOffset: suggestion.cursorOffset,
+      text: selected.text,
+    })
+  }
+
+  private updateCandidatesFromRawText(
+    suggestion: TabCompletionSuggestion,
+    rawText: string,
+    maxSuggestionLength: number,
+  ) {
+    const rawCandidates = rawText
+      .split(TAB_COMPLETION_CANDIDATE_SEPARATOR)
+      .slice(0, suggestion.candidates.length)
+    const completedCount = Math.min(
+      rawCandidates.length - 1,
+      suggestion.candidates.length - 1,
+    )
+
+    suggestion.candidates.forEach((candidate, index) => {
+      const rawCandidate = rawCandidates[index]
+      if (rawCandidate === undefined) {
+        candidate.text = ''
+        candidate.status = 'pending'
+        return
+      }
+      const displayText =
+        index === rawCandidates.length - 1
+          ? trimPartialSeparator(rawCandidate)
+          : rawCandidate
+      candidate.text = this.cleanCandidateText(displayText, maxSuggestionLength)
+      candidate.status = index < completedCount ? 'complete' : 'generating'
+    })
+
+    this.renderSuggestion(suggestion)
+  }
+
+  private finishCandidateGeneration(
+    suggestion: TabCompletionSuggestion,
+    interrupted: boolean,
+  ) {
+    if (this.tabCompletionSuggestion !== suggestion) return
+    suggestion.candidates.forEach((candidate) => {
+      if (candidate.status === 'generating') {
+        candidate.status =
+          !interrupted && candidate.text ? 'complete' : 'interrupted'
+        return
+      }
+      if (candidate.status === 'pending') {
+        candidate.status = 'interrupted'
+      }
+    })
+    this.renderSuggestion(suggestion)
+  }
+
+  tryNavigateFromView(view: EditorView, direction: -1 | 1): boolean {
+    const suggestion = this.tabCompletionSuggestion
+    if (!suggestion || suggestion.view !== view) return false
+    if (!suggestion.multipleCandidates) return false
+
+    const availableIndices = suggestion.candidates.flatMap(
+      (candidate, index) => (candidate.text ? [index] : []),
+    )
+    if (availableIndices.length <= 1) return true
+
+    const currentPosition = availableIndices.indexOf(suggestion.selectedIndex)
+    const normalizedPosition = currentPosition >= 0 ? currentPosition : 0
+    const nextPosition =
+      (normalizedPosition + direction + availableIndices.length) %
+      availableIndices.length
+    suggestion.selectedIndex = availableIndices[nextPosition]
+    suggestion.hasUserNavigated = true
+    this.renderSuggestion(suggestion)
+    return true
+  }
+
+  tryRejectFromView(view: EditorView): boolean {
+    const suggestion = this.tabCompletionSuggestion
+    if (!suggestion || suggestion.view !== view) return false
+    this.cancelRequest()
+    this.deps.clearInlineSuggestion()
+    return true
+  }
+
+  handleSelectionChange(view: EditorView) {
+    const suggestion = this.tabCompletionSuggestion
+    if (!suggestion || suggestion.view !== view) return
+    if (view.state.selection.main.head === suggestion.cursorOffset) return
+    this.cancelRequest()
+    this.deps.clearInlineSuggestion()
   }
 
   async run(editor: Editor, scheduledCursorOffset: number) {
@@ -410,10 +589,14 @@ export class TabCompletionController {
         tabCompletionLengthPreset,
         tabCompletionConstraints,
       )
-      const systemPrompt = applyTabCompletionConstraints(
+      const basePrompt = applyTabCompletionConstraints(
         baseSystemPrompt,
         combinedConstraints,
       )
+      const multipleCandidatesEnabled = options.multipleCandidatesEnabled
+      const systemPrompt = multipleCandidatesEnabled
+        ? `${basePrompt}\n\n${TAB_COMPLETION_MULTIPLE_CANDIDATES_CONSTRAINT}`
+        : basePrompt
 
       const requestMessages: RequestMessage[] = [
         {
@@ -430,10 +613,35 @@ export class TabCompletionController {
       this.deps.clearInlineSuggestion()
       this.tabCompletionPending = null
 
+      const suggestion: TabCompletionSuggestion = {
+        editor,
+        view,
+        cursorOffset: scheduledCursorOffset,
+        candidates: Array.from(
+          {
+            length: multipleCandidatesEnabled
+              ? TAB_COMPLETION_CANDIDATE_COUNT
+              : 1,
+          },
+          (_, index) => ({
+            text: '',
+            status: index === 0 ? 'generating' : 'pending',
+          }),
+        ),
+        selectedIndex: 0,
+        hasUserNavigated: false,
+        multipleCandidates: multipleCandidatesEnabled,
+      }
+      this.tabCompletionSuggestion = suggestion
+      this.renderSuggestion(suggestion)
+
       const baseRequest: LLMRequestBase = {
         model: model.model,
         messages: requestMessages,
-        max_tokens: Math.max(16, Math.min(options.maxTokens, 2000)),
+        max_tokens: Math.max(
+          multipleCandidatesEnabled ? 48 : 16,
+          Math.min(options.maxTokens * suggestion.candidates.length, 6000),
+        ),
         // Tab 补全是延迟敏感场景，默认 'off'；用户可在设置中改为 'low'/'auto' 以适配强制推理的模型
         reasoningLevel: options.reasoningLevel,
       }
@@ -450,55 +658,10 @@ export class TabCompletionController {
       const requestTimeout = Math.max(0, options.requestTimeoutMs)
       const attempts = Math.max(0, Math.floor(options.maxRetries)) + 1
 
-      const updateSuggestion = (
-        suggestionText: string,
-        currentView: EditorView,
-      ) => {
-        let cleaned = suggestionText.replace(/\r\n/g, '\n').replace(/\s+$/, '')
-        if (!cleaned.trim()) return
-        if (/^[\s\n\t]+$/.test(cleaned)) return
-        cleaned = cleaned.replace(/^[\s\n\t]+/, '')
-        if (cleaned.length > options.maxSuggestionLength) {
-          cleaned = cleaned.slice(0, options.maxSuggestionLength)
-        }
-
-        this.hideLoadingDots()
-        hasShownValidSuggestion = true
-
-        this.deps.setInlineSuggestionGhost(currentView, {
-          from: scheduledCursorOffset,
-          text: cleaned,
-        })
-        this.deps.setActiveInlineSuggestion({
-          source: 'tab',
-          editor,
-          view: currentView,
-          fromOffset: scheduledCursorOffset,
-          text: cleaned,
-        })
-        this.tabCompletionSuggestion = {
-          editor,
-          view: currentView,
-          text: cleaned,
-          cursorOffset: scheduledCursorOffset,
-        }
-      }
-
       for (let attempt = 0; attempt < attempts; attempt++) {
         const controller = new AbortController()
         this.tabCompletionAbortController = controller
         this.deps.addAbortController(controller)
-
-        if (!hasShownValidSuggestion) {
-          const loadingView = this.deps.getEditorView(editor)
-          if (
-            loadingView &&
-            loadingView.state.selection.main.head === scheduledCursorOffset &&
-            !editor.getSelection()?.length
-          ) {
-            this.showLoadingDots(loadingView, scheduledCursorOffset)
-          }
-        }
 
         let timeoutHandle: ReturnType<typeof setTimeout> | null = null
         if (requestTimeout > 0) {
@@ -523,6 +686,7 @@ export class TabCompletionController {
                 const currentView = this.deps.getEditorView(editor)
                 if (
                   !currentView ||
+                  currentView !== suggestion.view ||
                   currentView.state.selection.main.head !==
                     scheduledCursorOffset ||
                   editor.getSelection()?.length
@@ -533,22 +697,38 @@ export class TabCompletionController {
                 }
 
                 if (!rawText.trim()) return
-                updateSuggestion(rawText, currentView)
+                this.updateCandidatesFromRawText(
+                  suggestion,
+                  rawText,
+                  options.maxSuggestionLength,
+                )
+                hasShownValidSuggestion = suggestion.candidates.some(
+                  (candidate) => candidate.text.length > 0,
+                )
               },
             })
 
             if (requestInvalidated) return
 
             const finalText = result.content || rawText
-            if (finalText.length === 0) return
+            if (finalText.length === 0) {
+              this.finishCandidateGeneration(suggestion, true)
+              return
+            }
 
             const currentView = this.deps.getEditorView(editor)
             if (!currentView) return
+            if (currentView !== suggestion.view) return
             if (currentView.state.selection.main.head !== scheduledCursorOffset)
               return
             if (editor.getSelection()?.length) return
 
-            updateSuggestion(finalText, currentView)
+            this.updateCandidatesFromRawText(
+              suggestion,
+              finalText,
+              options.maxSuggestionLength,
+            )
+            this.finishCandidateGeneration(suggestion, false)
             if (timeoutHandle) clearTimeout(timeoutHandle)
             return
           } catch (error) {
@@ -563,6 +743,7 @@ export class TabCompletionController {
           if (
             attempt < attempts - 1 &&
             aborted &&
+            !hasShownValidSuggestion &&
             !isRequestErrorNonRetryable(error)
           ) {
             this.deps.removeAbortController(controller)
@@ -570,9 +751,11 @@ export class TabCompletionController {
             continue
           }
           if (error?.name === 'AbortError') {
+            this.finishCandidateGeneration(suggestion, true)
             return
           }
           console.error('Tab completion failed:', error)
+          this.finishCandidateGeneration(suggestion, true)
           return
         } finally {
           if (timeoutHandle) {
@@ -590,7 +773,6 @@ export class TabCompletionController {
       if (error?.name === 'AbortError') return
       console.error('Tab completion failed:', error)
     } finally {
-      this.hideLoadingDots()
       if (this.tabCompletionAbortController) {
         this.deps.removeAbortController(this.tabCompletionAbortController)
         this.tabCompletionAbortController = null
@@ -619,11 +801,15 @@ export class TabCompletionController {
       return false
     }
 
+    const selectedCandidate = suggestion.candidates[suggestion.selectedIndex]
+    if (!selectedCandidate?.text) return false
+
     const cursor = editor.getCursor()
-    const suggestionText = escapeMarkdownSpecialChars(suggestion.text, {
+    const suggestionText = escapeMarkdownSpecialChars(selectedCandidate.text, {
       escapeAngleBrackets: true,
       preserveCodeBlocks: true,
     })
+    this.cancelRequest()
     this.deps.clearInlineSuggestion()
     editor.replaceRange(suggestionText, cursor, cursor)
 

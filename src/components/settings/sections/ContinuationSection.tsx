@@ -516,6 +516,25 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
             {enableTabCompletion && (
               <>
                 <ObsidianSetting
+                  name={t(
+                    'settings.continuation.tabCompletionMultipleCandidates',
+                  )}
+                  desc={t(
+                    'settings.continuation.tabCompletionMultipleCandidatesDesc',
+                  )}
+                  className="yolo-settings-card"
+                >
+                  <ObsidianToggle
+                    value={tabCompletionOptions.multipleCandidatesEnabled}
+                    onChange={(value) => {
+                      updateTabCompletionOptions({
+                        multipleCandidatesEnabled: value,
+                      })
+                    }}
+                  />
+                </ObsidianSetting>
+
+                <ObsidianSetting
                   name={t('settings.continuation.tabCompletionModel')}
                   desc={t('settings.continuation.tabCompletionModelDesc')}
                   className="yolo-settings-card"

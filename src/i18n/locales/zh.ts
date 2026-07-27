@@ -44,6 +44,7 @@ export const zh: TranslationKeys = {
     success: '成功',
     warning: '警告',
     retry: '重试',
+    switchSuggestion: '↑↓ 切换建议',
     copy: '复制',
     paste: '粘贴',
     characters: '字符',
@@ -1435,6 +1436,8 @@ export const zh: TranslationKeys = {
       tabCompletion: '启用 Tab 补全',
       tabCompletionDesc:
         '当触发规则命中时自动请求补全，并以灰色幽灵文本形式给出建议，按下 Tab 接受。',
+      tabCompletionMultipleCandidates: '生成多条候选',
+      tabCompletionMultipleCandidatesDesc: '开启后将会生成三条补全建议。',
       tabCompletionModel: '补全模型',
       tabCompletionModelDesc: '为 Tab 补全选择一个专用模型。',
       tabCompletionTriggerDelay: '触发延迟（毫秒）',

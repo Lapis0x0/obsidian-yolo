@@ -60,6 +60,7 @@ const ragOptionsSchema = z.object({
 })
 
 type TabCompletionOptionDefaults = {
+  multipleCandidatesEnabled: boolean
   idleTriggerEnabled: boolean
   autoTriggerDelayMs: number
   autoTriggerCooldownMs: number
@@ -106,6 +107,7 @@ export const notificationTimingSchema = z.enum(['always', 'when-unfocused'])
 export type NotificationTiming = z.infer<typeof notificationTimingSchema>
 
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
+  multipleCandidatesEnabled: true,
   idleTriggerEnabled: false,
   autoTriggerDelayMs: 3000,
   autoTriggerCooldownMs: 15000,
@@ -193,6 +195,9 @@ export const splitContextRange = (
 
 const tabCompletionOptionsSchema = z
   .object({
+    multipleCandidatesEnabled: z
+      .boolean()
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.multipleCandidatesEnabled),
     idleTriggerEnabled: z
       .boolean()
       .catch(DEFAULT_TAB_COMPLETION_OPTIONS.idleTriggerEnabled),

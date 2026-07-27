@@ -15,14 +15,6 @@
     color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
 }
 
-.yolo-ghost-text {
-  color: var(--text-muted);
-  pointer-events: none;
-  opacity: 0.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 /* Chat input: outer wrapper to anchor settings button at top-right */
 .yolo-chat-input-wrapper {
   position: relative;
