@@ -161,8 +161,8 @@ function SnippetsManagerModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.editor.snippets.modalCallout',
-          'Snippets live in YOLO/snippets.md. Trigger the chat input with / and pick one to insert its body.',
-        )}
+          'Snippets live in {{path}}. Trigger the chat input with / and pick one to insert its body.',
+        ).replace('{{path}}', snippetsPath)}
       </div>
 
       <div className="yolo-agent-skills-toolbar">

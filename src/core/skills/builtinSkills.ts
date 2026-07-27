@@ -67,12 +67,21 @@ const renderBuiltinContent = (
   return skill.content
 }
 
+const renderBuiltinDescription = (
+  skill: BuiltinLiteSkill,
+  snippetsPath?: string,
+): string =>
+  skill.name === 'snippet-creator'
+    ? getSnippetsPathAwareTemplate(skill.description, snippetsPath)
+    : skill.description
+
 export const listBuiltinLiteSkills = (options?: {
   skillsDir?: string
   snippetsPath?: string
 }): BuiltinLiteSkill[] => {
   return BUILTIN_SKILLS.map((skill) => ({
     ...skill,
+    description: renderBuiltinDescription(skill, options?.snippetsPath),
     content: renderBuiltinContent(skill, options),
   }))
 }
@@ -101,6 +110,7 @@ export const getBuiltinLiteSkillByName = ({
 
   return {
     ...matched,
+    description: renderBuiltinDescription(matched, snippetsPath),
     content: renderBuiltinContent(matched, { skillsDir, snippetsPath }),
   }
 }

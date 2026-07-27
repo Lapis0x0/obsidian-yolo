@@ -7,7 +7,7 @@ import {
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
 } from './setting.types'
-import { parseYoloSettings } from './settings'
+import { migrateYoloSettingsData, parseYoloSettings } from './settings'
 
 describe('parseYoloSettings', () => {
   it('should return default values for empty input', () => {
@@ -84,7 +84,7 @@ describe('parseYoloSettings', () => {
 
   it('defaults local MCP server settings without a schema migration', () => {
     const result = parseYoloSettings({
-      version: 75,
+      version: SETTINGS_SCHEMA_VERSION,
       mcp: {
         servers: [],
         builtinToolOptions: {},
@@ -97,6 +97,50 @@ describe('parseYoloSettings', () => {
       enabled: false,
       port: DEFAULT_LOCAL_MCP_SERVER_PORT,
       token: '',
+    })
+  })
+
+  it('migrates released voice v70 data without replaying colliding history', () => {
+    const result = migrateYoloSettingsData({
+      version: 70,
+      browser: {
+        injectActivePageContext: true,
+      },
+      assistants: [
+        {
+          id: 'voice-user',
+          toolPreferences: {
+            yolo_local__browser_read_page: {
+              enabled: true,
+              approvalMode: 'require_approval',
+            },
+          },
+        },
+      ],
+      contextVoiceInputOptions: {
+        enabled: true,
+        asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+        activeAsrConfigId: 'asr-1',
+      },
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.browser).toEqual({
+      injectActivePageContext: true,
+    })
+    expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
+    expect(result.ragOptions).toMatchObject({ excludeYoloBaseDir: true })
+    expect(result.contextVoiceInputOptions).toMatchObject({
+      enabled: true,
+      asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+      activeAsrConfigId: 'asr-1',
+    })
+    const assistants = result.assistants as Array<Record<string, unknown>>
+    expect(assistants[0].toolPreferences).toEqual({
+      yolo_local__browser_read_page: {
+        enabled: true,
+        approvalMode: 'require_approval',
+      },
     })
   })
 
@@ -450,6 +494,9 @@ describe('parseYoloSettings', () => {
         continuationModelId: 'missing/model',
         tabCompletionModelId: 'missing/model',
       },
+      contextVoiceInputOptions: {
+        polishModelId: 'missing/model',
+      },
       learningOptions: { modelId: 'missing/model' },
       assistants: [
         {
@@ -476,6 +523,7 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
     expect(result.continuationOptions.continuationModelId).toBe('openai/gpt-5')
     expect(result.continuationOptions.tabCompletionModelId).toBe('openai/gpt-5')
+    expect(result.contextVoiceInputOptions.polishModelId).toBe('')
     expect(result.learningOptions).toEqual({ modelId: 'missing/model' })
     expect(result.assistants).toEqual([
       {

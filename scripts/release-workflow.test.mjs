@@ -59,6 +59,10 @@ test('Core release validates the tag before checkout and build', () => {
   assert.match(build.steps[guardIndex].run, /exit 1/)
 })
 
+test('Core release silently skips fork voice-release tags', () => {
+  assert.match(build.if, /!contains\(github\.ref_name, '-voice\.'\)/)
+})
+
 test('Core release keeps least-privilege permissions and pinned actions', () => {
   assert.deepEqual(workflow.permissions, { contents: 'read' })
   assert.deepEqual(build.permissions, {

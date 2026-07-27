@@ -155,6 +155,63 @@ export function isLLMDebugCaptureEnabled(): boolean {
   return llmDebugCaptureEnabled
 }
 
+/**
+ * Pipe usage / cache stats from an "auxiliary" LLM request to the console when
+ * debug capture is on.
+ *
+ * Auxiliary calls (voice polish, tab completion, title generation, agent
+ * compaction summarisation, etc.) do not own a conversation message id, so they
+ * never show up in the in-app debug panel — that panel keys traces by
+ * `conversationId + sourceUserMessageId`. Without this helper their cache hit
+ * rate is invisible to developers tuning the prompt cache.
+ *
+ * Output is a single console.debug line shaped like the chat-debug panel rows
+ * so people can grep both sources together.
+ */
+export function logAuxiliaryLLMUsage({
+  purpose,
+  modelName,
+  providerId,
+  usage,
+  durationMs,
+}: {
+  purpose: string
+  modelName?: string
+  providerId?: string
+  usage?: ResponseUsage
+  durationMs?: number
+}): void {
+  if (!llmDebugCaptureEnabled) return
+  if (!usage) {
+    console.debug('[YOLO LLM aux]', {
+      purpose,
+      provider: providerId,
+      model: modelName,
+      durationMs,
+      usage: null,
+    })
+    return
+  }
+  const cacheRead = usage.cache_read_input_tokens ?? 0
+  const cacheCreate = usage.cache_creation_input_tokens ?? 0
+  const prompt = usage.prompt_tokens ?? 0
+  // cache_read_input_tokens is documented as already included in prompt_tokens,
+  // so the hit rate is read / prompt.
+  const cacheHitRate = prompt > 0 ? cacheRead / prompt : 0
+  console.debug('[YOLO LLM aux]', {
+    purpose,
+    provider: providerId,
+    model: modelName,
+    durationMs,
+    prompt_tokens: prompt,
+    completion_tokens: usage.completion_tokens ?? 0,
+    total_tokens: usage.total_tokens ?? 0,
+    cache_read_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheCreate,
+    cache_hit_rate: Number(cacheHitRate.toFixed(3)),
+  })
+}
+
 export function createLLMDebugTrace({
   assistantMessageId,
   model,

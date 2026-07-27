@@ -12,7 +12,10 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { isPortableVaultPathSegment } from '../../../core/paths/portableVaultPath'
 import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
-import { hasHiddenYoloBaseDirSegment } from '../../../core/paths/yoloPaths'
+import {
+  getYoloLogsDir,
+  hasHiddenYoloBaseDirSegment,
+} from '../../../core/paths/yoloPaths'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
@@ -48,7 +51,6 @@ const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
-const DEBUG_LOGS_DIR = 'YOLO/logs'
 /** Legacy cache dir from removed delegate_external_agent tool. */
 const LEGACY_EXTERNAL_AGENT_PROGRESS_DIR = 'external_agent_progress'
 
@@ -251,9 +253,10 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
   }
 
   const isDebugLogsExcludedFromKnowledgeBase = (): boolean => {
+    if (settings.ragOptions.excludeYoloBaseDir) return true
     return includePatternsToFolderPaths(
       settings.ragOptions.excludePatterns,
-    ).includes(DEBUG_LOGS_DIR)
+    ).includes(getYoloLogsDir(settings))
   }
 
   const excludeDebugLogsFromKnowledgeBase = async () => {
@@ -261,7 +264,11 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     const excludeFolders = includePatternsToFolderPaths(
       currentSettings.ragOptions.excludePatterns,
     )
-    if (excludeFolders.includes(DEBUG_LOGS_DIR)) {
+    const debugLogsDir = getYoloLogsDir(currentSettings)
+    if (
+      currentSettings.ragOptions.excludeYoloBaseDir ||
+      excludeFolders.includes(debugLogsDir)
+    ) {
       return
     }
 
@@ -275,14 +282,14 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
         ...currentSettings.ragOptions,
         excludePatterns: folderPathsToIncludePatterns([
           ...excludeFolders,
-          DEBUG_LOGS_DIR,
+          debugLogsDir,
         ]),
       },
     })
     new Notice(
       t('settings.etc.captureRawRequestDebugExcludeLogsSuccess').replace(
         '{{path}}',
-        DEBUG_LOGS_DIR,
+        debugLogsDir,
       ),
     )
   }
@@ -318,7 +325,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
         title: t('settings.etc.captureRawRequestDebugExcludeLogsTitle'),
         message: t(
           'settings.etc.captureRawRequestDebugExcludeLogsMessage',
-        ).replace('{{path}}', DEBUG_LOGS_DIR),
+        ).replace('{{path}}', getYoloLogsDir(settings)),
         ctaText: t('settings.etc.captureRawRequestDebugExcludeLogsCta'),
         cancelText: t('common.cancel', 'Cancel'),
         onConfirm: () => {

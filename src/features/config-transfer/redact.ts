@@ -3,6 +3,7 @@
  *
  * 敏感字段覆盖范围（来自当前 settings schema 实际可能存放凭证的位置）：
  * - `apiKey: string`：providers、各 webSearch provider 都用这个字段名
+ * - `apiSecret: string`：语音 ASR 配置中的签名密钥
  * - `password: string`：webSearch.searxng
  * - `headers: { [k]: string }` 内所有 value：mcp http/sse transport
  * - `env: { [k]: string }` 内所有 value：mcp stdio transport
@@ -15,7 +16,7 @@
 
 type WalkOp = (value: string) => string
 
-const SENSITIVE_STRING_FIELDS = new Set(['apiKey', 'password'])
+const SENSITIVE_STRING_FIELDS = new Set(['apiKey', 'apiSecret', 'password'])
 const SENSITIVE_RECORD_FIELDS = new Set(['headers', 'env'])
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

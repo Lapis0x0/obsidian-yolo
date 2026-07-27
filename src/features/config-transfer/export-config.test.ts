@@ -13,10 +13,11 @@ import {
 } from './types'
 
 describe('redactSensitive', () => {
-  it('replaces apiKey/password with equal-length random strings', () => {
+  it('replaces apiKey/apiSecret/password with equal-length random strings', () => {
     const data = {
       id: 'provider-1',
       apiKey: 'sk-1234567890abcdef',
+      apiSecret: 'voice-secret-key',
       baseUrl: 'https://api.example.com',
       webSearch: { type: 'searxng', password: 'p@ss123' },
     }
@@ -25,15 +26,18 @@ describe('redactSensitive', () => {
     expect(result.baseUrl).toBe('https://api.example.com')
     expect(result.apiKey).not.toBe('sk-1234567890abcdef')
     expect((result.apiKey as string).length).toBe('sk-1234567890abcdef'.length)
+    expect(result.apiSecret).not.toBe('voice-secret-key')
+    expect((result.apiSecret as string).length).toBe('voice-secret-key'.length)
     const ws = result.webSearch as Record<string, unknown>
     expect(ws.password).not.toBe('p@ss123')
     expect((ws.password as string).length).toBe('p@ss123'.length)
   })
 
   it('handles empty sensitive values', () => {
-    const data = { apiKey: '', password: '' }
+    const data = { apiKey: '', apiSecret: '', password: '' }
     const result = redactSensitive(data) as Record<string, unknown>
     expect(result.apiKey).toBe('')
+    expect(result.apiSecret).toBe('')
     expect(result.password).toBe('')
   })
 
@@ -52,12 +56,15 @@ describe('redactSensitive', () => {
     expect(result.unrelated.token).toBe('business-value')
   })
 
-  it('recursively redacts apiKey in nested objects/arrays', () => {
+  it('recursively redacts API credentials in nested objects/arrays', () => {
     const data = {
       providers: [
         { id: 'a', apiKey: 'key-aaa' },
         { id: 'b', apiKey: 'key-bbb' },
       ],
+      contextVoiceInputOptions: {
+        asrConfigs: [{ apiKey: 'voice-id', apiSecret: 'voice-secret' }],
+      },
       webSearch: {
         providers: [{ id: 'c', apiKey: 'key-ccc' }],
       },
@@ -66,6 +73,11 @@ describe('redactSensitive', () => {
     const providers = result.providers as Array<Record<string, unknown>>
     expect(providers[0].apiKey).not.toBe('key-aaa')
     expect((providers[0].apiKey as string).length).toBe('key-aaa'.length)
+
+    const voice = result.contextVoiceInputOptions as Record<string, unknown>
+    const asrConfigs = voice.asrConfigs as Array<Record<string, unknown>>
+    expect(asrConfigs[0].apiKey).not.toBe('voice-id')
+    expect(asrConfigs[0].apiSecret).not.toBe('voice-secret')
 
     const webSearch = result.webSearch as Record<string, unknown>
     const wsProviders = webSearch.providers as Array<Record<string, unknown>>
@@ -163,6 +175,9 @@ describe('clearSensitive', () => {
           customHeaders: [{ key: 'Authorization', value: 'Bearer real' }],
         },
       ],
+      contextVoiceInputOptions: {
+        asrConfigs: [{ apiKey: 'voice-id', apiSecret: 'voice-secret' }],
+      },
       webSearch: { password: 'pw' },
       mcp: {
         localServer: { token: 'local-secret' },
@@ -179,6 +194,10 @@ describe('clearSensitive', () => {
     const result = clearSensitive(data) as Record<string, unknown>
     const providers = result.providers as Array<Record<string, unknown>>
     expect(providers[0].apiKey).toBe('')
+    const voice = result.contextVoiceInputOptions as Record<string, unknown>
+    const asrConfigs = voice.asrConfigs as Array<Record<string, unknown>>
+    expect(asrConfigs[0].apiKey).toBe('')
+    expect(asrConfigs[0].apiSecret).toBe('')
     const ch = providers[0].customHeaders as Array<Record<string, string>>
     expect(ch[0].value).toBe('')
     expect(ch[0].key).toBe('Authorization')
@@ -229,6 +248,14 @@ describe('hasNonEmptyCredentials', () => {
     expect(
       hasNonEmptyCredentials({
         providers: [{ id: 'a', apiKey: 'sk-real' }],
+      }),
+    ).toBe(true)
+  })
+
+  it('returns true when a voice ASR apiSecret contains a value', () => {
+    expect(
+      hasNonEmptyCredentials({
+        asrConfigs: [{ apiKey: '', apiSecret: 'voice-secret' }],
       }),
     ).toBe(true)
   })

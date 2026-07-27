@@ -133,6 +133,7 @@ for (const [key, hits] of totalRows) {
 console.log('\n## meta')
 const metaKeys = ['(idle)', '(program)', '(garbage collector)']
 for (const k of metaKeys) {
-  const hits = [...selfByFunc.entries()].find(([x]) => x.startsWith(k))?.[1] || 0
+  const hits =
+    [...selfByFunc.entries()].find(([x]) => x.startsWith(k))?.[1] || 0
   console.log(`${String(renderHitsToMs(hits)).padStart(7)} ms  ${k}`)
 }

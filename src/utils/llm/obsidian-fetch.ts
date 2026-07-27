@@ -1,11 +1,9 @@
 import { requestUrl } from 'obsidian'
 
 import { createLLMDebugFetch } from '../../core/llm/debugCapture'
+import type { UploadProgressFetch } from '../../core/llm/fetchTypes'
 
-type ObsidianFetch = (
-  input: RequestInfo,
-  init?: RequestInit,
-) => Promise<Response>
+type ObsidianFetch = UploadProgressFetch
 
 const toHeadersRecord = (
   headers?: HeadersInit,
@@ -70,6 +68,14 @@ const toRequestUrlBody = async (
   throw new Error('Unsupported request body type for requestUrl')
 }
 
+const getRequestUrlBodyByteLength = (
+  body: string | ArrayBuffer | undefined,
+): number => {
+  if (body === undefined) return 0
+  if (typeof body === 'string') return new TextEncoder().encode(body).byteLength
+  return body.byteLength
+}
+
 const throwIfAborted = (signal?: AbortSignal | null): void => {
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
@@ -78,7 +84,12 @@ const throwIfAborted = (signal?: AbortSignal | null): void => {
 
 export const createObsidianFetch = (): ObsidianFetch => {
   const obsidianFetch: ObsidianFetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input.url
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof Request
+          ? input.url
+          : input.toString()
     const method =
       init?.method ?? (input instanceof Request ? input.method : 'GET')
     const headers = toHeadersRecord(
@@ -109,6 +120,13 @@ export const createObsidianFetch = (): ObsidianFetch => {
     })
 
     throwIfAborted(init?.signal)
+
+    if (init?.onUploadProgress && body !== undefined) {
+      // Obsidian's requestUrl does not expose streaming upload progress. Keep
+      // the ASR UI moving by reporting completion once the request returns.
+      const totalBytes = getRequestUrlBodyByteLength(body)
+      init.onUploadProgress({ sentBytes: totalBytes, totalBytes })
+    }
 
     return new Response(response.arrayBuffer, {
       status: response.status,

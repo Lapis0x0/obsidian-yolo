@@ -113,6 +113,7 @@ export const HOST_SETTINGS_CLASSIFICATIONS = [
   hostSetting('debug', '调试设置'),
   hostSetting('chatOptions', '对话偏好'),
   hostSetting('notificationOptions', '通知设置'),
+  hostSetting('contextVoiceInputOptions', '语音设置'),
   excludedHostSetting(
     'learningOptions',
     'runtime-state',

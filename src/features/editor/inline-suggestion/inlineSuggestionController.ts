@@ -4,6 +4,7 @@ import { Editor } from 'obsidian'
 
 import { escapeMarkdownSpecialChars } from '../../../utils/markdown-escape'
 import type { TabCompletionController } from '../tab-completion/tabCompletionController'
+import type { VoiceController } from '../voice/voiceController'
 
 import {
   InlineSuggestionGhostPayload,
@@ -16,7 +17,7 @@ import {
 } from './inlineSuggestion'
 
 type ActiveInlineSuggestion = {
-  source: 'tab' | 'continuation'
+  source: 'tab' | 'continuation' | 'voice'
   editor: Editor
   view: EditorView
   fromOffset: number
@@ -31,22 +32,33 @@ type ContinuationInlineSuggestion = {
   startPos: ReturnType<Editor['getCursor']>
 }
 
+type VoiceInlineSuggestion = {
+  editor: Editor
+  view: EditorView
+  text: string
+  fromOffset: number
+}
+
 type InlineSuggestionControllerDeps = {
   getEditorView: (editor: Editor) => EditorView | null
   getTabCompletionController: () => TabCompletionController
+  getVoiceController: () => VoiceController | null
 }
 
 export class InlineSuggestionController {
   private readonly getEditorView: (editor: Editor) => EditorView | null
   private readonly getTabCompletionController: () => TabCompletionController
+  private readonly getVoiceController: () => VoiceController | null
 
   private activeInlineSuggestion: ActiveInlineSuggestion | null = null
   private continuationInlineSuggestion: ContinuationInlineSuggestion | null =
     null
+  private voiceInlineSuggestion: VoiceInlineSuggestion | null = null
 
   constructor(deps: InlineSuggestionControllerDeps) {
     this.getEditorView = deps.getEditorView
     this.getTabCompletionController = deps.getTabCompletionController
+    this.getVoiceController = deps.getVoiceController
   }
 
   createExtension(): Extension {
@@ -56,9 +68,21 @@ export class InlineSuggestionController {
       tabLoadingDotsField,
       EditorView.updateListener.of((update) => {
         if (update.focusChanged && !update.view.hasFocus) {
+          // Voice input owns the ghost while a session is active — do
+          // NOT clear it on focus loss. Clicking the mic / interacting
+          // with the floating island legitimately steals focus from the
+          // editor, but the ASR / polish preview must persist until the
+          // user accepts (Tab) or rejects (Esc). This was the root cause
+          // of the hold-to-talk "polish lands but no editor preview" bug:
+          // focus changed → clearInlineSuggestion → voice ghost wiped.
           const tab = this.getTabCompletionController()
           tab.clearTimer()
           tab.cancelRequest()
+          const voice = this.getVoiceController()
+          if (voice?.isBusy()) {
+            this.clearNonVoiceInlineSuggestion()
+            return
+          }
           this.clearInlineSuggestion()
           return
         }
@@ -100,6 +124,7 @@ export class InlineSuggestionController {
   destroy() {
     this.activeInlineSuggestion = null
     this.continuationInlineSuggestion = null
+    this.voiceInlineSuggestion = null
   }
 
   setInlineSuggestionGhost(
@@ -163,6 +188,34 @@ export class InlineSuggestionController {
     }
   }
 
+  setVoiceSuggestion(
+    params: {
+      editor: Editor
+      view: EditorView
+      fromOffset: number
+      text: string
+    } | null,
+  ) {
+    if (!params) {
+      if (this.voiceInlineSuggestion?.view) {
+        this.setInlineSuggestionGhost(this.voiceInlineSuggestion.view, null)
+      }
+      this.voiceInlineSuggestion = null
+      if (this.activeInlineSuggestion?.source === 'voice') {
+        this.activeInlineSuggestion = null
+      }
+      return
+    }
+    this.voiceInlineSuggestion = params
+    this.activeInlineSuggestion = {
+      source: 'voice',
+      editor: params.editor,
+      view: params.view,
+      fromOffset: params.fromOffset,
+      text: params.text,
+    }
+  }
+
   clearInlineSuggestion() {
     this.getTabCompletionController().clearSuggestion()
     if (this.continuationInlineSuggestion) {
@@ -172,20 +225,62 @@ export class InlineSuggestionController {
       }
       this.continuationInlineSuggestion = null
     }
+    if (this.voiceInlineSuggestion) {
+      const { view } = this.voiceInlineSuggestion
+      if (view) {
+        this.setInlineSuggestionGhost(view, null)
+      }
+      this.voiceInlineSuggestion = null
+    }
+    const voice = this.getVoiceController()
+    if (voice && voice.hasPendingPreview()) {
+      voice.cancelActiveSession('cleared')
+    }
     this.activeInlineSuggestion = null
+  }
+
+  private clearNonVoiceInlineSuggestion() {
+    this.getTabCompletionController().clearSuggestion()
+    if (this.continuationInlineSuggestion) {
+      const { view } = this.continuationInlineSuggestion
+      if (view) {
+        this.setInlineSuggestionGhost(view, null)
+      }
+      this.continuationInlineSuggestion = null
+    }
+    if (this.activeInlineSuggestion?.source !== 'voice') {
+      this.activeInlineSuggestion = null
+    }
   }
 
   tryAcceptInlineSuggestionFromView(view: EditorView): boolean {
     const suggestion = this.activeInlineSuggestion
-    if (!suggestion) return false
-    if (suggestion.view !== view) return false
+    if (!suggestion) {
+      // Voice ASR can display a raw ghost before the polished suggestion is
+      // promoted into activeInlineSuggestion. Give the voice workflow first
+      // chance to swallow Tab so the editor does not indent and clear it.
+      return this.getVoiceController()?.tryAcceptFromView(view) ?? false
+    }
 
     if (suggestion.source === 'tab') {
+      if (suggestion.view !== view) return false
       return this.getTabCompletionController().tryAcceptFromView(view)
     }
 
     if (suggestion.source === 'continuation') {
+      if (suggestion.view !== view) return false
       return this.tryAcceptContinuationFromView(view)
+    }
+
+    if (suggestion.source === 'voice') {
+      const voice = this.getVoiceController()
+      if (!voice) return false
+      const accepted = voice.tryAcceptFromView(view)
+      if (accepted) {
+        this.voiceInlineSuggestion = null
+        this.activeInlineSuggestion = null
+      }
+      return accepted
     }
 
     return false
@@ -194,6 +289,16 @@ export class InlineSuggestionController {
   tryRejectInlineSuggestionFromView(view: EditorView): boolean {
     const suggestion = this.activeInlineSuggestion
     if (!suggestion) return false
+    if (suggestion.source === 'voice') {
+      const voice = this.getVoiceController()
+      if (!voice) return false
+      const rejected = voice.tryRejectFromView(view)
+      if (rejected) {
+        this.voiceInlineSuggestion = null
+        this.activeInlineSuggestion = null
+      }
+      return rejected
+    }
     if (suggestion.view !== view) return false
     this.clearInlineSuggestion()
     return true

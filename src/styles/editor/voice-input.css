@@ -1,0 +1,1164 @@
+/*
+ * Context-aware voice input UI.
+ *
+ * Pieces:
+ *   - Floating island (.yolo-voice-island): single bar at the bottom of the
+ *     active editor. Idle = clean mic icon + mode toggle. Recording =
+ *     expanded with scrolling waveform canvas + status text + timer + stop
+ *     (the mic icon doubles as the stop button in toggle-listen mode; in
+ *     hold-to-talk mode it's the press-and-hold target).
+ *   - Three ghost-text layers (final article > polished candidate > raw ASR):
+ *       • voice-asr     — softer, animated shimmer; signals "still cooking"
+ *       • voice-polished — darker, static, dotted underline; "ready to accept"
+ *       • final text     — normal editor colour; no decoration
+ *   - Custom system prompt textarea: full width, no resize handle.
+ *   - ASR test result card: status-coloured badge + transcript box.
+ */
+
+/* ---------- Ghost text variants ----------------------------------------- */
+
+.yolo-ghost-text--voice-asr {
+  /* Light grey, no italic. Subtle opacity shimmer signals "transient draft —
+     the polished candidate is still being written". Animation stops as soon
+     as the variant flips to polished. */
+  color: var(--text-faint);
+  animation: yolo-voice-asr-shimmer 1.4s ease-in-out infinite;
+}
+
+.yolo-ghost-text--voice-polished {
+  /* Darker grey, static. Dotted underline differentiates from regular
+     editor text without screaming for attention. */
+  color: var(--text-muted);
+  opacity: 1;
+  text-decoration: underline dotted
+    color-mix(in srgb, var(--text-muted) 60%, transparent);
+  text-underline-offset: 3px;
+}
+
+@keyframes yolo-voice-asr-shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* ---------- Bottom floating island -------------------------------------- */
+
+.yolo-voice-island {
+  position: absolute;
+  /* Lift off the editor bottom so mobile users can comfortably reach the bar
+     with their thumb — sitting flush against the bottom collides with the OS
+     gesture area / soft keyboard. The offset is user-configurable from the
+     voice-input advanced settings; the controller writes the chosen value
+     onto --yolo-voice-island-bottom on this element. 9vh fallback is the
+     default value when no preference is set. */
+  bottom: var(--yolo-voice-island-bottom, 9vh);
+  left: 50%;
+  transform: translate(-50%, 0) scale(1);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  /* Glass-morphism: semi-transparent surface + backdrop blur so the bar
+     reads as "floating glass" over the editor text instead of an opaque
+     bubble. color-mix keeps the tint tracking the user's theme — light
+     themes blend toward off-white, dark themes toward near-black —
+     instead of locking us to a single colour. Solid colour fallback for
+     environments without color-mix or backdrop-filter so the bar never
+     becomes unreadable. */
+  background: var(--background-secondary);
+  background: color-mix(in srgb, var(--background-secondary) 72%, transparent);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  color: var(--text-muted);
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  filter: blur(0);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter 180ms ease,
+    visibility 0ms linear 0ms,
+    background 90ms ease,
+    border-color 90ms ease;
+  will-change: opacity, transform, filter;
+}
+
+.yolo-voice-island.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  filter: blur(2px);
+  transform: translate(-50%, 10px) scale(0.96);
+  transition:
+    opacity 140ms ease,
+    transform 160ms cubic-bezier(0.4, 0, 1, 1),
+    filter 140ms ease,
+    visibility 0ms linear 160ms,
+    background 90ms ease,
+    border-color 90ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-voice-island,
+  .yolo-voice-island.is-hidden {
+    filter: none;
+    transform: translate(-50%, 0) scale(1);
+    transition:
+      opacity 80ms ease,
+      visibility 0ms linear 80ms;
+  }
+}
+
+/* Mic button — single flat circle, no outer rings. Colour shifts with state
+   so the user knows recording is live without needing a second indicator. */
+.yolo-voice-island__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--interactive-normal, var(--background-modifier-hover));
+  color: var(--text-normal);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.yolo-voice-island__mic:hover {
+  background: var(--interactive-hover);
+}
+
+.yolo-voice-island__mic:disabled {
+  cursor: default;
+}
+
+.yolo-voice-island__mic:disabled:hover {
+  background: var(--text-accent, #6c8fff);
+}
+
+.yolo-voice-island__mic svg {
+  display: block;
+}
+
+.yolo-voice-island[data-voice-state='recording'] .yolo-voice-island__mic {
+  background: var(--color-red, #e44);
+  color: var(--text-on-accent, #fff);
+  position: relative;
+}
+
+/* Restrained breathing halo behind the mic. Single ring (no second offset
+   pulse — the doubled-up version felt busy), small scale, low opacity,
+   slow cycle. The intent is "we're listening" ambient feedback, NOT a
+   call-to-attention beacon. */
+.yolo-voice-island[data-voice-state='recording']
+  .yolo-voice-island__mic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--color-red, #e44);
+  pointer-events: none;
+  animation: yolo-voice-mic-halo 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: -1;
+}
+
+@keyframes yolo-voice-mic-halo {
+  0% {
+    transform: scale(1);
+    opacity: 0.28;
+  }
+  80%,
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='read-aloud-preparing']
+  .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+  .yolo-voice-island__mic {
+  background: var(--text-accent, #6c8fff);
+  color: var(--text-on-accent, #fff);
+  opacity: 0.85;
+}
+
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='read-aloud-confirm']
+  .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__mic,
+.yolo-voice-island[data-voice-state='read-aloud-completed']
+  .yolo-voice-island__mic {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent, #fff);
+}
+
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__mic:hover,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__mic:hover {
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 86%,
+    var(--background-primary)
+  );
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+}
+
+.yolo-voice-island[data-voice-state='read-aloud-failed']
+  .yolo-voice-island__mic {
+  background: var(--background-modifier-error, #d33);
+  color: var(--text-on-accent, #fff);
+}
+
+.yolo-voice-island.is-audio-drag-over {
+  border-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 58%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 12%,
+    var(--background-secondary)
+  );
+}
+
+.yolo-voice-island.is-audio-drag-unsupported {
+  border-color: color-mix(
+    in srgb,
+    var(--text-warning) 62%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--text-warning) 13%,
+    var(--background-secondary)
+  );
+}
+
+.yolo-voice-island__file-input {
+  display: none;
+}
+
+.yolo-voice-island__spinner-svg {
+  display: block;
+  transform-origin: 50% 50%;
+  will-change: transform;
+  animation: yolo-voice-spinner 900ms linear infinite;
+}
+
+@keyframes yolo-voice-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mode toggle — small icon button beside the mic. */
+.yolo-voice-island__mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.yolo-voice-island__mode:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.yolo-voice-island__mode svg {
+  display: block;
+}
+
+.yolo-voice-island__mode:disabled {
+  color: var(--text-faint);
+  cursor: default;
+  opacity: 0.65;
+}
+
+.yolo-voice-island__mode:disabled:hover {
+  background: transparent;
+  color: var(--text-faint);
+}
+
+.yolo-voice-island__mode.is-hidden {
+  display: none;
+}
+
+.yolo-voice-island__generated-audio {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: grab;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.yolo-voice-island__generated-audio:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.yolo-voice-island__generated-audio:active {
+  cursor: grabbing;
+}
+
+.yolo-voice-island.is-read-aloud-mode.has-generated-audio
+  .yolo-voice-island__generated-audio {
+  display: inline-flex;
+}
+
+/* ---------- Centre slot (waveform + timer + status overlay) ------------- */
+/* The mic / centre / mode-toggle layout stays stable across all active
+   states because the centre slot always reserves the same box. Inside it:
+   - waveform is visible only while recording (canvas painted in JS).
+   - timer badge floats in the corner during recording.
+   - status overlay (semi-transparent) fades in for transcribing / polishing
+     / ready. Idle = nothing shown, slot collapsed — except in hold-to-talk
+     mode, where we keep the slot mounted so pressing the mic doesn't shift
+     the button position. */
+.yolo-voice-island__center {
+  position: relative;
+  width: 0;
+  height: 28px;
+  border-radius: 4px;
+  overflow: hidden;
+  /* Animate width so the bar grows/shrinks smoothly when entering / leaving
+     the recording + processing states. opacity helps the start/end be soft
+     rather than a hard pop. */
+  transition:
+    width 220ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 180ms ease;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.yolo-voice-island.is-recording .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-confirm']
+  .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-preparing']
+  .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+  .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-failed']
+  .yolo-voice-island__center,
+.yolo-voice-island[data-voice-state='read-aloud-completed']
+  .yolo-voice-island__center,
+.yolo-voice-island.is-audio-file-mode .yolo-voice-island__center,
+.yolo-voice-island.is-hold-mode .yolo-voice-island__center {
+  width: 160px;
+  opacity: 1;
+}
+
+.yolo-voice-island__wave {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  display: none;
+  transition: filter 220ms ease;
+}
+
+.yolo-voice-island.is-recording .yolo-voice-island__wave {
+  display: block;
+}
+
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__wave {
+  display: block;
+  opacity: 0.78;
+  cursor: pointer;
+}
+
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__wave {
+  opacity: 0.5;
+}
+
+.yolo-voice-island.is-hold-mode[data-voice-state='idle']
+  .yolo-voice-island__wave {
+  display: block;
+  opacity: 0.55;
+}
+
+/* Small tabular timer overlaid in the corner of the waveform during
+   recording. Once we leave recording, the status overlay covers the slot
+   and the timer is hidden — latency badges take over the role. */
+.yolo-voice-island__segment,
+.yolo-voice-island__timer {
+  position: absolute;
+  top: 2px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  opacity: 0.75;
+  pointer-events: none;
+  display: none;
+  transition: filter 220ms ease;
+}
+
+.yolo-voice-island__segment {
+  left: 6px;
+}
+
+.yolo-voice-island__timer {
+  right: 6px;
+}
+
+.yolo-voice-island.is-recording .yolo-voice-island__timer {
+  display: inline;
+}
+
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__segment,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__segment,
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__timer {
+  display: inline;
+  color: var(--text-normal);
+  opacity: 0.85;
+}
+
+/* Status overlay — fully transparent host for the status text. The blur
+   is applied to the underlying timer/wave (see selectors below) instead
+   of a backdrop-filter, so the overlay itself adds no wash. */
+.yolo-voice-island__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  z-index: 1;
+}
+
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='read-aloud-confirm']
+  .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='read-aloud-preparing']
+  .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+  .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='read-aloud-failed']
+  .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='read-aloud-completed']
+  .yolo-voice-island__overlay,
+.yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
+  .yolo-voice-island__overlay,
+.yolo-voice-island.is-audio-file-mode[data-voice-state='idle']
+  .yolo-voice-island__overlay,
+.yolo-voice-island.is-hold-mode[data-voice-state='idle']
+  .yolo-voice-island__overlay {
+  opacity: 1;
+}
+
+/* While the overlay is visible, blur the timer + waveform underneath so the
+   status text reads cleanly on top. Mirrors the overlay-visible selectors
+   above; the filter transition above gives a smooth on/off. */
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-confirm']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-preparing']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-failed']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-completed']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
+  .yolo-voice-island__wave,
+.yolo-voice-island.is-audio-file-mode[data-voice-state='idle']
+  .yolo-voice-island__wave,
+.yolo-voice-island.is-hold-mode[data-voice-state='idle']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='transcribing'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='confirm-plan'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='read-aloud-confirm']
+  .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='read-aloud-preparing']
+  .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+  .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='read-aloud-failed']
+  .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='read-aloud-completed']
+  .yolo-voice-island__timer,
+.yolo-voice-island[data-voice-state='recording'][data-voice-overlay-state]
+  .yolo-voice-island__timer,
+.yolo-voice-island.is-audio-file-mode[data-voice-state='idle']
+  .yolo-voice-island__timer,
+.yolo-voice-island.is-hold-mode[data-voice-state='idle']
+  .yolo-voice-island__timer {
+  filter: blur(1px);
+}
+
+.yolo-voice-island[data-voice-state='read-aloud-playing']
+  .yolo-voice-island__wave,
+.yolo-voice-island[data-voice-state='read-aloud-paused']
+  .yolo-voice-island__wave {
+  filter: none;
+}
+
+/* Two stacked hosts cross-fade so the Tab/Esc hint rotation in the ready
+   state never snap-flashes. The active host is at full opacity; the other
+   sits behind at 0. */
+.yolo-voice-island__status-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 240ms ease;
+  pointer-events: none;
+}
+
+.yolo-voice-island__status-text.is-active {
+  opacity: 1;
+}
+
+/* ---------- Mobile / narrow viewport layout ----------------------------- */
+/* On small screens the recording bar would otherwise overflow the editor
+   width. Shrink the centre slot so the bar fits; the timer + overlay
+   continue to live inside it. */
+@media (max-width: 600px) {
+  .yolo-voice-island {
+    max-width: calc(100vw - 32px);
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .yolo-voice-island.is-recording .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='confirm-plan']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-confirm']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='transcribing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-preparing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-playing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-paused']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-failed']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-completed']
+    .yolo-voice-island__center,
+  .yolo-voice-island.is-audio-file-mode .yolo-voice-island__center,
+  .yolo-voice-island.is-hold-mode .yolo-voice-island__center {
+    width: 110px;
+  }
+  .yolo-voice-island__overlay {
+    font-size: 10px;
+    padding: 0 6px;
+  }
+}
+
+/* Even narrower (phone portrait): drop the centre slot entirely — the
+   recording state is communicated by the mic's red halo, and the overlay
+   would only show truncated text at this width anyway. */
+@media (max-width: 380px) {
+  .yolo-voice-island.is-recording .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='checking'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='confirm-plan']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-confirm']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='preparing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='uploading'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='transcribing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='inserting'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='polishing'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='ready'] .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-preparing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-synthesizing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-playing']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-paused']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-failed']
+    .yolo-voice-island__center,
+  .yolo-voice-island[data-voice-state='read-aloud-completed']
+    .yolo-voice-island__center,
+  .yolo-voice-island.is-audio-file-mode .yolo-voice-island__center,
+  .yolo-voice-island.is-hold-mode .yolo-voice-island__center {
+    display: none;
+  }
+}
+
+/* ---------- Custom system prompt card ----------------------------------- */
+
+.yolo-voice-prompt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.yolo-voice-prompt-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-voice-prompt-card__name {
+  font-weight: 600;
+}
+
+.yolo-voice-prompt-card__desc {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.yolo-voice-prompt-textarea {
+  width: 100%;
+}
+
+.yolo-voice-prompt-textarea textarea,
+textarea.yolo-voice-prompt-textarea-input {
+  width: 100%;
+  min-height: 200px;
+  resize: none;
+  font-family: var(--font-monospace, monospace);
+  line-height: 1.5;
+}
+
+/* Advanced collapse uses the shared `.yolo-settings-advanced-toggle`
+   pattern from src/styles/settings/base.css; no voice-specific styles
+   needed here. */
+
+.yolo-voice-settings-note {
+  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.45;
+}
+
+.yolo-voice-mode-order-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yolo-voice-mode-section {
+  cursor: default;
+}
+
+.yolo-voice-mode-section.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.yolo-voice-mode-section.is-disabled .yolo-provider-header {
+  cursor: not-allowed;
+}
+
+.yolo-voice-mode-section__header {
+  min-height: 44px;
+}
+
+.yolo-voice-mode-section__info {
+  flex: 1 1 auto;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-voice-mode-section__info.is-title-only {
+  justify-content: center;
+  align-self: stretch;
+}
+
+.yolo-voice-mode-section__name {
+  max-width: 100%;
+}
+
+.yolo-voice-mode-section__desc {
+  max-width: none;
+  min-width: 0;
+  white-space: normal;
+}
+
+.yolo-voice-mode-section__toggle {
+  flex: 0 0 auto;
+}
+
+.yolo-voice-decibel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+}
+
+.yolo-voice-decibel-card__head {
+  max-width: none;
+}
+
+.yolo-voice-decibel-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.yolo-voice-decibel-meter__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yolo-voice-decibel-meter__readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.yolo-voice-decibel-meter__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.yolo-voice-decibel-meter__peak {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-voice-decibel-meter__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.yolo-voice-decibel-meter__button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.yolo-voice-decibel-meter__stop-icon {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.yolo-voice-decibel-meter__plot {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 62%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(
+    in srgb,
+    var(--background-primary) 88%,
+    var(--background-secondary) 12%
+  );
+}
+
+.yolo-voice-decibel-meter__histogram {
+  display: block;
+  width: 100%;
+  height: 112px;
+}
+
+.yolo-voice-decibel-meter__axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.yolo-voice-decibel-meter__marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.yolo-voice-decibel-meter__marker::before {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--text-muted) 78%, transparent);
+  content: '';
+  transition: border-left-color 520ms ease;
+}
+
+.yolo-voice-decibel-meter__marker.is-active::before {
+  border-left-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 82%,
+    transparent
+  );
+  border-left-style: solid;
+  transition: none;
+}
+
+.yolo-voice-decibel-meter__marker span {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  max-width: 150px;
+  padding: 1px 5px;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  transition:
+    background 520ms ease,
+    border-color 520ms ease,
+    color 520ms ease;
+}
+
+.yolo-voice-decibel-meter__marker.is-active span {
+  border-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 45%,
+    var(--background-modifier-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 12%,
+    var(--background-primary)
+  );
+  color: var(--interactive-accent);
+  transition: none;
+}
+
+.yolo-voice-decibel-meter__marker--speech span,
+.yolo-voice-decibel-meter__marker--silence span {
+  top: 6px;
+}
+
+.yolo-voice-decibel-meter__error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.35;
+}
+
+@media (max-width: 700px) {
+  .yolo-voice-decibel-meter__top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+/* ---------- ASR config test-result panel -------------------------------- */
+
+.yolo-asr-test-result {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yolo-asr-test-result__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.yolo-asr-test-result__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 11px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+
+.yolo-asr-test-result--passed .yolo-asr-test-result__badge {
+  background: color-mix(in srgb, var(--text-success, #2db86b) 16%, transparent);
+  color: var(--text-success, #2db86b);
+}
+.yolo-asr-test-result--failed .yolo-asr-test-result__badge {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-error, #d33) 16%,
+    transparent
+  );
+  color: var(--background-modifier-error, #d33);
+}
+.yolo-asr-test-result--recording .yolo-asr-test-result__badge,
+.yolo-asr-test-result--transcribing .yolo-asr-test-result__badge {
+  background: color-mix(in srgb, var(--text-accent, #6c8fff) 16%, transparent);
+  color: var(--text-accent, #6c8fff);
+}
+
+.yolo-asr-test-result__msg {
+  color: var(--text-muted);
+}
+
+.yolo-asr-test-result__transcript {
+  white-space: pre-wrap;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Footer for the ASR config modal — Cancel / Save buttons */
+.yolo-asr-config-form .setting-item:not(.yolo-settings-kv-entry) {
+  align-items: center;
+  padding-top: var(--size-4-2) !important;
+  padding-bottom: var(--size-4-2) !important;
+}
+
+.yolo-asr-config-form
+  .setting-item:not(.yolo-settings-kv-entry)
+  .setting-item-description {
+  margin-top: 6px;
+}
+
+.yolo-asr-config-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.yolo-tts-config-form .setting-item:not(.yolo-settings-kv-entry) {
+  align-items: center;
+  padding-top: var(--size-4-2) !important;
+  padding-bottom: var(--size-4-2) !important;
+}
+
+.yolo-tts-config-form
+  .setting-item:not(.yolo-settings-kv-entry)
+  .setting-item-description {
+  margin-top: 6px;
+}
+
+.yolo-tts-speaker-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.yolo-tts-test-text-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: var(--size-4-2);
+  padding-bottom: var(--size-4-2);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-tts-test-text-card .setting-item {
+  padding: 0 !important;
+  border-top: none !important;
+}
+
+.yolo-tts-test-text-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.yolo-tts-test-text-card__head .setting-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.yolo-tts-test-text-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yolo-tts-test-text-card__body .yolo-textarea-container,
+.yolo-tts-test-text-card__body textarea {
+  width: 100%;
+}
+
+.yolo-tts-test-text-card__body textarea {
+  min-height: 72px;
+}
+
+.yolo-tts-playback-test {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+}
+
+.yolo-tts-playback-test__audio {
+  width: 100%;
+}
+
+.yolo-tts-config-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* Compact pill in the ASR providers table marking which entry the voice
+   input is currently picking up. The actual selection control lives under
+   Editor → Voice input now — this is just an at-a-glance breadcrumb. */
+.yolo-asr-active-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  color: var(--interactive-accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
