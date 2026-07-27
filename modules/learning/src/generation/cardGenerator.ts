@@ -16,6 +16,7 @@ import {
 import type {
   LearningGenerationActivity,
   LearningGenerationAssistantMessage,
+  LearningGenerationCapability,
   LearningGenerationHost,
   LearningGenerationMessage,
   LearningGenerationUserMessage,
@@ -145,6 +146,7 @@ export async function generateCardsForChapter({
   const runStream = async (
     request: { prompt: string } | { messages: LearningGenerationMessage[] },
     consumeCards = false,
+    capability: LearningGenerationCapability,
   ): Promise<{ text: string; error?: Error; aborted?: true }> => {
     let accumulated = ''
     let completedText = ''
@@ -154,7 +156,7 @@ export async function generateCardsForChapter({
         ...request,
         modelId,
         systemPromptOverride: CARD_GENERATOR_PROMPT,
-        capability: 'edit-vault',
+        capability,
         workspaceScope: cardWorkspaceScope,
         activity,
         abortSignal,
@@ -190,7 +192,11 @@ export async function generateCardsForChapter({
     id: `card-gen-${chapterIndex}-req-1`,
     promptContent: prompt,
   }
-  const firstRun = await runStream({ messages: [firstUserMessage] }, true)
+  const firstRun = await runStream(
+    { messages: [firstUserMessage] },
+    true,
+    'readonly-vault',
+  )
   if (firstRun.aborted) {
     throw (
       firstRun.error ??
@@ -255,9 +261,13 @@ export async function generateCardsForChapter({
       }
       let retryAborted = false
       try {
-        const retryRun = await runStream({
-          messages: [firstUserMessage, assistant, retry],
-        })
+        const retryRun = await runStream(
+          {
+            messages: [firstUserMessage, assistant, retry],
+          },
+          false,
+          'edit-vault',
+        )
         retryAborted = retryRun.aborted === true
         if (retryRun.error) throw retryRun.error
       } catch (error) {
