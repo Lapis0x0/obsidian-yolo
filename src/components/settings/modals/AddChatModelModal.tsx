@@ -8,7 +8,7 @@ import {
   Type,
 } from 'lucide-react'
 import { App, Notice, requestUrl } from 'obsidian'
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DEFAULT_CHAT_MODELS } from '../../../constants'
 import { BAKED_PLUGIN_VERSION } from '../../../constants/bakedVersion'
@@ -52,6 +52,7 @@ import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { SearchableDropdown } from '../../common/SearchableDropdown'
 import { ModelRequestParametersDisclosure } from '../common/ModelRequestParametersDisclosure'
+import { ModeSegmentedControl } from '../common/ModeSegmentedControl'
 
 type AddChatModelModalComponentProps = {
   plugin: YoloPlugin
@@ -891,35 +892,15 @@ function AddChatModelModalComponent({
       <h2 className="yolo-chat-model-modal-title">
         {t('settings.models.addCustomChatModel')}
       </h2>
-      <div
-        className="yolo-model-mode-seg"
-        role="tablist"
-        style={
-          {
-            '--yolo-mode-seg-count': modeTabs.length,
-            '--yolo-mode-seg-index': addMode === 'single' ? 0 : 1,
-          } as CSSProperties
-        }
-      >
-        <div className="yolo-model-mode-seg-glider" aria-hidden="true" />
-        {modeTabs.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={addMode === key}
-            className={`yolo-model-mode-seg-btn${
-              addMode === key ? ' is-active' : ''
-            }`}
-            onClick={() => setAddMode(key)}
-          >
-            <span className="yolo-model-mode-seg-icon" aria-hidden="true">
-              <Icon size={14} />
-            </span>
-            <span className="yolo-model-mode-seg-label">{label}</span>
-          </button>
-        ))}
-      </div>
+      <ModeSegmentedControl<'single' | 'batch'>
+        value={addMode}
+        options={modeTabs.map(({ key, ...option }) => ({
+          value: key,
+          ...option,
+        }))}
+        onChange={setAddMode}
+        ariaLabel={t('settings.models.addMode', '添加方式')}
+      />
     </div>
   )
 

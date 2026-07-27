@@ -1232,6 +1232,90 @@ select.yolo-module-settings-select {
     border-left: none !important;
   }
 
+.yolo-mode-seg {
+  --yolo-mode-seg-count: 2;
+  --yolo-mode-seg-index: 0;
+  --yolo-mode-seg-pad: 3px;
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  padding: var(--yolo-mode-seg-pad);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
+}
+
+.yolo-mode-seg-glider {
+  position: absolute;
+  z-index: 1;
+  top: var(--yolo-mode-seg-pad);
+  left: var(--yolo-mode-seg-pad);
+  width: calc(
+    (100% - var(--yolo-mode-seg-pad) * 2) / var(--yolo-mode-seg-count)
+  );
+  height: calc(100% - var(--yolo-mode-seg-pad) * 2);
+  border: 2px solid var(--h1-color, var(--interactive-accent));
+  border-radius: var(--radius-s);
+  box-shadow: 0 2px 10px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  transform: translateX(calc(var(--yolo-mode-seg-index) * 100%));
+  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
+  pointer-events: none;
+}
+
+/* Container scoping beats Obsidian's button chrome without affecting other
+ * controls in the modal. */
+
+.yolo-mode-seg .yolo-mode-seg-btn {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 64px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.yolo-mode-seg .yolo-mode-seg-btn:hover,
+.yolo-mode-seg .yolo-mode-seg-btn.is-active {
+  color: var(--text-normal);
+}
+
+.yolo-mode-seg .yolo-mode-seg-btn:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.yolo-mode-seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.yolo-mode-seg-label {
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-mode-seg-glider {
+    transition: none;
+  }
+}
+
 /* Providers and Models Section Styles */
 
 .yolo-models-block,
@@ -2826,6 +2910,154 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
 /* MCP Server Modal Styles */
 
+.yolo-mcp-server-form-modal .modal-header {
+  display: none;
+}
+
+.yolo-mcp-server-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-4);
+  margin: var(--size-4-6, 24px) 0 18px;
+}
+
+.yolo-mcp-server-modal-title {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: var(--h3-size, 1.3em);
+  font-weight: var(--font-bold, 700);
+  line-height: 1.2;
+}
+
+.yolo-mcp-server-modal-form .setting-item:not(.yolo-settings-kv-entry) {
+  align-items: center;
+  padding-top: var(--size-4-2) !important;
+  padding-bottom: var(--size-4-2) !important;
+}
+
+.yolo-mcp-server-modal-form
+  .setting-item:not(.yolo-settings-kv-entry)
+  .setting-item-description {
+  margin-top: 6px;
+}
+
+.yolo-mcp-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--size-4-2) 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-mcp-field-label {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-mcp-field-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+.yolo-mcp-form-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+}
+
+.yolo-mcp-kv-entry .setting-item-control > :nth-child(1) {
+  flex: 0 0 180px;
+}
+
+.yolo-mcp-kv-entry .setting-item-control > :nth-child(2) {
+  flex: 1 1 320px;
+}
+
+.yolo-mcp-kv-entry .setting-item-control > :nth-child(3) {
+  flex: 0 0 auto;
+}
+
+.yolo-mcp-oauth-card {
+  display: flex;
+  gap: var(--size-4-3);
+  margin: var(--size-4-2) 0 var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.yolo-mcp-oauth-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: var(--radius-s);
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.yolo-mcp-oauth-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.yolo-mcp-oauth-title-row,
+.yolo-mcp-oauth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+
+.yolo-mcp-oauth-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-mcp-oauth-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.yolo-mcp-oauth-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+}
+
+.yolo-mcp-oauth-actions {
+  margin-top: var(--size-2-1);
+}
+
+.yolo-mcp-oauth-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-mcp-oauth-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
 .yolo-mcp-parameters-header {
   display: block;
 }
@@ -2946,6 +3178,23 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 .yolo-mcp-server-modal-validation.yolo-mcp-server-modal-validation--success {
     color: var(--text-success);
   }
+
+@media (max-width: 600px) {
+  .yolo-mcp-server-modal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .yolo-mcp-server-modal-header .yolo-mode-seg {
+    align-self: flex-start;
+  }
+
+  .yolo-mcp-oauth-title-row,
+  .yolo-mcp-oauth-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 
 .yolo-rag-layout {
   display: flex;
@@ -8701,88 +8950,6 @@ button.yolo-module-shelf-uninstall:hover {
   font-weight: var(--font-bold, 700);
   line-height: 1.2;
   color: var(--text-normal);
-}
-
-/* ---- single / batch switch ----
- * Glider segmented control: the active indicator is a bordered box that slides
- * between segments. Mirrors the agent-editor tab bar's look + motion, but is
- * pure-CSS (driven by --count / --index) since the two segments are equal
- * width — no JS measurement / ResizeObserver needed. */
-
-.yolo-model-mode-seg {
-  --yolo-mode-seg-count: 2;
-  --yolo-mode-seg-index: 0;
-  --yolo-mode-seg-pad: 3px;
-  position: relative;
-  display: inline-flex;
-  align-items: stretch;
-  padding: var(--yolo-mode-seg-pad);
-  border-radius: var(--radius-m);
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--background-modifier-border) 40%, transparent);
-}
-
-.yolo-model-mode-seg-glider {
-  position: absolute;
-  top: var(--yolo-mode-seg-pad);
-  left: var(--yolo-mode-seg-pad);
-  width: calc(
-    (100% - var(--yolo-mode-seg-pad) * 2) / var(--yolo-mode-seg-count)
-  );
-  height: calc(100% - var(--yolo-mode-seg-pad) * 2);
-  border: 2px solid var(--h1-color, var(--interactive-accent));
-  border-radius: var(--radius-s);
-  box-shadow: 0 2px 10px
-    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  transform: translateX(calc(var(--yolo-mode-seg-index) * 100%));
-  transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Container-scoped (0,2,0) to beat Obsidian core's `button:not(.clickable-icon)`
- * (0,1,1), which otherwise forces a background + box-shadow onto the segments. */
-
-.yolo-model-mode-seg .yolo-model-mode-seg-btn {
-  position: relative;
-  z-index: 2;
-  flex: 1 1 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 64px;
-  padding: 6px 14px;
-  border: none;
-  border-radius: var(--radius-s);
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-medium);
-  color: var(--text-muted);
-  background: transparent !important;
-  box-shadow: none !important;
-  cursor: pointer;
-  transition: color 0.2s ease;
-}
-
-.yolo-model-mode-seg .yolo-model-mode-seg-btn:hover {
-  color: var(--text-normal);
-}
-
-.yolo-model-mode-seg .yolo-model-mode-seg-btn.is-active {
-  color: var(--text-normal);
-}
-
-.yolo-model-mode-seg-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-}
-
-.yolo-model-mode-seg-label {
-  white-space: nowrap;
 }
 
 /* ---- batch picker ---- */

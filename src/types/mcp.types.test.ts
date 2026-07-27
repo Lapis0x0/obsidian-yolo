@@ -155,4 +155,13 @@ describe('normalizeMcpServerParameters', () => {
       }),
     ).toThrow()
   })
+
+  it('reports an invalid URL through schema validation', () => {
+    expect(
+      mcpServerParametersSchema.safeParse({
+        transport: 'http',
+        url: '',
+      }).success,
+    ).toBe(false)
+  })
 })

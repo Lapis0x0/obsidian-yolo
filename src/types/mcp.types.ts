@@ -14,8 +14,12 @@ const createUrlSchema = (allowedProtocols: string[]) =>
     .string()
     .url()
     .refine((urlString) => {
-      const url = new URL(urlString)
-      return allowedProtocols.includes(url.protocol)
+      try {
+        const url = new URL(urlString)
+        return allowedProtocols.includes(url.protocol)
+      } catch {
+        return false
+      }
     })
 
 export const mcpServerStdioParametersLegacySchema = z

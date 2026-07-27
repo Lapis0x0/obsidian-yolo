@@ -1080,6 +1080,9 @@ export type TranslationKeys = {
       collapse: string
       addServerTitle?: string
       editServerTitle?: string
+      modeForm?: string
+      modeJson?: string
+      editorMode?: string
       serverNameField?: string
       serverNameFieldDesc?: string
       serverNamePlaceholder?: string
@@ -1099,6 +1102,43 @@ export type TranslationKeys = {
       invalidJsonFormat?: string
       invalidParameters?: string
       validParameters?: string
+      transportField?: string
+      transportFieldDesc?: string
+      remoteTransports?: string
+      localTransports?: string
+      transportHttp?: string
+      transportSse?: string
+      transportWs?: string
+      transportStdio?: string
+      urlField?: string
+      urlFieldDesc?: string
+      authenticationField?: string
+      authenticationFieldDesc?: string
+      authenticationOAuth?: string
+      authenticationNone?: string
+      authenticationHeaders?: string
+      oauthTitle?: string
+      oauthComingSoon?: string
+      oauthDesc?: string
+      oauthNotConnected?: string
+      oauthConnect?: string
+      oauthUnavailable?: string
+      commandField?: string
+      commandFieldDesc?: string
+      argumentsField?: string
+      argumentsFieldDesc?: string
+      cwdField?: string
+      cwdFieldDesc?: string
+      headersField?: string
+      headersFieldDesc?: string
+      addHeader?: string
+      headerKeyPlaceholder?: string
+      headerValuePlaceholder?: string
+      environmentField?: string
+      environmentFieldDesc?: string
+      addEnvironmentVariable?: string
+      environmentKeyPlaceholder?: string
+      environmentValuePlaceholder?: string
       failedToAddServer?: string
       failedToDeleteServer?: string
     }
