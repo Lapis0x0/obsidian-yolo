@@ -138,6 +138,8 @@ const validateLocalWriteArgs = ({
         errors.push(
           'Use exactly one edit locator: oldText, or startLine with endLine; do not combine them.',
         )
+      } else if (!hasOldText && !hasStartLine && !hasEndLine) {
+        errors.push('Missing edit locator.')
       } else if (!hasOldText) {
         requireIntegerField({ args, field: 'startLine', errors })
         requireIntegerField({ args, field: 'endLine', errors })
@@ -162,7 +164,7 @@ const getRequiredLocalWriteArgumentNames = (toolName: string): string[] => {
     case 'fs_write':
       return ['path', 'content']
     case 'fs_edit':
-      return ['path', 'newText', 'oldText or startLine/endLine']
+      return ['path', 'newText']
     case 'fs_delete':
     case 'fs_create_dir':
       return ['path']
@@ -221,6 +223,7 @@ const formatToolArgumentDiagnostics = ({
           ).sort()
         : []
   const requiredNames = requiredParameterNames ?? []
+  const isFsEdit = getLocalWriteToolShortName(request.name) === 'fs_edit'
   const repairSummary = repairActions?.length
     ? repairActions.join('; ')
     : diagnostics?.repairActions?.length
@@ -236,7 +239,12 @@ const formatToolArgumentDiagnostics = ({
       ? ['Validation errors:', ...validationErrors.map((error) => `- ${error}`)]
       : []),
     `Provided parameter names: ${providedNames.length > 0 ? providedNames.join(', ') : '<none>'}.`,
-    `Required parameter names: ${requiredNames.length > 0 ? requiredNames.join(', ') : '<unknown>'}.`,
+    `${isFsEdit ? 'Always required parameter names' : 'Required parameter names'}: ${requiredNames.length > 0 ? requiredNames.join(', ') : '<unknown>'}.`,
+    ...(isFsEdit
+      ? [
+          'Edit locator requirement: provide exactly one of oldText, or startLine together with endLine.',
+        ]
+      : []),
     `Raw args length: ${rawArgsLength}.`,
     `Raw args head: ${rawArgsHead}`,
     `finishReason: ${diagnostics?.finishReason ?? '<unknown>'}.`,

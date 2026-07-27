@@ -386,8 +386,13 @@ describe('AgentToolGateway', () => {
     if (response?.status !== ToolCallResponseStatus.Error) {
       throw new Error('expected error')
     }
-    expect(response.error).toContain('startLine must be an integer')
-    expect(response.error).toContain('endLine must be an integer')
+    expect(response.error).toContain('Missing edit locator.')
+    expect(response.error).toContain(
+      'Always required parameter names: path, newText',
+    )
+    expect(response.error).toContain(
+      'Edit locator requirement: provide exactly one of oldText, or startLine together with endLine.',
+    )
     expect(response.error).toContain('"path":"note.md"')
   })
 
