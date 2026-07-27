@@ -18069,6 +18069,7 @@ button.yolo-chat-input-model-select {
   border: 0;
   padding: 0;
   font-size: var(--font-smallest);
+  line-height: var(--line-height-tight);
   font-weight: var(--font-medium);
   color: var(--text-muted);
   cursor: pointer;
