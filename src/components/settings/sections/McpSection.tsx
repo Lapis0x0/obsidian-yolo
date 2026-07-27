@@ -1,7 +1,7 @@
 import {
   Check,
   ChevronDown,
-  ChevronUp,
+  ChevronLeft,
   CircleMinus,
   Edit,
   Loader2,
@@ -245,7 +245,7 @@ function McpServerComponent({
               isOpen ? t('settings.mcp.collapse') : t('settings.mcp.expand')
             }
           >
-            {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {isOpen ? <ChevronDown size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
       </div>

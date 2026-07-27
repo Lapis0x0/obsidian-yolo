@@ -363,6 +363,10 @@ export class McpManager {
       draftId,
       serverUrl,
     )
+    if (signal?.aborted) {
+      this.oauthController.discardDraft(draftId)
+      throw new Error('OAuth authorization was cancelled.')
+    }
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
     const { UnauthorizedError } = await import(
       '@modelcontextprotocol/sdk/client/auth.js'

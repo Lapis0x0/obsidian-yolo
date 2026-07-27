@@ -284,6 +284,7 @@ function McpServerFormComponent({
   }, [authMode, hasOAuthDraft, oauthStatus, plugin])
 
   const handleOAuthConnect = async () => {
+    const controller = new AbortController()
     try {
       const serverId = name.trim()
       if (!serverId) {
@@ -304,7 +305,6 @@ function McpServerFormComponent({
       }
 
       oauthAbortRef.current?.abort()
-      const controller = new AbortController()
       oauthAbortRef.current = controller
       setOAuthStatus('connecting')
       setOAuthError(null)
@@ -321,9 +321,33 @@ function McpServerFormComponent({
       setOAuthConnectedUrl(serverUrl)
       setOAuthStatus('connected')
     } catch (error) {
-      if (oauthAbortRef.current?.signal.aborted) return
+      if (controller.signal.aborted) return
       setOAuthStatus('error')
       setOAuthError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (!controller.signal.aborted && oauthAbortRef.current === controller) {
+        oauthAbortRef.current = null
+      }
+    }
+  }
+
+  const handleOAuthCancel = async () => {
+    const controller = oauthAbortRef.current
+    if (!controller) return
+
+    controller.abort()
+    try {
+      const manager = await plugin.getMcpManager()
+      manager.discardOAuthDraft(oauthDraftIdRef.current)
+    } catch (error) {
+      console.error('Failed to cancel MCP OAuth authorization', error)
+    } finally {
+      if (oauthAbortRef.current !== controller) return
+      oauthAbortRef.current = null
+      setHasOAuthDraft(false)
+      setOAuthConnectedUrl(null)
+      setOAuthError(null)
+      setOAuthStatus('idle')
     }
   }
 
@@ -695,6 +719,7 @@ function McpServerFormComponent({
           oauthStatus={oauthStatus}
           oauthError={oauthError}
           onOAuthConnect={() => void handleOAuthConnect()}
+          onOAuthCancel={() => void handleOAuthCancel()}
           url={url}
           setUrl={setUrl}
           command={command}
@@ -739,6 +764,7 @@ type McpGuidedFormProps = {
   oauthStatus: OAuthStatus
   oauthError: string | null
   onOAuthConnect: () => void
+  onOAuthCancel: () => void
   url: string
   setUrl: (url: string) => void
   command: string
@@ -763,6 +789,7 @@ function McpGuidedForm({
   oauthStatus,
   oauthError,
   onOAuthConnect,
+  onOAuthCancel,
   url,
   setUrl,
   command,
@@ -990,15 +1017,22 @@ function McpGuidedForm({
                       </span>
                       <ObsidianButton
                         text={
-                          oauthStatus === 'connected'
-                            ? t('settings.mcp.oauthReconnect', 'Reconnect')
-                            : t('settings.mcp.oauthConnect', 'Connect')
-                        }
-                        onClick={onOAuthConnect}
-                        disabled={
-                          oauthStatus === 'checking' ||
                           oauthStatus === 'connecting'
+                            ? t(
+                                'settings.mcp.oauthCancelConnection',
+                                'Stop connecting',
+                              )
+                            : oauthStatus === 'connected'
+                              ? t('settings.mcp.oauthReconnect', 'Reconnect')
+                              : t('settings.mcp.oauthConnect', 'Connect')
                         }
+                        onClick={
+                          oauthStatus === 'connecting'
+                            ? onOAuthCancel
+                            : onOAuthConnect
+                        }
+                        warning={oauthStatus === 'connecting'}
+                        disabled={oauthStatus === 'checking'}
                       />
                     </div>
                     {oauthError && (

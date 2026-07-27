@@ -68,7 +68,9 @@ export function ObsidianButton({
     if (tooltip) buttonComponent.setTooltip(tooltip)
     if (className) buttonComponent.buttonEl.addClass(className)
     if (cta) buttonComponent.setCta()
+    else buttonComponent.buttonEl.removeClass('mod-cta')
     if (warning) buttonComponent.setWarning()
+    else buttonComponent.buttonEl.removeClass('mod-warning')
     buttonComponent.setDisabled(!!disabled)
     return () => {
       if (className) buttonComponent.buttonEl.removeClass(className)

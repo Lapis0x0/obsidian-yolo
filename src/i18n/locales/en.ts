@@ -1404,6 +1404,7 @@ export const en: TranslationKeys = {
         'YOLO will open your browser so you can authorize this MCP server securely.',
       oauthNotConnected: 'Not connected',
       oauthConnect: 'Connect',
+      oauthCancelConnection: 'Stop connecting',
       oauthReconnect: 'Reconnect',
       oauthChecking: 'Checking...',
       oauthConnecting: 'Connecting...',

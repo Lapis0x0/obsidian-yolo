@@ -1308,6 +1308,7 @@ export const zh: TranslationKeys = {
       oauthDesc: 'YOLO 将打开浏览器，供你安全地授权这个 MCP 服务器。',
       oauthNotConnected: '未连接',
       oauthConnect: '连接',
+      oauthCancelConnection: '终止连接',
       oauthReconnect: '重新连接',
       oauthChecking: '正在检查...',
       oauthConnecting: '正在连接...',

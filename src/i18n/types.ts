@@ -1121,6 +1121,7 @@ export type TranslationKeys = {
       oauthDesc?: string
       oauthNotConnected?: string
       oauthConnect?: string
+      oauthCancelConnection?: string
       oauthReconnect?: string
       oauthChecking?: string
       oauthConnecting?: string
