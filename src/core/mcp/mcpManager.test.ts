@@ -30,8 +30,10 @@ describe('McpManager mobile built-in tool behavior', () => {
     })
 
     return new McpManager({
+      pluginId: 'test-plugin',
       app: {
         vault: {
+          configDir: '.obsidian',
           getAbstractFileByPath: jest.fn().mockReturnValue(file),
           getFileByPath: jest.fn().mockReturnValue(file),
           read: jest.fn().mockResolvedValue('hello world'),

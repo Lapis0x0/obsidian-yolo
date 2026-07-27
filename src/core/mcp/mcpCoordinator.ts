@@ -9,6 +9,7 @@ import { McpManager } from './mcpManager'
 
 type McpCoordinatorDeps = {
   app: App
+  pluginId: string
   getSettings: () => YoloSettings
   openApplyReview: (state: ApplyViewState) => Promise<boolean>
   registerSettingsListener: (
@@ -20,6 +21,7 @@ type McpCoordinatorDeps = {
 
 export class McpCoordinator {
   private readonly app: App
+  private readonly pluginId: string
   private readonly getSettings: () => YoloSettings
   private readonly openApplyReview: McpCoordinatorDeps['openApplyReview']
   private readonly registerSettingsListener: (
@@ -33,6 +35,7 @@ export class McpCoordinator {
 
   constructor(deps: McpCoordinatorDeps) {
     this.app = deps.app
+    this.pluginId = deps.pluginId
     this.getSettings = deps.getSettings
     this.openApplyReview = deps.openApplyReview
     this.registerSettingsListener = deps.registerSettingsListener
@@ -50,6 +53,7 @@ export class McpCoordinator {
         try {
           this.mcpManager = new McpManager({
             app: this.app,
+            pluginId: this.pluginId,
             settings: this.getSettings(),
             openApplyReview: this.openApplyReview,
             registerSettingsListener: this.registerSettingsListener,

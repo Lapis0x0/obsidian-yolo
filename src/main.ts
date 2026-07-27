@@ -895,6 +895,7 @@ export default class YoloPlugin extends Plugin {
       const { McpCoordinator } = await import('./core/mcp/mcpCoordinator')
       this.mcpCoordinator = new McpCoordinator({
         app: this.app,
+        pluginId: this.manifest.id,
         getSettings: () => this.settings,
         openApplyReview: (state) => this.openApplyReview(state),
         registerSettingsListener: (

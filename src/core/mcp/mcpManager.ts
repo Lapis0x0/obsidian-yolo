@@ -57,6 +57,8 @@ const LOCAL_FS_PATH_OPERATION_TOOL_NAME_SET = new Set<string>(
 const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
+import { McpOAuthController } from './mcpOAuthController'
+import type { McpOAuthClientProvider } from './mcpOAuthProvider'
 import type { McpRemoteTransportBackend } from './remoteTransport'
 import {
   getToolName,
@@ -86,6 +88,7 @@ export class McpManager {
   public readonly remoteMcpDisabled = !Platform.isDesktop // Remote MCP should be disabled on mobile since it doesn't support node.js
 
   private readonly app: App
+  private readonly oauthController: McpOAuthController
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
   private readonly getRagEngine?: () => Promise<RAGEngine>
   private readonly promptSourceWatcher?: PromptSourceWatcher
@@ -191,6 +194,7 @@ export class McpManager {
 
   constructor({
     app,
+    pluginId,
     settings,
     openApplyReview,
     registerSettingsListener,
@@ -198,6 +202,7 @@ export class McpManager {
     promptSourceWatcher,
   }: {
     app: App
+    pluginId: string
     settings: YoloSettings
     openApplyReview: (state: ApplyViewState) => Promise<boolean>
     registerSettingsListener: (
@@ -207,6 +212,7 @@ export class McpManager {
     promptSourceWatcher?: PromptSourceWatcher
   }) {
     this.app = app
+    this.oauthController = new McpOAuthController(app, pluginId)
     this.openApplyReview = openApplyReview
     this.getRagEngine = getRagEngine
     this.promptSourceWatcher = promptSourceWatcher
@@ -264,6 +270,7 @@ export class McpManager {
     this.subscribers.clear()
     this.activeToolCalls.clear()
     this.reconnectAttempts.clear()
+    this.oauthController.close()
     disposeJsSandbox()
   }
 
@@ -298,6 +305,128 @@ export class McpManager {
     return () => this.subscribers.delete(callback)
   }
 
+  public async hasOAuthCredential(
+    serverId: string,
+    serverUrl: string,
+  ): Promise<boolean> {
+    return await this.oauthController.hasCredential(serverId, serverUrl)
+  }
+
+  public discardOAuthDraft(draftId: string): void {
+    this.oauthController.discardDraft(draftId)
+  }
+
+  public async commitOAuthDraft(
+    draftId: string,
+    serverId: string,
+  ): Promise<() => Promise<void>> {
+    return await this.oauthController.commitDraft(draftId, serverId)
+  }
+
+  public async moveOAuthCredential(
+    fromServerId: string,
+    toServerId: string,
+    serverUrl: string,
+  ): Promise<(() => Promise<void>) | null> {
+    return await this.oauthController.moveCredential(
+      fromServerId,
+      toServerId,
+      serverUrl,
+    )
+  }
+
+  public async clearOAuthCredential(serverId: string): Promise<void> {
+    await this.oauthController.clearCredential(serverId)
+  }
+
+  public async authorizeOAuthDraft({
+    draftId,
+    serverId,
+    serverUrl,
+    signal,
+  }: {
+    draftId: string
+    serverId: string
+    serverUrl: string
+    signal?: AbortSignal
+  }): Promise<void> {
+    if (this.remoteMcpDisabled) {
+      throw new McpNotAvailableException()
+    }
+
+    const parsedUrl = new URL(serverUrl)
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new Error('OAuth requires an HTTP or HTTPS MCP server URL.')
+    }
+
+    const provider = await this.oauthController.createDraftProvider(
+      draftId,
+      serverUrl,
+    )
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+    const { UnauthorizedError } = await import(
+      '@modelcontextprotocol/sdk/client/auth.js'
+    )
+    const remoteTransport = await this.loadRemoteTransportModule()
+    const parameters = { transport: 'http' as const, url: serverUrl }
+
+    const connectWithBackend = async (
+      backend: McpRemoteTransportBackend,
+    ): Promise<void> => {
+      let client = new Client({ name: serverId, version: '1.0.0' })
+      let transport = await this.createClientTransport(parameters, {
+        httpBackend: backend,
+        oauthProvider: provider,
+      })
+
+      try {
+        try {
+          await client.connect(transport, signal ? { signal } : undefined)
+        } catch (error) {
+          if (!(error instanceof UnauthorizedError)) throw error
+
+          const code = await provider.waitForAuthorizationCode()
+          if (!('finishAuth' in transport)) {
+            throw new Error('OAuth is unavailable for this MCP transport.')
+          }
+          await transport.finishAuth(code)
+          await client.close().catch(() => undefined)
+
+          client = new Client({ name: serverId, version: '1.0.0' })
+          transport = await this.createClientTransport(parameters, {
+            httpBackend: backend,
+            oauthProvider: provider,
+          })
+          await client.connect(transport, signal ? { signal } : undefined)
+        }
+
+        await client.listTools({}, signal ? { signal } : undefined)
+      } finally {
+        await client.close().catch(() => undefined)
+      }
+    }
+
+    try {
+      await connectWithBackend('chromium-fetch')
+    } catch (error) {
+      if (
+        !signal?.aborted &&
+        remoteTransport.shouldRetryMcpHttpWithJsonBackend({
+          params: parameters,
+          error,
+        })
+      ) {
+        await connectWithBackend('obsidian-request-url-json')
+      } else {
+        throw error
+      }
+    }
+
+    if (!provider.getCredential().tokens) {
+      throw new Error('This MCP server did not request OAuth authorization.')
+    }
+  }
+
   public async handleSettingsUpdate(settings: YoloSettings) {
     this.settings = settings
     const updatedServers = settings.mcp.servers.map(
@@ -308,6 +437,7 @@ export class McpManager {
         if (
           existingServer &&
           isEqual(existingServer.config.parameters, serverConfig.parameters) &&
+          existingServer.config.auth === serverConfig.auth &&
           existingServer.config.enabled === serverConfig.enabled
         ) {
           // Server is already up to date
@@ -506,10 +636,18 @@ export class McpManager {
     }
 
     let remoteTransportBackend: McpRemoteTransportBackend = 'chromium-fetch'
+    let oauthProvider: McpOAuthClientProvider | undefined
 
     try {
+      if (serverConfig.auth === 'oauth' && serverParams.transport === 'http') {
+        oauthProvider = await this.oauthController.createRuntimeProvider(
+          name,
+          serverParams.url,
+        )
+      }
       const transport = await this.createClientTransport(serverParams, {
         httpBackend: remoteTransportBackend,
+        oauthProvider,
       })
       await client.connect(transport, signal ? { signal } : undefined)
     } catch (error) {
@@ -540,6 +678,7 @@ export class McpManager {
         try {
           const transport = await this.createClientTransport(serverParams, {
             httpBackend: remoteTransportBackend,
+            oauthProvider,
           })
           await client.connect(transport, signal ? { signal } : undefined)
         } catch (fallbackError) {
@@ -659,7 +798,10 @@ export class McpManager {
 
   private async createClientTransport(
     serverParams: McpServerConfig['parameters'],
-    options: { httpBackend?: McpRemoteTransportBackend } = {},
+    options: {
+      httpBackend?: McpRemoteTransportBackend
+      oauthProvider?: McpOAuthClientProvider
+    } = {},
   ) {
     switch (serverParams.transport) {
       case 'stdio': {
@@ -691,6 +833,9 @@ export class McpManager {
             serverParams,
             options.httpBackend,
           ),
+          ...(options.oauthProvider
+            ? { authProvider: options.oauthProvider }
+            : {}),
         })
       }
       case 'sse': {

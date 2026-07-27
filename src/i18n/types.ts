@@ -1118,11 +1118,16 @@ export type TranslationKeys = {
       authenticationNone?: string
       authenticationHeaders?: string
       oauthTitle?: string
-      oauthComingSoon?: string
       oauthDesc?: string
       oauthNotConnected?: string
       oauthConnect?: string
-      oauthUnavailable?: string
+      oauthReconnect?: string
+      oauthChecking?: string
+      oauthConnecting?: string
+      oauthConnected?: string
+      oauthConnectionFailed?: string
+      oauthConnectBeforeSave?: string
+      oauthHttpRequired?: string
       commandField?: string
       commandFieldDesc?: string
       argumentsField?: string

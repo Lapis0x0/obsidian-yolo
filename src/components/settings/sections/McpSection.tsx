@@ -171,6 +171,9 @@ function McpServerComponent({
           },
           assistants: nextAssistants,
         })
+        if (server.config.auth === 'oauth') {
+          await (await plugin.getMcpManager()).clearOAuthCredential(server.name)
+        }
       } catch (error: unknown) {
         console.error('Failed to delete MCP server', error)
         new Notice(

@@ -1,5 +1,12 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { Braces, Info, KeyRound, ListChecks } from 'lucide-react'
+import {
+  Braces,
+  CheckCircle2,
+  Info,
+  KeyRound,
+  ListChecks,
+  Loader2,
+} from 'lucide-react'
 import { App, Notice } from 'obsidian'
 import {
   type Dispatch,
@@ -37,6 +44,7 @@ type McpServerFormComponentProps = {
 type EditorMode = 'form' | 'json'
 type McpTransport = McpServerParameters['transport']
 type McpAuthMode = 'oauth' | 'none' | 'headers'
+type OAuthStatus = 'idle' | 'checking' | 'connecting' | 'connected' | 'error'
 
 type KeyValueEntry = {
   id: string
@@ -142,8 +150,20 @@ function McpServerFormComponent({
     ) {
       return 'headers'
     }
-    return existingServer ? 'none' : 'oauth'
+    return existingServer?.auth === 'oauth'
+      ? 'oauth'
+      : existingServer
+        ? 'none'
+        : 'oauth'
   })
+  const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>(
+    existingServer?.auth === 'oauth' ? 'checking' : 'idle',
+  )
+  const [oauthError, setOAuthError] = useState<string | null>(null)
+  const [oauthConnectedUrl, setOAuthConnectedUrl] = useState<string | null>(
+    null,
+  )
+  const [hasOAuthDraft, setHasOAuthDraft] = useState(false)
   const [url, setUrl] = useState(
     initialParameters.transport === 'http' ||
       initialParameters.transport === 'sse' ||
@@ -177,10 +197,134 @@ function McpServerFormComponent({
   )
   const entryIdRef = useRef(0)
   const formJsonSnapshotRef = useRef<string | null>(null)
+  const oauthDraftIdRef = useRef(
+    `mcp-oauth-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  )
+  const oauthAbortRef = useRef<AbortController | null>(null)
 
   const createEntry = (prefix: string): KeyValueEntry => {
     entryIdRef.current += 1
     return { id: `${prefix}-${entryIdRef.current}`, key: '', value: '' }
+  }
+
+  useEffect(() => {
+    if (
+      existingServer?.auth !== 'oauth' ||
+      existingServer.parameters.transport !== 'http'
+    ) {
+      return
+    }
+    const existingOAuthUrl = existingServer.parameters.url
+
+    let active = true
+    void plugin
+      .getMcpManager()
+      .then((manager) =>
+        manager.hasOAuthCredential(existingServer.id, existingOAuthUrl),
+      )
+      .then((hasCredential) => {
+        if (!active) return
+        setOAuthStatus(hasCredential ? 'connected' : 'idle')
+        setOAuthConnectedUrl(hasCredential ? existingOAuthUrl : null)
+      })
+      .catch((error) => {
+        if (!active) return
+        setOAuthStatus('error')
+        setOAuthError(error instanceof Error ? error.message : String(error))
+      })
+
+    return () => {
+      active = false
+    }
+  }, [existingServer, plugin])
+
+  useEffect(() => {
+    if (
+      oauthStatus !== 'connected' ||
+      oauthConnectedUrl === null ||
+      oauthConnectedUrl === url.trim()
+    ) {
+      return
+    }
+
+    if (hasOAuthDraft) {
+      void plugin.getMcpManager().then((manager) => {
+        manager.discardOAuthDraft(oauthDraftIdRef.current)
+      })
+    }
+    setHasOAuthDraft(false)
+    setOAuthStatus('idle')
+    setOAuthConnectedUrl(null)
+  }, [hasOAuthDraft, oauthConnectedUrl, oauthStatus, plugin, url])
+
+  useEffect(
+    () => () => {
+      oauthAbortRef.current?.abort()
+      void plugin.getMcpManager().then((manager) => {
+        manager.discardOAuthDraft(oauthDraftIdRef.current)
+      })
+    },
+    [plugin],
+  )
+
+  useEffect(() => {
+    if (
+      authMode === 'oauth' ||
+      (!hasOAuthDraft && oauthStatus !== 'connecting')
+    ) {
+      return
+    }
+    oauthAbortRef.current?.abort()
+    void plugin.getMcpManager().then((manager) => {
+      manager.discardOAuthDraft(oauthDraftIdRef.current)
+    })
+    setHasOAuthDraft(false)
+    setOAuthStatus('idle')
+    setOAuthConnectedUrl(null)
+  }, [authMode, hasOAuthDraft, oauthStatus, plugin])
+
+  const handleOAuthConnect = async () => {
+    try {
+      const serverId = name.trim()
+      if (!serverId) {
+        throw new Error(
+          t('settings.mcp.serverNameRequired', 'Name is required'),
+        )
+      }
+      validateServerName(serverId)
+      const serverUrl = url.trim()
+      const parsedUrl = new URL(serverUrl)
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new Error(
+          t(
+            'settings.mcp.oauthHttpRequired',
+            'OAuth requires an HTTP or HTTPS server URL.',
+          ),
+        )
+      }
+
+      oauthAbortRef.current?.abort()
+      const controller = new AbortController()
+      oauthAbortRef.current = controller
+      setOAuthStatus('connecting')
+      setOAuthError(null)
+      setHasOAuthDraft(false)
+      const manager = await plugin.getMcpManager()
+      await manager.authorizeOAuthDraft({
+        draftId: oauthDraftIdRef.current,
+        serverId,
+        serverUrl,
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted) return
+      setHasOAuthDraft(true)
+      setOAuthConnectedUrl(serverUrl)
+      setOAuthStatus('connected')
+    } catch (error) {
+      if (oauthAbortRef.current?.signal.aborted) return
+      setOAuthStatus('error')
+      setOAuthError(error instanceof Error ? error.message : String(error))
+    }
   }
 
   const getFormParameters = useCallback((): unknown => {
@@ -204,7 +348,9 @@ function McpServerFormComponent({
     }
 
     const normalizedHeaders =
-      authMode === 'headers' ? entriesToRecord(headers) : undefined
+      transport === 'sse' || authMode === 'headers'
+        ? entriesToRecord(headers)
+        : undefined
     return {
       transport,
       url: url.trim(),
@@ -227,6 +373,13 @@ function McpServerFormComponent({
         nextParameters.transport === 'sse'
       ) {
         setHeaders(recordToEntries(nextParameters.headers, 'synced-header'))
+        if (
+          nextParameters.transport === 'http' &&
+          nextParameters.headers &&
+          Object.keys(nextParameters.headers).length > 0
+        ) {
+          setAuthMode('headers')
+        }
       }
       if (nextParameters.transport === 'stdio') {
         setCommand(nextParameters.command)
@@ -301,17 +454,6 @@ function McpServerFormComponent({
 
       let parsedParameters: unknown
       if (mode === 'form') {
-        if (
-          (transport === 'http' || transport === 'sse') &&
-          authMode === 'oauth'
-        ) {
-          throw new Error(
-            t(
-              'settings.mcp.oauthUnavailable',
-              'OAuth connection is not available yet. Choose no authentication or custom headers to save this server now.',
-            ),
-          )
-        }
         parsedParameters = getFormParameters()
       } else {
         if (parameters.trim().length === 0) {
@@ -335,6 +477,26 @@ function McpServerFormComponent({
         value: parsedParameters,
         serverName,
       })
+      const oauthServerUrl =
+        validatedParameters.transport === 'http'
+          ? validatedParameters.url
+          : null
+      const nextAuth =
+        oauthServerUrl !== null && authMode === 'oauth'
+          ? ('oauth' as const)
+          : undefined
+      if (
+        nextAuth === 'oauth' &&
+        (oauthStatus !== 'connected' || oauthConnectedUrl !== oauthServerUrl)
+      ) {
+        throw new Error(
+          t(
+            'settings.mcp.oauthConnectBeforeSave',
+            'Connect with OAuth before saving this server.',
+          ),
+        )
+      }
+
       const isRename = !!existingServer && existingServer.id !== serverName
       const nextAssistants = isRename
         ? plugin.settings.assistants.map((assistant) =>
@@ -346,32 +508,68 @@ function McpServerFormComponent({
           )
         : plugin.settings.assistants
 
-      await plugin.setSettings({
-        ...plugin.settings,
-        mcp: {
-          ...plugin.settings.mcp,
-          servers: existingServer
-            ? plugin.settings.mcp.servers.map((server) =>
-                server.id === existingServer.id
-                  ? {
-                      ...server,
-                      id: serverName,
-                      parameters: validatedParameters,
-                    }
-                  : server,
-              )
-            : [
-                ...plugin.settings.mcp.servers,
-                {
-                  id: serverName,
-                  parameters: validatedParameters,
-                  toolOptions: {},
-                  enabled: true,
-                },
-              ],
-        },
-        assistants: nextAssistants,
-      })
+      const manager = await plugin.getMcpManager()
+      const oauthRollbacks: Array<() => Promise<void>> = []
+      if (nextAuth === 'oauth') {
+        if (hasOAuthDraft) {
+          oauthRollbacks.push(
+            await manager.commitOAuthDraft(oauthDraftIdRef.current, serverName),
+          )
+        } else if (existingServer?.auth === 'oauth' && isRename) {
+          const rollback = await manager.moveOAuthCredential(
+            existingServer.id,
+            serverName,
+            oauthServerUrl!,
+          )
+          if (rollback) oauthRollbacks.push(rollback)
+        }
+      }
+
+      try {
+        await plugin.setSettings({
+          ...plugin.settings,
+          mcp: {
+            ...plugin.settings.mcp,
+            servers: existingServer
+              ? plugin.settings.mcp.servers.map((server) =>
+                  server.id === existingServer.id
+                    ? {
+                        ...server,
+                        id: serverName,
+                        parameters: validatedParameters,
+                        auth: nextAuth,
+                      }
+                    : server,
+                )
+              : [
+                  ...plugin.settings.mcp.servers,
+                  {
+                    id: serverName,
+                    parameters: validatedParameters,
+                    auth: nextAuth,
+                    toolOptions: {},
+                    enabled: true,
+                  },
+                ],
+          },
+          assistants: nextAssistants,
+        })
+      } catch (error) {
+        await Promise.allSettled(
+          oauthRollbacks.reverse().map((rollback) => rollback()),
+        )
+        throw error
+      }
+
+      if (
+        existingServer?.auth === 'oauth' &&
+        (nextAuth !== 'oauth' || isRename)
+      ) {
+        await manager.clearOAuthCredential(existingServer.id).catch((error) => {
+          console.error('Failed to clear old MCP OAuth credential', error)
+        })
+      }
+      setHasOAuthDraft(false)
       onClose()
     } catch (error) {
       const message =
@@ -494,6 +692,9 @@ function McpServerFormComponent({
           setTransport={setTransport}
           authMode={authMode}
           setAuthMode={setAuthMode}
+          oauthStatus={oauthStatus}
+          oauthError={oauthError}
+          onOAuthConnect={() => void handleOAuthConnect()}
           url={url}
           setUrl={setUrl}
           command={command}
@@ -535,6 +736,9 @@ type McpGuidedFormProps = {
   setTransport: (transport: McpTransport) => void
   authMode: McpAuthMode
   setAuthMode: (authMode: McpAuthMode) => void
+  oauthStatus: OAuthStatus
+  oauthError: string | null
+  onOAuthConnect: () => void
   url: string
   setUrl: (url: string) => void
   command: string
@@ -556,6 +760,9 @@ function McpGuidedForm({
   setTransport,
   authMode,
   setAuthMode,
+  oauthStatus,
+  oauthError,
+  onOAuthConnect,
   url,
   setUrl,
   command,
@@ -703,7 +910,7 @@ function McpGuidedForm({
               }
             />
           </ObsidianSetting>
-          {(transport === 'http' || transport === 'sse') && (
+          {transport === 'http' && (
             <>
               <ObsidianSetting
                 name={t('settings.mcp.authenticationField', 'Authentication')}
@@ -739,9 +946,6 @@ function McpGuidedForm({
                       <div className="yolo-mcp-oauth-title">
                         {t('settings.mcp.oauthTitle', 'Connect with OAuth')}
                       </div>
-                      <span className="yolo-mcp-oauth-badge">
-                        {t('settings.mcp.oauthComingSoon', 'Coming soon')}
-                      </span>
                     </div>
                     <div className="yolo-mcp-oauth-desc">
                       {t(
@@ -750,19 +954,56 @@ function McpGuidedForm({
                       )}
                     </div>
                     <div className="yolo-mcp-oauth-actions">
-                      <span className="yolo-mcp-oauth-status">
-                        <span
-                          className="yolo-mcp-oauth-status-dot"
-                          aria-hidden="true"
-                        />
-                        {t('settings.mcp.oauthNotConnected', 'Not connected')}
+                      <span
+                        className={`yolo-mcp-oauth-status is-${oauthStatus}`}
+                      >
+                        {oauthStatus === 'checking' ||
+                        oauthStatus === 'connecting' ? (
+                          <Loader2
+                            className="yolo-mcp-oauth-spinner"
+                            size={13}
+                            aria-hidden="true"
+                          />
+                        ) : oauthStatus === 'connected' ? (
+                          <CheckCircle2 size={13} aria-hidden="true" />
+                        ) : (
+                          <span
+                            className="yolo-mcp-oauth-status-dot"
+                            aria-hidden="true"
+                          />
+                        )}
+                        {oauthStatus === 'checking'
+                          ? t('settings.mcp.oauthChecking', 'Checking...')
+                          : oauthStatus === 'connecting'
+                            ? t('settings.mcp.oauthConnecting', 'Connecting...')
+                            : oauthStatus === 'connected'
+                              ? t('settings.mcp.oauthConnected', 'Connected')
+                              : oauthStatus === 'error'
+                                ? t(
+                                    'settings.mcp.oauthConnectionFailed',
+                                    'Connection failed',
+                                  )
+                                : t(
+                                    'settings.mcp.oauthNotConnected',
+                                    'Not connected',
+                                  )}
                       </span>
                       <ObsidianButton
-                        text={t('settings.mcp.oauthConnect', 'Connect')}
-                        onClick={() => undefined}
-                        disabled
+                        text={
+                          oauthStatus === 'connected'
+                            ? t('settings.mcp.oauthReconnect', 'Reconnect')
+                            : t('settings.mcp.oauthConnect', 'Connect')
+                        }
+                        onClick={onOAuthConnect}
+                        disabled={
+                          oauthStatus === 'checking' ||
+                          oauthStatus === 'connecting'
+                        }
                       />
                     </div>
+                    {oauthError && (
+                      <div className="yolo-mcp-oauth-error">{oauthError}</div>
+                    )}
                   </div>
                 </div>
               ) : authMode === 'headers' ? (
@@ -788,6 +1029,28 @@ function McpGuidedForm({
                 />
               ) : null}
             </>
+          )}
+          {transport === 'sse' && (
+            <KeyValueFields
+              t={t}
+              title={t('settings.mcp.headersField', 'Headers')}
+              description={t(
+                'settings.mcp.headersFieldDesc',
+                'Optional headers for servers that use manual authentication.',
+              )}
+              addLabel={t('settings.mcp.addHeader', 'Add header')}
+              keyPlaceholder={t(
+                'settings.mcp.headerKeyPlaceholder',
+                'Header name',
+              )}
+              valuePlaceholder={t(
+                'settings.mcp.headerValuePlaceholder',
+                'Header value',
+              )}
+              entries={headers}
+              setEntries={setHeaders}
+              createEntry={() => createEntry('header')}
+            />
           )}
         </>
       )}

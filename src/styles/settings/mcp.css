@@ -345,15 +345,6 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   font-weight: var(--font-semibold);
 }
 
-.yolo-mcp-oauth-badge {
-  padding: 2px 7px;
-  border-radius: 999px;
-  color: var(--text-muted);
-  background: var(--background-modifier-border);
-  font-size: var(--font-ui-smaller);
-  white-space: nowrap;
-}
-
 .yolo-mcp-oauth-desc {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
@@ -377,6 +368,30 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   height: 7px;
   border-radius: 50%;
   background: var(--text-faint);
+}
+
+.yolo-mcp-oauth-status.is-connected {
+  color: var(--text-success);
+}
+
+.yolo-mcp-oauth-status.is-error,
+.yolo-mcp-oauth-error {
+  color: var(--text-error);
+}
+
+.yolo-mcp-oauth-spinner {
+  animation: yolo-mcp-oauth-spin 0.8s linear infinite;
+}
+
+.yolo-mcp-oauth-error {
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+@keyframes yolo-mcp-oauth-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .yolo-mcp-parameters-header {
@@ -514,5 +529,11 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   .yolo-mcp-oauth-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-mcp-oauth-spinner {
+    animation: none;
   }
 }

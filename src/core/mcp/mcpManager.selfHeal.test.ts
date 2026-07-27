@@ -103,7 +103,8 @@ const httpServerConfig = (id = 'demo'): McpServerConfig => ({
 
 const buildManager = () => {
   const manager = new McpManager({
-    app: { vault: {} } as unknown as App,
+    pluginId: 'test-plugin',
+    app: { vault: { configDir: '.obsidian' } } as unknown as App,
     settings: {
       mcp: {
         servers: [],

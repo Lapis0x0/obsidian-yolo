@@ -1,5 +1,6 @@
 import {
   getMcpServerNamesFromInput,
+  mcpServerConfigSchema,
   mcpServerParametersSchema,
   normalizeMcpServerParameters,
 } from './mcp.types'
@@ -163,5 +164,20 @@ describe('normalizeMcpServerParameters', () => {
         url: '',
       }).success,
     ).toBe(false)
+  })
+
+  it('persists OAuth intent outside transport parameters', () => {
+    expect(
+      mcpServerConfigSchema.parse({
+        id: 'openart',
+        parameters: {
+          transport: 'http',
+          url: 'https://mcp.openart.ai/mcp',
+        },
+        auth: 'oauth',
+        enabled: true,
+        toolOptions: {},
+      }),
+    ).toMatchObject({ auth: 'oauth' })
   })
 })

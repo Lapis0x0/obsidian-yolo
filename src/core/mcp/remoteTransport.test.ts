@@ -108,7 +108,7 @@ describe('remoteTransport', () => {
     })
   })
 
-  it('rejects streaming responses from the Obsidian requestUrl JSON backend', async () => {
+  it('returns buffered POST event streams from the requestUrl backend', async () => {
     mockedCreateDesktopMcpFetch.mockReturnValue(
       jest.fn() as unknown as typeof fetch,
     )
@@ -129,14 +129,32 @@ describe('remoteTransport', () => {
       'obsidian-request-url-json',
     )
 
-    await expect(
-      options.fetch!(new URL('https://example.com/mcp'), {
-        method: 'POST',
-        body: '{}',
-      }),
-    ).rejects.toThrow(
-      'MCP HTTP JSON backend does not support text/event-stream responses.',
+    const response = await options.fetch!(new URL('https://example.com/mcp'), {
+      method: 'POST',
+      body: '{}',
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+  })
+
+  it('short-circuits the optional streaming GET on the requestUrl backend', async () => {
+    mockedCreateDesktopMcpFetch.mockReturnValue(
+      jest.fn() as unknown as typeof fetch,
     )
+    const factory = createMcpRemoteTransportFactory({ env: {} })
+    const options = factory.createHttpOptions(
+      { transport: 'http', url: 'https://example.com/mcp' },
+      'obsidian-request-url-json',
+    )
+
+    const response = await options.fetch!(new URL('https://example.com/mcp'), {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream' },
+    })
+
+    expect(response.status).toBe(405)
+    expect(mockedRequestUrl).not.toHaveBeenCalled()
   })
 
   it('forwards shell env into desktopMcpFetch', () => {

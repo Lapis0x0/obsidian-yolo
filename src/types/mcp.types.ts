@@ -240,6 +240,7 @@ export const mcpServerToolOptionsSchema = z.record(
 export const mcpServerConfigSchema = z.object({
   id: z.string(),
   parameters: mcpServerParametersSchema,
+  auth: z.enum(['oauth']).optional(),
   enabled: z.boolean(),
   toolOptions: mcpServerToolOptionsSchema,
 })
