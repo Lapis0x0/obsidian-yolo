@@ -289,16 +289,18 @@ describe('generateCardsForChapter streaming', () => {
       if (retryWithExternalEdit) expect(written).toContain('user edit')
       expect(written).not.toMatch(/[\u4e00-\u9fff]/)
       expect(create).toHaveBeenCalledTimes(preexistingRollbackShell ? 0 : 1)
-      expect(stream).toHaveBeenCalledWith(
+      expect(requests[0]).toEqual(
         expect.objectContaining({
           modelId: 'learning-model',
-          capability: 'edit-vault',
+          capability: 'readonly-vault',
         }),
       )
       if (retryWithExternalEdit) {
         const retryRequest = requests[1] as {
+          capability: string
           messages: Array<{ promptContent?: string }>
         }
+        expect(retryRequest.capability).toBe('edit-vault')
         expect(retryRequest.messages.at(-1)?.promptContent).toContain(
           'The following cards are incorrectly formatted',
         )
