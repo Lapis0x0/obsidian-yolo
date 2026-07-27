@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 3,
+  "revision": 4,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.1.3",
+    "version": "1.6.2",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.1.3",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.2",
     "releaseNotes": {
-      "en": "## 1.6.1.3 Safer Updates & More Complete Configuration Transfer 🛡️\n\n### ⚙️ Configuration Transfer\n\n- Fixed configuration imports incorrectly treating an existing YOLO root directory as a migration conflict. Import and export now cover registered feature data consistently, reducing the chance that newer settings are left behind.\n\n### 🔄 Reliable Update Distribution\n\n- Core and module updates now prefer the Cloudflare Pages mirror and automatically fall back to GitHub when needed. Signed feeds, rollback protection, and integrity verification secure the update path while improving reliability on constrained networks.\n- Automatic updates are more stable on slower connections and now show accurate background download states instead of a progress indicator that could appear stuck.\n- Successful module upgrades clean up replaced local artifacts without compromising rollback when an update fails.\n\n### 💬 Chat Editing\n\n- Fixed a large blank area appearing below long AI responses while editing, which could push later messages far down the conversation.",
-      "zh": "## 1.6.1.3 更安全可靠的更新与更完整的配置迁移 🛡️\n\n### ⚙️ 配置迁移\n\n- 修复导入配置时将已有 YOLO 根目录误判为迁移冲突的问题。配置导入导出现在会统一覆盖已注册的功能数据，降低后续新增配置被遗漏的风险。\n\n### 🔄 可靠的更新分发\n\n- Core 与模块更新现在优先使用 Cloudflare Pages 镜像，并在异常时自动回退 GitHub；同时通过签名 Feed、版本防回退和完整性校验保障更新安全，改善受限网络环境下的可靠性。\n- 提升较慢网络下自动更新的下载稳定性，并以准确的后台下载状态替代容易产生卡顿感的进度显示。\n- 模块升级成功后会清理已被替换的本地制品，同时在升级失败时保留安全回滚能力。\n\n### 💬 聊天编辑\n\n- 修复编辑较长的 AI 回复时下方出现大块空白、将后续消息推远的问题。"
+      "en": "## 1.6.2 Leaner Core, Editable Reviews & Better Multi-Window Support 🚀\n\n### 📦 Leaner, More Reliable Runtime\n\n- PDF processing, tokenization, and the knowledge base engine are now downloaded only when needed, substantially reducing the core plugin size. Runtime components and knowledge base indexing now retry temporary failures up to three times, then wait for a manual retry instead of making endless background requests. (#447)\n- Agent tasks and streaming responses now continue smoothly when an Obsidian window moves to the background, avoiding stalled work or delayed bursts of output.\n\n### ✍️ Editable Inline Diff Review\n\n- Diff review is now consistently presented as an editable inline experience: you can directly revise both the original text and AI suggestions before deciding what to accept.\n- Review direction and accept/reject semantics now remain correct across repeated revisions. Rejected edits are also reported back to the Agent so it no longer mistakes them for applied changes.\n- The review action bar now fits split panes and narrow windows, stays clear of content, scrollbars, and Obsidian's status bar, and has more consistent hover styling.\n\n### 🪟 Multi-Window Editing\n\n- Text selected in either the main window or a pop-out window can now be added to chat context. Insert/replace actions also target the most recently active Markdown view, preventing content from being written into the wrong page. (#488, #490, #492, #493)\n- Thanks to @pjeby for reporting these multi-window issues and for the detailed code review and suggested fix for #490.\n\n### 🤖 More Reliable Agent Tools\n\n- File reading now uses a simpler parameter structure, reducing failed tool calls caused by nested arguments, and PDF pagination now respects the requested page count.\n- File editing provides clearer parameter-error guidance, helping models recover without incorrectly treating `oldText` as required.\n- The Agent better recognizes selected text and existing context, avoiding unnecessary rereads of identical or overlapping file ranges.\n\n### 💬 Refined Chat Experience\n\n- Fixed todo lists and queued messages covering badge-style attachments. Expanded todo content now grows upward while the bottom status bar stays fixed, and adding the first reference badge no longer replays the input layout animation. Badges and todo lists also have a refreshed visual design. (#489)\n- Tab Completion can now generate multiple context-aware suggestions at once.\n- Switching reasoning effort no longer causes spacing between the input and quick commands to jump.\n\n### ⚙️ Cleaner Configuration\n\n- Optional model parameters such as Temperature and Top P now live in a unified collapsible section, keeping everyday setup focused while preserving full provider-parameter overrides.\n- MCP servers can now be configured through either a guided form or raw JSON, making local and remote server setup more approachable. (#496)",
+      "zh": "## 1.6.2 更轻量的核心、可编辑审阅与更完善的多窗口支持 🚀\n\n### 📦 更轻量、更可靠的运行组件\n\n- PDF、分词器和知识库引擎现在仅在需要时下载，大幅减少插件核心体积。运行组件与知识库索引遇到暂时性错误时最多自动重试三次，达到上限后会等待手动重试，不再持续发起后台请求。（#447）\n- 修复 Obsidian 窗口进入后台后 Agent 任务与流式响应可能停滞或集中显示的问题，后台任务现在能够持续顺畅运行。\n\n### ✍️ 可编辑的内联差异审阅\n\n- 差异审阅现已统一为可编辑的内联体验，可在接受或拒绝前直接修改原文与 AI 建议。\n- 修正重复审阅时差异方向以及接受、拒绝语义颠倒的问题；Agent 现在也能获知用户否决的修改，不再将其误判为已成功应用。\n- 审阅操作栏现在会适应分栏和窄窗口，避开正文、滚动条与 Obsidian 底部状态栏，并修复按钮悬停样式异常。\n\n### 🪟 多窗口编辑\n\n- 主窗口和弹出窗口中的文本选区现在都能加入聊天上下文；“插入/替换光标处”也会准确写入最近激活的 Markdown 页面，不再误写到其他页面。（#488、#490、#492、#493）\n- 感谢 @pjeby 报告以上多窗口问题，并为 #490 提供细致的代码审查和修复方案建议。\n\n### 🤖 更可靠的 Agent 工具\n\n- 简化文件读取工具的参数结构，减少模型因参数嵌套导致的调用失败；PDF 分页读取现在也会正确遵循指定的读取页数。\n- 优化文件编辑工具的参数错误提示，避免模型误判 `oldText` 为必填参数，提高编辑调用的自纠正能力。\n- Agent 现在能更准确地识别用户选区与已有上下文，减少对相同或重叠文件范围的不必要重复读取。\n\n### 💬 更精致的聊天体验\n\n- 修复任务清单或排队消息遮挡徽章形式附件的问题。任务清单展开时内容会向上显示并保持底部状态栏固定，首次添加引用徽章时也不再重复播放输入框布局动画；Badge 与任务清单的视觉样式同步焕新。（#489）\n- Tab 补全现在可一次生成多条上下文自适应的候选建议。\n- 修复切换推理强度时输入框与快捷指令间距跳动的问题。\n\n### ⚙️ 更清爽的配置体验\n\n- Temperature、Top P 等模型可选参数现已统一收纳为折叠配置，减少低频选项对日常设置的干扰，同时保留完整的 Provider 参数覆盖能力。\n- MCP 服务器新增表单与 JSON 双模式配置，可通过更直观的字段添加本地或远程服务。（#496）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.1.3/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.3/main.js",
-        "byteSize": 12068642,
-        "sha256": "a2c944f5e1fad33c5b24f71b7db599951ad777d147bfd2ac38ceba87bf778b38"
+        "mirrorPath": "core/1.6.2/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.2/main.js",
+        "byteSize": 7648148,
+        "sha256": "2c293d51225ffdb65a65ce6063d6dfe256c9c70a960b523067410da87a9dc3fa"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.1.3/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.3/manifest.json",
-        "byteSize": 330,
-        "sha256": "b0925a8080d1680753c4a91337957186f86ecc5819de088fd7962a91d6248d49"
+        "mirrorPath": "core/1.6.2/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.2/manifest.json",
+        "byteSize": 328,
+        "sha256": "497a43018bce5a7b0129b5645804ab704085a6d75dd3b683ce2ef9c2348f1afa"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.1.3/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.3/styles.css",
-        "byteSize": 559894,
-        "sha256": "6348cbb2f77c98e43f326bea3f2e86747706baf99a37a66c90aae9610ae31a9f"
+        "mirrorPath": "core/1.6.2/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.2/styles.css",
+        "byteSize": 556412,
+        "sha256": "a829f9e0dbdaa99bbf55e0ecd99778171f832ef1026375957ab3e81be8a1bb0c"
       }
     }
   },
