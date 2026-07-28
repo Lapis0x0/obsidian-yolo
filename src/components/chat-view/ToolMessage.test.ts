@@ -43,6 +43,7 @@ import type { ToolLabels } from './ToolMessage'
 import ToolMessage, {
   areToolCallItemPropsEqual,
   getHeadlineDisplayInfo,
+  getToolSuccessIconKind,
   getToolResultDisplayText,
 } from './ToolMessage'
 
@@ -279,6 +280,82 @@ describe('ToolMessage rendering', () => {
         } satisfies ToolCallResponse,
       }),
     ).toBe(false)
+  })
+})
+
+describe('ToolMessage success icon helpers', () => {
+  it('uses a wrench for successful skill reads', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__fs_read',
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: '',
+            metadata: {
+              fsReadOperation: {
+                type: 'full',
+                isPdf: false,
+                skillNames: ['obsidian-output-format'],
+              },
+            },
+          },
+        },
+      }),
+    ).toBe('skill')
+  })
+
+  it('keeps the success check for ordinary file reads', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__fs_read',
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: '',
+            metadata: {
+              fsReadOperation: { type: 'full', isPdf: false },
+            },
+          },
+        },
+      }),
+    ).toBe('default')
+  })
+
+  it('uses a terminal icon for terminal commands', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__terminal_command',
+        },
+      }),
+    ).toBe('terminal')
+  })
+
+  it('keeps the success check for other builtin tools', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__fs_search',
+        },
+      }),
+    ).toBe('default')
+  })
+
+  it('keeps the success check for non-builtin tools', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'custom_server__fs_search',
+        },
+      }),
+    ).toBe('default')
   })
 })
 

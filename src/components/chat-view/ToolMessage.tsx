@@ -1,6 +1,14 @@
 import cx from 'clsx'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  SquareTerminal,
+  Wrench,
+  X,
+} from 'lucide-react'
 import { Notice } from 'obsidian'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -782,6 +790,39 @@ export const getHeadlineDisplayInfo = ({
   return displayInfo
 }
 
+type ToolSuccessIconKind = 'default' | 'skill' | 'terminal'
+
+export const getToolSuccessIconKind = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): ToolSuccessIconKind => {
+  let toolName: string
+  try {
+    const parsed = parseToolName(request.name)
+    if (parsed.serverName !== getLocalFileToolServerName()) {
+      return 'default'
+    }
+    toolName = parsed.toolName
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+    return 'default'
+  }
+
+  if (
+    toolName === 'fs_read' &&
+    getFsReadOperationSummary({ response })?.skillNames?.length
+  ) {
+    return 'skill'
+  }
+
+  return toolName === 'terminal_command' ? 'terminal' : 'default'
+}
+
 const DELEGATE_SUMMARY_MAX_CHARS = 80
 
 const getDelegateSubagentSummary = ({
@@ -1296,6 +1337,10 @@ function ToolCallItem({
     terminalCommandResult && isTerminalCommandRequest(request)
       ? mapTerminalCommandResultStatus(terminalCommandResult.status)
       : response.status
+  const successIconKind = useMemo(
+    () => getToolSuccessIconKind({ request, response }),
+    [request, response],
+  )
   // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
   const isAlwaysAllowDisabled = useMemo(() => {
     try {
@@ -1417,7 +1462,10 @@ function ToolCallItem({
               transition={{ duration: motionDuration }}
               style={{ display: 'flex', alignItems: 'center' }}
             >
-              <StatusIcon status={effectiveStatus} />
+              <StatusIcon
+                status={effectiveStatus}
+                successIconKind={successIconKind}
+              />
             </motion.span>
           </AnimatePresence>
         </div>
@@ -1783,7 +1831,13 @@ function useToolCall(
   }
 }
 
-function StatusIcon({ status }: { status: ToolCallResponseStatus }) {
+function StatusIcon({
+  status,
+  successIconKind,
+}: {
+  status: ToolCallResponseStatus
+  successIconKind: ToolSuccessIconKind
+}) {
   switch (status) {
     case ToolCallResponseStatus.PendingApproval:
       return <span className="yolo-toolcall-status-dot" />
@@ -1794,6 +1848,19 @@ function StatusIcon({ status }: { status: ToolCallResponseStatus }) {
     case ToolCallResponseStatus.Running:
       return <Loader2 size={16} className="yolo-spinner" />
     case ToolCallResponseStatus.Success:
+      if (successIconKind === 'skill') {
+        return (
+          <Wrench size={16} className="yolo-toolcall-status-success-semantic" />
+        )
+      }
+      if (successIconKind === 'terminal') {
+        return (
+          <SquareTerminal
+            size={16}
+            className="yolo-toolcall-status-success-semantic"
+          />
+        )
+      }
       return (
         <span className="yolo-toolcall-status-success-ring">
           <Check size={11} className="yolo-toolcall-status-success-check" />
