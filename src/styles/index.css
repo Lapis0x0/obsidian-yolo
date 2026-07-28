@@ -30,6 +30,7 @@
 @import './panels/quick-ask.css';
 
 @import './selection/selection-chat.css';
+@import './selection/selection-rewrite.css';
 @import './selection/pdf-selection.css';
 
 @import './editor/tab-completion.css';

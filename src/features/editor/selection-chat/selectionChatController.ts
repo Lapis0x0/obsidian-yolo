@@ -42,13 +42,6 @@ import { getPdfLeafContentEl } from './getPdfSelectionData'
 import { PdfSelectionManager } from './PdfSelectionManager'
 import { resolveMarkdownTableSelectionFromTableElement } from './tableSelectionResolver'
 
-export type PendingSelectionRewrite = {
-  editor: Editor
-  selectedText: string
-  from: { line: number; ch: number }
-  to: { line: number; ch: number }
-}
-
 type EditorRange = {
   from: number
   to: number
@@ -209,7 +202,6 @@ export class SelectionChatController {
    * highlight id and cause the highlight to disappear on next reconcile.
    */
   private lastSyncedPdfKey: string | null = null
-  private pendingSelectionRewrite: PendingSelectionRewrite | null = null
   private enableSelectionChat = true
   private layoutChangeEventRef: EventRef | null = null
 
@@ -232,16 +224,6 @@ export class SelectionChatController {
 
   isActive(): boolean {
     return this.enableSelectionChat
-  }
-
-  clearPendingSelectionRewrite() {
-    this.pendingSelectionRewrite = null
-  }
-
-  consumePendingSelectionRewrite(): PendingSelectionRewrite | null {
-    const pending = this.pendingSelectionRewrite
-    this.pendingSelectionRewrite = null
-    return pending
   }
 
   initialize() {

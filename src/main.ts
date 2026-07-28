@@ -191,6 +191,10 @@ import { resolveSelectionChatActions } from './features/editor/selection-chat/re
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
 import {
+  SelectionRewriteController,
+  type StartSelectionRewriteOptions,
+} from './features/editor/selection-rewrite/selectionRewriteController'
+import {
   SmartSpaceController,
   SmartSpaceDraftState,
 } from './features/editor/smart-space/smartSpaceController'
@@ -270,6 +274,7 @@ export default class YoloPlugin extends Plugin {
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
   private diffReviewController: DiffReviewController | null = null
+  private selectionRewriteController: SelectionRewriteController | null = null
   private smartSpaceDraftState: SmartSpaceDraftState = null
   private smartSpaceController: SmartSpaceController | null = null
   // Selection chat state
@@ -570,9 +575,6 @@ export default class YoloPlugin extends Plugin {
         getActiveMarkdownView: () =>
           this.app.workspace.getActiveViewOfType(MarkdownView),
         getEditorView: (editor) => this.getEditorView(editor),
-        clearPendingSelectionRewrite: () => {
-          this.selectionChatController?.clearPendingSelectionRewrite()
-        },
       })
     }
     return this.smartSpaceController
@@ -592,6 +594,23 @@ export default class YoloPlugin extends Plugin {
       })
     }
     return this.quickAskController
+  }
+
+  private getSelectionRewriteController(): SelectionRewriteController {
+    if (!this.selectionRewriteController) {
+      this.selectionRewriteController = new SelectionRewriteController({
+        t: (key, fallback) => this.t(key, fallback),
+        addAbortController: (controller) =>
+          this.activeAbortControllers.add(controller),
+        removeAbortController: (controller) =>
+          this.activeAbortControllers.delete(controller),
+      })
+    }
+    return this.selectionRewriteController
+  }
+
+  startSelectionRewrite(options: StartSelectionRewriteOptions): void {
+    this.getSelectionRewriteController().start(options)
   }
 
   private closeSmartSpace() {
@@ -1936,7 +1955,6 @@ export default class YoloPlugin extends Plugin {
           this.getInlineSuggestionController().setContinuationSuggestion(
             params,
           ),
-        openApplyReview: (state) => this.openApplyReview(state),
       })
     }
     return this.writeAssistController
@@ -1956,20 +1974,6 @@ export default class YoloPlugin extends Plugin {
 
   private handleTabCompletionEditorChange(editor: Editor) {
     this.getTabCompletionController().handleEditorChange(editor)
-  }
-
-  private async handleCustomRewrite(
-    editor: Editor,
-    customPrompt?: string,
-    preSelectedText?: string,
-    preSelectionFrom?: { line: number; ch: number },
-  ) {
-    return this.getWriteAssistController().handleCustomRewrite(
-      editor,
-      customPrompt,
-      preSelectedText,
-      preSelectionFrom,
-    )
   }
 
   async onload() {
@@ -2078,6 +2082,9 @@ export default class YoloPlugin extends Plugin {
     enablePdfScreenshotFeature(this)
 
     this.registerEditorExtension(selectionHighlightController.createExtension())
+    this.registerEditorExtension(
+      this.getSelectionRewriteController().createExtension(),
+    )
     this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
     this.registerEditorExtension(
@@ -2502,6 +2509,8 @@ export default class YoloPlugin extends Plugin {
     this.inlineSuggestionController = null
     this.diffReviewController?.destroy()
     this.diffReviewController = null
+    this.selectionRewriteController?.destroy()
+    this.selectionRewriteController = null
     this.writeAssistController = null
 
     // clear all timers
@@ -4237,42 +4246,11 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
     mentionables?: (MentionableFile | MentionableFolder)[],
   ) {
-    // Check if this is actually a rewrite request from Selection Chat
-    const pendingRewrite =
-      this.selectionChatController?.consumePendingSelectionRewrite() ?? null
-    if (pendingRewrite) {
-      const { editor: rewriteEditor, selectedText, from } = pendingRewrite
-
-      // Pass the pre-saved selectedText and position directly to handleCustomRewrite
-      // No need to re-select or check current selection
-      await this.handleCustomRewrite(
-        rewriteEditor,
-        customPrompt,
-        selectedText,
-        from,
-      )
-      return
-    }
     return this.handleContinueWriting(
       editor,
       customPrompt,
       geminiTools,
       mentionables,
-    )
-  }
-
-  // Public wrapper for use in React panel
-  async customRewrite(
-    editor: Editor,
-    customPrompt?: string,
-    preSelectedText?: string,
-    preSelectionFrom?: { line: number; ch: number },
-  ) {
-    return this.handleCustomRewrite(
-      editor,
-      customPrompt,
-      preSelectedText,
-      preSelectionFrom,
     )
   }
 

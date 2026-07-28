@@ -43,7 +43,6 @@ type SmartSpaceControllerDeps = {
   getSettings: () => YoloSettings
   getActiveMarkdownView: () => MarkdownView | null
   getEditorView: (editor: Editor) => EditorView | null
-  clearPendingSelectionRewrite: () => void
 }
 
 const smartSpaceWidgetEffect =
@@ -92,9 +91,6 @@ export class SmartSpaceController {
 
     // 先清除状态，避免重复关闭
     this.smartSpaceWidgetState = null
-
-    // Clear pending selection rewrite if user closes without submitting
-    this.deps.clearPendingSelectionRewrite()
 
     // 尝试触发关闭动画
     const hasAnimation = SmartSpaceWidget.closeCurrentWithAnimation()

@@ -361,6 +361,7 @@ export function QuickAskPanel({
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
   const autoSendRef = useRef(false)
+  const selectionRewriteStartedRef = useRef(false)
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
@@ -1403,13 +1404,39 @@ export function QuickAskPanel({
         return
       }
 
-      const resolvedInstruction = buildEditInstruction(instruction.trim())
-
       const targetFile = resolveEditTargetFile()
       if (!targetFile) {
         new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
         return
       }
+
+      if (
+        capabilities.edit &&
+        _editor &&
+        _view &&
+        executionMode === 'edit' &&
+        hasScopedSelectionForEdit &&
+        selectionEditFrom
+      ) {
+        if (selectionRewriteStartedRef.current) return
+        selectionRewriteStartedRef.current = true
+        const from = _editor.posToOffset(selectionEditFrom)
+        plugin.startSelectionRewrite({
+          view: _view,
+          from,
+          to: from + selectionEditContextText.length,
+          selectedText: selectionEditContextText,
+          instruction: instruction.trim(),
+          providerClient,
+          model,
+          settings,
+        })
+        selectionHighlightController.clearByOwner('quickask')
+        onClose()
+        return
+      }
+
+      const resolvedInstruction = buildEditInstruction(instruction.trim())
 
       setIsStreaming(true)
       setRunStatus('requesting')
@@ -1504,13 +1531,21 @@ export function QuickAskPanel({
     },
     [
       buildEditInstruction,
+      capabilities.edit,
       executionMode,
       generatePlannedEdit,
       hasScopedSelectionForEdit,
       isStreaming,
+      _editor,
+      _view,
+      model,
       onClose,
       plugin,
+      providerClient,
       resolveEditTargetFile,
+      selectionEditContextText,
+      selectionEditFrom,
+      settings,
       t,
     ],
   )

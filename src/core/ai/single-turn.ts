@@ -106,7 +106,7 @@ type SingleTurnExecutionInput = {
     reasoningDelta: string
     chunk: LLMResponseStreaming
     toolCalls?: StreamedToolCall[]
-  }) => void
+  }) => void | Promise<void>
 }
 
 const DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS = DEFAULT_MODEL_REQUEST_TIMEOUT_MS
@@ -525,7 +525,7 @@ export async function executeSingleTurn({
         const streamedToolCallList = toolCallAccumulator.getSnapshots()
 
         if (!isBufferedStreaming) {
-          onStreamDelta?.({
+          await onStreamDelta?.({
             contentDelta,
             reasoningDelta,
             chunk,

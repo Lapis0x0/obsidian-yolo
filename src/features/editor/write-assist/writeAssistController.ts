@@ -5,18 +5,13 @@ import { executeSingleTurn } from '../../../core/ai/single-turn'
 import { getChatModelClient } from '../../../core/llm/manager'
 import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
-import type { ApplyViewState } from '../../../types/apply-view.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'
 import type {
   MentionableFile,
   MentionableFolder,
 } from '../../../types/mentionable'
-import {
-  getNestedFiles,
-  readMultipleTFiles,
-  readTFileContent,
-} from '../../../utils/obsidian'
+import { getNestedFiles, readMultipleTFiles } from '../../../utils/obsidian'
 
 type WriteAssistDeps = {
   app: App
@@ -55,24 +50,6 @@ type WriteAssistDeps = {
     fromOffset: number
     startPos: ReturnType<Editor['getCursor']>
   }) => void
-  openApplyReview: (state: ApplyViewState) => Promise<boolean>
-}
-
-function getSelectionEndPosition(
-  from: { line: number; ch: number },
-  text: string,
-): { line: number; ch: number } {
-  const lines = text.split('\n')
-  if (lines.length <= 1) {
-    return {
-      line: from.line,
-      ch: from.ch + text.length,
-    }
-  }
-  return {
-    line: from.line + lines.length - 1,
-    ch: lines[lines.length - 1]?.length ?? 0,
-  }
 }
 
 export class WriteAssistController {
@@ -80,152 +57,6 @@ export class WriteAssistController {
 
   constructor(deps: WriteAssistDeps) {
     this.deps = deps
-  }
-
-  async handleCustomRewrite(
-    editor: Editor,
-    customPrompt?: string,
-    preSelectedText?: string,
-    preSelectionFrom?: { line: number; ch: number },
-  ) {
-    const selected = preSelectedText ?? editor.getSelection()
-    if (!selected || selected.trim().length === 0) {
-      new Notice('请先选择要改写的文本。')
-      return
-    }
-
-    const from = preSelectionFrom ?? editor.getCursor('from')
-    const to = getSelectionEndPosition(from, selected)
-
-    const notice = new Notice('正在生成改写...', 0)
-    const controller = new AbortController()
-    this.deps.addAbortController(controller)
-
-    try {
-      const sidebarOverrides = this.deps.getActiveConversationOverrides()
-      const {
-        temperature,
-        topP,
-        stream: streamPreference,
-      } = this.deps.resolveContinuationParams(sidebarOverrides)
-
-      const settings = this.deps.getSettings()
-      const rewriteModelId =
-        settings.continuationOptions?.continuationModelId ??
-        settings.chatModelId
-
-      const { providerClient, model } = getChatModelClient({
-        settings,
-        modelId: rewriteModelId,
-        onAutoPromoteTransportMode: (providerId, mode) => {
-          void promoteProviderTransportModeToObsidian({
-            getSettings: this.deps.getSettings,
-            setSettings: this.deps.setSettings,
-            providerId,
-            mode,
-          })
-        },
-      })
-
-      const systemPrompt =
-        'You are an intelligent assistant that rewrites ONLY the provided markdown text according to the instruction. Preserve the original meaning, structure, and any markdown (links, emphasis, code) unless explicitly told otherwise. Output ONLY the rewritten text without code fences or extra explanations.'
-
-      const instruction = (customPrompt ?? '').trim()
-      const requestMessages: RequestMessage[] = [
-        {
-          role: 'system' as const,
-          content: systemPrompt,
-        },
-        {
-          role: 'user' as const,
-          content: `Instruction:\n${instruction}\n\nSelected text:\n${selected}\n\nRewrite the selected text accordingly. Output only the rewritten text.`,
-        },
-      ]
-
-      const rewriteRequestBase: LLMRequestBase = {
-        model: model.model,
-        messages: requestMessages,
-      }
-      if (typeof temperature === 'number') {
-        rewriteRequestBase.temperature = temperature
-      }
-      if (typeof topP === 'number') {
-        rewriteRequestBase.top_p = topP
-      }
-
-      const stripFences = (s: string) => {
-        const lines = (s ?? '').split('\n')
-        if (lines.length > 0 && lines[0].startsWith('```')) lines.shift()
-        if (lines.length > 0 && lines[lines.length - 1].startsWith('```'))
-          lines.pop()
-        return lines.join('\n')
-      }
-
-      const rewriteResult = await executeSingleTurn({
-        providerClient,
-        model,
-        request: rewriteRequestBase,
-        signal: controller.signal,
-        deliveryMode: streamPreference ? 'incremental' : 'buffered',
-        primaryRequestTimeoutMs:
-          settings.continuationOptions.primaryRequestTimeoutMs,
-        streamFallbackRecoveryEnabled:
-          settings.continuationOptions.streamFallbackRecoveryEnabled,
-      })
-      const rewritten = stripFences(rewriteResult.content).trim()
-      if (!rewritten) {
-        notice.setMessage('未生成改写内容。')
-        this.deps.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      const activeFile = this.deps.app.workspace.getActiveFile()
-      if (!activeFile) {
-        notice.setMessage('未找到当前文件。')
-        this.deps.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      const head = editor.getRange({ line: 0, ch: 0 }, from)
-      const originalContent = await readTFileContent(
-        activeFile,
-        this.deps.app.vault,
-      )
-      const tail = originalContent.slice(head.length + selected.length)
-      const newContent = head + rewritten + tail
-
-      await this.deps.openApplyReview({
-        file: activeFile,
-        originalContent,
-        newContent,
-        reviewEdits: [
-          {
-            from: head.length,
-            to: head.length + selected.length,
-            replacement: rewritten,
-          },
-        ],
-        reviewMode: 'selection-focus',
-        selectionRange: {
-          from,
-          to,
-        },
-      } satisfies ApplyViewState)
-
-      notice.setMessage('改写结果已生成。')
-      this.deps.registerTimeout(() => notice.hide(), 1200)
-    } catch (error) {
-      if ((error as Error)?.name === 'AbortError') {
-        notice.setMessage('已取消生成。')
-        this.deps.registerTimeout(() => notice.hide(), 1000)
-      } else {
-        console.error(error)
-        notice.setMessage('改写失败。')
-        this.deps.registerTimeout(() => notice.hide(), 1200)
-      }
-    } finally {
-      this.deps.removeAbortController(controller)
-    }
   }
 
   async handleContinueWriting(
