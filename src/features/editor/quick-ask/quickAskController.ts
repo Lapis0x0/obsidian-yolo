@@ -339,7 +339,7 @@ export class QuickAskController {
     })
 
     this.quickAskWidgetState = { view, pos, close }
-    this.deferSelectionHighlightTakeover(view, ++this.highlightTakeoverToken)
+    this.takeOverSelectionHighlight(view, ++this.highlightTakeoverToken)
   }
 
   /**
@@ -465,7 +465,7 @@ export class QuickAskController {
     }
   }
 
-  private deferSelectionHighlightTakeover(view: EditorView, token: number) {
+  private takeOverSelectionHighlight(view: EditorView, token: number) {
     if (
       !(
         this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
@@ -475,32 +475,25 @@ export class QuickAskController {
       return
     }
 
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (token !== this.highlightTakeoverToken) {
-          return
-        }
+    if (
+      token !== this.highlightTakeoverToken ||
+      this.quickAskWidgetState?.view !== view
+    ) {
+      return
+    }
 
-        const selection = view.state.selection.main
-        if (
-          selection.empty ||
-          view.hasFocus ||
-          this.quickAskWidgetState?.view !== view
-        ) {
-          return
-        }
+    const selection = view.state.selection.main
+    if (selection.empty) return
 
-        const id = `quickask:${crypto.randomUUID()}`
-        this.currentHighlightId = id
-        selectionHighlightController.addHighlight(
-          view,
-          id,
-          { from: selection.from, to: selection.to },
-          'sync',
-          'quickask',
-        )
-      })
-    })
+    const id = `quickask:${crypto.randomUUID()}`
+    this.currentHighlightId = id
+    selectionHighlightController.addHighlight(
+      view,
+      id,
+      { from: selection.from, to: selection.to },
+      'sync',
+      'quickask',
+    )
   }
 
   createTriggerExtension(): Extension {

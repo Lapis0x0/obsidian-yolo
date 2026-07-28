@@ -171,7 +171,10 @@ class SelectionRewriteCandidateWidget extends WidgetType {
     if (!this.block) return
     window.requestAnimationFrame(() => {
       if (!root.isConnected) return
-      const target = Math.max(this.baselineHeight, text.scrollHeight)
+      const target = Math.max(
+        this.baselineHeight,
+        measureCandidateTextHeight(text, view.defaultLineHeight),
+      )
       root.style.height = `${target}px`
       view.requestMeasure()
     })
@@ -179,6 +182,19 @@ class SelectionRewriteCandidateWidget extends WidgetType {
 }
 
 const rewriteResizeObservers = new WeakMap<HTMLElement, ResizeObserver>()
+
+function measureCandidateTextHeight(
+  text: HTMLElement,
+  fallbackHeight: number,
+): number {
+  const rects = Array.from(text.getClientRects()).filter(
+    (rect) => rect.height > 0,
+  )
+  if (rects.length === 0) return fallbackHeight
+  const top = Math.min(...rects.map((rect) => rect.top))
+  const bottom = Math.max(...rects.map((rect) => rect.bottom))
+  return Math.max(fallbackHeight, bottom - top)
+}
 
 function buildRewriteDecorations(
   sessions: SelectionRewriteVisual[],
@@ -293,22 +309,380 @@ function mergeVisualLineRects(rects: DOMRect[]): DOMRect[] {
   return merged
 }
 
-function markerClass(
+type RewriteSurfaceRect = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+type RewriteSurfaceBand = {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  visualHeight: number
+}
+
+type RewriteOutline = {
+  left: number
+  top: number
+  width: number
+  height: number
+  path: string
+}
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+const REWRITE_OUTER_RADIUS = 8
+const REWRITE_INNER_RADIUS = 4
+const REWRITE_START_PADDING = 4
+const REWRITE_SURFACE_EDGE_EPSILON = 1
+
+function padRewriteStart(
+  rects: RewriteSurfaceRect[],
+  direction: Direction,
+  bounds: { left: number; right: number },
+): RewriteSurfaceRect[] {
+  if (rects.length === 0) return rects
+
+  const padded = [...rects]
+  const first = { ...padded[0] }
+  if (direction === Direction.LTR) {
+    const nextLeft = Math.max(bounds.left, first.left - REWRITE_START_PADDING)
+    first.width += first.left - nextLeft
+    first.left = nextLeft
+  } else {
+    const nextRight = Math.min(
+      bounds.right,
+      first.left + first.width + REWRITE_START_PADDING,
+    )
+    first.width = nextRight - first.left
+  }
+  padded[0] = first
+  return padded
+}
+function toSurfaceBand(rect: RewriteSurfaceRect): RewriteSurfaceBand {
+  return {
+    left: rect.left,
+    right: rect.left + rect.width,
+    top: rect.top,
+    bottom: rect.top + rect.height,
+    visualHeight: rect.height,
+  }
+}
+
+function splitBand(
+  band: RewriteSurfaceBand,
+  from: number,
+  to: number,
+): RewriteSurfaceBand {
+  return { ...band, top: from, bottom: to }
+}
+
+function normalizeSurfaceBands(
+  rects: RewriteSurfaceRect[],
+): [RewriteSurfaceBand, RewriteSurfaceBand, RewriteSurfaceBand] | null {
+  if (rects.length === 0) return null
+
+  const ordered = rects
+    .map(toSurfaceBand)
+    .sort((a, b) => a.top - b.top || a.left - b.left)
+
+  if (ordered.length === 1) {
+    const band = ordered[0]
+    const firstBreak = band.top + (band.bottom - band.top) / 3
+    const secondBreak = band.top + ((band.bottom - band.top) * 2) / 3
+    return [
+      splitBand(band, band.top, firstBreak),
+      splitBand(band, firstBreak, secondBreak),
+      splitBand(band, secondBreak, band.bottom),
+    ]
+  }
+
+  if (ordered.length === 2) {
+    const [first, last] = ordered
+    const lastMiddle = last.top + (last.bottom - last.top) / 2
+    return [
+      first,
+      splitBand(last, last.top, lastMiddle),
+      splitBand(last, lastMiddle, last.bottom),
+    ]
+  }
+
+  const first = ordered[0]
+  const last = ordered.at(-1)!
+  const middleRects = ordered.slice(1, -1)
+  const middle: RewriteSurfaceBand = {
+    left: Math.min(...middleRects.map((rect) => rect.left)),
+    right: Math.max(...middleRects.map((rect) => rect.right)),
+    top: first.bottom,
+    bottom: last.top,
+    visualHeight: Math.max(
+      ...middleRects.map((rect) => rect.visualHeight),
+    ),
+  }
+  return [first, middle, last]
+}
+
+function transitionRadii(
+  edgeDelta: number,
+  upper: RewriteSurfaceBand,
+  lower: RewriteSurfaceBand,
+): { outer: number; inner: number } {
+  const heightLimit = Math.min(
+    upper.visualHeight / 2,
+    lower.visualHeight / 2,
+  )
+  const desiredOuter = Math.min(REWRITE_OUTER_RADIUS, heightLimit)
+  const desiredInner = Math.min(REWRITE_INNER_RADIUS, heightLimit)
+  const scale = Math.min(1, edgeDelta / (desiredOuter + desiredInner))
+  return {
+    outer: desiredOuter * scale,
+    inner: desiredInner * scale,
+  }
+}
+
+function pathNumber(value: number): string {
+  const rounded = Math.round(value * 100) / 100
+  return String(Object.is(rounded, -0) ? 0 : rounded)
+}
+
+function createRewriteOutline(rects: RewriteSurfaceRect[]): RewriteOutline | null {
+  const bands = normalizeSurfaceBands(rects)
+  if (!bands) return null
+
+  const [first, middle, last] = bands
+  const left = Math.min(...bands.map((band) => band.left))
+  const right = Math.max(...bands.map((band) => band.right))
+  const top = first.top
+  const bottom = last.bottom
+  const x = (value: number) => pathNumber(value - left)
+  const y = (value: number) => pathNumber(value - top)
+  const commands: string[] = []
+  const topRadius = Math.min(
+    REWRITE_OUTER_RADIUS,
+    first.visualHeight / 2,
+    (first.right - first.left) / 2,
+  )
+  const bottomRadius = Math.min(
+    REWRITE_OUTER_RADIUS,
+    last.visualHeight / 2,
+    (last.right - last.left) / 2,
+  )
+
+  const line = (toX: number, toY: number) =>
+    commands.push(`L ${x(toX)} ${y(toY)}`)
+  const curve = (
+    controlX: number,
+    controlY: number,
+    toX: number,
+    toY: number,
+  ) =>
+    commands.push(
+      `Q ${x(controlX)} ${y(controlY)} ${x(toX)} ${y(toY)}`,
+    )
+
+  const rightTransition = (
+    upper: RewriteSurfaceBand,
+    lower: RewriteSurfaceBand,
+  ) => {
+    const boundary = lower.top
+    const delta = lower.right - upper.right
+    if (Math.abs(delta) < REWRITE_SURFACE_EDGE_EPSILON) {
+      line(upper.right, boundary)
+      return
+    }
+    const { outer, inner } = transitionRadii(
+      Math.abs(delta),
+      upper,
+      lower,
+    )
+    if (delta > 0) {
+      line(upper.right, boundary - inner)
+      curve(upper.right, boundary, upper.right + inner, boundary)
+      line(lower.right - outer, boundary)
+      curve(lower.right, boundary, lower.right, boundary + outer)
+    } else {
+      line(upper.right, boundary - outer)
+      curve(upper.right, boundary, upper.right - outer, boundary)
+      line(lower.right + inner, boundary)
+      curve(lower.right, boundary, lower.right, boundary + inner)
+    }
+  }
+
+  const leftTransition = (
+    upper: RewriteSurfaceBand,
+    lower: RewriteSurfaceBand,
+  ) => {
+    const boundary = lower.top
+    const delta = lower.left - upper.left
+    if (Math.abs(delta) < REWRITE_SURFACE_EDGE_EPSILON) {
+      line(lower.left, boundary)
+      return
+    }
+    const { outer, inner } = transitionRadii(
+      Math.abs(delta),
+      upper,
+      lower,
+    )
+    if (delta < 0) {
+      line(lower.left, boundary + outer)
+      curve(lower.left, boundary, lower.left + outer, boundary)
+      line(upper.left - inner, boundary)
+      curve(upper.left, boundary, upper.left, boundary - inner)
+    } else {
+      line(lower.left, boundary + inner)
+      curve(lower.left, boundary, lower.left - inner, boundary)
+      line(upper.left + outer, boundary)
+      curve(upper.left, boundary, upper.left, boundary - outer)
+    }
+  }
+
+  commands.push(`M ${x(first.left + topRadius)} ${y(first.top)}`)
+  line(first.right - topRadius, first.top)
+  curve(first.right, first.top, first.right, first.top + topRadius)
+  rightTransition(first, middle)
+  rightTransition(middle, last)
+  line(last.right, last.bottom - bottomRadius)
+  curve(last.right, last.bottom, last.right - bottomRadius, last.bottom)
+  line(last.left + bottomRadius, last.bottom)
+  curve(last.left, last.bottom, last.left, last.bottom - bottomRadius)
+  leftTransition(middle, last)
+  leftTransition(first, middle)
+  line(first.left, first.top + topRadius)
+  curve(first.left, first.top, first.left + topRadius, first.top)
+  commands.push('Z')
+
+  return {
+    left,
+    top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+    path: commands.join(' '),
+  }
+}
+
+class SelectionRewriteOutlineMarker implements LayerMarker {
+  constructor(
+    readonly id: string,
+    readonly phase: SelectionRewritePhase,
+    readonly outline: RewriteOutline,
+  ) {}
+
+  eq(other: LayerMarker): boolean {
+    return (
+      other instanceof SelectionRewriteOutlineMarker &&
+      other.id === this.id &&
+      other.phase === this.phase &&
+      other.outline.left === this.outline.left &&
+      other.outline.top === this.outline.top &&
+      other.outline.width === this.outline.width &&
+      other.outline.height === this.outline.height &&
+      other.outline.path === this.outline.path
+    )
+  }
+
+  draw(): HTMLDivElement {
+    const element = document.createElement('div')
+    const svg = document.createElementNS(SVG_NAMESPACE, 'svg')
+    svg.classList.add('yolo-selection-rewrite-outline-svg')
+
+    const gradientId = `yolo-selection-rewrite-sheen-${this.id}`
+    const defs = document.createElementNS(SVG_NAMESPACE, 'defs')
+    const gradient = document.createElementNS(SVG_NAMESPACE, 'linearGradient')
+    gradient.id = gradientId
+    gradient.setAttribute('x1', '-0.45')
+    gradient.setAttribute('y1', '0')
+    gradient.setAttribute('x2', '-0.05')
+    gradient.setAttribute('y2', '0')
+    const animateGradientEdge = (
+      attributeName: 'x1' | 'x2',
+      values: string,
+    ) => {
+      const animate = document.createElementNS(SVG_NAMESPACE, 'animate')
+      animate.setAttribute('attributeName', attributeName)
+      animate.setAttribute('values', values)
+      animate.setAttribute('dur', '1.6s')
+      animate.setAttribute('begin', '250ms')
+      animate.setAttribute('repeatCount', 'indefinite')
+      gradient.appendChild(animate)
+    }
+    animateGradientEdge('x1', '-0.45;1.15')
+    animateGradientEdge('x2', '-0.05;1.55')
+    const sheenStops = [
+      { offset: '0%', className: 'is-edge' },
+      { offset: '50%', className: 'is-center' },
+      { offset: '100%', className: 'is-edge' },
+    ]
+    for (const { offset, className } of sheenStops) {
+      const stop = document.createElementNS(SVG_NAMESPACE, 'stop')
+      stop.setAttribute('offset', offset)
+      stop.classList.add('yolo-selection-rewrite-sheen-stop', className)
+      gradient.appendChild(stop)
+    }
+    defs.appendChild(gradient)
+
+    const path = document.createElementNS(SVG_NAMESPACE, 'path')
+    path.classList.add('yolo-selection-rewrite-outline-path')
+    const sheen = document.createElementNS(SVG_NAMESPACE, 'path')
+    sheen.classList.add('yolo-selection-rewrite-sheen-path')
+    sheen.setAttribute('fill', `url(#${gradientId})`)
+
+    svg.append(defs, path, sheen)
+    element.appendChild(svg)
+    this.adjust(element)
+    return element
+  }
+
+  update(element: HTMLElement, previous: LayerMarker): boolean {
+    if (
+      !(previous instanceof SelectionRewriteOutlineMarker) ||
+      previous.id !== this.id
+    ) {
+      return false
+    }
+    this.adjust(element)
+    return true
+  }
+
+  private adjust(element: HTMLElement): void {
+    const { left, top, width, height, path: pathData } = this.outline
+    element.className = `yolo-selection-rewrite-outline is-${this.phase}`
+    element.style.left = `${left}px`
+    element.style.top = `${top}px`
+    element.style.width = `${width}px`
+    element.style.height = `${height}px`
+    const svg = element.querySelector<SVGSVGElement>(
+      '.yolo-selection-rewrite-outline-svg',
+    )
+    const path = svg?.querySelector<SVGPathElement>(
+      '.yolo-selection-rewrite-outline-path',
+    )
+    const sheenPath = svg?.querySelector<SVGPathElement>(
+      '.yolo-selection-rewrite-sheen-path',
+    )
+    if (!path || !sheenPath) return
+    path.setAttribute('d', pathData)
+    path.style.setProperty('d', `path("${pathData}")`)
+    sheenPath.setAttribute('d', pathData)
+  }
+}
+
+function createRewriteSurfaceMarkers(
   session: SelectionRewriteVisual,
-  role: 'single' | 'first' | 'middle' | 'last',
-): string {
-  return [
-    'yolo-selection-rewrite-surface',
-    `is-${session.phase}`,
-    `is-${role}`,
-  ].join(' ')
+  rects: RewriteSurfaceRect[],
+): LayerMarker[] {
+  const outline = createRewriteOutline(rects)
+  return outline
+    ? [new SelectionRewriteOutlineMarker(session.id, session.phase, outline)]
+    : []
 }
 
 function rewriteMarkersFromWidget(
   view: EditorView,
   session: SelectionRewriteVisual,
   widget: HTMLElement,
-): RectangleMarker[] {
+): LayerMarker[] {
   const text = widget.querySelector<HTMLElement>(
     '.yolo-selection-rewrite-candidate-text',
   )
@@ -317,93 +691,75 @@ function rewriteMarkersFromWidget(
 
   const base = getLayerBase(view)
   const bounds = getContentHorizontalBounds(view)
+  const layerBounds = {
+    left: bounds.left - base.left,
+    right: bounds.right - base.left,
+  }
   const create = (
-    role: 'single' | 'first' | 'middle' | 'last',
     left: number,
     top: number,
     right: number,
     bottom: number,
-  ) =>
-    new RectangleMarker(
-      markerClass(session, role),
-      left - base.left,
-      top - base.top,
-      Math.max(1, right - left),
-      Math.max(1, bottom - top),
-    )
+  ): RewriteSurfaceRect => ({
+    left: left - base.left,
+    top: top - base.top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+  })
 
   if (rects.length === 1) {
     const rect = rects[0]
-    const widgetRect = widget.getBoundingClientRect()
-    if (widgetRect.bottom > rect.bottom + 2) {
-      return [
-        create('first', rect.left, rect.top, bounds.right, rect.bottom + 1),
-        create(
-          'last',
-          bounds.left,
-          rect.bottom,
-          bounds.right,
-          widgetRect.bottom,
-        ),
-      ]
-    }
-    return [create('single', rect.left, rect.top, rect.right, rect.bottom)]
+    return createRewriteSurfaceMarkers(
+      session,
+      padRewriteStart(
+        [create(rect.left, rect.top, rect.right, rect.bottom)],
+        view.textDirection,
+        layerBounds,
+      ),
+    )
   }
 
   const first = rects[0]
   const last = rects[rects.length - 1]
-  const markers = [
-    create('first', first.left, first.top, bounds.right, first.bottom + 1),
-  ]
-  const widgetRect = widget.getBoundingClientRect()
-  if (widgetRect.bottom > last.bottom + 2) {
-    markers.push(
-      create(
-        'last',
-        bounds.left,
-        first.bottom,
-        bounds.right,
-        widgetRect.bottom,
-      ),
-    )
-    return markers
-  }
+  const markers = [create(first.left, first.top, bounds.right, first.bottom)]
   if (last.top > first.bottom) {
-    markers.push(
-      create('middle', bounds.left, first.bottom, bounds.right, last.top + 1),
-    )
+    markers.push(create(bounds.left, first.bottom, bounds.right, last.top))
   }
-  markers.push(create('last', bounds.left, last.top, last.right, last.bottom))
-  return markers
+  markers.push(create(bounds.left, last.top, last.right, last.bottom))
+  return createRewriteSurfaceMarkers(
+    session,
+    padRewriteStart(markers, view.textDirection, layerBounds),
+  )
 }
 
 function rewriteMarkersFromDocumentRange(
   view: EditorView,
   session: SelectionRewriteVisual,
-): RectangleMarker[] {
+): LayerMarker[] {
   if (session.from >= session.to) return []
   const markers = RectangleMarker.forRange(
     view,
     'yolo-selection-rewrite-surface',
     EditorSelection.range(session.from, session.to),
   )
-  return markers.map((marker, index) => {
-    const role =
-      markers.length === 1
-        ? 'single'
-        : index === 0
-          ? 'first'
-          : index === markers.length - 1
-            ? 'last'
-            : 'middle'
-    return new RectangleMarker(
-      markerClass(session, role),
-      marker.left,
-      marker.top,
-      marker.width,
-      marker.height,
-    )
-  })
+  const base = getLayerBase(view)
+  const bounds = getContentHorizontalBounds(view)
+  return createRewriteSurfaceMarkers(
+    session,
+    padRewriteStart(
+      markers.map((marker) => ({
+        left: marker.left,
+        top: marker.top,
+        width: marker.width ?? 1,
+        height: marker.height,
+      })),
+      view.textDirection,
+      {
+        left: bounds.left - base.left,
+        right: bounds.right - base.left,
+      },
+    ),
+  )
 }
 
 function createActionButton(
@@ -862,7 +1218,10 @@ export class SelectionRewriteController {
     )
     if (!root || !text) return
 
-    const target = Math.max(runtime.view.defaultLineHeight, text.scrollHeight)
+    const target = measureCandidateTextHeight(
+      text,
+      runtime.view.defaultLineHeight,
+    )
     if (Math.abs(root.getBoundingClientRect().height - target) < 1) return
 
     root.classList.add('is-settling')

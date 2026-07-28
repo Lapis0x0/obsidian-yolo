@@ -3,53 +3,55 @@
    candidate text deliberately keeps the editor's normal typography/color. */
 
 .yolo-selection-rewrite-layer {
-  pointer-events: none;
-}
-
-.yolo-selection-rewrite-surface {
   --yolo-selection-rewrite-fill: var(
     --text-selection,
     color-mix(in srgb, var(--interactive-accent) 18%, transparent)
   );
-  --yolo-selection-rewrite-radius: 6px;
-  box-sizing: border-box;
-  background: var(--yolo-selection-rewrite-fill);
+  pointer-events: none;
+}
+
+.yolo-selection-rewrite-outline {
   opacity: 1;
   pointer-events: none;
-  transition:
-    left 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 200ms ease;
 }
 
-.yolo-selection-rewrite-surface.is-waiting {
-  animation: yolo-selection-rewrite-breathe-in 600ms
-    cubic-bezier(0.22, 1, 0.36, 1) both;
+.yolo-selection-rewrite-outline-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-.yolo-selection-rewrite-surface.is-single {
-  border-radius: var(--yolo-selection-rewrite-radius);
+.yolo-selection-rewrite-outline-path {
+  fill: var(--yolo-selection-rewrite-fill);
 }
 
-.yolo-selection-rewrite-surface.is-first {
-  border-radius: var(--yolo-selection-rewrite-radius)
-    var(--yolo-selection-rewrite-radius) 0 var(--yolo-selection-rewrite-radius);
+.yolo-selection-rewrite-sheen-path {
+  opacity: 0;
 }
 
-.yolo-selection-rewrite-surface.is-middle {
-  border-radius: 0;
+.yolo-selection-rewrite-sheen-stop.is-edge {
+  stop-color: var(--interactive-accent);
+  stop-opacity: 0;
 }
 
-.yolo-selection-rewrite-surface.is-last {
-  border-radius: 0 var(--yolo-selection-rewrite-radius)
-    var(--yolo-selection-rewrite-radius) var(--yolo-selection-rewrite-radius);
+.yolo-selection-rewrite-sheen-stop.is-center {
+  stop-color: var(--interactive-accent);
+  stop-opacity: 0.2;
 }
 
-@keyframes yolo-selection-rewrite-breathe-in {
+.yolo-selection-rewrite-outline.is-waiting {
+  animation: yolo-selection-rewrite-fade-in 140ms ease-out both;
+}
+
+.yolo-selection-rewrite-outline.is-waiting
+  .yolo-selection-rewrite-sheen-path {
+  opacity: 1;
+}
+
+@keyframes yolo-selection-rewrite-fade-in {
   from {
-    opacity: 0.55;
+    opacity: 0.82;
   }
   to {
     opacity: 1;
@@ -89,12 +91,6 @@
   color: inherit;
   font: inherit;
   line-height: inherit;
-}
-
-.yolo-selection-rewrite-candidate.is-block
-  > .yolo-selection-rewrite-candidate-text {
-  display: block;
-  text-indent: inherit;
 }
 
 .yolo-selection-rewrite-controls-layer {
@@ -166,11 +162,17 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yolo-selection-rewrite-surface,
+  .yolo-selection-rewrite-outline,
+  .yolo-selection-rewrite-outline-path,
+  .yolo-selection-rewrite-sheen-path,
   .yolo-selection-rewrite-candidate,
   .yolo-selection-rewrite-controls,
   .yolo-selection-rewrite-action {
     animation: none !important;
     transition: none !important;
+  }
+
+  .yolo-selection-rewrite-sheen-path {
+    display: none !important;
   }
 }
