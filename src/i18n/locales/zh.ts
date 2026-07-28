@@ -1890,6 +1890,10 @@ export const zh: TranslationKeys = {
     },
     errorCard: {
       title: '本次回复生成失败',
+      connectionInterrupted:
+        '与模型服务的连接意外中断，请重试。如果反复出现，请检查网络或模型服务。',
+      connectionInterruptedContinuable:
+        '与模型服务的连接意外中断，已生成的内容仍然保留。点击“继续回复”即可接着生成。',
       responseFormat: {
         responseNotObject: '模型服务返回的响应不是对象（实际为 {{actual}}）。',
         missingChoices: '模型服务返回了无法解析的响应格式：缺少 choices 数组。',

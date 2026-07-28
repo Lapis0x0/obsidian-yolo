@@ -1890,6 +1890,10 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     errorCard: {
       title: 'Questa risposta non e stata generata',
+      connectionInterrupted:
+        'La connessione al servizio del modello si e interrotta. Riprova. Se il problema persiste, controlla la rete o il servizio del modello.',
+      connectionInterruptedContinuable:
+        'La connessione al servizio del modello si e interrotta. La risposta parziale e ancora disponibile: fai clic su Continua risposta per riprendere.',
       responseFormat: {
         responseNotObject:
           'Il servizio modello ha restituito una risposta che non e un oggetto (valore effettivo: {{actual}}).',

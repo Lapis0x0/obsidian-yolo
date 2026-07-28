@@ -147,6 +147,46 @@ describe('AssistantToolMessageGroupItem', () => {
 
     expect(html).toContain('Continue response')
     expect(html).toContain('yolo-assistant-error-card-continue')
+    expect(html).toContain(
+      'The connection to the model service was interrupted. Your partial response is still here—click Continue response to resume.',
+    )
+    expect(html).not.toContain('Premature close')
+  })
+
+  it('renders a friendly connection error when the response cannot continue', () => {
+    const assistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-disconnected',
+      content: '',
+      metadata: {
+        generationState: 'error',
+        errorMessage: 'socket hang up',
+      },
+    }
+
+    const html = renderToStaticMarkup(
+      <AssistantToolMessageGroupItem
+        messages={[assistantMessage]}
+        conversationId="conversation-1"
+        isApplying={false}
+        activeApplyRequestKey={null}
+        onApply={() => {}}
+        onToolMessageUpdate={() => {}}
+        onEditStart={() => {}}
+        onEditCancel={() => {}}
+        onEditSave={() => {}}
+        onDeleteGroup={() => {}}
+        onRetryGroup={() => {}}
+        onBranchGroup={() => {}}
+        onQuoteAssistantSelection={() => {}}
+        onOpenEditSummaryFile={() => {}}
+      />,
+    )
+
+    expect(html).toContain(
+      'The connection to the model service was interrupted. Please try again. If this keeps happening, check your network or model service.',
+    )
+    expect(html).not.toContain('socket hang up')
   })
 
   it('renders structured LLM response format errors as user-facing text', () => {

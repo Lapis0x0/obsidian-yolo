@@ -2023,6 +2023,10 @@ export const en: TranslationKeys = {
     },
     errorCard: {
       title: 'This response failed to generate',
+      connectionInterrupted:
+        'The connection to the model service was interrupted. Please try again. If this keeps happening, check your network or model service.',
+      connectionInterruptedContinuable:
+        'The connection to the model service was interrupted. Your partial response is still here—click Continue response to resume.',
       responseFormat: {
         responseNotObject:
           'The model service returned a response that is not an object (actual: {{actual}}).',

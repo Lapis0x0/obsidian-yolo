@@ -61,10 +61,10 @@ const formatExpectedField = (expected: string, t: Translate): string => {
 const formatResponseFormatError = (
   errorMessage: string,
   t: Translate,
-): string => {
+): string | null => {
   const payload = parseLLMResponseFormatError(errorMessage)
   if (!payload) {
-    return errorMessage
+    return null
   }
 
   const lines = [
@@ -143,6 +143,35 @@ const formatResponseFormatError = (
   return lines.join('\n')
 }
 
+const formatKnownError = (
+  errorMessage: string,
+  canContinue: boolean,
+  t: Translate,
+): string | null => {
+  if (/premature close|socket hang up|econnreset/i.test(errorMessage)) {
+    return canContinue
+      ? t(
+          'chat.errorCard.connectionInterruptedContinuable',
+          'The connection to the model service was interrupted. Your partial response is still here—click Continue response to resume.',
+        )
+      : t(
+          'chat.errorCard.connectionInterrupted',
+          'The connection to the model service was interrupted. Please try again. If this keeps happening, check your network or model service.',
+        )
+  }
+
+  return null
+}
+
+const formatError = (
+  errorMessage: string,
+  canContinue: boolean,
+  t: Translate,
+): string =>
+  formatResponseFormatError(errorMessage, t) ??
+  formatKnownError(errorMessage, canContinue, t) ??
+  errorMessage
+
 const AssistantErrorCard = memo(function AssistantErrorCard({
   errorMessage,
   onContinue,
@@ -151,7 +180,7 @@ const AssistantErrorCard = memo(function AssistantErrorCard({
   onContinue?: () => void
 }) {
   const { t } = useLanguage()
-  const displayErrorMessage = formatResponseFormatError(errorMessage, t)
+  const displayErrorMessage = formatError(errorMessage, Boolean(onContinue), t)
 
   return (
     <div className="yolo-assistant-error-card" role="alert">
