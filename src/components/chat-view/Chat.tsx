@@ -1859,7 +1859,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const [chatMessagesElement, setChatMessagesElement] =
     useState<HTMLElement | null>(null)
-  const [chatContentElement, setChatContentElement] =
+  const [chatBottomSentinelElement, setChatBottomSentinelElement] =
     useState<HTMLElement | null>(null)
   // Callback-ref + state for the overlay element. A plain useRef with a
   // mount-once effect would lose its observation when the chat view unmounts
@@ -1893,9 +1893,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } = useAutoScroll({
     scrollContainerRef: chatMessagesRef,
     scrollContainerElement: chatMessagesElement,
-    contentElement: chatContentElement,
+    bottomSentinelElement: chatBottomSentinelElement,
     followKey: currentConversationId,
+    canFollowLiveEdge: !hasNewerMessages,
   })
+  useLayoutEffect(() => {
+    autoScrollToBottom()
+  }, [autoScrollToBottom, chatMessages])
   const handleForceScrollToBottom = useCallback(() => {
     resetToLatest()
     requestAnimationFrame(() => {
@@ -6608,7 +6612,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           timelineRenderVersion={chatTimelineRenderVersion}
           chatMessagesRef={chatMessagesRef}
           onScrollContainerChange={setChatMessagesElement}
-          onContentElementChange={setChatContentElement}
+          onBottomSentinelChange={setChatBottomSentinelElement}
           renderChatTimelineItem={renderChatTimelineItem}
           editingAssistantMessageId={editingAssistantMessageId}
           hasEarlierMessages={hasEarlierMessages}

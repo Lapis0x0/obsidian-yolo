@@ -356,7 +356,7 @@ export function QuickAskPanel({
   const [chatAreaElement, setChatAreaElement] = useState<HTMLElement | null>(
     null,
   )
-  const [chatContentElement, setChatContentElement] =
+  const [chatBottomSentinelElement, setChatBottomSentinelElement] =
     useState<HTMLElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const applyAbortControllerRef = useRef<AbortController | null>(null)
@@ -656,12 +656,16 @@ export function QuickAskPanel({
       sourceFilePath,
     ])
 
-  const { forceScrollToBottom, isAutoFollowEnabled } = useAutoScroll({
-    scrollContainerRef: chatAreaRef,
-    scrollContainerElement: chatAreaElement,
-    contentElement: chatContentElement,
-    followKey: conversationId,
-  })
+  const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
+    useAutoScroll({
+      scrollContainerRef: chatAreaRef,
+      scrollContainerElement: chatAreaElement,
+      bottomSentinelElement: chatBottomSentinelElement,
+      followKey: conversationId,
+    })
+  useLayoutEffect(() => {
+    autoScrollToBottom()
+  }, [autoScrollToBottom, chatMessages])
 
   useEffect(() => {
     if (!isMentionMenuOpen) return
@@ -2292,7 +2296,7 @@ export function QuickAskPanel({
           conversationId={conversationId}
           scrollContainerRef={chatAreaRef}
           onScrollContainerChange={setChatAreaElement}
-          onContentElementChange={setChatContentElement}
+          onBottomSentinelChange={setChatBottomSentinelElement}
           containerClassName={quickAskChatShellClassName}
           renderItem={renderQuickAskTimelineItem}
           renderVersion={quickAskTimelineRenderVersion}

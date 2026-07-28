@@ -1459,6 +1459,12 @@ button.yolo-chat-quick-access-picker-row > svg {
     flex: 0 0 auto;
   }
 
+  > .yolo-chat-timeline-content > .yolo-chat-live-edge-sentinel {
+    height: 1px;
+    flex: 0 0 1px;
+    pointer-events: none;
+  }
+
   .yolo-chat-messages-user {
     position: relative;
     display: flex;

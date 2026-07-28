@@ -12,8 +12,9 @@ const SCROLL_POSITION_EPSILON_PX = 1
 type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
   scrollContainerElement?: HTMLElement | null
-  contentElement?: HTMLElement | null
+  bottomSentinelElement?: HTMLElement | null
   followKey?: string
+  canFollowLiveEdge?: boolean
 }
 
 type ScheduledFrame = {
@@ -21,13 +22,15 @@ type ScheduledFrame = {
   id: number
 }
 
+type ScrollDirection = 'up' | 'down'
+
 type ScrollTransitionInput = {
   isFollowing: boolean
   previousScrollTop: number
   currentScrollTop: number
   distanceToBottom: number
+  allowDetach: boolean
   allowReattach: boolean
-  isLayoutAdjustment?: boolean
 }
 
 export const resolveAutoFollowFromScroll = ({
@@ -35,20 +38,19 @@ export const resolveAutoFollowFromScroll = ({
   previousScrollTop,
   currentScrollTop,
   distanceToBottom,
+  allowDetach,
   allowReattach,
-  isLayoutAdjustment = false,
 }: ScrollTransitionInput): boolean => {
-  if (isLayoutAdjustment) {
-    return isFollowing
-  }
-
-  if (currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX) {
+  if (
+    allowDetach &&
+    currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX
+  ) {
     return false
   }
 
   if (
-    currentScrollTop > previousScrollTop + SCROLL_POSITION_EPSILON_PX &&
     allowReattach &&
+    currentScrollTop > previousScrollTop + SCROLL_POSITION_EPSILON_PX &&
     distanceToBottom <= AT_BOTTOM_THRESHOLD_PX
   ) {
     return true
@@ -73,21 +75,22 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 export function useAutoScroll({
   scrollContainerRef,
   scrollContainerElement: scrollContainerElementOverride,
-  contentElement,
+  bottomSentinelElement,
   followKey,
+  canFollowLiveEdge = true,
 }: UseAutoScrollProps) {
   const scrollContainerElement =
     scrollContainerElementOverride ?? scrollContainerRef.current
   const autoFollowRef = useRef(true)
+  const canFollowLiveEdgeRef = useRef(canFollowLiveEdge)
+  canFollowLiveEdgeRef.current = canFollowLiveEdge
   const [autoFollowState, setAutoFollowState] = useState(true)
   const lastObservedScrollTopRef = useRef(0)
-  const lastMaxScrollTopRef = useRef(0)
   const followFrameRef = useRef<ScheduledFrame | null>(null)
-  const reattachIntentFrameRef = useRef<ScheduledFrame | null>(null)
-  const hasReattachIntentRef = useRef(false)
+  const scrollIntentFrameRef = useRef<ScheduledFrame | null>(null)
+  const scrollIntentRef = useRef<ScrollDirection | null>(null)
   const pointerDownRef = useRef(false)
-  const pointerMomentumRef = useRef(false)
-  const programmaticScrollTargetRef = useRef<number | null>(null)
+  const pointerMomentumDirectionRef = useRef<ScrollDirection | null>(null)
 
   const getScrollContainer = useCallback(() => {
     return scrollContainerElementOverride ?? scrollContainerRef.current
@@ -109,36 +112,38 @@ export function useAutoScroll({
     }
   }, [])
 
-  const clearReattachIntent = useCallback(() => {
-    hasReattachIntentRef.current = false
-    if (reattachIntentFrameRef.current !== null) {
-      reattachIntentFrameRef.current.window.cancelAnimationFrame(
-        reattachIntentFrameRef.current.id,
+  const clearScrollIntent = useCallback(() => {
+    scrollIntentRef.current = null
+    if (scrollIntentFrameRef.current !== null) {
+      scrollIntentFrameRef.current.window.cancelAnimationFrame(
+        scrollIntentFrameRef.current.id,
       )
-      reattachIntentFrameRef.current = null
+      scrollIntentFrameRef.current = null
     }
   }, [])
 
-  const markReattachIntent = useCallback(() => {
-    hasReattachIntentRef.current = true
-    if (reattachIntentFrameRef.current !== null) {
-      return
-    }
+  const markScrollIntent = useCallback(
+    (direction: ScrollDirection) => {
+      scrollIntentRef.current = direction
+      if (scrollIntentFrameRef.current !== null) {
+        return
+      }
 
-    const scrollContainer = getScrollContainer()
-    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
-    reattachIntentFrameRef.current = {
-      window: ownerWindow,
-      id: ownerWindow.requestAnimationFrame(() => {
-        reattachIntentFrameRef.current = null
-        hasReattachIntentRef.current = false
-      }),
-    }
-  }, [getScrollContainer])
+      const scrollContainer = getScrollContainer()
+      const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+      scrollIntentFrameRef.current = {
+        window: ownerWindow,
+        id: ownerWindow.requestAnimationFrame(() => {
+          scrollIntentFrameRef.current = null
+          scrollIntentRef.current = null
+        }),
+      }
+    },
+    [getScrollContainer],
+  )
 
   const stopAutoFollow = useCallback(() => {
     cancelScheduledFollow()
-    programmaticScrollTargetRef.current = null
     updateAutoFollow(false)
   }, [cancelScheduledFollow, updateAutoFollow])
 
@@ -156,20 +161,20 @@ export function useAutoScroll({
       Math.abs(scrollContainer.scrollTop - targetScrollTop) <=
       SCROLL_POSITION_EPSILON_PX
     ) {
-      programmaticScrollTargetRef.current = null
       lastObservedScrollTopRef.current = scrollContainer.scrollTop
-      lastMaxScrollTopRef.current = targetScrollTop
       return
     }
 
-    programmaticScrollTargetRef.current = targetScrollTop
     scrollContainer.scrollTop = targetScrollTop
     lastObservedScrollTopRef.current = scrollContainer.scrollTop
-    lastMaxScrollTopRef.current = targetScrollTop
   }, [getScrollContainer])
 
   const scheduleFollow = useCallback(() => {
-    if (!autoFollowRef.current || followFrameRef.current !== null) {
+    if (
+      !autoFollowRef.current ||
+      !canFollowLiveEdgeRef.current ||
+      followFrameRef.current !== null
+    ) {
       return
     }
 
@@ -179,7 +184,7 @@ export function useAutoScroll({
       window: ownerWindow,
       id: ownerWindow.requestAnimationFrame(() => {
         followFrameRef.current = null
-        if (autoFollowRef.current) {
+        if (autoFollowRef.current && canFollowLiveEdgeRef.current) {
           scrollToBottom()
         }
       }),
@@ -187,23 +192,33 @@ export function useAutoScroll({
   }, [getScrollContainer, scrollToBottom])
 
   const forceScrollToBottom = useCallback(() => {
+    clearScrollIntent()
+    pointerMomentumDirectionRef.current = null
     updateAutoFollow(true)
     cancelScheduledFollow()
     scrollToBottom()
     scheduleFollow()
-  }, [cancelScheduledFollow, scheduleFollow, scrollToBottom, updateAutoFollow])
+  }, [
+    cancelScheduledFollow,
+    clearScrollIntent,
+    scheduleFollow,
+    scrollToBottom,
+    updateAutoFollow,
+  ])
 
   useLayoutEffect(() => {
-    if (!scrollContainerElement || !contentElement) {
+    if (!scrollContainerElement || !bottomSentinelElement) {
       return
     }
 
     updateAutoFollow(true)
     cancelScheduledFollow()
-    scrollToBottom()
+    if (canFollowLiveEdgeRef.current) {
+      scrollToBottom()
+    }
   }, [
+    bottomSentinelElement,
     cancelScheduledFollow,
-    contentElement,
     followKey,
     scrollContainerElement,
     scrollToBottom,
@@ -216,66 +231,47 @@ export function useAutoScroll({
     }
 
     lastObservedScrollTopRef.current = scrollContainerElement.scrollTop
-    lastMaxScrollTopRef.current = Math.max(
-      0,
-      scrollContainerElement.scrollHeight - scrollContainerElement.clientHeight,
-    )
 
     const handleScroll = () => {
       const currentScrollTop = scrollContainerElement.scrollTop
       const previousScrollTop = lastObservedScrollTopRef.current
-      const previousMaxScrollTop = lastMaxScrollTopRef.current
+      lastObservedScrollTopRef.current = currentScrollTop
+
       const currentMaxScrollTop = Math.max(
         0,
         scrollContainerElement.scrollHeight -
           scrollContainerElement.clientHeight,
       )
-      lastObservedScrollTopRef.current = currentScrollTop
-      lastMaxScrollTopRef.current = currentMaxScrollTop
-
-      const programmaticTarget = programmaticScrollTargetRef.current
-      if (
-        programmaticTarget !== null &&
-        Math.abs(currentScrollTop - programmaticTarget) <=
-          SCROLL_POSITION_EPSILON_PX
-      ) {
-        programmaticScrollTargetRef.current = null
-        return
-      }
-      programmaticScrollTargetRef.current = null
-
-      if (
-        'onscrollend' in scrollContainerElement &&
-        (pointerDownRef.current || hasReattachIntentRef.current)
-      ) {
-        pointerMomentumRef.current = true
-      }
-
       const distanceToBottom = currentMaxScrollTop - currentScrollTop
-      const wasAtBottomBefore =
-        previousMaxScrollTop - previousScrollTop <= AT_BOTTOM_THRESHOLD_PX
-      const isAtBottom = distanceToBottom <= SCROLL_POSITION_EPSILON_PX
-      const maxScrollTopShrank =
-        currentMaxScrollTop < previousMaxScrollTop - SCROLL_POSITION_EPSILON_PX
-      const isLayoutAdjustment =
-        currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX &&
-        wasAtBottomBefore &&
-        isAtBottom &&
-        maxScrollTopShrank
+      const intent = scrollIntentRef.current
+      const momentumDirection = pointerMomentumDirectionRef.current
       const nextAutoFollow = resolveAutoFollowFromScroll({
         isFollowing: autoFollowRef.current,
         previousScrollTop,
         currentScrollTop,
         distanceToBottom,
-        allowReattach:
+        allowDetach:
           pointerDownRef.current ||
-          pointerMomentumRef.current ||
-          hasReattachIntentRef.current,
-        isLayoutAdjustment,
+          momentumDirection === 'up' ||
+          intent === 'up',
+        allowReattach:
+          canFollowLiveEdgeRef.current &&
+          (pointerDownRef.current ||
+            momentumDirection === 'down' ||
+            intent === 'down'),
       })
 
-      if (!pointerDownRef.current && !pointerMomentumRef.current) {
-        clearReattachIntent()
+      if (
+        'onscrollend' in scrollContainerElement &&
+        (pointerDownRef.current || intent !== null)
+      ) {
+        pointerMomentumDirectionRef.current =
+          intent ??
+          (currentScrollTop < previousScrollTop
+            ? 'up'
+            : currentScrollTop > previousScrollTop
+              ? 'down'
+              : pointerMomentumDirectionRef.current)
       }
 
       if (!nextAutoFollow) {
@@ -290,29 +286,29 @@ export function useAutoScroll({
     }
 
     const handleWheel = (event: WheelEvent) => {
-      if (event.deltaY > 0) {
-        markReattachIntent()
+      if (event.deltaY !== 0) {
+        markScrollIntent(event.deltaY < 0 ? 'up' : 'down')
       }
     }
 
     const handlePointerDown = () => {
       pointerDownRef.current = true
-      pointerMomentumRef.current = false
+      pointerMomentumDirectionRef.current = null
     }
 
     const handlePointerEnd = () => {
       pointerDownRef.current = false
-      clearReattachIntent()
+      clearScrollIntent()
     }
 
     const handlePointerCancel = () => {
       pointerDownRef.current = false
-      markReattachIntent()
+      clearScrollIntent()
     }
 
     const handleScrollEnd = () => {
       if (!pointerDownRef.current) {
-        pointerMomentumRef.current = false
+        pointerMomentumDirectionRef.current = null
       }
     }
 
@@ -331,8 +327,10 @@ export function useAutoScroll({
         event.key === 'PageDown' ||
         event.key === 'End' ||
         (event.key === ' ' && !event.shiftKey)
-      if (!scrollsUp && scrollsDown) {
-        markReattachIntent()
+      if (scrollsUp) {
+        markScrollIntent('up')
+      } else if (scrollsDown) {
+        markScrollIntent('down')
       }
     }
 
@@ -364,17 +362,17 @@ export function useAutoScroll({
         'pointerup',
         handlePointerEnd,
       )
-      scrollContainerElement.removeEventListener('keydown', handleKeyDown)
       scrollContainerElement.ownerDocument.removeEventListener(
         'pointercancel',
         handlePointerCancel,
       )
+      scrollContainerElement.removeEventListener('keydown', handleKeyDown)
       scrollContainerElement.removeEventListener('scroll', handleScroll)
       scrollContainerElement.removeEventListener('scrollend', handleScrollEnd)
     }
   }, [
-    clearReattachIntent,
-    markReattachIntent,
+    clearScrollIntent,
+    markScrollIntent,
     scheduleFollow,
     scrollContainerElement,
     stopAutoFollow,
@@ -384,32 +382,41 @@ export function useAutoScroll({
   useEffect(() => {
     if (
       !scrollContainerElement ||
-      !contentElement ||
-      typeof ResizeObserver === 'undefined'
+      !bottomSentinelElement ||
+      typeof IntersectionObserver === 'undefined'
     ) {
       return
     }
 
-    const observer = new ResizeObserver(() => {
-      if (autoFollowRef.current) {
-        scrollToBottom()
-      }
-    })
-    observer.observe(scrollContainerElement)
-    observer.observe(contentElement)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry &&
+          !entry.isIntersecting &&
+          autoFollowRef.current &&
+          canFollowLiveEdgeRef.current
+        ) {
+          scheduleFollow()
+        }
+      },
+      {
+        root: scrollContainerElement,
+        threshold: 0,
+      },
+    )
+    observer.observe(bottomSentinelElement)
 
     return () => {
       observer.disconnect()
     }
-  }, [contentElement, scrollContainerElement, scrollToBottom])
+  }, [bottomSentinelElement, scheduleFollow, scrollContainerElement])
 
   useEffect(
     () => () => {
       cancelScheduledFollow()
-      clearReattachIntent()
-      programmaticScrollTargetRef.current = null
+      clearScrollIntent()
     },
-    [cancelScheduledFollow, clearReattachIntent],
+    [cancelScheduledFollow, clearScrollIntent],
   )
 
   return {

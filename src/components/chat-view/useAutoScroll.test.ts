@@ -1,16 +1,30 @@
 import { resolveAutoFollowFromScroll } from './useAutoScroll'
 
 describe('resolveAutoFollowFromScroll', () => {
-  it('detaches on any upward movement, even inside the bottom threshold', () => {
+  it('detaches when confirmed user intent moves the viewport upward', () => {
     expect(
       resolveAutoFollowFromScroll({
         isFollowing: true,
         previousScrollTop: 1000,
         currentScrollTop: 990,
         distanceToBottom: 10,
+        allowDetach: true,
         allowReattach: false,
       }),
     ).toBe(false)
+  })
+
+  it('keeps following when layout changes move the viewport upward', () => {
+    expect(
+      resolveAutoFollowFromScroll({
+        isFollowing: true,
+        previousScrollTop: 1000,
+        currentScrollTop: 990,
+        distanceToBottom: 10,
+        allowDetach: false,
+        allowReattach: false,
+      }),
+    ).toBe(true)
   })
 
   it('stays detached while streamed content grows below the viewport', () => {
@@ -20,6 +34,7 @@ describe('resolveAutoFollowFromScroll', () => {
         previousScrollTop: 700,
         currentScrollTop: 700,
         distanceToBottom: 500,
+        allowDetach: false,
         allowReattach: false,
       }),
     ).toBe(false)
@@ -32,6 +47,7 @@ describe('resolveAutoFollowFromScroll', () => {
         previousScrollTop: 700,
         currentScrollTop: 760,
         distanceToBottom: 140,
+        allowDetach: false,
         allowReattach: true,
       }),
     ).toBe(false)
@@ -44,6 +60,7 @@ describe('resolveAutoFollowFromScroll', () => {
         previousScrollTop: 900,
         currentScrollTop: 990,
         distanceToBottom: 10,
+        allowDetach: false,
         allowReattach: false,
       }),
     ).toBe(false)
@@ -56,20 +73,8 @@ describe('resolveAutoFollowFromScroll', () => {
         previousScrollTop: 900,
         currentScrollTop: 990,
         distanceToBottom: 10,
+        allowDetach: false,
         allowReattach: true,
-      }),
-    ).toBe(true)
-  })
-
-  it('keeps following when a viewport resize clamps the live edge upward', () => {
-    expect(
-      resolveAutoFollowFromScroll({
-        isFollowing: true,
-        previousScrollTop: 1000,
-        currentScrollTop: 800,
-        distanceToBottom: 0,
-        allowReattach: false,
-        isLayoutAdjustment: true,
       }),
     ).toBe(true)
   })

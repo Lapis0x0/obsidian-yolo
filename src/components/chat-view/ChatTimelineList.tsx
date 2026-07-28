@@ -97,7 +97,7 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   conversationId?: string
   scrollContainerRef: RefObject<HTMLElement>
   onScrollContainerChange?: (element: HTMLElement | null) => void
-  onContentElementChange?: (element: HTMLElement | null) => void
+  onBottomSentinelChange?: (element: HTMLElement | null) => void
   renderItem: (
     item: TItem,
     index: number,
@@ -141,6 +141,20 @@ function TimelineBottomSpacer({ height }: { height: number }) {
       aria-hidden
       className="yolo-chat-timeline-bottom-spacer"
       style={{ height: safeHeight }}
+    />
+  )
+}
+
+function TimelineBottomSentinel({
+  elementRef,
+}: {
+  elementRef?: (element: HTMLDivElement | null) => void
+}) {
+  return (
+    <div
+      ref={elementRef}
+      aria-hidden
+      className="yolo-chat-live-edge-sentinel"
     />
   )
 }
@@ -294,7 +308,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   items,
   scrollContainerRef,
   onScrollContainerChange,
-  onContentElementChange,
+  onBottomSentinelChange,
   renderItem,
   renderVersion,
   overscanPx,
@@ -619,7 +633,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       className={scrollContainerClassName}
       style={scrollContainerStyle}
     >
-      <div ref={onContentElementChange} className="yolo-chat-timeline-content">
+      <div className="yolo-chat-timeline-content">
         {hasEarlierMessages && onLoadEarlier ? (
           <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
         ) : null}
@@ -633,6 +647,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
           />
         ))}
         <TimelineBottomSpacer height={safeSpacerHeight} />
+        <TimelineBottomSentinel elementRef={onBottomSentinelChange} />
       </div>
     </div>
   )

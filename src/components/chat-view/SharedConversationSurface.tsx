@@ -14,7 +14,7 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
   conversationId?: string
   scrollContainerRef: RefObject<HTMLElement>
   onScrollContainerChange?: (element: HTMLElement | null) => void
-  onContentElementChange?: (element: HTMLElement | null) => void
+  onBottomSentinelChange?: (element: HTMLElement | null) => void
   renderItem: (
     item: TItem,
     index: number,
@@ -52,7 +52,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
   conversationId,
   scrollContainerRef,
   onScrollContainerChange,
-  onContentElementChange,
+  onBottomSentinelChange,
   renderItem,
   renderVersion,
   virtualizationThreshold,
@@ -82,7 +82,7 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
       conversationId={conversationId}
       scrollContainerRef={scrollContainerRef}
       onScrollContainerChange={onScrollContainerChange}
-      onContentElementChange={onContentElementChange}
+      onBottomSentinelChange={onBottomSentinelChange}
       renderItem={renderItem}
       renderVersion={renderVersion}
       virtualizationThreshold={virtualizationThreshold}
