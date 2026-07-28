@@ -648,6 +648,7 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
   private adjust(element: HTMLElement): void {
     const { left, top, width, height, path: pathData } = this.outline
     element.className = `yolo-selection-rewrite-outline is-${this.phase}`
+    element.dataset.yoloRewriteOutlineId = this.id
     element.style.left = `${left}px`
     element.style.top = `${top}px`
     element.style.width = `${width}px`
@@ -783,6 +784,8 @@ class SelectionRewriteControlsMarker implements LayerMarker {
     readonly phase: SelectionRewritePhase,
     readonly left: number,
     readonly top: number,
+    readonly railTop: number,
+    readonly railHeight: number,
     private readonly labels: {
       stop: string
       accept: string
@@ -801,7 +804,9 @@ class SelectionRewriteControlsMarker implements LayerMarker {
       other.id === this.id &&
       other.phase === this.phase &&
       other.left === this.left &&
-      other.top === this.top
+      other.top === this.top &&
+      other.railTop === this.railTop &&
+      other.railHeight === this.railHeight
     )
   }
 
@@ -847,6 +852,14 @@ class SelectionRewriteControlsMarker implements LayerMarker {
   private position(dom: HTMLElement): void {
     dom.style.left = `${this.left}px`
     dom.style.top = `${this.top}px`
+    dom.style.setProperty(
+      '--yolo-selection-rewrite-rail-top',
+      `${this.railTop}px`,
+    )
+    dom.style.setProperty(
+      '--yolo-selection-rewrite-rail-height',
+      `${this.railHeight}px`,
+    )
   }
 }
 
@@ -912,24 +925,39 @@ export class SelectionRewriteController {
             const widget = view.dom.querySelector<HTMLElement>(
               `[data-yolo-rewrite-id="${session.id}"]`,
             )
+            const outline = view.dom.querySelector<HTMLElement>(
+              `[data-yolo-rewrite-outline-id="${session.id}"]`,
+            )
             const fromRect = view.coordsAtPos(session.from)
             const toRect = view.coordsAtPos(
               Math.max(session.from, session.to - 1),
             )
             const widgetRect = widget?.getBoundingClientRect()
-            const top = widgetRect?.top ?? fromRect?.top ?? scrollRect.top
+            const outlineRect = outline?.getBoundingClientRect()
+            const top =
+              outlineRect?.top ??
+              widgetRect?.top ??
+              fromRect?.top ??
+              scrollRect.top
             const bottom =
+              outlineRect?.bottom ??
               widgetRect?.bottom ??
               toRect?.bottom ??
               fromRect?.bottom ??
               top + view.defaultLineHeight
             const controlHeight = session.phase === 'review' ? 62 : 26
-            const left = Math.min(contentRect.right + 8, scrollRect.right - 32)
+            const left = Math.min(contentRect.right + 12, scrollRect.right - 32)
+            const controlTop = Math.max(
+              6,
+              top + (bottom - top - controlHeight) / 2 - base.top,
+            )
             return new SelectionRewriteControlsMarker(
               session.id,
               session.phase,
               Math.max(6, left - base.left),
-              Math.max(6, top + (bottom - top - controlHeight) / 2 - base.top),
+              controlTop,
+              top - base.top - controlTop,
+              Math.max(20, bottom - top),
               {
                 stop: controller.deps.t(
                   'chat.stopGeneration',

@@ -110,6 +110,23 @@
     opacity 160ms ease;
 }
 
+.yolo-selection-rewrite-controls::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: var(--yolo-selection-rewrite-rail-top, 0);
+  width: 2px;
+  height: var(--yolo-selection-rewrite-rail-height, 20px);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+  opacity: 0.95;
+  pointer-events: none;
+  transition:
+    top 180ms ease,
+    height 180ms ease,
+    opacity 140ms ease;
+}
+
 .yolo-selection-rewrite-action {
   width: 26px;
   height: 26px;
