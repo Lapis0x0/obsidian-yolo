@@ -26,7 +26,7 @@ export default function OnEnterPlugin({
           onVaultChat()
           return true
         }
-        if (evt.shiftKey) {
+        if (Platform.isMobile || evt.shiftKey) {
           return false
         }
         evt.preventDefault()
