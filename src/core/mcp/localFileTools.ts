@@ -3153,6 +3153,7 @@ export async function callLocalFileTool({
               error: string
             }
         > = []
+        const readSkillNames: string[] = []
 
         // Tool result attachments hoisted to a follow-up user message after
         // the tool block. Mostly image_url for rendered PDFs/images, but also
@@ -3214,6 +3215,7 @@ export async function callLocalFileTool({
               nextStartLine: sliced.nextStartLine,
               content: sliced.outputContent,
             })
+            readSkillNames.push(skillDocument.entry.name)
             continue
           }
 
@@ -3902,7 +3904,13 @@ export async function callLocalFileTool({
             return undefined
           }
           if (operation.type === 'full') {
-            return { type: 'full', isPdf }
+            return {
+              type: 'full',
+              isPdf,
+              ...(readSkillNames.length === paths.length
+                ? { skillNames: readSkillNames }
+                : {}),
+            }
           }
           const returnedRange = firstReadableResult.returnedRange
           if (
@@ -3916,6 +3924,9 @@ export async function callLocalFileTool({
             startLine: returnedRange.startLine,
             endLine: returnedRange.endLine,
             isPdf,
+            ...(readSkillNames.length === paths.length
+              ? { skillNames: readSkillNames }
+              : {}),
           }
         })()
 

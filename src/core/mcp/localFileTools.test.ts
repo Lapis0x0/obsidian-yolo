@@ -1427,6 +1427,11 @@ describe('local fs tool action helpers', () => {
         '5|# Hidden body',
       ].join('\n'),
     })
+    expect(result.metadata?.fsReadOperation).toEqual({
+      type: 'full',
+      isPdf: false,
+      skillNames: ['hidden-open'],
+    })
   })
 
   describe('fs_read image reading gating by chat model modalities', () => {

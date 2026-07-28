@@ -13928,7 +13928,7 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   padding: 2px var(--yolo-toolcall-header-padding-x);
   display: flex;
   align-items: center;
-  gap: var(--size-2-3);
+  gap: var(--size-2-2);
   border-radius: var(--radius-xs);
   cursor: pointer;
   user-select: none;
@@ -14104,6 +14104,11 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
 
 .yolo-toolcall-status-success-check {
   stroke-width: 2.3;
+}
+
+.yolo-toolcall-status-success-semantic {
+  color: var(--interactive-accent);
+  stroke-width: 1.8;
 }
 
 .yolo-toolcall-footer {

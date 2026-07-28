@@ -43,6 +43,7 @@ import type { ToolLabels } from './ToolMessage'
 import ToolMessage, {
   areToolCallItemPropsEqual,
   getHeadlineDisplayInfo,
+  getToolSuccessIconKind,
   getToolResultDisplayText,
 } from './ToolMessage'
 
@@ -282,6 +283,82 @@ describe('ToolMessage rendering', () => {
   })
 })
 
+describe('ToolMessage success icon helpers', () => {
+  it('uses a wrench for successful skill reads', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__fs_read',
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: '',
+            metadata: {
+              fsReadOperation: {
+                type: 'full',
+                isPdf: false,
+                skillNames: ['obsidian-output-format'],
+              },
+            },
+          },
+        },
+      }),
+    ).toBe('skill')
+  })
+
+  it('keeps the success check for ordinary file reads', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__fs_read',
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: '',
+            metadata: {
+              fsReadOperation: { type: 'full', isPdf: false },
+            },
+          },
+        },
+      }),
+    ).toBe('default')
+  })
+
+  it('uses a terminal icon for terminal commands', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__terminal_command',
+        },
+      }),
+    ).toBe('terminal')
+  })
+
+  it('keeps the success check for other builtin tools', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'yolo_local__fs_search',
+        },
+      }),
+    ).toBe('default')
+  })
+
+  it('keeps the success check for non-builtin tools', () => {
+    expect(
+      getToolSuccessIconKind({
+        request: {
+          name: 'custom_server__fs_search',
+        },
+      }),
+    ).toBe('default')
+  })
+})
+
 describe('getToolResultDisplayText', () => {
   it('returns text unchanged when it fits within the display budget', () => {
     const text = 'small fs_read output'
@@ -330,6 +407,7 @@ describe('ToolMessage headline helpers', () => {
       fs_create_dir: 'Create folder',
       fs_move: 'Move path',
       terminal_command: 'Terminal command',
+      open_skill: 'Open skill',
     },
     writeActionLabels: {
       write: 'Write file',
@@ -463,6 +541,39 @@ describe('ToolMessage headline helpers', () => {
         labels,
       }).summaryText,
     ).toBe('docs/plan.md | 全文')
+  })
+
+  it('uses the skill name instead of the file-read transport for skill loads', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              paths: ['YOLO/skills/release/SKILL.md'],
+            },
+          }),
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: '',
+            metadata: {
+              fsReadOperation: {
+                type: 'full',
+                isPdf: false,
+                skillNames: ['release'],
+              },
+            },
+          },
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Open skill',
+      summaryText: 'release',
+    })
   })
 
   it('shows concrete paths for multi-path fs_read headlines', () => {
