@@ -188,6 +188,12 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.delete_dir',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_dir,
       ),
+      // Skill bodies are read through fs_read, but expose their product-level
+      // meaning in the transcript rather than the transport implementation.
+      open_skill: translate(
+        'chat.toolCall.displayName.open_skill',
+        'Open skill',
+      ),
     },
     writeActionLabels: {
       write: translate(
@@ -746,10 +752,15 @@ export const getHeadlineDisplayInfo = ({
   }
 
   if (toolName === 'fs_read') {
-    const modeText = formatFsReadHeadlineMode(
-      getFsReadOperationSummary({ response }),
-      labels,
-    )
+    const operation = getFsReadOperationSummary({ response })
+    if (operation?.skillNames?.length) {
+      return {
+        displayName: labels.displayNames.open_skill || displayInfo.displayName,
+        summaryText: operation.skillNames.join(', '),
+      }
+    }
+
+    const modeText = formatFsReadHeadlineMode(operation, labels)
     if (!modeText) {
       return displayInfo
     }

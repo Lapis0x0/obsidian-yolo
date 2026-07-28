@@ -330,6 +330,7 @@ describe('ToolMessage headline helpers', () => {
       fs_create_dir: 'Create folder',
       fs_move: 'Move path',
       terminal_command: 'Terminal command',
+      open_skill: 'Open skill',
     },
     writeActionLabels: {
       write: 'Write file',
@@ -463,6 +464,39 @@ describe('ToolMessage headline helpers', () => {
         labels,
       }).summaryText,
     ).toBe('docs/plan.md | 全文')
+  })
+
+  it('uses the skill name instead of the file-read transport for skill loads', () => {
+    expect(
+      getHeadlineDisplayInfo({
+        request: {
+          name: 'yolo_local__fs_read',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              paths: ['YOLO/skills/release/SKILL.md'],
+            },
+          }),
+        },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: '',
+            metadata: {
+              fsReadOperation: {
+                type: 'full',
+                isPdf: false,
+                skillNames: ['release'],
+              },
+            },
+          },
+        },
+        labels,
+      }),
+    ).toEqual({
+      displayName: 'Open skill',
+      summaryText: 'release',
+    })
   })
 
   it('shows concrete paths for multi-path fs_read headlines', () => {

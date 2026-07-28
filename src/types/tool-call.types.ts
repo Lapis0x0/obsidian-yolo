@@ -104,12 +104,22 @@ export type ToolFsReadOperationSummary =
   | {
       type: 'full'
       isPdf: boolean
+      /**
+       * Canonical names of skills read by this call. Present only when every
+       * requested path was a successfully resolved skill.
+       */
+      skillNames?: string[]
     }
   | {
       type: 'lines'
       startLine: number
       endLine: number
       isPdf: boolean
+      /**
+       * Canonical names of skills read by this call. Present only when every
+       * requested path was a successfully resolved skill.
+       */
+      skillNames?: string[]
     }
 
 export type ToolCallRequest = {
