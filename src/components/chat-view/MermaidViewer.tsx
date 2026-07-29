@@ -158,7 +158,7 @@ function MermaidViewerCanvas({
       event.preventDefault()
       const rect = viewport.getBoundingClientRect()
 
-      if (event.ctrlKey || event.metaKey) {
+      if (event.deltaY !== 0) {
         const factor = Math.exp(-event.deltaY * 0.002)
         zoomAt(transformRef.current.scale * factor, {
           x: event.clientX - rect.left,
@@ -171,7 +171,6 @@ function MermaidViewerCanvas({
       updateTransform({
         ...current,
         x: current.x - event.deltaX,
-        y: current.y - event.deltaY,
       })
     }
 
