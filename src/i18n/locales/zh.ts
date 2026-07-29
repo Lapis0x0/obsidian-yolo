@@ -1680,6 +1680,14 @@ export const zh: TranslationKeys = {
       itemAriaLabel: '跳转到第 {index} 条消息：{label}',
       emptyMessage: '空消息',
     },
+    mermaidControls: {
+      open: '展开图表',
+      zoomOut: '缩小',
+      zoomIn: '放大',
+      fitViewport: '适应窗口',
+      reset: '重置缩放',
+      controlsLabel: '图表控制',
+    },
     stopGeneration: '停止生成',
     queueMessage: {
       tooltip: '加入排队，等当前回合完成后继续',

@@ -1789,6 +1789,14 @@ export const en: TranslationKeys = {
       itemAriaLabel: 'Jump to message {index}: {label}',
       emptyMessage: 'Empty message',
     },
+    mermaidControls: {
+      open: 'Open diagram viewer',
+      zoomOut: 'Zoom out',
+      zoomIn: 'Zoom in',
+      fitViewport: 'Fit diagram to window',
+      reset: 'Reset zoom',
+      controlsLabel: 'Diagram controls',
+    },
     stopGeneration: 'Stop generation',
     queueMessage: {
       tooltip: 'Queue this message — it will be sent after the current step',

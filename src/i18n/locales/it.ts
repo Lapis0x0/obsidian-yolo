@@ -1635,6 +1635,14 @@ export const it: DeepPartial<TranslationKeys> = {
       itemAriaLabel: 'Vai al messaggio {index}: {label}',
       emptyMessage: 'Messaggio vuoto',
     },
+    mermaidControls: {
+      open: 'Apri visualizzatore diagramma',
+      zoomOut: 'Riduci',
+      zoomIn: 'Ingrandisci',
+      fitViewport: 'Adatta alla finestra',
+      reset: 'Reimposta zoom',
+      controlsLabel: 'Controlli diagramma',
+    },
     stopGeneration: 'Ferma generazione',
     queueMessage: {
       tooltip:

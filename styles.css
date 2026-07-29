@@ -16344,6 +16344,255 @@ button.yolo-llm-debug-modal-button:focus-visible {
   overflow-x: auto;
 }
 
+.yolo-chat-messages .yolo-markdown-rendered .yolo-mermaid-viewer {
+  --yolo-mermaid-preview-max-width: 1200px;
+  --yolo-mermaid-preview-max-height: min(560px, 55vh);
+
+  position: relative;
+  max-width: 100%;
+}
+
+.yolo-chat-messages .yolo-markdown-rendered .mermaid {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.yolo-chat-messages .yolo-mermaid-viewer > .mermaid > svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: var(--yolo-mermaid-preview-max-height);
+  margin-inline: auto;
+}
+
+.yolo-chat-messages button.yolo-mermaid-open-button {
+  appearance: none;
+  position: absolute;
+  inset-block-start: var(--size-2-2);
+  inset-inline-end: var(--size-2-2);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  box-shadow: var(--shadow-s);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.78;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.yolo-chat-messages button.yolo-mermaid-open-button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  opacity: 1;
+}
+
+.yolo-chat-messages button.yolo-mermaid-open-button:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+.yolo-chat-messages button.yolo-mermaid-open-button > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* In the centered layout, wide diagrams may use the conversation surface
+ * beyond the 720px reading column. Intrinsically narrow diagrams keep the
+ * normal message width; wide diagrams stop short of the surface edges and
+ * continue scrolling internally. */
+
+@container yolo-chat-conversation (min-width: 768px) {
+  .yolo-chat-container--centered
+    .yolo-chat-messages
+    .yolo-markdown-rendered
+    .yolo-mermaid-viewer {
+    position: relative;
+    inset-inline-start: 50%;
+    width: max-content;
+    min-width: 100%;
+    max-width: min(
+      var(--yolo-mermaid-preview-max-width),
+      calc(100cqi - var(--size-4-6) - var(--size-4-6) - var(--scrollbar-width))
+    );
+    transform: translateX(-50%);
+  }
+}
+
+.modal.yolo-mermaid-modal {
+  width: calc(100vw - var(--size-4-8));
+  height: calc(100vh - var(--size-4-8));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.modal.yolo-mermaid-modal > .modal-close-button {
+  z-index: 4;
+  top: var(--size-4-3);
+  inset-inline-end: var(--size-4-3);
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+}
+
+.modal.yolo-mermaid-modal > .modal-content {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.yolo-mermaid-modal-content,
+.yolo-mermaid-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.yolo-mermaid-modal-content {
+  position: relative;
+  overflow: hidden;
+}
+
+.yolo-mermaid-canvas {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background-color: var(--background-primary);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--text-faint) 24%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+}
+
+.yolo-mermaid-canvas:active {
+  cursor: grabbing;
+}
+
+.yolo-mermaid-canvas:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: -2px;
+}
+
+.yolo-mermaid-canvas-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  transform-origin: 0 0;
+  user-select: none;
+  will-change: transform;
+}
+
+.yolo-mermaid-canvas-content > svg {
+  display: block;
+  max-width: none;
+  pointer-events: none;
+}
+
+.yolo-mermaid-modal-controls {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-end: var(--size-4-4);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  box-shadow: var(--shadow-s);
+  transform: translateX(-50%);
+}
+
+button.yolo-mermaid-modal-control {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+button.yolo-mermaid-modal-control:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-mermaid-modal-control:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: -2px;
+}
+
+button.yolo-mermaid-modal-control:disabled {
+  opacity: 0.4;
+  background: transparent;
+  cursor: default;
+}
+
+.yolo-mermaid-modal-scale {
+  width: 52px;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.yolo-mermaid-modal-divider {
+  width: 1px;
+  height: 20px;
+  margin-inline: 3px;
+  background: var(--background-modifier-border);
+}
+
+@media (max-width: 600px) {
+  .modal.yolo-mermaid-modal {
+    width: 100vw;
+    height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .yolo-mermaid-modal-controls {
+    inset-block-end: max(var(--size-4-3), env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-chat-messages button.yolo-mermaid-open-button {
+    transition: none;
+  }
+}
+
 .yolo-chat-messages {
   --yolo-chat-response-font-family: var(--font-interface);
 }

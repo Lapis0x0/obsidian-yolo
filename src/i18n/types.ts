@@ -1524,6 +1524,14 @@ export type TranslationKeys = {
       itemAriaLabel?: string
       emptyMessage?: string
     }
+    mermaidControls?: {
+      open?: string
+      zoomOut?: string
+      zoomIn?: string
+      fitViewport?: string
+      reset?: string
+      controlsLabel?: string
+    }
     stopGeneration?: string
     queueMessage?: {
       tooltip?: string
