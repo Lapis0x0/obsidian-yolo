@@ -16387,17 +16387,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   box-shadow: var(--shadow-s);
   color: var(--text-muted);
   cursor: pointer;
-  opacity: 0.78;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    color 120ms ease;
-}
-
-.yolo-chat-messages button.yolo-mermaid-open-button:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
   opacity: 1;
+  transition: opacity 120ms ease;
 }
 
 .yolo-chat-messages button.yolo-mermaid-open-button:focus-visible {
@@ -16409,6 +16400,20 @@ button.yolo-llm-debug-modal-button:focus-visible {
 .yolo-chat-messages button.yolo-mermaid-open-button > svg {
   width: 16px;
   height: 16px;
+}
+
+@media (hover: hover) {
+  .yolo-chat-messages button.yolo-mermaid-open-button {
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .yolo-chat-messages
+    .yolo-mermaid-viewer:is(:hover, :focus-within)
+    > button.yolo-mermaid-open-button {
+    pointer-events: auto;
+    opacity: 1;
+  }
 }
 
 /* In the centered layout, wide diagrams may use the conversation surface
