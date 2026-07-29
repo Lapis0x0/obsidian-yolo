@@ -45,6 +45,12 @@ Required Actions secrets:
 - `DISTRIBUTION_SIGNING_SECRET_KEY`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ZONE_ID`
+
+`download-stats.yml` publishes the combined GitHub Release and Cloudflare
+mirror request total to the `download-metrics` branch once per day. In addition
+to `Account Cloudflare Pages Edit`, `CLOUDFLARE_API_TOKEN` needs `Zone Analytics
+Read` limited to `yoloapp.dev`.
 
 Before the first run, create the Direct Upload Pages project `yolo-updates`,
 bind `updates.yoloapp.dev`, and add the two Cloudflare secrets. Then run

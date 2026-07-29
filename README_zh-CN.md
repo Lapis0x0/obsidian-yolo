@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/github/v/release/Lapis0x0/obsidian-yolo?style=flat-square&color=00b894" alt="Latest Release">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/releases">
-    <img src="https://img.shields.io/github/downloads/Lapis0x0/obsidian-yolo/total?style=flat-square&color=0984e3" alt="Downloads">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FLapis0x0%2Fobsidian-yolo%2Fdownload-metrics%2Fbadge.json&style=flat-square" alt="Downloads">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/Lapis0x0/obsidian-yolo?style=flat-square&color=636e72" alt="License">
