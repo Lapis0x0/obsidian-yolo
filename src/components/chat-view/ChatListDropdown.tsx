@@ -497,6 +497,7 @@ export function ChatListDropdown({
   onTogglePinned,
   onRetryTitle,
   onExportConversation,
+  additionalHistorySections,
   children,
 }: {
   chatList: ChatConversationMetadata[]
@@ -511,6 +512,7 @@ export function ChatListDropdown({
   onTogglePinned: (conversationId: string) => void | Promise<void>
   onRetryTitle: (conversationId: string) => void | Promise<void>
   onExportConversation: (conversationId: string) => void | Promise<void>
+  additionalHistorySections?: React.ReactNode
   children: React.ReactNode
 }) {
   const { t } = useLanguage()
@@ -1344,6 +1346,7 @@ export function ChatListDropdown({
             </>
           )}
         </ul>
+        {activeSection === 'user' ? additionalHistorySections : null}
         {activeMenuChat && menuPosition ? (
           <div
             ref={contextMenuRef}
