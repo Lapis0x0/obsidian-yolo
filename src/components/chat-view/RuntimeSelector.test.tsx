@@ -67,4 +67,19 @@ describe('RuntimeSelector', () => {
     expect(html).toContain('>Codex<')
     expect(html).toContain('>CLI<')
   })
+
+  it('renders no runtime entry on mobile even with a stale CLI selection', () => {
+    Platform.isDesktop = false
+
+    const html = renderToStaticMarkup(
+      <RuntimeSelector
+        currentRuntimeId="claude-code"
+        onRuntimeChange={() => {}}
+      />,
+    )
+
+    expect(html).toBe('')
+    expect(html).not.toContain('yolo-runtime-selector')
+    expect(html).not.toContain('CLI')
+  })
 })

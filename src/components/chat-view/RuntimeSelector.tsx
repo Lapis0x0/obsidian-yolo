@@ -93,6 +93,11 @@ export function RuntimeSelector({
   const { t } = useLanguage()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const cliRuntimeAvailable = isCliRuntimeAvailable()
+
+  if (!cliRuntimeAvailable) {
+    return null
+  }
+
   const availableOptions = getRuntimeSelectorOptions(cliRuntimeAvailable)
   const currentOption = RUNTIME_OPTIONS[currentRuntimeId]
   const currentLabel = t(currentOption.labelKey)
