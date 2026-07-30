@@ -76,12 +76,12 @@ export type TranslationKeys = {
       composer: string
     }
     runtimeSelector: {
+      modeAccessibleLabel: string
+      cliLabel: string
+      chatDescription: string
+      cliDescription: string
       accessibleLabel: string
       menuLabel: string
-      chatBadge: string
-      cliBadge: string
-      yoloLabel: string
-      yoloDescription: string
       claudeCodeLabel: string
       claudeCodeDescription: string
       codexLabel: string

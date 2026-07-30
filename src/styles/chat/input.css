@@ -105,26 +105,6 @@ button.yolo-runtime-selector:disabled {
   white-space: nowrap;
 }
 
-.yolo-runtime-selector__badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 15px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-border) 52%,
-    transparent
-  );
-  color: var(--text-muted);
-  font-size: 9px;
-  font-weight: var(--font-semibold);
-  letter-spacing: 0.04em;
-  line-height: 15px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 .yolo-runtime-selector__chevron {
   flex: 0 0 auto;
   color: var(--text-muted);

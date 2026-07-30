@@ -981,6 +981,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliRuntimeAvailable,
   })
   const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
+  const lastCliRuntimeIdRef = useRef<CliRuntimeId>(
+    initialActiveRuntimeId === 'yolo' ? 'claude-code' : initialActiveRuntimeId,
+  )
   const chatMountedRef = useRef(true)
   const runtimeNavigationGenerationRef = useRef(0)
   useEffect(() => {
@@ -1132,6 +1135,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           return
         }
         setCliConversationController(result.controller)
+        lastCliRuntimeIdRef.current = seededRef.runtimeId
         setRequestedRuntimeId(seededRef.runtimeId)
         activeRuntimeIdRef.current = seededRef.runtimeId
         setCliAssistantId(result.assistantId)
@@ -1824,6 +1828,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         if (!cliRuntimeScope) return
         const controller = selectFreshCliRuntime(cliRuntimeScope, runtimeId)
         setCliConversationController(controller)
+        lastCliRuntimeIdRef.current = runtimeId
         activeRuntimeIdRef.current = runtimeId
         setRequestedRuntimeId(runtimeId)
       }
@@ -5982,6 +5987,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           isCurrent: isCurrentNavigation,
         })
         if (!result) return
+        lastCliRuntimeIdRef.current = ref.runtimeId
         activeRuntimeIdRef.current = ref.runtimeId
         setRequestedRuntimeId(ref.runtimeId)
         setCliConversationController(result.controller)
@@ -6105,8 +6111,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <ViewToggle
           activeView={activeView}
           onChangeView={onChangeView}
+          activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
+          onChangeChatSurface={(surface) => {
+            handleRuntimeChange(
+              surface === 'chat' ? 'yolo' : lastCliRuntimeIdRef.current,
+            )
+          }}
+          showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
           showComposer={isSidebarPlacement}
-          disabled={false}
+          disabled={
+            currentConversationRunSummary.isActive ||
+            cliSubmissionPending ||
+            isCliRunActive ||
+            cliTransitioning
+          }
         />
       ) : (
         <h1 className="yolo-chat-header-title">
@@ -6115,16 +6133,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )}
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          <RuntimeSelector
-            currentRuntimeId={activeRuntimeId}
-            onRuntimeChange={handleRuntimeChange}
-            disabled={
-              currentConversationRunSummary.isActive ||
-              cliSubmissionPending ||
-              isCliRunActive ||
-              cliTransitioning
-            }
-          />
+          {activeRuntimeId !== 'yolo' ? (
+            <RuntimeSelector
+              currentRuntimeId={activeRuntimeId}
+              onRuntimeChange={handleRuntimeChange}
+              disabled={
+                currentConversationRunSummary.isActive ||
+                cliSubmissionPending ||
+                isCliRunActive ||
+                cliTransitioning
+              }
+            />
+          ) : null}
           <AssistantSelector
             currentAssistantId={activeAssistantId}
             triggerClassName={

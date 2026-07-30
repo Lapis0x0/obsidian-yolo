@@ -1,83 +1,58 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-  Asterisk,
-  Check,
-  ChevronDown,
-  MessageCircle,
-  SquareTerminal,
-} from 'lucide-react'
+import { Asterisk, Check, ChevronDown, SquareTerminal } from 'lucide-react'
 import { useRef } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import {
-  type ChatRuntimeId,
+  type CliRuntimeId,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
 import { YoloDropdownContent } from '../common/popover'
 
-type RuntimeKind = 'chat' | 'cli'
-
 export type RuntimeSelectorOption = {
-  id: ChatRuntimeId
-  kind: RuntimeKind
+  id: CliRuntimeId
   labelKey: string
   descriptionKey: string
 }
 
-const RUNTIME_OPTIONS: Record<ChatRuntimeId, RuntimeSelectorOption> = {
-  yolo: {
-    id: 'yolo',
-    kind: 'chat',
-    labelKey: 'sidebar.runtimeSelector.yoloLabel',
-    descriptionKey: 'sidebar.runtimeSelector.yoloDescription',
-  },
+const RUNTIME_OPTIONS: Record<CliRuntimeId, RuntimeSelectorOption> = {
   'claude-code': {
     id: 'claude-code',
-    kind: 'cli',
     labelKey: 'sidebar.runtimeSelector.claudeCodeLabel',
     descriptionKey: 'sidebar.runtimeSelector.claudeCodeDescription',
   },
   codex: {
     id: 'codex',
-    kind: 'cli',
     labelKey: 'sidebar.runtimeSelector.codexLabel',
     descriptionKey: 'sidebar.runtimeSelector.codexDescription',
   },
 }
 
-const DESKTOP_RUNTIME_IDS: readonly ChatRuntimeId[] = [
-  'yolo',
-  'claude-code',
-  'codex',
-]
-const MOBILE_RUNTIME_IDS: readonly ChatRuntimeId[] = ['yolo']
+const CLI_RUNTIME_IDS: readonly CliRuntimeId[] = ['claude-code', 'codex']
 
 export const getRuntimeSelectorOptions = (
   cliRuntimeAvailable: boolean,
 ): readonly RuntimeSelectorOption[] =>
-  (cliRuntimeAvailable ? DESKTOP_RUNTIME_IDS : MOBILE_RUNTIME_IDS).map(
-    (runtimeId) => RUNTIME_OPTIONS[runtimeId],
-  )
+  cliRuntimeAvailable
+    ? CLI_RUNTIME_IDS.map((runtimeId) => RUNTIME_OPTIONS[runtimeId])
+    : []
 
 export const resolveAvailableRuntimeId = (
   value: string,
   cliRuntimeAvailable: boolean,
-): ChatRuntimeId | undefined =>
+): CliRuntimeId | undefined =>
   getRuntimeSelectorOptions(cliRuntimeAvailable).find(
     (option) => option.id === value,
   )?.id
 
 export type RuntimeSelectorProps = {
-  currentRuntimeId: ChatRuntimeId
-  onRuntimeChange: (runtimeId: ChatRuntimeId) => void
+  currentRuntimeId: CliRuntimeId
+  onRuntimeChange: (runtimeId: CliRuntimeId) => void
   disabled?: boolean
   className?: string
 }
 
-const RuntimeIcon = ({ runtimeId }: { runtimeId: ChatRuntimeId }) => {
-  if (runtimeId === 'yolo') {
-    return <MessageCircle size={15} strokeWidth={2} />
-  }
+const RuntimeIcon = ({ runtimeId }: { runtimeId: CliRuntimeId }) => {
   if (runtimeId === 'claude-code') {
     return <Asterisk size={15} strokeWidth={2} />
   }
@@ -101,11 +76,6 @@ export function RuntimeSelector({
   const availableOptions = getRuntimeSelectorOptions(cliRuntimeAvailable)
   const currentOption = RUNTIME_OPTIONS[currentRuntimeId]
   const currentLabel = t(currentOption.labelKey)
-  const currentBadge = t(
-    currentOption.kind === 'chat'
-      ? 'sidebar.runtimeSelector.chatBadge'
-      : 'sidebar.runtimeSelector.cliBadge',
-  )
   const accessibleLabel = t('sidebar.runtimeSelector.accessibleLabel').replace(
     '{runtime}',
     currentLabel,
@@ -125,7 +95,6 @@ export function RuntimeSelector({
           <RuntimeIcon runtimeId={currentOption.id} />
         </span>
         <span className="yolo-runtime-selector__label">{currentLabel}</span>
-        <span className="yolo-runtime-selector__badge">{currentBadge}</span>
         <ChevronDown
           className="yolo-runtime-selector__chevron"
           size={13}
@@ -162,11 +131,6 @@ export function RuntimeSelector({
           }}
         >
           {availableOptions.map((option) => {
-            const badge = t(
-              option.kind === 'chat'
-                ? 'sidebar.runtimeSelector.chatBadge'
-                : 'sidebar.runtimeSelector.cliBadge',
-            )
             return (
               <DropdownMenu.RadioItem
                 key={option.id}
@@ -184,9 +148,6 @@ export function RuntimeSelector({
                   <span className="yolo-runtime-selector__option-heading">
                     <span className="yolo-runtime-selector__option-label">
                       {t(option.labelKey)}
-                    </span>
-                    <span className="yolo-runtime-selector__badge">
-                      {badge}
                     </span>
                   </span>
                   <span className="yolo-runtime-selector__option-description">

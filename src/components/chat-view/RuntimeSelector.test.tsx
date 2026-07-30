@@ -3,13 +3,8 @@ jest.mock('../../contexts/language-context', () => ({
     t: (key: string) =>
       (
         ({
-          'sidebar.runtimeSelector.accessibleLabel': 'Chat backend: {runtime}',
-          'sidebar.runtimeSelector.menuLabel': 'Chat backend',
-          'sidebar.runtimeSelector.chatBadge': 'Chat',
-          'sidebar.runtimeSelector.cliBadge': 'CLI',
-          'sidebar.runtimeSelector.yoloLabel': 'YOLO Chat',
-          'sidebar.runtimeSelector.yoloDescription':
-            'Built-in YOLO chat runtime',
+          'sidebar.runtimeSelector.accessibleLabel': 'CLI provider: {runtime}',
+          'sidebar.runtimeSelector.menuLabel': 'CLI provider',
           'sidebar.runtimeSelector.claudeCodeLabel': 'Claude Code',
           'sidebar.runtimeSelector.claudeCodeDescription':
             'Claude Code on this device',
@@ -36,21 +31,18 @@ describe('RuntimeSelector', () => {
     Platform.isDesktop = originalIsDesktop
   })
 
-  it('exposes all runtime backends on desktop', () => {
+  it('exposes only CLI providers on desktop', () => {
     expect(getRuntimeSelectorOptions(true).map((option) => option.id)).toEqual([
-      'yolo',
       'claude-code',
       'codex',
     ])
+    expect(resolveAvailableRuntimeId('yolo', true)).toBeUndefined()
     expect(resolveAvailableRuntimeId('claude-code', true)).toBe('claude-code')
     expect(resolveAvailableRuntimeId('codex', true)).toBe('codex')
   })
 
-  it('exposes only YOLO and rejects CLI selections without desktop capability', () => {
-    expect(getRuntimeSelectorOptions(false).map((option) => option.id)).toEqual(
-      ['yolo'],
-    )
-    expect(resolveAvailableRuntimeId('yolo', false)).toBe('yolo')
+  it('exposes no provider without desktop capability', () => {
+    expect(getRuntimeSelectorOptions(false)).toEqual([])
     expect(resolveAvailableRuntimeId('claude-code', false)).toBeUndefined()
     expect(resolveAvailableRuntimeId('codex', false)).toBeUndefined()
   })
@@ -63,9 +55,10 @@ describe('RuntimeSelector', () => {
     )
 
     expect(html).toContain('data-runtime-id="codex"')
-    expect(html).toContain('aria-label="Chat backend: Codex"')
+    expect(html).toContain('aria-label="CLI provider: Codex"')
     expect(html).toContain('>Codex<')
-    expect(html).toContain('>CLI<')
+    expect(html).not.toContain('>CLI<')
+    expect(html).not.toContain('YOLO Chat')
   })
 
   it('renders no runtime entry on mobile even with a stale CLI selection', () => {
