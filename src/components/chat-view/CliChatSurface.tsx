@@ -1,0 +1,446 @@
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
+
+import { useLanguage } from '../../contexts/language-context'
+import type { AgentConversationRunSummary } from '../../core/agent/service'
+import type {
+  ChatRuntimeActions,
+  CliConversationController,
+  CliConversationSnapshot,
+  CliRuntimeRunState,
+  CliSessionRef,
+} from '../../core/cli-runtime'
+import type {
+  AssistantToolMessageGroup,
+  ChatMessage,
+  ChatToolMessage,
+  ChatUserMessage,
+} from '../../types/chat'
+import type { ChatTimelineItem } from '../../types/chat-timeline'
+import type { GroupEditSummary } from '../../utils/chat/editSummary'
+import { buildMessageTimelineItems } from '../../utils/chat/timeline'
+
+import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
+import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
+import { ChatConversationPane } from './ChatConversationPane'
+import { useAutoScroll } from './useAutoScroll'
+import {
+  useChatTimelineReadModel,
+  useStableChatTimelineItems,
+} from './useChatTimelineReadModel'
+import UserMessageCard from './UserMessageCard'
+
+const ACTIVE_RUN_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
+  'running',
+  'waiting_for_approval',
+  'waiting_for_user',
+])
+
+const noop = (): void => undefined
+const noopToolMessageUpdate = (_message: ChatToolMessage): void => undefined
+const noopOpenEditSummaryFile = (
+  _file: GroupEditSummary['files'][number],
+): void => undefined
+
+export type CliChatSurfaceProps = {
+  controller: CliConversationController
+  actions: ChatRuntimeActions
+  footerContent: ReactNode
+}
+
+export function useCliConversationSnapshot(
+  controller: CliConversationController,
+): CliConversationSnapshot {
+  return useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  )
+}
+
+const getPromptContentText = (
+  promptContent: ChatUserMessage['promptContent'],
+): string => {
+  if (!promptContent) return ''
+  if (typeof promptContent === 'string') return promptContent
+  return promptContent
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n\n')
+}
+
+const getUserMessageText = (message: ChatUserMessage): string => {
+  const editorText = message.content
+    ? editorStateToPlainText(message.content)
+    : ''
+  return editorText || getPromptContentText(message.promptContent)
+}
+
+const getConversationId = (sessionRef: CliSessionRef): string =>
+  `${sessionRef.runtimeId}:${sessionRef.nativeSessionId}`
+
+const getLatestUserMessageId = (
+  messages: readonly ChatMessage[],
+): string | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === 'user') return message.id
+  }
+  return undefined
+}
+
+const getLatestAssistantGroupId = (
+  groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[],
+): string | null => {
+  for (let index = groupedChatMessages.length - 1; index >= 0; index -= 1) {
+    const messageOrGroup = groupedChatMessages[index]
+    if (Array.isArray(messageOrGroup)) {
+      return messageOrGroup[0]?.id ?? null
+    }
+  }
+  return null
+}
+
+const getActiveStreamingMessageId = (
+  messages: readonly ChatMessage[],
+  runState: CliRuntimeRunState,
+): string | null => {
+  if (!ACTIVE_RUN_STATES.has(runState)) return null
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role !== 'user') return message.id
+  }
+  return null
+}
+
+const toAgentRunStatus = (
+  runState: CliRuntimeRunState,
+): AgentConversationRunSummary['status'] => {
+  if (
+    runState === 'running' ||
+    runState === 'waiting_for_approval' ||
+    runState === 'waiting_for_user'
+  ) {
+    return 'running'
+  }
+  return runState
+}
+
+const buildRunSummary = ({
+  conversationId,
+  messages,
+  runState,
+}: {
+  conversationId: string
+  messages: readonly ChatMessage[]
+  runState: CliRuntimeRunState
+}): AgentConversationRunSummary => {
+  const isActive = ACTIVE_RUN_STATES.has(runState)
+  return {
+    conversationId,
+    anchorMessageId: getLatestUserMessageId(messages),
+    status: toAgentRunStatus(runState),
+    isRunning: runState === 'running',
+    isActive,
+    isAbortable: isActive,
+    isQueueable: false,
+    isWaitingApproval:
+      runState === 'waiting_for_approval' || runState === 'waiting_for_user',
+    isWaitingUserInput: runState === 'waiting_for_user',
+  }
+}
+
+function CliUserMessage({ message }: { message: ChatUserMessage }) {
+  const { t } = useLanguage()
+  const text =
+    getUserMessageText(message) ||
+    t('chat.cliSurface.emptyUserMessage', '空消息')
+  return (
+    <div
+      className="yolo-chat-messages-user yolo-cli-chat-surface__user-message"
+      data-user-message-id={message.id}
+    >
+      <UserMessageCard
+        className="yolo-cli-chat-surface__user-card"
+        snapshot={{
+          content: message.content,
+          text,
+          mentionables: message.mentionables,
+          selectedSkills: message.selectedSkills ?? [],
+          reasoningLevel: message.reasoningLevel,
+        }}
+        onClick={noop}
+      />
+    </div>
+  )
+}
+
+function CliSurfaceFooter({
+  error,
+  runState,
+  footerContent,
+}: {
+  error: string | null
+  runState: CliRuntimeRunState
+  footerContent: ReactNode
+}) {
+  const { t } = useLanguage()
+  const stateLabels: Record<CliRuntimeRunState, string> = {
+    idle: t('chat.cliSurface.state.idle', '空闲'),
+    running: t('chat.cliSurface.state.running', 'CLI 正在回复…'),
+    waiting_for_approval: t(
+      'chat.cliSurface.state.waitingForApproval',
+      '等待工具审批',
+    ),
+    waiting_for_user: t('chat.cliSurface.state.waitingForUser', '等待你的回答'),
+    completed: t('chat.cliSurface.state.completed', '回复完成'),
+    aborted: t('chat.cliSurface.state.aborted', '回复已停止'),
+    error: t('chat.cliSurface.state.error', 'CLI 运行出错'),
+  }
+  const showRunState = runState !== 'idle'
+
+  return (
+    <div className="yolo-cli-chat-surface__footer">
+      {error ? (
+        <div className="yolo-cli-chat-surface__error" role="alert">
+          {t('chat.cliSurface.error', 'CLI 会话出错：{message}').replace(
+            '{message}',
+            error,
+          )}
+        </div>
+      ) : null}
+      {showRunState ? (
+        <div
+          className="yolo-cli-chat-surface__run-state"
+          data-run-state={runState}
+          role="status"
+        >
+          {stateLabels[runState]}
+        </div>
+      ) : null}
+      {footerContent}
+    </div>
+  )
+}
+
+export function CliChatSurface({
+  controller,
+  actions,
+  footerContent,
+}: CliChatSurfaceProps) {
+  const { t } = useLanguage()
+  const snapshot = useCliConversationSnapshot(controller)
+  const messages = useMemo(() => [...snapshot.messages], [snapshot.messages])
+  const readModel = useChatTimelineReadModel({ messages })
+  const activeStreamingMessageId = getActiveStreamingMessageId(
+    snapshot.messages,
+    snapshot.runState,
+  )
+  const timelineItems = useMemo(
+    () =>
+      buildMessageTimelineItems({
+        groupedChatMessages: readModel.groupedChatMessages,
+        revisionsById: readModel.revisionsById,
+        activeEditableMessageId: null,
+        activeStreamingMessageId,
+        includeBottomAnchor: true,
+      }),
+    [activeStreamingMessageId, readModel],
+  )
+  const stableTimelineItems = useStableChatTimelineItems(timelineItems)
+  const latestAssistantGroupId = getLatestAssistantGroupId(
+    readModel.groupedChatMessages,
+  )
+  const conversationId = snapshot.sessionRef
+    ? getConversationId(snapshot.sessionRef)
+    : `cli:${snapshot.runtimeId}:unbound`
+  const runSummary = useMemo(
+    () =>
+      buildRunSummary({
+        conversationId,
+        messages: snapshot.messages,
+        runState: snapshot.runState,
+      }),
+    [conversationId, snapshot.messages, snapshot.runState],
+  )
+
+  const chatMessagesRef = useRef<HTMLDivElement>(null)
+  const [chatMessagesElement, setChatMessagesElement] =
+    useState<HTMLElement | null>(null)
+  const [bottomSentinelElement, setBottomSentinelElement] =
+    useState<HTMLElement | null>(null)
+  const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
+    useAutoScroll({
+      scrollContainerRef: chatMessagesRef,
+      scrollContainerElement: chatMessagesElement,
+      bottomSentinelElement,
+      followKey: conversationId,
+    })
+  useLayoutEffect(() => {
+    autoScrollToBottom()
+  }, [autoScrollToBottom, snapshot.messages])
+
+  const renderTimelineItem = useCallback(
+    (timelineItem: ChatTimelineItem): ReactNode => {
+      if (timelineItem.kind === 'bottom-anchor') {
+        return <div className="yolo-cli-chat-surface__bottom-anchor" />
+      }
+
+      if (timelineItem.kind === 'user-message') {
+        const message = readModel.messagesById.get(timelineItem.messageId)
+        return message?.role === 'user' ? (
+          <CliUserMessage message={message} />
+        ) : null
+      }
+
+      if (timelineItem.kind !== 'assistant-group') return null
+
+      const messageGroup = timelineItem.messageIds
+        .map((messageId) => readModel.messagesById.get(messageId))
+        .filter(
+          (message): message is AssistantToolMessageGroup[number] =>
+            message !== undefined && message.role !== 'user',
+        )
+      if (messageGroup.length === 0) return null
+      if (!snapshot.sessionRef) {
+        throw new Error(
+          'CLI assistant/tool groups require a bound provider session.',
+        )
+      }
+
+      const sessionConversationId = getConversationId(snapshot.sessionRef)
+      return (
+        <ChatRuntimeActionsProvider
+          actions={actions}
+          conversation={snapshot.sessionRef}
+        >
+          <AssistantToolMessageGroupItem
+            messages={messageGroup}
+            conversationId={sessionConversationId}
+            conversationRunSummary={
+              timelineItem.groupId === latestAssistantGroupId
+                ? runSummary
+                : undefined
+            }
+            showInlineInfo={false}
+            showRetryAction={false}
+            showInsertAction={false}
+            showCopyAction
+            showBranchAction={false}
+            showEditAction={false}
+            showDeleteAction={false}
+            showQuoteAction={false}
+            isApplying={false}
+            activeApplyRequestKey={null}
+            onApply={noop}
+            onToolMessageUpdate={noopToolMessageUpdate}
+            onRecoverAnswerUserQuestion={noop}
+            onEditStart={noop}
+            onEditCancel={noop}
+            onEditSave={noop}
+            onDeleteGroup={noop}
+            onRetryGroup={noop}
+            onBranchGroup={noop}
+            onQuoteAssistantSelection={noop}
+            onOpenEditSummaryFile={noopOpenEditSummaryFile}
+          />
+        </ChatRuntimeActionsProvider>
+      )
+    },
+    [
+      actions,
+      latestAssistantGroupId,
+      readModel.messagesById,
+      runSummary,
+      snapshot.sessionRef,
+    ],
+  )
+
+  const renderVersion = useCallback(
+    (timelineItem: ChatTimelineItem): string =>
+      `${timelineItem.renderKey}:${
+        timelineItem.kind === 'assistant-group' ||
+        timelineItem.kind === 'user-message'
+          ? timelineItem.revision
+          : 0
+      }:${snapshot.runState}`,
+    [snapshot.runState],
+  )
+
+  const showEmptyState =
+    readModel.groupedChatMessages.length === 0 &&
+    !ACTIVE_RUN_STATES.has(snapshot.runState)
+
+  return (
+    <div
+      className={`yolo-cli-chat-surface${
+        showEmptyState ? ' yolo-cli-chat-surface--empty' : ''
+      }`}
+      data-runtime-id={snapshot.runtimeId}
+    >
+      <ChatConversationPane
+        chatMode="agent"
+        yoloEnabled={false}
+        showEmptyState={showEmptyState}
+        groupedChatMessagesLength={readModel.groupedChatMessages.length}
+        isAutoFollowEnabled={isAutoFollowEnabled}
+        currentConversationId={conversationId}
+        chatTimelineItems={stableTimelineItems}
+        timelineRenderVersion={renderVersion}
+        chatMessagesRef={chatMessagesRef}
+        onScrollContainerChange={setChatMessagesElement}
+        onBottomSentinelChange={setBottomSentinelElement}
+        renderChatTimelineItem={renderTimelineItem}
+        editingAssistantMessageId={null}
+        onForceScrollToBottom={forceScrollToBottom}
+        hasStreamingMessages={ACTIVE_RUN_STATES.has(snapshot.runState)}
+        scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
+        scrollToBottomWhileStreamingLabel={t(
+          'chat.scrollToBottomWhileStreaming',
+          '回到底部继续跟随',
+        )}
+        emptyStateAskTitle={t(
+          'chat.cliSurface.emptyTitle',
+          '开始一个 CLI 会话',
+        )}
+        emptyStateAgentTitle={t(
+          'chat.cliSurface.emptyTitle',
+          '开始一个 CLI 会话',
+        )}
+        emptyStateAgentFullTitle={t(
+          'chat.cliSurface.emptyTitle',
+          '开始一个 CLI 会话',
+        )}
+        emptyStateAskDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '发送消息后，原生 CLI 对话会显示在这里。',
+        )}
+        emptyStateAgentDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '发送消息后，原生 CLI 对话会显示在这里。',
+        )}
+        emptyStateAgentFullDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '发送消息后，原生 CLI 对话会显示在这里。',
+        )}
+        footerContent={
+          <CliSurfaceFooter
+            error={snapshot.error}
+            runState={snapshot.runState}
+            footerContent={footerContent}
+          />
+        }
+      />
+    </div>
+  )
+}
+
+export default CliChatSurface
