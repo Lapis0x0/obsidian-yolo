@@ -162,6 +162,7 @@ import {
   type CliChatOperationSnapshot,
   beginChatRuntimeNavigation,
   getCliChatOperationCoordinator,
+  invalidateChatRuntimeNavigation,
   isCliConversationActive,
   openCliSession,
   openCliSessionForNavigation,
@@ -1117,17 +1118,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     const generation = ++cliSessionRestoreGenerationRef.current
     void cliOperationCoordinator
       .transition(cliConversationController, async (isCurrent) => {
+        const isCurrentRestore = () =>
+          isCurrent() &&
+          generation === cliSessionRestoreGenerationRef.current &&
+          chatMountedRef.current
         const result = await openCliSession({
           scope: cliRuntimeScope,
           ref: seededRef,
           currentAssistantId: cliAssistantId,
+          isCurrent: isCurrentRestore,
         })
-        if (
-          !result.hydration ||
-          !isCurrent() ||
-          generation !== cliSessionRestoreGenerationRef.current ||
-          !chatMountedRef.current
-        ) {
+        if (!result.hydration || !isCurrentRestore()) {
           return
         }
         setCliConversationController(result.controller)
@@ -4201,6 +4202,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       persistedMessageModelMap?: Map<string, string>
     }) => {
+      invalidateChatRuntimeNavigation(runtimeNavigationGenerationRef)
       abortConversationRun(currentConversationId)
       setQueryProgress({
         type: 'idle',
@@ -6397,13 +6399,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         })()
         return
       }
-
-      // A YOLO submission establishes a live run that must remain visible.
-      // Supersede any native-session hydration started while YOLO was idle.
-      beginChatRuntimeNavigation(
-        runtimeNavigationGenerationRef,
-        () => chatMountedRef.current,
-      )
 
       // 新用户回合进入对话:在此固定当前时间。同时覆盖随后两条出口
       // ——入队(running 分支)与普通提交——保证两者用的都是入队/提交

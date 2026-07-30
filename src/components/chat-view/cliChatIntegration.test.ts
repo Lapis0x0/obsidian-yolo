@@ -14,6 +14,7 @@ import type { ChatUserMessage } from '../../types/chat'
 import {
   CliChatOperationCoordinator,
   beginChatRuntimeNavigation,
+  invalidateChatRuntimeNavigation,
   openCliSession,
   openCliSessionForNavigation,
   removeCliOverlayAfterConfirmation,
@@ -410,51 +411,59 @@ describe('CLI chat integration', () => {
   })
 
   it.each([
-    'loading YOLO history',
-    'starting a new chat',
-    'selecting another runtime',
-    'selecting another CLI session',
-  ])('does not commit a stale CLI open after %s', async () => {
-    const generation = { current: 0 }
-    const ref: CliSessionRef = {
-      runtimeId: 'codex',
-      nativeSessionId: 'stale-open',
-    }
-    const hydration = deferred<CliSessionHydration | null>()
-    const controller = {
-      hydrateSession: jest.fn(() => hydration.promise),
-    } as unknown as CliConversationController
-    const scope = {
-      selectConversationRuntime: jest.fn(() => controller),
-      sessionService: {
-        recordOpenedSession: jest.fn(async () => {
-          throw new Error('stale overlay failure')
-        }),
-      },
-    } as unknown as CliRuntimeScope
-    const commitRuntime = jest.fn()
-    const showNotice = jest.fn()
-    const isCurrentOpen = beginChatRuntimeNavigation(generation, () => true)
-
-    const pendingOpen = (async () => {
-      const result = await openCliSessionForNavigation({
-        scope,
-        ref,
-        currentAssistantId: 'assistant-stale',
-        isCurrent: isCurrentOpen,
+    ['loading YOLO history', 'navigation'],
+    ['starting a new chat', 'navigation'],
+    ['selecting another runtime', 'navigation'],
+    ['selecting another CLI session', 'navigation'],
+    ['submitting a YOLO retry or edit', 'submission'],
+  ] as const)(
+    'does not commit a stale CLI open after %s',
+    async (_label, cause) => {
+      const generation = { current: 0 }
+      const ref: CliSessionRef = {
+        runtimeId: 'codex',
+        nativeSessionId: 'stale-open',
+      }
+      const hydration = deferred<CliSessionHydration | null>()
+      const controller = {
+        hydrateSession: jest.fn(() => hydration.promise),
+      } as unknown as CliConversationController
+      const recordOpenedSession = jest.fn(async () => {
+        throw new Error('stale overlay failure')
       })
-      if (!result) return
-      commitRuntime(result.controller, result.assistantId)
-      if (result.overlayError) showNotice(result.overlayError)
-    })()
+      const scope = {
+        selectConversationRuntime: jest.fn(() => controller),
+        sessionService: { recordOpenedSession },
+      } as unknown as CliRuntimeScope
+      const commitRuntime = jest.fn()
+      const showNotice = jest.fn()
+      const isCurrentOpen = beginChatRuntimeNavigation(generation, () => true)
 
-    beginChatRuntimeNavigation(generation, () => true)
-    hydration.resolve({ ref, messages: [] })
-    await pendingOpen
+      const pendingOpen = (async () => {
+        const result = await openCliSessionForNavigation({
+          scope,
+          ref,
+          currentAssistantId: 'assistant-stale',
+          isCurrent: isCurrentOpen,
+        })
+        if (!result) return
+        commitRuntime(result.controller, result.assistantId)
+        if (result.overlayError) showNotice(result.overlayError)
+      })()
 
-    expect(commitRuntime).not.toHaveBeenCalled()
-    expect(showNotice).not.toHaveBeenCalled()
-  })
+      if (cause === 'submission') {
+        invalidateChatRuntimeNavigation(generation)
+      } else {
+        beginChatRuntimeNavigation(generation, () => true)
+      }
+      hydration.resolve({ ref, messages: [] })
+      await pendingOpen
+
+      expect(commitRuntime).not.toHaveBeenCalled()
+      expect(showNotice).not.toHaveBeenCalled()
+      expect(recordOpenedSession).not.toHaveBeenCalled()
+    },
+  )
 
   it('blocks CLI session navigation only while the visible YOLO run is active', () => {
     expect(

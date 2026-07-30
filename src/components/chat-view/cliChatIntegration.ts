@@ -312,9 +312,13 @@ export const beginChatRuntimeNavigation = (
   generation: { current: number },
   isMounted: () => boolean,
 ): (() => boolean) => {
-  const token = ++generation.current
+  const token = invalidateChatRuntimeNavigation(generation)
   return () => token === generation.current && isMounted()
 }
+
+export const invalidateChatRuntimeNavigation = (generation: {
+  current: number
+}): number => ++generation.current
 
 export const resolveActiveAssistantId = ({
   activeRuntimeId,
@@ -409,11 +413,13 @@ export const openCliSession = async ({
   ref,
   discoveryResult,
   currentAssistantId,
+  isCurrent = () => true,
 }: {
   scope: CliRuntimeScope
   ref: CliSessionRef
   discoveryResult?: CliSessionDiscoveryResult
   currentAssistantId: string
+  isCurrent?: () => boolean
 }): Promise<{
   controller: CliConversationController
   assistantId: string
@@ -428,7 +434,7 @@ export const openCliSession = async ({
   const controller = scope.selectConversationRuntime(ref.runtimeId)
   const hydration = await controller.hydrateSession(ref)
   let overlayError: Error | null = null
-  if (hydration) {
+  if (hydration && isCurrent()) {
     try {
       await scope.sessionService.recordOpenedSession(hydration, { assistantId })
     } catch (error) {
@@ -445,7 +451,7 @@ export const openCliSessionForNavigation = async ({
   isCurrent: () => boolean
 }): Promise<Awaited<ReturnType<typeof openCliSession>> | null> => {
   if (!isCurrent()) return null
-  const result = await openCliSession(input)
+  const result = await openCliSession({ ...input, isCurrent })
   return result.hydration && isCurrent() ? result : null
 }
 
