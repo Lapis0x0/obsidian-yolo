@@ -19,7 +19,11 @@ export type ClaudeSdkModule = {
     prompt: string | AsyncIterable<SDKUserMessage>
     options?: Options
   }): ClaudeSdkQuery
-  listSessions(options?: { dir?: string }): Promise<SDKSessionInfo[]>
+  listSessions(options?: {
+    dir?: string
+    limit?: number
+    offset?: number
+  }): Promise<SDKSessionInfo[]>
   getSessionMessages(
     sessionId: string,
     options?: { dir?: string },

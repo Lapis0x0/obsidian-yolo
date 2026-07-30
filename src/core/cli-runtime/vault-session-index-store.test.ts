@@ -7,8 +7,8 @@ const createMemoryApp = () => {
   const files = new Map<string, string>()
   const directories = new Set<string>()
   const adapter = {
-    exists: jest.fn(async (path: string) =>
-      files.has(path) || directories.has(path),
+    exists: jest.fn(
+      async (path: string) => files.has(path) || directories.has(path),
     ),
     mkdir: jest.fn(async (path: string) => {
       directories.add(path)
@@ -78,6 +78,46 @@ describe('VaultCliSessionIndexStore', () => {
     ])
 
     await expect(store.list()).resolves.toHaveLength(2)
+  })
+
+  it('serializes read-modify-write updates for one native identity', async () => {
+    const { app } = createMemoryApp()
+    const store = new VaultCliSessionIndexStore(app)
+    const ref = { runtimeId: 'codex' as const, nativeSessionId: 'thread-1' }
+
+    await Promise.all([
+      store.update(ref, (current) =>
+        createCliSessionIndexEntry({
+          ...ref,
+          ...current,
+          assistantId: 'assistant-1',
+        }),
+      ),
+      store.update(ref, (current) =>
+        createCliSessionIndexEntry({
+          ...ref,
+          ...current,
+          isPinned: true,
+          pinnedAt: 20,
+        }),
+      ),
+      store.update(ref, (current) =>
+        createCliSessionIndexEntry({
+          ...ref,
+          ...current,
+          lastOpenedAt: 30,
+        }),
+      ),
+    ])
+
+    await expect(store.get(ref)).resolves.toEqual({
+      runtimeId: 'codex',
+      nativeSessionId: 'thread-1',
+      assistantId: 'assistant-1',
+      isPinned: true,
+      pinnedAt: 20,
+      lastOpenedAt: 30,
+    })
   })
 
   it('removes only the overlay and never touches a native transcript', async () => {

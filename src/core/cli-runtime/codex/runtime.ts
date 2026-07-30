@@ -1,5 +1,6 @@
 import type { ContentPart } from '../../../types/llm/request'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import { isSessionPathInVault } from '../session-path'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -84,6 +85,19 @@ const approvalDecision = (
   return 'decline'
 }
 
+const permissionApprovalResult = (
+  request: CodexServerRequest,
+  decision: Exclude<CliApprovalResponse['decision'], 'reject'>,
+): Record<string, unknown> => ({
+  permissions:
+    request.params.permissions &&
+    typeof request.params.permissions === 'object' &&
+    !Array.isArray(request.params.permissions)
+      ? request.params.permissions
+      : {},
+  scope: decision === 'approve_for_session' ? 'session' : 'turn',
+})
+
 const toCodexQuestionAnswers = (answer: unknown): Record<string, unknown> => {
   if (!answer || typeof answer !== 'object' || Array.isArray(answer)) return {}
   const rawAnswers = (answer as { answers?: unknown }).answers
@@ -121,6 +135,7 @@ export class CodexCliRuntime implements CliRuntime {
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
   private assistantKey = ''
+  private disposed = false
 
   constructor(private readonly options: CodexCliRuntimeOptions) {}
 
@@ -135,9 +150,17 @@ export class CodexCliRuntime implements CliRuntime {
           limit: 100,
           sortKey: 'updated_at',
           sortDirection: 'desc',
-          cwd: this.options.cwd,
         })
-      sessions.push(...response.data.map(toSessionMetadata))
+      const belongsToVault = await Promise.all(
+        response.data.map((thread) =>
+          isSessionPathInVault(this.options.cwd, thread.cwd),
+        ),
+      )
+      sessions.push(
+        ...response.data
+          .filter((_, index) => belongsToVault[index])
+          .map(toSessionMetadata),
+      )
       cursor = response.nextCursor
     } while (cursor)
     return sessions
@@ -231,9 +254,26 @@ export class CodexCliRuntime implements CliRuntime {
     const pending = this.pendingRequests.get(response.requestId)
     if (!pending || pending.kind !== 'approval') return false
     this.deletePendingRequest(pending)
-    ;(await this.getTransport()).respond(pending.request.id, {
-      decision: approvalDecision(response.decision),
-    })
+    const transport = await this.getTransport()
+    if (pending.request.method === 'item/permissions/requestApproval') {
+      if (response.decision === 'reject') {
+        transport.respondError(
+          pending.request.id,
+          -32000,
+          'User denied the requested permissions.',
+          null,
+        )
+      } else {
+        transport.respond(
+          pending.request.id,
+          permissionApprovalResult(pending.request, response.decision),
+        )
+      }
+    } else {
+      transport.respond(pending.request.id, {
+        decision: approvalDecision(response.decision),
+      })
+    }
     return true
   }
 
@@ -253,6 +293,8 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   async dispose(): Promise<void> {
+    if (this.disposed) return
+    this.disposed = true
     if (this.transportPromise) {
       await this.transportPromise.catch(() => undefined)
     }
@@ -269,6 +311,7 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   private async getTransport(): Promise<CodexRpcTransport> {
+    if (this.disposed) throw new Error('Codex CLI runtime has been disposed.')
     if (this.transport) return this.transport
     if (this.transportPromise) return this.transportPromise
     const promise = this.createTransport()
@@ -284,21 +327,49 @@ export class CodexCliRuntime implements CliRuntime {
     const createProcess =
       this.options.createProcess ??
       ((options: CodexProcessOptions) => CodexAppServerProcess.start(options))
-    this.process = await createProcess(this.options)
-    const transport = new CodexRpcTransport(this.process)
+    const process = await createProcess(this.options)
+    this.process = process
+    const transport = new CodexRpcTransport(process)
+    transport.onFatal((error) =>
+      this.handleTransportFatal(transport, process, error),
+    )
     transport.onNotification((notification) =>
       this.handleNotification(notification.method, notification.params),
     )
     transport.onServerRequest((request) => this.handleServerRequest(request))
     try {
       await initializeCodexTransport(transport)
+      const fatalError = transport.getFatalError()
+      if (fatalError) throw fatalError
       this.transport = transport
       return transport
     } catch (error) {
       transport.dispose()
-      await this.process.shutdown()
-      this.process = null
+      if (this.process === process) {
+        this.process = null
+        await process.shutdown()
+      }
       throw error
+    }
+  }
+
+  private handleTransportFatal(
+    transport: CodexRpcTransport,
+    process: CodexProcessLike,
+    error: Error,
+  ): void {
+    if (this.transport !== transport && this.process !== process) return
+    if (this.transport === transport) this.transport = null
+    if (this.process === process) this.process = null
+    this.activeTurnId = null
+    this.assistantKey = ''
+    this.pendingRequests.clear()
+    this.streamingAssistantText.clear()
+    this.streamingReasoningText.clear()
+    transport.dispose()
+    void process.shutdown().catch(() => undefined)
+    if (!this.disposed) {
+      this.emit({ type: 'run_state', state: 'error', error: error.message })
     }
   }
 

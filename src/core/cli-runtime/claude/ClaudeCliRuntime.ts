@@ -16,6 +16,7 @@ import {
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { assertCliRuntimeAvailable } from '../desktop'
+import { isSessionPathInVault } from '../session-path'
 import type {
   CliApprovalResponse,
   CliAssistantBinding,
@@ -87,6 +88,8 @@ export type ClaudeCliRuntimeOptions = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const CLAUDE_SESSION_PAGE_SIZE = 100
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -223,6 +226,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   private consumePromise?: Promise<void>
   private readyKey?: string
   private currentSessionRef?: CliSessionRef
+  private publishedSessionRef?: CliSessionRef
   private activeAssistant?: ChatAssistantMessage
   private activeAssistantKey?: string
   private disposed = false
@@ -245,35 +249,52 @@ export class ClaudeCliRuntime implements CliRuntime {
   async listSessions(): Promise<CliSessionMetadata[]> {
     this.assertUsable()
     const sdk = await this.getSdk()
-    const sessions = await sdk.listSessions({ dir: this.vaultPath })
-    return sessions.map((session) => ({
-      ref: {
-        runtimeId: 'claude-code',
-        nativeSessionId: session.sessionId,
-      },
-      title:
-        session.customTitle ||
-        session.summary ||
-        session.firstPrompt ||
-        session.sessionId,
-      ...(session.firstPrompt && session.firstPrompt !== session.summary
-        ? { preview: session.firstPrompt }
-        : {}),
-      ...(session.createdAt !== undefined
-        ? { createdAt: session.createdAt }
-        : {}),
-      updatedAt: session.lastModified,
-      ...(session.cwd ? { cwd: session.cwd } : {}),
-    }))
+    const sessions: Awaited<ReturnType<ClaudeSdkModule['listSessions']>> = []
+    let offset = 0
+    while (true) {
+      const page = await sdk.listSessions({
+        limit: CLAUDE_SESSION_PAGE_SIZE,
+        offset,
+      })
+      sessions.push(...page)
+      if (page.length < CLAUDE_SESSION_PAGE_SIZE) break
+      offset += page.length
+    }
+    const belongsToVault = await Promise.all(
+      sessions.map((session) =>
+        session.cwd
+          ? isSessionPathInVault(this.vaultPath, session.cwd)
+          : Promise.resolve(false),
+      ),
+    )
+    return sessions
+      .filter((_, index) => belongsToVault[index])
+      .map((session) => ({
+        ref: {
+          runtimeId: 'claude-code',
+          nativeSessionId: session.sessionId,
+        },
+        title:
+          session.customTitle ||
+          session.summary ||
+          session.firstPrompt ||
+          session.sessionId,
+        ...(session.firstPrompt && session.firstPrompt !== session.summary
+          ? { preview: session.firstPrompt }
+          : {}),
+        ...(session.createdAt !== undefined
+          ? { createdAt: session.createdAt }
+          : {}),
+        updatedAt: session.lastModified,
+        ...(session.cwd ? { cwd: session.cwd } : {}),
+      }))
   }
 
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     this.assertUsable()
     this.assertClaudeRef(ref)
     const sdk = await this.getSdk()
-    const messages = await sdk.getSessionMessages(ref.nativeSessionId, {
-      dir: this.vaultPath,
-    })
+    const messages = await sdk.getSessionMessages(ref.nativeSessionId)
     return { ref, messages: hydrateClaudeSessionMessages(messages) }
   }
 
@@ -286,17 +307,26 @@ export class ClaudeCliRuntime implements CliRuntime {
       this.resolveProcessSupport(),
       this.resolveAssistantPluginPaths(input.assistant),
     ])
-    const readyKey = JSON.stringify({
+    const readyConfiguration = {
       sessionId: input.sessionRef?.nativeSessionId,
       systemPrompt: input.assistant.systemPrompt,
       cliPath: processSupport.cliPath,
       pluginPaths,
-    })
+    }
+    const readyKey = JSON.stringify(readyConfiguration)
     if (this.query && this.readyKey === readyKey) return
 
     await this.resetQuery()
-    this.currentSessionRef = input.sessionRef
-    this.readyKey = readyKey
+    const sessionRef = input.sessionRef ?? {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: uuidv4(),
+    }
+    this.currentSessionRef = sessionRef
+    this.publishedSessionRef = undefined
+    this.readyKey = JSON.stringify({
+      ...readyConfiguration,
+      sessionId: sessionRef.nativeSessionId,
+    })
     this.inputQueue = new AsyncPushQueue<SDKUserMessage>()
     this.query = sdk.query({
       prompt: this.inputQueue,
@@ -317,7 +347,7 @@ export class ClaudeCliRuntime implements CliRuntime {
         },
         ...(input.sessionRef
           ? { resume: input.sessionRef.nativeSessionId }
-          : {}),
+          : { sessionId: sessionRef.nativeSessionId }),
         ...(pluginPaths.length > 0
           ? {
               plugins: pluginPaths.map((path) => ({
@@ -332,6 +362,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.consumePromise = this.consume(query)
     try {
       await query.initializationResult()
+      this.publishSessionBound(sessionRef)
     } catch (error) {
       await this.resetQuery()
       throw error
@@ -628,12 +659,10 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   private handleSdkMessage(message: SDKMessage): void {
     if (message.type === 'system' && message.subtype === 'init') {
-      const ref: CliSessionRef = {
+      this.publishSessionBound({
         runtimeId: 'claude-code',
         nativeSessionId: message.session_id,
-      }
-      this.currentSessionRef = ref
-      this.emit({ type: 'session_bound', ref })
+      })
       return
     }
     if (message.type === 'stream_event') {
@@ -922,6 +951,21 @@ export class ClaudeCliRuntime implements CliRuntime {
     for (const listener of this.listeners) listener(event)
   }
 
+  private publishSessionBound(ref: CliSessionRef): void {
+    if (
+      this.currentSessionRef &&
+      this.currentSessionRef.nativeSessionId !== ref.nativeSessionId
+    ) {
+      return
+    }
+    this.currentSessionRef = ref
+    if (this.publishedSessionRef?.nativeSessionId === ref.nativeSessionId) {
+      return
+    }
+    this.publishedSessionRef = ref
+    this.emit({ type: 'session_bound', ref })
+  }
+
   private emitPendingRunStateOrRunning(): void {
     const pending = Array.from(new Set(this.pendingPermissions.values()))
     const state = pending.some((request) => request.kind === 'question')
@@ -952,6 +996,8 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.inputQueue = undefined
     this.consumePromise = undefined
     this.readyKey = undefined
+    this.currentSessionRef = undefined
+    this.publishedSessionRef = undefined
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined
     this.tools.clear()

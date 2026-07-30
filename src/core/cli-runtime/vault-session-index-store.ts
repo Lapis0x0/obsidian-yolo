@@ -6,8 +6,10 @@ import {
   CLI_SESSION_INDEX_SCHEMA_VERSION,
   type CliSessionIndexDocument,
   type CliSessionIndexEntry,
+  type CliSessionIndexMutator,
   type CliSessionIndexStore,
   cliSessionIndexDocumentSchema,
+  cliSessionIndexEntrySchema,
   getCliSessionIndexKey,
 } from './session-index'
 import type { CliSessionRef } from './types'
@@ -55,12 +57,31 @@ export class VaultCliSessionIndexStore implements CliSessionIndexStore {
     })
   }
 
+  async update(
+    ref: CliSessionRef,
+    mutator: CliSessionIndexMutator,
+  ): Promise<CliSessionIndexEntry> {
+    return this.enqueueWrite(async () => {
+      const document = await this.readDocument()
+      const key = getCliSessionIndexKey(ref)
+      const next = cliSessionIndexEntrySchema.parse(
+        mutator(document.sessions[key] ?? null),
+      )
+      if (getCliSessionIndexKey(next) !== key) {
+        throw new Error('Session index update cannot change native identity.')
+      }
+      document.sessions[key] = next
+      await this.writeDocument(document)
+      return next
+    })
+  }
+
   async remove(ref: CliSessionRef): Promise<boolean> {
     return this.enqueueWrite(async () => {
       const document = await this.readDocument()
       const key = getCliSessionIndexKey(ref)
       if (!document.sessions[key]) return false
-      delete document.sessions[key]
+      Reflect.deleteProperty(document.sessions, key)
       await this.writeDocument(document)
       return true
     })
@@ -92,7 +113,9 @@ export class VaultCliSessionIndexStore implements CliSessionIndexStore {
       parsed = JSON.parse(content)
     } catch (error) {
       const detail = error instanceof Error ? ` ${error.message}` : ''
-      throw new Error(`Failed to parse ${CLI_SESSION_INDEX_FILE_NAME}.${detail}`)
+      throw new Error(
+        `Failed to parse ${CLI_SESSION_INDEX_FILE_NAME}.${detail}`,
+      )
     }
     return cliSessionIndexDocumentSchema.parse(parsed)
   }

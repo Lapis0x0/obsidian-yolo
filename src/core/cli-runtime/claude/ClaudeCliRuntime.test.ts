@@ -9,6 +9,7 @@ import type {
 import { Platform } from 'obsidian'
 
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import { CliConversationController } from '../conversation-controller'
 import type { CliRuntimeEvent } from '../types'
 
 import { ClaudeCliRuntime } from './ClaudeCliRuntime'
@@ -80,7 +81,7 @@ const createSdk = () => {
   const queryInputs: QueryInput[] = []
   const listSessions = jest.fn<
     Promise<SDKSessionInfo[]>,
-    [options?: { dir?: string }]
+    [options?: { dir?: string; limit?: number; offset?: number }]
   >(async () => [])
   const getSessionMessages = jest.fn<
     Promise<SessionMessage[]>,
@@ -304,10 +305,8 @@ describe('ClaudeCliRuntime', () => {
       nativeSessionId: 'session-1',
     })
 
-    expect(listSessions).toHaveBeenCalledWith({ dir: '/vault' })
-    expect(getSessionMessages).toHaveBeenCalledWith('session-1', {
-      dir: '/vault',
-    })
+    expect(listSessions).toHaveBeenCalledWith({ limit: 100, offset: 0 })
+    expect(getSessionMessages).toHaveBeenCalledWith('session-1')
     expect(hydration.messages).toHaveLength(5)
     expect(hydration.messages[0]).toMatchObject({
       role: 'user',
@@ -376,6 +375,79 @@ describe('ClaudeCliRuntime', () => {
     })
   })
 
+  it('paginates global discovery and exposes only root or descendant sessions', async () => {
+    const { sdk, listSessions } = createSdk()
+    const outsideSessions = Array.from(
+      { length: 96 },
+      (_, index): SDKSessionInfo => ({
+        sessionId: `outside-${index}`,
+        summary: `Outside ${index}`,
+        lastModified: index,
+        cwd: `/outside/${index}`,
+      }),
+    )
+    listSessions.mockImplementation(async (options) => {
+      if ((options?.offset ?? 0) === 0) {
+        return [
+          {
+            sessionId: 'root',
+            summary: 'Root',
+            lastModified: 4,
+            cwd: '/vault',
+          },
+          {
+            sessionId: 'descendant',
+            summary: 'Descendant',
+            lastModified: 3,
+            cwd: '/vault/projects/one',
+          },
+          {
+            sessionId: 'sibling',
+            summary: 'Sibling',
+            lastModified: 2,
+            cwd: '/other',
+          },
+          {
+            sessionId: 'prefix-spoof',
+            summary: 'Prefix spoof',
+            lastModified: 1,
+            cwd: '/vault-copy',
+          },
+          ...outsideSessions,
+        ]
+      }
+      return [
+        {
+          sessionId: 'second-page-descendant',
+          summary: 'Second page',
+          lastModified: 5,
+          cwd: '/vault/projects/two',
+        },
+      ]
+    })
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await expect(runtime.listSessions()).resolves.toMatchObject([
+      { ref: { nativeSessionId: 'root' }, cwd: '/vault' },
+      {
+        ref: { nativeSessionId: 'descendant' },
+        cwd: '/vault/projects/one',
+      },
+      {
+        ref: { nativeSessionId: 'second-page-descendant' },
+        cwd: '/vault/projects/two',
+      },
+    ])
+    expect(listSessions).toHaveBeenNthCalledWith(2, {
+      limit: 100,
+      offset: 100,
+    })
+  })
+
   it('keeps one streaming query across turns and resumes the native session', async () => {
     const { sdk, query, queryInputs } = createSdk()
     const resolvePluginPaths = jest.fn(async () => [
@@ -437,6 +509,73 @@ describe('ClaudeCliRuntime', () => {
     await expect(iterator.next()).resolves.toMatchObject({
       value: { type: 'user', message: { content: 'Second turn' } },
     })
+  })
+
+  it('binds a generated session after initialization without waiting for an init event', async () => {
+    const { sdk, query, queryInputs, queryInstance } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+    const controller = new CliConversationController(runtime)
+
+    await controller.ensureReady({
+      systemPrompt: '',
+      enabledSkillNames: [],
+    })
+    const ref = controller.getSnapshot().sessionRef
+    expect(ref).toMatchObject({ runtimeId: 'claude-code' })
+    expect(ref?.nativeSessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    )
+    expect(queryInputs[0].options).toMatchObject({
+      sessionId: ref?.nativeSessionId,
+    })
+    expect(queryInputs[0].options?.resume).toBeUndefined()
+    await controller.ensureReady({
+      systemPrompt: '',
+      enabledSkillNames: [],
+    })
+    expect(query).toHaveBeenCalledTimes(1)
+
+    await controller.sendTurn({
+      userMessage: {
+        role: 'user',
+        id: 'user-first',
+        content: null,
+        promptContent: 'First turn',
+        mentionables: [],
+      },
+      content: 'First turn',
+    })
+    const prompt = queryInputs[0].prompt
+    if (typeof prompt === 'string') throw new Error('Expected streaming prompt')
+    await expect(prompt[Symbol.asyncIterator]().next()).resolves.toMatchObject({
+      value: {
+        type: 'user',
+        session_id: ref?.nativeSessionId,
+        message: { content: 'First turn' },
+      },
+    })
+
+    queryInstance.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: ref?.nativeSessionId,
+    } as SDKMessage)
+    queryInstance.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'mismatched-session',
+    } as SDKMessage)
+    await flushPromises()
+    expect(controller.getSnapshot().sessionRef).toEqual(ref)
+    expect(events.filter((event) => event.type === 'session_bound')).toEqual([
+      { type: 'session_bound', ref },
+    ])
   })
 
   it('leaves enabled skill names unapplied when no plugin provider exists', async () => {
@@ -865,7 +1004,7 @@ describe('ClaudeCliRuntime', () => {
   })
 
   it('interrupts without discarding the persistent query', async () => {
-    const { sdk, query, queryInstance } = createSdk()
+    const { sdk, query, queryInputs, queryInstance } = createSdk()
     const runtime = new ClaudeCliRuntime({
       vaultPath: '/vault',
       loadSdk: async () => sdk,
@@ -875,10 +1014,16 @@ describe('ClaudeCliRuntime', () => {
       assistant: { systemPrompt: '', enabledSkillNames: [] },
     }
     await runtime.ensureReady(readyInput)
+    const sessionId = queryInputs[0].options?.sessionId
+    if (!sessionId) throw new Error('Expected generated Claude session ID')
+    const sessionRef = {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: sessionId,
+    }
     await runtime.sendTurn({ content: 'Start' })
     await runtime.cancel()
-    await runtime.ensureReady(readyInput)
-    await runtime.sendTurn({ content: 'Continue' })
+    await runtime.ensureReady({ ...readyInput, sessionRef })
+    await runtime.sendTurn({ sessionRef, content: 'Continue' })
 
     expect(queryInstance.interrupt).toHaveBeenCalledTimes(1)
     expect(query).toHaveBeenCalledTimes(1)
