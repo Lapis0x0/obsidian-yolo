@@ -1,0 +1,148 @@
+import { TFile, TFolder } from 'obsidian'
+
+import type { Mentionable } from '../../types/mentionable'
+
+import { buildCliTurnContent } from './turn-input'
+
+describe('buildCliTurnContent', () => {
+  it('encodes vault references, selected skills, and time without YOLO context compilation', () => {
+    const mentionables: Mentionable[] = [
+      {
+        type: 'file',
+        file: Object.assign(new TFile(), { path: 'Notes/a.md' }),
+      },
+      {
+        type: 'folder',
+        folder: Object.assign(new TFolder(), { path: 'Projects' }),
+      },
+      {
+        type: 'block',
+        file: Object.assign(new TFile(), { path: 'Notes/b.md' }),
+        startLine: 4,
+        endLine: 6,
+        content: 'selected text',
+      },
+      {
+        type: 'web-selection',
+        title: 'Reference',
+        url: 'https://example.com',
+        content: 'web text',
+      },
+    ]
+
+    const content = buildCliTurnContent({
+      runtimeId: 'codex',
+      text: 'Please review these.',
+      mentionables,
+      selectedSkills: [
+        { name: 'review', description: 'Review code', path: 'skills/review' },
+      ],
+      timeContext: '2026-07-30 23:00 (UTC+8)',
+    })
+
+    expect(content).toEqual(expect.any(String))
+    expect(content).toContain('<current_time>2026-07-30 23:00 (UTC+8)')
+    expect(content).toContain('- review')
+    expect(content).toContain('Notes/a.md')
+    expect(content).toContain('Projects')
+    expect(content).toContain('lines=4-6')
+    expect(content).toContain('selected text')
+    expect(content).toContain('https://example.com')
+    expect(content).toContain('Please review these.')
+  })
+
+  it('preserves images and native Claude PDFs as content parts', () => {
+    const content = buildCliTurnContent({
+      runtimeId: 'claude-code',
+      text: 'Inspect attachments.',
+      mentionables: [
+        { type: 'image', name: 'shot.png', mimeType: 'image/png', data: 'AAA' },
+        {
+          type: 'pdf',
+          name: 'paper.pdf',
+          rawData: 'BBB',
+          pageCount: 3,
+        },
+      ],
+    })
+
+    expect(content).toEqual([
+      { type: 'text', text: 'Inspect attachments.' },
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,AAA' },
+      },
+      {
+        type: 'document',
+        mediaType: 'application/pdf',
+        name: 'paper.pdf',
+        data: 'BBB',
+        pageCount: 3,
+      },
+    ])
+  })
+
+  it('uses extracted PDF text for Codex and rejects an unreadable PDF', () => {
+    expect(
+      buildCliTurnContent({
+        runtimeId: 'codex',
+        text: '',
+        mentionables: [
+          { type: 'pdf', name: 'paper.pdf', rawData: 'BBB', data: 'pages' },
+        ],
+      }),
+    ).toContain('pages')
+
+    expect(() =>
+      buildCliTurnContent({
+        runtimeId: 'codex',
+        text: 'read it',
+        mentionables: [{ type: 'pdf', name: 'paper.pdf', rawData: 'BBB' }],
+      }),
+    ).toThrow('does not support PDF attachments without extracted text')
+  })
+
+  it('encodes text and office attachments and rejects model mentions', () => {
+    const content = buildCliTurnContent({
+      runtimeId: 'codex',
+      text: 'Summarize.',
+      mentionables: [
+        {
+          type: 'text-attachment',
+          name: 'data.csv',
+          kind: 'csv',
+          content: 'a,b',
+        },
+        {
+          type: 'office',
+          name: 'brief.docx',
+          kind: 'docx',
+          rawData: 'AAA',
+          extractedText: 'brief text',
+        },
+      ],
+    })
+    expect(content).toContain('data.csv')
+    expect(content).toContain('a,b')
+    expect(content).toContain('brief.docx')
+    expect(content).toContain('brief text')
+
+    expect(() =>
+      buildCliTurnContent({
+        runtimeId: 'codex',
+        text: 'hello',
+        mentionables: [{ type: 'model', modelId: 'm1', name: 'Model' }],
+      }),
+    ).toThrow('does not support model mentions')
+  })
+
+  it('returns plain text when no structured context exists', () => {
+    expect(
+      buildCliTurnContent({
+        runtimeId: 'claude-code',
+        text: 'hello',
+        mentionables: [],
+      }),
+    ).toBe('hello')
+  })
+})
