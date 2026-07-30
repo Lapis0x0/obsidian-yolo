@@ -153,6 +153,27 @@ describe('CliConversationController', () => {
     ).toEqual(['user-1', 'assistant-2'])
   })
 
+  it('deduplicates hydrated message ids in linear order with the last content', async () => {
+    const runtime = new FakeCliRuntime()
+    const ref = session('duplicate-transcript')
+    runtime.openSessionImpl = async () => ({
+      ref,
+      messages: [
+        assistantMessage('duplicate', 'first'),
+        userMessage('between'),
+        assistantMessage('duplicate', 'last'),
+      ],
+    })
+    const controller = new CliConversationController(runtime)
+
+    await controller.hydrateSession(ref)
+
+    expect(controller.getSnapshot().messages).toMatchObject([
+      { id: 'duplicate', content: 'last' },
+      { id: 'between' },
+    ])
+  })
+
   it('binds the hydrated session and reflects every runtime run state', async () => {
     const runtime = new FakeCliRuntime()
     const ref = session('resume-me')
@@ -217,6 +238,33 @@ describe('CliConversationController', () => {
         content: 'hello',
       },
     ])
+  })
+
+  it('does not dispatch a turn when an optimistic listener switches runtime', async () => {
+    const codex = new FakeCliRuntime('codex')
+    const claude = new FakeCliRuntime('claude-code')
+    const controller = new CliConversationController(codex)
+    await controller.ensureReady(assistant)
+    let switched = false
+    controller.subscribe(() => {
+      if (switched) return
+      switched = true
+      controller.setRuntime(claude)
+    })
+
+    await controller.sendTurn({
+      userMessage: userMessage('reentrant-user'),
+      content: 'must not dispatch',
+    })
+
+    expect(codex.turnInputs).toEqual([])
+    expect(claude.turnInputs).toEqual([])
+    expect(controller.getSnapshot()).toMatchObject({
+      runtimeId: 'claude-code',
+      sessionRef: null,
+      messages: [],
+      runState: 'idle',
+    })
   })
 
   it('ignores stale hydration and event callbacks after a session switch', async () => {

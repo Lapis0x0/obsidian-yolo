@@ -46,8 +46,20 @@ const upsertMessage = (
 
 const normalizeMessages = (
   messages: readonly ChatMessage[],
-): readonly ChatMessage[] =>
-  messages.reduce<readonly ChatMessage[]>(upsertMessage, Object.freeze([]))
+): readonly ChatMessage[] => {
+  const normalized: ChatMessage[] = []
+  const indexById = new Map<string, number>()
+  for (const message of messages) {
+    const index = indexById.get(message.id)
+    if (index === undefined) {
+      indexById.set(message.id, normalized.length)
+      normalized.push(message)
+    } else {
+      normalized[index] = message
+    }
+  }
+  return Object.freeze(normalized)
+}
 
 /**
  * Owns the transient timeline for the currently selected CLI runtime/session.
@@ -147,6 +159,7 @@ export class CliConversationController {
     if (!this.acceptingEvents) {
       throw new Error('CLI runtime is not ready for the selected session.')
     }
+    const sessionRef = this.snapshot.sessionRef
 
     this.publish({
       ...this.snapshot,
@@ -154,12 +167,11 @@ export class CliConversationController {
       runState: 'running',
       error: null,
     })
+    if (!this.isCurrent(operation) || !this.acceptingEvents) return
 
     try {
       await operation.runtime.sendTurn({
-        ...(this.snapshot.sessionRef
-          ? { sessionRef: this.snapshot.sessionRef }
-          : {}),
+        ...(sessionRef ? { sessionRef } : {}),
         content,
       })
       // Runtime notifications may arrive before sendTurn resolves. Do not
