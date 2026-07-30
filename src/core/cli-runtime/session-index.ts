@@ -18,10 +18,22 @@ export const cliSessionIndexEntrySchema = z.object({
 
 export type CliSessionIndexEntry = z.infer<typeof cliSessionIndexEntrySchema>
 
-export const cliSessionIndexDocumentSchema = z.object({
-  schemaVersion: z.literal(CLI_SESSION_INDEX_SCHEMA_VERSION),
-  sessions: z.record(z.string(), cliSessionIndexEntrySchema),
-})
+export const cliSessionIndexDocumentSchema = z
+  .object({
+    schemaVersion: z.literal(CLI_SESSION_INDEX_SCHEMA_VERSION),
+    sessions: z.record(z.string(), cliSessionIndexEntrySchema),
+  })
+  .superRefine((document, context) => {
+    for (const [key, entry] of Object.entries(document.sessions)) {
+      if (key !== getCliSessionIndexKey(entry)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['sessions', key],
+          message: 'Session index key does not match its runtime/native identity.',
+        })
+      }
+    }
+  })
 
 export type CliSessionIndexDocument = z.infer<
   typeof cliSessionIndexDocumentSchema
