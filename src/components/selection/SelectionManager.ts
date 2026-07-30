@@ -1,5 +1,10 @@
 import { Editor } from 'obsidian'
 
+import {
+  getSelectionVisualLineRects,
+  trimRangeEndWhitespace,
+} from './selectionRangeGeometry'
+
 export type SelectionInfo = {
   text: string
   range: Range
@@ -143,7 +148,8 @@ export class SelectionManager {
         return
       }
 
-      const rects = range.getClientRects()
+      const effectiveRange = trimRangeEndWhitespace(range)
+      const rects = getSelectionVisualLineRects(effectiveRange)
 
       if (rects.length === 0) {
         this.clearSelection()
@@ -156,7 +162,7 @@ export class SelectionManager {
 
       this.currentSelection = {
         text,
-        range,
+        range: effectiveRange,
         rect,
         isMultiLine,
       }

@@ -13,14 +13,6 @@ export type SelectionActionConfig = {
 
 export const FIXED_SELECTION_ACTION_CONFIGS: SelectionActionConfig[] = [
   {
-    id: 'adjust-length',
-    labelKey: 'selection.actions.adjustLength',
-    labelFallback: '调整篇幅',
-    mode: 'rewrite',
-    rewriteBehavior: 'custom',
-    allowEmptyInstruction: true,
-  },
-  {
     id: 'custom-rewrite',
     labelKey: 'selection.actions.customRewrite',
     labelFallback: '自定义改写',
@@ -43,6 +35,12 @@ export const FIXED_SELECTION_ACTION_CONFIGS: SelectionActionConfig[] = [
     allowEmptyInstruction: true,
   },
 ]
+
+const NON_QUICK_SELECTION_ACTION_IDS = new Set(['adjust-length'])
+
+export function isSelectionQuickActionId(id: string): boolean {
+  return !NON_QUICK_SELECTION_ACTION_IDS.has(id)
+}
 
 export const DEFAULT_SELECTION_ACTION_CONFIGS: SelectionActionConfig[] = [
   {

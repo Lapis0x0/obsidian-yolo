@@ -19,7 +19,6 @@ describe('resolveSelectionChatActions', () => {
     const actions = resolveSelectionChatActions(settingsWithActions(), t)
 
     expect(actions.map((action) => action.id)).toEqual([
-      'adjust-length',
       'custom-rewrite',
       'custom-ask',
       'add-to-sidebar',
@@ -43,7 +42,6 @@ describe('resolveSelectionChatActions', () => {
     )
 
     expect(actions.map((action) => action.id)).toEqual([
-      'adjust-length',
       'custom-rewrite',
       'custom-ask',
       'add-to-sidebar',
@@ -51,7 +49,7 @@ describe('resolveSelectionChatActions', () => {
     ])
   })
 
-  test('preserves an explicitly hidden fixed action', () => {
+  test('drops the legacy adjust-length quick action', () => {
     const actions = resolveSelectionChatActions(
       settingsWithActions([
         {

@@ -6,6 +6,7 @@ import {
   FIXED_SELECTION_ACTION_IDS,
   type SelectionActionMode,
   type SelectionActionRewriteBehavior,
+  isSelectionQuickActionId,
   resolveSelectionActionMode,
   resolveSelectionActionRewriteBehavior,
 } from './selectionChatActionCatalog'
@@ -57,7 +58,10 @@ export function resolveSelectionChatActions(
       .map((action) => [action.id, action]),
   )
 
-  const customActions = settings.continuationOptions?.selectionChatActions
+  const customActions =
+    settings.continuationOptions?.selectionChatActions?.filter((action) =>
+      isSelectionQuickActionId(action.id),
+    )
   // Defensive: collapse any accidental duplicate fixed-action ids to the first
   // occurrence so a single hide/show toggle behaves predictably.
   const dedupedCustomActions = customActions

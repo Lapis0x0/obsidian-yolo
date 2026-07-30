@@ -26,6 +26,7 @@ import {
   SELECTION_ACTION_CONFIG_BY_ID,
   type SelectionActionMode,
   type SelectionActionRewriteBehavior,
+  isSelectionQuickActionId,
   resolveSelectionActionMode,
   resolveSelectionActionRewriteBehavior,
 } from '../../features/editor/selection-chat/selectionChatActionCatalog'
@@ -133,8 +134,9 @@ export function SelectionChatActionsSettings({
   const { settings } = useSettings()
   const { t } = useLanguage()
   const selectionChatActions =
-    settings.continuationOptions.selectionChatActions ||
-    getDefaultSelectionChatActions(t)
+    settings.continuationOptions.selectionChatActions?.filter((action) =>
+      isSelectionQuickActionId(action.id),
+    ) || getDefaultSelectionChatActions(t)
   const actionsCountLabel = t(
     'settings.selectionChat.actionsCount',
     '已配置 {count} 个快捷指令',
@@ -244,8 +246,9 @@ export function SelectionChatActionsSettingsContent() {
   )
 
   const rawActions =
-    settings.continuationOptions.selectionChatActions ||
-    getDefaultSelectionChatActions(t)
+    settings.continuationOptions.selectionChatActions?.filter((action) =>
+      isSelectionQuickActionId(action.id),
+    ) || getDefaultSelectionChatActions(t)
   const { list: backfilledActions } = withFixedActionsBackfilled(rawActions, t)
   const selectionChatActions = backfilledActions.map((action) => {
     const isFixed = FIXED_SELECTION_ACTION_IDS.has(action.id)

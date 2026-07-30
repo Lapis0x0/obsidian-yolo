@@ -197,6 +197,15 @@
   color: var(--h1-color, var(--interactive-accent));
 }
 
+.yolo-selection-length-affordance {
+  position: absolute;
+  z-index: 2;
+  width: 64px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
 /* Selection Actions Menu */
 .yolo-selection-menu {
   position: absolute;

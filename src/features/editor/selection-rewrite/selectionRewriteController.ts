@@ -121,6 +121,10 @@ export type StartSelectionLengthAdjustmentOptions = {
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
   settings: YoloSettings
+  initialDrag?: {
+    startClientY: number
+    currentClientY: number
+  }
 }
 
 type SelectionRewriteControllerDeps = {
@@ -387,11 +391,35 @@ const REWRITE_OUTER_RADIUS = 8
 const REWRITE_INNER_RADIUS = 4
 const REWRITE_SURFACE_EDGE_EPSILON = 1
 const LENGTH_HANDLE_SURFACE_EXTENSION = 5
+const LENGTH_HANDLE_WIDTH = 64
 
 function getOutlineReserveHeight(session: SelectionRewriteVisual): number {
   return (
     session.reserveHeight +
     (session.kind === 'length' ? LENGTH_HANDLE_SURFACE_EXTENSION : 0)
+  )
+}
+
+function getLengthHandleHorizontalAnchor(
+  rects: RewriteSurfaceRect[],
+  contentCenter: number,
+  direction: Direction,
+): number | undefined {
+  if (rects.length === 0) return undefined
+  const lastTop = Math.max(...rects.map((rect) => rect.top))
+  const lastLine = rects.filter((rect) => Math.abs(rect.top - lastTop) < 1)
+  const selectionEdge =
+    direction === Direction.RTL
+      ? Math.min(...lastLine.map((rect) => rect.left))
+      : Math.max(...lastLine.map((rect) => rect.left + rect.width))
+  const edgeAnchor = direction === Direction.RTL
+    ? Math.max(selectionEdge, contentCenter)
+    : Math.min(selectionEdge, contentCenter)
+  return (
+    edgeAnchor +
+    (direction === Direction.RTL
+      ? LENGTH_HANDLE_WIDTH / 2
+      : -LENGTH_HANDLE_WIDTH / 2)
   )
 }
 
@@ -1162,6 +1190,7 @@ class SelectionRewriteLengthHandleMarker implements LayerMarker {
 
 export class SelectionRewriteController {
   private readonly sessions = new Map<string, SelectionRewriteRuntime>()
+  private readonly externalLengthDragCleanups = new Map<string, () => void>()
   private readonly handleDocumentKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return
     const runtime = Array.from(this.sessions.values())
@@ -1290,6 +1319,14 @@ export class SelectionRewriteController {
                 contentTop !== undefined && contentBottom !== undefined
                   ? contentBottom - contentTop
                   : session.targetHeight
+              const contentBounds = getContentHorizontalBounds(view)
+              const contentCenter =
+                (contentBounds.left + contentBounds.right) / 2 - base.left
+              const handleAnchor = getLengthHandleHorizontalAnchor(
+                contentRects,
+                contentCenter,
+                view.textDirection,
+              )
               const condensing =
                 session.reserveHeight <= REWRITE_SURFACE_EDGE_EPSILON &&
                 session.targetHeight < contentHeight - 1
@@ -1297,12 +1334,14 @@ export class SelectionRewriteController {
                 new SelectionRewriteLengthHandleMarker(
                   session.id,
                   session.phase,
-                  lengthOutline
-                    ? lengthOutline.left + lengthOutline.width / 2
-                    : Math.max(
-                        6,
-                        (contentRect.left + contentRect.right) / 2 - base.left,
-                      ),
+                  handleAnchor ??
+                    (lengthOutline
+                      ? lengthOutline.left + lengthOutline.width / 2
+                      : Math.max(
+                          6,
+                          (contentRect.left + contentRect.right) / 2 -
+                            base.left,
+                        )),
                   lengthOutline
                     ? condensing && contentTop !== undefined
                       ? contentTop +
@@ -1454,6 +1493,11 @@ export class SelectionRewriteController {
     })
     this.sessions.set(runtime.id, runtime)
     this.deps.addAbortController(runtime.abortController)
+    if (options.initialDrag) {
+      this.startLengthDrag(runtime.id, options.initialDrag.startClientY)
+      this.applyLengthDrag(runtime, options.initialDrag.currentClientY)
+      this.continueLengthDragFromDocument(runtime.id)
+    }
     this.dispatchView(options.view, {
       selection: { anchor: options.from },
     })
@@ -1577,6 +1621,31 @@ export class SelectionRewriteController {
       runtime.dragFrame = null
       this.applyLengthDrag(runtime, runtime.pendingDragClientY)
     })
+  }
+
+  private continueLengthDragFromDocument(id: string): void {
+    this.externalLengthDragCleanups.get(id)?.()
+    const move = (event: PointerEvent) => {
+      this.scheduleLengthDrag(id, event.clientY)
+    }
+    const finish = (event: PointerEvent) => {
+      cleanup()
+      this.finishLengthDrag(id, event.clientY)
+    }
+    const cancel = () => {
+      cleanup()
+      this.cancelLengthDrag(id)
+    }
+    const cleanup = () => {
+      document.removeEventListener('pointermove', move, true)
+      document.removeEventListener('pointerup', finish, true)
+      document.removeEventListener('pointercancel', cancel, true)
+      this.externalLengthDragCleanups.delete(id)
+    }
+    document.addEventListener('pointermove', move, true)
+    document.addEventListener('pointerup', finish, true)
+    document.addEventListener('pointercancel', cancel, true)
+    this.externalLengthDragCleanups.set(id, cleanup)
   }
 
   private applyLengthDrag(
@@ -2170,6 +2239,7 @@ export class SelectionRewriteController {
   }
 
   private cleanupRuntime(runtime: SelectionRewriteRuntime): void {
+    this.externalLengthDragCleanups.get(runtime.id)?.()
     this.cancelPublishFrame(runtime)
     this.cancelLayoutFrame(runtime)
     this.cancelDragFrame(runtime)

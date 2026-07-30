@@ -158,7 +158,6 @@ export const it: DeepPartial<TranslationKeys> = {
     actions: {
       addToChat: 'Aggiungi alla chat',
       addToSidebar: 'Aggiungi alla barra laterale',
-      adjustLength: 'Regola lunghezza',
       customRewrite: 'Riscrittura personalizzata',
       customAsk: 'Domanda personalizzata',
       rewrite: 'AI riscrivi',

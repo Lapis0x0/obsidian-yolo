@@ -665,6 +665,14 @@ export class SelectionChatController {
         onClose: () => {
           this.destroyCurrentWidget()
         },
+        onLengthDragStart: snapshot.isTableSelection
+          ? undefined
+          : (startClientY, currentClientY) => {
+              return this.adjustSelectionLength(editor, snapshot, {
+                startClientY,
+                currentClientY,
+              })
+            },
         onAction: (
           actionId: string,
           _sel: SelectionInfo,
@@ -702,11 +710,6 @@ export class SelectionChatController {
       assistantId !== undefined
         ? assistantId
         : this.getSettings().currentAssistantId
-
-    if (actionId === 'adjust-length') {
-      await this.adjustSelectionLength(editor, snapshot)
-      return
-    }
 
     if (mode === 'rewrite') {
       await this.rewriteSelection(
@@ -1151,14 +1154,15 @@ export class SelectionChatController {
     })
   }
 
-  private async adjustSelectionLength(
+  private adjustSelectionLength(
     editor: Editor,
     snapshot?: MarkdownSelectionSnapshot,
-  ): Promise<void> {
+    initialDrag?: { startClientY: number; currentClientY: number },
+  ): boolean {
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (!markdownView) {
       new Notice(this.t('selection.length.noEditor', '无法获取当前编辑器'))
-      return
+      return false
     }
     const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
       editor,
@@ -1169,7 +1173,7 @@ export class SelectionChatController {
       new Notice(
         this.t('selection.length.noSelection', '请先选择要调整的文本。'),
       )
-      return
+      return false
     }
     if (resolvedSnapshot.isTableSelection) {
       new Notice(
@@ -1178,12 +1182,12 @@ export class SelectionChatController {
           '暂不支持调整表格选区的篇幅。',
         ),
       )
-      return
+      return false
     }
     const editorView = this.getEditorView(editor)
     if (!editorView) {
       new Notice(this.t('selection.length.noEditorView', '无法获取编辑器视图'))
-      return
+      return false
     }
 
     const from =
@@ -1192,6 +1196,11 @@ export class SelectionChatController {
     const to =
       resolvedSnapshot.highlightRange?.to ??
       from + resolvedSnapshot.editContextText.length
+    const selectedText = resolvedSnapshot.editContextText.trimEnd()
+    const effectiveTo = Math.max(
+      from,
+      to - (resolvedSnapshot.editContextText.length - selectedText.length),
+    )
     const settings = this.getSettings()
     const preferredModelId = [
       settings.continuationOptions?.tabCompletionModelId,
@@ -1211,7 +1220,7 @@ export class SelectionChatController {
           'No chat model configured. Please add a model in settings.',
         ),
       )
-      return
+      return false
     }
 
     let modelClient: ReturnType<typeof getChatModelClient>
@@ -1228,7 +1237,7 @@ export class SelectionChatController {
           'No chat model configured. Please add a model in settings.',
         ),
       )
-      return
+      return false
     }
 
     const beforeChars = Math.max(
@@ -1244,15 +1253,20 @@ export class SelectionChatController {
     this.plugin.startSelectionLengthAdjustment({
       view: editorView,
       from,
-      to,
-      selectedText: resolvedSnapshot.editContextText,
+      to: effectiveTo,
+      selectedText,
       contextBefore: doc.sliceString(Math.max(0, from - beforeChars), from),
-      contextAfter: doc.sliceString(to, Math.min(doc.length, to + afterChars)),
+      contextAfter: doc.sliceString(
+        effectiveTo,
+        Math.min(doc.length, effectiveTo + afterChars),
+      ),
       fileTitle: file.basename,
       providerClient: modelClient.providerClient,
       model: modelClient.model,
       settings,
+      initialDrag,
     })
+    return true
   }
 
   private async rewriteSelection(

@@ -1461,7 +1461,6 @@ export type TranslationKeys = {
     actions?: {
       addToChat?: string
       addToSidebar?: string
-      adjustLength?: string
       customRewrite?: string
       customAsk?: string
       rewrite?: string
