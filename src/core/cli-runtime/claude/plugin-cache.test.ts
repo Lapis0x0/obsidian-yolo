@@ -372,6 +372,89 @@ describe('ClaudeLocalPluginCache', () => {
     expect(await adapter.exists(`${root}/${unownedHash}/keep.txt`)).toBe(true)
   })
 
+  it('keeps every cache hash resolved during the current process lifetime', async () => {
+    const adapter = new MemoryFileSystemAdapter()
+    const cache = new ClaudeLocalPluginCache({
+      app: createApp(adapter),
+      getSettings: () => undefined,
+      getSkillPackageSource: async ({ name }) =>
+        name
+          ? source(name, [
+              {
+                kind: 'builtin',
+                relativePath: 'SKILL.md',
+                content: `skill:${name}`,
+              },
+            ])
+          : null,
+    })
+
+    const first = await cache.resolvePluginPaths({
+      enabledSkillNames: ['alpha'],
+    })
+    const second = await cache.resolvePluginPaths({
+      enabledSkillNames: ['beta'],
+    })
+
+    expect(second).not.toEqual(first)
+    expect(await adapter.exists(first[0].slice('/vault/'.length))).toBe(true)
+    expect(await adapter.exists(second[0].slice('/vault/'.length))).toBe(true)
+  })
+
+  it('cleans owned stale staging while preserving unowned staging', async () => {
+    const adapter = new MemoryFileSystemAdapter()
+    const ownedHash = 'c'.repeat(64)
+    const unownedHash = 'd'.repeat(64)
+    const root = 'YOLO/.derived/claude-plugins'
+    const ownedStaging = `${root}/.staging-${ownedHash}`
+    const unownedStaging = `${root}/.staging-${unownedHash}`
+    await adapter.seedText(
+      `${ownedStaging}/.yolo-derived-plugin.json`,
+      `${JSON.stringify({ version: 1, contentHash: ownedHash })}\n`,
+    )
+    await adapter.seedText(`${ownedStaging}/old.txt`, 'old')
+    await adapter.seedText(`${unownedStaging}/keep.txt`, 'user data')
+    const cache = new ClaudeLocalPluginCache({
+      app: createApp(adapter),
+      getSettings: () => undefined,
+      getSkillPackageSource: async () =>
+        source('alpha', [
+          { kind: 'builtin', relativePath: 'SKILL.md', content: 'alpha' },
+        ]),
+    })
+
+    await cache.resolvePluginPaths({ enabledSkillNames: ['alpha'] })
+
+    expect(await adapter.exists(ownedStaging)).toBe(false)
+    expect(await adapter.exists(`${unownedStaging}/keep.txt`)).toBe(true)
+  })
+
+  it('refuses to replace an unowned staging directory for the current hash', async () => {
+    const adapter = new MemoryFileSystemAdapter()
+    const cache = new ClaudeLocalPluginCache({
+      app: createApp(adapter),
+      getSettings: () => undefined,
+      getSkillPackageSource: async () =>
+        source('alpha', [
+          { kind: 'builtin', relativePath: 'SKILL.md', content: 'alpha' },
+        ]),
+    })
+    const [initialPath] = await cache.resolvePluginPaths({
+      enabledSkillNames: ['alpha'],
+    })
+    const targetDir = initialPath.slice('/vault/'.length)
+    const slashIndex = targetDir.lastIndexOf('/')
+    const hash = targetDir.slice(slashIndex + 1)
+    const stagingDir = `${targetDir.slice(0, slashIndex)}/.staging-${hash}`
+    await adapter.rmdir(targetDir, true)
+    await adapter.seedText(`${stagingDir}/keep.txt`, 'user data')
+
+    await expect(
+      cache.resolvePluginPaths({ enabledSkillNames: ['alpha'] }),
+    ).rejects.toThrow(/staging directory is not owned/)
+    expect(await adapter.read(`${stagingDir}/keep.txt`)).toBe('user data')
+  })
+
   it('reads current settings on every call so base-directory changes take effect', async () => {
     const adapter = new MemoryFileSystemAdapter()
     let baseDir = 'First'

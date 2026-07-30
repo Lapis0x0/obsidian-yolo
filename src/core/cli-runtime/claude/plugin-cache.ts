@@ -204,6 +204,7 @@ export class ClaudeLocalPluginCache {
   private readonly app: App
   private readonly getSettings: ClaudeLocalPluginCacheOptions['getSettings']
   private readonly getSkillPackageSource: typeof getLiteSkillPackageSource
+  private readonly protectedHashes = new Map<string, Set<string>>()
   private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(options: ClaudeLocalPluginCacheOptions) {
@@ -302,9 +303,22 @@ export class ClaudeLocalPluginCache {
         )
       }
     } else {
-      await removeDirectory(adapter, stagingDir)
+      if (await adapter.exists(stagingDir)) {
+        if (!(await isOwnedCacheEntry(adapter, stagingDir, hash))) {
+          throw new Error(
+            `Claude plugin staging directory is not owned by YOLO: ${stagingDir}`,
+          )
+        }
+        await removeDirectory(adapter, stagingDir)
+      }
       await ensureDirectory(adapter, stagingDir)
       try {
+        // Establish ownership before any other materialization write so only
+        // directories bearing this exact hash may ever be cleaned recursively.
+        await adapter.write(
+          normalizePath(`${stagingDir}/${CACHE_ENTRY_MARKER}`),
+          getMarker(hash),
+        )
         for (const resource of resources) {
           const targetPath = normalizePath(`${stagingDir}/${resource.path}`)
           await ensureParentDirectory(adapter, targetPath)
@@ -315,34 +329,45 @@ export class ClaudeLocalPluginCache {
         )
         await ensureParentDirectory(adapter, manifestPath)
         await adapter.write(manifestPath, getManifest(hash))
-        await adapter.write(
-          normalizePath(`${stagingDir}/${CACHE_ENTRY_MARKER}`),
-          getMarker(hash),
-        )
         await adapter.rename(stagingDir, targetDir)
       } finally {
-        await removeDirectory(adapter, stagingDir)
+        if (await isOwnedCacheEntry(adapter, stagingDir, hash)) {
+          await removeDirectory(adapter, stagingDir)
+        }
       }
     }
 
-    await this.cleanupOldEntries(adapter, cacheRoot, hash)
+    this.protectHash(cacheRoot, hash)
+    await this.cleanupOldEntries(adapter, cacheRoot)
     return [await this.toAbsolutePath(adapter, targetDir)]
+  }
+
+  private protectHash(cacheRoot: string, hash: string): void {
+    const hashes = this.protectedHashes.get(cacheRoot) ?? new Set<string>()
+    hashes.add(hash)
+    this.protectedHashes.set(cacheRoot, hashes)
   }
 
   private async cleanupOldEntries(
     adapter: DataAdapter,
     cacheRoot: string,
-    currentHash: string,
   ): Promise<void> {
+    const protectedHashes = this.protectedHashes.get(cacheRoot) ?? new Set()
     const listing = await adapter.list(cacheRoot)
     for (const folder of listing.folders) {
       const name = folder.slice(folder.lastIndexOf('/') + 1)
-      if (name === currentHash) continue
       if (name.startsWith('.staging-')) {
-        await removeDirectory(adapter, folder)
+        const stagingHash = name.slice('.staging-'.length)
+        if (
+          HASH_PATTERN.test(stagingHash) &&
+          (await isOwnedCacheEntry(adapter, folder, stagingHash))
+        ) {
+          await removeDirectory(adapter, folder)
+        }
         continue
       }
       if (
+        !protectedHashes.has(name) &&
         HASH_PATTERN.test(name) &&
         (await isOwnedCacheEntry(adapter, folder, name))
       ) {
