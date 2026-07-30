@@ -166,9 +166,9 @@
 .yolo-selection-rewrite-length-control {
   position: absolute;
   z-index: 2;
-  width: 56px;
-  height: 20px;
-  transform: translate(-50%, -1px);
+  width: 64px;
+  height: 16px;
+  transform: translate(-50%, -50%);
   opacity: 1;
   pointer-events: auto;
   transition: opacity 120ms ease;
@@ -178,9 +178,9 @@
   content: '';
   position: absolute;
   left: 50%;
-  top: 1px;
+  top: calc(50% - var(--yolo-selection-rewrite-handle-surface-extension, 5px));
   width: var(--yolo-selection-rewrite-length-guide-width, 120px);
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   border-top: 1px dashed
     color-mix(in srgb, var(--interactive-accent) 72%, transparent);
   pointer-events: none;
@@ -189,10 +189,10 @@
 .yolo-selection-rewrite-length-readout {
   position: absolute;
   left: 50%;
-  bottom: 27px;
+  bottom: 18px;
   width: max-content;
   max-width: 180px;
-  padding: 5px 9px;
+  padding: 4px 9px;
   transform: translateX(-50%);
   border: 1px solid color-mix(in srgb, var(--text-muted) 38%, transparent);
   border-radius: 8px;
@@ -221,17 +221,16 @@ button.yolo-selection-rewrite-length-handle {
   position: absolute;
   left: 0;
   top: 0;
-  width: 56px;
-  min-width: 56px;
-  height: 20px;
-  min-height: 20px;
+  width: 64px;
+  min-width: 64px;
+  height: 16px;
+  min-height: 16px;
   margin: 0;
   padding: 0;
-  border: 1px solid
-    color-mix(in srgb, var(--interactive-accent) 64%, var(--text-muted));
+  border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 94%, transparent);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  background: transparent;
+  box-shadow: none;
   cursor: ns-resize;
   touch-action: none;
   appearance: none;
@@ -243,21 +242,22 @@ button.yolo-selection-rewrite-length-handle::before {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 3px;
-  height: 3px;
+  width: 64px;
+  height: 4px;
   transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: var(--text-muted);
-  box-shadow:
-    -8px 0 var(--text-muted),
-    8px 0 var(--text-muted);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+  transition: background-color 150ms ease;
 }
 
-button.yolo-selection-rewrite-length-handle:hover,
-button.yolo-selection-rewrite-length-handle:focus-visible,
+button.yolo-selection-rewrite-length-handle:hover::before,
+button.yolo-selection-rewrite-length-handle:focus-visible::before,
 .yolo-selection-rewrite-length-control.is-resizing
-  button.yolo-selection-rewrite-length-handle {
-  border-color: var(--interactive-accent);
+  button.yolo-selection-rewrite-length-handle::before {
+  background: color-mix(in srgb, var(--text-muted) 65%, transparent);
+}
+
+button.yolo-selection-rewrite-length-handle:focus-visible {
   outline: none;
 }
 

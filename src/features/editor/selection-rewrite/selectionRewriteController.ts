@@ -386,6 +386,14 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 const REWRITE_OUTER_RADIUS = 8
 const REWRITE_INNER_RADIUS = 4
 const REWRITE_SURFACE_EDGE_EPSILON = 1
+const LENGTH_HANDLE_SURFACE_EXTENSION = 5
+
+function getOutlineReserveHeight(session: SelectionRewriteVisual): number {
+  return (
+    session.reserveHeight +
+    (session.kind === 'length' ? LENGTH_HANDLE_SURFACE_EXTENSION : 0)
+  )
+}
 
 function toSurfaceBand(rect: RewriteSurfaceRect): RewriteSurfaceBand {
   return {
@@ -899,7 +907,7 @@ function createAdaptiveRewriteOutline(
         view,
         session,
         getRewriteContentRects(view, session),
-        session.reserveHeight,
+        getOutlineReserveHeight(session),
       )
   return createRewriteOutline(rects)
 }
@@ -1064,6 +1072,7 @@ class SelectionRewriteLengthHandleMarker implements LayerMarker {
       other.left === this.left &&
       other.top === this.top &&
       other.label === this.label &&
+      other.ariaLabel === this.ariaLabel &&
       other.condensing === this.condensing &&
       other.guideWidth === this.guideWidth
     )
@@ -1074,10 +1083,14 @@ class SelectionRewriteLengthHandleMarker implements LayerMarker {
     root.dataset.yoloRewriteLengthHandleId = this.id
     const readout = document.createElement('div')
     readout.className = 'yolo-selection-rewrite-length-readout'
+    const accessibleLabel = document.createElement('span')
+    accessibleLabel.id = `yolo-selection-rewrite-length-handle-label-${this.id}`
+    accessibleLabel.className = 'yolo-sr-only'
+    accessibleLabel.textContent = this.ariaLabel
     const handle = document.createElement('button')
     handle.type = 'button'
     handle.className = 'yolo-selection-rewrite-length-handle'
-    handle.setAttribute('aria-label', this.ariaLabel)
+    handle.setAttribute('aria-labelledby', accessibleLabel.id)
     handle.addEventListener('pointerdown', (event) => {
       if (handle.disabled) return
       event.preventDefault()
@@ -1103,7 +1116,7 @@ class SelectionRewriteLengthHandleMarker implements LayerMarker {
       handle.addEventListener('pointerup', finish)
       handle.addEventListener('pointercancel', cancel)
     })
-    root.append(readout, handle)
+    root.append(readout, handle, accessibleLabel)
     this.adjust(root)
     return root
   }
@@ -1128,6 +1141,10 @@ class SelectionRewriteLengthHandleMarker implements LayerMarker {
       '--yolo-selection-rewrite-length-guide-width',
       `${this.guideWidth}px`,
     )
+    element.style.setProperty(
+      '--yolo-selection-rewrite-handle-surface-extension',
+      `${LENGTH_HANDLE_SURFACE_EXTENSION}px`,
+    )
     const readout = element.querySelector<HTMLElement>(
       '.yolo-selection-rewrite-length-readout',
     )
@@ -1135,17 +1152,54 @@ class SelectionRewriteLengthHandleMarker implements LayerMarker {
     const handle = element.querySelector<HTMLButtonElement>(
       '.yolo-selection-rewrite-length-handle',
     )
+    const accessibleLabel = element.querySelector<HTMLElement>('.yolo-sr-only')
+    if (accessibleLabel) accessibleLabel.textContent = this.ariaLabel
     if (handle) {
       handle.disabled = locked
-      handle.setAttribute('aria-label', this.ariaLabel)
     }
   }
 }
 
 export class SelectionRewriteController {
   private readonly sessions = new Map<string, SelectionRewriteRuntime>()
+  private readonly handleDocumentKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape') return
+    const runtime = Array.from(this.sessions.values())
+      .reverse()
+      .find(
+        (candidate) =>
+          candidate.kind === 'length' && candidate.phase === 'resizing',
+      )
+    if (!runtime) return
+    this.dismissLengthRuntime(runtime)
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
+    const target = event.target instanceof Element ? event.target : null
+    const activeHandleId = target
+      ?.closest<HTMLElement>('[data-yolo-rewrite-length-handle-id]')
+      ?.getAttribute('data-yolo-rewrite-length-handle-id')
+    for (const runtime of Array.from(this.sessions.values())) {
+      if (
+        runtime.kind !== 'length' ||
+        runtime.phase !== 'resizing' ||
+        runtime.id === activeHandleId
+      ) {
+        continue
+      }
+      this.dismissLengthRuntime(runtime)
+    }
+  }
 
-  constructor(private readonly deps: SelectionRewriteControllerDeps) {}
+  constructor(private readonly deps: SelectionRewriteControllerDeps) {
+    document.addEventListener('keydown', this.handleDocumentKeyDown, true)
+    document.addEventListener(
+      'pointerdown',
+      this.handleDocumentPointerDown,
+      true,
+    )
+  }
 
   createExtension(): Extension {
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- CodeMirror constructs the view plugin class
@@ -1251,7 +1305,9 @@ export class SelectionRewriteController {
                       ),
                   lengthOutline
                     ? condensing && contentTop !== undefined
-                      ? contentTop + session.targetHeight
+                      ? contentTop +
+                        session.targetHeight +
+                        LENGTH_HANDLE_SURFACE_EXTENSION
                       : lengthOutline.top + lengthOutline.height
                     : bottom - base.top,
                   controller.formatLengthLabel(session.targetRatio),
@@ -1566,7 +1622,7 @@ export class SelectionRewriteController {
       runtime.view,
       runtime,
       getRewriteContentRects(runtime.view, runtime),
-      runtime.reserveHeight,
+      getOutlineReserveHeight(runtime),
     )
     runtime.targetReserveHeight = runtime.reserveHeight
     runtime.overflowHeight = 0
@@ -1612,12 +1668,16 @@ export class SelectionRewriteController {
         candidate.phase === 'resizing',
     )
     if (!runtime || runtime.kind !== 'length') return false
+    this.dismissLengthRuntime(runtime)
+    return true
+  }
+
+  private dismissLengthRuntime(runtime: SelectionRewriteRuntime): void {
     if (runtime.drag) {
       this.cancelLengthDrag(runtime.id)
-    } else {
-      this.removeRuntime(runtime)
+      return
     }
-    return true
+    this.removeRuntime(runtime)
   }
 
   stop(id: string): void {
@@ -1652,6 +1712,12 @@ export class SelectionRewriteController {
   }
 
   destroy(): void {
+    document.removeEventListener('keydown', this.handleDocumentKeyDown, true)
+    document.removeEventListener(
+      'pointerdown',
+      this.handleDocumentPointerDown,
+      true,
+    )
     for (const runtime of Array.from(this.sessions.values())) {
       runtime.abortController.abort()
       if (runtime.phase === 'review') {
