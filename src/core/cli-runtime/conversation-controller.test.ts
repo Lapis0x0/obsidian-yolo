@@ -123,7 +123,13 @@ describe('CliConversationController', () => {
     })
     const controller = new CliConversationController(runtime)
 
-    await controller.hydrateSession(ref)
+    await expect(controller.hydrateSession(ref)).resolves.toMatchObject({
+      ref: {
+        runtimeId: 'codex',
+        nativeSessionId: 'existing',
+        sessionPathHint: '/native/session.jsonl',
+      },
+    })
     await controller.ensureReady(assistant)
     expect(controller.getSnapshot()).toMatchObject({
       sessionRef: {
