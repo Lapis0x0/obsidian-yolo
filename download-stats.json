@@ -1,15 +1,16 @@
 {
   "schemaVersion": 1,
   "mirrorLaunchedAt": "2026-07-25T05:38:22.000Z",
-  "updatedAt": "2026-07-29T05:06:16.984Z",
-  "githubTotal": 217534,
-  "cloudflareTotal": 5341,
-  "total": 222875,
+  "updatedAt": "2026-07-30T05:20:50.593Z",
+  "githubTotal": 218849,
+  "cloudflareTotal": 6551,
+  "total": 225400,
   "cloudflareDaily": {
     "2026-07-25": 450,
     "2026-07-26": 328,
     "2026-07-27": 936,
     "2026-07-28": 3191,
-    "2026-07-29": 436
+    "2026-07-29": 1419,
+    "2026-07-30": 227
   }
 }
