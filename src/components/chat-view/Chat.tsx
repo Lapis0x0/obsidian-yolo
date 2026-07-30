@@ -37,9 +37,16 @@ import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
+  type ChatRuntimeId,
+  type CliConversationController,
+  type CliConversationSnapshot,
+  type CliRuntimeId,
   type CliRuntimeScope,
+  type CliSessionDiscoveryResult,
+  type CliSessionRef,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
+  isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
@@ -121,6 +128,7 @@ import { readTFileContent } from '../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
+import { ConfirmModal } from '../modals/ConfirmModal'
 
 // removed Prompt Templates feature
 
@@ -150,6 +158,27 @@ import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
+import {
+  type CliChatOperationSnapshot,
+  beginChatRuntimeNavigation,
+  getCliChatOperationCoordinator,
+  invalidateChatRuntimeNavigation,
+  isCliConversationActive,
+  openCliSession,
+  openCliSessionForNavigation,
+  removeCliOverlayAfterConfirmation,
+  resolveActiveAssistantId,
+  resolveActiveCliConversationSnapshot,
+  resolveChatRuntimeId,
+  selectFreshCliRuntime,
+  shouldBlockCliSessionOpen,
+  shouldClearAcceptedCliDraft,
+  shouldHydrateSeededCliSession,
+  shouldLoadYoloHistoryItem,
+  submitCliComposerTurn,
+} from './cliChatIntegration'
+import CliChatSurface from './CliChatSurface'
+import { CliSessionListSection } from './CliSessionListSection'
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
@@ -158,6 +187,7 @@ import MessageNavigator from './MessageNavigator'
 import type { MessageNavigatorAnchor } from './MessageNavigator'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
+import { RuntimeSelector } from './RuntimeSelector'
 import { TodoListPanel } from './TodoListPanel'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
@@ -874,8 +904,12 @@ export type ChatRef = {
  * 都塞进来（消息列表会从 DB 自动恢复，无需快照）。
  */
 export type ChatRuntimeSnapshot = {
+  activeRuntimeId: ChatRuntimeId
+  cliSessionRef: CliSessionRef | null
+  cliAssistantId: string
   currentConversationId: string
   inputMessage: ChatUserMessage
+  inputDraftRevision: number
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
@@ -931,12 +965,218 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } = useChatHistory()
   const chatManager = useChatManager()
   const seededRuntimeSnapshot = props.seededRuntimeSnapshot
+  const cliRuntimeScope = props.cliRuntimeScope
+  const cliRuntimeAvailable = isCliRuntimeAvailable()
+  const initialActiveRuntimeId = resolveChatRuntimeId({
+    requestedRuntimeId: seededRuntimeSnapshot?.activeRuntimeId,
+    hasCliRuntimeScope: cliRuntimeScope !== undefined,
+    cliRuntimeAvailable,
+  })
+  const [requestedRuntimeId, setRequestedRuntimeId] = useState<ChatRuntimeId>(
+    initialActiveRuntimeId,
+  )
+  const activeRuntimeId = resolveChatRuntimeId({
+    requestedRuntimeId,
+    hasCliRuntimeScope: cliRuntimeScope !== undefined,
+    cliRuntimeAvailable,
+  })
+  const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
+  const chatMountedRef = useRef(true)
+  const runtimeNavigationGenerationRef = useRef(0)
+  useEffect(() => {
+    chatMountedRef.current = true
+    return () => {
+      chatMountedRef.current = false
+    }
+  }, [])
+  const [cliConversationController, setCliConversationController] =
+    useState<CliConversationController | null>(() =>
+      initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
+        ? cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
+        : null,
+    )
+  const [cliConversationSnapshot, setCliConversationSnapshot] =
+    useState<CliConversationSnapshot | null>(
+      () => cliConversationController?.getSnapshot() ?? null,
+    )
+  useEffect(() => {
+    if (!cliConversationController) {
+      setCliConversationSnapshot(null)
+      return
+    }
+    const publishSnapshot = () =>
+      setCliConversationSnapshot(cliConversationController.getSnapshot())
+    publishSnapshot()
+    return cliConversationController.subscribe(publishSnapshot)
+  }, [cliConversationController])
+  const activeCliConversationSnapshot = resolveActiveCliConversationSnapshot(
+    activeRuntimeId,
+    cliConversationSnapshot,
+  )
+  const isCliRunActive = isCliConversationActive(activeCliConversationSnapshot)
+  const cliOperationCoordinator = useMemo(
+    () =>
+      cliConversationController
+        ? getCliChatOperationCoordinator(cliConversationController)
+        : null,
+    [cliConversationController],
+  )
+  const [cliOperationSnapshot, setCliOperationSnapshot] =
+    useState<CliChatOperationSnapshot | null>(
+      () => cliOperationCoordinator?.getSnapshot() ?? null,
+    )
+  useEffect(() => {
+    if (!cliOperationCoordinator) {
+      setCliOperationSnapshot(null)
+      return
+    }
+    const publishSnapshot = () =>
+      setCliOperationSnapshot(cliOperationCoordinator.getSnapshot())
+    publishSnapshot()
+    const unsubscribe = cliOperationCoordinator.subscribe(publishSnapshot)
+    return () => {
+      unsubscribe()
+      cliOperationCoordinator.abortPreparation()
+    }
+  }, [cliOperationCoordinator])
+  const cliSubmissionPending =
+    cliOperationSnapshot?.submissionPhase === 'preparing' ||
+    cliOperationSnapshot?.submissionPhase === 'sending'
+  const cliTransitioning = cliOperationSnapshot?.isTransitioning === true
+  const [cliSessionDiscoveryResult, setCliSessionDiscoveryResult] =
+    useState<CliSessionDiscoveryResult>()
+  const [cliSessionsLoading, setCliSessionsLoading] = useState(false)
+  const cliSessionRefreshIdRef = useRef(0)
+  const refreshCliSessions = useCallback(async () => {
+    if (!cliRuntimeScope || !cliRuntimeAvailable) return
+    const refreshId = ++cliSessionRefreshIdRef.current
+    setCliSessionsLoading(true)
+    try {
+      const result = await cliRuntimeScope.sessionService.listSessions()
+      if (refreshId === cliSessionRefreshIdRef.current) {
+        setCliSessionDiscoveryResult(result)
+      }
+    } catch (error) {
+      if (refreshId !== cliSessionRefreshIdRef.current) return
+      const message = t(
+        'sidebar.cliSessions.loadError',
+        'Could not load CLI sessions: {message}',
+      ).replace(
+        '{message}',
+        error instanceof Error ? error.message : String(error),
+      )
+      setCliSessionDiscoveryResult({
+        sessions: [],
+        errors: { 'claude-code': message, codex: message },
+      })
+    } finally {
+      if (refreshId === cliSessionRefreshIdRef.current) {
+        setCliSessionsLoading(false)
+      }
+    }
+  }, [cliRuntimeAvailable, cliRuntimeScope, t])
+  useEffect(() => {
+    if (!cliRuntimeScope || !cliRuntimeAvailable) return
+    void refreshCliSessions()
+    return () => {
+      cliSessionRefreshIdRef.current += 1
+    }
+  }, [cliRuntimeAvailable, cliRuntimeScope, refreshCliSessions])
   const [conversationAssistantId, setConversationAssistantId] =
     useState<string>(
       seededRuntimeSnapshot?.conversationAssistantId ??
         settings.currentAssistantId ??
         DEFAULT_ASSISTANT_ID,
     )
+  const [cliAssistantId, setCliAssistantId] = useState<string>(
+    seededRuntimeSnapshot?.cliAssistantId ??
+      settings.currentAssistantId ??
+      DEFAULT_ASSISTANT_ID,
+  )
+  const activeAssistantId = resolveActiveAssistantId({
+    activeRuntimeId,
+    conversationAssistantId,
+    cliAssistantId,
+  })
+  const cliSessionRestoreGenerationRef = useRef(0)
+  useEffect(() => {
+    const seededRef = seededRuntimeSnapshot?.cliSessionRef
+    if (
+      !seededRef ||
+      activeRuntimeId === 'yolo' ||
+      !cliRuntimeScope ||
+      !cliConversationController ||
+      !cliOperationCoordinator
+    ) {
+      return
+    }
+    const controllerSnapshot = cliConversationController.getSnapshot()
+    // A surviving scope/controller is authoritative on ordinary rebuilds.
+    // Only a fresh, unbound controller needs one native hydration from seed.
+    if (!shouldHydrateSeededCliSession(seededRef, controllerSnapshot)) return
+
+    const generation = ++cliSessionRestoreGenerationRef.current
+    void cliOperationCoordinator
+      .transition(cliConversationController, async (isCurrent) => {
+        const isCurrentRestore = () =>
+          isCurrent() &&
+          generation === cliSessionRestoreGenerationRef.current &&
+          chatMountedRef.current
+        const result = await openCliSession({
+          scope: cliRuntimeScope,
+          ref: seededRef,
+          currentAssistantId: cliAssistantId,
+          isCurrent: isCurrentRestore,
+        })
+        if (!result.hydration || !isCurrentRestore()) {
+          return
+        }
+        setCliConversationController(result.controller)
+        setRequestedRuntimeId(seededRef.runtimeId)
+        activeRuntimeIdRef.current = seededRef.runtimeId
+        setCliAssistantId(result.assistantId)
+        if (result.overlayError) {
+          new Notice(
+            t(
+              'sidebar.cliSessions.recordError',
+              'The CLI session opened, but YOLO could not remember it: {message}',
+            ).replace('{message}', result.overlayError.message),
+          )
+        }
+        void refreshCliSessions()
+      })
+      .catch((error) => {
+        if (
+          generation !== cliSessionRestoreGenerationRef.current ||
+          !chatMountedRef.current
+        ) {
+          return
+        }
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      })
+    return () => {
+      cliSessionRestoreGenerationRef.current += 1
+    }
+  }, [
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    chatMountedRef,
+    cliAssistantId,
+    cliConversationController,
+    cliOperationCoordinator,
+    cliRuntimeScope,
+    refreshCliSessions,
+    seededRuntimeSnapshot?.cliSessionRef,
+    t,
+  ])
   const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
   const effectiveSettings = useMemo(
     () => ({
@@ -1014,6 +1254,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     inputDraftHolderRef.current = new ChatInputDraftHolder(inputMessage)
   }
   const inputDraftHolder = inputDraftHolderRef.current
+  const inputDraftRevisionRef = useRef(
+    seededRuntimeSnapshot?.inputDraftRevision ?? 0,
+  )
+  const bumpInputDraftRevision = useCallback(() => {
+    inputDraftRevisionRef.current += 1
+  }, [])
   const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
   const inputMessageRef = useRef(inputMessage)
   const getLatestInputMessage = useCallback(
@@ -1027,19 +1273,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const setInputMessage = useCallback(
     (updater: (message: ChatUserMessage) => ChatUserMessage) => {
       const nextMessage = inputDraftHolder.update(updater)
+      bumpInputDraftRevision()
       inputMessageRef.current = nextMessage
       setInputMessageState(nextMessage)
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
   const replaceInputMessage = useCallback(
     (message: ChatUserMessage) => {
       const nextMessage = inputDraftHolder.replace(message)
+      bumpInputDraftRevision()
       inputMessageRef.current = nextMessage
       setInputMessageState(nextMessage)
       setInputReplacementVersion(inputDraftHolder.getReplacementVersion())
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
   const [queuedMessageEditState, setQueuedMessageEditState] = useState<{
     preservedInputMessage: ChatUserMessage
@@ -1347,6 +1595,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () => resolveAssistantTimeContextEnabled(selectedAssistant, settings),
     [selectedAssistant, settings],
   )
+  const selectedCliAssistant = useMemo(
+    () =>
+      settings.assistants.find(
+        (assistant) => assistant.id === cliAssistantId,
+      ) ?? null,
+    [cliAssistantId, settings.assistants],
+  )
+  const selectedCliAssistantTimeContextEnabled = useMemo(
+    () => resolveAssistantTimeContextEnabled(selectedCliAssistant, settings),
+    [selectedCliAssistant, settings],
+  )
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -1518,23 +1777,120 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
   )
 
-  const handleConversationAssistantSelect = useCallback(
-    (assistantId: string) => {
-      setConversationAssistantId(assistantId)
-      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
-      void persistPreferredAssistantId(assistantId)
-      const assistant = settings.assistants.find(
-        (item) => item.id === assistantId,
-      )
-      if (assistant?.modelId) {
-        applyAssistantDefaultModel(assistant.modelId)
+  const transitionCliSession = useCallback(
+    async (
+      action: (isCurrent: () => boolean) => void | Promise<void>,
+    ): Promise<boolean> => {
+      if (!cliConversationController || !cliOperationCoordinator) return false
+      try {
+        return await cliOperationCoordinator.transition(
+          cliConversationController,
+          action,
+        )
+      } catch (error) {
+        new Notice(
+          t(
+            'chat.cliSurface.transitionError',
+            'Could not leave the current CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+        return false
       }
     },
+    [cliConversationController, cliOperationCoordinator, t],
+  )
+
+  const handleRuntimeChange = useCallback(
+    (runtimeId: ChatRuntimeId) => {
+      if (runtimeId === activeRuntimeId) return
+      if (runtimeId !== 'yolo' && (!cliRuntimeScope || !cliRuntimeAvailable)) {
+        return
+      }
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
+
+      const applyRuntimeChange = () => {
+        if (!isLatestNavigation()) return
+        if (runtimeId === 'yolo') {
+          activeRuntimeIdRef.current = 'yolo'
+          setRequestedRuntimeId('yolo')
+          return
+        }
+        if (!cliRuntimeScope) return
+        const controller = selectFreshCliRuntime(cliRuntimeScope, runtimeId)
+        setCliConversationController(controller)
+        activeRuntimeIdRef.current = runtimeId
+        setRequestedRuntimeId(runtimeId)
+      }
+
+      if (activeRuntimeId === 'yolo') {
+        try {
+          applyRuntimeChange()
+        } catch (error) {
+          new Notice(
+            t(
+              'chat.cliSurface.runtimeError',
+              'Could not start the CLI runtime: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        }
+        return
+      }
+
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent() || !isLatestNavigation()) return
+        applyRuntimeChange()
+      })
+    },
     [
+      activeRuntimeId,
+      activeRuntimeIdRef,
+      cliRuntimeAvailable,
+      cliRuntimeScope,
+      t,
+      transitionCliSession,
+    ],
+  )
+
+  const handleConversationAssistantSelect = useCallback(
+    (assistantId: string) => {
+      if (activeRuntimeId === 'yolo') {
+        setConversationAssistantId(assistantId)
+        conversationAssistantIdRef.current.set(
+          currentConversationId,
+          assistantId,
+        )
+        void persistPreferredAssistantId(assistantId)
+        const assistant = settings.assistants.find(
+          (item) => item.id === assistantId,
+        )
+        if (assistant?.modelId) applyAssistantDefaultModel(assistant.modelId)
+        return
+      }
+      if (assistantId === cliAssistantId) return
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        cliConversationController?.resetSession()
+        setCliAssistantId(assistantId)
+      })
+    },
+    [
+      activeRuntimeId,
       applyAssistantDefaultModel,
+      cliAssistantId,
+      cliConversationController,
       currentConversationId,
       persistPreferredAssistantId,
       settings.assistants,
+      transitionCliSession,
     ],
   )
 
@@ -1560,6 +1916,34 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentConversationId,
     settings.assistants,
     settings.currentAssistantId,
+  ])
+
+  useEffect(() => {
+    if (
+      settings.assistants.some((assistant) => assistant.id === cliAssistantId)
+    ) {
+      return
+    }
+    const fallbackAssistantId =
+      settings.currentAssistantId ??
+      settings.assistants[0]?.id ??
+      DEFAULT_ASSISTANT_ID
+    if (activeRuntimeId !== 'yolo' && cliConversationController) {
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        cliConversationController.resetSession()
+        setCliAssistantId(fallbackAssistantId)
+      })
+      return
+    }
+    setCliAssistantId(fallbackAssistantId)
+  }, [
+    activeRuntimeId,
+    cliAssistantId,
+    cliConversationController,
+    settings.assistants,
+    settings.currentAssistantId,
+    transitionCliSession,
   ])
 
   // Per-message model mapping for historical user messages
@@ -1792,6 +2176,40 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMentionables: inputMessage.mentionables,
       focusedHistoricalMentionables,
     })
+  const consumeAcceptedCliDraft = useCallback(
+    (acceptedDraft: NonNullable<CliChatOperationSnapshot['acceptedDraft']>) => {
+      if (
+        !cliOperationCoordinator ||
+        cliOperationCoordinator.getSnapshot().acceptedDraft?.token !==
+          acceptedDraft.token
+      ) {
+        return
+      }
+      cliOperationCoordinator.acknowledgeAcceptedDraft(acceptedDraft.token)
+      commitSentSelectionHighlights(acceptedDraft.userMessage.mentionables)
+      const latestDraft = getLatestInputMessage()
+      if (
+        shouldClearAcceptedCliDraft({
+          acceptedDraft,
+          currentDraft: latestDraft,
+          currentDraftRevision: inputDraftRevisionRef.current,
+        })
+      ) {
+        replaceInputMessage(getNewInputMessage(reasoningLevel))
+      }
+    },
+    [
+      cliOperationCoordinator,
+      commitSentSelectionHighlights,
+      getLatestInputMessage,
+      reasoningLevel,
+      replaceInputMessage,
+    ],
+  )
+  useEffect(() => {
+    const acceptedDraft = cliOperationSnapshot?.acceptedDraft
+    if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
+  }, [cliOperationSnapshot?.acceptedDraft, consumeAcceptedCliDraft])
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -2798,14 +3216,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [finalizeHistoricalUserMessageEdit, focusedMessageId, inputMessage.id])
 
-  const handleLoadConversation = useCallback(
-    async (conversationId: string) => {
+  const loadYoloConversation = useCallback(
+    async (conversationId: string, isCurrent: () => boolean = () => true) => {
       setIsLoadingConversation(true)
       try {
         const conversation = await getConversationById(conversationId)
+        if (!isCurrent()) return
         if (!conversation) {
           throw new Error('Conversation not found')
         }
+        activeRuntimeIdRef.current = 'yolo'
+        setRequestedRuntimeId('yolo')
         const normalizedConversation = normalizeHydratedConversationMessages(
           conversation.messages,
         )
@@ -2967,6 +3388,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleLoadConversation = useCallback(
+    async (conversationId: string) => {
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
+      if (activeRuntimeIdRef.current === 'yolo') {
+        await loadYoloConversation(conversationId, isLatestNavigation)
+        return
+      }
+      await transitionCliSession(async (isCurrent) => {
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        if (!isCurrentNavigation()) return
+        await loadYoloConversation(conversationId, isCurrentNavigation)
+      })
+    },
+    [activeRuntimeIdRef, loadYoloConversation, transitionCliSession],
+  )
+
   // Load an initial conversation passed in via props (e.g., from Quick Ask)
   useEffect(() => {
     if (!props.initialConversationId) return
@@ -3006,8 +3446,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   useEffect(() => {
     if (!onRuntimeSnapshotChange) return
     onRuntimeSnapshotChange({
+      activeRuntimeId,
+      cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliAssistantId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
+      inputDraftRevision: inputDraftRevisionRef.current,
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -3017,6 +3461,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     })
   }, [
     onRuntimeSnapshotChange,
+    activeRuntimeId,
+    activeCliConversationSnapshot?.sessionRef,
+    cliAssistantId,
     currentConversationId,
     inputMessage,
     conversationModelId,
@@ -3056,6 +3503,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
+    const isLatestNavigation = beginChatRuntimeNavigation(
+      runtimeNavigationGenerationRef,
+      () => chatMountedRef.current,
+    )
+    if (activeRuntimeId !== 'yolo') {
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent() || !isLatestNavigation()) return
+        cliConversationController?.resetSession()
+        if (selectedBlock) {
+          const mentionableBlock =
+            createSelectionBlockMentionable(selectedBlock)
+          setInputMessage((message) => ({
+            ...message,
+            mentionables: [...message.mentionables, mentionableBlock],
+          }))
+        }
+      })
+      return
+    }
     const newId = uuidv4()
     setCurrentConversationId(newId)
     conversationAssistantIdRef.current.set(newId, conversationAssistantId)
@@ -3736,6 +4202,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       persistedMessageModelMap?: Map<string, string>
     }) => {
+      invalidateChatRuntimeNavigation(runtimeNavigationGenerationRef)
       abortConversationRun(currentConversationId)
       setQueryProgress({
         type: 'idle',
@@ -5139,31 +5606,47 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             (assistant) => assistant.id === overrideAssistantId,
           ) ?? null)
         : null
-      flushSync(() => {
-        if (overrideAssistant) {
-          setConversationAssistantId(overrideAssistant.id)
-          conversationAssistantIdRef.current.set(
-            currentConversationId,
-            overrideAssistant.id,
-          )
-          if (overrideAssistant.modelId) {
-            applyAssistantDefaultModel(overrideAssistant.modelId)
+      const applySelection = () => {
+        flushSync(() => {
+          if (overrideAssistant) {
+            if (activeRuntimeIdRef.current === 'yolo') {
+              setConversationAssistantId(overrideAssistant.id)
+              conversationAssistantIdRef.current.set(
+                currentConversationId,
+                overrideAssistant.id,
+              )
+              if (overrideAssistant.modelId) {
+                applyAssistantDefaultModel(overrideAssistant.modelId)
+              }
+            } else {
+              setCliAssistantId(overrideAssistant.id)
+            }
           }
-        }
-        upsertSelectionMentionableInMainInput(mentionable)
-      })
+          upsertSelectionMentionableInMainInput(mentionable)
+        })
 
-      const inputRef = chatUserInputRefs.current.get(inputMessage.id)
-      if (text) {
-        inputRef?.appendText(text)
+        const inputRef = chatUserInputRefs.current.get(inputMessage.id)
+        if (text) inputRef?.appendText(text)
+        if (options?.submit) {
+          inputRef?.submit()
+        } else {
+          inputRef?.focus()
+        }
       }
 
-      if (options?.submit) {
-        inputRef?.submit()
+      if (
+        activeRuntimeIdRef.current !== 'yolo' &&
+        overrideAssistant &&
+        overrideAssistant.id !== cliAssistantId
+      ) {
+        void transitionCliSession((isCurrent) => {
+          if (!isCurrent()) return
+          cliConversationController?.resetSession()
+          applySelection()
+        })
         return
       }
-
-      inputRef?.focus()
+      applySelection()
     },
     syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
       syncSelectionMentionable(selectedBlock)
@@ -5332,8 +5815,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return conversationModelIdRef.current.get(currentConversationId)
     },
     getRuntimeSnapshot: () => ({
+      activeRuntimeId,
+      cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliAssistantId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
+      inputDraftRevision: inputDraftRevisionRef.current,
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -5464,6 +5951,149 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleCliSessionSelect = useCallback(
+    (ref: CliSessionRef) => {
+      if (!cliRuntimeScope || !cliRuntimeAvailable) return
+      if (
+        shouldBlockCliSessionOpen({
+          activeRuntimeId: activeRuntimeIdRef.current,
+          isYoloRunActive: currentConversationRunSummary.isActive,
+        })
+      ) {
+        new Notice(
+          t(
+            'sidebar.cliSessions.yoloRunActive',
+            'Stop the current YOLO response before opening a CLI session.',
+          ),
+        )
+        return
+      }
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
+      const openSelectedSession = async (isCurrent: () => boolean) => {
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        const result = await openCliSessionForNavigation({
+          scope: cliRuntimeScope,
+          ref,
+          discoveryResult: cliSessionDiscoveryResult,
+          currentAssistantId: cliAssistantId,
+          isCurrent: isCurrentNavigation,
+        })
+        if (!result) return
+        activeRuntimeIdRef.current = ref.runtimeId
+        setRequestedRuntimeId(ref.runtimeId)
+        setCliConversationController(result.controller)
+        setCliAssistantId(result.assistantId)
+        if (result.overlayError) {
+          new Notice(
+            t(
+              'sidebar.cliSessions.recordError',
+              'The CLI session opened, but YOLO could not remember it: {message}',
+            ).replace('{message}', result.overlayError.message),
+          )
+        }
+        void refreshCliSessions()
+      }
+
+      const task =
+        activeRuntimeIdRef.current === 'yolo'
+          ? openSelectedSession(isLatestNavigation)
+          : transitionCliSession((isCurrent) =>
+              openSelectedSession(() => isCurrent() && isLatestNavigation()),
+            )
+      void task.catch((error) => {
+        if (!isLatestNavigation()) return
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      })
+    },
+    [
+      activeRuntimeIdRef,
+      chatMountedRef,
+      cliAssistantId,
+      cliRuntimeAvailable,
+      cliRuntimeScope,
+      cliSessionDiscoveryResult,
+      currentConversationRunSummary.isActive,
+      refreshCliSessions,
+      t,
+      transitionCliSession,
+    ],
+  )
+
+  const handleCliSessionTogglePinned = useCallback(
+    (ref: CliSessionRef, pinned: boolean) => {
+      if (!cliRuntimeScope) return
+      void cliRuntimeScope.sessionService
+        .setPinned(ref, pinned)
+        .then(refreshCliSessions)
+        .catch((error) => {
+          new Notice(
+            t(
+              'sidebar.cliSessions.pinError',
+              'Could not update the CLI session pin: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+    },
+    [cliRuntimeScope, refreshCliSessions, t],
+  )
+
+  const handleCliSessionForgetOverlay = useCallback(
+    (ref: CliSessionRef) => {
+      if (!cliRuntimeScope) return
+      void removeCliOverlayAfterConfirmation({
+        requestConfirmation: (onConfirm, onCancel) => {
+          new ConfirmModal(app, {
+            title: t(
+              'sidebar.cliSessions.forgetConfirmTitle',
+              'Forget CLI session from YOLO?',
+            ),
+            message: t(
+              'sidebar.cliSessions.forgetConfirmMessage',
+              'This removes only YOLO metadata. The native CLI transcript will not be deleted.',
+            ),
+            ctaText: t(
+              'sidebar.cliSessions.forgetConfirmAction',
+              'Forget from YOLO',
+            ),
+            cancelText: t('common.cancel', 'Cancel'),
+            onConfirm,
+            onCancel,
+          }).open()
+        },
+        removeOverlay: () => cliRuntimeScope.sessionService.removeOverlay(ref),
+      })
+        .then((removed) => {
+          if (removed) void refreshCliSessions()
+        })
+        .catch((error) => {
+          new Notice(
+            t(
+              'sidebar.cliSessions.forgetError',
+              'Could not forget the CLI session: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+    },
+    [app, cliRuntimeScope, refreshCliSessions, t],
+  )
+
   const header = (
     <div
       ref={headerRef}
@@ -5485,8 +6115,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )}
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
+          <RuntimeSelector
+            currentRuntimeId={activeRuntimeId}
+            onRuntimeChange={handleRuntimeChange}
+            disabled={
+              currentConversationRunSummary.isActive ||
+              cliSubmissionPending ||
+              isCliRunActive ||
+              cliTransitioning
+            }
+          />
           <AssistantSelector
-            currentAssistantId={conversationAssistantId}
+            currentAssistantId={activeAssistantId}
             triggerClassName={
               !isSidebarPlacement && isWorkspaceWideHeader
                 ? 'yolo-assistant-selector-button--workspace-floating'
@@ -5510,29 +6150,42 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             >
               <Plus size={18} />
             </button>
-            <button
-              type="button"
-              onClick={() => handleExportChatToVault(currentConversationId)}
-              className="clickable-icon"
-              aria-label={t(
-                'sidebar.chatList.exportConversation',
-                'Export conversation to vault',
-              )}
-            >
-              <Download size={18} />
-            </button>
+            {activeRuntimeId === 'yolo' ? (
+              <button
+                type="button"
+                onClick={() => handleExportChatToVault(currentConversationId)}
+                className="clickable-icon"
+                aria-label={t(
+                  'sidebar.chatList.exportConversation',
+                  'Export conversation to vault',
+                )}
+              >
+                <Download size={18} />
+              </button>
+            ) : null}
             <ChatListDropdown
               chatList={chatList}
               currentConversationId={currentConversationId}
               runSummariesByConversationId={runSummariesByConversationId}
               onSelect={(conversationId) => {
-                if (conversationId === currentConversationId) return
+                if (
+                  !shouldLoadYoloHistoryItem({
+                    activeRuntimeId,
+                    conversationId,
+                    currentConversationId,
+                  })
+                ) {
+                  return
+                }
                 void handleLoadConversation(conversationId)
               }}
               onDelete={(conversationId) => {
                 void (async () => {
                   await deleteConversation(conversationId)
-                  if (conversationId === currentConversationId) {
+                  if (
+                    activeRuntimeId === 'yolo' &&
+                    conversationId === currentConversationId
+                  ) {
                     const nextConversation = chatList.find(
                       (chat) => chat.id !== conversationId,
                     )
@@ -5570,6 +6223,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 )
               }}
               onExportConversation={handleExportChatToVault}
+              additionalHistorySections={
+                cliRuntimeScope && cliRuntimeAvailable ? (
+                  <CliSessionListSection
+                    discoveryResult={cliSessionDiscoveryResult}
+                    loading={cliSessionsLoading}
+                    currentRef={
+                      activeRuntimeId !== 'yolo'
+                        ? (activeCliConversationSnapshot?.sessionRef ??
+                          undefined)
+                        : undefined
+                    }
+                    onSelect={handleCliSessionSelect}
+                    onTogglePinned={handleCliSessionTogglePinned}
+                    onRequestForgetOverlay={handleCliSessionForgetOverlay}
+                    onRetryProvider={(_runtimeId: CliRuntimeId) => {
+                      void refreshCliSessions()
+                    }}
+                  />
+                ) : undefined
+              }
             >
               <History size={18} />
             </ChatListDropdown>
@@ -5596,11 +6269,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     buildContextBreakdownInputs,
   )
   const mainInputSubmitStateRef = useLatestRef({
+    activeRuntimeId,
     agentService,
+    app,
     buildInputMessageForSubmit,
     chatMessages,
     commitSentSelectionHighlights,
     conversationModelId,
+    cliAssistantId,
+    cliConversationController,
+    cliOperationCoordinator,
+    cliRuntimeScope,
     currentConversationId,
     currentConversationRunSummary,
     displayedChatMessages,
@@ -5610,6 +6289,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     queuedMessageEditState,
     reasoningLevel,
     selectedAssistant,
+    selectedCliAssistantTimeContextEnabled,
     settings,
     t,
   })
@@ -5624,9 +6304,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleMainInputChange = useCallback<ChatUserInputProps['onChange']>(
     (content) => {
       inputDraftHolder.updateContent(content)
+      bumpInputDraftRevision()
       inputMessageRef.current = inputDraftHolder.get()
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
 
   const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
@@ -5637,6 +6318,85 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         state.inputMessage.mentionables.length === 0 &&
         (state.inputMessage.selectedSkills?.length ?? 0) === 0
       ) {
+        return
+      }
+
+      if (state.activeRuntimeId !== 'yolo') {
+        const runtimeId = state.activeRuntimeId
+        const controller = state.cliConversationController
+        const coordinator = state.cliOperationCoordinator
+        const scope = state.cliRuntimeScope
+        if (
+          !controller ||
+          !coordinator ||
+          !scope ||
+          isCliConversationActive(controller.getSnapshot())
+        ) {
+          return
+        }
+
+        const draftRevision = inputDraftRevisionRef.current
+        const messageForSubmit = state.buildInputMessageForSubmit(content)
+        const submission = coordinator.beginSubmission(draftRevision)
+        if (!submission) return
+
+        void (async () => {
+          try {
+            const result = await submitCliComposerTurn({
+              app: state.app,
+              settings: state.settings,
+              scope,
+              controller,
+              runtimeId,
+              assistantId: state.cliAssistantId,
+              userMessage: messageForSubmit,
+              timeContextEnabled: state.selectedCliAssistantTimeContextEnabled,
+              signal: submission.signal,
+              onSendStarted: () => coordinator.markSending(submission.token),
+              onAccepted: (acceptedMessage) => {
+                if (
+                  coordinator.markAccepted(submission.token, acceptedMessage) &&
+                  chatMountedRef.current
+                ) {
+                  const acceptedDraft = coordinator.getSnapshot().acceptedDraft
+                  if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
+                }
+              },
+            })
+            if (chatMountedRef.current) {
+              if (result.overlayError) {
+                new Notice(
+                  state
+                    .t(
+                      'sidebar.cliSessions.recordError',
+                      'The CLI message was sent, but YOLO could not remember the session: {message}',
+                    )
+                    .replace('{message}', result.overlayError.message),
+                )
+              }
+              void refreshCliSessions()
+            }
+          } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+              return
+            }
+            if (chatMountedRef.current) {
+              new Notice(
+                state
+                  .t(
+                    'chat.cliSurface.submitError',
+                    'Could not send the CLI message: {message}',
+                  )
+                  .replace(
+                    '{message}',
+                    error instanceof Error ? error.message : String(error),
+                  ),
+              )
+            }
+          } finally {
+            coordinator.finishSubmission(submission.token)
+          }
+        })()
         return
       }
 
@@ -5752,7 +6512,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         replaceInputMessage(getNewInputMessage(state.reasoningLevel))
       }
     },
-    [mainInputSubmitStateRef, replaceInputMessage],
+    [
+      consumeAcceptedCliDraft,
+      mainInputSubmitStateRef,
+      refreshCliSessions,
+      replaceInputMessage,
+    ],
   )
 
   const handleMainInputFocus = useCallback(() => {
@@ -5787,6 +6552,30 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       snapshotRef: undefined,
     }))
   }, [])
+
+  const handleMainInputMentionableDelete = useCallback(
+    (mentionable: Mentionable) => {
+      if (activeRuntimeId === 'yolo') {
+        handleMentionableDeleteFromAll(mentionable)
+        return
+      }
+      const mentionableKey = getMentionableKey(
+        serializeMentionable(mentionable),
+      )
+      handleMainInputMentionablesChange(
+        inputMessageRef.current.mentionables.filter(
+          (candidate) =>
+            getMentionableKey(serializeMentionable(candidate)) !==
+            mentionableKey,
+        ),
+      )
+    },
+    [
+      activeRuntimeId,
+      handleMainInputMentionablesChange,
+      handleMentionableDeleteFromAll,
+    ],
+  )
 
   const handleMainInputModelChange = useCallback<
     NonNullable<ChatUserInputProps['onModelChange']>
@@ -5842,8 +6631,35 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleMainInputAbort = useCallback(() => {
+    if (
+      activeRuntimeId !== 'yolo' &&
+      cliConversationController &&
+      cliOperationCoordinator
+    ) {
+      void cliOperationCoordinator
+        .cancelCurrentOperation(cliConversationController)
+        .catch((error) => {
+          new Notice(
+            t(
+              'chat.cliSurface.cancelError',
+              'Could not stop the CLI run: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+      return
+    }
     abortConversationRunRef.current(currentConversationIdValueRef.current)
-  }, [abortConversationRunRef, currentConversationIdValueRef])
+  }, [
+    abortConversationRunRef,
+    activeRuntimeId,
+    cliConversationController,
+    cliOperationCoordinator,
+    currentConversationIdValueRef,
+    t,
+  ])
 
   const buildMainInputContextBreakdownInputs = useCallback(() => {
     return buildContextBreakdownInputsRef.current(chatMessagesStateRef.current)
@@ -6633,12 +7449,182 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       {workspaceTitleParts.slice(1).join('{vaultName}')}
     </>
   ) : undefined
+  const isCliRuntimeActive = activeRuntimeId !== 'yolo'
+  const activeSurfaceEmpty = isCliRuntimeActive
+    ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
+      !isCliRunActive
+    : showEmptyState
+  const mainInputFooter = (
+    <div className="yolo-chat-input-wrapper">
+      <div ref={setInputOverlayElement} className="yolo-chat-input-overlay">
+        {!isCliRuntimeActive && queuedUserMessages.length > 0 ? (
+          <div className="yolo-chat-queued-messages">
+            <div className="yolo-chat-queued-messages__hint">
+              {t('chat.queueMessage.hint', '等待 Agent 完成当前步骤...')}
+            </div>
+            {queuedUserMessages.map((queued) => {
+              const preview = queued.content
+                ? editorStateToPlainText(queued.content).trim()
+                : ''
+              return (
+                <div
+                  key={queued.id}
+                  className="yolo-chat-queued-messages__item"
+                  title={preview}
+                >
+                  <span className="yolo-chat-queued-messages__preview">
+                    {preview || ' '}
+                  </span>
+                  <span className="yolo-chat-queued-messages__actions">
+                    <button
+                      type="button"
+                      className="yolo-chat-queued-messages__action"
+                      aria-label={t('common.edit', '编辑')}
+                      title={t('common.edit', '编辑')}
+                      disabled={queuedMessageEditState !== null}
+                      onClick={() => {
+                        const removed = agentService.removePendingUserMessage(
+                          currentConversationId,
+                          queued.id,
+                        )
+                        if (!removed) return
+
+                        const preservedReasoningLevel = reasoningLevel
+                        const editingReasoningLevel =
+                          normalizeReasoningLevel(removed.reasoningLevel) ??
+                          reasoningLevel
+                        setQueuedMessageEditState({
+                          preservedInputMessage: getLatestInputMessage(),
+                          preservedReasoningLevel,
+                        })
+                        setReasoningLevel(editingReasoningLevel)
+                        replaceInputMessage({
+                          ...removed,
+                          timeContext: undefined,
+                        })
+                        requestAnimationFrame(() => {
+                          chatUserInputRefs.current.get(removed.id)?.focus()
+                        })
+                      }}
+                    >
+                      <Pencil size={13} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      type="button"
+                      className="yolo-chat-queued-messages__action is-delete"
+                      aria-label={t('common.delete', '删除')}
+                      title={t('common.delete', '删除')}
+                      onClick={() => {
+                        const removed = agentService.removePendingUserMessage(
+                          currentConversationId,
+                          queued.id,
+                        )
+                        if (!removed) return
+                        releaseHighlightIds(
+                          collectSelectionHighlightIds(removed.mentionables),
+                        )
+                        setMessageReasoningMap((prev) => {
+                          if (!prev.has(removed.id)) return prev
+                          const next = new Map(prev)
+                          next.delete(removed.id)
+                          return next
+                        })
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+        {!isCliRuntimeActive ? (
+          <TodoListPanel
+            key={currentConversationId}
+            messages={displayedChatMessages}
+            queuedMessageCount={queuedUserMessages.length}
+          />
+        ) : null}
+      </div>
+      {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
+      displayMentionablesForInput.length > 0 ? (
+        <div className="yolo-chat-user-input-files">
+          {displayMentionablesForInput.map((mentionable) => {
+            const mentionableKey = getMentionableKey(
+              serializeMentionable(mentionable),
+            )
+            return (
+              <MentionableBadge
+                key={mentionableKey}
+                mentionable={mentionable}
+                onDelete={() => handleMainInputMentionableDelete(mentionable)}
+                onClick={() => {}}
+              />
+            )
+          })}
+        </div>
+      ) : null}
+      <ChatUserInput
+        key={inputMessage.id}
+        ref={handleMainInputRef}
+        initialSerializedEditorState={null}
+        getInitialSerializedEditorState={getLatestInputContent}
+        replacementVersion={inputReplacementVersion}
+        onChange={handleMainInputChange}
+        onSubmit={handleMainInputSubmit}
+        onFocus={handleMainInputFocus}
+        mentionables={inputMessage.mentionables}
+        setMentionables={handleMainInputMentionablesChange}
+        selectedSkills={mainInputSelectedSkills}
+        setSelectedSkills={handleMainInputSelectedSkillsChange}
+        modelId={conversationModelId}
+        onModelChange={handleMainInputModelChange}
+        showModelControl={!isCliRuntimeActive}
+        allowModelMentions={!isCliRuntimeActive}
+        reasoningLevel={reasoningLevel}
+        onReasoningChange={handleMainInputReasoningChange}
+        showReasoningSelect={!isCliRuntimeActive}
+        autoFocus
+        addedBlockKey={addedBlockKey}
+        hideBadgeMentionables
+        displayMentionables={displayMentionablesForInput}
+        onDeleteFromAll={handleMainInputMentionableDelete}
+        currentAssistantId={activeAssistantId}
+        onSelectAssistantForConversation={handleConversationAssistantSelect}
+        currentChatMode={isCliRuntimeActive ? undefined : chatMode}
+        onSelectChatModeForConversation={
+          isCliRuntimeActive ? undefined : handleChatModeChange
+        }
+        chatMode={isCliRuntimeActive ? undefined : chatMode}
+        onChatModeChange={isCliRuntimeActive ? undefined : handleChatModeChange}
+        yoloEnabled={isCliRuntimeActive ? undefined : yoloEnabled}
+        onYoloChange={isCliRuntimeActive ? undefined : handleYoloChange}
+        allowAgentModeOption={!isCliRuntimeActive}
+        enableResize
+        onRunSlashCommand={
+          isCliRuntimeActive ? undefined : handleMainInputRunSlashCommand
+        }
+        isGenerating={
+          isCliRuntimeActive
+            ? cliSubmissionPending || isCliRunActive || cliTransitioning
+            : currentConversationRunSummary.isAbortable
+        }
+        canQueueWhileGenerating={
+          isCliRuntimeActive ? false : currentConversationRunSummary.isQueueable
+        }
+        onAbort={handleMainInputAbort}
+        contextUsage={isCliRuntimeActive ? undefined : mainInputContextUsage}
+        showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
+      />
+    </div>
+  )
 
   return (
     <div
       ref={handleContainerRef}
       className={`${containerClassName}${
-        showEmptyState ? ' yolo-chat-container--empty-state' : ''
+        activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
       }`}
       style={containerStyle}
     >
@@ -6647,6 +7633,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <div className="yolo-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
         </div>
+      ) : isCliRuntimeActive && cliConversationController && cliRuntimeScope ? (
+        <CliChatSurface
+          controller={cliConversationController}
+          actions={cliRuntimeScope.chatRuntimeActions}
+          footerContent={mainInputFooter}
+        />
       ) : (
         <ChatConversationPane
           chatMode={chatMode}
@@ -6697,179 +7689,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           windowNavigationTargetMessageId={windowNavigationTargetMessageId}
           messageNavigatorContent={messageNavigatorContent}
           bottomSpacerHeight={inputOverlayHeight}
-          footerContent={
-            <>
-              <div className="yolo-chat-input-wrapper">
-                <div
-                  ref={setInputOverlayElement}
-                  className="yolo-chat-input-overlay"
-                >
-                  {queuedUserMessages.length > 0 && (
-                    <div className="yolo-chat-queued-messages">
-                      <div className="yolo-chat-queued-messages__hint">
-                        {t(
-                          'chat.queueMessage.hint',
-                          '等待 Agent 完成当前步骤...',
-                        )}
-                      </div>
-                      {queuedUserMessages.map((queued) => {
-                        const preview = queued.content
-                          ? editorStateToPlainText(queued.content).trim()
-                          : ''
-                        return (
-                          <div
-                            key={queued.id}
-                            className="yolo-chat-queued-messages__item"
-                            title={preview}
-                          >
-                            <span className="yolo-chat-queued-messages__preview">
-                              {preview || ' '}
-                            </span>
-                            <span className="yolo-chat-queued-messages__actions">
-                              <button
-                                type="button"
-                                className="yolo-chat-queued-messages__action"
-                                aria-label={t('common.edit', '编辑')}
-                                title={t('common.edit', '编辑')}
-                                disabled={queuedMessageEditState !== null}
-                                onClick={() => {
-                                  const removed =
-                                    agentService.removePendingUserMessage(
-                                      currentConversationId,
-                                      queued.id,
-                                    )
-                                  if (!removed) return
-
-                                  const preservedReasoningLevel = reasoningLevel
-                                  const editingReasoningLevel =
-                                    normalizeReasoningLevel(
-                                      removed.reasoningLevel,
-                                    ) ?? reasoningLevel
-                                  setQueuedMessageEditState({
-                                    preservedInputMessage:
-                                      getLatestInputMessage(),
-                                    preservedReasoningLevel,
-                                  })
-                                  setReasoningLevel(editingReasoningLevel)
-                                  replaceInputMessage({
-                                    ...removed,
-                                    timeContext: undefined,
-                                  })
-                                  requestAnimationFrame(() => {
-                                    chatUserInputRefs.current
-                                      .get(removed.id)
-                                      ?.focus()
-                                  })
-                                }}
-                              >
-                                <Pencil size={13} strokeWidth={2.5} />
-                              </button>
-                              <button
-                                type="button"
-                                className="yolo-chat-queued-messages__action is-delete"
-                                aria-label={t('common.delete', '删除')}
-                                title={t('common.delete', '删除')}
-                                onClick={() => {
-                                  const removed =
-                                    agentService.removePendingUserMessage(
-                                      currentConversationId,
-                                      queued.id,
-                                    )
-                                  if (!removed) return
-                                  releaseHighlightIds(
-                                    collectSelectionHighlightIds(
-                                      removed.mentionables,
-                                    ),
-                                  )
-                                  setMessageReasoningMap((prev) => {
-                                    if (!prev.has(removed.id)) return prev
-                                    const next = new Map(prev)
-                                    next.delete(removed.id)
-                                    return next
-                                  })
-                                }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  <TodoListPanel
-                    key={currentConversationId}
-                    messages={displayedChatMessages}
-                    queuedMessageCount={queuedUserMessages.length}
-                  />
-                </div>
-                {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===
-                  'badge' &&
-                  displayMentionablesForInput.length > 0 && (
-                    <div className="yolo-chat-user-input-files">
-                      {displayMentionablesForInput.map((mentionable) => {
-                        const mentionableKey = getMentionableKey(
-                          serializeMentionable(mentionable),
-                        )
-                        return (
-                          <MentionableBadge
-                            key={mentionableKey}
-                            mentionable={mentionable}
-                            onDelete={() =>
-                              handleMentionableDeleteFromAll(mentionable)
-                            }
-                            onClick={() => {}}
-                          />
-                        )
-                      })}
-                    </div>
-                  )}
-                <ChatUserInput
-                  key={inputMessage.id}
-                  ref={handleMainInputRef}
-                  initialSerializedEditorState={null}
-                  getInitialSerializedEditorState={getLatestInputContent}
-                  replacementVersion={inputReplacementVersion}
-                  onChange={handleMainInputChange}
-                  onSubmit={handleMainInputSubmit}
-                  onFocus={handleMainInputFocus}
-                  mentionables={inputMessage.mentionables}
-                  setMentionables={handleMainInputMentionablesChange}
-                  selectedSkills={mainInputSelectedSkills}
-                  setSelectedSkills={handleMainInputSelectedSkillsChange}
-                  modelId={conversationModelId}
-                  onModelChange={handleMainInputModelChange}
-                  reasoningLevel={reasoningLevel}
-                  onReasoningChange={handleMainInputReasoningChange}
-                  autoFocus
-                  addedBlockKey={addedBlockKey}
-                  hideBadgeMentionables
-                  displayMentionables={displayMentionablesForInput}
-                  onDeleteFromAll={handleMentionableDeleteFromAll}
-                  currentAssistantId={conversationAssistantId}
-                  onSelectAssistantForConversation={
-                    handleConversationAssistantSelect
-                  }
-                  currentChatMode={chatMode}
-                  onSelectChatModeForConversation={handleChatModeChange}
-                  chatMode={chatMode}
-                  onChatModeChange={handleChatModeChange}
-                  yoloEnabled={yoloEnabled}
-                  onYoloChange={handleYoloChange}
-                  allowAgentModeOption={true}
-                  enableResize
-                  onRunSlashCommand={handleMainInputRunSlashCommand}
-                  isGenerating={currentConversationRunSummary.isAbortable}
-                  canQueueWhileGenerating={
-                    currentConversationRunSummary.isQueueable
-                  }
-                  onAbort={handleMainInputAbort}
-                  contextUsage={mainInputContextUsage}
-                  showQuickAccess={showEmptyState && !isSidebarPlacement}
-                />
-              </div>
-            </>
-          }
+          footerContent={mainInputFooter}
         />
       )}
     </div>
