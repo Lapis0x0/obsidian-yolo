@@ -2133,6 +2133,19 @@ export class SelectionRewriteController {
     from: number,
     to: number,
   ): number {
+    const markers = RectangleMarker.forRange(
+      view,
+      'yolo-selection-rewrite-height-measure',
+      EditorSelection.range(from, to),
+    )
+    if (markers.length > 0) {
+      const top = Math.min(...markers.map((marker) => marker.top))
+      const bottom = Math.max(
+        ...markers.map((marker) => marker.top + marker.height),
+      )
+      return Math.max(view.defaultLineHeight, bottom - top)
+    }
+
     const start = view.coordsAtPos(from)
     const end = view.coordsAtPos(Math.max(from, to - 1))
     if (!start || !end) return view.defaultLineHeight
