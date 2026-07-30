@@ -34,13 +34,13 @@ export async function handleRuntimeToolApproval({
   if (!recovered) onStale?.()
 }
 
-export function handleRuntimeToolRejection({
+export async function handleRuntimeToolRejection({
   actions,
   conversation,
   toolCallId,
   onStale,
-}: RuntimeToolActionTarget & { onStale?: () => void }): void {
-  const result = actions.rejectTool({ conversation, toolCallId })
+}: RuntimeToolActionTarget & { onStale?: () => void }): Promise<void> {
+  const result = await actions.rejectTool({ conversation, toolCallId })
   if (result.kind === 'stale') onStale?.()
 }
 

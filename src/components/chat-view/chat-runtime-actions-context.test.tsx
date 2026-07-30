@@ -12,12 +12,12 @@ import {
 } from './chat-runtime-actions-context'
 
 const actions: ChatRuntimeActions = {
-  cancelRun: () => {},
+  cancelRun: async () => {},
   approveTool: async () => ({ kind: 'handled' }),
-  rejectTool: () => ({ kind: 'handled' }),
+  rejectTool: async () => ({ kind: 'handled' }),
   abortTool: async () => ({ kind: 'handled' }),
   answerQuestion: async () => ({ kind: 'handled' }),
-  cancelQuestion: () => ({ kind: 'handled' }),
+  cancelQuestion: async () => ({ kind: 'handled' }),
 }
 
 describe('ChatRuntimeActionsProvider', () => {

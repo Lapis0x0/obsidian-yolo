@@ -15,12 +15,12 @@ const conversation = {
 
 const createActions = (): jest.Mocked<ChatRuntimeActions> =>
   ({
-    cancelRun: jest.fn(),
+    cancelRun: jest.fn(async () => undefined),
     approveTool: jest.fn(async () => ({ kind: 'handled' })),
-    rejectTool: jest.fn(() => ({ kind: 'handled' })),
+    rejectTool: jest.fn(async () => ({ kind: 'handled' })),
     abortTool: jest.fn(async () => ({ kind: 'handled' })),
     answerQuestion: jest.fn(async () => ({ kind: 'handled' })),
-    cancelQuestion: jest.fn(() => ({ kind: 'handled' })),
+    cancelQuestion: jest.fn(async () => ({ kind: 'handled' })),
   }) as unknown as jest.Mocked<ChatRuntimeActions>
 
 describe('runtime action handlers', () => {
@@ -75,12 +75,12 @@ describe('runtime action handlers', () => {
 
   it('keeps stale reject and abort fallbacks at the UI boundary', async () => {
     const actions = createActions()
-    actions.rejectTool.mockReturnValue({ kind: 'stale' })
+    actions.rejectTool.mockResolvedValue({ kind: 'stale' })
     actions.abortTool.mockResolvedValue({ kind: 'stale' })
     const onRejectStale = jest.fn()
     const onAbortStale = jest.fn()
 
-    handleRuntimeToolRejection({
+    await handleRuntimeToolRejection({
       actions,
       conversation,
       toolCallId: 'tool-1',

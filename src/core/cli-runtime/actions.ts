@@ -22,14 +22,16 @@ export type ChatRuntimeQuestionActionResult =
   | { kind: 'needs_recovery'; resolvedMessages: ChatMessage[] }
 
 export interface ChatRuntimeActions {
-  cancelRun(conversation: ConversationRef): void
+  cancelRun(conversation: ConversationRef): Promise<void>
   approveTool(
     action: ChatRuntimeApprovalAction,
   ): Promise<ChatRuntimeActionResult>
-  rejectTool(action: ChatRuntimeToolAction): ChatRuntimeActionResult
+  rejectTool(action: ChatRuntimeToolAction): Promise<ChatRuntimeActionResult>
   abortTool(action: ChatRuntimeToolAction): Promise<ChatRuntimeActionResult>
   answerQuestion(
     action: ChatRuntimeQuestionAction,
   ): Promise<ChatRuntimeQuestionActionResult>
-  cancelQuestion(action: ChatRuntimeToolAction): ChatRuntimeActionResult
+  cancelQuestion(
+    action: ChatRuntimeToolAction,
+  ): Promise<ChatRuntimeActionResult>
 }

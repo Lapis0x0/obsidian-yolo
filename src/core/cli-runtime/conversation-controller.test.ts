@@ -92,9 +92,13 @@ class FakeCliRuntime implements CliRuntime {
     return this.cancelImpl()
   }
 
-  async respondApproval(_response: CliApprovalResponse): Promise<void> {}
+  async respondApproval(_response: CliApprovalResponse): Promise<boolean> {
+    return false
+  }
 
-  async respondQuestion(_response: CliQuestionResponse): Promise<void> {}
+  async respondQuestion(_response: CliQuestionResponse): Promise<boolean> {
+    return false
+  }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
     this.listeners.add(listener)

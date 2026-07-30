@@ -308,10 +308,7 @@ export function AskUserQuestionPanel({
 
   const handleCancel = () => {
     if (submitting) return
-    actions.cancelQuestion({
-      conversation,
-      toolCallId: request.id,
-    })
+    void actions.cancelQuestion({ conversation, toolCallId: request.id })
   }
 
   // Pending (AwaitingUserInput) — interactive form.

@@ -44,8 +44,8 @@ const runtime = ({
   ensureReady: async () => undefined,
   sendTurn: async () => undefined,
   cancel: async () => undefined,
-  respondApproval: async () => undefined,
-  respondQuestion: async () => undefined,
+  respondApproval: async () => false,
+  respondQuestion: async () => false,
   subscribe: (_listener: CliRuntimeEventListener) => () => undefined,
   dispose: async () => undefined,
 })

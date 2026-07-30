@@ -39,7 +39,7 @@ export function SubagentApprovalBlock({
 
   const handleReject = useCallback(
     (toolCallId: string) => {
-      handleRuntimeToolRejection({
+      void handleRuntimeToolRejection({
         actions,
         conversation,
         toolCallId,

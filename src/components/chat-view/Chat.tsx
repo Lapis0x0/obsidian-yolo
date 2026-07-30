@@ -1072,8 +1072,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationId],
   )
   const cancelRuntimeRun = useCallback(
-    (conversationId: string) =>
-      runtimeActions.cancelRun({ runtimeId: 'yolo', conversationId }),
+    (conversationId: string) => {
+      void runtimeActions.cancelRun({ runtimeId: 'yolo', conversationId })
+    },
     [runtimeActions],
   )
   const resolveRuntimeActionConversation = useCallback(

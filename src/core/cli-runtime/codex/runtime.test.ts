@@ -1,3 +1,5 @@
+import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+
 import type { CodexProcessExitListener, CodexProcessLike } from './process'
 import { CodexCliRuntime } from './runtime'
 
@@ -31,14 +33,20 @@ class RpcFakeProcess implements CodexProcessLike {
         ? { data: [this.thread], nextCursor: null }
         : request.method === 'thread/read'
           ? { thread: this.thread }
-          : request.method === 'thread/start' || request.method === 'thread/resume'
+          : request.method === 'thread/start' ||
+              request.method === 'thread/resume'
             ? { thread: this.thread }
             : request.method === 'turn/start'
-              ? { turn: { id: 'turn-1', items: [], status: 'inProgress', error: null } }
+              ? {
+                  turn: {
+                    id: 'turn-1',
+                    items: [],
+                    status: 'inProgress',
+                    error: null,
+                  },
+                }
               : {}
-    queueMicrotask(() =>
-      this.emit({ jsonrpc: '2.0', id: request.id, result }),
-    )
+    queueMicrotask(() => this.emit({ jsonrpc: '2.0', id: request.id, result }))
   }
   onLine(listener: (line: string) => void): () => void {
     this.lineListener = listener
@@ -101,14 +109,88 @@ describe('CodexCliRuntime', () => {
       jsonrpc: '2.0',
       id: 91,
       method: 'item/commandExecution/requestApproval',
-      params: { itemId: 'command-1', command: 'pwd', cwd: '/vault' },
+      params: {
+        approvalId: 'approval-1',
+        itemId: 'command-1',
+        command: 'pwd',
+        cwd: '/vault',
+      },
     })
     expect(events).toContain('waiting_for_approval')
 
-    await runtime.respondApproval({
-      requestId: 'command-1',
-      decision: 'approve_for_session',
-    })
+    await expect(
+      runtime.respondApproval({
+        requestId: 'command-1',
+        decision: 'approve_for_session',
+      }),
+    ).resolves.toBe(true)
     expect(process.responses).toContainEqual({ decision: 'acceptForSession' })
+    await expect(
+      runtime.respondApproval({
+        requestId: 'approval-1',
+        decision: 'reject',
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('maps Codex user input requests to the shared Ask User card contract', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const events: unknown[] = []
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({
+      assistant: { systemPrompt: '', enabledSkillNames: [] },
+    })
+
+    process.emit({
+      jsonrpc: '2.0',
+      id: 92,
+      method: 'item/tool/requestUserInput',
+      params: {
+        itemId: 'question-tool',
+        questions: [
+          {
+            id: 'choice',
+            question: 'Choose one?',
+            options: [{ label: 'A' }, { label: 'B' }],
+          },
+        ],
+      },
+    })
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'message_upsert',
+          message: expect.objectContaining({
+            role: 'tool',
+            toolCalls: [
+              expect.objectContaining({
+                request: expect.objectContaining({
+                  id: 'question-tool',
+                  name: 'yolo_local__ask_user_question',
+                }),
+                response: { status: ToolCallResponseStatus.AwaitingUserInput },
+              }),
+            ],
+          }),
+        }),
+      ]),
+    )
+    await expect(
+      runtime.respondQuestion({
+        requestId: 'question-tool',
+        answer: {
+          type: 'user_answers',
+          answers: [{ id: 'choice', value: 'A' }],
+        },
+      }),
+    ).resolves.toBe(true)
+    expect(process.responses).toContainEqual({
+      answers: { choice: { answers: ['A'] } },
+    })
   })
 })

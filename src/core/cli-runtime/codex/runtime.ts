@@ -13,7 +13,16 @@ import type {
   CliTurnInput,
 } from '../types'
 
-import { buildPendingToolMessages, mapCodexItem, mapCodexTurns } from './mapping'
+import {
+  buildPendingToolMessages,
+  mapCodexItem,
+  mapCodexTurns,
+} from './mapping'
+import {
+  CodexAppServerProcess,
+  type CodexProcessLike,
+  type CodexProcessOptions,
+} from './process'
 import type {
   CodexServerRequest,
   CodexThread,
@@ -25,16 +34,12 @@ import type {
   ThreadStartResponse,
   TurnStartResponse,
 } from './protocol'
-import {
-  CodexAppServerProcess,
-  type CodexProcessLike,
-  type CodexProcessOptions,
-} from './process'
 import { CodexRpcTransport, initializeCodexTransport } from './transport'
 
 type PendingServerRequest = {
   request: CodexServerRequest
   toolCallId: string
+  kind: 'approval' | 'question'
 }
 
 export type CodexCliRuntimeOptions = CodexProcessOptions & {
@@ -124,13 +129,14 @@ export class CodexCliRuntime implements CliRuntime {
     const sessions: CliSessionMetadata[] = []
     let cursor: string | null = null
     do {
-      const response: ThreadListResponse = await transport.request<ThreadListResponse>('thread/list', {
-        cursor,
-        limit: 100,
-        sortKey: 'updated_at',
-        sortDirection: 'desc',
-        cwd: this.options.cwd,
-      })
+      const response: ThreadListResponse =
+        await transport.request<ThreadListResponse>('thread/list', {
+          cursor,
+          limit: 100,
+          sortKey: 'updated_at',
+          sortDirection: 'desc',
+          cwd: this.options.cwd,
+        })
       sessions.push(...response.data.map(toSessionMetadata))
       cursor = response.nextCursor
     } while (cursor)
@@ -138,13 +144,20 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
-    if (ref.runtimeId !== 'codex') throw new Error('Cannot open a non-Codex session.')
+    if (ref.runtimeId !== 'codex')
+      throw new Error('Cannot open a non-Codex session.')
     const transport = await this.getTransport()
-    const response = await transport.request<ThreadReadResponse>('thread/read', {
-      threadId: ref.nativeSessionId,
-      includeTurns: true,
-    })
-    return { ref: toSessionRef(response.thread), messages: mapCodexTurns(response.thread.turns) }
+    const response = await transport.request<ThreadReadResponse>(
+      'thread/read',
+      {
+        threadId: ref.nativeSessionId,
+        includeTurns: true,
+      },
+    )
+    return {
+      ref: toSessionRef(response.thread),
+      messages: mapCodexTurns(response.thread.turns),
+    }
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
@@ -152,7 +165,8 @@ export class CodexCliRuntime implements CliRuntime {
     const assistantKey = JSON.stringify(input.assistant)
     if (
       this.activeSessionRef &&
-      input.sessionRef?.nativeSessionId === this.activeSessionRef.nativeSessionId &&
+      input.sessionRef?.nativeSessionId ===
+        this.activeSessionRef.nativeSessionId &&
       assistantKey === this.assistantKey
     ) {
       return
@@ -180,14 +194,19 @@ export class CodexCliRuntime implements CliRuntime {
     if (input.sessionRef) {
       if (
         !this.activeSessionRef ||
-        input.sessionRef.nativeSessionId !== this.activeSessionRef.nativeSessionId
+        input.sessionRef.nativeSessionId !==
+          this.activeSessionRef.nativeSessionId
       ) {
-        throw new Error('Codex session must be resumed with ensureReady before sending.')
+        throw new Error(
+          'Codex session must be resumed with ensureReady before sending.',
+        )
       }
     }
     if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
     this.emit({ type: 'run_state', state: 'running' })
-    const response = await (await this.getTransport()).request<TurnStartResponse>(
+    const response = await (
+      await this.getTransport()
+    ).request<TurnStartResponse>(
       'turn/start',
       {
         threadId: this.activeSessionRef.nativeSessionId,
@@ -200,28 +219,32 @@ export class CodexCliRuntime implements CliRuntime {
 
   async cancel(): Promise<void> {
     if (!this.activeSessionRef || !this.activeTurnId) return
-    await (await this.getTransport()).request('turn/interrupt', {
+    await (
+      await this.getTransport()
+    ).request('turn/interrupt', {
       threadId: this.activeSessionRef.nativeSessionId,
       turnId: this.activeTurnId,
     })
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<void> {
+  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
     const pending = this.pendingRequests.get(response.requestId)
-    if (!pending) throw new Error('Codex approval request is no longer pending.')
-    this.pendingRequests.delete(response.requestId)
+    if (!pending || pending.kind !== 'approval') return false
+    this.deletePendingRequest(pending)
     ;(await this.getTransport()).respond(pending.request.id, {
       decision: approvalDecision(response.decision),
     })
+    return true
   }
 
-  async respondQuestion(response: CliQuestionResponse): Promise<void> {
+  async respondQuestion(response: CliQuestionResponse): Promise<boolean> {
     const pending = this.pendingRequests.get(response.requestId)
-    if (!pending) throw new Error('Codex question is no longer pending.')
-    this.pendingRequests.delete(response.requestId)
+    if (!pending || pending.kind !== 'question') return false
+    this.deletePendingRequest(pending)
     ;(await this.getTransport()).respond(pending.request.id, {
       answers: toCodexQuestionAnswers(response.answer),
     })
+    return true
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -258,7 +281,9 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   private async createTransport(): Promise<CodexRpcTransport> {
-    const createProcess = this.options.createProcess ?? CodexAppServerProcess.start
+    const createProcess =
+      this.options.createProcess ??
+      ((options: CodexProcessOptions) => CodexAppServerProcess.start(options))
     this.process = await createProcess(this.options)
     const transport = new CodexRpcTransport(this.process)
     transport.onNotification((notification) =>
@@ -287,7 +312,8 @@ export class CodexCliRuntime implements CliRuntime {
       return
     }
     if (method === 'item/agentMessage/delta') {
-      const itemId = typeof params.itemId === 'string' ? params.itemId : 'stream'
+      const itemId =
+        typeof params.itemId === 'string' ? params.itemId : 'stream'
       const delta = typeof params.delta === 'string' ? params.delta : ''
       const existing = this.streamingAssistantText.get(itemId) ?? ''
       const content = `${existing}${delta}`
@@ -304,7 +330,8 @@ export class CodexCliRuntime implements CliRuntime {
       return
     }
     if (method === 'item/reasoning/summaryTextDelta') {
-      const itemId = typeof params.itemId === 'string' ? params.itemId : 'reasoning'
+      const itemId =
+        typeof params.itemId === 'string' ? params.itemId : 'reasoning'
       const delta = typeof params.delta === 'string' ? params.delta : ''
       const reasoning = `${this.streamingReasoningText.get(itemId) ?? ''}${delta}`
       this.streamingReasoningText.set(itemId, reasoning)
@@ -340,12 +367,20 @@ export class CodexCliRuntime implements CliRuntime {
       return
     }
     if (method === 'turn/completed') {
-      const turn = params.turn as { status?: unknown; error?: { message?: unknown } } | undefined
-      const status = typeof turn?.status === 'string' ? turn.status : 'completed'
+      const turn = params.turn as
+        | { status?: unknown; error?: { message?: unknown } }
+        | undefined
+      const status =
+        typeof turn?.status === 'string' ? turn.status : 'completed'
       const isError = status === 'failed'
       this.emit({
         type: 'run_state',
-        state: status === 'interrupted' ? 'aborted' : isError ? 'error' : 'completed',
+        state:
+          status === 'interrupted'
+            ? 'aborted'
+            : isError
+              ? 'error'
+              : 'completed',
         ...(isError && typeof turn?.error?.message === 'string'
           ? { error: turn.error.message }
           : {}),
@@ -371,7 +406,11 @@ export class CodexCliRuntime implements CliRuntime {
       request.method === 'item/fileChange/requestApproval' ||
       request.method === 'item/permissions/requestApproval'
     ) {
-      this.pendingRequests.set(key, { request, toolCallId: itemId })
+      this.registerPendingRequest(key, {
+        request,
+        toolCallId: itemId,
+        kind: 'approval',
+      })
       const [assistant, tool] = buildPendingToolMessages({
         requestId: request.id,
         toolCallId: itemId,
@@ -390,7 +429,11 @@ export class CodexCliRuntime implements CliRuntime {
       return
     }
     if (request.method === 'item/tool/requestUserInput') {
-      this.pendingRequests.set(key, { request, toolCallId: itemId })
+      this.registerPendingRequest(key, {
+        request,
+        toolCallId: itemId,
+        kind: 'question',
+      })
       const rawQuestions = Array.isArray(request.params.questions)
         ? request.params.questions
         : []
@@ -404,7 +447,9 @@ export class CodexCliRuntime implements CliRuntime {
           ? question.options.map((option, optionIndex) => {
               const value = option as { label?: unknown; description?: unknown }
               const label =
-                typeof value.label === 'string' ? value.label : `Option ${optionIndex + 1}`
+                typeof value.label === 'string'
+                  ? value.label
+                  : `Option ${optionIndex + 1}`
               return {
                 id: label,
                 label,
@@ -417,7 +462,10 @@ export class CodexCliRuntime implements CliRuntime {
         const selectableOptions =
           options && options.length >= 2 ? options : undefined
         return {
-          id: typeof question.id === 'string' ? question.id : `question-${index + 1}`,
+          id:
+            typeof question.id === 'string'
+              ? question.id
+              : `question-${index + 1}`,
           prompt:
             typeof question.question === 'string'
               ? question.question
@@ -429,7 +477,7 @@ export class CodexCliRuntime implements CliRuntime {
       const [assistant, tool] = buildPendingToolMessages({
         requestId: request.id,
         toolCallId: itemId,
-        name: 'ask_user_question',
+        name: 'yolo_local__ask_user_question',
         argumentsValue: { questions },
         responseStatus: ToolCallResponseStatus.AwaitingUserInput,
       })
@@ -439,7 +487,25 @@ export class CodexCliRuntime implements CliRuntime {
       return
     }
     void this.getTransport().then((transport) =>
-      transport.respondError(request.id, -32601, `Unsupported Codex request: ${request.method}`),
+      transport.respondError(
+        request.id,
+        -32601,
+        `Unsupported Codex request: ${request.method}`,
+      ),
     )
+  }
+
+  private registerPendingRequest(
+    protocolKey: string,
+    pending: PendingServerRequest,
+  ): void {
+    this.pendingRequests.set(protocolKey, pending)
+    this.pendingRequests.set(pending.toolCallId, pending)
+  }
+
+  private deletePendingRequest(pending: PendingServerRequest): void {
+    for (const [key, candidate] of this.pendingRequests) {
+      if (candidate === pending) this.pendingRequests.delete(key)
+    }
   }
 }

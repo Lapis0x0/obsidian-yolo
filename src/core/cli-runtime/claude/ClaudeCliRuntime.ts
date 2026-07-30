@@ -391,9 +391,9 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.emit({ type: 'run_state', state: 'aborted' })
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<void> {
+  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
     const pending = this.pendingPermissions.get(response.requestId)
-    if (!pending || pending.kind !== 'approval' || pending.settled) return
+    if (!pending || pending.kind !== 'approval' || pending.settled) return false
 
     if (response.decision === 'reject') {
       this.settlePending(pending, {
@@ -407,7 +407,7 @@ export class ClaudeCliRuntime implements CliRuntime {
         reason: 'User denied this action.',
       })
       this.emitPendingRunStateOrRunning()
-      return
+      return true
     }
 
     this.settlePending(pending, {
@@ -431,11 +431,12 @@ export class ClaudeCliRuntime implements CliRuntime {
       status: ToolCallResponseStatus.Running,
     })
     this.emitPendingRunStateOrRunning()
+    return true
   }
 
-  async respondQuestion(response: CliQuestionResponse): Promise<void> {
+  async respondQuestion(response: CliQuestionResponse): Promise<boolean> {
     const pending = this.pendingPermissions.get(response.requestId)
-    if (!pending || pending.kind !== 'question' || pending.settled) return
+    if (!pending || pending.kind !== 'question' || pending.settled) return false
 
     if (response.answer === null || response.answer === undefined) {
       this.settlePending(pending, {
@@ -449,7 +450,7 @@ export class ClaudeCliRuntime implements CliRuntime {
         status: ToolCallResponseStatus.Rejected,
         reason: 'User declined to answer.',
       })
-      return
+      return true
     }
 
     const converted = convertYoloAnswerPayloadToClaude({
@@ -468,7 +469,7 @@ export class ClaudeCliRuntime implements CliRuntime {
         error: converted.error,
       })
       this.emit({ type: 'run_state', state: 'error', error: converted.error })
-      return
+      return true
     }
 
     this.settlePending(pending, {
@@ -481,6 +482,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       status: ToolCallResponseStatus.Running,
     })
     this.emitPendingRunStateOrRunning()
+    return true
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {

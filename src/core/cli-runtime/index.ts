@@ -1,5 +1,6 @@
 export * from './actions'
 export * from './claude'
+export * from './cli-actions'
 export * from './codex'
 export * from './conversation-controller'
 export * from './desktop'
