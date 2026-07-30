@@ -49,6 +49,7 @@ const claudeSession: CliSessionListItem = {
   preview: 'Claude native preview',
   updatedAt: 200,
   isPinned: true,
+  hasOverlay: true,
 }
 
 const codexSession: CliSessionListItem = {
@@ -60,6 +61,7 @@ const codexSession: CliSessionListItem = {
   preview: 'Codex native preview',
   updatedAt: 100,
   isPinned: false,
+  hasOverlay: true,
 }
 
 const discoveryResult: CliSessionDiscoveryResult = {
@@ -239,6 +241,27 @@ describe('CliSessionListSection', () => {
     expect(listHtml).toContain('forget from yolo')
     expect(listHtml).not.toContain('delete')
     expect(listHtml).not.toContain('transcript')
+  })
+
+  it('does not offer an overlay action for a provider-only discovery', () => {
+    const root = renderComponentTree(
+      createProps({
+        discoveryResult: {
+          sessions: [{ ...codexSession, hasOverlay: false }],
+          errors: {},
+        },
+      }),
+    )
+    const row = findSessionRow(root, 'codex')
+
+    expect(
+      walkElements(row).some(
+        (element) =>
+          element.type === 'button' &&
+          (element.props as { 'data-action'?: string })['data-action'] ===
+            'request-forget-overlay',
+      ),
+    ).toBe(false)
   })
 
   it('renders nothing on mobile', () => {

@@ -1,3 +1,9 @@
+import {
+  type CliSessionIndexEntry,
+  type CliSessionIndexStore,
+  createCliSessionIndexEntry,
+  getCliSessionIndexKey,
+} from './session-index'
 import type {
   CliRuntime,
   CliRuntimeId,
@@ -5,14 +11,9 @@ import type {
   CliSessionMetadata,
   CliSessionRef,
 } from './types'
-import {
-  createCliSessionIndexEntry,
-  type CliSessionIndexEntry,
-  type CliSessionIndexStore,
-  getCliSessionIndexKey,
-} from './session-index'
 
 export type CliSessionListItem = CliSessionMetadata & {
+  hasOverlay: boolean
   assistantId?: string
   lastOpenedAt?: number
   isPinned: boolean
@@ -37,6 +38,7 @@ const mergeOverlay = (
   overlay: CliSessionIndexEntry | undefined,
 ): CliSessionListItem => ({
   ...metadata,
+  hasOverlay: overlay !== undefined,
   ...(overlay?.assistantId ? { assistantId: overlay.assistantId } : {}),
   ...(overlay?.lastOpenedAt !== undefined
     ? { lastOpenedAt: overlay.lastOpenedAt }
@@ -150,8 +152,10 @@ export class CliSessionService {
       createCliSessionIndexEntry({
         runtimeId: ref.runtimeId,
         nativeSessionId: ref.nativeSessionId,
-        ...(ref.sessionPathHint ?? existing?.sessionPathHint
-          ? { sessionPathHint: ref.sessionPathHint ?? existing?.sessionPathHint }
+        ...((ref.sessionPathHint ?? existing?.sessionPathHint)
+          ? {
+              sessionPathHint: ref.sessionPathHint ?? existing?.sessionPathHint,
+            }
           : {}),
         ...(assistantId ? { assistantId } : {}),
         ...(existing?.lastOpenedAt !== undefined
@@ -177,8 +181,10 @@ export class CliSessionService {
       createCliSessionIndexEntry({
         runtimeId: ref.runtimeId,
         nativeSessionId: ref.nativeSessionId,
-        ...(ref.sessionPathHint ?? existing?.sessionPathHint
-          ? { sessionPathHint: ref.sessionPathHint ?? existing?.sessionPathHint }
+        ...((ref.sessionPathHint ?? existing?.sessionPathHint)
+          ? {
+              sessionPathHint: ref.sessionPathHint ?? existing?.sessionPathHint,
+            }
           : {}),
         ...(existing?.assistantId ? { assistantId: existing.assistantId } : {}),
         ...(existing?.lastOpenedAt !== undefined

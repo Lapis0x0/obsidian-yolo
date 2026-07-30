@@ -123,16 +123,18 @@ const CliSessionRow = ({
             <Pin size={14} aria-hidden="true" />
           )}
         </button>
-        <button
-          type="button"
-          className="clickable-icon yolo-cli-session-list__action yolo-cli-session-list__forget"
-          data-action="request-forget-overlay"
-          aria-label={t('sidebar.cliSessions.forgetFromYolo')}
-          title={t('sidebar.cliSessions.forgetFromYolo')}
-          onClick={() => onRequestForgetOverlay(session.ref)}
-        >
-          <Unlink size={14} aria-hidden="true" />
-        </button>
+        {session.hasOverlay ? (
+          <button
+            type="button"
+            className="clickable-icon yolo-cli-session-list__action yolo-cli-session-list__forget"
+            data-action="request-forget-overlay"
+            aria-label={t('sidebar.cliSessions.forgetFromYolo')}
+            title={t('sidebar.cliSessions.forgetFromYolo')}
+            onClick={() => onRequestForgetOverlay(session.ref)}
+          >
+            <Unlink size={14} aria-hidden="true" />
+          </button>
+        ) : null}
       </span>
     </li>
   )

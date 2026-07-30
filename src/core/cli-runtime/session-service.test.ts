@@ -1,14 +1,14 @@
 import type {
-  CliRuntime,
-  CliRuntimeEventListener,
-  CliSessionMetadata,
-} from './types'
-import type {
   CliSessionIndexEntry,
   CliSessionIndexStore,
 } from './session-index'
 import { getCliSessionIndexKey } from './session-index'
 import { CliSessionService } from './session-service'
+import type {
+  CliRuntime,
+  CliRuntimeEventListener,
+  CliSessionMetadata,
+} from './types'
 
 class MemoryIndex implements CliSessionIndexStore {
   entries = new Map<string, CliSessionIndexEntry>()
@@ -88,8 +88,13 @@ describe('CliSessionService', () => {
 
     await expect(service.listSessions()).resolves.toMatchObject({
       sessions: [
-        { title: 'Codex', isPinned: true, assistantId: 'assistant-1' },
-        { title: 'Claude', isPinned: false },
+        {
+          title: 'Codex',
+          isPinned: true,
+          hasOverlay: true,
+          assistantId: 'assistant-1',
+        },
+        { title: 'Claude', isPinned: false, hasOverlay: false },
       ],
       errors: {},
     })
@@ -98,7 +103,10 @@ describe('CliSessionService', () => {
   it('keeps one provider failure isolated from the other provider list', async () => {
     const service = new CliSessionService({
       runtimes: [
-        runtime({ runtimeId: 'claude-code', listError: new Error('missing claude') }),
+        runtime({
+          runtimeId: 'claude-code',
+          listError: new Error('missing claude'),
+        }),
         runtime({
           runtimeId: 'codex',
           sessions: [
