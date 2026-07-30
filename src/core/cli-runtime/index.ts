@@ -1,4 +1,5 @@
 export * from './actions'
+export * from './assistant-binding'
 export * from './claude'
 export * from './cli-actions'
 export * from './codex'
