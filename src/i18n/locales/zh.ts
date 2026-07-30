@@ -459,6 +459,8 @@ export const zh: TranslationKeys = {
       importSkillSuccess: '已成功导入 {count} 个技能。',
       importSkillInvalidFile: '未找到有效的技能文件或技能包。',
       importSkillReadError: '读取文件失败。',
+      importSkillErrTooDeep:
+        '技能包超过 {depth} 层导入深度上限，未导入任何内容。',
       importSkillWriteError: '导入 {name} 失败：{error}',
       importSkillErrHeader: '"{name}" 无法导入：',
       importSkillErrNoSkillMd: '文件夹中缺少 SKILL.md 文件',

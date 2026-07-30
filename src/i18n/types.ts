@@ -365,6 +365,7 @@ export type TranslationKeys = {
       importSkillSuccess?: string
       importSkillInvalidFile?: string
       importSkillReadError?: string
+      importSkillErrTooDeep?: string
       importSkillWriteError?: string
       importSkillErrHeader?: string
       importSkillErrNoSkillMd?: string

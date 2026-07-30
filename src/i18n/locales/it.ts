@@ -533,6 +533,8 @@ export const it: DeepPartial<TranslationKeys> = {
       importSkillSuccess: 'Importate con successo {count} skill.',
       importSkillInvalidFile: 'Nessun file o pacchetto skill valido trovato.',
       importSkillReadError: 'Impossibile leggere i file.',
+      importSkillErrTooDeep:
+        'Il pacchetto skill supera la profondità massima di importazione di {depth}. Non è stato importato nulla.',
       importSkillWriteError: 'Impossibile importare {name}: {error}',
       importSkillErrHeader: '"{name}" non può essere importato:',
       importSkillErrNoSkillMd: 'file SKILL.md mancante nella cartella',

@@ -16,6 +16,11 @@ import {
   parseGitHubUrl,
 } from '../../../core/skills/githubSkillImporter'
 import {
+  MAX_SKILL_PACKAGE_IMPORT_DEPTH,
+  SkillPackageImportDepthExceededError,
+  assertSkillPackageImportDepth,
+} from '../../../core/skills/skillImportLimits'
+import {
   type FileEntry,
   type ValidationError,
   parseFrontmatter,
@@ -189,7 +194,10 @@ type RawCandidate = {
 async function readDirectoryEntryRecursively(
   dirEntry: FileSystemDirectoryEntry,
   basePath: string,
+  depth: number,
 ): Promise<FileEntry[]> {
+  assertSkillPackageImportDepth(depth)
+
   const readBatch = (
     reader: FileSystemDirectoryReader,
   ): Promise<FileSystemEntry[]> =>
@@ -223,7 +231,11 @@ async function readDirectoryEntryRecursively(
     } else if (entry.isDirectory) {
       const subDir = entry as FileSystemDirectoryEntry
       const subPath = basePath ? `${basePath}/${subDir.name}` : subDir.name
-      const subFiles = await readDirectoryEntryRecursively(subDir, subPath)
+      const subFiles = await readDirectoryEntryRecursively(
+        subDir,
+        subPath,
+        depth + 1,
+      )
       results.push(...subFiles)
     }
   }
@@ -249,7 +261,7 @@ async function readRawCandidatesFromDataTransfer(
   for (const entry of rootEntries) {
     if (entry.isDirectory) {
       const dirEntry = entry as FileSystemDirectoryEntry
-      const files = await readDirectoryEntryRecursively(dirEntry, '')
+      const files = await readDirectoryEntryRecursively(dirEntry, '', 0)
       candidates.push({
         rootName: dirEntry.name,
         files,
@@ -306,6 +318,7 @@ async function readRawCandidatesFromFileList(
     const rootDir = slashIdx > 0 ? relPath.slice(0, slashIdx) : relPath
     const innerPath = slashIdx > 0 ? relPath.slice(slashIdx + 1) : ''
     if (!innerPath) continue
+    assertSkillPackageImportDepth(innerPath.split('/').length - 1)
     const entries = groupedByRoot.get(rootDir) ?? []
     if (innerPath.split('/').pop() === SKILL_MD) {
       entries.push({ relativePath: innerPath, content: await file.text() })
@@ -447,6 +460,24 @@ function ImportSkillModalContent({
       isMountedRef.current = false
     }
   }, [])
+
+  const showReadError = useCallback(
+    (error: unknown) => {
+      if (error instanceof SkillPackageImportDepthExceededError) {
+        new Notice(
+          t(
+            'settings.agent.importSkillErrTooDeep',
+            'Skill package exceeds the maximum import depth of {depth}. Nothing was imported.',
+          ).replace('{depth}', String(MAX_SKILL_PACKAGE_IMPORT_DEPTH)),
+        )
+        return
+      }
+      new Notice(
+        t('settings.agent.importSkillReadError', 'Failed to read files.'),
+      )
+    },
+    [t],
+  )
 
   const buildSkillPackagesFromCandidates = useCallback(
     (
@@ -632,14 +663,12 @@ function ImportSkillModalContent({
       try {
         const candidates = await readRawCandidatesFromFileList(files)
         addCandidates(candidates)
-      } catch {
-        new Notice(
-          t('settings.agent.importSkillReadError', 'Failed to read files.'),
-        )
+      } catch (error) {
+        showReadError(error)
       }
       e.target.value = ''
     },
-    [addCandidates, t],
+    [addCandidates, showReadError],
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -665,14 +694,12 @@ function ImportSkillModalContent({
         try {
           const candidates = await readRawCandidatesFromDataTransfer(items)
           addCandidates(candidates)
-        } catch {
-          new Notice(
-            t('settings.agent.importSkillReadError', 'Failed to read files.'),
-          )
+        } catch (error) {
+          showReadError(error)
         }
       }
     },
-    [addCandidates, t],
+    [addCandidates, showReadError],
   )
 
   const runUrlFetch = useCallback(async () => {

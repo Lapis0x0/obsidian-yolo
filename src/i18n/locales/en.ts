@@ -506,6 +506,8 @@ export const en: TranslationKeys = {
       importSkillSuccess: 'Successfully imported {count} skill(s).',
       importSkillInvalidFile: 'No valid skill files or packages found.',
       importSkillReadError: 'Failed to read files.',
+      importSkillErrTooDeep:
+        'Skill package exceeds the maximum import depth of {depth}. Nothing was imported.',
       importSkillWriteError: 'Failed to import {name}: {error}',
       importSkillErrHeader: '"{name}" cannot be imported:',
       importSkillErrNoSkillMd: 'missing SKILL.md file in folder',
