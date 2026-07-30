@@ -1,0 +1,82 @@
+export type JsonRpcId = string | number
+
+export type JsonRpcError = {
+  code: number
+  message: string
+  data?: unknown
+}
+
+export type CodexUserInput =
+  | { type: 'text'; text: string; text_elements: [] }
+  | { type: 'image'; url: string }
+
+export type CodexThreadItem =
+  | { type: 'userMessage'; id: string; content: CodexUserInput[] }
+  | { type: 'agentMessage'; id: string; text: string }
+  | { type: 'reasoning'; id: string; summary: string[]; content: string[] }
+  | {
+      type: 'commandExecution'
+      id: string
+      command: string
+      cwd: string
+      status: string
+      aggregatedOutput: string | null
+      exitCode: number | null
+      durationMs: number | null
+    }
+  | {
+      type: 'fileChange'
+      id: string
+      changes: unknown[]
+      status: string
+    }
+  | {
+      type: 'mcpToolCall'
+      id: string
+      server: string
+      tool: string
+      status: string
+      arguments: unknown
+      result: unknown
+      error: unknown
+    }
+
+export type CodexTurn = {
+  id: string
+  items: CodexThreadItem[]
+  status: string
+  error: { message?: string } | null
+}
+
+export type CodexThread = {
+  id: string
+  preview: string
+  path: string | null
+  cwd: string
+  createdAt: number
+  updatedAt: number
+  name: string | null
+  turns: CodexTurn[]
+  modelProvider?: string
+}
+
+export type ThreadListResponse = {
+  data: CodexThread[]
+  nextCursor: string | null
+}
+
+export type ThreadReadResponse = { thread: CodexThread }
+export type ThreadStartResponse = { thread: CodexThread; model?: string }
+export type ThreadResumeResponse = { thread: CodexThread; model?: string }
+export type TurnStartResponse = { turn: CodexTurn }
+
+export type CodexNotification = {
+  method: string
+  params: Record<string, unknown>
+}
+
+export type CodexServerRequest = {
+  id: JsonRpcId
+  method: string
+  params: Record<string, unknown>
+}
