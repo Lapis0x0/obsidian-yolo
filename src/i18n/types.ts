@@ -400,11 +400,20 @@ export type TranslationKeys = {
       deleteSkillConfirm?: string
       deleteSkillSuccess?: string
       deleteSkillError?: string
+      deleteSkillInvalidPackage?: string
+      deleteSkillNotFound?: string
       deleteSkillBatchMessage?: string
       deleteSkillBatchSuccess?: string
       deleteSkillBatchBtn?: string
       deleteSkillSelectAll?: string
       deleteSkillCancel?: string
+      skillPackageMigrationIssues?: string
+      skillPackageMigrationInvalidFrontmatter?: string
+      skillPackageMigrationInvalidName?: string
+      skillPackageMigrationConflict?: string
+      skillPackageMigrationFileFailed?: string
+      skillPackageMigrationUnknownError?: string
+      skillPackageMigrationFailed?: string
       selectSkills?: string
       agents?: string
       agentsDesc?: string

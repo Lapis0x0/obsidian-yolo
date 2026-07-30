@@ -135,7 +135,10 @@ export function parseFrontmatter(
 
 export type FileEntry = {
   relativePath: string
-  content: string
+  /** Text content for SKILL.md and text-only remote inputs. */
+  content?: string
+  /** Exact bytes for package resources that must not be text-decoded. */
+  data?: ArrayBuffer
 }
 
 /**
@@ -152,6 +155,10 @@ export function validateDirectoryPackage(
   const skillMdEntry = files.find((f) => f.relativePath === 'SKILL.md')
   if (!skillMdEntry) {
     errors.push({ field: 'SKILL.md', message: 'missing' })
+    return errors
+  }
+  if (typeof skillMdEntry.content !== 'string') {
+    errors.push({ field: 'SKILL.md', message: 'must be text' })
     return errors
   }
 
@@ -185,24 +192,58 @@ export function validateDirectoryPackage(
 }
 
 /**
- * 对单文件格式的 skill 进行校验(Legacy 格式)。
- * 要求有 frontmatter 且包含 name 字段。
+ * 校验将被包装为 `<name>/SKILL.md` 的单个 Markdown 输入。
+ * 单文件只是导入边界，落盘后仍必须是完整的标准目录包。
  */
 export function validateSingleFileSkill(content: string): ValidationError[] {
-  const errors: ValidationError[] = []
-
   const frontmatter = parseFrontmatter(content)
   if (!frontmatter) {
-    errors.push({ field: 'frontmatter', message: 'missing or invalid' })
-    return errors
+    return [{ field: 'frontmatter', message: 'missing or invalid' }]
   }
 
+  return [
+    ...validateSkillName(frontmatter.name),
+    ...validateDescription(frontmatter.description),
+    ...validateCompatibility(frontmatter.compatibility),
+  ]
+}
+
+export type WrappedMarkdownSkillPackage = {
+  name: string
+  description: string
+  files: FileEntry[]
+}
+
+/**
+ * 把通过标准校验的单 Markdown 输入包装成目录包。
+ * 返回校验错误而不猜测文件名，确保身份始终来自 frontmatter.name。
+ */
+export function wrapMarkdownAsSkillPackage(content: string): {
+  package: WrappedMarkdownSkillPackage | null
+  errors: ValidationError[]
+} {
+  const errors = validateSingleFileSkill(content)
+  if (errors.length > 0) {
+    return { package: null, errors }
+  }
+
+  const frontmatter = parseFrontmatter(content)
   if (
-    typeof frontmatter.name !== 'string' ||
-    frontmatter.name.trim().length === 0
+    typeof frontmatter?.name !== 'string' ||
+    typeof frontmatter.description !== 'string'
   ) {
-    errors.push({ field: 'name', message: 'missing' })
+    return {
+      package: null,
+      errors: [{ field: 'frontmatter', message: 'missing or invalid' }],
+    }
   }
 
-  return errors
+  return {
+    package: {
+      name: frontmatter.name.trim(),
+      description: frontmatter.description.trim(),
+      files: [{ relativePath: 'SKILL.md', content }],
+    },
+    errors: [],
+  }
 }
