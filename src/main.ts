@@ -49,6 +49,11 @@ import { backgroundExecutionController } from './core/background/backgroundExecu
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import type { ClaudeLocalPluginCache } from './core/cli-runtime/claude/plugin-cache'
+import type {
+  CliRuntimeCoordinator,
+  CliRuntimeScope,
+} from './core/cli-runtime/coordinator'
 import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
 import {
@@ -316,6 +321,10 @@ export default class YoloPlugin extends Plugin {
     new Map()
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
+  private cliRuntimeCoordinatorPromise: Promise<CliRuntimeCoordinator | null> | null =
+    null
+  private claudeLocalPluginCache: ClaudeLocalPluginCache | null = null
+  private cliRuntimeCapabilityError: unknown = null
   private agentService: AgentService | null = null
   private agentServiceReady: Promise<AgentService> | null = null
   private agentApiService: YoloAgentApiService | null = null
@@ -394,6 +403,86 @@ export default class YoloPlugin extends Plugin {
       this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
     }
     return this.chatLeafSessionManager
+  }
+
+  /**
+   * Lazily enters the desktop-only CLI boundary. Keeping the promise here
+   * gives every ChatView one shared coordinator without loading provider
+   * runtime paths on mobile.
+   */
+  getCliRuntimeCoordinator(): Promise<CliRuntimeCoordinator | null> {
+    if (!Platform.isDesktop || this.isUnloaded) {
+      return Promise.resolve(null)
+    }
+    this.cliRuntimeCoordinatorPromise ??= this.initializeCliRuntimeCoordinator()
+    return this.cliRuntimeCoordinatorPromise
+  }
+
+  async createCliRuntimeScope(): Promise<CliRuntimeScope | null> {
+    const coordinator = await this.getCliRuntimeCoordinator()
+    if (!coordinator || this.isUnloaded) return null
+    try {
+      return coordinator.createScope()
+    } catch (error) {
+      this.reportCliRuntimeCapabilityError(error)
+      return null
+    }
+  }
+
+  getCliRuntimeCapabilityError(): unknown {
+    return this.cliRuntimeCapabilityError
+  }
+
+  private async initializeCliRuntimeCoordinator(): Promise<CliRuntimeCoordinator | null> {
+    try {
+      const [
+        { createDesktopCliRuntimeCoordinator },
+        { ClaudeLocalPluginCache },
+      ] = await Promise.all([
+        import('./core/cli-runtime/coordinator'),
+        import('./core/cli-runtime/claude/plugin-cache'),
+      ])
+      if (this.isUnloaded) return null
+
+      const cache = new ClaudeLocalPluginCache({
+        app: this.app,
+        getSettings: () => this.settings,
+      })
+      const coordinator = await createDesktopCliRuntimeCoordinator({
+        app: this.app,
+        getSettings: () => this.settings,
+        resolveClaudePluginPaths: cache.resolvePluginPaths,
+      })
+      if (this.isUnloaded) {
+        await coordinator.dispose()
+        return null
+      }
+
+      this.claudeLocalPluginCache = cache
+      return coordinator
+    } catch (error) {
+      if (!this.isUnloaded) {
+        this.reportCliRuntimeCapabilityError(error)
+      }
+      return null
+    }
+  }
+
+  private reportCliRuntimeCapabilityError(error: unknown): void {
+    this.cliRuntimeCapabilityError = error
+    console.error('[YOLO] CLI runtime capability is unavailable', error)
+  }
+
+  private disposeCliRuntimeCoordinator(): void {
+    const coordinatorPromise = this.cliRuntimeCoordinatorPromise
+    this.cliRuntimeCoordinatorPromise = null
+    this.claudeLocalPluginCache = null
+    if (!coordinatorPromise) return
+    void coordinatorPromise
+      .then((coordinator) => coordinator?.dispose())
+      .catch((error: unknown) => {
+        console.error('[YOLO] CLI runtime coordinator cleanup failed', error)
+      })
   }
 
   getMarkdownInsertionTarget(): MarkdownView | null {
@@ -1988,6 +2077,7 @@ export default class YoloPlugin extends Plugin {
 
   async onload() {
     this.isUnloaded = false
+    this.cliRuntimeCapabilityError = null
     this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
     this.initializeRuntimeComponentSystem()
@@ -2488,6 +2578,7 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    this.disposeCliRuntimeCoordinator()
     this.moduleUpdateController?.dispose()
     this.moduleUpdateController = null
     this.moduleService?.dispose()

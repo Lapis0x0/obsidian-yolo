@@ -21,9 +21,10 @@ import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
 import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
+import type { CliRuntimeScope } from './core/cli-runtime/coordinator'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import { getConversationDisplayTitle } from './hooks/useChatHistory'
-import YoloPlugin from './main'
+import type YoloPlugin from './main'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import {
   MentionableBlockData,
@@ -57,6 +58,9 @@ export class ChatView extends ItemView {
   private isApplyingPersistedViewState = false
   private pendingRestoredConversationId?: string
   private restoredConversationLoadPromise: Promise<void> | null = null
+  private cliRuntimeScope: CliRuntimeScope | undefined
+  private cliRuntimeScopeInitialization: Promise<void> | null = null
+  private cliRuntimeScopeDisposal: Promise<void> | null = null
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -123,8 +127,12 @@ export class ChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    await this.prepareCliRuntimeScopeForOpen()
     this.isClosed = false
-    await this.plugin.warmupAgentService()
+    await Promise.all([
+      this.plugin.warmupAgentService(),
+      this.initializeCliRuntimeScope(),
+    ])
     const manager = this.plugin.getChatLeafSessionManager()
     const pendingPayload = manager.consumePendingPayload(this.leaf)
     const placement =
@@ -171,7 +179,7 @@ export class ChatView extends ItemView {
     this.plugin.refreshInstallationIncompleteBanner()
   }
 
-  onClose(): Promise<void> {
+  async onClose(): Promise<void> {
     this.isClosed = true
     this.runtimeSnapshot =
       this.chatRef.current?.getRuntimeSnapshot() ?? this.runtimeSnapshot
@@ -194,7 +202,43 @@ export class ChatView extends ItemView {
     this.root = null
     this.mountedHost = null
     this.mountedDoc = null
-    return Promise.resolve()
+    await this.disposeCliRuntimeScope()
+  }
+
+  private async prepareCliRuntimeScopeForOpen(): Promise<void> {
+    if (!this.cliRuntimeScopeDisposal) return
+    await this.cliRuntimeScopeDisposal
+    this.cliRuntimeScopeInitialization = null
+    this.cliRuntimeScopeDisposal = null
+  }
+
+  private initializeCliRuntimeScope(): Promise<void> {
+    this.cliRuntimeScopeInitialization ??= (async () => {
+      try {
+        const scope = await this.plugin.createCliRuntimeScope()
+        if (!scope) return
+        if (this.isClosed) {
+          await scope.dispose()
+          return
+        }
+        this.cliRuntimeScope = scope
+      } catch (error) {
+        console.error('[YOLO] Failed to initialize ChatView CLI scope', error)
+      }
+    })()
+    return this.cliRuntimeScopeInitialization
+  }
+
+  private disposeCliRuntimeScope(): Promise<void> {
+    this.cliRuntimeScopeDisposal ??= (async () => {
+      await this.cliRuntimeScopeInitialization
+      const scope = this.cliRuntimeScope
+      this.cliRuntimeScope = undefined
+      await scope?.dispose()
+    })().catch((error: unknown) => {
+      console.error('[YOLO] Failed to dispose ChatView CLI scope', error)
+    })
+    return this.cliRuntimeScopeDisposal
   }
 
   private scheduleRebuildCheck(): void {
@@ -295,6 +339,7 @@ export class ChatView extends ItemView {
                                 placement={placement}
                                 initialChatProps={{
                                   ...(this.initialChatProps ?? {}),
+                                  cliRuntimeScope: this.cliRuntimeScope,
                                   seededRuntimeSnapshot,
                                 }}
                                 onConversationContextChange={(context) => {
