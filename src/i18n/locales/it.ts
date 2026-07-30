@@ -82,6 +82,18 @@ export const it: DeepPartial<TranslationKeys> = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      accessibleLabel: 'Backend della chat: {runtime}',
+      menuLabel: 'Backend della chat',
+      chatBadge: 'Chat',
+      cliBadge: 'CLI',
+      yoloLabel: 'YOLO Chat',
+      yoloDescription: 'Runtime di chat integrato in YOLO',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeDescription: 'Claude Code su questo dispositivo',
+      codexLabel: 'Codex',
+      codexDescription: 'Codex su questo dispositivo',
+    },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
