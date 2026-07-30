@@ -1679,7 +1679,7 @@ export type TranslationKeys = {
       submitError?: string
       cancelError?: string
       openError?: string
-      transitionBusy?: string
+      transitionError?: string
       state?: {
         idle?: string
         running?: string

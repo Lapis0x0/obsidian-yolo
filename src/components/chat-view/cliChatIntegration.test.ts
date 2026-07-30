@@ -2,6 +2,7 @@ import type { SerializedEditorState } from 'lexical'
 
 import type {
   CliConversationController,
+  CliConversationSnapshot,
   CliRuntimeScope,
   CliSessionDiscoveryResult,
   CliSessionHydration,
@@ -11,13 +12,16 @@ import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 
 import {
-  dispatchComposerSubmit,
+  CliChatOperationCoordinator,
   openCliSession,
   removeCliOverlayAfterConfirmation,
-  resetCliSessionForAssistantChange,
+  resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   selectFreshCliRuntime,
+  shouldClearAcceptedCliDraft,
+  shouldHydrateSeededCliSession,
+  shouldLoadYoloHistoryItem,
   submitCliComposerTurn,
 } from './cliChatIntegration'
 
@@ -52,12 +56,41 @@ const userMessage = (): ChatUserMessage => ({
   ],
 })
 
+const deferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+const waitUntil = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return
+    await Promise.resolve()
+  }
+  throw new Error('Condition did not become true')
+}
+
+const cliSnapshot = (
+  overrides: Partial<CliConversationSnapshot> = {},
+): CliConversationSnapshot => ({
+  runtimeId: 'codex',
+  messages: [],
+  sessionRef: null,
+  runState: 'idle',
+  error: null,
+  ...overrides,
+})
+
 describe('CLI chat integration', () => {
   afterEach(() => {
     jest.useRealTimers()
   })
 
-  it('falls back to YOLO without a desktop scope and restores a seeded desktop runtime', () => {
+  it('falls back to YOLO without a desktop scope and resolves runtime-owned assistants', () => {
     expect(
       resolveChatRuntimeId({
         requestedRuntimeId: 'codex',
@@ -104,9 +137,24 @@ describe('CLI chat integration', () => {
       resolveActiveCliConversationSnapshot('claude-code', cliSnapshot),
     ).toBeNull()
     expect(resolveActiveCliConversationSnapshot('yolo', cliSnapshot)).toBeNull()
+
+    expect(
+      resolveActiveAssistantId({
+        activeRuntimeId: 'yolo',
+        conversationAssistantId: 'assistant-yolo',
+        cliAssistantId: 'assistant-cli',
+      }),
+    ).toBe('assistant-yolo')
+    expect(
+      resolveActiveAssistantId({
+        activeRuntimeId: 'codex',
+        conversationAssistantId: 'assistant-yolo',
+        cliAssistantId: 'assistant-cli',
+      }),
+    ).toBe('assistant-cli')
   })
 
-  it('dispatches a CLI draft without invoking the YOLO submit path', async () => {
+  it('encodes and submits the CLI draft through its assistant binding', async () => {
     jest.useFakeTimers().setSystemTime(new Date(2026, 6, 30, 14, 53))
     const ref: CliSessionRef = {
       runtimeId: 'codex',
@@ -129,7 +177,6 @@ describe('CLI chat integration', () => {
     const scope = {
       sessionService: { recordOpenedSession },
     } as unknown as CliRuntimeScope
-    const submitYolo = jest.fn()
     const encodeTurnContent = jest.fn(() => 'encoded CLI content')
     const resolveAssistantBinding = jest.fn(async () => ({
       assistantId: 'assistant-1',
@@ -137,25 +184,19 @@ describe('CLI chat integration', () => {
       enabledSkillNames: ['review'],
     }))
 
-    await dispatchComposerSubmit({
+    await submitCliComposerTurn({
+      app: {} as never,
+      settings: { assistants: [] } as unknown as YoloSettings,
+      scope,
+      controller,
       runtimeId: 'codex',
-      submitYolo,
-      submitCli: (runtimeId) =>
-        submitCliComposerTurn({
-          app: {} as never,
-          settings: { assistants: [] } as unknown as YoloSettings,
-          scope,
-          controller,
-          runtimeId,
-          assistantId: 'assistant-1',
-          userMessage: userMessage(),
-          timeContextEnabled: true,
-          resolveAssistantBinding,
-          encodeTurnContent,
-        }),
+      assistantId: 'assistant-1',
+      userMessage: userMessage(),
+      timeContextEnabled: true,
+      resolveAssistantBinding,
+      encodeTurnContent,
     })
 
-    expect(submitYolo).not.toHaveBeenCalled()
     expect(encodeTurnContent).toHaveBeenCalledWith(
       expect.objectContaining({
         runtimeId: 'codex',
@@ -235,8 +276,7 @@ describe('CLI chat integration', () => {
     })
   })
 
-  it('stops a pending CLI submit before the controller accepts the turn', async () => {
-    const abortController = new AbortController()
+  it('aborts an unmounted preparation before it can reach sendTurn', async () => {
     let resolveBinding!: (value: {
       assistantId: string
       systemPrompt: string
@@ -256,6 +296,10 @@ describe('CLI chat integration', () => {
       sendTurn,
     } as unknown as CliConversationController
 
+    const coordinator = new CliChatOperationCoordinator()
+    const operation = coordinator.beginSubmission(3)
+    expect(operation).not.toBeNull()
+
     const submission = submitCliComposerTurn({
       app: {} as never,
       settings: { assistants: [] } as unknown as YoloSettings,
@@ -265,11 +309,13 @@ describe('CLI chat integration', () => {
       assistantId: 'assistant-1',
       userMessage: userMessage(),
       timeContextEnabled: false,
-      signal: abortController.signal,
+      signal: operation!.signal,
+      onSendStarted: () => coordinator.markSending(operation!.token),
       resolveAssistantBinding: () => binding,
       encodeTurnContent: () => 'pending',
     })
-    abortController.abort()
+    expect(coordinator.abortPreparation()).toBe('preparing')
+    expect(coordinator.beginSubmission(4)).toBeNull()
     resolveBinding({
       assistantId: 'assistant-1',
       systemPrompt: '',
@@ -277,11 +323,15 @@ describe('CLI chat integration', () => {
     })
 
     await expect(submission).rejects.toMatchObject({ name: 'AbortError' })
+    coordinator.finishSubmission(operation!.token)
     expect(ensureReady).not.toHaveBeenCalled()
     expect(sendTurn).not.toHaveBeenCalled()
+    const nextOperation = coordinator.beginSubmission(4)
+    expect(nextOperation).not.toBeNull()
+    coordinator.finishSubmission(nextOperation!.token)
   })
 
-  it('starts fresh sessions, hydrates an exact indexed session once, and resets on assistant change', async () => {
+  it('starts fresh sessions and hydrates an exact indexed session once', async () => {
     const indexedRef: CliSessionRef = {
       runtimeId: 'claude-code',
       nativeSessionId: 'claude-session',
@@ -334,25 +384,228 @@ describe('CLI chat integration', () => {
       assistantId: 'assistant-overlay',
     })
     expect(opened.assistantId).toBe('assistant-overlay')
+    expect(resetSession).toHaveBeenCalledTimes(1)
 
+    expect(shouldHydrateSeededCliSession(indexedRef, cliSnapshot())).toBe(true)
     expect(
-      resetCliSessionForAssistantChange({
-        activeRuntimeId: 'claude-code',
-        controller,
-        currentAssistantId: 'assistant-overlay',
-        nextAssistantId: 'assistant-new',
+      shouldHydrateSeededCliSession(
+        indexedRef,
+        cliSnapshot({ sessionRef: indexedRef }),
+      ),
+    ).toBe(false)
+    expect(
+      shouldHydrateSeededCliSession(
+        indexedRef,
+        cliSnapshot({
+          sessionRef: {
+            runtimeId: 'codex',
+            nativeSessionId: 'controller-authoritative',
+          },
+        }),
+      ),
+    ).toBe(false)
+  })
+
+  it('treats sendTurn success as accepted before a deferred overlay write', async () => {
+    const overlay = deferred<undefined>()
+    const ref: CliSessionRef = {
+      runtimeId: 'codex',
+      nativeSessionId: 'accepted-before-overlay',
+    }
+    const cancel = jest.fn(async () => undefined)
+    const resetSession = jest.fn()
+    const controller = {
+      ensureReady: jest.fn(async () => undefined),
+      sendTurn: jest.fn(async () => undefined),
+      cancel,
+      resetSession,
+      getSnapshot: () => cliSnapshot({ sessionRef: ref, runState: 'running' }),
+    } as unknown as CliConversationController
+    const scope = {
+      sessionService: {
+        recordOpenedSession: jest.fn(() => overlay.promise),
+      },
+    } as unknown as CliRuntimeScope
+    const coordinator = new CliChatOperationCoordinator()
+    const operation = coordinator.beginSubmission(7)!
+
+    const submission = submitCliComposerTurn({
+      app: {} as never,
+      settings: { assistants: [] } as unknown as YoloSettings,
+      scope,
+      controller,
+      runtimeId: 'codex',
+      assistantId: 'assistant-cli',
+      userMessage: userMessage(),
+      timeContextEnabled: false,
+      signal: operation.signal,
+      onSendStarted: () => coordinator.markSending(operation.token),
+      onAccepted: (acceptedMessage) => {
+        coordinator.markAccepted(operation.token, acceptedMessage)
+      },
+      resolveAssistantBinding: async () => ({
+        assistantId: 'assistant-cli',
+        systemPrompt: '',
+        enabledSkillNames: [],
+      }),
+      encodeTurnContent: () => 'accepted content',
+    })
+
+    await waitUntil(
+      () => coordinator.getSnapshot().submissionPhase === 'accepted',
+    )
+    await expect(coordinator.cancelCurrentOperation(controller)).resolves.toBe(
+      undefined,
+    )
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(resetSession).not.toHaveBeenCalled()
+    expect(coordinator.getSnapshot().submissionPhase).toBe('idle')
+    expect(coordinator.getSnapshot().acceptedDraft).toMatchObject({
+      draftRevision: 7,
+      userMessage: { id: 'draft-1' },
+    })
+
+    overlay.resolve(undefined)
+    await expect(submission).resolves.toMatchObject({ overlayError: null })
+    coordinator.finishSubmission(operation.token)
+  })
+
+  it('cancels again after a send becomes accepted if the early cancel was a no-op', async () => {
+    const coordinator = new CliChatOperationCoordinator()
+    const operation = coordinator.beginSubmission(1)!
+    expect(coordinator.markSending(operation.token)).toBe(true)
+    const cancel = jest.fn(async () => undefined)
+    const controller = {
+      cancel,
+      getSnapshot: () => cliSnapshot(),
+    } as unknown as CliConversationController
+    const action = jest.fn()
+
+    const transition = coordinator.transition(controller, action)
+    await waitUntil(() => cancel.mock.calls.length === 1)
+    expect(action).not.toHaveBeenCalled()
+
+    coordinator.markAccepted(operation.token, userMessage())
+    await expect(transition).resolves.toBe(true)
+    expect(cancel).toHaveBeenCalledTimes(2)
+    expect(action).toHaveBeenCalledTimes(1)
+    coordinator.finishSubmission(operation.token)
+  })
+
+  it('blocks a replacement submit until stopping preparation has reset the controller', async () => {
+    const cancellation = deferred<undefined>()
+    const resetSession = jest.fn()
+    const controller = {
+      cancel: jest.fn(() => cancellation.promise),
+      resetSession,
+      getSnapshot: () => cliSnapshot(),
+    } as unknown as CliConversationController
+    const coordinator = new CliChatOperationCoordinator()
+    coordinator.beginSubmission(1)
+
+    const stopping = coordinator.cancelCurrentOperation(controller)
+    expect(coordinator.getSnapshot().isTransitioning).toBe(true)
+    expect(coordinator.beginSubmission(2)).toBeNull()
+
+    cancellation.resolve(undefined)
+    await expect(stopping).resolves.toBeUndefined()
+    expect(resetSession).toHaveBeenCalledTimes(1)
+    expect(coordinator.getSnapshot().isTransitioning).toBe(false)
+    const replacement = coordinator.beginSubmission(2)
+    expect(replacement).not.toBeNull()
+    coordinator.finishSubmission(replacement!.token)
+  })
+
+  it('keeps the current session when cancellation fails', async () => {
+    const cancellationError = new Error('cancel failed')
+    const resetSession = jest.fn()
+    const controller = {
+      cancel: jest.fn(async () => {
+        throw cancellationError
+      }),
+      getSnapshot: () =>
+        cliSnapshot({
+          sessionRef: { runtimeId: 'codex', nativeSessionId: 'current' },
+        }),
+      resetSession,
+    } as unknown as CliConversationController
+    const coordinator = new CliChatOperationCoordinator()
+    const action = jest.fn()
+
+    await expect(coordinator.transition(controller, action)).rejects.toBe(
+      cancellationError,
+    )
+    expect(action).not.toHaveBeenCalled()
+    expect(resetSession).not.toHaveBeenCalled()
+  })
+
+  it('lets only the latest transition mutate session state', async () => {
+    const cancellation = deferred<undefined>()
+    const cancel = jest.fn(() => cancellation.promise)
+    const controller = {
+      cancel,
+      getSnapshot: () =>
+        cliSnapshot({
+          sessionRef: { runtimeId: 'codex', nativeSessionId: 'current' },
+        }),
+    } as unknown as CliConversationController
+    const coordinator = new CliChatOperationCoordinator()
+    const firstAction = jest.fn()
+    const latestAction = jest.fn()
+
+    const first = coordinator.transition(controller, firstAction)
+    const latest = coordinator.transition(controller, latestAction)
+    cancellation.resolve(undefined)
+
+    await expect(first).resolves.toBe(false)
+    await expect(latest).resolves.toBe(true)
+    expect(firstAction).not.toHaveBeenCalled()
+    expect(latestAction).toHaveBeenCalledTimes(1)
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears only the accepted draft revision and opens current YOLO history from CLI', () => {
+    const acceptedDraft = {
+      token: 1,
+      draftRevision: 4,
+      userMessage: userMessage(),
+    }
+    expect(
+      shouldClearAcceptedCliDraft({
+        acceptedDraft,
+        currentDraft: userMessage(),
+        currentDraftRevision: 4,
       }),
     ).toBe(true)
-    expect(resetSession).toHaveBeenCalledTimes(2)
     expect(
-      resetCliSessionForAssistantChange({
-        activeRuntimeId: 'yolo',
-        controller,
-        currentAssistantId: 'assistant-new',
-        nextAssistantId: 'assistant-other',
+      shouldClearAcceptedCliDraft({
+        acceptedDraft,
+        currentDraft: userMessage(),
+        currentDraftRevision: 5,
       }),
     ).toBe(false)
-    expect(resetSession).toHaveBeenCalledTimes(2)
+    expect(
+      shouldClearAcceptedCliDraft({
+        acceptedDraft,
+        currentDraft: { ...userMessage(), id: 'draft-2' },
+        currentDraftRevision: 4,
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldLoadYoloHistoryItem({
+        activeRuntimeId: 'codex',
+        conversationId: 'underlying-yolo',
+        currentConversationId: 'underlying-yolo',
+      }),
+    ).toBe(true)
+    expect(
+      shouldLoadYoloHistoryItem({
+        activeRuntimeId: 'yolo',
+        conversationId: 'underlying-yolo',
+        currentConversationId: 'underlying-yolo',
+      }),
+    ).toBe(false)
   })
 
   it('binds an external session to the current assistant and records its overlay', async () => {

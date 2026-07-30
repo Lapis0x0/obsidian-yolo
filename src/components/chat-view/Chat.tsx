@@ -159,14 +159,18 @@ import {
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
 import {
-  dispatchComposerSubmit,
+  type CliChatOperationSnapshot,
+  getCliChatOperationCoordinator,
   isCliConversationActive,
   openCliSession,
   removeCliOverlayAfterConfirmation,
-  resetCliSessionForAssistantChange,
+  resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   selectFreshCliRuntime,
+  shouldClearAcceptedCliDraft,
+  shouldHydrateSeededCliSession,
+  shouldLoadYoloHistoryItem,
   submitCliComposerTurn,
 } from './cliChatIntegration'
 import CliChatSurface from './CliChatSurface'
@@ -898,8 +902,10 @@ export type ChatRef = {
 export type ChatRuntimeSnapshot = {
   activeRuntimeId: ChatRuntimeId
   cliSessionRef: CliSessionRef | null
+  cliAssistantId: string
   currentConversationId: string
   inputMessage: ChatUserMessage
+  inputDraftRevision: number
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
@@ -971,6 +977,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliRuntimeAvailable,
   })
   const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
+  const chatMountedRef = useRef(true)
+  useEffect(() => {
+    chatMountedRef.current = true
+    return () => {
+      chatMountedRef.current = false
+    }
+  }, [])
   const [cliConversationController, setCliConversationController] =
     useState<CliConversationController | null>(() =>
       initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
@@ -996,6 +1009,35 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliConversationSnapshot,
   )
   const isCliRunActive = isCliConversationActive(activeCliConversationSnapshot)
+  const cliOperationCoordinator = useMemo(
+    () =>
+      cliConversationController
+        ? getCliChatOperationCoordinator(cliConversationController)
+        : null,
+    [cliConversationController],
+  )
+  const [cliOperationSnapshot, setCliOperationSnapshot] =
+    useState<CliChatOperationSnapshot | null>(
+      () => cliOperationCoordinator?.getSnapshot() ?? null,
+    )
+  useEffect(() => {
+    if (!cliOperationCoordinator) {
+      setCliOperationSnapshot(null)
+      return
+    }
+    const publishSnapshot = () =>
+      setCliOperationSnapshot(cliOperationCoordinator.getSnapshot())
+    publishSnapshot()
+    const unsubscribe = cliOperationCoordinator.subscribe(publishSnapshot)
+    return () => {
+      unsubscribe()
+      cliOperationCoordinator.abortPreparation()
+    }
+  }, [cliOperationCoordinator])
+  const cliSubmissionPending =
+    cliOperationSnapshot?.submissionPhase === 'preparing' ||
+    cliOperationSnapshot?.submissionPhase === 'sending'
+  const cliTransitioning = cliOperationSnapshot?.isTransitioning === true
   const [cliSessionDiscoveryResult, setCliSessionDiscoveryResult] =
     useState<CliSessionDiscoveryResult>()
   const [cliSessionsLoading, setCliSessionsLoading] = useState(false)
@@ -1041,6 +1083,95 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         settings.currentAssistantId ??
         DEFAULT_ASSISTANT_ID,
     )
+  const [cliAssistantId, setCliAssistantId] = useState<string>(
+    seededRuntimeSnapshot?.cliAssistantId ??
+      settings.currentAssistantId ??
+      DEFAULT_ASSISTANT_ID,
+  )
+  const activeAssistantId = resolveActiveAssistantId({
+    activeRuntimeId,
+    conversationAssistantId,
+    cliAssistantId,
+  })
+  const cliSessionRestoreGenerationRef = useRef(0)
+  useEffect(() => {
+    const seededRef = seededRuntimeSnapshot?.cliSessionRef
+    if (
+      !seededRef ||
+      activeRuntimeId === 'yolo' ||
+      !cliRuntimeScope ||
+      !cliConversationController ||
+      !cliOperationCoordinator
+    ) {
+      return
+    }
+    const controllerSnapshot = cliConversationController.getSnapshot()
+    // A surviving scope/controller is authoritative on ordinary rebuilds.
+    // Only a fresh, unbound controller needs one native hydration from seed.
+    if (!shouldHydrateSeededCliSession(seededRef, controllerSnapshot)) return
+
+    const generation = ++cliSessionRestoreGenerationRef.current
+    void cliOperationCoordinator
+      .transition(cliConversationController, async (isCurrent) => {
+        const result = await openCliSession({
+          scope: cliRuntimeScope,
+          ref: seededRef,
+          currentAssistantId: cliAssistantId,
+        })
+        if (
+          !result.hydration ||
+          !isCurrent() ||
+          generation !== cliSessionRestoreGenerationRef.current ||
+          !chatMountedRef.current
+        ) {
+          return
+        }
+        setCliConversationController(result.controller)
+        setRequestedRuntimeId(seededRef.runtimeId)
+        activeRuntimeIdRef.current = seededRef.runtimeId
+        setCliAssistantId(result.assistantId)
+        if (result.overlayError) {
+          new Notice(
+            t(
+              'sidebar.cliSessions.recordError',
+              'The CLI session opened, but YOLO could not remember it: {message}',
+            ).replace('{message}', result.overlayError.message),
+          )
+        }
+        void refreshCliSessions()
+      })
+      .catch((error) => {
+        if (
+          generation !== cliSessionRestoreGenerationRef.current ||
+          !chatMountedRef.current
+        ) {
+          return
+        }
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      })
+    return () => {
+      cliSessionRestoreGenerationRef.current += 1
+    }
+  }, [
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    chatMountedRef,
+    cliAssistantId,
+    cliConversationController,
+    cliOperationCoordinator,
+    cliRuntimeScope,
+    refreshCliSessions,
+    seededRuntimeSnapshot?.cliSessionRef,
+    t,
+  ])
   const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
   const effectiveSettings = useMemo(
     () => ({
@@ -1118,6 +1249,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     inputDraftHolderRef.current = new ChatInputDraftHolder(inputMessage)
   }
   const inputDraftHolder = inputDraftHolderRef.current
+  const inputDraftRevisionRef = useRef(
+    seededRuntimeSnapshot?.inputDraftRevision ?? 0,
+  )
+  const bumpInputDraftRevision = useCallback(() => {
+    inputDraftRevisionRef.current += 1
+  }, [])
   const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
   const inputMessageRef = useRef(inputMessage)
   const getLatestInputMessage = useCallback(
@@ -1131,19 +1268,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const setInputMessage = useCallback(
     (updater: (message: ChatUserMessage) => ChatUserMessage) => {
       const nextMessage = inputDraftHolder.update(updater)
+      bumpInputDraftRevision()
       inputMessageRef.current = nextMessage
       setInputMessageState(nextMessage)
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
   const replaceInputMessage = useCallback(
     (message: ChatUserMessage) => {
       const nextMessage = inputDraftHolder.replace(message)
+      bumpInputDraftRevision()
       inputMessageRef.current = nextMessage
       setInputMessageState(nextMessage)
       setInputReplacementVersion(inputDraftHolder.getReplacementVersion())
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
   const [queuedMessageEditState, setQueuedMessageEditState] = useState<{
     preservedInputMessage: ChatUserMessage
@@ -1451,6 +1590,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () => resolveAssistantTimeContextEnabled(selectedAssistant, settings),
     [selectedAssistant, settings],
   )
+  const selectedCliAssistant = useMemo(
+    () =>
+      settings.assistants.find(
+        (assistant) => assistant.id === cliAssistantId,
+      ) ?? null,
+    [cliAssistantId, settings.assistants],
+  )
+  const selectedCliAssistantTimeContextEnabled = useMemo(
+    () => resolveAssistantTimeContextEnabled(selectedCliAssistant, settings),
+    [selectedCliAssistant, settings],
+  )
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -1622,91 +1772,115 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
   )
 
-  const handleRuntimeChange = useCallback(
-    (runtimeId: ChatRuntimeId) => {
-      if (runtimeId === activeRuntimeId) return
-      if (runtimeId === 'yolo') {
-        activeRuntimeIdRef.current = 'yolo'
-        setRequestedRuntimeId('yolo')
-        return
-      }
-      if (!cliRuntimeScope || !cliRuntimeAvailable) return
+  const transitionCliSession = useCallback(
+    async (
+      action: (isCurrent: () => boolean) => void | Promise<void>,
+    ): Promise<boolean> => {
+      if (!cliConversationController || !cliOperationCoordinator) return false
       try {
-        const controller = selectFreshCliRuntime(cliRuntimeScope, runtimeId)
-        setCliConversationController(controller)
-        activeRuntimeIdRef.current = runtimeId
-        setRequestedRuntimeId(runtimeId)
+        return await cliOperationCoordinator.transition(
+          cliConversationController,
+          action,
+        )
       } catch (error) {
         new Notice(
           t(
-            'chat.cliSurface.runtimeError',
-            'Could not start the CLI runtime: {message}',
+            'chat.cliSurface.transitionError',
+            'Could not leave the current CLI session: {message}',
           ).replace(
             '{message}',
             error instanceof Error ? error.message : String(error),
           ),
         )
+        return false
       }
+    },
+    [cliConversationController, cliOperationCoordinator, t],
+  )
+
+  const handleRuntimeChange = useCallback(
+    (runtimeId: ChatRuntimeId) => {
+      if (runtimeId === activeRuntimeId) return
+      if (runtimeId !== 'yolo' && (!cliRuntimeScope || !cliRuntimeAvailable)) {
+        return
+      }
+
+      const applyRuntimeChange = () => {
+        if (runtimeId === 'yolo') {
+          activeRuntimeIdRef.current = 'yolo'
+          setRequestedRuntimeId('yolo')
+          return
+        }
+        if (!cliRuntimeScope) return
+        const controller = selectFreshCliRuntime(cliRuntimeScope, runtimeId)
+        setCliConversationController(controller)
+        activeRuntimeIdRef.current = runtimeId
+        setRequestedRuntimeId(runtimeId)
+      }
+
+      if (activeRuntimeId === 'yolo') {
+        try {
+          applyRuntimeChange()
+        } catch (error) {
+          new Notice(
+            t(
+              'chat.cliSurface.runtimeError',
+              'Could not start the CLI runtime: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        }
+        return
+      }
+
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        applyRuntimeChange()
+      })
     },
     [
       activeRuntimeId,
       activeRuntimeIdRef,
       cliRuntimeAvailable,
       cliRuntimeScope,
-      setRequestedRuntimeId,
       t,
+      transitionCliSession,
     ],
   )
 
   const handleConversationAssistantSelect = useCallback(
     (assistantId: string) => {
-      if (activeRuntimeId !== 'yolo' && cliSubmitPendingRef.current) {
-        new Notice(
-          t(
-            'chat.cliSurface.transitionBusy',
-            'Wait for the CLI message to be accepted before changing sessions.',
-          ),
+      if (activeRuntimeId === 'yolo') {
+        setConversationAssistantId(assistantId)
+        conversationAssistantIdRef.current.set(
+          currentConversationId,
+          assistantId,
         )
+        void persistPreferredAssistantId(assistantId)
+        const assistant = settings.assistants.find(
+          (item) => item.id === assistantId,
+        )
+        if (assistant?.modelId) applyAssistantDefaultModel(assistant.modelId)
         return
       }
-      if (
-        activeRuntimeId !== 'yolo' &&
-        cliConversationController &&
-        isCliConversationActive(activeCliConversationSnapshot)
-      ) {
-        void cliConversationController.cancel().catch((error) => {
-          console.error(
-            'Failed to cancel CLI run before assistant change',
-            error,
-          )
-        })
-      }
-      resetCliSessionForAssistantChange({
-        activeRuntimeId,
-        controller: cliConversationController,
-        currentAssistantId: conversationAssistantId,
-        nextAssistantId: assistantId,
+      if (assistantId === cliAssistantId) return
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        cliConversationController?.resetSession()
+        setCliAssistantId(assistantId)
       })
-      setConversationAssistantId(assistantId)
-      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
-      void persistPreferredAssistantId(assistantId)
-      const assistant = settings.assistants.find(
-        (item) => item.id === assistantId,
-      )
-      if (activeRuntimeId === 'yolo' && assistant?.modelId) {
-        applyAssistantDefaultModel(assistant.modelId)
-      }
     },
     [
       activeRuntimeId,
-      activeCliConversationSnapshot,
       applyAssistantDefaultModel,
+      cliAssistantId,
       cliConversationController,
-      conversationAssistantId,
       currentConversationId,
       persistPreferredAssistantId,
       settings.assistants,
-      t,
+      transitionCliSession,
     ],
   )
 
@@ -1722,24 +1896,44 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settings.currentAssistantId ??
       settings.assistants[0]?.id ??
       DEFAULT_ASSISTANT_ID
-    resetCliSessionForAssistantChange({
-      activeRuntimeId,
-      controller: cliConversationController,
-      currentAssistantId: conversationAssistantId,
-      nextAssistantId: fallbackAssistantId,
-    })
     setConversationAssistantId(fallbackAssistantId)
     conversationAssistantIdRef.current.set(
       currentConversationId,
       fallbackAssistantId,
     )
   }, [
-    activeRuntimeId,
-    cliConversationController,
     conversationAssistantId,
     currentConversationId,
     settings.assistants,
     settings.currentAssistantId,
+  ])
+
+  useEffect(() => {
+    if (
+      settings.assistants.some((assistant) => assistant.id === cliAssistantId)
+    ) {
+      return
+    }
+    const fallbackAssistantId =
+      settings.currentAssistantId ??
+      settings.assistants[0]?.id ??
+      DEFAULT_ASSISTANT_ID
+    if (activeRuntimeId !== 'yolo' && cliConversationController) {
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        cliConversationController.resetSession()
+        setCliAssistantId(fallbackAssistantId)
+      })
+      return
+    }
+    setCliAssistantId(fallbackAssistantId)
+  }, [
+    activeRuntimeId,
+    cliAssistantId,
+    cliConversationController,
+    settings.assistants,
+    settings.currentAssistantId,
+    transitionCliSession,
   ])
 
   // Per-message model mapping for historical user messages
@@ -1755,9 +1949,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     useState<Map<string, string>>(new Map())
   const submitMutationPendingRef = useRef(false)
   const assistantContinuationPendingRef = useRef(false)
-  const cliSubmitPendingRef = useRef(false)
-  const cliSubmitAbortControllerRef = useRef<AbortController | null>(null)
-  const [cliSubmitPending, setCliSubmitPending] = useState(false)
 
   const chatTimelineReadModel = useChatTimelineReadModel({
     messages: chatMessages,
@@ -1975,6 +2166,40 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMentionables: inputMessage.mentionables,
       focusedHistoricalMentionables,
     })
+  const consumeAcceptedCliDraft = useCallback(
+    (acceptedDraft: NonNullable<CliChatOperationSnapshot['acceptedDraft']>) => {
+      if (
+        !cliOperationCoordinator ||
+        cliOperationCoordinator.getSnapshot().acceptedDraft?.token !==
+          acceptedDraft.token
+      ) {
+        return
+      }
+      cliOperationCoordinator.acknowledgeAcceptedDraft(acceptedDraft.token)
+      commitSentSelectionHighlights(acceptedDraft.userMessage.mentionables)
+      const latestDraft = getLatestInputMessage()
+      if (
+        shouldClearAcceptedCliDraft({
+          acceptedDraft,
+          currentDraft: latestDraft,
+          currentDraftRevision: inputDraftRevisionRef.current,
+        })
+      ) {
+        replaceInputMessage(getNewInputMessage(reasoningLevel))
+      }
+    },
+    [
+      cliOperationCoordinator,
+      commitSentSelectionHighlights,
+      getLatestInputMessage,
+      reasoningLevel,
+      replaceInputMessage,
+    ],
+  )
+  useEffect(() => {
+    const acceptedDraft = cliOperationSnapshot?.acceptedDraft
+    if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
+  }, [cliOperationSnapshot?.acceptedDraft, consumeAcceptedCliDraft])
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -2981,11 +3206,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [finalizeHistoricalUserMessageEdit, focusedMessageId, inputMessage.id])
 
-  const handleLoadConversation = useCallback(
-    async (conversationId: string) => {
+  const loadYoloConversation = useCallback(
+    async (conversationId: string, isCurrent: () => boolean = () => true) => {
       setIsLoadingConversation(true)
       try {
         const conversation = await getConversationById(conversationId)
+        if (!isCurrent()) return
         if (!conversation) {
           throw new Error('Conversation not found')
         }
@@ -3152,6 +3378,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleLoadConversation = useCallback(
+    async (conversationId: string) => {
+      if (activeRuntimeIdRef.current === 'yolo') {
+        await loadYoloConversation(conversationId)
+        return
+      }
+      await transitionCliSession(async (isCurrent) => {
+        if (!isCurrent()) return
+        await loadYoloConversation(conversationId, isCurrent)
+      })
+    },
+    [activeRuntimeIdRef, loadYoloConversation, transitionCliSession],
+  )
+
   // Load an initial conversation passed in via props (e.g., from Quick Ask)
   useEffect(() => {
     if (!props.initialConversationId) return
@@ -3193,8 +3433,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onRuntimeSnapshotChange({
       activeRuntimeId,
       cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliAssistantId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
+      inputDraftRevision: inputDraftRevisionRef.current,
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -3206,6 +3448,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onRuntimeSnapshotChange,
     activeRuntimeId,
     activeCliConversationSnapshot?.sessionRef,
+    cliAssistantId,
     currentConversationId,
     inputMessage,
     conversationModelId,
@@ -3246,34 +3489,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
     if (activeRuntimeId !== 'yolo') {
-      if (cliSubmitPendingRef.current) {
-        new Notice(
-          t(
-            'chat.cliSurface.transitionBusy',
-            'Wait for the CLI message to be accepted before changing sessions.',
-          ),
-        )
-        return
-      }
-      const controller =
-        cliConversationController ??
-        (cliRuntimeScope
-          ? cliRuntimeScope.selectConversationRuntime(activeRuntimeId)
-          : null)
-      if (controller && isCliRunActive) {
-        void controller.cancel().catch((error) => {
-          console.error('Failed to cancel CLI run before reset', error)
-        })
-      }
-      controller?.resetSession()
-      if (controller) setCliConversationController(controller)
-      if (selectedBlock) {
-        const mentionableBlock = createSelectionBlockMentionable(selectedBlock)
-        setInputMessage((message) => ({
-          ...message,
-          mentionables: [...message.mentionables, mentionableBlock],
-        }))
-      }
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        cliConversationController?.resetSession()
+        if (selectedBlock) {
+          const mentionableBlock =
+            createSelectionBlockMentionable(selectedBlock)
+          setInputMessage((message) => ({
+            ...message,
+            mentionables: [...message.mentionables, mentionableBlock],
+          }))
+        }
+      })
       return
     }
     const newId = uuidv4()
@@ -5359,31 +5586,47 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             (assistant) => assistant.id === overrideAssistantId,
           ) ?? null)
         : null
-      flushSync(() => {
-        if (overrideAssistant) {
-          setConversationAssistantId(overrideAssistant.id)
-          conversationAssistantIdRef.current.set(
-            currentConversationId,
-            overrideAssistant.id,
-          )
-          if (overrideAssistant.modelId) {
-            applyAssistantDefaultModel(overrideAssistant.modelId)
+      const applySelection = () => {
+        flushSync(() => {
+          if (overrideAssistant) {
+            if (activeRuntimeIdRef.current === 'yolo') {
+              setConversationAssistantId(overrideAssistant.id)
+              conversationAssistantIdRef.current.set(
+                currentConversationId,
+                overrideAssistant.id,
+              )
+              if (overrideAssistant.modelId) {
+                applyAssistantDefaultModel(overrideAssistant.modelId)
+              }
+            } else {
+              setCliAssistantId(overrideAssistant.id)
+            }
           }
-        }
-        upsertSelectionMentionableInMainInput(mentionable)
-      })
+          upsertSelectionMentionableInMainInput(mentionable)
+        })
 
-      const inputRef = chatUserInputRefs.current.get(inputMessage.id)
-      if (text) {
-        inputRef?.appendText(text)
+        const inputRef = chatUserInputRefs.current.get(inputMessage.id)
+        if (text) inputRef?.appendText(text)
+        if (options?.submit) {
+          inputRef?.submit()
+        } else {
+          inputRef?.focus()
+        }
       }
 
-      if (options?.submit) {
-        inputRef?.submit()
+      if (
+        activeRuntimeIdRef.current !== 'yolo' &&
+        overrideAssistant &&
+        overrideAssistant.id !== cliAssistantId
+      ) {
+        void transitionCliSession((isCurrent) => {
+          if (!isCurrent()) return
+          cliConversationController?.resetSession()
+          applySelection()
+        })
         return
       }
-
-      inputRef?.focus()
+      applySelection()
     },
     syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
       syncSelectionMentionable(selectedBlock)
@@ -5554,8 +5797,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     getRuntimeSnapshot: () => ({
       activeRuntimeId,
       cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliAssistantId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
+      inputDraftRevision: inputDraftRevisionRef.current,
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -5686,39 +5931,29 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const cliSessionSelectionGenerationRef = useRef(0)
   const handleCliSessionSelect = useCallback(
     (ref: CliSessionRef) => {
       if (!cliRuntimeScope || !cliRuntimeAvailable) return
-      if (cliSubmitPendingRef.current) {
-        new Notice(
-          t(
-            'chat.cliSurface.transitionBusy',
-            'Wait for the CLI message to be accepted before changing sessions.',
-          ),
-        )
-        return
-      }
-      void (async () => {
-        if (cliConversationController && isCliRunActive) {
-          await cliConversationController.cancel()
-        }
-        const controller = cliRuntimeScope.selectConversationRuntime(
-          ref.runtimeId,
-        )
-        setCliConversationController(controller)
-        activeRuntimeIdRef.current = ref.runtimeId
-        setRequestedRuntimeId(ref.runtimeId)
+      const generation = ++cliSessionSelectionGenerationRef.current
+      const isLatestSelection = () =>
+        generation === cliSessionSelectionGenerationRef.current &&
+        chatMountedRef.current
+      const openSelectedSession = async (isCurrent: () => boolean) => {
+        if (!isCurrent() || !isLatestSelection()) return
         const result = await openCliSession({
           scope: cliRuntimeScope,
           ref,
           discoveryResult: cliSessionDiscoveryResult,
-          currentAssistantId: conversationAssistantId,
+          currentAssistantId: cliAssistantId,
         })
-        if (!result.hydration || activeRuntimeIdRef.current !== ref.runtimeId) {
+        if (!result.hydration || !isCurrent() || !isLatestSelection()) {
           return
         }
+        activeRuntimeIdRef.current = ref.runtimeId
+        setRequestedRuntimeId(ref.runtimeId)
         setCliConversationController(result.controller)
-        setConversationAssistantId(result.assistantId)
+        setCliAssistantId(result.assistantId)
         if (result.overlayError) {
           new Notice(
             t(
@@ -5728,7 +5963,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         }
         void refreshCliSessions()
-      })().catch((error) => {
+      }
+
+      const task =
+        activeRuntimeIdRef.current === 'yolo'
+          ? openSelectedSession(isLatestSelection)
+          : transitionCliSession((isCurrent) =>
+              openSelectedSession(() => isCurrent() && isLatestSelection()),
+            )
+      void task.catch((error) => {
         new Notice(
           t(
             'chat.cliSurface.openError',
@@ -5742,14 +5985,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       activeRuntimeIdRef,
+      chatMountedRef,
+      cliAssistantId,
       cliRuntimeAvailable,
       cliRuntimeScope,
       cliSessionDiscoveryResult,
-      cliConversationController,
-      conversationAssistantId,
-      isCliRunActive,
       refreshCliSessions,
       t,
+      transitionCliSession,
     ],
   )
 
@@ -5843,12 +6086,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             onRuntimeChange={handleRuntimeChange}
             disabled={
               currentConversationRunSummary.isActive ||
-              cliSubmitPending ||
-              isCliRunActive
+              cliSubmissionPending ||
+              isCliRunActive ||
+              cliTransitioning
             }
           />
           <AssistantSelector
-            currentAssistantId={conversationAssistantId}
+            currentAssistantId={activeAssistantId}
             triggerClassName={
               !isSidebarPlacement && isWorkspaceWideHeader
                 ? 'yolo-assistant-selector-button--workspace-floating'
@@ -5890,13 +6134,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               currentConversationId={currentConversationId}
               runSummariesByConversationId={runSummariesByConversationId}
               onSelect={(conversationId) => {
-                if (conversationId === currentConversationId) return
+                if (
+                  !shouldLoadYoloHistoryItem({
+                    activeRuntimeId,
+                    conversationId,
+                    currentConversationId,
+                  })
+                ) {
+                  return
+                }
                 void handleLoadConversation(conversationId)
               }}
               onDelete={(conversationId) => {
                 void (async () => {
                   await deleteConversation(conversationId)
-                  if (conversationId === currentConversationId) {
+                  if (
+                    activeRuntimeId === 'yolo' &&
+                    conversationId === currentConversationId
+                  ) {
                     const nextConversation = chatList.find(
                       (chat) => chat.id !== conversationId,
                     )
@@ -5980,7 +6235,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     buildContextBreakdownInputs,
   )
   const mainInputSubmitStateRef = useLatestRef({
-    activeCliConversationSnapshot,
     activeRuntimeId,
     agentService,
     app,
@@ -5988,8 +6242,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessages,
     commitSentSelectionHighlights,
     conversationModelId,
-    conversationAssistantId,
+    cliAssistantId,
     cliConversationController,
+    cliOperationCoordinator,
     cliRuntimeScope,
     currentConversationId,
     currentConversationRunSummary,
@@ -6000,7 +6255,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     queuedMessageEditState,
     reasoningLevel,
     selectedAssistant,
-    selectedAssistantTimeContextEnabled,
+    selectedCliAssistantTimeContextEnabled,
     settings,
     t,
   })
@@ -6015,9 +6270,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleMainInputChange = useCallback<ChatUserInputProps['onChange']>(
     (content) => {
       inputDraftHolder.updateContent(content)
+      bumpInputDraftRevision()
       inputMessageRef.current = inputDraftHolder.get()
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
 
   const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
@@ -6032,41 +6288,48 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       if (state.activeRuntimeId !== 'yolo') {
+        const runtimeId = state.activeRuntimeId
+        const controller = state.cliConversationController
+        const coordinator = state.cliOperationCoordinator
+        const scope = state.cliRuntimeScope
         if (
-          cliSubmitPendingRef.current ||
-          isCliConversationActive(state.activeCliConversationSnapshot)
+          !controller ||
+          !coordinator ||
+          !scope ||
+          isCliConversationActive(controller.getSnapshot())
         ) {
           return
         }
-        const controller = state.cliConversationController
-        const scope = state.cliRuntimeScope
-        if (!controller || !scope) return
 
-        cliSubmitPendingRef.current = true
-        const abortController = new AbortController()
-        cliSubmitAbortControllerRef.current = abortController
-        setCliSubmitPending(true)
-        void dispatchComposerSubmit({
-          runtimeId: state.activeRuntimeId,
-          submitYolo: () => undefined,
-          submitCli: async (runtimeId) => {
-            const messageForSubmit = state.buildInputMessageForSubmit(content)
-            try {
-              const result = await submitCliComposerTurn({
-                app: state.app,
-                settings: state.settings,
-                scope,
-                controller,
-                runtimeId,
-                assistantId: state.conversationAssistantId,
-                userMessage: messageForSubmit,
-                timeContextEnabled: state.selectedAssistantTimeContextEnabled,
-                signal: abortController.signal,
-              })
-              state.commitSentSelectionHighlights(
-                result.userMessage.mentionables,
-              )
-              replaceInputMessage(getNewInputMessage(state.reasoningLevel))
+        const draftRevision = inputDraftRevisionRef.current
+        const messageForSubmit = state.buildInputMessageForSubmit(content)
+        const submission = coordinator.beginSubmission(draftRevision)
+        if (!submission) return
+
+        void (async () => {
+          try {
+            const result = await submitCliComposerTurn({
+              app: state.app,
+              settings: state.settings,
+              scope,
+              controller,
+              runtimeId,
+              assistantId: state.cliAssistantId,
+              userMessage: messageForSubmit,
+              timeContextEnabled: state.selectedCliAssistantTimeContextEnabled,
+              signal: submission.signal,
+              onSendStarted: () => coordinator.markSending(submission.token),
+              onAccepted: (acceptedMessage) => {
+                if (
+                  coordinator.markAccepted(submission.token, acceptedMessage) &&
+                  chatMountedRef.current
+                ) {
+                  const acceptedDraft = coordinator.getSnapshot().acceptedDraft
+                  if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
+                }
+              },
+            })
+            if (chatMountedRef.current) {
               if (result.overlayError) {
                 new Notice(
                   state
@@ -6078,13 +6341,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 )
               }
               void refreshCliSessions()
-            } catch (error) {
-              if (
-                error instanceof DOMException &&
-                error.name === 'AbortError'
-              ) {
-                return
-              }
+            }
+          } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+              return
+            }
+            if (chatMountedRef.current) {
               new Notice(
                 state
                   .t(
@@ -6096,15 +6358,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                     error instanceof Error ? error.message : String(error),
                   ),
               )
-            } finally {
-              cliSubmitPendingRef.current = false
-              if (cliSubmitAbortControllerRef.current === abortController) {
-                cliSubmitAbortControllerRef.current = null
-              }
-              setCliSubmitPending(false)
             }
-          },
-        })
+          } finally {
+            coordinator.finishSubmission(submission.token)
+          }
+        })()
         return
       }
 
@@ -6220,7 +6478,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         replaceInputMessage(getNewInputMessage(state.reasoningLevel))
       }
     },
-    [mainInputSubmitStateRef, refreshCliSessions, replaceInputMessage],
+    [
+      consumeAcceptedCliDraft,
+      mainInputSubmitStateRef,
+      refreshCliSessions,
+      replaceInputMessage,
+    ],
   )
 
   const handleMainInputFocus = useCallback(() => {
@@ -6334,23 +6597,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleMainInputAbort = useCallback(() => {
-    if (activeRuntimeId !== 'yolo' && cliConversationController) {
-      const submissionPending = cliSubmitPendingRef.current
-      cliSubmitAbortControllerRef.current?.abort()
-      void cliConversationController.cancel().catch((error) => {
-        new Notice(
-          t(
-            'chat.cliSurface.cancelError',
-            'Could not stop the CLI run: {message}',
-          ).replace(
-            '{message}',
-            error instanceof Error ? error.message : String(error),
-          ),
-        )
-      })
-      if (submissionPending) {
-        cliConversationController.resetSession()
-      }
+    if (
+      activeRuntimeId !== 'yolo' &&
+      cliConversationController &&
+      cliOperationCoordinator
+    ) {
+      void cliOperationCoordinator
+        .cancelCurrentOperation(cliConversationController)
+        .catch((error) => {
+          new Notice(
+            t(
+              'chat.cliSurface.cancelError',
+              'Could not stop the CLI run: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
       return
     }
     abortConversationRunRef.current(currentConversationIdValueRef.current)
@@ -6358,6 +6622,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     abortConversationRunRef,
     activeRuntimeId,
     cliConversationController,
+    cliOperationCoordinator,
     currentConversationIdValueRef,
     t,
   ])
@@ -7291,7 +7556,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         hideBadgeMentionables
         displayMentionables={displayMentionablesForInput}
         onDeleteFromAll={handleMainInputMentionableDelete}
-        currentAssistantId={conversationAssistantId}
+        currentAssistantId={activeAssistantId}
         onSelectAssistantForConversation={handleConversationAssistantSelect}
         currentChatMode={isCliRuntimeActive ? undefined : chatMode}
         onSelectChatModeForConversation={
@@ -7308,7 +7573,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         isGenerating={
           isCliRuntimeActive
-            ? cliSubmitPending || isCliRunActive
+            ? cliSubmissionPending || isCliRunActive || cliTransitioning
             : currentConversationRunSummary.isAbortable
         }
         canQueueWhileGenerating={

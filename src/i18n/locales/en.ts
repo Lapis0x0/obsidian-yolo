@@ -1964,8 +1964,7 @@ export const en: TranslationKeys = {
       submitError: 'Could not send the CLI message: {message}',
       cancelError: 'Could not stop the CLI run: {message}',
       openError: 'Could not open the CLI session: {message}',
-      transitionBusy:
-        'Wait for the CLI message to be accepted before changing sessions.',
+      transitionError: 'Could not leave the current CLI session: {message}',
       state: {
         idle: 'Idle',
         running: 'CLI is responding…',

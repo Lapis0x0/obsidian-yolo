@@ -1848,7 +1848,7 @@ export const zh: TranslationKeys = {
       submitError: '无法发送 CLI 消息：{message}',
       cancelError: '无法停止 CLI 运行：{message}',
       openError: '无法打开 CLI 会话：{message}',
-      transitionBusy: '请等待 CLI 接受当前消息后再切换会话。',
+      transitionError: '无法离开当前 CLI 会话：{message}',
       state: {
         idle: '空闲',
         running: 'CLI 正在回复…',

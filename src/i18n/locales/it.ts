@@ -1810,8 +1810,8 @@ export const it: DeepPartial<TranslationKeys> = {
       submitError: 'Impossibile inviare il messaggio CLI: {message}',
       cancelError: 'Impossibile interrompere la CLI: {message}',
       openError: 'Impossibile aprire la sessione CLI: {message}',
-      transitionBusy:
-        'Attendi che la CLI accetti il messaggio prima di cambiare sessione.',
+      transitionError:
+        'Impossibile lasciare la sessione CLI corrente: {message}',
       state: {
         idle: 'Inattivo',
         running: 'La CLI sta rispondendo…',
