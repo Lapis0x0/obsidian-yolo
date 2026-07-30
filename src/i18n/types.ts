@@ -75,6 +75,18 @@ export type TranslationKeys = {
       agent?: string
       composer: string
     }
+    runtimeSelector: {
+      accessibleLabel: string
+      menuLabel: string
+      chatBadge: string
+      cliBadge: string
+      yoloLabel: string
+      yoloDescription: string
+      claudeCodeLabel: string
+      claudeCodeDescription: string
+      codexLabel: string
+      codexDescription: string
+    }
     chatList?: {
       searchPlaceholder?: string
       empty?: string

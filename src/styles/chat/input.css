@@ -44,6 +44,149 @@
   gap: var(--size-4-2);
 }
 
+button.yolo-runtime-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 30px;
+  margin: 0;
+  padding: 4px 7px;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+  border-radius: var(--radius-s);
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.yolo-runtime-selector:hover,
+button.yolo-runtime-selector:focus,
+button.yolo-runtime-selector:active,
+button.yolo-runtime-selector[data-state='open'] {
+  background: var(--background-modifier-hover);
+  background-color: var(--background-modifier-hover);
+  box-shadow: none;
+}
+
+button.yolo-runtime-selector:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+button.yolo-runtime-selector:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yolo-runtime-selector__icon,
+.yolo-runtime-selector__option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.yolo-runtime-selector__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-runtime-selector__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-border) 52%,
+    transparent
+  );
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.04em;
+  line-height: 15px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.yolo-runtime-selector__chevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+button.yolo-runtime-selector[data-state='open']
+  .yolo-runtime-selector__chevron {
+  transform: rotate(180deg);
+}
+
+.yolo-runtime-selector__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.yolo-runtime-selector__list {
+  min-height: 0;
+}
+
+.yolo-popover-surface--default
+  .yolo-runtime-selector__list
+  > .yolo-runtime-selector__option {
+  align-items: center;
+  gap: 9px;
+  padding-block: 7px;
+}
+
+.yolo-runtime-selector__option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-runtime-selector__option-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.yolo-runtime-selector__option-label,
+.yolo-runtime-selector__option-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-runtime-selector__option-label {
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+}
+
+.yolo-runtime-selector__option-description {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smallest);
+  font-weight: var(--font-normal);
+}
+
 .yolo-context-usage-ring {
   --yolo-context-usage-ring-color: var(--interactive-accent);
   position: relative;

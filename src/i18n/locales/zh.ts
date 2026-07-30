@@ -66,6 +66,18 @@ export const zh: TranslationKeys = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      accessibleLabel: '聊天后端：{runtime}',
+      menuLabel: '聊天后端',
+      chatBadge: 'Chat',
+      cliBadge: 'CLI',
+      yoloLabel: 'YOLO Chat',
+      yoloDescription: 'YOLO 内置聊天运行时',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeDescription: '本机 Claude Code 运行时',
+      codexLabel: 'Codex',
+      codexDescription: '本机 Codex 运行时',
+    },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
       empty: '暂无聊天记录',

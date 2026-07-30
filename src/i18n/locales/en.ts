@@ -66,6 +66,18 @@ export const en: TranslationKeys = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      accessibleLabel: 'Chat backend: {runtime}',
+      menuLabel: 'Chat backend',
+      chatBadge: 'Chat',
+      cliBadge: 'CLI',
+      yoloLabel: 'YOLO Chat',
+      yoloDescription: 'Built-in YOLO chat runtime',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeDescription: 'Claude Code on this device',
+      codexLabel: 'Codex',
+      codexDescription: 'Codex on this device',
+    },
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
