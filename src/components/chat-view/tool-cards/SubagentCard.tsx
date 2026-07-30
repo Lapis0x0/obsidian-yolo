@@ -40,11 +40,6 @@ const DOTM_SQUARE_4_MIDDLE_ORDER = [
 type SubagentCardProps = {
   toolCallId: string
   response: ToolCallResponse
-  /**
-   * Conversation id of the parent chat. Forwarded to the inline approval
-   * block so approval clicks can route through `AgentService.approveToolCall`
-   * with the correct scope.
-   */
   conversationId: string
   args?: SubagentCardArgs
   subagentResult?: ChatSubagentResultMessage
@@ -262,7 +257,7 @@ export function SubagentCard({
         </div>
         {isAwaitingApproval && (
           <SubagentApprovalBlock
-            parentConversationId={conversationId}
+            conversationId={conversationId}
             pendingApprovals={pendingApprovals}
           />
         )}

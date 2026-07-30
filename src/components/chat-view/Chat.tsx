@@ -36,6 +36,10 @@ import {
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
+import {
+  type YoloConversationRef,
+  createYoloChatRuntimeActions,
+} from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
@@ -135,6 +139,7 @@ import type {
 } from './chat-input/ChatUserInput'
 import MentionableBadge from './chat-input/MentionableBadge'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { getChatSurfacePreset } from './chat-surface-presets'
 import { ChatConversationPane } from './ChatConversationPane'
 import { ChatListDropdown } from './ChatListDropdown'
@@ -904,6 +909,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const app = useApp()
   const plugin = usePlugin()
   const agentService = plugin.getAgentService()
+  const runtimeActions = useMemo(
+    () => createYoloChatRuntimeActions(agentService),
+    [agentService],
+  )
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const { getMcpManager } = useMcp()
@@ -1057,6 +1066,22 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       seededRuntimeSnapshot?.currentConversationId ??
       props.initialConversationId ??
       uuidv4(),
+  )
+  const currentConversationRef = useMemo<YoloConversationRef>(
+    () => ({ runtimeId: 'yolo', conversationId: currentConversationId }),
+    [currentConversationId],
+  )
+  const cancelRuntimeRun = useCallback(
+    (conversationId: string) =>
+      runtimeActions.cancelRun({ runtimeId: 'yolo', conversationId }),
+    [runtimeActions],
+  )
+  const resolveRuntimeActionConversation = useCallback(
+    (conversationId: string): YoloConversationRef => ({
+      runtimeId: 'yolo',
+      conversationId,
+    }),
+    [],
   )
   const [isLoadingConversation, setIsLoadingConversation] = useState(() =>
     Boolean(props.initialConversationId),
@@ -1992,6 +2017,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     autoScrollToBottom,
     requestContextBuilder,
     currentConversationId,
+    cancelRuntimeRun,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
@@ -6396,6 +6422,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const renderRuntimeAwareChatTimelineItem = useCallback(
+    (timelineItem: ChatTimelineItem) => (
+      <ChatRuntimeActionsProvider
+        actions={runtimeActions}
+        conversation={currentConversationRef}
+        resolveConversationScope={resolveRuntimeActionConversation}
+      >
+        {renderChatTimelineItem(timelineItem)}
+      </ChatRuntimeActionsProvider>
+    ),
+    [
+      currentConversationRef,
+      renderChatTimelineItem,
+      resolveRuntimeActionConversation,
+      runtimeActions,
+    ],
+  )
+
   const chatTimelineRenderVersion = useCallback(
     (timelineItem: ChatTimelineItem): string => {
       if (timelineItem.kind === 'compaction-pending') {
@@ -6613,7 +6657,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           chatMessagesRef={chatMessagesRef}
           onScrollContainerChange={setChatMessagesElement}
           onBottomSentinelChange={setChatBottomSentinelElement}
-          renderChatTimelineItem={renderChatTimelineItem}
+          renderChatTimelineItem={renderRuntimeAwareChatTimelineItem}
           editingAssistantMessageId={editingAssistantMessageId}
           hasEarlierMessages={hasEarlierMessages}
           hasNewerMessages={hasNewerMessages}

@@ -9,8 +9,18 @@ jest.mock('clsx', () => ({
   default: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }))
 
-jest.mock('../../contexts/plugin-context', () => ({
-  usePlugin: () => ({}),
+jest.mock('./chat-runtime-actions-context', () => ({
+  useChatRuntimeActions: (conversationId = 'conversation-1') => ({
+    actions: {
+      cancelRun: jest.fn(),
+      approveTool: jest.fn(async () => ({ kind: 'handled' })),
+      rejectTool: jest.fn(() => ({ kind: 'handled' })),
+      abortTool: jest.fn(async () => ({ kind: 'handled' })),
+      answerQuestion: jest.fn(async () => ({ kind: 'handled' })),
+      cancelQuestion: jest.fn(() => ({ kind: 'handled' })),
+    },
+    conversation: { runtimeId: 'yolo', conversationId },
+  }),
 }))
 
 const mockedObsidianCodeBlock = jest.fn((_: unknown) => null)
@@ -43,8 +53,8 @@ import type { ToolLabels } from './ToolMessage'
 import ToolMessage, {
   areToolCallItemPropsEqual,
   getHeadlineDisplayInfo,
-  getToolSuccessIconKind,
   getToolResultDisplayText,
+  getToolSuccessIconKind,
 } from './ToolMessage'
 
 describe('ToolMessage rendering', () => {
