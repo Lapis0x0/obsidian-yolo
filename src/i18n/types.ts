@@ -87,6 +87,17 @@ export type TranslationKeys = {
       codexLabel: string
       codexDescription: string
     }
+    cliSessions: {
+      sectionLabel: string
+      title: string
+      loading: string
+      empty: string
+      current: string
+      pin: string
+      unpin: string
+      forgetFromYolo: string
+      retryProvider: string
+    }
     chatList?: {
       searchPlaceholder?: string
       empty?: string
