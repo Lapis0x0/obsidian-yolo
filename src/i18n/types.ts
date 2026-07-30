@@ -1662,6 +1662,21 @@ export type TranslationKeys = {
       agentFullTitle?: string
       agentFullDescription?: string
     }
+    cliSurface?: {
+      emptyTitle?: string
+      emptyDescription?: string
+      emptyUserMessage?: string
+      error?: string
+      state?: {
+        idle?: string
+        running?: string
+        waitingForApproval?: string
+        waitingForUser?: string
+        completed?: string
+        aborted?: string
+        error?: string
+      }
+    }
     quickAccess?: {
       manage?: string
       searchPlaceholder?: string

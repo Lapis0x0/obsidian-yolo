@@ -48,10 +48,16 @@ jest.mock('./UserMessageCard', () => ({
   default: ({
     snapshot,
     className,
+    interactive,
   }: {
     snapshot: { text: string }
     className?: string
-  }) => <div className={className}>{snapshot.text}</div>,
+    interactive?: boolean
+  }) => (
+    <div className={className} data-interactive={String(interactive)}>
+      {snapshot.text}
+    </div>
+  ),
 }))
 
 const mockedAssistantGroup = jest.fn(
@@ -232,6 +238,7 @@ describe('CliChatSurface', () => {
 
     expect(html).toContain('First prompt paragraph')
     expect(html).toContain('Second prompt paragraph')
+    expect(html).toContain('data-interactive="false"')
     expect(html).not.toContain('base64,ignored')
   })
 

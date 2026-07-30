@@ -1944,6 +1944,22 @@ export const en: TranslationKeys = {
       agentFullDescription:
         'Auto-approve tool calls for search, read/write operations, and multi-step tasks.',
     },
+    cliSurface: {
+      emptyTitle: 'Start a CLI session',
+      emptyDescription:
+        'Native CLI conversation messages will appear here after you send a message.',
+      emptyUserMessage: 'Empty message',
+      error: 'CLI session error: {message}',
+      state: {
+        idle: 'Idle',
+        running: 'CLI is responding…',
+        waitingForApproval: 'Waiting for tool approval',
+        waitingForUser: 'Waiting for your answer',
+        completed: 'Response complete',
+        aborted: 'Response stopped',
+        error: 'CLI run failed',
+      },
+    },
     quickAccess: {
       manage: 'Manage quick access',
       searchPlaceholder: 'Search skills or snippets',

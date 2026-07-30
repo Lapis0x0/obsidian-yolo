@@ -170,6 +170,7 @@ function CliUserMessage({ message }: { message: ChatUserMessage }) {
     >
       <UserMessageCard
         className="yolo-cli-chat-surface__user-card"
+        interactive={false}
         snapshot={{
           content: message.content,
           text,
