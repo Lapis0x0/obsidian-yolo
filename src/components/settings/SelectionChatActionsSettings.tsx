@@ -61,6 +61,14 @@ type DefaultActionConfig = {
 // `selectionChatActions` array as a sortable placeholder.
 const FIXED_ACTION_CONFIGS: DefaultActionConfig[] = [
   {
+    id: 'adjust-length',
+    labelKey: 'selection.actions.adjustLength',
+    labelFallback: '调整篇幅',
+    mode: 'rewrite',
+    rewriteBehavior: 'custom',
+    allowEmptyInstruction: true,
+  },
+  {
     id: 'custom-rewrite',
     labelKey: 'selection.actions.customRewrite',
     labelFallback: '自定义改写',

@@ -2,7 +2,9 @@ import {
   Annotation,
   type ChangeDesc,
   EditorSelection,
+  type EditorState,
   type Extension,
+  type Range,
   StateEffect,
   StateField,
 } from '@codemirror/state'
@@ -26,7 +28,8 @@ import type { ChatModel } from '../../../types/chat-model.types'
 import type { LLMProvider } from '../../../types/provider.types'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
-type SelectionRewritePhase = 'waiting' | 'streaming' | 'review'
+type SelectionRewritePhase = 'resizing' | 'waiting' | 'streaming' | 'review'
+type SelectionRewriteKind = 'instruction' | 'length'
 
 type SelectionRewriteVisual = {
   id: string
@@ -34,10 +37,18 @@ type SelectionRewriteVisual = {
   to: number
   originalText: string
   candidateText: string
+  kind: SelectionRewriteKind
   phase: SelectionRewritePhase
   baselineHeight: number
   startIndent: number
   block: boolean
+  targetHeight: number
+  targetRatio: number
+  reserveHeight: number
+  targetReserveHeight: number
+  frozenSurfaceRects: RewriteSurfaceRect[] | null
+  overflowHeight: number
+  settlingSurface: boolean
 }
 
 type SelectionRewriteFieldValue = {
@@ -47,13 +58,46 @@ type SelectionRewriteFieldValue = {
 
 type SelectionRewriteRuntime = SelectionRewriteVisual & {
   view: EditorView
+  baselineCapacity: number
+  targetCapacity: number
   abortController: AbortController
   pendingCandidateText: string
   revealedRawLength: number
   publishFrame: number | null
   publishResolve: (() => void) | null
+  layoutFrame: number | null
+  dragFrame: number | null
+  pendingDragClientY: number
   autoFollow: boolean
+  drag: {
+    pointerY: number
+    startTargetHeight: number
+    startTargetCapacity: number
+    returnPhase: 'resizing' | 'review'
+  } | null
+  fallbackReviewText: string | null
+  request: SelectionRewriteRequest
 }
+
+type SelectionRewriteModelOptions = {
+  providerClient: BaseLLMProvider<LLMProvider>
+  model: ChatModel
+  settings: YoloSettings
+}
+
+type SelectionRewriteRequest = SelectionRewriteModelOptions &
+  (
+    | {
+        kind: 'instruction'
+        instruction: string
+      }
+    | {
+        kind: 'length'
+        contextBefore: string
+        contextAfter: string
+        fileTitle: string
+      }
+  )
 
 export type StartSelectionRewriteOptions = {
   view: EditorView
@@ -61,6 +105,19 @@ export type StartSelectionRewriteOptions = {
   to: number
   selectedText: string
   instruction: string
+  providerClient: BaseLLMProvider<LLMProvider>
+  model: ChatModel
+  settings: YoloSettings
+}
+
+export type StartSelectionLengthAdjustmentOptions = {
+  view: EditorView
+  from: number
+  to: number
+  selectedText: string
+  contextBefore: string
+  contextAfter: string
+  fileTitle: string
   providerClient: BaseLLMProvider<LLMProvider>
   model: ChatModel
   settings: YoloSettings
@@ -181,6 +238,61 @@ class SelectionRewriteCandidateWidget extends WidgetType {
   }
 }
 
+class SelectionRewriteFlowSpacerWidget extends WidgetType {
+  constructor(
+    readonly id: string,
+    readonly height: number,
+    readonly phase: SelectionRewritePhase,
+    readonly settling: boolean,
+  ) {
+    super()
+  }
+
+  override eq(other: SelectionRewriteFlowSpacerWidget): boolean {
+    return (
+      other.id === this.id &&
+      other.height === this.height &&
+      other.phase === this.phase &&
+      other.settling === this.settling
+    )
+  }
+
+  override updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    if (dom.dataset.yoloRewriteSpacerId !== this.id) return false
+    this.adjust(dom)
+    view.requestMeasure()
+    return true
+  }
+
+  override toDOM(view: EditorView): HTMLElement {
+    const spacer = document.createElement('div')
+    spacer.dataset.yoloRewriteSpacerId = this.id
+    this.adjust(spacer)
+    const observer = new ResizeObserver(() => view.requestMeasure())
+    observer.observe(spacer)
+    rewriteResizeObservers.set(spacer, observer)
+    return spacer
+  }
+
+  override get estimatedHeight(): number {
+    return this.height
+  }
+
+  override destroy(dom: HTMLElement): void {
+    rewriteResizeObservers.get(dom)?.disconnect()
+    rewriteResizeObservers.delete(dom)
+  }
+
+  override ignoreEvent(): boolean {
+    return true
+  }
+
+  private adjust(spacer: HTMLElement): void {
+    spacer.className = `yolo-selection-rewrite-flow-spacer is-${this.phase}${this.settling ? ' is-settling' : ''}`
+    spacer.style.height = `${this.height}px`
+  }
+}
+
 const rewriteResizeObservers = new WeakMap<HTMLElement, ResizeObserver>()
 
 function measureCandidateTextHeight(
@@ -198,45 +310,90 @@ function measureCandidateTextHeight(
 
 function buildRewriteDecorations(
   sessions: SelectionRewriteVisual[],
+  viewState?: EditorState,
 ): DecorationSet {
-  const ranges = sessions
-    .filter(
-      (session) => session.phase === 'streaming' && session.from <= session.to,
-    )
-    .map((session) =>
-      Decoration.replace({
-        widget: new SelectionRewriteCandidateWidget(
+  const ranges: Range<Decoration>[] = []
+  for (const session of sessions) {
+    if (session.phase === 'streaming' && session.from <= session.to) {
+      if (session.kind === 'length') {
+        ranges.push(
+          Decoration.mark({
+            class: 'yolo-selection-rewrite-source-placeholder',
+          }).range(session.from, session.to),
+        )
+      } else {
+        ranges.push(
+          Decoration.replace({
+            widget: new SelectionRewriteCandidateWidget(
+              session.id,
+              session.candidateText,
+              session.baselineHeight,
+              session.startIndent,
+              session.block,
+            ),
+            inclusive: true,
+            block: session.block,
+          }).range(session.from, session.to),
+        )
+      }
+    }
+
+    if (
+      session.kind !== 'length' ||
+      session.reserveHeight <= 0.5 ||
+      !viewState
+    ) {
+      continue
+    }
+    const doc = viewState.doc
+    const endPos = Math.max(session.from, Math.min(doc.length, session.to - 1))
+    const endLine = doc.lineAt(endPos)
+    ranges.push(
+      Decoration.widget({
+        widget: new SelectionRewriteFlowSpacerWidget(
           session.id,
-          session.candidateText,
-          session.baselineHeight,
-          session.startIndent,
-          session.block,
+          session.reserveHeight,
+          session.phase,
+          session.settlingSurface,
         ),
-        inclusive: true,
-        block: session.block,
-      }).range(session.from, session.to),
+        block: true,
+        side: 1,
+      }).range(endLine.to),
     )
+    const suffixFrom = Math.max(endLine.from, Math.min(endLine.to, session.to))
+    if (suffixFrom < endLine.to) {
+      ranges.push(
+        Decoration.mark({
+          class: 'yolo-selection-rewrite-stretch-suffix',
+          attributes: {
+            style: `--yolo-selection-rewrite-stretch-height: ${session.reserveHeight}px`,
+          },
+        }).range(suffixFrom, endLine.to),
+      )
+    }
+  }
 
   return Decoration.set(ranges, true)
 }
 
 function createFieldValue(
   sessions: SelectionRewriteVisual[],
+  viewState?: EditorState,
 ): SelectionRewriteFieldValue {
   return {
     sessions,
-    decorations: buildRewriteDecorations(sessions),
+    decorations: buildRewriteDecorations(sessions, viewState),
   }
 }
 
 const selectionRewriteField = StateField.define<SelectionRewriteFieldValue>({
-  create: () => createFieldValue([]),
+  create: (state) => createFieldValue([], state),
   update(value, transaction) {
     const replacement = transaction.effects.find((effect) =>
       effect.is(setSelectionRewriteEffect),
     )
     if (replacement?.is(setSelectionRewriteEffect)) {
-      return createFieldValue(replacement.value)
+      return createFieldValue(replacement.value, transaction.state)
     }
 
     if (!transaction.docChanged || value.sessions.length === 0) return value
@@ -247,6 +404,7 @@ const selectionRewriteField = StateField.define<SelectionRewriteFieldValue>({
         from: transaction.changes.mapPos(session.from, -1),
         to: transaction.changes.mapPos(session.to, 1),
       })),
+      transaction.state,
     )
   },
   provide: (field) =>
@@ -330,6 +488,13 @@ type RewriteOutline = {
   width: number
   height: number
   path: string
+}
+
+type RewriteCandidateProjection = {
+  text: string
+  startIndent: number
+  font: string
+  letterSpacing: string
 }
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
@@ -417,9 +582,7 @@ function normalizeSurfaceBands(
     right: Math.max(...middleRects.map((rect) => rect.right)),
     top: first.bottom,
     bottom: last.top,
-    visualHeight: Math.max(
-      ...middleRects.map((rect) => rect.visualHeight),
-    ),
+    visualHeight: Math.max(...middleRects.map((rect) => rect.visualHeight)),
   }
   return [first, middle, last]
 }
@@ -429,10 +592,7 @@ function transitionRadii(
   upper: RewriteSurfaceBand,
   lower: RewriteSurfaceBand,
 ): { outer: number; inner: number } {
-  const heightLimit = Math.min(
-    upper.visualHeight / 2,
-    lower.visualHeight / 2,
-  )
+  const heightLimit = Math.min(upper.visualHeight / 2, lower.visualHeight / 2)
   const desiredOuter = Math.min(REWRITE_OUTER_RADIUS, heightLimit)
   const desiredInner = Math.min(REWRITE_INNER_RADIUS, heightLimit)
   const scale = Math.min(1, edgeDelta / (desiredOuter + desiredInner))
@@ -447,7 +607,9 @@ function pathNumber(value: number): string {
   return String(Object.is(rounded, -0) ? 0 : rounded)
 }
 
-function createRewriteOutline(rects: RewriteSurfaceRect[]): RewriteOutline | null {
+function createRewriteOutline(
+  rects: RewriteSurfaceRect[],
+): RewriteOutline | null {
   const bands = normalizeSurfaceBands(rects)
   if (!bands) return null
 
@@ -477,10 +639,7 @@ function createRewriteOutline(rects: RewriteSurfaceRect[]): RewriteOutline | nul
     controlY: number,
     toX: number,
     toY: number,
-  ) =>
-    commands.push(
-      `Q ${x(controlX)} ${y(controlY)} ${x(toX)} ${y(toY)}`,
-    )
+  ) => commands.push(`Q ${x(controlX)} ${y(controlY)} ${x(toX)} ${y(toY)}`)
 
   const rightTransition = (
     upper: RewriteSurfaceBand,
@@ -492,11 +651,7 @@ function createRewriteOutline(rects: RewriteSurfaceRect[]): RewriteOutline | nul
       line(upper.right, boundary)
       return
     }
-    const { outer, inner } = transitionRadii(
-      Math.abs(delta),
-      upper,
-      lower,
-    )
+    const { outer, inner } = transitionRadii(Math.abs(delta), upper, lower)
     if (delta > 0) {
       line(upper.right, boundary - inner)
       curve(upper.right, boundary, upper.right + inner, boundary)
@@ -520,11 +675,7 @@ function createRewriteOutline(rects: RewriteSurfaceRect[]): RewriteOutline | nul
       line(lower.left, boundary)
       return
     }
-    const { outer, inner } = transitionRadii(
-      Math.abs(delta),
-      upper,
-      lower,
-    )
+    const { outer, inner } = transitionRadii(Math.abs(delta), upper, lower)
     if (delta < 0) {
       line(lower.left, boundary + outer)
       curve(lower.left, boundary, lower.left + outer, boundary)
@@ -566,7 +717,9 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
   constructor(
     readonly id: string,
     readonly phase: SelectionRewritePhase,
+    readonly settling: boolean,
     readonly outline: RewriteOutline,
+    readonly candidate: RewriteCandidateProjection | null = null,
   ) {}
 
   eq(other: LayerMarker): boolean {
@@ -574,11 +727,16 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
       other instanceof SelectionRewriteOutlineMarker &&
       other.id === this.id &&
       other.phase === this.phase &&
+      other.settling === this.settling &&
       other.outline.left === this.outline.left &&
       other.outline.top === this.outline.top &&
       other.outline.width === this.outline.width &&
       other.outline.height === this.outline.height &&
-      other.outline.path === this.outline.path
+      other.outline.path === this.outline.path &&
+      other.candidate?.text === this.candidate?.text &&
+      other.candidate?.startIndent === this.candidate?.startIndent &&
+      other.candidate?.font === this.candidate?.font &&
+      other.candidate?.letterSpacing === this.candidate?.letterSpacing
     )
   }
 
@@ -630,6 +788,14 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
 
     svg.append(defs, path, sheen)
     element.appendChild(svg)
+    if (this.candidate) {
+      const candidate = document.createElement('div')
+      const text = document.createElement('span')
+      candidate.className = 'yolo-selection-rewrite-candidate-overlay'
+      text.className = 'yolo-selection-rewrite-candidate-text'
+      candidate.appendChild(text)
+      element.appendChild(candidate)
+    }
     this.adjust(element)
     return element
   }
@@ -637,7 +803,8 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
   update(element: HTMLElement, previous: LayerMarker): boolean {
     if (
       !(previous instanceof SelectionRewriteOutlineMarker) ||
-      previous.id !== this.id
+      previous.id !== this.id ||
+      Boolean(previous.candidate) !== Boolean(this.candidate)
     ) {
       return false
     }
@@ -647,8 +814,13 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
 
   private adjust(element: HTMLElement): void {
     const { left, top, width, height, path: pathData } = this.outline
-    element.className = `yolo-selection-rewrite-outline is-${this.phase}`
+    element.className = `yolo-selection-rewrite-outline is-${this.phase}${this.settling ? ' is-settling-surface' : ''}${this.candidate ? ' has-candidate' : ''}`
     element.dataset.yoloRewriteOutlineId = this.id
+    if (this.candidate) {
+      element.dataset.yoloRewriteId = this.id
+    } else {
+      delete element.dataset.yoloRewriteId
+    }
     element.style.left = `${left}px`
     element.style.top = `${top}px`
     element.style.width = `${width}px`
@@ -666,6 +838,51 @@ class SelectionRewriteOutlineMarker implements LayerMarker {
     path.setAttribute('d', pathData)
     path.style.setProperty('d', `path("${pathData}")`)
     sheenPath.setAttribute('d', pathData)
+    const candidate = element.querySelector<HTMLElement>(
+      '.yolo-selection-rewrite-candidate-overlay',
+    )
+    if (!candidate || !this.candidate) return
+    candidate.style.font = this.candidate.font
+    candidate.style.letterSpacing = this.candidate.letterSpacing
+    candidate.style.clipPath = `path("${pathData}")`
+    candidate.style.setProperty(
+      '--yolo-selection-rewrite-start-indent',
+      `${this.candidate.startIndent}px`,
+    )
+    this.updateCandidateText(candidate, this.candidate.text)
+  }
+
+  private updateCandidateText(candidate: HTMLElement, nextText: string): void {
+    const text = candidate.querySelector<HTMLElement>(
+      '.yolo-selection-rewrite-candidate-text',
+    )
+    if (!text) return
+    const previousText = text.dataset.yoloCandidateText ?? ''
+    if (!nextText.startsWith(previousText)) {
+      text.textContent = nextText || '\u200b'
+      text.dataset.yoloCandidateText = nextText
+      return
+    }
+    const delta = nextText.slice(previousText.length)
+    if (!delta) return
+    if (!previousText && text.textContent === '\u200b') text.textContent = ''
+    const reveal = document.createElement('span')
+    reveal.className = 'yolo-selection-rewrite-candidate-reveal'
+    reveal.textContent = delta
+    text.appendChild(reveal)
+    text.dataset.yoloCandidateText = nextText
+    const settle = (node: HTMLElement) => {
+      if (!node.isConnected) return
+      node.replaceWith(document.createTextNode(node.textContent ?? ''))
+      text.normalize()
+    }
+    reveal.addEventListener('animationend', () => settle(reveal), {
+      once: true,
+    })
+    const active = text.querySelectorAll<HTMLElement>(
+      '.yolo-selection-rewrite-candidate-reveal',
+    )
+    if (active.length > 4) settle(active[0])
   }
 }
 
@@ -675,7 +892,14 @@ function createRewriteSurfaceMarkers(
 ): LayerMarker[] {
   const outline = createRewriteOutline(rects)
   return outline
-    ? [new SelectionRewriteOutlineMarker(session.id, session.phase, outline)]
+    ? [
+        new SelectionRewriteOutlineMarker(
+          session.id,
+          session.phase,
+          session.settlingSurface,
+          outline,
+        ),
+      ]
     : []
 }
 
@@ -731,6 +955,197 @@ function rewriteMarkersFromWidget(
     session,
     padRewriteStart(markers, view.textDirection, layerBounds),
   )
+}
+
+function lengthAdjustmentContentRects(
+  view: EditorView,
+  session: SelectionRewriteVisual,
+): RewriteSurfaceRect[] {
+  if (session.phase === 'streaming') {
+    const widget = view.dom.querySelector<HTMLElement>(
+      `[data-yolo-rewrite-id="${session.id}"]`,
+    )
+    const text = widget?.querySelector<HTMLElement>(
+      '.yolo-selection-rewrite-candidate-text',
+    )
+    const rects = mergeVisualLineRects(Array.from(text?.getClientRects() ?? []))
+    if (rects.length > 0) {
+      const base = getLayerBase(view)
+      return rects.map((rect) => ({
+        left: rect.left - base.left,
+        top: rect.top - base.top,
+        width: rect.width,
+        height: rect.height,
+      }))
+    }
+  }
+
+  return RectangleMarker.forRange(
+    view,
+    'yolo-selection-rewrite-surface',
+    EditorSelection.range(session.from, session.to),
+  ).map((marker) => ({
+    left: marker.left,
+    top: marker.top,
+    width: marker.width ?? 1,
+    height: marker.height,
+  }))
+}
+
+function buildLengthAdjustmentSurfaceRects(
+  view: EditorView,
+  session: SelectionRewriteVisual,
+  rects: RewriteSurfaceRect[],
+  reserveHeight: number,
+): RewriteSurfaceRect[] {
+  if (rects.length === 0) return []
+  if (reserveHeight <= REWRITE_SURFACE_EDGE_EPSILON) return rects
+
+  const ordered = rects
+    .map((rect) => ({
+      left: rect.left,
+      right: rect.left + rect.width,
+      top: rect.top,
+      bottom: rect.top + rect.height,
+    }))
+    .sort((a, b) => a.top - b.top || a.left - b.left)
+  const first = ordered[0]
+  const last = ordered.at(-1)!
+  const base = getLayerBase(view)
+  const bounds = getContentHorizontalBounds(view)
+  const contentLeft = bounds.left - base.left
+  const contentRight = bounds.right - base.left
+  const endPos = Math.max(
+    session.from,
+    Math.min(view.state.doc.length, session.to) - 1,
+  )
+  const endLine = view.state.doc.lineAt(endPos)
+  const hasTrailingText =
+    session.to <= endLine.to &&
+    view.state.doc.sliceString(session.to, endLine.to).trim().length > 0
+  const footHeight = Math.min(
+    reserveHeight,
+    Math.max(view.defaultLineHeight, last.bottom - last.top),
+  )
+  const bodyHeight = Math.max(0, reserveHeight - footHeight)
+  const synthetic: RewriteSurfaceRect[] = [
+    {
+      left: view.textDirection === Direction.LTR ? first.left : contentLeft,
+      top: first.top,
+      width:
+        view.textDirection === Direction.LTR
+          ? Math.max(1, contentRight - first.left)
+          : Math.max(1, first.right - contentLeft),
+      height: Math.max(1, first.bottom - first.top),
+    },
+  ]
+  const middleTop = first.bottom
+  const middleBottom = last.bottom + bodyHeight
+  if (middleBottom > middleTop + REWRITE_SURFACE_EDGE_EPSILON) {
+    synthetic.push({
+      left: contentLeft,
+      top: middleTop,
+      width: Math.max(1, contentRight - contentLeft),
+      height: middleBottom - middleTop,
+    })
+  }
+  synthetic.push({
+    left:
+      view.textDirection === Direction.LTR || !hasTrailingText
+        ? contentLeft
+        : last.left,
+    top: middleBottom,
+    width: !hasTrailingText
+      ? Math.max(1, contentRight - contentLeft)
+      : view.textDirection === Direction.LTR
+        ? Math.max(1, last.right - contentLeft)
+        : Math.max(1, contentRight - last.left),
+    height: Math.max(1, footHeight),
+  })
+  return synthetic
+}
+
+function extendFrozenSurface(
+  rects: RewriteSurfaceRect[],
+  overflowHeight: number,
+): RewriteSurfaceRect[] {
+  if (rects.length === 0 || overflowHeight <= REWRITE_SURFACE_EDGE_EPSILON) {
+    return rects
+  }
+  const ordered = [...rects].sort((a, b) => a.top - b.top || a.left - b.left)
+  const first = { ...ordered[0] }
+  const last = { ...ordered.at(-1)!, top: ordered.at(-1)!.top + overflowHeight }
+  const fullLeft = Math.min(...ordered.map((rect) => rect.left))
+  const fullRight = Math.max(...ordered.map((rect) => rect.left + rect.width))
+  const middleTop = first.top + first.height
+  const middleBottom = last.top
+  return [
+    first,
+    ...(middleBottom > middleTop + REWRITE_SURFACE_EDGE_EPSILON
+      ? [
+          {
+            left: fullLeft,
+            top: middleTop,
+            width: Math.max(1, fullRight - fullLeft),
+            height: middleBottom - middleTop,
+          },
+        ]
+      : []),
+    last,
+  ]
+}
+
+function createLengthAdjustmentOutline(
+  view: EditorView,
+  session: SelectionRewriteVisual,
+): RewriteOutline | null {
+  const holdTargetSurface =
+    session.frozenSurfaceRects &&
+    !session.settlingSurface &&
+    (session.phase === 'waiting' || session.phase === 'streaming')
+  const rects = holdTargetSurface
+    ? extendFrozenSurface(session.frozenSurfaceRects!, session.overflowHeight)
+    : buildLengthAdjustmentSurfaceRects(
+        view,
+        session,
+        lengthAdjustmentContentRects(view, session),
+        session.reserveHeight,
+      )
+  return createRewriteOutline(rects)
+}
+
+function rewriteMarkersForLengthAdjustment(
+  view: EditorView,
+  session: SelectionRewriteVisual,
+): LayerMarker[] {
+  const outline = createLengthAdjustmentOutline(view, session)
+  const base = getLayerBase(view)
+  const bounds = getContentHorizontalBounds(view)
+  const contentLeft = bounds.left - base.left
+  const contentStyle = window.getComputedStyle(view.contentDOM)
+  const candidate =
+    outline && session.phase === 'streaming' && session.candidateText
+      ? {
+          text: session.candidateText,
+          startIndent: Math.max(
+            0,
+            contentLeft + session.startIndent - outline.left,
+          ),
+          font: contentStyle.font,
+          letterSpacing: contentStyle.letterSpacing,
+        }
+      : null
+  return outline
+    ? [
+        new SelectionRewriteOutlineMarker(
+          session.id,
+          session.phase,
+          session.settlingSurface,
+          outline,
+          candidate,
+        ),
+      ]
+    : []
 }
 
 function rewriteMarkersFromDocumentRange(
@@ -863,6 +1278,110 @@ class SelectionRewriteControlsMarker implements LayerMarker {
   }
 }
 
+class SelectionRewriteLengthHandleMarker implements LayerMarker {
+  constructor(
+    readonly id: string,
+    readonly phase: SelectionRewritePhase,
+    readonly left: number,
+    readonly top: number,
+    readonly label: string,
+    readonly ariaLabel: string,
+    readonly condensing: boolean,
+    readonly guideWidth: number,
+    readonly actions: {
+      start: (clientY: number) => void
+      move: (clientY: number) => void
+      finish: (clientY: number) => void
+      cancel: () => void
+    },
+  ) {}
+
+  eq(other: LayerMarker): boolean {
+    return (
+      other instanceof SelectionRewriteLengthHandleMarker &&
+      other.id === this.id &&
+      other.phase === this.phase &&
+      other.left === this.left &&
+      other.top === this.top &&
+      other.label === this.label &&
+      other.condensing === this.condensing &&
+      other.guideWidth === this.guideWidth
+    )
+  }
+
+  draw(): HTMLDivElement {
+    const root = document.createElement('div')
+    root.dataset.yoloRewriteLengthHandleId = this.id
+    const readout = document.createElement('div')
+    readout.className = 'yolo-selection-rewrite-length-readout'
+    const handle = document.createElement('button')
+    handle.type = 'button'
+    handle.className = 'yolo-selection-rewrite-length-handle'
+    handle.setAttribute('aria-label', this.ariaLabel)
+    handle.addEventListener('pointerdown', (event) => {
+      if (handle.disabled) return
+      event.preventDefault()
+      event.stopPropagation()
+      handle.setPointerCapture(event.pointerId)
+      this.actions.start(event.clientY)
+      const move = (moveEvent: PointerEvent) => {
+        this.actions.move(moveEvent.clientY)
+      }
+      const finish = (finishEvent: PointerEvent) => {
+        handle.removeEventListener('pointermove', move)
+        handle.removeEventListener('pointerup', finish)
+        handle.removeEventListener('pointercancel', cancel)
+        this.actions.finish(finishEvent.clientY)
+      }
+      const cancel = () => {
+        handle.removeEventListener('pointermove', move)
+        handle.removeEventListener('pointerup', finish)
+        handle.removeEventListener('pointercancel', cancel)
+        this.actions.cancel()
+      }
+      handle.addEventListener('pointermove', move)
+      handle.addEventListener('pointerup', finish)
+      handle.addEventListener('pointercancel', cancel)
+    })
+    root.append(readout, handle)
+    this.adjust(root)
+    return root
+  }
+
+  update(element: HTMLElement, previous: LayerMarker): boolean {
+    if (
+      !(previous instanceof SelectionRewriteLengthHandleMarker) ||
+      previous.id !== this.id
+    ) {
+      return false
+    }
+    this.adjust(element)
+    return true
+  }
+
+  private adjust(element: HTMLElement): void {
+    const locked = this.phase === 'waiting' || this.phase === 'streaming'
+    element.className = `yolo-selection-rewrite-length-control is-${this.phase}${locked ? ' is-locked' : ''}${this.condensing ? ' is-condensing' : ''}`
+    element.style.left = `${this.left}px`
+    element.style.top = `${this.top}px`
+    element.style.setProperty(
+      '--yolo-selection-rewrite-length-guide-width',
+      `${this.guideWidth}px`,
+    )
+    const readout = element.querySelector<HTMLElement>(
+      '.yolo-selection-rewrite-length-readout',
+    )
+    if (readout) readout.textContent = this.label
+    const handle = element.querySelector<HTMLButtonElement>(
+      '.yolo-selection-rewrite-length-handle',
+    )
+    if (handle) {
+      handle.disabled = locked
+      handle.setAttribute('aria-label', this.ariaLabel)
+    }
+  }
+}
+
 export class SelectionRewriteController {
   private readonly sessions = new Map<string, SelectionRewriteRuntime>()
 
@@ -890,6 +1409,9 @@ export class SelectionRewriteController {
         markers(view: EditorView): readonly LayerMarker[] {
           const sessions = view.state.field(selectionRewriteField).sessions
           return sessions.flatMap((session) => {
+            if (session.kind === 'length') {
+              return rewriteMarkersForLengthAdjustment(view, session)
+            }
             if (session.phase === 'streaming') {
               const widget = view.dom.querySelector<HTMLElement>(
                 `[data-yolo-rewrite-id="${session.id}"]`,
@@ -921,7 +1443,8 @@ export class SelectionRewriteController {
           const base = getLayerBase(view)
           const contentRect = view.contentDOM.getBoundingClientRect()
           const scrollRect = view.scrollDOM.getBoundingClientRect()
-          return sessions.map((session) => {
+          return sessions.flatMap((session) => {
+            const markers: LayerMarker[] = []
             const widget = view.dom.querySelector<HTMLElement>(
               `[data-yolo-rewrite-id="${session.id}"]`,
             )
@@ -945,39 +1468,99 @@ export class SelectionRewriteController {
               toRect?.bottom ??
               fromRect?.bottom ??
               top + view.defaultLineHeight
+            if (session.kind === 'length') {
+              const lengthOutline = createLengthAdjustmentOutline(view, session)
+              const contentRects = lengthAdjustmentContentRects(view, session)
+              const contentTop =
+                contentRects.length > 0
+                  ? Math.min(...contentRects.map((rect) => rect.top))
+                  : lengthOutline?.top
+              const contentBottom =
+                contentRects.length > 0
+                  ? Math.max(
+                      ...contentRects.map((rect) => rect.top + rect.height),
+                    )
+                  : lengthOutline
+                    ? lengthOutline.top + lengthOutline.height
+                    : undefined
+              const contentHeight =
+                contentTop !== undefined && contentBottom !== undefined
+                  ? contentBottom - contentTop
+                  : session.targetHeight
+              const condensing =
+                session.reserveHeight <= REWRITE_SURFACE_EDGE_EPSILON &&
+                session.targetHeight < contentHeight - 1
+              markers.push(
+                new SelectionRewriteLengthHandleMarker(
+                  session.id,
+                  session.phase,
+                  lengthOutline
+                    ? lengthOutline.left + lengthOutline.width / 2
+                    : Math.max(
+                        6,
+                        (contentRect.left + contentRect.right) / 2 - base.left,
+                      ),
+                  lengthOutline
+                    ? condensing && contentTop !== undefined
+                      ? contentTop + session.targetHeight
+                      : lengthOutline.top + lengthOutline.height
+                    : bottom - base.top,
+                  controller.formatLengthLabel(session.targetRatio),
+                  controller.deps.t(
+                    'selection.length.handle',
+                    'Drag to adjust length',
+                  ),
+                  condensing,
+                  lengthOutline?.width ?? Math.max(1, contentRect.width),
+                  {
+                    start: (clientY) =>
+                      controller.startLengthDrag(session.id, clientY),
+                    move: (clientY) =>
+                      controller.scheduleLengthDrag(session.id, clientY),
+                    finish: (clientY) =>
+                      controller.finishLengthDrag(session.id, clientY),
+                    cancel: () => controller.cancelLengthDrag(session.id),
+                  },
+                ),
+              )
+            }
+            if (session.phase === 'resizing') return markers
             const controlHeight = session.phase === 'review' ? 62 : 26
             const left = Math.min(contentRect.right + 12, scrollRect.right - 32)
             const controlTop = Math.max(
               6,
               top + (bottom - top - controlHeight) / 2 - base.top,
             )
-            return new SelectionRewriteControlsMarker(
-              session.id,
-              session.phase,
-              Math.max(6, left - base.left),
-              controlTop,
-              top - base.top - controlTop,
-              Math.max(20, bottom - top),
-              {
-                stop: controller.deps.t(
-                  'chat.stopGeneration',
-                  'Stop generation',
-                ),
-                accept: controller.deps.t(
-                  'applyView.acceptChange',
-                  'Accept change',
-                ),
-                reject: controller.deps.t(
-                  'applyView.rejectChange',
-                  'Reject change',
-                ),
-              },
-              {
-                stop: () => controller.stop(session.id),
-                accept: () => controller.accept(session.id),
-                reject: () => controller.reject(session.id),
-              },
+            markers.push(
+              new SelectionRewriteControlsMarker(
+                session.id,
+                session.phase,
+                Math.max(6, left - base.left),
+                controlTop,
+                top - base.top - controlTop,
+                Math.max(20, bottom - top),
+                {
+                  stop: controller.deps.t(
+                    'chat.stopGeneration',
+                    'Stop generation',
+                  ),
+                  accept: controller.deps.t(
+                    'applyView.acceptChange',
+                    'Accept change',
+                  ),
+                  reject: controller.deps.t(
+                    'applyView.rejectChange',
+                    'Reject change',
+                  ),
+                },
+                {
+                  stop: () => controller.stop(session.id),
+                  accept: () => controller.accept(session.id),
+                  reject: () => controller.reject(session.id),
+                },
+              ),
             )
+            return markers
           })
         },
       }),
@@ -1001,6 +1584,10 @@ export class SelectionRewriteController {
           controller.disableAutoFollow(view)
           return false
         },
+        keydown: (event, view) => {
+          if (event.key !== 'Escape') return false
+          return controller.cancelLengthSessionForView(view)
+        },
       }),
     ]
   }
@@ -1012,6 +1599,16 @@ export class SelectionRewriteController {
     })
     const id = crypto.randomUUID()
     const abortController = new AbortController()
+    const baselineHeight = this.measureBaselineHeight(
+      options.view,
+      options.from,
+      options.to,
+    )
+    const baselineCapacity = this.measureRangeCapacity(
+      options.view,
+      options.from,
+      options.to,
+    )
     const runtime: SelectionRewriteRuntime = {
       id,
       view: options.view,
@@ -1019,14 +1616,13 @@ export class SelectionRewriteController {
       to: options.to,
       originalText: options.selectedText,
       candidateText: '',
+      kind: 'instruction',
       pendingCandidateText: '',
       revealedRawLength: 0,
       phase: 'waiting',
-      baselineHeight: this.measureBaselineHeight(
-        options.view,
-        options.from,
-        options.to,
-      ),
+      baselineHeight,
+      baselineCapacity,
+      targetCapacity: baselineCapacity,
       startIndent: this.measureStartIndent(options.view, options.from),
       block: this.shouldUseBlockCandidate(
         options.view,
@@ -1036,7 +1632,26 @@ export class SelectionRewriteController {
       abortController,
       publishFrame: null,
       publishResolve: null,
+      layoutFrame: null,
+      dragFrame: null,
+      pendingDragClientY: 0,
       autoFollow: true,
+      targetHeight: baselineHeight,
+      targetRatio: 1,
+      reserveHeight: 0,
+      targetReserveHeight: 0,
+      frozenSurfaceRects: null,
+      overflowHeight: 0,
+      settlingSurface: false,
+      drag: null,
+      fallbackReviewText: null,
+      request: {
+        kind: 'instruction',
+        instruction: options.instruction,
+        providerClient: options.providerClient,
+        model: options.model,
+        settings: options.settings,
+      },
     }
     this.sessions.set(id, runtime)
     this.deps.addAbortController(abortController)
@@ -1044,7 +1659,236 @@ export class SelectionRewriteController {
       selection: { anchor: options.from },
     })
 
-    void this.run(runtime, options)
+    void this.run(runtime)
+  }
+
+  startLengthAdjustment(options: StartSelectionLengthAdjustmentOptions): void {
+    selectionHighlightController.clearMatchingRange(options.view, {
+      from: options.from,
+      to: options.to,
+    })
+    const id = crypto.randomUUID()
+    const abortController = new AbortController()
+    const baselineHeight = this.measureBaselineHeight(
+      options.view,
+      options.from,
+      options.to,
+    )
+    const baselineCapacity = this.measureRangeCapacity(
+      options.view,
+      options.from,
+      options.to,
+    )
+    const runtime: SelectionRewriteRuntime = {
+      id,
+      view: options.view,
+      from: options.from,
+      to: options.to,
+      originalText: options.selectedText,
+      candidateText: '',
+      kind: 'length',
+      pendingCandidateText: '',
+      revealedRawLength: 0,
+      phase: 'resizing',
+      baselineHeight,
+      baselineCapacity,
+      targetCapacity: baselineCapacity,
+      startIndent: this.measureStartIndent(options.view, options.from),
+      block: this.shouldUseBlockCandidate(
+        options.view,
+        options.from,
+        options.to,
+      ),
+      abortController,
+      publishFrame: null,
+      publishResolve: null,
+      layoutFrame: null,
+      dragFrame: null,
+      pendingDragClientY: 0,
+      autoFollow: true,
+      targetHeight: baselineHeight,
+      targetRatio: 1,
+      reserveHeight: 0,
+      targetReserveHeight: 0,
+      frozenSurfaceRects: null,
+      overflowHeight: 0,
+      settlingSurface: false,
+      drag: null,
+      fallbackReviewText: null,
+      request: {
+        kind: 'length',
+        contextBefore: options.contextBefore,
+        contextAfter: options.contextAfter,
+        fileTitle: options.fileTitle,
+        providerClient: options.providerClient,
+        model: options.model,
+        settings: options.settings,
+      },
+    }
+    this.sessions.set(id, runtime)
+    this.deps.addAbortController(abortController)
+    this.dispatchView(options.view, {
+      selection: { anchor: options.from },
+    })
+    // This action starts from a menu click, so the editor is no longer focused.
+    // Focusing after collapsing the CodeMirror selection synchronizes the
+    // browser DOM Range as well; otherwise native ::selection remains painted
+    // above the rewrite surface even though the editor state is already empty.
+    options.view.focus()
+  }
+
+  private formatLengthLabel(ratio: number): string {
+    const rounded = (Math.round(ratio * 10) / 10).toFixed(1)
+    const semantic =
+      ratio < 0.95
+        ? this.deps.t('selection.length.condense', 'Condense')
+        : ratio <= 1.05
+          ? this.deps.t('selection.length.adjust', 'Adjust length')
+          : ratio <= 2.5
+            ? this.deps.t('selection.length.expand', 'Expand')
+            : this.deps.t('selection.length.freeExpand', 'Free expand')
+    return `${semantic} · ×${rounded}`
+  }
+
+  private startLengthDrag(id: string, clientY: number): void {
+    const runtime = this.sessions.get(id)
+    if (
+      !runtime ||
+      runtime.kind !== 'length' ||
+      (runtime.phase !== 'resizing' && runtime.phase !== 'review')
+    ) {
+      return
+    }
+    const returnPhase = runtime.phase
+    if (returnPhase === 'review') {
+      const actualHeight = this.measureDisplayedContentHeight(runtime)
+      const actualCapacity = this.measureRangeCapacity(
+        runtime.view,
+        runtime.from,
+        runtime.to,
+      )
+      runtime.targetHeight = actualHeight
+      runtime.targetCapacity = actualCapacity
+      runtime.targetRatio = actualCapacity / runtime.baselineCapacity
+      runtime.reserveHeight = 0
+    }
+    runtime.drag = {
+      pointerY: clientY,
+      startTargetHeight: runtime.targetHeight,
+      startTargetCapacity: runtime.targetCapacity,
+      returnPhase,
+    }
+    runtime.pendingDragClientY = clientY
+    runtime.phase = 'resizing'
+    this.dispatchView(runtime.view)
+  }
+
+  private scheduleLengthDrag(id: string, clientY: number): void {
+    const runtime = this.sessions.get(id)
+    if (!runtime?.drag || runtime.kind !== 'length') return
+    runtime.pendingDragClientY = clientY
+    if (runtime.dragFrame !== null) return
+    runtime.dragFrame = window.requestAnimationFrame(() => {
+      runtime.dragFrame = null
+      this.applyLengthDrag(runtime, runtime.pendingDragClientY)
+    })
+  }
+
+  private applyLengthDrag(
+    runtime: SelectionRewriteRuntime,
+    clientY: number,
+  ): void {
+    if (!runtime.drag || runtime.kind !== 'length') return
+    const targetHeight = Math.max(
+      runtime.view.defaultLineHeight,
+      runtime.drag.startTargetHeight + clientY - runtime.drag.pointerY,
+    )
+    const contentHeight = this.measureDisplayedContentHeight(runtime)
+    const capacityDelta =
+      (targetHeight - runtime.drag.startTargetHeight) /
+      runtime.view.defaultLineHeight
+    const minimumCapacity = Math.min(runtime.baselineCapacity, 0.1)
+    runtime.targetHeight = targetHeight
+    runtime.targetCapacity = Math.max(
+      minimumCapacity,
+      runtime.drag.startTargetCapacity + capacityDelta,
+    )
+    runtime.targetRatio = runtime.targetCapacity / runtime.baselineCapacity
+    runtime.reserveHeight = Math.max(0, targetHeight - contentHeight)
+    this.dispatchView(runtime.view)
+  }
+
+  private finishLengthDrag(id: string, clientY: number): void {
+    const runtime = this.sessions.get(id)
+    if (!runtime?.drag || runtime.kind !== 'length') return
+    this.cancelDragFrame(runtime)
+    this.applyLengthDrag(runtime, clientY)
+    const drag = runtime.drag
+    if (
+      Math.abs(runtime.targetHeight - drag.startTargetHeight) <
+      runtime.view.defaultLineHeight * 0.15
+    ) {
+      this.cancelLengthDrag(id)
+      return
+    }
+
+    runtime.drag = null
+    runtime.frozenSurfaceRects = buildLengthAdjustmentSurfaceRects(
+      runtime.view,
+      runtime,
+      lengthAdjustmentContentRects(runtime.view, runtime),
+      runtime.reserveHeight,
+    )
+    runtime.targetReserveHeight = runtime.reserveHeight
+    runtime.overflowHeight = 0
+    runtime.settlingSurface = false
+    runtime.fallbackReviewText =
+      drag.returnPhase === 'review'
+        ? runtime.view.state.sliceDoc(runtime.from, runtime.to)
+        : null
+    runtime.phase = 'waiting'
+    runtime.candidateText = ''
+    runtime.pendingCandidateText = ''
+    runtime.revealedRawLength = 0
+    this.cleanupRuntimeRequest(runtime)
+    runtime.abortController.abort()
+    runtime.abortController = new AbortController()
+    this.deps.addAbortController(runtime.abortController)
+    this.dispatchView(runtime.view)
+    void this.run(runtime)
+  }
+
+  private cancelLengthDrag(id: string): void {
+    const runtime = this.sessions.get(id)
+    if (!runtime?.drag || runtime.kind !== 'length') return
+    this.cancelDragFrame(runtime)
+    const drag = runtime.drag
+    runtime.drag = null
+    runtime.phase = drag.returnPhase
+    runtime.targetHeight = drag.startTargetHeight
+    runtime.targetCapacity = drag.startTargetCapacity
+    runtime.targetRatio = runtime.targetCapacity / runtime.baselineCapacity
+    runtime.reserveHeight = Math.max(
+      0,
+      runtime.targetHeight - this.measureDisplayedContentHeight(runtime),
+    )
+    this.dispatchView(runtime.view)
+  }
+
+  private cancelLengthSessionForView(view: EditorView): boolean {
+    const runtime = Array.from(this.sessions.values()).find(
+      (candidate) =>
+        candidate.view === view &&
+        candidate.kind === 'length' &&
+        candidate.phase === 'resizing',
+    )
+    if (!runtime) return false
+    if (runtime.drag) {
+      this.cancelLengthDrag(runtime.id)
+    } else {
+      this.removeRuntime(runtime)
+    }
+    return true
   }
 
   stop(id: string): void {
@@ -1089,34 +1933,27 @@ export class SelectionRewriteController {
     }
   }
 
-  private async run(
-    runtime: SelectionRewriteRuntime,
-    options: StartSelectionRewriteOptions,
-  ): Promise<void> {
+  private async run(runtime: SelectionRewriteRuntime): Promise<void> {
+    const request = runtime.request
     try {
       const result = await executeSingleTurn({
-        providerClient: options.providerClient,
-        model: options.model,
+        providerClient: request.providerClient,
+        model: request.model,
         request: {
-          model: options.model.model,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'Rewrite only the selected markdown according to the instruction. Preserve markdown structure unless the instruction requires changing it. Output only the complete replacement text, with no explanation and no code fence wrapping the response.',
-            },
-            {
-              role: 'user',
-              content: `Instruction:\n${options.instruction.trim()}\n\nSelected markdown:\n${options.selectedText}`,
-            },
-          ],
+          model: request.model.model,
+          messages: this.buildRequestMessages(runtime),
+          reasoningLevel:
+            request.kind === 'length'
+              ? request.settings.continuationOptions.tabCompletionOptions
+                  ?.reasoningLevel
+              : undefined,
         },
         signal: runtime.abortController.signal,
         deliveryMode: 'incremental',
         primaryRequestTimeoutMs:
-          options.settings.continuationOptions.primaryRequestTimeoutMs,
+          request.settings.continuationOptions.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled:
-          options.settings.continuationOptions.streamFallbackRecoveryEnabled,
+          request.settings.continuationOptions.streamFallbackRecoveryEnabled,
         onStreamDelta: async ({ contentDelta }) => {
           if (!contentDelta || runtime.abortController.signal.aborted) return
           runtime.pendingCandidateText += contentDelta
@@ -1134,12 +1971,18 @@ export class SelectionRewriteController {
       this.cancelPublishFrame(runtime)
       const finalText = stripOuterMarkdownFence(result.content)
       if (!finalText.trim()) {
-        this.removeRuntime(runtime)
+        if (!this.restoreLengthReviewFallback(runtime)) {
+          this.removeRuntime(runtime)
+        }
         return
       }
       runtime.candidateText = finalText
-      await this.settleCandidateHeight(runtime)
-      this.commitCandidate(runtime)
+      if (runtime.kind === 'length') {
+        await this.commitLengthCandidate(runtime)
+      } else {
+        await this.settleCandidateHeight(runtime)
+        this.commitCandidate(runtime)
+      }
     } catch (error) {
       this.cancelPublishFrame(runtime)
       if (
@@ -1156,12 +1999,74 @@ export class SelectionRewriteController {
       )
       if (partial.trim()) {
         runtime.candidateText = partial
-        await this.settleCandidateHeight(runtime)
-        this.commitCandidate(runtime)
+        if (runtime.kind === 'length') {
+          await this.commitLengthCandidate(runtime)
+        } else {
+          await this.settleCandidateHeight(runtime)
+          this.commitCandidate(runtime)
+        }
       } else {
-        this.removeRuntime(runtime)
+        if (!this.restoreLengthReviewFallback(runtime)) {
+          this.removeRuntime(runtime)
+        }
       }
     }
+  }
+
+  private buildRequestMessages(runtime: SelectionRewriteRuntime) {
+    if (runtime.request.kind === 'instruction') {
+      return [
+        {
+          role: 'system' as const,
+          content:
+            'Rewrite only the selected markdown according to the instruction. Preserve markdown structure unless the instruction requires changing it. Output only the complete replacement text, with no explanation and no code fence wrapping the response.',
+        },
+        {
+          role: 'user' as const,
+          content: `Instruction:\n${runtime.request.instruction.trim()}\n\nSelected markdown:\n${runtime.originalText}`,
+        },
+      ]
+    }
+
+    return [
+      {
+        role: 'system' as const,
+        content:
+          'Rewrite only the selected passage according to the requested output length. Use the provided context to infer an appropriate direction and style. Return valid Markdown that can replace the selection at its current location. Output only the complete replacement text, without explanations, labels, or code fences.',
+      },
+      {
+        role: 'user' as const,
+        content: `<document_title>\n${runtime.request.fileTitle}\n</document_title>\n\n<context_before>\n${runtime.request.contextBefore}\n</context_before>\n\n<selection>\n${runtime.originalText}\n</selection>\n\n<context_after>\n${runtime.request.contextAfter}\n</context_after>\n\n<target_length>\nRewrite the selection to approximately ${runtime.targetRatio.toFixed(2)} times its original length.\n</target_length>`,
+      },
+    ]
+  }
+
+  private restoreLengthReviewFallback(
+    runtime: SelectionRewriteRuntime,
+  ): boolean {
+    if (runtime.kind !== 'length' || runtime.fallbackReviewText === null) {
+      return false
+    }
+    runtime.candidateText = runtime.fallbackReviewText
+    runtime.fallbackReviewText = null
+    runtime.pendingCandidateText = ''
+    runtime.revealedRawLength = 0
+    runtime.phase = 'review'
+    runtime.reserveHeight = 0
+    runtime.targetReserveHeight = 0
+    runtime.frozenSurfaceRects = null
+    runtime.overflowHeight = 0
+    runtime.settlingSurface = false
+    runtime.targetHeight = this.measureDisplayedContentHeight(runtime)
+    runtime.targetCapacity = this.measureRangeCapacity(
+      runtime.view,
+      runtime.from,
+      runtime.to,
+    )
+    runtime.targetRatio = runtime.targetCapacity / runtime.baselineCapacity
+    this.cleanupRuntimeRequest(runtime)
+    this.dispatchView(runtime.view)
+    return true
   }
 
   private async revealPendingCandidate(
@@ -1195,6 +2100,7 @@ export class SelectionRewriteController {
       if (!runtime.candidateText) continue
       runtime.phase = 'streaming'
       this.dispatchView(runtime.view)
+      this.scheduleLengthReserveMeasure(runtime)
       this.scheduleAutoFollow(runtime)
     }
   }
@@ -1211,10 +2117,68 @@ export class SelectionRewriteController {
     })
   }
 
+  private async commitLengthCandidate(
+    runtime: SelectionRewriteRuntime,
+  ): Promise<void> {
+    if (!this.sessions.has(runtime.id)) return
+    this.cancelLayoutFrame(runtime)
+    const finalText = runtime.candidateText
+    const finalHeight = this.measureDisplayedContentHeight(runtime)
+    runtime.reserveHeight = Math.max(0, runtime.targetHeight - finalHeight)
+    runtime.targetReserveHeight = runtime.reserveHeight
+    runtime.overflowHeight = 0
+    runtime.settlingSurface = true
+    runtime.drag = null
+    const from = runtime.from
+    const to = runtime.to
+    runtime.to = from + finalText.length
+    runtime.view.dispatch({
+      changes: { from, to, insert: finalText },
+      effects: setSelectionRewriteEffect.of(this.visualsForView(runtime.view)),
+      annotations: selectionRewriteTransaction.of({
+        id: runtime.id,
+        kind: 'commit',
+      }),
+    })
+
+    await this.settleLengthReserve(runtime)
+    if (!this.sessions.has(runtime.id)) return
+    runtime.phase = 'review'
+    runtime.reserveHeight = 0
+    runtime.targetReserveHeight = 0
+    runtime.frozenSurfaceRects = null
+    runtime.overflowHeight = 0
+    runtime.settlingSurface = false
+    runtime.fallbackReviewText = null
+    this.cleanupRuntimeRequest(runtime)
+    this.dispatchView(runtime.view)
+    window.requestAnimationFrame(() => {
+      if (!this.sessions.has(runtime.id) || runtime.phase !== 'review') return
+      const actualHeight = this.measureDisplayedContentHeight(runtime)
+      const actualCapacity = this.measureRangeCapacity(
+        runtime.view,
+        runtime.from,
+        runtime.to,
+      )
+      runtime.targetHeight = actualHeight
+      runtime.targetCapacity = actualCapacity
+      runtime.targetRatio = actualCapacity / runtime.baselineCapacity
+      this.dispatchView(runtime.view)
+    })
+    this.scheduleAutoFollow(runtime)
+  }
+
   private commitCandidate(runtime: SelectionRewriteRuntime): void {
     if (!this.sessions.has(runtime.id)) return
     const finalText = runtime.candidateText
     runtime.phase = 'review'
+    runtime.reserveHeight = 0
+    runtime.targetReserveHeight = 0
+    runtime.drag = null
+    runtime.frozenSurfaceRects = null
+    runtime.overflowHeight = 0
+    runtime.settlingSurface = false
+    runtime.fallbackReviewText = null
     const from = runtime.from
     const to = runtime.to
     runtime.to = from + finalText.length
@@ -1231,6 +2195,21 @@ export class SelectionRewriteController {
       }),
     })
     this.cleanupRuntimeRequest(runtime)
+    if (runtime.kind === 'length') {
+      window.requestAnimationFrame(() => {
+        if (!this.sessions.has(runtime.id) || runtime.phase !== 'review') return
+        const actualHeight = this.measureDisplayedContentHeight(runtime)
+        const actualCapacity = this.measureRangeCapacity(
+          runtime.view,
+          runtime.from,
+          runtime.to,
+        )
+        runtime.targetHeight = actualHeight
+        runtime.targetCapacity = actualCapacity
+        runtime.targetRatio = actualCapacity / runtime.baselineCapacity
+        this.dispatchView(runtime.view)
+      })
+    }
     this.scheduleAutoFollow(runtime)
   }
 
@@ -1269,6 +2248,99 @@ export class SelectionRewriteController {
     })
   }
 
+  private measureDisplayedContentHeight(
+    runtime: SelectionRewriteRuntime,
+  ): number {
+    if (runtime.phase === 'streaming') {
+      const root = runtime.view.dom.querySelector<HTMLElement>(
+        `[data-yolo-rewrite-id="${runtime.id}"]`,
+      )
+      const text = root?.querySelector<HTMLElement>(
+        '.yolo-selection-rewrite-candidate-text',
+      )
+      if (text) {
+        return measureCandidateTextHeight(text, runtime.view.defaultLineHeight)
+      }
+    }
+    return this.measureBaselineHeight(runtime.view, runtime.from, runtime.to)
+  }
+
+  private scheduleLengthReserveMeasure(runtime: SelectionRewriteRuntime): void {
+    if (runtime.kind !== 'length' || runtime.layoutFrame !== null) return
+    runtime.layoutFrame = window.requestAnimationFrame(() => {
+      runtime.layoutFrame = null
+      if (runtime.phase !== 'streaming' || !this.sessions.has(runtime.id)) {
+        return
+      }
+      const contentHeight = this.measureDisplayedContentHeight(runtime)
+      const overflowHeight = Math.max(
+        runtime.overflowHeight,
+        contentHeight - runtime.targetHeight,
+      )
+      const reserveHeight = runtime.targetReserveHeight + overflowHeight
+      if (
+        Math.abs(runtime.reserveHeight - reserveHeight) < 0.5 &&
+        Math.abs(runtime.overflowHeight - overflowHeight) < 0.5
+      ) {
+        return
+      }
+      runtime.reserveHeight = reserveHeight
+      runtime.overflowHeight = overflowHeight
+      this.dispatchView(runtime.view)
+    })
+  }
+
+  private async settleLengthReserve(
+    runtime: SelectionRewriteRuntime,
+  ): Promise<void> {
+    if (runtime.kind !== 'length' || !this.sessions.has(runtime.id)) return
+    this.cancelLayoutFrame(runtime)
+    runtime.phase = 'streaming'
+    runtime.settlingSurface = true
+    this.dispatchView(runtime.view)
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve()),
+    )
+    if (!this.sessions.has(runtime.id)) return
+    const startHeight = Math.max(
+      0,
+      runtime.targetHeight - this.measureDisplayedContentHeight(runtime),
+    )
+    runtime.reserveHeight = startHeight
+    this.dispatchView(runtime.view)
+    if (
+      startHeight <= 0.5 ||
+      !document.hasFocus() ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      runtime.reserveHeight = 0
+      this.dispatchView(runtime.view)
+      return
+    }
+
+    const duration = 240
+    const startedAt = performance.now()
+    await new Promise<void>((resolve) => {
+      const frame = (now: number) => {
+        if (!this.sessions.has(runtime.id)) {
+          resolve()
+          return
+        }
+        const progress = Math.min(1, (now - startedAt) / duration)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        runtime.reserveHeight = startHeight * (1 - eased)
+        this.dispatchView(runtime.view)
+        if (progress < 1) {
+          runtime.layoutFrame = window.requestAnimationFrame(frame)
+        } else {
+          runtime.layoutFrame = null
+          resolve()
+        }
+      }
+      runtime.layoutFrame = window.requestAnimationFrame(frame)
+    })
+  }
+
   private scheduleAutoFollow(runtime: SelectionRewriteRuntime): void {
     if (!runtime.autoFollow) return
     window.requestAnimationFrame(() => {
@@ -1303,6 +2375,26 @@ export class SelectionRewriteController {
     const end = view.coordsAtPos(Math.max(from, to - 1))
     if (!start || !end) return view.defaultLineHeight
     return Math.max(view.defaultLineHeight, end.bottom - start.top)
+  }
+
+  private measureRangeCapacity(
+    view: EditorView,
+    from: number,
+    to: number,
+  ): number {
+    const bounds = getContentHorizontalBounds(view)
+    const contentWidth = Math.max(1, bounds.right - bounds.left)
+    const markers = RectangleMarker.forRange(
+      view,
+      'yolo-selection-rewrite-capacity',
+      EditorSelection.range(from, to),
+    )
+    const capacity = markers.reduce((total, marker) => {
+      const width = Math.min(contentWidth, Math.max(1, marker.width ?? 1))
+      const heightInLines = Math.max(1, marker.height / view.defaultLineHeight)
+      return total + (width / contentWidth) * heightInLines
+    }, 0)
+    return Math.max(0.01, capacity)
   }
 
   private measureStartIndent(view: EditorView, from: number): number {
@@ -1362,20 +2454,36 @@ export class SelectionRewriteController {
           to,
           originalText,
           candidateText,
+          kind,
           phase,
           baselineHeight,
           startIndent,
           block,
+          targetHeight,
+          targetRatio,
+          reserveHeight,
+          targetReserveHeight,
+          frozenSurfaceRects,
+          overflowHeight,
+          settlingSurface,
         }) => ({
           id,
           from,
           to,
           originalText,
           candidateText,
+          kind,
           phase,
           baselineHeight,
           startIndent,
           block,
+          targetHeight,
+          targetRatio,
+          reserveHeight,
+          targetReserveHeight,
+          frozenSurfaceRects,
+          overflowHeight,
+          settlingSurface,
         }),
       )
   }
@@ -1388,6 +2496,8 @@ export class SelectionRewriteController {
 
   private cleanupRuntime(runtime: SelectionRewriteRuntime): void {
     this.cancelPublishFrame(runtime)
+    this.cancelLayoutFrame(runtime)
+    this.cancelDragFrame(runtime)
     this.cleanupRuntimeRequest(runtime)
   }
 
@@ -1401,5 +2511,17 @@ export class SelectionRewriteController {
     runtime.publishFrame = null
     runtime.publishResolve?.()
     runtime.publishResolve = null
+  }
+
+  private cancelLayoutFrame(runtime: SelectionRewriteRuntime): void {
+    if (runtime.layoutFrame === null) return
+    window.cancelAnimationFrame(runtime.layoutFrame)
+    runtime.layoutFrame = null
+  }
+
+  private cancelDragFrame(runtime: SelectionRewriteRuntime): void {
+    if (runtime.dragFrame === null) return
+    window.cancelAnimationFrame(runtime.dragFrame)
+    runtime.dragFrame = null
   }
 }

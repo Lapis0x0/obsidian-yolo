@@ -19,6 +19,7 @@ import {
   SelectionInfo,
   SelectionManager,
 } from '../../../components/selection/SelectionManager'
+import { getChatModelClient } from '../../../core/llm/manager'
 import type YoloPlugin from '../../../main'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import type {
@@ -702,6 +703,11 @@ export class SelectionChatController {
         ? assistantId
         : this.getSettings().currentAssistantId
 
+    if (actionId === 'adjust-length') {
+      await this.adjustSelectionLength(editor, snapshot)
+      return
+    }
+
     if (mode === 'rewrite') {
       await this.rewriteSelection(
         editor,
@@ -1142,6 +1148,110 @@ export class SelectionChatController {
       initialPrompt: prompt || undefined,
       initialMode: 'ask',
       autoSend: prompt.length > 0,
+    })
+  }
+
+  private async adjustSelectionLength(
+    editor: Editor,
+    snapshot?: MarkdownSelectionSnapshot,
+  ): Promise<void> {
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!markdownView) {
+      new Notice(this.t('selection.length.noEditor', '无法获取当前编辑器'))
+      return
+    }
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      markdownView,
+      snapshot,
+    )
+    if (!resolvedSnapshot?.editContextText.trim()) {
+      new Notice(
+        this.t('selection.length.noSelection', '请先选择要调整的文本。'),
+      )
+      return
+    }
+    if (resolvedSnapshot.isTableSelection) {
+      new Notice(
+        this.t(
+          'selection.length.tableUnsupported',
+          '暂不支持调整表格选区的篇幅。',
+        ),
+      )
+      return
+    }
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      new Notice(this.t('selection.length.noEditorView', '无法获取编辑器视图'))
+      return
+    }
+
+    const from =
+      resolvedSnapshot.highlightRange?.from ??
+      editor.posToOffset(resolvedSnapshot.selectionFrom)
+    const to =
+      resolvedSnapshot.highlightRange?.to ??
+      from + resolvedSnapshot.editContextText.length
+    const settings = this.getSettings()
+    const preferredModelId = [
+      settings.continuationOptions?.tabCompletionModelId,
+      settings.continuationOptions?.continuationModelId,
+      settings.chatModelId,
+    ].find(
+      (modelId): modelId is string =>
+        Boolean(modelId) &&
+        settings.chatModels.some((model) => model.id === modelId),
+    )
+    const fallbackModelId =
+      preferredModelId || settings.chatModels.at(0)?.id || ''
+    if (!fallbackModelId) {
+      new Notice(
+        this.t(
+          'quickAsk.noModelConfigured',
+          'No chat model configured. Please add a model in settings.',
+        ),
+      )
+      return
+    }
+
+    let modelClient: ReturnType<typeof getChatModelClient>
+    try {
+      modelClient = getChatModelClient({
+        settings,
+        modelId: fallbackModelId,
+      })
+    } catch (error) {
+      console.error('[YOLO] Failed to resolve length adjustment model:', error)
+      new Notice(
+        this.t(
+          'quickAsk.noModelConfigured',
+          'No chat model configured. Please add a model in settings.',
+        ),
+      )
+      return
+    }
+
+    const beforeChars = Math.max(
+      0,
+      settings.continuationOptions?.quickAskContextBeforeChars ?? 5000,
+    )
+    const afterChars = Math.max(
+      0,
+      settings.continuationOptions?.quickAskContextAfterChars ?? 2000,
+    )
+    const doc = editorView.state.doc
+    const file = resolvedSnapshot.editBlockData.file
+    this.plugin.startSelectionLengthAdjustment({
+      view: editorView,
+      from,
+      to,
+      selectedText: resolvedSnapshot.editContextText,
+      contextBefore: doc.sliceString(Math.max(0, from - beforeChars), from),
+      contextAfter: doc.sliceString(to, Math.min(doc.length, to + afterChars)),
+      fileTitle: file.basename,
+      providerClient: modelClient.providerClient,
+      model: modelClient.model,
+      settings,
     })
   }
 

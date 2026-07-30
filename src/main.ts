@@ -192,6 +192,7 @@ import { SelectionChatController } from './features/editor/selection-chat/select
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
 import {
   SelectionRewriteController,
+  type StartSelectionLengthAdjustmentOptions,
   type StartSelectionRewriteOptions,
 } from './features/editor/selection-rewrite/selectionRewriteController'
 import {
@@ -611,6 +612,12 @@ export default class YoloPlugin extends Plugin {
 
   startSelectionRewrite(options: StartSelectionRewriteOptions): void {
     this.getSelectionRewriteController().start(options)
+  }
+
+  startSelectionLengthAdjustment(
+    options: StartSelectionLengthAdjustmentOptions,
+  ): void {
+    this.getSelectionRewriteController().startLengthAdjustment(options)
   }
 
   private closeSmartSpace() {

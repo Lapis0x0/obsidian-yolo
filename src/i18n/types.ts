@@ -1461,12 +1461,24 @@ export type TranslationKeys = {
     actions?: {
       addToChat?: string
       addToSidebar?: string
+      adjustLength?: string
       customRewrite?: string
       customAsk?: string
       rewrite?: string
       explain?: string
       suggest?: string
       translateToChinese?: string
+    }
+    length?: {
+      adjust?: string
+      condense?: string
+      expand?: string
+      freeExpand?: string
+      handle?: string
+      noEditor?: string
+      noSelection?: string
+      noEditorView?: string
+      tableUnsupported?: string
     }
   }
 

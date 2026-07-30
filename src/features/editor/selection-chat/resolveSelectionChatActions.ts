@@ -25,12 +25,18 @@ type SelectionActionPreset = {
 }
 
 const FIXED_ACTION_IDS = new Set([
+  'adjust-length',
   'custom-rewrite',
   'custom-ask',
   'add-to-sidebar',
 ])
 
-const FIXED_ACTION_ORDER = ['custom-rewrite', 'custom-ask', 'add-to-sidebar']
+const FIXED_ACTION_ORDER = [
+  'adjust-length',
+  'custom-rewrite',
+  'custom-ask',
+  'add-to-sidebar',
+]
 
 const resolveMode = (
   id: string,
@@ -63,6 +69,13 @@ export function resolveSelectionChatActions(
   t: TranslateFn,
 ): ResolvedSelectionChatAction[] {
   const defaultActions: SelectionActionPreset[] = [
+    {
+      id: 'adjust-length',
+      label: t('selection.actions.adjustLength', '调整篇幅'),
+      instruction: '',
+      mode: 'rewrite',
+      rewriteBehavior: 'custom',
+    },
     {
       id: 'custom-rewrite',
       label: t('selection.actions.customRewrite', '自定义改写'),

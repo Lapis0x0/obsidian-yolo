@@ -142,12 +142,24 @@ export const en: TranslationKeys = {
     actions: {
       addToChat: 'Add to chat',
       addToSidebar: 'Add to sidebar',
+      adjustLength: 'Adjust length',
       customRewrite: 'Custom rewrite',
       customAsk: 'Custom ask',
       rewrite: 'AI rewrite',
       explain: 'Explain in depth',
       suggest: 'Provide suggestions',
       translateToChinese: 'Translate to Chinese',
+    },
+    length: {
+      adjust: 'Adjust length',
+      condense: 'Condense',
+      expand: 'Expand',
+      freeExpand: 'Free expand',
+      handle: 'Drag to adjust length',
+      noEditor: 'Unable to access the current editor',
+      noSelection: 'Select text to adjust first.',
+      noEditorView: 'Unable to access the editor view',
+      tableUnsupported: 'Table selections cannot be adjusted yet.',
     },
   },
 
@@ -1548,7 +1560,7 @@ export const en: TranslationKeys = {
         'Generate three completion suggestions when enabled.',
       tabCompletionModel: 'Completion model',
       tabCompletionModelDesc:
-        'Choose which model provides tab completion suggestions.',
+        'Choose the model used for tab completion and length adjustment.',
       tabCompletionTriggerDelay: 'Trigger delay (ms)',
       tabCompletionTriggerDelayDesc:
         'How long to wait after you stop typing before a prefix completion request is sent.',

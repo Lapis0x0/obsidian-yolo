@@ -158,12 +158,24 @@ export const it: DeepPartial<TranslationKeys> = {
     actions: {
       addToChat: 'Aggiungi alla chat',
       addToSidebar: 'Aggiungi alla barra laterale',
+      adjustLength: 'Regola lunghezza',
       customRewrite: 'Riscrittura personalizzata',
       customAsk: 'Domanda personalizzata',
       rewrite: 'AI riscrivi',
       explain: 'Spiega in dettaglio',
       suggest: 'Fornisci suggerimenti',
       translateToChinese: 'Traduci in cinese',
+    },
+    length: {
+      adjust: 'Regola lunghezza',
+      condense: 'Sintetizza',
+      expand: 'Espandi',
+      freeExpand: 'Espansione libera',
+      handle: 'Trascina per regolare la lunghezza',
+      noEditor: "Impossibile accedere all'editor corrente",
+      noSelection: 'Seleziona prima il testo da regolare.',
+      noEditorView: "Impossibile accedere alla vista dell'editor",
+      tableUnsupported: 'Le selezioni di tabella non sono ancora supportate.',
     },
   },
 
@@ -1400,7 +1412,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Quando attivo, genera tre suggerimenti di completamento.',
       tabCompletionModel: 'Modello completamento tab',
       tabCompletionModelDesc:
-        'Modello usato per generare suggerimenti di completamento tab.',
+        'Modello usato per il completamento tab e la regolazione della lunghezza.',
       tabCompletionTriggerDelay: 'Ritardo trigger (ms)',
       tabCompletionTriggerDelayDesc:
         'Quanto tempo attendere dopo che smetti di digitare prima di generare un suggerimento.',
