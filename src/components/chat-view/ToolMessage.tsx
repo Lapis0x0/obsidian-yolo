@@ -13,12 +13,10 @@ import { Notice } from 'obsidian'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import {
   BUILTIN_TOOL_UI_META,
   getBuiltinToolUiMeta,
 } from '../../core/agent/builtinToolUiMeta'
-import { subagentTaskRegistry } from '../../core/agent/subagent/task-registry'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
@@ -44,7 +42,13 @@ import {
 import { SplitButton } from '../common/SplitButton'
 
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
+import { useChatRuntimeActions } from './chat-runtime-actions-context'
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
+import {
+  handleRuntimeToolAbort,
+  handleRuntimeToolApproval,
+  handleRuntimeToolRejection,
+} from './runtime-action-handlers'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'
 import { SubagentCard } from './tool-cards/SubagentCard'
 import {
@@ -377,20 +381,6 @@ const extractSyntheticLiveTaskOutput = (
   return {
     stdout: typeof parsed.stdout === 'string' ? parsed.stdout : undefined,
     stderr: typeof parsed.stderr === 'string' ? parsed.stderr : undefined,
-  }
-}
-
-const extractAcceptedTaskId = (
-  response: ToolCallResponse,
-): string | undefined => {
-  if (response.status !== ToolCallResponseStatus.Success) return undefined
-  try {
-    const parsed = JSON.parse(response.data.text) as unknown
-    if (!parsed || typeof parsed !== 'object') return undefined
-    const taskId = (parsed as Record<string, unknown>).taskId
-    return typeof taskId === 'string' ? taskId : undefined
-  } catch {
-    return undefined
   }
 }
 
@@ -1435,8 +1425,6 @@ function ToolCallItem({
         initialStdout={syntheticLiveTaskOutput.stdout}
         initialStderr={syntheticLiveTaskOutput.stderr}
         onAbort={() => {
-          const taskId = extractAcceptedTaskId(response)
-          if (taskId) subagentTaskRegistry.abort(taskId)
           void handleAbort()
         }}
       />
@@ -1734,7 +1722,7 @@ function useToolCall(
     allowForConversation?: boolean
   }) => Promise<boolean>,
 ) {
-  const plugin = usePlugin()
+  const { actions, conversation } = useChatRuntimeActions(conversationId)
   const suppressReloadNotice = isDelegateSubagentRequest(request)
   const showReloadNotice = useCallback(() => {
     new Notice(
@@ -1759,19 +1747,16 @@ function useToolCall(
   )
 
   const handleToolCall = useCallback(async () => {
-    const approved = await plugin.getAgentService().approveToolCall({
-      conversationId,
+    await handleRuntimeToolApproval({
+      actions,
+      conversation,
       toolCallId: request.id,
+      recover: tryRecoverToolCall,
+      onStale: suppressReloadNotice ? undefined : showReloadNotice,
     })
-    if (!approved) {
-      const recovered = await tryRecoverToolCall()
-      if (!recovered && !suppressReloadNotice) {
-        showReloadNotice()
-      }
-    }
   }, [
-    conversationId,
-    plugin,
+    actions,
+    conversation,
     request.id,
     showReloadNotice,
     suppressReloadNotice,
@@ -1779,20 +1764,17 @@ function useToolCall(
   ])
 
   const handleAllowForConversation = useCallback(async () => {
-    const approved = await plugin.getAgentService().approveToolCall({
-      conversationId,
+    await handleRuntimeToolApproval({
+      actions,
+      conversation,
       toolCallId: request.id,
       allowForConversation: true,
+      recover: () => tryRecoverToolCall(true),
+      onStale: suppressReloadNotice ? undefined : showReloadNotice,
     })
-    if (!approved) {
-      const recovered = await tryRecoverToolCall(true)
-      if (!recovered && !suppressReloadNotice) {
-        showReloadNotice()
-      }
-    }
   }, [
-    conversationId,
-    plugin,
+    actions,
+    conversation,
     request.id,
     showReloadNotice,
     suppressReloadNotice,
@@ -1800,28 +1782,28 @@ function useToolCall(
   ])
 
   const handleReject = useCallback(() => {
-    const rejected = plugin.getAgentService().rejectToolCall({
-      conversationId,
+    handleRuntimeToolRejection({
+      actions,
+      conversation,
       toolCallId: request.id,
+      onStale: () =>
+        onResponseUpdate({
+          status: ToolCallResponseStatus.Rejected,
+        }),
     })
-    if (!rejected) {
-      onResponseUpdate({
-        status: ToolCallResponseStatus.Rejected,
-      })
-    }
-  }, [conversationId, onResponseUpdate, plugin, request.id])
+  }, [actions, conversation, onResponseUpdate, request.id])
 
   const handleAbort = useCallback(async () => {
-    const aborted = plugin.getAgentService().abortToolCall({
-      conversationId,
+    await handleRuntimeToolAbort({
+      actions,
+      conversation,
       toolCallId: request.id,
+      onStale: () =>
+        onResponseUpdate({
+          status: ToolCallResponseStatus.Aborted,
+        }),
     })
-    if (!aborted) {
-      onResponseUpdate({
-        status: ToolCallResponseStatus.Aborted,
-      })
-    }
-  }, [conversationId, onResponseUpdate, plugin, request.id])
+  }, [actions, conversation, onResponseUpdate, request.id])
 
   return {
     handleToolCall,

@@ -1,3 +1,5 @@
+import type { ChatMessage } from '../../types/chat'
+
 import type { ConversationRef } from './types'
 
 export type ChatRuntimeToolAction = {
@@ -13,9 +15,11 @@ export type ChatRuntimeQuestionAction = ChatRuntimeToolAction & {
   payload: unknown
 }
 
-export type ChatRuntimeActionResult =
-  | { kind: 'handled' }
-  | { kind: 'stale' }
+export type ChatRuntimeActionResult = { kind: 'handled' } | { kind: 'stale' }
+
+export type ChatRuntimeQuestionActionResult =
+  | ChatRuntimeActionResult
+  | { kind: 'needs_recovery'; resolvedMessages: ChatMessage[] }
 
 export interface ChatRuntimeActions {
   cancelRun(conversation: ConversationRef): void
@@ -23,11 +27,9 @@ export interface ChatRuntimeActions {
     action: ChatRuntimeApprovalAction,
   ): Promise<ChatRuntimeActionResult>
   rejectTool(action: ChatRuntimeToolAction): ChatRuntimeActionResult
-  abortTool(
-    action: ChatRuntimeToolAction,
-  ): Promise<ChatRuntimeActionResult>
+  abortTool(action: ChatRuntimeToolAction): Promise<ChatRuntimeActionResult>
   answerQuestion(
     action: ChatRuntimeQuestionAction,
-  ): Promise<ChatRuntimeActionResult>
+  ): Promise<ChatRuntimeQuestionActionResult>
   cancelQuestion(action: ChatRuntimeToolAction): ChatRuntimeActionResult
 }
