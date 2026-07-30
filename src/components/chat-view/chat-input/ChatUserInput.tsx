@@ -81,6 +81,8 @@ export type ChatUserInputProps = {
   addedBlockKey?: string | null
   modelId?: string
   onModelChange?: (modelId: string) => void
+  showModelControl?: boolean
+  allowModelMentions?: boolean
   // 用于显示聚合后的 mentionables(包含历史消息中的文件)
   displayMentionables?: Mentionable[]
   // 删除时从所有消息中删除的回调
@@ -153,6 +155,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       autoFocus = false,
       modelId,
       onModelChange,
+      showModelControl = true,
+      allowModelMentions = true,
       displayMentionables,
       onDeleteFromAll,
       reasoningLevel,
@@ -248,6 +252,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       () => settings.chatModels.filter((model) => model.enable ?? true),
       [settings.chatModels],
     )
+    const mentionableModels = allowModelMentions ? enabledChatModels : []
 
     const allSkillEntries = useLiteSkillEntries(app, { settings })
     const availableAssistants = useMemo(
@@ -625,21 +630,22 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         />
       ) : null
 
-    const renderModelControl = () => (
-      <ModelSelect
-        modelId={modelId}
-        onChange={onModelChange}
-        onMenuOpenChange={onControlPopoverOpenChange}
-        align="center"
-        sideOffset={8}
-        popover={{
-          variant: 'default',
-          minWidth: 240,
-          maxWidth: 320,
-          maxHeight: 560,
-        }}
-      />
-    )
+    const renderModelControl = () =>
+      showModelControl ? (
+        <ModelSelect
+          modelId={modelId}
+          onChange={onModelChange}
+          onMenuOpenChange={onControlPopoverOpenChange}
+          align="center"
+          sideOffset={8}
+          popover={{
+            variant: 'default',
+            minWidth: 240,
+            maxWidth: 320,
+            maxHeight: 560,
+          }}
+        />
+      ) : null
 
     const renderReasoningControl = () =>
       showReasoningSelect && supportsReasoning(currentModel) ? (
@@ -807,7 +813,9 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                   >
                     @
                   </span>
-                  {t('chat.placeholderMention', '添加引用或模型')}
+                  {allowModelMentions
+                    ? t('chat.placeholderMention', '添加引用或模型')
+                    : t('chat.placeholderMentionReferences', '添加引用')}
                   {'，'}
                   <span
                     className="yolo-placeholder-trigger"
@@ -853,7 +861,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               currentChatMode={currentChatMode}
               onSelectChatMode={onSelectChatModeForConversation}
               allowAgentModeOption={allowAgentModeOption}
-              models={enabledChatModels}
+              models={mentionableModels}
               skills={availableSkills}
               snippets={availableSnippets}
               onCreateSnippetsFile={handleCreateSnippetsFile}

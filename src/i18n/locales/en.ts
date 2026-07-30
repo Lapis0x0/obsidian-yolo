@@ -88,6 +88,15 @@ export const en: TranslationKeys = {
       unpin: 'Unpin in YOLO',
       forgetFromYolo: 'Forget from YOLO',
       retryProvider: 'Retry {provider}',
+      loadError: 'Could not load CLI sessions: {message}',
+      pinError: 'Could not update the CLI session pin: {message}',
+      forgetConfirmTitle: 'Forget CLI session from YOLO?',
+      forgetConfirmMessage:
+        'This removes only YOLO metadata. The native CLI transcript will not be deleted.',
+      forgetConfirmAction: 'Forget from YOLO',
+      forgetError: 'Could not forget the CLI session: {message}',
+      recordError:
+        'The CLI action succeeded, but YOLO could not remember the session: {message}',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',
@@ -1789,6 +1798,7 @@ export const en: TranslationKeys = {
     placeholderCompact: 'Click to expand and edit...',
     placeholderPrefix: 'Type a message...',
     placeholderMention: 'add references or models',
+    placeholderMentionReferences: 'add references',
     placeholderSkill: 'choose a skill or command',
     contextUsage: 'Context window usage',
     contextUsageUnknownMaxSuffix: ' (context window limit not set)',
@@ -1950,6 +1960,12 @@ export const en: TranslationKeys = {
         'Native CLI conversation messages will appear here after you send a message.',
       emptyUserMessage: 'Empty message',
       error: 'CLI session error: {message}',
+      runtimeError: 'Could not start the CLI runtime: {message}',
+      submitError: 'Could not send the CLI message: {message}',
+      cancelError: 'Could not stop the CLI run: {message}',
+      openError: 'Could not open the CLI session: {message}',
+      transitionBusy:
+        'Wait for the CLI message to be accepted before changing sessions.',
       state: {
         idle: 'Idle',
         running: 'CLI is responding…',

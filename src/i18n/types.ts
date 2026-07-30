@@ -97,6 +97,13 @@ export type TranslationKeys = {
       unpin: string
       forgetFromYolo: string
       retryProvider: string
+      loadError: string
+      pinError: string
+      forgetConfirmTitle: string
+      forgetConfirmMessage: string
+      forgetConfirmAction: string
+      forgetError: string
+      recordError: string
     }
     chatList?: {
       searchPlaceholder?: string
@@ -1520,6 +1527,7 @@ export type TranslationKeys = {
     placeholderCompact?: string
     placeholderPrefix?: string
     placeholderMention?: string
+    placeholderMentionReferences?: string
     placeholderSkill?: string
     contextUsage?: string
     contextUsageUnknownMaxSuffix?: string
@@ -1667,6 +1675,11 @@ export type TranslationKeys = {
       emptyDescription?: string
       emptyUserMessage?: string
       error?: string
+      runtimeError?: string
+      submitError?: string
+      cancelError?: string
+      openError?: string
+      transitionBusy?: string
       state?: {
         idle?: string
         running?: string

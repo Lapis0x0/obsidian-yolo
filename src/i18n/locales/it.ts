@@ -104,6 +104,15 @@ export const it: DeepPartial<TranslationKeys> = {
       unpin: 'Rimuovi il fissaggio in YOLO',
       forgetFromYolo: 'Dimentica da YOLO',
       retryProvider: 'Riprova {provider}',
+      loadError: 'Impossibile caricare le sessioni CLI: {message}',
+      pinError: 'Impossibile aggiornare il fissaggio: {message}',
+      forgetConfirmTitle: 'Dimenticare la sessione CLI da YOLO?',
+      forgetConfirmMessage:
+        'Vengono rimossi solo i metadati di YOLO. La trascrizione CLI nativa non verrà eliminata.',
+      forgetConfirmAction: 'Dimentica da YOLO',
+      forgetError: 'Impossibile dimenticare la sessione CLI: {message}',
+      recordError:
+        "L'azione CLI è riuscita, ma YOLO non ha potuto ricordare la sessione: {message}",
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
@@ -1633,6 +1642,7 @@ export const it: DeepPartial<TranslationKeys> = {
     placeholderCompact: 'Clicca per espandere e modificare...',
     placeholderPrefix: 'Scrivi un messaggio...',
     placeholderMention: 'aggiungere riferimenti o modelli',
+    placeholderMentionReferences: 'aggiungere riferimenti',
     placeholderSkill: 'scegliere una skill o un comando',
     contextUsage: 'Utilizzo finestra di contesto',
     contextUsageUnknownMaxSuffix:
@@ -1796,6 +1806,12 @@ export const it: DeepPartial<TranslationKeys> = {
         'I messaggi della conversazione CLI nativa appariranno qui dopo il primo invio.',
       emptyUserMessage: 'Messaggio vuoto',
       error: 'Errore della sessione CLI: {message}',
+      runtimeError: 'Impossibile avviare il runtime CLI: {message}',
+      submitError: 'Impossibile inviare il messaggio CLI: {message}',
+      cancelError: 'Impossibile interrompere la CLI: {message}',
+      openError: 'Impossibile aprire la sessione CLI: {message}',
+      transitionBusy:
+        'Attendi che la CLI accetti il messaggio prima di cambiare sessione.',
       state: {
         idle: 'Inattivo',
         running: 'La CLI sta rispondendo…',
