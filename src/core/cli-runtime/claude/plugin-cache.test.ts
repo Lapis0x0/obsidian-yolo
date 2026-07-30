@@ -504,4 +504,21 @@ describe('ClaudeLocalPluginCache', () => {
       nonFilesystemCache.resolvePluginPaths({ enabledSkillNames: ['alpha'] }),
     ).rejects.toThrow(/filesystem vault/)
   })
+
+  it('rejects a relative filesystem root before writing cache data', async () => {
+    const adapter = new MemoryFileSystemAdapter('relative/vault')
+    const cache = new ClaudeLocalPluginCache({
+      app: createApp(adapter),
+      getSettings: () => undefined,
+      getSkillPackageSource: async () =>
+        source('alpha', [
+          { kind: 'builtin', relativePath: 'SKILL.md', content: 'alpha' },
+        ]),
+    })
+
+    await expect(
+      cache.resolvePluginPaths({ enabledSkillNames: ['alpha'] }),
+    ).rejects.toThrow(/must be absolute/)
+    expect(await adapter.exists('YOLO/.derived')).toBe(false)
+  })
 })

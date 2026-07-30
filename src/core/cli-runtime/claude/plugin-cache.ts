@@ -295,6 +295,10 @@ export class ClaudeLocalPluginCache {
     const targetDir = normalizePath(`${cacheRoot}/${hash}`)
     const stagingDir = normalizePath(`${cacheRoot}/.staging-${hash}`)
 
+    // Validate the host root and the derived vault path before the first
+    // cache write. A public cache instance must remain safe even when it is
+    // used without the higher-level runtime coordinator.
+    await this.toAbsolutePath(adapter, cacheRoot)
     await ensureDirectory(adapter, cacheRoot)
     if (await adapter.exists(targetDir)) {
       if (!(await isOwnedCacheEntry(adapter, targetDir, hash))) {
