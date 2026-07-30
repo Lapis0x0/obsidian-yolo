@@ -37,6 +37,7 @@ import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
+  type CliRuntimeScope,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
 } from '../../core/cli-runtime'
@@ -884,6 +885,7 @@ export type ChatRuntimeSnapshot = {
 }
 
 export type ChatProps = {
+  cliRuntimeScope?: CliRuntimeScope
   selectedBlock?: MentionableBlockData
   activeView?: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
