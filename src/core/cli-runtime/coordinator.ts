@@ -11,6 +11,7 @@ import type { CodexCliRuntimeOptions } from './codex'
 import { CliConversationController } from './conversation-controller'
 import type {
   CliSessionIndexEntry,
+  CliSessionIndexMutator,
   CliSessionIndexStore,
 } from './session-index'
 import { CliSessionService } from './session-service'
@@ -96,6 +97,13 @@ class SettingsAwareSessionIndexStore implements CliSessionIndexStore {
 
   upsert(entry: CliSessionIndexEntry): Promise<void> {
     return this.enqueueWrite(() => this.currentStore().upsert(entry))
+  }
+
+  update(
+    ref: CliSessionRef,
+    mutator: CliSessionIndexMutator,
+  ): Promise<CliSessionIndexEntry> {
+    return this.enqueueWrite(() => this.currentStore().update(ref, mutator))
   }
 
   remove(ref: CliSessionRef): Promise<boolean> {

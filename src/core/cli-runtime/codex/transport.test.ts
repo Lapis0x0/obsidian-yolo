@@ -59,9 +59,9 @@ describe('CodexRpcTransport', () => {
     const order: string[] = []
     transport.onNotification(() => order.push('notification'))
 
-    const resultPromise = transport.request('turn/start', {}).then(() =>
-      order.push('response'),
-    )
+    const resultPromise = transport
+      .request('turn/start', {})
+      .then(() => order.push('response'))
     const sent = JSON.parse(process.writes[0]) as { id: number }
     process.emit({ jsonrpc: '2.0', method: 'turn/started', params: {} })
     process.emit({ jsonrpc: '2.0', id: sent.id, result: {} })

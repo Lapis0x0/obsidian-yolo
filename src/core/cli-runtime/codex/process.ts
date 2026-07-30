@@ -1,14 +1,14 @@
-import type { ChildProcess } from 'node:child_process'
-
 import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
 import { assertCliRuntimeAvailable } from '../desktop'
+
+type ChildProcess = import('node:child_process').ChildProcess
 
 export type CodexProcessExitListener = (
   code: number | null,
   signal: NodeJS.Signals | null,
 ) => void
 
-export interface CodexProcessLike {
+export type CodexProcessLike = {
   write(line: string): void
   onLine(listener: (line: string) => void): () => void
   onExit(listener: CodexProcessExitListener): () => void
@@ -75,14 +75,34 @@ const getProcessEnv = async (
 export class CodexAppServerProcess implements CodexProcessLike {
   private readonly lineListeners = new Set<(line: string) => void>()
   private readonly exitListeners = new Set<CodexProcessExitListener>()
+  private readonly started: Promise<void>
   private stderr = ''
   private stdoutBuffer = ''
+  private termination:
+    | { code: number | null; signal: NodeJS.Signals | null }
+    | undefined
 
   private constructor(
     private readonly child: ChildProcess,
     private readonly spawnSpec: SpawnSpec,
     private readonly spawn: typeof import('node:child_process').spawn,
   ) {
+    this.started = new Promise<void>((resolve, reject) => {
+      let settled = false
+      child.once('spawn', () => {
+        settled = true
+        resolve()
+      })
+      child.on('error', (error) => {
+        const detail = `Failed to start Codex app-server (${spawnSpec.command}): ${error.message}`
+        this.stderr = `${this.stderr}${detail}`.slice(-8192)
+        if (!settled) {
+          settled = true
+          reject(new Error(detail))
+        }
+        this.signalExit(null, null)
+      })
+    })
     child.stdout?.on('data', (chunk: Buffer | string) => {
       this.stdoutBuffer += Buffer.isBuffer(chunk)
         ? chunk.toString('utf8')
@@ -90,19 +110,24 @@ export class CodexAppServerProcess implements CodexProcessLike {
       this.flushLines()
     })
     child.stderr?.on('data', (chunk: Buffer | string) => {
-      const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
+      const text = Buffer.isBuffer(chunk)
+        ? chunk.toString('utf8')
+        : String(chunk)
       this.stderr = `${this.stderr}${text}`.slice(-8192)
     })
     child.on('close', (code, signal) => {
-      for (const listener of this.exitListeners) listener(code, signal)
+      this.signalExit(code, signal)
     })
   }
 
-  static async start(options: CodexProcessOptions): Promise<CodexAppServerProcess> {
+  static async start(
+    options: CodexProcessOptions,
+  ): Promise<CodexAppServerProcess> {
     assertCliRuntimeAvailable('codex')
-    const { spawn } = await loadDesktopNodeModule<
-      typeof import('node:child_process')
-    >('node:child_process')
+    const { spawn } =
+      await loadDesktopNodeModule<typeof import('node:child_process')>(
+        'node:child_process',
+      )
     const spec = resolveSpawnSpec(options.command?.trim() || 'codex')
     const child = spawn(spec.command, spec.args, {
       cwd: options.cwd,
@@ -111,11 +136,19 @@ export class CodexAppServerProcess implements CodexProcessLike {
       windowsHide: true,
       windowsVerbatimArguments: spec.windowsVerbatimArguments,
     })
-    return new CodexAppServerProcess(child, spec, spawn)
+    const process = new CodexAppServerProcess(child, spec, spawn)
+    await process.started
+    return process
   }
 
   write(line: string): void {
-    if (!this.child.stdin?.writable) throw new Error('Codex app-server stdin is closed.')
+    if (this.termination) {
+      throw new Error(
+        this.getStderrSnapshot() || 'Codex app-server is not running.',
+      )
+    }
+    if (!this.child.stdin?.writable)
+      throw new Error('Codex app-server stdin is closed.')
     this.child.stdin.write(line)
   }
 
@@ -125,6 +158,11 @@ export class CodexAppServerProcess implements CodexProcessLike {
   }
 
   onExit(listener: CodexProcessExitListener): () => void {
+    if (this.termination) {
+      const { code, signal } = this.termination
+      queueMicrotask(() => listener(code, signal))
+      return () => undefined
+    }
     this.exitListeners.add(listener)
     return () => this.exitListeners.delete(listener)
   }
@@ -134,7 +172,8 @@ export class CodexAppServerProcess implements CodexProcessLike {
   }
 
   async shutdown(): Promise<void> {
-    if (this.child.exitCode !== null || this.child.killed) return
+    if (this.termination || this.child.exitCode !== null || this.child.killed)
+      return
     if (
       process.platform === 'win32' &&
       this.spawnSpec.killProcessTree &&
@@ -147,6 +186,12 @@ export class CodexAppServerProcess implements CodexProcessLike {
       return
     }
     this.child.kill('SIGTERM')
+  }
+
+  private signalExit(code: number | null, signal: NodeJS.Signals | null): void {
+    if (this.termination) return
+    this.termination = { code, signal }
+    for (const listener of this.exitListeners) listener(code, signal)
   }
 
   private flushLines(): void {

@@ -29,7 +29,8 @@ export const cliSessionIndexDocumentSchema = z
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['sessions', key],
-          message: 'Session index key does not match its runtime/native identity.',
+          message:
+            'Session index key does not match its runtime/native identity.',
         })
       }
     }
@@ -55,9 +56,7 @@ export const toCliSessionRef = (
 ): CliSessionRef => ({
   runtimeId: entry.runtimeId,
   nativeSessionId: entry.nativeSessionId,
-  ...(entry.sessionPathHint
-    ? { sessionPathHint: entry.sessionPathHint }
-    : {}),
+  ...(entry.sessionPathHint ? { sessionPathHint: entry.sessionPathHint } : {}),
 })
 
 export const createCliSessionIndexEntry = ({
@@ -74,9 +73,17 @@ export const createCliSessionIndexEntry = ({
     ...overlay,
   })
 
-export interface CliSessionIndexStore {
+export type CliSessionIndexMutator = (
+  current: CliSessionIndexEntry | null,
+) => CliSessionIndexEntry
+
+export type CliSessionIndexStore = {
   list(): Promise<CliSessionIndexEntry[]>
   get(ref: CliSessionRef): Promise<CliSessionIndexEntry | null>
   upsert(entry: CliSessionIndexEntry): Promise<void>
+  update(
+    ref: CliSessionRef,
+    mutator: CliSessionIndexMutator,
+  ): Promise<CliSessionIndexEntry>
   remove(ref: CliSessionRef): Promise<boolean>
 }

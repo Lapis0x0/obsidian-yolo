@@ -12,6 +12,7 @@ import type {
 
 class MemoryIndex implements CliSessionIndexStore {
   entries = new Map<string, CliSessionIndexEntry>()
+  private writeTail: Promise<void> = Promise.resolve()
   async list(): Promise<CliSessionIndexEntry[]> {
     return [...this.entries.values()]
   }
@@ -20,6 +21,23 @@ class MemoryIndex implements CliSessionIndexStore {
   }
   async upsert(entry: CliSessionIndexEntry): Promise<void> {
     this.entries.set(getCliSessionIndexKey(entry), entry)
+  }
+  update(
+    ref: Parameters<CliSessionIndexStore['update']>[0],
+    mutator: Parameters<CliSessionIndexStore['update']>[1],
+  ): Promise<CliSessionIndexEntry> {
+    const operation = this.writeTail.then(async () => {
+      const key = getCliSessionIndexKey(ref)
+      await Promise.resolve()
+      const next = mutator(this.entries.get(key) ?? null)
+      this.entries.set(key, next)
+      return next
+    })
+    this.writeTail = operation.then(
+      () => undefined,
+      () => undefined,
+    )
+    return operation
   }
   async remove(ref: Parameters<CliSessionIndexStore['remove']>[0]) {
     return this.entries.delete(getCliSessionIndexKey(ref))
@@ -193,5 +211,34 @@ describe('CliSessionService', () => {
       pinnedAt: 456,
     })
     await expect(service.removeOverlay(ref)).resolves.toBe(true)
+  })
+
+  it('preserves independently updated overlay fields under concurrency', async () => {
+    const index = new MemoryIndex()
+    const ref = {
+      runtimeId: 'codex' as const,
+      nativeSessionId: 'thread-concurrent',
+      sessionPathHint: '/vault/thread-concurrent.jsonl',
+    }
+    const service = new CliSessionService({
+      runtimes: [runtime({ runtimeId: 'codex' })],
+      indexStore: index,
+    })
+
+    await Promise.all([
+      service.recordOpenedSession({ ref, messages: [] }, { openedAt: 100 }),
+      service.setAssistantBinding(ref, 'assistant-concurrent'),
+      service.setPinned(ref, true, 200),
+    ])
+
+    await expect(index.get(ref)).resolves.toEqual({
+      runtimeId: 'codex',
+      nativeSessionId: 'thread-concurrent',
+      sessionPathHint: '/vault/thread-concurrent.jsonl',
+      assistantId: 'assistant-concurrent',
+      lastOpenedAt: 100,
+      isPinned: true,
+      pinnedAt: 200,
+    })
   })
 })

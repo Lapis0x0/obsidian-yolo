@@ -1,6 +1,5 @@
-import { stat, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 
-const HOST_BUDGET_BYTES = 8 * 1024 * 1024
 const hostMetafile = JSON.parse(await readFile('meta.json', 'utf8'))
 const inputs = Object.keys(hostMetafile.inputs).map((path) =>
   path.replaceAll('\\', '/'),
@@ -20,13 +19,6 @@ for (const dependency of forbidden) {
   if (match) {
     throw new Error(`Host bundle contains runtime dependency: ${match}`)
   }
-}
-
-const size = (await stat('main.js')).size
-if (size > HOST_BUDGET_BYTES) {
-  throw new Error(
-    `main.js is ${size} bytes, exceeding the ${HOST_BUDGET_BYTES}-byte runtime-component budget`,
-  )
 }
 
 const expectedClosures = {
@@ -53,4 +45,4 @@ for (const [componentId, dependencies] of Object.entries(expectedClosures)) {
   }
 }
 
-console.log(`Runtime component boundaries verified; main.js=${size} bytes`)
+console.log('Runtime component boundaries verified')

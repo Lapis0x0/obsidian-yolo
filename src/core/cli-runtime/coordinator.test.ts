@@ -28,6 +28,7 @@ const indexStore = (): CliSessionIndexStore => ({
   list: async () => [],
   get: async () => null,
   upsert: async () => undefined,
+  update: async (_ref, mutator) => mutator(null),
   remove: async () => false,
 })
 

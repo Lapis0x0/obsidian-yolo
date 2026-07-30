@@ -123,8 +123,7 @@ export class CliSessionService {
     options: OpenCliSessionOptions = {},
   ): Promise<void> {
     const ref = hydration.ref
-    const existing = await this.indexStore.get(ref)
-    await this.indexStore.upsert(
+    await this.indexStore.update(ref, (existing) =>
       createCliSessionIndexEntry({
         runtimeId: ref.runtimeId,
         nativeSessionId: ref.nativeSessionId,
@@ -153,8 +152,7 @@ export class CliSessionService {
     ref: CliSessionRef,
     assistantId: string | undefined,
   ): Promise<void> {
-    const existing = await this.indexStore.get(ref)
-    await this.indexStore.upsert(
+    await this.indexStore.update(ref, (existing) =>
       createCliSessionIndexEntry({
         runtimeId: ref.runtimeId,
         nativeSessionId: ref.nativeSessionId,
@@ -182,8 +180,7 @@ export class CliSessionService {
     pinned: boolean,
     pinnedAt = Date.now(),
   ): Promise<void> {
-    const existing = await this.indexStore.get(ref)
-    await this.indexStore.upsert(
+    await this.indexStore.update(ref, (existing) =>
       createCliSessionIndexEntry({
         runtimeId: ref.runtimeId,
         nativeSessionId: ref.nativeSessionId,
