@@ -113,10 +113,17 @@ export class CliSessionService {
     options: OpenCliSessionOptions = {},
   ): Promise<CliSessionHydration> {
     const runtime = this.getRuntime(ref.runtimeId)
-    const [hydration, existing] = await Promise.all([
-      runtime.openSession(ref),
-      this.indexStore.get(ref),
-    ])
+    const hydration = await runtime.openSession(ref)
+    await this.recordOpenedSession(hydration, options)
+    return hydration
+  }
+
+  async recordOpenedSession(
+    hydration: CliSessionHydration,
+    options: OpenCliSessionOptions = {},
+  ): Promise<void> {
+    const ref = hydration.ref
+    const existing = await this.indexStore.get(ref)
     await this.indexStore.upsert(
       createCliSessionIndexEntry({
         runtimeId: ref.runtimeId,
@@ -140,7 +147,6 @@ export class CliSessionService {
           : {}),
       }),
     )
-    return hydration
   }
 
   async setAssistantBinding(

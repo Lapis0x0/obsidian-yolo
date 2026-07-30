@@ -5,6 +5,7 @@ import type {
   CliRuntime,
   CliRuntimeEvent,
   CliRuntimeRunState,
+  CliSessionHydration,
   CliSessionRef,
   CliTurnInput,
 } from './types'
@@ -114,7 +115,9 @@ export class CliConversationController {
     this.beginSessionTransition(null)
   }
 
-  async hydrateSession(ref: CliSessionRef): Promise<void> {
+  async hydrateSession(
+    ref: CliSessionRef,
+  ): Promise<CliSessionHydration | null> {
     this.assertActive()
     this.assertRuntimeRef(ref)
     this.beginSessionTransition(ref)
@@ -122,7 +125,7 @@ export class CliConversationController {
 
     try {
       const hydration = await operation.runtime.openSession(ref)
-      if (!this.isCurrent(operation)) return
+      if (!this.isCurrent(operation)) return null
       this.assertRuntimeRef(hydration.ref)
       if (!isSameSession(ref, hydration.ref)) {
         throw new Error('CLI runtime hydrated a different session.')
@@ -134,6 +137,7 @@ export class CliConversationController {
         runState: 'idle',
         error: null,
       })
+      return hydration
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error

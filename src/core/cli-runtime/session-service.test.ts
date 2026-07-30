@@ -150,6 +150,33 @@ describe('CliSessionService', () => {
     })
   })
 
+  it('records an existing hydration without reading the native transcript again', async () => {
+    const index = new MemoryIndex()
+    const ref = {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: 'claude-1',
+      sessionPathHint: '/native/claude-1.jsonl',
+    }
+    const nativeRuntime = runtime({ runtimeId: 'claude-code' })
+    const openSession = jest.spyOn(nativeRuntime, 'openSession')
+    const service = new CliSessionService({
+      runtimes: [nativeRuntime],
+      indexStore: index,
+    })
+
+    await service.recordOpenedSession(
+      { ref, messages: [] },
+      { assistantId: 'assistant-1', openedAt: 321 },
+    )
+
+    expect(openSession).not.toHaveBeenCalled()
+    await expect(index.get(ref)).resolves.toMatchObject({
+      assistantId: 'assistant-1',
+      lastOpenedAt: 321,
+      sessionPathHint: '/native/claude-1.jsonl',
+    })
+  })
+
   it('changes pin and assistant overlay without touching runtime history', async () => {
     const index = new MemoryIndex()
     const ref = { runtimeId: 'claude-code' as const, nativeSessionId: 'c-1' }
