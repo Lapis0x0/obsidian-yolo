@@ -1727,6 +1727,8 @@ export type TranslationKeys = {
     }
     errorCard?: {
       title?: string
+      connectionInterrupted?: string
+      connectionInterruptedContinuable?: string
       responseFormat?: {
         responseNotObject?: string
         missingChoices?: string

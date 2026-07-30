@@ -78,35 +78,6 @@
   }
 }
 
-.yolo-selection-rewrite-candidate {
-  position: relative;
-  z-index: 1;
-  white-space: pre-wrap;
-  color: var(--text-normal);
-  font: inherit;
-  line-height: inherit;
-  overflow-wrap: anywhere;
-}
-
-.yolo-selection-rewrite-candidate.is-block {
-  display: block;
-  width: 100%;
-  min-height: var(--yolo-selection-rewrite-baseline-height, 1lh);
-  overflow: clip;
-  text-indent: var(--yolo-selection-rewrite-start-indent, 0);
-  transition: height 160ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.yolo-selection-rewrite-candidate.is-block.is-settling {
-  min-height: 0;
-  transition-duration: 240ms;
-}
-
-.yolo-selection-rewrite-candidate.is-inline {
-  display: inline;
-  text-indent: 0;
-}
-
 .yolo-selection-rewrite-candidate-text {
   color: inherit;
   font: inherit;
@@ -367,7 +338,6 @@ button.yolo-selection-rewrite-length-handle:focus-visible,
   .yolo-selection-rewrite-outline,
   .yolo-selection-rewrite-outline-path,
   .yolo-selection-rewrite-sheen-path,
-  .yolo-selection-rewrite-candidate,
   .yolo-selection-rewrite-candidate-overlay,
   .yolo-selection-rewrite-candidate-reveal,
   .yolo-selection-rewrite-flow-spacer,
