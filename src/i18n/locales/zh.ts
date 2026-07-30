@@ -1830,6 +1830,21 @@ export const zh: TranslationKeys = {
       agentFullTitle: '让 AI 自主执行 · YOLO 模式',
       agentFullDescription: '自动放行工具调用，处理搜索、读写与多步骤任务',
     },
+    cliSurface: {
+      emptyTitle: '开始一个 CLI 会话',
+      emptyDescription: '发送消息后，原生 CLI 对话会显示在这里。',
+      emptyUserMessage: '空消息',
+      error: 'CLI 会话出错：{message}',
+      state: {
+        idle: '空闲',
+        running: 'CLI 正在回复…',
+        waitingForApproval: '等待工具审批',
+        waitingForUser: '等待你的回答',
+        completed: '回复完成',
+        aborted: '回复已停止',
+        error: 'CLI 运行出错',
+      },
+    },
     quickAccess: {
       manage: '管理常用入口',
       searchPlaceholder: '搜索 Skills 或快捷指令',

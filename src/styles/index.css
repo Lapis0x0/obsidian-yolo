@@ -26,6 +26,7 @@
 @import './chat/ask-user-question-panel.css';
 @import './chat/new-tab-action.css';
 @import './chat/cli-session-list.css';
+@import './chat/cli-chat-surface.css';
 
 @import './panels/smart-space.css';
 @import './panels/quick-ask.css';

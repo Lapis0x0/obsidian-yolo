@@ -1790,6 +1790,22 @@ export const it: DeepPartial<TranslationKeys> = {
       agentFullDescription:
         'Approva automaticamente gli strumenti per ricerca, lettura/scrittura e task multi-step.',
     },
+    cliSurface: {
+      emptyTitle: 'Avvia una sessione CLI',
+      emptyDescription:
+        'I messaggi della conversazione CLI nativa appariranno qui dopo il primo invio.',
+      emptyUserMessage: 'Messaggio vuoto',
+      error: 'Errore della sessione CLI: {message}',
+      state: {
+        idle: 'Inattivo',
+        running: 'La CLI sta rispondendo…',
+        waitingForApproval: 'In attesa di approvazione dello strumento',
+        waitingForUser: 'In attesa della tua risposta',
+        completed: 'Risposta completata',
+        aborted: 'Risposta interrotta',
+        error: 'Esecuzione CLI non riuscita',
+      },
+    },
     quickAccess: {
       manage: 'Gestisci accessi rapidi',
       searchPlaceholder: 'Cerca skill o comandi rapidi',
