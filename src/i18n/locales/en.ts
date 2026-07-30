@@ -97,6 +97,8 @@ export const en: TranslationKeys = {
       forgetError: 'Could not forget the CLI session: {message}',
       recordError:
         'The CLI action succeeded, but YOLO could not remember the session: {message}',
+      yoloRunActive:
+        'Stop the current YOLO response before opening a CLI session.',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',

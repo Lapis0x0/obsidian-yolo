@@ -104,6 +104,7 @@ export type TranslationKeys = {
       forgetConfirmAction: string
       forgetError: string
       recordError: string
+      yoloRunActive: string
     }
     chatList?: {
       searchPlaceholder?: string

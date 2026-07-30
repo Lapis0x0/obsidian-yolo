@@ -308,6 +308,14 @@ export const resolveChatRuntimeId = ({
     ? requestedRuntimeId
     : 'yolo'
 
+export const beginChatRuntimeNavigation = (
+  generation: { current: number },
+  isMounted: () => boolean,
+): (() => boolean) => {
+  const token = ++generation.current
+  return () => token === generation.current && isMounted()
+}
+
 export const resolveActiveAssistantId = ({
   activeRuntimeId,
   conversationAssistantId,
@@ -359,6 +367,14 @@ export const shouldLoadYoloHistoryItem = ({
   currentConversationId: string
 }): boolean =>
   activeRuntimeId !== 'yolo' || conversationId !== currentConversationId
+
+export const shouldBlockCliSessionOpen = ({
+  activeRuntimeId,
+  isYoloRunActive,
+}: {
+  activeRuntimeId: ChatRuntimeId
+  isYoloRunActive: boolean
+}): boolean => activeRuntimeId === 'yolo' && isYoloRunActive
 
 export const selectFreshCliRuntime = (
   scope: CliRuntimeScope,
@@ -420,6 +436,17 @@ export const openCliSession = async ({
     }
   }
   return { controller, assistantId, hydration, overlayError }
+}
+
+export const openCliSessionForNavigation = async ({
+  isCurrent,
+  ...input
+}: Parameters<typeof openCliSession>[0] & {
+  isCurrent: () => boolean
+}): Promise<Awaited<ReturnType<typeof openCliSession>> | null> => {
+  if (!isCurrent()) return null
+  const result = await openCliSession(input)
+  return result.hydration && isCurrent() ? result : null
 }
 
 export type SubmitCliComposerTurnInput = {

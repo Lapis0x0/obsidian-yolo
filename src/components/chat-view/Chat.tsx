@@ -160,14 +160,17 @@ import {
 } from './chatRetry'
 import {
   type CliChatOperationSnapshot,
+  beginChatRuntimeNavigation,
   getCliChatOperationCoordinator,
   isCliConversationActive,
   openCliSession,
+  openCliSessionForNavigation,
   removeCliOverlayAfterConfirmation,
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   selectFreshCliRuntime,
+  shouldBlockCliSessionOpen,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
   shouldLoadYoloHistoryItem,
@@ -978,6 +981,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
   const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
   const chatMountedRef = useRef(true)
+  const runtimeNavigationGenerationRef = useRef(0)
   useEffect(() => {
     chatMountedRef.current = true
     return () => {
@@ -1804,8 +1808,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (runtimeId !== 'yolo' && (!cliRuntimeScope || !cliRuntimeAvailable)) {
         return
       }
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
 
       const applyRuntimeChange = () => {
+        if (!isLatestNavigation()) return
         if (runtimeId === 'yolo') {
           activeRuntimeIdRef.current = 'yolo'
           setRequestedRuntimeId('yolo')
@@ -1836,7 +1845,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
 
       void transitionCliSession((isCurrent) => {
-        if (!isCurrent()) return
+        if (!isCurrent() || !isLatestNavigation()) return
         applyRuntimeChange()
       })
     },
@@ -3380,13 +3389,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleLoadConversation = useCallback(
     async (conversationId: string) => {
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
       if (activeRuntimeIdRef.current === 'yolo') {
-        await loadYoloConversation(conversationId)
+        await loadYoloConversation(conversationId, isLatestNavigation)
         return
       }
       await transitionCliSession(async (isCurrent) => {
-        if (!isCurrent()) return
-        await loadYoloConversation(conversationId, isCurrent)
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        if (!isCurrentNavigation()) return
+        await loadYoloConversation(conversationId, isCurrentNavigation)
       })
     },
     [activeRuntimeIdRef, loadYoloConversation, transitionCliSession],
@@ -3488,9 +3502,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
+    const isLatestNavigation = beginChatRuntimeNavigation(
+      runtimeNavigationGenerationRef,
+      () => chatMountedRef.current,
+    )
     if (activeRuntimeId !== 'yolo') {
       void transitionCliSession((isCurrent) => {
-        if (!isCurrent()) return
+        if (!isCurrent() || !isLatestNavigation()) return
         cliConversationController?.resetSession()
         if (selectedBlock) {
           const mentionableBlock =
@@ -5931,25 +5949,37 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const cliSessionSelectionGenerationRef = useRef(0)
   const handleCliSessionSelect = useCallback(
     (ref: CliSessionRef) => {
       if (!cliRuntimeScope || !cliRuntimeAvailable) return
-      const generation = ++cliSessionSelectionGenerationRef.current
-      const isLatestSelection = () =>
-        generation === cliSessionSelectionGenerationRef.current &&
-        chatMountedRef.current
+      if (
+        shouldBlockCliSessionOpen({
+          activeRuntimeId: activeRuntimeIdRef.current,
+          isYoloRunActive: currentConversationRunSummary.isActive,
+        })
+      ) {
+        new Notice(
+          t(
+            'sidebar.cliSessions.yoloRunActive',
+            'Stop the current YOLO response before opening a CLI session.',
+          ),
+        )
+        return
+      }
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
       const openSelectedSession = async (isCurrent: () => boolean) => {
-        if (!isCurrent() || !isLatestSelection()) return
-        const result = await openCliSession({
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        const result = await openCliSessionForNavigation({
           scope: cliRuntimeScope,
           ref,
           discoveryResult: cliSessionDiscoveryResult,
           currentAssistantId: cliAssistantId,
+          isCurrent: isCurrentNavigation,
         })
-        if (!result.hydration || !isCurrent() || !isLatestSelection()) {
-          return
-        }
+        if (!result) return
         activeRuntimeIdRef.current = ref.runtimeId
         setRequestedRuntimeId(ref.runtimeId)
         setCliConversationController(result.controller)
@@ -5967,11 +5997,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
       const task =
         activeRuntimeIdRef.current === 'yolo'
-          ? openSelectedSession(isLatestSelection)
+          ? openSelectedSession(isLatestNavigation)
           : transitionCliSession((isCurrent) =>
-              openSelectedSession(() => isCurrent() && isLatestSelection()),
+              openSelectedSession(() => isCurrent() && isLatestNavigation()),
             )
       void task.catch((error) => {
+        if (!isLatestNavigation()) return
         new Notice(
           t(
             'chat.cliSurface.openError',
@@ -5990,6 +6021,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliRuntimeAvailable,
       cliRuntimeScope,
       cliSessionDiscoveryResult,
+      currentConversationRunSummary.isActive,
       refreshCliSessions,
       t,
       transitionCliSession,
@@ -6365,6 +6397,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         })()
         return
       }
+
+      // A YOLO submission establishes a live run that must remain visible.
+      // Supersede any native-session hydration started while YOLO was idle.
+      beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
 
       // 新用户回合进入对话:在此固定当前时间。同时覆盖随后两条出口
       // ——入队(running 分支)与普通提交——保证两者用的都是入队/提交

@@ -96,6 +96,7 @@ export const zh: TranslationKeys = {
       forgetConfirmAction: '从 YOLO 中移除',
       forgetError: '无法移除 CLI 会话记录：{message}',
       recordError: 'CLI 操作已成功，但 YOLO 无法记录该会话：{message}',
+      yoloRunActive: '请先停止当前 YOLO 回复，再打开 CLI 会话。',
     },
     chatList: {
       searchPlaceholder: '搜索聊天记录',

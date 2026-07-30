@@ -13,12 +13,15 @@ import type { ChatUserMessage } from '../../types/chat'
 
 import {
   CliChatOperationCoordinator,
+  beginChatRuntimeNavigation,
   openCliSession,
+  openCliSessionForNavigation,
   removeCliOverlayAfterConfirmation,
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   selectFreshCliRuntime,
+  shouldBlockCliSessionOpen,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
   shouldLoadYoloHistoryItem,
@@ -403,6 +406,74 @@ describe('CLI chat integration', () => {
           },
         }),
       ),
+    ).toBe(false)
+  })
+
+  it.each([
+    'loading YOLO history',
+    'starting a new chat',
+    'selecting another runtime',
+    'selecting another CLI session',
+  ])('does not commit a stale CLI open after %s', async () => {
+    const generation = { current: 0 }
+    const ref: CliSessionRef = {
+      runtimeId: 'codex',
+      nativeSessionId: 'stale-open',
+    }
+    const hydration = deferred<CliSessionHydration | null>()
+    const controller = {
+      hydrateSession: jest.fn(() => hydration.promise),
+    } as unknown as CliConversationController
+    const scope = {
+      selectConversationRuntime: jest.fn(() => controller),
+      sessionService: {
+        recordOpenedSession: jest.fn(async () => {
+          throw new Error('stale overlay failure')
+        }),
+      },
+    } as unknown as CliRuntimeScope
+    const commitRuntime = jest.fn()
+    const showNotice = jest.fn()
+    const isCurrentOpen = beginChatRuntimeNavigation(generation, () => true)
+
+    const pendingOpen = (async () => {
+      const result = await openCliSessionForNavigation({
+        scope,
+        ref,
+        currentAssistantId: 'assistant-stale',
+        isCurrent: isCurrentOpen,
+      })
+      if (!result) return
+      commitRuntime(result.controller, result.assistantId)
+      if (result.overlayError) showNotice(result.overlayError)
+    })()
+
+    beginChatRuntimeNavigation(generation, () => true)
+    hydration.resolve({ ref, messages: [] })
+    await pendingOpen
+
+    expect(commitRuntime).not.toHaveBeenCalled()
+    expect(showNotice).not.toHaveBeenCalled()
+  })
+
+  it('blocks CLI session navigation only while the visible YOLO run is active', () => {
+    expect(
+      shouldBlockCliSessionOpen({
+        activeRuntimeId: 'yolo',
+        isYoloRunActive: true,
+      }),
+    ).toBe(true)
+    expect(
+      shouldBlockCliSessionOpen({
+        activeRuntimeId: 'yolo',
+        isYoloRunActive: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldBlockCliSessionOpen({
+        activeRuntimeId: 'codex',
+        isYoloRunActive: true,
+      }),
     ).toBe(false)
   })
 

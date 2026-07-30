@@ -113,6 +113,8 @@ export const it: DeepPartial<TranslationKeys> = {
       forgetError: 'Impossibile dimenticare la sessione CLI: {message}',
       recordError:
         "L'azione CLI è riuscita, ma YOLO non ha potuto ricordare la sessione: {message}",
+      yoloRunActive:
+        'Interrompi la risposta YOLO corrente prima di aprire una sessione CLI.',
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
