@@ -3,12 +3,15 @@ import { App, normalizePath } from 'obsidian'
 import {
   getLiteSkillDocument,
   getLiteSkillDocumentByPath,
+  getLiteSkillPackageSource,
   getSkillScanDirs,
   humanizeSkillName,
   listLiteSkillEntries,
+  migrateLegacySkillFilesToPackages,
   migrateVaultSkillFrontmatter,
   rewriteSkillFrontmatterIdToName,
 } from './liteSkills'
+import { resolveAssistantSkillPolicy } from './skillPolicy'
 
 const OBSIDIAN_CONFIG_DIR = ['.', 'obsidian'].join('')
 
@@ -336,12 +339,31 @@ const makeAdapterApp = ({
 }): App => {
   const reads = { ...fileContents }
   const writes: Array<{ path: string; content: string }> = []
+  const directoryListings = Object.fromEntries(
+    Object.entries(listings).map(([path, listing]) => [
+      normalizePath(path),
+      {
+        files: listing.files.map((file) => normalizePath(file)),
+        folders: listing.folders.map((folder) => normalizePath(folder)),
+      },
+    ]),
+  ) as Record<string, AdapterDirListing>
+
+  const parentPath = (path: string) => {
+    const slashIndex = path.lastIndexOf('/')
+    return slashIndex === -1 ? '' : path.slice(0, slashIndex)
+  }
 
   const adapter = {
-    exists: (path: string) =>
-      Promise.resolve(Boolean(listings[normalizePath(path)])),
+    exists: (path: string) => {
+      const normalized = normalizePath(path)
+      return Promise.resolve(
+        Boolean(directoryListings[normalized]) ||
+          Object.prototype.hasOwnProperty.call(reads, normalized),
+      )
+    },
     list: (path: string) => {
-      const listing = listings[normalizePath(path)]
+      const listing = directoryListings[normalizePath(path)]
       if (!listing) {
         return Promise.resolve({ files: [], folders: [] })
       }
@@ -355,6 +377,59 @@ const makeAdapterApp = ({
       const normalized = normalizePath(path)
       reads[normalized] = content
       writes.push({ path: normalized, content })
+      return Promise.resolve()
+    },
+    mkdir: (path: string) => {
+      const normalized = normalizePath(path)
+      if (
+        directoryListings[normalized] ||
+        Object.prototype.hasOwnProperty.call(reads, normalized)
+      ) {
+        return Promise.reject(new Error(`already exists: ${normalized}`))
+      }
+      directoryListings[normalized] = { files: [], folders: [] }
+      const parent = parentPath(normalized)
+      const parentListing = directoryListings[parent]
+      if (parentListing && !parentListing.folders.includes(normalized)) {
+        parentListing.folders.push(normalized)
+      }
+      return Promise.resolve()
+    },
+    rename: (source: string, target: string) => {
+      const normalizedSource = normalizePath(source)
+      const normalizedTarget = normalizePath(target)
+      if (!Object.prototype.hasOwnProperty.call(reads, normalizedSource)) {
+        return Promise.reject(new Error(`missing source: ${normalizedSource}`))
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(reads, normalizedTarget) ||
+        directoryListings[normalizedTarget]
+      ) {
+        return Promise.reject(new Error(`target exists: ${normalizedTarget}`))
+      }
+      reads[normalizedTarget] = reads[normalizedSource]
+      delete reads[normalizedSource]
+      const sourceParent = directoryListings[parentPath(normalizedSource)]
+      if (sourceParent) {
+        sourceParent.files = sourceParent.files.filter(
+          (path) => path !== normalizedSource,
+        )
+      }
+      const targetParent = directoryListings[parentPath(normalizedTarget)]
+      targetParent?.files.push(normalizedTarget)
+      return Promise.resolve()
+    },
+    rmdir: (path: string) => {
+      const normalized = normalizePath(path)
+      const listing = directoryListings[normalized]
+      if (!listing || listing.files.length > 0 || listing.folders.length > 0) {
+        return Promise.reject(new Error(`directory not empty: ${normalized}`))
+      }
+      delete directoryListings[normalized]
+      const parent = directoryListings[parentPath(normalized)]
+      if (parent) {
+        parent.folders = parent.folders.filter((item) => item !== normalized)
+      }
       return Promise.resolve()
     },
   }
@@ -403,32 +478,52 @@ describe('getSkillScanDirs', () => {
 describe('listLiteSkillEntries and getLiteSkillDocument', () => {
   const settings = { yolo: { baseDir: 'YOLO' } }
 
-  it('lists default-dir and hidden-dir skills via adapter scan', async () => {
+  it('lists only standard directory packages in default and hidden roots', async () => {
     const app = makeAdapterApp({
       listings: {
         'YOLO/skills': {
-          files: ['YOLO/skills/default-skill.md'],
+          files: ['YOLO/skills/legacy-root.md'],
+          folders: ['YOLO/skills/default-skill'],
+        },
+        'YOLO/skills/default-skill': {
+          files: ['YOLO/skills/default-skill/SKILL.md'],
           folders: [],
         },
         [`${OBSIDIAN_CONFIG_DIR}/skills`]: {
-          files: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill.md`],
+          files: [`${OBSIDIAN_CONFIG_DIR}/skills/legacy-hidden.md`],
+          folders: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill`],
+        },
+        [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill`]: {
+          files: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill/SKILL.md`],
           folders: [],
         },
       },
       fileContents: {
-        'YOLO/skills/default-skill.md': [
+        'YOLO/skills/default-skill/SKILL.md': [
           '---',
           'name: default-skill',
           'description: from default dir',
           '---',
           '',
         ].join('\n'),
-        [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill.md`]: [
+        [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill/SKILL.md`]: [
           '---',
           'name: hidden-skill',
           'description: from hidden dir',
           '---',
           '',
+        ].join('\n'),
+        'YOLO/skills/legacy-root.md': [
+          '---',
+          'name: legacy-root',
+          'description: must not be scanned',
+          '---',
+        ].join('\n'),
+        [`${OBSIDIAN_CONFIG_DIR}/skills/legacy-hidden.md`]: [
+          '---',
+          'name: legacy-hidden',
+          'description: must not be scanned',
+          '---',
         ].join('\n'),
       },
     })
@@ -438,6 +533,8 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
 
     expect(names).toContain('default-skill')
     expect(names).toContain('hidden-skill')
+    expect(names).not.toContain('legacy-root')
+    expect(names).not.toContain('legacy-hidden')
   })
 
   it('discovers Claude-style SKILL.md under hidden directories', async () => {
@@ -472,23 +569,31 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     const app = makeAdapterApp({
       listings: {
         'YOLO/skills': {
-          files: ['YOLO/skills/shared-skill.md'],
+          files: [],
+          folders: ['YOLO/skills/shared-skill'],
+        },
+        'YOLO/skills/shared-skill': {
+          files: ['YOLO/skills/shared-skill/SKILL.md'],
           folders: [],
         },
         [`${OBSIDIAN_CONFIG_DIR}/skills`]: {
-          files: [`${OBSIDIAN_CONFIG_DIR}/skills/shared-skill.md`],
+          files: [],
+          folders: [`${OBSIDIAN_CONFIG_DIR}/skills/shared-skill`],
+        },
+        [`${OBSIDIAN_CONFIG_DIR}/skills/shared-skill`]: {
+          files: [`${OBSIDIAN_CONFIG_DIR}/skills/shared-skill/SKILL.md`],
           folders: [],
         },
       },
       fileContents: {
-        'YOLO/skills/shared-skill.md': [
+        'YOLO/skills/shared-skill/SKILL.md': [
           '---',
           'name: shared-skill',
           'description: default wins',
           '---',
           '',
         ].join('\n'),
-        [`${OBSIDIAN_CONFIG_DIR}/skills/shared-skill.md`]: [
+        [`${OBSIDIAN_CONFIG_DIR}/skills/shared-skill/SKILL.md`]: [
           '---',
           'name: shared-skill',
           'description: hidden loses',
@@ -501,42 +606,8 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     const entries = await listLiteSkillEntries(app, { settings })
     const shared = entries.find((entry) => entry.name === 'shared-skill')
 
-    expect(shared?.path).toBe('YOLO/skills/shared-skill.md')
+    expect(shared?.path).toBe('YOLO/skills/shared-skill/SKILL.md')
     expect(shared?.description).toBe('default wins')
-  })
-
-  it('uses path order within the same directory for duplicate names', async () => {
-    const app = makeAdapterApp({
-      listings: {
-        'YOLO/skills': {
-          files: ['YOLO/skills/b-skill.md', 'YOLO/skills/a-skill.md'],
-          folders: [],
-        },
-        [`${OBSIDIAN_CONFIG_DIR}/skills`]: { files: [], folders: [] },
-      },
-      fileContents: {
-        'YOLO/skills/a-skill.md': [
-          '---',
-          'name: same-name',
-          'description: first by path',
-          '---',
-          '',
-        ].join('\n'),
-        'YOLO/skills/b-skill.md': [
-          '---',
-          'name: same-name',
-          'description: second by path',
-          '---',
-          '',
-        ].join('\n'),
-      },
-    })
-
-    const entries = await listLiteSkillEntries(app, { settings })
-    const winner = entries.find((entry) => entry.name === 'same-name')
-
-    expect(winner?.path).toBe('YOLO/skills/a-skill.md')
-    expect(winner?.description).toBe('first by path')
   })
 
   it('opens a hidden-directory skill through the shared registry', async () => {
@@ -551,12 +622,16 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
       listings: {
         'YOLO/skills': { files: [], folders: [] },
         [`${OBSIDIAN_CONFIG_DIR}/skills`]: {
-          files: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-open.md`],
+          files: [],
+          folders: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-open`],
+        },
+        [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-open`]: {
+          files: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-open/SKILL.md`],
           folders: [],
         },
       },
       fileContents: {
-        [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-open.md`]: content,
+        [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-open/SKILL.md`]: content,
       },
     })
 
@@ -567,9 +642,116 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     })
 
     expect(document?.entry.path).toBe(
-      `${OBSIDIAN_CONFIG_DIR}/skills/hidden-open.md`,
+      `${OBSIDIAN_CONFIG_DIR}/skills/hidden-open/SKILL.md`,
     )
     expect(document?.content).toBe(content)
+  })
+
+  it('ignores nested and folder-name-mismatched packages', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/group', 'YOLO/skills/wrong-folder'],
+        },
+        'YOLO/skills/group': {
+          files: [],
+          folders: ['YOLO/skills/group/nested-skill'],
+        },
+        'YOLO/skills/group/nested-skill': {
+          files: ['YOLO/skills/group/nested-skill/SKILL.md'],
+          folders: [],
+        },
+        'YOLO/skills/wrong-folder': {
+          files: ['YOLO/skills/wrong-folder/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/group/nested-skill/SKILL.md': [
+          '---',
+          'name: nested-skill',
+          'description: nested too deeply',
+          '---',
+        ].join('\n'),
+        'YOLO/skills/wrong-folder/SKILL.md': [
+          '---',
+          'name: other-name',
+          'description: folder mismatch',
+          '---',
+        ].join('\n'),
+      },
+    })
+
+    const names = (await listLiteSkillEntries(app, { settings })).map(
+      (entry) => entry.name,
+    )
+    expect(names).not.toContain('nested-skill')
+    expect(names).not.toContain('other-name')
+  })
+
+  it('exposes every package resource without flattening its paths', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/resourceful'],
+        },
+        'YOLO/skills/resourceful': {
+          files: ['YOLO/skills/resourceful/SKILL.md'],
+          folders: [
+            'YOLO/skills/resourceful/assets',
+            'YOLO/skills/resourceful/references',
+          ],
+        },
+        'YOLO/skills/resourceful/assets': {
+          files: ['YOLO/skills/resourceful/assets/icon.png'],
+          folders: [],
+        },
+        'YOLO/skills/resourceful/references': {
+          files: ['YOLO/skills/resourceful/references/guide.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/resourceful/SKILL.md': [
+          '---',
+          'name: resourceful',
+          'description: Uses package resources.',
+          '---',
+        ].join('\n'),
+        'YOLO/skills/resourceful/assets/icon.png': 'binary-path-placeholder',
+        'YOLO/skills/resourceful/references/guide.md': '# Guide',
+      },
+    })
+
+    const source = await getLiteSkillPackageSource({
+      app,
+      name: 'resourceful',
+      settings,
+    })
+
+    expect(source?.entry.name).toBe('resourceful')
+    expect(source?.resources).toHaveLength(3)
+    expect(source?.resources).toEqual(
+      expect.arrayContaining([
+        {
+          kind: 'vault',
+          path: 'YOLO/skills/resourceful/SKILL.md',
+          relativePath: 'SKILL.md',
+        },
+        {
+          kind: 'vault',
+          path: 'YOLO/skills/resourceful/assets/icon.png',
+          relativePath: 'assets/icon.png',
+        },
+        {
+          kind: 'vault',
+          path: 'YOLO/skills/resourceful/references/guide.md',
+          relativePath: 'references/guide.md',
+        },
+      ]),
+    )
   })
 
   it('resolves builtin skill documents by canonical path', async () => {
@@ -627,6 +809,182 @@ describe('migrateVaultSkillFrontmatter hidden dirs', () => {
 
     expect(migrated).toContain('name: legacy-hidden')
     expect(migrated).not.toMatch(/^id:/m)
+  })
+})
+
+describe('migrateLegacySkillFilesToPackages', () => {
+  const settings = { yolo: { baseDir: 'YOLO' } }
+
+  it('moves a valid root Markdown skill without changing content and is idempotent', async () => {
+    const sourcePath = 'YOLO/skills/old-filename.md'
+    const targetPath = 'YOLO/skills/stable-name/SKILL.md'
+    const content = [
+      '---',
+      'name: stable-name',
+      'description: Keeps assistant preference identity.',
+      '---',
+      '# Body',
+    ].join('\n')
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': { files: [sourcePath], folders: [] },
+      },
+      fileContents: { [sourcePath]: content },
+    })
+
+    const first = await migrateLegacySkillFilesToPackages(app, settings)
+
+    expect(first).toEqual({
+      migrated: [{ name: 'stable-name', sourcePath, targetPath }],
+      issues: [],
+    })
+    await expect(app.vault.adapter.exists(sourcePath)).resolves.toBe(false)
+    await expect(app.vault.adapter.read(targetPath)).resolves.toBe(content)
+    expect(
+      (await listLiteSkillEntries(app, { settings })).find(
+        (entry) => entry.name === 'stable-name',
+      )?.path,
+    ).toBe(targetPath)
+    expect(
+      resolveAssistantSkillPolicy({
+        assistant: {
+          id: 'assistant-1',
+          name: 'Assistant',
+          systemPrompt: '',
+          skillPreferences: {
+            'stable-name': { enabled: false, loadMode: 'always' },
+          },
+        },
+        skillName: 'stable-name',
+      }),
+    ).toEqual({ enabled: false, loadMode: 'always' })
+
+    await expect(
+      migrateLegacySkillFilesToPackages(app, settings),
+    ).resolves.toEqual({ migrated: [], issues: [] })
+  })
+
+  it('keeps invalid sources and reports why each was skipped', async () => {
+    const noFrontmatter = 'YOLO/skills/no-frontmatter.md'
+    const invalidName = 'YOLO/skills/invalid-name.md'
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [noFrontmatter, invalidName],
+          folders: [],
+        },
+      },
+      fileContents: {
+        [noFrontmatter]: '# Body only',
+        [invalidName]: [
+          '---',
+          'name: Invalid Name',
+          'description: Invalid standard name.',
+          '---',
+        ].join('\n'),
+      },
+    })
+
+    const report = await migrateLegacySkillFilesToPackages(app, settings)
+
+    expect(report.migrated).toEqual([])
+    expect(report.issues).toEqual([
+      { sourcePath: invalidName, reason: 'invalid_name' },
+      { sourcePath: noFrontmatter, reason: 'invalid_frontmatter' },
+    ])
+    await expect(app.vault.adapter.exists(noFrontmatter)).resolves.toBe(true)
+    await expect(app.vault.adapter.exists(invalidName)).resolves.toBe(true)
+  })
+
+  it('never overwrites an existing package or removes the conflicting source', async () => {
+    const sourcePath = 'YOLO/skills/conflicting-source.md'
+    const existingPath = 'YOLO/skills/conflict/SKILL.md'
+    const existingResource = 'YOLO/skills/conflict/assets/keep.txt'
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [sourcePath],
+          folders: ['YOLO/skills/conflict'],
+        },
+        'YOLO/skills/conflict': {
+          files: [existingPath],
+          folders: ['YOLO/skills/conflict/assets'],
+        },
+        'YOLO/skills/conflict/assets': {
+          files: [existingResource],
+          folders: [],
+        },
+      },
+      fileContents: {
+        [sourcePath]: [
+          '---',
+          'name: conflict',
+          'description: Must remain at source.',
+          '---',
+        ].join('\n'),
+        [existingPath]: 'existing skill',
+        [existingResource]: 'existing resource',
+      },
+    })
+
+    const report = await migrateLegacySkillFilesToPackages(app, settings)
+
+    expect(report).toEqual({
+      migrated: [],
+      issues: [
+        {
+          sourcePath,
+          targetPath: existingPath,
+          reason: 'target_exists',
+        },
+      ],
+    })
+    await expect(app.vault.adapter.read(sourcePath)).resolves.toContain(
+      'Must remain at source.',
+    )
+    await expect(app.vault.adapter.read(existingPath)).resolves.toBe(
+      'existing skill',
+    )
+    await expect(app.vault.adapter.read(existingResource)).resolves.toBe(
+      'existing resource',
+    )
+  })
+
+  it('keeps the source and removes its empty target if moving fails', async () => {
+    const sourcePath = 'YOLO/skills/cannot-move.md'
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': { files: [sourcePath], folders: [] },
+      },
+      fileContents: {
+        [sourcePath]: [
+          '---',
+          'name: cannot-move',
+          'description: Simulate an adapter failure.',
+          '---',
+        ].join('\n'),
+      },
+    })
+    ;(
+      app.vault.adapter as unknown as {
+        rename: (source: string, target: string) => Promise<void>
+      }
+    ).rename = () => Promise.reject(new Error('move failed'))
+
+    const report = await migrateLegacySkillFilesToPackages(app, settings)
+
+    expect(report.issues).toEqual([
+      {
+        sourcePath,
+        targetPath: 'YOLO/skills/cannot-move/SKILL.md',
+        reason: 'migration_failed',
+        error: 'move failed',
+      },
+    ])
+    await expect(app.vault.adapter.exists(sourcePath)).resolves.toBe(true)
+    await expect(
+      app.vault.adapter.exists('YOLO/skills/cannot-move'),
+    ).resolves.toBe(false)
   })
 })
 

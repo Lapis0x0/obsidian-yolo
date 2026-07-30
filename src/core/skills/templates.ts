@@ -11,12 +11,12 @@ export const getSkillsPathAwareTemplate = (
 
 export const YOLO_SKILLS_INDEX_TEMPLATE = `# YOLO Skills
 
-Store your skill files here.
+Store standard Agent Skills directory packages here.
 
-- Supported formats:
-  - Legacy: \`YOLO/skills/*.md\` (exclude \`Skills.md\`)
-  - Claude-style: \`YOLO/skills/**/SKILL.md\`
-- Required frontmatter: \`name\` (required, kebab-case unique identifier), \`description\` (optional); \`mode\` (\`lazy\` | \`always\`, optional)
+- Required layout: \`YOLO/skills/<name>/SKILL.md\`
+- The directory name must exactly match frontmatter \`name\`.
+- Required frontmatter: \`name\` (kebab-case unique identifier) and \`description\`; \`mode\` (\`lazy\` | \`always\`) is optional.
+- Keep supporting \`scripts/\`, \`references/\`, \`assets/\`, and other resources inside the same \`<name>/\` package.
 `
 
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---
@@ -110,17 +110,20 @@ Obsidian vaults contain the user's real data. Prefer minimal edits, explicit ver
 
 ## Anatomy of a Skill
 
-Every YOLO skill is a single \`.md\` file stored in the vault's \`YOLO/skills/\` folder:
+Every YOLO skill is a self-contained directory package stored in the vault's \`YOLO/skills/\` folder:
 
 ~~~
 YOLO/skills/
-├── skill-creator.md
-├── meeting-notes.md
-├── pdf-editor.md
+├── meeting-notes/
+│   ├── SKILL.md
+│   └── references/
+├── pdf-editor/
+│   ├── SKILL.md
+│   └── scripts/
 └── ...
 ~~~
 
-Each skill \`.md\` file consists of two parts:
+Each package has a required \`SKILL.md\` entry file with two parts, plus optional resources used by its workflow:
 
 ### Frontmatter (YAML, required)
 
@@ -179,12 +182,12 @@ Key principle: When a skill supports multiple variations or domains, split into 
 ~~~
 # Instead of one monolithic "data-analysis" skill:
 YOLO/skills/
-├── bigquery-finance.md
-├── bigquery-sales.md
-└── bigquery-product.md
+├── bigquery-finance/SKILL.md
+├── bigquery-sales/SKILL.md
+└── bigquery-product/SKILL.md
 ~~~
 
-This way, when the user asks about sales metrics, only \`bigquery-sales.md\` activates and loads.
+This way, when the user asks about sales metrics, only \`bigquery-sales/SKILL.md\` activates and loads.
 
 ## Available Tools
 
@@ -240,7 +243,7 @@ Before creating something new, check what already exists:
 ~~~
 fs_list YOLO/skills/          -> see current inventory
 fs_search <topic keywords>    -> find related skills
-fs_read <similar-skill.md>    -> study patterns that work (prefer line ranges when a section is known)
+fs_read <similar-skill>/SKILL.md -> study patterns that work (prefer line ranges when a section is known)
 ~~~
 
 This avoids duplication and helps maintain consistency across the vault's skill collection.
@@ -258,7 +261,7 @@ Analyze each concrete example by considering:
 Write the frontmatter first, then the body.
 
 Frontmatter checklist:
-- \`name\` is kebab-case, unique, and matches the filename
+- \`name\` is kebab-case, unique, and exactly matches the package directory name
 - \`description\` clearly states what the skill does and when to trigger it
 
 Body guidelines:
@@ -270,10 +273,11 @@ Body guidelines:
 ### Step 5: Write to Vault
 
 ~~~
-fs_write { path: "YOLO/skills/<skill-name>.md", content: "..." }
+fs_create_dir { path: "YOLO/skills/<skill-name>" }
+fs_write { path: "YOLO/skills/<skill-name>/SKILL.md", content: "..." }
 ~~~
 
-For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted changes rather than rewriting the entire file.
+Put scripts, references, assets, and other supporting files under the same package directory. For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted changes rather than rewriting the entire entry file.
 
 ### Step 6: Verify and Iterate
 
@@ -297,7 +301,8 @@ Before finalizing any skill, verify:
 
 - [ ] Frontmatter includes \`name\` and \`description\`
 - [ ] Description states clear trigger conditions (not buried in body)
-- [ ] \`name\` is kebab-case and matches the filename
+- [ ] \`name\` is kebab-case and matches the package directory name
+- [ ] The entry file is exactly \`<name>/SKILL.md\`, with all supporting resources kept inside \`<name>/\`
 - [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_write\`, \`fs_delete\`, \`fs_create_dir\`, \`fs_move\`)
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters

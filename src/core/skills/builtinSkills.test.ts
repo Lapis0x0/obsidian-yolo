@@ -12,6 +12,9 @@ describe('builtin skills', () => {
 
     expect(builtin).not.toBeNull()
     expect(builtin?.content).toContain('99-Assets/YOLO/skills')
+    expect(builtin?.content).toContain(
+      '99-Assets/YOLO/skills/<skill-name>/SKILL.md',
+    )
     expect(builtin?.content).not.toContain(
       'fs_write { path: "YOLO/skills/<skill-name>.md"',
     )

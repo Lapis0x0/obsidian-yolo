@@ -16,11 +16,16 @@ import {
   parseGitHubUrl,
 } from '../../../core/skills/githubSkillImporter'
 import {
+  MAX_SKILL_PACKAGE_IMPORT_DEPTH,
+  SkillPackageImportDepthExceededError,
+  assertSkillPackageImportDepth,
+} from '../../../core/skills/skillImportLimits'
+import {
   type FileEntry,
   type ValidationError,
   parseFrontmatter,
   validateDirectoryPackage,
-  validateSingleFileSkill,
+  wrapMarkdownAsSkillPackage,
 } from '../../../core/skills/skillValidation'
 import YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
@@ -79,17 +84,15 @@ function ImportSkillModalWrapper({
 type SkillPackage = {
   /** 用作错误信息显示的源名称(原文件夹名 / 文件名) */
   sourceName: string
-  /** 目标名称:目录模式 = frontmatter.name;单文件模式 = 源文件名 */
+  /** 目标目录名，始终取自 frontmatter.name */
   targetName: string
   /** 用于列表显示 */
   displayName: string
   description: string
   files: FileEntry[]
-  isDirectory: boolean
 }
 
 const SKILL_MD = 'SKILL.md'
-const MAX_PATH_DEPTH = 16
 
 // ---------------------------------------------------------------------------
 // 校验错误转为通俗提示
@@ -193,7 +196,7 @@ async function readDirectoryEntryRecursively(
   basePath: string,
   depth: number,
 ): Promise<FileEntry[]> {
-  if (depth > MAX_PATH_DEPTH) return []
+  assertSkillPackageImportDepth(depth)
 
   const readBatch = (
     reader: FileSystemDirectoryReader,
@@ -217,11 +220,14 @@ async function readDirectoryEntryRecursively(
       const file = await new Promise<File>((resolve, reject) => {
         fileEntry.file(resolve, reject)
       })
-      const content = await file.text()
       const relativePath = basePath
         ? `${basePath}/${fileEntry.name}`
         : fileEntry.name
-      results.push({ relativePath, content })
+      if (fileEntry.name === SKILL_MD) {
+        results.push({ relativePath, content: await file.text() })
+      } else {
+        results.push({ relativePath, data: await file.arrayBuffer() })
+      }
     } else if (entry.isDirectory) {
       const subDir = entry as FileSystemDirectoryEntry
       const subPath = basePath ? `${basePath}/${subDir.name}` : subDir.name
@@ -312,9 +318,13 @@ async function readRawCandidatesFromFileList(
     const rootDir = slashIdx > 0 ? relPath.slice(0, slashIdx) : relPath
     const innerPath = slashIdx > 0 ? relPath.slice(slashIdx + 1) : ''
     if (!innerPath) continue
-    const content = await file.text()
+    assertSkillPackageImportDepth(innerPath.split('/').length - 1)
     const entries = groupedByRoot.get(rootDir) ?? []
-    entries.push({ relativePath: innerPath, content })
+    if (innerPath.split('/').pop() === SKILL_MD) {
+      entries.push({ relativePath: innerPath, content: await file.text() })
+    } else {
+      entries.push({ relativePath: innerPath, data: await file.arrayBuffer() })
+    }
     groupedByRoot.set(rootDir, entries)
   }
 
@@ -393,11 +403,11 @@ function extractSkillsFromDirectoryCandidate(
           : f.relativePath.startsWith(prefix),
       )
       .map((f) => ({
+        ...f,
         relativePath:
           rootRelDir === ''
             ? f.relativePath
             : f.relativePath.slice(prefix.length),
-        content: f.content,
       }))
     const sourceName =
       rootRelDir === ''
@@ -451,6 +461,24 @@ function ImportSkillModalContent({
     }
   }, [])
 
+  const showReadError = useCallback(
+    (error: unknown) => {
+      if (error instanceof SkillPackageImportDepthExceededError) {
+        new Notice(
+          t(
+            'settings.agent.importSkillErrTooDeep',
+            'Skill package exceeds the maximum import depth of {depth}. Nothing was imported.',
+          ).replace('{depth}', String(MAX_SKILL_PACKAGE_IMPORT_DEPTH)),
+        )
+        return
+      }
+      new Notice(
+        t('settings.agent.importSkillReadError', 'Failed to read files.'),
+      )
+    },
+    [t],
+  )
+
   const buildSkillPackagesFromCandidates = useCallback(
     (
       candidates: RawCandidate[],
@@ -493,38 +521,19 @@ function ImportSkillModalContent({
 
         if (candidate.isSingleFile) {
           const content = candidate.files[0]?.content ?? ''
-          const validationErrors = validateSingleFileSkill(content)
-          if (validationErrors.length > 0) {
+          const wrapped = wrapMarkdownAsSkillPackage(content)
+          if (!wrapped.package) {
             errors.push(
-              formatValidationErrors(validationErrors, candidate.rootName, t),
-            )
-            continue
-          }
-          const fm = parseFrontmatter(content)
-          const fmName =
-            typeof fm?.name === 'string' && fm.name.trim()
-              ? fm.name.trim()
-              : null
-          const description =
-            (typeof fm?.description === 'string' && fm.description.trim()) || ''
-          if (!isSafeRelativePath(candidate.rootName)) {
-            errors.push(
-              t(
-                'settings.agent.importSkillUnsafePath',
-                'Refused unsafe path in "{name}": {path}',
-              )
-                .replace('{name}', candidate.rootName)
-                .replace('{path}', candidate.rootName),
+              formatValidationErrors(wrapped.errors, candidate.rootName, t),
             )
             continue
           }
           pushValid({
             sourceName: candidate.rootName,
-            targetName: candidate.rootName,
-            displayName: fmName ?? candidate.rootName,
-            description,
-            files: candidate.files,
-            isDirectory: false,
+            targetName: wrapped.package.name,
+            displayName: wrapped.package.name,
+            description: wrapped.package.description,
+            files: wrapped.package.files,
           })
           continue
         }
@@ -556,7 +565,6 @@ function ImportSkillModalContent({
             displayName: fmName,
             description,
             files: skill.files,
-            isDirectory: true,
           })
         }
       }
@@ -655,14 +663,12 @@ function ImportSkillModalContent({
       try {
         const candidates = await readRawCandidatesFromFileList(files)
         addCandidates(candidates)
-      } catch {
-        new Notice(
-          t('settings.agent.importSkillReadError', 'Failed to read files.'),
-        )
+      } catch (error) {
+        showReadError(error)
       }
       e.target.value = ''
     },
-    [addCandidates, t],
+    [addCandidates, showReadError],
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -688,14 +694,12 @@ function ImportSkillModalContent({
         try {
           const candidates = await readRawCandidatesFromDataTransfer(items)
           addCandidates(candidates)
-        } catch {
-          new Notice(
-            t('settings.agent.importSkillReadError', 'Failed to read files.'),
-          )
+        } catch (error) {
+          showReadError(error)
         }
       }
     },
-    [addCandidates, t],
+    [addCandidates, showReadError],
   )
 
   const runUrlFetch = useCallback(async () => {
@@ -788,42 +792,34 @@ function ImportSkillModalContent({
 
       for (const pkg of skillPackages) {
         try {
-          if (pkg.isDirectory) {
-            const pkgDir = normalizePath(`${skillsDir}/${pkg.targetName}`)
-            // 覆盖时:无论已存在的是文件还是目录,先 trash 再写新,避免遗留旧资源 / 类型冲突
-            const existing = app.vault.getAbstractFileByPath(pkgDir)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
-            }
-            await app.vault.createFolder(pkgDir)
+          const pkgDir = normalizePath(`${skillsDir}/${pkg.targetName}`)
+          // 覆盖时:无论已存在的是文件还是目录,先 trash 再写新,避免遗留旧资源 / 类型冲突
+          const existing = app.vault.getAbstractFileByPath(pkgDir)
+          if (existing) {
+            await app.fileManager.trashFile(existing)
+          }
+          await app.vault.createFolder(pkgDir)
 
-            for (const file of pkg.files) {
-              if (!isSafeRelativePath(file.relativePath)) {
-                throw new Error(`unsafe path: ${file.relativePath}`)
-              }
-              const targetPath = normalizePath(`${pkgDir}/${file.relativePath}`)
-              if (!targetPath.startsWith(`${pkgDir}/`)) {
-                throw new Error(`path escaped target: ${file.relativePath}`)
-              }
-              const parentDir = targetPath.substring(
-                0,
-                targetPath.lastIndexOf('/'),
-              )
-              if (parentDir) {
-                await ensureFolder(parentDir)
-              }
-              await app.vault.create(targetPath, file.content)
+          for (const file of pkg.files) {
+            if (!isSafeRelativePath(file.relativePath)) {
+              throw new Error(`unsafe path: ${file.relativePath}`)
             }
-          } else {
-            const targetPath = normalizePath(`${skillsDir}/${pkg.targetName}`)
-            if (!targetPath.startsWith(`${skillsDir}/`)) {
-              throw new Error(`path escaped target: ${pkg.targetName}`)
+            const targetPath = normalizePath(`${pkgDir}/${file.relativePath}`)
+            if (!targetPath.startsWith(`${pkgDir}/`)) {
+              throw new Error(`path escaped target: ${file.relativePath}`)
             }
-            const existing = app.vault.getAbstractFileByPath(targetPath)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
+            const parentDir = targetPath.substring(
+              0,
+              targetPath.lastIndexOf('/'),
+            )
+            if (parentDir) {
+              await ensureFolder(parentDir)
             }
-            await app.vault.create(targetPath, pkg.files[0].content)
+            if (file.data) {
+              await app.vault.createBinary(targetPath, file.data)
+            } else {
+              await app.vault.create(targetPath, file.content ?? '')
+            }
           }
           successCount++
         } catch (err) {
@@ -887,7 +883,7 @@ function ImportSkillModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.agent.importSkillDesc',
-          'Import skill packages into {path}. Supports single .md files or Agent Skills standard folders (containing SKILL.md, scripts/, references/, etc.).',
+          'Import skill packages into {path}. Single Markdown files are wrapped as <name>/SKILL.md; folders keep SKILL.md and all package resources.',
         ).replace('{path}', skillsDir)}
       </div>
 

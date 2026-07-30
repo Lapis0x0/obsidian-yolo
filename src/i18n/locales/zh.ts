@@ -422,7 +422,7 @@ export const zh: TranslationKeys = {
       skillsCount: '{count} 个技能',
       skillsCountWithEnabled: '{count} 个技能（已启用 {enabled} 个）',
       skillsGlobalDesc:
-        '技能会从内置技能与 {path}/**/*.md 自动发现（适用时排除 Skills.md）。在这里禁用后，所有 Agent 都无法使用。',
+        '技能会从内置技能与 {path}/<name>/SKILL.md 目录包中自动发现。在这里禁用后，所有 Agent 都无法使用。',
       yoloBaseDir: 'YOLO 根目录',
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。',
@@ -441,14 +441,14 @@ export const zh: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',
-      skillsSourcePath: '来源：内置技能 + {path}/*.md + {path}/**/SKILL.md',
+      skillsSourcePath: '来源：内置技能 + {path}/<name>/SKILL.md',
       refreshSkills: '刷新',
-      skillsEmptyHint: '未发现技能。请在 {path} 下创建 .md 技能文件。',
+      skillsEmptyHint: '未发现技能。请创建 {path}/<name>/SKILL.md 目录包。',
       createSkillTemplates: '初始化 Skills 系统',
       skillsTemplateCreated: '已在 {path} 完成 Skills 系统初始化。',
       importSkill: '导入技能',
       importSkillDesc:
-        '将技能包导入到 {path}。支持单个 .md 文件或 Agent Skills 标准文件夹。',
+        '将技能包导入到 {path}。单个 Markdown 会包装为 <name>/SKILL.md；文件夹会保留 SKILL.md 与全部包资源。',
       importSkillDropzoneText: '拖拽技能文件或文件夹到此处',
       importSkillBrowseFiles: '选择文件',
       importSkillBrowseFolder: '选择文件夹',
@@ -459,6 +459,8 @@ export const zh: TranslationKeys = {
       importSkillSuccess: '已成功导入 {count} 个技能。',
       importSkillInvalidFile: '未找到有效的技能文件或技能包。',
       importSkillReadError: '读取文件失败。',
+      importSkillErrTooDeep:
+        '技能包超过 {depth} 层导入深度上限，未导入任何内容。',
       importSkillWriteError: '导入 {name} 失败：{error}',
       importSkillErrHeader: '"{name}" 无法导入：',
       importSkillErrNoSkillMd: '文件夹中缺少 SKILL.md 文件',
@@ -494,15 +496,32 @@ export const zh: TranslationKeys = {
       importSkillFromUrlTooLarge: '技能包超过大小限制：{error}',
       importSkillFromUrlFetchError: '从 GitHub 获取失败：{error}',
       deleteSkillTitle: '删除技能',
-      deleteSkillMessage: '确定要删除「{name}」吗？此操作无法撤销。',
+      deleteSkillMessage:
+        '确定要删除「{name}」技能包及其全部资源吗？此操作无法撤销。',
       deleteSkillConfirm: '删除',
       deleteSkillSuccess: '已删除「{name}」。',
       deleteSkillError: '删除「{name}」失败：{error}',
-      deleteSkillBatchMessage: '确定要删除 {count} 个技能吗？此操作无法撤销。',
+      deleteSkillInvalidPackage: '技能包路径无效',
+      deleteSkillNotFound: '未找到技能包',
+      deleteSkillBatchMessage:
+        '确定要删除 {count} 个技能包及其全部资源吗？此操作无法撤销。',
       deleteSkillBatchSuccess: '已删除 {count} 个技能。',
       deleteSkillBatchBtn: '删除',
       deleteSkillSelectAll: '全选',
       deleteSkillCancel: '取消',
+      skillPackageMigrationIssues:
+        '有 {count} 个旧技能文件需要处理。YOLO 未覆盖或删除它们：',
+      skillPackageMigrationInvalidFrontmatter:
+        '{path}：缺少或包含无效的 YAML frontmatter；已保留原文件。',
+      skillPackageMigrationInvalidName:
+        '{path}：frontmatter name 必须为 1–64 位小写字母、数字或连字符；已保留原文件。',
+      skillPackageMigrationConflict:
+        '{path}：目标 {target} 已存在；已保留原文件。',
+      skillPackageMigrationFileFailed:
+        '{path}：迁移失败（{error}）；已保留原文件。',
+      skillPackageMigrationUnknownError: '未知错误',
+      skillPackageMigrationFailed:
+        'YOLO 未能完成旧技能文件升级。原文件已保留，请查看控制台后手动移动。',
       selectSkills: '选择',
       agents: 'Agents',
       agentsDesc: '点击配置以编辑每个 Agent 的资料与提示词。',

@@ -135,7 +135,10 @@ import {
   resolveRuntimeComponentArtifactSources,
   setRuntimeComponentService,
 } from './core/runtime-components'
-import { migrateVaultSkillFrontmatter } from './core/skills/liteSkills'
+import {
+  type LegacySkillPackageMigrationReport,
+  migrateVaultSkillsToDirectoryPackages,
+} from './core/skills/liteSkills'
 import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
@@ -2036,16 +2039,21 @@ export default class YoloPlugin extends Plugin {
     void pruneImageCache(this.app, 30, this.settings)
     void prunePdfTextCache(this.app, 30, this.settings)
     await this.getRagIndexService().initialize()
-    // One-time, idempotent migration of vault skill files from legacy
-    // `id + name` frontmatter to the converged `name`-only form. Kicked off as
-    // soon as the vault index is ready. Note: Obsidian's metadataCache updates
-    // asynchronously after each modify, so on the very first post-upgrade
-    // startup a skill list/open may briefly observe pre-migration frontmatter
-    // until the cache re-parses — self-healing and one-time. A full
-    // cache-event barrier is intentionally avoided as over-engineering for this
-    // sub-second transient; the migration is idempotent so it always converges.
+    // One-time, idempotent vault-skill upgrade: converge legacy frontmatter,
+    // then move root-level Markdown files into <name>/SKILL.md packages.
     this.app.workspace.onLayoutReady(() => {
-      void migrateVaultSkillFrontmatter(this.app, this.settings)
+      void migrateVaultSkillsToDirectoryPackages(this.app, this.settings)
+        .then((report) => this.showSkillPackageMigrationIssues(report))
+        .catch((error) => {
+          console.error('[YOLO] Vault skill package migration failed', error)
+          new Notice(
+            this.t(
+              'settings.agent.skillPackageMigrationFailed',
+              'YOLO could not finish upgrading legacy skill files. The source files were kept; review the console and move them manually.',
+            ),
+            0,
+          )
+        })
     })
     this.app.workspace.onLayoutReady(() => {
       void this.runtimeComponentService?.start().catch((error) => {
@@ -2604,6 +2612,56 @@ export default class YoloPlugin extends Plugin {
     setLLMDebugCaptureEnabled(
       this.settings.debug?.captureRawRequestDebug ?? false,
     )
+  }
+
+  private showSkillPackageMigrationIssues(
+    report: LegacySkillPackageMigrationReport,
+  ): void {
+    if (report.issues.length === 0) {
+      return
+    }
+
+    const details = report.issues.map((issue) => {
+      switch (issue.reason) {
+        case 'invalid_frontmatter':
+          return this.t(
+            'settings.agent.skillPackageMigrationInvalidFrontmatter',
+            '{path}: missing or invalid YAML frontmatter; file was kept.',
+          ).replace('{path}', issue.sourcePath)
+        case 'invalid_name':
+          return this.t(
+            'settings.agent.skillPackageMigrationInvalidName',
+            '{path}: frontmatter name must be 1–64 lowercase letters, numbers, or hyphens; file was kept.',
+          ).replace('{path}', issue.sourcePath)
+        case 'target_exists':
+          return this.t(
+            'settings.agent.skillPackageMigrationConflict',
+            '{path}: target {target} already exists; file was kept.',
+          )
+            .replace('{path}', issue.sourcePath)
+            .replace('{target}', issue.targetPath ?? '')
+        case 'migration_failed':
+          return this.t(
+            'settings.agent.skillPackageMigrationFileFailed',
+            '{path}: migration failed ({error}); file was kept.',
+          )
+            .replace('{path}', issue.sourcePath)
+            .replace(
+              '{error}',
+              issue.error ??
+                this.t(
+                  'settings.agent.skillPackageMigrationUnknownError',
+                  'Unknown error',
+                ),
+            )
+      }
+    })
+
+    const summary = this.t(
+      'settings.agent.skillPackageMigrationIssues',
+      '{count} legacy skill file(s) need attention. YOLO did not overwrite or delete them:',
+    ).replace('{count}', String(report.issues.length))
+    new Notice(`${summary}\n${details.join('\n')}`, 0)
   }
 
   /** Migrate old hidden roots before any service can open files beneath them. */
