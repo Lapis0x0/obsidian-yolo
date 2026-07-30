@@ -51,7 +51,7 @@ export const createYoloChatRuntimeActions = (
   agentService: YoloChatRuntimeActionService,
   options: YoloChatRuntimeActionsOptions = {},
 ): ChatRuntimeActions => ({
-  cancelRun(conversation) {
+  async cancelRun(conversation) {
     agentService.abortConversation(getYoloConversationId(conversation))
   },
 
@@ -65,7 +65,7 @@ export const createYoloChatRuntimeActions = (
     )
   },
 
-  rejectTool(action) {
+  async rejectTool(action) {
     return toActionResult(
       agentService.rejectToolCall({
         conversationId: getYoloConversationId(action.conversation),
@@ -111,7 +111,7 @@ export const createYoloChatRuntimeActions = (
     return HANDLED
   },
 
-  cancelQuestion(action) {
+  async cancelQuestion(action) {
     return toActionResult(
       agentService.cancelAskUserQuestion({
         conversationId: getYoloConversationId(action.conversation),

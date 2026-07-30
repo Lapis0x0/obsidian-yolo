@@ -1782,7 +1782,7 @@ function useToolCall(
   ])
 
   const handleReject = useCallback(() => {
-    handleRuntimeToolRejection({
+    void handleRuntimeToolRejection({
       actions,
       conversation,
       toolCallId: request.id,

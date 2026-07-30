@@ -19,9 +19,8 @@ export type CliSessionRef = {
 
 export type ConversationRef = YoloConversationRef | CliSessionRef
 
-export const isCliSessionRef = (
-  ref: ConversationRef,
-): ref is CliSessionRef => ref.runtimeId !== 'yolo'
+export const isCliSessionRef = (ref: ConversationRef): ref is CliSessionRef =>
+  ref.runtimeId !== 'yolo'
 
 export type CliSessionMetadata = {
   ref: CliSessionRef
@@ -107,8 +106,8 @@ export interface CliRuntime {
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
   sendTurn(input: CliTurnInput): Promise<void>
   cancel(): Promise<void>
-  respondApproval(response: CliApprovalResponse): Promise<void>
-  respondQuestion(response: CliQuestionResponse): Promise<void>
+  respondApproval(response: CliApprovalResponse): Promise<boolean>
+  respondQuestion(response: CliQuestionResponse): Promise<boolean>
   subscribe(listener: CliRuntimeEventListener): () => void
   dispose(): Promise<void>
 }

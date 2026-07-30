@@ -12,12 +12,12 @@ jest.mock('clsx', () => ({
 jest.mock('./chat-runtime-actions-context', () => ({
   useChatRuntimeActions: (conversationId = 'conversation-1') => ({
     actions: {
-      cancelRun: jest.fn(),
+      cancelRun: jest.fn(async () => undefined),
       approveTool: jest.fn(async () => ({ kind: 'handled' })),
-      rejectTool: jest.fn(() => ({ kind: 'handled' })),
+      rejectTool: jest.fn(async () => ({ kind: 'handled' })),
       abortTool: jest.fn(async () => ({ kind: 'handled' })),
       answerQuestion: jest.fn(async () => ({ kind: 'handled' })),
-      cancelQuestion: jest.fn(() => ({ kind: 'handled' })),
+      cancelQuestion: jest.fn(async () => ({ kind: 'handled' })),
     },
     conversation: { runtimeId: 'yolo', conversationId },
   }),

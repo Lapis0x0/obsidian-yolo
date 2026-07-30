@@ -19,11 +19,11 @@ const createService = (): jest.Mocked<YoloChatRuntimeActionService> =>
   }) as unknown as jest.Mocked<YoloChatRuntimeActionService>
 
 describe('createYoloChatRuntimeActions', () => {
-  it('delegates run cancellation to AgentService', () => {
+  it('delegates run cancellation to AgentService', async () => {
     const service = createService()
     const actions = createYoloChatRuntimeActions(service)
 
-    actions.cancelRun(conversation)
+    await actions.cancelRun(conversation)
 
     expect(service.abortConversation).toHaveBeenCalledWith('conversation-1')
   })
@@ -65,13 +65,13 @@ describe('createYoloChatRuntimeActions', () => {
       listSubagentTasks,
     })
 
-    expect(
+    await expect(
       actions.rejectTool({ conversation, toolCallId: 'reject-1' }),
-    ).toEqual({ kind: 'handled' })
+    ).resolves.toEqual({ kind: 'handled' })
     service.rejectToolCall.mockReturnValueOnce(false)
-    expect(
+    await expect(
       actions.rejectTool({ conversation, toolCallId: 'reject-2' }),
-    ).toEqual({ kind: 'stale' })
+    ).resolves.toEqual({ kind: 'stale' })
 
     await expect(
       actions.abortTool({ conversation, toolCallId: 'abort-1' }),
@@ -154,26 +154,26 @@ describe('createYoloChatRuntimeActions', () => {
     ).resolves.toEqual({ kind: 'stale' })
   })
 
-  it('delegates question cancellation and reports stale requests', () => {
+  it('delegates question cancellation and reports stale requests', async () => {
     const service = createService()
     const actions = createYoloChatRuntimeActions(service)
 
-    expect(
+    await expect(
       actions.cancelQuestion({ conversation, toolCallId: 'question-1' }),
-    ).toEqual({ kind: 'handled' })
+    ).resolves.toEqual({ kind: 'handled' })
     service.cancelAskUserQuestion.mockReturnValueOnce(false)
-    expect(
+    await expect(
       actions.cancelQuestion({ conversation, toolCallId: 'question-2' }),
-    ).toEqual({ kind: 'stale' })
+    ).resolves.toEqual({ kind: 'stale' })
   })
 
-  it('rejects a non-YOLO conversation instead of dispatching it accidentally', () => {
+  it('rejects a non-YOLO conversation instead of dispatching it accidentally', async () => {
     const service = createService()
     const actions = createYoloChatRuntimeActions(service)
 
-    expect(() =>
+    await expect(
       actions.cancelRun({ runtimeId: 'codex', nativeSessionId: 'session-1' }),
-    ).toThrow('YOLO runtime actions cannot handle codex conversations')
+    ).rejects.toThrow('YOLO runtime actions cannot handle codex conversations')
     expect(service.abortConversation).not.toHaveBeenCalled()
   })
 })
