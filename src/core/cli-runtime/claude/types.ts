@@ -6,7 +6,7 @@ import type {
   SessionMessage,
   SpawnOptions,
   SpawnedProcess,
-} from '@anthropic-ai/claude-agent-sdk'
+} from '@yolo/claude-agent-sdk-runtime'
 
 export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   interrupt(): Promise<unknown>

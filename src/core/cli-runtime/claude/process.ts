@@ -1,7 +1,7 @@
 import type {
   SpawnOptions,
   SpawnedProcess,
-} from '@anthropic-ai/claude-agent-sdk'
+} from '@yolo/claude-agent-sdk-runtime'
 
 import { assertCliRuntimeAvailable } from '../desktop'
 

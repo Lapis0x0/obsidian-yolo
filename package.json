@@ -83,7 +83,6 @@
     "wrangler": "4.26.1"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.220",
     "@anthropic-ai/sdk": "^0.39.0",
     "@aws-sdk/client-bedrock": "^3.1020.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1019.0",
@@ -106,6 +105,7 @@
     "@radix-ui/react-popover": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@tanstack/react-query": "^5.56.2",
+    "@yolo/claude-agent-sdk-runtime": "file:src/core/cli-runtime/claude/sdk-runtime",
     "ajv": "^8.17.1",
     "clsx": "^2.1.1",
     "cross-spawn": "^7.0.6",
@@ -150,11 +150,5 @@
     "uuid": "^10.0.0",
     "vscode-diff": "^2.1.1",
     "zod": "^3.25.76"
-  },
-  "overrides": {
-    "@anthropic-ai/claude-agent-sdk": {
-      "@anthropic-ai/sdk": "$@anthropic-ai/sdk",
-      "zod": "$zod"
-    }
   }
 }

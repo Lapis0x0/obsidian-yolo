@@ -4,7 +4,7 @@ import type {
   PermissionUpdate,
   SDKMessage,
   SDKUserMessage,
-} from '@anthropic-ai/claude-agent-sdk'
+} from '@yolo/claude-agent-sdk-runtime'
 import { v4 as uuidv4 } from 'uuid'
 
 import type { ChatAssistantMessage, ChatToolMessage } from '../../../types/chat'
@@ -13,7 +13,6 @@ import {
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
-  createCompleteToolCallArguments,
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { assertCliRuntimeAvailable } from '../desktop'
@@ -31,6 +30,11 @@ import type {
   CliTurnInput,
 } from '../types'
 
+import {
+  CLAUDE_ASK_USER_QUESTION_TOOL,
+  convertYoloAnswerPayloadToClaude,
+  mapClaudeAskUserQuestionInput,
+} from './askUserQuestion'
 import { AsyncPushQueue } from './asyncQueue'
 import {
   extractTextContent,
@@ -50,8 +54,6 @@ import type {
   ClaudeSdkModule,
   ClaudeSdkQuery,
 } from './types'
-
-const ASK_USER_QUESTION_TOOL = 'AskUserQuestion'
 
 type PendingPermission = {
   requestId: string
@@ -450,9 +452,28 @@ export class ClaudeCliRuntime implements CliRuntime {
       return
     }
 
+    const converted = convertYoloAnswerPayloadToClaude({
+      payload: response.answer,
+      nativeInput: pending.input,
+    })
+    if (!converted.ok) {
+      this.settlePending(pending, {
+        behavior: 'deny',
+        message: converted.error,
+        interrupt: true,
+        toolUseID: pending.toolUseId,
+      })
+      this.upsertTool(pending.toolUseId, {
+        status: ToolCallResponseStatus.Error,
+        error: converted.error,
+      })
+      this.emit({ type: 'run_state', state: 'error', error: converted.error })
+      return
+    }
+
     this.settlePending(pending, {
       behavior: 'allow',
-      updatedInput: { ...pending.input, answers: response.answer },
+      updatedInput: { ...pending.input, answers: converted.answers },
       toolUseID: pending.toolUseId,
       decisionClassification: 'user_temporary',
     })
@@ -507,9 +528,21 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   private createCanUseTool(): CanUseTool {
     return async (toolName, input, options) => {
-      const kind = toolName === ASK_USER_QUESTION_TOOL ? 'question' : 'approval'
+      const kind =
+        toolName === CLAUDE_ASK_USER_QUESTION_TOOL ? 'question' : 'approval'
       const normalizedInput =
         kind === 'question' ? normalizeAskUserQuestionInput(input) : input
+      if (
+        kind === 'question' &&
+        mapClaudeAskUserQuestionInput(normalizedInput) === null
+      ) {
+        return {
+          behavior: 'deny',
+          message: 'Claude AskUserQuestion input is invalid.',
+          interrupt: true,
+          toolUseID: options.toolUseID,
+        }
+      }
       this.ensureToolRequest(options.toolUseID, toolName, normalizedInput)
       this.upsertTool(
         options.toolUseID,
@@ -792,6 +825,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   }
 
   private ensurePartialToolRequest(tool: StreamedToolInput): void {
+    if (tool.name === CLAUDE_ASK_USER_QUESTION_TOOL) return
     const request: ToolCallRequest = {
       id: tool.id,
       name: tool.name,
@@ -814,11 +848,11 @@ export class ClaudeCliRuntime implements CliRuntime {
     toolName: string,
     input: Record<string, unknown>,
   ): void {
-    const request: ToolCallRequest = {
+    const request = toToolCallRequest({
       id: toolUseId,
       name: toolName,
-      arguments: createCompleteToolCallArguments({ value: input }),
-    }
+      input,
+    })
     this.setAssistantToolRequest(request)
     const existing = this.tools.get(toolUseId)
     this.tools.set(toolUseId, {

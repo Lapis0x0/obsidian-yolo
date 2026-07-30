@@ -1,4 +1,4 @@
-import type { SessionMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SessionMessage } from '@yolo/claude-agent-sdk-runtime'
 
 import type {
   ChatAssistantMessage,
@@ -11,6 +11,8 @@ import {
   ToolCallResponseStatus,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
+
+import { mapClaudeToolForTimeline } from './askUserQuestion'
 
 type ContentBlock = Record<string, unknown> & { type?: unknown }
 
@@ -98,11 +100,14 @@ export const extractToolResults = (value: unknown): ClaudeToolResult[] =>
     ]
   })
 
-export const toToolCallRequest = (toolUse: ClaudeToolUse): ToolCallRequest => ({
-  id: toolUse.id,
-  name: toolUse.name,
-  arguments: createCompleteToolCallArguments({ value: toolUse.input }),
-})
+export const toToolCallRequest = (toolUse: ClaudeToolUse): ToolCallRequest => {
+  const mapped = mapClaudeToolForTimeline(toolUse)
+  return {
+    id: toolUse.id,
+    name: mapped.name,
+    arguments: createCompleteToolCallArguments({ value: mapped.input }),
+  }
+}
 
 const createUserMessage = (
   message: SessionMessage,

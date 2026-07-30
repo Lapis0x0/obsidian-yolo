@@ -1,4 +1,4 @@
-import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
+import type { SpawnOptions } from '@yolo/claude-agent-sdk-runtime'
 
 import {
   createElectronSpawnFunction,

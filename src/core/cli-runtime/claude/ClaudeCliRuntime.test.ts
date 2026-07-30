@@ -5,7 +5,7 @@ import type {
   SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
-} from '@anthropic-ai/claude-agent-sdk'
+} from '@yolo/claude-agent-sdk-runtime'
 import { Platform } from 'obsidian'
 
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
@@ -233,6 +233,54 @@ describe('ClaudeCliRuntime', () => {
           ],
         },
       },
+      {
+        type: 'assistant',
+        uuid: 'assistant-question',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          id: 'msg_question',
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'question-tool',
+              name: 'AskUserQuestion',
+              input: {
+                questions: [
+                  {
+                    id: 'choice',
+                    question: 'Choose one?',
+                    options: [
+                      { label: 'A', description: 'Option A' },
+                      { label: 'B', description: 'Option B' },
+                    ],
+                    multiSelect: false,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'question-result',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'question-tool',
+              content: 'Answered',
+            },
+          ],
+        },
+      },
     ] as SessionMessage[])
 
     const runtime = new ClaudeCliRuntime({
@@ -260,7 +308,7 @@ describe('ClaudeCliRuntime', () => {
     expect(getSessionMessages).toHaveBeenCalledWith('session-1', {
       dir: '/vault',
     })
-    expect(hydration.messages).toHaveLength(3)
+    expect(hydration.messages).toHaveLength(5)
     expect(hydration.messages[0]).toMatchObject({
       role: 'user',
       id: 'user-1',
@@ -286,6 +334,42 @@ describe('ClaudeCliRuntime', () => {
           response: {
             status: ToolCallResponseStatus.Success,
             data: { type: 'text', text: 'All tests passed' },
+          },
+        },
+      ],
+    })
+    expect(hydration.messages[3]).toMatchObject({
+      role: 'assistant',
+      toolCallRequests: [
+        {
+          id: 'question-tool',
+          name: 'yolo_local__ask_user_question',
+          arguments: {
+            kind: 'complete',
+            value: {
+              questions: [
+                {
+                  id: 'choice',
+                  prompt: 'Choose one?',
+                  inputType: 'single_select',
+                  options: [
+                    { id: 'A', label: 'A' },
+                    { id: 'B', label: 'B' },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    })
+    expect(hydration.messages[4]).toMatchObject({
+      role: 'tool',
+      toolCalls: [
+        {
+          request: {
+            id: 'question-tool',
+            name: 'yolo_local__ask_user_question',
           },
         },
       ],
@@ -533,7 +617,38 @@ describe('ClaudeCliRuntime', () => {
 
     const question = canUseTool(
       'AskUserQuestion',
-      { questions: [{ question: 'Continue?' }] },
+      {
+        questions: [
+          {
+            id: 'context',
+            question: 'Anything else?',
+            header: 'Context',
+            options: [],
+            multiSelect: false,
+            isOther: true,
+          },
+          {
+            id: 'approach',
+            question: 'Which approach?',
+            header: 'Approach',
+            options: [
+              { label: 'Simple', description: 'Use the direct path.' },
+              { label: 'Layered', description: 'Add an abstraction.' },
+            ],
+            multiSelect: false,
+          },
+          {
+            id: 'features',
+            question: 'Which features?',
+            header: 'Features',
+            options: [
+              { label: 'Fast', description: 'Optimize latency.' },
+              { label: 'Safe', description: 'Add more checks.' },
+            ],
+            multiSelect: true,
+          },
+        ],
+      },
       {
         signal: new AbortController().signal,
         toolUseID: 'tool-2',
@@ -543,13 +658,93 @@ describe('ClaudeCliRuntime', () => {
     await flushPromises()
     await runtime.respondQuestion({
       requestId: 'request-2',
-      answer: { Continue: 'Yes' },
+      answer: {
+        type: 'user_answers',
+        answers: [
+          {
+            id: 'context',
+            question: 'Anything else?',
+            inputType: 'free_text',
+            value: 'Keep the API narrow.',
+          },
+          {
+            id: 'approach',
+            question: 'Which approach?',
+            inputType: 'single_select',
+            value: '__other__',
+            otherText: 'Hybrid',
+          },
+          {
+            id: 'features',
+            question: 'Which features?',
+            inputType: 'multi_select',
+            value: ['Fast', '__other__'],
+            otherText: 'Observable',
+          },
+        ],
+      },
     })
     await expect(question).resolves.toMatchObject({
       behavior: 'allow',
       updatedInput: {
-        questions: [{ question: 'Continue?', isOther: true }],
-        answers: { Continue: 'Yes' },
+        answers: {
+          context: 'Keep the API narrow.',
+          approach: 'Hybrid',
+          features: ['Fast', 'Observable'],
+        },
+      },
+    })
+
+    const pendingQuestionEvent = [...events]
+      .reverse()
+      .find(
+        (event) =>
+          event.type === 'message_upsert' &&
+          event.message.role === 'tool' &&
+          event.message.toolCalls[0]?.request.id === 'tool-2' &&
+          event.message.toolCalls[0].response.status ===
+            ToolCallResponseStatus.AwaitingUserInput,
+      )
+    expect(pendingQuestionEvent).toMatchObject({
+      type: 'message_upsert',
+      message: {
+        toolCalls: [
+          {
+            request: {
+              name: 'yolo_local__ask_user_question',
+              arguments: {
+                kind: 'complete',
+                value: {
+                  questions: [
+                    {
+                      id: 'context',
+                      prompt: 'Anything else?',
+                      inputType: 'free_text',
+                    },
+                    {
+                      id: 'approach',
+                      prompt: 'Which approach?',
+                      inputType: 'single_select',
+                      options: [
+                        { id: 'Simple', label: 'Simple' },
+                        { id: 'Layered', label: 'Layered' },
+                      ],
+                    },
+                    {
+                      id: 'features',
+                      prompt: 'Which features?',
+                      inputType: 'multi_select',
+                      options: [
+                        { id: 'Fast', label: 'Fast' },
+                        { id: 'Safe', label: 'Safe' },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ],
       },
     })
 
@@ -598,6 +793,69 @@ describe('ClaudeCliRuntime', () => {
                 response: {
                   status: ToolCallResponseStatus.AwaitingUserInput,
                 },
+              }),
+            ],
+          }),
+        }),
+      ]),
+    )
+  })
+
+  it('denies malformed nested AskUserQuestion answer payloads', async () => {
+    const { sdk, queryInputs } = createSdk()
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({
+      assistant: { systemPrompt: '', enabledSkillNames: [] },
+    })
+    const canUseTool = queryInputs[0].options?.canUseTool as CanUseTool
+    const question = canUseTool(
+      'AskUserQuestion',
+      {
+        questions: [
+          {
+            id: 'choice',
+            question: 'Choose one?',
+            options: [
+              { label: 'A', description: 'Option A' },
+              { label: 'B', description: 'Option B' },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-invalid-answer',
+        requestId: 'request-invalid-answer',
+      },
+    )
+    await flushPromises()
+    await runtime.respondQuestion({
+      requestId: 'request-invalid-answer',
+      answer: { answers: { choice: 'A' } },
+    })
+
+    await expect(question).resolves.toMatchObject({
+      behavior: 'deny',
+      interrupt: true,
+    })
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'message_upsert',
+          message: expect.objectContaining({
+            role: 'tool',
+            toolCalls: [
+              expect.objectContaining({
+                response: expect.objectContaining({
+                  status: ToolCallResponseStatus.Error,
+                }),
               }),
             ],
           }),
