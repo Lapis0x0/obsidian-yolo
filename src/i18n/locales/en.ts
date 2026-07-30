@@ -78,6 +78,17 @@ export const en: TranslationKeys = {
       codexLabel: 'Codex',
       codexDescription: 'Codex on this device',
     },
+    cliSessions: {
+      sectionLabel: 'CLI sessions',
+      title: 'Local CLI sessions',
+      loading: 'Loading CLI sessions…',
+      empty: 'No Claude Code or Codex sessions found',
+      current: 'Current',
+      pin: 'Pin in YOLO',
+      unpin: 'Unpin in YOLO',
+      forgetFromYolo: 'Forget from YOLO',
+      retryProvider: 'Retry {provider}',
+    },
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',

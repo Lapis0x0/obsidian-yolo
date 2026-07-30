@@ -78,6 +78,17 @@ export const zh: TranslationKeys = {
       codexLabel: 'Codex',
       codexDescription: '本机 Codex 运行时',
     },
+    cliSessions: {
+      sectionLabel: 'CLI 会话',
+      title: '本机 CLI 会话',
+      loading: '正在加载 CLI 会话…',
+      empty: '未找到 Claude Code 或 Codex 会话',
+      current: '当前',
+      pin: '在 YOLO 中置顶',
+      unpin: '在 YOLO 中取消置顶',
+      forgetFromYolo: '从 YOLO 中移除记录',
+      retryProvider: '重试 {provider}',
+    },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
       empty: '暂无聊天记录',

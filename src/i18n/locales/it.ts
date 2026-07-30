@@ -94,6 +94,17 @@ export const it: DeepPartial<TranslationKeys> = {
       codexLabel: 'Codex',
       codexDescription: 'Codex su questo dispositivo',
     },
+    cliSessions: {
+      sectionLabel: 'Sessioni CLI',
+      title: 'Sessioni CLI locali',
+      loading: 'Caricamento delle sessioni CLI…',
+      empty: 'Nessuna sessione Claude Code o Codex trovata',
+      current: 'Attuale',
+      pin: 'Fissa in YOLO',
+      unpin: 'Rimuovi il fissaggio in YOLO',
+      forgetFromYolo: 'Dimentica da YOLO',
+      retryProvider: 'Riprova {provider}',
+    },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
