@@ -15,6 +15,15 @@ jest.mock('../../contexts/language-context', () => ({
   }),
 }))
 
+jest.mock('../../assets/provider-icons/anthropic.svg', () => ({
+  __esModule: true,
+  default: 'anthropic-logo',
+}))
+jest.mock('../../assets/provider-icons/openai.svg', () => ({
+  __esModule: true,
+  default: 'openai-logo',
+}))
+
 import { Platform } from 'obsidian'
 import { renderToStaticMarkup } from 'react-dom/server'
 
@@ -57,8 +66,24 @@ describe('RuntimeSelector', () => {
     expect(html).toContain('data-runtime-id="codex"')
     expect(html).toContain('aria-label="CLI provider: Codex"')
     expect(html).toContain('>Codex<')
+    expect(html).toContain('src="openai-logo"')
+    expect(html).toContain('data-provider="openai"')
     expect(html).not.toContain('>CLI<')
     expect(html).not.toContain('YOLO Chat')
+  })
+
+  it('uses the Anthropic brand asset for Claude Code', () => {
+    Platform.isDesktop = true
+
+    const html = renderToStaticMarkup(
+      <RuntimeSelector
+        currentRuntimeId="claude-code"
+        onRuntimeChange={() => {}}
+      />,
+    )
+
+    expect(html).toContain('src="anthropic-logo"')
+    expect(html).toContain('data-provider="anthropic"')
   })
 
   it('renders no runtime entry on mobile even with a stale CLI selection', () => {

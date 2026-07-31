@@ -7660,6 +7660,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           controller={cliConversationController}
           actions={cliRuntimeScope.chatRuntimeActions}
           footerContent={mainInputFooter}
+          emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
         />
       ) : (
         <ChatConversationPane

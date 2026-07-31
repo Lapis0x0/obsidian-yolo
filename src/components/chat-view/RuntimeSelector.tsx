@@ -1,7 +1,9 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Asterisk, Check, ChevronDown, SquareTerminal } from 'lucide-react'
-import { useRef } from 'react'
+import { Check, ChevronDown } from 'lucide-react'
+import { useId, useRef } from 'react'
 
+import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
+import openaiLogo from '../../assets/provider-icons/openai.svg'
 import { useLanguage } from '../../contexts/language-context'
 import {
   type CliRuntimeId,
@@ -29,6 +31,13 @@ const RUNTIME_OPTIONS: Record<CliRuntimeId, RuntimeSelectorOption> = {
 }
 
 const CLI_RUNTIME_IDS: readonly CliRuntimeId[] = ['claude-code', 'codex']
+const RUNTIME_LOGOS: Record<
+  CliRuntimeId,
+  { src: string; provider: 'anthropic' | 'openai' }
+> = {
+  'claude-code': { src: anthropicLogo, provider: 'anthropic' },
+  codex: { src: openaiLogo, provider: 'openai' },
+}
 
 export const getRuntimeSelectorOptions = (
   cliRuntimeAvailable: boolean,
@@ -53,10 +62,16 @@ export type RuntimeSelectorProps = {
 }
 
 const RuntimeIcon = ({ runtimeId }: { runtimeId: CliRuntimeId }) => {
-  if (runtimeId === 'claude-code') {
-    return <Asterisk size={15} strokeWidth={2} />
-  }
-  return <SquareTerminal size={15} strokeWidth={2} />
+  const logo = RUNTIME_LOGOS[runtimeId]
+  return (
+    <img
+      className="yolo-runtime-selector__provider-logo"
+      src={logo.src}
+      alt=""
+      draggable={false}
+      data-provider={logo.provider}
+    />
+  )
 }
 
 export function RuntimeSelector({
@@ -67,6 +82,7 @@ export function RuntimeSelector({
 }: RuntimeSelectorProps) {
   const { t } = useLanguage()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuLabelId = useId()
   const cliRuntimeAvailable = isCliRuntimeAvailable()
 
   if (!cliRuntimeAvailable) {
@@ -116,10 +132,13 @@ export function RuntimeSelector({
         collisionPadding={8}
         loop
       >
+        <DropdownMenu.Label id={menuLabelId} className="yolo-sr-only">
+          {t('sidebar.runtimeSelector.menuLabel')}
+        </DropdownMenu.Label>
         <DropdownMenu.RadioGroup
           className="yolo-model-select-list yolo-runtime-selector__list"
           value={currentRuntimeId}
-          aria-label={t('sidebar.runtimeSelector.menuLabel')}
+          aria-labelledby={menuLabelId}
           onValueChange={(value) => {
             const runtimeId = resolveAvailableRuntimeId(
               value,
@@ -145,10 +164,8 @@ export function RuntimeSelector({
                   <RuntimeIcon runtimeId={option.id} />
                 </span>
                 <span className="yolo-runtime-selector__option-copy">
-                  <span className="yolo-runtime-selector__option-heading">
-                    <span className="yolo-runtime-selector__option-label">
-                      {t(option.labelKey)}
-                    </span>
+                  <span className="yolo-runtime-selector__option-label">
+                    {t(option.labelKey)}
                   </span>
                   <span className="yolo-runtime-selector__option-description">
                     {t(option.descriptionKey)}

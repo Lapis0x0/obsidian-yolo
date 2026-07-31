@@ -102,6 +102,20 @@ button.yolo-runtime-selector:disabled {
   color: var(--text-muted);
 }
 
+.yolo-runtime-selector__provider-logo {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='openai'] {
+  filter: invert(1);
+}
+
 .yolo-runtime-selector__label {
   min-width: 0;
   max-width: 112px;
@@ -149,13 +163,6 @@ button.yolo-runtime-selector[data-state='open']
   flex: 1;
   flex-direction: column;
   gap: 2px;
-}
-
-.yolo-runtime-selector__option-heading {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
 }
 
 .yolo-runtime-selector__option-label,
@@ -517,6 +524,30 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
   grid-row: 4;
 }
 
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-cli-chat-surface--empty {
+  display: contents;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-cli-chat-surface--empty
+  > .yolo-installation-incomplete-banner {
+  grid-row: 2;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-cli-chat-surface--empty
+  > .yolo-chat-conversation-surface {
+  min-height: 0;
+  grid-row: 3;
+}
+
+.yolo-chat-container--centered.yolo-chat-container--empty-state
+  > .yolo-cli-chat-surface--empty
+  > .yolo-chat-footer {
+  grid-row: 4;
+}
+
 .yolo-chat-container--centered.yolo-chat-container--empty-state::after {
   content: '';
   grid-row: 5;
@@ -789,6 +820,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 
 .yolo-chat-container--sidebar > .yolo-chat-composer-wrapper,
 .yolo-chat-container--sidebar > .yolo-chat-footer,
+.yolo-chat-container--sidebar > .yolo-cli-chat-surface > .yolo-chat-footer,
 .yolo-chat-container--sidebar > .yolo-chat-user-input-files,
 .yolo-chat-container--sidebar > .yolo-chat-input-wrapper {
   box-sizing: border-box;
@@ -808,6 +840,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-container--centered > .yolo-chat-footer,
+.yolo-chat-container--centered > .yolo-cli-chat-surface > .yolo-chat-footer,
 .yolo-chat-container--centered > .yolo-chat-user-input-files,
 .yolo-chat-container--centered > .yolo-chat-input-wrapper {
   width: min(100%, var(--yolo-chat-content-max-width));

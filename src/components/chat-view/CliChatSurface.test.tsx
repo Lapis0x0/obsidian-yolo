@@ -98,6 +98,7 @@ jest.mock('./ChatConversationPane', () => ({
     showEmptyState,
     emptyStateAgentTitle,
     emptyStateAgentDescription,
+    emptyStateWorkspaceTitle,
     chatTimelineItems,
     renderChatTimelineItem,
     footerContent,
@@ -105,6 +106,7 @@ jest.mock('./ChatConversationPane', () => ({
     showEmptyState: boolean
     emptyStateAgentTitle: string
     emptyStateAgentDescription: string
+    emptyStateWorkspaceTitle?: ReactNode
     chatTimelineItems: ChatTimelineItem[]
     renderChatTimelineItem: (item: ChatTimelineItem) => ReactNode
     footerContent: ReactNode
@@ -112,7 +114,8 @@ jest.mock('./ChatConversationPane', () => ({
     <div data-testid="conversation-pane">
       {showEmptyState ? (
         <div data-testid="empty-state">
-          {emptyStateAgentTitle} {emptyStateAgentDescription}
+          {emptyStateWorkspaceTitle ?? emptyStateAgentTitle}{' '}
+          {emptyStateAgentDescription}
         </div>
       ) : null}
       {chatTimelineItems.map((item) => (
@@ -201,12 +204,16 @@ const createController = (initial: CliConversationSnapshot) => {
   }
 }
 
-const renderSurface = (controller: CliConversationController): string =>
+const renderSurface = (
+  controller: CliConversationController,
+  emptyStateWorkspaceTitle?: ReactNode,
+): string =>
   renderToStaticMarkup(
     <CliChatSurface
       controller={controller}
       actions={actions}
       footerContent={<div>Composer footer</div>}
+      emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
     />,
   )
 
@@ -332,5 +339,17 @@ describe('CliChatSurface', () => {
     expect(renderSurface(streaming.controller)).toContain(
       'data-run-state="running"',
     )
+  })
+
+  it('uses the shared workspace greeting for an empty CLI conversation', () => {
+    const empty = createController(makeSnapshot({ sessionRef: null }))
+
+    const html = renderSurface(
+      empty.controller,
+      <span>What would you like to do in Test Vault today?</span>,
+    )
+
+    expect(html).toContain('What would you like to do in Test Vault today?')
+    expect(html).not.toContain('开始一个 CLI 会话')
   })
 })

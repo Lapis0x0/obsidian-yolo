@@ -54,6 +54,7 @@ export type CliChatSurfaceProps = {
   controller: CliConversationController
   actions: ChatRuntimeActions
   footerContent: ReactNode
+  emptyStateWorkspaceTitle?: ReactNode
 }
 
 export function useCliConversationSnapshot(
@@ -236,6 +237,7 @@ export function CliChatSurface({
   controller,
   actions,
   footerContent,
+  emptyStateWorkspaceTitle,
 }: CliChatSurfaceProps) {
   const { t } = useLanguage()
   const snapshot = useCliConversationSnapshot(controller)
@@ -420,6 +422,7 @@ export function CliChatSurface({
           'chat.cliSurface.emptyTitle',
           '开始一个 CLI 会话',
         )}
+        emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
         emptyStateAskDescription={t(
           'chat.cliSurface.emptyDescription',
           '发送消息后，原生 CLI 对话会显示在这里。',
