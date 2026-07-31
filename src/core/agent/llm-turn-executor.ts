@@ -109,56 +109,6 @@ export class AgentLlmTurnExecutor {
   constructor(private readonly input: AgentLlmTurnExecutorInput) {}
 
   async run(): Promise<AgentLlmTurnExecutorOutput> {
-    const availableTools = this.input.enableTools
-      ? await this.input.mcpManager.listAvailableTools({
-          includeBuiltinTools: this.input.includeBuiltinTools,
-          // Pass the active model's modalities so built-in tool schemas
-          // (notably fs_read's modality enum) are tailored — PDF-capable
-          // models see ['text','pdf'], vision-capable see ['text','image'],
-          // text-only see no modality field at all.
-          chatModelModalities: this.input.model.modalities,
-        })
-      : []
-    const {
-      filteredTools,
-      hasTools,
-      hasMemoryTools,
-      hasOnDemandTools,
-      requestTools: tools,
-    } = await selectAllowedTools({
-      availableTools,
-      allowedToolNames: this.input.allowedToolNames,
-      toolPreferences: this.input.toolPreferences,
-      apiType: this.input.apiType,
-      enableToolDisclosure: this.input.enableToolDisclosure,
-      jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
-      settings: this.input.mcpManager.getSettingsSnapshot(),
-    })
-    const runtimeModePrompt = buildToolCapabilityPrompt({
-      mode: this.input.toolCapabilityMode ?? 'agent',
-      toolNames: filteredTools.map((tool) => tool.name),
-    })
-    const baseRequestMessages =
-      await this.input.requestContextBuilder.generateRequestMessages({
-        messages: this.input.messages,
-        hasTools,
-        hasMemoryTools,
-        hasOnDemandTools,
-        model: this.input.model,
-        conversationId: this.input.conversationId,
-        compaction: this.input.compaction,
-        contextualInjections: this.input.contextualInjections,
-        runtimeModePrompt,
-        systemPromptOverride: this.input.systemPromptOverride,
-        // Real LLM request: freeze (or reuse) the per-conversation system prompt.
-        systemPromptSnapshotMode: 'create',
-      })
-    const requestMessages =
-      this.input.transientRequestMessages &&
-      this.input.transientRequestMessages.length > 0
-        ? [...baseRequestMessages, ...this.input.transientRequestMessages]
-        : baseRequestMessages
-
     const responseStart = Date.now()
     const model = this.input.model
     const deliveryMode = this.input.requestParams?.deliveryMode ?? 'incremental'
@@ -217,7 +167,59 @@ export class AgentLlmTurnExecutor {
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     let requestReasoning: ReasoningLevel | undefined
+    let requestMessages: RequestMessage[]
+    let tools: RequestTool[] | undefined
     try {
+      const availableTools = this.input.enableTools
+        ? await this.input.mcpManager.listAvailableTools({
+            includeBuiltinTools: this.input.includeBuiltinTools,
+            // Pass the active model's modalities so built-in tool schemas
+            // (notably fs_read's modality enum) are tailored — PDF-capable
+            // models see ['text','pdf'], vision-capable see ['text','image'],
+            // text-only see no modality field at all.
+            chatModelModalities: this.input.model.modalities,
+          })
+        : []
+      const {
+        filteredTools,
+        hasTools,
+        hasMemoryTools,
+        hasOnDemandTools,
+        requestTools,
+      } = await selectAllowedTools({
+        availableTools,
+        allowedToolNames: this.input.allowedToolNames,
+        toolPreferences: this.input.toolPreferences,
+        apiType: this.input.apiType,
+        enableToolDisclosure: this.input.enableToolDisclosure,
+        jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
+        settings: this.input.mcpManager.getSettingsSnapshot(),
+      })
+      tools = requestTools
+      const runtimeModePrompt = buildToolCapabilityPrompt({
+        mode: this.input.toolCapabilityMode ?? 'agent',
+        toolNames: filteredTools.map((tool) => tool.name),
+      })
+      const baseRequestMessages =
+        await this.input.requestContextBuilder.generateRequestMessages({
+          messages: this.input.messages,
+          hasTools,
+          hasMemoryTools,
+          hasOnDemandTools,
+          model: this.input.model,
+          conversationId: this.input.conversationId,
+          compaction: this.input.compaction,
+          contextualInjections: this.input.contextualInjections,
+          runtimeModePrompt,
+          systemPromptOverride: this.input.systemPromptOverride,
+          // Real LLM request: freeze (or reuse) the per-conversation system prompt.
+          systemPromptSnapshotMode: 'create',
+        })
+      requestMessages =
+        this.input.transientRequestMessages &&
+        this.input.transientRequestMessages.length > 0
+          ? [...baseRequestMessages, ...this.input.transientRequestMessages]
+          : baseRequestMessages
       requestReasoning = resolveRequestReasoningLevel(
         this.input.model,
         this.input.reasoningLevel,

@@ -146,6 +146,52 @@ describe('AgentLlmTurnExecutor', () => {
     )
   })
 
+  it('publishes the streaming placeholder before preparing the request', async () => {
+    const provider = new MockProvider()
+    const observedAssistantMessages: ChatAssistantMessage[] = []
+    const requestContextBuilder = {
+      generateRequestMessages: jest.fn(async () => {
+        expect(observedAssistantMessages).toHaveLength(1)
+        expect(
+          observedAssistantMessages[0].metadata?.generationState,
+        ).toBe('streaming')
+        return [{ role: 'user' as const, content: 'hello' }]
+      }),
+    } as unknown as RequestContextBuilder
+    const mcpManager = createMockMcpManager()
+    mockExecuteSingleTurn.mockResolvedValue({
+      content: 'done',
+      reasoning: undefined,
+      annotations: undefined,
+      usage: undefined,
+      providerMetadata: undefined,
+      toolCalls: [],
+    })
+
+    const executor = new AgentLlmTurnExecutor({
+      providerClient: provider,
+      model: TEST_MODEL,
+      requestContextBuilder,
+      mcpManager,
+      conversationId: 'conv-1',
+      messages: [],
+      enableTools: false,
+      includeBuiltinTools: false,
+      onAssistantMessage: (message) => {
+        observedAssistantMessages.push({
+          ...message,
+          metadata: message.metadata ? { ...message.metadata } : undefined,
+        })
+      },
+    })
+
+    await executor.run()
+
+    expect(observedAssistantMessages.at(-1)?.metadata?.generationState).toBe(
+      'completed',
+    )
+  })
+
   it('keeps streaming arguments for local write tool previews', async () => {
     const provider = new MockProvider()
     mockExecuteSingleTurn.mockImplementation(async ({ onStreamDelta }) => {
