@@ -359,13 +359,7 @@ export function CliChatSurface({
     !ACTIVE_RUN_STATES.has(snapshot.runState)
 
   return (
-    <div
-      className={`yolo-cli-chat-surface${
-        showEmptyState ? ' yolo-cli-chat-surface--empty' : ''
-      }`}
-      data-runtime-id={snapshot.runtimeId}
-    >
-      <ChatConversationPane
+    <ChatConversationPane
         chatMode="agent"
         yoloEnabled={false}
         showEmptyState={showEmptyState}
@@ -417,8 +411,7 @@ export function CliChatSurface({
             footerContent={footerContent}
           />
         }
-      />
-    </div>
+    />
   )
 }
 

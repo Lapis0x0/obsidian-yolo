@@ -1,10 +1,3 @@
-.yolo-cli-chat-surface {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  flex-direction: column;
-}
-
 .yolo-cli-chat-surface__user-card {
   cursor: text;
   user-select: text;

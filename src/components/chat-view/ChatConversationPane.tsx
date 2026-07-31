@@ -117,7 +117,7 @@ export function ChatConversationPane({
     <>
       <InstallationIncompleteBanner />
       <SharedConversationSurface
-        key={`${currentConversationId}:${groupedChatMessagesLength > 0 ? 'ready' : 'empty'}`}
+        key={currentConversationId}
         items={chatTimelineItems}
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
