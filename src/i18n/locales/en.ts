@@ -70,7 +70,7 @@ export const en: TranslationKeys = {
       modeAccessibleLabel: 'Chat mode',
       cliLabel: 'CLI',
       chatDescription: 'Built-in YOLO chat',
-      cliDescription: 'Complex tasks via CLI',
+      cliDescription: 'Use CLI for tasks',
       accessibleLabel: 'CLI provider: {runtime}',
       menuLabel: 'CLI provider',
       claudeCodeLabel: 'Claude Code',

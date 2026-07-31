@@ -70,7 +70,7 @@ export const zh: TranslationKeys = {
       modeAccessibleLabel: '聊天模式',
       cliLabel: 'CLI',
       chatDescription: 'YOLO 内置聊天',
-      cliDescription: '外部 CLI 执行复杂任务',
+      cliDescription: '使用 CLI 执行复杂任务',
       accessibleLabel: 'CLI 提供方：{runtime}',
       menuLabel: 'CLI 提供方',
       claudeCodeLabel: 'Claude Code',
