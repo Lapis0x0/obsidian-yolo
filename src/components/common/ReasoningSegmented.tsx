@@ -140,17 +140,23 @@ export function ReasoningSegmented({
     [options, refs],
   )
 
-  const resolvePointerFromClientX = useCallback((clientX: number) => {
-    const rect = sliderRef.current?.getBoundingClientRect()
-    if (!rect || rect.width <= 0) return null
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    const maxIndex = options.length - 1
-    const index = Math.min(maxIndex, Math.max(0, Math.round(ratio * maxIndex)))
-    return {
-      level: options[index].value,
-      position: ratio * 100,
-    }
-  }, [options])
+  const resolvePointerFromClientX = useCallback(
+    (clientX: number) => {
+      const rect = sliderRef.current?.getBoundingClientRect()
+      if (!rect || rect.width <= 0) return null
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+      const maxIndex = options.length - 1
+      const index = Math.min(
+        maxIndex,
+        Math.max(0, Math.round(ratio * maxIndex)),
+      )
+      return {
+        level: options[index].value,
+        position: ratio * 100,
+      }
+    },
+    [options],
+  )
 
   const previewFromPointer = useCallback(
     (clientX: number) => {
@@ -171,9 +177,7 @@ export function ReasoningSegmented({
   const safeValue = options.some((opt) => opt.value === value)
     ? value
     : (options[0]?.value ?? 'auto')
-  const selectedIndex = options.findIndex(
-    (opt) => opt.value === safeValue,
-  )
+  const selectedIndex = options.findIndex((opt) => opt.value === safeValue)
   const getSliderPosition = (index: number) =>
     options.length <= 1 ? 0 : (index / (options.length - 1)) * 100
   const selectedPosition = `${dragPosition ?? getSliderPosition(selectedIndex)}`
@@ -195,10 +199,7 @@ export function ReasoningSegmented({
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
           event.preventDefault()
-          onChange(
-            options[(selectedIndex + 1) % options.length]
-              .value,
-          )
+          onChange(options[(selectedIndex + 1) % options.length].value)
           focusByDelta(safeValue, 1)
         } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
           event.preventDefault()

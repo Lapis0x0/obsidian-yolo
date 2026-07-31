@@ -223,8 +223,11 @@ export class CodexCliRuntime implements CliRuntime {
 
   async getConfiguration(): Promise<CliRuntimeConfiguration> {
     if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
+    const models = await this.listModels()
+    this.modelId ??=
+      models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null
     return {
-      models: await this.listModels(),
+      models,
       modelId: this.modelId,
       reasoningEffort: this.reasoningEffort,
     }
@@ -360,10 +363,11 @@ export class CodexCliRuntime implements CliRuntime {
     let cursor: string | null = null
     do {
       const response: ModelListResponse =
-        await transport.request<ModelListResponse>(
-        'model/list',
-        { cursor, limit: 100, includeHidden: false },
-      )
+        await transport.request<ModelListResponse>('model/list', {
+          cursor,
+          limit: 100,
+          includeHidden: false,
+        })
       models.push(
         ...response.data
           .filter((model) => !model.hidden)

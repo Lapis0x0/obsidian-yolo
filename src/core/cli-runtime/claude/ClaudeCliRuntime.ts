@@ -354,31 +354,31 @@ export class ClaudeCliRuntime implements CliRuntime {
         prompt: this.inputQueue,
         options: {
           abortController: nativeAbortController,
-        cwd: this.vaultPath,
-        pathToClaudeCodeExecutable: processSupport.cliPath,
-        env: processSupport.env,
-        spawnClaudeCodeProcess: processSupport.spawnClaudeCodeProcess,
-        includePartialMessages: true,
-        permissionMode: 'default',
-        canUseTool: this.createCanUseTool(),
-        systemPrompt: {
-          type: 'preset',
-          preset: 'claude_code',
-          ...(input.assistant.systemPrompt
-            ? { append: input.assistant.systemPrompt }
+          cwd: this.vaultPath,
+          pathToClaudeCodeExecutable: processSupport.cliPath,
+          env: processSupport.env,
+          spawnClaudeCodeProcess: processSupport.spawnClaudeCodeProcess,
+          includePartialMessages: true,
+          permissionMode: 'default',
+          canUseTool: this.createCanUseTool(),
+          systemPrompt: {
+            type: 'preset',
+            preset: 'claude_code',
+            ...(input.assistant.systemPrompt
+              ? { append: input.assistant.systemPrompt }
+              : {}),
+          },
+          ...(input.sessionRef
+            ? { resume: input.sessionRef.nativeSessionId }
+            : { sessionId: sessionRef.nativeSessionId }),
+          ...(pluginPaths.length > 0
+            ? {
+                plugins: pluginPaths.map((path) => ({
+                  type: 'local' as const,
+                  path,
+                })),
+              }
             : {}),
-        },
-        ...(input.sessionRef
-          ? { resume: input.sessionRef.nativeSessionId }
-          : { sessionId: sessionRef.nativeSessionId }),
-        ...(pluginPaths.length > 0
-          ? {
-              plugins: pluginPaths.map((path) => ({
-                type: 'local' as const,
-                path,
-              })),
-            }
-          : {}),
         },
       })
     } finally {
@@ -392,16 +392,22 @@ export class ClaudeCliRuntime implements CliRuntime {
         initialization.models.length > 0
           ? initialization.models
           : await query.supportedModels()
-      console.debug('[YOLO] Claude CLI models', supportedModels)
       this.models = supportedModels.map((model) => ({
         id: model.value,
-        label: model.displayName,
+        label:
+          model.value === 'default' && model.resolvedModel
+            ? model.resolvedModel
+            : model.displayName,
         ...(model.description ? { description: model.description } : {}),
         reasoningEfforts: (model.supportedEffortLevels ?? []).map((id) => ({
           id,
         })),
+        isDefault: model.value === 'default',
       }))
-      this.modelId = null
+      this.modelId =
+        this.models.find((model) => model.isDefault)?.id ??
+        this.models[0]?.id ??
+        null
       this.reasoningEffort = null
       this.publishSessionBound(sessionRef)
     } catch (error) {

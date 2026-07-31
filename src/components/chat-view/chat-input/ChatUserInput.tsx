@@ -21,8 +21,10 @@ import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getYoloSnippetsPath } from '../../../core/paths/yoloPaths'
+import type { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { openSnippetsFileInVault } from '../../../core/snippets/snippetsFile'
+import type { SnippetEntry } from '../../../core/snippets/snippetsManager'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { ChatSelectedSkill } from '../../../types/chat'
 import { ChatModel } from '../../../types/chat-model.types'
@@ -130,6 +132,8 @@ export type ChatUserInputProps = {
       | Promise<ContextBreakdownInputs | null>
   }
   showQuickAccess?: boolean
+  quickAccessSkillEntries?: LiteSkillEntry[]
+  quickAccessSnippetEntries?: SnippetEntry[]
 }
 
 const DEFAULT_INPUT_HEIGHT = 80
@@ -187,6 +191,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onAbort,
       contextUsage,
       showQuickAccess = false,
+      quickAccessSkillEntries,
+      quickAccessSnippetEntries,
     },
     ref,
   ) => {
@@ -257,7 +263,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
     const mentionableModels = allowModelMentions ? enabledChatModels : []
 
-    const allSkillEntries = useLiteSkillEntries(app, { settings })
+    const loadedSkillEntries = useLiteSkillEntries(app, { settings })
+    const allSkillEntries = quickAccessSkillEntries ?? loadedSkillEntries
     const availableAssistants = useMemo(
       () => settings.assistants || [],
       [settings.assistants],
@@ -284,7 +291,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       )
     }, [allSkillEntries, availableAssistants, currentAssistantId, settings])
 
-    const availableSnippets = useSnippetEntries()
+    const loadedSnippetEntries = useSnippetEntries()
+    const availableSnippets = quickAccessSnippetEntries ?? loadedSnippetEntries
 
     const handleCreateSnippetsFile = useCallback(() => {
       void (async () => {

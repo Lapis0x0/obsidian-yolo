@@ -245,11 +245,23 @@ describe('CLI runtime coordinator', () => {
     expect(harness.codexRuntimes[0].cancel).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps one controller per scope and isolates events after switching provider', async () => {
+  it('keeps one controller per provider and isolates their timelines', async () => {
     const { coordinator, harness } = await createCoordinator()
     const scope = coordinator.createScope()
-    const controller = scope.conversationController
-    await controller.ensureReady({
+    const claudeController = scope.selectConversationRuntime('claude-code')
+    const codexController = scope.selectConversationRuntime('codex')
+
+    expect(codexController).not.toBe(claudeController)
+    expect(scope.selectConversationRuntime('claude-code')).toBe(
+      claudeController,
+    )
+    expect(scope.selectConversationRuntime('codex')).toBe(codexController)
+
+    await claudeController.ensureReady({
+      systemPrompt: '',
+      enabledSkillNames: [],
+    })
+    await codexController.ensureReady({
       systemPrompt: '',
       enabledSkillNames: [],
     })
@@ -257,23 +269,18 @@ describe('CLI runtime coordinator', () => {
       type: 'run_state',
       state: 'running',
     })
-    expect(controller.getSnapshot().runState).toBe('running')
-
-    expect(scope.selectConversationRuntime('codex')).toBe(controller)
-    expect(controller.getSnapshot()).toMatchObject({
-      runtimeId: 'codex',
-      messages: [],
-      sessionRef: null,
-      runState: 'idle',
-    })
-    harness.claudeRuntimes[0].emit({
+    harness.codexRuntimes[0].emit({
       type: 'run_state',
       state: 'error',
-      error: 'stale',
+      error: 'codex error',
     })
-    expect(controller.getSnapshot().runState).toBe('idle')
-    expect(scope.conversationController).toBe(controller)
-    expect(controller.getSnapshot().runtimeId).toBe('codex')
+
+    expect(claudeController.getSnapshot().runState).toBe('running')
+    expect(codexController.getSnapshot()).toMatchObject({
+      runtimeId: 'codex',
+      runState: 'error',
+      error: 'codex error',
+    })
   })
 
   it('gives concurrent consumers isolated scopes and disposes them independently', async () => {
@@ -285,7 +292,9 @@ describe('CLI runtime coordinator', () => {
       second.resolveRuntime('claude-code'),
     )
     expect(first.sessionService).not.toBe(second.sessionService)
-    expect(first.conversationController).not.toBe(second.conversationController)
+    expect(first.selectConversationRuntime('claude-code')).not.toBe(
+      second.selectConversationRuntime('claude-code'),
+    )
 
     await first.dispose()
     expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
@@ -302,19 +311,21 @@ describe('CLI runtime coordinator', () => {
   it('disposes controller before every created runtime and only does so once', async () => {
     const { coordinator, harness } = await createCoordinator()
     const scope = coordinator.createScope()
-    const controller = scope.conversationController
-    scope.resolveRuntime('codex')
-    const disposeController = jest.spyOn(controller, 'dispose')
+    const claudeController = scope.selectConversationRuntime('claude-code')
+    const codexController = scope.selectConversationRuntime('codex')
+    const disposeClaudeController = jest.spyOn(claudeController, 'dispose')
+    const disposeCodexController = jest.spyOn(codexController, 'dispose')
 
     const firstDispose = scope.dispose()
     const secondDispose = scope.dispose()
     expect(secondDispose).toBe(firstDispose)
     await firstDispose
 
-    expect(disposeController).toHaveBeenCalledTimes(1)
+    expect(disposeClaudeController).toHaveBeenCalledTimes(1)
+    expect(disposeCodexController).toHaveBeenCalledTimes(1)
     expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
     expect(harness.codexRuntimes[0].dispose).toHaveBeenCalledTimes(1)
-    expect(disposeController.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(disposeClaudeController.mock.invocationCallOrder[0]).toBeLessThan(
       harness.claudeRuntimes[0].dispose.mock.invocationCallOrder[0],
     )
     await scope.dispose()

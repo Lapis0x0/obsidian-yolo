@@ -1681,21 +1681,9 @@ export type TranslationKeys = {
       cancelError?: string
       openError?: string
       transitionError?: string
-      state?: {
-        idle?: string
-        running?: string
-        waitingForApproval?: string
-        waitingForUser?: string
-        completed?: string
-        aborted?: string
-        error?: string
-      }
     }
     cliControls?: {
       loadingModels?: string
-      loadingEffort?: string
-      defaultModel?: string
-      defaultEffort?: string
       loadError?: string
       updateError?: string
     }

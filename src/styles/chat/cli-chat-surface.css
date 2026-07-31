@@ -10,13 +10,6 @@
   user-select: text;
 }
 
-.yolo-cli-chat-surface__footer {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-2);
-}
-
-.yolo-cli-chat-surface__run-state,
 .yolo-cli-chat-surface__error {
   padding: 0 var(--size-4-2);
   color: var(--text-muted);

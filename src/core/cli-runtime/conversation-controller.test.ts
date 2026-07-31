@@ -5,6 +5,7 @@ import type {
   CliApprovalResponse,
   CliQuestionResponse,
   CliRuntime,
+  CliRuntimeConfiguration,
   CliRuntimeEvent,
   CliRuntimeEventListener,
   CliRuntimeId,
@@ -67,8 +68,22 @@ class FakeCliRuntime implements CliRuntime {
   }
   sendTurnImpl: (input: CliTurnInput) => Promise<void> = async () => undefined
   cancelImpl: () => Promise<void> = async () => undefined
+  readonly configuration: CliRuntimeConfiguration
 
-  constructor(readonly runtimeId: CliRuntimeId = 'codex') {}
+  constructor(readonly runtimeId: CliRuntimeId = 'codex') {
+    this.configuration = {
+      models: [
+        {
+          id: `${runtimeId}-model`,
+          label: `${runtimeId} model`,
+          reasoningEfforts: [],
+          isDefault: true,
+        },
+      ],
+      modelId: `${runtimeId}-model`,
+      reasoningEffort: null,
+    }
+  }
 
   async listSessions(): Promise<CliSessionMetadata[]> {
     return []
@@ -84,7 +99,7 @@ class FakeCliRuntime implements CliRuntime {
   }
 
   async getConfiguration() {
-    return { models: [], modelId: null, reasoningEffort: null }
+    return this.configuration
   }
 
   async updateConfiguration() {
@@ -258,16 +273,15 @@ describe('CliConversationController', () => {
     ])
   })
 
-  it('does not dispatch a turn when an optimistic listener switches runtime', async () => {
+  it('does not dispatch a turn when an optimistic listener resets the session', async () => {
     const codex = new FakeCliRuntime('codex')
-    const claude = new FakeCliRuntime('claude-code')
     const controller = new CliConversationController(codex)
     await controller.ensureReady(assistant)
-    let switched = false
+    let reset = false
     controller.subscribe(() => {
-      if (switched) return
-      switched = true
-      controller.setRuntime(claude)
+      if (reset) return
+      reset = true
+      controller.resetSession()
     })
 
     await controller.sendTurn({
@@ -276,9 +290,8 @@ describe('CliConversationController', () => {
     })
 
     expect(codex.turnInputs).toEqual([])
-    expect(claude.turnInputs).toEqual([])
     expect(controller.getSnapshot()).toMatchObject({
-      runtimeId: 'claude-code',
+      runtimeId: 'codex',
       sessionRef: null,
       messages: [],
       runState: 'idle',
@@ -315,27 +328,26 @@ describe('CliConversationController', () => {
     ).toEqual(['second-user'])
   })
 
-  it('isolates old runtime callbacks after switching providers', async () => {
-    const codex = new FakeCliRuntime('codex')
-    const claude = new FakeCliRuntime('claude-code')
-    const controller = new CliConversationController(codex)
-    const staleListener = codex.subscribedListeners[0]
+  it('isolates old runtime callbacks after resetting the session', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    const controller = new CliConversationController(runtime)
+    const staleListener = runtime.subscribedListeners[0]
 
-    controller.setRuntime(claude)
+    controller.resetSession()
     await controller.ensureReady(assistant)
-    claude.emit({
+    runtime.emit({
       type: 'message_upsert',
-      message: assistantMessage('claude-message'),
+      message: assistantMessage('current-message'),
     })
     staleListener({
       type: 'message_upsert',
-      message: assistantMessage('codex-stale'),
+      message: assistantMessage('stale-message'),
     })
 
-    expect(controller.getSnapshot().runtimeId).toBe('claude-code')
+    expect(controller.getSnapshot().runtimeId).toBe('codex')
     expect(
       controller.getSnapshot().messages.map((message) => message.id),
-    ).toEqual(['claude-message'])
+    ).toEqual(['current-message'])
   })
 
   it('unsubscribes and ignores outstanding callbacks when disposed', async () => {

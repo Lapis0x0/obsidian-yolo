@@ -63,6 +63,7 @@ import {
   useChatHistory,
 } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
+import { useLiteSkillEntries } from '../../hooks/useLiteSkillEntries'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
@@ -172,7 +173,6 @@ import {
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
-  selectFreshCliRuntime,
   shouldBlockCliSessionOpen,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
@@ -183,6 +183,7 @@ import CliChatSurface from './CliChatSurface'
 import { CliSessionListSection } from './CliSessionListSection'
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
+import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
 import { syncRenderedLatexSelection } from './latex-copy'
 import MessageNavigator from './MessageNavigator'
@@ -952,6 +953,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [agentService],
   )
   const { settings, setSettings } = useSettings()
+  const quickAccessSkillEntries = useLiteSkillEntries(app, { settings })
+  const quickAccessSnippetEntries = useSnippetEntries()
   const { t } = useLanguage()
   const { getMcpManager } = useMcp()
 
@@ -1872,7 +1875,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           return
         }
         if (!cliRuntimeScope) return
-        const controller = selectFreshCliRuntime(cliRuntimeScope, runtimeId)
+        const controller = cliRuntimeScope.selectConversationRuntime(runtimeId)
         setCliConversationController(controller)
         lastCliRuntimeIdRef.current = runtimeId
         activeRuntimeIdRef.current = runtimeId
@@ -1905,6 +1908,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       activeRuntimeId,
       activeRuntimeIdRef,
       cliRuntimeAvailable,
+      cliConversationController,
       cliRuntimeScope,
       t,
       transitionCliSession,
@@ -6694,7 +6698,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         .updateConfiguration({ modelId })
         .catch((error) => {
           new Notice(
-            t('chat.cliControls.updateError', '无法更新 CLI 配置：{message}').replace(
+            t(
+              'chat.cliControls.updateError',
+              '无法更新 CLI 配置：{message}',
+            ).replace(
               '{message}',
               error instanceof Error ? error.message : String(error),
             ),
@@ -6711,7 +6718,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         .updateConfiguration({ reasoningEffort })
         .catch((error) => {
           new Notice(
-            t('chat.cliControls.updateError', '无法更新 CLI 配置：{message}').replace(
+            t(
+              'chat.cliControls.updateError',
+              '无法更新 CLI 配置：{message}',
+            ).replace(
               '{message}',
               error instanceof Error ? error.message : String(error),
             ),
@@ -7690,7 +7700,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         runtimeControls={
           isCliRuntimeActive ? (
             <CliRuntimeControls
-              configuration={activeCliConversationSnapshot?.configuration ?? null}
+              configuration={
+                activeCliConversationSnapshot?.configuration ?? null
+              }
               runtimeId={activeRuntimeId}
               disabled={
                 cliSubmissionPending || isCliRunActive || cliTransitioning
@@ -7731,6 +7743,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onAbort={handleMainInputAbort}
         contextUsage={isCliRuntimeActive ? undefined : mainInputContextUsage}
         showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
+        quickAccessSkillEntries={quickAccessSkillEntries}
+        quickAccessSnippetEntries={quickAccessSnippetEntries}
       />
     </div>
   )

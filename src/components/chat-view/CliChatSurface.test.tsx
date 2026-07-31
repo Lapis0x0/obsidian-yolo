@@ -314,7 +314,7 @@ describe('CliChatSurface', () => {
     expect(renderSurface(store.controller)).toContain('Event message')
   })
 
-  it('renders localized empty, error, and streaming states', () => {
+  it('renders localized empty and error states without a redundant run label', () => {
     const empty = createController(makeSnapshot({ sessionRef: null }))
     const failed = createController(
       makeSnapshot({
@@ -334,11 +334,21 @@ describe('CliChatSurface', () => {
     expect(renderSurface(failed.controller)).toContain(
       'CLI 会话出错：Provider process exited',
     )
-    expect(renderSurface(failed.controller)).toContain('CLI 运行出错')
-    expect(renderSurface(streaming.controller)).toContain('CLI 正在回复…')
-    expect(renderSurface(streaming.controller)).toContain(
-      'data-run-state="running"',
-    )
+    expect(renderSurface(failed.controller)).not.toContain('CLI 运行出错')
+    expect(renderSurface(streaming.controller)).not.toContain('CLI 正在回复…')
+    for (const runState of [
+      'waiting_for_approval',
+      'waiting_for_user',
+      'completed',
+      'aborted',
+    ] as const) {
+      const store = createController(makeSnapshot({ runState }))
+      const html = renderSurface(store.controller)
+
+      expect(html).not.toContain('等待工具审批')
+      expect(html).not.toContain('等待你的回答')
+      expect(html).not.toContain('data-run-state=')
+    }
   })
 
   it('uses the shared workspace greeting for an empty CLI conversation', () => {

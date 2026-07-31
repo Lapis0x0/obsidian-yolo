@@ -71,7 +71,7 @@ const normalizeMessages = (
  * detaches its listeners and invalidates outstanding operations.
  */
 export class CliConversationController {
-  private runtime: CliRuntime
+  private readonly runtime: CliRuntime
   private snapshot: CliConversationSnapshot
   private readonly listeners = new Set<() => void>()
   private unsubscribeRuntime: (() => void) | null = null
@@ -95,21 +95,6 @@ export class CliConversationController {
     if (this.disposed) return () => undefined
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
-  }
-
-  /** Switches the selected provider without taking ownership of either runtime. */
-  setRuntime(runtime: CliRuntime): void {
-    this.assertActive()
-    if (runtime === this.runtime) return
-    this.invalidateRuntimeSubscription()
-    this.runtime = runtime
-    this.runtimeEpoch += 1
-    this.conversationEpoch += 1
-    this.readyTail = Promise.resolve()
-    this.resetEventGate()
-    this.snapshot = this.createEmptySnapshot(runtime)
-    this.subscribeToRuntime()
-    this.notify()
   }
 
   /** Clears the current transcript before starting a provider-native session. */
@@ -195,8 +180,7 @@ export class CliConversationController {
     this.assertActive()
     const operation = this.captureOperation()
     try {
-      const configuration =
-        await operation.runtime.updateConfiguration(update)
+      const configuration = await operation.runtime.updateConfiguration(update)
       if (!this.isCurrent(operation)) return
       this.publish({ ...this.snapshot, configuration, error: null })
     } catch (error) {
@@ -252,7 +236,11 @@ export class CliConversationController {
       this.acceptingEvents = true
       this.bindingTarget = undefined
       this.bindingEpoch = null
-      this.publish({ ...this.snapshot, configuration, error: null })
+      this.publish({
+        ...this.snapshot,
+        configuration,
+        error: null,
+      })
     } catch (error) {
       if (this.isCurrent(operation)) {
         this.resetEventGate()
@@ -272,7 +260,7 @@ export class CliConversationController {
       sessionRef: ref,
       runState: 'idle',
       error: null,
-      configuration: null,
+      configuration: this.snapshot.configuration ?? null,
     })
   }
 

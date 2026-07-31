@@ -1814,21 +1814,9 @@ export const it: DeepPartial<TranslationKeys> = {
       openError: 'Impossibile aprire la sessione CLI: {message}',
       transitionError:
         'Impossibile lasciare la sessione CLI corrente: {message}',
-      state: {
-        idle: 'Inattivo',
-        running: 'La CLI sta rispondendo…',
-        waitingForApproval: 'In attesa di approvazione dello strumento',
-        waitingForUser: 'In attesa della tua risposta',
-        completed: 'Risposta completata',
-        aborted: 'Risposta interrotta',
-        error: 'Esecuzione CLI non riuscita',
-      },
     },
     cliControls: {
       loadingModels: 'Caricamento modelli…',
-      loadingEffort: 'Intensità di ragionamento',
-      defaultModel: 'Modello predefinito CLI',
-      defaultEffort: 'Automatico',
       loadError: 'Impossibile caricare i modelli CLI: {message}',
       updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
     },

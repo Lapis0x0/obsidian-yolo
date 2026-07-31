@@ -46,7 +46,6 @@ export type CliRuntimeCoordinatorOptions = Readonly<{
 
 export type CliRuntimeScope = {
   readonly sessionService: CliSessionService
-  readonly conversationController: CliConversationController
   readonly chatRuntimeActions: ReturnType<typeof createCliChatRuntimeActions>
 
   resolveRuntime(runtimeId: CliRuntimeId): CliRuntime
@@ -127,9 +126,11 @@ class SettingsAwareSessionIndexStore implements CliSessionIndexStore {
 class DesktopCliRuntimeScope implements CliRuntimeScope {
   private readonly runtimes = new Map<CliRuntimeId, CliRuntime>()
   private readonly ownedRuntimes = new Set<CliRuntime>()
+  private readonly conversationControllers = new Map<
+    CliRuntimeId,
+    CliConversationController
+  >()
   private sessionServiceInstance: CliSessionService | null = null
-  private conversationControllerInstance: CliConversationController | null =
-    null
   private disposePromise: Promise<void> | null = null
   private disposing = false
 
@@ -155,13 +156,6 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
       indexStore: this.indexStore,
     })
     return this.sessionServiceInstance
-  }
-
-  get conversationController(): CliConversationController {
-    return (
-      this.conversationControllerInstance ??
-      this.selectConversationRuntime('claude-code')
-    )
   }
 
   resolveRuntime(runtimeId: CliRuntimeId): CliRuntime {
@@ -199,15 +193,14 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
     runtimeId: CliRuntimeId,
   ): CliConversationController {
     this.assertActive()
-    const runtime = this.resolveRuntime(runtimeId)
-    if (!this.conversationControllerInstance) {
-      this.conversationControllerInstance = new CliConversationController(
-        runtime,
-      )
-    } else {
-      this.conversationControllerInstance.setRuntime(runtime)
-    }
-    return this.conversationControllerInstance
+    const existing = this.conversationControllers.get(runtimeId)
+    if (existing) return existing
+
+    const controller = new CliConversationController(
+      this.resolveRuntime(runtimeId),
+    )
+    this.conversationControllers.set(runtimeId, controller)
+    return controller
   }
 
   dispose(): Promise<void> {
@@ -218,7 +211,9 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
 
   private async disposeOwnedResources(): Promise<void> {
     try {
-      this.conversationControllerInstance?.dispose()
+      for (const controller of this.conversationControllers.values()) {
+        controller.dispose()
+      }
       const results = await Promise.allSettled(
         [...this.ownedRuntimes].map((runtime) => runtime.dispose()),
       )

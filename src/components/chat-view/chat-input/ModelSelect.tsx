@@ -101,8 +101,7 @@ export const ModelSelect = forwardRef<
           .filter((model) => model.providerId === providerId)
           .map((model) => ({
             id: model.id,
-            label:
-              model.name || model.model || getModelDisplayName(model.id),
+            label: model.name || model.model || getModelDisplayName(model.id),
             group: providerId,
           })),
       )

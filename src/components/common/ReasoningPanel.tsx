@@ -54,14 +54,10 @@ export function ReasoningPanel({
     setDraftValue(safeValue)
   }, [safeValue])
 
-  const safeDraftValue = options.some(
-    (opt) => opt.value === draftValue,
-  )
+  const safeDraftValue = options.some((opt) => opt.value === draftValue)
     ? draftValue
     : safeValue
-  const currentIndex = options.findIndex(
-    (opt) => opt.value === safeDraftValue,
-  )
+  const currentIndex = options.findIndex((opt) => opt.value === safeDraftValue)
   const previousIndex = options.findIndex(
     (opt) => opt.value === previousDraftValueRef.current,
   )

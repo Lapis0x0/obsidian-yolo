@@ -12,10 +12,10 @@ const import_meta_url =
         Boolean(process.versions && process.versions.electron) &&
         typeof __filename === 'string'
       ? require('url').pathToFileURL(__filename).href
-    : typeof document !== 'undefined'
-      ? (document.currentScript && document.currentScript.src) ||
-        new URL('main.js', document.baseURI).href
-      : require('url').pathToFileURL(__filename).href
+      : typeof document !== 'undefined'
+        ? (document.currentScript && document.currentScript.src) ||
+          new URL('main.js', document.baseURI).href
+        : require('url').pathToFileURL(__filename).href
 
 var _scriptName = import_meta_url
 

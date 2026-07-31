@@ -187,30 +187,15 @@ function CliUserMessage({ message }: { message: ChatUserMessage }) {
 
 function CliSurfaceFooter({
   error,
-  runState,
   footerContent,
 }: {
   error: string | null
-  runState: CliRuntimeRunState
   footerContent: ReactNode
 }) {
   const { t } = useLanguage()
-  const stateLabels: Record<CliRuntimeRunState, string> = {
-    idle: t('chat.cliSurface.state.idle', '空闲'),
-    running: t('chat.cliSurface.state.running', 'CLI 正在回复…'),
-    waiting_for_approval: t(
-      'chat.cliSurface.state.waitingForApproval',
-      '等待工具审批',
-    ),
-    waiting_for_user: t('chat.cliSurface.state.waitingForUser', '等待你的回答'),
-    completed: t('chat.cliSurface.state.completed', '回复完成'),
-    aborted: t('chat.cliSurface.state.aborted', '回复已停止'),
-    error: t('chat.cliSurface.state.error', 'CLI 运行出错'),
-  }
-  const showRunState = runState !== 'idle'
 
   return (
-    <div className="yolo-cli-chat-surface__footer">
+    <>
       {error ? (
         <div className="yolo-cli-chat-surface__error" role="alert">
           {t('chat.cliSurface.error', 'CLI 会话出错：{message}').replace(
@@ -219,17 +204,8 @@ function CliSurfaceFooter({
           )}
         </div>
       ) : null}
-      {showRunState ? (
-        <div
-          className="yolo-cli-chat-surface__run-state"
-          data-run-state={runState}
-          role="status"
-        >
-          {stateLabels[runState]}
-        </div>
-      ) : null}
       {footerContent}
-    </div>
+    </>
   )
 }
 
@@ -438,7 +414,6 @@ export function CliChatSurface({
         footerContent={
           <CliSurfaceFooter
             error={snapshot.error}
-            runState={snapshot.runState}
             footerContent={footerContent}
           />
         }

@@ -12,7 +12,7 @@ import {
 import { ModelSelect } from './ModelSelect'
 import { ReasoningSelect } from './ReasoningSelect'
 
-const DEFAULT_VALUE = '__yolo_cli_default__'
+const LOADING_VALUE = '__yolo_cli_loading__'
 
 type CliRuntimeControlsProps = {
   configuration: CliRuntimeConfiguration | null
@@ -35,6 +35,7 @@ export function CliRuntimeControls({
   const selectedModel =
     models.find((model) => model.id === configuration?.modelId) ??
     models.find((model) => model.isDefault) ??
+    models[0] ??
     null
   const efforts = selectedModel?.reasoningEfforts ?? []
   const reasoningLevels: ReasoningLevel[] = [
@@ -63,23 +64,24 @@ export function CliRuntimeControls({
   return (
     <div className="yolo-cli-runtime-controls">
       <ModelSelect
-        modelId={configuration?.modelId ?? DEFAULT_VALUE}
+        modelId={selectedModel?.id ?? LOADING_VALUE}
         disabled={disabled || !configuration}
-        options={[
-          {
-            id: DEFAULT_VALUE,
-            label: t('chat.cliControls.defaultModel', 'CLI 默认模型'),
-            group: providerLabel,
-          },
-          ...models.map((model) => ({
-            id: model.id,
-            label: model.label,
-            group: providerLabel,
-          })),
-        ]}
-        onChange={(value) =>
-          onModelChange(value === DEFAULT_VALUE ? null : value)
+        options={
+          models.length > 0
+            ? models.map((model) => ({
+                id: model.id,
+                label: model.label,
+                group: providerLabel,
+              }))
+            : [
+                {
+                  id: LOADING_VALUE,
+                  label: t('chat.cliControls.loadingModels', '加载模型…'),
+                  group: providerLabel,
+                },
+              ]
         }
+        onChange={onModelChange}
         align="center"
         sideOffset={8}
         popover={{
