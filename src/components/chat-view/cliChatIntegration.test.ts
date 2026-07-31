@@ -82,6 +82,7 @@ const waitUntil = async (predicate: () => boolean): Promise<void> => {
 const cliSnapshot = (
   overrides: Partial<CliConversationSnapshot> = {},
 ): CliConversationSnapshot => ({
+  surfaceId: 'cli:codex:test-surface',
   runtimeId: 'codex',
   messages: [],
   sessionRef: null,
@@ -95,9 +96,35 @@ describe('CLI chat integration', () => {
     jest.useRealTimers()
   })
 
+  it('tracks UI presentation separately from native turn acceptance', () => {
+    const coordinator = new CliChatOperationCoordinator()
+    const operation = coordinator.beginSubmission(11)!
+    const message = userMessage()
+
+    expect(coordinator.markPresented(operation.token, message)).toBe(true)
+    expect(coordinator.getSnapshot()).toMatchObject({
+      submissionPhase: 'preparing',
+      presentedDraft: {
+        draftRevision: 11,
+        userMessage: { id: message.id },
+      },
+      acceptedDraft: null,
+    })
+
+    coordinator.acknowledgePresentedDraft(operation.token)
+    expect(coordinator.getSnapshot().presentedDraft).toBeNull()
+    coordinator.finishSubmission(operation.token)
+  })
+
   it('prepares a fresh runtime with its remembered model and effort', async () => {
     const ensureReady = jest.fn(async () => undefined)
     const controller = {
+      stageTurn: jest.fn((message: ChatUserMessage) => ({
+        surfaceId: 'cli:codex:test',
+        conversationEpoch: 0,
+        userMessageId: message.id,
+      })),
+      rejectStagedTurn: jest.fn(),
       ensureReady,
       getSnapshot: () => cliSnapshot(),
     } as unknown as CliConversationController
@@ -178,6 +205,7 @@ describe('CLI chat integration', () => {
     ).toBe('yolo')
 
     const cliSnapshot = {
+      surfaceId: 'codex:snapshot-session',
       runtimeId: 'codex' as const,
       messages: [],
       sessionRef: {
@@ -221,6 +249,12 @@ describe('CLI chat integration', () => {
     const sendTurn = jest.fn(async () => undefined)
     const recordOpenedSession = jest.fn(async () => undefined)
     const controller = {
+      stageTurn: jest.fn((message: ChatUserMessage) => ({
+        surfaceId: 'cli:codex:test',
+        conversationEpoch: 0,
+        userMessageId: message.id,
+      })),
+      rejectStagedTurn: jest.fn(),
       ensureReady,
       sendTurn,
       getSnapshot: () => ({
@@ -296,6 +330,12 @@ describe('CLI chat integration', () => {
       nativeSessionId: 'native-accepted',
     }
     const controller = {
+      stageTurn: jest.fn((message: ChatUserMessage) => ({
+        surfaceId: 'cli:codex:test',
+        conversationEpoch: 0,
+        userMessageId: message.id,
+      })),
+      rejectStagedTurn: jest.fn(),
       ensureReady: jest.fn(async () => undefined),
       sendTurn: jest.fn(async () => undefined),
       getSnapshot: () => ({
@@ -354,6 +394,12 @@ describe('CLI chat integration', () => {
     const ensureReady = jest.fn(async () => undefined)
     const sendTurn = jest.fn(async () => undefined)
     const controller = {
+      stageTurn: jest.fn((message: ChatUserMessage) => ({
+        surfaceId: 'cli:codex:test',
+        conversationEpoch: 0,
+        userMessageId: message.id,
+      })),
+      rejectStagedTurn: jest.fn(),
       ensureReady,
       sendTurn,
     } as unknown as CliConversationController
@@ -537,6 +583,12 @@ describe('CLI chat integration', () => {
     const cancel = jest.fn(async () => undefined)
     const resetSession = jest.fn()
     const controller = {
+      stageTurn: jest.fn((message: ChatUserMessage) => ({
+        surfaceId: 'cli:codex:test',
+        conversationEpoch: 0,
+        userMessageId: message.id,
+      })),
+      rejectStagedTurn: jest.fn(),
       ensureReady: jest.fn(async () => undefined),
       sendTurn: jest.fn(async () => undefined),
       cancel,

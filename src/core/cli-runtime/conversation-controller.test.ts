@@ -146,6 +146,45 @@ class FakeCliRuntime implements CliRuntime {
 }
 
 describe('CliConversationController', () => {
+  it('keeps the surface identity stable when a fresh native session binds', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    const controller = new CliConversationController(runtime)
+    const initialSurfaceId = controller.getSnapshot().surfaceId
+
+    await controller.ensureReady(assistant)
+
+    expect(controller.getSnapshot()).toMatchObject({
+      surfaceId: initialSurfaceId,
+      sessionRef: session('new-codex'),
+    })
+
+    controller.resetSession()
+    expect(controller.getSnapshot().surfaceId).not.toBe(initialSurfaceId)
+  })
+
+  it('presents a staged turn before provider readiness and scopes rejection', () => {
+    const controller = new CliConversationController(
+      new FakeCliRuntime('codex'),
+    )
+    const stagedTurn = controller.stageTurn(
+      userMessage('optimistic-user', 'Visible immediately'),
+    )
+
+    expect(controller.getSnapshot()).toMatchObject({
+      surfaceId: stagedTurn.surfaceId,
+      runState: 'running',
+      messages: [{ id: 'optimistic-user', role: 'user' }],
+    })
+
+    controller.resetSession()
+    controller.rejectStagedTurn(stagedTurn, new Error('stale failure'))
+    expect(controller.getSnapshot()).toMatchObject({
+      runState: 'idle',
+      error: null,
+      messages: [],
+    })
+  })
+
   it('applies a preferred model and effort before publishing ready configuration', async () => {
     const runtime = new FakeCliRuntime()
     runtime.configuration = {

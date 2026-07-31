@@ -83,6 +83,7 @@ export type AcceptedCliDraft = Readonly<{
 
 export type CliChatOperationSnapshot = Readonly<{
   submissionPhase: CliSubmissionPhase
+  presentedDraft: AcceptedCliDraft | null
   acceptedDraft: AcceptedCliDraft | null
   isTransitioning: boolean
 }>
@@ -99,6 +100,7 @@ type CliSubmissionOperation = {
 
 const EMPTY_OPERATION_SNAPSHOT: CliChatOperationSnapshot = Object.freeze({
   submissionPhase: 'idle',
+  presentedDraft: null,
   acceptedDraft: null,
   isTransitioning: false,
 })
@@ -115,6 +117,7 @@ const isActiveRunState = (snapshot: CliConversationSnapshot): boolean =>
 export class CliChatOperationCoordinator {
   private readonly listeners = new Set<() => void>()
   private submission: CliSubmissionOperation | null = null
+  private presentedDraft: AcceptedCliDraft | null = null
   private acceptedDraft: AcceptedCliDraft | null = null
   private nextSubmissionToken = 1
   private transitionToken = 0
@@ -167,6 +170,17 @@ export class CliChatOperationCoordinator {
     return true
   }
 
+  markPresented(token: number, userMessage: ChatUserMessage): boolean {
+    if (!this.isCurrentSubmission(token)) return false
+    this.presentedDraft = Object.freeze({
+      token,
+      draftRevision: this.submission!.draftRevision,
+      userMessage,
+    })
+    this.publish()
+    return true
+  }
+
   markAccepted(token: number, userMessage: ChatUserMessage): boolean {
     if (!this.isCurrentSubmission(token)) return false
     this.submission!.phase = 'accepted'
@@ -190,6 +204,12 @@ export class CliChatOperationCoordinator {
   acknowledgeAcceptedDraft(token: number): void {
     if (this.acceptedDraft?.token !== token) return
     this.acceptedDraft = null
+    this.publish()
+  }
+
+  acknowledgePresentedDraft(token: number): void {
+    if (this.presentedDraft?.token !== token) return
+    this.presentedDraft = null
     this.publish()
   }
 
@@ -311,6 +331,7 @@ export class CliChatOperationCoordinator {
   private publish(): void {
     this.snapshot = Object.freeze({
       submissionPhase: this.submission?.phase ?? 'idle',
+      presentedDraft: this.presentedDraft,
       acceptedDraft: this.acceptedDraft,
       isTransitioning: this.transitioning || this.stopping !== null,
     })
@@ -500,6 +521,7 @@ export type SubmitCliComposerTurnInput = {
   timeContextEnabled: boolean
   signal?: AbortSignal
   onSendStarted?: () => boolean | undefined
+  onPresented?: (userMessage: ChatUserMessage) => void
   onAccepted?: (userMessage: ChatUserMessage) => void
   resolveAssistantBinding?: typeof resolveCliAssistantBinding
   encodeTurnContent?: typeof buildCliTurnContent
@@ -516,6 +538,7 @@ export const submitCliComposerTurn = async ({
   timeContextEnabled,
   signal,
   onSendStarted,
+  onPresented,
   onAccepted,
   resolveAssistantBinding = resolveCliAssistantBinding,
   encodeTurnContent = buildCliTurnContent,
@@ -542,28 +565,37 @@ export const submitCliComposerTurn = async ({
     selectedSkills: stampedUserMessage.selectedSkills,
     timeContext: stampedUserMessage.timeContext,
   })
-  const assistant = await resolveAssistantBinding({
-    app,
-    settings,
-    assistantId,
-  })
-  throwIfAborted()
-  await prepareCliConversation({
-    controller,
-    scope,
-    runtimeId,
-    assistant,
-    settings,
-  })
-  throwIfAborted()
-  if (onSendStarted?.() === false) {
-    throw new DOMException('CLI submission superseded.', 'AbortError')
+  const stagedTurn = controller.stageTurn(stampedUserMessage)
+  onPresented?.(stampedUserMessage)
+  try {
+    const assistant = await resolveAssistantBinding({
+      app,
+      settings,
+      assistantId,
+    })
+    throwIfAborted()
+    await prepareCliConversation({
+      controller,
+      scope,
+      runtimeId,
+      assistant,
+      settings,
+    })
+    throwIfAborted()
+    if (onSendStarted?.() === false) {
+      throw new DOMException('CLI submission superseded.', 'AbortError')
+    }
+    await controller.sendTurn({
+      userMessage: stampedUserMessage,
+      content,
+    })
+    onAccepted?.(stampedUserMessage)
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      controller.rejectStagedTurn(stagedTurn, error)
+    }
+    throw error
   }
-  await controller.sendTurn({
-    userMessage: stampedUserMessage,
-    content,
-  })
-  onAccepted?.(stampedUserMessage)
 
   const snapshot = controller.getSnapshot()
   if (!snapshot.sessionRef) {

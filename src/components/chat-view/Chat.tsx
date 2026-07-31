@@ -2370,11 +2370,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         return
       }
       cliOperationCoordinator.acknowledgeAcceptedDraft(acceptedDraft.token)
-      commitSentSelectionHighlights(acceptedDraft.userMessage.mentionables)
+    },
+    [cliOperationCoordinator],
+  )
+  const consumePresentedCliDraft = useCallback(
+    (
+      presentedDraft: NonNullable<CliChatOperationSnapshot['presentedDraft']>,
+    ) => {
+      if (
+        !cliOperationCoordinator ||
+        cliOperationCoordinator.getSnapshot().presentedDraft?.token !==
+          presentedDraft.token
+      ) {
+        return
+      }
+      cliOperationCoordinator.acknowledgePresentedDraft(presentedDraft.token)
+      commitSentSelectionHighlights(presentedDraft.userMessage.mentionables)
       const latestDraft = getLatestInputMessage()
       if (
         shouldClearAcceptedCliDraft({
-          acceptedDraft,
+          acceptedDraft: presentedDraft,
           currentDraft: latestDraft,
           currentDraftRevision: inputDraftRevisionRef.current,
         })
@@ -2390,6 +2405,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       replaceInputMessage,
     ],
   )
+  useEffect(() => {
+    const presentedDraft = cliOperationSnapshot?.presentedDraft
+    if (presentedDraft) consumePresentedCliDraft(presentedDraft)
+  }, [cliOperationSnapshot?.presentedDraft, consumePresentedCliDraft])
   useEffect(() => {
     const acceptedDraft = cliOperationSnapshot?.acceptedDraft
     if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
@@ -6532,6 +6551,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               timeContextEnabled: state.selectedCliAssistantTimeContextEnabled,
               signal: submission.signal,
               onSendStarted: () => coordinator.markSending(submission.token),
+              onPresented: (presentedMessage) => {
+                if (
+                  coordinator.markPresented(
+                    submission.token,
+                    presentedMessage,
+                  ) &&
+                  chatMountedRef.current
+                ) {
+                  const presentedDraft =
+                    coordinator.getSnapshot().presentedDraft
+                  if (presentedDraft) consumePresentedCliDraft(presentedDraft)
+                }
+              },
               onAccepted: (acceptedMessage) => {
                 if (
                   coordinator.markAccepted(submission.token, acceptedMessage) &&
@@ -6693,6 +6725,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       consumeAcceptedCliDraft,
+      consumePresentedCliDraft,
       mainInputSubmitStateRef,
       refreshCliSessions,
       replaceInputMessage,
@@ -7926,9 +7959,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <div className="yolo-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
         </div>
-      ) : isCliRuntimeActive && cliConversationController && cliRuntimeScope ? (
+      ) : isCliRuntimeActive &&
+        cliConversationController &&
+        activeCliConversationSnapshot &&
+        cliRuntimeScope ? (
         <CliChatSurface
-          controller={cliConversationController}
+          snapshot={activeCliConversationSnapshot}
+          showEmptyState={activeSurfaceEmpty}
           actions={cliRuntimeScope.chatRuntimeActions}
           footerContent={mainInputFooter}
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}

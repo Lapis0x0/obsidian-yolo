@@ -1,3 +1,5 @@
+import { v4 as uuidv4 } from 'uuid'
+
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 
 import type {
@@ -14,6 +16,12 @@ import type {
 } from './types'
 
 export type CliConversationSnapshot = Readonly<{
+  /**
+   * Stable identity for the selected conversation surface. Unlike
+   * `sessionRef`, this exists before a provider-native session is bound and
+   * must not change when that binding arrives.
+   */
+  surfaceId: string
   runtimeId: CliRuntime['runtimeId']
   messages: readonly ChatMessage[]
   sessionRef: CliSessionRef | null
@@ -26,6 +34,12 @@ export type CliConversationSnapshot = Readonly<{
 export type CliConversationTurn = Readonly<{
   userMessage: ChatUserMessage
   content: CliTurnInput['content']
+}>
+
+export type CliStagedConversationTurn = Readonly<{
+  surfaceId: string
+  conversationEpoch: number
+  userMessageId: string
 }>
 
 const getErrorMessage = (error: unknown): string =>
@@ -203,6 +217,42 @@ export class CliConversationController {
     }
   }
 
+  /**
+   * Accepts a composer turn into the local transcript before provider setup.
+   * Native acceptance remains owned by `sendTurn`.
+   */
+  stageTurn(userMessage: ChatUserMessage): CliStagedConversationTurn {
+    this.assertActive()
+    const stagedTurn = Object.freeze({
+      surfaceId: this.snapshot.surfaceId,
+      conversationEpoch: this.conversationEpoch,
+      userMessageId: userMessage.id,
+    })
+    this.pendingOptimisticUserMessageId = userMessage.id
+    this.publish({
+      ...this.snapshot,
+      messages: upsertMessage(this.snapshot.messages, userMessage),
+      runState: 'running',
+      error: null,
+    })
+    return stagedTurn
+  }
+
+  rejectStagedTurn(
+    stagedTurn: CliStagedConversationTurn,
+    error: unknown,
+  ): void {
+    if (
+      this.disposed ||
+      stagedTurn.surfaceId !== this.snapshot.surfaceId ||
+      stagedTurn.conversationEpoch !== this.conversationEpoch ||
+      stagedTurn.userMessageId !== this.pendingOptimisticUserMessageId
+    ) {
+      return
+    }
+    this.publishError(error)
+  }
+
   async updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration | undefined> {
@@ -373,6 +423,9 @@ export class CliConversationController {
     this.reconciledNativeUserMessageIds.clear()
     this.replaceRuntimeSubscription()
     this.publish({
+      surfaceId: ref
+        ? `${ref.runtimeId}:${ref.nativeSessionId}`
+        : this.createSurfaceId(),
       runtimeId: this.runtime.runtimeId,
       messages: Object.freeze([]),
       sessionRef: ref,
@@ -530,6 +583,7 @@ export class CliConversationController {
 
   private createEmptySnapshot(runtime: CliRuntime): CliConversationSnapshot {
     return Object.freeze({
+      surfaceId: this.createSurfaceId(),
       runtimeId: runtime.runtimeId,
       messages: Object.freeze([]),
       sessionRef: null,
@@ -538,6 +592,10 @@ export class CliConversationController {
       configuration: null,
       assistantId: undefined,
     })
+  }
+
+  private createSurfaceId(): string {
+    return `cli:${this.runtime.runtimeId}:${uuidv4()}`
   }
 
   private publish(snapshot: CliConversationSnapshot): void {

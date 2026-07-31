@@ -5,14 +5,12 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import type {
   ChatRuntimeActions,
-  CliConversationController,
   CliConversationSnapshot,
   CliRuntimeRunState,
   CliSessionRef,
@@ -51,20 +49,11 @@ const noopOpenEditSummaryFile = (
 ): void => undefined
 
 export type CliChatSurfaceProps = {
-  controller: CliConversationController
+  snapshot: CliConversationSnapshot
+  showEmptyState: boolean
   actions: ChatRuntimeActions
   footerContent: ReactNode
   emptyStateWorkspaceTitle?: ReactNode
-}
-
-export function useCliConversationSnapshot(
-  controller: CliConversationController,
-): CliConversationSnapshot {
-  return useSyncExternalStore(
-    controller.subscribe,
-    controller.getSnapshot,
-    controller.getSnapshot,
-  )
 }
 
 const getPromptContentText = (
@@ -85,7 +74,7 @@ const getUserMessageText = (message: ChatUserMessage): string => {
   return editorText || getPromptContentText(message.promptContent)
 }
 
-const getConversationId = (sessionRef: CliSessionRef): string =>
+const getNativeConversationId = (sessionRef: CliSessionRef): string =>
   `${sessionRef.runtimeId}:${sessionRef.nativeSessionId}`
 
 const getLatestUserMessageId = (
@@ -210,13 +199,13 @@ function CliSurfaceFooter({
 }
 
 export function CliChatSurface({
-  controller,
+  snapshot,
+  showEmptyState,
   actions,
   footerContent,
   emptyStateWorkspaceTitle,
 }: CliChatSurfaceProps) {
   const { t } = useLanguage()
-  const snapshot = useCliConversationSnapshot(controller)
   const messages = useMemo(() => [...snapshot.messages], [snapshot.messages])
   const readModel = useChatTimelineReadModel({ messages })
   const activeStreamingMessageId = getActiveStreamingMessageId(
@@ -238,9 +227,7 @@ export function CliChatSurface({
   const latestAssistantGroupId = getLatestAssistantGroupId(
     readModel.groupedChatMessages,
   )
-  const conversationId = snapshot.sessionRef
-    ? getConversationId(snapshot.sessionRef)
-    : `cli:${snapshot.runtimeId}:unbound`
+  const conversationId = snapshot.surfaceId
   const runSummary = useMemo(
     () =>
       buildRunSummary({
@@ -294,8 +281,8 @@ export function CliChatSurface({
           'CLI assistant/tool groups require a bound provider session.',
         )
       }
+      const nativeConversationId = getNativeConversationId(snapshot.sessionRef)
 
-      const sessionConversationId = getConversationId(snapshot.sessionRef)
       return (
         <ChatRuntimeActionsProvider
           actions={actions}
@@ -303,7 +290,7 @@ export function CliChatSurface({
         >
           <AssistantToolMessageGroupItem
             messages={messageGroup}
-            conversationId={sessionConversationId}
+            conversationId={nativeConversationId}
             conversationRunSummary={
               timelineItem.groupId === latestAssistantGroupId
                 ? runSummary
@@ -336,6 +323,7 @@ export function CliChatSurface({
     },
     [
       actions,
+      conversationId,
       latestAssistantGroupId,
       readModel.messagesById,
       runSummary,
@@ -354,63 +342,56 @@ export function CliChatSurface({
     [snapshot.runState],
   )
 
-  const showEmptyState =
-    readModel.groupedChatMessages.length === 0 &&
-    !ACTIVE_RUN_STATES.has(snapshot.runState)
-
   return (
     <ChatConversationPane
-        chatMode="agent"
-        yoloEnabled={false}
-        showEmptyState={showEmptyState}
-        groupedChatMessagesLength={readModel.groupedChatMessages.length}
-        isAutoFollowEnabled={isAutoFollowEnabled}
-        currentConversationId={conversationId}
-        chatTimelineItems={stableTimelineItems}
-        timelineRenderVersion={renderVersion}
-        chatMessagesRef={chatMessagesRef}
-        onScrollContainerChange={setChatMessagesElement}
-        onBottomSentinelChange={setBottomSentinelElement}
-        renderChatTimelineItem={renderTimelineItem}
-        editingAssistantMessageId={null}
-        onForceScrollToBottom={forceScrollToBottom}
-        hasStreamingMessages={ACTIVE_RUN_STATES.has(snapshot.runState)}
-        scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
-        scrollToBottomWhileStreamingLabel={t(
-          'chat.scrollToBottomWhileStreaming',
-          '回到底部继续跟随',
-        )}
-        emptyStateAskTitle={t(
-          'chat.cliSurface.emptyTitle',
-          '开始一个 CLI 会话',
-        )}
-        emptyStateAgentTitle={t(
-          'chat.cliSurface.emptyTitle',
-          '开始一个 CLI 会话',
-        )}
-        emptyStateAgentFullTitle={t(
-          'chat.cliSurface.emptyTitle',
-          '开始一个 CLI 会话',
-        )}
-        emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
-        emptyStateAskDescription={t(
-          'chat.cliSurface.emptyDescription',
-          '发送消息后，原生 CLI 对话会显示在这里。',
-        )}
-        emptyStateAgentDescription={t(
-          'chat.cliSurface.emptyDescription',
-          '发送消息后，原生 CLI 对话会显示在这里。',
-        )}
-        emptyStateAgentFullDescription={t(
-          'chat.cliSurface.emptyDescription',
-          '发送消息后，原生 CLI 对话会显示在这里。',
-        )}
-        footerContent={
-          <CliSurfaceFooter
-            error={snapshot.error}
-            footerContent={footerContent}
-          />
-        }
+      chatMode="agent"
+      yoloEnabled={false}
+      showEmptyState={showEmptyState}
+      groupedChatMessagesLength={readModel.groupedChatMessages.length}
+      isAutoFollowEnabled={isAutoFollowEnabled}
+      currentConversationId={conversationId}
+      chatTimelineItems={stableTimelineItems}
+      timelineRenderVersion={renderVersion}
+      chatMessagesRef={chatMessagesRef}
+      onScrollContainerChange={setChatMessagesElement}
+      onBottomSentinelChange={setBottomSentinelElement}
+      renderChatTimelineItem={renderTimelineItem}
+      editingAssistantMessageId={null}
+      onForceScrollToBottom={forceScrollToBottom}
+      hasStreamingMessages={ACTIVE_RUN_STATES.has(snapshot.runState)}
+      scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
+      scrollToBottomWhileStreamingLabel={t(
+        'chat.scrollToBottomWhileStreaming',
+        '回到底部继续跟随',
+      )}
+      emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '开始一个 CLI 会话')}
+      emptyStateAgentTitle={t(
+        'chat.cliSurface.emptyTitle',
+        '开始一个 CLI 会话',
+      )}
+      emptyStateAgentFullTitle={t(
+        'chat.cliSurface.emptyTitle',
+        '开始一个 CLI 会话',
+      )}
+      emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
+      emptyStateAskDescription={t(
+        'chat.cliSurface.emptyDescription',
+        '发送消息后，原生 CLI 对话会显示在这里。',
+      )}
+      emptyStateAgentDescription={t(
+        'chat.cliSurface.emptyDescription',
+        '发送消息后，原生 CLI 对话会显示在这里。',
+      )}
+      emptyStateAgentFullDescription={t(
+        'chat.cliSurface.emptyDescription',
+        '发送消息后，原生 CLI 对话会显示在这里。',
+      )}
+      footerContent={
+        <CliSurfaceFooter
+          error={snapshot.error}
+          footerContent={footerContent}
+        />
+      }
     />
   )
 }

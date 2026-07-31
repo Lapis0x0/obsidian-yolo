@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import type {
   ChatRuntimeActions,
-  CliConversationController,
   CliConversationSnapshot,
 } from '../../core/cli-runtime'
 import type {
@@ -14,8 +13,6 @@ import type {
 } from '../../types/chat'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
-let latestExternalSnapshot: CliConversationSnapshot | undefined
-let externalStoreNotificationCount = 0
 let capturedRuntimeConversation: unknown
 
 jest.mock('react', () => {
@@ -23,17 +20,6 @@ jest.mock('react', () => {
   return {
     ...actual,
     useLayoutEffect: actual.useEffect,
-    useSyncExternalStore: (
-      subscribe: (listener: () => void) => () => void,
-      getSnapshot: () => CliConversationSnapshot,
-    ) => {
-      latestExternalSnapshot = getSnapshot()
-      subscribe(() => {
-        externalStoreNotificationCount += 1
-        latestExternalSnapshot = getSnapshot()
-      })
-      return getSnapshot()
-    },
   }
 })
 
@@ -177,6 +163,7 @@ const tool: ChatToolMessage = {
 const makeSnapshot = (
   overrides: Partial<CliConversationSnapshot> = {},
 ): CliConversationSnapshot => ({
+  surfaceId: 'codex:native/session-1',
   runtimeId: 'codex',
   messages: [],
   sessionRef,
@@ -185,32 +172,16 @@ const makeSnapshot = (
   ...overrides,
 })
 
-const createController = (initial: CliConversationSnapshot) => {
-  let snapshot = initial
-  const listeners = new Set<() => void>()
-  const controller = {
-    getSnapshot: () => snapshot,
-    subscribe: (listener: () => void) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-  } as unknown as CliConversationController
-  return {
-    controller,
-    publish(next: CliConversationSnapshot) {
-      snapshot = next
-      listeners.forEach((listener) => listener())
-    },
-  }
-}
-
 const renderSurface = (
-  controller: CliConversationController,
+  snapshot: CliConversationSnapshot,
   emptyStateWorkspaceTitle?: ReactNode,
 ): string =>
   renderToStaticMarkup(
     <CliChatSurface
-      controller={controller}
+      snapshot={snapshot}
+      showEmptyState={
+        snapshot.messages.length === 0 && snapshot.runState !== 'running'
+      }
       actions={actions}
       footerContent={<div>Composer footer</div>}
       emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
@@ -221,27 +192,23 @@ describe('CliChatSurface', () => {
   beforeEach(() => {
     mockedAssistantGroup.mockClear()
     capturedRuntimeConversation = undefined
-    latestExternalSnapshot = undefined
-    externalStoreNotificationCount = 0
   })
 
   it('renders provider-hydrated promptContent, including flattened text parts', () => {
-    const store = createController(
-      makeSnapshot({
-        messages: [
-          makeUser('user-1', [
-            { type: 'text', text: 'First prompt paragraph' },
-            {
-              type: 'image_url',
-              image_url: { url: 'data:image/png;base64,ignored' },
-            },
-            { type: 'text', text: 'Second prompt paragraph' },
-          ]),
-        ],
-      }),
-    )
+    const snapshot = makeSnapshot({
+      messages: [
+        makeUser('user-1', [
+          { type: 'text', text: 'First prompt paragraph' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,ignored' },
+          },
+          { type: 'text', text: 'Second prompt paragraph' },
+        ]),
+      ],
+    })
 
-    const html = renderSurface(store.controller)
+    const html = renderSurface(snapshot)
 
     expect(html).toContain('First prompt paragraph')
     expect(html).toContain('Second prompt paragraph')
@@ -250,13 +217,11 @@ describe('CliChatSurface', () => {
   })
 
   it('groups assistant and tool messages and exposes only the copy action', () => {
-    const store = createController(
-      makeSnapshot({
-        messages: [makeUser('user-1', 'Prompt'), assistant, tool],
-      }),
-    )
+    const snapshot = makeSnapshot({
+      messages: [makeUser('user-1', 'Prompt'), assistant, tool],
+    })
 
-    const html = renderSurface(store.controller)
+    const html = renderSurface(snapshot)
 
     expect(mockedAssistantGroup).toHaveBeenCalledTimes(1)
     expect(mockedAssistantGroup.mock.calls[0]?.[0].messages).toEqual([
@@ -271,79 +236,71 @@ describe('CliChatSurface', () => {
   })
 
   it('keeps even empty native user messages read-only', () => {
-    const store = createController(
-      makeSnapshot({ messages: [makeUser('user-empty', null)] }),
-    )
+    const snapshot = makeSnapshot({
+      messages: [makeUser('user-empty', null)],
+    })
 
-    const html = renderSurface(store.controller)
+    const html = renderSurface(snapshot)
 
     expect(html).toContain('空消息')
     expect(html).not.toContain('Click to edit')
   })
 
   it('provides pending runtime actions with the actual provider session ref', () => {
-    const store = createController(
-      makeSnapshot({ messages: [assistant, tool] }),
-    )
+    const snapshot = makeSnapshot({ messages: [assistant, tool] })
 
-    renderSurface(store.controller)
+    renderSurface(snapshot)
 
     expect(capturedRuntimeConversation).toBe(sessionRef)
   })
 
   it('fails fast when an assistant/tool group has no bound provider session', () => {
-    const store = createController(
-      makeSnapshot({ messages: [assistant, tool], sessionRef: null }),
-    )
+    const snapshot = makeSnapshot({
+      messages: [assistant, tool],
+      sessionRef: null,
+    })
 
-    expect(() => renderSurface(store.controller)).toThrow(
+    expect(() => renderSurface(snapshot)).toThrow(
       'CLI assistant/tool groups require a bound provider session.',
     )
   })
 
-  it('subscribes to controller events and reads the published snapshot', () => {
-    const store = createController(makeSnapshot({ sessionRef: null }))
-    expect(renderSurface(store.controller)).toContain('开始一个 CLI 会话')
-
-    store.publish(
-      makeSnapshot({ messages: [makeUser('user-event', 'Event message')] }),
+  it('renders the snapshot supplied by the single surface owner', () => {
+    expect(renderSurface(makeSnapshot({ sessionRef: null }))).toContain(
+      '开始一个 CLI 会话',
     )
-
-    expect(externalStoreNotificationCount).toBeGreaterThan(0)
-    expect(latestExternalSnapshot?.messages[0]?.id).toBe('user-event')
-    expect(renderSurface(store.controller)).toContain('Event message')
+    expect(
+      renderSurface(
+        makeSnapshot({ messages: [makeUser('user-event', 'Event message')] }),
+      ),
+    ).toContain('Event message')
   })
 
   it('renders localized empty and error states without a redundant run label', () => {
-    const empty = createController(makeSnapshot({ sessionRef: null }))
-    const failed = createController(
-      makeSnapshot({
-        sessionRef: null,
-        runState: 'error',
-        error: 'Provider process exited',
-      }),
-    )
-    const streaming = createController(
-      makeSnapshot({
-        messages: [makeUser('user-streaming', 'Current turn')],
-        runState: 'running',
-      }),
-    )
+    const empty = makeSnapshot({ sessionRef: null })
+    const failed = makeSnapshot({
+      sessionRef: null,
+      runState: 'error',
+      error: 'Provider process exited',
+    })
+    const streaming = makeSnapshot({
+      messages: [makeUser('user-streaming', 'Current turn')],
+      runState: 'running',
+    })
 
-    expect(renderSurface(empty.controller)).toContain('开始一个 CLI 会话')
-    expect(renderSurface(failed.controller)).toContain(
+    expect(renderSurface(empty)).toContain('开始一个 CLI 会话')
+    expect(renderSurface(failed)).toContain(
       'CLI 会话出错：Provider process exited',
     )
-    expect(renderSurface(failed.controller)).not.toContain('CLI 运行出错')
-    expect(renderSurface(streaming.controller)).not.toContain('CLI 正在回复…')
+    expect(renderSurface(failed)).not.toContain('CLI 运行出错')
+    expect(renderSurface(streaming)).not.toContain('CLI 正在回复…')
     for (const runState of [
       'waiting_for_approval',
       'waiting_for_user',
       'completed',
       'aborted',
     ] as const) {
-      const store = createController(makeSnapshot({ runState }))
-      const html = renderSurface(store.controller)
+      const html = renderSurface(makeSnapshot({ runState }))
 
       expect(html).not.toContain('等待工具审批')
       expect(html).not.toContain('等待你的回答')
@@ -352,10 +309,10 @@ describe('CliChatSurface', () => {
   })
 
   it('uses the shared workspace greeting for an empty CLI conversation', () => {
-    const empty = createController(makeSnapshot({ sessionRef: null }))
+    const empty = makeSnapshot({ sessionRef: null })
 
     const html = renderSurface(
-      empty.controller,
+      empty,
       <span>What would you like to do in Test Vault today?</span>,
     )
 
