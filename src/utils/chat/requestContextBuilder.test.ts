@@ -341,6 +341,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         description: 'Create skills',
         mode: 'lazy',
         path: 'builtin://skills/skill-creator',
+        isReadOnly: true,
       },
       content: '# skill body',
     })

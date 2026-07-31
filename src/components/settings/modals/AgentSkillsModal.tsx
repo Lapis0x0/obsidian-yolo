@@ -81,7 +81,7 @@ function AgentSkillsModalContent({
   const skills = useLiteSkillEntries(app, { settings, refreshTick })
 
   const deletableSkills = useMemo(
-    () => skills.filter((s) => !s.path.startsWith('builtin://')),
+    () => skills.filter((skill) => !skill.isReadOnly),
     [skills],
   )
 
@@ -294,7 +294,7 @@ function AgentSkillsModalContent({
           <div className="yolo-agent-tool-list">
             {skills
               .filter((skill) =>
-                isSelectMode ? !skill.path.startsWith('builtin://') : true,
+                isSelectMode ? !skill.isReadOnly : true,
               )
               .map((skill) => {
                 const enabled = !disabledSkillNameSet.has(skill.name)

@@ -4,6 +4,7 @@ import {
   getLiteSkillDocument,
   getLiteSkillDocumentByPath,
   getLiteSkillPackageSource,
+  getManagedSkillScanDirs,
   getSkillScanDirs,
   humanizeSkillName,
   listLiteSkillEntries,
@@ -319,6 +320,24 @@ describe('migrateVaultSkillFrontmatter', () => {
     expect(reads['YOLO/skills/good.md']).toContain('name: good')
     expect(reads['YOLO/skills/good.md']).not.toMatch(/^id:/m)
   })
+
+  it('does not migrate externally owned project skills', async () => {
+    const external = {
+      file: {
+        path: '.claude/skills/external/SKILL.md',
+        name: 'SKILL.md',
+        extension: 'md',
+      },
+      content: ['---', 'id: external', 'name: External', '---'].join('\n'),
+      frontmatter: { id: 'external', name: 'External' },
+    }
+    const { app, reads, modifies } = makeFakeApp([external])
+
+    await migrateVaultSkillFrontmatter(app, settings)
+
+    expect(modifies).toEqual([])
+    expect(reads[external.file.path]).toBe(external.content)
+  })
 })
 
 type AdapterDirListing = {
@@ -461,16 +480,25 @@ const makeAdapterApp = ({
 }
 
 describe('getSkillScanDirs', () => {
-  it('deduplicates the default skills dir when it matches a hidden root', () => {
+  it('keeps managed roots separate from read-only project roots', () => {
+    const input = {
+      settings: { yolo: { baseDir: `${OBSIDIAN_CONFIG_DIR}/yolo` } },
+      configDir: OBSIDIAN_CONFIG_DIR,
+    }
+    expect(getManagedSkillScanDirs(input)).toEqual([
+      `${OBSIDIAN_CONFIG_DIR}/yolo/skills`,
+      `${OBSIDIAN_CONFIG_DIR}/skills`,
+      `${OBSIDIAN_CONFIG_DIR}/YOLO/skills`,
+    ])
     expect(
-      getSkillScanDirs({
-        settings: { yolo: { baseDir: `${OBSIDIAN_CONFIG_DIR}/yolo` } },
-        configDir: OBSIDIAN_CONFIG_DIR,
-      }),
+      getSkillScanDirs(input),
     ).toEqual([
       `${OBSIDIAN_CONFIG_DIR}/yolo/skills`,
       `${OBSIDIAN_CONFIG_DIR}/skills`,
       `${OBSIDIAN_CONFIG_DIR}/YOLO/skills`,
+      '.claude/skills',
+      '.agents/skills',
+      '.codex/skills',
     ])
   })
 })
@@ -563,6 +591,56 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
 
     const entries = await listLiteSkillEntries(app, { settings })
     expect(entries.map((entry) => entry.name)).toContain('claude-skill')
+  })
+
+  it('discovers project-local Claude and Codex skills as read-only', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': { files: [], folders: [] },
+        '.claude/skills': {
+          files: [],
+          folders: ['.claude/skills/claude-skill'],
+        },
+        '.claude/skills/claude-skill': {
+          files: ['.claude/skills/claude-skill/SKILL.md'],
+          folders: [],
+        },
+        '.agents/skills': {
+          files: [],
+          folders: ['.agents/skills/codex-skill'],
+        },
+        '.agents/skills/codex-skill': {
+          files: ['.agents/skills/codex-skill/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        '.claude/skills/claude-skill/SKILL.md': [
+          '---',
+          'name: claude-skill',
+          'description: Claude project skill',
+          '---',
+        ].join('\n'),
+        '.agents/skills/codex-skill/SKILL.md': [
+          '---',
+          'name: codex-skill',
+          'description: Codex project skill',
+          '---',
+        ].join('\n'),
+      },
+    })
+
+    const entries = await listLiteSkillEntries(app, { settings })
+    expect(
+      entries
+        .filter((entry) => ['claude-skill', 'codex-skill'].includes(entry.name))
+        .map((entry) => ({ name: entry.name, isReadOnly: entry.isReadOnly })),
+    ).toEqual(
+      expect.arrayContaining([
+        { name: 'claude-skill', isReadOnly: true },
+        { name: 'codex-skill', isReadOnly: true },
+      ]),
+    )
   })
 
   it('prefers the default skills dir over hidden dirs for duplicate names', async () => {

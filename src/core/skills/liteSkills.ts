@@ -24,6 +24,8 @@ export type LiteSkillEntry = {
   description: string
   mode: LiteSkillMode
   path: string
+  /** Builtin and externally owned project skills must never be mutated by YOLO. */
+  isReadOnly: boolean
 }
 
 export type LiteSkillDocument = {
@@ -63,11 +65,15 @@ export const HIDDEN_VAULT_SKILL_DIR_SUFFIXES = [
   'YOLO/skills',
 ] as const
 
-/**
- * Skill directories to scan, in priority order. Duplicate normalized paths are
- * included once (first occurrence wins).
- */
-export const getSkillScanDirs = ({
+/** Project-local Agent Skills owned by other compatible harnesses. */
+export const EXTERNAL_PROJECT_SKILL_DIRS = [
+  '.claude/skills',
+  '.agents/skills',
+  '.codex/skills',
+] as const
+
+/** Skill roots owned by YOLO and therefore eligible for migrations. */
+export const getManagedSkillScanDirs = ({
   settings,
   configDir,
 }: {
@@ -88,6 +94,25 @@ export const getSkillScanDirs = ({
     add(`${configDir}/${suffix}`)
   }
   return dirs
+}
+
+/**
+ * Skill directories to scan, in priority order. Duplicate normalized paths are
+ * included once (first occurrence wins).
+ */
+export const getSkillScanDirs = ({
+  settings,
+  configDir,
+}: {
+  settings?: SkillSettings | null
+  configDir: string
+}): string[] => {
+  return [
+    ...new Set([
+      ...getManagedSkillScanDirs({ settings, configDir }),
+      ...EXTERNAL_PROJECT_SKILL_DIRS.map((dir) => normalizePath(dir)),
+    ]),
+  ]
 }
 
 const normalizeSkillMode = (value: unknown): LiteSkillMode => {
@@ -112,9 +137,11 @@ const parseFrontmatterFromContent = (
 const toLiteSkillEntry = ({
   path,
   frontmatter,
+  isReadOnly,
 }: {
   path: string
   frontmatter?: Record<string, unknown> | null
+  isReadOnly: boolean
 }): LiteSkillEntry | null => {
   const name = asTrimmedString(frontmatter?.name)
   if (!name) {
@@ -130,6 +157,7 @@ const toLiteSkillEntry = ({
     description,
     mode,
     path,
+    isReadOnly,
   }
 }
 
@@ -275,12 +303,19 @@ const buildSkillRegistry = async ({
         description: skill.description,
         mode: skill.mode,
         path: skill.path,
+        isReadOnly: true,
       },
       file: null,
     })
   })
 
   const vaultClaimed = new Set<string>()
+  const managedSkillDirs = new Set(
+    getManagedSkillScanDirs({
+      settings,
+      configDir: app.vault.configDir,
+    }),
+  )
   for (const skillsDir of getSkillScanDirs({
     settings,
     configDir: app.vault.configDir,
@@ -289,7 +324,11 @@ const buildSkillRegistry = async ({
     for (const path of paths) {
       const file = app.vault.getFileByPath(path)
       const frontmatter = await resolveSkillFrontmatter(app, path, file)
-      const entry = toLiteSkillEntry({ path, frontmatter })
+      const entry = toLiteSkillEntry({
+        path,
+        frontmatter,
+        isReadOnly: !managedSkillDirs.has(skillsDir),
+      })
       if (
         !entry ||
         validateSkillName(entry.name).length > 0 ||
@@ -361,6 +400,7 @@ export async function getLiteSkillDocument({
     const entry = toLiteSkillEntry({
       path: record.entry.path,
       frontmatter: mergedFrontmatter,
+      isReadOnly: record.entry.isReadOnly,
     })
     if (!entry) {
       return null
@@ -388,6 +428,7 @@ export async function getLiteSkillDocument({
       description: builtin.description,
       mode: builtin.mode,
       path: builtin.path,
+      isReadOnly: true,
     },
     content: builtin.content,
   }
@@ -621,7 +662,7 @@ export async function migrateVaultSkillFrontmatter(
     }
   },
 ): Promise<void> {
-  for (const skillsDir of getSkillScanDirs({
+  for (const skillsDir of getManagedSkillScanDirs({
     settings,
     configDir: app.vault.configDir,
   })) {
@@ -723,7 +764,7 @@ export async function migrateLegacySkillFilesToPackages(
     issues: [],
   }
 
-  for (const skillsDir of getSkillScanDirs({
+  for (const skillsDir of getManagedSkillScanDirs({
     settings,
     configDir: app.vault.configDir,
   })) {
