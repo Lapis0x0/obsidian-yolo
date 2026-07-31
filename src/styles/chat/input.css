@@ -3463,6 +3463,15 @@ button.yolo-chat-quick-access-picker-row > svg {
   overflow: hidden;
 }
 
+.yolo-cli-runtime-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+  min-width: 0;
+  overflow: hidden;
+}
+
 .yolo-chat-user-input-toolbar__right .yolo-chat-input-model-select {
   max-width: 160px;
   min-width: 0;

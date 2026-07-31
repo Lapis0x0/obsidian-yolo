@@ -22,6 +22,8 @@ import type {
   CliAssistantBinding,
   CliQuestionResponse,
   CliRuntime,
+  CliRuntimeConfiguration,
+  CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
   CliRuntimeEventListener,
   CliRuntimeReadyInput,
@@ -227,6 +229,9 @@ export class ClaudeCliRuntime implements CliRuntime {
   private readyKey?: string
   private currentSessionRef?: CliSessionRef
   private publishedSessionRef?: CliSessionRef
+  private models: CliRuntimeConfiguration['models'] = []
+  private modelId: string | null = null
+  private reasoningEffort: string | null = null
   private activeAssistant?: ChatAssistantMessage
   private activeAssistantKey?: string
   private disposed = false
@@ -328,9 +333,27 @@ export class ClaudeCliRuntime implements CliRuntime {
       sessionId: sessionRef.nativeSessionId,
     })
     this.inputQueue = new AsyncPushQueue<SDKUserMessage>()
-    this.query = sdk.query({
-      prompt: this.inputQueue,
-      options: {
+    const nativeAbortController = processSupport.createAbortController()
+    const originalAbortController = globalThis.AbortController
+    const NodeRealmAbortController = class {
+      private readonly controller = processSupport.createAbortController()
+      readonly signal = this.controller.signal
+
+      abort(reason?: unknown): void {
+        this.controller.abort(reason)
+      }
+    }
+    try {
+      // The SDK creates one additional controller synchronously for its
+      // forwarded-abort channel. In Electron's renderer, the ambient
+      // AbortController belongs to Chromium and node:events rejects its
+      // signal. Keep the substitution scoped to SDK construction.
+      globalThis.AbortController =
+        NodeRealmAbortController as unknown as typeof AbortController
+      this.query = sdk.query({
+        prompt: this.inputQueue,
+        options: {
+          abortController: nativeAbortController,
         cwd: this.vaultPath,
         pathToClaudeCodeExecutable: processSupport.cliPath,
         env: processSupport.env,
@@ -356,17 +379,87 @@ export class ClaudeCliRuntime implements CliRuntime {
               })),
             }
           : {}),
-      },
-    })
+        },
+      })
+    } finally {
+      globalThis.AbortController = originalAbortController
+    }
     const query = this.query
     this.consumePromise = this.consume(query)
     try {
-      await query.initializationResult()
+      const initialization = await query.initializationResult()
+      const supportedModels =
+        initialization.models.length > 0
+          ? initialization.models
+          : await query.supportedModels()
+      console.debug('[YOLO] Claude CLI models', supportedModels)
+      this.models = supportedModels.map((model) => ({
+        id: model.value,
+        label: model.displayName,
+        ...(model.description ? { description: model.description } : {}),
+        reasoningEfforts: (model.supportedEffortLevels ?? []).map((id) => ({
+          id,
+        })),
+      }))
+      this.modelId = null
+      this.reasoningEffort = null
       this.publishSessionBound(sessionRef)
     } catch (error) {
       await this.resetQuery()
       throw error
     }
+  }
+
+  async getConfiguration(): Promise<CliRuntimeConfiguration> {
+    this.assertUsable()
+    if (!this.query) throw new Error('Claude CLI runtime is not ready.')
+    return {
+      models: this.models,
+      modelId: this.modelId,
+      reasoningEffort: this.reasoningEffort,
+    }
+  }
+
+  async updateConfiguration(
+    update: CliRuntimeConfigurationUpdate,
+  ): Promise<CliRuntimeConfiguration> {
+    this.assertUsable()
+    const query = this.query
+    if (!query) throw new Error('Claude CLI runtime is not ready.')
+
+    if ('modelId' in update) {
+      const modelId = update.modelId ?? null
+      await query.setModel(modelId ?? undefined)
+      this.modelId = modelId
+      const selectedModel = modelId
+        ? this.models.find((model) => model.id === modelId)
+        : undefined
+      if (
+        this.reasoningEffort &&
+        selectedModel &&
+        !selectedModel.reasoningEfforts.some(
+          (effort) => effort.id === this.reasoningEffort,
+        )
+      ) {
+        await query.applyFlagSettings({ effortLevel: null })
+        this.reasoningEffort = null
+      }
+    }
+
+    if ('reasoningEffort' in update) {
+      const reasoningEffort = update.reasoningEffort ?? null
+      await query.applyFlagSettings({
+        effortLevel: reasoningEffort as
+          | 'low'
+          | 'medium'
+          | 'high'
+          | 'xhigh'
+          | 'max'
+          | null,
+      })
+      this.reasoningEffort = reasoningEffort
+    }
+    return this.getConfiguration()
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {
@@ -998,6 +1091,9 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.readyKey = undefined
     this.currentSessionRef = undefined
     this.publishedSessionRef = undefined
+    this.models = []
+    this.modelId = null
+    this.reasoningEffort = null
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined
     this.tools.clear()

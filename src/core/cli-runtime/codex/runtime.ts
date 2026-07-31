@@ -5,6 +5,8 @@ import type {
   CliApprovalResponse,
   CliQuestionResponse,
   CliRuntime,
+  CliRuntimeConfiguration,
+  CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
   CliRuntimeEventListener,
   CliRuntimeReadyInput,
@@ -30,6 +32,7 @@ import type {
   CodexThreadItem,
   CodexUserInput,
   ThreadListResponse,
+  ModelListResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadStartResponse,
@@ -135,6 +138,9 @@ export class CodexCliRuntime implements CliRuntime {
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
   private assistantKey = ''
+  private models: CliRuntimeConfiguration['models'] | null = null
+  private modelId: string | null = null
+  private reasoningEffort: string | null = null
   private disposed = false
 
   constructor(private readonly options: CodexCliRuntimeOptions) {}
@@ -209,8 +215,30 @@ export class CodexCliRuntime implements CliRuntime {
         })
       : await transport.request<ThreadStartResponse>('thread/start', params)
     this.activeSessionRef = toSessionRef(response.thread)
+    this.modelId = response.model ?? null
+    this.reasoningEffort = response.reasoningEffort ?? null
     this.assistantKey = assistantKey
     this.emit({ type: 'session_bound', ref: this.activeSessionRef })
+  }
+
+  async getConfiguration(): Promise<CliRuntimeConfiguration> {
+    if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
+    return {
+      models: await this.listModels(),
+      modelId: this.modelId,
+      reasoningEffort: this.reasoningEffort,
+    }
+  }
+
+  async updateConfiguration(
+    update: CliRuntimeConfigurationUpdate,
+  ): Promise<CliRuntimeConfiguration> {
+    if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
+    if ('modelId' in update) this.modelId = update.modelId ?? null
+    if ('reasoningEffort' in update) {
+      this.reasoningEffort = update.reasoningEffort ?? null
+    }
+    return this.getConfiguration()
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {
@@ -234,6 +262,8 @@ export class CodexCliRuntime implements CliRuntime {
       {
         threadId: this.activeSessionRef.nativeSessionId,
         input: toCodexInput(input.content),
+        model: this.modelId,
+        effort: this.reasoningEffort,
       },
       0,
     )
@@ -323,6 +353,40 @@ export class CodexCliRuntime implements CliRuntime {
     }
   }
 
+  private async listModels(): Promise<CliRuntimeConfiguration['models']> {
+    if (this.models) return this.models
+    const transport = await this.getTransport()
+    const models: CliRuntimeConfiguration['models'] = []
+    let cursor: string | null = null
+    do {
+      const response: ModelListResponse =
+        await transport.request<ModelListResponse>(
+        'model/list',
+        { cursor, limit: 100, includeHidden: false },
+      )
+      models.push(
+        ...response.data
+          .filter((model) => !model.hidden)
+          .map((model) => ({
+            id: model.model || model.id,
+            label: model.displayName,
+            ...(model.description ? { description: model.description } : {}),
+            reasoningEfforts: model.supportedReasoningEfforts.map((effort) => ({
+              id: effort.reasoningEffort,
+              ...(effort.description
+                ? { description: effort.description }
+                : {}),
+            })),
+            defaultReasoningEffort: model.defaultReasoningEffort,
+            isDefault: model.isDefault,
+          })),
+      )
+      cursor = response.nextCursor
+    } while (cursor)
+    this.models = models
+    return models
+  }
+
   private async createTransport(): Promise<CodexRpcTransport> {
     const createProcess =
       this.options.createProcess ??
@@ -362,6 +426,9 @@ export class CodexCliRuntime implements CliRuntime {
     if (this.transport === transport) this.transport = null
     if (this.process === process) this.process = null
     this.activeTurnId = null
+    this.models = null
+    this.modelId = null
+    this.reasoningEffort = null
     this.assistantKey = ''
     this.pendingRequests.clear()
     this.streamingAssistantText.clear()

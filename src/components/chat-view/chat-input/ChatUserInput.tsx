@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   forwardRef,
   memo,
   useCallback,
@@ -91,6 +92,7 @@ export type ChatUserInputProps = {
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
   showReasoningSelect?: boolean
+  runtimeControls?: ReactNode
   showPlaceholder?: boolean
   // Compact mode: hide controls for historical messages
   compact?: boolean
@@ -162,6 +164,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       reasoningLevel,
       onReasoningChange,
       showReasoningSelect = true,
+      runtimeControls,
       showPlaceholder = true,
       compact = false,
       hideBadgeMentionables = false,
@@ -903,8 +906,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               {renderChatModeControl()}
             </div>
             <div className="yolo-chat-user-input-toolbar__right">
-              {renderModelControl()}
-              {renderReasoningControl()}
+              {runtimeControls ?? (
+                <>
+                  {renderModelControl()}
+                  {renderReasoningControl()}
+                </>
+              )}
             </div>
           </div>
         )}

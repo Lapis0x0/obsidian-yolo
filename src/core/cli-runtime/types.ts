@@ -48,6 +48,33 @@ export type CliRuntimeReadyInput = {
   assistant: CliAssistantBinding
 }
 
+export type CliReasoningEffortOption = {
+  id: string
+  description?: string
+}
+
+export type CliRuntimeModel = {
+  id: string
+  label: string
+  description?: string
+  reasoningEfforts: CliReasoningEffortOption[]
+  defaultReasoningEffort?: string
+  isDefault?: boolean
+}
+
+export type CliRuntimeConfiguration = {
+  models: CliRuntimeModel[]
+  /** `null` delegates model selection to the provider-native CLI default. */
+  modelId: string | null
+  /** `null` delegates reasoning effort to the provider-native CLI default. */
+  reasoningEffort: string | null
+}
+
+export type CliRuntimeConfigurationUpdate = {
+  modelId?: string | null
+  reasoningEffort?: string | null
+}
+
 export type CliTurnInput = {
   sessionRef?: CliSessionRef
   content: string | ContentPart[]
@@ -104,6 +131,10 @@ export interface CliRuntime {
   listSessions(): Promise<CliSessionMetadata[]>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
+  getConfiguration(): Promise<CliRuntimeConfiguration>
+  updateConfiguration(
+    update: CliRuntimeConfigurationUpdate,
+  ): Promise<CliRuntimeConfiguration>
   sendTurn(input: CliTurnInput): Promise<void>
   cancel(): Promise<void>
   respondApproval(response: CliApprovalResponse): Promise<boolean>

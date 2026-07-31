@@ -1977,6 +1977,14 @@ export const en: TranslationKeys = {
         error: 'CLI run failed',
       },
     },
+    cliControls: {
+      loadingModels: 'Loading models…',
+      loadingEffort: 'Reasoning effort',
+      defaultModel: 'CLI default model',
+      defaultEffort: 'Auto',
+      loadError: 'Could not load CLI models: {message}',
+      updateError: 'Could not update CLI configuration: {message}',
+    },
     quickAccess: {
       manage: 'Manage quick access',
       searchPlaceholder: 'Search skills or snippets',

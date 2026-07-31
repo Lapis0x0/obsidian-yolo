@@ -1,5 +1,7 @@
 import type {
+  ModelInfo,
   Options,
+  SDKControlInitializeResponse,
   SDKMessage,
   SDKSessionInfo,
   SDKUserMessage,
@@ -10,7 +12,12 @@ import type {
 
 export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   interrupt(): Promise<unknown>
-  initializationResult(): Promise<unknown>
+  initializationResult(): Promise<SDKControlInitializeResponse>
+  supportedModels(): Promise<ModelInfo[]>
+  setModel(model?: string): Promise<void>
+  applyFlagSettings(settings: {
+    effortLevel?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
+  }): Promise<void>
   close(): void
 }
 
@@ -33,6 +40,7 @@ export type ClaudeSdkModule = {
 export type ClaudeProcessSupport = {
   cliPath: string
   env: Record<string, string | undefined>
+  createAbortController: () => AbortController
   spawnClaudeCodeProcess: (options: SpawnOptions) => SpawnedProcess
 }
 

@@ -66,9 +66,36 @@ export type ThreadListResponse = {
 }
 
 export type ThreadReadResponse = { thread: CodexThread }
-export type ThreadStartResponse = { thread: CodexThread; model?: string }
-export type ThreadResumeResponse = { thread: CodexThread; model?: string }
+export type ThreadStartResponse = {
+  thread: CodexThread
+  model?: string
+  reasoningEffort?: string | null
+}
+export type ThreadResumeResponse = {
+  thread: CodexThread
+  model?: string
+  reasoningEffort?: string | null
+}
 export type TurnStartResponse = { turn: CodexTurn }
+
+export type CodexModel = {
+  id: string
+  model: string
+  displayName: string
+  description: string
+  hidden: boolean
+  supportedReasoningEfforts: Array<{
+    reasoningEffort: string
+    description: string
+  }>
+  defaultReasoningEffort: string
+  isDefault: boolean
+}
+
+export type ModelListResponse = {
+  data: CodexModel[]
+  nextCursor: string | null
+}
 
 export type CodexNotification = {
   method: string

@@ -336,10 +336,21 @@ export const resolveClaudeProcessSupport = async (
     // eslint-disable-next-line import/no-nodejs-modules -- evaluated only after the shared Desktop capability gate
     ((await import('node:child_process'))
       .spawn as unknown as SpawnImplementation)
+  // Chromium's AbortSignal is not recognized by node:events.setMaxListeners,
+  // which the Claude Agent SDK applies during query construction. Create the
+  // controller in Node's realm so the bundled SDK receives a valid EventTarget.
+  // eslint-disable-next-line import/no-nodejs-modules -- evaluated only after the shared Desktop capability gate
+  const nodeUtil = await import('node:util')
+  const transferableAbortController = (
+    nodeUtil as unknown as {
+      transferableAbortController: () => AbortController
+    }
+  ).transferableAbortController
 
   return {
     cliPath,
     env,
+    createAbortController: transferableAbortController,
     spawnClaudeCodeProcess: createElectronSpawnFunction({
       spawn,
       nodePath: nodePath ?? undefined,

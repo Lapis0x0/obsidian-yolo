@@ -26,7 +26,22 @@ type QueryInput = {
 
 class FakeQuery implements ClaudeSdkQuery {
   readonly interrupt = jest.fn(async () => undefined)
-  readonly initializationResult = jest.fn(async () => ({}))
+  readonly initializationResult = jest.fn(async () => ({
+    commands: [],
+    agents: [],
+    output_style: '',
+    available_output_styles: [],
+    models: [],
+    account: {
+      email: '',
+      organization: '',
+      subscriptionType: '',
+      tokenSource: 'none' as const,
+    },
+  }))
+  readonly supportedModels = jest.fn(async () => [])
+  readonly setModel = jest.fn(async () => undefined)
+  readonly applyFlagSettings = jest.fn(async () => undefined)
   readonly close = jest.fn()
 
   private messages: SDKMessage[] = []
@@ -109,6 +124,7 @@ const createSdk = () => {
 const processSupport: ClaudeProcessSupport = {
   cliPath: '/opt/homebrew/bin/claude',
   env: { PATH: '/opt/homebrew/bin:/usr/bin' },
+  createAbortController: () => new AbortController(),
   spawnClaudeCodeProcess: jest.fn(),
 }
 

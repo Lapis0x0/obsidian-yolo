@@ -83,6 +83,14 @@ class FakeCliRuntime implements CliRuntime {
     await this.ensureReadyImpl(input)
   }
 
+  async getConfiguration() {
+    return { models: [], modelId: null, reasoningEffort: null }
+  }
+
+  async updateConfiguration() {
+    return this.getConfiguration()
+  }
+
   async sendTurn(input: CliTurnInput): Promise<void> {
     this.turnInputs.push(input)
     await this.sendTurnImpl(input)

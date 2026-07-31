@@ -1691,6 +1691,14 @@ export type TranslationKeys = {
         error?: string
       }
     }
+    cliControls?: {
+      loadingModels?: string
+      loadingEffort?: string
+      defaultModel?: string
+      defaultEffort?: string
+      loadError?: string
+      updateError?: string
+    }
     quickAccess?: {
       manage?: string
       searchPlaceholder?: string

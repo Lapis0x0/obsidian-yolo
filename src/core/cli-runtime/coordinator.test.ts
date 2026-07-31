@@ -57,6 +57,14 @@ class TestRuntime implements CliRuntime {
     })
   }
 
+  async getConfiguration() {
+    return { models: [], modelId: null, reasoningEffort: null }
+  }
+
+  async updateConfiguration() {
+    return this.getConfiguration()
+  }
+
   async sendTurn() {}
 
   async respondApproval() {

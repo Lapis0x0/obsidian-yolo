@@ -1860,6 +1860,14 @@ export const zh: TranslationKeys = {
         error: 'CLI 运行出错',
       },
     },
+    cliControls: {
+      loadingModels: '加载模型…',
+      loadingEffort: '推理强度',
+      defaultModel: 'CLI 默认模型',
+      defaultEffort: '自动',
+      loadError: '无法加载 CLI 模型：{message}',
+      updateError: '无法更新 CLI 配置：{message}',
+    },
     quickAccess: {
       manage: '管理常用入口',
       searchPlaceholder: '搜索 Skills 或快捷指令',

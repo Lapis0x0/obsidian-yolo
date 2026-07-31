@@ -47,6 +47,7 @@ import {
   type YoloConversationRef,
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
+  resolveCliAssistantBinding,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
@@ -142,6 +143,7 @@ import {
   normalizeYoloEnabled,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
+import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import type {
   ChatUserInputProps,
   ChatUserInputRef,
@@ -1610,6 +1612,50 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () => resolveAssistantTimeContextEnabled(selectedCliAssistant, settings),
     [selectedCliAssistant, settings],
   )
+
+  useEffect(() => {
+    if (
+      activeRuntimeId === 'yolo' ||
+      !cliConversationController ||
+      cliConversationController.getSnapshot().configuration
+    ) {
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const assistant = await resolveCliAssistantBinding({
+          app,
+          settings,
+          assistantId: cliAssistantId,
+        })
+        if (!cancelled) await cliConversationController.ensureReady(assistant)
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to prepare CLI runtime controls', error)
+          new Notice(
+            t(
+              'chat.cliControls.loadError',
+              '无法加载 CLI 模型：{message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeRuntimeId,
+    app,
+    cliAssistantId,
+    cliConversationController,
+    settings,
+    t,
+  ])
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -6641,6 +6687,40 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const handleCliModelChange = useCallback(
+    (modelId: string | null) => {
+      if (!cliConversationController) return
+      void cliConversationController
+        .updateConfiguration({ modelId })
+        .catch((error) => {
+          new Notice(
+            t('chat.cliControls.updateError', '无法更新 CLI 配置：{message}').replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+    },
+    [cliConversationController, t],
+  )
+
+  const handleCliReasoningEffortChange = useCallback(
+    (reasoningEffort: string | null) => {
+      if (!cliConversationController) return
+      void cliConversationController
+        .updateConfiguration({ reasoningEffort })
+        .catch((error) => {
+          new Notice(
+            t('chat.cliControls.updateError', '无法更新 CLI 配置：{message}').replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+    },
+    [cliConversationController, t],
+  )
+
   const handleMainInputRunSlashCommand = useCallback<
     NonNullable<ChatUserInputProps['onRunSlashCommand']>
   >(
@@ -7607,6 +7687,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         reasoningLevel={reasoningLevel}
         onReasoningChange={handleMainInputReasoningChange}
         showReasoningSelect={!isCliRuntimeActive}
+        runtimeControls={
+          isCliRuntimeActive ? (
+            <CliRuntimeControls
+              configuration={activeCliConversationSnapshot?.configuration ?? null}
+              runtimeId={activeRuntimeId}
+              disabled={
+                cliSubmissionPending || isCliRunActive || cliTransitioning
+              }
+              onModelChange={handleCliModelChange}
+              onReasoningEffortChange={handleCliReasoningEffortChange}
+            />
+          ) : undefined
+        }
         autoFocus
         addedBlockKey={addedBlockKey}
         hideBadgeMentionables

@@ -3,6 +3,8 @@ import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import type {
   CliAssistantBinding,
   CliRuntime,
+  CliRuntimeConfiguration,
+  CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
   CliRuntimeRunState,
   CliSessionHydration,
@@ -16,6 +18,7 @@ export type CliConversationSnapshot = Readonly<{
   sessionRef: CliSessionRef | null
   runState: CliRuntimeRunState
   error: string | null
+  configuration?: CliRuntimeConfiguration | null
 }>
 
 export type CliConversationTurn = Readonly<{
@@ -186,6 +189,22 @@ export class CliConversationController {
     }
   }
 
+  async updateConfiguration(
+    update: CliRuntimeConfigurationUpdate,
+  ): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    try {
+      const configuration =
+        await operation.runtime.updateConfiguration(update)
+      if (!this.isCurrent(operation)) return
+      this.publish({ ...this.snapshot, configuration, error: null })
+    } catch (error) {
+      if (this.isCurrent(operation)) this.publishError(error)
+      throw error
+    }
+  }
+
   async cancel(): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
@@ -228,9 +247,12 @@ export class CliConversationController {
       if (!target && !this.snapshot.sessionRef) {
         throw new Error('CLI runtime did not bind a session.')
       }
+      const configuration = await operation.runtime.getConfiguration()
+      if (!this.isCurrent(operation)) return
       this.acceptingEvents = true
       this.bindingTarget = undefined
       this.bindingEpoch = null
+      this.publish({ ...this.snapshot, configuration, error: null })
     } catch (error) {
       if (this.isCurrent(operation)) {
         this.resetEventGate()
@@ -250,6 +272,7 @@ export class CliConversationController {
       sessionRef: ref,
       runState: 'idle',
       error: null,
+      configuration: null,
     })
   }
 
@@ -389,6 +412,7 @@ export class CliConversationController {
       sessionRef: null,
       runState: 'idle',
       error: null,
+      configuration: null,
     })
   }
 

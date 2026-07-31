@@ -60,6 +60,16 @@ const runtime = ({
   },
   openSession: async (ref) => ({ ref, messages: [] }),
   ensureReady: async () => undefined,
+  getConfiguration: async () => ({
+    models: [],
+    modelId: null,
+    reasoningEffort: null,
+  }),
+  updateConfiguration: async () => ({
+    models: [],
+    modelId: null,
+    reasoningEffort: null,
+  }),
   sendTurn: async () => undefined,
   cancel: async () => undefined,
   respondApproval: async () => false,

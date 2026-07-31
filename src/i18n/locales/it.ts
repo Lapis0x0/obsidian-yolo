@@ -1824,6 +1824,14 @@ export const it: DeepPartial<TranslationKeys> = {
         error: 'Esecuzione CLI non riuscita',
       },
     },
+    cliControls: {
+      loadingModels: 'Caricamento modelli…',
+      loadingEffort: 'Intensità di ragionamento',
+      defaultModel: 'Modello predefinito CLI',
+      defaultEffort: 'Automatico',
+      loadError: 'Impossibile caricare i modelli CLI: {message}',
+      updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
+    },
     quickAccess: {
       manage: 'Gestisci accessi rapidi',
       searchPlaceholder: 'Cerca skill o comandi rapidi',
