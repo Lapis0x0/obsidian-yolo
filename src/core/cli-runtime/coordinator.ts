@@ -9,6 +9,10 @@ import type {
 import { createCliChatRuntimeActions } from './cli-actions'
 import type { CodexCliRuntimeOptions } from './codex'
 import { CliConversationController } from './conversation-controller'
+import {
+  CliModelCatalogService,
+  type CliModelCatalogSnapshot,
+} from './model-catalog'
 import type {
   CliSessionIndexEntry,
   CliSessionIndexMutator,
@@ -60,6 +64,9 @@ export type CliRuntimeScope = {
   selectConversationSession(ref: CliSessionRef): CliConversationController
   getSessionRunStates(): ReadonlyMap<string, CliRuntimeRunState>
   subscribeToSessionRunStates(listener: () => void): () => void
+  getModelCatalogSnapshot(): CliModelCatalogSnapshot
+  subscribeToModelCatalog(listener: () => void): () => void
+  warmModelCatalog(runtimeId: CliRuntimeId): Promise<void>
   dispose(): Promise<void>
 }
 
@@ -147,6 +154,7 @@ class DesktopCliRuntimeWorkspace {
   private readonly ownedRuntimes = new Set<CliRuntime>()
   private readonly conversations = new Set<ConversationRuntimeRecord>()
   private readonly runStateListeners = new Set<() => void>()
+  private readonly modelCatalog: CliModelCatalogService
   private sessionServiceInstance: CliSessionService | null = null
   private disposePromise: Promise<void> | null = null
   private disposing = false
@@ -160,7 +168,12 @@ class DesktopCliRuntimeWorkspace {
     private readonly options: CliRuntimeCoordinatorOptions,
     private readonly factories: CliRuntimeFactories,
     private readonly indexStore: CliSessionIndexStore,
-  ) {}
+  ) {
+    this.modelCatalog = CliModelCatalogService.create(
+      options.app,
+      options.getSettings ?? (() => null),
+    )
+  }
 
   get sessionService(): CliSessionService {
     this.assertActive()
@@ -211,10 +224,17 @@ class DesktopCliRuntimeWorkspace {
   ): CliConversationController {
     this.assertActive()
     const runtime = this.createRuntime(runtimeId)
-    const controller = new CliConversationController(runtime)
+    const controller = new CliConversationController(
+      runtime,
+      () => this.modelCatalog.getSnapshot().get(runtimeId) ?? [],
+    )
     this.conversations.add({ runtime, controller })
     controller.subscribe(() => {
       for (const listener of this.runStateListeners) listener()
+      const models = controller.getSnapshot().configuration?.models
+      if (models && models.length > 0) {
+        void this.modelCatalog.record(runtimeId, models)
+      }
     })
     return controller
   }
@@ -236,6 +256,21 @@ class DesktopCliRuntimeWorkspace {
   subscribeToSessionRunStates(listener: () => void): () => void {
     this.runStateListeners.add(listener)
     return () => this.runStateListeners.delete(listener)
+  }
+
+  getModelCatalogSnapshot(): CliModelCatalogSnapshot {
+    return this.modelCatalog.getSnapshot()
+  }
+
+  subscribeToModelCatalog(listener: () => void): () => void {
+    return this.modelCatalog.subscribe(listener)
+  }
+
+  async warmModelCatalog(runtimeId: CliRuntimeId): Promise<void> {
+    await this.modelCatalog.load()
+    const runtime = this.resolveRuntime(runtimeId)
+    if (!runtime.listModels) return
+    await this.modelCatalog.refresh(runtimeId, () => runtime.listModels!())
   }
 
   selectConversationSession(ref: CliSessionRef): CliConversationController {
@@ -382,6 +417,21 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
   subscribeToSessionRunStates(listener: () => void): () => void {
     this.assertActive()
     return this.workspace.subscribeToSessionRunStates(listener)
+  }
+
+  getModelCatalogSnapshot(): CliModelCatalogSnapshot {
+    this.assertActive()
+    return this.workspace.getModelCatalogSnapshot()
+  }
+
+  subscribeToModelCatalog(listener: () => void): () => void {
+    this.assertActive()
+    return this.workspace.subscribeToModelCatalog(listener)
+  }
+
+  warmModelCatalog(runtimeId: CliRuntimeId): Promise<void> {
+    this.assertActive()
+    return this.workspace.warmModelCatalog(runtimeId)
   }
 
   dispose(): Promise<void> {

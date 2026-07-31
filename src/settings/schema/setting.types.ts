@@ -483,6 +483,13 @@ export const yoloSettingsSchema = z.object({
       // separately so returning to Chat does not forget the preferred CLI.
       lastChatSurface: z.enum(['chat', 'cli']).optional(),
       lastCliRuntimeId: z.enum(['claude-code', 'codex']).optional(),
+      cliModelIdByRuntime: z
+        .object({
+          'claude-code': z.string().optional(),
+          codex: z.string().optional(),
+        })
+        .optional(),
+      cliReasoningEffortByModel: z.record(z.string(), z.string()).optional(),
       quickAccessEntries: resilientArraySchema(
         z.discriminatedUnion('type', [
           z.object({ type: z.literal('skill'), name: z.string().min(1) }),
@@ -514,6 +521,8 @@ export const yoloSettingsSchema = z.object({
       ribbonClickAction: 'sidebar',
       lastChatSurface: 'chat',
       lastCliRuntimeId: 'claude-code',
+      cliModelIdByRuntime: {},
+      cliReasoningEffortByModel: {},
       lastChatPlacement: undefined,
       quickAccessEntries: DEFAULT_CHAT_QUICK_ACCESS_ENTRIES,
     }),

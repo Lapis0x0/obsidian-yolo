@@ -56,6 +56,10 @@ class FakeCliRuntime implements CliRuntime {
   readonly subscribedListeners: CliRuntimeEventListener[] = []
   readonly readyInputs: CliRuntimeReadyInput[] = []
   readonly turnInputs: CliTurnInput[] = []
+  readonly configurationUpdates: Array<{
+    modelId?: string | null
+    reasoningEffort?: string | null
+  }> = []
   openSessionImpl: (ref: CliSessionRef) => Promise<CliSessionHydration> =
     async (ref) => ({ ref, messages: [] })
   ensureReadyImpl: (input: CliRuntimeReadyInput) => Promise<void> = async (
@@ -68,7 +72,7 @@ class FakeCliRuntime implements CliRuntime {
   }
   sendTurnImpl: (input: CliTurnInput) => Promise<void> = async () => undefined
   cancelImpl: () => Promise<void> = async () => undefined
-  readonly configuration: CliRuntimeConfiguration
+  configuration: CliRuntimeConfiguration
 
   constructor(readonly runtimeId: CliRuntimeId = 'codex') {
     this.configuration = {
@@ -102,7 +106,12 @@ class FakeCliRuntime implements CliRuntime {
     return this.configuration
   }
 
-  async updateConfiguration() {
+  async updateConfiguration(update: {
+    modelId?: string | null
+    reasoningEffort?: string | null
+  }) {
+    this.configurationUpdates.push(update)
+    this.configuration = { ...this.configuration, ...update }
     return this.getConfiguration()
   }
 
@@ -137,6 +146,41 @@ class FakeCliRuntime implements CliRuntime {
 }
 
 describe('CliConversationController', () => {
+  it('applies a preferred model and effort before publishing ready configuration', async () => {
+    const runtime = new FakeCliRuntime()
+    runtime.configuration = {
+      models: [
+        {
+          id: 'sol',
+          label: 'Sol',
+          reasoningEfforts: [{ id: 'medium' }],
+          isDefault: true,
+        },
+        {
+          id: 'luna',
+          label: 'Luna',
+          reasoningEfforts: [{ id: 'medium' }],
+        },
+      ],
+      modelId: 'sol',
+      reasoningEffort: null,
+    }
+    const controller = new CliConversationController(runtime)
+
+    await controller.ensureReady(assistant, {
+      modelId: 'luna',
+      reasoningEffort: 'medium',
+    })
+
+    expect(runtime.configurationUpdates).toEqual([
+      { modelId: 'luna', reasoningEffort: 'medium' },
+    ])
+    expect(controller.getSnapshot().configuration).toMatchObject({
+      modelId: 'luna',
+      reasoningEffort: 'medium',
+    })
+  })
+
   it('hydrates messages, upserts by stable id in place, and removes by id', async () => {
     const runtime = new FakeCliRuntime()
     const ref = session('existing')

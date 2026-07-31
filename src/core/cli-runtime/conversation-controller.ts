@@ -6,6 +6,7 @@ import type {
   CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
+  CliRuntimeModel,
   CliRuntimeRunState,
   CliSessionHydration,
   CliSessionRef,
@@ -86,7 +87,10 @@ export class CliConversationController {
   private readyTail: Promise<void> = Promise.resolve()
   private disposed = false
 
-  constructor(runtime: CliRuntime) {
+  constructor(
+    runtime: CliRuntime,
+    private readonly getCachedModels: () => readonly CliRuntimeModel[] = () => [],
+  ) {
     this.runtime = runtime
     this.snapshot = this.createEmptySnapshot(runtime)
     this.subscribeToRuntime()
@@ -144,14 +148,17 @@ export class CliConversationController {
     }
   }
 
-  ensureReady(assistant: CliAssistantBinding): Promise<void> {
+  ensureReady(
+    assistant: CliAssistantBinding,
+    initialConfiguration?: CliRuntimeConfigurationUpdate,
+  ): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
     const task = this.readyTail
       .catch(() => undefined)
       .then(async () => {
         if (!this.isCurrent(operation)) return
-        await this.ensureReadyNow(operation, assistant)
+        await this.ensureReadyNow(operation, assistant, initialConfiguration)
       })
     this.readyTail = task.catch(() => undefined)
     return task
@@ -189,13 +196,14 @@ export class CliConversationController {
 
   async updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
-  ): Promise<void> {
+  ): Promise<CliRuntimeConfiguration | undefined> {
     this.assertActive()
     const operation = this.captureOperation()
     try {
       const configuration = await operation.runtime.updateConfiguration(update)
-      if (!this.isCurrent(operation)) return
+      if (!this.isCurrent(operation)) return undefined
       this.publish({ ...this.snapshot, configuration, error: null })
+      return configuration
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
@@ -228,6 +236,7 @@ export class CliConversationController {
   private async ensureReadyNow(
     operation: ReturnType<CliConversationController['captureOperation']>,
     assistant: CliAssistantBinding,
+    initialConfiguration?: CliRuntimeConfigurationUpdate,
   ): Promise<void> {
     const target = this.snapshot.sessionRef
     this.acceptingEvents = false
@@ -244,8 +253,20 @@ export class CliConversationController {
       if (!target && !this.snapshot.sessionRef) {
         throw new Error('CLI runtime did not bind a session.')
       }
-      const configuration = await operation.runtime.getConfiguration()
+      let configuration = await operation.runtime.getConfiguration(
+        this.getCachedModels(),
+      )
       if (!this.isCurrent(operation)) return
+      if (initialConfiguration) {
+        const update = this.resolveAvailableConfigurationUpdate(
+          initialConfiguration,
+          configuration,
+        )
+        if (Object.keys(update).length > 0) {
+          configuration = await operation.runtime.updateConfiguration(update)
+          if (!this.isCurrent(operation)) return
+        }
+      }
       this.acceptingEvents = true
       this.bindingTarget = undefined
       this.bindingEpoch = null
@@ -264,6 +285,37 @@ export class CliConversationController {
       }
       throw error
     }
+  }
+
+  private resolveAvailableConfigurationUpdate(
+    update: CliRuntimeConfigurationUpdate,
+    configuration: CliRuntimeConfiguration,
+  ): CliRuntimeConfigurationUpdate {
+    const resolved: CliRuntimeConfigurationUpdate = {}
+    const requestedModelId = update.modelId
+    if (
+      requestedModelId === null ||
+      (requestedModelId !== undefined &&
+        configuration.models.some((model) => model.id === requestedModelId))
+    ) {
+      resolved.modelId = requestedModelId
+    }
+    if ('reasoningEffort' in update) {
+      const targetModelId =
+        'modelId' in resolved ? (resolved.modelId ?? null) : configuration.modelId
+      const targetModel = targetModelId
+        ? configuration.models.find((model) => model.id === targetModelId)
+        : undefined
+      if (
+        update.reasoningEffort === null ||
+        (targetModel?.reasoningEfforts.some(
+          (effort) => effort.id === update.reasoningEffort,
+        ) ?? false)
+      ) {
+        resolved.reasoningEffort = update.reasoningEffort
+      }
+    }
+    return resolved
   }
 
   private beginSessionTransition(ref: CliSessionRef | null): void {

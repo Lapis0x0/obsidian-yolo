@@ -9,6 +9,7 @@ import type {
   CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
   CliRuntimeEventListener,
+  CliRuntimeModel,
   CliRuntimeReadyInput,
   CliSessionHydration,
   CliSessionMetadata,
@@ -31,8 +32,8 @@ import type {
   CodexThread,
   CodexThreadItem,
   CodexUserInput,
-  ThreadListResponse,
   ModelListResponse,
+  ThreadListResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadStartResponse,
@@ -221,9 +222,13 @@ export class CodexCliRuntime implements CliRuntime {
     this.emit({ type: 'session_bound', ref: this.activeSessionRef })
   }
 
-  async getConfiguration(): Promise<CliRuntimeConfiguration> {
+  async getConfiguration(
+    cachedModels?: readonly CliRuntimeModel[],
+  ): Promise<CliRuntimeConfiguration> {
     if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
-    const models = await this.listModels()
+    const models = cachedModels?.length
+      ? cachedModels.map((model) => ({ ...model }))
+      : await this.listModels()
     this.modelId ??=
       models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null
     return {
@@ -356,7 +361,7 @@ export class CodexCliRuntime implements CliRuntime {
     }
   }
 
-  private async listModels(): Promise<CliRuntimeConfiguration['models']> {
+  async listModels(): Promise<CliRuntimeConfiguration['models']> {
     if (this.models) return this.models
     const transport = await this.getTransport()
     const models: CliRuntimeConfiguration['models'] = []

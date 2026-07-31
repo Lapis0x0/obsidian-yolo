@@ -8,7 +8,9 @@ import type {
   CliSessionHydration,
   CliSessionRef,
 } from '../../core/cli-runtime'
+import { SETTINGS_SCHEMA_VERSION } from '../../settings/schema/migrations'
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import { parseYoloSettings } from '../../settings/schema/settings'
 import type { ChatUserMessage } from '../../types/chat'
 
 import {
@@ -17,6 +19,7 @@ import {
   invalidateChatRuntimeNavigation,
   openCliSession,
   openCliSessionForNavigation,
+  prepareCliConversation,
   removeCliOverlayAfterConfirmation,
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
@@ -90,6 +93,58 @@ const cliSnapshot = (
 describe('CLI chat integration', () => {
   afterEach(() => {
     jest.useRealTimers()
+  })
+
+  it('prepares a fresh runtime with its remembered model and effort', async () => {
+    const ensureReady = jest.fn(async () => undefined)
+    const controller = {
+      ensureReady,
+      getSnapshot: () => cliSnapshot(),
+    } as unknown as CliConversationController
+    const scope = {
+      getModelCatalogSnapshot: () =>
+        new Map([
+          [
+            'codex',
+            [
+              {
+                id: 'gpt-5.6-luna',
+                label: 'Luna',
+                reasoningEfforts: [{ id: 'medium' }],
+              },
+            ],
+          ],
+        ]),
+      sessionService: {},
+    } as unknown as CliRuntimeScope
+    const settings = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      chatOptions: {
+        includeCurrentFileContent: true,
+        cliModelIdByRuntime: { codex: 'gpt-5.6-luna' },
+        cliReasoningEffortByModel: {
+          'codex:gpt-5.6-luna': 'medium',
+        },
+      },
+    })
+    const assistant = {
+      assistantId: 'assistant-1',
+      systemPrompt: 'Be precise.',
+      enabledSkillNames: [],
+    }
+
+    await prepareCliConversation({
+      controller,
+      scope,
+      runtimeId: 'codex',
+      assistant,
+      settings,
+    })
+
+    expect(ensureReady).toHaveBeenCalledWith(assistant, {
+      modelId: 'gpt-5.6-luna',
+      reasoningEffort: 'medium',
+    })
   })
 
   it('falls back to YOLO without a desktop scope and resolves runtime-owned assistants', () => {
@@ -213,6 +268,7 @@ describe('CLI chat integration', () => {
     )
     expect(ensureReady).toHaveBeenCalledWith(
       expect.objectContaining({ assistantId: 'assistant-1' }),
+      {},
     )
     expect(sendTurn).toHaveBeenCalledWith({
       userMessage: expect.objectContaining({

@@ -2,8 +2,10 @@ import type { App } from 'obsidian'
 
 import type {
   ChatRuntimeId,
+  CliAssistantBinding,
   CliConversationController,
   CliConversationSnapshot,
+  CliRuntimeConfigurationUpdate,
   CliRuntimeId,
   CliRuntimeScope,
   CliSessionDiscoveryResult,
@@ -19,6 +21,7 @@ import type { ChatUserMessage } from '../../types/chat'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { resolveCliRuntimePreference } from './cliRuntimePreferences'
 
 const ACTIVE_CLI_RUN_STATES: ReadonlySet<CliConversationSnapshot['runState']> =
   new Set(['running', 'waiting_for_approval', 'waiting_for_user'])
@@ -27,6 +30,42 @@ const toError = (error: unknown): Error =>
   error instanceof Error
     ? error
     : new Error(typeof error === 'string' ? error : 'Unknown CLI session error')
+
+export const prepareCliConversation = async ({
+  controller,
+  scope,
+  runtimeId,
+  assistant,
+  settings,
+}: {
+  controller: CliConversationController
+  scope: CliRuntimeScope
+  runtimeId: CliRuntimeId
+  assistant: CliAssistantBinding
+  settings: YoloSettings
+}): Promise<void> => {
+  const existingSessionRef = controller.getSnapshot().sessionRef
+  let initialConfiguration: CliRuntimeConfigurationUpdate = {}
+  if (existingSessionRef && runtimeId === 'claude-code') {
+    const remembered =
+      await scope.sessionService.getRememberedConfiguration(existingSessionRef)
+    initialConfiguration = {
+      ...(remembered?.modelId !== undefined
+        ? { modelId: remembered.modelId }
+        : {}),
+      ...(remembered?.reasoningEffort !== undefined
+        ? { reasoningEffort: remembered.reasoningEffort }
+        : {}),
+    }
+  } else if (!existingSessionRef) {
+    initialConfiguration = resolveCliRuntimePreference(
+      settings,
+      runtimeId,
+      scope.getModelCatalogSnapshot().get(runtimeId) ?? [],
+    )
+  }
+  await controller.ensureReady(assistant, initialConfiguration)
+}
 
 export type CliSubmissionPhase = 'idle' | 'preparing' | 'sending' | 'accepted'
 
@@ -503,7 +542,13 @@ export const submitCliComposerTurn = async ({
     assistantId,
   })
   throwIfAborted()
-  await controller.ensureReady(assistant)
+  await prepareCliConversation({
+    controller,
+    scope,
+    runtimeId,
+    assistant,
+    settings,
+  })
   throwIfAborted()
   if (onSendStarted?.() === false) {
     throw new DOMException('CLI submission superseded.', 'AbortError')

@@ -31,6 +31,8 @@ export const cliSessionIndexEntrySchema = z.object({
   userDisplayByTransportHash: z
     .record(z.string(), serializedUserMessageSchema)
     .optional(),
+  modelId: z.string().nullable().optional(),
+  reasoningEffort: z.string().nullable().optional(),
 })
 
 export type CliSessionIndexEntry = z.infer<typeof cliSessionIndexEntrySchema>

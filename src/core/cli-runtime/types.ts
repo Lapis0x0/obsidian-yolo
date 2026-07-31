@@ -125,13 +125,16 @@ export type CliQuestionResponse = {
 
 export type CliRuntimeEventListener = (event: CliRuntimeEvent) => void
 
-export interface CliRuntime {
+export type CliRuntime = {
   readonly runtimeId: CliRuntimeId
 
   listSessions(): Promise<CliSessionMetadata[]>
+  listModels?(): Promise<CliRuntimeModel[]>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
-  getConfiguration(): Promise<CliRuntimeConfiguration>
+  getConfiguration(
+    cachedModels?: readonly CliRuntimeModel[],
+  ): Promise<CliRuntimeConfiguration>
   updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration>

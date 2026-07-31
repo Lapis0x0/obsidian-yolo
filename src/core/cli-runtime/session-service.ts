@@ -167,6 +167,12 @@ export class CliSessionService {
               userDisplayByTransportHash: existing.userDisplayByTransportHash,
             }
           : {}),
+        ...(existing && 'modelId' in existing
+          ? { modelId: existing.modelId }
+          : {}),
+        ...(existing && 'reasoningEffort' in existing
+          ? { reasoningEffort: existing.reasoningEffort }
+          : {}),
       }),
     )
   }
@@ -190,6 +196,32 @@ export class CliSessionService {
           ...existing?.userDisplayByTransportHash,
           [transportHash]: serialized,
         },
+      }),
+    )
+  }
+
+  async getRememberedConfiguration(ref: CliSessionRef): Promise<{
+    modelId?: string | null
+    reasoningEffort?: string | null
+  }> {
+    const entry = await this.indexStore.get(ref)
+    return {
+      ...(entry && 'modelId' in entry ? { modelId: entry.modelId } : {}),
+      ...(entry && 'reasoningEffort' in entry
+        ? { reasoningEffort: entry.reasoningEffort }
+        : {}),
+    }
+  }
+
+  async rememberConfiguration(
+    ref: CliSessionRef,
+    configuration: { modelId?: string | null; reasoningEffort?: string | null },
+  ): Promise<void> {
+    await this.indexStore.update(ref, (existing) =>
+      createCliSessionIndexEntry({
+        ...ref,
+        ...existing,
+        ...configuration,
       }),
     )
   }
@@ -256,6 +288,12 @@ export class CliSessionService {
         ...(existing?.pinnedAt !== undefined
           ? { pinnedAt: existing.pinnedAt }
           : {}),
+        ...(existing && 'modelId' in existing
+          ? { modelId: existing.modelId }
+          : {}),
+        ...(existing && 'reasoningEffort' in existing
+          ? { reasoningEffort: existing.reasoningEffort }
+          : {}),
       }),
     )
   }
@@ -285,6 +323,12 @@ export class CliSessionService {
           : {}),
         isPinned: pinned,
         ...(pinned ? { pinnedAt } : {}),
+        ...(existing && 'modelId' in existing
+          ? { modelId: existing.modelId }
+          : {}),
+        ...(existing && 'reasoningEffort' in existing
+          ? { reasoningEffort: existing.reasoningEffort }
+          : {}),
       }),
     )
   }
