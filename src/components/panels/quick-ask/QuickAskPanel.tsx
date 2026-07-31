@@ -593,17 +593,11 @@ export function QuickAskPanel({
   // runtime's `contextualInjections` channel — see editorSnapshotInjection
   // built below in the submit path.
   const requestContextBuilder = useMemo(() => {
-    const globalSystemPrompt = settings.systemPrompt || ''
-    const assistantPrompt = selectedAssistant?.systemPrompt || ''
-    const combinedSystemPrompt =
-      `${globalSystemPrompt}\n\n${assistantPrompt}`.trim()
-
     return new RequestContextBuilder(
       app,
       {
         ...settings,
         currentAssistantId: selectedAssistant?.id,
-        systemPrompt: combinedSystemPrompt,
       },
       {
         includeSkills: executionMode === 'agent' || executionMode === 'ask',
@@ -1116,6 +1110,7 @@ export function QuickAskPanel({
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
+            workspaceScope: selectedAssistant?.workspaceScope,
             allowedSkillPaths,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: editorSnapshotInjection
