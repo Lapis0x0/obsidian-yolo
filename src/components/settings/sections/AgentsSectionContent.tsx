@@ -377,6 +377,10 @@ export function AgentsSectionContent({
   const [isSystemPromptExpanded, setIsSystemPromptExpanded] = useState(false)
   const expandedPromptTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const systemPromptWrapperRef = useRef<HTMLDivElement | null>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const sectionRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
   const [systemPromptOverlayTarget, setSystemPromptOverlayTarget] =
     useState<HTMLElement | null>(null)
 
@@ -385,9 +389,11 @@ export function AgentsSectionContent({
       setSystemPromptOverlayTarget(null)
       return
     }
+    const wrapper = systemPromptWrapperRef.current
     const target =
-      systemPromptWrapperRef.current?.closest<HTMLElement>('.modal') ??
-      document.body
+      wrapper?.closest<HTMLElement>('.modal') ??
+      wrapper?.ownerDocument.body ??
+      null
     setSystemPromptOverlayTarget(target)
   }, [isSystemPromptExpanded])
   const [availableTools, setAvailableTools] = useState<McpTool[]>([])
@@ -1200,6 +1206,7 @@ export function AgentsSectionContent({
   )
   return (
     <div
+      ref={sectionRef}
       className={`yolo-settings-section yolo-agent-editor-panel${
         isDirectEntry ? ' yolo-agent-editor-panel--direct' : ''
       }`}
@@ -1703,7 +1710,7 @@ export function AgentsSectionContent({
                                   <ChevronDown size={12} aria-hidden="true" />
                                 </button>
                               </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
+                              <DropdownMenu.Portal container={portalContainer}>
                                 <DropdownMenu.Content
                                   className="yolo-simple-select__content"
                                   side="bottom"
@@ -1803,7 +1810,7 @@ export function AgentsSectionContent({
                                   <ChevronDown size={12} aria-hidden="true" />
                                 </button>
                               </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
+                              <DropdownMenu.Portal container={portalContainer}>
                                 <DropdownMenu.Content
                                   className="yolo-simple-select__content"
                                   side="bottom"

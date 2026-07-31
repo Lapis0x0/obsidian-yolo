@@ -1181,6 +1181,11 @@ function McpJsonEditor({
   setParameters,
   validationError,
 }: McpJsonEditorProps) {
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const infoTriggerRef = useCallback((node: HTMLButtonElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
+
   return (
     <div className="yolo-mcp-json-editor">
       <div className="setting-item yolo-settings-textarea-header yolo-mcp-parameters-header">
@@ -1193,6 +1198,7 @@ function McpJsonEditor({
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
                   <button
+                    ref={infoTriggerRef}
                     className="yolo-mcp-parameters-info-icon"
                     type="button"
                   >
@@ -1202,7 +1208,7 @@ function McpJsonEditor({
                     </span>
                   </button>
                 </Tooltip.Trigger>
-                <Tooltip.Portal>
+                <Tooltip.Portal container={portalContainer}>
                   <Tooltip.Content
                     className="yolo-tooltip-content yolo-tooltip-content--wide"
                     side="bottom"

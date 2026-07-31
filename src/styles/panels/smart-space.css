@@ -1137,7 +1137,7 @@
 }
 
 /* Textarea container and inputs */
-.yolo-textarea-container {
+.yolo-modal-input-container > .yolo-textarea-container {
   width: 100%;
   height: 100%;
 }

@@ -1,7 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { BookOpen, Copy, Cpu, Plus, Trash2, Wrench } from 'lucide-react'
 import { App } from 'obsidian'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
@@ -63,6 +63,10 @@ export function AgentSection({ app }: AgentSectionProps) {
   const [mcpManager, setMcpManager] = useState<McpManager | null>(null)
   const [mcpServers, setMcpServers] = useState<McpServerState[]>([])
   const [mcpManagerLoading, setMcpManagerLoading] = useState(true)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const sectionRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -390,7 +394,7 @@ export function AgentSection({ app }: AgentSectionProps) {
     globallyEnabledSkillEntries.length - visibleSkillEntries.length
 
   return (
-    <div className="yolo-settings-section yolo-agent-section">
+    <div ref={sectionRef} className="yolo-settings-section yolo-agent-section">
       <div className="yolo-settings-header">
         {t('settings.agent.title', 'Agent')}
       </div>
@@ -575,7 +579,7 @@ export function AgentSection({ app }: AgentSectionProps) {
                       ...
                     </span>
                   </DropdownMenu.Trigger>
-                  <DropdownMenu.Portal>
+                  <DropdownMenu.Portal container={portalContainer}>
                     <DropdownMenu.Content
                       className="yolo-agent-card-menu-popover"
                       align="end"
