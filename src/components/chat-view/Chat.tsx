@@ -38,6 +38,7 @@ import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
   type ChatRuntimeId,
+  type CliAssistantBinding,
   type CliConversationController,
   type CliConversationSnapshot,
   type CliRuntimeConfiguration,
@@ -49,7 +50,9 @@ import {
   type CliSessionRef,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
+  getCliAssistantBindingCacheKey,
   isCliRuntimeAvailable,
+  resolveCliAssistantBinding,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
@@ -1188,6 +1191,61 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settings.currentAssistantId ??
       DEFAULT_ASSISTANT_ID,
   )
+  const cliAssistantBindingCacheRef = useRef<{
+    key: string
+    binding: CliAssistantBinding
+  } | null>(null)
+  const cliAssistantBindingKey = getCliAssistantBindingCacheKey(
+    settings,
+    cliAssistantId,
+  )
+  const [cliSkillRevision, setCliSkillRevision] = useState(0)
+  useEffect(() => {
+    const isSkillPath = (path: string): boolean =>
+      path.startsWith('skills/') || path.includes('/skills/')
+    const invalidate = (file: { path: string }, oldPath?: string) => {
+      if (!isSkillPath(file.path) && !(oldPath && isSkillPath(oldPath))) return
+      cliAssistantBindingCacheRef.current = null
+      cliRuntimeScope?.invalidateConversationRuntimeCache('codex')
+      setCliSkillRevision((revision) => revision + 1)
+    }
+    const refs = [
+      app.vault.on('create', invalidate),
+      app.vault.on('modify', invalidate),
+      app.vault.on('delete', invalidate),
+      app.vault.on('rename', invalidate),
+    ]
+    return () => refs.forEach((ref) => app.vault.offref(ref))
+  }, [app, cliRuntimeScope])
+  useEffect(() => {
+    if (!cliRuntimeScope || activeRuntimeId !== 'codex') return
+    let cancelled = false
+    const currentSettings = cliPreferenceSettingsRef.current
+    void resolveCliAssistantBinding({
+      app,
+      settings: currentSettings,
+      assistantId: cliAssistantId,
+    })
+      .then((assistant) => {
+        if (cancelled) return
+        cliAssistantBindingCacheRef.current = {
+          key: cliAssistantBindingKey,
+          binding: assistant,
+        }
+        return cliRuntimeScope.warmConversationRuntime('codex', assistant)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeRuntimeId,
+    app,
+    cliAssistantBindingKey,
+    cliAssistantId,
+    cliRuntimeScope,
+    cliSkillRevision,
+  ])
   const activeAssistantId = resolveActiveAssistantId({
     activeRuntimeId,
     conversationAssistantId,
@@ -6550,6 +6608,22 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               userMessage: messageForSubmit,
               timeContextEnabled: state.selectedCliAssistantTimeContextEnabled,
               signal: submission.signal,
+              resolveAssistantBinding: async (input) => {
+                const cached = cliAssistantBindingCacheRef.current
+                const key = getCliAssistantBindingCacheKey(
+                  input.settings,
+                  input.assistantId,
+                )
+                if (cached?.key === key) {
+                  return cached.binding
+                }
+                const binding = await resolveCliAssistantBinding(input)
+                cliAssistantBindingCacheRef.current = {
+                  key,
+                  binding,
+                }
+                return binding
+              },
               onSendStarted: () => coordinator.markSending(submission.token),
               onPresented: (presentedMessage) => {
                 if (

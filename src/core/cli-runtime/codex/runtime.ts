@@ -18,15 +18,16 @@ import type {
 } from '../types'
 
 import {
+  CodexAppServerHost,
+  type CodexAppServerHostOptions,
+  type CodexHostResolver,
+} from './host'
+import {
   buildPendingToolMessages,
   mapCodexItem,
   mapCodexTurns,
 } from './mapping'
-import {
-  CodexAppServerProcess,
-  type CodexProcessLike,
-  type CodexProcessOptions,
-} from './process'
+import type { CodexProcessOptions } from './process'
 import type {
   CodexServerRequest,
   CodexThread,
@@ -39,7 +40,6 @@ import type {
   ThreadStartResponse,
   TurnStartResponse,
 } from './protocol'
-import { CodexRpcTransport, initializeCodexTransport } from './transport'
 
 type PendingServerRequest = {
   request: CodexServerRequest
@@ -48,7 +48,8 @@ type PendingServerRequest = {
 }
 
 export type CodexCliRuntimeOptions = CodexProcessOptions & {
-  createProcess?: (options: CodexProcessOptions) => Promise<CodexProcessLike>
+  resolveHost?: CodexHostResolver
+  createProcess?: CodexAppServerHostOptions['createProcess']
 }
 
 const toSessionRef = (thread: CodexThread): CliSessionRef => ({
@@ -66,19 +67,33 @@ const toSessionMetadata = (thread: CodexThread): CliSessionMetadata => ({
   cwd: thread.cwd,
 })
 
-const toCodexInput = (content: string | ContentPart[]): CodexUserInput[] => {
-  if (typeof content === 'string') {
-    return [{ type: 'text', text: content, text_elements: [] }]
-  }
-  return content.flatMap((part): CodexUserInput[] => {
-    if (part.type === 'text') {
-      return [{ type: 'text', text: part.text, text_elements: [] }]
+const toCodexInput = (
+  content: string | ContentPart[],
+  selectedSkillNames: readonly string[],
+  skillPaths: ReadonlyMap<string, string>,
+): CodexUserInput[] => {
+  const skills = selectedSkillNames.map((name): CodexUserInput => {
+    const path = skillPaths.get(name)
+    if (!path) {
+      throw new Error(`Selected YOLO Skill is unavailable to Codex: ${name}`)
     }
-    if (part.type === 'image_url') {
-      return [{ type: 'image', url: part.image_url.url }]
-    }
-    throw new Error('Codex CLI runtime does not support PDF attachments.')
+    return { type: 'skill', name, path }
   })
+  if (typeof content === 'string') {
+    return [{ type: 'text', text: content, text_elements: [] }, ...skills]
+  }
+  return [
+    ...content.flatMap((part): CodexUserInput[] => {
+      if (part.type === 'text') {
+        return [{ type: 'text', text: part.text, text_elements: [] }]
+      }
+      if (part.type === 'image_url') {
+        return [{ type: 'image', url: part.image_url.url }]
+      }
+      throw new Error('Codex CLI runtime does not support PDF attachments.')
+    }),
+    ...skills,
+  ]
 }
 
 const approvalDecision = (
@@ -131,9 +146,9 @@ const toCodexQuestionAnswers = (answer: unknown): Record<string, unknown> => {
 export class CodexCliRuntime implements CliRuntime {
   readonly runtimeId = 'codex' as const
 
-  private process: CodexProcessLike | null = null
-  private transport: CodexRpcTransport | null = null
-  private transportPromise: Promise<CodexRpcTransport> | null = null
+  private host: CodexAppServerHost | null = null
+  private ownsHost = false
+  private detachHostListeners: (() => void) | null = null
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private readonly pendingRequests = new Map<string, PendingServerRequest>()
   private activeSessionRef: CliSessionRef | null = null
@@ -147,12 +162,12 @@ export class CodexCliRuntime implements CliRuntime {
   constructor(private readonly options: CodexCliRuntimeOptions) {}
 
   async listSessions(): Promise<CliSessionMetadata[]> {
-    const transport = await this.getTransport()
+    const host = await this.getHost()
     const sessions: CliSessionMetadata[] = []
     let cursor: string | null = null
     do {
       const response: ThreadListResponse =
-        await transport.request<ThreadListResponse>('thread/list', {
+        await host.request<ThreadListResponse>('thread/list', {
           cursor,
           limit: 100,
           sortKey: 'updated_at',
@@ -176,14 +191,11 @@ export class CodexCliRuntime implements CliRuntime {
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     if (ref.runtimeId !== 'codex')
       throw new Error('Cannot open a non-Codex session.')
-    const transport = await this.getTransport()
-    const response = await transport.request<ThreadReadResponse>(
-      'thread/read',
-      {
-        threadId: ref.nativeSessionId,
-        includeTurns: true,
-      },
-    )
+    const host = await this.getHost()
+    const response = await host.request<ThreadReadResponse>('thread/read', {
+      threadId: ref.nativeSessionId,
+      includeTurns: true,
+    })
     return {
       ref: toSessionRef(response.thread),
       messages: mapCodexTurns(response.thread.turns),
@@ -191,13 +203,15 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
-    const transport = await this.getTransport()
+    const previousHost = this.host
+    const host = await this.getHost(input.assistant)
     const assistantKey = JSON.stringify(input.assistant)
     if (
       this.activeSessionRef &&
       input.sessionRef?.nativeSessionId ===
         this.activeSessionRef.nativeSessionId &&
-      assistantKey === this.assistantKey
+      assistantKey === this.assistantKey &&
+      previousHost === host
     ) {
       return
     }
@@ -210,11 +224,11 @@ export class CodexCliRuntime implements CliRuntime {
       experimentalRawEvents: true,
     }
     const response = input.sessionRef
-      ? await transport.request<ThreadResumeResponse>('thread/resume', {
+      ? await host.request<ThreadResumeResponse>('thread/resume', {
           threadId: input.sessionRef.nativeSessionId,
           ...params,
         })
-      : await transport.request<ThreadStartResponse>('thread/start', params)
+      : await host.request<ThreadStartResponse>('thread/start', params)
     this.activeSessionRef = toSessionRef(response.thread)
     this.modelId = response.model ?? null
     this.reasoningEffort = response.reasoningEffort ?? null
@@ -262,14 +276,17 @@ export class CodexCliRuntime implements CliRuntime {
       }
     }
     if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
+    const host = await this.getHost()
     this.emit({ type: 'run_state', state: 'running' })
-    const response = await (
-      await this.getTransport()
-    ).request<TurnStartResponse>(
+    const response = await host.request<TurnStartResponse>(
       'turn/start',
       {
         threadId: this.activeSessionRef.nativeSessionId,
-        input: toCodexInput(input.content),
+        input: toCodexInput(
+          input.content,
+          input.selectedSkillNames ?? [],
+          host.skillPaths,
+        ),
         model: this.modelId,
         effort: this.reasoningEffort,
         summary: 'auto',
@@ -282,7 +299,7 @@ export class CodexCliRuntime implements CliRuntime {
   async cancel(): Promise<void> {
     if (!this.activeSessionRef || !this.activeTurnId) return
     await (
-      await this.getTransport()
+      await this.getHost()
     ).request('turn/interrupt', {
       threadId: this.activeSessionRef.nativeSessionId,
       turnId: this.activeTurnId,
@@ -293,23 +310,23 @@ export class CodexCliRuntime implements CliRuntime {
     const pending = this.pendingRequests.get(response.requestId)
     if (!pending || pending.kind !== 'approval') return false
     this.deletePendingRequest(pending)
-    const transport = await this.getTransport()
+    const host = await this.getHost()
     if (pending.request.method === 'item/permissions/requestApproval') {
       if (response.decision === 'reject') {
-        transport.respondError(
+        host.respondError(
           pending.request.id,
           -32000,
           'User denied the requested permissions.',
           null,
         )
       } else {
-        transport.respond(
+        host.respond(
           pending.request.id,
           permissionApprovalResult(pending.request, response.decision),
         )
       }
     } else {
-      transport.respond(pending.request.id, {
+      host.respond(pending.request.id, {
         decision: approvalDecision(response.decision),
       })
     }
@@ -320,7 +337,7 @@ export class CodexCliRuntime implements CliRuntime {
     const pending = this.pendingRequests.get(response.requestId)
     if (!pending || pending.kind !== 'question') return false
     this.deletePendingRequest(pending)
-    ;(await this.getTransport()).respond(pending.request.id, {
+    ;(await this.getHost()).respond(pending.request.id, {
       answers: toCodexQuestionAnswers(response.answer),
     })
     return true
@@ -334,13 +351,11 @@ export class CodexCliRuntime implements CliRuntime {
   async dispose(): Promise<void> {
     if (this.disposed) return
     this.disposed = true
-    if (this.transportPromise) {
-      await this.transportPromise.catch(() => undefined)
-    }
-    this.transport?.dispose()
-    this.transport = null
-    if (this.process) await this.process.shutdown()
-    this.process = null
+    this.detachHostListeners?.()
+    this.detachHostListeners = null
+    const host = this.host
+    this.host = null
+    if (host && this.ownsHost) await host.dispose()
     this.listeners.clear()
     this.pendingRequests.clear()
   }
@@ -349,31 +364,57 @@ export class CodexCliRuntime implements CliRuntime {
     for (const listener of this.listeners) listener(event)
   }
 
-  private async getTransport(): Promise<CodexRpcTransport> {
+  private async getHost(
+    assistant?: CliRuntimeReadyInput['assistant'],
+  ): Promise<CodexAppServerHost> {
     if (this.disposed) throw new Error('Codex CLI runtime has been disposed.')
-    if (this.transport) return this.transport
-    if (this.transportPromise) return this.transportPromise
-    const promise = this.createTransport()
-    this.transportPromise = promise
-    try {
-      return await promise
-    } finally {
-      if (this.transportPromise === promise) this.transportPromise = null
+    const host =
+      !assistant && this.host
+        ? this.host
+        : this.options.resolveHost
+          ? await this.options.resolveHost(assistant)
+          : (this.host ??
+            new CodexAppServerHost({
+              command: this.options.command,
+              cwd: this.options.cwd,
+              env: this.options.env,
+              createProcess: this.options.createProcess,
+            }))
+    if (this.host !== host) {
+      this.detachHostListeners?.()
+      this.host = host
+      this.ownsHost = !this.options.resolveHost
+      const detachNotification = host.onNotification((notification) =>
+        this.handleNotification(notification.method, notification.params),
+      )
+      const detachServerRequest = host.onServerRequest((request) =>
+        this.handleServerRequest(request),
+      )
+      const detachFatal = host.onFatal((error) => this.handleHostFatal(error))
+      this.detachHostListeners = () => {
+        detachNotification()
+        detachServerRequest()
+        detachFatal()
+      }
     }
+    await host.ensureReady()
+    return host
   }
 
   async listModels(): Promise<CliRuntimeConfiguration['models']> {
     if (this.models) return this.models
-    const transport = await this.getTransport()
+    const host = await this.getHost()
     const models: CliRuntimeConfiguration['models'] = []
     let cursor: string | null = null
     do {
-      const response: ModelListResponse =
-        await transport.request<ModelListResponse>('model/list', {
+      const response: ModelListResponse = await host.request<ModelListResponse>(
+        'model/list',
+        {
           cursor,
           limit: 100,
           includeHidden: false,
-        })
+        },
+      )
       models.push(
         ...response.data
           .filter((model) => !model.hidden)
@@ -397,44 +438,7 @@ export class CodexCliRuntime implements CliRuntime {
     return models
   }
 
-  private async createTransport(): Promise<CodexRpcTransport> {
-    const createProcess =
-      this.options.createProcess ??
-      ((options: CodexProcessOptions) => CodexAppServerProcess.start(options))
-    const process = await createProcess(this.options)
-    this.process = process
-    const transport = new CodexRpcTransport(process)
-    transport.onFatal((error) =>
-      this.handleTransportFatal(transport, process, error),
-    )
-    transport.onNotification((notification) =>
-      this.handleNotification(notification.method, notification.params),
-    )
-    transport.onServerRequest((request) => this.handleServerRequest(request))
-    try {
-      await initializeCodexTransport(transport)
-      const fatalError = transport.getFatalError()
-      if (fatalError) throw fatalError
-      this.transport = transport
-      return transport
-    } catch (error) {
-      transport.dispose()
-      if (this.process === process) {
-        this.process = null
-        await process.shutdown()
-      }
-      throw error
-    }
-  }
-
-  private handleTransportFatal(
-    transport: CodexRpcTransport,
-    process: CodexProcessLike,
-    error: Error,
-  ): void {
-    if (this.transport !== transport && this.process !== process) return
-    if (this.transport === transport) this.transport = null
-    if (this.process === process) this.process = null
+  private handleHostFatal(error: Error): void {
     this.activeTurnId = null
     this.models = null
     this.modelId = null
@@ -444,8 +448,6 @@ export class CodexCliRuntime implements CliRuntime {
     this.streamingAssistantText.clear()
     this.streamingReasoningSummaryParts.clear()
     this.streamingReasoningContentParts.clear()
-    transport.dispose()
-    void process.shutdown().catch(() => undefined)
     if (!this.disposed) {
       this.emit({ type: 'run_state', state: 'error', error: error.message })
     }
@@ -455,6 +457,14 @@ export class CodexCliRuntime implements CliRuntime {
     method: string,
     params: Record<string, unknown>,
   ): void {
+    const threadId = params.threadId
+    if (
+      this.activeSessionRef &&
+      typeof threadId === 'string' &&
+      threadId !== this.activeSessionRef.nativeSessionId
+    ) {
+      return
+    }
     if (method === 'turn/started') {
       const turn = params.turn as { id?: unknown } | undefined
       this.activeTurnId = typeof turn?.id === 'string' ? turn.id : null
@@ -555,13 +565,18 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   private readonly streamingAssistantText = new Map<string, string>()
-  private readonly streamingReasoningSummaryParts = new Map<
-    string,
-    string[]
-  >()
+  private readonly streamingReasoningSummaryParts = new Map<string, string[]>()
   private readonly streamingReasoningContentParts = new Map<string, string[]>()
 
   private handleServerRequest(request: CodexServerRequest): void {
+    const threadId = request.params.threadId
+    if (
+      this.activeSessionRef &&
+      typeof threadId === 'string' &&
+      threadId !== this.activeSessionRef.nativeSessionId
+    ) {
+      return
+    }
     const key =
       typeof request.params.approvalId === 'string'
         ? request.params.approvalId
@@ -655,8 +670,8 @@ export class CodexCliRuntime implements CliRuntime {
       this.emit({ type: 'run_state', state: 'waiting_for_user' })
       return
     }
-    void this.getTransport().then((transport) =>
-      transport.respondError(
+    void this.getHost().then((host) =>
+      host.respondError(
         request.id,
         -32601,
         `Unsupported Codex request: ${request.method}`,

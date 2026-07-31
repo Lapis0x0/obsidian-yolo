@@ -143,7 +143,7 @@ export const buildCliTurnContent = ({
   const textPart = buildText({
     text,
     references,
-    selectedSkills,
+    selectedSkills: runtimeId === 'codex' ? [] : selectedSkills,
     timeContext,
   })
   if (binaryParts.length === 0) return textPart

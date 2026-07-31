@@ -588,6 +588,9 @@ export const submitCliComposerTurn = async ({
     await controller.sendTurn({
       userMessage: stampedUserMessage,
       content,
+      selectedSkillNames: stampedUserMessage.selectedSkills?.map(
+        (skill) => skill.name,
+      ),
     })
     onAccepted?.(stampedUserMessage)
   } catch (error) {

@@ -42,7 +42,7 @@ describe('buildCliTurnContent', () => {
 
     expect(content).toEqual(expect.any(String))
     expect(content).toContain('<current_time>2026-07-30 23:00 (UTC+8)')
-    expect(content).toContain('- review')
+    expect(content).not.toContain('<selected_skills>')
     expect(content).toContain('Notes/a.md')
     expect(content).toContain('Projects')
     expect(content).toContain('lines=4-6')

@@ -452,6 +452,11 @@ export default class YoloPlugin extends Plugin {
         app: this.app,
         getSettings: () => this.settings,
         resolveClaudePluginPaths: cache.resolvePluginPaths,
+        resolveCodexSkillProfile: (assistant) =>
+          cache.resolveCodexSkillProfile({
+            assistantId: assistant.assistantId,
+            enabledSkillNames: assistant.enabledSkillNames,
+          }),
       })
       if (this.isUnloaded) {
         await coordinator.dispose()

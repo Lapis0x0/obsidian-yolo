@@ -37,6 +37,12 @@ type ClaudeLocalPluginCacheOptions = {
   getSkillPackageSource?: typeof getLiteSkillPackageSource
 }
 
+export type CodexSkillProfileMaterialization = Readonly<{
+  id: string
+  roots: readonly string[]
+  skillPaths: ReadonlyMap<string, string>
+}>
+
 const encodeUtf8 = (value: string): ArrayBuffer =>
   new TextEncoder().encode(value).buffer
 
@@ -196,9 +202,9 @@ const isOwnedCacheEntry = async (
 }
 
 /**
- * Materializes the Assistant's enabled YOLO skills as one derived local Claude
- * plugin. Source packages remain the single truth; this cache is content
- * addressed and rebuilt whenever their exact bytes change.
+ * Materializes an Assistant's enabled YOLO skills as one content-addressed
+ * profile. Claude consumes the compatible plugin root; Codex consumes its
+ * native `skills` root. Source packages remain the single truth.
  */
 export class ClaudeLocalPluginCache {
   private readonly app: App
@@ -216,6 +222,30 @@ export class ClaudeLocalPluginCache {
 
   readonly resolvePluginPaths: ClaudePluginPathProvider = (input) =>
     this.serialize(() => this.resolvePluginPathsUnlocked(input))
+
+  readonly resolveCodexSkillProfile = async (input: {
+    assistantId?: string
+    enabledSkillNames: string[]
+  }): Promise<CodexSkillProfileMaterialization> => {
+    if (input.enabledSkillNames.length === 0) {
+      return { id: 'default', roots: [], skillPaths: new Map() }
+    }
+    const [profileRoot] = await this.resolvePluginPaths(input)
+    if (!profileRoot) {
+      throw new Error('Codex Skill profile could not be materialized.')
+    }
+    const skillRoot = `${profileRoot}/skills`
+    return {
+      id: skillRoot,
+      roots: [skillRoot],
+      skillPaths: new Map(
+        input.enabledSkillNames.map((name) => [
+          name,
+          `${skillRoot}/${name}/SKILL.md`,
+        ]),
+      ),
+    }
+  }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.writeQueue.then(operation, operation)

@@ -5,10 +5,10 @@ import type {
   ChatUserMessage,
 } from '../../../types/chat'
 import {
-  ToolCallResponseStatus,
-  createCompleteToolCallArguments,
   type ToolCallRequest,
   type ToolCallResponse,
+  ToolCallResponseStatus,
+  createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
 
 import type { CodexThreadItem, CodexTurn, CodexUserInput } from './protocol'
@@ -21,7 +21,11 @@ const stringify = (value: unknown): string => {
 
 const userInputText = (content: CodexUserInput[]): string =>
   content
-    .map((part) => (part.type === 'text' ? part.text : `[Image: ${part.url}]`))
+    .map((part) => {
+      if (part.type === 'text') return part.text
+      if (part.type === 'image') return `[Image: ${part.url}]`
+      return `[Skill: ${part.name}]`
+    })
     .join('\n\n')
 
 const toResponse = (

@@ -34,6 +34,7 @@ export type CliConversationSnapshot = Readonly<{
 export type CliConversationTurn = Readonly<{
   userMessage: ChatUserMessage
   content: CliTurnInput['content']
+  selectedSkillNames?: CliTurnInput['selectedSkillNames']
 }>
 
 export type CliStagedConversationTurn = Readonly<{
@@ -187,7 +188,11 @@ export class CliConversationController {
     return task
   }
 
-  async sendTurn({ userMessage, content }: CliConversationTurn): Promise<void> {
+  async sendTurn({
+    userMessage,
+    content,
+    selectedSkillNames,
+  }: CliConversationTurn): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
     if (!this.acceptingEvents) {
@@ -208,6 +213,7 @@ export class CliConversationController {
       await operation.runtime.sendTurn({
         ...(sessionRef ? { sessionRef } : {}),
         content,
+        ...(selectedSkillNames ? { selectedSkillNames } : {}),
       })
       // Runtime notifications may arrive before sendTurn resolves. Do not
       // overwrite messages or a newer run state after the await.
@@ -400,7 +406,9 @@ export class CliConversationController {
     }
     if ('reasoningEffort' in update) {
       const targetModelId =
-        'modelId' in resolved ? (resolved.modelId ?? null) : configuration.modelId
+        'modelId' in resolved
+          ? (resolved.modelId ?? null)
+          : configuration.modelId
       const targetModel = targetModelId
         ? configuration.models.find((model) => model.id === targetModelId)
         : undefined
@@ -408,7 +416,8 @@ export class CliConversationController {
         update.reasoningEffort === null ||
         (targetModel?.reasoningEfforts.some(
           (effort) => effort.id === update.reasoningEffort,
-        ) ?? false)
+        ) ??
+          false)
       ) {
         resolved.reasoningEffort = update.reasoningEffort
       }

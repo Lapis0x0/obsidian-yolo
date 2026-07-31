@@ -78,6 +78,7 @@ export type CliRuntimeConfigurationUpdate = {
 export type CliTurnInput = {
   sessionRef?: CliSessionRef
   content: string | ContentPart[]
+  selectedSkillNames?: string[]
 }
 
 export type CliRuntimeRunState =

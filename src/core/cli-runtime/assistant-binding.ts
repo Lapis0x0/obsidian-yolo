@@ -18,6 +18,18 @@ export type ResolveCliAssistantBindingInput = {
   listSkillEntries?: ListSkillEntries
 }
 
+export const getCliAssistantBindingCacheKey = (
+  settings: YoloSettings,
+  assistantId: string,
+): string =>
+  JSON.stringify({
+    assistant: settings.assistants.find(
+      (candidate) => candidate.id === assistantId,
+    ),
+    skills: settings.skills,
+    yolo: settings.yolo,
+  })
+
 /** Resolve the exact session-level persona and skill set used by CLI agents. */
 export const resolveCliAssistantBinding = async ({
   app,

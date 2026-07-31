@@ -1,13 +1,20 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
+import { CodexAppServerHost, CodexAppServerHostPool } from './host'
 import type { CodexProcessExitListener, CodexProcessLike } from './process'
 import { CodexCliRuntime } from './runtime'
 
 class RpcFakeProcess implements CodexProcessLike {
   responses: unknown[] = []
+  serverResponses: Array<{
+    id: string | number
+    result?: unknown
+    error?: unknown
+  }> = []
   errors: unknown[] = []
   requests: Array<{ method: string; params: Record<string, unknown> }> = []
   threadPages: Array<Array<typeof this.thread>> = []
+  threadIdForStart?: (params: Record<string, unknown>) => string
   stderr = ''
   private lineListener: ((line: string) => void) | null = null
   private exitListener: CodexProcessExitListener | null = null
@@ -32,10 +39,16 @@ class RpcFakeProcess implements CodexProcessLike {
     }
     if (request.result !== undefined) {
       this.responses.push(request.result)
+      if (request.id !== undefined) {
+        this.serverResponses.push({ id: request.id, result: request.result })
+      }
       return
     }
     if (request.error !== undefined) {
       this.errors.push(request.error)
+      if (request.id !== undefined) {
+        this.serverResponses.push({ id: request.id, error: request.error })
+      }
       return
     }
     if (request.id === undefined || !request.method) return
@@ -71,21 +84,28 @@ class RpcFakeProcess implements CodexProcessLike {
               ],
               nextCursor: null,
             }
-        : request.method === 'thread/read'
-          ? { thread: this.thread }
-          : request.method === 'thread/start' ||
-              request.method === 'thread/resume'
+          : request.method === 'thread/read'
             ? { thread: this.thread }
-            : request.method === 'turn/start'
+            : request.method === 'thread/start' ||
+                request.method === 'thread/resume'
               ? {
-                  turn: {
-                    id: 'turn-1',
-                    items: [],
-                    status: 'inProgress',
-                    error: null,
+                  thread: {
+                    ...this.thread,
+                    id:
+                      this.threadIdForStart?.(request.params ?? {}) ??
+                      this.thread.id,
                   },
                 }
-              : {}
+              : request.method === 'turn/start'
+                ? {
+                    turn: {
+                      id: 'turn-1',
+                      items: [],
+                      status: 'inProgress',
+                      error: null,
+                    },
+                  }
+                : {}
     queueMicrotask(() => this.emit({ jsonrpc: '2.0', id: request.id, result }))
   }
   onLine(listener: (line: string) => void): () => void {
@@ -113,6 +133,230 @@ class RpcFakeProcess implements CodexProcessLike {
 }
 
 describe('CodexCliRuntime', () => {
+  it('lets the first profile claim a discovery host but isolates later active profiles', async () => {
+    const processes: RpcFakeProcess[] = []
+    const pool = new CodexAppServerHostPool(
+      {
+        cwd: '/vault',
+        createProcess: async () => {
+          const process = new RpcFakeProcess()
+          processes.push(process)
+          return process
+        },
+      },
+      async (assistant) => ({
+        id: assistant.enabledSkillNames.join(',') || 'default',
+        roots: assistant.enabledSkillNames.map(
+          (name) => `/profiles/${name}/skills`,
+        ),
+        skillPaths: new Map(
+          assistant.enabledSkillNames.map((name) => [
+            name,
+            `/profiles/${name}/skills/${name}/SKILL.md`,
+          ]),
+        ),
+      }),
+    )
+    const discoveryHost = await pool.acquire()
+    await discoveryHost.ensureReady()
+    const profileA = await pool.acquire({
+      systemPrompt: '',
+      enabledSkillNames: ['alpha'],
+    })
+    expect(profileA).toBe(discoveryHost)
+    expect(processes).toHaveLength(1)
+
+    await profileA.request('thread/start', {})
+    const profileB = await pool.acquire({
+      systemPrompt: '',
+      enabledSkillNames: ['beta'],
+    })
+    await profileB.ensureReady()
+
+    expect(profileB).not.toBe(profileA)
+    expect(processes).toHaveLength(2)
+    await pool.dispose()
+  })
+
+  it('registers a native YOLO Skill profile and sends explicit skills as native input', async () => {
+    const process = new RpcFakeProcess()
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+      skillProfile: {
+        id: 'profile-review',
+        roots: ['/derived/profile-review/skills'],
+        skillPaths: new Map([
+          ['review', '/derived/profile-review/skills/review/SKILL.md'],
+        ]),
+      },
+    })
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+
+    await runtime.ensureReady({
+      assistant: {
+        systemPrompt: '',
+        enabledSkillNames: ['review'],
+      },
+    })
+    await runtime.sendTurn({
+      content: 'Review this change.',
+      selectedSkillNames: ['review'],
+    })
+
+    expect(process.requests).toContainEqual({
+      method: 'skills/extraRoots/set',
+      params: { extraRoots: ['/derived/profile-review/skills'] },
+    })
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params.input,
+    ).toEqual([
+      { type: 'text', text: 'Review this change.', text_elements: [] },
+      {
+        type: 'skill',
+        name: 'review',
+        path: '/derived/profile-review/skills/review/SKILL.md',
+      },
+    ])
+  })
+
+  it('routes interleaved shared-host events and cancellation by thread', async () => {
+    const process = new RpcFakeProcess()
+    process.threadIdForStart = (params) =>
+      params.developerInstructions === 'Assistant A' ? 'thread-a' : 'thread-b'
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const runtimeA = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+    const runtimeB = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+    const messagesA: string[] = []
+    const messagesB: string[] = []
+    const approvalsA: string[] = []
+    const approvalsB: string[] = []
+    runtimeA.subscribe((event) => {
+      if (
+        event.type === 'message_upsert' &&
+        event.message.role === 'assistant'
+      ) {
+        if (event.message.content) messagesA.push(event.message.content)
+      }
+      if (
+        event.type === 'run_state' &&
+        event.state === 'waiting_for_approval'
+      ) {
+        approvalsA.push(event.state)
+      }
+    })
+    runtimeB.subscribe((event) => {
+      if (
+        event.type === 'message_upsert' &&
+        event.message.role === 'assistant'
+      ) {
+        if (event.message.content) messagesB.push(event.message.content)
+      }
+      if (
+        event.type === 'run_state' &&
+        event.state === 'waiting_for_approval'
+      ) {
+        approvalsB.push(event.state)
+      }
+    })
+
+    await Promise.all([
+      runtimeA.ensureReady({
+        assistant: { systemPrompt: 'Assistant A', enabledSkillNames: [] },
+      }),
+      runtimeB.ensureReady({
+        assistant: { systemPrompt: 'Assistant B', enabledSkillNames: [] },
+      }),
+    ])
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'turn/started',
+      params: { threadId: 'thread-a', turn: { id: 'turn-a' } },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'turn/started',
+      params: { threadId: 'thread-b', turn: { id: 'turn-b' } },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'thread-b',
+        itemId: 'message-b',
+        delta: 'B',
+      },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'thread-a',
+        itemId: 'message-a',
+        delta: 'A',
+      },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      id: 101,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'thread-a',
+        turnId: 'turn-a',
+        itemId: 'item-a',
+        command: 'echo a',
+      },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      id: 202,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'thread-b',
+        turnId: 'turn-b',
+        itemId: 'item-b',
+        command: 'echo b',
+      },
+    })
+    await runtimeA.respondApproval({
+      requestId: 'item-a',
+      decision: 'approve_once',
+    })
+    await runtimeA.cancel()
+
+    expect(messagesA).toEqual(['A'])
+    expect(messagesB).toEqual(['B'])
+    expect(approvalsA).toEqual(['waiting_for_approval'])
+    expect(approvalsB).toEqual(['waiting_for_approval'])
+    expect(process.serverResponses).toContainEqual({
+      id: 101,
+      result: { decision: 'accept' },
+    })
+    expect(
+      process.serverResponses.some((response) => response.id === 202),
+    ).toBe(false)
+    expect(process.requests).toContainEqual({
+      method: 'turn/interrupt',
+      params: { threadId: 'thread-a', turnId: 'turn-a' },
+    })
+    expect(
+      process.requests.filter((request) => request.method === 'initialize'),
+    ).toHaveLength(1)
+  })
+
   it('lists vault sessions and starts a thread with assistant instructions', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({

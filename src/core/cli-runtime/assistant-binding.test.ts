@@ -3,7 +3,10 @@ import type { App } from 'obsidian'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { LiteSkillEntry } from '../skills/liteSkills'
 
-import { resolveCliAssistantBinding } from './assistant-binding'
+import {
+  getCliAssistantBindingCacheKey,
+  resolveCliAssistantBinding,
+} from './assistant-binding'
 
 const settings = {
   assistants: [
@@ -47,6 +50,25 @@ const skills: LiteSkillEntry[] = [
 ]
 
 describe('resolveCliAssistantBinding', () => {
+  it('invalidates only for Assistant, Skill policy, or managed path changes', () => {
+    const key = getCliAssistantBindingCacheKey(settings, 'assistant-1')
+    expect(
+      getCliAssistantBindingCacheKey(
+        { ...settings, chatOptions: { chatMode: 'agent' } } as YoloSettings,
+        'assistant-1',
+      ),
+    ).toBe(key)
+    expect(
+      getCliAssistantBindingCacheKey(
+        {
+          ...settings,
+          skills: { disabledSkillIds: ['global-off', 'alpha'] },
+        } as YoloSettings,
+        'assistant-1',
+      ),
+    ).not.toBe(key)
+  })
+
   it('freezes the selected persona and deterministically enabled skill names', async () => {
     const listSkillEntries = jest.fn(async () => skills)
 

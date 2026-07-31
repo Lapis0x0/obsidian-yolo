@@ -192,10 +192,13 @@ describe('CLI runtime coordinator', () => {
     })
     expect(scope.resolveRuntime('codex')).toBe(scope.resolveRuntime('codex'))
     expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
-    expect(harness.createCodexRuntime).toHaveBeenCalledWith({
-      command: '/bin/codex',
-      cwd: '/vault/current',
-    })
+    expect(harness.createCodexRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: '/bin/codex',
+        cwd: '/vault/current',
+        resolveHost: expect.any(Function),
+      }),
+    )
     expect(getClaudeRuntimeOptions).toHaveBeenCalledTimes(1)
     expect(getCodexRuntimeOptions).toHaveBeenCalledTimes(1)
   })

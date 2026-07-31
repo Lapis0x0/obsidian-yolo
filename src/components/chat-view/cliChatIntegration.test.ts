@@ -310,6 +310,7 @@ describe('CLI chat integration', () => {
         promptContent: null,
       }),
       content: 'encoded CLI content',
+      selectedSkillNames: ['review'],
     })
     expect(recordOpenedSession).toHaveBeenCalledWith(
       { ref, messages: [] },

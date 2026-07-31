@@ -9,6 +9,7 @@ export type JsonRpcError = {
 export type CodexUserInput =
   | { type: 'text'; text: string; text_elements: [] }
   | { type: 'image'; url: string }
+  | { type: 'skill'; name: string; path: string }
 
 export type CodexThreadItem =
   | { type: 'userMessage'; id: string; content: CodexUserInput[] }

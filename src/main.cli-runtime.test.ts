@@ -59,6 +59,11 @@ jest.mock('./core/cli-runtime/coordinator', () => ({
 jest.mock('./core/cli-runtime/claude/plugin-cache', () => ({
   ClaudeLocalPluginCache: class {
     readonly resolvePluginPaths = jest.fn()
+    readonly resolveCodexSkillProfile = jest.fn(async () => ({
+      id: 'default',
+      roots: [],
+      skillPaths: new Map(),
+    }))
 
     constructor(readonly options: { getSettings: () => unknown }) {
       cacheInstances.push(this)
