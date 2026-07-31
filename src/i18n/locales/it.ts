@@ -86,7 +86,7 @@ export const it: DeepPartial<TranslationKeys> = {
       modeAccessibleLabel: 'Modalità chat',
       cliLabel: 'CLI',
       chatDescription: 'Chat integrata di YOLO',
-      cliDescription: 'Claude Code o Codex su questo dispositivo',
+      cliDescription: 'Task complessi via CLI',
       accessibleLabel: 'Provider CLI: {runtime}',
       menuLabel: 'Provider CLI',
       claudeCodeLabel: 'Claude Code',
