@@ -181,6 +181,51 @@ describe('CliConversationController', () => {
     })
   })
 
+  it('keeps a fresh conversation configurable without starting its runtime', async () => {
+    const runtime = new FakeCliRuntime()
+    const models = [
+      {
+        id: 'sol',
+        label: 'Sol',
+        reasoningEfforts: [{ id: 'medium' }],
+        isDefault: true,
+      },
+      {
+        id: 'luna',
+        label: 'Luna',
+        reasoningEfforts: [{ id: 'medium' }],
+      },
+    ]
+    runtime.configuration = {
+      models,
+      modelId: 'sol',
+      reasoningEffort: null,
+    }
+    const controller = new CliConversationController(runtime, () => models)
+
+    controller.stageConfiguration({
+      modelId: 'luna',
+      reasoningEffort: 'medium',
+    })
+    await expect(
+      controller.updateConfiguration({ reasoningEffort: null }),
+    ).resolves.toMatchObject({ modelId: 'luna', reasoningEffort: null })
+
+    expect(runtime.readyInputs).toEqual([])
+    expect(runtime.configurationUpdates).toEqual([])
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionRef: null,
+      configuration: { modelId: 'luna', reasoningEffort: null },
+    })
+
+    await controller.ensureReady(assistant)
+
+    expect(runtime.readyInputs).toHaveLength(1)
+    expect(runtime.configurationUpdates).toEqual([
+      { modelId: 'luna', reasoningEffort: null },
+    ])
+  })
+
   it('hydrates messages, upserts by stable id in place, and removes by id', async () => {
     const runtime = new FakeCliRuntime()
     const ref = session('existing')

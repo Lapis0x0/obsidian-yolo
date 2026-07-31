@@ -18,10 +18,6 @@ const LOADING_VALUE = '__yolo_cli_loading__'
 type CliRuntimeControlsProps = {
   configuration: CliRuntimeConfiguration | null
   cachedModels?: readonly CliRuntimeModel[]
-  preferredConfiguration?: Pick<
-    CliRuntimeConfiguration,
-    'modelId' | 'reasoningEffort'
-  >
   runtimeId: CliRuntimeId
   disabled?: boolean
   onModelChange: (modelId: string | null) => void
@@ -31,7 +27,6 @@ type CliRuntimeControlsProps = {
 export function CliRuntimeControls({
   configuration,
   cachedModels = [],
-  preferredConfiguration,
   runtimeId,
   disabled = false,
   onModelChange,
@@ -42,9 +37,8 @@ export function CliRuntimeControls({
     ? configuration.models
     : cachedModels
   const providerLabel = runtimeId === 'codex' ? 'CODEX' : 'CLAUDE CODE'
-  const displayedConfiguration = configuration ?? preferredConfiguration
   const selectedModel =
-    models.find((model) => model.id === displayedConfiguration?.modelId) ??
+    models.find((model) => model.id === configuration?.modelId) ??
     models.find((model) => model.isDefault) ??
     models[0] ??
     null
@@ -57,9 +51,9 @@ export function CliRuntimeControls({
       .filter((effort) => effort !== 'auto' && effort !== 'off'),
   ]
   const currentReasoningLevel = isReasoningLevelString(
-    displayedConfiguration?.reasoningEffort ?? '',
+    configuration?.reasoningEffort ?? '',
   )
-    ? (displayedConfiguration?.reasoningEffort as ReasoningLevel)
+    ? (configuration?.reasoningEffort as ReasoningLevel)
     : 'auto'
   const reasoningModel: ChatModel | null =
     reasoningLevels.length > 1

@@ -154,11 +154,20 @@ export class CliConversationController {
   ): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
+    const stagedConfiguration = this.snapshot.configuration
+    const configurationToApply =
+      initialConfiguration ??
+      (stagedConfiguration
+        ? {
+            modelId: stagedConfiguration.modelId,
+            reasoningEffort: stagedConfiguration.reasoningEffort,
+          }
+        : undefined)
     const task = this.readyTail
       .catch(() => undefined)
       .then(async () => {
         if (!this.isCurrent(operation)) return
-        await this.ensureReadyNow(operation, assistant, initialConfiguration)
+        await this.ensureReadyNow(operation, assistant, configurationToApply)
       })
     this.readyTail = task.catch(() => undefined)
     return task
@@ -198,6 +207,9 @@ export class CliConversationController {
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration | undefined> {
     this.assertActive()
+    if (!this.acceptingEvents) {
+      return this.stageConfiguration(update)
+    }
     const operation = this.captureOperation()
     try {
       const configuration = await operation.runtime.updateConfiguration(update)
@@ -208,6 +220,42 @@ export class CliConversationController {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
     }
+  }
+
+  stageConfiguration(
+    update: CliRuntimeConfigurationUpdate = {},
+  ): CliRuntimeConfiguration | undefined {
+    this.assertActive()
+    if (this.acceptingEvents) return this.snapshot.configuration ?? undefined
+    const models = [...this.getCachedModels()]
+    if (models.length === 0) return undefined
+    const current = this.snapshot.configuration
+    const requestedModelId =
+      'modelId' in update ? update.modelId : current?.modelId
+    const modelId =
+      requestedModelId === null ||
+      models.some((model) => model.id === requestedModelId)
+        ? (requestedModelId ?? null)
+        : (models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null)
+    const selectedModel = modelId
+      ? models.find((model) => model.id === modelId)
+      : undefined
+    const requestedEffort =
+      'reasoningEffort' in update
+        ? update.reasoningEffort
+        : current?.modelId === modelId
+          ? current.reasoningEffort
+          : null
+    const reasoningEffort =
+      requestedEffort === null ||
+      selectedModel?.reasoningEfforts.some(
+        (effort) => effort.id === requestedEffort,
+      )
+        ? (requestedEffort ?? null)
+        : null
+    const configuration = { models, modelId, reasoningEffort }
+    this.publish({ ...this.snapshot, configuration, error: null })
+    return configuration
   }
 
   async cancel(): Promise<void> {

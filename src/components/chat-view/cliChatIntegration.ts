@@ -58,11 +58,17 @@ export const prepareCliConversation = async ({
         : {}),
     }
   } else if (!existingSessionRef) {
-    initialConfiguration = resolveCliRuntimePreference(
-      settings,
-      runtimeId,
-      scope.getModelCatalogSnapshot().get(runtimeId) ?? [],
-    )
+    const stagedConfiguration = controller.getSnapshot().configuration
+    initialConfiguration = stagedConfiguration
+      ? {
+          modelId: stagedConfiguration.modelId,
+          reasoningEffort: stagedConfiguration.reasoningEffort,
+        }
+      : resolveCliRuntimePreference(
+          settings,
+          runtimeId,
+          scope.getModelCatalogSnapshot().get(runtimeId) ?? [],
+        )
   }
   await controller.ensureReady(assistant, initialConfiguration)
 }

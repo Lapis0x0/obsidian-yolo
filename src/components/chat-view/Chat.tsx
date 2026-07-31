@@ -50,7 +50,6 @@ import {
   type YoloConversationRef,
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
-  resolveCliAssistantBinding,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
@@ -172,7 +171,6 @@ import {
   isCliConversationActive,
   openCliSession,
   openCliSessionForNavigation,
-  prepareCliConversation,
   removeCliOverlayAfterConfirmation,
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
@@ -1019,16 +1017,33 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [])
   const [cliConversationController, setCliConversationController] =
-    useState<CliConversationController | null>(() =>
-      initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
+    useState<CliConversationController | null>(() => {
+      const controller =
+        initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
         ? seededRuntimeSnapshot?.cliSessionRef?.runtimeId ===
           initialActiveRuntimeId
           ? cliRuntimeScope.selectConversationSession(
               seededRuntimeSnapshot.cliSessionRef,
             )
           : cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
-        : null,
-    )
+        : null
+      if (
+        controller &&
+        !controller.getSnapshot().sessionRef &&
+        !controller.getSnapshot().configuration
+      ) {
+        controller.stageConfiguration(
+          resolveCliRuntimePreference(
+            settings,
+            initialActiveRuntimeId as CliRuntimeId,
+            cliRuntimeScope?.getModelCatalogSnapshot().get(
+              initialActiveRuntimeId as CliRuntimeId,
+            ) ?? [],
+          ),
+        )
+      }
+      return controller
+    })
   const [cliConversationSnapshot, setCliConversationSnapshot] =
     useState<CliConversationSnapshot | null>(
       () => cliConversationController?.getSnapshot() ?? null,
@@ -1089,17 +1104,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     publishCatalog()
     return cliRuntimeScope.subscribeToModelCatalog(publishCatalog)
   }, [cliRuntimeScope])
-  const preferredCliConfiguration = useMemo(() => {
-    if (activeRuntimeId === 'yolo') return null
-    const preference = resolveCliRuntimePreference(
-      cliPreferenceSettingsRef.current,
-      activeRuntimeId,
-      cliModelCatalog.get(activeRuntimeId) ?? [],
+  useEffect(() => {
+    if (activeRuntimeId === 'yolo' || !cliConversationController) return
+    const snapshot = cliConversationController.getSnapshot()
+    if (snapshot.sessionRef) return
+    cliConversationController.stageConfiguration(
+      resolveCliRuntimePreference(
+        cliPreferenceSettingsRef.current,
+        activeRuntimeId,
+        cliModelCatalog.get(activeRuntimeId) ?? [],
+      ),
     )
-    return {
-      modelId: preference.modelId ?? null,
-      reasoningEffort: preference.reasoningEffort ?? null,
-    }
   }, [
     activeRuntimeId,
     cliConversationController,
@@ -1688,59 +1703,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [selectedCliAssistant, settings],
   )
 
-  useEffect(() => {
-    if (
-      activeRuntimeId === 'yolo' ||
-      !cliConversationController ||
-      cliConversationController.getSnapshot().configuration
-    ) {
-      return
-    }
-    let cancelled = false
-    void (async () => {
-      try {
-        const assistant = await resolveCliAssistantBinding({
-          app,
-          settings,
-          assistantId: cliAssistantId,
-        })
-        if (!cancelled && cliRuntimeScope) {
-          await prepareCliConversation({
-            controller: cliConversationController,
-            scope: cliRuntimeScope,
-            runtimeId: activeRuntimeId,
-            assistant,
-            settings: cliPreferenceSettingsRef.current,
-          })
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to prepare CLI runtime controls', error)
-          new Notice(
-            t(
-              'chat.cliControls.loadError',
-              '无法加载 CLI 模型：{message}',
-            ).replace(
-              '{message}',
-              error instanceof Error ? error.message : String(error),
-            ),
-          )
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    activeRuntimeId,
-    app,
-    cliAssistantId,
-    cliConversationController,
-    cliRuntimeScope,
-    settings,
-    t,
-  ])
-
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
   const [conversationModelId, setConversationModelId] = useState<string>(() => {
@@ -1940,11 +1902,45 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const createFreshCliConversation = useCallback(
     (runtimeId: CliRuntimeId): CliConversationController | null => {
       if (!cliRuntimeScope) return null
+      const previousConfiguration =
+        cliConversationController?.getSnapshot().runtimeId === runtimeId
+          ? cliConversationController.getSnapshot().configuration
+          : null
       const controller = cliRuntimeScope.createConversationRuntime(runtimeId)
+      const preference = previousConfiguration
+        ? {
+            modelId: previousConfiguration.modelId,
+            reasoningEffort: previousConfiguration.reasoningEffort,
+          }
+        : resolveCliRuntimePreference(
+            cliPreferenceSettingsRef.current,
+            runtimeId,
+            cliModelCatalog.get(runtimeId) ?? [],
+          )
+      controller.stageConfiguration(preference)
+      if (previousConfiguration) {
+        cliPreferenceSettingsRef.current = rememberCliRuntimeConfiguration(
+          cliPreferenceSettingsRef.current,
+          runtimeId,
+          previousConfiguration,
+        )
+        void updateSettings((current) =>
+          rememberCliRuntimeConfiguration(
+            current,
+            runtimeId,
+            previousConfiguration,
+          ),
+        )
+      }
       setCliConversationController(controller)
       return controller
     },
-    [cliRuntimeScope],
+    [
+      cliConversationController,
+      cliModelCatalog,
+      cliRuntimeScope,
+      updateSettings,
+    ],
   )
 
   const persistChatRuntimePreference = useCallback(
@@ -1993,6 +1989,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         if (!cliRuntimeScope) return
         const controller = cliRuntimeScope.selectConversationRuntime(runtimeId)
+        if (!controller.getSnapshot().sessionRef) {
+          controller.stageConfiguration(
+            resolveCliRuntimePreference(
+              cliPreferenceSettingsRef.current,
+              runtimeId,
+              cliModelCatalog.get(runtimeId) ?? [],
+            ),
+          )
+        }
         setCliConversationController(controller)
         const controllerAssistantId = controller.getSnapshot().assistantId
         if (controllerAssistantId) setCliAssistantId(controllerAssistantId)
@@ -2029,6 +2034,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       activeRuntimeIdRef,
       cliRuntimeAvailable,
       cliConversationController,
+      cliModelCatalog,
       cliRuntimeScope,
       persistChatRuntimePreference,
       t,
@@ -7861,7 +7867,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 activeCliConversationSnapshot?.configuration ?? null
               }
               cachedModels={cliModelCatalog.get(activeRuntimeId)}
-              preferredConfiguration={preferredCliConfiguration ?? undefined}
               runtimeId={activeRuntimeId}
               disabled={
                 cliSubmissionPending || isCliRunActive || cliTransitioning
