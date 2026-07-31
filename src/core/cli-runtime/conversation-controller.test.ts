@@ -16,12 +16,6 @@ import type {
   CliTurnInput,
 } from './types'
 
-const assistant = {
-  assistantId: 'assistant-1',
-  systemPrompt: 'Be concise.',
-  enabledSkillNames: ['review'],
-}
-
 const session = (
   nativeSessionId: string,
   runtimeId: CliRuntimeId = 'codex',
@@ -151,7 +145,7 @@ describe('CliConversationController', () => {
     const controller = new CliConversationController(runtime)
     const initialSurfaceId = controller.getSnapshot().surfaceId
 
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
 
     expect(controller.getSnapshot()).toMatchObject({
       surfaceId: initialSurfaceId,
@@ -206,7 +200,7 @@ describe('CliConversationController', () => {
     }
     const controller = new CliConversationController(runtime)
 
-    await controller.ensureReady(assistant, {
+    await controller.ensureReady({
       modelId: 'luna',
       reasoningEffort: 'medium',
     })
@@ -257,7 +251,7 @@ describe('CliConversationController', () => {
       configuration: { modelId: 'luna', reasoningEffort: null },
     })
 
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
 
     expect(runtime.readyInputs).toHaveLength(1)
     expect(runtime.configurationUpdates).toEqual([
@@ -281,7 +275,7 @@ describe('CliConversationController', () => {
         sessionPathHint: '/native/session.jsonl',
       },
     })
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
     expect(controller.getSnapshot()).toMatchObject({
       sessionRef: {
         runtimeId: 'codex',
@@ -341,8 +335,8 @@ describe('CliConversationController', () => {
     const controller = new CliConversationController(runtime)
     await controller.hydrateSession(ref)
 
-    await controller.ensureReady(assistant)
-    expect(runtime.readyInputs).toEqual([{ sessionRef: ref, assistant }])
+    await controller.ensureReady()
+    expect(runtime.readyInputs).toEqual([{ sessionRef: ref }])
     expect(controller.getSnapshot().sessionRef).toEqual(ref)
 
     const states = [
@@ -376,7 +370,7 @@ describe('CliConversationController', () => {
       return send.promise
     }
     const controller = new CliConversationController(runtime)
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
 
     const message = userMessage('user-optimistic', 'hello')
     const sending = controller.sendTurn({
@@ -421,7 +415,7 @@ describe('CliConversationController', () => {
       })
     }
     const controller = new CliConversationController(runtime)
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
 
     await controller.sendTurn({
       userMessage: userMessage('user-optimistic', '在吗'),
@@ -438,7 +432,7 @@ describe('CliConversationController', () => {
   it('does not dispatch a turn when an optimistic listener resets the session', async () => {
     const codex = new FakeCliRuntime('codex')
     const controller = new CliConversationController(codex)
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
     let reset = false
     controller.subscribe(() => {
       if (reset) return
@@ -472,7 +466,7 @@ describe('CliConversationController', () => {
     const first = controller.hydrateSession(session('first'))
     const staleListener = runtime.subscribedListeners.at(-1)!
     await controller.hydrateSession(session('second'))
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
 
     staleListener({
       type: 'message_upsert',
@@ -496,7 +490,7 @@ describe('CliConversationController', () => {
     const staleListener = runtime.subscribedListeners[0]
 
     controller.resetSession()
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
     runtime.emit({
       type: 'message_upsert',
       message: assistantMessage('current-message'),
@@ -515,7 +509,7 @@ describe('CliConversationController', () => {
   it('unsubscribes and ignores outstanding callbacks when disposed', async () => {
     const runtime = new FakeCliRuntime()
     const controller = new CliConversationController(runtime)
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
     const staleListener = runtime.subscribedListeners[0]
     const beforeDispose = controller.getSnapshot()
 
@@ -536,7 +530,7 @@ describe('CliConversationController', () => {
       throw new Error('send failed')
     }
     const controller = new CliConversationController(runtime)
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
     const message = userMessage('failed-user')
 
     await expect(
@@ -547,6 +541,15 @@ describe('CliConversationController', () => {
       runState: 'error',
       error: 'send failed',
     })
+    expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      content: '',
+      metadata: {
+        generationState: 'error',
+        errorMessage: 'send failed',
+        sourceUserMessageId: 'failed-user',
+      },
+    })
   })
 
   it('exposes cancel errors without losing the current transcript', async () => {
@@ -555,7 +558,7 @@ describe('CliConversationController', () => {
       throw new Error('cancel failed')
     }
     const controller = new CliConversationController(runtime)
-    await controller.ensureReady(assistant)
+    await controller.ensureReady()
     runtime.emit({
       type: 'message_upsert',
       message: assistantMessage('keep-me'),

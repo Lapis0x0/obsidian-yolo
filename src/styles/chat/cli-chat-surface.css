@@ -3,16 +3,6 @@
   user-select: text;
 }
 
-.yolo-cli-chat-surface__error {
-  padding: 0 var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-
-.yolo-cli-chat-surface__error {
-  color: var(--text-error);
-}
-
 .yolo-cli-chat-surface__bottom-anchor {
   height: 1px;
 }

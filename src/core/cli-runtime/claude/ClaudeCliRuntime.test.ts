@@ -180,14 +180,9 @@ describe('ClaudeCliRuntime', () => {
     await expect(runtime.listSessions()).rejects.toThrow(
       /only available on desktop/,
     )
-    await expect(
-      runtime.ensureReady({
-        assistant: {
-          systemPrompt: '',
-          enabledSkillNames: [],
-        },
-      }),
-    ).rejects.toThrow(/only available on desktop/)
+    await expect(runtime.ensureReady({})).rejects.toThrow(
+      /only available on desktop/,
+    )
     expect(loadSdk).not.toHaveBeenCalled()
     expect(resolveProcessSupport).not.toHaveBeenCalled()
   })
@@ -466,24 +461,15 @@ describe('ClaudeCliRuntime', () => {
 
   it('keeps one streaming query across turns and resumes the native session', async () => {
     const { sdk, query, queryInputs } = createSdk()
-    const resolvePluginPaths = jest.fn(async () => [
-      '/vault/.yolo-cache/claude-plugin',
-    ])
     const runtime = new ClaudeCliRuntime({
       vaultPath: '/vault',
       loadSdk: async () => sdk,
       resolveProcessSupport: async () => processSupport,
-      resolvePluginPaths,
     })
     const readyInput = {
       sessionRef: {
         runtimeId: 'claude-code' as const,
         nativeSessionId: 'session-1',
-      },
-      assistant: {
-        assistantId: 'assistant-1',
-        systemPrompt: 'Be precise.',
-        enabledSkillNames: ['review'],
       },
     }
 
@@ -499,10 +485,6 @@ describe('ClaudeCliRuntime', () => {
     })
 
     expect(query).toHaveBeenCalledTimes(1)
-    expect(resolvePluginPaths).toHaveBeenCalledWith({
-      assistantId: 'assistant-1',
-      enabledSkillNames: ['review'],
-    })
     expect(queryInputs[0].options).toMatchObject({
       cwd: '/vault',
       pathToClaudeCodeExecutable: '/opt/homebrew/bin/claude',
@@ -511,9 +493,7 @@ describe('ClaudeCliRuntime', () => {
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
-        append: 'Be precise.',
       },
-      plugins: [{ type: 'local', path: '/vault/.yolo-cache/claude-plugin' }],
     })
     const prompt = queryInputs[0].prompt
     expect(typeof prompt).not.toBe('string')
@@ -538,10 +518,7 @@ describe('ClaudeCliRuntime', () => {
     runtime.subscribe((event) => events.push(event))
     const controller = new CliConversationController(runtime)
 
-    await controller.ensureReady({
-      systemPrompt: '',
-      enabledSkillNames: [],
-    })
+    await controller.ensureReady()
     const ref = controller.getSnapshot().sessionRef
     expect(ref).toMatchObject({ runtimeId: 'claude-code' })
     expect(ref?.nativeSessionId).toMatch(
@@ -551,10 +528,7 @@ describe('ClaudeCliRuntime', () => {
       sessionId: ref?.nativeSessionId,
     })
     expect(queryInputs[0].options?.resume).toBeUndefined()
-    await controller.ensureReady({
-      systemPrompt: '',
-      enabledSkillNames: [],
-    })
+    await controller.ensureReady()
     expect(query).toHaveBeenCalledTimes(1)
 
     await controller.sendTurn({
@@ -594,7 +568,7 @@ describe('ClaudeCliRuntime', () => {
     ])
   })
 
-  it('leaves enabled skill names unapplied when no plugin provider exists', async () => {
+  it('does not inject YOLO plugins into the native Claude query', async () => {
     const { sdk, queryInputs } = createSdk()
     const runtime = new ClaudeCliRuntime({
       vaultPath: '/vault',
@@ -602,12 +576,7 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport: async () => processSupport,
     })
 
-    await runtime.ensureReady({
-      assistant: {
-        systemPrompt: '',
-        enabledSkillNames: ['not-yet-materialized'],
-      },
-    })
+    await runtime.ensureReady({})
 
     expect(queryInputs[0].options?.plugins).toBeUndefined()
   })
@@ -623,11 +592,9 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport: async () => processSupport,
     })
 
-    await expect(
-      runtime.ensureReady({
-        assistant: { systemPrompt: '', enabledSkillNames: [] },
-      }),
-    ).rejects.toThrow('Claude authentication failed')
+    await expect(runtime.ensureReady({})).rejects.toThrow(
+      'Claude authentication failed',
+    )
     expect(queryInstance.close).toHaveBeenCalledTimes(1)
   })
 
@@ -640,9 +607,7 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport: async () => processSupport,
     })
     runtime.subscribe((event) => events.push(event))
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
 
     queryInstance.push({
       type: 'stream_event',
@@ -737,9 +702,7 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport: async () => processSupport,
     })
     runtime.subscribe((event) => events.push(event))
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
     const canUseTool = queryInputs[0].options?.canUseTool as CanUseTool
 
     const approval = canUseTool(
@@ -965,9 +928,7 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport: async () => processSupport,
     })
     runtime.subscribe((event) => events.push(event))
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
     const canUseTool = queryInputs[0].options?.canUseTool as CanUseTool
     const question = canUseTool(
       'AskUserQuestion',
@@ -1026,9 +987,7 @@ describe('ClaudeCliRuntime', () => {
       loadSdk: async () => sdk,
       resolveProcessSupport: async () => processSupport,
     })
-    const readyInput = {
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    }
+    const readyInput = {}
     await runtime.ensureReady(readyInput)
     const sessionId = queryInputs[0].options?.sessionId
     if (!sessionId) throw new Error('Expected generated Claude session ID')

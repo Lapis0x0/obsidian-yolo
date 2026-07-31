@@ -9604,7 +9604,10 @@ svg.svg-icon.yolo-orbit {
 }
 
 .yolo-chat-header-left {
-  display: contents;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
 .yolo-chat-header--workspace {
@@ -9640,7 +9643,10 @@ svg.svg-icon.yolo-orbit {
 }
 
 .yolo-chat-header-right {
-  display: contents;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
 button.yolo-runtime-selector {
@@ -20675,16 +20681,6 @@ button.yolo-cli-session-list__forget:is(:hover, :focus-visible) {
 .yolo-cli-chat-surface__user-card {
   cursor: text;
   user-select: text;
-}
-
-.yolo-cli-chat-surface__error {
-  padding: 0 var(--size-4-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-
-.yolo-cli-chat-surface__error {
-  color: var(--text-error);
 }
 
 .yolo-cli-chat-surface__bottom-anchor {

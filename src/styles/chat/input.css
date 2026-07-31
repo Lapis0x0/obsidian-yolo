@@ -12,7 +12,10 @@
 }
 
 .yolo-chat-header-left {
-  display: contents;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
 .yolo-chat-header--workspace {
@@ -47,7 +50,10 @@
 }
 
 .yolo-chat-header-right {
-  display: contents;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
 button.yolo-runtime-selector {

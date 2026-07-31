@@ -1,11 +1,4 @@
 const createDesktopCliRuntimeCoordinator = jest.fn()
-const cacheInstances: Array<{
-  options: {
-    getSettings: () => unknown
-  }
-  resolvePluginPaths: jest.Mock
-}> = []
-
 jest.mock('react', () => {
   const actual = jest.requireActual<typeof import('react')>('react')
   return { __esModule: true, ...actual, default: actual }
@@ -56,21 +49,6 @@ jest.mock('./core/cli-runtime/coordinator', () => ({
   createDesktopCliRuntimeCoordinator: (...args: unknown[]) =>
     createDesktopCliRuntimeCoordinator(...args),
 }))
-jest.mock('./core/cli-runtime/claude/plugin-cache', () => ({
-  ClaudeLocalPluginCache: class {
-    readonly resolvePluginPaths = jest.fn()
-    readonly resolveCodexSkillProfile = jest.fn(async () => ({
-      id: 'default',
-      roots: [],
-      skillPaths: new Map(),
-    }))
-
-    constructor(readonly options: { getSettings: () => unknown }) {
-      cacheInstances.push(this)
-    }
-  },
-}))
-
 import { Platform } from 'obsidian'
 
 import type {
@@ -109,12 +87,11 @@ const flushPromises = async (): Promise<void> => {
 describe('YoloPlugin CLI runtime lifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    cacheInstances.length = 0
     Platform.isDesktop = true
     Platform.isMobile = false
   })
 
-  it('does not import or construct the desktop coordinator/cache on mobile', async () => {
+  it('does not construct the desktop coordinator on mobile', async () => {
     Platform.isDesktop = false
     Platform.isMobile = true
     const plugin = createPlugin()
@@ -123,7 +100,6 @@ describe('YoloPlugin CLI runtime lifecycle', () => {
     await expect(plugin.createCliRuntimeScope()).resolves.toBeNull()
 
     expect(createDesktopCliRuntimeCoordinator).not.toHaveBeenCalled()
-    expect(cacheInstances).toHaveLength(0)
   })
 
   it('shares one coordinator promise and creates distinct ChatView scopes', async () => {
@@ -150,14 +126,11 @@ describe('YoloPlugin CLI runtime lifecycle', () => {
     await expect(plugin.createCliRuntimeScope()).resolves.toBe(secondScope)
 
     expect(createDesktopCliRuntimeCoordinator).toHaveBeenCalledTimes(1)
-    expect(cacheInstances).toHaveLength(1)
     expect(firstScope).not.toBe(secondScope)
 
-    const cacheSettings = cacheInstances[0].options.getSettings
     const coordinatorOptions = createDesktopCliRuntimeCoordinator.mock
       .calls[0][0] as { getSettings: () => unknown }
     plugin.settings = { yolo: { baseDir: 'second' } } as typeof plugin.settings
-    expect(cacheSettings()).toBe(plugin.settings)
     expect(coordinatorOptions.getSettings()).toBe(plugin.settings)
   })
 

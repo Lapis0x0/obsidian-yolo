@@ -38,7 +38,6 @@ import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
   type ChatRuntimeId,
-  type CliAssistantBinding,
   type CliConversationController,
   type CliConversationSnapshot,
   type CliRuntimeConfiguration,
@@ -50,9 +49,7 @@ import {
   type CliSessionRef,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
-  getCliAssistantBindingCacheKey,
   isCliRuntimeAvailable,
-  resolveCliAssistantBinding,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
@@ -175,7 +172,6 @@ import {
   openCliSession,
   openCliSessionForNavigation,
   removeCliOverlayAfterConfirmation,
-  resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   shouldClearAcceptedCliDraft,
@@ -917,7 +913,6 @@ export type ChatRef = {
 export type ChatRuntimeSnapshot = {
   activeRuntimeId: ChatRuntimeId
   cliSessionRef: CliSessionRef | null
-  cliAssistantId: string
   currentConversationId: string
   inputMessage: ChatUserMessage
   inputDraftRevision: number
@@ -1023,13 +1018,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     useState<CliConversationController | null>(() => {
       const controller =
         initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
-        ? seededRuntimeSnapshot?.cliSessionRef?.runtimeId ===
-          initialActiveRuntimeId
-          ? cliRuntimeScope.selectConversationSession(
-              seededRuntimeSnapshot.cliSessionRef,
-            )
-          : cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
-        : null
+          ? seededRuntimeSnapshot?.cliSessionRef?.runtimeId ===
+            initialActiveRuntimeId
+            ? cliRuntimeScope.selectConversationSession(
+                seededRuntimeSnapshot.cliSessionRef,
+              )
+            : cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
+          : null
       if (
         controller &&
         !controller.getSnapshot().sessionRef &&
@@ -1039,9 +1034,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           resolveCliRuntimePreference(
             settings,
             initialActiveRuntimeId as CliRuntimeId,
-            cliRuntimeScope?.getModelCatalogSnapshot().get(
-              initialActiveRuntimeId as CliRuntimeId,
-            ) ?? [],
+            cliRuntimeScope
+              ?.getModelCatalogSnapshot()
+              .get(initialActiveRuntimeId as CliRuntimeId) ?? [],
           ),
         )
       }
@@ -1186,71 +1181,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         settings.currentAssistantId ??
         DEFAULT_ASSISTANT_ID,
     )
-  const [cliAssistantId, setCliAssistantId] = useState<string>(
-    seededRuntimeSnapshot?.cliAssistantId ??
-      settings.currentAssistantId ??
-      DEFAULT_ASSISTANT_ID,
-  )
-  const cliAssistantBindingCacheRef = useRef<{
-    key: string
-    binding: CliAssistantBinding
-  } | null>(null)
-  const cliAssistantBindingKey = getCliAssistantBindingCacheKey(
-    settings,
-    cliAssistantId,
-  )
-  const [cliSkillRevision, setCliSkillRevision] = useState(0)
-  useEffect(() => {
-    const isSkillPath = (path: string): boolean =>
-      path.startsWith('skills/') || path.includes('/skills/')
-    const invalidate = (file: { path: string }, oldPath?: string) => {
-      if (!isSkillPath(file.path) && !(oldPath && isSkillPath(oldPath))) return
-      cliAssistantBindingCacheRef.current = null
-      cliRuntimeScope?.invalidateConversationRuntimeCache('codex')
-      setCliSkillRevision((revision) => revision + 1)
-    }
-    const refs = [
-      app.vault.on('create', invalidate),
-      app.vault.on('modify', invalidate),
-      app.vault.on('delete', invalidate),
-      app.vault.on('rename', invalidate),
-    ]
-    return () => refs.forEach((ref) => app.vault.offref(ref))
-  }, [app, cliRuntimeScope])
   useEffect(() => {
     if (!cliRuntimeScope || activeRuntimeId !== 'codex') return
-    let cancelled = false
-    const currentSettings = cliPreferenceSettingsRef.current
-    void resolveCliAssistantBinding({
-      app,
-      settings: currentSettings,
-      assistantId: cliAssistantId,
-    })
-      .then((assistant) => {
-        if (cancelled) return
-        cliAssistantBindingCacheRef.current = {
-          key: cliAssistantBindingKey,
-          binding: assistant,
-        }
-        return cliRuntimeScope.warmConversationRuntime('codex', assistant)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [
-    activeRuntimeId,
-    app,
-    cliAssistantBindingKey,
-    cliAssistantId,
-    cliRuntimeScope,
-    cliSkillRevision,
-  ])
-  const activeAssistantId = resolveActiveAssistantId({
-    activeRuntimeId,
-    conversationAssistantId,
-    cliAssistantId,
-  })
+    void cliRuntimeScope.warmConversationRuntime('codex').catch(() => undefined)
+  }, [activeRuntimeId, cliRuntimeScope])
   const cliSessionRestoreGenerationRef = useRef(0)
   useEffect(() => {
     const seededRef = seededRuntimeSnapshot?.cliSessionRef
@@ -1278,7 +1212,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const result = await openCliSession({
           scope: cliRuntimeScope,
           ref: seededRef,
-          currentAssistantId: cliAssistantId,
           isCurrent: isCurrentRestore,
         })
         if (!result.hydration || !isCurrentRestore()) {
@@ -1288,7 +1221,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         lastCliRuntimeIdRef.current = seededRef.runtimeId
         setRequestedRuntimeId(seededRef.runtimeId)
         activeRuntimeIdRef.current = seededRef.runtimeId
-        setCliAssistantId(result.assistantId)
         if (result.overlayError) {
           new Notice(
             t(
@@ -1323,7 +1255,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     activeRuntimeId,
     activeRuntimeIdRef,
     chatMountedRef,
-    cliAssistantId,
     cliConversationController,
     cliOperationCoordinator,
     cliRuntimeScope,
@@ -1749,17 +1680,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () => resolveAssistantTimeContextEnabled(selectedAssistant, settings),
     [selectedAssistant, settings],
   )
-  const selectedCliAssistant = useMemo(
-    () =>
-      settings.assistants.find(
-        (assistant) => assistant.id === cliAssistantId,
-      ) ?? null,
-    [cliAssistantId, settings.assistants],
-  )
-  const selectedCliAssistantTimeContextEnabled = useMemo(
-    () => resolveAssistantTimeContextEnabled(selectedCliAssistant, settings),
-    [selectedCliAssistant, settings],
-  )
 
   // Per-conversation model id (do NOT write back to global settings)
   const conversationModelIdRef = useRef<Map<string, string>>(new Map())
@@ -2057,8 +1977,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         }
         setCliConversationController(controller)
-        const controllerAssistantId = controller.getSnapshot().assistantId
-        if (controllerAssistantId) setCliAssistantId(controllerAssistantId)
         lastCliRuntimeIdRef.current = runtimeId
         activeRuntimeIdRef.current = runtimeId
         setRequestedRuntimeId(runtimeId)
@@ -2102,36 +2020,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleConversationAssistantSelect = useCallback(
     (assistantId: string) => {
-      if (activeRuntimeId === 'yolo') {
-        setConversationAssistantId(assistantId)
-        conversationAssistantIdRef.current.set(
-          currentConversationId,
-          assistantId,
-        )
-        void persistPreferredAssistantId(assistantId)
-        const assistant = settings.assistants.find(
-          (item) => item.id === assistantId,
-        )
-        if (assistant?.modelId) applyAssistantDefaultModel(assistant.modelId)
-        return
-      }
-      if (assistantId === cliAssistantId) return
-      void transitionCliSession((isCurrent) => {
-        if (!isCurrent()) return
-        createFreshCliConversation(activeRuntimeId)
-        setCliAssistantId(assistantId)
-      })
+      setConversationAssistantId(assistantId)
+      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
+      void persistPreferredAssistantId(assistantId)
+      const assistant = settings.assistants.find(
+        (item) => item.id === assistantId,
+      )
+      if (assistant?.modelId) applyAssistantDefaultModel(assistant.modelId)
     },
     [
-      activeRuntimeId,
       applyAssistantDefaultModel,
-      cliAssistantId,
-      cliConversationController,
-      createFreshCliConversation,
       currentConversationId,
       persistPreferredAssistantId,
       settings.assistants,
-      transitionCliSession,
     ],
   )
 
@@ -2157,35 +2058,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentConversationId,
     settings.assistants,
     settings.currentAssistantId,
-  ])
-
-  useEffect(() => {
-    if (
-      settings.assistants.some((assistant) => assistant.id === cliAssistantId)
-    ) {
-      return
-    }
-    const fallbackAssistantId =
-      settings.currentAssistantId ??
-      settings.assistants[0]?.id ??
-      DEFAULT_ASSISTANT_ID
-    if (activeRuntimeId !== 'yolo' && cliConversationController) {
-      void transitionCliSession((isCurrent) => {
-        if (!isCurrent()) return
-        createFreshCliConversation(activeRuntimeId)
-        setCliAssistantId(fallbackAssistantId)
-      })
-      return
-    }
-    setCliAssistantId(fallbackAssistantId)
-  }, [
-    activeRuntimeId,
-    cliAssistantId,
-    cliConversationController,
-    createFreshCliConversation,
-    settings.assistants,
-    settings.currentAssistantId,
-    transitionCliSession,
   ])
 
   // Per-message model mapping for historical user messages
@@ -3711,7 +3583,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onRuntimeSnapshotChange({
       activeRuntimeId,
       cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
-      cliAssistantId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
       inputDraftRevision: inputDraftRevisionRef.current,
@@ -3726,7 +3597,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onRuntimeSnapshotChange,
     activeRuntimeId,
     activeCliConversationSnapshot?.sessionRef,
-    cliAssistantId,
     currentConversationId,
     inputMessage,
     conversationModelId,
@@ -5881,8 +5751,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               if (overrideAssistant.modelId) {
                 applyAssistantDefaultModel(overrideAssistant.modelId)
               }
-            } else {
-              setCliAssistantId(overrideAssistant.id)
             }
           }
           upsertSelectionMentionableInMainInput(mentionable)
@@ -5897,18 +5765,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
       }
 
-      if (
-        activeRuntimeIdRef.current !== 'yolo' &&
-        overrideAssistant &&
-        overrideAssistant.id !== cliAssistantId
-      ) {
-        void transitionCliSession((isCurrent) => {
-          if (!isCurrent()) return
-          createFreshCliConversation(activeRuntimeIdRef.current as CliRuntimeId)
-          applySelection()
-        })
-        return
-      }
       applySelection()
     },
     syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
@@ -6080,7 +5936,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     getRuntimeSnapshot: () => ({
       activeRuntimeId,
       cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
-      cliAssistantId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
       inputDraftRevision: inputDraftRevisionRef.current,
@@ -6226,8 +6081,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const result = await openCliSessionForNavigation({
           scope: cliRuntimeScope,
           ref,
-          discoveryResult: cliSessionDiscoveryResult,
-          currentAssistantId: cliAssistantId,
           isCurrent: isCurrentNavigation,
         })
         if (!result) return
@@ -6236,7 +6089,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         setRequestedRuntimeId(ref.runtimeId)
         persistChatRuntimePreference(ref.runtimeId)
         setCliConversationController(result.controller)
-        setCliAssistantId(result.assistantId)
         if (result.overlayError) {
           new Notice(
             t(
@@ -6270,7 +6122,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [
       activeRuntimeIdRef,
       chatMountedRef,
-      cliAssistantId,
       cliRuntimeAvailable,
       cliRuntimeScope,
       cliSessionDiscoveryResult,
@@ -6380,22 +6231,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       </div>
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          <AssistantSelector
-            currentAssistantId={activeAssistantId}
-            triggerClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-button--workspace-floating'
-                : undefined
-            }
-            contentClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-content--workspace-floating'
-                : undefined
-            }
-            onAssistantChange={(assistant) => {
-              handleConversationAssistantSelect(assistant.id)
-            }}
-          />
+          {activeRuntimeId === 'yolo' ? (
+            <AssistantSelector
+              currentAssistantId={conversationAssistantId}
+              triggerClassName={
+                !isSidebarPlacement && isWorkspaceWideHeader
+                  ? 'yolo-assistant-selector-button--workspace-floating'
+                  : undefined
+              }
+              contentClassName={
+                !isSidebarPlacement && isWorkspaceWideHeader
+                  ? 'yolo-assistant-selector-content--workspace-floating'
+                  : undefined
+              }
+              onAssistantChange={(assistant) => {
+                handleConversationAssistantSelect(assistant.id)
+              }}
+            />
+          ) : null}
           <div className="yolo-chat-header-buttons">
             <button
               type="button"
@@ -6532,7 +6385,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMessages,
     commitSentSelectionHighlights,
     conversationModelId,
-    cliAssistantId,
     cliConversationController,
     cliOperationCoordinator,
     cliRuntimeScope,
@@ -6545,7 +6397,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     queuedMessageEditState,
     reasoningLevel,
     selectedAssistant,
-    selectedCliAssistantTimeContextEnabled,
     settings,
     t,
   })
@@ -6572,7 +6423,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (
         editorStateToPlainText(content).trim() === '' &&
         state.inputMessage.mentionables.length === 0 &&
-        (state.inputMessage.selectedSkills?.length ?? 0) === 0
+        (state.activeRuntimeId !== 'yolo' ||
+          (state.inputMessage.selectedSkills?.length ?? 0) === 0)
       ) {
         return
       }
@@ -6599,31 +6451,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         void (async () => {
           try {
             const result = await submitCliComposerTurn({
-              app: state.app,
               settings: state.settings,
               scope,
               controller,
               runtimeId,
-              assistantId: state.cliAssistantId,
-              userMessage: messageForSubmit,
-              timeContextEnabled: state.selectedCliAssistantTimeContextEnabled,
+              userMessage: { ...messageForSubmit, selectedSkills: [] },
+              timeContextEnabled: false,
               signal: submission.signal,
-              resolveAssistantBinding: async (input) => {
-                const cached = cliAssistantBindingCacheRef.current
-                const key = getCliAssistantBindingCacheKey(
-                  input.settings,
-                  input.assistantId,
-                )
-                if (cached?.key === key) {
-                  return cached.binding
-                }
-                const binding = await resolveCliAssistantBinding(input)
-                cliAssistantBindingCacheRef.current = {
-                  key,
-                  binding,
-                }
-                return binding
-              },
               onSendStarted: () => coordinator.markSending(submission.token),
               onPresented: (presentedMessage) => {
                 if (
@@ -6964,12 +6798,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         })
     },
-    [
-      activeRuntimeId,
-      cliConversationController,
-      persistCliConfiguration,
-      t,
-    ],
+    [activeRuntimeId, cliConversationController, persistCliConfiguration, t],
   )
 
   const handleCliReasoningEffortChange = useCallback(
@@ -6993,12 +6822,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         })
     },
-    [
-      activeRuntimeId,
-      cliConversationController,
-      persistCliConfiguration,
-      t,
-    ],
+    [activeRuntimeId, cliConversationController, persistCliConfiguration, t],
   )
 
   const handleMainInputRunSlashCommand = useCallback<
@@ -7958,8 +7782,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onFocus={handleMainInputFocus}
         mentionables={inputMessage.mentionables}
         setMentionables={handleMainInputMentionablesChange}
-        selectedSkills={mainInputSelectedSkills}
-        setSelectedSkills={handleMainInputSelectedSkillsChange}
+        selectedSkills={isCliRuntimeActive ? [] : mainInputSelectedSkills}
+        setSelectedSkills={
+          isCliRuntimeActive ? undefined : handleMainInputSelectedSkillsChange
+        }
+        enableSkills={!isCliRuntimeActive}
         modelId={conversationModelId}
         onModelChange={handleMainInputModelChange}
         showModelControl={!isCliRuntimeActive}
@@ -7988,8 +7815,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         hideBadgeMentionables
         displayMentionables={displayMentionablesForInput}
         onDeleteFromAll={handleMainInputMentionableDelete}
-        currentAssistantId={activeAssistantId}
-        onSelectAssistantForConversation={handleConversationAssistantSelect}
+        currentAssistantId={
+          isCliRuntimeActive ? undefined : conversationAssistantId
+        }
+        onSelectAssistantForConversation={
+          isCliRuntimeActive ? undefined : handleConversationAssistantSelect
+        }
         currentChatMode={isCliRuntimeActive ? undefined : chatMode}
         onSelectChatModeForConversation={
           isCliRuntimeActive ? undefined : handleChatModeChange
@@ -8014,7 +7845,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onAbort={handleMainInputAbort}
         contextUsage={isCliRuntimeActive ? undefined : mainInputContextUsage}
         showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
-        quickAccessSkillEntries={quickAccessSkillEntries}
+        quickAccessSkillEntries={
+          isCliRuntimeActive ? [] : quickAccessSkillEntries
+        }
         quickAccessSnippetEntries={quickAccessSnippetEntries}
       />
     </div>

@@ -28,7 +28,6 @@ import type {
 
 export type CliSessionListItem = CliSessionMetadata & {
   hasOverlay: boolean
-  assistantId?: string
   lastOpenedAt?: number
   isPinned: boolean
   pinnedAt?: number
@@ -40,7 +39,6 @@ export type CliSessionDiscoveryResult = {
 }
 
 export type OpenCliSessionOptions = {
-  assistantId?: string
   openedAt?: number
 }
 
@@ -53,7 +51,6 @@ const mergeOverlay = (
 ): CliSessionListItem => ({
   ...metadata,
   hasOverlay: overlay !== undefined,
-  ...(overlay?.assistantId ? { assistantId: overlay.assistantId } : {}),
   ...(overlay?.lastOpenedAt !== undefined
     ? { lastOpenedAt: overlay.lastOpenedAt }
     : {}),
@@ -149,11 +146,6 @@ export class CliSessionService {
           ? { sessionPathHint: hydration.ref.sessionPathHint }
           : existing?.sessionPathHint
             ? { sessionPathHint: existing.sessionPathHint }
-            : {}),
-        ...(existing?.assistantId
-          ? { assistantId: existing.assistantId }
-          : options.assistantId
-            ? { assistantId: options.assistantId }
             : {}),
         lastOpenedAt: options.openedAt ?? Date.now(),
         ...(existing?.isPinned !== undefined
@@ -260,44 +252,6 @@ export class CliSessionService {
     )
   }
 
-  async setAssistantBinding(
-    ref: CliSessionRef,
-    assistantId: string | undefined,
-  ): Promise<void> {
-    await this.indexStore.update(ref, (existing) =>
-      createCliSessionIndexEntry({
-        runtimeId: ref.runtimeId,
-        nativeSessionId: ref.nativeSessionId,
-        ...((ref.sessionPathHint ?? existing?.sessionPathHint)
-          ? {
-              sessionPathHint: ref.sessionPathHint ?? existing?.sessionPathHint,
-            }
-          : {}),
-        ...(assistantId ? { assistantId } : {}),
-        ...(existing?.lastOpenedAt !== undefined
-          ? { lastOpenedAt: existing.lastOpenedAt }
-          : {}),
-        ...(existing?.isPinned !== undefined
-          ? { isPinned: existing.isPinned }
-          : {}),
-        ...(existing?.userDisplayByTransportHash
-          ? {
-              userDisplayByTransportHash: existing.userDisplayByTransportHash,
-            }
-          : {}),
-        ...(existing?.pinnedAt !== undefined
-          ? { pinnedAt: existing.pinnedAt }
-          : {}),
-        ...(existing && 'modelId' in existing
-          ? { modelId: existing.modelId }
-          : {}),
-        ...(existing && 'reasoningEffort' in existing
-          ? { reasoningEffort: existing.reasoningEffort }
-          : {}),
-      }),
-    )
-  }
-
   async setPinned(
     ref: CliSessionRef,
     pinned: boolean,
@@ -312,7 +266,6 @@ export class CliSessionService {
               sessionPathHint: ref.sessionPathHint ?? existing?.sessionPathHint,
             }
           : {}),
-        ...(existing?.assistantId ? { assistantId: existing.assistantId } : {}),
         ...(existing?.lastOpenedAt !== undefined
           ? { lastOpenedAt: existing.lastOpenedAt }
           : {}),

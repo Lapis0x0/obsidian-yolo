@@ -133,101 +133,64 @@ class RpcFakeProcess implements CodexProcessLike {
 }
 
 describe('CodexCliRuntime', () => {
-  it('lets the first profile claim a discovery host but isolates later active profiles', async () => {
+  it('shares one initialized app-server host across native sessions', async () => {
     const processes: RpcFakeProcess[] = []
-    const pool = new CodexAppServerHostPool(
-      {
-        cwd: '/vault',
-        createProcess: async () => {
-          const process = new RpcFakeProcess()
-          processes.push(process)
-          return process
-        },
+    const pool = new CodexAppServerHostPool({
+      cwd: '/vault',
+      createProcess: async () => {
+        const process = new RpcFakeProcess()
+        processes.push(process)
+        return process
       },
-      async (assistant) => ({
-        id: assistant.enabledSkillNames.join(',') || 'default',
-        roots: assistant.enabledSkillNames.map(
-          (name) => `/profiles/${name}/skills`,
-        ),
-        skillPaths: new Map(
-          assistant.enabledSkillNames.map((name) => [
-            name,
-            `/profiles/${name}/skills/${name}/SKILL.md`,
-          ]),
-        ),
-      }),
-    )
-    const discoveryHost = await pool.acquire()
-    await discoveryHost.ensureReady()
-    const profileA = await pool.acquire({
-      systemPrompt: '',
-      enabledSkillNames: ['alpha'],
     })
-    expect(profileA).toBe(discoveryHost)
+    const hostA = await pool.acquire()
+    const hostB = await pool.acquire()
+    await Promise.all([hostA.ensureReady(), hostB.ensureReady()])
+
+    expect(hostB).toBe(hostA)
     expect(processes).toHaveLength(1)
-
-    await profileA.request('thread/start', {})
-    const profileB = await pool.acquire({
-      systemPrompt: '',
-      enabledSkillNames: ['beta'],
-    })
-    await profileB.ensureReady()
-
-    expect(profileB).not.toBe(profileA)
-    expect(processes).toHaveLength(2)
     await pool.dispose()
   })
 
-  it('registers a native YOLO Skill profile and sends explicit skills as native input', async () => {
+  it('does not inject YOLO prompts or Skills into native Codex requests', async () => {
     const process = new RpcFakeProcess()
     const host = new CodexAppServerHost({
       cwd: '/vault',
       createProcess: async () => process,
-      skillProfile: {
-        id: 'profile-review',
-        roots: ['/derived/profile-review/skills'],
-        skillPaths: new Map([
-          ['review', '/derived/profile-review/skills/review/SKILL.md'],
-        ]),
-      },
     })
     const runtime = new CodexCliRuntime({
       cwd: '/vault',
       resolveHost: async () => host,
     })
 
-    await runtime.ensureReady({
-      assistant: {
-        systemPrompt: '',
-        enabledSkillNames: ['review'],
-      },
-    })
+    await runtime.ensureReady({})
     await runtime.sendTurn({
       content: 'Review this change.',
       selectedSkillNames: ['review'],
     })
 
-    expect(process.requests).toContainEqual({
-      method: 'skills/extraRoots/set',
-      params: { extraRoots: ['/derived/profile-review/skills'] },
-    })
+    expect(
+      process.requests.find((request) => request.method === 'thread/start')
+        ?.params.developerInstructions,
+    ).toBeUndefined()
+    expect(
+      process.requests.some(
+        (request) => request.method === 'skills/extraRoots/set',
+      ),
+    ).toBe(false)
     expect(
       process.requests.find((request) => request.method === 'turn/start')
         ?.params.input,
     ).toEqual([
       { type: 'text', text: 'Review this change.', text_elements: [] },
-      {
-        type: 'skill',
-        name: 'review',
-        path: '/derived/profile-review/skills/review/SKILL.md',
-      },
     ])
   })
 
   it('routes interleaved shared-host events and cancellation by thread', async () => {
     const process = new RpcFakeProcess()
-    process.threadIdForStart = (params) =>
-      params.developerInstructions === 'Assistant A' ? 'thread-a' : 'thread-b'
+    let nextThread = 0
+    process.threadIdForStart = () =>
+      nextThread++ === 0 ? 'thread-a' : 'thread-b'
     const host = new CodexAppServerHost({
       cwd: '/vault',
       createProcess: async () => process,
@@ -273,14 +236,7 @@ describe('CodexCliRuntime', () => {
       }
     })
 
-    await Promise.all([
-      runtimeA.ensureReady({
-        assistant: { systemPrompt: 'Assistant A', enabledSkillNames: [] },
-      }),
-      runtimeB.ensureReady({
-        assistant: { systemPrompt: 'Assistant B', enabledSkillNames: [] },
-      }),
-    ])
+    await Promise.all([runtimeA.ensureReady({}), runtimeB.ensureReady({})])
     process.emit({
       jsonrpc: '2.0',
       method: 'turn/started',
@@ -357,7 +313,7 @@ describe('CodexCliRuntime', () => {
     ).toHaveLength(1)
   })
 
-  it('lists vault sessions and starts a thread with assistant instructions', async () => {
+  it('lists vault sessions and starts a native thread', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({
       cwd: '/vault',
@@ -372,13 +328,7 @@ describe('CodexCliRuntime', () => {
 
     const events: string[] = []
     runtime.subscribe((event) => events.push(event.type))
-    await runtime.ensureReady({
-      assistant: {
-        assistantId: 'assistant-1',
-        systemPrompt: 'Be precise.',
-        enabledSkillNames: [],
-      },
-    })
+    await runtime.ensureReady({})
     expect(events).toContain('session_bound')
   })
 
@@ -398,9 +348,7 @@ describe('CodexCliRuntime', () => {
         reasoning.push(event.message.reasoning)
       }
     })
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
     await runtime.updateConfiguration({ reasoningEffort: 'max' })
     await runtime.sendTurn({ content: 'think carefully' })
 
@@ -478,9 +426,7 @@ describe('CodexCliRuntime', () => {
     runtime.subscribe((event) => {
       if (event.type === 'run_state') events.push(event.state)
     })
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
     process.emit({
       jsonrpc: '2.0',
       id: 91,
@@ -515,9 +461,7 @@ describe('CodexCliRuntime', () => {
       cwd: '/vault',
       createProcess: async () => process,
     })
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
 
     process.emit({
       jsonrpc: '2.0',
@@ -595,8 +539,7 @@ describe('CodexCliRuntime', () => {
     runtime.subscribe((event) => {
       if (event.type === 'run_state') runStates.push(event)
     })
-    const assistant = { systemPrompt: '', enabledSkillNames: [] }
-    await runtime.ensureReady({ assistant })
+    await runtime.ensureReady({})
     await runtime.sendTurn({
       sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
       content: 'keep working',
@@ -616,7 +559,6 @@ describe('CodexCliRuntime', () => {
 
     await runtime.ensureReady({
       sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
-      assistant,
     })
     expect(createProcess).toHaveBeenCalledTimes(2)
     expect(second.requests).toEqual(
@@ -634,9 +576,7 @@ describe('CodexCliRuntime', () => {
     })
     const events: unknown[] = []
     runtime.subscribe((event) => events.push(event))
-    await runtime.ensureReady({
-      assistant: { systemPrompt: '', enabledSkillNames: [] },
-    })
+    await runtime.ensureReady({})
 
     process.emit({
       jsonrpc: '2.0',

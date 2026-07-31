@@ -2,13 +2,10 @@ import { App, FileSystemAdapter, Platform } from 'obsidian'
 
 import type { YoloSettingsLike } from '../paths/yoloManagedData'
 
-import type {
-  ClaudeCliRuntimeOptions,
-  ClaudePluginPathProvider,
-} from './claude'
+import type { ClaudeCliRuntimeOptions } from './claude'
 import { createCliChatRuntimeActions } from './cli-actions'
 import type { CodexCliRuntimeOptions } from './codex'
-import { CodexAppServerHostPool, type CodexSkillProfile } from './codex/host'
+import { CodexAppServerHostPool } from './codex/host'
 import { CliConversationController } from './conversation-controller'
 import {
   CliModelCatalogService,
@@ -29,10 +26,7 @@ import type {
 } from './types'
 import { VaultCliSessionIndexStore } from './vault-session-index-store'
 
-type ClaudeRuntimeOptions = Omit<
-  ClaudeCliRuntimeOptions,
-  'vaultPath' | 'resolvePluginPaths'
->
+type ClaudeRuntimeOptions = Omit<ClaudeCliRuntimeOptions, 'vaultPath'>
 type CodexRuntimeOptions = Omit<CodexCliRuntimeOptions, 'cwd' | 'resolveHost'>
 
 export type CliRuntimeFactories = Readonly<{
@@ -45,10 +39,6 @@ export type CliRuntimeCoordinatorOptions = Readonly<{
   getSettings?: () => YoloSettingsLike | null
   getClaudeRuntimeOptions?: () => ClaudeRuntimeOptions
   getCodexRuntimeOptions?: () => CodexRuntimeOptions
-  resolveClaudePluginPaths?: ClaudePluginPathProvider
-  resolveCodexSkillProfile?: (
-    assistant: import('./types').CliAssistantBinding,
-  ) => Promise<CodexSkillProfile>
   loadRuntimeFactories?: () =>
     | CliRuntimeFactories
     | Promise<CliRuntimeFactories>
@@ -71,11 +61,7 @@ export type CliRuntimeScope = {
   getModelCatalogSnapshot(): CliModelCatalogSnapshot
   subscribeToModelCatalog(listener: () => void): () => void
   warmModelCatalog(runtimeId: CliRuntimeId): Promise<void>
-  warmConversationRuntime(
-    runtimeId: CliRuntimeId,
-    assistant: import('./types').CliAssistantBinding,
-  ): Promise<void>
-  invalidateConversationRuntimeCache(runtimeId: CliRuntimeId): void
+  warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void>
   dispose(): Promise<void>
 }
 
@@ -185,13 +171,10 @@ class DesktopCliRuntimeWorkspace {
       options.getSettings ?? (() => null),
     )
     this.codexRuntimeOptions = this.options.getCodexRuntimeOptions?.() ?? {}
-    this.codexHostPool = new CodexAppServerHostPool(
-      {
-        ...this.codexRuntimeOptions,
-        cwd: this.adapter.getBasePath(),
-      },
-      this.options.resolveCodexSkillProfile,
-    )
+    this.codexHostPool = new CodexAppServerHostPool({
+      ...this.codexRuntimeOptions,
+      cwd: this.adapter.getBasePath(),
+    })
   }
 
   get sessionService(): CliSessionService {
@@ -218,11 +201,6 @@ class DesktopCliRuntimeWorkspace {
         ? this.factories.createClaudeRuntime({
             ...this.options.getClaudeRuntimeOptions?.(),
             vaultPath,
-            ...(this.options.resolveClaudePluginPaths
-              ? {
-                  resolvePluginPaths: this.options.resolveClaudePluginPaths,
-                }
-              : {}),
           })
         : this.factories.createCodexRuntime({
             ...this.codexRuntimeOptions,
@@ -293,17 +271,10 @@ class DesktopCliRuntimeWorkspace {
     await this.modelCatalog.refresh(runtimeId, () => runtime.listModels!())
   }
 
-  async warmConversationRuntime(
-    runtimeId: CliRuntimeId,
-    assistant: import('./types').CliAssistantBinding,
-  ): Promise<void> {
+  async warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void> {
     if (runtimeId === 'codex') {
-      await this.codexHostPool.warm(assistant)
+      await this.codexHostPool.warm()
     }
-  }
-
-  invalidateConversationRuntimeCache(runtimeId: CliRuntimeId): void {
-    if (runtimeId === 'codex') this.codexHostPool.invalidateSkillProfiles()
   }
 
   selectConversationSession(ref: CliSessionRef): CliConversationController {
@@ -371,11 +342,6 @@ class DesktopCliRuntimeWorkspace {
         ? this.factories.createClaudeRuntime({
             ...this.options.getClaudeRuntimeOptions?.(),
             vaultPath,
-            ...(this.options.resolveClaudePluginPaths
-              ? {
-                  resolvePluginPaths: this.options.resolveClaudePluginPaths,
-                }
-              : {}),
           })
         : this.factories.createCodexRuntime({
             ...this.codexRuntimeOptions,
@@ -471,17 +437,9 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
     return this.workspace.warmModelCatalog(runtimeId)
   }
 
-  warmConversationRuntime(
-    runtimeId: CliRuntimeId,
-    assistant: import('./types').CliAssistantBinding,
-  ): Promise<void> {
+  warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void> {
     this.assertActive()
-    return this.workspace.warmConversationRuntime(runtimeId, assistant)
-  }
-
-  invalidateConversationRuntimeCache(runtimeId: CliRuntimeId): void {
-    this.assertActive()
-    this.workspace.invalidateConversationRuntimeCache(runtimeId)
+    return this.workspace.warmConversationRuntime(runtimeId)
   }
 
   dispose(): Promise<void> {

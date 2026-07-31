@@ -67,20 +67,9 @@ const toSessionMetadata = (thread: CodexThread): CliSessionMetadata => ({
   cwd: thread.cwd,
 })
 
-const toCodexInput = (
-  content: string | ContentPart[],
-  selectedSkillNames: readonly string[],
-  skillPaths: ReadonlyMap<string, string>,
-): CodexUserInput[] => {
-  const skills = selectedSkillNames.map((name): CodexUserInput => {
-    const path = skillPaths.get(name)
-    if (!path) {
-      throw new Error(`Selected YOLO Skill is unavailable to Codex: ${name}`)
-    }
-    return { type: 'skill', name, path }
-  })
+const toCodexInput = (content: string | ContentPart[]): CodexUserInput[] => {
   if (typeof content === 'string') {
-    return [{ type: 'text', text: content, text_elements: [] }, ...skills]
+    return [{ type: 'text', text: content, text_elements: [] }]
   }
   return [
     ...content.flatMap((part): CodexUserInput[] => {
@@ -92,7 +81,6 @@ const toCodexInput = (
       }
       throw new Error('Codex CLI runtime does not support PDF attachments.')
     }),
-    ...skills,
   ]
 }
 
@@ -153,7 +141,7 @@ export class CodexCliRuntime implements CliRuntime {
   private readonly pendingRequests = new Map<string, PendingServerRequest>()
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
-  private assistantKey = ''
+  private needsSessionRebind = false
   private models: CliRuntimeConfiguration['models'] | null = null
   private modelId: string | null = null
   private reasoningEffort: string | null = null
@@ -204,13 +192,12 @@ export class CodexCliRuntime implements CliRuntime {
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
     const previousHost = this.host
-    const host = await this.getHost(input.assistant)
-    const assistantKey = JSON.stringify(input.assistant)
+    const host = await this.getHost()
     if (
       this.activeSessionRef &&
       input.sessionRef?.nativeSessionId ===
         this.activeSessionRef.nativeSessionId &&
-      assistantKey === this.assistantKey &&
+      !this.needsSessionRebind &&
       previousHost === host
     ) {
       return
@@ -220,7 +207,6 @@ export class CodexCliRuntime implements CliRuntime {
       cwd: this.options.cwd,
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
-      developerInstructions: input.assistant.systemPrompt || null,
       experimentalRawEvents: true,
     }
     const response = input.sessionRef
@@ -232,7 +218,7 @@ export class CodexCliRuntime implements CliRuntime {
     this.activeSessionRef = toSessionRef(response.thread)
     this.modelId = response.model ?? null
     this.reasoningEffort = response.reasoningEffort ?? null
-    this.assistantKey = assistantKey
+    this.needsSessionRebind = false
     this.emit({ type: 'session_bound', ref: this.activeSessionRef })
   }
 
@@ -282,11 +268,7 @@ export class CodexCliRuntime implements CliRuntime {
       'turn/start',
       {
         threadId: this.activeSessionRef.nativeSessionId,
-        input: toCodexInput(
-          input.content,
-          input.selectedSkillNames ?? [],
-          host.skillPaths,
-        ),
+        input: toCodexInput(input.content),
         model: this.modelId,
         effort: this.reasoningEffort,
         summary: 'auto',
@@ -364,22 +346,18 @@ export class CodexCliRuntime implements CliRuntime {
     for (const listener of this.listeners) listener(event)
   }
 
-  private async getHost(
-    assistant?: CliRuntimeReadyInput['assistant'],
-  ): Promise<CodexAppServerHost> {
+  private async getHost(): Promise<CodexAppServerHost> {
     if (this.disposed) throw new Error('Codex CLI runtime has been disposed.')
-    const host =
-      !assistant && this.host
-        ? this.host
-        : this.options.resolveHost
-          ? await this.options.resolveHost(assistant)
-          : (this.host ??
-            new CodexAppServerHost({
-              command: this.options.command,
-              cwd: this.options.cwd,
-              env: this.options.env,
-              createProcess: this.options.createProcess,
-            }))
+    const host = this.host
+      ? this.host
+      : this.options.resolveHost
+        ? await this.options.resolveHost()
+        : new CodexAppServerHost({
+            command: this.options.command,
+            cwd: this.options.cwd,
+            env: this.options.env,
+            createProcess: this.options.createProcess,
+          })
     if (this.host !== host) {
       this.detachHostListeners?.()
       this.host = host
@@ -440,10 +418,10 @@ export class CodexCliRuntime implements CliRuntime {
 
   private handleHostFatal(error: Error): void {
     this.activeTurnId = null
+    this.needsSessionRebind = true
     this.models = null
     this.modelId = null
     this.reasoningEffort = null
-    this.assistantKey = ''
     this.pendingRequests.clear()
     this.streamingAssistantText.clear()
     this.streamingReasoningSummaryParts.clear()

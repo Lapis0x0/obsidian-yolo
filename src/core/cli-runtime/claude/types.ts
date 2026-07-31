@@ -44,14 +44,5 @@ export type ClaudeProcessSupport = {
   spawnClaudeCodeProcess: (options: SpawnOptions) => SpawnedProcess
 }
 
-export type ClaudePluginPathInput = {
-  assistantId?: string
-  enabledSkillNames: string[]
-}
-
-export type ClaudePluginPathProvider = (
-  input: ClaudePluginPathInput,
-) => Promise<string[]>
-
 export type ClaudeSdkLoader = () => Promise<ClaudeSdkModule>
 export type ClaudeProcessSupportResolver = () => Promise<ClaudeProcessSupport>

@@ -4,7 +4,6 @@ import type {
   CliConversationController,
   CliConversationSnapshot,
   CliRuntimeScope,
-  CliSessionDiscoveryResult,
   CliSessionHydration,
   CliSessionRef,
 } from '../../core/cli-runtime'
@@ -21,7 +20,6 @@ import {
   openCliSessionForNavigation,
   prepareCliConversation,
   removeCliOverlayAfterConfirmation,
-  resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   shouldClearAcceptedCliDraft,
@@ -154,21 +152,14 @@ describe('CLI chat integration', () => {
         },
       },
     })
-    const assistant = {
-      assistantId: 'assistant-1',
-      systemPrompt: 'Be precise.',
-      enabledSkillNames: [],
-    }
-
     await prepareCliConversation({
       controller,
       scope,
       runtimeId: 'codex',
-      assistant,
       settings,
     })
 
-    expect(ensureReady).toHaveBeenCalledWith(assistant, {
+    expect(ensureReady).toHaveBeenCalledWith({
       modelId: 'gpt-5.6-luna',
       reasoningEffort: 'medium',
     })
@@ -222,24 +213,9 @@ describe('CLI chat integration', () => {
       resolveActiveCliConversationSnapshot('claude-code', cliSnapshot),
     ).toBeNull()
     expect(resolveActiveCliConversationSnapshot('yolo', cliSnapshot)).toBeNull()
-
-    expect(
-      resolveActiveAssistantId({
-        activeRuntimeId: 'yolo',
-        conversationAssistantId: 'assistant-yolo',
-        cliAssistantId: 'assistant-cli',
-      }),
-    ).toBe('assistant-yolo')
-    expect(
-      resolveActiveAssistantId({
-        activeRuntimeId: 'codex',
-        conversationAssistantId: 'assistant-yolo',
-        cliAssistantId: 'assistant-cli',
-      }),
-    ).toBe('assistant-cli')
   })
 
-  it('encodes and submits the CLI draft through its assistant binding', async () => {
+  it('encodes and submits the CLI draft through the native runtime', async () => {
     jest.useFakeTimers().setSystemTime(new Date(2026, 6, 30, 14, 53))
     const ref: CliSessionRef = {
       runtimeId: 'codex',
@@ -272,22 +248,13 @@ describe('CLI chat integration', () => {
       },
     } as unknown as CliRuntimeScope
     const encodeTurnContent = jest.fn(() => 'encoded CLI content')
-    const resolveAssistantBinding = jest.fn(async () => ({
-      assistantId: 'assistant-1',
-      systemPrompt: 'Be precise.',
-      enabledSkillNames: ['review'],
-    }))
-
     await submitCliComposerTurn({
-      app: {} as never,
-      settings: { assistants: [] } as unknown as YoloSettings,
+      settings: parseYoloSettings({ version: SETTINGS_SCHEMA_VERSION }),
       scope,
       controller,
       runtimeId: 'codex',
-      assistantId: 'assistant-1',
       userMessage: userMessage(),
       timeContextEnabled: true,
-      resolveAssistantBinding,
       encodeTurnContent,
     })
 
@@ -300,10 +267,7 @@ describe('CLI chat integration', () => {
         timeContext: '2026-07-30 14:53 (Thursday)',
       }),
     )
-    expect(ensureReady).toHaveBeenCalledWith(
-      expect.objectContaining({ assistantId: 'assistant-1' }),
-      {},
-    )
+    expect(ensureReady).toHaveBeenCalledWith({})
     expect(sendTurn).toHaveBeenCalledWith({
       userMessage: expect.objectContaining({
         id: 'draft-1',
@@ -312,10 +276,7 @@ describe('CLI chat integration', () => {
       content: 'encoded CLI content',
       selectedSkillNames: ['review'],
     })
-    expect(recordOpenedSession).toHaveBeenCalledWith(
-      { ref, messages: [] },
-      { assistantId: 'assistant-1' },
-    )
+    expect(recordOpenedSession).toHaveBeenCalledWith({ ref, messages: [] })
     expect(ensureReady.mock.invocationCallOrder[0]).toBeLessThan(
       sendTurn.mock.invocationCallOrder[0] ?? 0,
     )
@@ -358,19 +319,12 @@ describe('CLI chat integration', () => {
 
     await expect(
       submitCliComposerTurn({
-        app: {} as never,
         settings: { assistants: [] } as unknown as YoloSettings,
         scope,
         controller,
         runtimeId: 'codex',
-        assistantId: 'assistant-1',
         userMessage: userMessage(),
         timeContextEnabled: false,
-        resolveAssistantBinding: async () => ({
-          assistantId: 'assistant-1',
-          systemPrompt: '',
-          enabledSkillNames: [],
-        }),
         encodeTurnContent: () => 'accepted',
       }),
     ).resolves.toEqual({
@@ -380,19 +334,11 @@ describe('CLI chat integration', () => {
   })
 
   it('aborts an unmounted preparation before it can reach sendTurn', async () => {
-    let resolveBinding!: (value: {
-      assistantId: string
-      systemPrompt: string
-      enabledSkillNames: string[]
-    }) => void
-    const binding = new Promise<{
-      assistantId: string
-      systemPrompt: string
-      enabledSkillNames: string[]
-    }>((resolve) => {
-      resolveBinding = resolve
+    let resolveReady!: () => void
+    const ready = new Promise<void>((resolve) => {
+      resolveReady = resolve
     })
-    const ensureReady = jest.fn(async () => undefined)
+    const ensureReady = jest.fn(() => ready)
     const sendTurn = jest.fn(async () => undefined)
     const controller = {
       stageTurn: jest.fn((message: ChatUserMessage) => ({
@@ -403,6 +349,7 @@ describe('CLI chat integration', () => {
       rejectStagedTurn: jest.fn(),
       ensureReady,
       sendTurn,
+      getSnapshot: () => cliSnapshot(),
     } as unknown as CliConversationController
 
     const coordinator = new CliChatOperationCoordinator()
@@ -410,30 +357,25 @@ describe('CLI chat integration', () => {
     expect(operation).not.toBeNull()
 
     const submission = submitCliComposerTurn({
-      app: {} as never,
-      settings: { assistants: [] } as unknown as YoloSettings,
-      scope: {} as CliRuntimeScope,
+      settings: parseYoloSettings({ version: SETTINGS_SCHEMA_VERSION }),
+      scope: {
+        getModelCatalogSnapshot: () => new Map(),
+      } as unknown as CliRuntimeScope,
       controller,
       runtimeId: 'codex',
-      assistantId: 'assistant-1',
       userMessage: userMessage(),
       timeContextEnabled: false,
       signal: operation!.signal,
       onSendStarted: () => coordinator.markSending(operation!.token),
-      resolveAssistantBinding: () => binding,
       encodeTurnContent: () => 'pending',
     })
     expect(coordinator.abortPreparation()).toBe('preparing')
     expect(coordinator.beginSubmission(4)).toBeNull()
-    resolveBinding({
-      assistantId: 'assistant-1',
-      systemPrompt: '',
-      enabledSkillNames: [],
-    })
+    resolveReady()
 
     await expect(submission).rejects.toMatchObject({ name: 'AbortError' })
     coordinator.finishSubmission(operation!.token)
-    expect(ensureReady).not.toHaveBeenCalled()
+    expect(ensureReady).toHaveBeenCalledTimes(1)
     expect(sendTurn).not.toHaveBeenCalled()
     const nextOperation = coordinator.beginSubmission(4)
     expect(nextOperation).not.toBeNull()
@@ -464,24 +406,9 @@ describe('CLI chat integration', () => {
       },
     } as unknown as CliRuntimeScope
 
-    const discoveryResult: CliSessionDiscoveryResult = {
-      sessions: [
-        {
-          ref: indexedRef,
-          title: 'Indexed',
-          updatedAt: 1,
-          hasOverlay: true,
-          assistantId: 'assistant-overlay',
-          isPinned: false,
-        },
-      ],
-      errors: {},
-    }
     const opened = await openCliSession({
       scope,
       ref: indexedRef,
-      discoveryResult,
-      currentAssistantId: 'assistant-current',
     })
 
     expect(selectConversationSession).toHaveBeenLastCalledWith(indexedRef)
@@ -489,12 +416,9 @@ describe('CLI chat integration', () => {
     expect(hydrateSession).toHaveBeenCalledWith(
       indexedRef,
       expect.any(Function),
-      'assistant-overlay',
     )
-    expect(recordOpenedSession).toHaveBeenCalledWith(hydration, {
-      assistantId: 'assistant-overlay',
-    })
-    expect(opened.assistantId).toBe('assistant-overlay')
+    expect(recordOpenedSession).toHaveBeenCalledWith(hydration)
+    expect(opened.controller).toBe(controller)
 
     expect(shouldHydrateSeededCliSession(indexedRef, cliSnapshot())).toBe(true)
     expect(
@@ -553,11 +477,10 @@ describe('CLI chat integration', () => {
         const result = await openCliSessionForNavigation({
           scope,
           ref,
-          currentAssistantId: 'assistant-stale',
           isCurrent: isCurrentOpen,
         })
         if (!result) return
-        commitRuntime(result.controller, result.assistantId)
+        commitRuntime(result.controller)
         if (result.overlayError) showNotice(result.overlayError)
       })()
 
@@ -606,12 +529,10 @@ describe('CLI chat integration', () => {
     const operation = coordinator.beginSubmission(7)!
 
     const submission = submitCliComposerTurn({
-      app: {} as never,
       settings: { assistants: [] } as unknown as YoloSettings,
       scope,
       controller,
       runtimeId: 'codex',
-      assistantId: 'assistant-cli',
       userMessage: userMessage(),
       timeContextEnabled: false,
       signal: operation.signal,
@@ -619,11 +540,6 @@ describe('CLI chat integration', () => {
       onAccepted: (acceptedMessage) => {
         coordinator.markAccepted(operation.token, acceptedMessage)
       },
-      resolveAssistantBinding: async () => ({
-        assistantId: 'assistant-cli',
-        systemPrompt: '',
-        enabledSkillNames: [],
-      }),
       encodeTurnContent: () => 'accepted content',
     })
 
@@ -777,7 +693,7 @@ describe('CLI chat integration', () => {
     ).toBe(false)
   })
 
-  it('binds an external session to the current assistant and records its overlay', async () => {
+  it('opens an external native session and records its overlay', async () => {
     const ref: CliSessionRef = {
       runtimeId: 'codex',
       nativeSessionId: 'external-session',
@@ -799,25 +715,10 @@ describe('CLI chat integration', () => {
     const result = await openCliSession({
       scope,
       ref,
-      discoveryResult: {
-        sessions: [
-          {
-            ref,
-            title: 'External',
-            updatedAt: 1,
-            hasOverlay: false,
-            isPinned: false,
-          },
-        ],
-        errors: {},
-      },
-      currentAssistantId: 'assistant-current',
     })
 
-    expect(result.assistantId).toBe('assistant-current')
-    expect(recordOpenedSession).toHaveBeenCalledWith(hydration, {
-      assistantId: 'assistant-current',
-    })
+    expect(result.controller).toBe(controller)
+    expect(recordOpenedSession).toHaveBeenCalledWith(hydration)
   })
 
   it('never removes an overlay before explicit confirmation', async () => {

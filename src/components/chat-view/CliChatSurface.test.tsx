@@ -276,7 +276,7 @@ describe('CliChatSurface', () => {
     ).toContain('Event message')
   })
 
-  it('renders localized empty and error states without a redundant run label', () => {
+  it('does not render CLI-specific footer status or error labels', () => {
     const empty = makeSnapshot({ sessionRef: null })
     const failed = makeSnapshot({
       sessionRef: null,
@@ -289,9 +289,7 @@ describe('CliChatSurface', () => {
     })
 
     expect(renderSurface(empty)).toContain('开始一个 CLI 会话')
-    expect(renderSurface(failed)).toContain(
-      'CLI 会话出错：Provider process exited',
-    )
+    expect(renderSurface(failed)).not.toContain('CLI 会话出错')
     expect(renderSurface(failed)).not.toContain('CLI 运行出错')
     expect(renderSurface(streaming)).not.toContain('CLI 正在回复…')
     for (const runState of [

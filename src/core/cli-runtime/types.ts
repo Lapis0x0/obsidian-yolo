@@ -37,15 +37,14 @@ export type CliSessionHydration = {
   messages: ChatMessage[]
 }
 
-export type CliAssistantBinding = {
-  assistantId?: string
-  systemPrompt: string
-  enabledSkillNames: string[]
+export type CliRuntimeSkill = {
+  name: string
+  description: string
+  path: string
 }
 
 export type CliRuntimeReadyInput = {
   sessionRef?: CliSessionRef
-  assistant: CliAssistantBinding
 }
 
 export type CliReasoningEffortOption = {
@@ -131,6 +130,7 @@ export type CliRuntime = {
 
   listSessions(): Promise<CliSessionMetadata[]>
   listModels?(): Promise<CliRuntimeModel[]>
+  listSkills?(): Promise<CliRuntimeSkill[]>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
   getConfiguration(

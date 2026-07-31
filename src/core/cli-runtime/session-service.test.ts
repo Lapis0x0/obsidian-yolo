@@ -125,7 +125,6 @@ describe('CliSessionService', () => {
           title: 'Codex',
           isPinned: true,
           hasOverlay: true,
-          assistantId: 'assistant-1',
         },
         { title: 'Claude', isPinned: false, hasOverlay: false },
       ],
@@ -175,11 +174,9 @@ describe('CliSessionService', () => {
     })
 
     await service.openSession(ref, {
-      assistantId: 'assistant-1',
       openedAt: 123,
     })
     await expect(index.get(ref)).resolves.toMatchObject({
-      assistantId: 'assistant-1',
       lastOpenedAt: 123,
       sessionPathHint: '/session.jsonl',
     })
@@ -200,20 +197,16 @@ describe('CliSessionService', () => {
       indexStore: index,
     })
 
-    await service.recordOpenedSession(
-      { ref, messages: [] },
-      { assistantId: 'assistant-1', openedAt: 321 },
-    )
+    await service.recordOpenedSession({ ref, messages: [] }, { openedAt: 321 })
 
     expect(openSession).not.toHaveBeenCalled()
     await expect(index.get(ref)).resolves.toMatchObject({
-      assistantId: 'assistant-1',
       lastOpenedAt: 321,
       sessionPathHint: '/native/claude-1.jsonl',
     })
   })
 
-  it('changes pin and assistant overlay without touching runtime history', async () => {
+  it('changes the pin overlay without touching runtime history', async () => {
     const index = new MemoryIndex()
     const ref = { runtimeId: 'claude-code' as const, nativeSessionId: 'c-1' }
     const service = new CliSessionService({
@@ -221,11 +214,9 @@ describe('CliSessionService', () => {
       runtimes: [runtime({ runtimeId: 'claude-code' })],
       indexStore: index,
     })
-    await service.setAssistantBinding(ref, 'assistant-2')
     await service.setPinned(ref, true, 456)
 
     await expect(index.get(ref)).resolves.toMatchObject({
-      assistantId: 'assistant-2',
       isPinned: true,
       pinnedAt: 456,
     })
@@ -247,7 +238,6 @@ describe('CliSessionService', () => {
 
     await Promise.all([
       service.recordOpenedSession({ ref, messages: [] }, { openedAt: 100 }),
-      service.setAssistantBinding(ref, 'assistant-concurrent'),
       service.setPinned(ref, true, 200),
     ])
 
@@ -255,7 +245,6 @@ describe('CliSessionService', () => {
       runtimeId: 'codex',
       nativeSessionId: 'thread-concurrent',
       sessionPathHint: '/vault/thread-concurrent.jsonl',
-      assistantId: 'assistant-concurrent',
       lastOpenedAt: 100,
       isPinned: true,
       pinnedAt: 200,

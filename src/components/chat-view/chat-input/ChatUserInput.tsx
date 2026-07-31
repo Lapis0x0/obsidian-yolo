@@ -80,6 +80,7 @@ export type ChatUserInputProps = {
   setMentionables: (mentionables: Mentionable[]) => void
   selectedSkills?: ChatSelectedSkill[]
   setSelectedSkills?: (skills: ChatSelectedSkill[]) => void
+  enableSkills?: boolean
   autoFocus?: boolean
   addedBlockKey?: string | null
   modelId?: string
@@ -158,6 +159,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       setMentionables,
       selectedSkills = [],
       setSelectedSkills,
+      enableSkills = true,
       autoFocus = false,
       modelId,
       onModelChange,
@@ -252,8 +254,8 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [displayMentionables, mentionables],
     )
     const effectiveSelectedSkills = useMemo(
-      () => selectedSkills,
-      [selectedSkills],
+      () => (enableSkills ? selectedSkills : []),
+      [enableSkills, selectedSkills],
     )
     const selectedSkillsRef = useRef(effectiveSelectedSkills)
     selectedSkillsRef.current = effectiveSelectedSkills
@@ -270,6 +272,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       [settings.assistants],
     )
     const availableSkills = useMemo(() => {
+      if (!enableSkills) return []
       const currentAssistant = currentAssistantId
         ? (availableAssistants.find(
             (assistant) => assistant.id === currentAssistantId,
@@ -289,7 +292,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           defaultLoadMode: skill.mode,
         }),
       )
-    }, [allSkillEntries, availableAssistants, currentAssistantId, settings])
+    }, [
+      allSkillEntries,
+      availableAssistants,
+      currentAssistantId,
+      enableSkills,
+      settings,
+    ])
 
     const loadedSnippetEntries = useSnippetEntries()
     const availableSnippets = quickAccessSnippetEntries ?? loadedSnippetEntries
@@ -855,10 +864,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               mentionDisplayMode={mentionDisplayMode}
               onDeleteFromAll={onDeleteFromAll}
               displayMentionablesForDelete={effectiveMentionables}
-              enableSkills
+              enableSkills={enableSkills}
               enableAttachments
-              selectedSkills={selectedSkills}
-              setSelectedSkills={setSelectedSkills}
+              selectedSkills={effectiveSelectedSkills}
+              setSelectedSkills={enableSkills ? setSelectedSkills : undefined}
               currentModel={currentModel}
               mentionMenuMode={
                 onSelectAssistantForConversation ||

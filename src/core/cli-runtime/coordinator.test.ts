@@ -164,7 +164,6 @@ describe('CLI runtime coordinator', () => {
 
   it('creates each provider lazily once per scope with current absolute cwd and options', async () => {
     const harness = runtimeHarness()
-    const resolvePluginPaths = jest.fn(async () => ['/plugins/one'])
     const getClaudeRuntimeOptions = jest.fn(() => ({
       configuredCliPath: '/bin/claude',
     }))
@@ -173,7 +172,6 @@ describe('CLI runtime coordinator', () => {
       app: createApp(new TestFileSystemAdapter('/vault/current')),
       getClaudeRuntimeOptions,
       getCodexRuntimeOptions,
-      resolveClaudePluginPaths: resolvePluginPaths,
       loadRuntimeFactories: () => harness.factories,
       createSessionIndexStore: indexStore,
     })
@@ -188,7 +186,6 @@ describe('CLI runtime coordinator', () => {
     expect(harness.createClaudeRuntime).toHaveBeenCalledWith({
       configuredCliPath: '/bin/claude',
       vaultPath: '/vault/current',
-      resolvePluginPaths,
     })
     expect(scope.resolveRuntime('codex')).toBe(scope.resolveRuntime('codex'))
     expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
@@ -222,7 +219,7 @@ describe('CLI runtime coordinator', () => {
     expect(scope.sessionService).toBe(scope.sessionService)
     expect(scope.chatRuntimeActions).toBe(scope.chatRuntimeActions)
     const controller = scope.createConversationRuntime('codex')
-    await controller.ensureReady({ systemPrompt: '', enabledSkillNames: [] })
+    await controller.ensureReady()
     await scope.chatRuntimeActions.cancelRun({
       runtimeId: 'codex',
       nativeSessionId: 'codex-session',
@@ -241,7 +238,7 @@ describe('CLI runtime coordinator', () => {
       nativeSessionId: 'codex-session',
     }
     const controller = scope.createConversationRuntime('codex')
-    await controller.ensureReady({ systemPrompt: '', enabledSkillNames: [] })
+    await controller.ensureReady()
 
     await Promise.all([
       scope.chatRuntimeActions.cancelRun(conversation),
@@ -264,14 +261,8 @@ describe('CLI runtime coordinator', () => {
     )
     expect(scope.selectConversationRuntime('codex')).toBe(codexController)
 
-    await claudeController.ensureReady({
-      systemPrompt: '',
-      enabledSkillNames: [],
-    })
-    await codexController.ensureReady({
-      systemPrompt: '',
-      enabledSkillNames: [],
-    })
+    await claudeController.ensureReady()
+    await codexController.ensureReady()
     harness.claudeRuntimes[0].emit({
       type: 'run_state',
       state: 'running',

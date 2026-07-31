@@ -1,21 +1,14 @@
-import type { App } from 'obsidian'
-
 import type {
   ChatRuntimeId,
-  CliAssistantBinding,
   CliConversationController,
   CliConversationSnapshot,
   CliRuntimeConfigurationUpdate,
   CliRuntimeId,
   CliRuntimeScope,
-  CliSessionDiscoveryResult,
   CliSessionHydration,
   CliSessionRef,
 } from '../../core/cli-runtime'
-import {
-  buildCliTurnContent,
-  resolveCliAssistantBinding,
-} from '../../core/cli-runtime'
+import { buildCliTurnContent } from '../../core/cli-runtime'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
@@ -35,13 +28,11 @@ export const prepareCliConversation = async ({
   controller,
   scope,
   runtimeId,
-  assistant,
   settings,
 }: {
   controller: CliConversationController
   scope: CliRuntimeScope
   runtimeId: CliRuntimeId
-  assistant: CliAssistantBinding
   settings: YoloSettings
 }): Promise<void> => {
   const existingSessionRef = controller.getSnapshot().sessionRef
@@ -70,7 +61,7 @@ export const prepareCliConversation = async ({
           scope.getModelCatalogSnapshot().get(runtimeId) ?? [],
         )
   }
-  await controller.ensureReady(assistant, initialConfiguration)
+  await controller.ensureReady(initialConfiguration)
 }
 
 export type CliSubmissionPhase = 'idle' | 'preparing' | 'sending' | 'accepted'
@@ -382,17 +373,6 @@ export const invalidateChatRuntimeNavigation = (generation: {
   current: number
 }): number => ++generation.current
 
-export const resolveActiveAssistantId = ({
-  activeRuntimeId,
-  conversationAssistantId,
-  cliAssistantId,
-}: {
-  activeRuntimeId: ChatRuntimeId
-  conversationAssistantId: string
-  cliAssistantId: string
-}): string =>
-  activeRuntimeId === 'yolo' ? conversationAssistantId : cliAssistantId
-
 export const isCliConversationActive = (
   snapshot: CliConversationSnapshot | null,
 ): boolean => snapshot !== null && ACTIVE_CLI_RUN_STATES.has(snapshot.runState)
@@ -434,48 +414,19 @@ export const shouldLoadYoloHistoryItem = ({
 }): boolean =>
   activeRuntimeId !== 'yolo' || conversationId !== currentConversationId
 
-const findSessionAssistantId = ({
-  discoveryResult,
-  ref,
-  currentAssistantId,
-}: {
-  discoveryResult?: CliSessionDiscoveryResult
-  ref: CliSessionRef
-  currentAssistantId: string
-}): string => {
-  const session = discoveryResult?.sessions.find(
-    (candidate) =>
-      candidate.ref.runtimeId === ref.runtimeId &&
-      candidate.ref.nativeSessionId === ref.nativeSessionId,
-  )
-  return session?.hasOverlay && session.assistantId
-    ? session.assistantId
-    : currentAssistantId
-}
-
 export const openCliSession = async ({
   scope,
   ref,
-  discoveryResult,
-  currentAssistantId,
   isCurrent = () => true,
 }: {
   scope: CliRuntimeScope
   ref: CliSessionRef
-  discoveryResult?: CliSessionDiscoveryResult
-  currentAssistantId: string
   isCurrent?: () => boolean
 }): Promise<{
   controller: CliConversationController
-  assistantId: string
   hydration: CliSessionHydration | null
   overlayError: Error | null
 }> => {
-  const assistantId = findSessionAssistantId({
-    discoveryResult,
-    ref,
-    currentAssistantId,
-  })
   const controller = scope.selectConversationSession(ref)
   const existingSnapshot = controller.getSnapshot()
   const alreadyHydrated =
@@ -483,20 +434,18 @@ export const openCliSession = async ({
     existingSnapshot.sessionRef.nativeSessionId === ref.nativeSessionId
   const hydration = alreadyHydrated
     ? { ref, messages: [...existingSnapshot.messages] }
-    : await controller.hydrateSession(
-        ref,
-        (messages) => scope.sessionService.restoreUserDisplays(ref, messages),
-        assistantId,
+    : await controller.hydrateSession(ref, (messages) =>
+        scope.sessionService.restoreUserDisplays(ref, messages),
       )
   let overlayError: Error | null = null
   if (hydration && isCurrent()) {
     try {
-      await scope.sessionService.recordOpenedSession(hydration, { assistantId })
+      await scope.sessionService.recordOpenedSession(hydration)
     } catch (error) {
       overlayError = toError(error)
     }
   }
-  return { controller, assistantId, hydration, overlayError }
+  return { controller, hydration, overlayError }
 }
 
 export const openCliSessionForNavigation = async ({
@@ -511,36 +460,30 @@ export const openCliSessionForNavigation = async ({
 }
 
 export type SubmitCliComposerTurnInput = {
-  app: App
   settings: YoloSettings
   scope: CliRuntimeScope
   controller: CliConversationController
   runtimeId: CliRuntimeId
-  assistantId: string
   userMessage: ChatUserMessage
   timeContextEnabled: boolean
   signal?: AbortSignal
   onSendStarted?: () => boolean | undefined
   onPresented?: (userMessage: ChatUserMessage) => void
   onAccepted?: (userMessage: ChatUserMessage) => void
-  resolveAssistantBinding?: typeof resolveCliAssistantBinding
   encodeTurnContent?: typeof buildCliTurnContent
 }
 
 export const submitCliComposerTurn = async ({
-  app,
   settings,
   scope,
   controller,
   runtimeId,
-  assistantId,
   userMessage,
   timeContextEnabled,
   signal,
   onSendStarted,
   onPresented,
   onAccepted,
-  resolveAssistantBinding = resolveCliAssistantBinding,
   encodeTurnContent = buildCliTurnContent,
 }: SubmitCliComposerTurnInput): Promise<{
   userMessage: ChatUserMessage
@@ -568,17 +511,11 @@ export const submitCliComposerTurn = async ({
   const stagedTurn = controller.stageTurn(stampedUserMessage)
   onPresented?.(stampedUserMessage)
   try {
-    const assistant = await resolveAssistantBinding({
-      app,
-      settings,
-      assistantId,
-    })
     throwIfAborted()
     await prepareCliConversation({
       controller,
       scope,
       runtimeId,
-      assistant,
       settings,
     })
     throwIfAborted()
@@ -611,13 +548,10 @@ export const submitCliComposerTurn = async ({
       content,
       stampedUserMessage,
     )
-    await scope.sessionService.recordOpenedSession(
-      {
-        ref: snapshot.sessionRef,
-        messages: [...snapshot.messages],
-      },
-      { assistantId },
-    )
+    await scope.sessionService.recordOpenedSession({
+      ref: snapshot.sessionRef,
+      messages: [...snapshot.messages],
+    })
   } catch (error) {
     overlayError = toError(error)
   }

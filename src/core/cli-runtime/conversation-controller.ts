@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid'
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 
 import type {
-  CliAssistantBinding,
   CliRuntime,
   CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
@@ -28,7 +27,6 @@ export type CliConversationSnapshot = Readonly<{
   runState: CliRuntimeRunState
   error: string | null
   configuration?: CliRuntimeConfiguration | null
-  assistantId?: string
 }>
 
 export type CliConversationTurn = Readonly<{
@@ -82,6 +80,30 @@ const normalizeMessages = (
   return Object.freeze(normalized)
 }
 
+const appendAssistantError = (
+  snapshot: CliConversationSnapshot,
+  errorMessage: string,
+): readonly ChatMessage[] => {
+  let sourceUserMessageId: string | undefined
+  for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
+    const message = snapshot.messages[index]
+    if (message?.role === 'user') {
+      sourceUserMessageId = message.id
+      break
+    }
+  }
+  return upsertMessage(snapshot.messages, {
+    role: 'assistant',
+    id: `cli-error-${sourceUserMessageId ?? snapshot.surfaceId}`,
+    content: '',
+    metadata: {
+      generationState: 'error',
+      errorMessage,
+      ...(sourceUserMessageId ? { sourceUserMessageId } : {}),
+    },
+  })
+}
+
 /**
  * Owns the transient timeline for the currently selected CLI runtime/session.
  * The runtime remains owned by the caller; disposing this controller only
@@ -130,7 +152,6 @@ export class CliConversationController {
     restoreMessages?: (
       messages: readonly ChatMessage[],
     ) => Promise<readonly ChatMessage[]>,
-    assistantId?: string,
   ): Promise<CliSessionHydration | null> {
     this.assertActive()
     this.assertRuntimeRef(ref)
@@ -154,7 +175,6 @@ export class CliConversationController {
         sessionRef: hydration.ref,
         runState: 'idle',
         error: null,
-        ...(assistantId ? { assistantId } : {}),
       })
       return { ...hydration, messages: [...messages] }
     } catch (error) {
@@ -164,7 +184,6 @@ export class CliConversationController {
   }
 
   ensureReady(
-    assistant: CliAssistantBinding,
     initialConfiguration?: CliRuntimeConfigurationUpdate,
   ): Promise<void> {
     this.assertActive()
@@ -182,7 +201,7 @@ export class CliConversationController {
       .catch(() => undefined)
       .then(async () => {
         if (!this.isCurrent(operation)) return
-        await this.ensureReadyNow(operation, assistant, configurationToApply)
+        await this.ensureReadyNow(operation, configurationToApply)
       })
     this.readyTail = task.catch(() => undefined)
     return task
@@ -339,7 +358,6 @@ export class CliConversationController {
 
   private async ensureReadyNow(
     operation: ReturnType<CliConversationController['captureOperation']>,
-    assistant: CliAssistantBinding,
     initialConfiguration?: CliRuntimeConfigurationUpdate,
   ): Promise<void> {
     const target = this.snapshot.sessionRef
@@ -351,7 +369,6 @@ export class CliConversationController {
     try {
       await operation.runtime.ensureReady({
         ...(target ? { sessionRef: target } : {}),
-        assistant,
       })
       if (!this.isCurrent(operation)) return
       if (!target && !this.snapshot.sessionRef) {
@@ -378,9 +395,6 @@ export class CliConversationController {
         ...this.snapshot,
         configuration,
         error: null,
-        ...(assistant.assistantId
-          ? { assistantId: assistant.assistantId }
-          : {}),
       })
     } catch (error) {
       if (this.isCurrent(operation)) {
@@ -441,7 +455,6 @@ export class CliConversationController {
       runState: 'idle',
       error: null,
       configuration: this.snapshot.configuration ?? null,
-      assistantId: this.snapshot.assistantId,
     })
   }
 
@@ -511,6 +524,15 @@ export class CliConversationController {
       event.state !== 'waiting_for_user'
     ) {
       this.pendingOptimisticUserMessageId = null
+    }
+    if (event.state === 'error' && event.error) {
+      this.publish({
+        ...this.snapshot,
+        messages: appendAssistantError(this.snapshot, event.error),
+        runState: 'error',
+        error: event.error,
+      })
+      return
     }
     this.publish({
       ...this.snapshot,
@@ -582,11 +604,20 @@ export class CliConversationController {
   }
 
   private publishError(error: unknown): void {
+    const errorMessage = getErrorMessage(error)
+    const isTurnError =
+      this.pendingOptimisticUserMessageId !== null ||
+      this.snapshot.runState === 'running' ||
+      this.snapshot.runState === 'waiting_for_approval' ||
+      this.snapshot.runState === 'waiting_for_user'
     this.pendingOptimisticUserMessageId = null
     this.publish({
       ...this.snapshot,
+      ...(isTurnError
+        ? { messages: appendAssistantError(this.snapshot, errorMessage) }
+        : {}),
       runState: 'error',
-      error: getErrorMessage(error),
+      error: errorMessage,
     })
   }
 
@@ -599,7 +630,6 @@ export class CliConversationController {
       runState: 'idle',
       error: null,
       configuration: null,
-      assistantId: undefined,
     })
   }
 

@@ -19,7 +19,6 @@ import { assertCliRuntimeAvailable } from '../desktop'
 import { isSessionPathInVault } from '../session-path'
 import type {
   CliApprovalResponse,
-  CliAssistantBinding,
   CliQuestionResponse,
   CliRuntime,
   CliRuntimeConfiguration,
@@ -51,7 +50,6 @@ import {
 import { resolveClaudeProcessSupport } from './process'
 import { loadClaudeAgentSdk } from './sdk-loader'
 import type {
-  ClaudePluginPathProvider,
   ClaudeProcessSupportResolver,
   ClaudeSdkLoader,
   ClaudeSdkModule,
@@ -85,7 +83,6 @@ export type ClaudeCliRuntimeOptions = {
   configuredCliPath?: string
   loadSdk?: ClaudeSdkLoader
   resolveProcessSupport?: ClaudeProcessSupportResolver
-  resolvePluginPaths?: ClaudePluginPathProvider
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -216,7 +213,6 @@ export class ClaudeCliRuntime implements CliRuntime {
   private readonly configuredCliPath?: string
   private readonly loadSdk: ClaudeSdkLoader
   private readonly resolveProcessSupport: ClaudeProcessSupportResolver
-  private readonly resolvePluginPaths?: ClaudePluginPathProvider
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private readonly pendingPermissions = new Map<string, PendingPermission>()
   private readonly tools = new Map<string, ToolState>()
@@ -248,7 +244,6 @@ export class ClaudeCliRuntime implements CliRuntime {
         resolveClaudeProcessSupport({
           configuredCliPath: this.configuredCliPath,
         }))
-    this.resolvePluginPaths = options.resolvePluginPaths
   }
 
   async listSessions(): Promise<CliSessionMetadata[]> {
@@ -307,16 +302,13 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.assertUsable()
     if (input.sessionRef) this.assertClaudeRef(input.sessionRef)
 
-    const [sdk, processSupport, pluginPaths] = await Promise.all([
+    const [sdk, processSupport] = await Promise.all([
       this.getSdk(),
       this.resolveProcessSupport(),
-      this.resolveAssistantPluginPaths(input.assistant),
     ])
     const readyConfiguration = {
       sessionId: input.sessionRef?.nativeSessionId,
-      systemPrompt: input.assistant.systemPrompt,
       cliPath: processSupport.cliPath,
-      pluginPaths,
     }
     const readyKey = JSON.stringify(readyConfiguration)
     if (this.query && this.readyKey === readyKey) return
@@ -364,21 +356,10 @@ export class ClaudeCliRuntime implements CliRuntime {
           systemPrompt: {
             type: 'preset',
             preset: 'claude_code',
-            ...(input.assistant.systemPrompt
-              ? { append: input.assistant.systemPrompt }
-              : {}),
           },
           ...(input.sessionRef
             ? { resume: input.sessionRef.nativeSessionId }
             : { sessionId: sessionRef.nativeSessionId }),
-          ...(pluginPaths.length > 0
-            ? {
-                plugins: pluginPaths.map((path) => ({
-                  type: 'local' as const,
-                  path,
-                })),
-              }
-            : {}),
         },
       })
     } finally {
@@ -644,18 +625,6 @@ export class ClaudeCliRuntime implements CliRuntime {
     assertCliRuntimeAvailable('claude-code')
     this.sdkPromise ??= this.loadSdk()
     return this.sdkPromise
-  }
-
-  private async resolveAssistantPluginPaths(
-    assistant: CliAssistantBinding,
-  ): Promise<string[]> {
-    if (!this.resolvePluginPaths || assistant.enabledSkillNames.length === 0) {
-      return []
-    }
-    return this.resolvePluginPaths({
-      assistantId: assistant.assistantId,
-      enabledSkillNames: [...assistant.enabledSkillNames],
-    })
   }
 
   private createCanUseTool(): CanUseTool {

@@ -49,7 +49,6 @@ import { backgroundExecutionController } from './core/background/backgroundExecu
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
-import type { ClaudeLocalPluginCache } from './core/cli-runtime/claude/plugin-cache'
 import type {
   CliRuntimeCoordinator,
   CliRuntimeScope,
@@ -323,7 +322,6 @@ export default class YoloPlugin extends Plugin {
   private quickAskController: QuickAskController | null = null
   private cliRuntimeCoordinatorPromise: Promise<CliRuntimeCoordinator | null> | null =
     null
-  private claudeLocalPluginCache: ClaudeLocalPluginCache | null = null
   private cliRuntimeCapabilityError: unknown = null
   private agentService: AgentService | null = null
   private agentServiceReady: Promise<AgentService> | null = null
@@ -435,35 +433,20 @@ export default class YoloPlugin extends Plugin {
 
   private async initializeCliRuntimeCoordinator(): Promise<CliRuntimeCoordinator | null> {
     try {
-      const [
-        { createDesktopCliRuntimeCoordinator },
-        { ClaudeLocalPluginCache },
-      ] = await Promise.all([
-        import('./core/cli-runtime/coordinator'),
-        import('./core/cli-runtime/claude/plugin-cache'),
-      ])
+      const { createDesktopCliRuntimeCoordinator } = await import(
+        './core/cli-runtime/coordinator'
+      )
       if (this.isUnloaded) return null
 
-      const cache = new ClaudeLocalPluginCache({
-        app: this.app,
-        getSettings: () => this.settings,
-      })
       const coordinator = await createDesktopCliRuntimeCoordinator({
         app: this.app,
         getSettings: () => this.settings,
-        resolveClaudePluginPaths: cache.resolvePluginPaths,
-        resolveCodexSkillProfile: (assistant) =>
-          cache.resolveCodexSkillProfile({
-            assistantId: assistant.assistantId,
-            enabledSkillNames: assistant.enabledSkillNames,
-          }),
       })
       if (this.isUnloaded) {
         await coordinator.dispose()
         return null
       }
 
-      this.claudeLocalPluginCache = cache
       return coordinator
     } catch (error) {
       if (!this.isUnloaded) {
@@ -481,7 +464,6 @@ export default class YoloPlugin extends Plugin {
   private disposeCliRuntimeCoordinator(): void {
     const coordinatorPromise = this.cliRuntimeCoordinatorPromise
     this.cliRuntimeCoordinatorPromise = null
-    this.claudeLocalPluginCache = null
     if (!coordinatorPromise) return
     void coordinatorPromise
       .then((coordinator) => coordinator?.dispose())

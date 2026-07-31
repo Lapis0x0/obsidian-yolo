@@ -174,30 +174,6 @@ function CliUserMessage({ message }: { message: ChatUserMessage }) {
   )
 }
 
-function CliSurfaceFooter({
-  error,
-  footerContent,
-}: {
-  error: string | null
-  footerContent: ReactNode
-}) {
-  const { t } = useLanguage()
-
-  return (
-    <>
-      {error ? (
-        <div className="yolo-cli-chat-surface__error" role="alert">
-          {t('chat.cliSurface.error', 'CLI 会话出错：{message}').replace(
-            '{message}',
-            error,
-          )}
-        </div>
-      ) : null}
-      {footerContent}
-    </>
-  )
-}
-
 export function CliChatSurface({
   snapshot,
   showEmptyState,
@@ -386,12 +362,7 @@ export function CliChatSurface({
         'chat.cliSurface.emptyDescription',
         '发送消息后，原生 CLI 对话会显示在这里。',
       )}
-      footerContent={
-        <CliSurfaceFooter
-          error={snapshot.error}
-          footerContent={footerContent}
-        />
-      }
+      footerContent={footerContent}
     />
   )
 }
