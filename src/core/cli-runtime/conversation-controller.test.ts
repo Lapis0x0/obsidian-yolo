@@ -273,6 +273,40 @@ describe('CliConversationController', () => {
     ])
   })
 
+  it('reconciles the provider user echo with the optimistic user turn', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({ type: 'run_state', state: 'running' })
+      runtime.emit({
+        type: 'message_upsert',
+        message: userMessage(
+          'codex-user-native-1',
+          '<current_time>2026-07-31 14:09 (Friday)</current_time>\n\n在吗',
+        ),
+      })
+      runtime.emit({
+        type: 'message_upsert',
+        message: userMessage(
+          'codex-user-native-1',
+          '<current_time>2026-07-31 14:09 (Friday)</current_time>\n\n在吗',
+        ),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady(assistant)
+
+    await controller.sendTurn({
+      userMessage: userMessage('user-optimistic', '在吗'),
+      content: '<current_time>2026-07-31 14:09 (Friday)</current_time>\n\n在吗',
+    })
+
+    expect(controller.getSnapshot().messages).toHaveLength(1)
+    expect(controller.getSnapshot().messages[0]).toMatchObject({
+      role: 'user',
+      id: 'user-optimistic',
+    })
+  })
+
   it('does not dispatch a turn when an optimistic listener resets the session', async () => {
     const codex = new FakeCliRuntime('codex')
     const controller = new CliConversationController(codex)

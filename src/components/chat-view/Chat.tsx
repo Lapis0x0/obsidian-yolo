@@ -41,6 +41,7 @@ import {
   type CliConversationController,
   type CliConversationSnapshot,
   type CliRuntimeId,
+  type CliRuntimeRunState,
   type CliRuntimeScope,
   type CliSessionDiscoveryResult,
   type CliSessionRef,
@@ -144,11 +145,11 @@ import {
   normalizeYoloEnabled,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
-import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import type {
   ChatUserInputProps,
   ChatUserInputRef,
 } from './chat-input/ChatUserInput'
+import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import MentionableBadge from './chat-input/MentionableBadge'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
@@ -173,7 +174,6 @@ import {
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
-  shouldBlockCliSessionOpen,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
   shouldLoadYoloHistoryItem,
@@ -972,8 +972,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const seededRuntimeSnapshot = props.seededRuntimeSnapshot
   const cliRuntimeScope = props.cliRuntimeScope
   const cliRuntimeAvailable = isCliRuntimeAvailable()
+  const preferredCliRuntimeId =
+    settings.chatOptions.lastCliRuntimeId ?? 'claude-code'
+  const preferredRuntimeId: ChatRuntimeId =
+    settings.chatOptions.lastChatSurface === 'cli'
+      ? preferredCliRuntimeId
+      : 'yolo'
   const initialActiveRuntimeId = resolveChatRuntimeId({
-    requestedRuntimeId: seededRuntimeSnapshot?.activeRuntimeId,
+    requestedRuntimeId:
+      seededRuntimeSnapshot?.activeRuntimeId ??
+      (props.initialConversationId ? 'yolo' : preferredRuntimeId),
     hasCliRuntimeScope: cliRuntimeScope !== undefined,
     cliRuntimeAvailable,
   })
@@ -987,7 +995,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
   const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
   const lastCliRuntimeIdRef = useRef<CliRuntimeId>(
-    initialActiveRuntimeId === 'yolo' ? 'claude-code' : initialActiveRuntimeId,
+    initialActiveRuntimeId === 'yolo'
+      ? preferredCliRuntimeId
+      : initialActiveRuntimeId,
   )
   const chatMountedRef = useRef(true)
   const runtimeNavigationGenerationRef = useRef(0)
@@ -1000,7 +1010,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [cliConversationController, setCliConversationController] =
     useState<CliConversationController | null>(() =>
       initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
-        ? cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
+        ? seededRuntimeSnapshot?.cliSessionRef?.runtimeId ===
+          initialActiveRuntimeId
+          ? cliRuntimeScope.selectConversationSession(
+              seededRuntimeSnapshot.cliSessionRef,
+            )
+          : cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
         : null,
     )
   const [cliConversationSnapshot, setCliConversationSnapshot] =
@@ -1044,7 +1059,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     const unsubscribe = cliOperationCoordinator.subscribe(publishSnapshot)
     return () => {
       unsubscribe()
-      cliOperationCoordinator.abortPreparation()
     }
   }, [cliOperationCoordinator])
   const cliSubmissionPending =
@@ -1054,6 +1068,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [cliSessionDiscoveryResult, setCliSessionDiscoveryResult] =
     useState<CliSessionDiscoveryResult>()
   const [cliSessionsLoading, setCliSessionsLoading] = useState(false)
+  const [cliSessionRunStates, setCliSessionRunStates] = useState<
+    ReadonlyMap<string, CliRuntimeRunState>
+  >(() => cliRuntimeScope?.getSessionRunStates() ?? new Map())
+  useEffect(() => {
+    if (!cliRuntimeScope) {
+      setCliSessionRunStates(new Map())
+      return
+    }
+    const publishRunStates = () =>
+      setCliSessionRunStates(new Map(cliRuntimeScope.getSessionRunStates()))
+    publishRunStates()
+    return cliRuntimeScope.subscribeToSessionRunStates(publishRunStates)
+  }, [cliRuntimeScope])
   const cliSessionRefreshIdRef = useRef(0)
   const refreshCliSessions = useCallback(async () => {
     if (!cliRuntimeScope || !cliRuntimeAvailable) return
@@ -1856,6 +1883,41 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [cliConversationController, cliOperationCoordinator, t],
   )
 
+  const createFreshCliConversation = useCallback(
+    (runtimeId: CliRuntimeId): CliConversationController | null => {
+      if (!cliRuntimeScope) return null
+      const controller = cliRuntimeScope.createConversationRuntime(runtimeId)
+      setCliConversationController(controller)
+      return controller
+    },
+    [cliRuntimeScope],
+  )
+
+  const persistChatRuntimePreference = useCallback(
+    (runtimeId: ChatRuntimeId) => {
+      const lastChatSurface = runtimeId === 'yolo' ? 'chat' : 'cli'
+      const lastCliRuntimeId =
+        runtimeId === 'yolo'
+          ? (settings.chatOptions.lastCliRuntimeId ?? 'claude-code')
+          : runtimeId
+      if (
+        settings.chatOptions.lastChatSurface === lastChatSurface &&
+        settings.chatOptions.lastCliRuntimeId === lastCliRuntimeId
+      ) {
+        return
+      }
+      void setSettings({
+        ...settings,
+        chatOptions: {
+          ...settings.chatOptions,
+          lastChatSurface,
+          lastCliRuntimeId,
+        },
+      })
+    },
+    [setSettings, settings],
+  )
+
   const handleRuntimeChange = useCallback(
     (runtimeId: ChatRuntimeId) => {
       if (runtimeId === activeRuntimeId) return
@@ -1872,14 +1934,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         if (runtimeId === 'yolo') {
           activeRuntimeIdRef.current = 'yolo'
           setRequestedRuntimeId('yolo')
+          persistChatRuntimePreference('yolo')
           return
         }
         if (!cliRuntimeScope) return
         const controller = cliRuntimeScope.selectConversationRuntime(runtimeId)
         setCliConversationController(controller)
+        const controllerAssistantId = controller.getSnapshot().assistantId
+        if (controllerAssistantId) setCliAssistantId(controllerAssistantId)
         lastCliRuntimeIdRef.current = runtimeId
         activeRuntimeIdRef.current = runtimeId
         setRequestedRuntimeId(runtimeId)
+        persistChatRuntimePreference(runtimeId)
       }
 
       if (activeRuntimeId === 'yolo') {
@@ -1910,6 +1976,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliRuntimeAvailable,
       cliConversationController,
       cliRuntimeScope,
+      persistChatRuntimePreference,
       t,
       transitionCliSession,
     ],
@@ -1933,7 +2000,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (assistantId === cliAssistantId) return
       void transitionCliSession((isCurrent) => {
         if (!isCurrent()) return
-        cliConversationController?.resetSession()
+        createFreshCliConversation(activeRuntimeId)
         setCliAssistantId(assistantId)
       })
     },
@@ -1942,6 +2009,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       applyAssistantDefaultModel,
       cliAssistantId,
       cliConversationController,
+      createFreshCliConversation,
       currentConversationId,
       persistPreferredAssistantId,
       settings.assistants,
@@ -1986,7 +2054,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (activeRuntimeId !== 'yolo' && cliConversationController) {
       void transitionCliSession((isCurrent) => {
         if (!isCurrent()) return
-        cliConversationController.resetSession()
+        createFreshCliConversation(activeRuntimeId)
         setCliAssistantId(fallbackAssistantId)
       })
       return
@@ -1996,6 +2064,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     activeRuntimeId,
     cliAssistantId,
     cliConversationController,
+    createFreshCliConversation,
     settings.assistants,
     settings.currentAssistantId,
     transitionCliSession,
@@ -3282,6 +3351,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         activeRuntimeIdRef.current = 'yolo'
         setRequestedRuntimeId('yolo')
+        persistChatRuntimePreference('yolo')
         const normalizedConversation = normalizeHydratedConversationMessages(
           conversation.messages,
         )
@@ -3437,6 +3507,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       normalizeAssistantGroupBoundaryMessageIds,
       normalizeReasoningLevel,
       props.onConversationContextChange,
+      persistChatRuntimePreference,
       getLatestInputMessage,
       replaceInputMessage,
       untitledFallback,
@@ -3565,7 +3636,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     if (activeRuntimeId !== 'yolo') {
       void transitionCliSession((isCurrent) => {
         if (!isCurrent() || !isLatestNavigation()) return
-        cliConversationController?.resetSession()
+        createFreshCliConversation(activeRuntimeId)
         if (selectedBlock) {
           const mentionableBlock =
             createSelectionBlockMentionable(selectedBlock)
@@ -5696,7 +5767,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ) {
         void transitionCliSession((isCurrent) => {
           if (!isCurrent()) return
-          cliConversationController?.resetSession()
+          createFreshCliConversation(activeRuntimeIdRef.current as CliRuntimeId)
           applySelection()
         })
         return
@@ -6009,20 +6080,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleCliSessionSelect = useCallback(
     (ref: CliSessionRef) => {
       if (!cliRuntimeScope || !cliRuntimeAvailable) return
-      if (
-        shouldBlockCliSessionOpen({
-          activeRuntimeId: activeRuntimeIdRef.current,
-          isYoloRunActive: currentConversationRunSummary.isActive,
-        })
-      ) {
-        new Notice(
-          t(
-            'sidebar.cliSessions.yoloRunActive',
-            'Stop the current YOLO response before opening a CLI session.',
-          ),
-        )
-        return
-      }
       const isLatestNavigation = beginChatRuntimeNavigation(
         runtimeNavigationGenerationRef,
         () => chatMountedRef.current,
@@ -6040,6 +6097,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         lastCliRuntimeIdRef.current = ref.runtimeId
         activeRuntimeIdRef.current = ref.runtimeId
         setRequestedRuntimeId(ref.runtimeId)
+        persistChatRuntimePreference(ref.runtimeId)
         setCliConversationController(result.controller)
         setCliAssistantId(result.assistantId)
         if (result.overlayError) {
@@ -6079,8 +6137,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliRuntimeAvailable,
       cliRuntimeScope,
       cliSessionDiscoveryResult,
-      currentConversationRunSummary.isActive,
       refreshCliSessions,
+      persistChatRuntimePreference,
       t,
       transitionCliSession,
     ],
@@ -6170,12 +6228,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             }}
             showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
             showComposer={isSidebarPlacement}
-            disabled={
-              currentConversationRunSummary.isActive ||
-              cliSubmissionPending ||
-              isCliRunActive ||
-              cliTransitioning
-            }
           />
         ) : (
           <h1 className="yolo-chat-header-title">
@@ -6186,12 +6238,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <RuntimeSelector
             currentRuntimeId={activeRuntimeId}
             onRuntimeChange={handleRuntimeChange}
-            disabled={
-              currentConversationRunSummary.isActive ||
-              cliSubmissionPending ||
-              isCliRunActive ||
-              cliTransitioning
-            }
           />
         ) : null}
       </div>
@@ -6299,6 +6345,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 cliRuntimeScope && cliRuntimeAvailable ? (
                   <CliSessionListSection
                     discoveryResult={cliSessionDiscoveryResult}
+                    runStates={cliSessionRunStates}
                     loading={cliSessionsLoading}
                     currentRef={
                       activeRuntimeId !== 'yolo'

@@ -12,6 +12,7 @@ import { useLanguage } from '../../contexts/language-context'
 import {
   CLI_RUNTIME_IDS,
   type CliRuntimeId,
+  type CliRuntimeRunState,
   type CliSessionDiscoveryResult,
   type CliSessionListItem,
   type CliSessionRef,
@@ -21,6 +22,7 @@ import {
 
 export type CliSessionListSectionProps = {
   discoveryResult?: CliSessionDiscoveryResult
+  runStates?: ReadonlyMap<string, CliRuntimeRunState>
   loading: boolean
   currentRef?: CliSessionRef
   onSelect: (ref: CliSessionRef) => void
@@ -64,12 +66,14 @@ const CliSessionRow = ({
   onSelect,
   onTogglePinned,
   onRequestForgetOverlay,
+  runState,
 }: {
   session: CliSessionListItem
   isCurrent: boolean
   onSelect: (ref: CliSessionRef) => void
   onTogglePinned: (ref: CliSessionRef, pinned: boolean) => void
   onRequestForgetOverlay: (ref: CliSessionRef) => void
+  runState?: CliRuntimeRunState
 }) => {
   const { t } = useLanguage()
   const sessionKey = getCliSessionIndexKey(session.ref)
@@ -95,6 +99,20 @@ const CliSessionRow = ({
             <span className="yolo-cli-session-list__current-badge">
               {t('sidebar.cliSessions.current')}
             </span>
+          ) : null}
+          {runState === 'running' ||
+          runState === 'waiting_for_approval' ||
+          runState === 'waiting_for_user' ? (
+            <span
+              className={`yolo-cli-session-list__run-status${
+                runState === 'running' ? ' is-running' : ' is-waiting'
+              }`}
+              aria-label={t(
+                runState === 'running'
+                  ? 'toolCall.status.running'
+                  : 'toolCall.status.awaitingUserInput',
+              )}
+            />
           ) : null}
         </span>
         <span className="yolo-cli-session-list__title">{session.title}</span>
@@ -142,6 +160,7 @@ const CliSessionRow = ({
 
 export function CliSessionListSection({
   discoveryResult,
+  runStates = new Map(),
   loading,
   currentRef,
   onSelect,
@@ -238,6 +257,7 @@ export function CliSessionListSection({
               <CliSessionRow
                 key={sessionKey}
                 session={session}
+                runState={runStates.get(sessionKey)}
                 isCurrent={sessionKey === currentKey}
                 onSelect={onSelect}
                 onTogglePinned={onTogglePinned}

@@ -174,7 +174,7 @@ export class CliChatOperationCoordinator {
   }
 
   async transition(
-    controller: CliConversationController,
+    _controller: CliConversationController,
     action: (isCurrent: () => boolean) => void | Promise<void>,
   ): Promise<boolean> {
     const token = ++this.transitionToken
@@ -182,11 +182,7 @@ export class CliChatOperationCoordinator {
     this.publish()
 
     try {
-      if (this.stopping) await this.stopping
-      if (token !== this.transitionToken) return false
-      const submission = this.submission
-      this.abortPreparation()
-      await this.settleAndCancel(controller, submission)
+      await Promise.resolve()
       if (token !== this.transitionToken) return false
       const isCurrent = () => token === this.transitionToken
       await action(isCurrent)
@@ -372,23 +368,6 @@ export const shouldLoadYoloHistoryItem = ({
 }): boolean =>
   activeRuntimeId !== 'yolo' || conversationId !== currentConversationId
 
-export const shouldBlockCliSessionOpen = ({
-  activeRuntimeId,
-  isYoloRunActive,
-}: {
-  activeRuntimeId: ChatRuntimeId
-  isYoloRunActive: boolean
-}): boolean => activeRuntimeId === 'yolo' && isYoloRunActive
-
-export const selectFreshCliRuntime = (
-  scope: CliRuntimeScope,
-  runtimeId: CliRuntimeId,
-): CliConversationController => {
-  const controller = scope.selectConversationRuntime(runtimeId)
-  controller.resetSession()
-  return controller
-}
-
 const findSessionAssistantId = ({
   discoveryResult,
   ref,
@@ -431,8 +410,18 @@ export const openCliSession = async ({
     ref,
     currentAssistantId,
   })
-  const controller = scope.selectConversationRuntime(ref.runtimeId)
-  const hydration = await controller.hydrateSession(ref)
+  const controller = scope.selectConversationSession(ref)
+  const existingSnapshot = controller.getSnapshot()
+  const alreadyHydrated =
+    existingSnapshot.sessionRef?.runtimeId === ref.runtimeId &&
+    existingSnapshot.sessionRef.nativeSessionId === ref.nativeSessionId
+  const hydration = alreadyHydrated
+    ? { ref, messages: [...existingSnapshot.messages] }
+    : await controller.hydrateSession(
+        ref,
+        (messages) => scope.sessionService.restoreUserDisplays(ref, messages),
+        assistantId,
+      )
   let overlayError: Error | null = null
   if (hydration && isCurrent()) {
     try {
@@ -520,10 +509,7 @@ export const submitCliComposerTurn = async ({
     throw new DOMException('CLI submission superseded.', 'AbortError')
   }
   await controller.sendTurn({
-    userMessage: {
-      ...stampedUserMessage,
-      promptContent: content,
-    },
+    userMessage: stampedUserMessage,
     content,
   })
   onAccepted?.(stampedUserMessage)
@@ -534,6 +520,11 @@ export const submitCliComposerTurn = async ({
   }
   let overlayError: Error | null = null
   try {
+    await scope.sessionService.recordUserDisplay(
+      snapshot.sessionRef,
+      content,
+      stampedUserMessage,
+    )
     await scope.sessionService.recordOpenedSession(
       {
         ref: snapshot.sessionRef,

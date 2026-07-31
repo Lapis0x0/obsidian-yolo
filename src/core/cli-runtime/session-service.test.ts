@@ -1,3 +1,5 @@
+import type { App } from 'obsidian'
+
 import type {
   CliSessionIndexEntry,
   CliSessionIndexStore,
@@ -9,6 +11,8 @@ import type {
   CliRuntimeEventListener,
   CliSessionMetadata,
 } from './types'
+
+const app = {} as App
 
 class MemoryIndex implements CliSessionIndexStore {
   entries = new Map<string, CliSessionIndexEntry>()
@@ -89,6 +93,7 @@ describe('CliSessionService', () => {
       pinnedAt: 100,
     })
     const service = new CliSessionService({
+      app,
       runtimes: [
         runtime({
           runtimeId: 'claude-code',
@@ -130,6 +135,7 @@ describe('CliSessionService', () => {
 
   it('keeps one provider failure isolated from the other provider list', async () => {
     const service = new CliSessionService({
+      app,
       runtimes: [
         runtime({
           runtimeId: 'claude-code',
@@ -163,6 +169,7 @@ describe('CliSessionService', () => {
       sessionPathHint: '/session.jsonl',
     }
     const service = new CliSessionService({
+      app,
       runtimes: [runtime({ runtimeId: 'codex' })],
       indexStore: index,
     })
@@ -188,6 +195,7 @@ describe('CliSessionService', () => {
     const nativeRuntime = runtime({ runtimeId: 'claude-code' })
     const openSession = jest.spyOn(nativeRuntime, 'openSession')
     const service = new CliSessionService({
+      app,
       runtimes: [nativeRuntime],
       indexStore: index,
     })
@@ -209,6 +217,7 @@ describe('CliSessionService', () => {
     const index = new MemoryIndex()
     const ref = { runtimeId: 'claude-code' as const, nativeSessionId: 'c-1' }
     const service = new CliSessionService({
+      app,
       runtimes: [runtime({ runtimeId: 'claude-code' })],
       indexStore: index,
     })
@@ -231,6 +240,7 @@ describe('CliSessionService', () => {
       sessionPathHint: '/vault/thread-concurrent.jsonl',
     }
     const service = new CliSessionService({
+      app,
       runtimes: [runtime({ runtimeId: 'codex' })],
       indexStore: index,
     })
@@ -250,5 +260,50 @@ describe('CliSessionService', () => {
       isPinned: true,
       pinnedAt: 200,
     })
+  })
+
+  it('restores the user-authored display message instead of CLI transport text', async () => {
+    const index = new MemoryIndex()
+    const ref = {
+      runtimeId: 'codex' as const,
+      nativeSessionId: 'thread-display',
+    }
+    const service = new CliSessionService({
+      app,
+      runtimes: [runtime({ runtimeId: 'codex' })],
+      indexStore: index,
+    })
+    const transport =
+      '<current_time>2026-07-31 14:09 (Friday)</current_time>\n\n在吗'
+    const content = {
+      root: { children: [], type: 'root', version: 1 },
+    } as never
+    await service.recordUserDisplay(ref, transport, {
+      role: 'user',
+      id: 'local-user',
+      content,
+      promptContent: null,
+      mentionables: [],
+      timeContext: '2026-07-31 14:09 (Friday)',
+    })
+
+    await expect(
+      service.restoreUserDisplays(ref, [
+        {
+          role: 'user',
+          id: 'codex-user-native',
+          content: null,
+          promptContent: transport,
+          mentionables: [],
+        },
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'codex-user-native',
+        content,
+        promptContent: null,
+        timeContext: '2026-07-31 14:09 (Friday)',
+      }),
+    ])
   })
 })

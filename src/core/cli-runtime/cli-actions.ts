@@ -1,8 +1,8 @@
 import type { ChatRuntimeActionResult, ChatRuntimeActions } from './actions'
-import type { CliRuntime, CliRuntimeId, ConversationRef } from './types'
+import type { CliRuntime, CliSessionRef, ConversationRef } from './types'
 
 export type CliRuntimeResolver = (
-  runtimeId: CliRuntimeId,
+  conversation: CliSessionRef,
 ) => CliRuntime | undefined
 
 const HANDLED = { kind: 'handled' } as const
@@ -18,7 +18,7 @@ const getCliRuntime = (
   if (conversation.runtimeId === 'yolo') {
     throw new Error('CLI runtime actions cannot handle YOLO conversations.')
   }
-  const runtime = resolveRuntime(conversation.runtimeId)
+  const runtime = resolveRuntime(conversation)
   if (!runtime || runtime.runtimeId !== conversation.runtimeId) {
     throw new Error(`${conversation.runtimeId} CLI runtime is not available.`)
   }

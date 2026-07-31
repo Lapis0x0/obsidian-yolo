@@ -19,6 +19,7 @@ export type CliConversationSnapshot = Readonly<{
   runState: CliRuntimeRunState
   error: string | null
   configuration?: CliRuntimeConfiguration | null
+  assistantId?: string
 }>
 
 export type CliConversationTurn = Readonly<{
@@ -80,6 +81,8 @@ export class CliConversationController {
   private acceptingEvents = false
   private bindingTarget: CliSessionRef | null | undefined
   private bindingEpoch: number | null = null
+  private pendingOptimisticUserMessageId: string | null = null
+  private readonly reconciledNativeUserMessageIds = new Set<string>()
   private readyTail: Promise<void> = Promise.resolve()
   private disposed = false
 
@@ -105,6 +108,10 @@ export class CliConversationController {
 
   async hydrateSession(
     ref: CliSessionRef,
+    restoreMessages?: (
+      messages: readonly ChatMessage[],
+    ) => Promise<readonly ChatMessage[]>,
+    assistantId?: string,
   ): Promise<CliSessionHydration | null> {
     this.assertActive()
     this.assertRuntimeRef(ref)
@@ -118,14 +125,19 @@ export class CliConversationController {
       if (!isSameSession(ref, hydration.ref)) {
         throw new Error('CLI runtime hydrated a different session.')
       }
+      const messages = restoreMessages
+        ? await restoreMessages(hydration.messages)
+        : hydration.messages
+      if (!this.isCurrent(operation)) return null
       this.publish({
         ...this.snapshot,
-        messages: normalizeMessages(hydration.messages),
+        messages: normalizeMessages(messages),
         sessionRef: hydration.ref,
         runState: 'idle',
         error: null,
+        ...(assistantId ? { assistantId } : {}),
       })
-      return hydration
+      return { ...hydration, messages: [...messages] }
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
@@ -159,6 +171,7 @@ export class CliConversationController {
       runState: 'running',
       error: null,
     })
+    this.pendingOptimisticUserMessageId = userMessage.id
     if (!this.isCurrent(operation) || !this.acceptingEvents) return
 
     try {
@@ -240,6 +253,9 @@ export class CliConversationController {
         ...this.snapshot,
         configuration,
         error: null,
+        ...(assistant.assistantId
+          ? { assistantId: assistant.assistantId }
+          : {}),
       })
     } catch (error) {
       if (this.isCurrent(operation)) {
@@ -253,6 +269,8 @@ export class CliConversationController {
   private beginSessionTransition(ref: CliSessionRef | null): void {
     this.conversationEpoch += 1
     this.resetEventGate()
+    this.pendingOptimisticUserMessageId = null
+    this.reconciledNativeUserMessageIds.clear()
     this.replaceRuntimeSubscription()
     this.publish({
       runtimeId: this.runtime.runtimeId,
@@ -261,6 +279,7 @@ export class CliConversationController {
       runState: 'idle',
       error: null,
       configuration: this.snapshot.configuration ?? null,
+      assistantId: this.snapshot.assistantId,
     })
   }
 
@@ -301,6 +320,14 @@ export class CliConversationController {
 
     if (!this.acceptingEvents) return
     if (event.type === 'message_upsert') {
+      if (event.message.role === 'user') {
+        if (this.reconciledNativeUserMessageIds.has(event.message.id)) return
+        if (this.pendingOptimisticUserMessageId) {
+          this.reconciledNativeUserMessageIds.add(event.message.id)
+          this.pendingOptimisticUserMessageId = null
+          return
+        }
+      }
       this.publish({
         ...this.snapshot,
         messages: upsertMessage(this.snapshot.messages, event.message),
@@ -315,6 +342,13 @@ export class CliConversationController {
         this.publish({ ...this.snapshot, messages: Object.freeze(messages) })
       }
       return
+    }
+    if (
+      event.state !== 'running' &&
+      event.state !== 'waiting_for_approval' &&
+      event.state !== 'waiting_for_user'
+    ) {
+      this.pendingOptimisticUserMessageId = null
     }
     this.publish({
       ...this.snapshot,
@@ -386,6 +420,7 @@ export class CliConversationController {
   }
 
   private publishError(error: unknown): void {
+    this.pendingOptimisticUserMessageId = null
     this.publish({
       ...this.snapshot,
       runState: 'error',
@@ -401,6 +436,7 @@ export class CliConversationController {
       runState: 'idle',
       error: null,
       configuration: null,
+      assistantId: undefined,
     })
   }
 

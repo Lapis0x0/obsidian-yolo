@@ -21,8 +21,6 @@ import {
   resolveActiveAssistantId,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
-  selectFreshCliRuntime,
-  shouldBlockCliSessionOpen,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
   shouldLoadYoloHistoryItem,
@@ -179,7 +177,10 @@ describe('CLI chat integration', () => {
       }),
     } as unknown as CliConversationController
     const scope = {
-      sessionService: { recordOpenedSession },
+      sessionService: {
+        recordUserDisplay: jest.fn(async () => undefined),
+        recordOpenedSession,
+      },
     } as unknown as CliRuntimeScope
     const encodeTurnContent = jest.fn(() => 'encoded CLI content')
     const resolveAssistantBinding = jest.fn(async () => ({
@@ -216,7 +217,7 @@ describe('CLI chat integration', () => {
     expect(sendTurn).toHaveBeenCalledWith({
       userMessage: expect.objectContaining({
         id: 'draft-1',
-        promptContent: 'encoded CLI content',
+        promptContent: null,
       }),
       content: 'encoded CLI content',
     })
@@ -251,6 +252,7 @@ describe('CLI chat integration', () => {
     } as unknown as CliConversationController
     const scope = {
       sessionService: {
+        recordUserDisplay: jest.fn(async () => undefined),
         recordOpenedSession: jest.fn(async () => {
           throw overlayError
         }),
@@ -344,22 +346,20 @@ describe('CLI chat integration', () => {
       ref: indexedRef,
       messages: [],
     }
-    const resetSession = jest.fn()
     const hydrateSession = jest.fn(async () => hydration)
     const controller = {
-      resetSession,
       hydrateSession,
+      getSnapshot: () => cliSnapshot(),
     } as unknown as CliConversationController
-    const selectConversationRuntime = jest.fn(() => controller)
+    const selectConversationSession = jest.fn(() => controller)
     const recordOpenedSession = jest.fn(async () => undefined)
     const scope = {
-      selectConversationRuntime,
-      sessionService: { recordOpenedSession },
+      selectConversationSession,
+      sessionService: {
+        restoreUserDisplays: jest.fn(async (_ref, messages) => [...messages]),
+        recordOpenedSession,
+      },
     } as unknown as CliRuntimeScope
-
-    expect(selectFreshCliRuntime(scope, 'codex')).toBe(controller)
-    expect(selectConversationRuntime).toHaveBeenLastCalledWith('codex')
-    expect(resetSession).toHaveBeenCalledTimes(1)
 
     const discoveryResult: CliSessionDiscoveryResult = {
       sessions: [
@@ -381,14 +381,17 @@ describe('CLI chat integration', () => {
       currentAssistantId: 'assistant-current',
     })
 
-    expect(selectConversationRuntime).toHaveBeenLastCalledWith('claude-code')
+    expect(selectConversationSession).toHaveBeenLastCalledWith(indexedRef)
     expect(hydrateSession).toHaveBeenCalledTimes(1)
-    expect(hydrateSession).toHaveBeenCalledWith(indexedRef)
+    expect(hydrateSession).toHaveBeenCalledWith(
+      indexedRef,
+      expect.any(Function),
+      'assistant-overlay',
+    )
     expect(recordOpenedSession).toHaveBeenCalledWith(hydration, {
       assistantId: 'assistant-overlay',
     })
     expect(opened.assistantId).toBe('assistant-overlay')
-    expect(resetSession).toHaveBeenCalledTimes(1)
 
     expect(shouldHydrateSeededCliSession(indexedRef, cliSnapshot())).toBe(true)
     expect(
@@ -427,13 +430,17 @@ describe('CLI chat integration', () => {
       const hydration = deferred<CliSessionHydration | null>()
       const controller = {
         hydrateSession: jest.fn(() => hydration.promise),
+        getSnapshot: () => cliSnapshot(),
       } as unknown as CliConversationController
       const recordOpenedSession = jest.fn(async () => {
         throw new Error('stale overlay failure')
       })
       const scope = {
-        selectConversationRuntime: jest.fn(() => controller),
-        sessionService: { recordOpenedSession },
+        selectConversationSession: jest.fn(() => controller),
+        sessionService: {
+          restoreUserDisplays: jest.fn(async (_ref, messages) => [...messages]),
+          recordOpenedSession,
+        },
       } as unknown as CliRuntimeScope
       const commitRuntime = jest.fn()
       const showNotice = jest.fn()
@@ -465,27 +472,6 @@ describe('CLI chat integration', () => {
     },
   )
 
-  it('blocks CLI session navigation only while the visible YOLO run is active', () => {
-    expect(
-      shouldBlockCliSessionOpen({
-        activeRuntimeId: 'yolo',
-        isYoloRunActive: true,
-      }),
-    ).toBe(true)
-    expect(
-      shouldBlockCliSessionOpen({
-        activeRuntimeId: 'yolo',
-        isYoloRunActive: false,
-      }),
-    ).toBe(false)
-    expect(
-      shouldBlockCliSessionOpen({
-        activeRuntimeId: 'codex',
-        isYoloRunActive: true,
-      }),
-    ).toBe(false)
-  })
-
   it('treats sendTurn success as accepted before a deferred overlay write', async () => {
     const overlay = deferred<undefined>()
     const ref: CliSessionRef = {
@@ -503,6 +489,7 @@ describe('CLI chat integration', () => {
     } as unknown as CliConversationController
     const scope = {
       sessionService: {
+        recordUserDisplay: jest.fn(async () => undefined),
         recordOpenedSession: jest.fn(() => overlay.promise),
       },
     } as unknown as CliRuntimeScope
@@ -550,7 +537,7 @@ describe('CLI chat integration', () => {
     coordinator.finishSubmission(operation.token)
   })
 
-  it('cancels again after a send becomes accepted if the early cancel was a no-op', async () => {
+  it('does not cancel an active submission when navigating away', async () => {
     const coordinator = new CliChatOperationCoordinator()
     const operation = coordinator.beginSubmission(1)!
     expect(coordinator.markSending(operation.token)).toBe(true)
@@ -562,12 +549,8 @@ describe('CLI chat integration', () => {
     const action = jest.fn()
 
     const transition = coordinator.transition(controller, action)
-    await waitUntil(() => cancel.mock.calls.length === 1)
-    expect(action).not.toHaveBeenCalled()
-
-    coordinator.markAccepted(operation.token, userMessage())
     await expect(transition).resolves.toBe(true)
-    expect(cancel).toHaveBeenCalledTimes(2)
+    expect(cancel).not.toHaveBeenCalled()
     expect(action).toHaveBeenCalledTimes(1)
     coordinator.finishSubmission(operation.token)
   })
@@ -596,13 +579,14 @@ describe('CLI chat integration', () => {
     coordinator.finishSubmission(replacement!.token)
   })
 
-  it('keeps the current session when cancellation fails', async () => {
+  it('navigates without consulting cancellation state', async () => {
     const cancellationError = new Error('cancel failed')
     const resetSession = jest.fn()
+    const cancel = jest.fn(async () => {
+      throw cancellationError
+    })
     const controller = {
-      cancel: jest.fn(async () => {
-        throw cancellationError
-      }),
+      cancel,
       getSnapshot: () =>
         cliSnapshot({
           sessionRef: { runtimeId: 'codex', nativeSessionId: 'current' },
@@ -612,16 +596,14 @@ describe('CLI chat integration', () => {
     const coordinator = new CliChatOperationCoordinator()
     const action = jest.fn()
 
-    await expect(coordinator.transition(controller, action)).rejects.toBe(
-      cancellationError,
-    )
-    expect(action).not.toHaveBeenCalled()
+    await expect(coordinator.transition(controller, action)).resolves.toBe(true)
+    expect(action).toHaveBeenCalledTimes(1)
+    expect(cancel).not.toHaveBeenCalled()
     expect(resetSession).not.toHaveBeenCalled()
   })
 
   it('lets only the latest transition mutate session state', async () => {
-    const cancellation = deferred<undefined>()
-    const cancel = jest.fn(() => cancellation.promise)
+    const cancel = jest.fn(async () => undefined)
     const controller = {
       cancel,
       getSnapshot: () =>
@@ -635,13 +617,11 @@ describe('CLI chat integration', () => {
 
     const first = coordinator.transition(controller, firstAction)
     const latest = coordinator.transition(controller, latestAction)
-    cancellation.resolve(undefined)
-
     await expect(first).resolves.toBe(false)
     await expect(latest).resolves.toBe(true)
     expect(firstAction).not.toHaveBeenCalled()
     expect(latestAction).toHaveBeenCalledTimes(1)
-    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(cancel).not.toHaveBeenCalled()
   })
 
   it('clears only the accepted draft revision and opens current YOLO history from CLI', () => {
@@ -696,11 +676,15 @@ describe('CLI chat integration', () => {
     const hydration = { ref, messages: [] }
     const controller = {
       hydrateSession: jest.fn(async () => hydration),
+      getSnapshot: () => cliSnapshot(),
     } as unknown as CliConversationController
     const recordOpenedSession = jest.fn(async () => undefined)
     const scope = {
-      selectConversationRuntime: jest.fn(() => controller),
-      sessionService: { recordOpenedSession },
+      selectConversationSession: jest.fn(() => controller),
+      sessionService: {
+        restoreUserDisplays: jest.fn(async (_ref, messages) => [...messages]),
+        recordOpenedSession,
+      },
     } as unknown as CliRuntimeScope
 
     const result = await openCliSession({

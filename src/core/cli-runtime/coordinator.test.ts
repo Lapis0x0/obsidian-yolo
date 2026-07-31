@@ -218,14 +218,16 @@ describe('CLI runtime coordinator', () => {
 
     expect(scope.sessionService).toBe(scope.sessionService)
     expect(scope.chatRuntimeActions).toBe(scope.chatRuntimeActions)
+    const controller = scope.createConversationRuntime('codex')
+    await controller.ensureReady({ systemPrompt: '', enabledSkillNames: [] })
     await scope.chatRuntimeActions.cancelRun({
       runtimeId: 'codex',
       nativeSessionId: 'codex-session',
     })
 
     expect(harness.createClaudeRuntime).toHaveBeenCalledTimes(1)
-    expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
-    expect(harness.codexRuntimes[0].cancel).toHaveBeenCalledTimes(1)
+    expect(harness.createCodexRuntime).toHaveBeenCalledTimes(2)
+    expect(harness.codexRuntimes[1].cancel).toHaveBeenCalledTimes(1)
   })
 
   it('does not duplicate a runtime when actions first access it concurrently', async () => {
@@ -235,6 +237,8 @@ describe('CLI runtime coordinator', () => {
       runtimeId: 'codex' as const,
       nativeSessionId: 'codex-session',
     }
+    const controller = scope.createConversationRuntime('codex')
+    await controller.ensureReady({ systemPrompt: '', enabledSkillNames: [] })
 
     await Promise.all([
       scope.chatRuntimeActions.cancelRun(conversation),
@@ -283,32 +287,31 @@ describe('CLI runtime coordinator', () => {
     })
   })
 
-  it('gives concurrent consumers isolated scopes and disposes them independently', async () => {
+  it('gives concurrent views shared plugin-lifetime services and isolated selections', async () => {
     const { coordinator, harness } = await createCoordinator()
     const first = coordinator.createScope()
     const second = coordinator.createScope()
 
-    expect(first.resolveRuntime('claude-code')).not.toBe(
+    expect(first.resolveRuntime('claude-code')).toBe(
       second.resolveRuntime('claude-code'),
     )
-    expect(first.sessionService).not.toBe(second.sessionService)
+    expect(first.sessionService).toBe(second.sessionService)
     expect(first.selectConversationRuntime('claude-code')).not.toBe(
       second.selectConversationRuntime('claude-code'),
     )
 
     await first.dispose()
-    expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
-    expect(harness.claudeRuntimes[1].dispose).not.toHaveBeenCalled()
-    expect(second.resolveRuntime('claude-code')).toBe(harness.claudeRuntimes[1])
+    expect(harness.claudeRuntimes[0].dispose).not.toHaveBeenCalled()
+    expect(second.resolveRuntime('claude-code')).toBe(harness.claudeRuntimes[0])
 
     const coordinatorDispose = coordinator.dispose()
     expect(coordinator.dispose()).toBe(coordinatorDispose)
     await coordinatorDispose
-    expect(harness.claudeRuntimes[1].dispose).toHaveBeenCalledTimes(1)
+    expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
     expect(() => coordinator.createScope()).toThrow(/coordinator is disposed/)
   })
 
-  it('disposes controller before every created runtime and only does so once', async () => {
+  it('keeps controllers alive after view disposal and disposes them with the plugin', async () => {
     const { coordinator, harness } = await createCoordinator()
     const scope = coordinator.createScope()
     const claudeController = scope.selectConversationRuntime('claude-code')
@@ -316,11 +319,10 @@ describe('CLI runtime coordinator', () => {
     const disposeClaudeController = jest.spyOn(claudeController, 'dispose')
     const disposeCodexController = jest.spyOn(codexController, 'dispose')
 
-    const firstDispose = scope.dispose()
-    const secondDispose = scope.dispose()
-    expect(secondDispose).toBe(firstDispose)
-    await firstDispose
-
+    await scope.dispose()
+    expect(disposeClaudeController).not.toHaveBeenCalled()
+    expect(disposeCodexController).not.toHaveBeenCalled()
+    await coordinator.dispose()
     expect(disposeClaudeController).toHaveBeenCalledTimes(1)
     expect(disposeCodexController).toHaveBeenCalledTimes(1)
     expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
@@ -328,8 +330,6 @@ describe('CLI runtime coordinator', () => {
     expect(disposeClaudeController.mock.invocationCallOrder[0]).toBeLessThan(
       harness.claudeRuntimes[0].dispose.mock.invocationCallOrder[0],
     )
-    await scope.dispose()
-    expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
   })
 
   it('disposes partial creation and settles all runtimes when one disposal fails', async () => {
@@ -344,6 +344,7 @@ describe('CLI runtime coordinator', () => {
       'codex factory failed',
     )
     await partialScope.dispose()
+    await coordinator.dispose()
     expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
 
     const completeHarness = runtimeHarness()
@@ -353,9 +354,10 @@ describe('CLI runtime coordinator', () => {
     completeHarness.claudeRuntimes[0].dispose.mockRejectedValueOnce(
       new Error('claude dispose failed'),
     )
-    const dispose = scope.dispose()
+    await scope.dispose()
+    const dispose = complete.coordinator.dispose()
     await expect(dispose).rejects.toThrow('claude dispose failed')
     expect(completeHarness.codexRuntimes[0].dispose).toHaveBeenCalledTimes(1)
-    expect(scope.dispose()).toBe(dispose)
+    expect(complete.coordinator.dispose()).toBe(dispose)
   })
 })

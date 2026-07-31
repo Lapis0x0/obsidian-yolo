@@ -20695,6 +20695,24 @@ button.yolo-cli-session-list__forget:is(:hover, :focus-visible) {
   }
 }
 
+.yolo-cli-session-list__run-status {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.yolo-cli-session-list__run-status.is-running {
+  background: var(--interactive-accent);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+}
+
+.yolo-cli-session-list__run-status.is-waiting {
+  background: var(--color-orange);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-orange) 18%, transparent);
+}
+
 .yolo-cli-chat-surface {
   display: flex;
   flex: 1 1 auto;

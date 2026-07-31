@@ -1,10 +1,24 @@
 import { z } from 'zod'
 
+import type { SerializedChatUserMessage } from '../../types/chat'
+
 import type { CliRuntimeId, CliSessionRef } from './types'
 
 export const CLI_SESSION_INDEX_SCHEMA_VERSION = 1 as const
 
 const cliRuntimeIdSchema = z.enum(['claude-code', 'codex'])
+
+const serializedUserMessageSchema = z.custom<SerializedChatUserMessage>(
+  (value) => {
+    if (!value || typeof value !== 'object') return false
+    const candidate = value as Partial<SerializedChatUserMessage>
+    return (
+      candidate.role === 'user' &&
+      typeof candidate.id === 'string' &&
+      Array.isArray(candidate.mentionables)
+    )
+  },
+)
 
 export const cliSessionIndexEntrySchema = z.object({
   runtimeId: cliRuntimeIdSchema,
@@ -14,6 +28,9 @@ export const cliSessionIndexEntrySchema = z.object({
   lastOpenedAt: z.number().nonnegative().optional(),
   isPinned: z.boolean().optional(),
   pinnedAt: z.number().nonnegative().optional(),
+  userDisplayByTransportHash: z
+    .record(z.string(), serializedUserMessageSchema)
+    .optional(),
 })
 
 export type CliSessionIndexEntry = z.infer<typeof cliSessionIndexEntrySchema>
