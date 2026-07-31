@@ -1,10 +1,18 @@
 .yolo-chat-header {
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--size-4-4);
   gap: var(--size-4-2);
   padding: var(--size-2-1) 0;
+}
+
+.yolo-chat-header-left {
+  display: contents;
 }
 
 .yolo-chat-header--workspace {
@@ -39,16 +47,16 @@
 }
 
 .yolo-chat-header-right {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
+  display: contents;
 }
 
 button.yolo-runtime-selector {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
+  min-width: 43px;
+  max-width: 180px;
+  flex: 0 1000 auto;
   height: 30px;
   margin: 0;
   padding: 4px 7px;
@@ -96,6 +104,8 @@ button.yolo-runtime-selector:disabled {
 
 .yolo-runtime-selector__label {
   min-width: 0;
+  max-width: 112px;
+  flex: 0 1 auto;
   overflow: hidden;
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
@@ -347,6 +357,7 @@ button.yolo-runtime-selector[data-state='open']
 
 .yolo-chat-header-buttons {
   display: flex;
+  flex: 0 0 auto;
   gap: var(--size-2-1);
 
   svg {
@@ -839,7 +850,7 @@ button.yolo-chat-quick-access-picker-row > svg {
 
 .yolo-chat-container--workspace-wide-header
   > .yolo-chat-header--workspace
-  .yolo-view-toggle,
+  .yolo-chat-header-left,
 .yolo-chat-container--workspace-wide-header
   > .yolo-chat-header--workspace
   .yolo-chat-header-right {
@@ -849,6 +860,11 @@ button.yolo-chat-quick-access-picker-row > svg {
 .yolo-chat-container--workspace-wide-header
   > .yolo-chat-header--workspace
   .yolo-chat-header-right {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--size-4-2);
   background: color-mix(in srgb, var(--background-primary) 92%, transparent);
   border: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
@@ -857,6 +873,16 @@ button.yolo-chat-quick-access-picker-row > svg {
       color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent),
     0 1px 0 color-mix(in srgb, white 10%, transparent) inset;
   backdrop-filter: blur(12px);
+}
+
+.yolo-chat-container--workspace-wide-header
+  > .yolo-chat-header--workspace
+  .yolo-chat-header-left {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--size-4-2);
 }
 
 .yolo-chat-container--workspace-wide-header

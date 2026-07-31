@@ -1863,6 +1863,12 @@ button.yolo-llm-debug-modal-button:focus-visible {
   margin-right: auto;
 }
 
+.yolo-chat-header .yolo-chat-header-left .yolo-view-toggle {
+  min-width: 0;
+  flex: 0 1 auto;
+  margin-right: 0;
+}
+
 .yolo-chat-header--workspace .yolo-view-toggle {
   background: transparent;
   border-color: transparent;
@@ -1883,6 +1889,14 @@ button.yolo-llm-debug-modal-button:focus-visible {
 .yolo-view-toggle--single {
   width: calc(var(--yolo-expanded-width) + 8px);
   min-width: calc(var(--yolo-expanded-width) + 8px);
+}
+
+/* Workspace chat uses the single-button form. Keep its declared width as the
+   preferred size, but allow split panes to compress it down to the icon-only
+   form. The toggle's own container query hides its label/caret below 130px. */
+.yolo-chat-header--workspace .yolo-chat-header-left .yolo-view-toggle--single {
+  min-width: 50px;
+  flex: 0 1 calc(var(--yolo-expanded-width) + 8px);
 }
 
 .yolo-view-toggle--single .yolo-view-toggle-button {

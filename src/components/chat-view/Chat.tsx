@@ -6107,44 +6107,46 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         isSidebarPlacement ? '' : ' yolo-chat-header--workspace'
       }`}
     >
-      {onChangeView ? (
-        <ViewToggle
-          activeView={activeView}
-          onChangeView={onChangeView}
-          activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
-          onChangeChatSurface={(surface) => {
-            handleRuntimeChange(
-              surface === 'chat' ? 'yolo' : lastCliRuntimeIdRef.current,
-            )
-          }}
-          showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
-          showComposer={isSidebarPlacement}
-          disabled={
-            currentConversationRunSummary.isActive ||
-            cliSubmissionPending ||
-            isCliRunActive ||
-            cliTransitioning
-          }
-        />
-      ) : (
-        <h1 className="yolo-chat-header-title">
-          {t('sidebar.tabs.chat', 'Chat')}
-        </h1>
-      )}
+      <div className="yolo-chat-header-left">
+        {onChangeView ? (
+          <ViewToggle
+            activeView={activeView}
+            onChangeView={onChangeView}
+            activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
+            onChangeChatSurface={(surface) => {
+              handleRuntimeChange(
+                surface === 'chat' ? 'yolo' : lastCliRuntimeIdRef.current,
+              )
+            }}
+            showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
+            showComposer={isSidebarPlacement}
+            disabled={
+              currentConversationRunSummary.isActive ||
+              cliSubmissionPending ||
+              isCliRunActive ||
+              cliTransitioning
+            }
+          />
+        ) : (
+          <h1 className="yolo-chat-header-title">
+            {t('sidebar.tabs.chat', 'Chat')}
+          </h1>
+        )}
+        {activeView === 'chat' && activeRuntimeId !== 'yolo' ? (
+          <RuntimeSelector
+            currentRuntimeId={activeRuntimeId}
+            onRuntimeChange={handleRuntimeChange}
+            disabled={
+              currentConversationRunSummary.isActive ||
+              cliSubmissionPending ||
+              isCliRunActive ||
+              cliTransitioning
+            }
+          />
+        ) : null}
+      </div>
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          {activeRuntimeId !== 'yolo' ? (
-            <RuntimeSelector
-              currentRuntimeId={activeRuntimeId}
-              onRuntimeChange={handleRuntimeChange}
-              disabled={
-                currentConversationRunSummary.isActive ||
-                cliSubmissionPending ||
-                isCliRunActive ||
-                cliTransitioning
-              }
-            />
-          ) : null}
           <AssistantSelector
             currentAssistantId={activeAssistantId}
             triggerClassName={

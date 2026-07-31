@@ -94,6 +94,9 @@
   color: var(--text-muted) !important;
   cursor: pointer !important;
   height: auto !important;
+  min-width: 34px !important;
+  flex: 0 100 auto !important;
+  margin-left: auto !important;
 }
 
 .yolo-chat-header-right button.yolo-assistant-selector-button:hover {
