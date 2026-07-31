@@ -53,6 +53,24 @@ class RpcFakeProcess implements CodexProcessLike {
             nextCursor:
               pageIndex + 1 < threadPages.length ? String(pageIndex + 1) : null,
           }
+        : request.method === 'model/list'
+          ? {
+              data: [
+                {
+                  id: 'luna',
+                  model: 'luna',
+                  displayName: 'Luna',
+                  description: '',
+                  hidden: false,
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: 'max', description: '' },
+                  ],
+                  defaultReasoningEffort: 'max',
+                  isDefault: true,
+                },
+              ],
+              nextCursor: null,
+            }
         : request.method === 'thread/read'
           ? { thread: this.thread }
           : request.method === 'thread/start' ||
@@ -118,6 +136,58 @@ describe('CodexCliRuntime', () => {
       },
     })
     expect(events).toContain('session_bound')
+  })
+
+  it('requests visible reasoning summaries and streams summary and content deltas', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const reasoning: string[] = []
+    runtime.subscribe((event) => {
+      if (
+        event.type === 'message_upsert' &&
+        event.message.role === 'assistant' &&
+        event.message.reasoning
+      ) {
+        reasoning.push(event.message.reasoning)
+      }
+    })
+    await runtime.ensureReady({
+      assistant: { systemPrompt: '', enabledSkillNames: [] },
+    })
+    await runtime.updateConfiguration({ reasoningEffort: 'max' })
+    await runtime.sendTurn({ content: 'think carefully' })
+
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params,
+    ).toMatchObject({ effort: 'max', summary: 'auto' })
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/reasoning/summaryTextDelta',
+      params: {
+        itemId: 'reasoning-1',
+        summaryIndex: 0,
+        delta: 'Public summary',
+      },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/reasoning/textDelta',
+      params: {
+        itemId: 'reasoning-1',
+        contentIndex: 0,
+        delta: 'Public reasoning text',
+      },
+    })
+
+    expect(reasoning).toEqual([
+      'Public summary',
+      'Public summary\n\nPublic reasoning text',
+    ])
   })
 
   it('paginates all sessions and exposes only vault root or descendant cwd values', async () => {

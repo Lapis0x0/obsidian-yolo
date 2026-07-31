@@ -272,6 +272,7 @@ export class CodexCliRuntime implements CliRuntime {
         input: toCodexInput(input.content),
         model: this.modelId,
         effort: this.reasoningEffort,
+        summary: 'auto',
       },
       0,
     )
@@ -441,7 +442,8 @@ export class CodexCliRuntime implements CliRuntime {
     this.assistantKey = ''
     this.pendingRequests.clear()
     this.streamingAssistantText.clear()
-    this.streamingReasoningText.clear()
+    this.streamingReasoningSummaryParts.clear()
+    this.streamingReasoningContentParts.clear()
     transport.dispose()
     void process.shutdown().catch(() => undefined)
     if (!this.disposed) {
@@ -476,12 +478,28 @@ export class CodexCliRuntime implements CliRuntime {
       })
       return
     }
-    if (method === 'item/reasoning/summaryTextDelta') {
+    if (
+      method === 'item/reasoning/summaryTextDelta' ||
+      method === 'item/reasoning/textDelta'
+    ) {
       const itemId =
         typeof params.itemId === 'string' ? params.itemId : 'reasoning'
       const delta = typeof params.delta === 'string' ? params.delta : ''
-      const reasoning = `${this.streamingReasoningText.get(itemId) ?? ''}${delta}`
-      this.streamingReasoningText.set(itemId, reasoning)
+      const isSummary = method === 'item/reasoning/summaryTextDelta'
+      const indexValue = isSummary ? params.summaryIndex : params.contentIndex
+      const index = typeof indexValue === 'number' ? indexValue : 0
+      const target = isSummary
+        ? this.streamingReasoningSummaryParts
+        : this.streamingReasoningContentParts
+      const parts = target.get(itemId) ?? []
+      parts[index] = `${parts[index] ?? ''}${delta}`
+      target.set(itemId, parts)
+      const reasoning = [
+        ...(this.streamingReasoningSummaryParts.get(itemId) ?? []),
+        ...(this.streamingReasoningContentParts.get(itemId) ?? []),
+      ]
+        .filter(Boolean)
+        .join('\n\n')
       this.emit({
         type: 'message_upsert',
         message: {
@@ -537,7 +555,11 @@ export class CodexCliRuntime implements CliRuntime {
   }
 
   private readonly streamingAssistantText = new Map<string, string>()
-  private readonly streamingReasoningText = new Map<string, string>()
+  private readonly streamingReasoningSummaryParts = new Map<
+    string,
+    string[]
+  >()
+  private readonly streamingReasoningContentParts = new Map<string, string[]>()
 
   private handleServerRequest(request: CodexServerRequest): void {
     const key =
