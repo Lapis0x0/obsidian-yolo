@@ -38,6 +38,7 @@ import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantMessageSources from './AssistantMessageSources'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
+import { isReasoningActivityActive } from './reasoningActivity'
 import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
 import ToolMessage from './ToolMessage'
 
@@ -699,6 +700,22 @@ function AssistantToolMessageGroupItem({
               (message.reasoning ?? '').trim().length > 0
             const hasVisibleAssistantAnnotations =
               message.role === 'assistant' && Boolean(message.annotations)
+            const isReasoningActive = isReasoningActivityActive({
+              messages: displayedMessages,
+              messageIndex,
+              isRunActive,
+            })
+            const reasoningGenerationState =
+              message.role === 'assistant' && message.reasoning
+                ? isReasoningActive
+                  ? 'streaming'
+                  : message.metadata?.generationState === 'aborted' ||
+                      message.metadata?.generationState === 'error'
+                    ? message.metadata.generationState
+                    : 'completed'
+                : message.role === 'assistant'
+                  ? message.metadata?.generationState
+                  : undefined
             const hasToolResponseForThis =
               message.role === 'assistant' &&
               displayedMessages[messageIndex + 1]?.role === 'tool'
@@ -740,7 +757,7 @@ function AssistantToolMessageGroupItem({
                     <AssistantMessageReasoning
                       reasoning={message.reasoning ?? ''}
                       hasAnswerContent={message.content.trim().length > 0}
-                      generationState={message.metadata?.generationState}
+                      generationState={reasoningGenerationState}
                     />
                   )}
                   <AssistantMessageContent

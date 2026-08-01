@@ -117,7 +117,20 @@ describe('Codex message mapping', () => {
 
     expect(messages[0]).toMatchObject({
       role: 'assistant',
-      toolCallRequests: [{ id: 'command-1', name: 'codex_command_execution' }],
+      toolCallRequests: [
+        {
+          id: 'command-1',
+          name: 'commandExecution',
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'codex',
+              eventType: 'commandExecution',
+              name: 'commandExecution',
+              capability: 'command_execution',
+            },
+          },
+        },
+      ],
     })
     expect(messages[1]).toMatchObject({
       role: 'tool',
@@ -130,6 +143,99 @@ describe('Codex message mapping', () => {
         },
       ],
     })
+  })
+
+  it('keeps MCP server and tool identity separate and unwraps text results', () => {
+    const messages = mapCodexItem({
+      type: 'mcpToolCall',
+      id: 'mcp-1',
+      server: 'codex',
+      tool: 'list_mcp_resources',
+      status: 'completed',
+      arguments: {},
+      result: {
+        content: [{ type: 'text', text: '{"resources":[]}' }],
+        structuredContent: null,
+        _meta: null,
+      },
+      error: null,
+    })
+
+    expect(messages[0]).toMatchObject({
+      role: 'assistant',
+      toolCallRequests: [
+        {
+          name: 'list_mcp_resources',
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'codex',
+              eventType: 'mcpToolCall',
+              namespace: 'codex',
+              name: 'list_mcp_resources',
+            },
+          },
+        },
+      ],
+    })
+    expect(messages[1]).toMatchObject({
+      role: 'tool',
+      toolCalls: [{ response: { data: { text: '{"resources":[]}' } } }],
+    })
+  })
+
+  it('maps previously unsupported dynamic tools through the generic path', () => {
+    const messages = mapCodexItem({
+      type: 'dynamicToolCall',
+      id: 'dynamic-1',
+      namespace: 'workspace',
+      tool: 'get_goal',
+      arguments: { verbose: false },
+      status: 'completed',
+      contentItems: [{ type: 'inputText', text: 'No active goal' }],
+      success: true,
+    })
+
+    expect(messages).toMatchObject([
+      {
+        role: 'assistant',
+        toolCallRequests: [
+          {
+            name: 'get_goal',
+            metadata: {
+              cliToolCall: {
+                namespace: 'workspace',
+                eventType: 'dynamicToolCall',
+              },
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        toolCalls: [{ response: { data: { text: 'No active goal' } } }],
+      },
+    ])
+  })
+
+  it('keeps unknown timeline items visible instead of dropping them', () => {
+    const warning = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const messages = mapCodexItem({
+      type: 'futureActivity',
+      id: 'future-1',
+      detail: { value: 1 },
+    } as unknown as CodexThreadItem)
+
+    expect(messages).toMatchObject([
+      {
+        role: 'assistant',
+        id: 'codex-activity-future-1',
+        content: expect.stringContaining('"type": "futureActivity"'),
+      },
+    ])
+    expect(warning).toHaveBeenCalledWith(
+      '[YOLO] Unadapted Codex timeline item: futureActivity',
+    )
+    warning.mockRestore()
   })
 
   it('maps native file changes into the shared edit summary metadata', () => {

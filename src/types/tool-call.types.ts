@@ -124,6 +124,30 @@ export type ToolFsReadOperationSummary =
       skillNames?: string[]
     }
 
+export type CliToolCallCapability =
+  | 'command_execution'
+  | 'file_change'
+  | 'user_question'
+  | 'permission_request'
+
+/**
+ * Provider-native identity for a CLI tool call.
+ *
+ * `name` and `namespace` are deliberately separate: CLI adapters must not
+ * encode provenance or namespaces into the shared `ToolCallRequest.name`.
+ * Presentation data is derived by an optional capability adapter and never
+ * replaces the provider-native arguments.
+ */
+export type CliToolCallMetadata = {
+  runtimeId: 'claude-code' | 'codex'
+  eventType: string
+  name: string
+  namespace?: string
+  parentCallId?: string
+  capability?: CliToolCallCapability
+  presentationArguments?: Record<string, unknown>
+}
+
 export type ToolCallRequest = {
   id: string
   name: string
@@ -131,6 +155,7 @@ export type ToolCallRequest = {
   metadata?: {
     thoughtSignature?: string
     argumentDiagnostics?: ToolCallArgumentDiagnostics
+    cliToolCall?: CliToolCallMetadata
   }
 }
 

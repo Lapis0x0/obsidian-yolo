@@ -16,6 +16,7 @@ import {
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { assertCliRuntimeAvailable } from '../desktop'
+import { createCliToolCallRequest } from '../tool-call'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -75,6 +76,7 @@ type StreamedToolInput = {
   id: string
   name: string
   rawInput: string
+  parentCallId?: string
 }
 
 export type ClaudeCliRuntimeOptions = {
@@ -816,11 +818,15 @@ export class ClaudeCliRuntime implements CliRuntime {
       this.handleStreamEvent(message)
       return
     }
-    if (message.type === 'assistant' && message.parent_tool_use_id === null) {
-      this.handleFinalAssistant(message)
+    if (message.type === 'assistant') {
+      if (message.parent_tool_use_id === null) {
+        this.handleFinalAssistant(message)
+      } else {
+        this.handleNestedAssistant(message)
+      }
       return
     }
-    if (message.type === 'user' && message.parent_tool_use_id === null) {
+    if (message.type === 'user') {
       if (isRecord(message.message)) {
         for (const result of extractToolResults(message.message.content)) {
           this.upsertTool(
@@ -847,9 +853,9 @@ export class ClaudeCliRuntime implements CliRuntime {
   private handleStreamEvent(
     message: Extract<SDKMessage, { type: 'stream_event' }>,
   ): void {
-    if (message.parent_tool_use_id !== null) return
     const event = message.event
     if (event.type === 'message_start') {
+      if (message.parent_tool_use_id !== null) return
       this.ensureActiveAssistant(
         event.message.id,
         `claude-assistant-${event.message.id}`,
@@ -857,9 +863,14 @@ export class ClaudeCliRuntime implements CliRuntime {
       return
     }
     if (event.type === 'content_block_start') {
-      if (event.content_block.type === 'text' && event.content_block.text) {
+      if (
+        message.parent_tool_use_id === null &&
+        event.content_block.type === 'text' &&
+        event.content_block.text
+      ) {
         this.appendAssistantText(event.content_block.text)
       } else if (
+        message.parent_tool_use_id === null &&
         event.content_block.type === 'thinking' &&
         event.content_block.thinking
       ) {
@@ -869,6 +880,9 @@ export class ClaudeCliRuntime implements CliRuntime {
           id: event.content_block.id,
           name: event.content_block.name,
           rawInput: '',
+          ...(message.parent_tool_use_id
+            ? { parentCallId: message.parent_tool_use_id }
+            : {}),
         }
         this.streamedToolInputs.set(event.index, toolUse)
         this.ensurePartialToolRequest(toolUse)
@@ -877,9 +891,15 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
     if (event.type !== 'content_block_delta') return
 
-    if (event.delta.type === 'text_delta') {
+    if (
+      message.parent_tool_use_id === null &&
+      event.delta.type === 'text_delta'
+    ) {
       this.appendAssistantText(event.delta.text)
-    } else if (event.delta.type === 'thinking_delta') {
+    } else if (
+      message.parent_tool_use_id === null &&
+      event.delta.type === 'thinking_delta'
+    ) {
       this.appendAssistantReasoning(event.delta.thinking)
     } else if (event.delta.type === 'input_json_delta') {
       const toolInput = this.streamedToolInputs.get(event.index)
@@ -926,6 +946,46 @@ export class ClaudeCliRuntime implements CliRuntime {
       generationState: 'completed',
     }
     this.emitAssistant()
+  }
+
+  private handleNestedAssistant(
+    message: Extract<SDKMessage, { type: 'assistant' }>,
+  ): void {
+    const parentCallId = message.parent_tool_use_id
+    if (!parentCallId) return
+    const nativeMessage = message.message
+    const requests = extractToolUses(nativeMessage.content).map((toolUse) =>
+      toToolCallRequest({ ...toolUse, parentCallId }),
+    )
+    for (const request of requests) {
+      this.emit({
+        type: 'message_remove',
+        messageId: `claude-nested-request-${request.id}`,
+      })
+    }
+    this.emit({
+      type: 'message_upsert',
+      message: {
+        role: 'assistant',
+        id: message.uuid,
+        content: extractTextContent(nativeMessage.content),
+        ...(extractThinkingContent(nativeMessage.content)
+          ? { reasoning: extractThinkingContent(nativeMessage.content) }
+          : {}),
+        ...(requests.length > 0 ? { toolCallRequests: requests } : {}),
+        metadata: { generationState: 'completed' },
+      },
+    })
+    for (const request of requests) {
+      const existing = this.tools.get(request.id)
+      this.tools.set(request.id, {
+        request,
+        response:
+          existing?.response ??
+          ({ status: ToolCallResponseStatus.Running } as ToolCallResponse),
+      })
+      this.emitTool(request.id)
+    }
   }
 
   private async handleResult(
@@ -1053,12 +1113,30 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   private ensurePartialToolRequest(tool: StreamedToolInput): void {
     if (tool.name === CLAUDE_ASK_USER_QUESTION_TOOL) return
-    const request: ToolCallRequest = {
+    const request = createCliToolCallRequest({
       id: tool.id,
-      name: tool.name,
       arguments: createPartialToolCallArguments(tool.rawInput),
+      metadata: {
+        runtimeId: 'claude-code',
+        eventType: 'tool_use',
+        name: tool.name,
+        ...(tool.parentCallId ? { parentCallId: tool.parentCallId } : {}),
+      },
+    })
+    if (tool.parentCallId) {
+      this.emit({
+        type: 'message_upsert',
+        message: {
+          role: 'assistant',
+          id: `claude-nested-request-${tool.id}`,
+          content: '',
+          toolCallRequests: [request],
+          metadata: { generationState: 'streaming' },
+        },
+      })
+    } else {
+      this.setAssistantToolRequest(request)
     }
-    this.setAssistantToolRequest(request)
     const existing = this.tools.get(tool.id)
     this.tools.set(tool.id, {
       request,

@@ -1,5 +1,8 @@
 import type { ContentPart } from '../../../types/llm/request'
-import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import {
+  type ToolCallRequest,
+  ToolCallResponseStatus,
+} from '../../../types/tool-call.types'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -24,6 +27,8 @@ import {
 import {
   buildPendingToolMessages,
   mapCodexItem,
+  mapCodexRawCustomToolCall,
+  mapCodexRawCustomToolOutput,
   mapCodexTurns,
   parseCodexUserMessageId,
   shouldEmitCodexItemOnStarted,
@@ -31,6 +36,7 @@ import {
 } from './mapping'
 import type { CodexProcessOptions } from './process'
 import type {
+  CodexRawResponseItem,
   CodexServerRequest,
   CodexThread,
   CodexThreadItem,
@@ -132,6 +138,7 @@ export class CodexCliRuntime implements CliRuntime {
   private detachHostListeners: (() => void) | null = null
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private readonly pendingRequests = new Map<string, PendingServerRequest>()
+  private readonly rawCustomToolRequests = new Map<string, ToolCallRequest>()
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
   private needsSessionRebind = false
@@ -298,6 +305,7 @@ export class CodexCliRuntime implements CliRuntime {
     }
     this.activeSessionRef = toSessionRef(rollback.thread)
     this.pendingRequests.clear()
+    this.rawCustomToolRequests.clear()
     this.streamingAssistantText.clear()
     this.streamingReasoningSummaryParts.clear()
     this.streamingReasoningContentParts.clear()
@@ -370,6 +378,7 @@ export class CodexCliRuntime implements CliRuntime {
     if (host && this.ownsHost) await host.dispose()
     this.listeners.clear()
     this.pendingRequests.clear()
+    this.rawCustomToolRequests.clear()
   }
 
   private emit(event: CliRuntimeEvent): void {
@@ -453,6 +462,7 @@ export class CodexCliRuntime implements CliRuntime {
     this.modelId = null
     this.reasoningEffort = null
     this.pendingRequests.clear()
+    this.rawCustomToolRequests.clear()
     this.streamingAssistantText.clear()
     this.streamingReasoningSummaryParts.clear()
     this.streamingReasoningContentParts.clear()
@@ -476,6 +486,26 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'turn/started') {
       const turn = params.turn as { id?: unknown } | undefined
       this.activeTurnId = typeof turn?.id === 'string' ? turn.id : null
+      return
+    }
+    if (method === 'rawResponseItem/completed') {
+      const item = params.item as CodexRawResponseItem | undefined
+      if (!item) return
+      if (item.type === 'custom_tool_call') {
+        const mapped = mapCodexRawCustomToolCall(item)
+        this.rawCustomToolRequests.set(item.call_id, mapped.request)
+        for (const message of mapped.messages) {
+          this.emit({ type: 'message_upsert', message })
+        }
+      } else if (item.type === 'custom_tool_call_output') {
+        const request = this.rawCustomToolRequests.get(item.call_id)
+        if (!request) return
+        this.rawCustomToolRequests.delete(item.call_id)
+        this.emit({
+          type: 'message_upsert',
+          message: mapCodexRawCustomToolOutput(item, request),
+        })
+      }
       return
     }
     if (method === 'item/agentMessage/delta') {
@@ -574,6 +604,9 @@ export class CodexCliRuntime implements CliRuntime {
           : {}),
       })
       this.activeTurnId = null
+      this.streamingReasoningSummaryParts.clear()
+      this.streamingReasoningContentParts.clear()
+      this.streamingAssistantText.clear()
     }
   }
 
@@ -613,12 +646,28 @@ export class CodexCliRuntime implements CliRuntime {
         toolCallId: itemId,
         name:
           request.method === 'item/commandExecution/requestApproval'
-            ? 'codex_command_execution'
+            ? 'commandExecution'
             : request.method === 'item/fileChange/requestApproval'
-              ? 'codex_file_change'
-              : 'codex_permissions',
+              ? 'fileChange'
+              : 'permissions',
         argumentsValue: request.params,
         responseStatus: ToolCallResponseStatus.PendingApproval,
+        cliToolCall: {
+          runtimeId: 'codex',
+          eventType: request.method,
+          name:
+            request.method === 'item/commandExecution/requestApproval'
+              ? 'commandExecution'
+              : request.method === 'item/fileChange/requestApproval'
+                ? 'fileChange'
+                : 'permissions',
+          capability:
+            request.method === 'item/commandExecution/requestApproval'
+              ? 'command_execution'
+              : request.method === 'item/fileChange/requestApproval'
+                ? 'file_change'
+                : 'permission_request',
+        },
       })
       this.emit({ type: 'message_upsert', message: assistant })
       this.emit({ type: 'message_upsert', message: tool })
@@ -674,9 +723,16 @@ export class CodexCliRuntime implements CliRuntime {
       const [assistant, tool] = buildPendingToolMessages({
         requestId: request.id,
         toolCallId: itemId,
-        name: 'yolo_local__ask_user_question',
-        argumentsValue: { questions },
+        name: 'requestUserInput',
+        argumentsValue: request.params,
         responseStatus: ToolCallResponseStatus.AwaitingUserInput,
+        cliToolCall: {
+          runtimeId: 'codex',
+          eventType: request.method,
+          name: 'requestUserInput',
+          capability: 'user_question',
+          presentationArguments: { questions },
+        },
       })
       this.emit({ type: 'message_upsert', message: assistant })
       this.emit({ type: 'message_upsert', message: tool })

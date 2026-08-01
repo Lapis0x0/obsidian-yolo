@@ -18,6 +18,11 @@ import {
   getBuiltinToolUiMeta,
 } from '../../core/agent/builtinToolUiMeta'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
+import {
+  getCliToolCallDisplayName,
+  getCliToolPresentationArguments,
+  isCliToolCallCapability,
+} from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -36,6 +41,7 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
   type ToolFsReadOperationSummary,
+  createCompleteToolCallArguments,
   getToolCallArgumentsObject,
   getToolCallArgumentsText,
 } from '../../types/tool-call.types'
@@ -105,6 +111,7 @@ const DEFAULT_STATUS_LABELS: Record<ToolCallResponseStatus, string> = {
 type ToolRequestLike = {
   name: string
   arguments?: ToolCallRequest['arguments']
+  metadata?: ToolCallRequest['metadata']
 }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -327,6 +334,7 @@ const isDelegateSubagentRequest = (request: ToolRequestLike): boolean => {
 }
 
 const isTerminalCommandRequest = (request: ToolRequestLike): boolean => {
+  if (isCliToolCallCapability(request, 'command_execution')) return true
   try {
     const { toolName } = parseToolName(request.name)
     return toolName === 'terminal_command'
@@ -789,6 +797,9 @@ export const getToolSuccessIconKind = ({
   request: ToolRequestLike
   response?: ToolCallResponse
 }): ToolSuccessIconKind => {
+  if (isCliToolCallCapability(request, 'command_execution')) {
+    return 'terminal'
+  }
   let toolName: string
   try {
     const parsed = parseToolName(request.name)
@@ -1034,6 +1045,18 @@ export const getToolDisplayInfo = (
 ): ToolDisplayInfo => {
   const localServerName = getLocalFileToolServerName()
   const argumentsObject = parseToolArguments(request.arguments)
+  const cliToolCall = request.metadata?.cliToolCall
+  if (cliToolCall) {
+    const summaryText =
+      cliToolCall.capability === 'command_execution' &&
+      typeof argumentsObject?.command === 'string'
+        ? summarizeShellCommand(argumentsObject.command, { streaming: false })
+        : undefined
+    return {
+      displayName: getCliToolCallDisplayName(cliToolCall),
+      ...(summaryText ? { summaryText } : {}),
+    }
+  }
   try {
     const { serverName, toolName } = parseToolName(request.name)
 
@@ -1240,9 +1263,14 @@ function ToolCallItem({
   onRecoverAnswerUserQuestion,
   onResponseUpdate,
 }: ToolCallItemProps) {
+  const isNestedCliToolCall = Boolean(
+    request.metadata?.cliToolCall?.parentCallId,
+  )
   const isAskUserQuestion = useMemo(
-    () => isAskUserQuestionToolName(request.name),
-    [request.name],
+    () =>
+      isCliToolCallCapability(request, 'user_question') ||
+      isAskUserQuestionToolName(request.name),
+    [request],
   )
   if (isAskUserQuestion) {
     // The tool has no execute path: the gateway either parks it in
@@ -1264,9 +1292,18 @@ function ToolCallItem({
         'ask_user_question: hosting surface must pass onRecoverAnswerUserQuestion. The parent chat surface forgot to wire the recovery handler.',
       )
     }
+    const presentationArguments = getCliToolPresentationArguments(request)
+    const presentationRequest = presentationArguments
+      ? {
+          ...request,
+          arguments: createCompleteToolCallArguments({
+            value: presentationArguments,
+          }),
+        }
+      : request
     return (
       <AskUserQuestionPanel
-        request={request}
+        request={presentationRequest}
         response={response}
         conversationId={conversationId}
         onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
@@ -1432,7 +1469,11 @@ function ToolCallItem({
   }
 
   return (
-    <div className="yolo-toolcall">
+    <div
+      className={cx('yolo-toolcall', {
+        'yolo-toolcall--nested': isNestedCliToolCall,
+      })}
+    >
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}

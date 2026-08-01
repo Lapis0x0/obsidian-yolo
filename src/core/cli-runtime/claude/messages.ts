@@ -9,10 +9,13 @@ import type {
 import {
   type ToolCallRequest,
   ToolCallResponseStatus,
-  createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
+import { createCliToolCallRequest } from '../tool-call'
 
-import { mapClaudeToolForTimeline } from './askUserQuestion'
+import {
+  CLAUDE_ASK_USER_QUESTION_TOOL,
+  mapClaudeAskUserQuestionInput,
+} from './askUserQuestion'
 
 type ContentBlock = Record<string, unknown> & { type?: unknown }
 
@@ -20,6 +23,7 @@ export type ClaudeToolUse = {
   id: string
   name: string
   input: Record<string, unknown>
+  parentCallId?: string
 }
 
 export type ClaudeToolResult = {
@@ -101,12 +105,26 @@ export const extractToolResults = (value: unknown): ClaudeToolResult[] =>
   })
 
 export const toToolCallRequest = (toolUse: ClaudeToolUse): ToolCallRequest => {
-  const mapped = mapClaudeToolForTimeline(toolUse)
-  return {
+  const presentationArguments =
+    toolUse.name === CLAUDE_ASK_USER_QUESTION_TOOL
+      ? mapClaudeAskUserQuestionInput(toolUse.input)
+      : null
+  return createCliToolCallRequest({
     id: toolUse.id,
-    name: mapped.name,
-    arguments: createCompleteToolCallArguments({ value: mapped.input }),
-  }
+    input: toolUse.input,
+    metadata: {
+      runtimeId: 'claude-code',
+      eventType: 'tool_use',
+      name: toolUse.name,
+      ...(toolUse.parentCallId ? { parentCallId: toolUse.parentCallId } : {}),
+      ...(presentationArguments
+        ? {
+            capability: 'user_question',
+            presentationArguments,
+          }
+        : {}),
+    },
+  })
 }
 
 const createUserMessage = (
@@ -172,12 +190,16 @@ export const hydrateClaudeSessionMessages = (
   const completedTools = new Set<string>()
 
   for (const message of messages) {
-    if (message.parent_tool_use_id !== null || !isRecord(message.message)) {
+    if (!isRecord(message.message)) {
       continue
     }
     const nativeMessage = message.message
     if (message.type === 'assistant') {
-      const toolUses = extractToolUses(nativeMessage.content)
+      const toolUses = extractToolUses(nativeMessage.content).map((toolUse) =>
+        message.parent_tool_use_id
+          ? { ...toolUse, parentCallId: message.parent_tool_use_id }
+          : toolUse,
+      )
       for (const toolUse of toolUses) {
         requests.set(toolUse.id, toToolCallRequest(toolUse))
       }

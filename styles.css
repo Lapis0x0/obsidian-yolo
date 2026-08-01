@@ -20376,6 +20376,12 @@ button.yolo-todo-panel__icon-button svg {
   height: 1px;
 }
 
+.yolo-toolcall--nested {
+  margin-left: var(--size-4-4);
+  border-left: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+}
+
 /* Custom continue inline panel */
 
 .yolo-smart-space-overlay-host {

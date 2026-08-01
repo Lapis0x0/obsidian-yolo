@@ -12,12 +12,24 @@ import {
   type ToolEditSummary,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
+import { createCliToolCallRequest } from '../tool-call'
 
-import type { CodexThreadItem, CodexTurn, CodexUserInput } from './protocol'
+import type {
+  CodexRawResponseItem,
+  CodexThreadItem,
+  CodexTurn,
+  CodexUserInput,
+} from './protocol'
 
 const CODEX_CLIENT_USER_MESSAGE_PREFIX = 'codex-user-client-'
 const CODEX_TURN_USER_MESSAGE_PREFIX = 'codex-user-turn-'
 const CODEX_ITEM_USER_MESSAGE_PREFIX = 'codex-user-'
+const KNOWN_CODEX_ACTIVITY_TYPES = new Set([
+  'hookPrompt',
+  'enteredReviewMode',
+  'exitedReviewMode',
+  'contextCompaction',
+])
 
 export type CodexUserMessageLocator =
   | { kind: 'client'; id: string }
@@ -66,6 +78,56 @@ const stringify = (value: unknown): string => {
   if (typeof value === 'string') return value
   if (value === undefined || value === null) return ''
   return JSON.stringify(value, null, 2)
+}
+
+const stringifyMcpResult = (value: unknown): string => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return stringify(value)
+  }
+  const result = value as Record<string, unknown>
+  const content = Array.isArray(result.content) ? result.content : null
+  const hasStructuredContent =
+    result.structuredContent !== undefined && result.structuredContent !== null
+  if (!content || hasStructuredContent) return stringify(value)
+  const textParts = content.flatMap((part): string[] => {
+    if (!part || typeof part !== 'object' || Array.isArray(part)) return []
+    const block = part as Record<string, unknown>
+    return block.type === 'text' && typeof block.text === 'string'
+      ? [block.text]
+      : []
+  })
+  return textParts.length === content.length
+    ? textParts.join('\n')
+    : stringify(value)
+}
+
+const stringifyDynamicToolResult = (contentItems: unknown[] | null): string => {
+  if (!contentItems) return ''
+  const textParts = contentItems.flatMap((item): string[] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const block = item as Record<string, unknown>
+    return block.type === 'inputText' && typeof block.text === 'string'
+      ? [block.text]
+      : []
+  })
+  return textParts.length === contentItems.length
+    ? textParts.join('\n')
+    : stringify(contentItems)
+}
+
+const stringifyRawToolOutput = (
+  output: Extract<
+    CodexRawResponseItem,
+    { type: 'custom_tool_call_output' }
+  >['output'],
+): string => {
+  if (typeof output === 'string') return output
+  const textParts = output.flatMap((item): string[] =>
+    item.type === 'input_text' ? [item.text] : [],
+  )
+  return textParts.length === output.length
+    ? textParts.join('\n')
+    : stringify(output)
 }
 
 const toWorkspaceRelativePath = (path: string, cwd?: string): string => {
@@ -175,7 +237,9 @@ const toolPair = ({
  * them so Requesting stays up until deltas or a non-empty item arrives.
  * Tool-like items always emit because they already have UI.
  */
-export const shouldEmitCodexItemOnStarted = (item: CodexThreadItem): boolean => {
+export const shouldEmitCodexItemOnStarted = (
+  item: CodexThreadItem,
+): boolean => {
   if (item.type === 'agentMessage') return item.text.trim().length > 0
   if (item.type === 'reasoning') {
     return [...item.summary, ...item.content].some(
@@ -210,6 +274,16 @@ export const mapCodexItem = (
       },
     ]
   }
+  if (item.type === 'plan') {
+    return [
+      {
+        role: 'assistant',
+        id: `codex-plan-${item.id}`,
+        content: item.text,
+        metadata: { generationState: 'completed' },
+      },
+    ]
+  }
   if (item.type === 'reasoning') {
     return [
       {
@@ -222,24 +296,30 @@ export const mapCodexItem = (
     ]
   }
   if (item.type === 'commandExecution') {
-    const request: ToolCallRequest = {
+    const request = createCliToolCallRequest({
       id: item.id,
-      name: 'codex_command_execution',
-      arguments: createCompleteToolCallArguments({
-        value: { command: item.command, cwd: item.cwd },
-      }),
-    }
+      input: { command: item.command, cwd: item.cwd },
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        name: item.type,
+        capability: 'command_execution',
+      },
+    })
     const output = item.aggregatedOutput ?? ''
     return toolPair({ request, response: toResponse(item, output) })
   }
   if (item.type === 'fileChange') {
-    const request: ToolCallRequest = {
+    const request = createCliToolCallRequest({
       id: item.id,
-      name: 'codex_file_change',
-      arguments: createCompleteToolCallArguments({
-        value: { changes: item.changes },
-      }),
-    }
+      input: { changes: item.changes },
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        name: item.type,
+        capability: 'file_change',
+      },
+    })
     const response = toResponse(item, stringify(item.changes))
     return toolPair({
       request,
@@ -259,22 +339,135 @@ export const mapCodexItem = (
     })
   }
   if (item.type === 'mcpToolCall') {
-    const request: ToolCallRequest = {
+    const request = createCliToolCallRequest({
       id: item.id,
-      name: `codex_mcp__${item.server}__${item.tool}`,
-      arguments: createCompleteToolCallArguments({
-        value:
-          item.arguments && typeof item.arguments === 'object'
-            ? (item.arguments as Record<string, unknown>)
-            : { value: item.arguments },
-      }),
-    }
+      input: item.arguments,
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        namespace: item.server,
+        name: item.tool,
+      },
+    })
     return toolPair({
       request,
-      response: toResponse(item, stringify(item.result ?? item.error)),
+      response: toResponse(
+        item,
+        item.error ? stringify(item.error) : stringifyMcpResult(item.result),
+      ),
     })
   }
-  return []
+  if (item.type === 'dynamicToolCall') {
+    const request = createCliToolCallRequest({
+      id: item.id,
+      input: item.arguments,
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        ...(item.namespace ? { namespace: item.namespace } : {}),
+        name: item.tool,
+      },
+    })
+    return toolPair({
+      request,
+      response: toResponse(
+        {
+          status:
+            item.status === 'completed' && item.success === false
+              ? 'failed'
+              : item.status,
+        },
+        stringifyDynamicToolResult(item.contentItems),
+      ),
+    })
+  }
+  if (item.type === 'collabAgentToolCall') {
+    const request = createCliToolCallRequest({
+      id: item.id,
+      input: {
+        senderThreadId: item.senderThreadId,
+        receiverThreadIds: item.receiverThreadIds,
+        prompt: item.prompt,
+        model: item.model,
+        reasoningEffort: item.reasoningEffort,
+      },
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        namespace: 'collaboration',
+        name: item.tool,
+      },
+    })
+    return toolPair({
+      request,
+      response: toResponse(item, stringify(item.agentsStates)),
+    })
+  }
+  if (item.type === 'webSearch') {
+    const request = createCliToolCallRequest({
+      id: item.id,
+      input: { query: item.query, action: item.action },
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        name: item.type,
+      },
+    })
+    return toolPair({
+      request,
+      response: toResponse({ status: 'completed' }, stringify(item.action)),
+    })
+  }
+  if (item.type === 'imageView') {
+    const request = createCliToolCallRequest({
+      id: item.id,
+      input: { path: item.path },
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        name: item.type,
+      },
+    })
+    return toolPair({
+      request,
+      response: toResponse({ status: 'completed' }, item.path),
+    })
+  }
+  if (item.type === 'imageGeneration') {
+    const request = createCliToolCallRequest({
+      id: item.id,
+      input: { revisedPrompt: item.revisedPrompt },
+      metadata: {
+        runtimeId: 'codex',
+        eventType: item.type,
+        name: item.type,
+      },
+    })
+    return toolPair({
+      request,
+      response: toResponse(
+        item,
+        stringify({ result: item.result, savedPath: item.savedPath }),
+      ),
+    })
+  }
+
+  const activity = item as {
+    id: string
+    type: string
+    [key: string]: unknown
+  }
+  if (!KNOWN_CODEX_ACTIVITY_TYPES.has(activity.type)) {
+    console.warn(`[YOLO] Unadapted Codex timeline item: ${activity.type}`)
+  }
+  return [
+    {
+      role: 'assistant',
+      id: `codex-activity-${activity.id}`,
+      content: `\`\`\`json\n${stringify(activity)}\n\`\`\``,
+      metadata: { generationState: 'completed' },
+    },
+  ]
 }
 
 export const mapCodexTurns = (
@@ -285,12 +478,54 @@ export const mapCodexTurns = (
     turn.items.flatMap((item) => mapCodexItem(item, cwd, turn.id)),
   )
 
+export const mapCodexRawCustomToolCall = (
+  item: Extract<CodexRawResponseItem, { type: 'custom_tool_call' }>,
+): {
+  request: ToolCallRequest
+  messages: [ChatAssistantMessage, ChatToolMessage]
+} => {
+  const request = createCliToolCallRequest({
+    id: item.call_id,
+    input: { input: item.input },
+    metadata: {
+      runtimeId: 'codex',
+      eventType: item.type,
+      name: item.name,
+    },
+  })
+  return {
+    request,
+    messages: toolPair({
+      request,
+      response: { status: ToolCallResponseStatus.Running },
+    }),
+  }
+}
+
+export const mapCodexRawCustomToolOutput = (
+  item: Extract<CodexRawResponseItem, { type: 'custom_tool_call_output' }>,
+  request: ToolCallRequest,
+): ChatToolMessage => ({
+  role: 'tool',
+  id: `codex-result-${request.id}`,
+  toolCalls: [
+    {
+      request,
+      response: {
+        status: ToolCallResponseStatus.Success,
+        data: { type: 'text', text: stringifyRawToolOutput(item.output) },
+      },
+    },
+  ],
+})
+
 export const buildPendingToolMessages = ({
   requestId,
   toolCallId,
   name,
   argumentsValue,
   responseStatus,
+  cliToolCall,
 }: {
   requestId: string | number
   toolCallId: string
@@ -299,12 +534,16 @@ export const buildPendingToolMessages = ({
   responseStatus:
     | ToolCallResponseStatus.PendingApproval
     | ToolCallResponseStatus.AwaitingUserInput
+  cliToolCall?: NonNullable<ToolCallRequest['metadata']>['cliToolCall']
 }): [ChatAssistantMessage, ChatToolMessage] => {
   const request: ToolCallRequest = {
     id: toolCallId,
     name,
     arguments: createCompleteToolCallArguments({ value: argumentsValue }),
-    metadata: { argumentDiagnostics: { deliveryMode: `codex:${requestId}` } },
+    metadata: {
+      argumentDiagnostics: { deliveryMode: `codex:${requestId}` },
+      ...(cliToolCall ? { cliToolCall } : {}),
+    },
   }
   return toolPair({ request, response: { status: responseStatus } })
 }

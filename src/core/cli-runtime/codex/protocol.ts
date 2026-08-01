@@ -18,7 +18,14 @@ export type CodexThreadItem =
       clientId?: string | null
       content: CodexUserInput[]
     }
-  | { type: 'agentMessage'; id: string; text: string }
+  | {
+      type: 'agentMessage'
+      id: string
+      text: string
+      phase?: string | null
+    }
+  | { type: 'hookPrompt'; id: string; fragments: unknown[] }
+  | { type: 'plan'; id: string; text: string }
   | { type: 'reasoning'; id: string; summary: string[]; content: string[] }
   | {
       type: 'commandExecution'
@@ -53,6 +60,46 @@ export type CodexThreadItem =
       result: unknown
       error: unknown
     }
+  | {
+      type: 'dynamicToolCall'
+      id: string
+      namespace: string | null
+      tool: string
+      arguments: unknown
+      status: string
+      contentItems: unknown[] | null
+      success: boolean | null
+    }
+  | {
+      type: 'collabAgentToolCall'
+      id: string
+      tool: string
+      status: string
+      senderThreadId: string
+      receiverThreadIds: string[]
+      prompt: string | null
+      model: string | null
+      reasoningEffort: string | null
+      agentsStates: Record<string, unknown>
+    }
+  | {
+      type: 'webSearch'
+      id: string
+      query: string
+      action: unknown
+    }
+  | { type: 'imageView'; id: string; path: string }
+  | {
+      type: 'imageGeneration'
+      id: string
+      status: string
+      revisedPrompt: string | null
+      result: string
+      savedPath?: string
+    }
+  | { type: 'enteredReviewMode'; id: string; review: string }
+  | { type: 'exitedReviewMode'; id: string; review: string }
+  | { type: 'contextCompaction'; id: string }
 
 export type CodexTurn = {
   id: string
@@ -115,6 +162,27 @@ export type CodexNotification = {
   method: string
   params: Record<string, unknown>
 }
+
+export type CodexRawResponseItem =
+  | {
+      type: 'custom_tool_call'
+      status?: string
+      call_id: string
+      name: string
+      input: string
+    }
+  | {
+      type: 'custom_tool_call_output'
+      call_id: string
+      name?: string
+      output:
+        | string
+        | Array<
+            | { type: 'input_text'; text: string }
+            | { type: 'input_image'; image_url: string; detail?: string }
+            | { type: 'encrypted_content'; encrypted_content: string }
+          >
+    }
 
 export type CodexServerRequest = {
   id: JsonRpcId

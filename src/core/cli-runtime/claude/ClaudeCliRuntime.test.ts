@@ -12,6 +12,7 @@ import { CliConversationController } from '../conversation-controller'
 import type { CliRuntimeEvent } from '../types'
 
 import { ClaudeCliRuntime } from './ClaudeCliRuntime'
+import { hydrateClaudeSessionMessages } from './messages'
 import type {
   ClaudeProcessSupport,
   ClaudeSdkModule,
@@ -22,6 +23,78 @@ type QueryInput = {
   prompt: AsyncIterable<SDKUserMessage> | string
   options?: Options
 }
+
+it('hydrates nested Claude tool calls with their native parent relationship', () => {
+  const messages = hydrateClaudeSessionMessages([
+    {
+      type: 'assistant',
+      uuid: 'nested-assistant',
+      session_id: 'session-1',
+      parent_tool_use_id: 'parent-tool',
+      parent_agent_id: null,
+      message: {
+        id: 'nested-message',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'child-tool',
+            name: 'Read',
+            input: { file_path: '/vault/note.md' },
+          },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'nested-result',
+      session_id: 'session-1',
+      parent_tool_use_id: 'parent-tool',
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'child-tool',
+            content: 'note contents',
+          },
+        ],
+      },
+    },
+  ] as SessionMessage[])
+
+  expect(messages).toMatchObject([
+    {
+      role: 'assistant',
+      toolCallRequests: [
+        {
+          name: 'Read',
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'claude-code',
+              parentCallId: 'parent-tool',
+            },
+          },
+        },
+      ],
+    },
+    {
+      role: 'tool',
+      toolCalls: [
+        {
+          request: {
+            name: 'Read',
+            metadata: {
+              cliToolCall: { parentCallId: 'parent-tool' },
+            },
+          },
+          response: { data: { text: 'note contents' } },
+        },
+      ],
+    },
+  ])
+})
 
 class FakeQuery implements ClaudeSdkQuery {
   readonly interrupt = jest.fn(async () => undefined)
@@ -344,21 +417,39 @@ describe('ClaudeCliRuntime', () => {
       toolCallRequests: [
         {
           id: 'question-tool',
-          name: 'yolo_local__ask_user_question',
+          name: 'AskUserQuestion',
           arguments: {
             kind: 'complete',
             value: {
               questions: [
                 {
                   id: 'choice',
-                  prompt: 'Choose one?',
-                  inputType: 'single_select',
                   options: [
-                    { id: 'A', label: 'A' },
-                    { id: 'B', label: 'B' },
+                    { label: 'A', description: 'Option A' },
+                    { label: 'B', description: 'Option B' },
                   ],
+                  question: 'Choose one?',
+                  multiSelect: false,
                 },
               ],
+            },
+          },
+          metadata: {
+            cliToolCall: {
+              capability: 'user_question',
+              presentationArguments: {
+                questions: [
+                  {
+                    id: 'choice',
+                    prompt: 'Choose one?',
+                    inputType: 'single_select',
+                    options: [
+                      { id: 'A', label: 'A' },
+                      { id: 'B', label: 'B' },
+                    ],
+                  },
+                ],
+              },
             },
           },
         },
@@ -370,7 +461,7 @@ describe('ClaudeCliRuntime', () => {
         {
           request: {
             id: 'question-tool',
-            name: 'yolo_local__ask_user_question',
+            name: 'AskUserQuestion',
           },
         },
       ],
@@ -883,35 +974,59 @@ describe('ClaudeCliRuntime', () => {
         toolCalls: [
           {
             request: {
-              name: 'yolo_local__ask_user_question',
+              name: 'AskUserQuestion',
               arguments: {
                 kind: 'complete',
                 value: {
                   questions: [
                     {
                       id: 'context',
-                      prompt: 'Anything else?',
-                      inputType: 'free_text',
+                      question: 'Anything else?',
                     },
                     {
                       id: 'approach',
-                      prompt: 'Which approach?',
-                      inputType: 'single_select',
-                      options: [
-                        { id: 'Simple', label: 'Simple' },
-                        { id: 'Layered', label: 'Layered' },
-                      ],
+                      question: 'Which approach?',
+                      options: [{ label: 'Simple' }, { label: 'Layered' }],
                     },
                     {
                       id: 'features',
-                      prompt: 'Which features?',
-                      inputType: 'multi_select',
-                      options: [
-                        { id: 'Fast', label: 'Fast' },
-                        { id: 'Safe', label: 'Safe' },
-                      ],
+                      question: 'Which features?',
+                      multiSelect: true,
+                      options: [{ label: 'Fast' }, { label: 'Safe' }],
                     },
                   ],
+                },
+              },
+              metadata: {
+                cliToolCall: {
+                  capability: 'user_question',
+                  presentationArguments: {
+                    questions: [
+                      {
+                        id: 'context',
+                        prompt: 'Anything else?',
+                        inputType: 'free_text',
+                      },
+                      {
+                        id: 'approach',
+                        prompt: 'Which approach?',
+                        inputType: 'single_select',
+                        options: [
+                          { id: 'Simple', label: 'Simple' },
+                          { id: 'Layered', label: 'Layered' },
+                        ],
+                      },
+                      {
+                        id: 'features',
+                        prompt: 'Which features?',
+                        inputType: 'multi_select',
+                        options: [
+                          { id: 'Fast', label: 'Fast' },
+                          { id: 'Safe', label: 'Safe' },
+                        ],
+                      },
+                    ],
+                  },
                 },
               },
             },

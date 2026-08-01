@@ -1,4 +1,5 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import type { CliRuntimeEvent } from '../types'
 
 import { CodexAppServerHost, CodexAppServerHostPool } from './host'
 import type { CodexProcessExitListener, CodexProcessLike } from './process'
@@ -752,7 +753,15 @@ describe('CodexCliRuntime', () => {
               expect.objectContaining({
                 request: expect.objectContaining({
                   id: 'question-tool',
-                  name: 'yolo_local__ask_user_question',
+                  name: 'requestUserInput',
+                  metadata: expect.objectContaining({
+                    cliToolCall: expect.objectContaining({
+                      capability: 'user_question',
+                      presentationArguments: expect.objectContaining({
+                        questions: expect.any(Array),
+                      }),
+                    }),
+                  }),
                 }),
                 response: { status: ToolCallResponseStatus.AwaitingUserInput },
               }),
@@ -773,5 +782,84 @@ describe('CodexCliRuntime', () => {
     expect(process.responses).toContainEqual({
       answers: { choice: { answers: ['A'] } },
     })
+  })
+
+  it('maps raw custom tool calls that have no thread item representation', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'rawResponseItem/completed',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        item: {
+          type: 'custom_tool_call',
+          status: 'completed',
+          call_id: 'call-exec',
+          name: 'exec',
+          input: 'text("hello")',
+        },
+      },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'rawResponseItem/completed',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        item: {
+          type: 'custom_tool_call_output',
+          call_id: 'call-exec',
+          output: [{ type: 'input_text', text: 'hello' }],
+        },
+      },
+    })
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'message_upsert',
+          message: expect.objectContaining({
+            role: 'assistant',
+            toolCallRequests: [
+              expect.objectContaining({
+                id: 'call-exec',
+                name: 'exec',
+                metadata: {
+                  cliToolCall: {
+                    runtimeId: 'codex',
+                    eventType: 'custom_tool_call',
+                    name: 'exec',
+                  },
+                },
+              }),
+            ],
+          }),
+        }),
+        expect.objectContaining({
+          type: 'message_upsert',
+          message: expect.objectContaining({
+            role: 'tool',
+            toolCalls: [
+              expect.objectContaining({
+                response: {
+                  status: ToolCallResponseStatus.Success,
+                  data: { type: 'text', text: 'hello' },
+                },
+              }),
+            ],
+          }),
+        }),
+      ]),
+    )
+    await runtime.dispose()
   })
 })

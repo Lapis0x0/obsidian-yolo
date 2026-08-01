@@ -53,6 +53,7 @@ import type { ToolLabels } from './ToolMessage'
 import ToolMessage, {
   areToolCallItemPropsEqual,
   getHeadlineDisplayInfo,
+  getToolDisplayInfo,
   getToolResultDisplayText,
   getToolSuccessIconKind,
 } from './ToolMessage'
@@ -62,6 +63,44 @@ describe('ToolMessage rendering', () => {
     mockedObsidianCodeBlock.mockClear()
     mockedLiveTaskCard.mockClear()
     mockedSubagentCard.mockClear()
+  })
+
+  it('renders CLI namespaces from structured identity without parsing names', () => {
+    expect(
+      getToolDisplayInfo({
+        name: 'list_mcp_resources',
+        metadata: {
+          cliToolCall: {
+            runtimeId: 'codex',
+            eventType: 'mcpToolCall',
+            namespace: 'codex',
+            name: 'list_mcp_resources',
+          },
+        },
+      }),
+    ).toEqual({ displayName: 'codex:list_mcp_resources' })
+  })
+
+  it('adds command presentation without replacing the native CLI name', () => {
+    expect(
+      getToolDisplayInfo({
+        name: 'commandExecution',
+        arguments: createCompleteToolCallArguments({
+          value: { command: '/bin/zsh -lc pwd', cwd: '/vault' },
+        }),
+        metadata: {
+          cliToolCall: {
+            runtimeId: 'codex',
+            eventType: 'commandExecution',
+            name: 'commandExecution',
+            capability: 'command_execution',
+          },
+        },
+      }),
+    ).toEqual({
+      displayName: 'commandExecution',
+      summaryText: '/bin/zsh -lc pwd',
+    })
   })
 
   it('hydrates original terminal_command card from persisted result output', () => {

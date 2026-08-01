@@ -1,5 +1,4 @@
 export const CLAUDE_ASK_USER_QUESTION_TOOL = 'AskUserQuestion'
-export const YOLO_ASK_USER_QUESTION_TOOL = 'yolo_local__ask_user_question'
 
 const YOLO_OTHER_OPTION_ID = '__other__'
 
@@ -117,22 +116,6 @@ export const mapClaudeAskUserQuestionInput = (
   const mappings = buildQuestionMappings(input)
   if (!mappings) return null
   return { questions: mappings.map((mapping) => mapping.yoloQuestion) }
-}
-
-export const mapClaudeToolForTimeline = ({
-  name,
-  input,
-}: {
-  name: string
-  input: Record<string, unknown>
-}): { name: string; input: Record<string, unknown> } => {
-  if (name !== CLAUDE_ASK_USER_QUESTION_TOOL) return { name, input }
-  const mappedInput = mapClaudeAskUserQuestionInput(input)
-  if (!mappedInput) return { name, input }
-  return {
-    name: YOLO_ASK_USER_QUESTION_TOOL,
-    input: mappedInput,
-  }
 }
 
 const parseAnswerValue = ({
