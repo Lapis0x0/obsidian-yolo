@@ -486,6 +486,7 @@ export const submitCliComposerTurn = async ({
   onAccepted,
   encodeTurnContent = buildCliTurnContent,
 }: SubmitCliComposerTurnInput): Promise<{
+  sessionRef: CliSessionRef
   userMessage: ChatUserMessage
   overlayError: Error | null
 }> => {
@@ -555,7 +556,11 @@ export const submitCliComposerTurn = async ({
   } catch (error) {
     overlayError = toError(error)
   }
-  return { userMessage: stampedUserMessage, overlayError }
+  return {
+    sessionRef: snapshot.sessionRef,
+    userMessage: stampedUserMessage,
+    overlayError,
+  }
 }
 
 export const removeCliOverlayAfterConfirmation = async ({

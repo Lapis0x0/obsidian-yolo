@@ -298,6 +298,36 @@ export class ClaudeCliRuntime implements CliRuntime {
     return { ref, messages: hydrateClaudeSessionMessages(messages) }
   }
 
+  async renameSessionIfPlaceholder(
+    ref: CliSessionRef,
+    title: string,
+  ): Promise<'renamed' | 'preserved' | 'unavailable'> {
+    this.assertUsable()
+    this.assertClaudeRef(ref)
+    const normalized = title.trim()
+    if (!normalized) throw new Error('Claude session title cannot be empty.')
+    const sdk = await this.getSdk()
+    const session = await sdk.getSessionInfo(ref.nativeSessionId, {
+      dir: this.vaultPath,
+    })
+    if (!session) return 'unavailable'
+
+    const customTitle = session.customTitle?.trim() ?? ''
+    const displayTitle = session.summary.trim()
+    const firstPrompt = session.firstPrompt?.trim() ?? ''
+    const isPlaceholder =
+      customTitle.length === 0 &&
+      (displayTitle.length === 0 ||
+        displayTitle === firstPrompt ||
+        displayTitle === session.sessionId)
+    if (!isPlaceholder) return 'preserved'
+
+    await sdk.renameSession(ref.nativeSessionId, normalized, {
+      dir: this.vaultPath,
+    })
+    return 'renamed'
+  }
+
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
     this.assertUsable()
     if (input.sessionRef) this.assertClaudeRef(input.sessionRef)

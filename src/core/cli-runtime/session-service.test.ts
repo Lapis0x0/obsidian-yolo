@@ -63,6 +63,7 @@ const runtime = ({
     return sessions ?? []
   },
   openSession: async (ref) => ({ ref, messages: [] }),
+  renameSessionIfPlaceholder: async () => 'preserved',
   ensureReady: async () => undefined,
   getConfiguration: async () => ({
     models: [],
@@ -294,5 +295,104 @@ describe('CliSessionService', () => {
         timeContext: '2026-07-31 14:09 (Friday)',
       }),
     ])
+  })
+
+  it('prefers overlay titles over native list titles', async () => {
+    const index = new MemoryIndex()
+    const ref = {
+      runtimeId: 'codex' as const,
+      nativeSessionId: 'codex-1',
+    }
+    await index.upsert({
+      ...ref,
+      title: 'YOLO generated title',
+    })
+    const service = new CliSessionService({
+      app,
+      runtimes: [
+        runtime({
+          runtimeId: 'codex',
+          sessions: [
+            {
+              ref,
+              title: 'First prompt as native title',
+              preview: 'First prompt as native title',
+              updatedAt: 1,
+            },
+          ],
+        }),
+      ],
+      indexStore: index,
+    })
+
+    await expect(service.listSessions()).resolves.toMatchObject({
+      sessions: [
+        {
+          title: 'YOLO generated title',
+          preview: 'First prompt as native title',
+          hasOverlay: true,
+        },
+      ],
+    })
+  })
+
+  it('writes overlay titles and renames placeholder native titles only', async () => {
+    const index = new MemoryIndex()
+    const renamePlaceholderSession = jest.fn(async () => 'renamed' as const)
+    const preserveCustomSession = jest.fn(async () => 'preserved' as const)
+    const placeholderRef = {
+      runtimeId: 'codex' as const,
+      nativeSessionId: 'codex-placeholder',
+    }
+    const customRef = {
+      runtimeId: 'codex' as const,
+      nativeSessionId: 'codex-custom',
+    }
+    const placeholderRuntime: CliRuntime = {
+      ...runtime({ runtimeId: 'codex' }),
+      renameSessionIfPlaceholder: renamePlaceholderSession,
+    }
+    const customRuntime: CliRuntime = {
+      ...runtime({ runtimeId: 'codex' }),
+      renameSessionIfPlaceholder: preserveCustomSession,
+    }
+    // One service cannot host two runtimes with the same id; test sequentially.
+    const placeholderService = new CliSessionService({
+      app,
+      runtimes: [placeholderRuntime],
+      indexStore: index,
+    })
+    await expect(
+      placeholderService.applyGeneratedTitle({
+        ref: placeholderRef,
+        title: 'Concise title',
+      }),
+    ).resolves.toEqual({ overlayWritten: true, nativeRenamed: true })
+    await expect(
+      placeholderService.getOverlayTitle(placeholderRef),
+    ).resolves.toBe('Concise title')
+    expect(renamePlaceholderSession).toHaveBeenCalledWith(
+      placeholderRef,
+      'Concise title',
+    )
+
+    const customService = new CliSessionService({
+      app,
+      runtimes: [customRuntime],
+      indexStore: index,
+    })
+    await expect(
+      customService.applyGeneratedTitle({
+        ref: customRef,
+        title: 'Should not overwrite',
+      }),
+    ).resolves.toEqual({ overlayWritten: true, nativeRenamed: false })
+    expect(preserveCustomSession).toHaveBeenCalledWith(
+      customRef,
+      'Should not overwrite',
+    )
+    await expect(customService.getOverlayTitle(customRef)).resolves.toBe(
+      'Should not overwrite',
+    )
   })
 })

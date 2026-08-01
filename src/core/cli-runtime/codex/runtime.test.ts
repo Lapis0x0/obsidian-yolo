@@ -25,7 +25,7 @@ class RpcFakeProcess implements CodexProcessLike {
     cwd: '/vault',
     createdAt: 10,
     updatedAt: 20,
-    name: null,
+    name: null as string | null,
     turns: [],
   }
 
@@ -330,6 +330,36 @@ describe('CodexCliRuntime', () => {
     runtime.subscribe((event) => events.push(event.type))
     await runtime.ensureReady({})
     expect(events).toContain('session_bound')
+  })
+
+  it('renames only threads without a provider-native name', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const ref = { runtimeId: 'codex' as const, nativeSessionId: 'thread-1' }
+
+    await expect(
+      runtime.renameSessionIfPlaceholder(ref, 'Generated title'),
+    ).resolves.toBe('renamed')
+    expect(process.requests).toContainEqual({
+      method: 'thread/read',
+      params: { threadId: 'thread-1', includeTurns: false },
+    })
+    expect(process.requests).toContainEqual({
+      method: 'thread/name/set',
+      params: { threadId: 'thread-1', name: 'Generated title' },
+    })
+
+    process.thread.name = 'Manual title'
+    process.requests.length = 0
+    await expect(
+      runtime.renameSessionIfPlaceholder(ref, 'Replacement title'),
+    ).resolves.toBe('preserved')
+    expect(
+      process.requests.some((request) => request.method === 'thread/name/set'),
+    ).toBe(false)
   })
 
   it('requests visible reasoning summaries and streams summary and content deltas', async () => {

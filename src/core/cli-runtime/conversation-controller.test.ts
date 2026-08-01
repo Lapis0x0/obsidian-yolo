@@ -91,6 +91,13 @@ class FakeCliRuntime implements CliRuntime {
     return this.openSessionImpl(ref)
   }
 
+  async renameSessionIfPlaceholder(
+    _ref: CliSessionRef,
+    _title: string,
+  ): Promise<'preserved'> {
+    return 'preserved'
+  }
+
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
     this.readyInputs.push(input)
     await this.ensureReadyImpl(input)

@@ -102,6 +102,14 @@ const createSdk = () => {
     Promise<SessionMessage[]>,
     [sessionId: string, options?: { dir?: string }]
   >(async () => [])
+  const getSessionInfo = jest.fn<
+    Promise<SDKSessionInfo | undefined>,
+    [sessionId: string, options?: { dir?: string }]
+  >(async () => undefined)
+  const renameSession = jest.fn<
+    Promise<void>,
+    [sessionId: string, title: string, options?: { dir?: string }]
+  >(async () => undefined)
   const query = jest.fn<ClaudeSdkQuery, [input: QueryInput]>((input) => {
     queryInputs.push(input)
     return queryInstance
@@ -109,7 +117,9 @@ const createSdk = () => {
   const sdk: ClaudeSdkModule = {
     query,
     listSessions,
+    getSessionInfo,
     getSessionMessages,
+    renameSession,
   }
   return {
     sdk,
@@ -117,7 +127,9 @@ const createSdk = () => {
     queryInputs,
     queryInstance,
     listSessions,
+    getSessionInfo,
     getSessionMessages,
+    renameSession,
   }
 }
 
@@ -384,6 +396,51 @@ describe('ClaudeCliRuntime', () => {
         },
       ],
     })
+  })
+
+  it('renames only first-prompt placeholders from fresh session metadata', async () => {
+    const { sdk, getSessionInfo, renameSession } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    const ref = {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: 'session-1',
+    }
+    getSessionInfo.mockResolvedValue({
+      sessionId: 'session-1',
+      summary: 'First prompt',
+      firstPrompt: 'First prompt',
+      lastModified: 1,
+      cwd: '/vault',
+    })
+
+    await expect(
+      runtime.renameSessionIfPlaceholder(ref, 'Generated title'),
+    ).resolves.toBe('renamed')
+    expect(getSessionInfo).toHaveBeenCalledWith('session-1', { dir: '/vault' })
+    expect(renameSession).toHaveBeenCalledWith(
+      'session-1',
+      'Generated title',
+      { dir: '/vault' },
+    )
+
+    getSessionInfo.mockResolvedValue({
+      sessionId: 'session-1',
+      summary: 'First prompt',
+      firstPrompt: 'First prompt',
+      customTitle: 'First prompt',
+      lastModified: 1,
+      cwd: '/vault',
+    })
+    renameSession.mockClear()
+
+    await expect(
+      runtime.renameSessionIfPlaceholder(ref, 'Generated title'),
+    ).resolves.toBe('preserved')
+    expect(renameSession).not.toHaveBeenCalled()
   })
 
   it('paginates global discovery and exposes only root or descendant sessions', async () => {

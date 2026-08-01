@@ -49,11 +49,13 @@ import {
   type CliSessionRef,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
+  ensureCliSessionAutoTitle,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
+import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
@@ -962,7 +964,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [settings])
   const quickAccessSkillEntries = useLiteSkillEntries(app, { settings })
   const quickAccessSnippetEntries = useSnippetEntries()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
   const { getMcpManager } = useMcp()
 
   const {
@@ -6383,10 +6385,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     displayedChatMessages,
     handleUserMessageSubmit,
     inputMessage,
+    language,
     messageModelMap,
     queuedMessageEditState,
     reasoningLevel,
     selectedAssistant,
+    setSettings,
     settings,
     t,
   })
@@ -6484,6 +6488,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 )
               }
               void refreshCliSessions()
+              void ensureCliSessionAutoTitle({
+                settings: state.settings,
+                language: state.language,
+                scope,
+                sessionRef: result.sessionRef,
+                userMessage: result.userMessage,
+                onAutoPromoteTransportMode: (providerId, mode) => {
+                  void promoteProviderTransportModeToObsidian({
+                    getSettings: () => state.settings,
+                    setSettings: state.setSettings,
+                    providerId,
+                    mode,
+                  })
+                },
+              }).then((updated) => {
+                if (updated && chatMountedRef.current) {
+                  void refreshCliSessions()
+                }
+              })
             }
           } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') {

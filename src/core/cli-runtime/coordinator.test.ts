@@ -47,6 +47,10 @@ class TestRuntime implements CliRuntime {
     return { ref, messages: [] }
   }
 
+  async renameSessionIfPlaceholder(): Promise<'preserved'> {
+    return 'preserved'
+  }
+
   async ensureReady(input: Parameters<CliRuntime['ensureReady']>[0]) {
     this.emit({
       type: 'session_bound',

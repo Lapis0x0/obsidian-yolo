@@ -190,6 +190,27 @@ export class CodexCliRuntime implements CliRuntime {
     }
   }
 
+  async renameSessionIfPlaceholder(
+    ref: CliSessionRef,
+    title: string,
+  ): Promise<'renamed' | 'preserved' | 'unavailable'> {
+    if (ref.runtimeId !== 'codex')
+      throw new Error('Cannot rename a non-Codex session.')
+    const normalized = title.trim()
+    if (!normalized) throw new Error('Codex session title cannot be empty.')
+    const host = await this.getHost()
+    const response = await host.request<ThreadReadResponse>('thread/read', {
+      threadId: ref.nativeSessionId,
+      includeTurns: false,
+    })
+    if (response.thread.name?.trim()) return 'preserved'
+    await host.request('thread/name/set', {
+      threadId: ref.nativeSessionId,
+      name: normalized,
+    })
+    return 'renamed'
+  }
+
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
     const previousHost = this.host
     const host = await this.getHost()

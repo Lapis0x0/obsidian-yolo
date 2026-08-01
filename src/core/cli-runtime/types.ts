@@ -125,6 +125,11 @@ export type CliQuestionResponse = {
 
 export type CliRuntimeEventListener = (event: CliRuntimeEvent) => void
 
+export type CliSessionConditionalRenameResult =
+  | 'renamed'
+  | 'preserved'
+  | 'unavailable'
+
 export type CliRuntime = {
   readonly runtimeId: CliRuntimeId
 
@@ -132,6 +137,11 @@ export type CliRuntime = {
   listModels?(): Promise<CliRuntimeModel[]>
   listSkills?(): Promise<CliRuntimeSkill[]>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
+  /** Rename only when the latest provider-native state is still a placeholder. */
+  renameSessionIfPlaceholder(
+    ref: CliSessionRef,
+    title: string,
+  ): Promise<CliSessionConditionalRenameResult>
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
   getConfiguration(
     cachedModels?: readonly CliRuntimeModel[],

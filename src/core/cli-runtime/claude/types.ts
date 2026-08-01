@@ -31,10 +31,19 @@ export type ClaudeSdkModule = {
     limit?: number
     offset?: number
   }): Promise<SDKSessionInfo[]>
+  getSessionInfo(
+    sessionId: string,
+    options?: { dir?: string },
+  ): Promise<SDKSessionInfo | undefined>
   getSessionMessages(
     sessionId: string,
     options?: { dir?: string },
   ): Promise<SessionMessage[]>
+  renameSession(
+    sessionId: string,
+    title: string,
+    options?: { dir?: string },
+  ): Promise<void>
 }
 
 export type ClaudeProcessSupport = {

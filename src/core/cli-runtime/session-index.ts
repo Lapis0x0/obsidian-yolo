@@ -33,6 +33,8 @@ export const cliSessionIndexEntrySchema = z.object({
     .optional(),
   modelId: z.string().nullable().optional(),
   reasoningEffort: z.string().nullable().optional(),
+  /** YOLO-generated display title; preferred over native list titles. */
+  title: z.string().min(1).optional(),
 })
 
 export type CliSessionIndexEntry = z.infer<typeof cliSessionIndexEntrySchema>

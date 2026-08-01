@@ -3,24 +3,11 @@ import isEqual from 'lodash.isequal'
 import { App } from 'obsidian'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { editorStateToPlainText } from '../components/chat-view/chat-input/utils/editor-state-to-plain-text'
-import {
-  DEFAULT_CHAT_TITLE_PROMPT,
-  DEFAULT_UNTITLED_CONVERSATION_TITLE,
-} from '../constants'
+import { DEFAULT_UNTITLED_CONVERSATION_TITLE } from '../constants'
 import { useApp } from '../contexts/app-context'
 import { useLanguage } from '../contexts/language-context'
 import { usePlugin } from '../contexts/plugin-context'
 import { useSettings } from '../contexts/settings-context'
-import { isRequestErrorNonRetryable } from '../core/ai/requestRetry'
-import { executeSingleTurn } from '../core/ai/single-turn'
-import {
-  createLLMDebugTrace,
-  isLLMDebugCaptureEnabled,
-  registerLLMDebugTraceForTurn,
-  updateLLMDebugTrace,
-} from '../core/llm/debugCapture'
-import { getChatModelClient } from '../core/llm/manager'
 import type { AutoPromotedTransportMode } from '../core/llm/requestTransport'
 import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
 import { batchLookupImageCache } from '../database/json/chat/imageCacheStore'
@@ -30,8 +17,6 @@ import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
   ChatMessage,
-  ChatSelectedSkill,
-  ChatUserMessage,
   SerializedChatMessage,
   normalizeChatConversationCompactionState,
 } from '../types/chat'
@@ -43,46 +28,21 @@ import {
   isUntitledConversationTitle,
 } from '../utils/chat/conversationTitle'
 import {
+  AUTO_TITLE_FAILURE_COOLDOWN_MS,
+  generateConversationTitleText,
+} from '../utils/chat/generateConversationTitle'
+import {
   deserializeMentionable,
   serializeMentionable,
 } from '../utils/chat/mentionable'
 
 import { useChatManager } from './useJsonManagers'
 
-const AUTO_TITLE_TIMEOUT_MS = 10000
-const AUTO_TITLE_MAX_RETRIES = 2
-const AUTO_TITLE_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
 const AUTO_TITLE_WAIT_CONVERSATION_RETRIES = 15
 const AUTO_TITLE_WAIT_CONVERSATION_INTERVAL_MS = 200
 const CHAT_HISTORY_UPDATED_EVENT = 'yolo:chat-history-updated'
 
 export { getConversationDisplayTitle, isUntitledConversationTitle }
-
-const formatSelectedSkillsForTitleInput = (
-  selectedSkills: ChatSelectedSkill[],
-): string => {
-  const skillNames = selectedSkills
-    .map((skill) => skill.name.trim())
-    .filter((name) => name.length > 0)
-
-  if (skillNames.length === 0) {
-    return '[User selected only skills without text.]'
-  }
-
-  return `[User selected skills: ${skillNames.join(', ')}]`
-}
-
-const extractTextFromPromptContent = (
-  promptContent: ChatUserMessage['promptContent'],
-): string => {
-  if (!promptContent) return ''
-  if (typeof promptContent === 'string') return promptContent.trim()
-  return promptContent
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text.trim())
-    .filter((text) => text.length > 0)
-    .join('\n\n')
-}
 
 type UseChatHistory = {
   createOrUpdateConversation: (
@@ -551,167 +511,42 @@ export function useChatHistory(): UseChatHistory {
           (message) => message.role === 'user',
         )
         if (!firstUserMessage) {
-          return
-        }
-
-        const userText = firstUserMessage.content
-          ? editorStateToPlainText(firstUserMessage.content)
-          : ''
-        const normalizedUserText = userText.trim()
-        const userMentionables = firstUserMessage.mentionables ?? []
-        const userSelectedSkills = firstUserMessage.selectedSkills ?? []
-        const hasUserSignal =
-          normalizedUserText.length > 0 ||
-          userMentionables.length > 0 ||
-          userSelectedSkills.length > 0
-
-        if (!hasUserSignal) {
           logTitleEvent('no_user_signal')
           return
         }
 
-        // Reuse the same expanded prompt that gets sent to the chat model so
-        // the title model sees referenced files / URLs / blocks / quotes
-        // without re-running compilation or doing extra I/O here.
-        const compiledText = extractTextFromPromptContent(
-          firstUserMessage.promptContent,
-        )
-
-        const userContext =
-          compiledText.length > 0
-            ? compiledText
-            : normalizedUserText.length > 0
-              ? normalizedUserText
-              : userSelectedSkills.length > 0
-                ? formatSelectedSkillsForTitleInput(userSelectedSkills)
-                : '[User shared only attachments/mentions without text.]'
-
-        const titleInput = `User first message:\n${userContext}`
-
-        let lastGenerationError: unknown = null
-
-        const attemptGenerateTitle = async (
-          retryCount: number = 0,
-        ): Promise<string | null> => {
-          const controller = new AbortController()
-          const timer = setTimeout(
-            () => controller.abort(),
-            AUTO_TITLE_TIMEOUT_MS,
-          )
-
-          try {
-            const { providerClient, model } = getChatModelClient({
-              settings,
-              modelId: settings.chatTitleModelId,
-              onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
-            })
-
-            const defaultTitlePrompt =
-              DEFAULT_CHAT_TITLE_PROMPT[language] ??
-              DEFAULT_CHAT_TITLE_PROMPT.en
-            const customizedPrompt = (
-              settings.chatOptions.chatTitlePrompt ?? ''
-            ).trim()
-            const systemPrompt =
-              customizedPrompt.length > 0
-                ? customizedPrompt
-                : defaultTitlePrompt
-            const debugTrace = isLLMDebugCaptureEnabled()
-              ? createLLMDebugTrace({
-                  model,
-                  requestKind: 'title-generation',
-                })
-              : null
-            if (debugTrace) {
-              registerLLMDebugTraceForTurn({
-                conversationId: id,
-                sourceUserMessageId: firstUserMessage.id,
-                traceId: debugTrace.id,
-              })
-            }
-
-            const startedAt = Date.now()
-            let response: Awaited<ReturnType<typeof executeSingleTurn>>
-            try {
-              response = await executeSingleTurn({
-                providerClient,
-                model,
-                request: {
-                  model: model.model,
-                  messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: titleInput },
-                  ],
-                },
-                deliveryMode: 'buffered',
-                purpose: 'lightweight',
-                reasoningPolicy: 'omit',
-                signal: controller.signal,
-                debugTraceId: debugTrace?.id,
-              })
-            } catch (error) {
-              updateLLMDebugTrace(debugTrace?.id, {
-                completedAt: Date.now(),
-                durationMs: Date.now() - startedAt,
-                generationState: controller.signal.aborted
-                  ? 'aborted'
-                  : 'error',
-                errorMessage:
-                  error instanceof Error ? error.message : String(error),
-              })
-              throw error
-            }
-            updateLLMDebugTrace(debugTrace?.id, {
-              completedAt: Date.now(),
-              durationMs: Date.now() - startedAt,
-              generationState: 'completed',
-              usage: response.usage,
-              hasToolCalls: response.toolCalls.length > 0,
-              toolCallNames: response.toolCalls.map(
-                (toolCall) => toolCall.name,
-              ),
-            })
-
-            const nextTitle = (response.content || '')
-              .trim()
-              .replace(/^["']+|["']+$/g, '')
-            return nextTitle || null
-          } catch (error) {
-            lastGenerationError = error
-            if (
-              retryCount < AUTO_TITLE_MAX_RETRIES &&
-              !isRequestErrorNonRetryable(error)
-            ) {
-              const backoffMs = 300 * (retryCount + 1)
-              await new Promise((resolve) => setTimeout(resolve, backoffMs))
-              return attemptGenerateTitle(retryCount + 1)
-            }
-            return null
-          } finally {
-            clearTimeout(timer)
-          }
-        }
-
-        const generatedTitle = await attemptGenerateTitle()
-        if (!generatedTitle) {
-          logTitleEvent('llm_generation_failed')
-          const errorMessage =
-            lastGenerationError instanceof Error
-              ? lastGenerationError.message
-              : typeof lastGenerationError === 'string'
-                ? lastGenerationError
-                : lastGenerationError
-                  ? JSON.stringify(lastGenerationError)
-                  : 'unknown_error'
-          console.error('[YOLO] Failed to generate conversation title', {
+        const result = await generateConversationTitleText({
+          settings,
+          language,
+          messages,
+          onAutoPromoteTransportMode: handleAutoPromoteTransportMode,
+          debug: {
             conversationId: id,
-            error: errorMessage,
-            force,
-          })
-          titleGenerationCooldownUntilRef.current.set(
-            id,
-            Date.now() + AUTO_TITLE_FAILURE_COOLDOWN_MS,
-          )
+            sourceUserMessageId: firstUserMessage.id,
+          },
+        })
+
+        if (!result.ok) {
+          logTitleEvent(result.reason)
+          if (result.reason === 'llm_generation_failed') {
+            const errorMessage =
+              result.error instanceof Error
+                ? result.error.message
+                : typeof result.error === 'string'
+                  ? result.error
+                  : result.error
+                    ? JSON.stringify(result.error)
+                    : 'unknown_error'
+            console.error('[YOLO] Failed to generate conversation title', {
+              conversationId: id,
+              error: errorMessage,
+              force,
+            })
+            titleGenerationCooldownUntilRef.current.set(
+              id,
+              Date.now() + AUTO_TITLE_FAILURE_COOLDOWN_MS,
+            )
+          }
           return
         }
         titleGenerationCooldownUntilRef.current.delete(id)
@@ -724,7 +559,7 @@ export function useChatHistory(): UseChatHistory {
         ) {
           await chatManager.updateChat(
             id,
-            { title: generatedTitle },
+            { title: result.title },
             {
               touchUpdatedAt: false,
             },

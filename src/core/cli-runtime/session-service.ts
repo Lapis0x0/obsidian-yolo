@@ -50,6 +50,14 @@ const mergeOverlay = (
   overlay: CliSessionIndexEntry | undefined,
 ): CliSessionListItem => ({
   ...metadata,
+  ...(overlay?.title?.trim()
+    ? {
+        title: overlay.title.trim(),
+        ...(metadata.title.trim() && metadata.title.trim() !== overlay.title.trim()
+          ? { preview: metadata.preview ?? metadata.title }
+          : {}),
+      }
+    : {}),
   hasOverlay: overlay !== undefined,
   ...(overlay?.lastOpenedAt !== undefined
     ? { lastOpenedAt: overlay.lastOpenedAt }
@@ -165,6 +173,8 @@ export class CliSessionService {
         ...(existing && 'reasoningEffort' in existing
           ? { reasoningEffort: existing.reasoningEffort }
           : {}),
+        ...(existing?.title ? { title: existing.title } : {}),
+        ...(existing?.assistantId ? { assistantId: existing.assistantId } : {}),
       }),
     )
   }
@@ -282,8 +292,54 @@ export class CliSessionService {
         ...(existing && 'reasoningEffort' in existing
           ? { reasoningEffort: existing.reasoningEffort }
           : {}),
+        ...(existing?.title ? { title: existing.title } : {}),
+        ...(existing?.assistantId ? { assistantId: existing.assistantId } : {}),
       }),
     )
+  }
+
+  async getOverlayTitle(ref: CliSessionRef): Promise<string | null> {
+    const title = (await this.indexStore.get(ref))?.title?.trim()
+    return title && title.length > 0 ? title : null
+  }
+
+  async recordTitle(ref: CliSessionRef, title: string): Promise<void> {
+    const normalized = title.trim()
+    if (!normalized) throw new Error('CLI session title cannot be empty.')
+    await this.indexStore.update(ref, (existing) =>
+      createCliSessionIndexEntry({
+        ...ref,
+        ...existing,
+        title: normalized,
+      }),
+    )
+  }
+
+  /**
+   * Write YOLO title to overlay, then best-effort rename the native session
+   * when the current native title still looks like a placeholder.
+   */
+  async applyGeneratedTitle({
+    ref,
+    title,
+  }: {
+    ref: CliSessionRef
+    title: string
+  }): Promise<{ overlayWritten: true; nativeRenamed: boolean }> {
+    await this.recordTitle(ref, title)
+    try {
+      const result = await this.getRuntime(
+        ref.runtimeId,
+      ).renameSessionIfPlaceholder(ref, title)
+      return { overlayWritten: true, nativeRenamed: result === 'renamed' }
+    } catch (error) {
+      console.warn('[YOLO] Failed to rename native CLI session title', {
+        runtimeId: ref.runtimeId,
+        nativeSessionId: ref.nativeSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return { overlayWritten: true, nativeRenamed: false }
+    }
   }
 
   removeOverlay(ref: CliSessionRef): Promise<boolean> {

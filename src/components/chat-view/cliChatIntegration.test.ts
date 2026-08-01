@@ -328,6 +328,7 @@ describe('CLI chat integration', () => {
         encodeTurnContent: () => 'accepted',
       }),
     ).resolves.toEqual({
+      sessionRef: ref,
       userMessage: userMessage(),
       overlayError,
     })
