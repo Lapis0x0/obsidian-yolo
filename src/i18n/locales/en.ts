@@ -1937,9 +1937,9 @@ export const en: TranslationKeys = {
         'Auto-approve tool calls for search, read/write operations, and multi-step tasks.',
     },
     cliSurface: {
-      emptyTitle: 'Start a CLI session',
+      emptyTitle: 'Use CLI Agent',
       emptyDescription:
-        'Native CLI conversation messages will appear here after you send a message.',
+        'Connect Claude Code or Codex to run complex tasks on this device.',
       emptyUserMessage: 'Empty message',
       error: 'CLI session error: {message}',
       runtimeError: 'Could not start the CLI runtime: {message}',

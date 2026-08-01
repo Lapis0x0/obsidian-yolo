@@ -1823,8 +1823,8 @@ export const zh: TranslationKeys = {
       agentFullDescription: '自动放行工具调用，处理搜索、读写与多步骤任务',
     },
     cliSurface: {
-      emptyTitle: '开始一个 CLI 会话',
-      emptyDescription: '发送消息后，原生 CLI 对话会显示在这里。',
+      emptyTitle: '使用 CLI Agent',
+      emptyDescription: '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
       emptyUserMessage: '空消息',
       error: 'CLI 会话出错：{message}',
       runtimeError: '无法启动 CLI 运行时：{message}',

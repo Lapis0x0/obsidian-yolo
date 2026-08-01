@@ -337,7 +337,7 @@ describe('CliChatSurface', () => {
 
   it('renders the snapshot supplied by the single surface owner', () => {
     expect(renderSurface(makeSnapshot({ sessionRef: null }))).toContain(
-      '开始一个 CLI 会话',
+      '使用 CLI Agent',
     )
     expect(
       renderSurface(
@@ -358,7 +358,7 @@ describe('CliChatSurface', () => {
       runState: 'running',
     })
 
-    expect(renderSurface(empty)).toContain('开始一个 CLI 会话')
+    expect(renderSurface(empty)).toContain('使用 CLI Agent')
     expect(renderSurface(failed)).not.toContain('CLI 会话出错')
     expect(renderSurface(failed)).not.toContain('CLI 运行出错')
     expect(renderSurface(streaming)).not.toContain('CLI 正在回复…')
@@ -438,6 +438,6 @@ describe('CliChatSurface', () => {
     )
 
     expect(html).toContain('What would you like to do in Test Vault today?')
-    expect(html).not.toContain('开始一个 CLI 会话')
+    expect(html).not.toContain('使用 CLI Agent')
   })
 })

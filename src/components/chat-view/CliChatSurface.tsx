@@ -1,4 +1,5 @@
 import type { SerializedEditorState } from 'lexical'
+import { SquareTerminal } from 'lucide-react'
 import { Notice, TFile } from 'obsidian'
 import {
   type ReactNode,
@@ -673,28 +674,27 @@ export function CliChatSurface({
         'chat.scrollToBottomWhileStreaming',
         '回到底部继续跟随',
       )}
-      emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '开始一个 CLI 会话')}
-      emptyStateAgentTitle={t(
-        'chat.cliSurface.emptyTitle',
-        '开始一个 CLI 会话',
-      )}
+      emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
+      emptyStateAgentTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
       emptyStateAgentFullTitle={t(
         'chat.cliSurface.emptyTitle',
-        '开始一个 CLI 会话',
+        '使用 CLI Agent',
       )}
       emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
       emptyStateAskDescription={t(
         'chat.cliSurface.emptyDescription',
-        '发送消息后，原生 CLI 对话会显示在这里。',
+        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
       )}
       emptyStateAgentDescription={t(
         'chat.cliSurface.emptyDescription',
-        '发送消息后，原生 CLI 对话会显示在这里。',
+        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
       )}
       emptyStateAgentFullDescription={t(
         'chat.cliSurface.emptyDescription',
-        '发送消息后，原生 CLI 对话会显示在这里。',
+        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
       )}
+      emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
+      emptyStateIconMode="cli"
       footerContent={footerContent}
     />
   )

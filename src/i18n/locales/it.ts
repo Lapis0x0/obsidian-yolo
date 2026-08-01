@@ -1783,9 +1783,9 @@ export const it: DeepPartial<TranslationKeys> = {
         'Approva automaticamente gli strumenti per ricerca, lettura/scrittura e task multi-step.',
     },
     cliSurface: {
-      emptyTitle: 'Avvia una sessione CLI',
+      emptyTitle: 'Usa CLI Agent',
       emptyDescription:
-        'I messaggi della conversazione CLI nativa appariranno qui dopo il primo invio.',
+        'Collega Claude Code o Codex per eseguire attività complesse su questo dispositivo.',
       emptyUserMessage: 'Messaggio vuoto',
       error: 'Errore della sessione CLI: {message}',
       runtimeError: 'Impossibile avviare il runtime CLI: {message}',
