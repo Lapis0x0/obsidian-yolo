@@ -167,6 +167,8 @@ export const getDefaultTimelineEstimatedHeight = (
       return COMPACTION_ESTIMATED_HEIGHT
     case 'query-progress':
       return QUERY_PROGRESS_ESTIMATED_HEIGHT
+    case 'pending-response':
+      return 56
     case 'continue-response':
       return CONTINUE_RESPONSE_ESTIMATED_HEIGHT
     case 'bottom-anchor':

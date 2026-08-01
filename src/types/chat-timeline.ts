@@ -58,6 +58,11 @@ export type ChatTimelineQueryProgressItem = ChatTimelineBaseItem & {
   kind: 'query-progress'
 }
 
+export type ChatTimelinePendingResponseItem = ChatTimelineBaseItem & {
+  kind: 'pending-response'
+  sourceUserMessageId: string
+}
+
 export type ChatTimelineContinueResponseItem = ChatTimelineBaseItem & {
   kind: 'continue-response'
 }
@@ -72,6 +77,7 @@ export type ChatTimelineItem =
   | ChatTimelineCompactionPendingItem
   | ChatTimelineCompactionDividerItem
   | ChatTimelineQueryProgressItem
+  | ChatTimelinePendingResponseItem
   | ChatTimelineContinueResponseItem
   | ChatTimelineBottomAnchorItem
 

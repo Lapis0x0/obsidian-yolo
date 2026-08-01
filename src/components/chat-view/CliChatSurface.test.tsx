@@ -79,6 +79,13 @@ jest.mock('./AssistantToolMessageGroupItem', () => ({
     mockedAssistantGroup(props),
 }))
 
+jest.mock('./AssistantMessageReasoning', () => ({
+  __esModule: true,
+  default: ({ generationState }: { generationState?: string }) => (
+    <div data-stage="requesting">Requesting: {generationState}</div>
+  ),
+}))
+
 jest.mock('./ChatConversationPane', () => ({
   ChatConversationPane: ({
     showEmptyState,
@@ -304,6 +311,22 @@ describe('CliChatSurface', () => {
       expect(html).not.toContain('等待你的回答')
       expect(html).not.toContain('data-run-state=')
     }
+  })
+
+  it('derives a requesting timeline node until native output arrives', () => {
+    const pending = makeSnapshot({
+      messages: [makeUser('user-pending', 'Run the tests')],
+      sessionRef: null,
+      runState: 'running',
+    })
+    const answered = makeSnapshot({
+      messages: [makeUser('user-pending', 'Run the tests'), assistant],
+      runState: 'running',
+    })
+
+    expect(renderSurface(pending)).toContain('Requesting')
+    expect(renderSurface(pending)).toContain('data-stage="requesting"')
+    expect(renderSurface(answered)).not.toContain('data-stage="requesting"')
   })
 
   it('uses the shared workspace greeting for an empty CLI conversation', () => {

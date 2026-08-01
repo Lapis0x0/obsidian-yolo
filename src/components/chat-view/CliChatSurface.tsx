@@ -25,6 +25,7 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildMessageTimelineItems } from '../../utils/chat/timeline'
 
+import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
@@ -47,6 +48,7 @@ const noopToolMessageUpdate = (_message: ChatToolMessage): void => undefined
 const noopOpenEditSummaryFile = (
   _file: GroupEditSummary['files'][number],
 ): void => undefined
+const PENDING_RESPONSE_ESTIMATED_HEIGHT = 56
 
 export type CliChatSurfaceProps = {
   snapshot: CliConversationSnapshot
@@ -109,6 +111,15 @@ const getActiveStreamingMessageId = (
     if (message?.role !== 'user') return message.id
   }
   return null
+}
+
+const getPendingResponseUserMessageId = (
+  messages: readonly ChatMessage[],
+  runState: CliRuntimeRunState,
+): string | null => {
+  if (runState !== 'running') return null
+  const latestMessage = messages.at(-1)
+  return latestMessage?.role === 'user' ? latestMessage.id : null
 }
 
 const toAgentRunStatus = (
@@ -188,17 +199,40 @@ export function CliChatSurface({
     snapshot.messages,
     snapshot.runState,
   )
-  const timelineItems = useMemo(
-    () =>
-      buildMessageTimelineItems({
-        groupedChatMessages: readModel.groupedChatMessages,
-        revisionsById: readModel.revisionsById,
-        activeEditableMessageId: null,
-        activeStreamingMessageId,
-        includeBottomAnchor: true,
-      }),
-    [activeStreamingMessageId, readModel],
+  const pendingResponseUserMessageId = getPendingResponseUserMessageId(
+    snapshot.messages,
+    snapshot.runState,
   )
+  const timelineItems = useMemo(() => {
+    const items = buildMessageTimelineItems({
+      groupedChatMessages: readModel.groupedChatMessages,
+      revisionsById: readModel.revisionsById,
+      activeEditableMessageId: null,
+      activeStreamingMessageId,
+      includeBottomAnchor: true,
+    })
+    if (!pendingResponseUserMessageId) return items
+
+    const bottomAnchorIndex = items.findIndex(
+      (item) => item.kind === 'bottom-anchor',
+    )
+    const pendingResponseItem: ChatTimelineItem = {
+      kind: 'pending-response',
+      id: `pending-response:${pendingResponseUserMessageId}`,
+      renderKey: `pending-response:${pendingResponseUserMessageId}`,
+      sourceUserMessageId: pendingResponseUserMessageId,
+      estimatedHeight: PENDING_RESPONSE_ESTIMATED_HEIGHT,
+      spacingBefore: 24,
+      isPinnedForRender: true,
+      isStreaming: true,
+    }
+    if (bottomAnchorIndex < 0) return [...items, pendingResponseItem]
+    return [
+      ...items.slice(0, bottomAnchorIndex),
+      pendingResponseItem,
+      ...items.slice(bottomAnchorIndex),
+    ]
+  }, [activeStreamingMessageId, pendingResponseUserMessageId, readModel])
   const stableTimelineItems = useStableChatTimelineItems(timelineItems)
   const latestAssistantGroupId = getLatestAssistantGroupId(
     readModel.groupedChatMessages,
@@ -241,6 +275,18 @@ export function CliChatSurface({
         return message?.role === 'user' ? (
           <CliUserMessage message={message} />
         ) : null
+      }
+
+      if (timelineItem.kind === 'pending-response') {
+        return (
+          <div className="yolo-chat-messages-assistant">
+            <AssistantMessageReasoning
+              reasoning=""
+              hasAnswerContent={false}
+              generationState="streaming"
+            />
+          </div>
+        )
       }
 
       if (timelineItem.kind !== 'assistant-group') return null
