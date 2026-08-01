@@ -68,8 +68,9 @@ export const zh: TranslationKeys = {
     },
     runtimeSelector: {
       modeAccessibleLabel: '聊天模式',
+      chatLabel: 'Agent',
       cliLabel: 'CLI',
-      chatDescription: 'YOLO 内置聊天',
+      chatDescription: 'YOLO 内置对话',
       cliDescription: '使用 CLI 执行复杂任务',
       accessibleLabel: 'CLI 提供方：{runtime}',
       menuLabel: 'CLI 提供方',

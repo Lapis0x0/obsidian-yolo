@@ -68,6 +68,7 @@ export const en: TranslationKeys = {
     },
     runtimeSelector: {
       modeAccessibleLabel: 'Chat mode',
+      chatLabel: 'Agent',
       cliLabel: 'CLI',
       chatDescription: 'Built-in YOLO chat',
       cliDescription: 'Use CLI for tasks',

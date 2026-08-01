@@ -1,8 +1,9 @@
-import { MessageCircle, PenLine, SquareTerminal } from 'lucide-react'
+import { PenLine, SquareTerminal } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import RollerSelect from '../common/RollerSelect'
+import { YoloOrbitIcon } from '../common/YoloOrbitIcon'
 
 export type ChatSurfaceKind = 'chat' | 'cli'
 
@@ -37,7 +38,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
   const clickOpenBlockTimeoutRef = useRef<number | null>(null)
   const hoverCloseTimeoutRef = useRef<number | null>(null)
 
-  const chatLabel = t('sidebar.tabs.chat', 'Chat')
+  const chatLabel = t('sidebar.runtimeSelector.chatLabel', 'Agent')
   const cliLabel = t('sidebar.runtimeSelector.cliLabel', 'CLI')
   const composerLabel = t('sidebar.tabs.composer', 'Composer')
   const modeOptions = [
@@ -48,7 +49,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
         'sidebar.runtimeSelector.chatDescription',
         'Built-in YOLO chat',
       ),
-      icon: <MessageCircle size={14} strokeWidth={2} />,
+      icon: <YoloOrbitIcon size={14} />,
     },
     {
       value: 'cli',
@@ -241,7 +242,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
           aria-pressed={activeView === 'chat'}
         >
           <span className="yolo-view-toggle-button-icon" aria-hidden="true">
-            <MessageCircle size={16} strokeWidth={2} />
+            <YoloOrbitIcon size={16} />
           </span>
           <span className="yolo-view-toggle-button-label">{chatLabel}</span>
         </button>

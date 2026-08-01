@@ -77,6 +77,7 @@ export type TranslationKeys = {
     }
     runtimeSelector: {
       modeAccessibleLabel: string
+      chatLabel: string
       cliLabel: string
       chatDescription: string
       cliDescription: string

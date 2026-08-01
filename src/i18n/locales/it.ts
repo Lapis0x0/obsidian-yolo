@@ -84,6 +84,7 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     runtimeSelector: {
       modeAccessibleLabel: 'Modalità chat',
+      chatLabel: 'Agent',
       cliLabel: 'CLI',
       chatDescription: 'Chat integrata di YOLO',
       cliDescription: 'Usa CLI per attività',

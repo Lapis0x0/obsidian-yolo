@@ -67,7 +67,7 @@ describe('ViewToggle chat surface hierarchy', () => {
     )
 
     expect(mockRollerProps).toBeNull()
-    expect(html).toContain('>Chat<')
+    expect(html).toContain('>Agent<')
     expect(html).not.toContain('data-roller-value')
   })
 })
