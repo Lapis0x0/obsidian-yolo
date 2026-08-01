@@ -1047,13 +1047,15 @@ export const getToolDisplayInfo = (
   const argumentsObject = parseToolArguments(request.arguments)
   const cliToolCall = request.metadata?.cliToolCall
   if (cliToolCall) {
+    const isCommandExecution = cliToolCall.capability === 'command_execution'
     const summaryText =
-      cliToolCall.capability === 'command_execution' &&
-      typeof argumentsObject?.command === 'string'
+      isCommandExecution && typeof argumentsObject?.command === 'string'
         ? summarizeShellCommand(argumentsObject.command, { streaming: false })
         : undefined
     return {
-      displayName: getCliToolCallDisplayName(cliToolCall),
+      displayName: isCommandExecution
+        ? (labels.displayNames.terminal_command ?? 'Terminal command')
+        : getCliToolCallDisplayName(cliToolCall),
       ...(summaryText ? { summaryText } : {}),
     }
   }

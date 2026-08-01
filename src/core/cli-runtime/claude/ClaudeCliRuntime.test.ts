@@ -397,6 +397,11 @@ describe('ClaudeCliRuntime', () => {
           id: 'tool-1',
           name: 'Bash',
           arguments: { kind: 'complete', value: { command: 'npm test' } },
+          metadata: {
+            cliToolCall: {
+              capability: 'command_execution',
+            },
+          },
         },
       ],
     })
@@ -404,7 +409,15 @@ describe('ClaudeCliRuntime', () => {
       role: 'tool',
       toolCalls: [
         {
-          request: { id: 'tool-1', name: 'Bash' },
+          request: {
+            id: 'tool-1',
+            name: 'Bash',
+            metadata: {
+              cliToolCall: {
+                capability: 'command_execution',
+              },
+            },
+          },
           response: {
             status: ToolCallResponseStatus.Success,
             data: { type: 'text', text: 'All tests passed' },

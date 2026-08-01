@@ -39,6 +39,7 @@ import {
 } from './askUserQuestion'
 import { AsyncPushQueue } from './asyncQueue'
 import {
+  CLAUDE_BASH_TOOL,
   extractTextContent,
   extractThinkingContent,
   extractToolResults,
@@ -1121,6 +1122,9 @@ export class ClaudeCliRuntime implements CliRuntime {
         eventType: 'tool_use',
         name: tool.name,
         ...(tool.parentCallId ? { parentCallId: tool.parentCallId } : {}),
+        ...(tool.name === CLAUDE_BASH_TOOL
+          ? { capability: 'command_execution' as const }
+          : {}),
       },
     })
     if (tool.parentCallId) {

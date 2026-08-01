@@ -17,6 +17,8 @@ import {
   mapClaudeAskUserQuestionInput,
 } from './askUserQuestion'
 
+export const CLAUDE_BASH_TOOL = 'Bash'
+
 type ContentBlock = Record<string, unknown> & { type?: unknown }
 
 export type ClaudeToolUse = {
@@ -109,6 +111,12 @@ export const toToolCallRequest = (toolUse: ClaudeToolUse): ToolCallRequest => {
     toolUse.name === CLAUDE_ASK_USER_QUESTION_TOOL
       ? mapClaudeAskUserQuestionInput(toolUse.input)
       : null
+  const capability =
+    toolUse.name === CLAUDE_ASK_USER_QUESTION_TOOL && presentationArguments
+      ? ('user_question' as const)
+      : toolUse.name === CLAUDE_BASH_TOOL
+        ? ('command_execution' as const)
+        : undefined
   return createCliToolCallRequest({
     id: toolUse.id,
     input: toolUse.input,
@@ -117,12 +125,14 @@ export const toToolCallRequest = (toolUse: ClaudeToolUse): ToolCallRequest => {
       eventType: 'tool_use',
       name: toolUse.name,
       ...(toolUse.parentCallId ? { parentCallId: toolUse.parentCallId } : {}),
-      ...(presentationArguments
+      ...(capability === 'user_question' && presentationArguments
         ? {
-            capability: 'user_question',
+            capability,
             presentationArguments,
           }
-        : {}),
+        : capability
+          ? { capability }
+          : {}),
     },
   })
 }

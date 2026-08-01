@@ -81,28 +81,6 @@ describe('ToolMessage rendering', () => {
     ).toEqual({ displayName: 'codex:list_mcp_resources' })
   })
 
-  it('adds command presentation without replacing the native CLI name', () => {
-    expect(
-      getToolDisplayInfo({
-        name: 'commandExecution',
-        arguments: createCompleteToolCallArguments({
-          value: { command: '/bin/zsh -lc pwd', cwd: '/vault' },
-        }),
-        metadata: {
-          cliToolCall: {
-            runtimeId: 'codex',
-            eventType: 'commandExecution',
-            name: 'commandExecution',
-            capability: 'command_execution',
-          },
-        },
-      }),
-    ).toEqual({
-      displayName: 'commandExecution',
-      summaryText: '/bin/zsh -lc pwd',
-    })
-  })
-
   it('hydrates original terminal_command card from persisted result output', () => {
     const terminalResult: ChatTerminalCommandResultMessage = {
       role: 'terminal_command_result',
@@ -922,6 +900,54 @@ describe('ToolMessage headline helpers', () => {
     ).toEqual({
       displayName: 'Terminal command',
       summaryText: 'git status',
+    })
+  })
+
+  it('uses the shared terminal-command label for CLI command execution', () => {
+    expect(
+      getToolDisplayInfo(
+        {
+          name: 'commandExecution',
+          arguments: createCompleteToolCallArguments({
+            value: { command: '/bin/zsh -lc pwd', cwd: '/vault' },
+          }),
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'codex',
+              eventType: 'commandExecution',
+              name: 'commandExecution',
+              capability: 'command_execution',
+            },
+          },
+        },
+        labels,
+      ),
+    ).toEqual({
+      displayName: 'Terminal command',
+      summaryText: '/bin/zsh -lc pwd',
+    })
+
+    expect(
+      getToolDisplayInfo(
+        {
+          name: 'Bash',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'ls -la' },
+          }),
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'claude-code',
+              eventType: 'tool_use',
+              name: 'Bash',
+              capability: 'command_execution',
+            },
+          },
+        },
+        labels,
+      ),
+    ).toEqual({
+      displayName: 'Terminal command',
+      summaryText: 'ls -la',
     })
   })
 
