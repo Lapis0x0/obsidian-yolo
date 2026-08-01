@@ -14,6 +14,11 @@ import {
 } from '../../../types/tool-call.types'
 import { createCliToolCallRequest } from '../tool-call'
 
+import {
+  decodeCodexExecEnvelope,
+  normalizeCodexToolInput,
+  splitCodexExecEnvelopeOutput,
+} from './exec-envelope'
 import type {
   CodexRawResponseItem,
   CodexThreadItem,
@@ -115,15 +120,17 @@ const stringifyDynamicToolResult = (contentItems: unknown[] | null): string => {
     : stringify(contentItems)
 }
 
-const stringifyRawToolOutput = (
-  output: Extract<
-    CodexRawResponseItem,
-    { type: 'custom_tool_call_output' }
-  >['output'],
-): string => {
+const stringifyRawToolOutput = (output: unknown): string => {
   if (typeof output === 'string') return output
+  if (!Array.isArray(output)) return stringify(output)
   const textParts = output.flatMap((item): string[] =>
-    item.type === 'input_text' ? [item.text] : [],
+    item !== null &&
+    typeof item === 'object' &&
+    !Array.isArray(item) &&
+    (item as Record<string, unknown>).type === 'input_text' &&
+    typeof (item as Record<string, unknown>).text === 'string'
+      ? [(item as Record<string, unknown>).text as string]
+      : [],
   )
   return textParts.length === output.length
     ? textParts.join('\n')
@@ -478,46 +485,131 @@ export const mapCodexTurns = (
     turn.items.flatMap((item) => mapCodexItem(item, cwd, turn.id)),
   )
 
-export const mapCodexRawCustomToolCall = (
-  item: Extract<CodexRawResponseItem, { type: 'custom_tool_call' }>,
-): {
-  request: ToolCallRequest
-  messages: [ChatAssistantMessage, ChatToolMessage]
-} => {
-  const request = createCliToolCallRequest({
-    id: item.call_id,
-    input: { input: item.input },
-    metadata: {
-      runtimeId: 'codex',
-      eventType: item.type,
-      name: item.name,
-    },
-  })
-  return {
-    request,
-    messages: toolPair({
-      request,
-      response: { status: ToolCallResponseStatus.Running },
-    }),
+const parseRawToolInput = (
+  item: CodexRawResponseItem,
+): Record<string, unknown> => {
+  const rawInput =
+    item.type === 'custom_tool_call'
+      ? item.input
+      : item.type === 'function_call'
+        ? item.arguments
+        : ''
+  if (item.type === 'custom_tool_call') return { raw: rawInput }
+  try {
+    const parsed = JSON.parse(rawInput) as unknown
+    return parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : { value: parsed }
+  } catch {
+    return { raw: rawInput }
   }
 }
 
-export const mapCodexRawCustomToolOutput = (
-  item: Extract<CodexRawResponseItem, { type: 'custom_tool_call_output' }>,
-  request: ToolCallRequest,
-): ChatToolMessage => ({
-  role: 'tool',
-  id: `codex-result-${request.id}`,
-  toolCalls: [
-    {
-      request,
-      response: {
-        status: ToolCallResponseStatus.Success,
-        data: { type: 'text', text: stringifyRawToolOutput(item.output) },
-      },
+const rawToolCapability = (
+  name: string,
+): 'command_execution' | 'file_change' | 'user_question' | undefined => {
+  if (name === 'exec_command') return 'command_execution'
+  if (name === 'apply_patch') return 'file_change'
+  if (name === 'request_user_input') return 'user_question'
+  return undefined
+}
+
+const createRawToolRequest = ({
+  id,
+  name,
+  input,
+  eventType,
+}: {
+  id: string
+  name: string
+  input: Record<string, unknown>
+  eventType: string
+}): ToolCallRequest =>
+  createCliToolCallRequest({
+    id,
+    input,
+    metadata: {
+      runtimeId: 'codex',
+      eventType,
+      name,
+      ...(rawToolCapability(name)
+        ? { capability: rawToolCapability(name)! }
+        : {}),
     },
-  ],
-})
+  })
+
+export const mapCodexRawToolCall = (
+  item: Extract<
+    CodexRawResponseItem,
+    { type: 'custom_tool_call' | 'function_call' }
+  >,
+): {
+  requests: ToolCallRequest[]
+  messages: ChatMessage[]
+} => {
+  const rawInput = parseRawToolInput(item)
+  const decoded =
+    item.name === 'exec' && item.type === 'custom_tool_call'
+      ? decodeCodexExecEnvelope(item.input)
+      : null
+  const normalizedCalls = decoded ?? [
+    {
+      name: item.name,
+      input: normalizeCodexToolInput(item.name, rawInput),
+    },
+  ]
+  const requests = normalizedCalls.map((call, index) =>
+    createRawToolRequest({
+      id:
+        normalizedCalls.length === 1
+          ? item.call_id
+          : `${item.call_id}:${index + 1}`,
+      name: call.name,
+      input: call.input,
+      eventType: item.type,
+    }),
+  )
+  return {
+    requests,
+    messages: requests.flatMap((request) =>
+      toolPair({
+        request,
+        response: { status: ToolCallResponseStatus.Running },
+      }),
+    ),
+  }
+}
+
+export const mapCodexRawToolOutput = (
+  item: Extract<
+    CodexRawResponseItem,
+    { type: 'custom_tool_call_output' | 'function_call_output' }
+  >,
+  requests: readonly ToolCallRequest[],
+): ChatToolMessage[] => {
+  const splitOutput = splitCodexExecEnvelopeOutput(item.output, requests.length)
+  return requests.map((request, index) => ({
+    role: 'tool',
+    id: `codex-result-${request.id}`,
+    toolCalls: [
+      {
+        request,
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            type: 'text',
+            text: stringifyRawToolOutput(
+              splitOutput?.[index] ??
+                (index === requests.length - 1 ? item.output : ''),
+            ),
+          },
+        },
+      },
+    ],
+  }))
+}
 
 export const buildPendingToolMessages = ({
   requestId,

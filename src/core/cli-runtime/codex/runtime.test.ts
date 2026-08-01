@@ -150,6 +150,79 @@ class RpcFakeProcess implements CodexProcessLike {
 }
 
 describe('CodexCliRuntime', () => {
+  it('hydrates from the durable JSONL transcript when one is available', async () => {
+    const process = new RpcFakeProcess()
+    process.threadTurns = [
+      {
+        id: 'turn-thread-read',
+        status: 'completed',
+        error: null,
+        items: [
+          {
+            type: 'agentMessage',
+            id: 'thread-read-message',
+            text: 'incomplete high-level history',
+          },
+        ],
+      },
+    ]
+    const transcriptMessages = [
+      {
+        role: 'assistant' as const,
+        id: 'jsonl-message',
+        content: 'complete transcript',
+      },
+    ]
+    const loadSessionMessages = jest.fn(async () => transcriptMessages)
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+      loadSessionMessages,
+    })
+
+    const hydration = await runtime.openSession({
+      runtimeId: 'codex',
+      nativeSessionId: 'thread-1',
+    })
+
+    expect(loadSessionMessages).toHaveBeenCalledWith('/sessions/thread-1.jsonl')
+    expect(hydration.messages).toEqual(transcriptMessages)
+    await runtime.dispose()
+  })
+
+  it('falls back to thread/read when the transcript cannot be read', async () => {
+    const process = new RpcFakeProcess()
+    process.threadTurns = [
+      {
+        id: 'turn-thread-read',
+        status: 'completed',
+        error: null,
+        items: [
+          {
+            type: 'agentMessage',
+            id: 'thread-read-message',
+            text: 'high-level history',
+          },
+        ],
+      },
+    ]
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+      loadSessionMessages: async () => null,
+    })
+
+    const hydration = await runtime.openSession({
+      runtimeId: 'codex',
+      nativeSessionId: 'thread-1',
+    })
+
+    expect(hydration.messages).toMatchObject([
+      { role: 'assistant', content: 'high-level history' },
+    ])
+    await runtime.dispose()
+  })
+
   it('rewrites the current thread by rolling back the selected turn', async () => {
     const process = new RpcFakeProcess()
     process.threadTurns = [

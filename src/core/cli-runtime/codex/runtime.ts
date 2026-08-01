@@ -1,3 +1,4 @@
+import type { ChatMessage } from '../../../types/chat'
 import type { ContentPart } from '../../../types/llm/request'
 import {
   type ToolCallRequest,
@@ -27,8 +28,8 @@ import {
 import {
   buildPendingToolMessages,
   mapCodexItem,
-  mapCodexRawCustomToolCall,
-  mapCodexRawCustomToolOutput,
+  mapCodexRawToolCall,
+  mapCodexRawToolOutput,
   mapCodexTurns,
   parseCodexUserMessageId,
   shouldEmitCodexItemOnStarted,
@@ -58,6 +59,7 @@ type PendingServerRequest = {
 export type CodexCliRuntimeOptions = CodexProcessOptions & {
   resolveHost?: CodexHostResolver
   createProcess?: CodexAppServerHostOptions['createProcess']
+  loadSessionMessages?: (sessionPath: string) => Promise<ChatMessage[] | null>
 }
 
 const toSessionRef = (thread: CodexThread): CliSessionRef => ({
@@ -138,7 +140,7 @@ export class CodexCliRuntime implements CliRuntime {
   private detachHostListeners: (() => void) | null = null
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private readonly pendingRequests = new Map<string, PendingServerRequest>()
-  private readonly rawCustomToolRequests = new Map<string, ToolCallRequest>()
+  private readonly rawCustomToolRequests = new Map<string, ToolCallRequest[]>()
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
   private needsSessionRebind = false
@@ -157,9 +159,20 @@ export class CodexCliRuntime implements CliRuntime {
       threadId: ref.nativeSessionId,
       includeTurns: true,
     })
+    const sessionRef = toSessionRef(response.thread)
+    const sessionPath = sessionRef.sessionPathHint ?? ref.sessionPathHint
+    const transcriptMessages = sessionPath
+      ? await (
+          this.options.loadSessionMessages ??
+          (async (path: string) =>
+            (await import('./history')).loadCodexSessionMessages(path))
+        )(sessionPath)
+      : null
     return {
-      ref: toSessionRef(response.thread),
-      messages: mapCodexTurns(response.thread.turns, response.thread.cwd),
+      ref: sessionRef,
+      messages:
+        transcriptMessages ??
+        mapCodexTurns(response.thread.turns, response.thread.cwd),
     }
   }
 
@@ -491,20 +504,22 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'rawResponseItem/completed') {
       const item = params.item as CodexRawResponseItem | undefined
       if (!item) return
-      if (item.type === 'custom_tool_call') {
-        const mapped = mapCodexRawCustomToolCall(item)
-        this.rawCustomToolRequests.set(item.call_id, mapped.request)
+      if (item.type === 'custom_tool_call' || item.type === 'function_call') {
+        const mapped = mapCodexRawToolCall(item)
+        this.rawCustomToolRequests.set(item.call_id, mapped.requests)
         for (const message of mapped.messages) {
           this.emit({ type: 'message_upsert', message })
         }
-      } else if (item.type === 'custom_tool_call_output') {
-        const request = this.rawCustomToolRequests.get(item.call_id)
-        if (!request) return
+      } else if (
+        item.type === 'custom_tool_call_output' ||
+        item.type === 'function_call_output'
+      ) {
+        const requests = this.rawCustomToolRequests.get(item.call_id)
+        if (!requests) return
         this.rawCustomToolRequests.delete(item.call_id)
-        this.emit({
-          type: 'message_upsert',
-          message: mapCodexRawCustomToolOutput(item, request),
-        })
+        for (const message of mapCodexRawToolOutput(item, requests)) {
+          this.emit({ type: 'message_upsert', message })
+        }
       }
       return
     }

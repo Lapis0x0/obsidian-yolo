@@ -172,6 +172,13 @@ export type CodexRawResponseItem =
       input: string
     }
   | {
+      type: 'function_call'
+      status?: string
+      call_id: string
+      name: string
+      arguments: string
+    }
+  | {
       type: 'custom_tool_call_output'
       call_id: string
       name?: string
@@ -182,6 +189,11 @@ export type CodexRawResponseItem =
             | { type: 'input_image'; image_url: string; detail?: string }
             | { type: 'encrypted_content'; encrypted_content: string }
           >
+    }
+  | {
+      type: 'function_call_output'
+      call_id: string
+      output: string | unknown[]
     }
 
 export type CodexServerRequest = {
