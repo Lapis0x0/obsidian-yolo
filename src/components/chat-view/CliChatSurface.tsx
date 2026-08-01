@@ -42,6 +42,7 @@ import {
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
+import { useHistoricalUserMessageDismiss } from './useHistoricalUserMessageDismiss'
 import UserMessageItem from './UserMessageItem'
 
 const ACTIVE_RUN_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
@@ -66,8 +67,6 @@ export type CliChatSurfaceProps = {
     configuration?: CliTurnConfiguration,
   ) => Promise<void>
   cachedModels?: readonly CliRuntimeModel[]
-  onModelChange?: (modelId: string | null) => void
-  onReasoningEffortChange?: (effort: string | null) => void
 }
 
 const plainTextToEditorState = (text: string): SerializedEditorState =>
@@ -132,6 +131,12 @@ const toEditableUserMessage = (message: ChatUserMessage): ChatUserMessage =>
         content: plainTextToEditorState(getUserMessageText(message)),
       }
 
+export const getCliUserMessageDisplay = (
+  message: ChatUserMessage,
+  draft: ChatUserMessage,
+  isFocused: boolean,
+): ChatUserMessage => (isFocused ? draft : message)
+
 function CliUserMessage({
   message,
   isFocused,
@@ -142,8 +147,7 @@ function CliUserMessage({
   configuration,
   turnConfiguration,
   cachedModels,
-  onModelChange,
-  onReasoningEffortChange,
+  onControlPopoverOpenChange,
 }: {
   message: ChatUserMessage
   isFocused: boolean
@@ -157,20 +161,21 @@ function CliUserMessage({
   configuration: CliConversationSnapshot['configuration']
   turnConfiguration?: CliTurnConfiguration
   cachedModels?: readonly CliRuntimeModel[]
-  onModelChange?: (modelId: string | null) => void
-  onReasoningEffortChange?: (effort: string | null) => void
+  onControlPopoverOpenChange?: (isOpen: boolean) => void
 }) {
-  const [draft, setDraft] = useState<ChatUserMessage>(() =>
-    toEditableUserMessage(message),
+  const canonicalMessage = useMemo(
+    () => toEditableUserMessage(message),
+    [message],
   )
+  const [draft, setDraft] = useState<ChatUserMessage>(() => canonicalMessage)
   const [draftConfiguration, setDraftConfiguration] =
     useState<CliTurnConfiguration | null>(null)
   useEffect(() => {
     if (!isFocused) {
-      setDraft(toEditableUserMessage(message))
+      setDraft(canonicalMessage)
       setDraftConfiguration(null)
     }
-  }, [isFocused, message])
+  }, [canonicalMessage, isFocused])
   const selectedTurnConfiguration = draftConfiguration ?? turnConfiguration
   const editorConfiguration = useMemo(() => {
     const models = configuration?.models ?? [...(cachedModels ?? [])]
@@ -187,11 +192,16 @@ function CliUserMessage({
         null,
     }
   }, [cachedModels, configuration, selectedTurnConfiguration])
+  const displayMessage = getCliUserMessageDisplay(
+    canonicalMessage,
+    draft,
+    isFocused,
+  )
 
   return (
     <UserMessageItem
-      message={draft}
-      displayMentionables={draft.mentionables}
+      message={displayMessage}
+      displayMentionables={displayMessage.mentionables}
       isFocused={isFocused}
       isActionDisabled={isActionDisabled}
       chatUserInputRef={noop}
@@ -214,6 +224,7 @@ function CliUserMessage({
         )
       }}
       onFocus={onFocus}
+      onControlPopoverOpenChange={onControlPopoverOpenChange}
       onMentionablesChange={(mentionables) =>
         setDraft((current) => ({ ...current, mentionables }))
       }
@@ -233,7 +244,6 @@ function CliUserMessage({
               modelId,
               reasoningEffort: null,
             })
-            onModelChange?.(modelId)
           }}
           onReasoningEffortChange={(reasoningEffort) => {
             setDraftConfiguration((current) => ({
@@ -241,7 +251,6 @@ function CliUserMessage({
                 current?.modelId ?? editorConfiguration?.modelId ?? null,
               reasoningEffort,
             }))
-            onReasoningEffortChange?.(reasoningEffort)
           }}
         />
       }
@@ -359,8 +368,6 @@ export function CliChatSurface({
   emptyStateWorkspaceTitle,
   onRewriteUserMessage,
   cachedModels,
-  onModelChange,
-  onReasoningEffortChange,
 }: CliChatSurfaceProps) {
   const app = useApp()
   const { t } = useLanguage()
@@ -438,6 +445,17 @@ export function CliChatSurface({
     useState<HTMLElement | null>(null)
   const [bottomSentinelElement, setBottomSentinelElement] =
     useState<HTMLElement | null>(null)
+  const dismissHistoricalUserMessage = useCallback(() => {
+    setFocusedUserMessageId(null)
+  }, [])
+  const {
+    onControlPopoverOpenChange:
+      onHistoricalUserMessageControlPopoverOpenChange,
+  } = useHistoricalUserMessageDismiss({
+    activeMessageId: focusedUserMessageId,
+    containerRef: chatMessagesRef,
+    onDismiss: dismissHistoricalUserMessage,
+  })
   const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
     useAutoScroll({
       scrollContainerRef: chatMessagesRef,
@@ -491,8 +509,9 @@ export function CliChatSurface({
               snapshot.turnConfigurationByUserMessageId?.[message.id]
             }
             cachedModels={cachedModels}
-            onModelChange={onModelChange}
-            onReasoningEffortChange={onReasoningEffortChange}
+            onControlPopoverOpenChange={
+              onHistoricalUserMessageControlPopoverOpenChange
+            }
           />
         )
       }
@@ -570,8 +589,7 @@ export function CliChatSurface({
       handleOpenEditSummaryFile,
       latestAssistantGroupId,
       cachedModels,
-      onModelChange,
-      onReasoningEffortChange,
+      onHistoricalUserMessageControlPopoverOpenChange,
       onRewriteUserMessage,
       readModel.messagesById,
       runSummary,

@@ -744,14 +744,27 @@ describe('CLI chat integration', () => {
         runState: 'running',
       }
     })
+    const ensureReady = jest.fn(async () => undefined)
+    const updateConfiguration = jest.fn(async () => {
+      const configuration = {
+        models: [],
+        modelId: 'claude-sonnet',
+        reasoningEffort: 'high',
+      }
+      snapshot = { ...snapshot, configuration }
+      return configuration
+    })
     const controller = {
       getSnapshot: () => snapshot,
+      ensureReady,
+      updateConfiguration,
       rewriteTurn,
     } as unknown as CliConversationController
     const rebindOverlay = jest.fn(async () => undefined)
     const recordUserDisplay = jest.fn(async () => undefined)
     const scope = {
       sessionService: {
+        getRememberedConfiguration: jest.fn(async () => ({})),
         rebindOverlay,
         recordUserDisplay,
         recordOpenedSession: jest.fn(async () => undefined),
@@ -759,15 +772,28 @@ describe('CLI chat integration', () => {
     } as unknown as CliRuntimeScope
 
     const result = await rewriteCliConversationTurn({
+      settings: parseYoloSettings({ version: SETTINGS_SCHEMA_VERSION }),
       scope,
       controller,
       runtimeId: 'claude-code',
       sourceUserMessageId: 'user-2',
       userMessage: target,
+      configuration: {
+        modelId: 'claude-sonnet',
+        reasoningEffort: 'high',
+      },
       encodeTurnContent: () => 'edited transport',
     })
 
     expect(result.sessionRef).toBe(nextRef)
+    expect(ensureReady).toHaveBeenCalledTimes(1)
+    expect(updateConfiguration).toHaveBeenCalledWith({
+      modelId: 'claude-sonnet',
+      reasoningEffort: 'high',
+    })
+    expect(ensureReady.mock.invocationCallOrder[0]).toBeLessThan(
+      rewriteTurn.mock.invocationCallOrder[0],
+    )
     expect(rewriteTurn).toHaveBeenCalledWith(
       expect.objectContaining({ sourceUserMessageId: 'user-2' }),
     )
@@ -776,7 +802,7 @@ describe('CLI chat integration', () => {
       nextRef,
       'edited transport',
       target,
-      undefined,
+      { modelId: 'claude-sonnet', reasoningEffort: 'high' },
     )
   })
 })

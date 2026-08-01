@@ -200,6 +200,7 @@ import {
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
+import { useHistoricalUserMessageDismiss } from './useHistoricalUserMessageDismiss'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
@@ -1344,9 +1345,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setEnteringCompactionDividerAnchorMessageId,
   ] = useState<string | null>(null)
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
-  const suppressNextHistoricalUserMessageOutsidePointerRef = useRef<
-    string | null
-  >(null)
   const [currentConversationId, setCurrentConversationId] = useState<string>(
     () =>
       seededRuntimeSnapshot?.currentConversationId ??
@@ -3264,47 +3262,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [],
   )
 
-  useEffect(() => {
-    if (!focusedMessageId || focusedMessageId === inputMessage.id) {
-      suppressNextHistoricalUserMessageOutsidePointerRef.current = null
-      return
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement)) {
-        return
-      }
-
-      if (target.closest('.yolo-popover-surface')) {
-        return
-      }
-
-      const activeMessageElement = chatMessagesRef.current?.querySelector(
-        `[data-user-message-id="${focusedMessageId}"]`,
-      )
-      if (activeMessageElement?.contains(target)) {
-        return
-      }
-
-      if (
-        suppressNextHistoricalUserMessageOutsidePointerRef.current ===
-        focusedMessageId
-      ) {
-        suppressNextHistoricalUserMessageOutsidePointerRef.current = null
-        return
-      }
-
-      finalizeHistoricalUserMessageEdit(focusedMessageId)
+  const dismissHistoricalUserMessage = useCallback(
+    (messageId: string) => {
+      finalizeHistoricalUserMessageEdit(messageId)
       setFocusedMessageId(inputMessage.id)
-    }
-
-    const doc = chatMessagesRef.current?.ownerDocument ?? document
-    doc.addEventListener('pointerdown', handlePointerDown, true)
-    return () => {
-      doc.removeEventListener('pointerdown', handlePointerDown, true)
-    }
-  }, [finalizeHistoricalUserMessageEdit, focusedMessageId, inputMessage.id])
+    },
+    [finalizeHistoricalUserMessageEdit, inputMessage.id],
+  )
+  const {
+    onControlPopoverOpenChange:
+      onHistoricalUserMessageControlPopoverOpenChange,
+  } = useHistoricalUserMessageDismiss({
+    activeMessageId:
+      focusedMessageId && focusedMessageId !== inputMessage.id
+        ? focusedMessageId
+        : null,
+    containerRef: chatMessagesRef,
+    onDismiss: dismissHistoricalUserMessage,
+  })
 
   const loadYoloConversation = useCallback(
     async (conversationId: string, isCurrent: () => boolean = () => true) => {
@@ -6748,24 +6723,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const completed = await cliOperationCoordinator.transition(
           cliConversationController,
           async (isCurrent) => {
-            if (turnConfiguration) {
-              const configuration =
-                await cliConversationController.updateConfiguration(
-                  turnConfiguration,
-                )
-              if (configuration) persistCliConfiguration(configuration)
-            }
             rewriteResult = await rewriteCliConversationTurn({
+              settings,
               scope: cliRuntimeScope,
               controller: cliConversationController,
               runtimeId: activeRuntimeId,
               sourceUserMessageId: sourceMessage.id,
+              configuration: turnConfiguration,
               userMessage: {
                 ...editedMessage,
                 id: sourceMessage.id,
               },
             })
             if (!isCurrent() || !rewriteResult) return
+            if (turnConfiguration) {
+              const appliedConfiguration =
+                cliConversationController.getSnapshot().configuration
+              if (appliedConfiguration) {
+                persistCliConfiguration(appliedConfiguration)
+              }
+            }
             await createOrTouchCliConversation(cliConversationId, {
               runtimeId: rewriteResult.sessionRef.runtimeId,
               nativeSessionId: rewriteResult.sessionRef.nativeSessionId,
@@ -6805,6 +6782,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliRuntimeScope,
       createOrTouchCliConversation,
       persistCliConfiguration,
+      settings,
       t,
     ],
   )
@@ -7137,11 +7115,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               registerChatUserInputRef(messageOrGroup.id, ref)
             }
             onControlPopoverOpenChange={(isOpen) => {
-              if (!isOpen) {
-                return
-              }
-              suppressNextHistoricalUserMessageOutsidePointerRef.current =
-                messageOrGroup.id
+              onHistoricalUserMessageControlPopoverOpenChange(isOpen)
             }}
             onInputChange={(content) => {
               timelineHandlersRef.current.updateHistoricalUserMessage(
@@ -7863,8 +7837,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
           onRewriteUserMessage={handleCliUserMessageRewrite}
           cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
-          onModelChange={handleCliModelChange}
-          onReasoningEffortChange={handleCliReasoningEffortChange}
         />
       ) : (
         <ChatConversationPane

@@ -397,6 +397,14 @@ describe('ClaudeCliRuntime', () => {
         message: { role: 'assistant', content: 'answer' },
       },
       {
+        type: 'assistant',
+        uuid: 'compact-summary-1',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: { role: 'assistant', content: 'compacted context summary' },
+      },
+      {
         type: 'user',
         uuid: 'user-2',
         session_id: 'session-1',
@@ -431,7 +439,7 @@ describe('ClaudeCliRuntime', () => {
 
     expect(queryInputs[1]?.options).toMatchObject({
       resume: 'session-1',
-      resumeSessionAt: 'assistant-1',
+      resumeSessionAt: 'compact-summary-1',
       forkSession: true,
       enableFileCheckpointing: true,
     })

@@ -158,7 +158,11 @@ jest.mock('./useAutoScroll', () => ({
   }),
 }))
 
-import { CliChatSurface, getCliTimelineRenderVersion } from './CliChatSurface'
+import {
+  CliChatSurface,
+  getCliTimelineRenderVersion,
+  getCliUserMessageDisplay,
+} from './CliChatSurface'
 
 const actions: ChatRuntimeActions = {
   cancelRun: async () => {},
@@ -271,6 +275,14 @@ describe('CliChatSurface', () => {
     expect(getCliTimelineRenderVersion(item, 'idle', null)).not.toBe(
       getCliTimelineRenderVersion(item, 'idle', 'user-1'),
     )
+  })
+
+  it('restores the canonical CLI message after editing is dismissed', () => {
+    const message = makeUser('user-1', 'Original')
+    const draft = makeUser('user-1', 'Edited draft')
+
+    expect(getCliUserMessageDisplay(message, draft, true)).toBe(draft)
+    expect(getCliUserMessageDisplay(message, draft, false)).toBe(message)
   })
 
   it('groups assistant and tool messages and exposes only the copy action', () => {

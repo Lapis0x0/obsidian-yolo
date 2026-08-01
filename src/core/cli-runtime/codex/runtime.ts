@@ -25,6 +25,8 @@ import {
   buildPendingToolMessages,
   mapCodexItem,
   mapCodexTurns,
+  parseCodexUserMessageId,
+  toCodexClientUserMessageId,
 } from './mapping'
 import type { CodexProcessOptions } from './process'
 import type {
@@ -231,6 +233,13 @@ export class CodexCliRuntime implements CliRuntime {
       'turn/start',
       {
         threadId: this.activeSessionRef.nativeSessionId,
+        ...(input.userMessageId
+          ? {
+              clientUserMessageId: toCodexClientUserMessageId(
+                input.userMessageId,
+              ),
+            }
+          : {}),
         input: toCodexInput(input.content),
         model: this.modelId,
         effort: this.reasoningEffort,
@@ -261,14 +270,17 @@ export class CodexCliRuntime implements CliRuntime {
       threadId,
       includeTurns: true,
     })
-    const nativeUserItemId = input.sourceUserMessageId.startsWith('codex-user-')
-      ? input.sourceUserMessageId.slice('codex-user-'.length)
-      : input.sourceUserMessageId
-    const targetTurnIndex = thread.turns.findIndex((turn) =>
-      turn.items.some(
-        (item) => item.type === 'userMessage' && item.id === nativeUserItemId,
-      ),
-    )
+    const locator = parseCodexUserMessageId(input.sourceUserMessageId)
+    const targetTurnIndex = thread.turns.findIndex((turn) => {
+      if (locator.kind === 'turn') return turn.id === locator.id
+      return turn.items.some(
+        (item) =>
+          item.type === 'userMessage' &&
+          (locator.kind === 'client'
+            ? item.clientId === locator.id
+            : item.id === locator.id),
+      )
+    })
     if (targetTurnIndex < 0) {
       throw new Error('The selected Codex user message no longer exists.')
     }
@@ -520,7 +532,9 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'item/started' || method === 'item/completed') {
       const item = params.item as CodexThreadItem | undefined
       if (!item) return
-      for (const message of mapCodexItem(item, this.options.cwd)) {
+      const turnId =
+        typeof params.turnId === 'string' ? params.turnId : undefined
+      for (const message of mapCodexItem(item, this.options.cwd, turnId)) {
         this.emit({ type: 'message_upsert', message })
       }
       return

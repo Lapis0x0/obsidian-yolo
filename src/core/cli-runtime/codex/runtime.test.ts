@@ -2,8 +2,8 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
 import { CodexAppServerHost, CodexAppServerHostPool } from './host'
 import type { CodexProcessExitListener, CodexProcessLike } from './process'
-import { CodexCliRuntime } from './runtime'
 import type { CodexTurn } from './protocol'
+import { CodexCliRuntime } from './runtime'
 
 class RpcFakeProcess implements CodexProcessLike {
   responses: unknown[] = []
@@ -165,6 +165,12 @@ describe('CodexCliRuntime', () => {
         ],
       },
       {
+        id: 'turn-compaction',
+        status: 'completed',
+        error: null,
+        items: [],
+      },
+      {
         id: 'turn-2',
         status: 'completed',
         error: null,
@@ -189,7 +195,7 @@ describe('CodexCliRuntime', () => {
 
     await runtime.rewriteTurn({
       sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
-      sourceUserMessageId: 'codex-user-user-1',
+      sourceUserMessageId: 'codex-user-turn-turn-1',
       userMessageId: 'edited-user',
       content: 'edited first',
     })
@@ -197,7 +203,7 @@ describe('CodexCliRuntime', () => {
     expect(
       process.requests.find((request) => request.method === 'thread/rollback')
         ?.params,
-    ).toEqual({ threadId: 'thread-1', numTurns: 2 })
+    ).toEqual({ threadId: 'thread-1', numTurns: 3 })
     expect(
       process.requests.find((request) => request.method === 'turn/start')
         ?.params.threadId,
@@ -223,6 +229,50 @@ describe('CodexCliRuntime', () => {
     await pool.dispose()
   })
 
+  it('locates a reloaded user turn by its client-provided id', async () => {
+    const process = new RpcFakeProcess()
+    process.threadTurns = [
+      {
+        id: 'turn-reloaded',
+        status: 'completed',
+        error: null,
+        items: [
+          {
+            type: 'userMessage',
+            id: 'different-item-id-after-read',
+            clientId: 'yolo-user-1',
+            content: [{ type: 'text', text: 'first', text_elements: [] }],
+          },
+        ],
+      },
+    ]
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+    await runtime.ensureReady({})
+
+    await runtime.rewriteTurn({
+      sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
+      sourceUserMessageId: 'codex-user-client-yolo-user-1',
+      userMessageId: 'codex-user-client-yolo-user-1',
+      content: 'edited first',
+    })
+
+    expect(
+      process.requests.find((request) => request.method === 'thread/rollback')
+        ?.params,
+    ).toEqual({ threadId: 'thread-1', numTurns: 1 })
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params.clientUserMessageId,
+    ).toBe('yolo-user-1')
+  })
+
   it('does not inject YOLO prompts or Skills into native Codex requests', async () => {
     const process = new RpcFakeProcess()
     const host = new CodexAppServerHost({
@@ -236,6 +286,7 @@ describe('CodexCliRuntime', () => {
 
     await runtime.ensureReady({})
     await runtime.sendTurn({
+      userMessageId: 'yolo-user-1',
       content: 'Review this change.',
       selectedSkillNames: ['review'],
     })
@@ -255,6 +306,10 @@ describe('CodexCliRuntime', () => {
     ).toEqual([
       { type: 'text', text: 'Review this change.', text_elements: [] },
     ])
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params.clientUserMessageId,
+    ).toBe('yolo-user-1')
   })
 
   it('routes interleaved shared-host events and cancellation by thread', async () => {

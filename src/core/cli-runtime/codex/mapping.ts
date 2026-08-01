@@ -15,6 +15,53 @@ import {
 
 import type { CodexThreadItem, CodexTurn, CodexUserInput } from './protocol'
 
+const CODEX_CLIENT_USER_MESSAGE_PREFIX = 'codex-user-client-'
+const CODEX_TURN_USER_MESSAGE_PREFIX = 'codex-user-turn-'
+const CODEX_ITEM_USER_MESSAGE_PREFIX = 'codex-user-'
+
+export type CodexUserMessageLocator =
+  | { kind: 'client'; id: string }
+  | { kind: 'turn'; id: string }
+  | { kind: 'item'; id: string }
+
+export const parseCodexUserMessageId = (
+  messageId: string,
+): CodexUserMessageLocator => {
+  if (messageId.startsWith(CODEX_CLIENT_USER_MESSAGE_PREFIX)) {
+    return {
+      kind: 'client',
+      id: messageId.slice(CODEX_CLIENT_USER_MESSAGE_PREFIX.length),
+    }
+  }
+  if (messageId.startsWith(CODEX_TURN_USER_MESSAGE_PREFIX)) {
+    return {
+      kind: 'turn',
+      id: messageId.slice(CODEX_TURN_USER_MESSAGE_PREFIX.length),
+    }
+  }
+  return {
+    kind: 'item',
+    id: messageId.startsWith(CODEX_ITEM_USER_MESSAGE_PREFIX)
+      ? messageId.slice(CODEX_ITEM_USER_MESSAGE_PREFIX.length)
+      : messageId,
+  }
+}
+
+export const toCodexClientUserMessageId = (messageId: string): string => {
+  const locator = parseCodexUserMessageId(messageId)
+  return locator.kind === 'client' ? locator.id : messageId
+}
+
+const getCodexUserMessageId = (
+  item: Extract<CodexThreadItem, { type: 'userMessage' }>,
+  turnId?: string,
+): string =>
+  item.clientId
+    ? `${CODEX_CLIENT_USER_MESSAGE_PREFIX}${item.clientId}`
+    : turnId
+      ? `${CODEX_TURN_USER_MESSAGE_PREFIX}${turnId}`
+      : `${CODEX_ITEM_USER_MESSAGE_PREFIX}${item.id}`
+
 const stringify = (value: unknown): string => {
   if (typeof value === 'string') return value
   if (value === undefined || value === null) return ''
@@ -126,11 +173,12 @@ const toolPair = ({
 export const mapCodexItem = (
   item: CodexThreadItem,
   cwd?: string,
+  turnId?: string,
 ): ChatMessage[] => {
   if (item.type === 'userMessage') {
     const message: ChatUserMessage = {
       role: 'user',
-      id: `codex-user-${item.id}`,
+      id: getCodexUserMessageId(item, turnId),
       content: null,
       promptContent: userInputText(item.content),
       mentionables: [],
@@ -218,7 +266,9 @@ export const mapCodexTurns = (
   turns: CodexTurn[],
   cwd?: string,
 ): ChatMessage[] =>
-  turns.flatMap((turn) => turn.items.flatMap((item) => mapCodexItem(item, cwd)))
+  turns.flatMap((turn) =>
+    turn.items.flatMap((item) => mapCodexItem(item, cwd, turn.id)),
+  )
 
 export const buildPendingToolMessages = ({
   requestId,

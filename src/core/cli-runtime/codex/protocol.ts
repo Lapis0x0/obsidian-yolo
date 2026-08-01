@@ -12,7 +12,12 @@ export type CodexUserInput =
   | { type: 'skill'; name: string; path: string }
 
 export type CodexThreadItem =
-  | { type: 'userMessage'; id: string; content: CodexUserInput[] }
+  | {
+      type: 'userMessage'
+      id: string
+      clientId?: string | null
+      content: CodexUserInput[]
+    }
   | { type: 'agentMessage'; id: string; text: string }
   | { type: 'reasoning'; id: string; summary: string[]; content: string[] }
   | {

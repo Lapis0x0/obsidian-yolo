@@ -565,20 +565,24 @@ export const submitCliComposerTurn = async ({
 }
 
 export type RewriteCliConversationTurnInput = {
+  settings: YoloSettings
   scope: CliRuntimeScope
   controller: CliConversationController
   runtimeId: CliRuntimeId
   sourceUserMessageId: string
   userMessage: ChatUserMessage
+  configuration?: CliTurnConfiguration
   encodeTurnContent?: typeof buildCliTurnContent
 }
 
 export const rewriteCliConversationTurn = async ({
+  settings,
   scope,
   controller,
   runtimeId,
   sourceUserMessageId,
   userMessage,
+  configuration,
   encodeTurnContent = buildCliTurnContent,
 }: RewriteCliConversationTurnInput): Promise<{
   sessionRef: CliSessionRef
@@ -597,6 +601,19 @@ export const rewriteCliConversationTurn = async ({
   const discardedUserMessageIds = previousMessages
     .slice(Math.max(0, sourceIndex))
     .flatMap((message) => (message.role === 'user' ? [message.id] : []))
+  await prepareCliConversation({
+    controller,
+    scope,
+    runtimeId,
+    settings,
+  })
+  if (configuration) {
+    const appliedConfiguration =
+      await controller.updateConfiguration(configuration)
+    if (!appliedConfiguration) {
+      throw new Error('CLI runtime did not accept the edited turn configuration.')
+    }
+  }
   const content = encodeTurnContent({
     runtimeId,
     text: userMessage.content

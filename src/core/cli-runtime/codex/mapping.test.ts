@@ -1,6 +1,7 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
 import { mapCodexItem, mapCodexTurns } from './mapping'
+import type { CodexThreadItem } from './protocol'
 
 describe('Codex message mapping', () => {
   it('hydrates native user and assistant items into YOLO messages', () => {
@@ -21,9 +22,36 @@ describe('Codex message mapping', () => {
     ])
 
     expect(messages).toMatchObject([
-      { role: 'user', promptContent: 'hello' },
+      {
+        role: 'user',
+        id: 'codex-user-turn-turn-1',
+        promptContent: 'hello',
+      },
       { role: 'assistant', content: 'hi' },
     ])
+  })
+
+  it('prefers the client-provided user id across realtime and hydration maps', () => {
+    const item: CodexThreadItem = {
+      type: 'userMessage' as const,
+      id: 'ephemeral-item-id',
+      clientId: 'yolo-message-id',
+      content: [{ type: 'text' as const, text: 'hello', text_elements: [] }],
+    }
+
+    expect(mapCodexItem(item, undefined, 'turn-live')[0]).toMatchObject({
+      id: 'codex-user-client-yolo-message-id',
+    })
+    expect(
+      mapCodexTurns([
+        {
+          id: 'turn-reloaded',
+          status: 'completed',
+          error: null,
+          items: [{ ...item, id: 'different-item-id' }],
+        },
+      ])[0],
+    ).toMatchObject({ id: 'codex-user-client-yolo-message-id' })
   })
 
   it('maps command execution into a reusable tool request/result pair', () => {
