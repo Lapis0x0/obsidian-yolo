@@ -289,10 +289,12 @@ describe('generateCardsForChapter streaming', () => {
       if (retryWithExternalEdit) expect(written).toContain('user edit')
       expect(written).not.toMatch(/[\u4e00-\u9fff]/)
       expect(create).toHaveBeenCalledTimes(preexistingRollbackShell ? 0 : 1)
+      // The initial generation pass runs read-only: the prompt forbids fs_edit
+      // there and cards.md does not exist yet.
       expect(stream).toHaveBeenCalledWith(
         expect.objectContaining({
           modelId: 'learning-model',
-          capability: 'edit-vault',
+          capability: 'readonly-vault',
         }),
       )
       if (retryWithExternalEdit) {
@@ -476,6 +478,81 @@ describe('generateCardsForChapter streaming', () => {
       },
     ])
     warn.mockRestore()
+  })
+
+  it('requests read-only capability for the initial pass and write only for the correction pass', async () => {
+    const knowledgePath = 'project/chapter/knowledge.md'
+    const cardsPath = 'project/chapter/cards.md'
+    const capabilities: string[] = []
+    const contents = new Map<string, string>([
+      [knowledgePath, '## KP <!--kp:aaaaaaaa-->\n\nBody'],
+    ])
+    let call = 0
+
+    const host: LearningGenerationHost = {
+      vault: {
+        getEntry: (path: string) =>
+          contents.has(path)
+            ? { kind: 'file', path, name: 'f.md', ctime: 0, mtime: 0 }
+            : null,
+      } as unknown as LearningVaultReadApi,
+      vaultWriter: {
+        readTextSnapshot: async (path: string) => ({
+          path,
+          content: contents.get(path) ?? '',
+          identity: { path },
+        }),
+        createTextIfAbsent: async (path: string, content: string) => {
+          contents.set(path, content)
+          return { path, content, identity: { path } }
+        },
+        replaceTextIfUnchanged: async (
+          snapshot: { path: string },
+          content: string,
+        ) => {
+          contents.set(snapshot.path, content)
+          return {
+            path: snapshot.path,
+            content,
+            identity: { path: snapshot.path },
+          }
+        },
+      } as unknown as LearningVaultWriteApi,
+      agent: {
+        stream: async function* (request: { capability: string }) {
+          capabilities.push(request.capability)
+          call += 1
+          // First pass streams one well-formed card; the follow-up pass exists
+          // only to exercise the capability used for corrections.
+          if (call === 1) {
+            const text = `${cardBlock('A')}${CARD_END_MARKER}\n`
+            yield { type: 'text' as const, text, delta: text }
+          }
+        },
+      } as unknown as LearningGenerationHost['agent'],
+    }
+
+    await generateCardsForChapter({
+      host,
+      chapterIndex: 0,
+      projectTopic: 'Topic',
+      chapterTitle: 'Chapter',
+      chapterContract: 'Contract',
+      knowledgePath,
+      cardsPath,
+      level: 'beginner',
+      usedCardUuids: new Set(),
+      runId: 'run',
+      projectId: 'project',
+      chapterId: 'chapter',
+    }).catch(() => undefined)
+
+    // The initial generation pass must not be handed the vault write tool: the
+    // prompt forbids fs_edit there and cards.md does not exist yet.
+    expect(capabilities[0]).toBe('readonly-vault')
+    for (const capability of capabilities.slice(1)) {
+      expect(capability).toBe('edit-vault')
+    }
   })
 
   it('rejects an explicit abort before writing streamed cards', async () => {

@@ -16,6 +16,7 @@ import {
 import type {
   LearningGenerationActivity,
   LearningGenerationAssistantMessage,
+  LearningGenerationCapability,
   LearningGenerationHost,
   LearningGenerationMessage,
   LearningGenerationUserMessage,
@@ -145,6 +146,13 @@ export async function generateCardsForChapter({
   const runStream = async (
     request: { prompt: string } | { messages: LearningGenerationMessage[] },
     consumeCards = false,
+    // The card prompt states that fs_edit is forbidden on the initial pass and
+    // only allowed once cards.md exists and a correction is requested. Grant
+    // the matching capability so the initial pass cannot spend its turn on a
+    // write tool: at that point cards.md has not been created yet (see
+    // createCardsFile below), so an attempted edit cannot succeed and the
+    // stream can end without ever emitting a card block.
+    capability: LearningGenerationCapability = 'readonly-vault',
   ): Promise<{ text: string; error?: Error; aborted?: true }> => {
     let accumulated = ''
     let completedText = ''
@@ -154,7 +162,7 @@ export async function generateCardsForChapter({
         ...request,
         modelId,
         systemPromptOverride: CARD_GENERATOR_PROMPT,
-        capability: 'edit-vault',
+        capability,
         workspaceScope: cardWorkspaceScope,
         activity,
         abortSignal,
@@ -255,9 +263,13 @@ export async function generateCardsForChapter({
       }
       let retryAborted = false
       try {
-        const retryRun = await runStream({
-          messages: [firstUserMessage, assistant, retry],
-        })
+        const retryRun = await runStream(
+          { messages: [firstUserMessage, assistant, retry] },
+          false,
+          // cards.md exists by now and this pass is explicitly a correction,
+          // which is exactly when the prompt permits fs_edit.
+          'edit-vault',
+        )
         retryAborted = retryRun.aborted === true
         if (retryRun.error) throw retryRun.error
       } catch (error) {
