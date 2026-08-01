@@ -39,16 +39,8 @@ class TestRuntime implements CliRuntime {
 
   constructor(readonly runtimeId: 'claude-code' | 'codex') {}
 
-  async listSessions() {
-    return []
-  }
-
   async openSession(ref: Parameters<CliRuntime['openSession']>[0]) {
     return { ref, messages: [] }
-  }
-
-  async renameSessionIfPlaceholder(): Promise<'preserved'> {
-    return 'preserved'
   }
 
   async ensureReady(input: Parameters<CliRuntime['ensureReady']>[0]) {
@@ -229,9 +221,9 @@ describe('CLI runtime coordinator', () => {
       nativeSessionId: 'codex-session',
     })
 
-    expect(harness.createClaudeRuntime).toHaveBeenCalledTimes(1)
-    expect(harness.createCodexRuntime).toHaveBeenCalledTimes(2)
-    expect(harness.codexRuntimes[1].cancel).toHaveBeenCalledTimes(1)
+    expect(harness.createClaudeRuntime).not.toHaveBeenCalled()
+    expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
+    expect(harness.codexRuntimes[0].cancel).toHaveBeenCalledTimes(1)
   })
 
   it('does not duplicate a runtime when actions first access it concurrently', async () => {
@@ -349,6 +341,10 @@ describe('CLI runtime coordinator', () => {
     const complete = await createCoordinator(completeHarness)
     const scope = complete.coordinator.createScope()
     expect(scope.sessionService).toBeDefined()
+    expect(completeHarness.createClaudeRuntime).not.toHaveBeenCalled()
+    expect(completeHarness.createCodexRuntime).not.toHaveBeenCalled()
+    scope.resolveRuntime('claude-code')
+    scope.resolveRuntime('codex')
     completeHarness.claudeRuntimes[0].dispose.mockRejectedValueOnce(
       new Error('claude dispose failed'),
     )

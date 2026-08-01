@@ -1,9 +1,7 @@
 import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 
-export const CLI_RUNTIME_IDS = ['claude-code', 'codex'] as const
-
-export type CliRuntimeId = (typeof CLI_RUNTIME_IDS)[number]
+export type CliRuntimeId = 'claude-code' | 'codex'
 export type ChatRuntimeId = 'yolo' | CliRuntimeId
 
 export type YoloConversationRef = {
@@ -21,16 +19,6 @@ export type ConversationRef = YoloConversationRef | CliSessionRef
 
 export const isCliSessionRef = (ref: ConversationRef): ref is CliSessionRef =>
   ref.runtimeId !== 'yolo'
-
-export type CliSessionMetadata = {
-  ref: CliSessionRef
-  title: string
-  preview?: string
-  createdAt?: number
-  updatedAt: number
-  cwd?: string
-  model?: string
-}
 
 export type CliSessionHydration = {
   ref: CliSessionRef
@@ -125,23 +113,12 @@ export type CliQuestionResponse = {
 
 export type CliRuntimeEventListener = (event: CliRuntimeEvent) => void
 
-export type CliSessionConditionalRenameResult =
-  | 'renamed'
-  | 'preserved'
-  | 'unavailable'
-
 export type CliRuntime = {
   readonly runtimeId: CliRuntimeId
 
-  listSessions(): Promise<CliSessionMetadata[]>
   listModels?(): Promise<CliRuntimeModel[]>
   listSkills?(): Promise<CliRuntimeSkill[]>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
-  /** Rename only when the latest provider-native state is still a placeholder. */
-  renameSessionIfPlaceholder(
-    ref: CliSessionRef,
-    title: string,
-  ): Promise<CliSessionConditionalRenameResult>
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
   getConfiguration(
     cachedModels?: readonly CliRuntimeModel[],

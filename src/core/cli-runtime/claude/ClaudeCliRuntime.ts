@@ -16,7 +16,6 @@ import {
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { assertCliRuntimeAvailable } from '../desktop'
-import { isSessionPathInVault } from '../session-path'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -27,7 +26,6 @@ import type {
   CliRuntimeEventListener,
   CliRuntimeReadyInput,
   CliSessionHydration,
-  CliSessionMetadata,
   CliSessionRef,
   CliTurnInput,
 } from '../types'
@@ -87,8 +85,6 @@ export type ClaudeCliRuntimeOptions = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
-
-const CLAUDE_SESSION_PAGE_SIZE = 100
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -246,86 +242,12 @@ export class ClaudeCliRuntime implements CliRuntime {
         }))
   }
 
-  async listSessions(): Promise<CliSessionMetadata[]> {
-    this.assertUsable()
-    const sdk = await this.getSdk()
-    const sessions: Awaited<ReturnType<ClaudeSdkModule['listSessions']>> = []
-    let offset = 0
-    while (true) {
-      const page = await sdk.listSessions({
-        limit: CLAUDE_SESSION_PAGE_SIZE,
-        offset,
-      })
-      sessions.push(...page)
-      if (page.length < CLAUDE_SESSION_PAGE_SIZE) break
-      offset += page.length
-    }
-    const belongsToVault = await Promise.all(
-      sessions.map((session) =>
-        session.cwd
-          ? isSessionPathInVault(this.vaultPath, session.cwd)
-          : Promise.resolve(false),
-      ),
-    )
-    return sessions
-      .filter((_, index) => belongsToVault[index])
-      .map((session) => ({
-        ref: {
-          runtimeId: 'claude-code',
-          nativeSessionId: session.sessionId,
-        },
-        title:
-          session.customTitle ||
-          session.summary ||
-          session.firstPrompt ||
-          session.sessionId,
-        ...(session.firstPrompt && session.firstPrompt !== session.summary
-          ? { preview: session.firstPrompt }
-          : {}),
-        ...(session.createdAt !== undefined
-          ? { createdAt: session.createdAt }
-          : {}),
-        updatedAt: session.lastModified,
-        ...(session.cwd ? { cwd: session.cwd } : {}),
-      }))
-  }
-
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     this.assertUsable()
     this.assertClaudeRef(ref)
     const sdk = await this.getSdk()
     const messages = await sdk.getSessionMessages(ref.nativeSessionId)
     return { ref, messages: hydrateClaudeSessionMessages(messages) }
-  }
-
-  async renameSessionIfPlaceholder(
-    ref: CliSessionRef,
-    title: string,
-  ): Promise<'renamed' | 'preserved' | 'unavailable'> {
-    this.assertUsable()
-    this.assertClaudeRef(ref)
-    const normalized = title.trim()
-    if (!normalized) throw new Error('Claude session title cannot be empty.')
-    const sdk = await this.getSdk()
-    const session = await sdk.getSessionInfo(ref.nativeSessionId, {
-      dir: this.vaultPath,
-    })
-    if (!session) return 'unavailable'
-
-    const customTitle = session.customTitle?.trim() ?? ''
-    const displayTitle = session.summary.trim()
-    const firstPrompt = session.firstPrompt?.trim() ?? ''
-    const isPlaceholder =
-      customTitle.length === 0 &&
-      (displayTitle.length === 0 ||
-        displayTitle === firstPrompt ||
-        displayTitle === session.sessionId)
-    if (!isPlaceholder) return 'preserved'
-
-    await sdk.renameSession(ref.nativeSessionId, normalized, {
-      dir: this.vaultPath,
-    })
-    return 'renamed'
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {

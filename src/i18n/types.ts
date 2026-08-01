@@ -83,28 +83,10 @@ export type TranslationKeys = {
       accessibleLabel: string
       menuLabel: string
       claudeCodeLabel: string
+      claudeCodeShortLabel: string
       claudeCodeDescription: string
       codexLabel: string
       codexDescription: string
-    }
-    cliSessions: {
-      sectionLabel: string
-      title: string
-      loading: string
-      empty: string
-      current: string
-      pin: string
-      unpin: string
-      forgetFromYolo: string
-      retryProvider: string
-      loadError: string
-      pinError: string
-      forgetConfirmTitle: string
-      forgetConfirmMessage: string
-      forgetConfirmAction: string
-      forgetError: string
-      recordError: string
-      yoloRunActive: string
     }
     chatList?: {
       searchPlaceholder?: string

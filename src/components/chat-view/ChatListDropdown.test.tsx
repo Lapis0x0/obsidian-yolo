@@ -1,5 +1,4 @@
 let mockSearchQuery = ''
-let mockActiveSection: 'user' | 'task' | undefined
 
 jest.mock('react', () => {
   const actual = jest.requireActual<typeof import('react')>('react')
@@ -15,13 +14,7 @@ jest.mock('react', () => {
         typeof initialValue === 'function'
           ? (initialValue as () => T)()
           : initialValue
-      const value =
-        resolvedValue === ''
-          ? mockSearchQuery
-          : resolvedValue === 'user' || resolvedValue === 'task'
-            ? (mockActiveSection ?? resolvedValue)
-            : resolvedValue
-      return [value, jest.fn()]
+      return [resolvedValue === '' ? mockSearchQuery : resolvedValue, jest.fn()]
     },
   }
 })
@@ -33,9 +26,7 @@ jest.mock('../../contexts/language-context', () => ({
 }))
 
 jest.mock('../../hooks/useJsonManagers', () => ({
-  useChatManager: () => ({
-    findById: jest.fn(),
-  }),
+  useChatManager: () => ({ findById: jest.fn() }),
 }))
 
 jest.mock('../../hooks/useChatHistory', () => ({
@@ -49,17 +40,22 @@ import {
   type ReactNode,
   isValidElement,
 } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ChatConversationMetadata } from '../../database/json/chat/types'
-import { YoloPopoverContent } from '../common/popover'
 
 import { ChatListDropdown } from './ChatListDropdown'
 
-const userChat = (id: string, title: string): ChatConversationMetadata => ({
+const chat = (
+  id: string,
+  title: string,
+  cliSession?: ChatConversationMetadata['cliSession'],
+): ChatConversationMetadata => ({
   id,
   title,
   updatedAt: 100,
   schemaVersion: 1,
+  cliSession,
 })
 
 const walkElements = (node: ReactNode): ReactElement[] => {
@@ -71,15 +67,10 @@ const walkElements = (node: ReactNode): ReactElement[] => {
   ]
 }
 
-const createTree = ({
-  chatList = [],
-  additionalHistorySections,
+const createTree = (
+  chatList: ChatConversationMetadata[],
   onSelect = jest.fn(),
-}: {
-  chatList?: ChatConversationMetadata[]
-  additionalHistorySections?: ReactNode
-  onSelect?: jest.Mock
-} = {}) =>
+) =>
   ChatListDropdown({
     chatList,
     currentConversationId: '',
@@ -90,130 +81,68 @@ const createTree = ({
     onTogglePinned: jest.fn(),
     onRetryTitle: jest.fn(),
     onExportConversation: jest.fn(),
-    additionalHistorySections,
     children: <span>History</span>,
   })
 
-const findPopoverContent = (root: ReactElement): ReactElement => {
-  const content = walkElements(root).find(
-    (element) => element.type === YoloPopoverContent,
+const historyRows = (tree: ReactElement) =>
+  walkElements(tree).filter(
+    (element) =>
+      typeof element.type === 'function' &&
+      element.type.name === 'ChatListItem',
   )
-  if (!content) throw new Error('Missing history popover content')
-  return content
-}
 
-describe('ChatListDropdown additional history sections', () => {
+describe('ChatListDropdown', () => {
   beforeEach(() => {
     mockSearchQuery = ''
-    mockActiveSection = undefined
   })
 
-  it('renders the slot in the same popover content after the YOLO user list', () => {
-    const content = findPopoverContent(
-      createTree({
-        chatList: [userChat('chat-1', 'YOLO conversation')],
-        additionalHistorySections: (
-          <section data-testid="additional-history">CLI sessions</section>
-        ),
-      }),
-    )
-    const contentChildren = Children.toArray(
-      (content.props as { children?: ReactNode }).children,
-    )
-    const yoloListIndex = contentChildren.findIndex(
-      (child) =>
-        isValidElement(child) &&
-        child.type === 'ul' &&
-        child.props.className === 'yolo-model-select-list',
-    )
-    const slotIndex = contentChildren.findIndex(
-      (child) =>
-        isValidElement(child) &&
-        child.props['data-testid'] === 'additional-history',
-    )
-
-    expect(yoloListIndex).toBeGreaterThan(-1)
-    expect(slotIndex).toBe(yoloListIndex + 1)
-  })
-
-  it('keeps the slot visible when the YOLO list is empty or has no search matches', () => {
-    const slot = (
-      <section data-testid="additional-history">CLI sessions</section>
-    )
-    const emptyTree = createTree({ additionalHistorySections: slot })
-
-    expect(
-      walkElements(emptyTree).some(
-        (element) => element.props['data-testid'] === 'additional-history',
-      ),
-    ).toBe(true)
-
-    mockSearchQuery = 'missing'
-    const noMatchesTree = createTree({
-      chatList: [userChat('chat-1', 'Unrelated title')],
-      additionalHistorySections: slot,
-    })
-    const elements = walkElements(noMatchesTree)
-
-    expect(
-      elements.some(
-        (element) => element.props['data-testid'] === 'additional-history',
-      ),
-    ).toBe(true)
-    expect(
-      elements.some(
-        (element) =>
-          typeof element.type === 'function' &&
-          element.type.name === 'ChatListItem',
-      ),
-    ).toBe(false)
-  })
-
-  it('omits the slot when no content is supplied or task history is active', () => {
-    expect(
-      walkElements(createTree()).some(
-        (element) => element.props['data-testid'] === 'additional-history',
-      ),
-    ).toBe(false)
-
-    mockActiveSection = 'task'
-    const taskTree = createTree({
-      additionalHistorySections: (
-        <section data-testid="additional-history">CLI sessions</section>
-      ),
-    })
-
-    expect(
-      walkElements(taskTree).some(
-        (element) => element.props['data-testid'] === 'additional-history',
-      ),
-    ).toBe(false)
-  })
-
-  it('preserves YOLO title filtering and selection callbacks', async () => {
+  it('keeps title filtering and selection on the unified history list', async () => {
     mockSearchQuery = 'alpha'
     const onSelect = jest.fn()
-    const tree = createTree({
-      chatList: [
-        userChat('alpha', 'Alpha conversation'),
-        userChat('beta', 'Beta conversation'),
-      ],
-      additionalHistorySections: (
-        <section data-testid="additional-history">CLI sessions</section>
+    const rows = historyRows(
+      createTree(
+        [
+          chat('alpha', 'Alpha conversation'),
+          chat('beta', 'Beta conversation'),
+        ],
+        onSelect,
       ),
-      onSelect,
-    })
-    const rows = walkElements(tree).filter(
-      (element) =>
-        typeof element.type === 'function' &&
-        element.type.name === 'ChatListItem',
     )
 
     expect(rows).toHaveLength(1)
     expect(rows[0]?.props.title).toBe('Alpha conversation')
     ;(rows[0]?.props.onSelect as () => void)()
     await Promise.resolve()
-
     expect(onSelect).toHaveBeenCalledWith('alpha')
+  })
+
+  it('shows compact runtime badges only for YOLO-owned CLI conversations', () => {
+    const rows = historyRows(
+      createTree([
+        chat('yolo', 'Normal'),
+        chat('cc', 'Claude task', {
+          runtimeId: 'claude-code',
+          nativeSessionId: 'session-1',
+        }),
+        chat('codex', 'Codex task', {
+          runtimeId: 'codex',
+          nativeSessionId: 'thread-1',
+        }),
+      ]),
+    )
+    const html = rows
+      .map((row) =>
+        renderToStaticMarkup(
+          (row.type as (props: typeof row.props) => ReactElement)(row.props),
+        ),
+      )
+      .join('')
+
+    expect(html).toContain('data-runtime-id="claude-code"')
+    expect(html).toContain('>CC<')
+    expect(html).toContain('aria-label="Claude Code"')
+    expect(html).toContain('data-runtime-id="codex"')
+    expect(html).toContain('>Codex<')
+    expect(html.match(/data-runtime-id=/g)).toHaveLength(2)
   })
 })

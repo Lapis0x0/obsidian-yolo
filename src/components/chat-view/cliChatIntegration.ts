@@ -403,17 +403,6 @@ export const shouldClearAcceptedCliDraft = ({
   currentDraftRevision === acceptedDraft.draftRevision &&
   currentDraft.id === acceptedDraft.userMessage.id
 
-export const shouldLoadYoloHistoryItem = ({
-  activeRuntimeId,
-  conversationId,
-  currentConversationId,
-}: {
-  activeRuntimeId: ChatRuntimeId
-  conversationId: string
-  currentConversationId: string
-}): boolean =>
-  activeRuntimeId !== 'yolo' || conversationId !== currentConversationId
-
 export const openCliSession = async ({
   scope,
   ref,
@@ -561,20 +550,4 @@ export const submitCliComposerTurn = async ({
     userMessage: stampedUserMessage,
     overlayError,
   }
-}
-
-export const removeCliOverlayAfterConfirmation = async ({
-  requestConfirmation,
-  removeOverlay,
-}: {
-  requestConfirmation: (onConfirm: () => void, onCancel: () => void) => void
-  removeOverlay: () => Promise<boolean>
-}): Promise<boolean> => {
-  const confirmed = await new Promise<boolean>((resolve) => {
-    requestConfirmation(
-      () => resolve(true),
-      () => resolve(false),
-    )
-  })
-  return confirmed ? await removeOverlay() : false
 }

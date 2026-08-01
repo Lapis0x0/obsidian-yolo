@@ -19,12 +19,10 @@ import {
   openCliSession,
   openCliSessionForNavigation,
   prepareCliConversation,
-  removeCliOverlayAfterConfirmation,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
-  shouldLoadYoloHistoryItem,
   submitCliComposerTurn,
 } from './cliChatIntegration'
 
@@ -650,7 +648,7 @@ describe('CLI chat integration', () => {
     expect(cancel).not.toHaveBeenCalled()
   })
 
-  it('clears only the accepted draft revision and opens current YOLO history from CLI', () => {
+  it('clears only the accepted draft revision', () => {
     const acceptedDraft = {
       token: 1,
       draftRevision: 4,
@@ -675,21 +673,6 @@ describe('CLI chat integration', () => {
         acceptedDraft,
         currentDraft: { ...userMessage(), id: 'draft-2' },
         currentDraftRevision: 4,
-      }),
-    ).toBe(false)
-
-    expect(
-      shouldLoadYoloHistoryItem({
-        activeRuntimeId: 'codex',
-        conversationId: 'underlying-yolo',
-        currentConversationId: 'underlying-yolo',
-      }),
-    ).toBe(true)
-    expect(
-      shouldLoadYoloHistoryItem({
-        activeRuntimeId: 'yolo',
-        conversationId: 'underlying-yolo',
-        currentConversationId: 'underlying-yolo',
       }),
     ).toBe(false)
   })
@@ -720,33 +703,5 @@ describe('CLI chat integration', () => {
 
     expect(result.controller).toBe(controller)
     expect(recordOpenedSession).toHaveBeenCalledWith(hydration)
-  })
-
-  it('never removes an overlay before explicit confirmation', async () => {
-    let confirm: (() => void) | undefined
-    let cancel: (() => void) | undefined
-    const removeOverlay = jest.fn(async () => true)
-    const pending = removeCliOverlayAfterConfirmation({
-      requestConfirmation: (onConfirm, onCancel) => {
-        confirm = onConfirm
-        cancel = onCancel
-      },
-      removeOverlay,
-    })
-
-    expect(removeOverlay).not.toHaveBeenCalled()
-    confirm?.()
-    await expect(pending).resolves.toBe(true)
-    expect(removeOverlay).toHaveBeenCalledTimes(1)
-
-    const cancelled = removeCliOverlayAfterConfirmation({
-      requestConfirmation: (_onConfirm, onCancel) => {
-        cancel = onCancel
-      },
-      removeOverlay,
-    })
-    cancel?.()
-    await expect(cancelled).resolves.toBe(false)
-    expect(removeOverlay).toHaveBeenCalledTimes(1)
   })
 })

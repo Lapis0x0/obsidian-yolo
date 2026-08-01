@@ -233,6 +233,30 @@ describe('ChatManager', () => {
       ])
     })
 
+    test('persists a YOLO-owned CLI binding in the stable history index', async () => {
+      const { app, files } = createFakeFs({})
+      const manager = new ChatManager(app)
+      const cliSession = {
+        runtimeId: 'codex' as const,
+        nativeSessionId: 'thread-1',
+        sessionPathHint: '/native/thread-1.jsonl',
+      }
+
+      await manager.createChat({
+        id: idA,
+        title: 'CLI conversation',
+        messages: [],
+        cliSession,
+      })
+
+      await expect(manager.listChats()).resolves.toEqual([
+        expect.objectContaining({ id: idA, cliSession }),
+      ])
+      expect(
+        JSON.parse(files.get(`${CHATS_DIR}/chat_index.json`) as string),
+      ).toEqual([expect.objectContaining({ id: idA, cliSession })])
+    })
+
     test('surfaces a placeholder instead of rejecting on a corrupt file', async () => {
       const { app } = createFakeFs({
         [`${CHATS_DIR}/chat_index.json`]: '[]',

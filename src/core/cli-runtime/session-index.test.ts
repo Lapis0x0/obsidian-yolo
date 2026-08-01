@@ -21,8 +21,7 @@ describe('CLI session index contract', () => {
       runtimeId: 'claude-code',
       nativeSessionId: 'session-1',
       sessionPathHint: '/old/path.jsonl',
-      assistantId: 'assistant-1',
-      lastOpenedAt: 123,
+      modelId: 'sonnet',
     })
 
     expect(getCliSessionIndexKey(entry)).toBe('claude-code:session-1')

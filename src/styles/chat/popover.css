@@ -773,6 +773,26 @@ button.yolo-chat-list-origin-filter:focus-visible {
   background: color-mix(in srgb, var(--color-green) 15%, transparent);
 }
 
+.yolo-chat-list-dropdown-item-runtime-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.yolo-chat-list-dropdown-item-runtime-badge--claude-code {
+  background: color-mix(in srgb, var(--color-orange) 15%, transparent);
+  color: color-mix(in srgb, var(--color-orange) 82%, var(--text-normal));
+}
+
+.yolo-chat-list-dropdown-item-runtime-badge--codex {
+  background: color-mix(in srgb, var(--color-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--color-cyan) 82%, var(--text-normal));
+}
+
 .yolo-chat-list-dropdown-item-title-skeleton {
   position: absolute;
   left: 0;

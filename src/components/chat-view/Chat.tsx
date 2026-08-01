@@ -43,19 +43,15 @@ import {
   type CliRuntimeConfiguration,
   type CliRuntimeId,
   type CliRuntimeModel,
-  type CliRuntimeRunState,
   type CliRuntimeScope,
-  type CliSessionDiscoveryResult,
   type CliSessionRef,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
-  ensureCliSessionAutoTitle,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
-import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
@@ -134,7 +130,6 @@ import { readTFileContent } from '../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import DotLoader from '../common/DotLoader'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
-import { ConfirmModal } from '../modals/ConfirmModal'
 
 // removed Prompt Templates feature
 
@@ -173,12 +168,10 @@ import {
   isCliConversationActive,
   openCliSession,
   openCliSessionForNavigation,
-  removeCliOverlayAfterConfirmation,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
-  shouldLoadYoloHistoryItem,
   submitCliComposerTurn,
 } from './cliChatIntegration'
 import CliChatSurface from './CliChatSurface'
@@ -186,7 +179,6 @@ import {
   rememberCliRuntimeConfiguration,
   resolveCliRuntimePreference,
 } from './cliRuntimePreferences'
-import { CliSessionListSection } from './CliSessionListSection'
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
 import { useSnippetEntries } from './hooks/useSnippetEntries'
@@ -915,6 +907,7 @@ export type ChatRef = {
 export type ChatRuntimeSnapshot = {
   activeRuntimeId: ChatRuntimeId
   cliSessionRef: CliSessionRef | null
+  cliConversationId: string | null
   currentConversationId: string
   inputMessage: ChatUserMessage
   inputDraftRevision: number
@@ -964,12 +957,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [settings])
   const quickAccessSkillEntries = useLiteSkillEntries(app, { settings })
   const quickAccessSnippetEntries = useSnippetEntries()
-  const { t, language } = useLanguage()
+  const { t } = useLanguage()
   const { getMcpManager } = useMcp()
 
   const {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    createOrTouchCliConversation,
     deleteConversation,
     getConversationById,
     updateConversationTitle,
@@ -1044,6 +1038,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       return controller
     })
+  const [cliConversationId, setCliConversationId] = useState<string | null>(
+    () =>
+      seededRuntimeSnapshot?.cliConversationId ??
+      (cliConversationController ? uuidv4() : null),
+  )
   const [cliConversationSnapshot, setCliConversationSnapshot] =
     useState<CliConversationSnapshot | null>(
       () => cliConversationController?.getSnapshot() ?? null,
@@ -1091,9 +1090,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliOperationSnapshot?.submissionPhase === 'preparing' ||
     cliOperationSnapshot?.submissionPhase === 'sending'
   const cliTransitioning = cliOperationSnapshot?.isTransitioning === true
-  const [cliSessionDiscoveryResult, setCliSessionDiscoveryResult] =
-    useState<CliSessionDiscoveryResult>()
-  const [cliSessionsLoading, setCliSessionsLoading] = useState(false)
   const [cliModelCatalog, setCliModelCatalog] = useState<
     ReadonlyMap<CliRuntimeId, readonly CliRuntimeModel[]>
   >(() => cliRuntimeScope?.getModelCatalogSnapshot() ?? new Map())
@@ -1128,55 +1124,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       .warmModelCatalog(activeRuntimeId)
       .catch(() => undefined)
   }, [activeRuntimeId, cliRuntimeScope])
-  const [cliSessionRunStates, setCliSessionRunStates] = useState<
-    ReadonlyMap<string, CliRuntimeRunState>
-  >(() => cliRuntimeScope?.getSessionRunStates() ?? new Map())
-  useEffect(() => {
-    if (!cliRuntimeScope) {
-      setCliSessionRunStates(new Map())
-      return
-    }
-    const publishRunStates = () =>
-      setCliSessionRunStates(new Map(cliRuntimeScope.getSessionRunStates()))
-    publishRunStates()
-    return cliRuntimeScope.subscribeToSessionRunStates(publishRunStates)
-  }, [cliRuntimeScope])
-  const cliSessionRefreshIdRef = useRef(0)
-  const refreshCliSessions = useCallback(async () => {
-    if (!cliRuntimeScope || !cliRuntimeAvailable) return
-    const refreshId = ++cliSessionRefreshIdRef.current
-    setCliSessionsLoading(true)
-    try {
-      const result = await cliRuntimeScope.sessionService.listSessions()
-      if (refreshId === cliSessionRefreshIdRef.current) {
-        setCliSessionDiscoveryResult(result)
-      }
-    } catch (error) {
-      if (refreshId !== cliSessionRefreshIdRef.current) return
-      const message = t(
-        'sidebar.cliSessions.loadError',
-        'Could not load CLI sessions: {message}',
-      ).replace(
-        '{message}',
-        error instanceof Error ? error.message : String(error),
-      )
-      setCliSessionDiscoveryResult({
-        sessions: [],
-        errors: { 'claude-code': message, codex: message },
-      })
-    } finally {
-      if (refreshId === cliSessionRefreshIdRef.current) {
-        setCliSessionsLoading(false)
-      }
-    }
-  }, [cliRuntimeAvailable, cliRuntimeScope, t])
-  useEffect(() => {
-    if (!cliRuntimeScope || !cliRuntimeAvailable) return
-    void refreshCliSessions()
-    return () => {
-      cliSessionRefreshIdRef.current += 1
-    }
-  }, [cliRuntimeAvailable, cliRuntimeScope, refreshCliSessions])
   const [conversationAssistantId, setConversationAssistantId] =
     useState<string>(
       seededRuntimeSnapshot?.conversationAssistantId ??
@@ -1220,18 +1167,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           return
         }
         setCliConversationController(result.controller)
+        setCliConversationId(
+          seededRuntimeSnapshot?.cliConversationId ?? uuidv4(),
+        )
         lastCliRuntimeIdRef.current = seededRef.runtimeId
         setRequestedRuntimeId(seededRef.runtimeId)
         activeRuntimeIdRef.current = seededRef.runtimeId
         if (result.overlayError) {
-          new Notice(
-            t(
-              'sidebar.cliSessions.recordError',
-              'The CLI session opened, but YOLO could not remember it: {message}',
-            ).replace('{message}', result.overlayError.message),
-          )
+          console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+            conversationId: seededRuntimeSnapshot?.cliConversationId,
+            error: result.overlayError.message,
+          })
         }
-        void refreshCliSessions()
       })
       .catch((error) => {
         if (
@@ -1260,7 +1207,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliConversationController,
     cliOperationCoordinator,
     cliRuntimeScope,
-    refreshCliSessions,
+    seededRuntimeSnapshot?.cliConversationId,
     seededRuntimeSnapshot?.cliSessionRef,
     t,
   ])
@@ -1404,6 +1351,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       props.initialConversationId ??
       uuidv4(),
   )
+  const activeHistoryConversationId =
+    activeRuntimeId === 'yolo'
+      ? currentConversationId
+      : (cliConversationId ?? currentConversationId)
   const currentConversationRef = useMemo<YoloConversationRef>(
     () => ({ runtimeId: 'yolo', conversationId: currentConversationId }),
     [currentConversationId],
@@ -1428,18 +1379,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const currentConversationPersisted = useMemo(
     () =>
       chatList.some(
-        (conversation) => conversation.id === currentConversationId,
+        (conversation) => conversation.id === activeHistoryConversationId,
       ),
-    [chatList, currentConversationId],
+    [activeHistoryConversationId, chatList],
   )
   const currentConversationTitle = useMemo(() => {
-    const rawTitle = currentConversationId
+    const rawTitle = activeHistoryConversationId
       ? chatList.find(
-          (conversation) => conversation.id === currentConversationId,
+          (conversation) => conversation.id === activeHistoryConversationId,
         )?.title
       : undefined
     return getConversationDisplayTitle(rawTitle, untitledFallback)
-  }, [chatList, currentConversationId, untitledFallback])
+  }, [activeHistoryConversationId, chatList, untitledFallback])
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
     seededRuntimeSnapshot?.reasoningLevel ?? initialReasoningLevel,
   )
@@ -1913,6 +1864,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
       }
       setCliConversationController(controller)
+      setCliConversationId(uuidv4())
       return controller
     },
     [
@@ -1979,6 +1931,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           )
         }
         setCliConversationController(controller)
+        setCliConversationId(uuidv4())
         lastCliRuntimeIdRef.current = runtimeId
         activeRuntimeIdRef.current = runtimeId
         setRequestedRuntimeId(runtimeId)
@@ -3525,12 +3478,95 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const loadCliConversation = useCallback(
+    async (
+      conversationId: string,
+      ref: CliSessionRef,
+      isLatestNavigation: () => boolean,
+    ) => {
+      if (!cliRuntimeScope || !cliRuntimeAvailable) {
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace('{message}', 'CLI runtime unavailable.'),
+        )
+        return
+      }
+
+      const openSelectedSession = async (isCurrent: () => boolean) => {
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        const result = await openCliSessionForNavigation({
+          scope: cliRuntimeScope,
+          ref,
+          isCurrent: isCurrentNavigation,
+        })
+        if (!result) return
+        lastCliRuntimeIdRef.current = ref.runtimeId
+        activeRuntimeIdRef.current = ref.runtimeId
+        setRequestedRuntimeId(ref.runtimeId)
+        persistChatRuntimePreference(ref.runtimeId)
+        setCliConversationController(result.controller)
+        setCliConversationId(conversationId)
+        if (result.overlayError) {
+          console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+            conversationId,
+            error: result.overlayError.message,
+          })
+        }
+      }
+
+      try {
+        if (activeRuntimeIdRef.current === 'yolo') {
+          await openSelectedSession(isLatestNavigation)
+        } else {
+          await transitionCliSession((isCurrent) =>
+            openSelectedSession(() => isCurrent() && isLatestNavigation()),
+          )
+        }
+      } catch (error) {
+        if (!isLatestNavigation()) return
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      }
+    },
+    [
+      activeRuntimeIdRef,
+      cliRuntimeAvailable,
+      cliRuntimeScope,
+      persistChatRuntimePreference,
+      t,
+      transitionCliSession,
+    ],
+  )
+
   const handleLoadConversation = useCallback(
     async (conversationId: string) => {
       const isLatestNavigation = beginChatRuntimeNavigation(
         runtimeNavigationGenerationRef,
         () => chatMountedRef.current,
       )
+      const conversation = await getConversationById(conversationId)
+      if (!isLatestNavigation()) return
+      if (!conversation) {
+        new Notice('Failed to load conversation')
+        return
+      }
+      if (conversation.cliSession) {
+        await loadCliConversation(
+          conversationId,
+          conversation.cliSession,
+          isLatestNavigation,
+        )
+        return
+      }
       if (activeRuntimeIdRef.current === 'yolo') {
         await loadYoloConversation(conversationId, isLatestNavigation)
         return
@@ -3541,7 +3577,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         await loadYoloConversation(conversationId, isCurrentNavigation)
       })
     },
-    [activeRuntimeIdRef, loadYoloConversation, transitionCliSession],
+    [
+      activeRuntimeIdRef,
+      getConversationById,
+      loadCliConversation,
+      loadYoloConversation,
+      transitionCliSession,
+    ],
   )
 
   // Load an initial conversation passed in via props (e.g., from Quick Ask)
@@ -3552,7 +3594,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   useEffect(() => {
     props.onConversationContextChange?.({
-      currentConversationId,
+      currentConversationId: activeHistoryConversationId,
       currentConversationPersisted,
       currentConversationTitle,
       currentModelId:
@@ -3573,7 +3615,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentConversationPersisted,
     conversationModelId,
     conversationOverrides,
-    currentConversationId,
+    activeHistoryConversationId,
     props.onConversationContextChange,
   ])
 
@@ -3585,6 +3627,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onRuntimeSnapshotChange({
       activeRuntimeId,
       cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliConversationId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
       inputDraftRevision: inputDraftRevisionRef.current,
@@ -3599,6 +3642,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onRuntimeSnapshotChange,
     activeRuntimeId,
     activeCliConversationSnapshot?.sessionRef,
+    cliConversationId,
     currentConversationId,
     inputMessage,
     conversationModelId,
@@ -5928,6 +5972,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     getRuntimeSnapshot: () => ({
       activeRuntimeId,
       cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliConversationId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
       inputDraftRevision: inputDraftRevisionRef.current,
@@ -6061,133 +6106,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const handleCliSessionSelect = useCallback(
-    (ref: CliSessionRef) => {
-      if (!cliRuntimeScope || !cliRuntimeAvailable) return
-      const isLatestNavigation = beginChatRuntimeNavigation(
-        runtimeNavigationGenerationRef,
-        () => chatMountedRef.current,
-      )
-      const openSelectedSession = async (isCurrent: () => boolean) => {
-        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
-        const result = await openCliSessionForNavigation({
-          scope: cliRuntimeScope,
-          ref,
-          isCurrent: isCurrentNavigation,
-        })
-        if (!result) return
-        lastCliRuntimeIdRef.current = ref.runtimeId
-        activeRuntimeIdRef.current = ref.runtimeId
-        setRequestedRuntimeId(ref.runtimeId)
-        persistChatRuntimePreference(ref.runtimeId)
-        setCliConversationController(result.controller)
-        if (result.overlayError) {
-          new Notice(
-            t(
-              'sidebar.cliSessions.recordError',
-              'The CLI session opened, but YOLO could not remember it: {message}',
-            ).replace('{message}', result.overlayError.message),
-          )
-        }
-        void refreshCliSessions()
-      }
-
-      const task =
-        activeRuntimeIdRef.current === 'yolo'
-          ? openSelectedSession(isLatestNavigation)
-          : transitionCliSession((isCurrent) =>
-              openSelectedSession(() => isCurrent() && isLatestNavigation()),
-            )
-      void task.catch((error) => {
-        if (!isLatestNavigation()) return
-        new Notice(
-          t(
-            'chat.cliSurface.openError',
-            'Could not open the CLI session: {message}',
-          ).replace(
-            '{message}',
-            error instanceof Error ? error.message : String(error),
-          ),
-        )
-      })
-    },
-    [
-      activeRuntimeIdRef,
-      chatMountedRef,
-      cliRuntimeAvailable,
-      cliRuntimeScope,
-      cliSessionDiscoveryResult,
-      refreshCliSessions,
-      persistChatRuntimePreference,
-      t,
-      transitionCliSession,
-    ],
-  )
-
-  const handleCliSessionTogglePinned = useCallback(
-    (ref: CliSessionRef, pinned: boolean) => {
-      if (!cliRuntimeScope) return
-      void cliRuntimeScope.sessionService
-        .setPinned(ref, pinned)
-        .then(refreshCliSessions)
-        .catch((error) => {
-          new Notice(
-            t(
-              'sidebar.cliSessions.pinError',
-              'Could not update the CLI session pin: {message}',
-            ).replace(
-              '{message}',
-              error instanceof Error ? error.message : String(error),
-            ),
-          )
-        })
-    },
-    [cliRuntimeScope, refreshCliSessions, t],
-  )
-
-  const handleCliSessionForgetOverlay = useCallback(
-    (ref: CliSessionRef) => {
-      if (!cliRuntimeScope) return
-      void removeCliOverlayAfterConfirmation({
-        requestConfirmation: (onConfirm, onCancel) => {
-          new ConfirmModal(app, {
-            title: t(
-              'sidebar.cliSessions.forgetConfirmTitle',
-              'Forget CLI session from YOLO?',
-            ),
-            message: t(
-              'sidebar.cliSessions.forgetConfirmMessage',
-              'This removes only YOLO metadata. The native CLI transcript will not be deleted.',
-            ),
-            ctaText: t(
-              'sidebar.cliSessions.forgetConfirmAction',
-              'Forget from YOLO',
-            ),
-            cancelText: t('common.cancel', 'Cancel'),
-            onConfirm,
-            onCancel,
-          }).open()
-        },
-        removeOverlay: () => cliRuntimeScope.sessionService.removeOverlay(ref),
-      })
-        .then((removed) => {
-          if (removed) void refreshCliSessions()
-        })
-        .catch((error) => {
-          new Notice(
-            t(
-              'sidebar.cliSessions.forgetError',
-              'Could not forget the CLI session: {message}',
-            ).replace(
-              '{message}',
-              error instanceof Error ? error.message : String(error),
-            ),
-          )
-        })
-    },
-    [app, cliRuntimeScope, refreshCliSessions, t],
-  )
-
   const header = (
     <div
       ref={headerRef}
@@ -6265,27 +6183,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             ) : null}
             <ChatListDropdown
               chatList={chatList}
-              currentConversationId={currentConversationId}
+              currentConversationId={activeHistoryConversationId}
               runSummariesByConversationId={runSummariesByConversationId}
               onSelect={(conversationId) => {
-                if (
-                  !shouldLoadYoloHistoryItem({
-                    activeRuntimeId,
-                    conversationId,
-                    currentConversationId,
-                  })
-                ) {
-                  return
-                }
+                if (conversationId === activeHistoryConversationId) return
                 void handleLoadConversation(conversationId)
               }}
               onDelete={(conversationId) => {
                 void (async () => {
+                  const conversation = await getConversationById(conversationId)
                   await deleteConversation(conversationId)
-                  if (
-                    activeRuntimeId === 'yolo' &&
-                    conversationId === currentConversationId
-                  ) {
+                  if (conversation?.cliSession && cliRuntimeScope) {
+                    await cliRuntimeScope.sessionService.removeOverlay(
+                      conversation.cliSession,
+                    )
+                  }
+                  if (conversationId === activeHistoryConversationId) {
+                    if (activeRuntimeId !== 'yolo') {
+                      handleNewChat()
+                      return
+                    }
                     const nextConversation = chatList.find(
                       (chat) => chat.id !== conversationId,
                     )
@@ -6323,27 +6240,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 )
               }}
               onExportConversation={handleExportChatToVault}
-              additionalHistorySections={
-                cliRuntimeScope && cliRuntimeAvailable ? (
-                  <CliSessionListSection
-                    discoveryResult={cliSessionDiscoveryResult}
-                    runStates={cliSessionRunStates}
-                    loading={cliSessionsLoading}
-                    currentRef={
-                      activeRuntimeId !== 'yolo'
-                        ? (activeCliConversationSnapshot?.sessionRef ??
-                          undefined)
-                        : undefined
-                    }
-                    onSelect={handleCliSessionSelect}
-                    onTogglePinned={handleCliSessionTogglePinned}
-                    onRequestForgetOverlay={handleCliSessionForgetOverlay}
-                    onRetryProvider={(_runtimeId: CliRuntimeId) => {
-                      void refreshCliSessions()
-                    }}
-                  />
-                ) : undefined
-              }
             >
               <History size={18} />
             </ChatListDropdown>
@@ -6375,6 +6271,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     app,
     buildInputMessageForSubmit,
     chatMessages,
+    cliConversationId,
     commitSentSelectionHighlights,
     conversationModelId,
     cliConversationController,
@@ -6382,15 +6279,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliRuntimeScope,
     currentConversationId,
     currentConversationRunSummary,
+    createOrTouchCliConversation,
     displayedChatMessages,
     handleUserMessageSubmit,
+    generateConversationTitle,
     inputMessage,
-    language,
     messageModelMap,
     queuedMessageEditState,
     reasoningLevel,
     selectedAssistant,
-    setSettings,
     settings,
     t,
   })
@@ -6476,37 +6373,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 }
               },
             })
+            const historyConversationId = state.cliConversationId ?? uuidv4()
+            await state.createOrTouchCliConversation(historyConversationId, {
+              runtimeId: result.sessionRef.runtimeId,
+              nativeSessionId: result.sessionRef.nativeSessionId,
+              ...(result.sessionRef.sessionPathHint
+                ? { sessionPathHint: result.sessionRef.sessionPathHint }
+                : {}),
+            })
+            if (state.cliConversationId === null && chatMountedRef.current) {
+              setCliConversationId(historyConversationId)
+            }
+            void state.generateConversationTitle(historyConversationId, [
+              result.userMessage,
+            ])
             if (chatMountedRef.current) {
               if (result.overlayError) {
-                new Notice(
-                  state
-                    .t(
-                      'sidebar.cliSessions.recordError',
-                      'The CLI message was sent, but YOLO could not remember the session: {message}',
-                    )
-                    .replace('{message}', result.overlayError.message),
-                )
+                console.warn('[YOLO] Failed to save CLI display metadata', {
+                  conversationId: historyConversationId,
+                  error: result.overlayError.message,
+                })
               }
-              void refreshCliSessions()
-              void ensureCliSessionAutoTitle({
-                settings: state.settings,
-                language: state.language,
-                scope,
-                sessionRef: result.sessionRef,
-                userMessage: result.userMessage,
-                onAutoPromoteTransportMode: (providerId, mode) => {
-                  void promoteProviderTransportModeToObsidian({
-                    getSettings: () => state.settings,
-                    setSettings: state.setSettings,
-                    providerId,
-                    mode,
-                  })
-                },
-              }).then((updated) => {
-                if (updated && chatMountedRef.current) {
-                  void refreshCliSessions()
-                }
-              })
             }
           } catch (error) {
             if (error instanceof DOMException && error.name === 'AbortError') {
@@ -6648,7 +6535,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       consumeAcceptedCliDraft,
       consumePresentedCliDraft,
       mainInputSubmitStateRef,
-      refreshCliSessions,
       replaceInputMessage,
     ],
   )

@@ -1,7 +1,1 @@
-export {
-  getSessionInfo,
-  getSessionMessages,
-  listSessions,
-  query,
-  renameSession,
-} from '@yolo/claude-agent-sdk-runtime'
+export { getSessionMessages, query } from '@yolo/claude-agent-sdk-runtime'

@@ -74,31 +74,10 @@ export const en: TranslationKeys = {
       accessibleLabel: 'CLI provider: {runtime}',
       menuLabel: 'CLI provider',
       claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
       claudeCodeDescription: 'Claude Code on this device',
       codexLabel: 'Codex',
       codexDescription: 'Codex on this device',
-    },
-    cliSessions: {
-      sectionLabel: 'CLI sessions',
-      title: 'Local CLI sessions',
-      loading: 'Loading CLI sessions…',
-      empty: 'No Claude Code or Codex sessions found',
-      current: 'Current',
-      pin: 'Pin in YOLO',
-      unpin: 'Unpin in YOLO',
-      forgetFromYolo: 'Forget from YOLO',
-      retryProvider: 'Retry {provider}',
-      loadError: 'Could not load CLI sessions: {message}',
-      pinError: 'Could not update the CLI session pin: {message}',
-      forgetConfirmTitle: 'Forget CLI session from YOLO?',
-      forgetConfirmMessage:
-        'This removes only YOLO metadata. The native CLI transcript will not be deleted.',
-      forgetConfirmAction: 'Forget from YOLO',
-      forgetError: 'Could not forget the CLI session: {message}',
-      recordError:
-        'The CLI action succeeded, but YOLO could not remember the session: {message}',
-      yoloRunActive:
-        'Stop the current YOLO response before opening a CLI session.',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',

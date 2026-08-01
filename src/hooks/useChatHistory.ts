@@ -13,6 +13,7 @@ import { promoteProviderTransportModeToObsidian } from '../core/llm/transportMod
 import { batchLookupImageCache } from '../database/json/chat/imageCacheStore'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import { ChatConversationMetadata } from '../database/json/chat/types'
+import type { ChatConversationCliSession } from '../database/json/chat/types'
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
@@ -68,6 +69,10 @@ type UseChatHistory = {
     assistantGroupBoundaryMessageIds?: string[],
     options?: { touchUpdatedAt?: boolean },
   ) => Promise<void>
+  createOrTouchCliConversation: (
+    id: string,
+    cliSession: ChatConversationCliSession,
+  ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
   getConversationById: (id: string) => Promise<{
@@ -80,6 +85,7 @@ type UseChatHistory = {
     assistantGroupBoundaryMessageIds?: string[]
     reasoningLevel?: string
     compaction?: ChatConversationCompactionState
+    cliSession?: ChatConversationCliSession
   } | null>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   toggleConversationPinned: (id: string) => Promise<void>
@@ -333,6 +339,28 @@ export function useChatHistory(): UseChatHistory {
     [debouncedCreateOrUpdateConversation, persistConversationInternal],
   )
 
+  const createOrTouchCliConversation = useCallback(
+    async (
+      id: string,
+      cliSession: ChatConversationCliSession,
+    ): Promise<void> => {
+      const existingConversation = await chatManager.findById(id)
+      if (existingConversation) {
+        await chatManager.updateChat(id, { cliSession })
+      } else {
+        await chatManager.createChat({
+          id,
+          title: DEFAULT_UNTITLED_CONVERSATION_TITLE,
+          messages: [],
+          cliSession,
+        })
+      }
+      emitChatHistoryUpdated()
+      await fetchChatList()
+    },
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
+  )
+
   const deleteConversation = useCallback(
     async (id: string): Promise<void> => {
       await chatManager.deleteChat(id)
@@ -371,6 +399,7 @@ export function useChatHistory(): UseChatHistory {
       assistantGroupBoundaryMessageIds?: string[]
       reasoningLevel?: string
       compaction?: ChatConversationCompactionState
+      cliSession?: ChatConversationCliSession
     } | null> => {
       const conversation = await chatManager.findById(id)
       if (!conversation) return null
@@ -391,6 +420,7 @@ export function useChatHistory(): UseChatHistory {
         compaction: normalizeChatConversationCompactionState(
           conversation.compaction,
         ),
+        cliSession: conversation.cliSession,
       }
     },
     [chatManager, app],
@@ -584,6 +614,7 @@ export function useChatHistory(): UseChatHistory {
   return {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    createOrTouchCliConversation,
     deleteConversation,
     getChatMessagesById,
     getConversationById,

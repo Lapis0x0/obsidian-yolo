@@ -90,31 +90,10 @@ export const it: DeepPartial<TranslationKeys> = {
       accessibleLabel: 'Provider CLI: {runtime}',
       menuLabel: 'Provider CLI',
       claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
       claudeCodeDescription: 'Claude Code su questo dispositivo',
       codexLabel: 'Codex',
       codexDescription: 'Codex su questo dispositivo',
-    },
-    cliSessions: {
-      sectionLabel: 'Sessioni CLI',
-      title: 'Sessioni CLI locali',
-      loading: 'Caricamento delle sessioni CLI…',
-      empty: 'Nessuna sessione Claude Code o Codex trovata',
-      current: 'Attuale',
-      pin: 'Fissa in YOLO',
-      unpin: 'Rimuovi il fissaggio in YOLO',
-      forgetFromYolo: 'Dimentica da YOLO',
-      retryProvider: 'Riprova {provider}',
-      loadError: 'Impossibile caricare le sessioni CLI: {message}',
-      pinError: 'Impossibile aggiornare il fissaggio: {message}',
-      forgetConfirmTitle: 'Dimenticare la sessione CLI da YOLO?',
-      forgetConfirmMessage:
-        'Vengono rimossi solo i metadati di YOLO. La trascrizione CLI nativa non verrà eliminata.',
-      forgetConfirmAction: 'Dimentica da YOLO',
-      forgetError: 'Impossibile dimenticare la sessione CLI: {message}',
-      recordError:
-        "L'azione CLI è riuscita, ma YOLO non ha potuto ricordare la sessione: {message}",
-      yoloRunActive:
-        'Interrompi la risposta YOLO corrente prima di aprire una sessione CLI.',
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',

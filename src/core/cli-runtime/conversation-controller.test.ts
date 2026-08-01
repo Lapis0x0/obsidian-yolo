@@ -11,7 +11,6 @@ import type {
   CliRuntimeId,
   CliRuntimeReadyInput,
   CliSessionHydration,
-  CliSessionMetadata,
   CliSessionRef,
   CliTurnInput,
 } from './types'
@@ -83,19 +82,8 @@ class FakeCliRuntime implements CliRuntime {
     }
   }
 
-  async listSessions(): Promise<CliSessionMetadata[]> {
-    return []
-  }
-
   openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     return this.openSessionImpl(ref)
-  }
-
-  async renameSessionIfPlaceholder(
-    _ref: CliSessionRef,
-    _title: string,
-  ): Promise<'preserved'> {
-    return 'preserved'
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {

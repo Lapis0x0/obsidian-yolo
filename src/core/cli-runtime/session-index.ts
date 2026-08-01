@@ -24,17 +24,11 @@ export const cliSessionIndexEntrySchema = z.object({
   runtimeId: cliRuntimeIdSchema,
   nativeSessionId: z.string().min(1),
   sessionPathHint: z.string().min(1).optional(),
-  assistantId: z.string().min(1).optional(),
-  lastOpenedAt: z.number().nonnegative().optional(),
-  isPinned: z.boolean().optional(),
-  pinnedAt: z.number().nonnegative().optional(),
   userDisplayByTransportHash: z
     .record(z.string(), serializedUserMessageSchema)
     .optional(),
   modelId: z.string().nullable().optional(),
   reasoningEffort: z.string().nullable().optional(),
-  /** YOLO-generated display title; preferred over native list titles. */
-  title: z.string().min(1).optional(),
 })
 
 export type CliSessionIndexEntry = z.infer<typeof cliSessionIndexEntrySchema>

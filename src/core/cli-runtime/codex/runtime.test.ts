@@ -313,53 +313,17 @@ describe('CodexCliRuntime', () => {
     ).toHaveLength(1)
   })
 
-  it('lists vault sessions and starts a native thread', async () => {
+  it('starts a native thread without discovering external sessions', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({
       cwd: '/vault',
       createProcess: async () => process,
     })
-    await expect(runtime.listSessions()).resolves.toMatchObject([
-      {
-        title: 'First prompt',
-        ref: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
-      },
-    ])
 
     const events: string[] = []
     runtime.subscribe((event) => events.push(event.type))
     await runtime.ensureReady({})
     expect(events).toContain('session_bound')
-  })
-
-  it('renames only threads without a provider-native name', async () => {
-    const process = new RpcFakeProcess()
-    const runtime = new CodexCliRuntime({
-      cwd: '/vault',
-      createProcess: async () => process,
-    })
-    const ref = { runtimeId: 'codex' as const, nativeSessionId: 'thread-1' }
-
-    await expect(
-      runtime.renameSessionIfPlaceholder(ref, 'Generated title'),
-    ).resolves.toBe('renamed')
-    expect(process.requests).toContainEqual({
-      method: 'thread/read',
-      params: { threadId: 'thread-1', includeTurns: false },
-    })
-    expect(process.requests).toContainEqual({
-      method: 'thread/name/set',
-      params: { threadId: 'thread-1', name: 'Generated title' },
-    })
-
-    process.thread.name = 'Manual title'
-    process.requests.length = 0
-    await expect(
-      runtime.renameSessionIfPlaceholder(ref, 'Replacement title'),
-    ).resolves.toBe('preserved')
-    expect(
-      process.requests.some((request) => request.method === 'thread/name/set'),
-    ).toBe(false)
   })
 
   it('requests visible reasoning summaries and streams summary and content deltas', async () => {
@@ -410,40 +374,6 @@ describe('CodexCliRuntime', () => {
       'Public summary',
       'Public summary\n\nPublic reasoning text',
     ])
-  })
-
-  it('paginates all sessions and exposes only vault root or descendant cwd values', async () => {
-    const process = new RpcFakeProcess()
-    process.threadPages = [
-      [
-        { ...process.thread, id: 'root', cwd: '/vault' },
-        {
-          ...process.thread,
-          id: 'descendant',
-          cwd: '/vault/projects/one',
-        },
-        { ...process.thread, id: 'sibling', cwd: '/other' },
-      ],
-      [{ ...process.thread, id: 'prefix-spoof', cwd: '/vault-copy' }],
-    ]
-    const runtime = new CodexCliRuntime({
-      cwd: '/vault',
-      createProcess: async () => process,
-    })
-
-    await expect(runtime.listSessions()).resolves.toMatchObject([
-      { ref: { nativeSessionId: 'root' }, cwd: '/vault' },
-      {
-        ref: { nativeSessionId: 'descendant' },
-        cwd: '/vault/projects/one',
-      },
-    ])
-    const listRequests = process.requests.filter(
-      (request) => request.method === 'thread/list',
-    )
-    expect(listRequests).toHaveLength(2)
-    expect(listRequests[0].params).not.toHaveProperty('cwd')
-    expect(listRequests[1].params).toMatchObject({ cursor: '1' })
   })
 
   it('surfaces server approvals and routes the UI decision back by tool id', async () => {

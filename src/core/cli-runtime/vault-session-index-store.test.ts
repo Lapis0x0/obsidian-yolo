@@ -35,8 +35,7 @@ describe('VaultCliSessionIndexStore', () => {
         runtimeId: 'codex',
         nativeSessionId: 'thread-1',
         sessionPathHint: '/old/thread.jsonl',
-        assistantId: 'assistant-1',
-        lastOpenedAt: 10,
+        modelId: 'gpt-5',
       }),
     )
     await store.upsert(
@@ -44,8 +43,7 @@ describe('VaultCliSessionIndexStore', () => {
         runtimeId: 'codex',
         nativeSessionId: 'thread-1',
         sessionPathHint: '/new/thread.jsonl',
-        assistantId: 'assistant-1',
-        lastOpenedAt: 20,
+        modelId: 'gpt-5',
       }),
     )
 
@@ -54,7 +52,7 @@ describe('VaultCliSessionIndexStore', () => {
     ).resolves.toMatchObject({
       nativeSessionId: 'thread-1',
       sessionPathHint: '/new/thread.jsonl',
-      lastOpenedAt: 20,
+      modelId: 'gpt-5',
     })
     expect(files.size).toBe(1)
   })
@@ -90,22 +88,21 @@ describe('VaultCliSessionIndexStore', () => {
         createCliSessionIndexEntry({
           ...ref,
           ...current,
-          assistantId: 'assistant-1',
+          modelId: 'gpt-5',
         }),
       ),
       store.update(ref, (current) =>
         createCliSessionIndexEntry({
           ...ref,
           ...current,
-          isPinned: true,
-          pinnedAt: 20,
+          reasoningEffort: 'high',
         }),
       ),
       store.update(ref, (current) =>
         createCliSessionIndexEntry({
           ...ref,
           ...current,
-          lastOpenedAt: 30,
+          sessionPathHint: '/vault/thread-1.jsonl',
         }),
       ),
     ])
@@ -113,10 +110,9 @@ describe('VaultCliSessionIndexStore', () => {
     await expect(store.get(ref)).resolves.toEqual({
       runtimeId: 'codex',
       nativeSessionId: 'thread-1',
-      assistantId: 'assistant-1',
-      isPinned: true,
-      pinnedAt: 20,
-      lastOpenedAt: 30,
+      modelId: 'gpt-5',
+      reasoningEffort: 'high',
+      sessionPathHint: '/vault/thread-1.jsonl',
     })
   })
 

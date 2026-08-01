@@ -16,14 +16,8 @@ import type {
   CliSessionIndexMutator,
   CliSessionIndexStore,
 } from './session-index'
-import { getCliSessionIndexKey } from './session-index'
 import { CliSessionService } from './session-service'
-import type {
-  CliRuntime,
-  CliRuntimeId,
-  CliRuntimeRunState,
-  CliSessionRef,
-} from './types'
+import type { CliRuntime, CliRuntimeId, CliSessionRef } from './types'
 import { VaultCliSessionIndexStore } from './vault-session-index-store'
 
 type ClaudeRuntimeOptions = Omit<ClaudeCliRuntimeOptions, 'vaultPath'>
@@ -56,8 +50,6 @@ export type CliRuntimeScope = {
   selectConversationRuntime(runtimeId: CliRuntimeId): CliConversationController
   createConversationRuntime(runtimeId: CliRuntimeId): CliConversationController
   selectConversationSession(ref: CliSessionRef): CliConversationController
-  getSessionRunStates(): ReadonlyMap<string, CliRuntimeRunState>
-  subscribeToSessionRunStates(listener: () => void): () => void
   getModelCatalogSnapshot(): CliModelCatalogSnapshot
   subscribeToModelCatalog(listener: () => void): () => void
   warmModelCatalog(runtimeId: CliRuntimeId): Promise<void>
@@ -148,7 +140,6 @@ class DesktopCliRuntimeWorkspace {
   private readonly runtimes = new Map<CliRuntimeId, CliRuntime>()
   private readonly ownedRuntimes = new Set<CliRuntime>()
   private readonly conversations = new Set<ConversationRuntimeRecord>()
-  private readonly runStateListeners = new Set<() => void>()
   private readonly modelCatalog: CliModelCatalogService
   private readonly codexHostPool: CodexAppServerHostPool
   private readonly codexRuntimeOptions: CodexRuntimeOptions
@@ -181,10 +172,6 @@ class DesktopCliRuntimeWorkspace {
     this.assertActive()
     this.sessionServiceInstance ??= new CliSessionService({
       app: this.options.app,
-      runtimes: [
-        this.resolveRuntime('claude-code'),
-        this.resolveRuntime('codex'),
-      ],
       indexStore: this.indexStore,
     })
     return this.sessionServiceInstance
@@ -228,32 +215,12 @@ class DesktopCliRuntimeWorkspace {
     )
     this.conversations.add({ runtime, controller })
     controller.subscribe(() => {
-      for (const listener of this.runStateListeners) listener()
       const models = controller.getSnapshot().configuration?.models
       if (models && models.length > 0) {
         void this.modelCatalog.record(runtimeId, models)
       }
     })
     return controller
-  }
-
-  getSessionRunStates(): ReadonlyMap<string, CliRuntimeRunState> {
-    const states = new Map<string, CliRuntimeRunState>()
-    for (const { controller } of this.conversations) {
-      const snapshot = controller.getSnapshot()
-      if (snapshot.sessionRef) {
-        states.set(
-          getCliSessionIndexKey(snapshot.sessionRef),
-          snapshot.runState,
-        )
-      }
-    }
-    return states
-  }
-
-  subscribeToSessionRunStates(listener: () => void): () => void {
-    this.runStateListeners.add(listener)
-    return () => this.runStateListeners.delete(listener)
   }
 
   getModelCatalogSnapshot(): CliModelCatalogSnapshot {
@@ -410,16 +377,6 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
     const controller = this.workspace.selectConversationSession(ref)
     this.selectedControllers.set(ref.runtimeId, controller)
     return controller
-  }
-
-  getSessionRunStates(): ReadonlyMap<string, CliRuntimeRunState> {
-    this.assertActive()
-    return this.workspace.getSessionRunStates()
-  }
-
-  subscribeToSessionRunStates(listener: () => void): () => void {
-    this.assertActive()
-    return this.workspace.subscribeToSessionRunStates(listener)
   }
 
   getModelCatalogSnapshot(): CliModelCatalogSnapshot {

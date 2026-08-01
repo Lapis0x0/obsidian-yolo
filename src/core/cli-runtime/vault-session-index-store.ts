@@ -36,11 +36,7 @@ export class VaultCliSessionIndexStore implements CliSessionIndexStore {
   ) {}
 
   async list(): Promise<CliSessionIndexEntry[]> {
-    return Object.values((await this.readDocument()).sessions).sort(
-      (left, right) =>
-        (right.pinnedAt ?? right.lastOpenedAt ?? 0) -
-        (left.pinnedAt ?? left.lastOpenedAt ?? 0),
-    )
+    return Object.values((await this.readDocument()).sessions)
   }
 
   async get(ref: CliSessionRef): Promise<CliSessionIndexEntry | null> {

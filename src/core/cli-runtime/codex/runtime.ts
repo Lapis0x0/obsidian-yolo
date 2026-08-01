@@ -1,6 +1,5 @@
 import type { ContentPart } from '../../../types/llm/request'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
-import { isSessionPathInVault } from '../session-path'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -12,7 +11,6 @@ import type {
   CliRuntimeModel,
   CliRuntimeReadyInput,
   CliSessionHydration,
-  CliSessionMetadata,
   CliSessionRef,
   CliTurnInput,
 } from '../types'
@@ -34,7 +32,6 @@ import type {
   CodexThreadItem,
   CodexUserInput,
   ModelListResponse,
-  ThreadListResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadStartResponse,
@@ -56,15 +53,6 @@ const toSessionRef = (thread: CodexThread): CliSessionRef => ({
   runtimeId: 'codex',
   nativeSessionId: thread.id,
   ...(thread.path ? { sessionPathHint: thread.path } : {}),
-})
-
-const toSessionMetadata = (thread: CodexThread): CliSessionMetadata => ({
-  ref: toSessionRef(thread),
-  title: thread.name?.trim() || thread.preview.trim() || 'Codex session',
-  ...(thread.preview.trim() ? { preview: thread.preview.trim() } : {}),
-  createdAt: thread.createdAt * 1000,
-  updatedAt: thread.updatedAt * 1000,
-  cwd: thread.cwd,
 })
 
 const toCodexInput = (content: string | ContentPart[]): CodexUserInput[] => {
@@ -149,33 +137,6 @@ export class CodexCliRuntime implements CliRuntime {
 
   constructor(private readonly options: CodexCliRuntimeOptions) {}
 
-  async listSessions(): Promise<CliSessionMetadata[]> {
-    const host = await this.getHost()
-    const sessions: CliSessionMetadata[] = []
-    let cursor: string | null = null
-    do {
-      const response: ThreadListResponse =
-        await host.request<ThreadListResponse>('thread/list', {
-          cursor,
-          limit: 100,
-          sortKey: 'updated_at',
-          sortDirection: 'desc',
-        })
-      const belongsToVault = await Promise.all(
-        response.data.map((thread) =>
-          isSessionPathInVault(this.options.cwd, thread.cwd),
-        ),
-      )
-      sessions.push(
-        ...response.data
-          .filter((_, index) => belongsToVault[index])
-          .map(toSessionMetadata),
-      )
-      cursor = response.nextCursor
-    } while (cursor)
-    return sessions
-  }
-
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     if (ref.runtimeId !== 'codex')
       throw new Error('Cannot open a non-Codex session.')
@@ -188,27 +149,6 @@ export class CodexCliRuntime implements CliRuntime {
       ref: toSessionRef(response.thread),
       messages: mapCodexTurns(response.thread.turns),
     }
-  }
-
-  async renameSessionIfPlaceholder(
-    ref: CliSessionRef,
-    title: string,
-  ): Promise<'renamed' | 'preserved' | 'unavailable'> {
-    if (ref.runtimeId !== 'codex')
-      throw new Error('Cannot rename a non-Codex session.')
-    const normalized = title.trim()
-    if (!normalized) throw new Error('Codex session title cannot be empty.')
-    const host = await this.getHost()
-    const response = await host.request<ThreadReadResponse>('thread/read', {
-      threadId: ref.nativeSessionId,
-      includeTurns: false,
-    })
-    if (response.thread.name?.trim()) return 'preserved'
-    await host.request('thread/name/set', {
-      threadId: ref.nativeSessionId,
-      name: normalized,
-    })
-    return 'renamed'
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {

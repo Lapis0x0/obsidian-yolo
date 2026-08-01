@@ -2,7 +2,6 @@ import type {
   CanUseTool,
   Options,
   SDKMessage,
-  SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
 } from '@yolo/claude-agent-sdk-runtime'
@@ -94,42 +93,24 @@ class FakeQuery implements ClaudeSdkQuery {
 const createSdk = () => {
   const queryInstance = new FakeQuery()
   const queryInputs: QueryInput[] = []
-  const listSessions = jest.fn<
-    Promise<SDKSessionInfo[]>,
-    [options?: { dir?: string; limit?: number; offset?: number }]
-  >(async () => [])
   const getSessionMessages = jest.fn<
     Promise<SessionMessage[]>,
     [sessionId: string, options?: { dir?: string }]
   >(async () => [])
-  const getSessionInfo = jest.fn<
-    Promise<SDKSessionInfo | undefined>,
-    [sessionId: string, options?: { dir?: string }]
-  >(async () => undefined)
-  const renameSession = jest.fn<
-    Promise<void>,
-    [sessionId: string, title: string, options?: { dir?: string }]
-  >(async () => undefined)
   const query = jest.fn<ClaudeSdkQuery, [input: QueryInput]>((input) => {
     queryInputs.push(input)
     return queryInstance
   })
   const sdk: ClaudeSdkModule = {
     query,
-    listSessions,
-    getSessionInfo,
     getSessionMessages,
-    renameSession,
   }
   return {
     sdk,
     query,
     queryInputs,
     queryInstance,
-    listSessions,
-    getSessionInfo,
     getSessionMessages,
-    renameSession,
   }
 }
 
@@ -189,9 +170,12 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport,
     })
 
-    await expect(runtime.listSessions()).rejects.toThrow(
-      /only available on desktop/,
-    )
+    await expect(
+      runtime.openSession({
+        runtimeId: 'claude-code',
+        nativeSessionId: 'session-1',
+      }),
+    ).rejects.toThrow(/only available on desktop/)
     await expect(runtime.ensureReady({})).rejects.toThrow(
       /only available on desktop/,
     )
@@ -199,18 +183,8 @@ describe('ClaudeCliRuntime', () => {
     expect(resolveProcessSupport).not.toHaveBeenCalled()
   })
 
-  it('discovers and hydrates native sessions for the current vault', async () => {
-    const { sdk, listSessions, getSessionMessages } = createSdk()
-    listSessions.mockResolvedValue([
-      {
-        sessionId: 'session-1',
-        summary: 'Native title',
-        firstPrompt: 'First prompt',
-        lastModified: 200,
-        createdAt: 100,
-        cwd: '/vault',
-      },
-    ])
+  it('hydrates a known native session by its stable reference', async () => {
+    const { sdk, getSessionMessages } = createSdk()
     getSessionMessages.mockResolvedValue([
       {
         type: 'user',
@@ -313,22 +287,11 @@ describe('ClaudeCliRuntime', () => {
       resolveProcessSupport: async () => processSupport,
     })
 
-    await expect(runtime.listSessions()).resolves.toEqual([
-      {
-        ref: { runtimeId: 'claude-code', nativeSessionId: 'session-1' },
-        title: 'Native title',
-        preview: 'First prompt',
-        createdAt: 100,
-        updatedAt: 200,
-        cwd: '/vault',
-      },
-    ])
     const hydration = await runtime.openSession({
       runtimeId: 'claude-code',
       nativeSessionId: 'session-1',
     })
 
-    expect(listSessions).toHaveBeenCalledWith({ limit: 100, offset: 0 })
     expect(getSessionMessages).toHaveBeenCalledWith('session-1')
     expect(hydration.messages).toHaveLength(5)
     expect(hydration.messages[0]).toMatchObject({
@@ -395,124 +358,6 @@ describe('ClaudeCliRuntime', () => {
           },
         },
       ],
-    })
-  })
-
-  it('renames only first-prompt placeholders from fresh session metadata', async () => {
-    const { sdk, getSessionInfo, renameSession } = createSdk()
-    const runtime = new ClaudeCliRuntime({
-      vaultPath: '/vault',
-      loadSdk: async () => sdk,
-      resolveProcessSupport: async () => processSupport,
-    })
-    const ref = {
-      runtimeId: 'claude-code' as const,
-      nativeSessionId: 'session-1',
-    }
-    getSessionInfo.mockResolvedValue({
-      sessionId: 'session-1',
-      summary: 'First prompt',
-      firstPrompt: 'First prompt',
-      lastModified: 1,
-      cwd: '/vault',
-    })
-
-    await expect(
-      runtime.renameSessionIfPlaceholder(ref, 'Generated title'),
-    ).resolves.toBe('renamed')
-    expect(getSessionInfo).toHaveBeenCalledWith('session-1', { dir: '/vault' })
-    expect(renameSession).toHaveBeenCalledWith(
-      'session-1',
-      'Generated title',
-      { dir: '/vault' },
-    )
-
-    getSessionInfo.mockResolvedValue({
-      sessionId: 'session-1',
-      summary: 'First prompt',
-      firstPrompt: 'First prompt',
-      customTitle: 'First prompt',
-      lastModified: 1,
-      cwd: '/vault',
-    })
-    renameSession.mockClear()
-
-    await expect(
-      runtime.renameSessionIfPlaceholder(ref, 'Generated title'),
-    ).resolves.toBe('preserved')
-    expect(renameSession).not.toHaveBeenCalled()
-  })
-
-  it('paginates global discovery and exposes only root or descendant sessions', async () => {
-    const { sdk, listSessions } = createSdk()
-    const outsideSessions = Array.from(
-      { length: 96 },
-      (_, index): SDKSessionInfo => ({
-        sessionId: `outside-${index}`,
-        summary: `Outside ${index}`,
-        lastModified: index,
-        cwd: `/outside/${index}`,
-      }),
-    )
-    listSessions.mockImplementation(async (options) => {
-      if ((options?.offset ?? 0) === 0) {
-        return [
-          {
-            sessionId: 'root',
-            summary: 'Root',
-            lastModified: 4,
-            cwd: '/vault',
-          },
-          {
-            sessionId: 'descendant',
-            summary: 'Descendant',
-            lastModified: 3,
-            cwd: '/vault/projects/one',
-          },
-          {
-            sessionId: 'sibling',
-            summary: 'Sibling',
-            lastModified: 2,
-            cwd: '/other',
-          },
-          {
-            sessionId: 'prefix-spoof',
-            summary: 'Prefix spoof',
-            lastModified: 1,
-            cwd: '/vault-copy',
-          },
-          ...outsideSessions,
-        ]
-      }
-      return [
-        {
-          sessionId: 'second-page-descendant',
-          summary: 'Second page',
-          lastModified: 5,
-          cwd: '/vault/projects/two',
-        },
-      ]
-    })
-    const runtime = new ClaudeCliRuntime({
-      vaultPath: '/vault',
-      loadSdk: async () => sdk,
-      resolveProcessSupport: async () => processSupport,
-    })
-
-    await expect(runtime.listSessions()).resolves.toMatchObject([
-      { ref: { nativeSessionId: 'root' }, cwd: '/vault' },
-      {
-        ref: { nativeSessionId: 'descendant' },
-        cwd: '/vault/projects/one',
-      },
-      {
-        ref: { nativeSessionId: 'second-page-descendant' },
-        cwd: '/vault/projects/two',
-      },
-    ])
-    expect(listSessions).toHaveBeenNthCalledWith(2, {
-      limit: 100,
-      offset: 100,
     })
   })
 

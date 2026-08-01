@@ -3,7 +3,6 @@ import type {
   Options,
   SDKControlInitializeResponse,
   SDKMessage,
-  SDKSessionInfo,
   SDKUserMessage,
   SessionMessage,
   SpawnOptions,
@@ -26,24 +25,10 @@ export type ClaudeSdkModule = {
     prompt: string | AsyncIterable<SDKUserMessage>
     options?: Options
   }): ClaudeSdkQuery
-  listSessions(options?: {
-    dir?: string
-    limit?: number
-    offset?: number
-  }): Promise<SDKSessionInfo[]>
-  getSessionInfo(
-    sessionId: string,
-    options?: { dir?: string },
-  ): Promise<SDKSessionInfo | undefined>
   getSessionMessages(
     sessionId: string,
     options?: { dir?: string },
   ): Promise<SessionMessage[]>
-  renameSession(
-    sessionId: string,
-    title: string,
-    options?: { dir?: string },
-  ): Promise<void>
 }
 
 export type ClaudeProcessSupport = {
