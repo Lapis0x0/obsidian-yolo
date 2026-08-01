@@ -297,13 +297,54 @@ const getActiveStreamingMessageId = (
   return null
 }
 
-const getPendingResponseUserMessageId = (
+/**
+ * True when the active turn already has UI the user can watch: substance
+ * (text / reasoning / tools / errors) or an empty streaming shell that itself
+ * carries the Requesting indicator. Empty completed shells do not count.
+ */
+export const hasCliTurnResponseFeedback = (
+  messages: readonly ChatMessage[],
+): boolean => {
+  let lastUserIndex = -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      lastUserIndex = index
+      break
+    }
+  }
+  if (lastUserIndex < 0) return false
+
+  for (let index = lastUserIndex + 1; index < messages.length; index += 1) {
+    const message = messages[index]
+    if (!message) continue
+    if (message.role === 'tool') return true
+    if (message.role !== 'assistant') continue
+    if (message.content.trim().length > 0) return true
+    if ((message.reasoning ?? '').trim().length > 0) return true
+    if ((message.toolCallRequests?.length ?? 0) > 0) return true
+    if (message.annotations) return true
+    if (
+      message.metadata?.generationState === 'error' &&
+      Boolean(message.metadata.errorMessage)
+    ) {
+      return true
+    }
+    if (message.metadata?.generationState === 'streaming') return true
+  }
+  return false
+}
+
+export const getPendingResponseUserMessageId = (
   messages: readonly ChatMessage[],
   runState: CliRuntimeRunState,
 ): string | null => {
   if (runState !== 'running') return null
-  const latestMessage = messages.at(-1)
-  return latestMessage?.role === 'user' ? latestMessage.id : null
+  if (hasCliTurnResponseFeedback(messages)) return null
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === 'user') return message.id
+  }
+  return null
 }
 
 export const getCliTimelineRenderVersion = (

@@ -170,6 +170,21 @@ const toolPair = ({
   },
 ]
 
+/**
+ * Empty agent/reasoning shells on item/started are not user-visible yet; skip
+ * them so Requesting stays up until deltas or a non-empty item arrives.
+ * Tool-like items always emit because they already have UI.
+ */
+export const shouldEmitCodexItemOnStarted = (item: CodexThreadItem): boolean => {
+  if (item.type === 'agentMessage') return item.text.trim().length > 0
+  if (item.type === 'reasoning') {
+    return [...item.summary, ...item.content].some(
+      (part) => part.trim().length > 0,
+    )
+  }
+  return true
+}
+
 export const mapCodexItem = (
   item: CodexThreadItem,
   cwd?: string,

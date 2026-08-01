@@ -26,6 +26,7 @@ import {
   mapCodexItem,
   mapCodexTurns,
   parseCodexUserMessageId,
+  shouldEmitCodexItemOnStarted,
   toCodexClientUserMessageId,
 } from './mapping'
 import type { CodexProcessOptions } from './process'
@@ -532,6 +533,9 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'item/started' || method === 'item/completed') {
       const item = params.item as CodexThreadItem | undefined
       if (!item) return
+      if (method === 'item/started' && !shouldEmitCodexItemOnStarted(item)) {
+        return
+      }
       const turnId =
         typeof params.turnId === 'string' ? params.turnId : undefined
       for (const message of mapCodexItem(item, this.options.cwd, turnId)) {

@@ -1,6 +1,10 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
-import { mapCodexItem, mapCodexTurns } from './mapping'
+import {
+  mapCodexItem,
+  mapCodexTurns,
+  shouldEmitCodexItemOnStarted,
+} from './mapping'
 import type { CodexThreadItem } from './protocol'
 
 describe('Codex message mapping', () => {
@@ -52,6 +56,51 @@ describe('Codex message mapping', () => {
         },
       ])[0],
     ).toMatchObject({ id: 'codex-user-client-yolo-message-id' })
+  })
+
+  it('skips empty agent and reasoning shells on item/started', () => {
+    expect(
+      shouldEmitCodexItemOnStarted({
+        type: 'agentMessage',
+        id: 'agent-empty',
+        text: '',
+      }),
+    ).toBe(false)
+    expect(
+      shouldEmitCodexItemOnStarted({
+        type: 'agentMessage',
+        id: 'agent-ready',
+        text: 'hi',
+      }),
+    ).toBe(true)
+    expect(
+      shouldEmitCodexItemOnStarted({
+        type: 'reasoning',
+        id: 'reasoning-empty',
+        summary: [],
+        content: [],
+      }),
+    ).toBe(false)
+    expect(
+      shouldEmitCodexItemOnStarted({
+        type: 'reasoning',
+        id: 'reasoning-ready',
+        summary: ['thinking'],
+        content: [],
+      }),
+    ).toBe(true)
+    expect(
+      shouldEmitCodexItemOnStarted({
+        type: 'commandExecution',
+        id: 'command-1',
+        command: 'pwd',
+        cwd: '/vault',
+        status: 'inProgress',
+        aggregatedOutput: null,
+        exitCode: null,
+        durationMs: null,
+      }),
+    ).toBe(true)
   })
 
   it('maps command execution into a reusable tool request/result pair', () => {

@@ -162,6 +162,8 @@ import {
   CliChatSurface,
   getCliTimelineRenderVersion,
   getCliUserMessageDisplay,
+  getPendingResponseUserMessageId,
+  hasCliTurnResponseFeedback,
 } from './CliChatSurface'
 
 const actions: ChatRuntimeActions = {
@@ -388,6 +390,43 @@ describe('CliChatSurface', () => {
     expect(renderSurface(pending)).toContain('Requesting')
     expect(renderSurface(pending)).toContain('data-stage="requesting"')
     expect(renderSurface(answered)).not.toContain('data-stage="requesting"')
+  })
+
+  it('keeps Requesting while only an empty completed assistant shell exists', () => {
+    const emptyCompletedShell: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-empty',
+      content: '',
+      metadata: { generationState: 'completed' },
+    }
+    const snapshot = makeSnapshot({
+      messages: [makeUser('user-pending', 'Run the tests'), emptyCompletedShell],
+      runState: 'running',
+    })
+
+    expect(hasCliTurnResponseFeedback(snapshot.messages)).toBe(false)
+    expect(getPendingResponseUserMessageId(snapshot.messages, 'running')).toBe(
+      'user-pending',
+    )
+    expect(renderSurface(snapshot)).toContain('data-stage="requesting"')
+  })
+
+  it('drops the pending Requesting node once a streaming shell can carry it', () => {
+    const streamingShell: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-streaming',
+      content: '',
+      metadata: { generationState: 'streaming' },
+    }
+    const snapshot = makeSnapshot({
+      messages: [makeUser('user-pending', 'Run the tests'), streamingShell],
+      runState: 'running',
+    })
+
+    expect(hasCliTurnResponseFeedback(snapshot.messages)).toBe(true)
+    expect(
+      getPendingResponseUserMessageId(snapshot.messages, 'running'),
+    ).toBeNull()
   })
 
   it('uses the shared workspace greeting for an empty CLI conversation', () => {

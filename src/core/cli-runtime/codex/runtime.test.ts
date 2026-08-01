@@ -502,6 +502,68 @@ describe('CodexCliRuntime', () => {
     ])
   })
 
+  it('does not publish empty agent or reasoning shells on item/started', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const upserts: Array<{ id: string; content: string; reasoning?: string }> =
+      []
+    runtime.subscribe((event) => {
+      if (
+        event.type === 'message_upsert' &&
+        event.message.role === 'assistant'
+      ) {
+        upserts.push({
+          id: event.message.id,
+          content: event.message.content,
+          reasoning: event.message.reasoning,
+        })
+      }
+    })
+    await runtime.ensureReady({})
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/started',
+      params: {
+        item: { type: 'agentMessage', id: 'agent-1', text: '' },
+      },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/started',
+      params: {
+        item: {
+          type: 'reasoning',
+          id: 'reasoning-1',
+          summary: [],
+          content: [],
+        },
+      },
+    })
+    expect(upserts).toEqual([])
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: { itemId: 'agent-1', delta: 'Hello' },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: {
+        item: { type: 'agentMessage', id: 'agent-1', text: 'Hello' },
+      },
+    })
+
+    expect(upserts).toEqual([
+      { id: 'codex-assistant-agent-1', content: 'Hello' },
+      { id: 'codex-assistant-agent-1', content: 'Hello' },
+    ])
+  })
+
   it('surfaces server approvals and routes the UI decision back by tool id', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({
