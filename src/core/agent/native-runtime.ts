@@ -239,6 +239,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   allowedToolNames: input.allowedToolNames,
                   enableToolDisclosure: input.enableToolDisclosure,
                   toolPreferences: input.toolPreferences,
+                  toolServerPreferences: input.toolServerPreferences,
                   allowedSkillPaths: input.allowedSkillPaths,
                   abortSignal,
                   reasoningLevel: input.reasoningLevel,
@@ -405,48 +406,51 @@ export class NativeAgentRuntime implements AgentRuntime {
                         summaryModelId: input.model.id,
                       })
                     if (nextCompaction) {
-                      try {
-                        nextCompaction.estimatedNextContextTokens =
-                          await estimateContinuationRequestContextTokens({
-                            requestContextBuilder: input.requestContextBuilder,
-                            mcpManager: input.mcpManager,
-                            model: input.model,
-                            messages: conversationMessages,
-                            conversationId: input.conversationId,
-                            compaction: nextCompaction,
-                            enableTools: this.loopConfig.enableTools,
-                            includeBuiltinTools:
-                              this.loopConfig.includeBuiltinTools,
-                            apiType: input.apiType,
-                            allowedToolNames: input.allowedToolNames,
-                            enableToolDisclosure: input.enableToolDisclosure,
-                            toolPreferences: input.toolPreferences,
-                            contextualInjections: composeAgentInjections({
-                              baseInjections: input.contextualInjections,
-                              messages: conversationMessages,
-                            }),
-                            toolCapabilityMode: input.toolCapabilityMode,
-                          })
-                      } catch (error) {
-                        console.warn(
-                          '[YOLO][Compact] failed to estimate continuation context tokens',
-                          error,
-                        )
-                      }
                       const preCompactionTokens =
                         getLastAssistantPromptTokens(conversationMessages)
-                      if (
-                        typeof preCompactionTokens === 'number' &&
-                        typeof nextCompaction.estimatedNextContextTokens ===
-                          'number'
-                      ) {
-                        const saved =
-                          preCompactionTokens -
-                          nextCompaction.estimatedNextContextTokens
-                        if (saved > 0) {
-                          nextCompaction.estimatedTokensSaved = saved
-                        }
-                      }
+                      // These token counts are presentation-only. Publish the
+                      // usable compaction state immediately and estimate in the
+                      // background so the next Agent LLM turn is not held behind
+                      // a second full context/tokenizer pass.
+                      void estimateContinuationRequestContextTokens({
+                        requestContextBuilder: input.requestContextBuilder,
+                        mcpManager: input.mcpManager,
+                        model: input.model,
+                        messages: conversationMessages,
+                        conversationId: input.conversationId,
+                        compaction: nextCompaction,
+                        enableTools: this.loopConfig.enableTools,
+                        includeBuiltinTools:
+                          this.loopConfig.includeBuiltinTools,
+                        apiType: input.apiType,
+                        allowedToolNames: input.allowedToolNames,
+                        enableToolDisclosure: input.enableToolDisclosure,
+                        toolPreferences: input.toolPreferences,
+                        toolServerPreferences: input.toolServerPreferences,
+                        contextualInjections: composeAgentInjections({
+                          baseInjections: input.contextualInjections,
+                          messages: conversationMessages,
+                        }),
+                        toolCapabilityMode: input.toolCapabilityMode,
+                      })
+                        .then((estimatedNextContextTokens) => {
+                          nextCompaction.estimatedNextContextTokens =
+                            estimatedNextContextTokens
+                          if (typeof preCompactionTokens === 'number') {
+                            const saved =
+                              preCompactionTokens - estimatedNextContextTokens
+                            if (saved > 0) {
+                              nextCompaction.estimatedTokensSaved = saved
+                            }
+                          }
+                          this.notifySubscribers()
+                        })
+                        .catch((error) => {
+                          console.warn(
+                            '[YOLO][Compact] failed to estimate continuation context tokens',
+                            error,
+                          )
+                        })
                     }
                     this.compactionState = nextCompaction
                       ? [...this.compactionState, nextCompaction]
@@ -599,6 +603,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       apiType: input.apiType,
       allowedToolNames: input.allowedToolNames,
       toolPreferences: input.toolPreferences,
+      toolServerPreferences: input.toolServerPreferences,
       allowedSkillPaths: input.allowedSkillPaths,
       abortSignal,
       reasoningLevel: input.reasoningLevel,

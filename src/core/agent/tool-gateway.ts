@@ -328,6 +328,9 @@ export class AgentToolGateway {
   private async getServerToolTokenBudgets(): Promise<
     ReadonlyMap<string, number>
   > {
+    if (!this.enableToolDisclosure) {
+      return new Map()
+    }
     if (this.serverToolTokenBudgets) {
       return this.serverToolTokenBudgets
     }
@@ -345,6 +348,13 @@ export class AgentToolGateway {
           try {
             serverName = parseToolName(tool.name).serverName
           } catch {
+            continue
+          }
+          if (
+            serverName === getLocalFileToolServerName() ||
+            this.toolServerPreferences?.[serverName]?.disclosureMode !==
+              undefined
+          ) {
             continue
           }
           const bucket = serverToolsMap.get(serverName) ?? []
@@ -382,6 +392,7 @@ export class AgentToolGateway {
       getAssistantToolDisclosureMode(
         {
           toolPreferences: this.toolPreferences,
+          toolServerPreferences: this.toolServerPreferences,
           enabledToolNames: this.allowedToolNames
             ? [...this.allowedToolNames]
             : undefined,

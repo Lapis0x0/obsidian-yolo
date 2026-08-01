@@ -1,4 +1,7 @@
-import type { AssistantToolPreference } from '../../types/assistant.types'
+import type {
+  AssistantToolPreference,
+  AssistantToolServerPreference,
+} from '../../types/assistant.types'
 import type {
   ChatConversationCompactionLike,
   ChatMessage,
@@ -140,6 +143,7 @@ export const estimateContextBreakdown = async ({
   allowedToolNames,
   enableToolDisclosure,
   toolPreferences,
+  toolServerPreferences,
   contextualInjections,
   toolCapabilityMode,
 }: {
@@ -155,6 +159,7 @@ export const estimateContextBreakdown = async ({
   allowedToolNames?: string[]
   enableToolDisclosure?: boolean
   toolPreferences?: Record<string, AssistantToolPreference>
+  toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
 }): Promise<ContextBreakdown> => {
@@ -174,6 +179,7 @@ export const estimateContextBreakdown = async ({
     availableTools,
     allowedToolNames,
     toolPreferences,
+    toolServerPreferences,
     apiType,
     enableToolDisclosure,
     jsSandboxSettings: mcpManager.getJsSandboxSettings(),

@@ -65,6 +65,7 @@ import {
   parseToolName,
   validateServerName,
 } from './tool-name-utils'
+import { prewarmMcpServerToolTokenCosts } from './toolCatalogTokenCache'
 
 type RemoteTransportModule = typeof import('./remoteTransport')
 
@@ -433,6 +434,16 @@ export class McpManager {
 
   public async handleSettingsUpdate(settings: YoloSettings) {
     this.settings = settings
+    if (settings.mcp.enableToolDisclosure) {
+      for (const server of this.servers) {
+        if (
+          server.status === McpServerStatus.Connected &&
+          this.shouldPrewarmToolTokenCosts(server.name)
+        ) {
+          prewarmMcpServerToolTokenCosts(server.name, server.tools)
+        }
+      }
+    }
     const updatedServers = settings.mcp.servers.map(
       (serverConfig: McpServerConfig): McpServerState => {
         const existingServer = this.servers.find(
@@ -751,6 +762,9 @@ export class McpManager {
         {},
         signal ? { signal } : undefined,
       )
+      if (this.shouldPrewarmToolTokenCosts(name)) {
+        prewarmMcpServerToolTokenCosts(name, toolList.tools)
+      }
       signal?.removeEventListener('abort', abortListener)
       return {
         name,
@@ -885,6 +899,21 @@ export class McpManager {
     return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}`
   }
 
+  private shouldPrewarmToolTokenCosts(serverName: string): boolean {
+    if (!this.settings.mcp.enableToolDisclosure) return false
+    const assistants = this.settings.assistants ?? []
+    // With no saved Agent yet, runtime still uses Auto. Otherwise an explicit
+    // server policy on every Agent means the threshold budget is never read.
+    return (
+      assistants.length === 0 ||
+      assistants.some(
+        (assistant) =>
+          assistant.toolServerPreferences?.[serverName]?.disclosureMode ===
+          undefined,
+      )
+    )
+  }
+
   public async listAvailableTools({
     includeBuiltinTools = false,
     chatModelModalities,
@@ -901,33 +930,24 @@ export class McpManager {
       return cached
     }
 
+    // `connectServer` owns tools/list and stores the resulting catalog on the
+    // connected server state. Request preparation must only materialize that
+    // snapshot: asking the remote server again here made every cache miss
+    // (including model-modality variants that only affect builtins) pay a
+    // network round trip on the LLM hot path.
     const availableTools = this.remoteMcpDisabled
       ? []
-      : (
-          await Promise.all(
-            this.servers.map(async (server): Promise<McpTool[]> => {
-              if (server.status !== McpServerStatus.Connected) {
-                return []
-              }
-              try {
-                const toolList = await server.client.listTools({})
-                return toolList.tools
-                  .filter(
-                    (tool) => !server.config.toolOptions[tool.name]?.disabled,
-                  )
-                  .map((tool) => ({
-                    ...tool,
-                    name: getToolName(server.name, tool.name),
-                  }))
-              } catch (error) {
-                console.error(
-                  `Failed to list tools for MCP server ${server.name}: ${error instanceof Error ? error.message : String(error)}`,
-                )
-                return []
-              }
-            }),
-          )
-        ).flat()
+      : this.servers.flatMap((server): McpTool[] => {
+          if (server.status !== McpServerStatus.Connected) {
+            return []
+          }
+          return server.tools
+            .filter((tool) => !server.config.toolOptions[tool.name]?.disabled)
+            .map((tool) => ({
+              ...tool,
+              name: getToolName(server.name, tool.name),
+            }))
+        })
 
     const nextTools = includeBuiltinTools
       ? [

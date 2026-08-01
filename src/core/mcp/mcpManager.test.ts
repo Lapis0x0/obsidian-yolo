@@ -3,6 +3,7 @@ jest.mock('obsidian')
 import { App, Platform, TFile } from 'obsidian'
 
 import type { ApplyViewState } from '../../types/apply-view.types'
+import { McpServerStatus } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { McpNotAvailableException } from './exception'
@@ -216,5 +217,48 @@ describe('McpManager mobile built-in tool behavior', () => {
       status: ToolCallResponseStatus.Error,
       error: new McpNotAvailableException().message,
     })
+  })
+})
+
+describe('McpManager connected tool catalog', () => {
+  it('materializes the connect-time snapshot without another tools/list call', async () => {
+    const originalIsDesktop = Platform.isDesktop
+    Platform.isDesktop = true
+    const manager = new McpManager({
+      pluginId: 'test-plugin',
+      app: {
+        vault: { adapter: {}, configDir: '.obsidian' },
+      } as unknown as App,
+      settings: {
+        mcp: { servers: [], builtinToolOptions: {} },
+      } as never,
+      openApplyReview: jest.fn(),
+      registerSettingsListener: () => () => {},
+    })
+    Platform.isDesktop = originalIsDesktop
+    const listTools = jest.fn()
+    ;(manager as unknown as { servers: unknown[] }).servers = [
+      {
+        name: 'remote',
+        status: McpServerStatus.Connected,
+        client: { listTools },
+        tools: [
+          {
+            name: 'search',
+            description: 'Search',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ],
+        config: { toolOptions: {} },
+      },
+    ]
+
+    await expect(manager.listAvailableTools()).resolves.toEqual([
+      expect.objectContaining({ name: 'remote__search' }),
+    ])
+    await expect(
+      manager.listAvailableTools({ chatModelModalities: ['vision'] }),
+    ).resolves.toEqual([expect.objectContaining({ name: 'remote__search' })])
+    expect(listTools).not.toHaveBeenCalled()
   })
 })

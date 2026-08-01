@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 5,
+  "revision": 6,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.3",
+    "version": "1.6.3.1",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.3",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.3.1",
     "releaseNotes": {
-      "en": "## 1.6.3 Smoother Writing, Smarter Scrolling & Interactive Mermaid Charts 🚀\n\n### ✍️ A More Fluid Selection Rewrite Experience\n\n- Selection Rewrite now provides a clearer, smoother interaction from generation through review, with more intuitive controls and transitions.\n- The new **Adjust Length** control lets you drag to freely shorten or expand the selected passage. It currently uses your Tab Completion model settings.\n\n### 💬 Chat That Keeps Up with the Conversation\n\n- Auto-scrolling now follows streaming replies more reliably, including while Obsidian-specific formatting is being rendered, so the latest content stays in view without disrupting manual reading.\n- On mobile, pressing the newline key in the chat input now inserts a new line instead of accidentally sending the message. (#499)\n- Long option text in model question panels now wraps correctly instead of being clipped.\n- The conversation timeline now shows the skills loaded by the model, making agent activity easier to understand.\n\n### 📊 Better Mermaid Viewing\n\n- Complex Mermaid diagrams now scale sensibly inside chat. Expand a diagram to freely pan and zoom, or fit it to the available window for closer inspection.",
-      "zh": "## 1.6.3 更流畅的写作、更稳定的滚动与可交互 Mermaid 图表 🚀\n\n### ✍️ 更流畅的选区改写体验\n\n- 优化选区改写从生成到审阅的整体设计，控制方式和过渡更加直观、流畅。\n- 新增**调整篇幅**，可通过拖拽自由缩短或扩展选中段落；目前默认使用 Tab 补全模型的设置。\n\n### 💬 始终跟上对话进度\n\n- 优化聊天自动滚动体验：流式回复及 Obsidian 特殊格式渲染时能够更稳定地跟随最新内容，同时避免干扰手动阅读。\n- 修复移动端聊天输入框无法正常换行的问题；现在按下换行键会插入新行，不再误发送消息。（#499）\n- 修复模型提问面板中长选项文本无法换行、内容被截断的问题。\n- 对话时间线现在会展示模型加载的 skills，让 Agent 的工作过程更加清晰。\n\n### 📊 更完善的 Mermaid 查看体验\n\n- 复杂 Mermaid 图表现在会在聊天中合理缩放；展开后可自由平移、缩放，或一键适应窗口，便于查看细节。"
+      "en": "## 1.6.3.1 Obsidian 1.13.4 Compatibility & Chat Scroll Fixes 🛠️\n\n### 🪟 Obsidian 1.13.4 Compatibility\n\n- Fixed Agent action menus opening in the wrong window after updating to Obsidian 1.13.4, and removed the large blank area that could appear in the prompt input.\n- Popover menus in the dedicated settings window now position and dismiss correctly across Obsidian’s multi-window layout.\n\n### 💬 Mobile Chat Scrolling\n\n- Scrolling up through chat history on mobile no longer snaps back to the bottom when you release your finger.\n\n### 🔄 Module Updates\n\n- Module update notices can now be dismissed reliably in cases where the close action previously had no effect.",
+      "zh": "## 1.6.3.1 Obsidian 1.13.4 兼容与聊天滚动修复 🛠️\n\n### 🪟 Obsidian 1.13.4 兼容性\n\n- 修复更新到 Obsidian 1.13.4 后，Agent 操作菜单显示在错误窗口、提示词输入框出现大块空白的问题。\n- 完善独立设置窗口中弹出菜单的定位与关闭行为，适配多窗口布局。\n\n### 💬 移动端聊天滚动\n\n- 修复移动端向上翻阅聊天记录时，松手后会被自动拉回底部的问题。\n\n### 🔄 模块更新\n\n- 修复模块更新提示在部分情况下无法关闭的问题。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.3/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3/main.js",
-        "byteSize": 7695443,
-        "sha256": "5cbba819cc5a21eafa01eda9fbb8379028a0c643166dde89a247323102052db1"
+        "mirrorPath": "core/1.6.3.1/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3.1/main.js",
+        "byteSize": 7697097,
+        "sha256": "f7b7cf5dcad231d8376c389bc4ec865dc66d35968f42d8ef0524990d2e989328"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.3/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3/manifest.json",
-        "byteSize": 328,
-        "sha256": "1e5879dd816f307fa1ba349b497dfb416a4f32a11331d221e55de39b65c5ff8b"
+        "mirrorPath": "core/1.6.3.1/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3.1/manifest.json",
+        "byteSize": 330,
+        "sha256": "ac8d3887a25ae1410c00678431268a5833af825bfbed7c19748bd6715e75004f"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.3/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3/styles.css",
-        "byteSize": 571391,
-        "sha256": "999828d3c8979f41d397d4898f5e376d23315b41e9cadf22587ac5dc7fa2f3ab"
+        "mirrorPath": "core/1.6.3.1/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3.1/styles.css",
+        "byteSize": 571423,
+        "sha256": "c475382a300e8f5baf699b0ed3201f89cfd66a8d5d0a286adbc7134ed69b3308"
       }
     }
   },

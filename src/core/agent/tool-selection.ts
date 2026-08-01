@@ -1,5 +1,8 @@
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { AssistantToolPreference } from '../../types/assistant.types'
+import type {
+  AssistantToolPreference,
+  AssistantToolServerPreference,
+} from '../../types/assistant.types'
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
@@ -238,6 +241,7 @@ export const selectAllowedTools = async ({
   availableTools,
   allowedToolNames,
   toolPreferences,
+  toolServerPreferences,
   apiType,
   enableToolDisclosure = true,
   jsSandboxSettings = {},
@@ -247,6 +251,7 @@ export const selectAllowedTools = async ({
   availableTools: McpTool[]
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
+  toolServerPreferences?: Record<string, AssistantToolServerPreference>
   apiType?: LLMProviderApiType | null
   enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
@@ -273,16 +278,24 @@ export const selectAllowedTools = async ({
   )
   const assistantLike = {
     toolPreferences,
+    toolServerPreferences,
     enabledToolNames: normalizedAllowedToolNames
       ? [...normalizedAllowedToolNames]
       : undefined,
   }
-  const resolvedServerToolTokenBudgets =
-    serverToolTokenBudgets ??
-    (await buildServerToolTokenBudgets(
-      groupToolsByServer(baseFiltered),
-      estimateJsonTokens,
-    ))
+  const serverTools = groupToolsByServer(baseFiltered)
+  const localServerName = getLocalFileToolServerName()
+  const needsAutomaticBudget =
+    enableToolDisclosure &&
+    [...serverTools.keys()].some(
+      (serverName) =>
+        serverName !== localServerName &&
+        toolServerPreferences?.[serverName]?.disclosureMode === undefined,
+    )
+  const resolvedServerToolTokenBudgets = !needsAutomaticBudget
+    ? new Map<string, number>()
+    : (serverToolTokenBudgets ??
+      (await buildServerToolTokenBudgets(serverTools, estimateJsonTokens)))
 
   // Per-tool disclosure decisions for the filtered (non-loader) tools.
   // Computed up front so the loader injection can ask "does any surviving

@@ -7,6 +7,7 @@ import {
   getManagedSkillScanDirs,
   getSkillScanDirs,
   humanizeSkillName,
+  initializeLiteSkillRegistryService,
   listLiteSkillEntries,
   migrateLegacySkillFilesToPackages,
   migrateVaultSkillFrontmatter,
@@ -358,6 +359,7 @@ const makeAdapterApp = ({
 }): App => {
   const reads = { ...fileContents }
   const writes: Array<{ path: string; content: string }> = []
+  const vaultListeners = new Map<string, Array<(...args: unknown[]) => void>>()
   const directoryListings = Object.fromEntries(
     Object.entries(listings).map(([path, listing]) => [
       normalizePath(path),
@@ -427,7 +429,7 @@ const makeAdapterApp = ({
         return Promise.reject(new Error(`target exists: ${normalizedTarget}`))
       }
       reads[normalizedTarget] = reads[normalizedSource]
-      delete reads[normalizedSource]
+      Reflect.deleteProperty(reads, normalizedSource)
       const sourceParent = directoryListings[parentPath(normalizedSource)]
       if (sourceParent) {
         sourceParent.files = sourceParent.files.filter(
@@ -444,7 +446,7 @@ const makeAdapterApp = ({
       if (!listing || listing.files.length > 0 || listing.folders.length > 0) {
         return Promise.reject(new Error(`directory not empty: ${normalized}`))
       }
-      delete directoryListings[normalized]
+      Reflect.deleteProperty(directoryListings, normalized)
       const parent = directoryListings[parentPath(normalized)]
       if (parent) {
         parent.folders = parent.folders.filter((item) => item !== normalized)
@@ -468,6 +470,13 @@ const makeAdapterApp = ({
         writes.push({ path: normalized, content })
         return Promise.resolve()
       },
+      on: (event: string, callback: (...args: unknown[]) => void) => {
+        const callbacks = vaultListeners.get(event) ?? []
+        callbacks.push(callback)
+        vaultListeners.set(event, callbacks)
+        return { event, callback }
+      },
+      offref: jest.fn(),
     },
     metadataCache: {
       getFileCache: (file: { path: string }) => ({
@@ -475,6 +484,24 @@ const makeAdapterApp = ({
       }),
     },
   } as unknown as App
+
+  ;(
+    app as unknown as {
+      emitVaultEvent: (event: string, ...args: unknown[]) => void
+    }
+  ).emitVaultEvent = (event, ...args) => {
+    for (const callback of vaultListeners.get(event) ?? []) callback(...args)
+  }
+  ;(
+    app as unknown as {
+      setVaultListing: (path: string, listing: AdapterDirListing) => void
+    }
+  ).setVaultListing = (path, listing) => {
+    directoryListings[normalizePath(path)] = {
+      files: listing.files.map((file) => normalizePath(file)),
+      folders: listing.folders.map((folder) => normalizePath(folder)),
+    }
+  }
 
   return app
 }
@@ -490,9 +517,7 @@ describe('getSkillScanDirs', () => {
       `${OBSIDIAN_CONFIG_DIR}/skills`,
       `${OBSIDIAN_CONFIG_DIR}/YOLO/skills`,
     ])
-    expect(
-      getSkillScanDirs(input),
-    ).toEqual([
+    expect(getSkillScanDirs(input)).toEqual([
       `${OBSIDIAN_CONFIG_DIR}/yolo/skills`,
       `${OBSIDIAN_CONFIG_DIR}/skills`,
       `${OBSIDIAN_CONFIG_DIR}/YOLO/skills`,
@@ -505,6 +530,159 @@ describe('getSkillScanDirs', () => {
 
 describe('listLiteSkillEntries and getLiteSkillDocument', () => {
   const settings = { yolo: { baseDir: 'YOLO' } }
+
+  it('shares one inflight recursive scan across list/get callers', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/shared'],
+        },
+        'YOLO/skills/shared': {
+          files: ['YOLO/skills/shared/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/shared/SKILL.md': [
+          '---',
+          'name: shared',
+          'description: shared registry',
+          '---',
+          'body',
+        ].join('\n'),
+      },
+    })
+    const listSpy = jest.spyOn(app.vault.adapter, 'list')
+
+    const [firstList, document, secondList] = await Promise.all([
+      listLiteSkillEntries(app, { settings }),
+      getLiteSkillDocument({ app, name: 'shared', settings }),
+      listLiteSkillEntries(app, { settings }),
+    ])
+
+    expect(firstList.map((entry) => entry.name)).toContain('shared')
+    expect(secondList).toEqual(firstList)
+    expect(document?.content).toContain('body')
+    expect(listSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('invalidates and rebuilds after a relevant vault event', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/first'],
+        },
+        'YOLO/skills/first': {
+          files: ['YOLO/skills/first/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/first/SKILL.md': '---\nname: first\n---\n',
+        'YOLO/skills/second/SKILL.md': '---\nname: second\n---\n',
+      },
+    })
+    const dispose = initializeLiteSkillRegistryService({ app, settings })
+    await listLiteSkillEntries(app, { settings })
+
+    const setVaultListing = (
+      app as unknown as {
+        setVaultListing: (path: string, listing: AdapterDirListing) => void
+      }
+    ).setVaultListing
+    setVaultListing('YOLO/skills', {
+      files: [],
+      folders: ['YOLO/skills/first', 'YOLO/skills/second'],
+    })
+    setVaultListing('YOLO/skills/second', {
+      files: ['YOLO/skills/second/SKILL.md'],
+      folders: [],
+    })
+    ;(
+      app as unknown as {
+        emitVaultEvent: (event: string, file: { path: string }) => void
+      }
+    ).emitVaultEvent('create', { path: 'YOLO/skills/second/SKILL.md' })
+
+    await expect(listLiteSkillEntries(app, { settings })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'second' })]),
+    )
+    dispose()
+  })
+
+  it('coalesces bulk vault events into one background rebuild', async () => {
+    jest.useFakeTimers()
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/first'],
+        },
+        'YOLO/skills/first': {
+          files: ['YOLO/skills/first/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/first/SKILL.md': '---\nname: first\n---\n',
+      },
+    })
+    const dispose = initializeLiteSkillRegistryService({ app, settings })
+    const listSpy = jest.spyOn(app.vault.adapter, 'list')
+    try {
+      await listLiteSkillEntries(app, { settings })
+      listSpy.mockClear()
+      const emit = (
+        app as unknown as {
+          emitVaultEvent: (event: string, file: { path: string }) => void
+        }
+      ).emitVaultEvent
+
+      emit('create', { path: 'YOLO/skills/a/SKILL.md' })
+      emit('modify', { path: 'YOLO/skills/b/SKILL.md' })
+      emit('delete', { path: 'YOLO/skills/c/SKILL.md' })
+      expect(listSpy).not.toHaveBeenCalled()
+
+      jest.runOnlyPendingTimers()
+      await listLiteSkillEntries(app, { settings })
+      expect(listSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      dispose()
+      jest.useRealTimers()
+    }
+  })
+
+  it('rebuilds when the YOLO base directory changes', async () => {
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': { files: [], folders: ['YOLO/skills/old-base'] },
+        'YOLO/skills/old-base': {
+          files: ['YOLO/skills/old-base/SKILL.md'],
+          folders: [],
+        },
+        'NEW/skills': { files: [], folders: ['NEW/skills/new-base'] },
+        'NEW/skills/new-base': {
+          files: ['NEW/skills/new-base/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/old-base/SKILL.md': '---\nname: old-base\n---\n',
+        'NEW/skills/new-base/SKILL.md': '---\nname: new-base\n---\n',
+      },
+    })
+
+    const before = await listLiteSkillEntries(app, { settings })
+    const after = await listLiteSkillEntries(app, {
+      settings: { yolo: { baseDir: 'NEW' } },
+    })
+
+    expect(before.map((entry) => entry.name)).toContain('old-base')
+    expect(after.map((entry) => entry.name)).toContain('new-base')
+    expect(after.map((entry) => entry.name)).not.toContain('old-base')
+  })
 
   it('lists only standard directory packages in default and hidden roots', async () => {
     const app = makeAdapterApp({

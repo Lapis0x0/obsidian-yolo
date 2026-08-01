@@ -8,6 +8,8 @@ import {
 
 const AT_BOTTOM_THRESHOLD_PX = 24
 const SCROLL_POSITION_EPSILON_PX = 1
+const TOUCH_DIRECTION_THRESHOLD_PX = 4
+const SCROLL_SESSION_END_DELAY_MS = 160
 
 type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
@@ -23,6 +25,22 @@ type ScheduledFrame = {
 }
 
 type ScrollDirection = 'up' | 'down'
+
+export const resolveTouchScrollDirection = (
+  previousClientY: number,
+  currentClientY: number,
+  currentDirection: ScrollDirection | null,
+): ScrollDirection | null => {
+  if (currentClientY > previousClientY + TOUCH_DIRECTION_THRESHOLD_PX) {
+    return 'up'
+  }
+
+  if (currentClientY < previousClientY - TOUCH_DIRECTION_THRESHOLD_PX) {
+    return 'down'
+  }
+
+  return currentDirection
+}
 
 type ScrollTransitionInput = {
   isFollowing: boolean
@@ -90,7 +108,10 @@ export function useAutoScroll({
   const scrollIntentFrameRef = useRef<ScheduledFrame | null>(null)
   const scrollIntentRef = useRef<ScrollDirection | null>(null)
   const pointerDownRef = useRef(false)
-  const pointerMomentumDirectionRef = useRef<ScrollDirection | null>(null)
+  const touchActiveRef = useRef(false)
+  const lastTouchClientYRef = useRef<number | null>(null)
+  const scrollSessionDirectionRef = useRef<ScrollDirection | null>(null)
+  const scrollSessionEndTimerRef = useRef<ScheduledFrame | null>(null)
 
   const getScrollContainer = useCallback(() => {
     return scrollContainerElementOverride ?? scrollContainerRef.current
@@ -121,6 +142,38 @@ export function useAutoScroll({
       scrollIntentFrameRef.current = null
     }
   }, [])
+
+  const clearScrollSessionDirection = useCallback(() => {
+    scrollSessionDirectionRef.current = null
+    if (scrollSessionEndTimerRef.current !== null) {
+      scrollSessionEndTimerRef.current.window.clearTimeout(
+        scrollSessionEndTimerRef.current.id,
+      )
+      scrollSessionEndTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleScrollSessionEnd = useCallback(() => {
+    if (scrollSessionDirectionRef.current === null) {
+      return
+    }
+
+    if (scrollSessionEndTimerRef.current !== null) {
+      scrollSessionEndTimerRef.current.window.clearTimeout(
+        scrollSessionEndTimerRef.current.id,
+      )
+    }
+
+    const scrollContainer = getScrollContainer()
+    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+    scrollSessionEndTimerRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.setTimeout(() => {
+        scrollSessionEndTimerRef.current = null
+        scrollSessionDirectionRef.current = null
+      }, SCROLL_SESSION_END_DELAY_MS),
+    }
+  }, [getScrollContainer])
 
   const markScrollIntent = useCallback(
     (direction: ScrollDirection) => {
@@ -193,7 +246,7 @@ export function useAutoScroll({
 
   const forceScrollToBottom = useCallback(() => {
     clearScrollIntent()
-    pointerMomentumDirectionRef.current = null
+    clearScrollSessionDirection()
     updateAutoFollow(true)
     cancelScheduledFollow()
     scrollToBottom()
@@ -201,6 +254,7 @@ export function useAutoScroll({
   }, [
     cancelScheduledFollow,
     clearScrollIntent,
+    clearScrollSessionDirection,
     scheduleFollow,
     scrollToBottom,
     updateAutoFollow,
@@ -244,7 +298,7 @@ export function useAutoScroll({
       )
       const distanceToBottom = currentMaxScrollTop - currentScrollTop
       const intent = scrollIntentRef.current
-      const momentumDirection = pointerMomentumDirectionRef.current
+      const sessionDirection = scrollSessionDirectionRef.current
       const nextAutoFollow = resolveAutoFollowFromScroll({
         isFollowing: autoFollowRef.current,
         previousScrollTop,
@@ -252,26 +306,31 @@ export function useAutoScroll({
         distanceToBottom,
         allowDetach:
           pointerDownRef.current ||
-          momentumDirection === 'up' ||
+          sessionDirection === 'up' ||
           intent === 'up',
         allowReattach:
           canFollowLiveEdgeRef.current &&
           (pointerDownRef.current ||
-            momentumDirection === 'down' ||
+            sessionDirection === 'down' ||
             intent === 'down'),
       })
 
-      if (
-        'onscrollend' in scrollContainerElement &&
-        (pointerDownRef.current || intent !== null)
-      ) {
-        pointerMomentumDirectionRef.current =
+      if (pointerDownRef.current || intent !== null) {
+        scrollSessionDirectionRef.current =
           intent ??
           (currentScrollTop < previousScrollTop
             ? 'up'
             : currentScrollTop > previousScrollTop
               ? 'down'
-              : pointerMomentumDirectionRef.current)
+              : scrollSessionDirectionRef.current)
+      }
+
+      if (
+        !pointerDownRef.current &&
+        !touchActiveRef.current &&
+        scrollSessionDirectionRef.current !== null
+      ) {
+        scheduleScrollSessionEnd()
       }
 
       if (!nextAutoFollow) {
@@ -291,24 +350,74 @@ export function useAutoScroll({
       }
     }
 
-    const handlePointerDown = () => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return
+      }
       pointerDownRef.current = true
-      pointerMomentumDirectionRef.current = null
+      clearScrollSessionDirection()
     }
 
-    const handlePointerEnd = () => {
+    const handlePointerEnd = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return
+      }
       pointerDownRef.current = false
       clearScrollIntent()
+      scheduleScrollSessionEnd()
     }
 
-    const handlePointerCancel = () => {
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return
+      }
       pointerDownRef.current = false
       clearScrollIntent()
+      scheduleScrollSessionEnd()
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      if (!touch) {
+        return
+      }
+
+      clearScrollSessionDirection()
+      touchActiveRef.current = true
+      lastTouchClientYRef.current = touch.clientY
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      const previousClientY = lastTouchClientYRef.current
+      if (!touch || previousClientY === null) {
+        return
+      }
+
+      const nextDirection = resolveTouchScrollDirection(
+        previousClientY,
+        touch.clientY,
+        scrollSessionDirectionRef.current,
+      )
+      if (nextDirection !== null) {
+        lastTouchClientYRef.current = touch.clientY
+      }
+      scrollSessionDirectionRef.current = nextDirection
+
+      if (nextDirection === 'up') {
+        stopAutoFollow()
+      }
+    }
+
+    const handleTouchEnd = () => {
+      touchActiveRef.current = false
+      lastTouchClientYRef.current = null
+      scheduleScrollSessionEnd()
     }
 
     const handleScrollEnd = () => {
-      if (!pointerDownRef.current) {
-        pointerMomentumDirectionRef.current = null
+      if (!pointerDownRef.current && !touchActiveRef.current) {
+        clearScrollSessionDirection()
       }
     }
 
@@ -338,6 +447,18 @@ export function useAutoScroll({
       passive: true,
     })
     scrollContainerElement.addEventListener('pointerdown', handlePointerDown)
+    scrollContainerElement.addEventListener('touchstart', handleTouchStart, {
+      passive: true,
+    })
+    scrollContainerElement.addEventListener('touchmove', handleTouchMove, {
+      passive: true,
+    })
+    scrollContainerElement.addEventListener('touchend', handleTouchEnd, {
+      passive: true,
+    })
+    scrollContainerElement.addEventListener('touchcancel', handleTouchEnd, {
+      passive: true,
+    })
     scrollContainerElement.ownerDocument.addEventListener(
       'pointerup',
       handlePointerEnd,
@@ -358,6 +479,10 @@ export function useAutoScroll({
         'pointerdown',
         handlePointerDown,
       )
+      scrollContainerElement.removeEventListener('touchstart', handleTouchStart)
+      scrollContainerElement.removeEventListener('touchmove', handleTouchMove)
+      scrollContainerElement.removeEventListener('touchend', handleTouchEnd)
+      scrollContainerElement.removeEventListener('touchcancel', handleTouchEnd)
       scrollContainerElement.ownerDocument.removeEventListener(
         'pointerup',
         handlePointerEnd,
@@ -372,8 +497,10 @@ export function useAutoScroll({
     }
   }, [
     clearScrollIntent,
+    clearScrollSessionDirection,
     markScrollIntent,
     scheduleFollow,
+    scheduleScrollSessionEnd,
     scrollContainerElement,
     stopAutoFollow,
     updateAutoFollow,
@@ -415,8 +542,9 @@ export function useAutoScroll({
     () => () => {
       cancelScheduledFollow()
       clearScrollIntent()
+      clearScrollSessionDirection()
     },
-    [cancelScheduledFollow, clearScrollIntent],
+    [cancelScheduledFollow, clearScrollIntent, clearScrollSessionDirection],
   )
 
   return {

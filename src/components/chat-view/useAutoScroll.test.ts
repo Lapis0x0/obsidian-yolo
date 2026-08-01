@@ -1,4 +1,25 @@
-import { resolveAutoFollowFromScroll } from './useAutoScroll'
+import {
+  resolveAutoFollowFromScroll,
+  resolveTouchScrollDirection,
+} from './useAutoScroll'
+
+describe('resolveTouchScrollDirection', () => {
+  it('maps a downward finger movement to scrolling toward earlier content', () => {
+    expect(resolveTouchScrollDirection(100, 120, null)).toBe('up')
+  })
+
+  it('maps an upward finger movement to scrolling toward the live edge', () => {
+    expect(resolveTouchScrollDirection(120, 100, null)).toBe('down')
+  })
+
+  it('keeps the confirmed direction through sub-pixel touch jitter', () => {
+    expect(resolveTouchScrollDirection(100, 100.5, 'up')).toBe('up')
+  })
+
+  it('ignores small movement before a touch direction is confirmed', () => {
+    expect(resolveTouchScrollDirection(100, 103, null)).toBeNull()
+  })
+})
 
 describe('resolveAutoFollowFromScroll', () => {
   it('detaches when confirmed user intent moves the viewport upward', () => {

@@ -4356,30 +4356,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         throw new Error('Last message is not a user message')
       }
 
-      const compiledRequestMessages = await Promise.all(
-        effectiveRequestChatMessages.map(async (message) => {
-          if (message.role === 'user' && message.id === lastMessage.id) {
-            const { promptContent } =
-              await requestContextBuilder.compileUserMessagePrompt({
-                message,
-                onQueryProgressChange: setQueryProgress,
-              })
-            return {
-              ...message,
-              promptContent,
-            }
-          } else if (message.role === 'user' && !message.promptContent) {
-            const { promptContent } =
-              await requestContextBuilder.compileUserMessagePrompt({
-                message,
-              })
-            return {
-              ...message,
-              promptContent,
-            }
-          }
-          return message
-        }),
+      // Compile only the user message that is actually being submitted (new,
+      // retried, or edited). Historical prompt bodies are restored by
+      // RequestContextBuilder's snapshot path; rebuilding every null persisted
+      // prompt here repeatedly re-read old attachments and skills.
+      const { promptContent } =
+        await requestContextBuilder.compileUserMessagePrompt({
+          message: lastMessage,
+          onQueryProgressChange: setQueryProgress,
+        })
+      const compiledRequestMessages = effectiveRequestChatMessages.map(
+        (message) =>
+          message.role === 'user' && message.id === lastMessage.id
+            ? { ...message, promptContent }
+            : message,
       )
 
       const compiledUserMessagesById = new Map(

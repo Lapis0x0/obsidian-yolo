@@ -150,6 +150,7 @@ const skillDefaultContextTokenCache = new Map<string, number>()
 // Caches the in-flight or resolved promise so concurrent calls dedupe to a
 // single estimateJsonTokens invocation.
 const toolDefaultContextTokenCache = new Map<string, Promise<number>>()
+const toolDeferredContextTokenCache = new Map<string, Promise<number>>()
 
 function fnv1aHash(text: string): string {
   let hash = 0x811c9dc5
@@ -200,6 +201,19 @@ function estimateToolDefaultContextTokens(tool: McpTool): Promise<number> {
     throw error
   })
   toolDefaultContextTokenCache.set(cacheKey, pending)
+  return pending
+}
+
+function estimateToolDeferredContextTokens(tool: McpTool): Promise<number> {
+  const payload = buildDeferredToolStubTokenPayload(tool)
+  const cacheKey = `${tool.name}:${fnv1aHash(stableStringify(payload))}`
+  const cached = toolDeferredContextTokenCache.get(cacheKey)
+  if (cached) return cached
+  const pending = estimateJsonTokens(payload).catch((error) => {
+    toolDeferredContextTokenCache.delete(cacheKey)
+    throw error
+  })
+  toolDeferredContextTokenCache.set(cacheKey, pending)
   return pending
 }
 
@@ -377,6 +391,10 @@ export function AgentsSectionContent({
   const [isSystemPromptExpanded, setIsSystemPromptExpanded] = useState(false)
   const expandedPromptTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const systemPromptWrapperRef = useRef<HTMLDivElement | null>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const sectionRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
   const [systemPromptOverlayTarget, setSystemPromptOverlayTarget] =
     useState<HTMLElement | null>(null)
 
@@ -385,9 +403,11 @@ export function AgentsSectionContent({
       setSystemPromptOverlayTarget(null)
       return
     }
+    const wrapper = systemPromptWrapperRef.current
     const target =
-      systemPromptWrapperRef.current?.closest<HTMLElement>('.modal') ??
-      document.body
+      wrapper?.closest<HTMLElement>('.modal') ??
+      wrapper?.ownerDocument.body ??
+      null
     setSystemPromptOverlayTarget(target)
   }, [isSystemPromptExpanded])
   const [availableTools, setAvailableTools] = useState<McpTool[]>([])
@@ -617,66 +637,46 @@ export function AgentsSectionContent({
         ...prev,
         toolServerPreferences: {
           ...(prev.toolServerPreferences ?? {}),
-          [serverName]: { approvalMode },
+          [serverName]: {
+            ...(prev.toolServerPreferences?.[serverName] ?? {}),
+            approvalMode,
+          },
         },
       }
     })
   }
 
-  const setToolDisclosureMode = (
-    toolNames: string[],
-    disclosureMode: AssistantToolDisclosureMode,
+  const setServerDisclosureMode = (
+    serverName: string,
+    disclosureMode: AssistantToolDisclosureMode | undefined,
   ) => {
     setDraftAgent((prev) => {
       if (!prev) {
         return prev
       }
-
-      return updateDraftToolPreferences(prev, (current) => {
-        const next = { ...current }
-        for (const toolName of toolNames) {
-          // Preserve the tool's effective enabled state. Without this, batch
-          // server-level disclosure changes would flip default-off MCP tools
-          // on, which violates the "enable stays per-tool" decision.
-          const effectiveEnabled = isAssistantToolEnabled(prev, toolName)
-          next[toolName] = {
-            ...next[toolName],
-            enabled: next[toolName]?.enabled ?? effectiveEnabled,
-            approvalMode:
-              next[toolName]?.approvalMode ??
-              getDefaultApprovalModeForTool(toolName),
-            disclosureMode,
+      const current = prev.toolServerPreferences?.[serverName] ?? {}
+      const nextPreferences = { ...(prev.toolServerPreferences ?? {}) }
+      if (disclosureMode === undefined) {
+        const { disclosureMode: _disclosureMode, ...remaining } = current
+        if (Object.keys(remaining).length === 0) {
+          return {
+            ...prev,
+            toolServerPreferences: Object.fromEntries(
+              Object.entries(nextPreferences).filter(
+                ([name]) => name !== serverName,
+              ),
+            ),
           }
+        } else {
+          nextPreferences[serverName] = remaining
         }
-        return next
-      })
-    })
-  }
-
-  const clearToolDisclosureMode = (toolNames: string[]) => {
-    setDraftAgent((prev) => {
-      if (!prev) {
-        return prev
+      } else {
+        nextPreferences[serverName] = { ...current, disclosureMode }
       }
-
-      return updateDraftToolPreferences(prev, (current) => {
-        let next = { ...current }
-        for (const toolName of toolNames) {
-          const currentPreference = next[toolName]
-          if (!currentPreference) {
-            continue
-          }
-          const { disclosureMode: _disclosureMode, ...rest } = currentPreference
-          if (Object.keys(rest).length === 0) {
-            next = Object.fromEntries(
-              Object.entries(next).filter(([name]) => name !== toolName),
-            )
-          } else {
-            next[toolName] = rest
-          }
-        }
-        return next
-      })
+      return {
+        ...prev,
+        toolServerPreferences: nextPreferences,
+      }
     })
   }
 
@@ -1020,27 +1020,41 @@ export function AgentsSectionContent({
       settings,
     })
 
+    const automaticBudgetTools = enableToolDisclosure
+      ? resolvedTools.filter((tool) => {
+          try {
+            const { serverName } = parseToolName(tool.name)
+            return (
+              serverName !== localFsServerName &&
+              draftAgent.toolServerPreferences?.[serverName]?.disclosureMode ===
+                undefined
+            )
+          } catch {
+            return false
+          }
+        })
+      : []
+
     void buildServerToolTokenBudgets(
-      groupToolsByServer(resolvedTools),
+      groupToolsByServer(automaticBudgetTools),
       estimateJsonTokens,
     ).then(async (serverToolTokenBudgets) => {
       const entries = await Promise.all(
-        resolvedTools.map((tool) =>
-          estimateToolDefaultContextTokens(tool).then(async (count) => {
-            const disclosureMode = getAssistantToolDisclosureMode(
-              draftAgent,
-              tool.name,
-              { enableToolDisclosure, serverToolTokenBudgets },
-            )
-            if (disclosureMode !== 'on_demand') {
-              return [tool.name, count] as const
-            }
-            const stubCount = await estimateJsonTokens(
-              buildDeferredToolStubTokenPayload(tool),
-            )
+        resolvedTools.map(async (tool) => {
+          const disclosureMode = getAssistantToolDisclosureMode(
+            draftAgent,
+            tool.name,
+            { enableToolDisclosure, serverToolTokenBudgets },
+          )
+          if (disclosureMode === 'on_demand') {
+            const stubCount = await estimateToolDeferredContextTokens(tool)
             return [tool.name, stubCount] as const
-          }),
-        ),
+          }
+          return [
+            tool.name,
+            await estimateToolDefaultContextTokens(tool),
+          ] as const
+        }),
       )
       if (cancelled) return
       const perTool = new Map(entries)
@@ -1200,6 +1214,7 @@ export function AgentsSectionContent({
   )
   return (
     <div
+      ref={sectionRef}
       className={`yolo-settings-section yolo-agent-editor-panel${
         isDirectEntry ? ' yolo-agent-editor-panel--direct' : ''
       }`}
@@ -1593,30 +1608,10 @@ export function AgentsSectionContent({
                     !group.isBuiltin &&
                     enableToolDisclosure &&
                     group.tools.length > 0
-                  const explicitDisclosureModes = showServerDisclosure
-                    ? groupToggleTargets
-                        .map(
-                          (target) =>
-                            draftAgent.toolPreferences?.[target]
-                              ?.disclosureMode,
-                        )
-                        .filter(
-                          (mode): mode is AssistantToolDisclosureMode =>
-                            mode !== undefined,
-                        )
-                    : []
-                  const explicitDisclosureMode =
-                    explicitDisclosureModes.length ===
-                      groupToggleTargets.length &&
-                    explicitDisclosureModes.every(
-                      (mode) => mode === explicitDisclosureModes[0],
-                    )
-                      ? explicitDisclosureModes[0]
-                      : null
-                  const disclosureSelectionValue =
-                    explicitDisclosureModes.length === 0
-                      ? 'auto'
-                      : (explicitDisclosureMode ?? 'mixed')
+                  const disclosureSelectionValue = showServerDisclosure
+                    ? (draftAgent.toolServerPreferences?.[group.key]
+                        ?.disclosureMode ?? 'auto')
+                    : 'auto'
                   const autoDisclosureMode = (() => {
                     const firstTarget = groupToggleTargets[0]
                     if (!firstTarget) return null
@@ -1657,9 +1652,7 @@ export function AgentsSectionContent({
                   const serverDisclosureLabel =
                     disclosureSelectionValue === 'auto'
                       ? autoDisclosureLabel
-                      : disclosureSelectionValue === 'mixed'
-                        ? t('settings.agent.toolDisclosureMixed', 'Mixed')
-                        : disclosureModeLabel(disclosureSelectionValue)
+                      : disclosureModeLabel(disclosureSelectionValue)
                   const showServerApproval = !group.isBuiltin
                   const serverApprovalMode: AssistantToolApprovalMode =
                     draftAgent.toolServerPreferences?.[group.key]
@@ -1703,7 +1696,7 @@ export function AgentsSectionContent({
                                   <ChevronDown size={12} aria-hidden="true" />
                                 </button>
                               </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
+                              <DropdownMenu.Portal container={portalContainer}>
                                 <DropdownMenu.Content
                                   className="yolo-simple-select__content"
                                   side="bottom"
@@ -1720,8 +1713,9 @@ export function AgentsSectionContent({
                                     value={disclosureSelectionValue}
                                     onValueChange={(nextValue) => {
                                       if (nextValue === 'auto') {
-                                        clearToolDisclosureMode(
-                                          groupToggleTargets,
+                                        setServerDisclosureMode(
+                                          group.key,
+                                          undefined,
                                         )
                                         return
                                       }
@@ -1729,8 +1723,8 @@ export function AgentsSectionContent({
                                         nextValue === 'always' ||
                                         nextValue === 'on_demand'
                                       ) {
-                                        setToolDisclosureMode(
-                                          groupToggleTargets,
+                                        setServerDisclosureMode(
+                                          group.key,
                                           nextValue,
                                         )
                                       }
@@ -1803,7 +1797,7 @@ export function AgentsSectionContent({
                                   <ChevronDown size={12} aria-hidden="true" />
                                 </button>
                               </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
+                              <DropdownMenu.Portal container={portalContainer}>
                                 <DropdownMenu.Content
                                   className="yolo-simple-select__content"
                                   side="bottom"

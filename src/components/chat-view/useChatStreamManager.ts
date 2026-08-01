@@ -122,7 +122,6 @@ const AUTO_CONTEXT_COMPACT_TOOL_FQN = getToolName(
 const AUTO_CONTEXT_COMPACT_TOOL_PREFERENCE: AssistantToolPreference = {
   enabled: true,
   approvalMode: 'full_access',
-  disclosureMode: 'always',
 }
 
 const enableAutoContextCompactionTool = (
@@ -595,6 +594,7 @@ export function useChatStreamManager({
         availableTools,
         allowedToolNames: effectiveAllowedToolNames,
         toolPreferences: chatModeRuntime.toolPreferences,
+        toolServerPreferences: chatModeRuntime.toolServerPreferences,
         apiType: manualApiType,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
@@ -651,6 +651,7 @@ export function useChatStreamManager({
             allowedToolNames: effectiveAllowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
+            toolServerPreferences: chatModeRuntime.toolServerPreferences,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: manualContextualInjections,
           })
@@ -1117,6 +1118,7 @@ export function useChatStreamManager({
         allowedToolNames: chatModeRuntime.allowedToolNames,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         toolPreferences: chatModeRuntime.toolPreferences,
+        toolServerPreferences: chatModeRuntime.toolServerPreferences,
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
         contextualInjections: buildChatContextualInjections({
           app,

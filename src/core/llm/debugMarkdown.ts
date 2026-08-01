@@ -1470,6 +1470,7 @@ function formatTraceOnlyOtherRequest(
     `- Started: ${formatLocalDateTime(summary.startedAt)}`,
     `- Completed: ${formatLocalDateTime(summary.completedAt)}`,
     `- Duration: ${formatDurationMs(summary.durationMs)}`,
+    `- Preparation: tool plan ${formatDurationMs(summary.toolPlanDurationMs)}, context ${formatDurationMs(summary.contextPreparationDurationMs)}, provider first token ${formatDurationMs(summary.providerFirstTokenMs)}`,
     `- Status: ${summary.generationState ?? 'unknown'}`,
     `- Usage: ${formatUsage(summary.usage)}`,
     ...(summary.errorMessage ? [`- Error: ${summary.errorMessage}`] : []),
@@ -1534,6 +1535,7 @@ export function buildLLMDebugMarkdown(traces: LLMDebugTrace[]): string {
         `- Usage: ${formatUsage(summary.usage)}`,
         `- Cost: ${formatCostSummary(costs, 'attempt')}`,
         `- Duration: ${formatDurationMs(summary.durationMs)}`,
+        `- Preparation: tool plan ${formatDurationMs(summary.toolPlanDurationMs)}, context ${formatDurationMs(summary.contextPreparationDurationMs)}, provider first token ${formatDurationMs(summary.providerFirstTokenMs)}`,
         ...(toolNames.length > 0
           ? [`- Tool calls: ${toolNames.join(', ')}`]
           : hasToolCalls({ ...trace, exchanges: relatedExchanges })

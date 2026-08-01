@@ -141,7 +141,10 @@ import {
 } from './core/runtime-components'
 import {
   type LegacySkillPackageMigrationReport,
+  initializeLiteSkillRegistryService,
   migrateVaultSkillsToDirectoryPackages,
+  prewarmLiteSkillRegistry,
+  updateLiteSkillRegistrySettings,
 } from './core/skills/liteSkills'
 import {
   type InstallationIncompleteDetail,
@@ -313,6 +316,7 @@ export default class YoloPlugin extends Plugin {
   private readonly managedModulePathChangeListeners = new Set<() => void>()
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
+  private liteSkillRegistryDispose: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
   // Model list cache for provider model fetching
@@ -2082,6 +2086,13 @@ export default class YoloPlugin extends Plugin {
     addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
 
     await this.loadSettings()
+    this.liteSkillRegistryDispose = initializeLiteSkillRegistryService({
+      app: this.app,
+      settings: this.settings,
+    })
+    this.addSettingsChangeListener((settings) => {
+      updateLiteSkillRegistrySettings(this.app, settings)
+    })
     let moduleAutoDownloadEnabled =
       this.settings.pluginUpdateAutoDownloadEnabled
     this.addSettingsChangeListener((settings) => {
@@ -2130,6 +2141,9 @@ export default class YoloPlugin extends Plugin {
             ),
             0,
           )
+        })
+        .finally(() => {
+          prewarmLiteSkillRegistry(this.app, this.settings)
         })
     })
     this.app.workspace.onLayoutReady(() => {
@@ -2566,6 +2580,8 @@ export default class YoloPlugin extends Plugin {
   onunload() {
     this.isUnloaded = true
     this.disposeCliRuntimeCoordinator()
+    this.liteSkillRegistryDispose?.()
+    this.liteSkillRegistryDispose = null
     this.moduleUpdateController?.dispose()
     this.moduleUpdateController = null
     this.moduleService?.dispose()

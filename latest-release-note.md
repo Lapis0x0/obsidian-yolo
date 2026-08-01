@@ -1,37 +1,31 @@
-## 1.6.3 Smoother Writing, Smarter Scrolling & Interactive Mermaid Charts 🚀
+## 1.6.3.1 Obsidian 1.13.4 Compatibility & Chat Scroll Fixes 🛠️
 
-### ✍️ A More Fluid Selection Rewrite Experience
+### 🪟 Obsidian 1.13.4 Compatibility
 
-- Selection Rewrite now provides a clearer, smoother interaction from generation through review, with more intuitive controls and transitions.
-- The new **Adjust Length** control lets you drag to freely shorten or expand the selected passage. It currently uses your Tab Completion model settings.
+- Fixed Agent action menus opening in the wrong window after updating to Obsidian 1.13.4, and removed the large blank area that could appear in the prompt input.
+- Popover menus in the dedicated settings window now position and dismiss correctly across Obsidian’s multi-window layout.
 
-### 💬 Chat That Keeps Up with the Conversation
+### 💬 Mobile Chat Scrolling
 
-- Auto-scrolling now follows streaming replies more reliably, including while Obsidian-specific formatting is being rendered, so the latest content stays in view without disrupting manual reading.
-- On mobile, pressing the newline key in the chat input now inserts a new line instead of accidentally sending the message. (#499)
-- Long option text in model question panels now wraps correctly instead of being clipped.
-- The conversation timeline now shows the skills loaded by the model, making agent activity easier to understand.
+- Scrolling up through chat history on mobile no longer snaps back to the bottom when you release your finger.
 
-### 📊 Better Mermaid Viewing
+### 🔄 Module Updates
 
-- Complex Mermaid diagrams now scale sensibly inside chat. Expand a diagram to freely pan and zoom, or fit it to the available window for closer inspection.
+- Module update notices can now be dismissed reliably in cases where the close action previously had no effect.
 
 ---
 
-## 1.6.3 更流畅的写作、更稳定的滚动与可交互 Mermaid 图表 🚀
+## 1.6.3.1 Obsidian 1.13.4 兼容与聊天滚动修复 🛠️
 
-### ✍️ 更流畅的选区改写体验
+### 🪟 Obsidian 1.13.4 兼容性
 
-- 优化选区改写从生成到审阅的整体设计，控制方式和过渡更加直观、流畅。
-- 新增**调整篇幅**，可通过拖拽自由缩短或扩展选中段落；目前默认使用 Tab 补全模型的设置。
+- 修复更新到 Obsidian 1.13.4 后，Agent 操作菜单显示在错误窗口、提示词输入框出现大块空白的问题。
+- 完善独立设置窗口中弹出菜单的定位与关闭行为，适配多窗口布局。
 
-### 💬 始终跟上对话进度
+### 💬 移动端聊天滚动
 
-- 优化聊天自动滚动体验：流式回复及 Obsidian 特殊格式渲染时能够更稳定地跟随最新内容，同时避免干扰手动阅读。
-- 修复移动端聊天输入框无法正常换行的问题；现在按下换行键会插入新行，不再误发送消息。（#499）
-- 修复模型提问面板中长选项文本无法换行、内容被截断的问题。
-- 对话时间线现在会展示模型加载的 skills，让 Agent 的工作过程更加清晰。
+- 修复移动端向上翻阅聊天记录时，松手后会被自动拉回底部的问题。
 
-### 📊 更完善的 Mermaid 查看体验
+### 🔄 模块更新
 
-- 复杂 Mermaid 图表现在会在聊天中合理缩放；展开后可自由平移、缩放，或一键适应窗口，便于查看细节。
+- 修复模块更新提示在部分情况下无法关闭的问题。

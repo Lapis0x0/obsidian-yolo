@@ -159,10 +159,10 @@
 .yolo-settings-tabs-content--modules {
   display: flex;
   flex-direction: column;
-  width: calc(100% + var(--size-4-12) + var(--size-4-12));
+  width: calc(100% + var(--size-4-8) + var(--size-4-8));
   max-width: none;
-  margin-inline: calc(0px - var(--size-4-12));
-  padding-inline: calc(var(--size-4-12) + var(--size-4-6));
+  margin-inline: calc(0px - var(--size-4-8));
+  padding-inline: 0;
 }
 
 .yolo-settings-tabs-content::-webkit-scrollbar {

@@ -12,22 +12,13 @@
   margin-top: calc(var(--size-4-1) * -1);
 }
 
-.yolo-modules-page > .yolo-settings-header,
-.yolo-modules-intro {
-  margin-inline-start: calc(0px - var(--size-4-12) - var(--size-4-6));
-}
-
 .yolo-module-shelf {
   display: grid;
   flex: 1;
   grid-template-columns: 104px minmax(0, 1fr);
   align-items: stretch;
-  width: calc(
-    100% + var(--size-4-12) + var(--size-4-12) + var(--size-4-6) +
-      var(--size-4-6)
-  );
+  width: 100%;
   min-width: 0;
-  margin-inline: calc(0px - var(--size-4-12) - var(--size-4-6));
 }
 
 .yolo-module-shelf-rail {
@@ -436,17 +427,5 @@ button.yolo-module-shelf-uninstall:hover {
 @media (prefers-reduced-motion: reduce) {
   .is-spinning {
     animation-duration: 0.01ms;
-  }
-}
-
-@media (max-width: 768px) {
-  .yolo-modules-page > .yolo-settings-header,
-  .yolo-modules-intro {
-    margin-inline-start: 0;
-  }
-
-  .yolo-module-shelf {
-    width: 100%;
-    margin-inline: 0;
   }
 }

@@ -1,7 +1,6 @@
 import {
   BUILTIN_DEFAULT_ENABLED_TOOL_FQNS,
   getDefaultApprovalModeForTool,
-  getDefaultDisclosureModeForTool,
 } from '../../../core/agent/tool-preferences'
 import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
@@ -25,7 +24,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * effective state into explicit entries:
  *
  *   - For every default-on built-in FQN missing from `toolPreferences`,
- *     write `{ enabled: true, approvalMode, disclosureMode }`. The old
+ *     write `{ enabled: true, approvalMode }`. The old
  *     runtime treated missing entries as enabled — explicit-disabled
  *     entries the user had set stay disabled because we only fill *missing*
  *     slots.
@@ -59,7 +58,6 @@ export const migrateFrom60To61: SettingMigration['migrate'] = (data) => {
       sanitized[fqn] = {
         enabled: true,
         approvalMode: getDefaultApprovalModeForTool(fqn),
-        disclosureMode: getDefaultDisclosureModeForTool(fqn),
       }
     }
 
