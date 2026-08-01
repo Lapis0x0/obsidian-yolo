@@ -135,7 +135,12 @@ import {
   resolveRuntimeComponentArtifactSources,
   setRuntimeComponentService,
 } from './core/runtime-components'
-import { migrateVaultSkillFrontmatter } from './core/skills/liteSkills'
+import {
+  initializeLiteSkillRegistryService,
+  migrateVaultSkillFrontmatter,
+  prewarmLiteSkillRegistry,
+  updateLiteSkillRegistrySettings,
+} from './core/skills/liteSkills'
 import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
@@ -306,6 +311,7 @@ export default class YoloPlugin extends Plugin {
   private readonly managedModulePathChangeListeners = new Set<() => void>()
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
+  private liteSkillRegistryDispose: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
   // Model list cache for provider model fetching
@@ -2002,6 +2008,13 @@ export default class YoloPlugin extends Plugin {
     addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
 
     await this.loadSettings()
+    this.liteSkillRegistryDispose = initializeLiteSkillRegistryService({
+      app: this.app,
+      settings: this.settings,
+    })
+    this.addSettingsChangeListener((settings) => {
+      updateLiteSkillRegistrySettings(this.app, settings)
+    })
     let moduleAutoDownloadEnabled =
       this.settings.pluginUpdateAutoDownloadEnabled
     this.addSettingsChangeListener((settings) => {
@@ -2045,7 +2058,9 @@ export default class YoloPlugin extends Plugin {
     // cache-event barrier is intentionally avoided as over-engineering for this
     // sub-second transient; the migration is idempotent so it always converges.
     this.app.workspace.onLayoutReady(() => {
-      void migrateVaultSkillFrontmatter(this.app, this.settings)
+      void migrateVaultSkillFrontmatter(this.app, this.settings).finally(() => {
+        prewarmLiteSkillRegistry(this.app, this.settings)
+      })
     })
     this.app.workspace.onLayoutReady(() => {
       void this.runtimeComponentService?.start().catch((error) => {
@@ -2480,6 +2495,8 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    this.liteSkillRegistryDispose?.()
+    this.liteSkillRegistryDispose = null
     this.moduleUpdateController?.dispose()
     this.moduleUpdateController = null
     this.moduleService?.dispose()

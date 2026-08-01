@@ -1,4 +1,4 @@
-import { App, TFile, normalizePath } from 'obsidian'
+import { App, EventRef, TAbstractFile, TFile, normalizePath } from 'obsidian'
 
 import {
   YOLO_SKILLS_INDEX_FILE_NAME,
@@ -313,6 +313,170 @@ const buildSkillRegistry = async ({
   return registry
 }
 
+class LiteSkillRegistryService {
+  private static readonly EVENT_REBUILD_DEBOUNCE_MS = 75
+
+  private registry: Map<string, SkillRegistryRecord> | null = null
+  private inflight: Promise<Map<string, SkillRegistryRecord>> | null = null
+  private settings: SkillSettings | undefined
+  private settingsFingerprint = ''
+  private revision = 0
+  private eventRefs: EventRef[] = []
+  private rebuildTimer: ReturnType<typeof setTimeout> | null = null
+
+  constructor(private readonly app: App) {}
+
+  private fingerprint(settings?: SkillSettings): string {
+    return getSkillScanDirs({
+      settings,
+      configDir: this.app.vault.configDir,
+    }).join('\n')
+  }
+
+  private applySettings(settings?: SkillSettings): void {
+    const fingerprint = this.fingerprint(settings)
+    this.settings = settings
+    if (fingerprint === this.settingsFingerprint) return
+    this.settingsFingerprint = fingerprint
+    this.invalidate()
+  }
+
+  private isRelevantPath(path: string): boolean {
+    const normalized = normalizePath(path)
+    return getSkillScanDirs({
+      settings: this.settings,
+      configDir: this.app.vault.configDir,
+    }).some((dir) => normalized === dir || normalized.startsWith(`${dir}/`))
+  }
+
+  private invalidate(): void {
+    this.revision += 1
+    this.registry = null
+  }
+
+  private scheduleRebuild(): void {
+    if (this.rebuildTimer) clearTimeout(this.rebuildTimer)
+    this.rebuildTimer = setTimeout(() => {
+      this.rebuildTimer = null
+      this.prewarm()
+    }, LiteSkillRegistryService.EVENT_REBUILD_DEBOUNCE_MS)
+  }
+
+  public start(settings?: SkillSettings): void {
+    this.applySettings(settings)
+    if (this.eventRefs.length > 0) return
+    const invalidateFile = (file: TAbstractFile) => {
+      if (this.isRelevantPath(file.path)) {
+        this.invalidate()
+        this.scheduleRebuild()
+      }
+    }
+    this.eventRefs = [
+      this.app.vault.on('create', invalidateFile),
+      this.app.vault.on('modify', invalidateFile),
+      this.app.vault.on('delete', invalidateFile),
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (this.isRelevantPath(file.path) || this.isRelevantPath(oldPath)) {
+          this.invalidate()
+          this.scheduleRebuild()
+        }
+      }),
+    ]
+  }
+
+  public updateSettings(settings?: SkillSettings): void {
+    const changed = this.fingerprint(settings) !== this.settingsFingerprint
+    this.applySettings(settings)
+    if (changed) this.prewarm()
+  }
+
+  public prewarm(): void {
+    void this.getRegistry(this.settings).catch((error) => {
+      console.warn('[YOLO] Failed to prewarm Lite Skill registry', error)
+    })
+  }
+
+  public async getRegistry(
+    settings?: SkillSettings,
+  ): Promise<Map<string, SkillRegistryRecord>> {
+    this.applySettings(settings)
+    while (true) {
+      if (this.registry) return this.registry
+      if (!this.inflight) {
+        const buildRevision = this.revision
+        const buildSettings = this.settings
+        this.inflight = buildSkillRegistry({
+          app: this.app,
+          settings: buildSettings,
+        }).then((registry) => {
+          if (buildRevision === this.revision) this.registry = registry
+          return registry
+        })
+      }
+
+      const pending = this.inflight
+      try {
+        const registry = await pending
+        if (this.registry === registry) return registry
+      } finally {
+        if (this.inflight === pending) this.inflight = null
+      }
+      // A vault/settings event invalidated the catalog while it was building.
+      // Loop once more; all concurrent callers converge on the same new build.
+    }
+  }
+
+  public dispose(): void {
+    if (this.rebuildTimer) clearTimeout(this.rebuildTimer)
+    this.rebuildTimer = null
+    for (const ref of this.eventRefs) this.app.vault.offref(ref)
+    this.eventRefs = []
+    this.registry = null
+    this.inflight = null
+  }
+}
+
+const registryServices = new WeakMap<App, LiteSkillRegistryService>()
+
+const getRegistryService = (app: App): LiteSkillRegistryService => {
+  const existing = registryServices.get(app)
+  if (existing) return existing
+  const service = new LiteSkillRegistryService(app)
+  registryServices.set(app, service)
+  return service
+}
+
+export const initializeLiteSkillRegistryService = ({
+  app,
+  settings,
+}: {
+  app: App
+  settings?: SkillSettings
+}): (() => void) => {
+  const service = getRegistryService(app)
+  service.start(settings)
+  return () => {
+    service.dispose()
+    registryServices.delete(app)
+  }
+}
+
+export const updateLiteSkillRegistrySettings = (
+  app: App,
+  settings?: SkillSettings,
+): void => {
+  getRegistryService(app).updateSettings(settings)
+}
+
+export const prewarmLiteSkillRegistry = (
+  app: App,
+  settings?: SkillSettings,
+): void => {
+  const service = getRegistryService(app)
+  service.updateSettings(settings)
+  service.prewarm()
+}
+
 export async function listLiteSkillEntries(
   app: App,
   options?: {
@@ -320,9 +484,7 @@ export async function listLiteSkillEntries(
   },
 ): Promise<LiteSkillEntry[]> {
   return [
-    ...(
-      await buildSkillRegistry({ app, settings: options?.settings })
-    ).values(),
+    ...(await getRegistryService(app).getRegistry(options?.settings)).values(),
   ]
     .map((record) => record.entry)
     .sort((a, b) => a.path.localeCompare(b.path))
@@ -344,19 +506,22 @@ export async function getLiteSkillDocument({
 
   // Resolve through the SAME registry as `list`, so a name displayed in the UI
   // opens exactly the file/builtin that was displayed.
-  const record = (await buildSkillRegistry({ app, settings })).get(target)
+  const record = (await getRegistryService(app).getRegistry(settings)).get(
+    target,
+  )
   if (!record) {
     return null
   }
 
   if (!record.entry.path.startsWith('builtin://')) {
+    const currentFile = app.vault.getFileByPath(record.entry.path)
     const content = await readSkillFileContent(
       app,
       record.entry.path,
-      record.file,
+      currentFile,
     )
-    const metadataFrontmatter = record.file
-      ? app.metadataCache.getFileCache(record.file)?.frontmatter
+    const metadataFrontmatter = currentFile
+      ? app.metadataCache.getFileCache(currentFile)?.frontmatter
       : undefined
     const parsedFrontmatter = parseFrontmatterFromContent(content)
     const mergedFrontmatter = {
@@ -412,7 +577,7 @@ export async function getLiteSkillDocumentByPath({
     return null
   }
 
-  const registry = await buildSkillRegistry({ app, settings })
+  const registry = await getRegistryService(app).getRegistry(settings)
   for (const record of registry.values()) {
     if (record.entry.path === targetPath) {
       return getLiteSkillDocument({

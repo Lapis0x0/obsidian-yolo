@@ -26,6 +26,7 @@ jest.mock('../../core/skills/liteSkills', () => ({
 import { SystemPromptSnapshotStore } from '../../core/agent/systemPromptSnapshotStore'
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import { getLiteSkillDocument } from '../../core/skills/liteSkills'
+import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
@@ -42,6 +43,7 @@ import {
 const mockGetLiteSkillDocument = getLiteSkillDocument as jest.MockedFunction<
   typeof getLiteSkillDocument
 >
+const mockReadPromptSnapshotEntries = jest.mocked(readPromptSnapshotEntries)
 
 function createMockFile(path: string): InstanceType<typeof TFile> {
   const extension = path.split('.').pop() ?? ''
@@ -684,6 +686,74 @@ describe('RequestContextBuilder generateRequestMessages', () => {
   } as unknown as YoloSettings
 
   const emptyArgs = createCompleteToolCallArguments({ value: {} })
+
+  it('replays historical attachment/skill prompts from snapshots without recompiling them', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+    const builder = new RequestContextBuilder(app as never, settings)
+    const compileSpy = jest.spyOn(builder, 'compileUserMessagePrompt')
+    mockReadPromptSnapshotEntries.mockResolvedValueOnce({
+      'historical-hash': 'frozen historical skill prompt',
+    })
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'historical',
+          content: null,
+          promptContent: null,
+          snapshotRef: { hash: 'historical-hash' },
+          mentionables: [],
+          selectedSkills: [
+            { name: 'old-skill', description: 'old', path: 'old/SKILL.md' },
+          ],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant',
+          content: 'done',
+        },
+        {
+          role: 'user',
+          id: 'latest',
+          content: null,
+          promptContent: null,
+          mentionables: [],
+        },
+      ],
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-snapshot',
+      systemPromptSnapshotMode: 'create',
+    })
+
+    expect(compileSpy).toHaveBeenCalledTimes(1)
+    expect(compileSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({ id: 'latest' }),
+      }),
+    )
+    expect(requestMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: 'frozen historical skill prompt',
+        }),
+      ]),
+    )
+  })
 
   it('includes a rejection reason in the model tool result', async () => {
     const app = {

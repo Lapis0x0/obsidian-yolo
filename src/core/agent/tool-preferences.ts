@@ -4,7 +4,6 @@ import {
   AssistantToolDisclosureMode,
   AssistantToolPreference,
 } from '../../types/assistant.types'
-import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import { JS_SANDBOX_TOOL_NAME } from '../mcp/jsSandboxTool'
 import {
@@ -15,6 +14,7 @@ import {
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+import { getMcpToolSchemaTokenCost } from '../mcp/toolCatalogTokenCache'
 
 import { FILE_EDIT_GROUP_TOOL_NAME } from './builtinToolUiMeta'
 
@@ -47,19 +47,6 @@ const FULL_ACCESS_LOCAL_TOOLS: ReadonlySet<string> = new Set([
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
 ])
 
-const buildToolTokenPayload = (tools: readonly McpTool[]): RequestTool[] =>
-  tools.map((tool) => ({
-    type: 'function',
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: {
-        ...tool.inputSchema,
-        properties: tool.inputSchema.properties ?? {},
-      },
-    },
-  }))
-
 export const resolveDefaultDisclosureModeForServer = (
   serverTokenBudget: number | undefined,
 ): AssistantToolDisclosureMode => {
@@ -86,9 +73,14 @@ export const buildServerToolTokenBudgets = async (
       if (serverName === localServerName || tools.length === 0) {
         return
       }
+      const costs = await Promise.all(
+        tools.map((tool) =>
+          getMcpToolSchemaTokenCost(tool, estimateJsonTokens),
+        ),
+      )
       budgets.set(
         serverName,
-        await estimateJsonTokens(buildToolTokenPayload(tools)),
+        costs.reduce((sum, cost) => sum + cost, 0),
       )
     }),
   )
@@ -216,8 +208,8 @@ export const getDefaultApprovalModeForTool = (
 
 /**
  * Builds the freshly-seeded `toolPreferences` map for a new assistant: every
- * default-on built-in tool FQN gets an explicit `{ enabled, approvalMode,
- * disclosureMode }` entry. This is the single helper used by creation paths
+ * default-on built-in tool FQN gets an explicit `{ enabled, approvalMode }`
+ * entry. This is the single helper used by creation paths
  * (default assistant, "new agent" UI) and the v60→v61 migration to keep the
  * "toolPreferences is the only source of truth" invariant intact — without
  * it, newly-created agents would surface zero built-in tools at runtime.
@@ -231,7 +223,6 @@ export const buildDefaultBuiltinToolPreferences = (): Record<
     result[fqn] = {
       enabled: true,
       approvalMode: getDefaultApprovalModeForTool(fqn),
-      disclosureMode: getDefaultDisclosureModeForTool(fqn),
     }
   }
   return result
@@ -249,7 +240,6 @@ export const buildAssistantToolPreferencesFromEnabledToolNames = (
       acc[toolName] = {
         enabled: true,
         approvalMode: getDefaultApprovalModeForTool(toolName),
-        disclosureMode: getDefaultDisclosureModeForTool(toolName),
       }
       return acc
     },
@@ -530,7 +520,10 @@ export const getAssistantToolApprovalMode = (
 
 export const getAssistantToolDisclosureMode = (
   assistant:
-    | Pick<Assistant, 'toolPreferences' | 'enabledToolNames'>
+    | Pick<
+        Assistant,
+        'toolPreferences' | 'enabledToolNames' | 'toolServerPreferences'
+      >
     | null
     | undefined,
   toolName: string,
@@ -557,12 +550,10 @@ export const getAssistantToolDisclosureMode = (
     // Fall through to default handling below.
   }
 
-  const toolPreferences = getAssistantToolPreferences(assistant)
-  const explicitMode = toolPreferences[toolName]?.disclosureMode
-  if (explicitMode) {
-    return explicitMode
-  }
   if (parsedServerName) {
+    const explicitMode =
+      assistant?.toolServerPreferences?.[parsedServerName]?.disclosureMode
+    if (explicitMode) return explicitMode
     return resolveDefaultDisclosureModeForServer(
       options?.serverToolTokenBudgets?.get(parsedServerName),
     )

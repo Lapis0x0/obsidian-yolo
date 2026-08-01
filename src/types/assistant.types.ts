@@ -44,7 +44,6 @@ export type AssistantToolDisclosureMode = z.infer<
 export const assistantToolPreferenceSchema = z.object({
   enabled: z.boolean().optional(),
   approvalMode: assistantToolApprovalModeSchema.optional(),
-  disclosureMode: assistantToolDisclosureModeSchema.optional(),
 })
 
 export type AssistantToolPreference = z.infer<
@@ -53,6 +52,8 @@ export type AssistantToolPreference = z.infer<
 
 export const assistantToolServerPreferenceSchema = z.object({
   approvalMode: assistantToolApprovalModeSchema.optional(),
+  /** Undefined means automatic selection from the current enabled schema cost. */
+  disclosureMode: assistantToolDisclosureModeSchema.optional(),
 })
 
 export type AssistantToolServerPreference = z.infer<

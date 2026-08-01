@@ -119,9 +119,9 @@ describe('AgentToolGateway', () => {
         },
         server__tool_a: {
           enabled: true,
-          disclosureMode: 'on_demand',
         },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
     })
 
     const toolMessage = gateway.createToolMessage({
@@ -1179,9 +1179,9 @@ describe('AgentToolGateway', () => {
           server__tool_a: {
             enabled: true,
             approvalMode: 'full_access',
-            disclosureMode: 'on_demand',
           },
         },
+        toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
         apiType,
       })
 

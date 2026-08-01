@@ -1,4 +1,6 @@
 import {
+  buildServerToolTokenBudgets,
+  getAssistantToolDisclosureMode,
   getAssistantToolApprovalMode,
   getDefaultEnabledForTool,
   getEnabledAssistantToolNames,
@@ -11,6 +13,44 @@ import {
 const JS_SANDBOX_FQN = 'yolo_local__js_eval'
 
 describe('tool-preferences defaults', () => {
+  it('shares cached MCP schema costs across catalog consumers', async () => {
+    const estimate = jest.fn().mockResolvedValue(123)
+    const buildCatalog = () =>
+      new Map([
+        [
+          'cache_test_server',
+          [
+            {
+              name: 'cache_test_server__unique_tool_524',
+              description: 'schema cache regression 524',
+              inputSchema: { type: 'object' as const, properties: {} },
+            },
+          ],
+        ],
+      ])
+
+    await buildServerToolTokenBudgets(buildCatalog(), estimate)
+    await buildServerToolTokenBudgets(buildCatalog(), estimate)
+
+    expect(estimate).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the server disclosure policy for every current and future tool', () => {
+    const assistant = {
+      toolPreferences: {},
+      toolServerPreferences: {
+        remote: { disclosureMode: 'on_demand' as const },
+      },
+    }
+
+    expect(getAssistantToolDisclosureMode(assistant, 'remote__existing')).toBe(
+      'on_demand',
+    )
+    expect(getAssistantToolDisclosureMode(assistant, 'remote__new_tool')).toBe(
+      'on_demand',
+    )
+  })
+
   describe('getDefaultEnabledForTool', () => {
     it('returns true for user-facing built-in tools not in the deny-list', () => {
       expect(getDefaultEnabledForTool('yolo_local__fs_read')).toBe(true)

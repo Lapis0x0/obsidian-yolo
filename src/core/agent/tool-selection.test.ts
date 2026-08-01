@@ -47,9 +47,9 @@ describe('selectAllowedTools', () => {
         server__tool_a: {
           enabled: true,
           approvalMode: 'full_access',
-          disclosureMode: 'always',
         },
       },
+      toolServerPreferences: { server: { disclosureMode: 'always' } },
     })
 
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
@@ -111,7 +111,6 @@ describe('selectAllowedTools', () => {
       toolPreferences: {
         yolo_local__delegate_subagent: {
           enabled: true,
-          disclosureMode: 'always',
         },
       },
       settings,
@@ -148,8 +147,9 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' },
+        server__tool_a: { enabled: true },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
       apiType: 'anthropic',
     })
 
@@ -183,8 +183,9 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' },
+        server__tool_a: { enabled: true },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
       apiType: 'gemini',
     })
 
@@ -218,8 +219,9 @@ describe('selectAllowedTools', () => {
       allowedToolNames: ['server__tool_a'],
       enableToolDisclosure: false,
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' },
+        server__tool_a: { enabled: true },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
     })
 
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
@@ -247,9 +249,9 @@ describe('selectAllowedTools', () => {
       toolPreferences: {
         server__tool_a: {
           enabled: true,
-          disclosureMode: 'always',
         },
       },
+      toolServerPreferences: { server: { disclosureMode: 'always' } },
     })
 
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
@@ -346,7 +348,10 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' as const },
+        server__tool_a: { enabled: true },
+      },
+      toolServerPreferences: {
+        server: { disclosureMode: 'on_demand' as const },
       },
       apiType: 'anthropic' as const,
     }
