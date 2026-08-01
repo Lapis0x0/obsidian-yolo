@@ -895,8 +895,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
                 <FileUploadButton
                   onUpload={(files) => coreRef.current?.uploadFiles(files)}
                 />
-                {renderModelControl()}
-                {renderReasoningControl()}
+                {runtimeControls ?? (
+                  <>
+                    {renderModelControl()}
+                    {renderReasoningControl()}
+                  </>
+                )}
               </div>
               <div className="yolo-chat-user-input-controls__right">
                 {renderContextUsageControl()}

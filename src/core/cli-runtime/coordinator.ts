@@ -212,6 +212,12 @@ class DesktopCliRuntimeWorkspace {
     const controller = new CliConversationController(
       runtime,
       () => this.modelCatalog.getSnapshot().get(runtimeId) ?? [],
+      (ref, sourceUserMessageId, summary) =>
+        this.sessionService.recordTurnEditSummary(
+          ref,
+          sourceUserMessageId,
+          summary,
+        ),
     )
     this.conversations.add({ runtime, controller })
     controller.subscribe(() => {

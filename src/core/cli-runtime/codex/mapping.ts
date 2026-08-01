@@ -8,6 +8,8 @@ import {
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
+  type ToolEditOperation,
+  type ToolEditSummary,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
 
@@ -17,6 +19,14 @@ const stringify = (value: unknown): string => {
   if (typeof value === 'string') return value
   if (value === undefined || value === null) return ''
   return JSON.stringify(value, null, 2)
+}
+
+const toWorkspaceRelativePath = (path: string, cwd?: string): string => {
+  const normalizedPath = path.replace(/\\/g, '/')
+  const normalizedCwd = cwd?.replace(/\\/g, '/').replace(/\/$/, '')
+  return normalizedCwd && normalizedPath.startsWith(`${normalizedCwd}/`)
+    ? normalizedPath.slice(normalizedCwd.length + 1)
+    : normalizedPath
 }
 
 const userInputText = (content: CodexUserInput[]): string =>
@@ -49,6 +59,49 @@ const toResponse = (
   }
 }
 
+const countUnifiedDiffLines = (
+  diff: string,
+): { addedLines: number; removedLines: number } => {
+  let addedLines = 0
+  let removedLines = 0
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) continue
+    if (line.startsWith('+')) addedLines += 1
+    else if (line.startsWith('-')) removedLines += 1
+  }
+  return { addedLines, removedLines }
+}
+
+const toEditOperation = (
+  kind: Extract<
+    CodexThreadItem,
+    { type: 'fileChange' }
+  >['changes'][number]['kind'],
+): ToolEditOperation => {
+  if (kind.type === 'add') return 'create'
+  if (kind.type === 'delete') return 'delete'
+  return 'edit'
+}
+
+const buildFileChangeEditSummary = (
+  changes: Extract<CodexThreadItem, { type: 'fileChange' }>['changes'],
+  cwd?: string,
+): ToolEditSummary => {
+  const files = changes.map((change) => ({
+    path: toWorkspaceRelativePath(change.path, cwd),
+    ...countUnifiedDiffLines(change.diff),
+    operation: toEditOperation(change.kind),
+    undoStatus: 'unavailable' as const,
+  }))
+  return {
+    files,
+    totalFiles: files.length,
+    totalAddedLines: files.reduce((sum, file) => sum + file.addedLines, 0),
+    totalRemovedLines: files.reduce((sum, file) => sum + file.removedLines, 0),
+    undoStatus: 'unavailable',
+  }
+}
+
 const toolPair = ({
   request,
   response,
@@ -70,7 +123,10 @@ const toolPair = ({
   },
 ]
 
-export const mapCodexItem = (item: CodexThreadItem): ChatMessage[] => {
+export const mapCodexItem = (
+  item: CodexThreadItem,
+  cwd?: string,
+): ChatMessage[] => {
   if (item.type === 'userMessage') {
     const message: ChatUserMessage = {
       role: 'user',
@@ -121,9 +177,22 @@ export const mapCodexItem = (item: CodexThreadItem): ChatMessage[] => {
         value: { changes: item.changes },
       }),
     }
+    const response = toResponse(item, stringify(item.changes))
     return toolPair({
       request,
-      response: toResponse(item, stringify(item.changes)),
+      response:
+        response.status === ToolCallResponseStatus.Success
+          ? {
+              ...response,
+              data: {
+                ...response.data,
+                metadata: {
+                  ...response.data.metadata,
+                  editSummary: buildFileChangeEditSummary(item.changes, cwd),
+                },
+              },
+            }
+          : response,
     })
   }
   if (item.type === 'mcpToolCall') {
@@ -145,8 +214,11 @@ export const mapCodexItem = (item: CodexThreadItem): ChatMessage[] => {
   return []
 }
 
-export const mapCodexTurns = (turns: CodexTurn[]): ChatMessage[] =>
-  turns.flatMap((turn) => turn.items.flatMap(mapCodexItem))
+export const mapCodexTurns = (
+  turns: CodexTurn[],
+  cwd?: string,
+): ChatMessage[] =>
+  turns.flatMap((turn) => turn.items.flatMap((item) => mapCodexItem(item, cwd)))
 
 export const buildPendingToolMessages = ({
   requestId,

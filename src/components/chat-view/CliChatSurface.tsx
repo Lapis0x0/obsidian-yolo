@@ -1,19 +1,25 @@
+import type { SerializedEditorState } from 'lexical'
+import { Notice, TFile } from 'obsidian'
 import {
   type ReactNode,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import type {
   ChatRuntimeActions,
   CliConversationSnapshot,
+  CliRuntimeModel,
   CliRuntimeRunState,
   CliSessionRef,
+  CliTurnConfiguration,
 } from '../../core/cli-runtime'
 import type {
   AssistantToolMessageGroup,
@@ -27,6 +33,7 @@ import { buildMessageTimelineItems } from '../../utils/chat/timeline'
 
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
+import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { ChatConversationPane } from './ChatConversationPane'
@@ -35,7 +42,7 @@ import {
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
-import UserMessageCard from './UserMessageCard'
+import UserMessageItem from './UserMessageItem'
 
 const ACTIVE_RUN_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
   'running',
@@ -45,9 +52,6 @@ const ACTIVE_RUN_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
 
 const noop = (): void => undefined
 const noopToolMessageUpdate = (_message: ChatToolMessage): void => undefined
-const noopOpenEditSummaryFile = (
-  _file: GroupEditSummary['files'][number],
-): void => undefined
 const PENDING_RESPONSE_ESTIMATED_HEIGHT = 56
 
 export type CliChatSurfaceProps = {
@@ -56,7 +60,51 @@ export type CliChatSurfaceProps = {
   actions: ChatRuntimeActions
   footerContent: ReactNode
   emptyStateWorkspaceTitle?: ReactNode
+  onRewriteUserMessage: (
+    sourceMessage: ChatUserMessage,
+    editedMessage: ChatUserMessage,
+    configuration?: CliTurnConfiguration,
+  ) => Promise<void>
+  cachedModels?: readonly CliRuntimeModel[]
+  onModelChange?: (modelId: string | null) => void
+  onReasoningEffortChange?: (effort: string | null) => void
 }
+
+const plainTextToEditorState = (text: string): SerializedEditorState =>
+  ({
+    root: {
+      children: [
+        {
+          children: text.split('\n').flatMap((line, index) => [
+            ...(index > 0 ? [{ type: 'linebreak', version: 1 }] : []),
+            ...(line
+              ? [
+                  {
+                    detail: 0,
+                    format: 0,
+                    mode: 'normal',
+                    style: '',
+                    text: line,
+                    type: 'text',
+                    version: 1,
+                  },
+                ]
+              : []),
+          ]),
+          direction: null,
+          format: '',
+          indent: 0,
+          type: 'paragraph',
+          version: 1,
+        },
+      ],
+      direction: null,
+      format: '',
+      indent: 0,
+      type: 'root',
+      version: 1,
+    },
+  }) as unknown as SerializedEditorState
 
 const getPromptContentText = (
   promptContent: ChatUserMessage['promptContent'],
@@ -74,6 +122,133 @@ const getUserMessageText = (message: ChatUserMessage): string => {
     ? editorStateToPlainText(message.content)
     : ''
   return editorText || getPromptContentText(message.promptContent)
+}
+
+const toEditableUserMessage = (message: ChatUserMessage): ChatUserMessage =>
+  message.content
+    ? message
+    : {
+        ...message,
+        content: plainTextToEditorState(getUserMessageText(message)),
+      }
+
+function CliUserMessage({
+  message,
+  isFocused,
+  isActionDisabled,
+  onFocus,
+  onSubmit,
+  runtimeId,
+  configuration,
+  turnConfiguration,
+  cachedModels,
+  onModelChange,
+  onReasoningEffortChange,
+}: {
+  message: ChatUserMessage
+  isFocused: boolean
+  isActionDisabled: boolean
+  onFocus: () => void
+  onSubmit: (
+    editedMessage: ChatUserMessage,
+    configuration?: CliTurnConfiguration,
+  ) => void
+  runtimeId: CliConversationSnapshot['runtimeId']
+  configuration: CliConversationSnapshot['configuration']
+  turnConfiguration?: CliTurnConfiguration
+  cachedModels?: readonly CliRuntimeModel[]
+  onModelChange?: (modelId: string | null) => void
+  onReasoningEffortChange?: (effort: string | null) => void
+}) {
+  const [draft, setDraft] = useState<ChatUserMessage>(() =>
+    toEditableUserMessage(message),
+  )
+  const [draftConfiguration, setDraftConfiguration] =
+    useState<CliTurnConfiguration | null>(null)
+  useEffect(() => {
+    if (!isFocused) {
+      setDraft(toEditableUserMessage(message))
+      setDraftConfiguration(null)
+    }
+  }, [isFocused, message])
+  const selectedTurnConfiguration = draftConfiguration ?? turnConfiguration
+  const editorConfiguration = useMemo(() => {
+    const models = configuration?.models ?? [...(cachedModels ?? [])]
+    if (!configuration && !selectedTurnConfiguration && models.length === 0) {
+      return null
+    }
+    return {
+      models,
+      modelId:
+        selectedTurnConfiguration?.modelId ?? configuration?.modelId ?? null,
+      reasoningEffort:
+        selectedTurnConfiguration?.reasoningEffort ??
+        configuration?.reasoningEffort ??
+        null,
+    }
+  }, [cachedModels, configuration, selectedTurnConfiguration])
+
+  return (
+    <UserMessageItem
+      message={draft}
+      displayMentionables={draft.mentionables}
+      isFocused={isFocused}
+      isActionDisabled={isActionDisabled}
+      chatUserInputRef={noop}
+      onInputChange={(content) =>
+        setDraft((current) => ({
+          ...current,
+          content,
+          promptContent: null,
+        }))
+      }
+      onSubmit={(content) => {
+        onSubmit(
+          { ...draft, content, promptContent: null },
+          editorConfiguration
+            ? {
+                modelId: editorConfiguration.modelId,
+                reasoningEffort: editorConfiguration.reasoningEffort,
+              }
+            : undefined,
+        )
+      }}
+      onFocus={onFocus}
+      onMentionablesChange={(mentionables) =>
+        setDraft((current) => ({ ...current, mentionables }))
+      }
+      onSelectedSkillsChange={(selectedSkills) =>
+        setDraft((current) => ({ ...current, selectedSkills }))
+      }
+      showReasoningSelect={false}
+      showModelControl={false}
+      runtimeControls={
+        <CliRuntimeControls
+          configuration={editorConfiguration}
+          cachedModels={cachedModels}
+          runtimeId={runtimeId}
+          disabled={isActionDisabled}
+          onModelChange={(modelId) => {
+            setDraftConfiguration({
+              modelId,
+              reasoningEffort: null,
+            })
+            onModelChange?.(modelId)
+          }}
+          onReasoningEffortChange={(reasoningEffort) => {
+            setDraftConfiguration((current) => ({
+              modelId:
+                current?.modelId ?? editorConfiguration?.modelId ?? null,
+              reasoningEffort,
+            }))
+            onReasoningEffortChange?.(reasoningEffort)
+          }}
+        />
+      }
+      showPlaceholder={false}
+      allowAgentModeOption={false}
+    />
+  )
 }
 
 const getNativeConversationId = (sessionRef: CliSessionRef): string =>
@@ -122,6 +297,23 @@ const getPendingResponseUserMessageId = (
   return latestMessage?.role === 'user' ? latestMessage.id : null
 }
 
+export const getCliTimelineRenderVersion = (
+  timelineItem: ChatTimelineItem,
+  runState: CliRuntimeRunState,
+  focusedUserMessageId: string | null,
+): string =>
+  `${timelineItem.renderKey}:${
+    timelineItem.kind === 'assistant-group' ||
+    timelineItem.kind === 'user-message'
+      ? timelineItem.revision
+      : 0
+  }:${runState}:${
+    timelineItem.kind === 'user-message' &&
+    timelineItem.messageId === focusedUserMessageId
+      ? 'editing'
+      : 'readonly'
+  }`
+
 const toAgentRunStatus = (
   runState: CliRuntimeRunState,
 ): AgentConversationRunSummary['status'] => {
@@ -159,40 +351,22 @@ const buildRunSummary = ({
   }
 }
 
-function CliUserMessage({ message }: { message: ChatUserMessage }) {
-  const { t } = useLanguage()
-  const text =
-    getUserMessageText(message) ||
-    t('chat.cliSurface.emptyUserMessage', '空消息')
-  return (
-    <div
-      className="yolo-chat-messages-user yolo-cli-chat-surface__user-message"
-      data-user-message-id={message.id}
-    >
-      <UserMessageCard
-        className="yolo-cli-chat-surface__user-card"
-        interactive={false}
-        snapshot={{
-          content: message.content,
-          text,
-          mentionables: message.mentionables,
-          selectedSkills: message.selectedSkills ?? [],
-          reasoningLevel: message.reasoningLevel,
-        }}
-        onClick={noop}
-      />
-    </div>
-  )
-}
-
 export function CliChatSurface({
   snapshot,
   showEmptyState,
   actions,
   footerContent,
   emptyStateWorkspaceTitle,
+  onRewriteUserMessage,
+  cachedModels,
+  onModelChange,
+  onReasoningEffortChange,
 }: CliChatSurfaceProps) {
+  const app = useApp()
   const { t } = useLanguage()
+  const [focusedUserMessageId, setFocusedUserMessageId] = useState<
+    string | null
+  >(null)
   const messages = useMemo(() => [...snapshot.messages], [snapshot.messages])
   const readModel = useChatTimelineReadModel({ messages })
   const activeStreamingMessageId = getActiveStreamingMessageId(
@@ -247,6 +421,17 @@ export function CliChatSurface({
       }),
     [conversationId, snapshot.messages, snapshot.runState],
   )
+  const handleOpenEditSummaryFile = useCallback(
+    ({ path }: GroupEditSummary['files'][number]) => {
+      const targetFile = app.vault.getAbstractFileByPath(path)
+      if (!(targetFile instanceof TFile)) {
+        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
+        return
+      }
+      void app.workspace.getLeaf(false).openFile(targetFile)
+    },
+    [app.vault, app.workspace, t],
+  )
 
   const chatMessagesRef = useRef<HTMLDivElement>(null)
   const [chatMessagesElement, setChatMessagesElement] =
@@ -272,9 +457,44 @@ export function CliChatSurface({
 
       if (timelineItem.kind === 'user-message') {
         const message = readModel.messagesById.get(timelineItem.messageId)
-        return message?.role === 'user' ? (
-          <CliUserMessage message={message} />
-        ) : null
+        if (message?.role !== 'user') return null
+        return (
+          <CliUserMessage
+            key={message.id}
+            message={message}
+            isFocused={focusedUserMessageId === message.id}
+            isActionDisabled={ACTIVE_RUN_STATES.has(snapshot.runState)}
+            onSubmit={(editedMessage, configuration) => {
+              if (
+                editorStateToPlainText(editedMessage.content).trim() === '' &&
+                editedMessage.mentionables.length === 0
+              ) {
+                return
+              }
+              setFocusedUserMessageId(null)
+              void onRewriteUserMessage(
+                message,
+                editedMessage,
+                configuration,
+              ).catch(() => {
+                setFocusedUserMessageId(message.id)
+              })
+            }}
+            onFocus={() => {
+              if (!ACTIVE_RUN_STATES.has(snapshot.runState)) {
+                setFocusedUserMessageId(message.id)
+              }
+            }}
+            runtimeId={snapshot.runtimeId}
+            configuration={snapshot.configuration}
+            turnConfiguration={
+              snapshot.turnConfigurationByUserMessageId?.[message.id]
+            }
+            cachedModels={cachedModels}
+            onModelChange={onModelChange}
+            onReasoningEffortChange={onReasoningEffortChange}
+          />
+        )
       }
 
       if (timelineItem.kind === 'pending-response') {
@@ -338,7 +558,7 @@ export function CliChatSurface({
             onRetryGroup={noop}
             onBranchGroup={noop}
             onQuoteAssistantSelection={noop}
-            onOpenEditSummaryFile={noopOpenEditSummaryFile}
+            onOpenEditSummaryFile={handleOpenEditSummaryFile}
           />
         </ChatRuntimeActionsProvider>
       )
@@ -346,22 +566,30 @@ export function CliChatSurface({
     [
       actions,
       conversationId,
+      focusedUserMessageId,
+      handleOpenEditSummaryFile,
       latestAssistantGroupId,
+      cachedModels,
+      onModelChange,
+      onReasoningEffortChange,
+      onRewriteUserMessage,
       readModel.messagesById,
       runSummary,
       snapshot.sessionRef,
+      snapshot.configuration,
+      snapshot.runtimeId,
+      snapshot.turnConfigurationByUserMessageId,
     ],
   )
 
   const renderVersion = useCallback(
     (timelineItem: ChatTimelineItem): string =>
-      `${timelineItem.renderKey}:${
-        timelineItem.kind === 'assistant-group' ||
-        timelineItem.kind === 'user-message'
-          ? timelineItem.revision
-          : 0
-      }:${snapshot.runState}`,
-    [snapshot.runState],
+      getCliTimelineRenderVersion(
+        timelineItem,
+        snapshot.runState,
+        focusedUserMessageId,
+      ),
+    [focusedUserMessageId, snapshot.runState],
   )
 
   return (

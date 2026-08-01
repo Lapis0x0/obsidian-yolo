@@ -7,6 +7,7 @@ import type {
   CliRuntimeScope,
   CliSessionHydration,
   CliSessionRef,
+  CliTurnConfiguration,
 } from '../../core/cli-runtime'
 import { buildCliTurnContent } from '../../core/cli-runtime'
 import type { YoloSettings } from '../../settings/schema/setting.types'
@@ -23,6 +24,16 @@ const toError = (error: unknown): Error =>
   error instanceof Error
     ? error
     : new Error(typeof error === 'string' ? error : 'Unknown CLI session error')
+
+const getTurnConfiguration = (
+  snapshot: CliConversationSnapshot,
+): CliTurnConfiguration | undefined =>
+  snapshot.configuration
+    ? {
+        modelId: snapshot.configuration.modelId,
+        reasoningEffort: snapshot.configuration.reasoningEffort,
+      }
+    : undefined
 
 export const prepareCliConversation = async ({
   controller,
@@ -424,7 +435,7 @@ export const openCliSession = async ({
   const hydration = alreadyHydrated
     ? { ref, messages: [...existingSnapshot.messages] }
     : await controller.hydrateSession(ref, (messages) =>
-        scope.sessionService.restoreUserDisplays(ref, messages),
+        scope.sessionService.restoreSessionOverlay(ref, messages),
       )
   let overlayError: Error | null = null
   if (hydration && isCurrent()) {
@@ -537,6 +548,7 @@ export const submitCliComposerTurn = async ({
       snapshot.sessionRef,
       content,
       stampedUserMessage,
+      getTurnConfiguration(snapshot),
     )
     await scope.sessionService.recordOpenedSession({
       ref: snapshot.sessionRef,
@@ -550,4 +562,80 @@ export const submitCliComposerTurn = async ({
     userMessage: stampedUserMessage,
     overlayError,
   }
+}
+
+export type RewriteCliConversationTurnInput = {
+  scope: CliRuntimeScope
+  controller: CliConversationController
+  runtimeId: CliRuntimeId
+  sourceUserMessageId: string
+  userMessage: ChatUserMessage
+  encodeTurnContent?: typeof buildCliTurnContent
+}
+
+export const rewriteCliConversationTurn = async ({
+  scope,
+  controller,
+  runtimeId,
+  sourceUserMessageId,
+  userMessage,
+  encodeTurnContent = buildCliTurnContent,
+}: RewriteCliConversationTurnInput): Promise<{
+  sessionRef: CliSessionRef
+  userMessage: ChatUserMessage
+  overlayError: Error | null
+}> => {
+  const previousSessionRef = controller.getSnapshot().sessionRef
+  if (!previousSessionRef) {
+    throw new Error('CLI session is not ready for historical editing.')
+  }
+  const previousMessages = controller.getSnapshot().messages
+  const sourceIndex = previousMessages.findIndex(
+    (message) =>
+      message.role === 'user' && message.id === sourceUserMessageId,
+  )
+  const discardedUserMessageIds = previousMessages
+    .slice(Math.max(0, sourceIndex))
+    .flatMap((message) => (message.role === 'user' ? [message.id] : []))
+  const content = encodeTurnContent({
+    runtimeId,
+    text: userMessage.content
+      ? editorStateToPlainText(userMessage.content)
+      : '',
+    mentionables: userMessage.mentionables,
+    selectedSkills: userMessage.selectedSkills,
+    timeContext: userMessage.timeContext,
+  })
+  await controller.rewriteTurn({
+    sourceUserMessageId,
+    userMessage,
+    content,
+    selectedSkillNames: userMessage.selectedSkills?.map((skill) => skill.name),
+  })
+  const sessionRef = controller.getSnapshot().sessionRef
+  if (!sessionRef) {
+    throw new Error('CLI runtime rewrote a turn without binding a session.')
+  }
+
+  let overlayError: Error | null = null
+  try {
+    await scope.sessionService.rebindOverlay(
+      previousSessionRef,
+      sessionRef,
+      discardedUserMessageIds,
+    )
+    await scope.sessionService.recordUserDisplay(
+      sessionRef,
+      content,
+      userMessage,
+      getTurnConfiguration(controller.getSnapshot()),
+    )
+    await scope.sessionService.recordOpenedSession({
+      ref: sessionRef,
+      messages: [...controller.getSnapshot().messages],
+    })
+  } catch (error) {
+    overlayError = toError(error)
+  }
+  return { sessionRef, userMessage, overlayError }
 }

@@ -1,8 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
+import type { ToolEditSummary } from '../../types/tool-call.types'
 
+import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
+  CliRewriteTurnInput,
   CliRuntime,
   CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
@@ -10,7 +13,9 @@ import type {
   CliRuntimeModel,
   CliRuntimeRunState,
   CliSessionHydration,
+  CliSessionOverlay,
   CliSessionRef,
+  CliTurnConfiguration,
   CliTurnInput,
 } from './types'
 
@@ -27,6 +32,9 @@ export type CliConversationSnapshot = Readonly<{
   runState: CliRuntimeRunState
   error: string | null
   configuration?: CliRuntimeConfiguration | null
+  turnConfigurationByUserMessageId?: Readonly<
+    Record<string, CliTurnConfiguration>
+  >
 }>
 
 export type CliConversationTurn = Readonly<{
@@ -34,6 +42,9 @@ export type CliConversationTurn = Readonly<{
   content: CliTurnInput['content']
   selectedSkillNames?: CliTurnInput['selectedSkillNames']
 }>
+
+export type CliConversationRewriteTurn = CliConversationTurn &
+  Readonly<Pick<CliRewriteTurnInput, 'sourceUserMessageId'>>
 
 export type CliStagedConversationTurn = Readonly<{
   surfaceId: string
@@ -80,6 +91,66 @@ const normalizeMessages = (
   return Object.freeze(normalized)
 }
 
+const getCurrentTurnConfiguration = (
+  configuration: CliRuntimeConfiguration | null | undefined,
+): CliTurnConfiguration | null =>
+  configuration
+    ? {
+        modelId: configuration.modelId,
+        reasoningEffort: configuration.reasoningEffort,
+      }
+    : null
+
+const setTurnConfiguration = (
+  configurations: NonNullable<
+    CliConversationSnapshot['turnConfigurationByUserMessageId']
+  >,
+  userMessageId: string,
+  configuration: CliRuntimeConfiguration | null | undefined,
+): CliConversationSnapshot['turnConfigurationByUserMessageId'] => {
+  const turnConfiguration = getCurrentTurnConfiguration(configuration)
+  return turnConfiguration
+    ? Object.freeze({
+        ...configurations,
+        [userMessageId]: turnConfiguration,
+      })
+    : configurations
+}
+
+const replaceTurnConfigurationMessageId = (
+  configurations: NonNullable<
+    CliConversationSnapshot['turnConfigurationByUserMessageId']
+  >,
+  previousMessageId: string,
+  nextMessageId: string,
+): CliConversationSnapshot['turnConfigurationByUserMessageId'] => {
+  const { [previousMessageId]: configuration, ...remaining } = configurations
+  return Object.freeze(
+    configuration
+      ? { ...remaining, [nextMessageId]: configuration }
+      : remaining,
+  )
+}
+
+const replaceOptimisticUserMessage = (
+  messages: readonly ChatMessage[],
+  optimisticMessageId: string,
+  nativeMessage: ChatUserMessage,
+): readonly ChatMessage[] => {
+  const index = messages.findIndex(
+    (message) => message.role === 'user' && message.id === optimisticMessageId,
+  )
+  if (index < 0) return upsertMessage(messages, nativeMessage)
+  const optimisticMessage = messages[index] as ChatUserMessage
+  const next = [...messages]
+  next[index] = {
+    ...nativeMessage,
+    ...optimisticMessage,
+    id: nativeMessage.id,
+  }
+  return Object.freeze(next)
+}
+
 const appendAssistantError = (
   snapshot: CliConversationSnapshot,
   errorMessage: string,
@@ -120,6 +191,7 @@ export class CliConversationController {
   private bindingTarget: CliSessionRef | null | undefined
   private bindingEpoch: number | null = null
   private pendingOptimisticUserMessageId: string | null = null
+  private allowSessionRebind = false
   private readonly reconciledNativeUserMessageIds = new Set<string>()
   private readyTail: Promise<void> = Promise.resolve()
   private disposed = false
@@ -127,6 +199,11 @@ export class CliConversationController {
   constructor(
     runtime: CliRuntime,
     private readonly getCachedModels: () => readonly CliRuntimeModel[] = () => [],
+    private readonly onTurnEditSummary?: (
+      ref: CliSessionRef,
+      sourceUserMessageId: string,
+      summary: ToolEditSummary,
+    ) => Promise<void>,
   ) {
     this.runtime = runtime
     this.snapshot = this.createEmptySnapshot(runtime)
@@ -151,7 +228,7 @@ export class CliConversationController {
     ref: CliSessionRef,
     restoreMessages?: (
       messages: readonly ChatMessage[],
-    ) => Promise<readonly ChatMessage[]>,
+    ) => Promise<readonly ChatMessage[] | CliSessionOverlay>,
   ): Promise<CliSessionHydration | null> {
     this.assertActive()
     this.assertRuntimeRef(ref)
@@ -165,13 +242,21 @@ export class CliConversationController {
       if (!isSameSession(ref, hydration.ref)) {
         throw new Error('CLI runtime hydrated a different session.')
       }
-      const messages = restoreMessages
+      const restored = restoreMessages
         ? await restoreMessages(hydration.messages)
         : hydration.messages
+      const overlay = Array.isArray(restored)
+        ? null
+        : (restored as CliSessionOverlay)
+      const messages = overlay
+        ? overlay.messages
+        : (restored as readonly ChatMessage[])
       if (!this.isCurrent(operation)) return null
       this.publish({
         ...this.snapshot,
         messages: normalizeMessages(messages),
+        turnConfigurationByUserMessageId:
+          overlay?.turnConfigurationByUserMessageId ?? Object.freeze({}),
         sessionRef: hydration.ref,
         runState: 'idle',
         error: null,
@@ -222,6 +307,11 @@ export class CliConversationController {
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
+      turnConfigurationByUserMessageId: setTurnConfiguration(
+        this.snapshot.turnConfigurationByUserMessageId ?? {},
+        userMessage.id,
+        this.snapshot.configuration,
+      ),
       runState: 'running',
       error: null,
     })
@@ -231,6 +321,7 @@ export class CliConversationController {
     try {
       await operation.runtime.sendTurn({
         ...(sessionRef ? { sessionRef } : {}),
+        userMessageId: userMessage.id,
         content,
         ...(selectedSkillNames ? { selectedSkillNames } : {}),
       })
@@ -239,6 +330,76 @@ export class CliConversationController {
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
+    }
+  }
+
+  async rewriteTurn({
+    sourceUserMessageId,
+    userMessage,
+    content,
+    selectedSkillNames,
+  }: CliConversationRewriteTurn): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!this.acceptingEvents || !this.snapshot.sessionRef) {
+      throw new Error('CLI runtime is not ready for rewriting this session.')
+    }
+    if (
+      this.snapshot.runState === 'running' ||
+      this.snapshot.runState === 'waiting_for_approval' ||
+      this.snapshot.runState === 'waiting_for_user'
+    ) {
+      throw new Error('Cannot rewrite a CLI message while a turn is active.')
+    }
+    const sourceIndex = this.snapshot.messages.findIndex(
+      (message) =>
+        message.role === 'user' && message.id === sourceUserMessageId,
+    )
+    if (sourceIndex < 0) {
+      throw new Error('The selected CLI user message no longer exists.')
+    }
+
+    const sessionRef = this.snapshot.sessionRef
+    this.pendingOptimisticUserMessageId = userMessage.id
+    this.publish({
+      ...this.snapshot,
+      messages: Object.freeze([
+        ...this.snapshot.messages.slice(0, sourceIndex),
+        userMessage,
+      ]),
+      turnConfigurationByUserMessageId: setTurnConfiguration(
+        Object.freeze(
+          Object.fromEntries(
+            this.snapshot.messages
+              .slice(0, sourceIndex)
+              .filter((message) => message.role === 'user')
+              .flatMap((message) => {
+                const configuration =
+                  this.snapshot.turnConfigurationByUserMessageId?.[message.id]
+                return configuration ? [[message.id, configuration]] : []
+              }),
+          ),
+        ),
+        userMessage.id,
+        this.snapshot.configuration,
+      ),
+      runState: 'running',
+      error: null,
+    })
+    this.allowSessionRebind = true
+    try {
+      await operation.runtime.rewriteTurn({
+        sessionRef,
+        sourceUserMessageId,
+        userMessageId: userMessage.id,
+        content,
+        ...(selectedSkillNames ? { selectedSkillNames } : {}),
+      })
+    } catch (error) {
+      if (this.isCurrent(operation)) this.publishError(error)
+      throw error
+    } finally {
+      this.allowSessionRebind = false
     }
   }
 
@@ -257,6 +418,11 @@ export class CliConversationController {
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
+      turnConfigurationByUserMessageId: setTurnConfiguration(
+        this.snapshot.turnConfigurationByUserMessageId ?? {},
+        userMessage.id,
+        this.snapshot.configuration,
+      ),
       runState: 'running',
       error: null,
     })
@@ -451,6 +617,7 @@ export class CliConversationController {
         : this.createSurfaceId(),
       runtimeId: this.runtime.runtimeId,
       messages: Object.freeze([]),
+      turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: ref,
       runState: 'idle',
       error: null,
@@ -473,6 +640,11 @@ export class CliConversationController {
 
     if (event.type === 'session_bound') {
       if (event.ref.runtimeId !== this.runtime.runtimeId) return
+      if (this.allowSessionRebind) {
+        this.acceptingEvents = true
+        this.publish({ ...this.snapshot, sessionRef: event.ref, error: null })
+        return
+      }
       if (this.bindingEpoch === conversationEpoch) {
         if (
           this.bindingTarget &&
@@ -494,12 +666,46 @@ export class CliConversationController {
     }
 
     if (!this.acceptingEvents) return
+    if (event.type === 'turn_edit_summary') {
+      const messages = attachCliTurnEditSummary(
+        this.snapshot.messages,
+        event.sourceUserMessageId,
+        event.summary,
+      )
+      this.publish({ ...this.snapshot, messages })
+      const ref = this.snapshot.sessionRef
+      if (ref && this.onTurnEditSummary) {
+        void this.onTurnEditSummary(
+          ref,
+          event.sourceUserMessageId,
+          event.summary,
+        ).catch((error) => {
+          console.warn('[YOLO] Failed to persist CLI edit summary', error)
+        })
+      }
+      return
+    }
     if (event.type === 'message_upsert') {
       if (event.message.role === 'user') {
         if (this.reconciledNativeUserMessageIds.has(event.message.id)) return
         if (this.pendingOptimisticUserMessageId) {
+          const optimisticMessageId = this.pendingOptimisticUserMessageId
           this.reconciledNativeUserMessageIds.add(event.message.id)
           this.pendingOptimisticUserMessageId = null
+          this.publish({
+            ...this.snapshot,
+            messages: replaceOptimisticUserMessage(
+              this.snapshot.messages,
+              optimisticMessageId,
+              event.message,
+            ),
+            turnConfigurationByUserMessageId:
+              replaceTurnConfigurationMessageId(
+                this.snapshot.turnConfigurationByUserMessageId ?? {},
+                optimisticMessageId,
+                event.message.id,
+              ),
+          })
           return
         }
       }
@@ -626,6 +832,7 @@ export class CliConversationController {
       surfaceId: this.createSurfaceId(),
       runtimeId: runtime.runtimeId,
       messages: Object.freeze([]),
+      turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: null,
       runState: 'idle',
       error: null,

@@ -45,6 +45,7 @@ import {
   type CliRuntimeModel,
   type CliRuntimeScope,
   type CliSessionRef,
+  type CliTurnConfiguration,
   type YoloConversationRef,
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
@@ -170,6 +171,7 @@ import {
   openCliSessionForNavigation,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
+  rewriteCliConversationTurn,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
   submitCliComposerTurn,
@@ -6724,6 +6726,89 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [activeRuntimeId, cliConversationController, persistCliConfiguration, t],
   )
 
+  const handleCliUserMessageRewrite = useCallback(
+    async (
+      sourceMessage: ChatUserMessage,
+      editedMessage: ChatUserMessage,
+      turnConfiguration?: CliTurnConfiguration,
+    ) => {
+      if (
+        activeRuntimeId === 'yolo' ||
+        !cliConversationController ||
+        !cliOperationCoordinator ||
+        !cliRuntimeScope ||
+        !cliConversationId
+      ) {
+        throw new Error('CLI conversation is not ready for editing.')
+      }
+      try {
+        let rewriteResult: Awaited<
+          ReturnType<typeof rewriteCliConversationTurn>
+        > | null = null
+        const completed = await cliOperationCoordinator.transition(
+          cliConversationController,
+          async (isCurrent) => {
+            if (turnConfiguration) {
+              const configuration =
+                await cliConversationController.updateConfiguration(
+                  turnConfiguration,
+                )
+              if (configuration) persistCliConfiguration(configuration)
+            }
+            rewriteResult = await rewriteCliConversationTurn({
+              scope: cliRuntimeScope,
+              controller: cliConversationController,
+              runtimeId: activeRuntimeId,
+              sourceUserMessageId: sourceMessage.id,
+              userMessage: {
+                ...editedMessage,
+                id: sourceMessage.id,
+              },
+            })
+            if (!isCurrent() || !rewriteResult) return
+            await createOrTouchCliConversation(cliConversationId, {
+              runtimeId: rewriteResult.sessionRef.runtimeId,
+              nativeSessionId: rewriteResult.sessionRef.nativeSessionId,
+              ...(rewriteResult.sessionRef.sessionPathHint
+                ? {
+                    sessionPathHint: rewriteResult.sessionRef.sessionPathHint,
+                  }
+                : {}),
+            })
+            if (rewriteResult.overlayError) {
+              console.warn('[YOLO] Failed to save rewritten CLI metadata', {
+                conversationId: cliConversationId,
+                error: rewriteResult.overlayError.message,
+              })
+            }
+          },
+        )
+        if (!completed) return
+      } catch (error) {
+        new Notice(
+          t(
+            'chat.cliSurface.submitError',
+            'Could not send the CLI message: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+        throw error
+      }
+    },
+    [
+      activeRuntimeId,
+      cliConversationController,
+      cliConversationId,
+      cliOperationCoordinator,
+      cliRuntimeScope,
+      createOrTouchCliConversation,
+      persistCliConfiguration,
+      t,
+    ],
+  )
+
   const handleMainInputRunSlashCommand = useCallback<
     NonNullable<ChatUserInputProps['onRunSlashCommand']>
   >(
@@ -7770,11 +7855,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         activeCliConversationSnapshot &&
         cliRuntimeScope ? (
         <CliChatSurface
+          key={activeCliConversationSnapshot.surfaceId}
           snapshot={activeCliConversationSnapshot}
           showEmptyState={activeSurfaceEmpty}
           actions={cliRuntimeScope.chatRuntimeActions}
           footerContent={mainInputFooter}
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+          onRewriteUserMessage={handleCliUserMessageRewrite}
+          cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
+          onModelChange={handleCliModelChange}
+          onReasoningEffortChange={handleCliReasoningEffortChange}
         />
       ) : (
         <ChatConversationPane

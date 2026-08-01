@@ -3,6 +3,7 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
+  CliRewriteTurnInput,
   CliRuntime,
   CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
@@ -34,6 +35,7 @@ import type {
   ModelListResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
+  ThreadRollbackResponse,
   ThreadStartResponse,
   TurnStartResponse,
 } from './protocol'
@@ -147,7 +149,7 @@ export class CodexCliRuntime implements CliRuntime {
     })
     return {
       ref: toSessionRef(response.thread),
-      messages: mapCodexTurns(response.thread.turns),
+      messages: mapCodexTurns(response.thread.turns, response.thread.cwd),
     }
   }
 
@@ -237,6 +239,60 @@ export class CodexCliRuntime implements CliRuntime {
       0,
     )
     this.activeTurnId ??= response.turn.id
+  }
+
+  async rewriteTurn(input: CliRewriteTurnInput): Promise<void> {
+    if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
+    if (this.activeTurnId) {
+      throw new Error(
+        'Cannot rewrite a Codex turn while another turn is active.',
+      )
+    }
+    if (
+      input.sessionRef &&
+      input.sessionRef.nativeSessionId !== this.activeSessionRef.nativeSessionId
+    ) {
+      throw new Error('Codex rewrite does not match the active native session.')
+    }
+
+    const host = await this.getHost()
+    const threadId = this.activeSessionRef.nativeSessionId
+    const { thread } = await host.request<ThreadReadResponse>('thread/read', {
+      threadId,
+      includeTurns: true,
+    })
+    const nativeUserItemId = input.sourceUserMessageId.startsWith('codex-user-')
+      ? input.sourceUserMessageId.slice('codex-user-'.length)
+      : input.sourceUserMessageId
+    const targetTurnIndex = thread.turns.findIndex((turn) =>
+      turn.items.some(
+        (item) => item.type === 'userMessage' && item.id === nativeUserItemId,
+      ),
+    )
+    if (targetTurnIndex < 0) {
+      throw new Error('The selected Codex user message no longer exists.')
+    }
+
+    const rollback = await host.request<ThreadRollbackResponse>(
+      'thread/rollback',
+      {
+        threadId,
+        numTurns: thread.turns.length - targetTurnIndex,
+      },
+    )
+    if (rollback.thread.id !== threadId) {
+      throw new Error('Codex rollback returned a different thread.')
+    }
+    this.activeSessionRef = toSessionRef(rollback.thread)
+    this.pendingRequests.clear()
+    this.streamingAssistantText.clear()
+    this.streamingReasoningSummaryParts.clear()
+    this.streamingReasoningContentParts.clear()
+
+    await this.sendTurn({
+      ...input,
+      sessionRef: this.activeSessionRef,
+    })
   }
 
   async cancel(): Promise<void> {
@@ -464,7 +520,7 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'item/started' || method === 'item/completed') {
       const item = params.item as CodexThreadItem | undefined
       if (!item) return
-      for (const message of mapCodexItem(item)) {
+      for (const message of mapCodexItem(item, this.options.cwd)) {
         this.emit({ type: 'message_upsert', message })
       }
       return

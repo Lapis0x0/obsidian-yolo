@@ -3,6 +3,7 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { CodexAppServerHost, CodexAppServerHostPool } from './host'
 import type { CodexProcessExitListener, CodexProcessLike } from './process'
 import { CodexCliRuntime } from './runtime'
+import type { CodexTurn } from './protocol'
 
 class RpcFakeProcess implements CodexProcessLike {
   responses: unknown[] = []
@@ -14,6 +15,7 @@ class RpcFakeProcess implements CodexProcessLike {
   errors: unknown[] = []
   requests: Array<{ method: string; params: Record<string, unknown> }> = []
   threadPages: Array<Array<typeof this.thread>> = []
+  threadTurns: CodexTurn[] = []
   threadIdForStart?: (params: Record<string, unknown>) => string
   stderr = ''
   private lineListener: ((line: string) => void) | null = null
@@ -85,7 +87,7 @@ class RpcFakeProcess implements CodexProcessLike {
               nextCursor: null,
             }
           : request.method === 'thread/read'
-            ? { thread: this.thread }
+            ? { thread: { ...this.thread, turns: this.threadTurns } }
             : request.method === 'thread/start' ||
                 request.method === 'thread/resume'
               ? {
@@ -96,16 +98,30 @@ class RpcFakeProcess implements CodexProcessLike {
                       this.thread.id,
                   },
                 }
-              : request.method === 'turn/start'
+              : request.method === 'thread/rollback'
                 ? {
-                    turn: {
-                      id: 'turn-1',
-                      items: [],
-                      status: 'inProgress',
-                      error: null,
+                    thread: {
+                      ...this.thread,
+                      turns: this.threadTurns.slice(
+                        0,
+                        Math.max(
+                          0,
+                          this.threadTurns.length -
+                            Number(request.params?.numTurns ?? 0),
+                        ),
+                      ),
                     },
                   }
-                : {}
+                : request.method === 'turn/start'
+                  ? {
+                      turn: {
+                        id: 'turn-1',
+                        items: [],
+                        status: 'inProgress',
+                        error: null,
+                      },
+                    }
+                  : {}
     queueMicrotask(() => this.emit({ jsonrpc: '2.0', id: request.id, result }))
   }
   onLine(listener: (line: string) => void): () => void {
@@ -133,6 +149,61 @@ class RpcFakeProcess implements CodexProcessLike {
 }
 
 describe('CodexCliRuntime', () => {
+  it('rewrites the current thread by rolling back the selected turn', async () => {
+    const process = new RpcFakeProcess()
+    process.threadTurns = [
+      {
+        id: 'turn-1',
+        status: 'completed',
+        error: null,
+        items: [
+          {
+            type: 'userMessage',
+            id: 'user-1',
+            content: [{ type: 'text', text: 'first', text_elements: [] }],
+          },
+        ],
+      },
+      {
+        id: 'turn-2',
+        status: 'completed',
+        error: null,
+        items: [
+          {
+            type: 'userMessage',
+            id: 'user-2',
+            content: [{ type: 'text', text: 'second', text_elements: [] }],
+          },
+        ],
+      },
+    ]
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+    await runtime.ensureReady({})
+
+    await runtime.rewriteTurn({
+      sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
+      sourceUserMessageId: 'codex-user-user-1',
+      userMessageId: 'edited-user',
+      content: 'edited first',
+    })
+
+    expect(
+      process.requests.find((request) => request.method === 'thread/rollback')
+        ?.params,
+    ).toEqual({ threadId: 'thread-1', numTurns: 2 })
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params.threadId,
+    ).toBe('thread-1')
+  })
+
   it('shares one initialized app-server host across native sessions', async () => {
     const processes: RpcFakeProcess[] = []
     const pool = new CodexAppServerHostPool({

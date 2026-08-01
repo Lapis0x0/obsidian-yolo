@@ -54,4 +54,51 @@ describe('Codex message mapping', () => {
       ],
     })
   })
+
+  it('maps native file changes into the shared edit summary metadata', () => {
+    const messages = mapCodexItem(
+      {
+        type: 'fileChange',
+        id: 'patch-1',
+        status: 'completed',
+        changes: [
+          {
+            path: '/vault/src/a.ts',
+            kind: { type: 'update', move_path: null },
+            diff: '@@ -1 +1,2 @@\n-old\n+new\n+added',
+          },
+          {
+            path: '/vault/src/b.ts',
+            kind: { type: 'add' },
+            diff: '@@ -0,0 +1 @@\n+created',
+          },
+        ],
+      },
+      '/vault',
+    )
+
+    expect(messages[1]).toMatchObject({
+      role: 'tool',
+      toolCalls: [
+        {
+          response: {
+            status: ToolCallResponseStatus.Success,
+            data: {
+              metadata: {
+                editSummary: {
+                  totalFiles: 2,
+                  totalAddedLines: 3,
+                  totalRemovedLines: 1,
+                  files: [
+                    { path: 'src/a.ts', operation: 'edit' },
+                    { path: 'src/b.ts', operation: 'create' },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    })
+  })
 })

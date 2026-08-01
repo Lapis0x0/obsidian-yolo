@@ -4,6 +4,7 @@ import { CliConversationController } from './conversation-controller'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
+  CliRewriteTurnInput,
   CliRuntime,
   CliRuntimeConfiguration,
   CliRuntimeEvent,
@@ -49,6 +50,7 @@ class FakeCliRuntime implements CliRuntime {
   readonly subscribedListeners: CliRuntimeEventListener[] = []
   readonly readyInputs: CliRuntimeReadyInput[] = []
   readonly turnInputs: CliTurnInput[] = []
+  readonly rewriteInputs: CliRewriteTurnInput[] = []
   readonly configurationUpdates: Array<{
     modelId?: string | null
     reasoningEffort?: string | null
@@ -64,6 +66,8 @@ class FakeCliRuntime implements CliRuntime {
     })
   }
   sendTurnImpl: (input: CliTurnInput) => Promise<void> = async () => undefined
+  rewriteTurnImpl: (input: CliRewriteTurnInput) => Promise<void> = async () =>
+    undefined
   cancelImpl: () => Promise<void> = async () => undefined
   configuration: CliRuntimeConfiguration
 
@@ -107,6 +111,11 @@ class FakeCliRuntime implements CliRuntime {
   async sendTurn(input: CliTurnInput): Promise<void> {
     this.turnInputs.push(input)
     await this.sendTurnImpl(input)
+  }
+
+  async rewriteTurn(input: Parameters<CliRuntime['rewriteTurn']>[0]) {
+    this.rewriteInputs.push(input)
+    await this.rewriteTurnImpl(input)
   }
 
   cancel(): Promise<void> {
@@ -385,6 +394,7 @@ describe('CliConversationController', () => {
     expect(runtime.turnInputs).toEqual([
       {
         sessionRef: session('new-codex'),
+        userMessageId: 'user-optimistic',
         content: 'hello',
       },
     ])
@@ -420,7 +430,63 @@ describe('CliConversationController', () => {
     expect(controller.getSnapshot().messages).toHaveLength(1)
     expect(controller.getSnapshot().messages[0]).toMatchObject({
       role: 'user',
-      id: 'user-optimistic',
+      id: 'codex-user-native-1',
+      promptContent: '在吗',
+    })
+    expect(
+      controller.getSnapshot().turnConfigurationByUserMessageId,
+    ).toEqual({
+      'codex-user-native-1': {
+        modelId: 'codex-model',
+        reasoningEffort: null,
+      },
+    })
+  })
+
+  it('rewrites the selected user turn in place and accepts a rebound session', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    const originalRef = session('original', 'claude-code')
+    const replacementRef = session('replacement', 'claude-code')
+    runtime.openSessionImpl = async () => ({
+      ref: originalRef,
+      messages: [
+        userMessage('user-1', 'first'),
+        assistantMessage('assistant-1', 'first answer'),
+        userMessage('user-2', 'second'),
+        assistantMessage('assistant-2', 'second answer'),
+      ],
+    })
+    runtime.rewriteTurnImpl = async () => {
+      runtime.emit({ type: 'session_bound', ref: replacementRef })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('assistant-rewritten', 'new answer'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.hydrateSession(originalRef)
+    await controller.ensureReady()
+
+    await controller.rewriteTurn({
+      sourceUserMessageId: 'user-2',
+      userMessage: userMessage('user-2', 'edited second'),
+      content: 'edited second',
+    })
+
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionRef: replacementRef,
+      messages: [
+        { id: 'user-1' },
+        { id: 'assistant-1' },
+        { id: 'user-2', promptContent: 'edited second' },
+        { id: 'assistant-rewritten' },
+      ],
+    })
+    expect(runtime.rewriteInputs[0]).toMatchObject({
+      sessionRef: originalRef,
+      sourceUserMessageId: 'user-2',
+      userMessageId: 'user-2',
+      content: 'edited second',
     })
   })
 

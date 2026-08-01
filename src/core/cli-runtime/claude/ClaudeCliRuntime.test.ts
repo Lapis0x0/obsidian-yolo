@@ -41,6 +41,13 @@ class FakeQuery implements ClaudeSdkQuery {
   readonly supportedModels = jest.fn(async () => [])
   readonly setModel = jest.fn(async () => undefined)
   readonly applyFlagSettings = jest.fn(async () => undefined)
+  readonly rewindFiles = jest.fn<
+    ReturnType<ClaudeSdkQuery['rewindFiles']>,
+    Parameters<ClaudeSdkQuery['rewindFiles']>
+  >(async () => ({
+    canRewind: true,
+    filesChanged: [],
+  }))
   readonly close = jest.fn()
 
   private messages: SDKMessage[] = []
@@ -92,14 +99,22 @@ class FakeQuery implements ClaudeSdkQuery {
 
 const createSdk = () => {
   const queryInstance = new FakeQuery()
+  const queryInstances = [queryInstance]
   const queryInputs: QueryInput[] = []
   const getSessionMessages = jest.fn<
     Promise<SessionMessage[]>,
     [sessionId: string, options?: { dir?: string }]
   >(async () => [])
   const query = jest.fn<ClaudeSdkQuery, [input: QueryInput]>((input) => {
+    const instance =
+      queryInstances[queryInputs.length] ??
+      (() => {
+        const created = new FakeQuery()
+        queryInstances.push(created)
+        return created
+      })()
     queryInputs.push(input)
-    return queryInstance
+    return instance
   })
   const sdk: ClaudeSdkModule = {
     query,
@@ -109,6 +124,7 @@ const createSdk = () => {
     sdk,
     query,
     queryInputs,
+    queryInstances,
     queryInstance,
     getSessionMessages,
   }
@@ -122,9 +138,9 @@ const processSupport: ClaudeProcessSupport = {
 }
 
 const flushPromises = async (): Promise<void> => {
-  await Promise.resolve()
-  await Promise.resolve()
-  await Promise.resolve()
+  for (let index = 0; index < 12; index += 1) {
+    await Promise.resolve()
+  }
 }
 
 const assistantMessage = (
@@ -358,6 +374,134 @@ describe('ClaudeCliRuntime', () => {
           },
         },
       ],
+    })
+  })
+
+  it('rewrites from the previous native message into a replacement session', async () => {
+    const { sdk, getSessionMessages, queryInputs, queryInstances } = createSdk()
+    getSessionMessages.mockResolvedValue([
+      {
+        type: 'user',
+        uuid: 'user-1',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: { role: 'user', content: 'first' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'assistant-1',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: { role: 'assistant', content: 'answer' },
+      },
+      {
+        type: 'user',
+        uuid: 'user-2',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: { role: 'user', content: 'second' },
+      },
+    ])
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({
+      sessionRef: {
+        runtimeId: 'claude-code',
+        nativeSessionId: 'session-1',
+      },
+    })
+
+    await runtime.rewriteTurn({
+      sessionRef: {
+        runtimeId: 'claude-code',
+        nativeSessionId: 'session-1',
+      },
+      sourceUserMessageId: 'user-2',
+      userMessageId: 'user-2',
+      content: 'edited second',
+    })
+
+    expect(queryInputs[1]?.options).toMatchObject({
+      resume: 'session-1',
+      resumeSessionAt: 'assistant-1',
+      forkSession: true,
+      enableFileCheckpointing: true,
+    })
+    expect(queryInputs[1]?.options?.sessionId).not.toBe('session-1')
+    expect(queryInstances).toHaveLength(2)
+    expect(
+      events.filter((event) => event.type === 'session_bound').at(-1),
+    ).toMatchObject({
+      type: 'session_bound',
+      ref: { runtimeId: 'claude-code' },
+    })
+  })
+
+  it('publishes a shared edit summary from Claude file checkpoints', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.rewindFiles.mockResolvedValue({
+      canRewind: true,
+      filesChanged: ['/vault/src/a.ts', '/vault/src/b.ts'],
+      insertions: 7,
+      deletions: 2,
+    })
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit files' })
+    queryInstance.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'done',
+      duration_ms: 1,
+      duration_api_ms: 1,
+      num_turns: 1,
+      stop_reason: 'end_turn',
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        server_tool_use: null,
+        service_tier: 'standard',
+      },
+      modelUsage: {},
+      permission_denials: [],
+      uuid: 'result-1',
+      session_id: 'session-1',
+    } as unknown as SDKMessage)
+    await flushPromises()
+
+    expect(queryInstance.rewindFiles).toHaveBeenCalledWith('user-1', {
+      dryRun: true,
+    })
+    expect(events).toContainEqual({
+      type: 'turn_edit_summary',
+      sourceUserMessageId: 'user-1',
+      summary: expect.objectContaining({
+        totalFiles: 2,
+        totalAddedLines: 7,
+        totalRemovedLines: 2,
+        files: [
+          expect.objectContaining({ path: 'src/a.ts' }),
+          expect.objectContaining({ path: 'src/b.ts' }),
+        ],
+      }),
     })
   })
 

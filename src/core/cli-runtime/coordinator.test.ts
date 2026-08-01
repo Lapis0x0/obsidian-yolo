@@ -63,6 +63,8 @@ class TestRuntime implements CliRuntime {
 
   async sendTurn() {}
 
+  async rewriteTurn() {}
+
   async respondApproval() {
     return true
   }

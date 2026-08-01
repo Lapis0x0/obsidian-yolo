@@ -29,6 +29,13 @@ jest.mock('../../contexts/language-context', () => ({
   }),
 }))
 
+jest.mock('../../contexts/app-context', () => ({
+  useApp: () => ({
+    vault: { getAbstractFileByPath: jest.fn() },
+    workspace: { getLeaf: jest.fn() },
+  }),
+}))
+
 jest.mock('./UserMessageCard', () => ({
   __esModule: true,
   default: ({
@@ -44,6 +51,26 @@ jest.mock('./UserMessageCard', () => ({
       {snapshot.text}
     </div>
   ),
+}))
+
+jest.mock('./UserMessageItem', () => ({
+  __esModule: true,
+  default: ({
+    message,
+    isActionDisabled,
+  }: {
+    message: ChatUserMessage
+    isActionDisabled?: boolean
+  }) => {
+    const { editorStateToPlainText } = jest.requireActual(
+      './chat-input/utils/editor-state-to-plain-text',
+    )
+    return (
+      <div data-action-disabled={String(isActionDisabled)}>
+        {editorStateToPlainText(message.content)}
+      </div>
+    )
+  },
 }))
 
 const mockedAssistantGroup = jest.fn(
@@ -84,6 +111,10 @@ jest.mock('./AssistantMessageReasoning', () => ({
   default: ({ generationState }: { generationState?: string }) => (
     <div data-stage="requesting">Requesting: {generationState}</div>
   ),
+}))
+
+jest.mock('./chat-input/CliRuntimeControls', () => ({
+  CliRuntimeControls: () => <div data-testid="cli-runtime-controls" />,
 }))
 
 jest.mock('./ChatConversationPane', () => ({
@@ -127,7 +158,7 @@ jest.mock('./useAutoScroll', () => ({
   }),
 }))
 
-import { CliChatSurface } from './CliChatSurface'
+import { CliChatSurface, getCliTimelineRenderVersion } from './CliChatSurface'
 
 const actions: ChatRuntimeActions = {
   cancelRun: async () => {},
@@ -192,6 +223,7 @@ const renderSurface = (
       actions={actions}
       footerContent={<div>Composer footer</div>}
       emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
+      onRewriteUserMessage={async () => undefined}
     />,
   )
 
@@ -219,8 +251,26 @@ describe('CliChatSurface', () => {
 
     expect(html).toContain('First prompt paragraph')
     expect(html).toContain('Second prompt paragraph')
-    expect(html).toContain('data-interactive="false"')
+    expect(html).toContain('data-action-disabled="false"')
     expect(html).not.toContain('base64,ignored')
+  })
+
+  it('invalidates a user timeline row when it enters editing state', () => {
+    const item: Extract<ChatTimelineItem, { kind: 'user-message' }> = {
+      kind: 'user-message',
+      id: 'user-1',
+      renderKey: 'user-1',
+      messageId: 'user-1',
+      revision: 1,
+      estimatedHeight: 80,
+      spacingBefore: 0,
+      isPinnedForRender: false,
+      isStreaming: false,
+    }
+
+    expect(getCliTimelineRenderVersion(item, 'idle', null)).not.toBe(
+      getCliTimelineRenderVersion(item, 'idle', 'user-1'),
+    )
   })
 
   it('groups assistant and tool messages and exposes only the copy action', () => {
@@ -242,15 +292,14 @@ describe('CliChatSurface', () => {
     expect(html).not.toContain('Delete')
   })
 
-  it('keeps even empty native user messages read-only', () => {
+  it('keeps even empty native user messages editable', () => {
     const snapshot = makeSnapshot({
       messages: [makeUser('user-empty', null)],
     })
 
     const html = renderSurface(snapshot)
 
-    expect(html).toContain('空消息')
-    expect(html).not.toContain('Click to edit')
+    expect(html).toContain('data-action-disabled="false"')
   })
 
   it('provides pending runtime actions with the actual provider session ref', () => {

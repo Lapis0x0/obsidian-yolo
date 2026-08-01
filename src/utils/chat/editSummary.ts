@@ -28,6 +28,7 @@ export type GroupEditSummaryPathItem = {
   path: string
   addedLines: number
   removedLines: number
+  lineStatsAvailable: boolean
   operation: ToolEditOperation
   undoStatus: ToolEditUndoStatus
   firstRoundId: string
@@ -250,6 +251,7 @@ export const collectGroupEditSummary = (
       addedLines: number
       removedLines: number
       operation: ToolEditOperation
+      lineStatsAvailable: boolean
       statuses: ToolEditUndoStatus[]
       latestToolCallId: string
       firstRoundId: string
@@ -268,6 +270,7 @@ export const collectGroupEditSummary = (
           addedLines: file.addedLines,
           removedLines: file.removedLines,
           operation: file.operation,
+          lineStatsAvailable: file.lineStatsAvailable !== false,
           statuses: [file.undoStatus],
           latestToolCallId: entry.toolCallId,
           firstRoundId: roundId,
@@ -279,6 +282,8 @@ export const collectGroupEditSummary = (
       existing.addedLines = file.addedLines
       existing.removedLines = file.removedLines
       existing.operation = file.operation
+      existing.lineStatsAvailable =
+        existing.lineStatsAvailable && file.lineStatsAvailable !== false
       existing.statuses.push(file.undoStatus)
       existing.latestToolCallId = entry.toolCallId
       existing.latestRoundId = roundId
@@ -316,6 +321,7 @@ export const collectGroupEditSummary = (
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
       operation,
+      lineStatsAvailable: value.lineStatsAvailable,
       undoStatus: aggregateUndoStatus(value.statuses),
       firstRoundId: value.firstRoundId,
       latestRoundId: value.latestRoundId,

@@ -1,5 +1,6 @@
 import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
+import type { ToolEditSummary } from '../../types/tool-call.types'
 
 export type CliRuntimeId = 'claude-code' | 'codex'
 export type ChatRuntimeId = 'yolo' | CliRuntimeId
@@ -62,10 +63,28 @@ export type CliRuntimeConfigurationUpdate = {
   reasoningEffort?: string | null
 }
 
+export type CliTurnConfiguration = Readonly<
+  Pick<CliRuntimeConfiguration, 'modelId' | 'reasoningEffort'>
+>
+
+export type CliSessionOverlay = Readonly<{
+  messages: readonly ChatMessage[]
+  turnConfigurationByUserMessageId: Readonly<
+    Record<string, CliTurnConfiguration>
+  >
+}>
+
 export type CliTurnInput = {
   sessionRef?: CliSessionRef
+  userMessageId?: string
   content: string | ContentPart[]
   selectedSkillNames?: string[]
+}
+
+export type CliRewriteTurnInput = Omit<CliTurnInput, 'sessionRef'> & {
+  sessionRef: CliSessionRef
+  sourceUserMessageId: string
+  userMessageId: string
 }
 
 export type CliRuntimeRunState =
@@ -94,6 +113,11 @@ export type CliRuntimeEvent =
       type: 'run_state'
       state: CliRuntimeRunState
       error?: string
+    }
+  | {
+      type: 'turn_edit_summary'
+      sourceUserMessageId: string
+      summary: ToolEditSummary
     }
 
 export type CliApprovalDecision =
@@ -127,6 +151,7 @@ export type CliRuntime = {
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration>
   sendTurn(input: CliTurnInput): Promise<void>
+  rewriteTurn(input: CliRewriteTurnInput): Promise<void>
   cancel(): Promise<void>
   respondApproval(response: CliApprovalResponse): Promise<boolean>
   respondQuestion(response: CliQuestionResponse): Promise<boolean>

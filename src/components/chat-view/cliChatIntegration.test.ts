@@ -21,6 +21,7 @@ import {
   prepareCliConversation,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
+  rewriteCliConversationTurn,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
   submitCliComposerTurn,
@@ -400,7 +401,10 @@ describe('CLI chat integration', () => {
     const scope = {
       selectConversationSession,
       sessionService: {
-        restoreUserDisplays: jest.fn(async (_ref, messages) => [...messages]),
+        restoreSessionOverlay: jest.fn(async (_ref, messages) => ({
+          messages: [...messages],
+          turnConfigurationByUserMessageId: {},
+        })),
         recordOpenedSession,
       },
     } as unknown as CliRuntimeScope
@@ -464,7 +468,10 @@ describe('CLI chat integration', () => {
       const scope = {
         selectConversationSession: jest.fn(() => controller),
         sessionService: {
-          restoreUserDisplays: jest.fn(async (_ref, messages) => [...messages]),
+          restoreSessionOverlay: jest.fn(async (_ref, messages) => ({
+            messages: [...messages],
+            turnConfigurationByUserMessageId: {},
+          })),
           recordOpenedSession,
         },
       } as unknown as CliRuntimeScope
@@ -691,7 +698,10 @@ describe('CLI chat integration', () => {
     const scope = {
       selectConversationSession: jest.fn(() => controller),
       sessionService: {
-        restoreUserDisplays: jest.fn(async (_ref, messages) => [...messages]),
+        restoreSessionOverlay: jest.fn(async (_ref, messages) => ({
+          messages: [...messages],
+          turnConfigurationByUserMessageId: {},
+        })),
         recordOpenedSession,
       },
     } as unknown as CliRuntimeScope
@@ -703,5 +713,70 @@ describe('CLI chat integration', () => {
 
     expect(result.controller).toBe(controller)
     expect(recordOpenedSession).toHaveBeenCalledWith(hydration)
+  })
+
+  it('rewrites the current CLI history and moves overlays to a rebound session', async () => {
+    const previousRef: CliSessionRef = {
+      runtimeId: 'claude-code',
+      nativeSessionId: 'session-old',
+    }
+    const nextRef: CliSessionRef = {
+      runtimeId: 'claude-code',
+      nativeSessionId: 'session-new',
+    }
+    const first = { ...userMessage(), id: 'user-1' }
+    const target = { ...userMessage(), id: 'user-2' }
+    let snapshot = cliSnapshot({
+      runtimeId: 'claude-code',
+      sessionRef: previousRef,
+      messages: [
+        first,
+        { role: 'assistant', id: 'assistant-1', content: 'first answer' },
+        target,
+        { role: 'assistant', id: 'assistant-2', content: 'old answer' },
+      ],
+    })
+    const rewriteTurn = jest.fn(async () => {
+      snapshot = {
+        ...snapshot,
+        sessionRef: nextRef,
+        messages: [first, target],
+        runState: 'running',
+      }
+    })
+    const controller = {
+      getSnapshot: () => snapshot,
+      rewriteTurn,
+    } as unknown as CliConversationController
+    const rebindOverlay = jest.fn(async () => undefined)
+    const recordUserDisplay = jest.fn(async () => undefined)
+    const scope = {
+      sessionService: {
+        rebindOverlay,
+        recordUserDisplay,
+        recordOpenedSession: jest.fn(async () => undefined),
+      },
+    } as unknown as CliRuntimeScope
+
+    const result = await rewriteCliConversationTurn({
+      scope,
+      controller,
+      runtimeId: 'claude-code',
+      sourceUserMessageId: 'user-2',
+      userMessage: target,
+      encodeTurnContent: () => 'edited transport',
+    })
+
+    expect(result.sessionRef).toBe(nextRef)
+    expect(rewriteTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceUserMessageId: 'user-2' }),
+    )
+    expect(rebindOverlay).toHaveBeenCalledWith(previousRef, nextRef, ['user-2'])
+    expect(recordUserDisplay).toHaveBeenCalledWith(
+      nextRef,
+      'edited transport',
+      target,
+      undefined,
+    )
   })
 })

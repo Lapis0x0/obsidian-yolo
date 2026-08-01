@@ -1,5 +1,8 @@
 import type { App } from 'obsidian'
 
+import type { ChatMessage } from '../../types/chat'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
+
 import type {
   CliSessionIndexEntry,
   CliSessionIndexStore,
@@ -72,13 +75,18 @@ describe('CliSessionService', () => {
       root: { children: [], type: 'root', version: 1 },
     } as never
 
-    await service.recordUserDisplay(ref, transport, {
-      role: 'user',
-      id: 'local-user',
-      content,
-      promptContent: null,
-      mentionables: [],
-    })
+    await service.recordUserDisplay(
+      ref,
+      transport,
+      {
+        role: 'user',
+        id: 'local-user',
+        content,
+        promptContent: null,
+        mentionables: [],
+      },
+      { modelId: 'gpt-5.6', reasoningEffort: 'high' },
+    )
 
     await expect(
       service.restoreUserDisplays(ref, [
@@ -97,6 +105,25 @@ describe('CliSessionService', () => {
         promptContent: null,
       }),
     ])
+
+    await expect(
+      service.restoreSessionOverlay(ref, [
+        {
+          role: 'user',
+          id: 'native-user',
+          content: null,
+          promptContent: transport,
+          mentionables: [],
+        },
+      ]),
+    ).resolves.toMatchObject({
+      turnConfigurationByUserMessageId: {
+        'native-user': {
+          modelId: 'gpt-5.6',
+          reasoningEffort: 'high',
+        },
+      },
+    })
   })
 
   it('removes only YOLO metadata for a deleted history record', async () => {
@@ -107,5 +134,100 @@ describe('CliSessionService', () => {
 
     await expect(service.removeOverlay(ref)).resolves.toBe(true)
     await expect(index.get(ref)).resolves.toBeNull()
+  })
+
+  it('restores persisted turn edit summaries onto native tool results', async () => {
+    const index = new MemoryIndex()
+    const service = new CliSessionService({ app, indexStore: index })
+    const ref = {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: 'session-1',
+    }
+    await service.recordTurnEditSummary(ref, 'user-1', {
+      files: [
+        {
+          path: 'src/a.ts',
+          addedLines: 2,
+          removedLines: 1,
+          operation: 'edit',
+          undoStatus: 'unavailable',
+        },
+      ],
+      totalFiles: 1,
+      totalAddedLines: 2,
+      totalRemovedLines: 1,
+      undoStatus: 'unavailable',
+    })
+    const messages: ChatMessage[] = [
+      {
+        role: 'user',
+        id: 'user-1',
+        content: null,
+        promptContent: 'edit it',
+        mentionables: [],
+      },
+      {
+        role: 'assistant',
+        id: 'assistant-1',
+        content: '',
+        toolCallRequests: [{ id: 'tool-1', name: 'Edit' }],
+      },
+      {
+        role: 'tool',
+        id: 'tool-message-1',
+        toolCalls: [
+          {
+            request: { id: 'tool-1', name: 'Edit' },
+            response: {
+              status: ToolCallResponseStatus.Success,
+              data: { type: 'text', text: 'done' },
+            },
+          },
+        ],
+      },
+    ]
+
+    const restored = await service.restoreUserDisplays(ref, messages)
+
+    expect(restored[2]).toMatchObject({
+      role: 'tool',
+      toolCalls: [
+        {
+          response: {
+            data: {
+              metadata: {
+                editSummary: { totalFiles: 1 },
+              },
+            },
+          },
+        },
+      ],
+    })
+  })
+
+  it('moves YOLO overlays when a provider rewrite changes native session id', async () => {
+    const index = new MemoryIndex()
+    const service = new CliSessionService({ app, indexStore: index })
+    const previousRef = {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: 'session-old',
+    }
+    const nextRef = {
+      runtimeId: 'claude-code' as const,
+      nativeSessionId: 'session-new',
+    }
+    await service.rememberConfiguration(previousRef, {
+      modelId: 'sonnet',
+      reasoningEffort: 'high',
+    })
+
+    await service.rebindOverlay(previousRef, nextRef)
+
+    await expect(index.get(nextRef)).resolves.toMatchObject({
+      runtimeId: 'claude-code',
+      nativeSessionId: 'session-new',
+      modelId: 'sonnet',
+      reasoningEffort: 'high',
+    })
   })
 })

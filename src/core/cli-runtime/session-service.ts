@@ -6,6 +6,7 @@ import type {
   SerializedChatUserMessage,
 } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
+import type { ToolEditSummary } from '../../types/tool-call.types'
 import {
   deserializeMentionable,
   serializeMentionable,
@@ -13,10 +14,17 @@ import {
 import { sha256HexPrefix16 } from '../../utils/common/content-hash'
 
 import {
+  type CliSessionIndexEntry,
   type CliSessionIndexStore,
   createCliSessionIndexEntry,
 } from './session-index'
-import type { CliSessionHydration, CliSessionRef } from './types'
+import { attachCliTurnEditSummary } from './turn-edit-summary'
+import type {
+  CliSessionHydration,
+  CliSessionOverlay,
+  CliSessionRef,
+  CliTurnConfiguration,
+} from './types'
 
 export class CliSessionService {
   constructor({
@@ -52,6 +60,7 @@ export class CliSessionService {
     ref: CliSessionRef,
     transportContent: string | ContentPart[],
     message: ChatUserMessage,
+    configuration?: CliTurnConfiguration,
   ): Promise<void> {
     const transportHash = await hashTransportContent(ref, transportContent)
     const serialized: SerializedChatUserMessage = {
@@ -67,6 +76,14 @@ export class CliSessionService {
           ...existing?.userDisplayByTransportHash,
           [transportHash]: serialized,
         },
+        ...(configuration
+          ? {
+              turnConfigurationByTransportHash: {
+                ...existing?.turnConfigurationByTransportHash,
+                [transportHash]: configuration,
+              },
+            }
+          : {}),
       }),
     )
   }
@@ -82,6 +99,76 @@ export class CliSessionService {
         ? { reasoningEffort: entry.reasoningEffort }
         : {}),
     }
+  }
+
+  async recordTurnEditSummary(
+    ref: CliSessionRef,
+    sourceUserMessageId: string,
+    summary: ToolEditSummary,
+  ): Promise<void> {
+    await this.indexStore.update(ref, (existing) =>
+      createCliSessionIndexEntry({
+        ...ref,
+        ...existing,
+        turnEditSummaryByUserMessageId: {
+          ...existing?.turnEditSummaryByUserMessageId,
+          [sourceUserMessageId]: summary,
+        },
+      }),
+    )
+  }
+
+  async rebindOverlay(
+    previousRef: CliSessionRef,
+    nextRef: CliSessionRef,
+    dropTurnUserMessageIds: readonly string[] = [],
+  ): Promise<void> {
+    const droppedIds = new Set(dropTurnUserMessageIds)
+    const withoutDroppedSummaries = (
+      summaries: CliSessionIndexEntry['turnEditSummaryByUserMessageId'],
+    ) =>
+      summaries
+        ? Object.fromEntries(
+            Object.entries(summaries).filter(
+              ([userMessageId]) => !droppedIds.has(userMessageId),
+            ),
+          )
+        : undefined
+    if (
+      previousRef.runtimeId === nextRef.runtimeId &&
+      previousRef.nativeSessionId === nextRef.nativeSessionId
+    ) {
+      if (droppedIds.size > 0) {
+        await this.indexStore.update(nextRef, (current) =>
+          createCliSessionIndexEntry({
+            ...nextRef,
+            ...current,
+            turnEditSummaryByUserMessageId: withoutDroppedSummaries(
+              current?.turnEditSummaryByUserMessageId,
+            ),
+          }),
+        )
+      }
+      return
+    }
+    const existing = await this.indexStore.get(previousRef)
+    if (!existing) return
+    await this.indexStore.update(nextRef, (current) =>
+      createCliSessionIndexEntry({
+        ...nextRef,
+        ...existing,
+        ...current,
+        runtimeId: nextRef.runtimeId,
+        nativeSessionId: nextRef.nativeSessionId,
+        turnEditSummaryByUserMessageId: {
+          ...withoutDroppedSummaries(existing.turnEditSummaryByUserMessageId),
+          ...current?.turnEditSummaryByUserMessageId,
+        },
+        ...(nextRef.sessionPathHint
+          ? { sessionPathHint: nextRef.sessionPathHint }
+          : {}),
+      }),
+    )
   }
 
   async rememberConfiguration(
@@ -101,34 +188,68 @@ export class CliSessionService {
     ref: CliSessionRef,
     messages: readonly ChatMessage[],
   ): Promise<ChatMessage[]> {
-    const displays = (await this.indexStore.get(ref))
-      ?.userDisplayByTransportHash
-    if (!displays) return [...messages]
+    const restored = await this.restoreSessionOverlay(ref, messages)
+    return [...restored.messages]
+  }
 
-    return await Promise.all(
-      messages.map(async (message): Promise<ChatMessage> => {
-        if (message.role !== 'user' || message.promptContent === null) {
-          return message
-        }
-        const display =
-          displays[await hashTransportContent(ref, message.promptContent)]
-        if (!display) return message
-        const mentionables = display.mentionables
-          .map((mentionable) => deserializeMentionable(mentionable, this.app))
-          .filter(
-            (
-              mentionable,
-            ): mentionable is ChatUserMessage['mentionables'][number] =>
-              mentionable !== null,
-          )
-        return {
-          ...display,
-          id: message.id,
-          promptContent: display.promptContent,
-          mentionables,
-        }
-      }),
+  async restoreSessionOverlay(
+    ref: CliSessionRef,
+    messages: readonly ChatMessage[],
+  ): Promise<CliSessionOverlay> {
+    const entry = await this.indexStore.get(ref)
+    const displays = entry?.userDisplayByTransportHash
+    const turnConfigurations = entry?.turnConfigurationByTransportHash
+    const turnConfigurationByUserMessageId: Record<
+      string,
+      CliTurnConfiguration
+    > = {}
+    const restoredMessages = displays
+      ? await Promise.all(
+          messages.map(async (message): Promise<ChatMessage> => {
+            if (message.role !== 'user' || message.promptContent === null) {
+              return message
+            }
+            const transportHash = await hashTransportContent(
+              ref,
+              message.promptContent,
+            )
+            const configuration = turnConfigurations?.[transportHash]
+            if (configuration) {
+              turnConfigurationByUserMessageId[message.id] = configuration
+            }
+            const display = displays[transportHash]
+            if (!display) return message
+            const mentionables = display.mentionables
+              .map((mentionable) =>
+                deserializeMentionable(mentionable, this.app),
+              )
+              .filter(
+                (
+                  mentionable,
+                ): mentionable is ChatUserMessage['mentionables'][number] =>
+                  mentionable !== null,
+              )
+            return {
+              ...display,
+              id: message.id,
+              promptContent: display.promptContent,
+              mentionables,
+            }
+          }),
+        )
+      : [...messages]
+
+    const messagesWithSummaries = Object.entries(
+      entry?.turnEditSummaryByUserMessageId ?? {},
+    ).reduce<readonly ChatMessage[]>(
+      (current, [sourceUserMessageId, summary]) =>
+        attachCliTurnEditSummary(current, sourceUserMessageId, summary),
+      restoredMessages,
     )
+    return {
+      messages: [...messagesWithSummaries],
+      turnConfigurationByUserMessageId,
+    }
   }
 
   removeOverlay(ref: CliSessionRef): Promise<boolean> {

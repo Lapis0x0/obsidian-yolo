@@ -87,6 +87,8 @@ export type ToolEditSummaryFile = {
   path: string
   addedLines: number
   removedLines: number
+  /** False when the provider reports the changed path but no per-file diff. */
+  lineStatsAvailable?: boolean
   operation: ToolEditOperation
   undoStatus: Exclude<ToolEditUndoStatus, 'partial'>
   reviewRoundId?: string

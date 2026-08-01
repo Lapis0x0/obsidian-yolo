@@ -827,6 +827,7 @@ function AssistantToolMessageGroupItem({
         !isRunActive && (
           <AssistantEditSummary
             summary={groupEditSummary}
+            showUndo={onUndoEditSummary !== undefined}
             undoingTargetKey={
               undoingEditSummaryTarget?.startsWith(
                 `${effectiveGroupEditSummaryKey}::`,

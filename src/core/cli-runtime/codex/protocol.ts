@@ -28,7 +28,14 @@ export type CodexThreadItem =
   | {
       type: 'fileChange'
       id: string
-      changes: unknown[]
+      changes: Array<{
+        path: string
+        kind:
+          | { type: 'add' }
+          | { type: 'delete' }
+          | { type: 'update'; move_path: string | null }
+        diff: string
+      }>
       status: string
     }
   | {
@@ -67,6 +74,7 @@ export type ThreadListResponse = {
 }
 
 export type ThreadReadResponse = { thread: CodexThread }
+export type ThreadRollbackResponse = { thread: CodexThread }
 export type ThreadStartResponse = {
   thread: CodexThread
   model?: string

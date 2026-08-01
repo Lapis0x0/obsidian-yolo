@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { SerializedChatUserMessage } from '../../types/chat'
+import type { ToolEditSummary } from '../../types/tool-call.types'
 
 import type { CliRuntimeId, CliSessionRef } from './types'
 
@@ -20,12 +21,34 @@ const serializedUserMessageSchema = z.custom<SerializedChatUserMessage>(
   },
 )
 
+const toolEditSummarySchema = z.custom<ToolEditSummary>((value) => {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<ToolEditSummary>
+  return (
+    Array.isArray(candidate.files) &&
+    typeof candidate.totalFiles === 'number' &&
+    typeof candidate.totalAddedLines === 'number' &&
+    typeof candidate.totalRemovedLines === 'number'
+  )
+})
+
+const cliTurnConfigurationSchema = z.object({
+  modelId: z.string().nullable(),
+  reasoningEffort: z.string().nullable(),
+})
+
 export const cliSessionIndexEntrySchema = z.object({
   runtimeId: cliRuntimeIdSchema,
   nativeSessionId: z.string().min(1),
   sessionPathHint: z.string().min(1).optional(),
   userDisplayByTransportHash: z
     .record(z.string(), serializedUserMessageSchema)
+    .optional(),
+  turnConfigurationByTransportHash: z
+    .record(z.string(), cliTurnConfigurationSchema)
+    .optional(),
+  turnEditSummaryByUserMessageId: z
+    .record(z.string(), toolEditSummarySchema)
     .optional(),
   modelId: z.string().nullable().optional(),
   reasoningEffort: z.string().nullable().optional(),

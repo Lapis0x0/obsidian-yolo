@@ -19,6 +19,7 @@ import { assertCliRuntimeAvailable } from '../desktop'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
+  CliRewriteTurnInput,
   CliRuntime,
   CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
@@ -88,6 +89,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
+
+const toVaultRelativePath = (vaultPath: string, filePath: string): string => {
+  const normalizedVaultPath = vaultPath.replace(/\\/g, '/').replace(/\/$/, '')
+  const normalizedFilePath = filePath.replace(/\\/g, '/')
+  return normalizedFilePath.startsWith(`${normalizedVaultPath}/`)
+    ? normalizedFilePath.slice(normalizedVaultPath.length + 1)
+    : normalizedFilePath
+}
 
 const cloneToolMessage = (message: ChatToolMessage): ChatToolMessage => ({
   ...message,
@@ -187,6 +196,7 @@ const contentPartToClaudeBlock = (
 const toSdkUserMessage = (
   content: string | ContentPart[],
   sessionId?: string,
+  userMessageId: string = uuidv4(),
 ): SDKUserMessage =>
   ({
     type: 'user',
@@ -198,7 +208,7 @@ const toSdkUserMessage = (
           : content.map(contentPartToClaudeBlock),
     },
     parent_tool_use_id: null,
-    uuid: uuidv4(),
+    uuid: userMessageId,
     ...(sessionId ? { session_id: sessionId } : {}),
   }) as SDKUserMessage
 
@@ -226,6 +236,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   private reasoningEffort: string | null = null
   private activeAssistant?: ChatAssistantMessage
   private activeAssistantKey?: string
+  private activeUserMessageId?: string
   private disposed = false
   private resetting = false
   private cancelRequested = false
@@ -265,17 +276,45 @@ export class ClaudeCliRuntime implements CliRuntime {
     const readyKey = JSON.stringify(readyConfiguration)
     if (this.query && this.readyKey === readyKey) return
 
-    await this.resetQuery()
     const sessionRef = input.sessionRef ?? {
       runtimeId: 'claude-code' as const,
       nativeSessionId: uuidv4(),
     }
+    await this.startSession({
+      sdk,
+      processSupport,
+      sessionRef,
+      ...(input.sessionRef
+        ? { resumeSessionId: input.sessionRef.nativeSessionId }
+        : {}),
+      readyKey: JSON.stringify({
+        ...readyConfiguration,
+        sessionId: sessionRef.nativeSessionId,
+      }),
+    })
+  }
+
+  private async startSession({
+    sdk,
+    processSupport,
+    sessionRef,
+    resumeSessionId,
+    resumeSessionAt,
+    forkSession = false,
+    readyKey,
+  }: {
+    sdk: ClaudeSdkModule
+    processSupport: Awaited<ReturnType<ClaudeProcessSupportResolver>>
+    sessionRef: CliSessionRef
+    resumeSessionId?: string
+    resumeSessionAt?: string
+    forkSession?: boolean
+    readyKey: string
+  }): Promise<void> {
+    await this.resetQuery()
     this.currentSessionRef = sessionRef
     this.publishedSessionRef = undefined
-    this.readyKey = JSON.stringify({
-      ...readyConfiguration,
-      sessionId: sessionRef.nativeSessionId,
-    })
+    this.readyKey = readyKey
     this.inputQueue = new AsyncPushQueue<SDKUserMessage>()
     const nativeAbortController = processSupport.createAbortController()
     const originalAbortController = globalThis.AbortController
@@ -303,14 +342,24 @@ export class ClaudeCliRuntime implements CliRuntime {
           env: processSupport.env,
           spawnClaudeCodeProcess: processSupport.spawnClaudeCodeProcess,
           includePartialMessages: true,
+          enableFileCheckpointing: true,
           permissionMode: 'default',
           canUseTool: this.createCanUseTool(),
           systemPrompt: {
             type: 'preset',
             preset: 'claude_code',
           },
-          ...(input.sessionRef
-            ? { resume: input.sessionRef.nativeSessionId }
+          ...(resumeSessionId
+            ? {
+                resume: resumeSessionId,
+                ...(resumeSessionAt ? { resumeSessionAt } : {}),
+                ...(forkSession
+                  ? {
+                      forkSession: true,
+                      sessionId: sessionRef.nativeSessionId,
+                    }
+                  : {}),
+              }
             : { sessionId: sessionRef.nativeSessionId }),
         },
       })
@@ -421,10 +470,88 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.activeAssistantKey = undefined
     this.streamedToolInputs.clear()
     this.cancelRequested = false
+    const userMessageId = input.userMessageId ?? uuidv4()
+    this.activeUserMessageId = userMessageId
     this.emit({ type: 'run_state', state: 'running' })
     this.inputQueue.push(
-      toSdkUserMessage(input.content, this.currentSessionRef?.nativeSessionId),
+      toSdkUserMessage(
+        input.content,
+        this.currentSessionRef?.nativeSessionId,
+        userMessageId,
+      ),
     )
+  }
+
+  async rewriteTurn(input: CliRewriteTurnInput): Promise<void> {
+    this.assertUsable()
+    if (!this.currentSessionRef || !this.query) {
+      throw new Error('Claude CLI runtime is not ready.')
+    }
+    this.assertClaudeRef(input.sessionRef)
+    if (
+      input.sessionRef.nativeSessionId !==
+      this.currentSessionRef.nativeSessionId
+    ) {
+      throw new Error('Claude rewrite does not match the active session.')
+    }
+
+    const sdk = await this.getSdk()
+    const messages = await sdk.getSessionMessages(
+      this.currentSessionRef.nativeSessionId,
+    )
+    const targetIndex = messages.findIndex(
+      (message) =>
+        message.parent_tool_use_id === null &&
+        message.type === 'user' &&
+        message.uuid === input.sourceUserMessageId,
+    )
+    if (targetIndex < 0) {
+      throw new Error('The selected Claude user message no longer exists.')
+    }
+    const resumeMessage = messages
+      .slice(0, targetIndex)
+      .reverse()
+      .find((message) => message.parent_tool_use_id === null)
+    const previousModelId = this.modelId
+    const previousReasoningEffort = this.reasoningEffort
+    const sourceSessionId = this.currentSessionRef.nativeSessionId
+    const nextSessionRef: CliSessionRef = {
+      runtimeId: 'claude-code',
+      nativeSessionId: uuidv4(),
+    }
+    const processSupport = await this.resolveProcessSupport()
+    await this.startSession({
+      sdk,
+      processSupport,
+      sessionRef: nextSessionRef,
+      ...(resumeMessage
+        ? {
+            resumeSessionId: sourceSessionId,
+            resumeSessionAt: resumeMessage.uuid,
+            forkSession: true,
+          }
+        : {}),
+      readyKey: JSON.stringify({
+        sessionId: nextSessionRef.nativeSessionId,
+        cliPath: processSupport.cliPath,
+      }),
+    })
+    if (previousModelId !== null) {
+      await this.query.setModel(previousModelId)
+      this.modelId = previousModelId
+    }
+    if (previousReasoningEffort !== null) {
+      await this.query.applyFlagSettings({
+        effortLevel: previousReasoningEffort as
+          | 'low'
+          | 'medium'
+          | 'high'
+          | 'xhigh'
+          | 'max',
+      })
+      this.reasoningEffort = previousReasoningEffort
+    }
+    await this.sendTurn({ ...input, sessionRef: nextSessionRef })
   }
 
   async cancel(): Promise<void> {
@@ -656,7 +783,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   private async consume(query: ClaudeSdkQuery): Promise<void> {
     try {
       for await (const message of query) {
-        this.handleSdkMessage(message)
+        await this.handleSdkMessage(message)
       }
       if (!this.resetting && !this.disposed) {
         this.readyKey = undefined
@@ -677,7 +804,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
   }
 
-  private handleSdkMessage(message: SDKMessage): void {
+  private async handleSdkMessage(message: SDKMessage): Promise<void> {
     if (message.type === 'system' && message.subtype === 'init') {
       this.publishSessionBound({
         runtimeId: 'claude-code',
@@ -713,7 +840,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       return
     }
     if (message.type === 'result') {
-      this.handleResult(message)
+      await this.handleResult(message)
     }
   }
 
@@ -801,7 +928,11 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.emitAssistant()
   }
 
-  private handleResult(message: Extract<SDKMessage, { type: 'result' }>): void {
+  private async handleResult(
+    message: Extract<SDKMessage, { type: 'result' }>,
+  ): Promise<void> {
+    await this.publishActiveTurnEditSummary()
+    this.activeUserMessageId = undefined
     if (message.subtype === 'success') {
       if (message.result) {
         const assistant =
@@ -833,6 +964,51 @@ export class ClaudeCliRuntime implements CliRuntime {
       this.emitAssistant()
     }
     this.emit({ type: 'run_state', state: 'error', error })
+  }
+
+  private async publishActiveTurnEditSummary(): Promise<void> {
+    const sourceUserMessageId = this.activeUserMessageId
+    const query = this.query
+    if (!sourceUserMessageId || !query) return
+    try {
+      const result = await query.rewindFiles(sourceUserMessageId, {
+        dryRun: true,
+      })
+      const files = [
+        ...new Set(
+          (result.filesChanged ?? []).map((path) =>
+            toVaultRelativePath(this.vaultPath, path),
+          ),
+        ),
+      ]
+      if (!result.canRewind || files.length === 0) return
+      const insertions = result.insertions ?? 0
+      const deletions = result.deletions ?? 0
+      const hasPerFileStats = files.length === 1
+      this.emit({
+        type: 'turn_edit_summary',
+        sourceUserMessageId,
+        summary: {
+          files: files.map((path, index) => ({
+            path,
+            addedLines: index === 0 ? insertions : 0,
+            removedLines: index === 0 ? deletions : 0,
+            lineStatsAvailable: hasPerFileStats,
+            operation: 'edit',
+            undoStatus: 'unavailable',
+          })),
+          totalFiles: files.length,
+          totalAddedLines: insertions,
+          totalRemovedLines: deletions,
+          undoStatus: 'unavailable',
+        },
+      })
+    } catch (error) {
+      console.warn(
+        '[YOLO] Failed to read Claude file checkpoint summary',
+        error,
+      )
+    }
   }
 
   private ensureActiveAssistant(key: string, id: string): ChatAssistantMessage {
@@ -1023,6 +1199,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.reasoningEffort = null
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined
+    this.activeUserMessageId = undefined
     this.tools.clear()
     this.streamedToolInputs.clear()
     this.resetting = false

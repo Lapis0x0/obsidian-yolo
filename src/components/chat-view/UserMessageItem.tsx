@@ -31,6 +31,8 @@ export type UserMessageItemProps = {
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
   showReasoningSelect?: boolean
+  showModelControl?: boolean
+  runtimeControls?: ReactNode
   showPlaceholder?: boolean
   currentAssistantId?: string
   currentChatMode?: import('./chat-input/ChatModeSelect').ChatMode
@@ -162,6 +164,8 @@ function UserMessageItem({
   reasoningLevel,
   onReasoningChange,
   showReasoningSelect,
+  showModelControl,
+  runtimeControls,
   showPlaceholder,
   currentAssistantId,
   currentChatMode,
@@ -206,6 +210,8 @@ function UserMessageItem({
           reasoningLevel={reasoningLevel}
           onReasoningChange={onReasoningChange}
           showReasoningSelect={showReasoningSelect}
+          showModelControl={showModelControl}
+          runtimeControls={runtimeControls}
           showPlaceholder={showPlaceholder}
           currentAssistantId={currentAssistantId}
           currentChatMode={currentChatMode}

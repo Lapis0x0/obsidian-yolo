@@ -17,6 +17,16 @@ export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   applyFlagSettings(settings: {
     effortLevel?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
   }): Promise<void>
+  rewindFiles(
+    userMessageId: string,
+    options?: { dryRun?: boolean },
+  ): Promise<{
+    canRewind: boolean
+    error?: string
+    filesChanged?: string[]
+    insertions?: number
+    deletions?: number
+  }>
   close(): void
 }
 
