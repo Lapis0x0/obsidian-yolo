@@ -7,7 +7,14 @@ import {
   ListTodo,
   MessageSquare,
 } from 'lucide-react'
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { getNodeWindow } from '../../../utils/dom/window-context'
@@ -35,6 +42,11 @@ export const CLAUDE_CODE_CHAT_MODES: readonly ChatModeSelectValue[] = [
 ]
 
 export const CODEX_CHAT_MODES: readonly ChatModeSelectValue[] = ['agent']
+
+export const shouldShowYoloToggle = (
+  availableModes: readonly ChatModeSelectValue[],
+  mode: ChatModeSelectValue,
+): boolean => availableModes.includes('agent') && mode !== 'plan'
 
 export const isChatMode = (value: string): value is ChatMode =>
   value === 'ask' || value === 'agent'
@@ -165,7 +177,7 @@ export const ChatModeSelect = forwardRef<
         MODE_OPTIONS.filter((option) => availableModes.includes(option.value)),
       [availableModes],
     )
-    const showYoloToggle = availableModes.includes('agent')
+    const showYoloToggle = shouldShowYoloToggle(availableModes, mode)
     const navOrder = useMemo(() => {
       const keys: ChatModeSelectValue[] = visibleOptions.map(
         (option) => option.value,
@@ -173,9 +185,9 @@ export const ChatModeSelect = forwardRef<
       return showYoloToggle ? ([...keys, 'yolo'] as const) : keys
     }, [showYoloToggle, visibleOptions])
     type NavKey = (typeof navOrder)[number]
-    const itemRefs = useRef<Partial<Record<NavKey | 'yolo', HTMLElement | null>>>(
-      {},
-    )
+    const itemRefs = useRef<
+      Partial<Record<NavKey | 'yolo', HTMLElement | null>>
+    >({})
 
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {

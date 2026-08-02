@@ -1646,10 +1646,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [cliYoloEnabled, setCliYoloEnabled] = useState<boolean>(
     () => initialCliModePreference.yoloEnabled,
   )
-  const prePlanCliModeRef = useRef<{
-    mode: 'agent'
-    yoloEnabled: boolean
-  } | null>(null)
+  const prePlanCliModeByConversationRef = useRef(
+    new Map<string, { mode: 'agent'; yoloEnabled: boolean }>(),
+  )
 
   const selectedAssistant = useMemo(() => {
     return (
@@ -1973,9 +1972,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
         setCliChatMode(modePreference.mode)
         setCliYoloEnabled(modePreference.yoloEnabled)
-        if (modePreference.mode !== 'plan') {
-          prePlanCliModeRef.current = null
-        }
       }
 
       if (activeRuntimeId === 'yolo') {
@@ -3312,8 +3308,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [finalizeHistoricalUserMessageEdit, inputMessage.id],
   )
   const {
-    onControlPopoverOpenChange:
-      onHistoricalUserMessageControlPopoverOpenChange,
+    onControlPopoverOpenChange: onHistoricalUserMessageControlPopoverOpenChange,
   } = useHistoricalUserMessageDismiss({
     activeMessageId:
       focusedMessageId && focusedMessageId !== inputMessage.id
@@ -3404,8 +3399,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         )
         setCliChatMode(loadedCliMode.mode)
         setCliYoloEnabled(loadedCliMode.yoloEnabled)
-        if (loadedCliMode.mode !== 'plan') {
-          prePlanCliModeRef.current = null
+        if (
+          cliRuntimeForPrefs === 'claude-code' &&
+          loadedCliMode.mode !== 'plan'
+        ) {
+          prePlanCliModeByConversationRef.current.delete(conversationId)
         }
         const modelFromRef =
           conversation.conversationModelId ??
@@ -6152,13 +6150,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         mode === 'plan' &&
         cliChatMode !== 'plan'
       ) {
-        prePlanCliModeRef.current = {
+        prePlanCliModeByConversationRef.current.set(currentConversationId, {
           mode: 'agent',
           yoloEnabled: cliYoloEnabled,
-        }
+        })
       }
-      if (mode !== 'plan') {
-        prePlanCliModeRef.current = null
+      if (runtimeId === 'claude-code' && mode !== 'plan') {
+        prePlanCliModeByConversationRef.current.delete(currentConversationId)
       }
       setCliChatMode(mode)
       setCliYoloEnabled(yoloEnabled)
@@ -6194,10 +6192,28 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const restoreClaudeAgentMode = useCallback(() => {
+    applyCliModePreference(
+      'claude-code',
+      prePlanCliModeByConversationRef.current.get(currentConversationId) ?? {
+        mode: 'agent',
+        yoloEnabled: false,
+      },
+    )
+  }, [applyCliModePreference, currentConversationId])
+
   const handleCliModeSelectChange = useCallback(
     (nextMode: ChatModeSelectValue) => {
       if (activeRuntimeId === 'yolo') return
       if (nextMode === 'ask') return
+      if (
+        activeRuntimeId === 'claude-code' &&
+        cliChatMode === 'plan' &&
+        nextMode === 'agent'
+      ) {
+        restoreClaudeAgentMode()
+        return
+      }
       applyCliModePreference(
         activeRuntimeId,
         {
@@ -6207,7 +6223,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         { rememberPrePlan: nextMode === 'plan' },
       )
     },
-    [activeRuntimeId, applyCliModePreference, cliYoloEnabled],
+    [
+      activeRuntimeId,
+      applyCliModePreference,
+      cliChatMode,
+      cliYoloEnabled,
+      restoreClaudeAgentMode,
+    ],
   )
 
   const handleCliYoloChange = useCallback(
@@ -6298,11 +6320,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       event.preventDefault()
       if (cliChatMode === 'plan') {
-        const restore = prePlanCliModeRef.current ?? {
-          mode: 'agent' as const,
-          yoloEnabled: false,
-        }
-        applyCliModePreference('claude-code', restore)
+        restoreClaudeAgentMode()
         return
       }
       applyCliModePreference(
@@ -6311,7 +6329,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         { rememberPrePlan: true },
       )
     },
-    [activeRuntimeId, applyCliModePreference, cliChatMode],
+    [
+      activeRuntimeId,
+      applyCliModePreference,
+      cliChatMode,
+      restoreClaudeAgentMode,
+    ],
   )
 
   useEffect(() => {
@@ -6322,12 +6345,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
       })
       .catch(() => undefined)
-  }, [
-    activeRuntimeId,
-    cliChatMode,
-    cliConversationController,
-    cliYoloEnabled,
-  ])
+  }, [activeRuntimeId, cliChatMode, cliConversationController, cliYoloEnabled])
 
   const cliChatRuntimeActions = useMemo((): ChatRuntimeActions | null => {
     if (!cliRuntimeScope) return null
@@ -6353,11 +6371,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               ),
           )
           if (approvedExitPlan) {
-            const restore = prePlanCliModeRef.current ?? {
-              mode: 'agent' as const,
-              yoloEnabled: false,
-            }
-            applyCliModePreference('claude-code', restore)
+            restoreClaudeAgentMode()
           }
         }
         return result
@@ -6369,6 +6383,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliChatMode,
     cliConversationController,
     cliRuntimeScope,
+    restoreClaudeAgentMode,
   ])
 
   const header = (
@@ -8069,15 +8084,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }
         currentChatMode={isCliRuntimeActive ? cliChatMode : chatMode}
         onSelectChatModeForConversation={
-          isCliRuntimeActive
-            ? handleCliModeSelectChange
-            : handleChatModeChange
+          isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
         }
         chatMode={isCliRuntimeActive ? cliChatMode : chatMode}
         onChatModeChange={
-          isCliRuntimeActive
-            ? handleCliModeSelectChange
-            : handleChatModeChange
+          isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
         }
         chatModeOptions={
           activeRuntimeId === 'claude-code'
@@ -8090,9 +8101,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onYoloChange={
           isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
         }
-        onChatModeSelectKeyDown={(event) => {
-          handleClaudePlanShortcut(event)
-        }}
+        onEditorKeyDown={handleClaudePlanShortcut}
         allowAgentModeOption
         enableResize
         onRunSlashCommand={
@@ -8124,7 +8133,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
       }`}
       style={containerStyle}
-      onKeyDown={handleClaudePlanShortcut}
     >
       {header}
       {activeView === 'composer' ? (

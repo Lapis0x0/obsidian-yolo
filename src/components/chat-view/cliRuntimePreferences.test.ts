@@ -1,7 +1,10 @@
 import { parseYoloSettings } from '../../settings/schema/settings'
 
 import {
+  patchConversationCliModeOverrides,
+  rememberCliModePreference,
   rememberCliRuntimeConfiguration,
+  resolveCliModePreference,
   resolveCliRuntimePreference,
 } from './cliRuntimePreferences'
 
@@ -44,8 +47,32 @@ describe('CLI runtime preferences', () => {
       },
     )
 
+    expect(settings.chatOptions.cliReasoningEffortByModel).toEqual({
+      'codex:luna': 'medium',
+      'codex:sol': 'high',
+    })
+  })
+
+  it('keeps CLI mode preferences isolated by runtime and conversation', () => {
+    const settings = rememberCliModePreference(
+      rememberCliModePreference(parseYoloSettings({}), 'claude-code', {
+        mode: 'agent',
+        yoloEnabled: false,
+      }),
+      'codex',
+      { mode: 'agent', yoloEnabled: true },
+    )
+    const overrides = patchConversationCliModeOverrides(null, 'claude-code', {
+      mode: 'plan',
+      yoloEnabled: false,
+    })
+
     expect(
-      settings.chatOptions.cliReasoningEffortByModel,
-    ).toEqual({ 'codex:luna': 'medium', 'codex:sol': 'high' })
+      resolveCliModePreference(settings, 'claude-code', overrides),
+    ).toEqual({ mode: 'plan', yoloEnabled: false })
+    expect(resolveCliModePreference(settings, 'codex', overrides)).toEqual({
+      mode: 'agent',
+      yoloEnabled: true,
+    })
   })
 })

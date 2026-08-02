@@ -118,10 +118,7 @@ export type ChatUserInputProps = {
   controlLayout?: ChatUserInputControlLayout
   onControlPopoverOpenChange?: (isOpen: boolean) => void
   allowAgentModeOption?: boolean
-  onChatModeSelectKeyDown?: (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-    isMenuOpen: boolean,
-  ) => void
+  onEditorKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void
   enableResize?: boolean
   onRunSlashCommand?: (command: SlashCommand) => void
   // 当父级正在执行 conversation run 时，发送按钮切换为停止按钮（圆形 + 方块）
@@ -197,7 +194,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       controlLayout = 'composer-toolbar',
       onControlPopoverOpenChange,
       allowAgentModeOption = true,
-      onChatModeSelectKeyDown,
+      onEditorKeyDown,
       enableResize = false,
       onRunSlashCommand,
       isGenerating = false,
@@ -658,7 +655,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           availableModes={chatModeOptions}
           yoloEnabled={yoloEnabled}
           onYoloChange={onYoloChange ?? (() => {})}
-          onKeyDown={onChatModeSelectKeyDown}
           side="top"
           sideOffset={8}
         />
@@ -871,6 +867,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               onChange={handleChange}
               onTextContentChange={handleTextContentChange}
               onEnter={handleEnter}
+              onKeyDown={onEditorKeyDown}
               onFocus={onFocus}
               autoFocus={autoFocus}
               mentionables={mentionables}
