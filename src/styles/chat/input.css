@@ -78,15 +78,6 @@ button.yolo-runtime-selector {
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  container-type: inline-size;
-}
-
-button.yolo-runtime-selector[data-runtime-id='codex'] {
-  contain-intrinsic-inline-size: 74px;
-}
-
-button.yolo-runtime-selector[data-runtime-id='claude-code'] {
-  contain-intrinsic-inline-size: 112px;
 }
 
 button.yolo-runtime-selector:hover,
@@ -156,38 +147,23 @@ button.yolo-runtime-selector[data-state='open']
   transform: rotate(180deg);
 }
 
-/* Match the Chat / CLI toggle's icon-only form when this selector itself no
-   longer has room for its complete runtime name. The label and caret retain
-   their layout slots while transparent, so the selector can grow back and
-   restore its full affordance as soon as the header has room again. */
-@container (max-width: 73px) {
-  button.yolo-runtime-selector[data-runtime-id='codex']
-    .yolo-runtime-selector__label,
-  button.yolo-runtime-selector[data-runtime-id='codex']
-    .yolo-runtime-selector__chevron {
-    opacity: 0;
-  }
-
-  button.yolo-runtime-selector[data-runtime-id='codex']
-    .yolo-runtime-selector__icon {
-    position: absolute;
-    inset: 0;
-  }
+/* The compact form is a real icon button so it releases space to the header
+   instead of preserving an empty label slot. RuntimeSelector restores the
+   complete trigger when the header grows again. */
+button.yolo-runtime-selector[data-compact='true'] {
+  box-sizing: border-box;
+  width: 30px;
+  min-width: 30px;
+  flex: 0 0 30px;
+  justify-content: center;
+  gap: 0;
+  padding: 4px;
 }
 
-@container (max-width: 111px) {
-  button.yolo-runtime-selector[data-runtime-id='claude-code']
-    .yolo-runtime-selector__label,
-  button.yolo-runtime-selector[data-runtime-id='claude-code']
-    .yolo-runtime-selector__chevron {
-    opacity: 0;
-  }
-
-  button.yolo-runtime-selector[data-runtime-id='claude-code']
-    .yolo-runtime-selector__icon {
-    position: absolute;
-    inset: 0;
-  }
+button.yolo-runtime-selector[data-compact='true'] .yolo-runtime-selector__label,
+button.yolo-runtime-selector[data-compact='true']
+  .yolo-runtime-selector__chevron {
+  display: none;
 }
 
 .yolo-runtime-selector__content {

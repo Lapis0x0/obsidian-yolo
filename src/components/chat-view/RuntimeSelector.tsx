@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown } from 'lucide-react'
-import { useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
 import openaiLogo from '../../assets/provider-icons/openai.svg'
@@ -82,8 +82,68 @@ export function RuntimeSelector({
 }: RuntimeSelectorProps) {
   const { t } = useLanguage()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const [isCompact, setIsCompact] = useState(false)
   const menuLabelId = useId()
   const cliRuntimeAvailable = isCliRuntimeAvailable()
+
+  useEffect(() => {
+    setIsCompact(false)
+  }, [currentRuntimeId])
+
+  useEffect(() => {
+    const trigger = triggerRef.current
+    if (!trigger || isCompact || typeof ResizeObserver === 'undefined') return
+
+    const updateCompactState = () => {
+      const label = trigger.querySelector<HTMLElement>(
+        '.yolo-runtime-selector__label',
+      )
+      const icon = trigger.querySelector<HTMLElement>(
+        '.yolo-runtime-selector__icon',
+      )
+      const chevron = trigger.querySelector<HTMLElement>(
+        '.yolo-runtime-selector__chevron',
+      )
+      if (!label || !icon || !chevron) return
+
+      const style = getComputedStyle(trigger)
+      const gap = Number.parseFloat(style.gap) || 0
+      const requiredWidth =
+        icon.getBoundingClientRect().width +
+        label.scrollWidth +
+        chevron.getBoundingClientRect().width +
+        gap * 2 +
+        (Number.parseFloat(style.paddingInlineStart) || 0) +
+        (Number.parseFloat(style.paddingInlineEnd) || 0)
+
+      if (trigger.clientWidth < requiredWidth) {
+        setIsCompact(true)
+      }
+    }
+
+    updateCompactState()
+    const resizeObserver = new ResizeObserver(updateCompactState)
+    resizeObserver.observe(trigger)
+    return () => resizeObserver.disconnect()
+  }, [isCompact])
+
+  useEffect(() => {
+    const trigger = triggerRef.current
+    const headerLeft = trigger?.closest('.yolo-chat-header-left')
+    if (!headerLeft || !isCompact || typeof ResizeObserver === 'undefined')
+      return
+
+    let receivedInitialSize = false
+    const resizeObserver = new ResizeObserver(() => {
+      if (!receivedInitialSize) {
+        receivedInitialSize = true
+        return
+      }
+      setIsCompact(false)
+    })
+    resizeObserver.observe(headerLeft)
+    return () => resizeObserver.disconnect()
+  }, [isCompact])
 
   if (!cliRuntimeAvailable) {
     return null
@@ -106,6 +166,7 @@ export function RuntimeSelector({
         disabled={disabled}
         aria-label={accessibleLabel}
         data-runtime-id={currentRuntimeId}
+        data-compact={isCompact || undefined}
       >
         <span className="yolo-runtime-selector__icon" aria-hidden="true">
           <RuntimeIcon runtimeId={currentOption.id} />
