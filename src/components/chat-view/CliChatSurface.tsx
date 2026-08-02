@@ -42,6 +42,7 @@ import { ChatConversationPane } from './ChatConversationPane'
 import { CliSubagentProvider } from './cli-subagent-context'
 import { buildCliSubagentReadModel } from './cliSubagentReadModel'
 import { useAutoScroll } from './useAutoScroll'
+import { useChatHistoryWindow } from './useChatHistoryWindow'
 import {
   useChatTimelineReadModel,
   useStableChatTimelineItems,
@@ -423,7 +424,19 @@ export function CliChatSurface({
     [snapshot.messages, snapshot.runtimeId],
   )
   const messages = cliSubagentReadModel.visibleMessages
+  const conversationId = snapshot.surfaceId
   const readModel = useChatTimelineReadModel({ messages })
+  const {
+    windowedGroupedChatMessages,
+    hasEarlierMessages,
+    hasNewerMessages,
+    loadEarlier,
+    loadNewer,
+    resetToLatest,
+  } = useChatHistoryWindow({
+    conversationId,
+    groupedChatMessages: readModel.groupedChatMessages,
+  })
   const activeStreamingMessageId = getActiveStreamingMessageId(
     messages,
     snapshot.runState,
@@ -447,7 +460,7 @@ export function CliChatSurface({
   const timelineItems = useMemo(() => {
     const latestCompactionMessage = nativeCompactionMessages.at(-1)
     const items = buildChatTimelineItems({
-      groupedChatMessages: readModel.groupedChatMessages,
+      groupedChatMessages: windowedGroupedChatMessages,
       revisionsById: readModel.revisionsById,
       compactionDividerAnchorMessageIds: nativeCompactionMessages.map(
         (message) => message.id,
@@ -466,7 +479,7 @@ export function CliChatSurface({
     const itemsWithPending = [...items]
 
     if (pendingResponseUserMessageId) {
-      itemsWithPending.push({
+      const pendingResponseItem: ChatTimelineItem = {
         kind: 'pending-response',
         id: `pending-response:${pendingResponseUserMessageId}`,
         renderKey: `pending-response:${pendingResponseUserMessageId}`,
@@ -475,15 +488,16 @@ export function CliChatSurface({
         spacingBefore: 24,
         isPinnedForRender: true,
         isStreaming: true,
-      })
+      }
+      const bottomAnchorIndex = itemsWithPending.findIndex(
+        (item) => item.kind === 'bottom-anchor',
+      )
+      itemsWithPending.splice(
+        bottomAnchorIndex < 0 ? itemsWithPending.length : bottomAnchorIndex,
+        0,
+        pendingResponseItem,
+      )
     }
-    itemsWithPending.push({
-      kind: 'bottom-anchor',
-      id: 'bottom-anchor',
-      renderKey: 'bottom-anchor',
-      estimatedHeight: 1,
-      isPinnedForRender: true,
-    })
     return itemsWithPending
   }, [
     activeStreamingMessageId,
@@ -491,6 +505,7 @@ export function CliChatSurface({
     pendingCompactionAnchorMessageId,
     pendingResponseUserMessageId,
     readModel,
+    windowedGroupedChatMessages,
   ])
   const stableTimelineItems = useStableChatTimelineItems(timelineItems)
   const cliSubagentRenderVersion = useMemo(
@@ -508,7 +523,6 @@ export function CliChatSurface({
   const latestAssistantGroupId = getLatestAssistantGroupId(
     readModel.groupedChatMessages,
   )
-  const conversationId = snapshot.surfaceId
   const runSummary = useMemo(
     () =>
       buildRunSummary({
@@ -551,10 +565,18 @@ export function CliChatSurface({
       scrollContainerElement: chatMessagesElement,
       bottomSentinelElement,
       followKey: conversationId,
+      canFollowLiveEdge: !hasNewerMessages,
     })
+  useEffect(() => {
+    if (ACTIVE_RUN_STATES.has(snapshot.runState)) resetToLatest()
+  }, [resetToLatest, snapshot.runState])
   useLayoutEffect(() => {
     autoScrollToBottom()
   }, [autoScrollToBottom, snapshot.messages])
+  const handleForceScrollToBottom = useCallback(() => {
+    resetToLatest()
+    requestAnimationFrame(() => forceScrollToBottom())
+  }, [forceScrollToBottom, resetToLatest])
 
   const renderTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem): ReactNode => {
@@ -759,7 +781,7 @@ export function CliChatSurface({
       chatMode="agent"
       yoloEnabled={false}
       showEmptyState={showEmptyState}
-      groupedChatMessagesLength={readModel.groupedChatMessages.length}
+      groupedChatMessagesLength={windowedGroupedChatMessages.length}
       isAutoFollowEnabled={isAutoFollowEnabled}
       currentConversationId={conversationId}
       chatTimelineItems={stableTimelineItems}
@@ -769,7 +791,11 @@ export function CliChatSurface({
       onBottomSentinelChange={setBottomSentinelElement}
       renderChatTimelineItem={renderTimelineItem}
       editingAssistantMessageId={null}
-      onForceScrollToBottom={forceScrollToBottom}
+      hasEarlierMessages={hasEarlierMessages}
+      hasNewerMessages={hasNewerMessages}
+      onLoadEarlier={loadEarlier}
+      onLoadNewer={loadNewer}
+      onForceScrollToBottom={handleForceScrollToBottom}
       hasStreamingMessages={ACTIVE_RUN_STATES.has(snapshot.runState)}
       scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
       scrollToBottomWhileStreamingLabel={t(

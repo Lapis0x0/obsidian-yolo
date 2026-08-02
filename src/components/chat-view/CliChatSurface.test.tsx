@@ -126,6 +126,7 @@ jest.mock('./ChatConversationPane', () => ({
     chatTimelineItems,
     renderChatTimelineItem,
     footerContent,
+    hasEarlierMessages,
   }: {
     showEmptyState: boolean
     emptyStateAgentTitle: string
@@ -134,8 +135,12 @@ jest.mock('./ChatConversationPane', () => ({
     chatTimelineItems: ChatTimelineItem[]
     renderChatTimelineItem: (item: ChatTimelineItem) => ReactNode
     footerContent: ReactNode
+    hasEarlierMessages?: boolean
   }) => (
-    <div data-testid="conversation-pane">
+    <div
+      data-testid="conversation-pane"
+      data-has-earlier={String(hasEarlierMessages)}
+    >
       {showEmptyState ? (
         <div data-testid="empty-state">
           {emptyStateWorkspaceTitle ?? emptyStateAgentTitle}{' '}
@@ -344,6 +349,29 @@ describe('CliChatSurface', () => {
         makeSnapshot({ messages: [makeUser('user-event', 'Event message')] }),
       ),
     ).toContain('Event message')
+  })
+
+  it('renders only the latest six CLI turns in the initial history window', () => {
+    const messages = Array.from({ length: 8 }, (_, index) => {
+      const turn = index + 1
+      return [
+        makeUser(`user-${turn}`, `CLI turn ${turn}`),
+        {
+          role: 'assistant' as const,
+          id: `assistant-${turn}`,
+          content: `Response ${turn}`,
+          metadata: { generationState: 'completed' as const },
+        },
+      ]
+    }).flat()
+
+    const html = renderSurface(makeSnapshot({ messages }))
+
+    expect(html).not.toContain('CLI turn 1')
+    expect(html).not.toContain('CLI turn 2')
+    expect(html).toContain('CLI turn 3')
+    expect(html).toContain('CLI turn 8')
+    expect(html).toContain('data-has-earlier="true"')
   })
 
   it('renders provider-native compaction boundaries as a timeline divider', () => {
