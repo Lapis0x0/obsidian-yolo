@@ -40,6 +40,7 @@ import type {
   CliRuntimeEvent,
   CliRuntimeEventListener,
   CliRuntimeReadyInput,
+  CliRuntimeSkill,
   CliSessionHydration,
   CliSessionRef,
   CliSubagentRef,
@@ -455,6 +456,38 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
   }
 
+  async listSkills(): Promise<CliRuntimeSkill[]> {
+    this.assertUsable()
+    const query = this.query
+    if (!query) throw new Error('Claude CLI runtime is not ready.')
+    const commands = query.reloadSkills
+      ? (await query.reloadSkills()).skills
+      : query.supportedCommands
+        ? await query.supportedCommands()
+        : (await query.initializationResult()).commands
+    return commands.map((command) => ({
+      name: command.name,
+      description: command.description,
+      path: `claude-code://skills/${encodeURIComponent(command.name)}`,
+    }))
+  }
+
+  async compact(): Promise<void> {
+    this.assertUsable()
+    if (!this.query || !this.inputQueue) {
+      throw new Error('Claude CLI runtime is not ready.')
+    }
+    this.activeAssistant = undefined
+    this.activeAssistantKey = undefined
+    this.streamedToolInputs.clear()
+    this.cancelRequested = false
+    this.activeUserMessageId = undefined
+    this.emit({ type: 'run_state', state: 'running' })
+    this.inputQueue.push(
+      toSdkUserMessage('/compact', this.currentSessionRef?.nativeSessionId),
+    )
+  }
+
   async updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration> {
@@ -865,6 +898,36 @@ export class ClaudeCliRuntime implements CliRuntime {
   }
 
   private async handleSdkMessage(message: SDKMessage): Promise<void> {
+    if (message.type === 'system' && message.subtype === 'status') {
+      if (message.status === 'compacting') {
+        this.emit({ type: 'compaction_state', isCompacting: true })
+      } else if (message.compact_result !== undefined) {
+        this.emit({ type: 'compaction_state', isCompacting: false })
+      }
+      return
+    }
+    if (message.type === 'system' && message.subtype === 'compact_boundary') {
+      this.emit({ type: 'compaction_state', isCompacting: false })
+      this.emit({
+        type: 'message_upsert',
+        message: {
+          role: 'assistant',
+          id: `claude-compact-${message.uuid}`,
+          content: '',
+          metadata: {
+            generationState: 'completed',
+            cliContextCompaction: {
+              trigger: message.compact_metadata.trigger,
+              preTokens: message.compact_metadata.pre_tokens,
+              ...(message.compact_metadata.post_tokens !== undefined
+                ? { postTokens: message.compact_metadata.post_tokens }
+                : {}),
+            },
+          },
+        },
+      })
+      return
+    }
     if (message.type === 'system' && message.subtype === 'init') {
       this.publishSessionBound({
         runtimeId: 'claude-code',

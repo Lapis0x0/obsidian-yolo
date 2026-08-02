@@ -251,6 +251,13 @@ class FakeQuery implements ClaudeSdkQuery {
     },
   }))
   readonly supportedModels = jest.fn(async () => [])
+  readonly reloadSkills = jest.fn(async () => ({
+    skills: [] as Array<{
+      name: string
+      description: string
+      argumentHint?: string
+    }>,
+  }))
   readonly setModel = jest.fn(async () => undefined)
   readonly setPermissionMode = jest.fn(async () => undefined)
   readonly applyFlagSettings = jest.fn(async () => undefined)
@@ -933,6 +940,96 @@ describe('ClaudeCliRuntime', () => {
     })
     await expect(iterator.next()).resolves.toMatchObject({
       value: { type: 'user', message: { content: 'Second turn' } },
+    })
+  })
+
+  it('lists native skills and routes manual compaction through Claude Code', async () => {
+    const { sdk, queryInputs, queryInstance } = createSdk()
+    queryInstance.reloadSkills.mockResolvedValue({
+      skills: [
+        {
+          name: 'review',
+          description: 'Review the current change',
+          argumentHint: '',
+        },
+      ],
+    })
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+    await expect(runtime.listSkills()).resolves.toEqual([
+      {
+        name: 'review',
+        description: 'Review the current change',
+        path: 'claude-code://skills/review',
+      },
+    ])
+
+    await runtime.compact()
+    const prompt = queryInputs[0].prompt
+    if (typeof prompt === 'string') throw new Error('Expected streaming prompt')
+    await expect(prompt[Symbol.asyncIterator]().next()).resolves.toMatchObject({
+      value: { type: 'user', message: { content: '/compact' } },
+    })
+  })
+
+  it('maps Claude compact boundaries to native compaction markers', async () => {
+    const { sdk, queryInstance } = createSdk()
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+
+    queryInstance.push({
+      type: 'system',
+      subtype: 'status',
+      status: 'compacting',
+      uuid: '00000000-0000-4000-8000-000000000000',
+      session_id: 'session-1',
+    } as SDKMessage)
+    await flushPromises()
+    expect(events.at(-1)).toEqual({
+      type: 'compaction_state',
+      isCompacting: true,
+    })
+
+    queryInstance.push({
+      type: 'system',
+      subtype: 'compact_boundary',
+      uuid: '00000000-0000-4000-8000-000000000001',
+      session_id: 'session-1',
+      compact_metadata: {
+        trigger: 'manual',
+        pre_tokens: 120_000,
+        post_tokens: 20_000,
+      },
+    } as SDKMessage)
+    await flushPromises()
+
+    expect(events).toContainEqual({
+      type: 'compaction_state',
+      isCompacting: false,
+    })
+    expect(events).toContainEqual({
+      type: 'message_upsert',
+      message: expect.objectContaining({
+        id: 'claude-compact-00000000-0000-4000-8000-000000000001',
+        metadata: expect.objectContaining({
+          cliContextCompaction: {
+            trigger: 'manual',
+            preTokens: 120_000,
+            postTokens: 20_000,
+          },
+        }),
+      }),
     })
   })
 

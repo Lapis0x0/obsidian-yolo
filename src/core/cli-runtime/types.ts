@@ -96,7 +96,7 @@ export type CliTurnInput = {
   sessionRef?: CliSessionRef
   userMessageId?: string
   content: string | ContentPart[]
-  selectedSkillNames?: string[]
+  selectedSkills?: CliRuntimeSkill[]
 }
 
 export type CliRewriteTurnInput = Omit<CliTurnInput, 'sessionRef'> & {
@@ -170,6 +170,10 @@ export type CliRuntimeEvent =
       type: 'context_usage'
       usage: CliContextUsage
     }
+  | {
+      type: 'compaction_state'
+      isCompacting: boolean
+    }
 
 export type CliApprovalDecision =
   | 'approve_once'
@@ -193,6 +197,8 @@ export type CliRuntime = {
 
   listModels?(): Promise<CliRuntimeModel[]>
   listSkills?(): Promise<CliRuntimeSkill[]>
+  /** Compact the active provider-native session without creating a user turn. */
+  compact?(): Promise<void>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
   readSubagent?(ref: CliSubagentRef): Promise<readonly ChatMessage[]>
   watchSubagent?(

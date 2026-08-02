@@ -526,9 +526,7 @@ export const submitCliComposerTurn = async ({
     await controller.sendTurn({
       userMessage: stampedUserMessage,
       content,
-      selectedSkillNames: stampedUserMessage.selectedSkills?.map(
-        (skill) => skill.name,
-      ),
+      selectedSkills: stampedUserMessage.selectedSkills,
     })
     onAccepted?.(stampedUserMessage)
   } catch (error) {
@@ -595,8 +593,7 @@ export const rewriteCliConversationTurn = async ({
   }
   const previousMessages = controller.getSnapshot().messages
   const sourceIndex = previousMessages.findIndex(
-    (message) =>
-      message.role === 'user' && message.id === sourceUserMessageId,
+    (message) => message.role === 'user' && message.id === sourceUserMessageId,
   )
   const discardedUserMessageIds = previousMessages
     .slice(Math.max(0, sourceIndex))
@@ -611,7 +608,9 @@ export const rewriteCliConversationTurn = async ({
     const appliedConfiguration =
       await controller.updateConfiguration(configuration)
     if (!appliedConfiguration) {
-      throw new Error('CLI runtime did not accept the edited turn configuration.')
+      throw new Error(
+        'CLI runtime did not accept the edited turn configuration.',
+      )
     }
   }
   const content = encodeTurnContent({
@@ -627,7 +626,7 @@ export const rewriteCliConversationTurn = async ({
     sourceUserMessageId,
     userMessage,
     content,
-    selectedSkillNames: userMessage.selectedSkills?.map((skill) => skill.name),
+    selectedSkills: userMessage.selectedSkills,
   })
   const sessionRef = controller.getSnapshot().sessionRef
   if (!sessionRef) {

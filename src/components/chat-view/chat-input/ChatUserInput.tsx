@@ -140,6 +140,8 @@ export type ChatUserInputProps = {
     categories?: readonly CliContextUsageCategory[]
   }
   showQuickAccess?: boolean
+  /** Runtime-native skills; bypasses assistant-specific YOLO skill policy. */
+  skillEntries?: LiteSkillEntry[]
   quickAccessSkillEntries?: LiteSkillEntry[]
   quickAccessSnippetEntries?: SnippetEntry[]
 }
@@ -202,6 +204,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onAbort,
       contextUsage,
       showQuickAccess = false,
+      skillEntries,
       quickAccessSkillEntries,
       quickAccessSnippetEntries,
     },
@@ -282,6 +285,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     )
     const availableSkills = useMemo(() => {
       if (!enableSkills) return []
+      if (skillEntries) return skillEntries
       const currentAssistant = currentAssistantId
         ? (availableAssistants.find(
             (assistant) => assistant.id === currentAssistantId,
@@ -306,6 +310,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       availableAssistants,
       currentAssistantId,
       enableSkills,
+      skillEntries,
       settings,
     ])
 

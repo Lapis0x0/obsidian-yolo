@@ -73,6 +73,7 @@ class FakeCliRuntime implements CliRuntime {
   rewriteTurnImpl: (input: CliRewriteTurnInput) => Promise<void> = async () =>
     undefined
   cancelImpl: () => Promise<void> = async () => undefined
+  compactImpl: () => Promise<void> = async () => undefined
   configuration: CliRuntimeConfiguration
 
   constructor(readonly runtimeId: CliRuntimeId = 'codex') {
@@ -133,6 +134,10 @@ class FakeCliRuntime implements CliRuntime {
     return this.cancelImpl()
   }
 
+  compact(): Promise<void> {
+    return this.compactImpl()
+  }
+
   async respondApproval(_response: CliApprovalResponse): Promise<boolean> {
     return false
   }
@@ -155,6 +160,37 @@ class FakeCliRuntime implements CliRuntime {
 }
 
 describe('CliConversationController', () => {
+  it('exposes native compaction as pending until its boundary arrives', async () => {
+    const runtime = new FakeCliRuntime()
+    const compactGate = deferred<void>()
+    runtime.compactImpl = () => compactGate.promise
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    const compactPromise = controller.compact()
+    expect(controller.getSnapshot()).toMatchObject({
+      isCompacting: true,
+      runState: 'running',
+    })
+
+    runtime.emit({
+      type: 'message_upsert',
+      message: {
+        role: 'assistant',
+        id: 'compact-boundary',
+        content: '',
+        metadata: {
+          generationState: 'completed',
+          cliContextCompaction: { trigger: 'manual' },
+        },
+      },
+    })
+    expect(controller.getSnapshot().isCompacting).toBe(false)
+
+    compactGate.resolve()
+    await compactPromise
+  })
+
   it('keeps the surface identity stable when a fresh native session binds', async () => {
     const runtime = new FakeCliRuntime('codex')
     const controller = new CliConversationController(runtime)
@@ -486,9 +522,7 @@ describe('CliConversationController', () => {
       id: 'codex-user-native-1',
       promptContent: '在吗',
     })
-    expect(
-      controller.getSnapshot().turnConfigurationByUserMessageId,
-    ).toEqual({
+    expect(controller.getSnapshot().turnConfigurationByUserMessageId).toEqual({
       'codex-user-native-1': {
         modelId: 'codex-model',
         reasoningEffort: null,

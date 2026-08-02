@@ -115,6 +115,12 @@ export type ChatAssistantMessage = {
     sources?: CitationSource[]
     /** CLI child activity owner; omitted for foreground assistant messages. */
     cliSubagentParentCallId?: string
+    /** Provider-native context compaction boundary rendered by the CLI surface. */
+    cliContextCompaction?: {
+      trigger?: 'manual' | 'auto'
+      preTokens?: number
+      postTokens?: number
+    }
   }
 }
 export type ChatToolMessage = {

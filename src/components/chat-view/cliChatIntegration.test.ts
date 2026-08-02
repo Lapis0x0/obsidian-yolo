@@ -273,7 +273,13 @@ describe('CLI chat integration', () => {
         promptContent: null,
       }),
       content: 'encoded CLI content',
-      selectedSkillNames: ['review'],
+      selectedSkills: [
+        {
+          name: 'review',
+          description: 'Review changes',
+          path: 'review',
+        },
+      ],
     })
     expect(recordOpenedSession).toHaveBeenCalledWith({ ref, messages: [] })
     expect(ensureReady.mock.invocationCallOrder[0]).toBeLessThan(

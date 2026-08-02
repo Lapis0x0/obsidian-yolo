@@ -480,6 +480,19 @@ export const mapCodexItem = (
   if (!KNOWN_CODEX_ACTIVITY_TYPES.has(activity.type)) {
     console.warn(`[YOLO] Unadapted Codex timeline item: ${activity.type}`)
   }
+  if (activity.type === 'contextCompaction') {
+    return [
+      {
+        role: 'assistant',
+        id: `codex-activity-${activity.id}`,
+        content: '',
+        metadata: {
+          generationState: 'completed',
+          cliContextCompaction: {},
+        },
+      },
+    ]
+  }
   return [
     {
       role: 'assistant',

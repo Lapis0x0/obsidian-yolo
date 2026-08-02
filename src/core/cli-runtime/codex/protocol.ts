@@ -11,6 +11,20 @@ export type CodexUserInput =
   | { type: 'image'; url: string }
   | { type: 'skill'; name: string; path: string }
 
+export type SkillsListResponse = {
+  data: Array<{
+    cwd: string
+    skills: Array<{
+      name: string
+      description: string
+      path: string
+      enabled: boolean
+    }>
+  }>
+}
+
+export type ThreadCompactStartResponse = Record<string, never>
+
 export type CodexThreadItem =
   | {
       type: 'userMessage'

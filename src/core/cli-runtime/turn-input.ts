@@ -56,24 +56,14 @@ const describeMentionable = (
 const buildText = ({
   text,
   references,
-  selectedSkills,
   timeContext,
 }: {
   text: string
   references: string[]
-  selectedSkills: readonly ChatSelectedSkill[]
   timeContext?: string
 }): string => {
   const parts: string[] = []
   if (timeContext) parts.push(`<current_time>${timeContext}</current_time>`)
-  if (selectedSkills.length > 0) {
-    parts.push(
-      section(
-        'selected_skills',
-        selectedSkills.map((skill) => `- ${skill.name}`).join('\n'),
-      ),
-    )
-  }
   if (references.length > 0) {
     parts.push(section('references', references.join('\n\n')))
   }
@@ -143,12 +133,18 @@ export const buildCliTurnContent = ({
   const textPart = buildText({
     text,
     references,
-    selectedSkills: runtimeId === 'codex' ? [] : selectedSkills,
     timeContext,
   })
-  if (binaryParts.length === 0) return textPart
+  const selectedClaudeSkill =
+    runtimeId === 'claude-code' ? selectedSkills.at(-1) : undefined
+  const nativeTextPart = selectedClaudeSkill
+    ? `/${selectedClaudeSkill.name}${textPart ? ` ${textPart}` : ''}`
+    : textPart
+  if (binaryParts.length === 0) return nativeTextPart
   return [
-    ...(textPart ? [{ type: 'text' as const, text: textPart }] : []),
+    ...(nativeTextPart
+      ? [{ type: 'text' as const, text: nativeTextPart }]
+      : []),
     ...binaryParts,
   ]
 }

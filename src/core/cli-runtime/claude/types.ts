@@ -13,6 +13,12 @@ import type {
 export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   interrupt(): Promise<unknown>
   initializationResult(): Promise<SDKControlInitializeResponse>
+  supportedCommands?(): Promise<
+    Array<{ name: string; description: string; argumentHint?: string }>
+  >
+  reloadSkills?(): Promise<{
+    skills: Array<{ name: string; description: string; argumentHint?: string }>
+  }>
   supportedModels(): Promise<ModelInfo[]>
   setModel(model?: string): Promise<void>
   setPermissionMode(mode: PermissionMode): Promise<void>

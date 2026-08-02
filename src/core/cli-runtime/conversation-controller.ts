@@ -14,6 +14,7 @@ import type {
   CliRuntimeEvent,
   CliRuntimeModel,
   CliRuntimeRunState,
+  CliRuntimeSkill,
   CliSessionHydration,
   CliSessionOverlay,
   CliSessionRef,
@@ -32,6 +33,8 @@ export type CliConversationSnapshot = Readonly<{
   messages: readonly ChatMessage[]
   sessionRef: CliSessionRef | null
   runState: CliRuntimeRunState
+  /** True only while a provider-native context compaction is in flight. */
+  isCompacting?: boolean
   error: string | null
   configuration?: CliRuntimeConfiguration | null
   turnConfigurationByUserMessageId?: Readonly<
@@ -44,7 +47,7 @@ export type CliConversationSnapshot = Readonly<{
 export type CliConversationTurn = Readonly<{
   userMessage: ChatUserMessage
   content: CliTurnInput['content']
-  selectedSkillNames?: CliTurnInput['selectedSkillNames']
+  selectedSkills?: CliTurnInput['selectedSkills']
 }>
 
 export type CliConversationRewriteTurn = CliConversationTurn &
@@ -305,7 +308,7 @@ export class CliConversationController {
   async sendTurn({
     userMessage,
     content,
-    selectedSkillNames,
+    selectedSkills,
   }: CliConversationTurn): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
@@ -333,7 +336,7 @@ export class CliConversationController {
         ...(sessionRef ? { sessionRef } : {}),
         userMessageId: userMessage.id,
         content,
-        ...(selectedSkillNames ? { selectedSkillNames } : {}),
+        ...(selectedSkills ? { selectedSkills } : {}),
       })
       // Runtime notifications may arrive before sendTurn resolves. Do not
       // overwrite messages or a newer run state after the await.
@@ -347,7 +350,7 @@ export class CliConversationController {
     sourceUserMessageId,
     userMessage,
     content,
-    selectedSkillNames,
+    selectedSkills,
   }: CliConversationRewriteTurn): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
@@ -403,13 +406,43 @@ export class CliConversationController {
         sourceUserMessageId,
         userMessageId: userMessage.id,
         content,
-        ...(selectedSkillNames ? { selectedSkillNames } : {}),
+        ...(selectedSkills ? { selectedSkills } : {}),
       })
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
     } finally {
       this.allowSessionRebind = false
+    }
+  }
+
+  async listSkills(): Promise<readonly CliRuntimeSkill[]> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!operation.runtime.listSkills) return []
+    const skills = await operation.runtime.listSkills()
+    return this.isCurrent(operation) ? skills : []
+  }
+
+  async compact(): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!operation.runtime.compact) {
+      throw new Error(
+        `${operation.runtime.runtimeId} does not support compaction.`,
+      )
+    }
+    this.publish({
+      ...this.snapshot,
+      isCompacting: true,
+      runState: 'running',
+      error: null,
+    })
+    try {
+      await operation.runtime.compact()
+    } catch (error) {
+      if (this.isCurrent(operation)) this.publishError(error)
+      throw error
     }
   }
 
@@ -706,10 +739,7 @@ export class CliConversationController {
     // Accept during ensureReady binding (before acceptingEvents flips) so
     // Codex resume replay of thread/tokenUsage/updated is not dropped.
     if (event.type === 'context_usage') {
-      if (
-        !this.acceptingEvents &&
-        this.bindingEpoch !== conversationEpoch
-      ) {
+      if (!this.acceptingEvents && this.bindingEpoch !== conversationEpoch) {
         return
       }
       const usage =
@@ -722,11 +752,24 @@ export class CliConversationController {
       }
       this.publish({ ...this.snapshot, contextUsage: usage })
       const ref = this.snapshot.sessionRef
-      if (ref && this.onContextUsage && event.usage.cacheHitRate !== undefined) {
+      if (
+        ref &&
+        this.onContextUsage &&
+        event.usage.cacheHitRate !== undefined
+      ) {
         void this.onContextUsage(ref, event.usage).catch((error) => {
           console.warn('[YOLO] Failed to persist CLI context usage', error)
         })
       }
+      return
+    }
+
+    if (event.type === 'compaction_state') {
+      if (!this.acceptingEvents) return
+      this.publish({
+        ...this.snapshot,
+        isCompacting: event.isCompacting,
+      })
       return
     }
 
@@ -764,12 +807,11 @@ export class CliConversationController {
               optimisticMessageId,
               event.message,
             ),
-            turnConfigurationByUserMessageId:
-              replaceTurnConfigurationMessageId(
-                this.snapshot.turnConfigurationByUserMessageId ?? {},
-                optimisticMessageId,
-                event.message.id,
-              ),
+            turnConfigurationByUserMessageId: replaceTurnConfigurationMessageId(
+              this.snapshot.turnConfigurationByUserMessageId ?? {},
+              optimisticMessageId,
+              event.message.id,
+            ),
           })
           return
         }
@@ -777,6 +819,10 @@ export class CliConversationController {
       this.publish({
         ...this.snapshot,
         messages: upsertMessage(this.snapshot.messages, event.message),
+        ...(event.message.role === 'assistant' &&
+        event.message.metadata?.cliContextCompaction !== undefined
+          ? { isCompacting: false }
+          : {}),
       })
       return
     }
@@ -809,6 +855,11 @@ export class CliConversationController {
       ...this.snapshot,
       runState: event.state,
       error: event.error ?? null,
+      ...(event.state !== 'running' &&
+      event.state !== 'waiting_for_approval' &&
+      event.state !== 'waiting_for_user'
+        ? { isCompacting: false }
+        : {}),
     })
   }
 
@@ -889,6 +940,7 @@ export class CliConversationController {
         : {}),
       runState: 'error',
       error: errorMessage,
+      isCompacting: false,
     })
   }
 
@@ -900,6 +952,7 @@ export class CliConversationController {
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: null,
       runState: 'idle',
+      isCompacting: false,
       error: null,
       configuration: null,
       contextUsage: null,

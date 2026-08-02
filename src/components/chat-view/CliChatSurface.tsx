@@ -30,8 +30,9 @@ import type {
 } from '../../types/chat'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
-import { buildMessageTimelineItems } from '../../utils/chat/timeline'
+import { buildChatTimelineItems } from '../../utils/chat/timeline'
 
+import DotLoader from '../common/DotLoader'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
@@ -431,36 +432,66 @@ export function CliChatSurface({
     messages,
     snapshot.runState,
   )
+  const nativeCompactionMessages = useMemo(
+    () =>
+      messages.filter(
+        (message) =>
+          message.role === 'assistant' &&
+          message.metadata?.cliContextCompaction !== undefined,
+      ),
+    [messages],
+  )
+  const pendingCompactionAnchorMessageId = snapshot.isCompacting
+    ? (messages.at(-1)?.id ?? null)
+    : null
   const timelineItems = useMemo(() => {
-    const items = buildMessageTimelineItems({
+    const latestCompactionMessage = nativeCompactionMessages.at(-1)
+    const items = buildChatTimelineItems({
       groupedChatMessages: readModel.groupedChatMessages,
       revisionsById: readModel.revisionsById,
+      compactionDividerAnchorMessageIds: nativeCompactionMessages.map(
+        (message) => message.id,
+      ),
+      latestCompaction: latestCompactionMessage
+        ? {
+            anchorMessageId: latestCompactionMessage.id,
+            summary: '',
+            compactedAt: 0,
+          }
+        : null,
+      pendingCompactionAnchorMessageId,
       activeEditableMessageId: null,
       activeStreamingMessageId,
-      includeBottomAnchor: true,
     })
-    if (!pendingResponseUserMessageId) return items
+    const itemsWithPending = [...items]
 
-    const bottomAnchorIndex = items.findIndex(
-      (item) => item.kind === 'bottom-anchor',
-    )
-    const pendingResponseItem: ChatTimelineItem = {
-      kind: 'pending-response',
-      id: `pending-response:${pendingResponseUserMessageId}`,
-      renderKey: `pending-response:${pendingResponseUserMessageId}`,
-      sourceUserMessageId: pendingResponseUserMessageId,
-      estimatedHeight: PENDING_RESPONSE_ESTIMATED_HEIGHT,
-      spacingBefore: 24,
-      isPinnedForRender: true,
-      isStreaming: true,
+    if (pendingResponseUserMessageId) {
+      itemsWithPending.push({
+        kind: 'pending-response',
+        id: `pending-response:${pendingResponseUserMessageId}`,
+        renderKey: `pending-response:${pendingResponseUserMessageId}`,
+        sourceUserMessageId: pendingResponseUserMessageId,
+        estimatedHeight: PENDING_RESPONSE_ESTIMATED_HEIGHT,
+        spacingBefore: 24,
+        isPinnedForRender: true,
+        isStreaming: true,
+      })
     }
-    if (bottomAnchorIndex < 0) return [...items, pendingResponseItem]
-    return [
-      ...items.slice(0, bottomAnchorIndex),
-      pendingResponseItem,
-      ...items.slice(bottomAnchorIndex),
-    ]
-  }, [activeStreamingMessageId, pendingResponseUserMessageId, readModel])
+    itemsWithPending.push({
+      kind: 'bottom-anchor',
+      id: 'bottom-anchor',
+      renderKey: 'bottom-anchor',
+      estimatedHeight: 1,
+      isPinnedForRender: true,
+    })
+    return itemsWithPending
+  }, [
+    activeStreamingMessageId,
+    nativeCompactionMessages,
+    pendingCompactionAnchorMessageId,
+    pendingResponseUserMessageId,
+    readModel,
+  ])
   const stableTimelineItems = useStableChatTimelineItems(timelineItems)
   const cliSubagentRenderVersion = useMemo(
     () =>
@@ -586,6 +617,46 @@ export function CliChatSurface({
         )
       }
 
+      if (timelineItem.kind === 'compaction-pending') {
+        return (
+          <div
+            className="yolo-chat-compaction-pending"
+            data-anchor-message-id={timelineItem.anchorMessageId}
+          >
+            <div className="yolo-chat-compaction-pending__loader">
+              <DotLoader
+                text={t('chat.compaction.pendingTitle', '正在压缩上下文')}
+              />
+            </div>
+            <div className="yolo-chat-compaction-pending__description">
+              {t(
+                'chat.compaction.pendingStatus',
+                '正在整理上下文，稍后将从新的上下文继续。',
+              )}
+            </div>
+          </div>
+        )
+      }
+
+      if (timelineItem.kind === 'compaction-divider') {
+        return (
+          <div className="yolo-chat-compaction-divider">
+            <div className="yolo-chat-compaction-divider__title">
+              {t('chat.compaction.dividerTitle', '从这里继续当前任务')}
+            </div>
+            <div className="yolo-chat-compaction-divider__line" />
+            <div className="yolo-chat-compaction-divider__content">
+              <div className="yolo-chat-compaction-divider__description">
+                {t(
+                  'chat.compaction.dividerDescription',
+                  '以上对话已压缩为摘要，以下回复基于摘要继续',
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
       if (timelineItem.kind !== 'assistant-group') return null
 
       const messageGroup = timelineItem.messageIds
@@ -665,6 +736,7 @@ export function CliChatSurface({
       snapshot.configuration,
       snapshot.runtimeId,
       snapshot.turnConfigurationByUserMessageId,
+      t,
     ],
   )
 

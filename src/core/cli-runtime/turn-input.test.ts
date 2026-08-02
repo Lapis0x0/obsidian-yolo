@@ -145,4 +145,21 @@ describe('buildCliTurnContent', () => {
       }),
     ).toBe('hello')
   })
+
+  it('invokes an explicitly selected Claude skill through slash syntax', () => {
+    expect(
+      buildCliTurnContent({
+        runtimeId: 'claude-code',
+        text: 'Review this change.',
+        mentionables: [],
+        selectedSkills: [
+          {
+            name: 'review',
+            description: 'Review code',
+            path: 'claude-code://skills/review',
+          },
+        ],
+      }),
+    ).toBe('/review Review this change.')
+  })
 })

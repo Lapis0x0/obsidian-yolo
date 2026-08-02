@@ -90,40 +90,62 @@ class RpcFakeProcess implements CodexProcessLike {
             }
           : request.method === 'thread/read'
             ? { thread: { ...this.thread, turns: this.threadTurns } }
-            : request.method === 'thread/start' ||
-                request.method === 'thread/resume'
+            : request.method === 'skills/list'
               ? {
-                  thread: {
-                    ...this.thread,
-                    id:
-                      this.threadIdForStart?.(request.params ?? {}) ??
-                      this.thread.id,
-                  },
+                  data: [
+                    {
+                      cwd: '/vault',
+                      skills: [
+                        {
+                          name: 'review',
+                          description: 'Review changes',
+                          path: '/skills/review/SKILL.md',
+                          enabled: true,
+                        },
+                        {
+                          name: 'disabled',
+                          description: 'Disabled skill',
+                          path: '/skills/disabled/SKILL.md',
+                          enabled: false,
+                        },
+                      ],
+                    },
+                  ],
                 }
-              : request.method === 'thread/rollback'
+              : request.method === 'thread/start' ||
+                  request.method === 'thread/resume'
                 ? {
                     thread: {
                       ...this.thread,
-                      turns: this.threadTurns.slice(
-                        0,
-                        Math.max(
-                          0,
-                          this.threadTurns.length -
-                            Number(request.params?.numTurns ?? 0),
-                        ),
-                      ),
+                      id:
+                        this.threadIdForStart?.(request.params ?? {}) ??
+                        this.thread.id,
                     },
                   }
-                : request.method === 'turn/start'
+                : request.method === 'thread/rollback'
                   ? {
-                      turn: {
-                        id: 'turn-1',
-                        items: [],
-                        status: 'inProgress',
-                        error: null,
+                      thread: {
+                        ...this.thread,
+                        turns: this.threadTurns.slice(
+                          0,
+                          Math.max(
+                            0,
+                            this.threadTurns.length -
+                              Number(request.params?.numTurns ?? 0),
+                          ),
+                        ),
                       },
                     }
-                  : {}
+                  : request.method === 'turn/start'
+                    ? {
+                        turn: {
+                          id: 'turn-1',
+                          items: [],
+                          status: 'inProgress',
+                          error: null,
+                        },
+                      }
+                    : {}
     queueMicrotask(() => this.emit({ jsonrpc: '2.0', id: request.id, result }))
   }
   onLine(listener: (line: string) => void): () => void {
@@ -418,7 +440,7 @@ describe('CodexCliRuntime', () => {
     ).toBe('yolo-user-1')
   })
 
-  it('does not inject YOLO prompts or Skills into native Codex requests', async () => {
+  it('keeps native Codex context clean and sends selected skills structurally', async () => {
     const process = new RpcFakeProcess()
     const host = new CodexAppServerHost({
       cwd: '/vault',
@@ -433,7 +455,13 @@ describe('CodexCliRuntime', () => {
     await runtime.sendTurn({
       userMessageId: 'yolo-user-1',
       content: 'Review this change.',
-      selectedSkillNames: ['review'],
+      selectedSkills: [
+        {
+          name: 'review',
+          description: 'Review changes',
+          path: '/skills/review/SKILL.md',
+        },
+      ],
     })
 
     expect(
@@ -449,12 +477,45 @@ describe('CodexCliRuntime', () => {
       process.requests.find((request) => request.method === 'turn/start')
         ?.params.input,
     ).toEqual([
+      {
+        type: 'skill',
+        name: 'review',
+        path: '/skills/review/SKILL.md',
+      },
       { type: 'text', text: 'Review this change.', text_elements: [] },
     ])
     expect(
       process.requests.find((request) => request.method === 'turn/start')
         ?.params.clientUserMessageId,
     ).toBe('yolo-user-1')
+  })
+
+  it('lists enabled native skills and starts native compaction', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await expect(runtime.listSkills()).resolves.toEqual([
+      {
+        name: 'review',
+        description: 'Review changes',
+        path: '/skills/review/SKILL.md',
+      },
+    ])
+    expect(
+      process.requests.find((request) => request.method === 'skills/list')
+        ?.params,
+    ).toEqual({ cwds: ['/vault'], forceReload: true })
+
+    await runtime.ensureReady({})
+    await runtime.compact()
+    expect(
+      process.requests.find(
+        (request) => request.method === 'thread/compact/start',
+      )?.params,
+    ).toEqual({ threadId: 'thread-1' })
   })
 
   it('routes interleaved shared-host events and cancellation by thread', async () => {
@@ -707,6 +768,46 @@ describe('CodexCliRuntime', () => {
       { id: 'codex-assistant-agent-1', content: 'Hello' },
       { id: 'codex-assistant-agent-1', content: 'Hello' },
     ])
+  })
+
+  it('keeps context compaction pending from item start until completion', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const compactionStates: boolean[] = []
+    const compactionMarkers: string[] = []
+    runtime.subscribe((event) => {
+      if (event.type === 'compaction_state') {
+        compactionStates.push(event.isCompacting)
+      }
+      if (
+        event.type === 'message_upsert' &&
+        event.message.role === 'assistant' &&
+        event.message.metadata?.cliContextCompaction !== undefined
+      ) {
+        compactionMarkers.push(event.message.id)
+      }
+    })
+    await runtime.ensureReady({})
+
+    const item = { type: 'contextCompaction' as const, id: 'compact-1' }
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/started',
+      params: { item },
+    })
+    expect(compactionStates).toEqual([true])
+    expect(compactionMarkers).toEqual([])
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: { item },
+    })
+    expect(compactionStates).toEqual([true, false])
+    expect(compactionMarkers).toEqual(['codex-activity-compact-1'])
   })
 
   it('surfaces server approvals and routes the UI decision back by tool id', async () => {

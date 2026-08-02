@@ -346,6 +346,39 @@ describe('CliChatSurface', () => {
     ).toContain('Event message')
   })
 
+  it('renders provider-native compaction boundaries as a timeline divider', () => {
+    const compactBoundary: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'compact-1',
+      content: '',
+      metadata: {
+        generationState: 'completed',
+        cliContextCompaction: { trigger: 'auto' },
+      },
+    }
+
+    const html = renderSurface(
+      makeSnapshot({ messages: [assistant, compactBoundary] }),
+    )
+
+    expect(html).toContain('从这里继续当前任务')
+    expect(html).toContain('以上对话已压缩为摘要')
+  })
+
+  it('reuses the compaction pending timeline while native compact is running', () => {
+    const html = renderSurface(
+      makeSnapshot({
+        messages: [assistant],
+        runState: 'running',
+        isCompacting: true,
+      }),
+    )
+
+    expect(html).toContain('正在压缩上下文')
+    expect(html).toContain('正在整理上下文')
+    expect(html).not.toContain('从这里继续当前任务')
+  })
+
   it('does not render CLI-specific footer status or error labels', () => {
     const empty = makeSnapshot({ sessionRef: null })
     const failed = makeSnapshot({
@@ -400,7 +433,10 @@ describe('CliChatSurface', () => {
       metadata: { generationState: 'completed' },
     }
     const snapshot = makeSnapshot({
-      messages: [makeUser('user-pending', 'Run the tests'), emptyCompletedShell],
+      messages: [
+        makeUser('user-pending', 'Run the tests'),
+        emptyCompletedShell,
+      ],
       runState: 'running',
     })
 

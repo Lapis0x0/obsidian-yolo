@@ -59,6 +59,7 @@ import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import type { LiteSkillEntry } from '../../core/skills/liteSkills'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
@@ -1116,6 +1117,42 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     publishCatalog()
     return cliRuntimeScope.subscribeToModelCatalog(publishCatalog)
   }, [cliRuntimeScope])
+  const [cliSkillEntries, setCliSkillEntries] = useState<LiteSkillEntry[]>([])
+  useEffect(() => {
+    if (
+      activeRuntimeId === 'yolo' ||
+      !cliRuntimeScope ||
+      !cliConversationController
+    ) {
+      setCliSkillEntries([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      await prepareCliConversation({
+        controller: cliConversationController,
+        scope: cliRuntimeScope,
+        runtimeId: activeRuntimeId,
+        settings: cliPreferenceSettingsRef.current,
+      })
+      const skills = await cliConversationController.listSkills()
+      if (cancelled) return
+      setCliSkillEntries(
+        skills.map((skill) => ({
+          ...skill,
+          mode: 'lazy',
+          isReadOnly: true,
+        })),
+      )
+    })().catch((error) => {
+      if (cancelled) return
+      console.warn('[YOLO] Failed to load native CLI skills', error)
+      setCliSkillEntries([])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeRuntimeId, cliConversationController, cliRuntimeScope])
   useEffect(() => {
     if (activeRuntimeId === 'yolo' || !cliConversationController) return
     const snapshot = cliConversationController.getSnapshot()
@@ -1340,6 +1377,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [bumpInputDraftRevision, inputDraftHolder],
   )
+  const previousInputRuntimeIdRef = useRef(activeRuntimeId)
+  useEffect(() => {
+    if (previousInputRuntimeIdRef.current === activeRuntimeId) return
+    previousInputRuntimeIdRef.current = activeRuntimeId
+    setInputMessage((message) =>
+      (message.selectedSkills?.length ?? 0) > 0
+        ? { ...message, selectedSkills: [] }
+        : message,
+    )
+  }, [activeRuntimeId, setInputMessage])
   const replaceInputMessage = useCallback(
     (message: ChatUserMessage) => {
       const nextMessage = inputDraftHolder.replace(message)
@@ -6617,8 +6664,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (
         editorStateToPlainText(content).trim() === '' &&
         state.inputMessage.mentionables.length === 0 &&
-        (state.activeRuntimeId !== 'yolo' ||
-          (state.inputMessage.selectedSkills?.length ?? 0) === 0)
+        (state.inputMessage.selectedSkills?.length ?? 0) === 0
       ) {
         return
       }
@@ -6649,7 +6695,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               scope,
               controller,
               runtimeId,
-              userMessage: { ...messageForSubmit, selectedSkills: [] },
+              userMessage: messageForSubmit,
               timeContextEnabled: false,
               signal: submission.signal,
               onSendStarted: () => coordinator.markSending(submission.token),
@@ -6874,6 +6920,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       snapshotRef: undefined,
     }))
   }, [])
+  const handleMainInputRuntimeSkillsChange = useCallback<
+    NonNullable<ChatUserInputProps['setSelectedSkills']>
+  >(
+    (selectedSkills) => {
+      handleMainInputSelectedSkillsChange(
+        activeRuntimeId === 'yolo' ? selectedSkills : selectedSkills.slice(-1),
+      )
+    },
+    [activeRuntimeId, handleMainInputSelectedSkillsChange],
+  )
 
   const handleMainInputMentionableDelete = useCallback(
     (mentionable: Mentionable) => {
@@ -7118,10 +7174,55 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   >(
     (command) => {
       if (command.id === 'compact-context') {
-        void handleManualContextCompactionRef.current()
+        if (
+          activeRuntimeId === 'yolo' ||
+          !cliConversationController ||
+          !cliOperationCoordinator ||
+          !cliRuntimeScope
+        ) {
+          void handleManualContextCompactionRef.current()
+          return
+        }
+        if (isCliConversationActive(cliConversationController.getSnapshot())) {
+          new Notice(
+            t(
+              'chat.compaction.runActive',
+              '请等待当前回复完成后再压缩上下文。',
+            ),
+          )
+          return
+        }
+        if (cliConversationController.getSnapshot().messages.length === 0) {
+          new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
+          return
+        }
+        void cliOperationCoordinator
+          .transition(cliConversationController, async (isCurrent) => {
+            await prepareCliConversation({
+              controller: cliConversationController,
+              scope: cliRuntimeScope,
+              runtimeId: activeRuntimeId,
+              settings: cliPreferenceSettingsRef.current,
+            })
+            if (!isCurrent()) return
+            await cliConversationController.compact()
+          })
+          .catch((error) => {
+            new Notice(
+              t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'),
+            )
+            console.error('Failed to compact native CLI context', error)
+          })
       }
     },
-    [handleManualContextCompactionRef],
+    [
+      activeRuntimeId,
+      cliConversationController,
+      cliOperationCoordinator,
+      cliRuntimeScope,
+      handleManualContextCompactionRef,
+      t,
+    ],
   )
 
   const handleMainInputAbort = useCallback(() => {
@@ -7174,24 +7275,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : undefined,
     [headerContextUsage, buildMainInputContextBreakdownInputs, t],
   )
-  const cliInputContextUsage = useMemo<ChatUserInputProps['contextUsage']>(
-    () => {
-      const usage = activeCliConversationSnapshot?.contextUsage
-      if (!usage) return undefined
-      return {
-        promptTokens: usage.promptTokens,
-        maxContextTokens: usage.maxContextTokens,
-        ...(usage.cacheHitRate !== undefined
-          ? { cacheHitRate: usage.cacheHitRate }
-          : {}),
-        label: t('chat.contextUsage', '上下文窗口占用'),
-        ...(usage.categories && usage.categories.length > 0
-          ? { categories: usage.categories }
-          : {}),
-      }
-    },
-    [activeCliConversationSnapshot?.contextUsage, t],
-  )
+  const cliInputContextUsage = useMemo<
+    ChatUserInputProps['contextUsage']
+  >(() => {
+    const usage = activeCliConversationSnapshot?.contextUsage
+    if (!usage) return undefined
+    return {
+      promptTokens: usage.promptTokens,
+      maxContextTokens: usage.maxContextTokens,
+      ...(usage.cacheHitRate !== undefined
+        ? { cacheHitRate: usage.cacheHitRate }
+        : {}),
+      label: t('chat.contextUsage', '上下文窗口占用'),
+      ...(usage.categories && usage.categories.length > 0
+        ? { categories: usage.categories }
+        : {}),
+    }
+  }, [activeCliConversationSnapshot?.contextUsage, t])
   const mainInputSelectedSkills =
     inputMessage.selectedSkills ?? EMPTY_SELECTED_SKILLS
 
@@ -8087,11 +8187,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onFocus={handleMainInputFocus}
         mentionables={inputMessage.mentionables}
         setMentionables={handleMainInputMentionablesChange}
-        selectedSkills={isCliRuntimeActive ? [] : mainInputSelectedSkills}
-        setSelectedSkills={
-          isCliRuntimeActive ? undefined : handleMainInputSelectedSkillsChange
-        }
-        enableSkills={!isCliRuntimeActive}
+        selectedSkills={mainInputSelectedSkills}
+        setSelectedSkills={handleMainInputRuntimeSkillsChange}
+        enableSkills
+        skillEntries={isCliRuntimeActive ? cliSkillEntries : undefined}
         modelId={conversationModelId}
         onModelChange={handleMainInputModelChange}
         showModelControl={!isCliRuntimeActive}
@@ -8148,9 +8247,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onEditorKeyDown={handleClaudePlanShortcut}
         allowAgentModeOption
         enableResize
-        onRunSlashCommand={
-          isCliRuntimeActive ? undefined : handleMainInputRunSlashCommand
-        }
+        onRunSlashCommand={handleMainInputRunSlashCommand}
         isGenerating={
           isCliRuntimeActive
             ? cliSubmissionPending || isCliRunActive || cliTransitioning

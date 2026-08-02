@@ -22,6 +22,7 @@ import type {
   CliRuntimeEventListener,
   CliRuntimeModel,
   CliRuntimeReadyInput,
+  CliRuntimeSkill,
   CliSessionHydration,
   CliSessionRef,
   CliSubagentRef,
@@ -56,8 +57,10 @@ import type {
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadRollbackResponse,
+  ThreadCompactStartResponse,
   ThreadStartResponse,
   TurnStartResponse,
+  SkillsListResponse,
 } from './protocol'
 
 type PendingServerRequest = {
@@ -123,11 +126,31 @@ const toSessionRef = (thread: CodexThread): CliSessionRef => ({
   ...(thread.path ? { sessionPathHint: thread.path } : {}),
 })
 
-const toCodexInput = (content: string | ContentPart[]): CodexUserInput[] => {
+const toCodexInput = (
+  content: string | ContentPart[],
+  selectedSkills: readonly CliRuntimeSkill[] = [],
+): CodexUserInput[] => {
+  const skillInputs: CodexUserInput[] = selectedSkills.map((skill) => ({
+    type: 'skill',
+    name: skill.name,
+    path: skill.path,
+  }))
   if (typeof content === 'string') {
-    return [{ type: 'text', text: content, text_elements: [] }]
+    return [
+      ...skillInputs,
+      ...(content
+        ? [
+            {
+              type: 'text' as const,
+              text: content,
+              text_elements: [] as [],
+            },
+          ]
+        : []),
+    ]
   }
   return [
+    ...skillInputs,
     ...content.flatMap((part): CodexUserInput[] => {
       if (part.type === 'text') {
         return [{ type: 'text', text: part.text, text_elements: [] }]
@@ -340,6 +363,33 @@ export class CodexCliRuntime implements CliRuntime {
     }
   }
 
+  async listSkills(): Promise<CliRuntimeSkill[]> {
+    const host = await this.getHost()
+    const response = await host.request<SkillsListResponse>('skills/list', {
+      cwds: [this.options.cwd],
+      forceReload: true,
+    })
+    return response.data.flatMap((entry) =>
+      entry.skills
+        .filter((skill) => skill.enabled)
+        .map(({ name, description, path }) => ({ name, description, path })),
+    )
+  }
+
+  async compact(): Promise<void> {
+    if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
+    if (this.activeTurnId) {
+      throw new Error('Cannot compact Codex while another turn is active.')
+    }
+    const host = await this.getHost()
+    this.emit({ type: 'run_state', state: 'running' })
+    await host.request<ThreadCompactStartResponse>(
+      'thread/compact/start',
+      { threadId: this.activeSessionRef.nativeSessionId },
+      0,
+    )
+  }
+
   async updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration> {
@@ -385,7 +435,7 @@ export class CodexCliRuntime implements CliRuntime {
               ),
             }
           : {}),
-        input: toCodexInput(input.content),
+        input: toCodexInput(input.content, input.selectedSkills),
         model: this.modelId,
         effort: this.reasoningEffort,
         summary: 'auto',
@@ -705,6 +755,11 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'item/started' || method === 'item/completed') {
       const item = params.item as CodexThreadItem | undefined
       if (!item) return
+      if (item.type === 'contextCompaction') {
+        const isCompacting = method === 'item/started'
+        this.emit({ type: 'compaction_state', isCompacting })
+        if (isCompacting) return
+      }
       if (method === 'item/started' && !shouldEmitCodexItemOnStarted(item)) {
         return
       }
