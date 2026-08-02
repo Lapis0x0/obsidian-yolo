@@ -14,7 +14,7 @@
 
 文末的 `<routine-fire-payload>` 是 CI 注入的 JSON 数据。根据 `trigger_kind` 工作：
 
-- `routine_scan`：用 `gh` 获取最近 24 小时活跃的 open issue 和 open PR，合并去重后按最近活跃倒序处理至多 5 条。
+- `routine_scan`：用 `gh` 获取最近 24 小时活跃的 open issue 和 open PR，跳过由 `Lapis0x0` 创建的 issue，合并去重后按最近活跃倒序处理至多 5 条。
 - `owner_command`：只处理 payload 指向的对象，执行 `Lapis0x0` 在 `@Lapis0x1` 后提出的命令，并在原处回复结果。
 - `user_mention`：只处理 payload 指向的对象，可以分析、答疑或追问，但不要修改仓库、push 或开 PR。
 - `intake_issue`：只处理 payload 指向的 issue；调查并评论，符合下文修复标准时可以开 auto-triage PR。
@@ -30,6 +30,7 @@
 
 自动触发时遵守以下幂等规则：
 
+- `Lapis0x0` 创建的 issue 不主动处理；只有其明确 `@Lapis0x1` 时才按 `owner_command` 处理。
 - 目标带有 `no-auto-triage` 标签时不要介入。
 - 如果 Lapis0x1 上次处理晚于最近一次非 bot 的实质更新，跳过；有新的复现信息、代码提交或需求变化时可以重新处理。
 - 已有关联的 `[auto-triage]` PR，或 issue 已被 Lapis0x0 的 commit / open 或 merged PR 处理，且此后没有实质更新时，跳过。

@@ -26,7 +26,10 @@ jobs:
     if: >
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'issues' ||
+      (
+        github.event_name == 'issues' &&
+        github.event.issue.user.login != 'Lapis0x0'
+      ) ||
       (
         github.event_name == 'pull_request_target' &&
         !startsWith(github.event.pull_request.title, '[auto-triage]') &&
