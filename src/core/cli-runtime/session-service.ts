@@ -73,18 +73,14 @@ export class CliSessionService {
       createCliSessionIndexEntry({
         ...ref,
         ...existing,
-        userDisplayByTransportHash: {
-          ...existing?.userDisplayByTransportHash,
-          [transportHash]: serialized,
-        },
-        ...(configuration
-          ? {
-              turnConfigurationByTransportHash: {
-                ...existing?.turnConfigurationByTransportHash,
-                [transportHash]: configuration,
-              },
-            }
-          : {}),
+        turnOverlays: [
+          ...(existing?.turnOverlays ?? []),
+          {
+            transportHash,
+            userMessage: serialized,
+            ...(configuration ? { configuration } : {}),
+          },
+        ],
       }),
     )
   }
@@ -135,6 +131,9 @@ export class CliSessionService {
             ),
           )
         : undefined
+    const withoutDroppedTurnOverlays = (
+      overlays: CliSessionIndexEntry['turnOverlays'],
+    ) => overlays?.filter((overlay) => !droppedIds.has(overlay.userMessage.id))
     if (
       previousRef.runtimeId === nextRef.runtimeId &&
       previousRef.nativeSessionId === nextRef.nativeSessionId
@@ -147,6 +146,7 @@ export class CliSessionService {
             turnEditSummaryByUserMessageId: withoutDroppedSummaries(
               current?.turnEditSummaryByUserMessageId,
             ),
+            turnOverlays: withoutDroppedTurnOverlays(current?.turnOverlays),
           }),
         )
       }
@@ -165,6 +165,10 @@ export class CliSessionService {
           ...withoutDroppedSummaries(existing.turnEditSummaryByUserMessageId),
           ...current?.turnEditSummaryByUserMessageId,
         },
+        turnOverlays: mergeTurnOverlays(
+          withoutDroppedTurnOverlays(existing.turnOverlays),
+          current?.turnOverlays,
+        ),
         ...(nextRef.sessionPathHint
           ? { sessionPathHint: nextRef.sessionPathHint }
           : {}),
@@ -212,47 +216,73 @@ export class CliSessionService {
     messages: readonly ChatMessage[],
   ): Promise<CliSessionOverlay> {
     const entry = await this.indexStore.get(ref)
-    const displays = entry?.userDisplayByTransportHash
-    const turnConfigurations = entry?.turnConfigurationByTransportHash
+    const turnOverlays = entry?.turnOverlays ?? []
+    const reconciledTurnOverlays = [...turnOverlays]
+    const consumedOverlayIndexes = new Set<number>()
+    let didReconcileOverlayIds = false
     const turnConfigurationByUserMessageId: Record<
       string,
       CliTurnConfiguration
     > = {}
-    const restoredMessages = displays
-      ? await Promise.all(
-          messages.map(async (message): Promise<ChatMessage> => {
-            if (message.role !== 'user' || message.promptContent === null) {
-              return message
-            }
-            const transportHash = await hashTransportContent(
-              ref,
-              message.promptContent,
-            )
-            const configuration = turnConfigurations?.[transportHash]
-            if (configuration) {
-              turnConfigurationByUserMessageId[message.id] = configuration
-            }
-            const display = displays[transportHash]
-            if (!display) return message
-            const mentionables = display.mentionables
-              .map((mentionable) =>
-                deserializeMentionable(mentionable, this.app),
-              )
-              .filter(
-                (
-                  mentionable,
-                ): mentionable is ChatUserMessage['mentionables'][number] =>
-                  mentionable !== null,
-              )
-            return {
-              ...display,
-              id: message.id,
-              promptContent: display.promptContent,
-              mentionables,
-            }
-          }),
+    const restoredMessages: ChatMessage[] = []
+    for (const message of messages) {
+      if (message.role !== 'user' || message.promptContent === null) {
+        restoredMessages.push(message)
+        continue
+      }
+      const transportHash = await hashTransportContent(
+        ref,
+        message.promptContent,
+      )
+      const overlayIndex = turnOverlays.findIndex(
+        (overlay, index) =>
+          !consumedOverlayIndexes.has(index) &&
+          overlay.transportHash === transportHash,
+      )
+      if (overlayIndex < 0) {
+        restoredMessages.push(message)
+        continue
+      }
+      consumedOverlayIndexes.add(overlayIndex)
+      const overlay = turnOverlays[overlayIndex]
+      if (overlay.configuration) {
+        turnConfigurationByUserMessageId[message.id] = overlay.configuration
+      }
+      const display = overlay.userMessage
+      const mentionables = display.mentionables
+        .map((mentionable) => deserializeMentionable(mentionable, this.app))
+        .filter(
+          (
+            mentionable,
+          ): mentionable is ChatUserMessage['mentionables'][number] =>
+            mentionable !== null,
         )
-      : [...messages]
+      restoredMessages.push({
+        ...display,
+        id: message.id,
+        promptContent: display.promptContent,
+        mentionables,
+      })
+      if (display.id !== message.id) {
+        reconciledTurnOverlays[overlayIndex] = {
+          ...overlay,
+          userMessage: { ...display, id: message.id },
+        }
+        didReconcileOverlayIds = true
+      }
+    }
+
+    if (didReconcileOverlayIds) {
+      await this.indexStore.update(ref, (current) =>
+        createCliSessionIndexEntry({
+          ...ref,
+          ...current,
+          turnOverlays: (current?.turnOverlays ?? []).map(
+            (overlay, index) => reconciledTurnOverlays[index] ?? overlay,
+          ),
+        }),
+      )
+    }
 
     const messagesWithSummaries = Object.entries(
       entry?.turnEditSummaryByUserMessageId ?? {},
@@ -273,6 +303,24 @@ export class CliSessionService {
   removeOverlay(ref: CliSessionRef): Promise<boolean> {
     return this.indexStore.remove(ref)
   }
+}
+
+const mergeTurnOverlays = (
+  ...groups: Array<CliSessionIndexEntry['turnOverlays']>
+): NonNullable<CliSessionIndexEntry['turnOverlays']> => {
+  const merged: NonNullable<CliSessionIndexEntry['turnOverlays']> = []
+  const indexByIdentity = new Map<string, number>()
+  for (const overlay of groups.flatMap((group) => group ?? [])) {
+    const identity = `${overlay.userMessage.id}:${overlay.transportHash}`
+    const index = indexByIdentity.get(identity)
+    if (index === undefined) {
+      indexByIdentity.set(identity, merged.length)
+      merged.push(overlay)
+    } else {
+      merged[index] = overlay
+    }
+  }
+  return merged
 }
 
 const hashTransportContent = (

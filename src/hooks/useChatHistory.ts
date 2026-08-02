@@ -72,6 +72,7 @@ type UseChatHistory = {
   createOrTouchCliConversation: (
     id: string,
     cliSession: ChatConversationCliSession,
+    overrides?: ConversationOverrideSettings | null,
   ) => Promise<void>
   deleteConversation: (id: string) => Promise<void>
   getChatMessagesById: (id: string) => Promise<ChatMessage[] | null>
@@ -343,16 +344,21 @@ export function useChatHistory(): UseChatHistory {
     async (
       id: string,
       cliSession: ChatConversationCliSession,
+      overrides?: ConversationOverrideSettings | null,
     ): Promise<void> => {
       const existingConversation = await chatManager.findById(id)
       if (existingConversation) {
-        await chatManager.updateChat(id, { cliSession })
+        await chatManager.updateChat(id, {
+          cliSession,
+          ...(overrides !== undefined ? { overrides } : {}),
+        })
       } else {
         await chatManager.createChat({
           id,
           title: DEFAULT_UNTITLED_CONVERSATION_TITLE,
           messages: [],
           cliSession,
+          ...(overrides !== undefined ? { overrides } : {}),
         })
       }
       emitChatHistoryUpdated()

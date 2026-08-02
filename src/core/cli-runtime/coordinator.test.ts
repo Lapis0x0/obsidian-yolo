@@ -303,7 +303,7 @@ describe('CLI runtime coordinator', () => {
     expect(() => coordinator.createScope()).toThrow(/coordinator is disposed/)
   })
 
-  it('keeps controllers alive after view disposal and disposes them with the plugin', async () => {
+  it('releases inactive conversation runtimes when their view scope closes', async () => {
     const { coordinator, harness } = await createCoordinator()
     const scope = coordinator.createScope()
     const claudeController = scope.selectConversationRuntime('claude-code')
@@ -312,8 +312,10 @@ describe('CLI runtime coordinator', () => {
     const disposeCodexController = jest.spyOn(codexController, 'dispose')
 
     await scope.dispose()
-    expect(disposeClaudeController).not.toHaveBeenCalled()
-    expect(disposeCodexController).not.toHaveBeenCalled()
+    expect(disposeClaudeController).toHaveBeenCalledTimes(1)
+    expect(disposeCodexController).toHaveBeenCalledTimes(1)
+    expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
+    expect(harness.codexRuntimes[0].dispose).toHaveBeenCalledTimes(1)
     await coordinator.dispose()
     expect(disposeClaudeController).toHaveBeenCalledTimes(1)
     expect(disposeCodexController).toHaveBeenCalledTimes(1)
@@ -322,6 +324,46 @@ describe('CLI runtime coordinator', () => {
     expect(disposeClaudeController.mock.invocationCallOrder[0]).toBeLessThan(
       harness.claudeRuntimes[0].dispose.mock.invocationCallOrder[0],
     )
+  })
+
+  it('keeps an unobserved active conversation alive until it reaches a terminal state', async () => {
+    const { coordinator, harness } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const controller = scope.selectConversationRuntime('claude-code')
+    const runtime = harness.claudeRuntimes[0]
+
+    await controller.ensureReady()
+    runtime.emit({ type: 'run_state', state: 'running' })
+    await scope.dispose()
+    expect(runtime.dispose).not.toHaveBeenCalled()
+
+    runtime.emit({ type: 'run_state', state: 'completed' })
+    await Promise.resolve()
+    expect(runtime.dispose).toHaveBeenCalledTimes(1)
+    expect(controller.getSnapshot().runState).toBe('completed')
+
+    await coordinator.dispose()
+    expect(runtime.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases a shared session after the final view scope closes', async () => {
+    const { coordinator, harness } = await createCoordinator()
+    const first = coordinator.createScope()
+    const second = coordinator.createScope()
+    const controller = first.selectConversationRuntime('claude-code')
+    await controller.ensureReady()
+    const shared = second.selectConversationSession({
+      runtimeId: 'claude-code',
+      nativeSessionId: 'claude-code-session',
+    })
+
+    expect(shared).toBe(controller)
+    await first.dispose()
+    expect(harness.claudeRuntimes[0].dispose).not.toHaveBeenCalled()
+    await second.dispose()
+    expect(harness.claudeRuntimes[0].dispose).toHaveBeenCalledTimes(1)
+
+    await coordinator.dispose()
   })
 
   it('disposes partial creation and settles all runtimes when one disposal fails', async () => {

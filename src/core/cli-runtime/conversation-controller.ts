@@ -290,6 +290,8 @@ export class CliConversationController {
   private currentTurnMetrics: CliTurnMetrics | null = null
   private readonly reconciledNativeUserMessageIds = new Set<string>()
   private readyTail: Promise<void> = Promise.resolve()
+  private permissionUpdateTail: Promise<void> = Promise.resolve()
+  private appliedPermissionProfile: CliPermissionProfileUpdate | null = null
   private disposed = false
 
   constructor(
@@ -621,12 +623,30 @@ export class CliConversationController {
     this.assertActive()
     const operation = this.captureOperation()
     if (!operation.runtime.updatePermissionProfile) return
-    try {
-      await operation.runtime.updatePermissionProfile(update)
-    } catch (error) {
-      if (this.isCurrent(operation)) this.publishError(error)
-      throw error
+    if (
+      this.appliedPermissionProfile?.mode === update.mode &&
+      this.appliedPermissionProfile.yoloEnabled === update.yoloEnabled
+    ) {
+      return
     }
+    const task = this.permissionUpdateTail
+      .catch(() => undefined)
+      .then(async () => {
+        if (
+          this.appliedPermissionProfile?.mode === update.mode &&
+          this.appliedPermissionProfile.yoloEnabled === update.yoloEnabled
+        ) {
+          return
+        }
+        await operation.runtime.updatePermissionProfile!(update)
+        this.appliedPermissionProfile = { ...update }
+      })
+      .catch((error) => {
+        if (this.isCurrent(operation)) this.publishError(error)
+        throw error
+      })
+    this.permissionUpdateTail = task.catch(() => undefined)
+    return task
   }
 
   stageConfiguration(

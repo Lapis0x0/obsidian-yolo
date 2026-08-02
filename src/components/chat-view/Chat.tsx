@@ -1019,6 +1019,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ? preferredCliRuntimeId
       : initialActiveRuntimeId,
   )
+  const initialCliModePreference = resolveCliModePreference(
+    settings,
+    initialActiveRuntimeId === 'yolo'
+      ? preferredCliRuntimeId
+      : initialActiveRuntimeId,
+    seededRuntimeSnapshot?.conversationOverrides ?? null,
+  )
+  const [cliChatMode, setCliChatMode] = useState<CliChatMode>(
+    () => initialCliModePreference.mode,
+  )
+  const [cliYoloEnabled, setCliYoloEnabled] = useState<boolean>(
+    () => initialCliModePreference.yoloEnabled,
+  )
+  const prePlanCliModeByConversationRef = useRef(
+    new Map<string, { mode: 'agent'; yoloEnabled: boolean }>(),
+  )
+  const cliModeRequestGenerationRef = useRef(0)
+  const cliPermissionProfileRef = useLatestRef({
+    mode: cliChatMode,
+    yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
+  })
   const chatMountedRef = useRef(true)
   const runtimeNavigationGenerationRef = useRef(0)
   useEffect(() => {
@@ -1134,6 +1155,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         scope: cliRuntimeScope,
         runtimeId: activeRuntimeId,
         settings: cliPreferenceSettingsRef.current,
+        permissionProfile: cliPermissionProfileRef.current,
       })
       const skills = await cliConversationController.listSkills()
       if (cancelled) return
@@ -1227,6 +1249,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           scope: cliRuntimeScope,
           runtimeId: seededRef.runtimeId,
           settings,
+          permissionProfile: cliPermissionProfileRef.current,
         })
         if (!isCurrentRestore()) return
         setCliConversationController(result.controller)
@@ -1692,23 +1715,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return settings.chatOptions.agentYoloEnabled ?? false
   })
-  const initialCliModePreference = resolveCliModePreference(
-    settings,
-    initialActiveRuntimeId === 'yolo'
-      ? preferredCliRuntimeId
-      : initialActiveRuntimeId,
-    seededRuntimeSnapshot?.conversationOverrides ?? null,
-  )
-  const [cliChatMode, setCliChatMode] = useState<CliChatMode>(
-    () => initialCliModePreference.mode,
-  )
-  const [cliYoloEnabled, setCliYoloEnabled] = useState<boolean>(
-    () => initialCliModePreference.yoloEnabled,
-  )
-  const prePlanCliModeByConversationRef = useRef(
-    new Map<string, { mode: 'agent'; yoloEnabled: boolean }>(),
-  )
-
   const selectedAssistant = useMemo(() => {
     return (
       settings.assistants.find(
@@ -1923,6 +1929,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const createFreshCliConversation = useCallback(
     (runtimeId: CliRuntimeId): CliConversationController | null => {
       if (!cliRuntimeScope) return null
+      conversationOverridesRef.current.set(
+        activeHistoryConversationId,
+        conversationOverrides,
+      )
       const previousConfiguration =
         cliConversationController?.getSnapshot().runtimeId === runtimeId
           ? cliConversationController.getSnapshot().configuration
@@ -1953,14 +1963,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ),
         )
       }
+      const nextCliConversationId = uuidv4()
       setCliConversationController(controller)
-      setCliConversationId(uuidv4())
+      setCliConversationId(nextCliConversationId)
+      setConversationOverrides(null)
+      conversationOverridesRef.current.set(nextCliConversationId, null)
       return controller
     },
     [
+      activeHistoryConversationId,
       cliConversationController,
       cliModelCatalog,
       cliRuntimeScope,
+      conversationOverrides,
       updateSettings,
     ],
   )
@@ -1996,6 +2011,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       if (runtimeId !== 'yolo' && (!cliRuntimeScope || !cliRuntimeAvailable)) {
         return
       }
+      cliModeRequestGenerationRef.current += 1
       const isLatestNavigation = beginChatRuntimeNavigation(
         runtimeNavigationGenerationRef,
         () => chatMountedRef.current,
@@ -2004,12 +2020,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const applyRuntimeChange = () => {
         if (!isLatestNavigation()) return
         if (runtimeId === 'yolo') {
+          setConversationOverrides(
+            conversationOverridesRef.current.get(currentConversationId) ?? null,
+          )
           activeRuntimeIdRef.current = 'yolo'
           setRequestedRuntimeId('yolo')
           persistChatRuntimePreference('yolo')
           return
         }
         if (!cliRuntimeScope) return
+        conversationOverridesRef.current.set(
+          activeHistoryConversationId,
+          conversationOverrides,
+        )
         const controller = cliRuntimeScope.selectConversationRuntime(runtimeId)
         if (!controller.getSnapshot().sessionRef) {
           controller.stageConfiguration(
@@ -2020,8 +2043,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             ),
           )
         }
+        const nextCliConversationId = uuidv4()
         setCliConversationController(controller)
-        setCliConversationId(uuidv4())
+        setCliConversationId(nextCliConversationId)
+        setConversationOverrides(null)
         lastCliRuntimeIdRef.current = runtimeId
         activeRuntimeIdRef.current = runtimeId
         setRequestedRuntimeId(runtimeId)
@@ -2029,8 +2054,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const modePreference = resolveCliModePreference(
           cliPreferenceSettingsRef.current,
           runtimeId,
-          conversationOverridesRef.current.get(currentConversationId) ??
-            conversationOverrides,
+          conversationOverridesRef.current.get(nextCliConversationId) ?? null,
         )
         setCliChatMode(modePreference.mode)
         setCliYoloEnabled(modePreference.yoloEnabled)
@@ -2061,6 +2085,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [
       activeRuntimeId,
       activeRuntimeIdRef,
+      activeHistoryConversationId,
       cliRuntimeAvailable,
       cliConversationController,
       cliModelCatalog,
@@ -3444,12 +3469,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             settings.chatOptions.agentYoloEnabled ?? false,
           ),
         )
-        if (conversation.overrides) {
-          conversationOverridesRef.current.set(
-            conversationId,
-            conversation.overrides,
-          )
-        }
+        conversationOverridesRef.current.set(
+          conversationId,
+          conversation.overrides ?? null,
+        )
         const cliRuntimeForPrefs: CliRuntimeId =
           activeRuntimeIdRef.current === 'yolo'
             ? lastCliRuntimeIdRef.current
@@ -3575,6 +3598,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     async (
       conversationId: string,
       ref: CliSessionRef,
+      overrides: ConversationOverrideSettings | null | undefined,
       isLatestNavigation: () => boolean,
     ) => {
       if (!cliRuntimeScope || !cliRuntimeAvailable) {
@@ -3595,11 +3619,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           isCurrent: isCurrentNavigation,
         })
         if (!result) return
+        const modePreference = resolveCliModePreference(
+          settings,
+          ref.runtimeId,
+          overrides,
+        )
         await prepareCliConversation({
           controller: result.controller,
           scope: cliRuntimeScope,
           runtimeId: ref.runtimeId,
           settings,
+          permissionProfile: modePreference,
         })
         if (!isCurrentNavigation()) return
         lastCliRuntimeIdRef.current = ref.runtimeId
@@ -3608,6 +3638,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         persistChatRuntimePreference(ref.runtimeId)
         setCliConversationController(result.controller)
         setCliConversationId(conversationId)
+        const restoredOverrides = overrides ?? null
+        setConversationOverrides(restoredOverrides)
+        conversationOverridesRef.current.set(conversationId, restoredOverrides)
+        setCliChatMode(modePreference.mode)
+        setCliYoloEnabled(modePreference.yoloEnabled)
+        if (ref.runtimeId === 'claude-code' && modePreference.mode !== 'plan') {
+          prePlanCliModeByConversationRef.current.delete(conversationId)
+        }
         if (result.overlayError) {
           console.warn('[YOLO] Failed to restore CLI conversation metadata', {
             conversationId,
@@ -3650,6 +3688,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleLoadConversation = useCallback(
     async (conversationId: string) => {
+      cliModeRequestGenerationRef.current += 1
       const isLatestNavigation = beginChatRuntimeNavigation(
         runtimeNavigationGenerationRef,
         () => chatMountedRef.current,
@@ -3664,6 +3703,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         await loadCliConversation(
           conversationId,
           conversation.cliSession,
+          conversation.overrides,
           isLatestNavigation,
         )
         return
@@ -3783,6 +3823,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
+    cliModeRequestGenerationRef.current += 1
     const isLatestNavigation = beginChatRuntimeNavigation(
       runtimeNavigationGenerationRef,
       () => chatMountedRef.current,
@@ -6208,36 +6249,70 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const applyCliModePreference = useCallback(
-    (
+    async (
       runtimeId: CliRuntimeId,
       preference: { mode: CliChatMode; yoloEnabled: boolean },
       options?: { rememberPrePlan?: boolean },
-    ) => {
+    ): Promise<void> => {
       const mode = normalizeCliModeForRuntime(runtimeId, preference.mode)
       const yoloEnabled = mode === 'plan' ? false : preference.yoloEnabled
+      const generation = ++cliModeRequestGenerationRef.current
+      const controller =
+        cliConversationController?.getSnapshot().runtimeId === runtimeId
+          ? cliConversationController
+          : null
+      try {
+        if (controller) {
+          await controller.updatePermissionProfile({
+            mode,
+            yoloEnabled,
+          })
+        }
+      } catch (error) {
+        if (generation !== cliModeRequestGenerationRef.current) return
+        new Notice(
+          t(
+            'chat.cliControls.updateError',
+            '无法更新 CLI 配置：{message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+        return
+      }
+      if (generation !== cliModeRequestGenerationRef.current) return
+
+      const preferenceConversationId =
+        activeRuntimeId === 'yolo'
+          ? currentConversationId
+          : (cliConversationId ?? activeHistoryConversationId)
       if (
         options?.rememberPrePlan &&
         mode === 'plan' &&
         cliChatMode !== 'plan'
       ) {
-        prePlanCliModeByConversationRef.current.set(currentConversationId, {
+        prePlanCliModeByConversationRef.current.set(preferenceConversationId, {
           mode: 'agent',
           yoloEnabled: cliYoloEnabled,
         })
       }
       if (runtimeId === 'claude-code' && mode !== 'plan') {
-        prePlanCliModeByConversationRef.current.delete(currentConversationId)
+        prePlanCliModeByConversationRef.current.delete(preferenceConversationId)
       }
       setCliChatMode(mode)
       setCliYoloEnabled(yoloEnabled)
       const nextOverrides = patchConversationCliModeOverrides(
-        conversationOverridesRef.current.get(currentConversationId) ??
+        conversationOverridesRef.current.get(preferenceConversationId) ??
           conversationOverrides,
         runtimeId,
         { mode, yoloEnabled },
       )
       setConversationOverrides(nextOverrides)
-      conversationOverridesRef.current.set(currentConversationId, nextOverrides)
+      conversationOverridesRef.current.set(
+        preferenceConversationId,
+        nextOverrides,
+      )
       void updateSettings((current) =>
         rememberCliModePreference(current, runtimeId, {
           mode,
@@ -6246,31 +6321,43 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       ).catch((error: unknown) => {
         console.error('Failed to persist CLI mode preference', error)
       })
-      void cliConversationController
-        ?.updatePermissionProfile({ mode, yoloEnabled })
-        .catch((error: unknown) => {
-          console.error('Failed to update CLI permission profile', error)
+      const sessionRef = controller?.getSnapshot().sessionRef
+      if (sessionRef && activeRuntimeId !== 'yolo') {
+        void createOrTouchCliConversation(
+          preferenceConversationId,
+          sessionRef,
+          nextOverrides,
+        ).catch((error: unknown) => {
+          console.error('Failed to persist CLI conversation preference', error)
         })
+      }
     },
     [
+      activeHistoryConversationId,
+      activeRuntimeId,
       cliChatMode,
       cliConversationController,
+      cliConversationId,
       cliYoloEnabled,
       conversationOverrides,
+      createOrTouchCliConversation,
       currentConversationId,
+      t,
       updateSettings,
     ],
   )
 
   const restoreClaudeAgentMode = useCallback(() => {
-    applyCliModePreference(
+    void applyCliModePreference(
       'claude-code',
-      prePlanCliModeByConversationRef.current.get(currentConversationId) ?? {
+      prePlanCliModeByConversationRef.current.get(
+        activeHistoryConversationId,
+      ) ?? {
         mode: 'agent',
         yoloEnabled: false,
       },
     )
-  }, [applyCliModePreference, currentConversationId])
+  }, [activeHistoryConversationId, applyCliModePreference])
 
   const handleCliModeSelectChange = useCallback(
     (nextMode: ChatModeSelectValue) => {
@@ -6284,7 +6371,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         restoreClaudeAgentMode()
         return
       }
-      applyCliModePreference(
+      void applyCliModePreference(
         activeRuntimeId,
         {
           mode: nextMode,
@@ -6342,7 +6429,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           ),
           confirmTone: 'warning',
           onConfirm: () => {
-            applyCliModePreference(activeRuntimeId, {
+            void applyCliModePreference(activeRuntimeId, {
               mode: 'agent',
               yoloEnabled: true,
             })
@@ -6362,7 +6449,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         }).open()
         return
       }
-      applyCliModePreference(activeRuntimeId, {
+      void applyCliModePreference(activeRuntimeId, {
         mode: cliChatMode,
         yoloEnabled: enabled,
       })
@@ -6393,7 +6480,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         restoreClaudeAgentMode()
         return
       }
-      applyCliModePreference(
+      void applyCliModePreference(
         'claude-code',
         { mode: 'plan', yoloEnabled: false },
         { rememberPrePlan: true },
@@ -6414,8 +6501,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         mode: cliChatMode,
         yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
       })
-      .catch(() => undefined)
-  }, [activeRuntimeId, cliChatMode, cliConversationController, cliYoloEnabled])
+      .catch((error) => {
+        new Notice(
+          t(
+            'chat.cliControls.updateError',
+            '无法更新 CLI 配置：{message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      })
+  }, [
+    activeRuntimeId,
+    cliChatMode,
+    cliConversationController,
+    cliYoloEnabled,
+    t,
+  ])
 
   const cliChatRuntimeActions = useMemo((): ChatRuntimeActions | null => {
     if (!cliRuntimeScope) return null
@@ -6621,9 +6724,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     app,
     buildInputMessageForSubmit,
     chatMessages,
+    cliChatMode,
     cliConversationId,
     commitSentSelectionHighlights,
     conversationModelId,
+    conversationOverrides,
     cliConversationController,
     cliOperationCoordinator,
     cliRuntimeScope,
@@ -6640,6 +6745,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     selectedAssistant,
     settings,
     t,
+    cliYoloEnabled,
   })
 
   const handleMainInputRef = useCallback(
@@ -6697,6 +6803,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               runtimeId,
               userMessage: messageForSubmit,
               timeContextEnabled: false,
+              permissionProfile: {
+                mode: state.cliChatMode,
+                yoloEnabled:
+                  state.cliChatMode === 'plan' ? false : state.cliYoloEnabled,
+              },
               signal: submission.signal,
               onSendStarted: () => coordinator.markSending(submission.token),
               onPresented: (presentedMessage) => {
@@ -6723,13 +6834,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               },
             })
             const historyConversationId = state.cliConversationId ?? uuidv4()
-            await state.createOrTouchCliConversation(historyConversationId, {
-              runtimeId: result.sessionRef.runtimeId,
-              nativeSessionId: result.sessionRef.nativeSessionId,
-              ...(result.sessionRef.sessionPathHint
-                ? { sessionPathHint: result.sessionRef.sessionPathHint }
-                : {}),
-            })
+            await state.createOrTouchCliConversation(
+              historyConversationId,
+              {
+                runtimeId: result.sessionRef.runtimeId,
+                nativeSessionId: result.sessionRef.nativeSessionId,
+                ...(result.sessionRef.sessionPathHint
+                  ? { sessionPathHint: result.sessionRef.sessionPathHint }
+                  : {}),
+              },
+              state.conversationOverrides,
+            )
             if (state.cliConversationId === null && chatMountedRef.current) {
               setCliConversationId(historyConversationId)
             }
@@ -7111,6 +7226,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               controller: cliConversationController,
               runtimeId: activeRuntimeId,
               sourceUserMessageId: sourceMessage.id,
+              permissionProfile: cliPermissionProfileRef.current,
               configuration: turnConfiguration,
               userMessage: {
                 ...editedMessage,
@@ -7125,15 +7241,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 persistCliConfiguration(appliedConfiguration)
               }
             }
-            await createOrTouchCliConversation(cliConversationId, {
-              runtimeId: rewriteResult.sessionRef.runtimeId,
-              nativeSessionId: rewriteResult.sessionRef.nativeSessionId,
-              ...(rewriteResult.sessionRef.sessionPathHint
-                ? {
-                    sessionPathHint: rewriteResult.sessionRef.sessionPathHint,
-                  }
-                : {}),
-            })
+            await createOrTouchCliConversation(
+              cliConversationId,
+              {
+                runtimeId: rewriteResult.sessionRef.runtimeId,
+                nativeSessionId: rewriteResult.sessionRef.nativeSessionId,
+                ...(rewriteResult.sessionRef.sessionPathHint
+                  ? {
+                      sessionPathHint: rewriteResult.sessionRef.sessionPathHint,
+                    }
+                  : {}),
+              },
+              conversationOverridesRef.current.get(cliConversationId) ??
+                conversationOverrides,
+            )
             if (rewriteResult.overlayError) {
               console.warn('[YOLO] Failed to save rewritten CLI metadata', {
                 conversationId: cliConversationId,
@@ -7163,6 +7284,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliOperationCoordinator,
       cliRuntimeScope,
       createOrTouchCliConversation,
+      conversationOverrides,
       persistCliConfiguration,
       settings,
       t,
@@ -7203,6 +7325,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               scope: cliRuntimeScope,
               runtimeId: activeRuntimeId,
               settings: cliPreferenceSettingsRef.current,
+              permissionProfile: {
+                mode: cliChatMode,
+                yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
+              },
             })
             if (!isCurrent()) return
             await cliConversationController.compact()
@@ -7217,9 +7343,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       activeRuntimeId,
+      cliChatMode,
       cliConversationController,
       cliOperationCoordinator,
       cliRuntimeScope,
+      cliYoloEnabled,
       handleManualContextCompactionRef,
       t,
     ],

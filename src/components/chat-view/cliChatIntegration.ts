@@ -2,6 +2,7 @@ import type {
   ChatRuntimeId,
   CliConversationController,
   CliConversationSnapshot,
+  CliPermissionProfileUpdate,
   CliRuntimeConfigurationUpdate,
   CliRuntimeId,
   CliRuntimeScope,
@@ -35,17 +36,33 @@ const getTurnConfiguration = (
       }
     : undefined
 
+const getLatestUserMessage = (
+  snapshot: CliConversationSnapshot,
+  fallback: ChatUserMessage,
+): ChatUserMessage => {
+  for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
+    const message = snapshot.messages[index]
+    if (message?.role === 'user') return message
+  }
+  return fallback
+}
+
 export const prepareCliConversation = async ({
   controller,
   scope,
   runtimeId,
   settings,
+  permissionProfile,
 }: {
   controller: CliConversationController
   scope: CliRuntimeScope
   runtimeId: CliRuntimeId
   settings: YoloSettings
+  permissionProfile?: CliPermissionProfileUpdate
 }): Promise<void> => {
+  if (permissionProfile) {
+    await controller.updatePermissionProfile(permissionProfile)
+  }
   const existingSessionRef = controller.getSnapshot().sessionRef
   let initialConfiguration: CliRuntimeConfigurationUpdate = {}
   if (existingSessionRef && runtimeId === 'claude-code') {
@@ -473,6 +490,7 @@ export type SubmitCliComposerTurnInput = {
   runtimeId: CliRuntimeId
   userMessage: ChatUserMessage
   timeContextEnabled: boolean
+  permissionProfile?: CliPermissionProfileUpdate
   signal?: AbortSignal
   onSendStarted?: () => boolean | undefined
   onPresented?: (userMessage: ChatUserMessage) => void
@@ -487,6 +505,7 @@ export const submitCliComposerTurn = async ({
   runtimeId,
   userMessage,
   timeContextEnabled,
+  permissionProfile,
   signal,
   onSendStarted,
   onPresented,
@@ -525,6 +544,7 @@ export const submitCliComposerTurn = async ({
       scope,
       runtimeId,
       settings,
+      permissionProfile,
     })
     throwIfAborted()
     if (onSendStarted?.() === false) {
@@ -552,7 +572,7 @@ export const submitCliComposerTurn = async ({
     await scope.sessionService.recordUserDisplay(
       snapshot.sessionRef,
       content,
-      stampedUserMessage,
+      getLatestUserMessage(snapshot, stampedUserMessage),
       getTurnConfiguration(snapshot),
     )
     await scope.sessionService.recordOpenedSession({
@@ -578,6 +598,7 @@ export type RewriteCliConversationTurnInput = {
   sourceUserMessageId: string
   userMessage: ChatUserMessage
   configuration?: CliTurnConfiguration
+  permissionProfile?: CliPermissionProfileUpdate
   encodeTurnContent?: typeof buildCliTurnContent
 }
 
@@ -589,6 +610,7 @@ export const rewriteCliConversationTurn = async ({
   sourceUserMessageId,
   userMessage,
   configuration,
+  permissionProfile,
   encodeTurnContent = buildCliTurnContent,
 }: RewriteCliConversationTurnInput): Promise<{
   sessionRef: CliSessionRef
@@ -611,6 +633,7 @@ export const rewriteCliConversationTurn = async ({
     scope,
     runtimeId,
     settings,
+    permissionProfile,
   })
   if (configuration) {
     const appliedConfiguration =
@@ -648,11 +671,12 @@ export const rewriteCliConversationTurn = async ({
       sessionRef,
       discardedUserMessageIds,
     )
+    const rewriteSnapshot = controller.getSnapshot()
     await scope.sessionService.recordUserDisplay(
       sessionRef,
       content,
-      userMessage,
-      getTurnConfiguration(controller.getSnapshot()),
+      getLatestUserMessage(rewriteSnapshot, userMessage),
+      getTurnConfiguration(rewriteSnapshot),
     )
     await scope.sessionService.recordOpenedSession({
       ref: sessionRef,

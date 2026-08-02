@@ -823,7 +823,7 @@ describe('CliConversationController', () => {
     })
   })
 
-  it('forwards permission profile updates to the runtime', async () => {
+  it('serializes permission profile updates and skips an already applied profile', async () => {
     const runtime = new FakeCliRuntime('codex')
     const controller = new CliConversationController(runtime)
 
@@ -831,9 +831,18 @@ describe('CliConversationController', () => {
       mode: 'agent',
       yoloEnabled: true,
     })
+    await controller.updatePermissionProfile({
+      mode: 'agent',
+      yoloEnabled: true,
+    })
+    await controller.updatePermissionProfile({
+      mode: 'plan',
+      yoloEnabled: false,
+    })
 
     expect(runtime.permissionProfileUpdates).toEqual([
       { mode: 'agent', yoloEnabled: true },
+      { mode: 'plan', yoloEnabled: false },
     ])
   })
 })

@@ -170,6 +170,7 @@ jest.mock('./useAutoScroll', () => ({
 
 import {
   CliChatSurface,
+  getActiveStreamingMessageId,
   getCliTimelineRenderVersion,
   getCliUserMessageDisplay,
   getPendingResponseUserMessageId,
@@ -514,6 +515,25 @@ describe('CliChatSurface', () => {
     expect(renderSurface(pending)).toContain('Requesting')
     expect(renderSurface(pending)).toContain('data-stage="requesting"')
     expect(renderSurface(answered)).not.toContain('data-stage="requesting"')
+  })
+
+  it('does not mark the previous turn as streaming before the new response starts', () => {
+    expect(
+      getActiveStreamingMessageId(
+        [assistant, makeUser('user-pending', 'Run the tests')],
+        'running',
+      ),
+    ).toBeNull()
+    expect(
+      getActiveStreamingMessageId(
+        [
+          assistant,
+          makeUser('user-pending', 'Run the tests'),
+          { ...assistant, id: 'assistant-current' },
+        ],
+        'running',
+      ),
+    ).toBe('assistant-current')
   })
 
   it('keeps Requesting while only an empty completed assistant shell exists', () => {

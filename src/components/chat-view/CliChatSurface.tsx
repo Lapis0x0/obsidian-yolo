@@ -294,14 +294,16 @@ const getSourceUserMessageForGroup = (
   return null
 }
 
-const getActiveStreamingMessageId = (
+export const getActiveStreamingMessageId = (
   messages: readonly ChatMessage[],
   runState: CliRuntimeRunState,
 ): string | null => {
   if (!ACTIVE_RUN_STATES.has(runState)) return null
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
-    if (message?.role !== 'user') return message.id
+    if (!message) continue
+    if (message.role === 'user') return null
+    return message.id
   }
   return null
 }

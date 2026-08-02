@@ -37,16 +37,17 @@ const cliTurnConfigurationSchema = z.object({
   reasoningEffort: z.string().nullable(),
 })
 
+const cliTurnOverlaySchema = z.object({
+  transportHash: z.string(),
+  userMessage: serializedUserMessageSchema,
+  configuration: cliTurnConfigurationSchema.optional(),
+})
+
 export const cliSessionIndexEntrySchema = z.object({
   runtimeId: cliRuntimeIdSchema,
   nativeSessionId: z.string().min(1),
   sessionPathHint: z.string().min(1).optional(),
-  userDisplayByTransportHash: z
-    .record(z.string(), serializedUserMessageSchema)
-    .optional(),
-  turnConfigurationByTransportHash: z
-    .record(z.string(), cliTurnConfigurationSchema)
-    .optional(),
+  turnOverlays: z.array(cliTurnOverlaySchema).optional(),
   turnEditSummaryByUserMessageId: z
     .record(z.string(), toolEditSummarySchema)
     .optional(),

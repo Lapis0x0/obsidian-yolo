@@ -142,6 +142,76 @@ describe('CliSessionService', () => {
     })
   })
 
+  it('keeps repeated identical prompts bound to their own turn configuration', async () => {
+    const index = new MemoryIndex()
+    const service = new CliSessionService({ app, indexStore: index })
+    const ref = { runtimeId: 'codex' as const, nativeSessionId: 'thread-1' }
+    const transport = '继续'
+    const firstContent = {
+      root: { children: [], type: 'root', version: 1 },
+    } as never
+    const secondContent = {
+      root: { children: [], direction: 'ltr', type: 'root', version: 1 },
+    } as never
+
+    await service.recordUserDisplay(
+      ref,
+      transport,
+      {
+        role: 'user',
+        id: 'local-first',
+        content: firstContent,
+        promptContent: null,
+        mentionables: [],
+      },
+      { modelId: 'gpt-5.6', reasoningEffort: 'high' },
+    )
+    await service.recordUserDisplay(
+      ref,
+      transport,
+      {
+        role: 'user',
+        id: 'local-second',
+        content: secondContent,
+        promptContent: null,
+        mentionables: [],
+      },
+      { modelId: 'gpt-5.6-mini', reasoningEffort: 'low' },
+    )
+
+    const restored = await service.restoreSessionOverlay(ref, [
+      {
+        role: 'user',
+        id: 'native-first',
+        content: null,
+        promptContent: transport,
+        mentionables: [],
+      },
+      {
+        role: 'user',
+        id: 'native-second',
+        content: null,
+        promptContent: transport,
+        mentionables: [],
+      },
+    ])
+
+    expect(restored.messages).toEqual([
+      expect.objectContaining({ id: 'native-first', content: firstContent }),
+      expect.objectContaining({ id: 'native-second', content: secondContent }),
+    ])
+    expect(restored.turnConfigurationByUserMessageId).toEqual({
+      'native-first': { modelId: 'gpt-5.6', reasoningEffort: 'high' },
+      'native-second': { modelId: 'gpt-5.6-mini', reasoningEffort: 'low' },
+    })
+    await expect(index.get(ref)).resolves.toMatchObject({
+      turnOverlays: [
+        { userMessage: { id: 'native-first' } },
+        { userMessage: { id: 'native-second' } },
+      ],
+    })
+  })
+
   it('removes only YOLO metadata for a deleted history record', async () => {
     const index = new MemoryIndex()
     const service = new CliSessionService({ app, indexStore: index })
@@ -236,14 +306,30 @@ describe('CliSessionService', () => {
       modelId: 'sonnet',
       reasoningEffort: 'high',
     })
+    await service.recordUserDisplay(previousRef, 'keep', {
+      role: 'user',
+      id: 'user-keep',
+      content: null,
+      promptContent: 'keep',
+      mentionables: [],
+    })
+    await service.recordUserDisplay(previousRef, 'discard', {
+      role: 'user',
+      id: 'user-discard',
+      content: null,
+      promptContent: 'discard',
+      mentionables: [],
+    })
 
-    await service.rebindOverlay(previousRef, nextRef)
+    await service.rebindOverlay(previousRef, nextRef, ['user-discard'])
+    await service.rebindOverlay(previousRef, nextRef, ['user-discard'])
 
     await expect(index.get(nextRef)).resolves.toMatchObject({
       runtimeId: 'claude-code',
       nativeSessionId: 'session-new',
       modelId: 'sonnet',
       reasoningEffort: 'high',
+      turnOverlays: [{ userMessage: { id: 'user-keep' } }],
     })
   })
 })

@@ -117,6 +117,7 @@ describe('CLI chat integration', () => {
 
   it('prepares a fresh runtime with its remembered model and effort', async () => {
     const ensureReady = jest.fn(async () => undefined)
+    const updatePermissionProfile = jest.fn(async () => undefined)
     const controller = {
       stageTurn: jest.fn((message: ChatUserMessage) => ({
         surfaceId: 'cli:codex:test',
@@ -125,6 +126,7 @@ describe('CLI chat integration', () => {
       })),
       rejectStagedTurn: jest.fn(),
       ensureReady,
+      updatePermissionProfile,
       getSnapshot: () => cliSnapshot(),
     } as unknown as CliConversationController
     const scope = {
@@ -158,8 +160,16 @@ describe('CLI chat integration', () => {
       scope,
       runtimeId: 'codex',
       settings,
+      permissionProfile: { mode: 'agent', yoloEnabled: true },
     })
 
+    expect(updatePermissionProfile).toHaveBeenCalledWith({
+      mode: 'agent',
+      yoloEnabled: true,
+    })
+    expect(updatePermissionProfile.mock.invocationCallOrder[0]).toBeLessThan(
+      ensureReady.mock.invocationCallOrder[0],
+    )
     expect(ensureReady).toHaveBeenCalledWith({
       modelId: 'gpt-5.6-luna',
       reasoningEffort: 'medium',

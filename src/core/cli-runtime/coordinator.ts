@@ -17,7 +17,12 @@ import type {
   CliSessionIndexStore,
 } from './session-index'
 import { CliSessionService } from './session-service'
-import type { CliRuntime, CliRuntimeId, CliSessionRef } from './types'
+import type {
+  CliRuntime,
+  CliRuntimeId,
+  CliRuntimeRunState,
+  CliSessionRef,
+} from './types'
 import { VaultCliSessionIndexStore } from './vault-session-index-store'
 
 type ClaudeRuntimeOptions = Omit<ClaudeCliRuntimeOptions, 'vaultPath'>
@@ -127,10 +132,19 @@ class SettingsAwareSessionIndexStore implements CliSessionIndexStore {
   }
 }
 
-type ConversationRuntimeRecord = Readonly<{
+type ConversationRuntimeRecord = {
   runtime: CliRuntime
   controller: CliConversationController
-}>
+  scopeReferences: number
+  unsubscribe: () => void
+  disposePromise: Promise<void> | null
+}
+
+const ACTIVE_CONVERSATION_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
+  'running',
+  'waiting_for_approval',
+  'waiting_for_user',
+])
 
 const isSameSession = (left: CliSessionRef, right: CliSessionRef): boolean =>
   left.runtimeId === right.runtimeId &&
@@ -140,6 +154,11 @@ class DesktopCliRuntimeWorkspace {
   private readonly runtimes = new Map<CliRuntimeId, CliRuntime>()
   private readonly ownedRuntimes = new Set<CliRuntime>()
   private readonly conversations = new Set<ConversationRuntimeRecord>()
+  private readonly conversationByController = new Map<
+    CliConversationController,
+    ConversationRuntimeRecord
+  >()
+  private readonly conversationDisposals = new Set<Promise<void>>()
   private readonly modelCatalog: CliModelCatalogService
   private readonly codexHostPool: CodexAppServerHostPool
   private readonly codexRuntimeOptions: CodexRuntimeOptions
@@ -220,14 +239,46 @@ class DesktopCliRuntimeWorkspace {
         ),
       (ref, usage) => this.sessionService.rememberContextUsage(ref, usage),
     )
-    this.conversations.add({ runtime, controller })
-    controller.subscribe(() => {
+    const record: ConversationRuntimeRecord = {
+      runtime,
+      controller,
+      scopeReferences: 0,
+      unsubscribe: () => undefined,
+      disposePromise: null,
+    }
+    this.conversations.add(record)
+    this.conversationByController.set(controller, record)
+    record.unsubscribe = controller.subscribe(() => {
       const models = controller.getSnapshot().configuration?.models
       if (models && models.length > 0) {
         void this.modelCatalog.record(runtimeId, models)
       }
+      if (record.scopeReferences === 0) {
+        void this.disposeConversationIfInactive(record).catch((error) => {
+          console.error('[YOLO] Failed to release inactive CLI runtime', error)
+        })
+      }
     })
     return controller
+  }
+
+  retainConversation(controller: CliConversationController): void {
+    this.assertActive()
+    const record = this.conversationByController.get(controller)
+    if (!record || record.disposePromise) {
+      throw new Error('CLI conversation controller is no longer available.')
+    }
+    record.scopeReferences += 1
+  }
+
+  releaseConversation(controller: CliConversationController): Promise<void> {
+    const record = this.conversationByController.get(controller)
+    if (!record) return Promise.resolve()
+    if (record.scopeReferences === 0) {
+      throw new Error('CLI conversation controller was released twice.')
+    }
+    record.scopeReferences -= 1
+    return this.disposeConversationIfInactive(record)
   }
 
   getModelCatalogSnapshot(): CliModelCatalogSnapshot {
@@ -279,11 +330,12 @@ class DesktopCliRuntimeWorkspace {
   private async disposeOwnedResources(): Promise<void> {
     try {
       for (const record of this.conversations) {
-        record.controller.dispose()
+        void this.disposeConversationRecord(record)
       }
-      const results = await Promise.allSettled(
-        [...this.ownedRuntimes].map((runtime) => runtime.dispose()),
-      )
+      const results = await Promise.allSettled([
+        ...this.conversationDisposals,
+        ...[...this.ownedRuntimes].map((runtime) => runtime.dispose()),
+      ])
       const [hostResult] = await Promise.allSettled([
         this.codexHostPool.dispose(),
       ])
@@ -294,7 +346,41 @@ class DesktopCliRuntimeWorkspace {
       if (failure) throw failure.reason
     } finally {
       this.conversations.clear()
+      this.conversationByController.clear()
     }
+  }
+
+  private disposeConversationIfInactive(
+    record: ConversationRuntimeRecord,
+  ): Promise<void> {
+    const snapshot = record.controller.getSnapshot()
+    if (
+      record.scopeReferences > 0 ||
+      snapshot.isCompacting === true ||
+      ACTIVE_CONVERSATION_STATES.has(snapshot.runState)
+    ) {
+      return Promise.resolve()
+    }
+    return this.disposeConversationRecord(record)
+  }
+
+  private disposeConversationRecord(
+    record: ConversationRuntimeRecord,
+  ): Promise<void> {
+    if (record.disposePromise) return record.disposePromise
+    this.conversations.delete(record)
+    this.conversationByController.delete(record.controller)
+    this.ownedRuntimes.delete(record.runtime)
+    record.unsubscribe()
+    record.controller.dispose()
+    const disposePromise = record.runtime.dispose()
+    record.disposePromise = disposePromise
+    this.conversationDisposals.add(disposePromise)
+    void disposePromise.then(
+      () => this.conversationDisposals.delete(disposePromise),
+      () => this.conversationDisposals.delete(disposePromise),
+    )
+    return disposePromise
   }
 
   private getVaultPath(): string {
@@ -375,14 +461,14 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
   ): CliConversationController {
     this.assertActive()
     const controller = this.workspace.selectConversationRuntime(runtimeId)
-    this.selectedControllers.set(runtimeId, controller)
+    this.selectController(runtimeId, controller)
     return controller
   }
 
   selectConversationSession(ref: CliSessionRef): CliConversationController {
     this.assertActive()
     const controller = this.workspace.selectConversationSession(ref)
-    this.selectedControllers.set(ref.runtimeId, controller)
+    this.selectController(ref.runtimeId, controller)
     return controller
   }
 
@@ -407,12 +493,38 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
   }
 
   dispose(): Promise<void> {
-    this.disposePromise ??= Promise.resolve().then(() => {
+    this.disposePromise ??= Promise.resolve().then(async () => {
       this.disposed = true
+      const controllers = [...this.selectedControllers.values()]
       this.selectedControllers.clear()
       this.onDisposed(this)
+      const results = await Promise.allSettled(
+        controllers.map((controller) =>
+          this.workspace.releaseConversation(controller),
+        ),
+      )
+      const failure = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      )
+      if (failure) throw failure.reason
     })
     return this.disposePromise
+  }
+
+  private selectController(
+    runtimeId: CliRuntimeId,
+    controller: CliConversationController,
+  ): void {
+    const previous = this.selectedControllers.get(runtimeId)
+    if (previous === controller) return
+    this.workspace.retainConversation(controller)
+    this.selectedControllers.set(runtimeId, controller)
+    if (previous) {
+      void this.workspace.releaseConversation(previous).catch((error) => {
+        console.error('[YOLO] Failed to release replaced CLI runtime', error)
+      })
+    }
   }
 
   private assertActive(): void {
