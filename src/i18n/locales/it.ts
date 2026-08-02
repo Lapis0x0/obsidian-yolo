@@ -2067,12 +2067,15 @@ export const it: DeepPartial<TranslationKeys> = {
       truncated: 'Output troncato.',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: 'Visualizza dettagli subagent',
+      loadingActivity: 'Caricamento attività…',
       planningNextMoves: 'Pianificazione prossimi passi',
       noActivity: 'Nessuna attività.',
       statusCompleted: 'Completato',
       statusAborted: 'Interrotto',
       statusFailed: 'Fallito',
+      statusDispatched: 'Inviato',
       toolUseCount: '{count} strumenti',
       tokenCount: '{count} token',
       approval: {

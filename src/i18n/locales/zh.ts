@@ -2069,12 +2069,15 @@ export const zh: TranslationKeys = {
       truncated: '输出已截断。',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: '查看 Subagent 详情',
+      loadingActivity: '正在加载活动…',
       planningNextMoves: '正在规划下一步',
       noActivity: '暂无活动。',
       statusCompleted: '已完成',
       statusAborted: '已中止',
       statusFailed: '失败',
+      statusDispatched: '已派遣',
       toolUseCount: '{count} 个工具',
       tokenCount: '{count} tokens',
       approval: {

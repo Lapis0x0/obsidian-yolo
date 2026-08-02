@@ -1,3 +1,4 @@
+import type { ChatMessage } from '../../../types/chat'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type { CliRuntimeEvent } from '../types'
 
@@ -220,6 +221,76 @@ describe('CodexCliRuntime', () => {
     expect(hydration.messages).toMatchObject([
       { role: 'assistant', content: 'high-level history' },
     ])
+    await runtime.dispose()
+  })
+
+  it('loads and follows a watched subagent thread without leaking it into the parent', async () => {
+    const process = new RpcFakeProcess()
+    process.threadTurns = [
+      {
+        id: 'child-turn',
+        status: 'inProgress',
+        error: null,
+        items: [
+          {
+            type: 'agentMessage',
+            id: 'child-message',
+            text: 'Initial child output',
+          },
+        ],
+      },
+    ]
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const parentMessages: ChatMessage[] = []
+    runtime.subscribe((event) => {
+      if (event.type === 'message_upsert') parentMessages.push(event.message)
+    })
+    await runtime.ensureReady({})
+
+    const snapshots: Array<readonly ChatMessage[]> = []
+    const stop = await runtime.watchSubagent(
+      {
+        parentSessionRef: {
+          runtimeId: 'codex',
+          nativeSessionId: 'thread-1',
+        },
+        toolCallId: 'spawn-1',
+        subagentId: 'child-thread',
+      },
+      (messages) => snapshots.push(messages),
+    )
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'child-thread',
+        itemId: 'live-child-message',
+        delta: 'Live child output',
+      },
+    })
+
+    expect(snapshots.at(0)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'Initial child output',
+        }),
+      ]),
+    )
+    expect(snapshots.at(-1)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'codex-assistant-live-child-message',
+          content: 'Live child output',
+        }),
+      ]),
+    )
+    expect(parentMessages).toEqual([])
+
+    stop()
     await runtime.dispose()
   })
 

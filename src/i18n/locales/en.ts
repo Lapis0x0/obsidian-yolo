@@ -2202,12 +2202,15 @@ export const en: TranslationKeys = {
       truncated: 'Output truncated.',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: 'View subagent details',
+      loadingActivity: 'Loading activity…',
       planningNextMoves: 'Planning next moves',
       noActivity: 'No activity yet.',
       statusCompleted: 'Completed',
       statusAborted: 'Aborted',
       statusFailed: 'Failed',
+      statusDispatched: 'Dispatched',
       toolUseCount: '{count} tools',
       tokenCount: '{count} tokens',
       approval: {

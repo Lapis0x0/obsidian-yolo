@@ -1877,12 +1877,15 @@ export type TranslationKeys = {
       truncated?: string
     }
     subagent?: {
+      defaultTitle?: string
       openDetails?: string
+      loadingActivity?: string
       planningNextMoves?: string
       noActivity?: string
       statusCompleted?: string
       statusAborted?: string
       statusFailed?: string
+      statusDispatched?: string
       toolUseCount?: string
       tokenCount?: string
       approval?: {

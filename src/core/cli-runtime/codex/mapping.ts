@@ -405,9 +405,22 @@ export const mapCodexItem = (
         name: item.tool,
       },
     })
+    const response = toResponse(item, stringify(item.agentsStates))
     return toolPair({
       request,
-      response: toResponse(item, stringify(item.agentsStates)),
+      response:
+        response.status === ToolCallResponseStatus.Success
+          ? {
+              ...response,
+              data: {
+                ...response.data,
+                metadata: {
+                  ...response.data.metadata,
+                  cliToolResult: { agentsStates: item.agentsStates },
+                },
+              },
+            }
+          : response,
     })
   }
   if (item.type === 'webSearch') {

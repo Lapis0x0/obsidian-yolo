@@ -179,6 +179,8 @@ export type ToolCallResponse =
         metadata?: {
           editSummary?: ToolEditSummary
           fsReadOperation?: ToolFsReadOperationSummary
+          /** Provider-native structured output used by CLI presentation adapters. */
+          cliToolResult?: unknown
           appliedAt?: number
           truncated?: { totalBytes: number; omittedBytes: number }
         }

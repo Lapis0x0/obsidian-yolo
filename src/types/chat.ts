@@ -113,6 +113,8 @@ export type ChatAssistantMessage = {
     branchRunStatus?: 'idle' | 'running' | 'completed' | 'aborted' | 'error'
     branchWaitingApproval?: boolean
     sources?: CitationSource[]
+    /** CLI child activity owner; omitted for foreground assistant messages. */
+    cliSubagentParentCallId?: string
   }
 }
 export type ChatToolMessage = {

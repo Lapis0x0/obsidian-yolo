@@ -24,6 +24,8 @@ import type {
   CliRuntimeReadyInput,
   CliSessionHydration,
   CliSessionRef,
+  CliSubagentRef,
+  CliSubagentTranscriptListener,
   CliTurnInput,
 } from '../types'
 
@@ -62,6 +64,23 @@ type PendingServerRequest = {
   request: CodexServerRequest
   toolCallId: string
   kind: 'approval' | 'question'
+}
+
+type CodexSubagentWatch = {
+  messages: ChatMessage[]
+  listeners: Set<CliSubagentTranscriptListener>
+  assistantText: Map<string, string>
+  reasoningSummaryParts: Map<string, string[]>
+  reasoningContentParts: Map<string, string[]>
+}
+
+const upsertProjectedMessage = (
+  messages: ChatMessage[],
+  message: ChatMessage,
+): void => {
+  const index = messages.findIndex((candidate) => candidate.id === message.id)
+  if (index < 0) messages.push(message)
+  else messages[index] = message
 }
 
 export type CodexCliRuntimeOptions = CodexProcessOptions & {
@@ -177,6 +196,7 @@ export class CodexCliRuntime implements CliRuntime {
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private readonly pendingRequests = new Map<string, PendingServerRequest>()
   private readonly rawCustomToolRequests = new Map<string, ToolCallRequest[]>()
+  private readonly subagentWatches = new Map<string, CodexSubagentWatch>()
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
   private needsSessionRebind = false
@@ -231,6 +251,45 @@ export class CodexCliRuntime implements CliRuntime {
       messages:
         transcriptMessages ??
         mapCodexTurns(response.thread.turns, response.thread.cwd),
+    }
+  }
+
+  async readSubagent(ref: CliSubagentRef): Promise<readonly ChatMessage[]> {
+    if (ref.parentSessionRef.runtimeId !== 'codex') {
+      throw new Error('Cannot read a non-Codex subagent.')
+    }
+    const host = await this.getHost()
+    const response = await host.request<ThreadReadResponse>('thread/read', {
+      threadId: ref.subagentId,
+      includeTurns: true,
+    })
+    return mapCodexTurns(response.thread.turns, response.thread.cwd)
+  }
+
+  async watchSubagent(
+    ref: CliSubagentRef,
+    listener: CliSubagentTranscriptListener,
+  ): Promise<() => void> {
+    let watch = this.subagentWatches.get(ref.subagentId)
+    if (!watch) {
+      watch = {
+        messages: [...(await this.readSubagent(ref))],
+        listeners: new Set(),
+        assistantText: new Map(),
+        reasoningSummaryParts: new Map(),
+        reasoningContentParts: new Map(),
+      }
+      this.subagentWatches.set(ref.subagentId, watch)
+    }
+    watch.listeners.add(listener)
+    listener(watch.messages)
+    return () => {
+      const current = this.subagentWatches.get(ref.subagentId)
+      if (!current) return
+      current.listeners.delete(listener)
+      if (current.listeners.size === 0) {
+        this.subagentWatches.delete(ref.subagentId)
+      }
     }
   }
 
@@ -385,6 +444,7 @@ export class CodexCliRuntime implements CliRuntime {
     this.activeSessionRef = toSessionRef(rollback.thread)
     this.pendingRequests.clear()
     this.rawCustomToolRequests.clear()
+    this.subagentWatches.clear()
     this.streamingAssistantText.clear()
     this.streamingReasoningSummaryParts.clear()
     this.streamingReasoningContentParts.clear()
@@ -560,6 +620,7 @@ export class CodexCliRuntime implements CliRuntime {
       typeof threadId === 'string' &&
       threadId !== this.activeSessionRef.nativeSessionId
     ) {
+      this.handleSubagentNotification(threadId, method, params)
       return
     }
     if (method === 'turn/started') {
@@ -702,6 +763,83 @@ export class CodexCliRuntime implements CliRuntime {
   private readonly streamingAssistantText = new Map<string, string>()
   private readonly streamingReasoningSummaryParts = new Map<string, string[]>()
   private readonly streamingReasoningContentParts = new Map<string, string[]>()
+
+  private handleSubagentNotification(
+    threadId: string,
+    method: string,
+    params: Record<string, unknown>,
+  ): void {
+    const watch = this.subagentWatches.get(threadId)
+    if (!watch) return
+
+    if (method === 'item/agentMessage/delta') {
+      const itemId =
+        typeof params.itemId === 'string' ? params.itemId : 'stream'
+      const delta = typeof params.delta === 'string' ? params.delta : ''
+      const content = `${watch.assistantText.get(itemId) ?? ''}${delta}`
+      watch.assistantText.set(itemId, content)
+      upsertProjectedMessage(watch.messages, {
+        role: 'assistant',
+        id: `codex-assistant-${itemId}`,
+        content,
+        metadata: { generationState: 'streaming' },
+      })
+      this.publishSubagentWatch(watch)
+      return
+    }
+
+    if (
+      method === 'item/reasoning/summaryTextDelta' ||
+      method === 'item/reasoning/textDelta'
+    ) {
+      const itemId =
+        typeof params.itemId === 'string' ? params.itemId : 'reasoning'
+      const delta = typeof params.delta === 'string' ? params.delta : ''
+      const isSummary = method === 'item/reasoning/summaryTextDelta'
+      const indexValue = isSummary ? params.summaryIndex : params.contentIndex
+      const index = typeof indexValue === 'number' ? indexValue : 0
+      const target = isSummary
+        ? watch.reasoningSummaryParts
+        : watch.reasoningContentParts
+      const parts = target.get(itemId) ?? []
+      parts[index] = `${parts[index] ?? ''}${delta}`
+      target.set(itemId, parts)
+      const reasoning = [
+        ...(watch.reasoningSummaryParts.get(itemId) ?? []),
+        ...(watch.reasoningContentParts.get(itemId) ?? []),
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+      upsertProjectedMessage(watch.messages, {
+        role: 'assistant',
+        id: `codex-reasoning-${itemId}`,
+        content: '',
+        reasoning,
+        metadata: { generationState: 'streaming' },
+      })
+      this.publishSubagentWatch(watch)
+      return
+    }
+
+    if (method === 'item/started' || method === 'item/completed') {
+      const item = params.item as CodexThreadItem | undefined
+      if (!item) return
+      if (method === 'item/started' && !shouldEmitCodexItemOnStarted(item)) {
+        return
+      }
+      const turnId =
+        typeof params.turnId === 'string' ? params.turnId : undefined
+      for (const message of mapCodexItem(item, this.options.cwd, turnId)) {
+        upsertProjectedMessage(watch.messages, message)
+      }
+      this.publishSubagentWatch(watch)
+    }
+  }
+
+  private publishSubagentWatch(watch: CodexSubagentWatch): void {
+    const messages = [...watch.messages]
+    for (const listener of watch.listeners) listener(messages)
+  }
 
   private handleServerRequest(request: CodexServerRequest): void {
     const threadId = request.params.threadId

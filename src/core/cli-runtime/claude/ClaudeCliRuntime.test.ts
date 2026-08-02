@@ -67,6 +67,7 @@ it('hydrates nested Claude tool calls with their native parent relationship', ()
   expect(messages).toMatchObject([
     {
       role: 'assistant',
+      metadata: { cliSubagentParentCallId: 'parent-tool' },
       toolCallRequests: [
         {
           name: 'Read',
@@ -94,6 +95,84 @@ it('hydrates nested Claude tool calls with their native parent relationship', ()
       ],
     },
   ])
+})
+
+it('hydrates async Agent completion notifications back into the dispatch call', () => {
+  const messages = hydrateClaudeSessionMessages([
+    {
+      type: 'assistant',
+      uuid: 'agent-request',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'agent-call',
+            name: 'Agent',
+            input: { description: 'Inspect runtime', prompt: 'Inspect it.' },
+          },
+        ],
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'agent-launched',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'agent-call',
+            content: 'Async agent launched successfully.',
+          },
+        ],
+      },
+      toolUseResult: {
+        status: 'async_launched',
+        agentId: 'agent-1',
+      },
+    } as unknown as SessionMessage,
+    {
+      type: 'user',
+      uuid: 'agent-completed',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content:
+          '<task-notification><task-id>agent-1</task-id><tool-use-id>agent-call</tool-use-id><status>completed</status><summary>Agent finished</summary><result>Review complete</result></task-notification>',
+      },
+    },
+  ] as SessionMessage[])
+
+  expect(messages).toHaveLength(2)
+  expect(messages[1]).toMatchObject({
+    role: 'tool',
+    toolCalls: [
+      {
+        request: { id: 'agent-call', name: 'Agent' },
+        response: {
+          status: ToolCallResponseStatus.Success,
+          data: {
+            text: 'Review complete',
+            metadata: {
+              cliToolResult: {
+                agentId: 'agent-1',
+                status: 'completed',
+              },
+            },
+          },
+        },
+      },
+    ],
+  })
 })
 
 it('hides Claude local command envelopes from restored chat history', () => {
@@ -251,6 +330,10 @@ const createSdk = () => {
     Promise<SessionMessage[]>,
     [sessionId: string, options?: { dir?: string }]
   >(async () => [])
+  const getSubagentMessages = jest.fn<
+    Promise<SessionMessage[]>,
+    [sessionId: string, agentId: string, options?: { dir?: string }]
+  >(async () => [])
   const query = jest.fn<ClaudeSdkQuery, [input: QueryInput]>((input) => {
     const instance =
       queryInstances[queryInputs.length] ??
@@ -265,6 +348,7 @@ const createSdk = () => {
   const sdk: ClaudeSdkModule = {
     query,
     getSessionMessages,
+    getSubagentMessages,
   }
   return {
     sdk,
@@ -273,6 +357,7 @@ const createSdk = () => {
     queryInstances,
     queryInstance,
     getSessionMessages,
+    getSubagentMessages,
   }
 }
 

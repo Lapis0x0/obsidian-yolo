@@ -28,6 +28,16 @@ export type CliSessionHydration = {
   messages: ChatMessage[]
 }
 
+export type CliSubagentRef = Readonly<{
+  parentSessionRef: CliSessionRef
+  toolCallId: string
+  subagentId: string
+}>
+
+export type CliSubagentTranscriptListener = (
+  messages: readonly ChatMessage[],
+) => void
+
 export type CliRuntimeSkill = {
   name: string
   description: string
@@ -184,6 +194,11 @@ export type CliRuntime = {
   listModels?(): Promise<CliRuntimeModel[]>
   listSkills?(): Promise<CliRuntimeSkill[]>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
+  readSubagent?(ref: CliSubagentRef): Promise<readonly ChatMessage[]>
+  watchSubagent?(
+    ref: CliSubagentRef,
+    listener: CliSubagentTranscriptListener,
+  ): Promise<() => void>
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
   getConfiguration(
     cachedModels?: readonly CliRuntimeModel[],
@@ -197,9 +212,7 @@ export type CliRuntime = {
    * and reasserts it on the next turn/start (and on subsequent thread
    * start/resume).
    */
-  updatePermissionProfile?(
-    update: CliPermissionProfileUpdate,
-  ): Promise<void>
+  updatePermissionProfile?(update: CliPermissionProfileUpdate): Promise<void>
   sendTurn(input: CliTurnInput): Promise<void>
   rewriteTurn(input: CliRewriteTurnInput): Promise<void>
   cancel(): Promise<void>

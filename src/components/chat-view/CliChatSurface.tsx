@@ -38,6 +38,8 @@ import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { ChatConversationPane } from './ChatConversationPane'
+import { CliSubagentProvider } from './cli-subagent-context'
+import { buildCliSubagentReadModel } from './cliSubagentReadModel'
 import { useAutoScroll } from './useAutoScroll'
 import {
   useChatTimelineReadModel,
@@ -248,8 +250,7 @@ function CliUserMessage({
           }}
           onReasoningEffortChange={(reasoningEffort) => {
             setDraftConfiguration((current) => ({
-              modelId:
-                current?.modelId ?? editorConfiguration?.modelId ?? null,
+              modelId: current?.modelId ?? editorConfiguration?.modelId ?? null,
               reasoningEffort,
             }))
           }}
@@ -416,14 +417,18 @@ export function CliChatSurface({
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
-  const messages = useMemo(() => [...snapshot.messages], [snapshot.messages])
+  const cliSubagentReadModel = useMemo(
+    () => buildCliSubagentReadModel(snapshot.messages, snapshot.runtimeId),
+    [snapshot.messages, snapshot.runtimeId],
+  )
+  const messages = cliSubagentReadModel.visibleMessages
   const readModel = useChatTimelineReadModel({ messages })
   const activeStreamingMessageId = getActiveStreamingMessageId(
-    snapshot.messages,
+    messages,
     snapshot.runState,
   )
   const pendingResponseUserMessageId = getPendingResponseUserMessageId(
-    snapshot.messages,
+    messages,
     snapshot.runState,
   )
   const timelineItems = useMemo(() => {
@@ -457,6 +462,18 @@ export function CliChatSurface({
     ]
   }, [activeStreamingMessageId, pendingResponseUserMessageId, readModel])
   const stableTimelineItems = useStableChatTimelineItems(timelineItems)
+  const cliSubagentRenderVersion = useMemo(
+    () =>
+      [...cliSubagentReadModel.presentationsByToolCallId.values()]
+        .map(
+          (presentation) =>
+            `${presentation.toolCallId}:${presentation.taskId ?? ''}:${
+              presentation.status
+            }:${presentation.subtitle ?? ''}`,
+        )
+        .join('|'),
+    [cliSubagentReadModel.presentationsByToolCallId],
+  )
   const latestAssistantGroupId = getLatestAssistantGroupId(
     readModel.groupedChatMessages,
   )
@@ -491,8 +508,7 @@ export function CliChatSurface({
     setFocusedUserMessageId(null)
   }, [])
   const {
-    onControlPopoverOpenChange:
-      onHistoricalUserMessageControlPopoverOpenChange,
+    onControlPopoverOpenChange: onHistoricalUserMessageControlPopoverOpenChange,
   } = useHistoricalUserMessageDismiss({
     activeMessageId: focusedUserMessageId,
     containerRef: chatMessagesRef,
@@ -587,41 +603,50 @@ export function CliChatSurface({
       const nativeConversationId = getNativeConversationId(snapshot.sessionRef)
 
       return (
-        <ChatRuntimeActionsProvider
-          actions={actions}
-          conversation={snapshot.sessionRef}
+        <CliSubagentProvider
+          value={{
+            actions,
+            sessionRef: snapshot.sessionRef,
+            presentationsByToolCallId:
+              cliSubagentReadModel.presentationsByToolCallId,
+          }}
         >
-          <AssistantToolMessageGroupItem
-            messages={messageGroup}
-            conversationId={nativeConversationId}
-            conversationRunSummary={
-              timelineItem.groupId === latestAssistantGroupId
-                ? runSummary
-                : undefined
-            }
-            showInlineInfo={false}
-            showRetryAction={false}
-            showInsertAction={false}
-            showCopyAction
-            showBranchAction={false}
-            showEditAction={false}
-            showDeleteAction={false}
-            showQuoteAction={false}
-            isApplying={false}
-            activeApplyRequestKey={null}
-            onApply={noop}
-            onToolMessageUpdate={noopToolMessageUpdate}
-            onRecoverAnswerUserQuestion={noop}
-            onEditStart={noop}
-            onEditCancel={noop}
-            onEditSave={noop}
-            onDeleteGroup={noop}
-            onRetryGroup={noop}
-            onBranchGroup={noop}
-            onQuoteAssistantSelection={noop}
-            onOpenEditSummaryFile={handleOpenEditSummaryFile}
-          />
-        </ChatRuntimeActionsProvider>
+          <ChatRuntimeActionsProvider
+            actions={actions}
+            conversation={snapshot.sessionRef}
+          >
+            <AssistantToolMessageGroupItem
+              messages={messageGroup}
+              conversationId={nativeConversationId}
+              conversationRunSummary={
+                timelineItem.groupId === latestAssistantGroupId
+                  ? runSummary
+                  : undefined
+              }
+              showInlineInfo={false}
+              showRetryAction={false}
+              showInsertAction={false}
+              showCopyAction
+              showBranchAction={false}
+              showEditAction={false}
+              showDeleteAction={false}
+              showQuoteAction={false}
+              isApplying={false}
+              activeApplyRequestKey={null}
+              onApply={noop}
+              onToolMessageUpdate={noopToolMessageUpdate}
+              onRecoverAnswerUserQuestion={noop}
+              onEditStart={noop}
+              onEditCancel={noop}
+              onEditSave={noop}
+              onDeleteGroup={noop}
+              onRetryGroup={noop}
+              onBranchGroup={noop}
+              onQuoteAssistantSelection={noop}
+              onOpenEditSummaryFile={handleOpenEditSummaryFile}
+            />
+          </ChatRuntimeActionsProvider>
+        </CliSubagentProvider>
       )
     },
     [
@@ -631,6 +656,7 @@ export function CliChatSurface({
       handleOpenEditSummaryFile,
       latestAssistantGroupId,
       cachedModels,
+      cliSubagentReadModel.presentationsByToolCallId,
       onHistoricalUserMessageControlPopoverOpenChange,
       onRewriteUserMessage,
       readModel.messagesById,
@@ -643,13 +669,17 @@ export function CliChatSurface({
   )
 
   const renderVersion = useCallback(
-    (timelineItem: ChatTimelineItem): string =>
-      getCliTimelineRenderVersion(
+    (timelineItem: ChatTimelineItem): string => {
+      const baseVersion = getCliTimelineRenderVersion(
         timelineItem,
         snapshot.runState,
         focusedUserMessageId,
-      ),
-    [focusedUserMessageId, snapshot.runState],
+      )
+      return timelineItem.kind === 'assistant-group'
+        ? `${baseVersion}:${cliSubagentRenderVersion}`
+        : baseVersion
+    },
+    [cliSubagentRenderVersion, focusedUserMessageId, snapshot.runState],
   )
 
   return (

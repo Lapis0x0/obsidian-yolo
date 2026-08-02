@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../../types/chat'
 
 import type { ConversationRef } from './types'
+import type { CliSubagentRef, CliSubagentTranscriptListener } from './types'
 
 export type ChatRuntimeToolAction = {
   conversation: ConversationRef
@@ -21,7 +22,7 @@ export type ChatRuntimeQuestionActionResult =
   | ChatRuntimeActionResult
   | { kind: 'needs_recovery'; resolvedMessages: ChatMessage[] }
 
-export interface ChatRuntimeActions {
+export type ChatRuntimeActions = {
   cancelRun(conversation: ConversationRef): Promise<void>
   approveTool(
     action: ChatRuntimeApprovalAction,
@@ -34,4 +35,9 @@ export interface ChatRuntimeActions {
   cancelQuestion(
     action: ChatRuntimeToolAction,
   ): Promise<ChatRuntimeActionResult>
+  readSubagent?(ref: CliSubagentRef): Promise<readonly ChatMessage[]>
+  watchSubagent?(
+    ref: CliSubagentRef,
+    listener: CliSubagentTranscriptListener,
+  ): Promise<() => void>
 }

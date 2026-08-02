@@ -79,4 +79,19 @@ export const createCliChatRuntimeActions = (
     await runtime.cancel()
     return HANDLED
   },
+
+  async readSubagent(ref) {
+    const runtime = getCliRuntime(ref.parentSessionRef, resolveRuntime)
+    if (!runtime.readSubagent) return []
+    return await runtime.readSubagent(ref)
+  },
+
+  async watchSubagent(ref, listener) {
+    const runtime = getCliRuntime(ref.parentSessionRef, resolveRuntime)
+    if (!runtime.watchSubagent) {
+      listener((await runtime.readSubagent?.(ref)) ?? [])
+      return () => undefined
+    }
+    return await runtime.watchSubagent(ref, listener)
+  },
 })

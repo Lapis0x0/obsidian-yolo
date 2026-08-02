@@ -7,7 +7,11 @@ import type {
 } from '@yolo/claude-agent-sdk-runtime'
 import { v4 as uuidv4 } from 'uuid'
 
-import type { ChatAssistantMessage, ChatToolMessage } from '../../../types/chat'
+import type {
+  ChatAssistantMessage,
+  ChatMessage,
+  ChatToolMessage,
+} from '../../../types/chat'
 import type { ContentPart } from '../../../types/llm/request'
 import {
   type ToolCallRequest,
@@ -15,7 +19,10 @@ import {
   ToolCallResponseStatus,
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
-import { mapClaudeGetContextUsage, mapClaudeResultContextUsage } from '../context-usage'
+import {
+  mapClaudeGetContextUsage,
+  mapClaudeResultContextUsage,
+} from '../context-usage'
 import { assertCliRuntimeAvailable } from '../desktop'
 import {
   type CliChatMode,
@@ -35,6 +42,7 @@ import type {
   CliRuntimeReadyInput,
   CliSessionHydration,
   CliSessionRef,
+  CliSubagentRef,
   CliTurnInput,
 } from '../types'
 
@@ -51,6 +59,7 @@ import {
   extractToolResults,
   extractToolUses,
   hydrateClaudeSessionMessages,
+  parseClaudeTaskNotification,
   reconcileFinalText,
   toToolCallRequest,
 } from './messages'
@@ -276,6 +285,17 @@ export class ClaudeCliRuntime implements CliRuntime {
     const sdk = await this.getSdk()
     const messages = await sdk.getSessionMessages(ref.nativeSessionId)
     return { ref, messages: hydrateClaudeSessionMessages(messages) }
+  }
+
+  async readSubagent(ref: CliSubagentRef): Promise<readonly ChatMessage[]> {
+    this.assertUsable()
+    this.assertClaudeRef(ref.parentSessionRef)
+    const sdk = await this.getSdk()
+    const messages = await sdk.getSubagentMessages(
+      ref.parentSessionRef.nativeSessionId,
+      ref.subagentId,
+    )
+    return hydrateClaudeSessionMessages(messages)
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
@@ -866,7 +886,8 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
     if (message.type === 'user') {
       if (isRecord(message.message)) {
-        for (const result of extractToolResults(message.message.content)) {
+        const results = extractToolResults(message.message.content)
+        for (const result of results) {
           this.upsertTool(
             result.id,
             result.isError
@@ -876,9 +897,61 @@ export class ClaudeCliRuntime implements CliRuntime {
                 }
               : {
                   status: ToolCallResponseStatus.Success,
-                  data: { type: 'text', text: result.content },
+                  data: {
+                    type: 'text',
+                    text: result.content,
+                    ...(message.tool_use_result !== undefined
+                      ? {
+                          metadata: {
+                            cliToolResult: message.tool_use_result,
+                          },
+                        }
+                      : {}),
+                  },
                 },
           )
+        }
+        if (results.length === 0) {
+          const notification = parseClaudeTaskNotification(
+            extractTextContent(message.message.content),
+          )
+          if (notification) {
+            const failed =
+              notification.status === 'failed' ||
+              notification.status === 'errored'
+            const previousResponse = this.tools.get(
+              notification.toolUseId,
+            )?.response
+            const previousStructured =
+              previousResponse?.status === ToolCallResponseStatus.Success &&
+              isRecord(previousResponse.data.metadata?.cliToolResult)
+                ? previousResponse.data.metadata.cliToolResult
+                : null
+            this.upsertTool(
+              notification.toolUseId,
+              failed
+                ? {
+                    status: ToolCallResponseStatus.Error,
+                    error:
+                      notification.result ||
+                      notification.summary ||
+                      notification.status,
+                  }
+                : {
+                    status: ToolCallResponseStatus.Success,
+                    data: {
+                      type: 'text',
+                      text: notification.result || notification.summary || '',
+                      metadata: {
+                        cliToolResult: {
+                          ...(previousStructured ?? {}),
+                          ...notification,
+                        },
+                      },
+                    },
+                  },
+            )
+          }
         }
       }
       return
@@ -1011,7 +1084,10 @@ export class ClaudeCliRuntime implements CliRuntime {
           ? { reasoning: extractThinkingContent(nativeMessage.content) }
           : {}),
         ...(requests.length > 0 ? { toolCallRequests: requests } : {}),
-        metadata: { generationState: 'completed' },
+        metadata: {
+          generationState: 'completed',
+          cliSubagentParentCallId: parentCallId,
+        },
       },
     })
     for (const request of requests) {

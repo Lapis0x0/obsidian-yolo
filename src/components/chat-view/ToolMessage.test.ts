@@ -37,6 +37,9 @@ const mockedSubagentCard = jest.fn((_: unknown) => null)
 jest.mock('./tool-cards/SubagentCard', () => ({
   SubagentCard: (props: unknown) => mockedSubagentCard(props),
 }))
+jest.mock('./tool-cards/CliSubagentCard', () => ({
+  CliSubagentCard: () => null,
+}))
 
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'

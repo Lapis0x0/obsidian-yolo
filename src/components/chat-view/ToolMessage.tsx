@@ -50,12 +50,14 @@ import { SplitButton } from '../common/SplitButton'
 
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
 import { useChatRuntimeActions } from './chat-runtime-actions-context'
+import { useCliSubagent } from './cli-subagent-context'
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
 import {
   handleRuntimeToolAbort,
   handleRuntimeToolApproval,
   handleRuntimeToolRejection,
 } from './runtime-action-handlers'
+import { CliSubagentCard } from './tool-cards/CliSubagentCard'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'
 import { SubagentCard } from './tool-cards/SubagentCard'
 import {
@@ -1270,6 +1272,7 @@ function ToolCallItem({
   onRecoverAnswerUserQuestion,
   onResponseUpdate,
 }: ToolCallItemProps) {
+  const cliSubagent = useCliSubagent(request.id)
   const isNestedCliToolCall = Boolean(
     request.metadata?.cliToolCall?.parentCallId,
   )
@@ -1479,6 +1482,20 @@ function ToolCallItem({
         onAbort={() => {
           void handleAbort()
         }}
+      />
+    )
+  }
+
+  if (
+    cliSubagent.presentation &&
+    cliSubagent.actions &&
+    cliSubagent.sessionRef
+  ) {
+    return (
+      <CliSubagentCard
+        presentation={cliSubagent.presentation}
+        actions={cliSubagent.actions}
+        sessionRef={cliSubagent.sessionRef}
       />
     )
   }

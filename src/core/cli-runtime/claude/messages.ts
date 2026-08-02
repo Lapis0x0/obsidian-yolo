@@ -32,6 +32,15 @@ export type ClaudeToolResult = {
   id: string
   content: string
   isError: boolean
+  structuredResult?: unknown
+}
+
+export type ClaudeTaskNotification = {
+  agentId: string
+  toolUseId: string
+  status: string
+  summary?: string
+  result?: string
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -95,6 +104,32 @@ const stringifyToolResult = (content: unknown): string => {
     return JSON.stringify(content, null, 2)
   } catch {
     return '[Unserializable tool result]'
+  }
+}
+
+const readXmlTag = (text: string, tag: string): string | undefined => {
+  const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`))
+  return match?.[1]?.trim() || undefined
+}
+
+export const parseClaudeTaskNotification = (
+  text: string,
+): ClaudeTaskNotification | null => {
+  if (!text.includes('<task-notification>')) return null
+  const agentId = readXmlTag(text, 'task-id')
+  const toolUseId = readXmlTag(text, 'tool-use-id')
+  const status = readXmlTag(text, 'status')
+  if (!agentId || !toolUseId || !status) return null
+  return {
+    agentId,
+    toolUseId,
+    status,
+    ...(readXmlTag(text, 'summary')
+      ? { summary: readXmlTag(text, 'summary') }
+      : {}),
+    ...(readXmlTag(text, 'result')
+      ? { result: readXmlTag(text, 'result') }
+      : {}),
   }
 }
 
@@ -168,17 +203,24 @@ const createAssistantMessage = (
   ...(toolUses.length > 0
     ? { toolCallRequests: toolUses.map(toToolCallRequest) }
     : {}),
-  metadata: { generationState: 'completed' },
+  metadata: {
+    generationState: 'completed',
+    ...(message.parent_tool_use_id
+      ? { cliSubagentParentCallId: message.parent_tool_use_id }
+      : {}),
+  },
 })
 
 const createToolMessage = ({
   id,
   requests,
   results,
+  structuredResult,
 }: {
   id: string
   requests: Map<string, ToolCallRequest>
   results: ClaudeToolResult[]
+  structuredResult?: unknown
 }): ChatToolMessage => ({
   role: 'tool',
   id,
@@ -193,10 +235,72 @@ const createToolMessage = ({
         }
       : {
           status: ToolCallResponseStatus.Success,
-          data: { type: 'text', text: result.content },
+          data: {
+            type: 'text',
+            text: result.content,
+            ...((result.structuredResult ?? structuredResult) !== undefined
+              ? {
+                  metadata: {
+                    cliToolResult: result.structuredResult ?? structuredResult,
+                  },
+                }
+              : {}),
+          },
         },
   })),
 })
+
+const updateHydratedTaskNotification = (
+  hydrated: ChatMessage[],
+  notification: ClaudeTaskNotification,
+): boolean => {
+  for (let index = hydrated.length - 1; index >= 0; index -= 1) {
+    const message = hydrated[index]
+    if (message?.role !== 'tool') continue
+    const toolCallIndex = message.toolCalls.findIndex(
+      ({ request }) => request.id === notification.toolUseId,
+    )
+    if (toolCallIndex < 0) continue
+    const toolCalls = [...message.toolCalls]
+    const toolCall = toolCalls[toolCallIndex]
+    if (!toolCall) return false
+    const failed =
+      notification.status === 'failed' || notification.status === 'errored'
+    const previousStructured =
+      toolCall.response.status === ToolCallResponseStatus.Success
+        ? isRecord(toolCall.response.data.metadata?.cliToolResult)
+          ? toolCall.response.data.metadata.cliToolResult
+          : null
+        : null
+    toolCalls[toolCallIndex] = {
+      request: toolCall.request,
+      response: failed
+        ? {
+            status: ToolCallResponseStatus.Error,
+            error:
+              notification.result ||
+              notification.summary ||
+              notification.status,
+          }
+        : {
+            status: ToolCallResponseStatus.Success,
+            data: {
+              type: 'text',
+              text: notification.result || notification.summary || '',
+              metadata: {
+                cliToolResult: {
+                  ...(previousStructured ?? {}),
+                  ...notification,
+                },
+              },
+            },
+          },
+    }
+    hydrated[index] = { ...message, toolCalls }
+    return true
+  }
+  return false
+}
 
 export const hydrateClaudeSessionMessages = (
   messages: SessionMessage[],
@@ -226,14 +330,32 @@ export const hydrateClaudeSessionMessages = (
 
     const toolResults = extractToolResults(nativeMessage.content)
     if (toolResults.length > 0) {
+      const structuredResult =
+        (
+          message as SessionMessage & {
+            tool_use_result?: unknown
+            toolUseResult?: unknown
+          }
+        ).tool_use_result ??
+        (message as SessionMessage & { toolUseResult?: unknown }).toolUseResult
       for (const result of toolResults) completedTools.add(result.id)
       hydrated.push(
-        createToolMessage({ id: message.uuid, requests, results: toolResults }),
+        createToolMessage({
+          id: message.uuid,
+          requests,
+          results: toolResults,
+          ...(structuredResult !== undefined ? { structuredResult } : {}),
+        }),
       )
       continue
     }
 
     const promptContent = extractTextContent(nativeMessage.content)
+    const notification = parseClaudeTaskNotification(promptContent)
+    if (notification) {
+      updateHydratedTaskNotification(hydrated, notification)
+      continue
+    }
     if (promptContent && !isLocalCommandTranscriptText(promptContent)) {
       hydrated.push(createUserMessage(message, promptContent))
     }

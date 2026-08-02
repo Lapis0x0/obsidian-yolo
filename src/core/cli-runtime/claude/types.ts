@@ -54,6 +54,11 @@ export type ClaudeSdkModule = {
     sessionId: string,
     options?: { dir?: string },
   ): Promise<SessionMessage[]>
+  getSubagentMessages(
+    sessionId: string,
+    agentId: string,
+    options?: { dir?: string },
+  ): Promise<SessionMessage[]>
 }
 
 export type ClaudeProcessSupport = {
