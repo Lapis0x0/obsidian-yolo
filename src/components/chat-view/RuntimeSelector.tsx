@@ -82,6 +82,7 @@ export function RuntimeSelector({
 }: RuntimeSelectorProps) {
   const { t } = useLanguage()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const expandedWidthRef = useRef(0)
   const [isCompact, setIsCompact] = useState(false)
   const menuLabelId = useId()
   const cliRuntimeAvailable = isCliRuntimeAvailable()
@@ -115,6 +116,7 @@ export function RuntimeSelector({
         gap * 2 +
         (Number.parseFloat(style.paddingInlineStart) || 0) +
         (Number.parseFloat(style.paddingInlineEnd) || 0)
+      expandedWidthRef.current = requiredWidth
 
       if (trigger.clientWidth < requiredWidth) {
         setIsCompact(true)
@@ -129,19 +131,37 @@ export function RuntimeSelector({
 
   useEffect(() => {
     const trigger = triggerRef.current
+    const header = trigger?.closest('.yolo-chat-header')
     const headerLeft = trigger?.closest('.yolo-chat-header-left')
-    if (!headerLeft || !isCompact || typeof ResizeObserver === 'undefined')
+    const headerRight = header?.querySelector<HTMLElement>(
+      '.yolo-chat-header-right',
+    )
+    if (
+      !header ||
+      !headerLeft ||
+      !isCompact ||
+      typeof ResizeObserver === 'undefined'
+    )
       return
 
-    let receivedInitialSize = false
+    const runtimeTrigger = trigger!
     const resizeObserver = new ResizeObserver(() => {
-      if (!receivedInitialSize) {
-        receivedInitialSize = true
-        return
+      const headerStyle = getComputedStyle(header)
+      const headerGap = Number.parseFloat(headerStyle.gap) || 0
+      const availableLeftWidth =
+        header.clientWidth -
+        (headerRight?.getBoundingClientRect().width ?? 0) -
+        headerGap
+      const requiredLeftWidth =
+        headerLeft.getBoundingClientRect().width -
+        runtimeTrigger.getBoundingClientRect().width +
+        expandedWidthRef.current
+
+      if (requiredLeftWidth <= availableLeftWidth) {
+        setIsCompact(false)
       }
-      setIsCompact(false)
     })
-    resizeObserver.observe(headerLeft)
+    resizeObserver.observe(header)
     return () => resizeObserver.disconnect()
   }, [isCompact])
 
