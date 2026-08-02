@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 6,
+  "revision": 7,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.3.1",
+    "version": "1.6.4",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.3.1",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.4",
     "releaseNotes": {
-      "en": "## 1.6.3.1 Obsidian 1.13.4 Compatibility & Chat Scroll Fixes 🛠️\n\n### 🪟 Obsidian 1.13.4 Compatibility\n\n- Fixed Agent action menus opening in the wrong window after updating to Obsidian 1.13.4, and removed the large blank area that could appear in the prompt input.\n- Popover menus in the dedicated settings window now position and dismiss correctly across Obsidian’s multi-window layout.\n\n### 💬 Mobile Chat Scrolling\n\n- Scrolling up through chat history on mobile no longer snaps back to the bottom when you release your finger.\n\n### 🔄 Module Updates\n\n- Module update notices can now be dismissed reliably in cases where the close action previously had no effect.",
-      "zh": "## 1.6.3.1 Obsidian 1.13.4 兼容与聊天滚动修复 🛠️\n\n### 🪟 Obsidian 1.13.4 兼容性\n\n- 修复更新到 Obsidian 1.13.4 后，Agent 操作菜单显示在错误窗口、提示词输入框出现大块空白的问题。\n- 完善独立设置窗口中弹出菜单的定位与关闭行为，适配多窗口布局。\n\n### 💬 移动端聊天滚动\n\n- 修复移动端向上翻阅聊天记录时，松手后会被自动拉回底部的问题。\n\n### 🔄 模块更新\n\n- 修复模块更新提示在部分情况下无法关闭的问题。"
+      "en": "## 1.6.4 Claude Code & Codex Native Sessions 🚀\n\n### 🖥️ Native CLI Sessions\n\n- Use Claude Code and Codex native sessions directly inside YOLO on desktop, with shared chat history, mode switching, and session management.\n\n### ⚡ Faster Agent Responses\n\n- Sending a message no longer re-fetches MCP tools, recalculates tool tokens, or rescans historical attachments and skills every turn. Request status appears immediately while preparing, with clearer timing diagnostics. Refs #524\n\n### 🧩 Project Skills Discovery\n\n- YOLO Agent can now discover project-level Skills in your Vault that are managed by Claude Code, Codex, and similar tools.\n\n### 🤖 Assistant Models\n\n- Assistant models can follow the global default chat model. Newly created assistants use this setting by default.\n\n### 🪟 Settings Window Fix\n\n- Fixed the module settings page being clipped or incomplete in Obsidian’s dedicated settings window.",
+      "zh": "## 1.6.4 Claude Code 与 Codex 原生会话 🚀\n\n### 🖥️ 原生 CLI 会话\n\n- 桌面端可在 YOLO 中直接使用 Claude Code 与 Codex 原生会话，并共享聊天历史、模式切换与会话管理。\n\n### ⚡ 更快的 Agent 响应\n\n- 发送消息后不再每轮重复拉取 MCP 工具、计算工具 token，以及扫描历史附件与技能。请求准备期间会立即显示状态，并提供更准确的耗时诊断。Refs #524\n\n### 🧩 项目级 Skills 发现\n\n- YOLO Agent 现在可以直接识别 Vault 中由 Claude Code、Codex 等工具管理的项目级 Skills。\n\n### 🤖 助手模型\n\n- 助手模型可选择「跟随默认模型」；新建助手默认跟随全局对话模型。\n\n### 🪟 设置窗口修复\n\n- 修复新版 Obsidian 独立设置窗口中模块设置页显示不全的问题。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.3.1/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3.1/main.js",
-        "byteSize": 7697097,
-        "sha256": "f7b7cf5dcad231d8376c389bc4ec865dc66d35968f42d8ef0524990d2e989328"
+        "mirrorPath": "core/1.6.4/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4/main.js",
+        "byteSize": 9058859,
+        "sha256": "1924f08cd63c2cde67f88047eb558fc3ef253a03fdaa50a326ba893e85aea19c"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.3.1/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3.1/manifest.json",
-        "byteSize": 330,
-        "sha256": "ac8d3887a25ae1410c00678431268a5833af825bfbed7c19748bd6715e75004f"
+        "mirrorPath": "core/1.6.4/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4/manifest.json",
+        "byteSize": 328,
+        "sha256": "a075ce17eb4bc98f87c8c9cc874876acf966c1ee94c4515e35fd52f4d55668b2"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.3.1/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.3.1/styles.css",
-        "byteSize": 571423,
-        "sha256": "c475382a300e8f5baf699b0ed3201f89cfd66a8d5d0a286adbc7134ed69b3308"
+        "mirrorPath": "core/1.6.4/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4/styles.css",
+        "byteSize": 576886,
+        "sha256": "9d6c2bd0c47fed797a3d0f139a2f556d8a71710cce4323ba06cbedde64f6b9e8"
       }
     }
   },
