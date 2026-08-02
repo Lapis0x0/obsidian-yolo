@@ -220,6 +220,7 @@ const makeSnapshot = (
   surfaceId: 'codex:native/session-1',
   runtimeId: 'codex',
   messages: [],
+  compactionBoundaries: [],
   sessionRef,
   runState: 'idle',
   error: null,
@@ -438,18 +439,17 @@ describe('CliChatSurface', () => {
   })
 
   it('renders provider-native compaction boundaries as a timeline divider', () => {
-    const compactBoundary: ChatAssistantMessage = {
-      role: 'assistant',
-      id: 'compact-1',
-      content: '',
-      metadata: {
-        generationState: 'completed',
-        cliContextCompaction: { trigger: 'auto' },
-      },
-    }
-
     const html = renderSurface(
-      makeSnapshot({ messages: [assistant, compactBoundary] }),
+      makeSnapshot({
+        messages: [assistant],
+        compactionBoundaries: [
+          {
+            id: 'compact-1',
+            afterMessageId: assistant.id,
+            trigger: 'auto',
+          },
+        ],
+      }),
     )
 
     expect(html).toContain('从这里继续当前任务')

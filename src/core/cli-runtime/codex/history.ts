@@ -4,6 +4,7 @@ import type {
   ChatUserMessage,
 } from '../../../types/chat'
 import type { ToolCallRequest } from '../../../types/tool-call.types'
+import type { CliCompactionBoundary } from '../types'
 
 import {
   mapCodexItem,
@@ -17,6 +18,11 @@ type JsonRecord = Record<string, unknown>
 type HistoryRecord = {
   type?: unknown
   payload?: unknown
+}
+
+export type CodexSessionTranscript = {
+  messages: ChatMessage[]
+  compactionBoundaries: CliCompactionBoundary[]
 }
 
 const CONTROL_BLOCK_TAGS = [
@@ -264,8 +270,11 @@ const upsertMessage = (messages: ChatMessage[], message: ChatMessage): void => {
  * intentionally smaller high-level item projection. The JSONL is the only
  * history surface that contains raw custom/function tool calls and outputs.
  */
-export const parseCodexSessionContent = (content: string): ChatMessage[] => {
+export const parseCodexSessionTranscript = (
+  content: string,
+): CodexSessionTranscript => {
   const messages: ChatMessage[] = []
+  const compactionBoundaries: CliCompactionBoundary[] = []
   const toolRequests = new Map<string, ToolCallRequest[]>()
   let currentTurnId: string | null = null
 
@@ -289,6 +298,11 @@ export const parseCodexSessionContent = (content: string): ChatMessage[] => {
       } else if (payloadType === 'user_message') {
         const message = createUserMessage(payload, currentTurnId, lineIndex)
         if (message) upsertMessage(messages, message)
+      } else if (payloadType === 'context_compacted') {
+        compactionBoundaries.push({
+          id: `codex-compact-history-${lineIndex}`,
+          afterMessageId: messages.at(-1)?.id ?? null,
+        })
       }
       continue
     }
@@ -328,16 +342,19 @@ export const parseCodexSessionContent = (content: string): ChatMessage[] => {
     }
   }
 
-  return messages
+  return { messages, compactionBoundaries }
 }
 
-export const loadCodexSessionMessages = async (
+export const parseCodexSessionContent = (content: string): ChatMessage[] =>
+  parseCodexSessionTranscript(content).messages
+
+export const loadCodexSessionTranscript = async (
   sessionPath: string,
-): Promise<ChatMessage[] | null> => {
+): Promise<CodexSessionTranscript | null> => {
   try {
     // eslint-disable-next-line import/no-nodejs-modules -- Codex history is loaded only behind the desktop CLI runtime boundary
     const { readFile } = await import('node:fs/promises')
-    return parseCodexSessionContent(await readFile(sessionPath, 'utf8'))
+    return parseCodexSessionTranscript(await readFile(sessionPath, 'utf8'))
   } catch (error) {
     console.warn('[YOLO] Failed to read Codex session transcript', {
       sessionPath,

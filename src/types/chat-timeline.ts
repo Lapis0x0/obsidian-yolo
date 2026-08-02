@@ -50,7 +50,7 @@ export type ChatTimelineCompactionPendingItem = ChatTimelineBaseItem & {
 
 export type ChatTimelineCompactionDividerItem = ChatTimelineBaseItem & {
   kind: 'compaction-divider'
-  anchorMessageId: string
+  anchorMessageId: string | null
   compaction: ChatConversationCompaction | null
 }
 

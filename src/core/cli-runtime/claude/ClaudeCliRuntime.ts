@@ -61,6 +61,7 @@ import {
   extractToolResults,
   extractToolUses,
   hydrateClaudeSessionMessages,
+  hydrateClaudeSessionTranscript,
   parseClaudeTaskNotification,
   reconcileFinalText,
   toToolCallRequest,
@@ -286,7 +287,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.assertClaudeRef(ref)
     const sdk = await this.getSdk()
     const messages = await sdk.getSessionMessages(ref.nativeSessionId)
-    return { ref, messages: hydrateClaudeSessionMessages(messages) }
+    return { ref, ...hydrateClaudeSessionTranscript(messages) }
   }
 
   async readSubagent(ref: CliSubagentRef): Promise<readonly ChatMessage[]> {
@@ -483,7 +484,6 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.streamedToolInputs.clear()
     this.cancelRequested = false
     this.activeUserMessageId = undefined
-    this.emit({ type: 'run_state', state: 'running' })
     this.inputQueue.push(
       toSdkUserMessage('/compact', this.currentSessionRef?.nativeSessionId),
     )
@@ -910,21 +910,14 @@ export class ClaudeCliRuntime implements CliRuntime {
     if (message.type === 'system' && message.subtype === 'compact_boundary') {
       this.emit({ type: 'compaction_state', isCompacting: false })
       this.emit({
-        type: 'message_upsert',
-        message: {
-          role: 'assistant',
+        type: 'compaction_boundary',
+        boundary: {
           id: `claude-compact-${message.uuid}`,
-          content: '',
-          metadata: {
-            generationState: 'completed',
-            cliContextCompaction: {
-              trigger: message.compact_metadata.trigger,
-              preTokens: message.compact_metadata.pre_tokens,
-              ...(message.compact_metadata.post_tokens !== undefined
-                ? { postTokens: message.compact_metadata.post_tokens }
-                : {}),
-            },
-          },
+          trigger: message.compact_metadata.trigger,
+          preTokens: message.compact_metadata.pre_tokens,
+          ...(message.compact_metadata.post_tokens !== undefined
+            ? { postTokens: message.compact_metadata.post_tokens }
+            : {}),
         },
       })
       return

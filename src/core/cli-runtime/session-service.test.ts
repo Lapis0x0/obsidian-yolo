@@ -51,7 +51,11 @@ describe('CliSessionService', () => {
       sessionPathHint: '/native/session-1.jsonl',
     }
 
-    await service.recordOpenedSession({ ref, messages: [] })
+    await service.recordOpenedSession({
+      ref,
+      messages: [],
+      compactionBoundaries: [],
+    })
     await service.rememberConfiguration(ref, {
       modelId: 'sonnet',
       reasoningEffort: 'high',

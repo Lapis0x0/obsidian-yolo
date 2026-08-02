@@ -7,6 +7,7 @@ import type { ResponseUsage } from '../../types/llm/response'
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
   CliContextUsage,
+  CliCompactionBoundary,
   CliPermissionProfileUpdate,
   CliRewriteTurnInput,
   CliRuntime,
@@ -32,6 +33,8 @@ export type CliConversationSnapshot = Readonly<{
   surfaceId: string
   runtimeId: CliRuntime['runtimeId']
   messages: readonly ChatMessage[]
+  /** Ordered provider-native compaction events derived from the CLI session. */
+  compactionBoundaries: readonly CliCompactionBoundary[]
   sessionRef: CliSessionRef | null
   runState: CliRuntimeRunState
   /** True only while a provider-native context compaction is in flight. */
@@ -98,6 +101,37 @@ const normalizeMessages = (
   }
   return Object.freeze(normalized)
 }
+
+const normalizeCompactionBoundaries = (
+  boundaries: readonly CliCompactionBoundary[],
+  messages: readonly ChatMessage[],
+): readonly CliCompactionBoundary[] => {
+  const messageIds = new Set(messages.map((message) => message.id))
+  const normalized: CliCompactionBoundary[] = []
+  const indexById = new Map<string, number>()
+  for (const boundary of boundaries) {
+    if (
+      boundary.afterMessageId !== null &&
+      !messageIds.has(boundary.afterMessageId)
+    ) {
+      continue
+    }
+    const index = indexById.get(boundary.id)
+    if (index === undefined) {
+      indexById.set(boundary.id, normalized.length)
+      normalized.push(boundary)
+    } else {
+      normalized[index] = boundary
+    }
+  }
+  return Object.freeze(normalized)
+}
+
+const retainAnchoredCompactionBoundaries = (
+  boundaries: readonly CliCompactionBoundary[],
+  messages: readonly ChatMessage[],
+): readonly CliCompactionBoundary[] =>
+  normalizeCompactionBoundaries(boundaries, messages)
 
 const getCurrentTurnConfiguration = (
   configuration: CliRuntimeConfiguration | null | undefined,
@@ -322,13 +356,21 @@ export class CliConversationController {
       this.publish({
         ...this.snapshot,
         messages: normalizeMessages(messages),
+        compactionBoundaries: normalizeCompactionBoundaries(
+          hydration.compactionBoundaries ?? [],
+          messages,
+        ),
         turnConfigurationByUserMessageId:
           overlay?.turnConfigurationByUserMessageId ?? Object.freeze({}),
         sessionRef: hydration.ref,
         runState: 'idle',
         error: null,
       })
-      return { ...hydration, messages: [...messages] }
+      return {
+        ...hydration,
+        messages: [...messages],
+        compactionBoundaries: [...(hydration.compactionBoundaries ?? [])],
+      }
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
@@ -371,7 +413,7 @@ export class CliConversationController {
     }
     const sessionRef = this.snapshot.sessionRef
 
-    this.currentTurnMetrics = null
+    this.currentTurnMetrics = {}
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
@@ -428,14 +470,19 @@ export class CliConversationController {
     }
 
     const sessionRef = this.snapshot.sessionRef
-    this.currentTurnMetrics = null
+    this.currentTurnMetrics = {}
     this.pendingOptimisticUserMessageId = userMessage.id
+    const messages = Object.freeze([
+      ...this.snapshot.messages.slice(0, sourceIndex),
+      userMessage,
+    ])
     this.publish({
       ...this.snapshot,
-      messages: Object.freeze([
-        ...this.snapshot.messages.slice(0, sourceIndex),
-        userMessage,
-      ]),
+      messages,
+      compactionBoundaries: retainAnchoredCompactionBoundaries(
+        this.snapshot.compactionBoundaries,
+        messages,
+      ),
       turnConfigurationByUserMessageId: setTurnConfiguration(
         Object.freeze(
           Object.fromEntries(
@@ -488,10 +535,10 @@ export class CliConversationController {
         `${operation.runtime.runtimeId} does not support compaction.`,
       )
     }
+    this.currentTurnMetrics = null
     this.publish({
       ...this.snapshot,
       isCompacting: true,
-      runState: 'running',
       error: null,
     })
     try {
@@ -514,7 +561,7 @@ export class CliConversationController {
       userMessageId: userMessage.id,
     })
     this.pendingOptimisticUserMessageId = userMessage.id
-    this.currentTurnMetrics = null
+    this.currentTurnMetrics = {}
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
@@ -739,6 +786,7 @@ export class CliConversationController {
         : this.createSurfaceId(),
       runtimeId: this.runtime.runtimeId,
       messages: Object.freeze([]),
+      compactionBoundaries: Object.freeze([]),
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: ref,
       runState: 'idle',
@@ -831,8 +879,25 @@ export class CliConversationController {
       return
     }
 
-    if (event.type === 'turn_metrics') {
+    if (event.type === 'compaction_boundary') {
       if (!this.acceptingEvents) return
+      const boundary: CliCompactionBoundary = {
+        ...event.boundary,
+        afterMessageId: this.snapshot.messages.at(-1)?.id ?? null,
+      }
+      this.publish({
+        ...this.snapshot,
+        isCompacting: false,
+        compactionBoundaries: normalizeCompactionBoundaries(
+          [...this.snapshot.compactionBoundaries, boundary],
+          this.snapshot.messages,
+        ),
+      })
+      return
+    }
+
+    if (event.type === 'turn_metrics') {
+      if (!this.acceptingEvents || this.currentTurnMetrics === null) return
       this.currentTurnMetrics = {
         ...this.currentTurnMetrics,
         ...(event.usage ? { usage: event.usage } : {}),
@@ -900,10 +965,6 @@ export class CliConversationController {
           event.message.role === 'assistant' && this.currentTurnMetrics
             ? applyTurnMetrics(messages, this.currentTurnMetrics)
             : messages,
-        ...(event.message.role === 'assistant' &&
-        event.message.metadata?.cliContextCompaction !== undefined
-          ? { isCompacting: false }
-          : {}),
       })
       return
     }
@@ -912,7 +973,15 @@ export class CliConversationController {
         (message) => message.id !== event.messageId,
       )
       if (messages.length !== this.snapshot.messages.length) {
-        this.publish({ ...this.snapshot, messages: Object.freeze(messages) })
+        const frozenMessages = Object.freeze(messages)
+        this.publish({
+          ...this.snapshot,
+          messages: frozenMessages,
+          compactionBoundaries: retainAnchoredCompactionBoundaries(
+            this.snapshot.compactionBoundaries,
+            frozenMessages,
+          ),
+        })
       }
       return
     }
@@ -922,6 +991,7 @@ export class CliConversationController {
       event.state !== 'waiting_for_user'
     ) {
       this.pendingOptimisticUserMessageId = null
+      this.currentTurnMetrics = null
     }
     if (event.state === 'error' && event.error) {
       this.publish({
@@ -1030,6 +1100,7 @@ export class CliConversationController {
       surfaceId: this.createSurfaceId(),
       runtimeId: runtime.runtimeId,
       messages: Object.freeze([]),
+      compactionBoundaries: Object.freeze([]),
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: null,
       runState: 'idle',

@@ -27,7 +27,17 @@ export const isCliSessionRef = (ref: ConversationRef): ref is CliSessionRef =>
 export type CliSessionHydration = {
   ref: CliSessionRef
   messages: ChatMessage[]
+  compactionBoundaries: CliCompactionBoundary[]
 }
+
+export type CliCompactionBoundary = Readonly<{
+  id: string
+  /** Visible transcript message immediately preceding this native event. */
+  afterMessageId: string | null
+  trigger?: 'manual' | 'auto'
+  preTokens?: number
+  postTokens?: number
+}>
 
 export type CliSubagentRef = Readonly<{
   parentSessionRef: CliSessionRef
@@ -179,6 +189,10 @@ export type CliRuntimeEvent =
   | {
       type: 'compaction_state'
       isCompacting: boolean
+    }
+  | {
+      type: 'compaction_boundary'
+      boundary: Omit<CliCompactionBoundary, 'afterMessageId'>
     }
 
 export type CliApprovalDecision =

@@ -1,6 +1,9 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
-import { parseCodexSessionContent } from './history'
+import {
+  parseCodexSessionContent,
+  parseCodexSessionTranscript,
+} from './history'
 
 const record = (type: string, payload: Record<string, unknown>): string =>
   JSON.stringify({ timestamp: '2026-08-02T00:00:00.000Z', type, payload })
@@ -150,6 +153,43 @@ describe('Codex JSONL history', () => {
 
     expect(messages).toMatchObject([
       { role: 'user', promptContent: 'actual request' },
+    ])
+  })
+
+  it('restores every native compaction as an ordered boundary, not a message', () => {
+    const transcript = parseCodexSessionTranscript(
+      [
+        record('event_msg', { type: 'user_message', message: 'First' }),
+        record('response_item', {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'First answer' }],
+        }),
+        record('compacted', { message: 'hidden summary' }),
+        record('event_msg', { type: 'context_compacted' }),
+        record('event_msg', { type: 'user_message', message: 'Second' }),
+        record('response_item', {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Second answer' }],
+        }),
+        record('event_msg', { type: 'context_compacted' }),
+      ].join('\n'),
+    )
+
+    expect(transcript.messages).toHaveLength(4)
+    expect(transcript.messages).not.toContainEqual(
+      expect.objectContaining({ content: '' }),
+    )
+    expect(transcript.compactionBoundaries).toEqual([
+      {
+        id: 'codex-compact-history-3',
+        afterMessageId: 'codex-history-assistant-1',
+      },
+      {
+        id: 'codex-compact-history-6',
+        afterMessageId: 'codex-history-assistant-5',
+      },
     ])
   })
 })

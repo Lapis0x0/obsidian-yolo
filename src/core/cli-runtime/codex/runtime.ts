@@ -38,11 +38,13 @@ import {
   type CodexAppServerHostOptions,
   type CodexHostResolver,
 } from './host'
+import type { CodexSessionTranscript } from './history'
 import {
   buildPendingToolMessages,
   mapCodexItem,
   mapCodexRawToolCall,
   mapCodexRawToolOutput,
+  mapCodexTranscript,
   mapCodexTurns,
   parseCodexUserMessageId,
   shouldEmitCodexItemOnStarted,
@@ -92,7 +94,9 @@ const upsertProjectedMessage = (
 export type CodexCliRuntimeOptions = CodexProcessOptions & {
   resolveHost?: CodexHostResolver
   createProcess?: CodexAppServerHostOptions['createProcess']
-  loadSessionMessages?: (sessionPath: string) => Promise<ChatMessage[] | null>
+  loadSessionTranscript?: (
+    sessionPath: string,
+  ) => Promise<CodexSessionTranscript | null>
   /** Product chat mode mapped into Codex approval/sandbox at start/resume/turn. */
   cliChatMode?: CliChatMode
   /** When true with agent mode, maps to never + danger-full-access. */
@@ -266,18 +270,20 @@ export class CodexCliRuntime implements CliRuntime {
     })
     const sessionRef = toSessionRef(response.thread)
     const sessionPath = sessionRef.sessionPathHint ?? ref.sessionPathHint
-    const transcriptMessages = sessionPath
+    const transcript = sessionPath
       ? await (
-          this.options.loadSessionMessages ??
+          this.options.loadSessionTranscript ??
           (async (path: string) =>
-            (await import('./history')).loadCodexSessionMessages(path))
+            (await import('./history')).loadCodexSessionTranscript(path))
         )(sessionPath)
       : null
+    const fallbackTranscript = mapCodexTranscript(
+      response.thread.turns,
+      response.thread.cwd,
+    )
     return {
       ref: sessionRef,
-      messages:
-        transcriptMessages ??
-        mapCodexTurns(response.thread.turns, response.thread.cwd),
+      ...(transcript ?? fallbackTranscript),
     }
   }
 
@@ -386,7 +392,6 @@ export class CodexCliRuntime implements CliRuntime {
       throw new Error('Cannot compact Codex while another turn is active.')
     }
     const host = await this.getHost()
-    this.emit({ type: 'run_state', state: 'running' })
     await host.request<ThreadCompactStartResponse>(
       'thread/compact/start',
       { threadId: this.activeSessionRef.nativeSessionId },
@@ -765,6 +770,11 @@ export class CodexCliRuntime implements CliRuntime {
         const isCompacting = method === 'item/started'
         this.emit({ type: 'compaction_state', isCompacting })
         if (isCompacting) return
+        this.emit({
+          type: 'compaction_boundary',
+          boundary: { id: `codex-compact-${item.id}` },
+        })
+        return
       }
       if (method === 'item/started' && !shouldEmitCodexItemOnStarted(item)) {
         return

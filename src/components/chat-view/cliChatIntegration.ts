@@ -386,7 +386,10 @@ export const invalidateChatRuntimeNavigation = (generation: {
 
 export const isCliConversationActive = (
   snapshot: CliConversationSnapshot | null,
-): boolean => snapshot !== null && ACTIVE_CLI_RUN_STATES.has(snapshot.runState)
+): boolean =>
+  snapshot !== null &&
+  (snapshot.isCompacting === true ||
+    ACTIVE_CLI_RUN_STATES.has(snapshot.runState))
 
 export const resolveActiveCliConversationSnapshot = (
   activeRuntimeId: ChatRuntimeId,
@@ -433,7 +436,11 @@ export const openCliSession = async ({
     existingSnapshot.sessionRef?.runtimeId === ref.runtimeId &&
     existingSnapshot.sessionRef.nativeSessionId === ref.nativeSessionId
   const hydration = alreadyHydrated
-    ? { ref, messages: [...existingSnapshot.messages] }
+    ? {
+        ref,
+        messages: [...existingSnapshot.messages],
+        compactionBoundaries: [...existingSnapshot.compactionBoundaries],
+      }
     : await controller.hydrateSession(ref, (messages) =>
         scope.sessionService.restoreSessionOverlay(ref, messages),
       )
@@ -551,6 +558,7 @@ export const submitCliComposerTurn = async ({
     await scope.sessionService.recordOpenedSession({
       ref: snapshot.sessionRef,
       messages: [...snapshot.messages],
+      compactionBoundaries: [...(snapshot.compactionBoundaries ?? [])],
     })
   } catch (error) {
     overlayError = toError(error)
@@ -649,6 +657,9 @@ export const rewriteCliConversationTurn = async ({
     await scope.sessionService.recordOpenedSession({
       ref: sessionRef,
       messages: [...controller.getSnapshot().messages],
+      compactionBoundaries: [
+        ...(controller.getSnapshot().compactionBoundaries ?? []),
+      ],
     })
   } catch (error) {
     overlayError = toError(error)

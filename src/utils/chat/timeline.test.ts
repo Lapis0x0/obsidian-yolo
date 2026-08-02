@@ -169,4 +169,37 @@ describe('buildChatTimelineItems', () => {
       `${firstAssistant.id}-slice-1`,
     ])
   })
+
+  it('keeps multiple independent compaction events at the same anchor', () => {
+    const assistant = makeAssistantMessage('assistant-1')
+
+    const items = buildChatTimelineItems({
+      groupedChatMessages: [[assistant]],
+      compactionDividerAnchorMessageIds: [assistant.id],
+      compactionDividers: [
+        {
+          id: 'compact-1-divider',
+          anchorMessageId: assistant.id,
+          compaction: null,
+        },
+        {
+          id: 'compact-2-divider',
+          anchorMessageId: assistant.id,
+          compaction: null,
+        },
+      ],
+      latestCompaction: null,
+    })
+
+    expect(
+      items
+        .filter((item) => item.kind === 'compaction-divider')
+        .map((item) => item.id),
+    ).toEqual(['compact-1-divider', 'compact-2-divider'])
+    expect(
+      items
+        .filter((item) => item.kind === 'assistant-group')
+        .flatMap((item) => item.messageIds),
+    ).toEqual([assistant.id])
+  })
 })

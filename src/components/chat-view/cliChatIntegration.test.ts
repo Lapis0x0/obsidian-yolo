@@ -16,6 +16,7 @@ import {
   CliChatOperationCoordinator,
   beginChatRuntimeNavigation,
   invalidateChatRuntimeNavigation,
+  isCliConversationActive,
   openCliSession,
   openCliSessionForNavigation,
   prepareCliConversation,
@@ -82,6 +83,7 @@ const cliSnapshot = (
   surfaceId: 'cli:codex:test-surface',
   runtimeId: 'codex',
   messages: [],
+  compactionBoundaries: [],
   sessionRef: null,
   runState: 'idle',
   error: null,
@@ -198,6 +200,7 @@ describe('CLI chat integration', () => {
       surfaceId: 'codex:snapshot-session',
       runtimeId: 'codex' as const,
       messages: [],
+      compactionBoundaries: [],
       sessionRef: {
         runtimeId: 'codex' as const,
         nativeSessionId: 'snapshot-session',
@@ -211,6 +214,10 @@ describe('CLI chat integration', () => {
     expect(
       resolveActiveCliConversationSnapshot('claude-code', cliSnapshot),
     ).toBeNull()
+    expect(isCliConversationActive(cliSnapshot)).toBe(false)
+    expect(
+      isCliConversationActive({ ...cliSnapshot, isCompacting: true }),
+    ).toBe(true)
     expect(resolveActiveCliConversationSnapshot('yolo', cliSnapshot)).toBeNull()
   })
 
@@ -281,7 +288,11 @@ describe('CLI chat integration', () => {
         },
       ],
     })
-    expect(recordOpenedSession).toHaveBeenCalledWith({ ref, messages: [] })
+    expect(recordOpenedSession).toHaveBeenCalledWith({
+      ref,
+      messages: [],
+      compactionBoundaries: [],
+    })
     expect(ensureReady.mock.invocationCallOrder[0]).toBeLessThan(
       sendTurn.mock.invocationCallOrder[0] ?? 0,
     )
@@ -396,6 +407,7 @@ describe('CLI chat integration', () => {
     const hydration: CliSessionHydration = {
       ref: indexedRef,
       messages: [],
+      compactionBoundaries: [],
     }
     const hydrateSession = jest.fn(async () => hydration)
     const controller = {
@@ -501,7 +513,7 @@ describe('CLI chat integration', () => {
       } else {
         beginChatRuntimeNavigation(generation, () => true)
       }
-      hydration.resolve({ ref, messages: [] })
+      hydration.resolve({ ref, messages: [], compactionBoundaries: [] })
       await pendingOpen
 
       expect(commitRuntime).not.toHaveBeenCalled()

@@ -40,7 +40,7 @@ class TestRuntime implements CliRuntime {
   constructor(readonly runtimeId: 'claude-code' | 'codex') {}
 
   async openSession(ref: Parameters<CliRuntime['openSession']>[0]) {
-    return { ref, messages: [] }
+    return { ref, messages: [], compactionBoundaries: [] }
   }
 
   async ensureReady(input: Parameters<CliRuntime['ensureReady']>[0]) {

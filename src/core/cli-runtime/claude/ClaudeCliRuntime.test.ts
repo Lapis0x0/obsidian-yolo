@@ -12,7 +12,10 @@ import { CliConversationController } from '../conversation-controller'
 import type { CliRuntimeEvent } from '../types'
 
 import { ClaudeCliRuntime } from './ClaudeCliRuntime'
-import { hydrateClaudeSessionMessages } from './messages'
+import {
+  hydrateClaudeSessionMessages,
+  hydrateClaudeSessionTranscript,
+} from './messages'
 import type {
   ClaudeProcessSupport,
   ClaudeSdkModule,
@@ -232,6 +235,77 @@ it('hides Claude local command envelopes from restored chat history', () => {
       id: 'real-user-message',
       promptContent: '你现在是什么模式',
     }),
+  ])
+})
+
+it('restores native compaction boundaries and hides their synthetic summaries', () => {
+  const transcript = hydrateClaudeSessionTranscript([
+    {
+      type: 'assistant',
+      uuid: 'assistant-before-compact',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Before compact' }],
+      },
+    },
+    {
+      type: 'system',
+      subtype: 'compact_boundary',
+      uuid: 'compact-1',
+      compactMetadata: {
+        trigger: 'manual',
+        preTokens: 42_000,
+        postTokens: 8_000,
+        preservedSegment: { anchorUuid: 'summary-1' },
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'summary-1',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content: 'This session is being continued from a previous summary.',
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'real-user',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: { role: 'user', content: 'Continue' },
+    },
+    {
+      type: 'system',
+      subtype: 'compact_boundary',
+      uuid: 'compact-2',
+      compactMetadata: { trigger: 'auto' },
+    },
+  ] as unknown as SessionMessage[])
+
+  expect(transcript.messages.map((message) => message.id)).toEqual([
+    'assistant-before-compact',
+    'real-user',
+  ])
+  expect(transcript.compactionBoundaries).toEqual([
+    {
+      id: 'claude-compact-compact-1',
+      afterMessageId: 'assistant-before-compact',
+      trigger: 'manual',
+      preTokens: 42_000,
+      postTokens: 8_000,
+    },
+    {
+      id: 'claude-compact-compact-2',
+      afterMessageId: 'real-user',
+      trigger: 'auto',
+    },
   ])
 })
 
@@ -959,6 +1033,8 @@ describe('ClaudeCliRuntime', () => {
       loadSdk: async () => sdk,
       resolveProcessSupport: async () => processSupport,
     })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
 
     await runtime.ensureReady({})
     await expect(runtime.listSkills()).resolves.toEqual([
@@ -975,6 +1051,7 @@ describe('ClaudeCliRuntime', () => {
     await expect(prompt[Symbol.asyncIterator]().next()).resolves.toMatchObject({
       value: { type: 'user', message: { content: '/compact' } },
     })
+    expect(events).not.toContainEqual({ type: 'run_state', state: 'running' })
   })
 
   it('maps Claude compact boundaries to native compaction markers', async () => {
@@ -1019,16 +1096,12 @@ describe('ClaudeCliRuntime', () => {
       isCompacting: false,
     })
     expect(events).toContainEqual({
-      type: 'message_upsert',
-      message: expect.objectContaining({
+      type: 'compaction_boundary',
+      boundary: expect.objectContaining({
         id: 'claude-compact-00000000-0000-4000-8000-000000000001',
-        metadata: expect.objectContaining({
-          cliContextCompaction: {
-            trigger: 'manual',
-            preTokens: 120_000,
-            postTokens: 20_000,
-          },
-        }),
+        trigger: 'manual',
+        preTokens: 120_000,
+        postTokens: 20_000,
       }),
     })
   })

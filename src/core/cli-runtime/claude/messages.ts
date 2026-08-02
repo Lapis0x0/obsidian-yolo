@@ -10,6 +10,7 @@ import {
   type ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
+import type { CliCompactionBoundary } from '../types'
 import { createCliToolCallRequest } from '../tool-call'
 
 import {
@@ -41,6 +42,11 @@ export type ClaudeTaskNotification = {
   status: string
   summary?: string
   result?: string
+}
+
+export type ClaudeSessionTranscript = {
+  messages: ChatMessage[]
+  compactionBoundaries: CliCompactionBoundary[]
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -302,14 +308,81 @@ const updateHydratedTaskNotification = (
   return false
 }
 
-export const hydrateClaudeSessionMessages = (
+const readFiniteNumber = (
+  record: Record<string, unknown>,
+  ...keys: string[]
+): number | undefined => {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  return undefined
+}
+
+const readClaudeCompactionBoundary = (
+  message: SessionMessage,
+): {
+  boundary: Omit<CliCompactionBoundary, 'afterMessageId'>
+  summaryMessageId?: string
+} | null => {
+  const record = message as unknown as Record<string, unknown>
+  if (record.type !== 'system' || record.subtype !== 'compact_boundary') {
+    return null
+  }
+  const metadata = isRecord(record.compactMetadata)
+    ? record.compactMetadata
+    : isRecord(record.compact_metadata)
+      ? record.compact_metadata
+      : {}
+  const preservedSegment = isRecord(metadata.preservedSegment)
+    ? metadata.preservedSegment
+    : isRecord(metadata.preserved_segment)
+      ? metadata.preserved_segment
+      : null
+  const uuid = typeof record.uuid === 'string' ? record.uuid : 'unknown'
+  const trigger =
+    metadata.trigger === 'manual' || metadata.trigger === 'auto'
+      ? metadata.trigger
+      : undefined
+  const preTokens = readFiniteNumber(metadata, 'preTokens', 'pre_tokens')
+  const postTokens = readFiniteNumber(metadata, 'postTokens', 'post_tokens')
+  return {
+    boundary: {
+      id: `claude-compact-${uuid}`,
+      ...(trigger ? { trigger } : {}),
+      ...(preTokens !== undefined ? { preTokens } : {}),
+      ...(postTokens !== undefined ? { postTokens } : {}),
+    },
+    ...(typeof preservedSegment?.anchorUuid === 'string'
+      ? { summaryMessageId: preservedSegment.anchorUuid }
+      : typeof preservedSegment?.anchor_uuid === 'string'
+        ? { summaryMessageId: preservedSegment.anchor_uuid }
+        : {}),
+  }
+}
+
+export const hydrateClaudeSessionTranscript = (
   messages: SessionMessage[],
-): ChatMessage[] => {
+): ClaudeSessionTranscript => {
   const hydrated: ChatMessage[] = []
+  const compactionBoundaries: CliCompactionBoundary[] = []
+  const hiddenCompactionSummaryMessageIds = new Set<string>()
   const requests = new Map<string, ToolCallRequest>()
   const completedTools = new Set<string>()
 
   for (const message of messages) {
+    const compaction = readClaudeCompactionBoundary(message)
+    if (compaction) {
+      compactionBoundaries.push({
+        ...compaction.boundary,
+        afterMessageId: hydrated.at(-1)?.id ?? null,
+      })
+      if (compaction.summaryMessageId) {
+        hiddenCompactionSummaryMessageIds.add(compaction.summaryMessageId)
+      }
+      continue
+    }
+    if (hiddenCompactionSummaryMessageIds.has(message.uuid)) continue
     if (!isRecord(message.message)) {
       continue
     }
@@ -375,8 +448,12 @@ export const hydrateClaudeSessionMessages = (
     })
   }
 
-  return hydrated
+  return { messages: hydrated, compactionBoundaries }
 }
+
+export const hydrateClaudeSessionMessages = (
+  messages: SessionMessage[],
+): ChatMessage[] => hydrateClaudeSessionTranscript(messages).messages
 
 export const reconcileFinalText = (
   streamed: string,

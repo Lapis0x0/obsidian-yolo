@@ -424,6 +424,8 @@ export function CliChatSurface({
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
+  const isConversationBusy =
+    snapshot.isCompacting === true || ACTIVE_RUN_STATES.has(snapshot.runState)
   const cliSubagentReadModel = useMemo(
     () => buildCliSubagentReadModel(snapshot.messages, snapshot.runtimeId),
     [snapshot.messages, snapshot.runtimeId],
@@ -450,33 +452,23 @@ export function CliChatSurface({
     messages,
     snapshot.runState,
   )
-  const nativeCompactionMessages = useMemo(
-    () =>
-      messages.filter(
-        (message) =>
-          message.role === 'assistant' &&
-          message.metadata?.cliContextCompaction !== undefined,
-      ),
-    [messages],
-  )
   const pendingCompactionAnchorMessageId = snapshot.isCompacting
     ? (messages.at(-1)?.id ?? null)
     : null
   const timelineItems = useMemo(() => {
-    const latestCompactionMessage = nativeCompactionMessages.at(-1)
     const items = buildChatTimelineItems({
       groupedChatMessages: windowedGroupedChatMessages,
       revisionsById: readModel.revisionsById,
-      compactionDividerAnchorMessageIds: nativeCompactionMessages.map(
-        (message) => message.id,
+      compactionDividerAnchorMessageIds: snapshot.compactionBoundaries.flatMap(
+        (boundary) =>
+          boundary.afterMessageId ? [boundary.afterMessageId] : [],
       ),
-      latestCompaction: latestCompactionMessage
-        ? {
-            anchorMessageId: latestCompactionMessage.id,
-            summary: '',
-            compactedAt: 0,
-          }
-        : null,
+      compactionDividers: snapshot.compactionBoundaries.map((boundary) => ({
+        id: `${boundary.id}-divider`,
+        anchorMessageId: boundary.afterMessageId,
+        compaction: null,
+      })),
+      latestCompaction: null,
       pendingCompactionAnchorMessageId,
       activeEditableMessageId: null,
       activeStreamingMessageId,
@@ -506,10 +498,10 @@ export function CliChatSurface({
     return itemsWithPending
   }, [
     activeStreamingMessageId,
-    nativeCompactionMessages,
     pendingCompactionAnchorMessageId,
     pendingResponseUserMessageId,
     readModel,
+    snapshot.compactionBoundaries,
     windowedGroupedChatMessages,
   ])
   const stableTimelineItems = useStableChatTimelineItems(timelineItems)
@@ -578,8 +570,8 @@ export function CliChatSurface({
       canFollowLiveEdge: !hasNewerMessages,
     })
   useEffect(() => {
-    if (ACTIVE_RUN_STATES.has(snapshot.runState)) resetToLatest()
-  }, [resetToLatest, snapshot.runState])
+    if (isConversationBusy) resetToLatest()
+  }, [isConversationBusy, resetToLatest])
   useLayoutEffect(() => {
     autoScrollToBottom()
   }, [autoScrollToBottom, snapshot.messages])
@@ -602,7 +594,7 @@ export function CliChatSurface({
             key={message.id}
             message={message}
             isFocused={focusedUserMessageId === message.id}
-            isActionDisabled={ACTIVE_RUN_STATES.has(snapshot.runState)}
+            isActionDisabled={isConversationBusy}
             onSubmit={(editedMessage, configuration) => {
               if (
                 editorStateToPlainText(editedMessage.content).trim() === '' &&
@@ -620,7 +612,7 @@ export function CliChatSurface({
               })
             }}
             onFocus={() => {
-              if (!ACTIVE_RUN_STATES.has(snapshot.runState)) {
+              if (!isConversationBusy) {
                 setFocusedUserMessageId(message.id)
               }
             }}
@@ -772,6 +764,7 @@ export function CliChatSurface({
       handleOpenEditSummaryFile,
       cachedModels,
       cliSubagentReadModel.presentationsByToolCallId,
+      isConversationBusy,
       onHistoricalUserMessageControlPopoverOpenChange,
       onRewriteUserMessage,
       readModel.messagesById,
@@ -820,7 +813,7 @@ export function CliChatSurface({
       onLoadEarlier={loadEarlier}
       onLoadNewer={loadNewer}
       onForceScrollToBottom={handleForceScrollToBottom}
-      hasStreamingMessages={ACTIVE_RUN_STATES.has(snapshot.runState)}
+      hasStreamingMessages={isConversationBusy}
       scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
       scrollToBottomWhileStreamingLabel={t(
         'chat.scrollToBottomWhileStreaming',

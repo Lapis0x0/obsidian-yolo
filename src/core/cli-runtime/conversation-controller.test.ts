@@ -60,7 +60,7 @@ class FakeCliRuntime implements CliRuntime {
     yoloEnabled: boolean
   }> = []
   openSessionImpl: (ref: CliSessionRef) => Promise<CliSessionHydration> =
-    async (ref) => ({ ref, messages: [] })
+    async (ref) => ({ ref, messages: [], compactionBoundaries: [] })
   ensureReadyImpl: (input: CliRuntimeReadyInput) => Promise<void> = async (
     input,
   ) => {
@@ -166,26 +166,29 @@ describe('CliConversationController', () => {
     runtime.compactImpl = () => compactGate.promise
     const controller = new CliConversationController(runtime)
     await controller.ensureReady()
+    runtime.emit({ type: 'run_state', state: 'completed' })
 
     const compactPromise = controller.compact()
     expect(controller.getSnapshot()).toMatchObject({
       isCompacting: true,
-      runState: 'running',
+      runState: 'completed',
     })
 
     runtime.emit({
-      type: 'message_upsert',
-      message: {
-        role: 'assistant',
+      type: 'compaction_boundary',
+      boundary: {
         id: 'compact-boundary',
-        content: '',
-        metadata: {
-          generationState: 'completed',
-          cliContextCompaction: { trigger: 'manual' },
-        },
+        trigger: 'manual',
       },
     })
     expect(controller.getSnapshot().isCompacting).toBe(false)
+    expect(controller.getSnapshot().compactionBoundaries).toEqual([
+      {
+        id: 'compact-boundary',
+        afterMessageId: null,
+        trigger: 'manual',
+      },
+    ])
 
     compactGate.resolve()
     await compactPromise
@@ -316,6 +319,7 @@ describe('CliConversationController', () => {
     runtime.openSessionImpl = async () => ({
       ref: { ...ref, sessionPathHint: '/native/session.jsonl' },
       messages: [userMessage('user-1'), assistantMessage('assistant-1', 'old')],
+      compactionBoundaries: [],
     })
     const controller = new CliConversationController(runtime)
 
@@ -383,7 +387,7 @@ describe('CliConversationController', () => {
     const controller = new CliConversationController(runtime)
     await controller.ensureReady()
 
-    runtime.emit({ type: 'message_upsert', message: userMessage('user-1') })
+    controller.stageTurn(userMessage('user-1'))
     runtime.emit({
       type: 'message_upsert',
       message: assistantMessage('assistant-1'),
@@ -422,6 +426,54 @@ describe('CliConversationController', () => {
     ])
   })
 
+  it('ignores native compaction metrics instead of overwriting the prior turn', async () => {
+    const runtime = new FakeCliRuntime()
+    const ref = session('metrics-before-compact')
+    runtime.openSessionImpl = async () => ({
+      ref,
+      messages: [
+        userMessage('user-1'),
+        {
+          ...assistantMessage('assistant-1'),
+          metadata: {
+            usage: {
+              prompt_tokens: 8_900,
+              completion_tokens: 132,
+              total_tokens: 9_032,
+            },
+            durationMs: 4_400,
+          },
+        },
+      ],
+      compactionBoundaries: [],
+    })
+    const controller = new CliConversationController(runtime)
+    await controller.hydrateSession(ref)
+    await controller.ensureReady()
+
+    await controller.compact()
+    runtime.emit({
+      type: 'turn_metrics',
+      usage: {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+      },
+      durationMs: 7_300,
+    })
+
+    expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+      metadata: {
+        usage: {
+          prompt_tokens: 8_900,
+          completion_tokens: 132,
+          total_tokens: 9_032,
+        },
+        durationMs: 4_400,
+      },
+    })
+  })
+
   it('merges a restored cache hit rate into fresh provider context usage', async () => {
     const runtime = new FakeCliRuntime('claude-code')
     const ref = session('restored-usage', 'claude-code')
@@ -455,6 +507,7 @@ describe('CliConversationController', () => {
         userMessage('between'),
         assistantMessage('duplicate', 'last'),
       ],
+      compactionBoundaries: [],
     })
     const controller = new CliConversationController(runtime)
 
@@ -586,6 +639,7 @@ describe('CliConversationController', () => {
         userMessage('user-2', 'second'),
         assistantMessage('assistant-2', 'second answer'),
       ],
+      compactionBoundaries: [],
     })
     runtime.rewriteTurnImpl = async () => {
       runtime.emit({ type: 'session_bound', ref: replacementRef })
@@ -652,7 +706,11 @@ describe('CliConversationController', () => {
     runtime.openSessionImpl = (ref) =>
       ref.nativeSessionId === 'first'
         ? firstHydration.promise
-        : Promise.resolve({ ref, messages: [userMessage('second-user')] })
+        : Promise.resolve({
+            ref,
+            messages: [userMessage('second-user')],
+            compactionBoundaries: [],
+          })
     const controller = new CliConversationController(runtime)
 
     const first = controller.hydrateSession(session('first'))
@@ -667,6 +725,7 @@ describe('CliConversationController', () => {
     firstHydration.resolve({
       ref: session('first'),
       messages: [userMessage('stale-hydration')],
+      compactionBoundaries: [],
     })
     await first
 

@@ -196,11 +196,14 @@ describe('CodexCliRuntime', () => {
         content: 'complete transcript',
       },
     ]
-    const loadSessionMessages = jest.fn(async () => transcriptMessages)
+    const loadSessionTranscript = jest.fn(async () => ({
+      messages: transcriptMessages,
+      compactionBoundaries: [],
+    }))
     const runtime = new CodexCliRuntime({
       cwd: '/vault',
       createProcess: async () => process,
-      loadSessionMessages,
+      loadSessionTranscript,
     })
 
     const hydration = await runtime.openSession({
@@ -208,7 +211,9 @@ describe('CodexCliRuntime', () => {
       nativeSessionId: 'thread-1',
     })
 
-    expect(loadSessionMessages).toHaveBeenCalledWith('/sessions/thread-1.jsonl')
+    expect(loadSessionTranscript).toHaveBeenCalledWith(
+      '/sessions/thread-1.jsonl',
+    )
     expect(hydration.messages).toEqual(transcriptMessages)
     await runtime.dispose()
   })
@@ -232,7 +237,7 @@ describe('CodexCliRuntime', () => {
     const runtime = new CodexCliRuntime({
       cwd: '/vault',
       createProcess: async () => process,
-      loadSessionMessages: async () => null,
+      loadSessionTranscript: async () => null,
     })
 
     const hydration = await runtime.openSession({
@@ -496,6 +501,8 @@ describe('CodexCliRuntime', () => {
       cwd: '/vault',
       createProcess: async () => process,
     })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
 
     await expect(runtime.listSkills()).resolves.toEqual([
       {
@@ -516,6 +523,7 @@ describe('CodexCliRuntime', () => {
         (request) => request.method === 'thread/compact/start',
       )?.params,
     ).toEqual({ threadId: 'thread-1' })
+    expect(events).not.toContainEqual({ type: 'run_state', state: 'running' })
   })
 
   it('routes interleaved shared-host events and cancellation by thread', async () => {
@@ -782,12 +790,8 @@ describe('CodexCliRuntime', () => {
       if (event.type === 'compaction_state') {
         compactionStates.push(event.isCompacting)
       }
-      if (
-        event.type === 'message_upsert' &&
-        event.message.role === 'assistant' &&
-        event.message.metadata?.cliContextCompaction !== undefined
-      ) {
-        compactionMarkers.push(event.message.id)
+      if (event.type === 'compaction_boundary') {
+        compactionMarkers.push(event.boundary.id)
       }
     })
     await runtime.ensureReady({})
@@ -807,7 +811,7 @@ describe('CodexCliRuntime', () => {
       params: { item },
     })
     expect(compactionStates).toEqual([true, false])
-    expect(compactionMarkers).toEqual(['codex-activity-compact-1'])
+    expect(compactionMarkers).toEqual(['codex-compact-compact-1'])
   })
 
   it('surfaces server approvals and routes the UI decision back by tool id', async () => {

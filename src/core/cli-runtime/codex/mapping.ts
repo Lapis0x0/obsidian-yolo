@@ -12,6 +12,7 @@ import {
   type ToolEditSummary,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
+import type { CliCompactionBoundary } from '../types'
 import { createCliToolCallRequest } from '../tool-call'
 
 import {
@@ -481,17 +482,7 @@ export const mapCodexItem = (
     console.warn(`[YOLO] Unadapted Codex timeline item: ${activity.type}`)
   }
   if (activity.type === 'contextCompaction') {
-    return [
-      {
-        role: 'assistant',
-        id: `codex-activity-${activity.id}`,
-        content: '',
-        metadata: {
-          generationState: 'completed',
-          cliContextCompaction: {},
-        },
-      },
-    ]
+    return []
   }
   return [
     {
@@ -503,13 +494,34 @@ export const mapCodexItem = (
   ]
 }
 
+export const mapCodexTranscript = (
+  turns: CodexTurn[],
+  cwd?: string,
+): {
+  messages: ChatMessage[]
+  compactionBoundaries: CliCompactionBoundary[]
+} => {
+  const messages: ChatMessage[] = []
+  const compactionBoundaries: CliCompactionBoundary[] = []
+  for (const turn of turns) {
+    for (const item of turn.items) {
+      if (item.type === 'contextCompaction') {
+        compactionBoundaries.push({
+          id: `codex-compact-${item.id}`,
+          afterMessageId: messages.at(-1)?.id ?? null,
+        })
+        continue
+      }
+      messages.push(...mapCodexItem(item, cwd, turn.id))
+    }
+  }
+  return { messages, compactionBoundaries }
+}
+
 export const mapCodexTurns = (
   turns: CodexTurn[],
   cwd?: string,
-): ChatMessage[] =>
-  turns.flatMap((turn) =>
-    turn.items.flatMap((item) => mapCodexItem(item, cwd, turn.id)),
-  )
+): ChatMessage[] => mapCodexTranscript(turns, cwd).messages
 
 const parseRawToolInput = (
   item: CodexRawResponseItem,
