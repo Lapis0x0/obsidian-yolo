@@ -84,8 +84,33 @@ export function RuntimeSelector({
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const expandedWidthRef = useRef(0)
   const [isCompact, setIsCompact] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const menuLabelId = useId()
   const cliRuntimeAvailable = isCliRuntimeAvailable()
+  const hoverCloseTimeoutRef = useRef<number | null>(null)
+
+  const clearHoverCloseTimeout = () => {
+    if (hoverCloseTimeoutRef.current !== null) {
+      window.clearTimeout(hoverCloseTimeoutRef.current)
+      hoverCloseTimeoutRef.current = null
+    }
+  }
+
+  const closeMenuWithDelay = () => {
+    clearHoverCloseTimeout()
+    hoverCloseTimeoutRef.current = window.setTimeout(() => {
+      setIsOpen(false)
+      hoverCloseTimeoutRef.current = null
+    }, 150)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (hoverCloseTimeoutRef.current !== null) {
+        window.clearTimeout(hoverCloseTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     setIsCompact(false)
@@ -181,7 +206,14 @@ export function RuntimeSelector({
   )
 
   return (
-    <DropdownMenu.Root modal={false}>
+    <DropdownMenu.Root
+      modal={false}
+      open={isOpen}
+      onOpenChange={(open) => {
+        clearHoverCloseTimeout()
+        setIsOpen(open)
+      }}
+    >
       <DropdownMenu.Trigger
         ref={triggerRef}
         type="button"
@@ -190,6 +222,12 @@ export function RuntimeSelector({
         aria-label={accessibleLabel}
         data-runtime-id={currentRuntimeId}
         data-compact={isCompact || undefined}
+        onMouseEnter={() => {
+          if (disabled) return
+          clearHoverCloseTimeout()
+          setIsOpen(true)
+        }}
+        onMouseLeave={closeMenuWithDelay}
       >
         <span className="yolo-runtime-selector__icon" aria-hidden="true">
           <RuntimeIcon runtimeId={currentOption.id} />
@@ -215,6 +253,8 @@ export function RuntimeSelector({
         align="start"
         collisionPadding={8}
         loop
+        onMouseEnter={clearHoverCloseTimeout}
+        onMouseLeave={closeMenuWithDelay}
       >
         <DropdownMenu.Label id={menuLabelId} className="yolo-sr-only">
           {t('sidebar.runtimeSelector.menuLabel')}
