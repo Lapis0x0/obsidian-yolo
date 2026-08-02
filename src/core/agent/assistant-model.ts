@@ -7,7 +7,7 @@ export const ASSISTANT_FOLLOW_DEFAULT_MODEL_OPTION_VALUE =
 
 export const followsDefaultChatModel = (
   modelId?: string | null,
-): boolean => !modelId
+): modelId is null | undefined | '' => !modelId
 
 export const resolveAssistantModelId = (
   assistantModelId: string | undefined | null,
