@@ -293,9 +293,7 @@ function AgentSkillsModalContent({
         {skills.length > 0 ? (
           <div className="yolo-agent-tool-list">
             {skills
-              .filter((skill) =>
-                isSelectMode ? !skill.isReadOnly : true,
-              )
+              .filter((skill) => (isSelectMode ? !skill.isReadOnly : true))
               .map((skill) => {
                 const enabled = !disabledSkillNameSet.has(skill.name)
                 const isSelected = selectedIds.has(skill.name)

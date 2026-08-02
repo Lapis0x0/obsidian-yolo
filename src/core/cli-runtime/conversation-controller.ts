@@ -1,13 +1,13 @@
 import { v4 as uuidv4 } from 'uuid'
 
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
-import type { ToolEditSummary } from '../../types/tool-call.types'
 import type { ResponseUsage } from '../../types/llm/response'
+import type { ToolEditSummary } from '../../types/tool-call.types'
 
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
-  CliContextUsage,
   CliCompactionBoundary,
+  CliContextUsage,
   CliPermissionProfileUpdate,
   CliRewriteTurnInput,
   CliRuntime,
@@ -620,10 +620,9 @@ export class CliConversationController {
   ): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
-    const updatePermissionProfile = operation.runtime.updatePermissionProfile
-    if (!updatePermissionProfile) return
+    if (!operation.runtime.updatePermissionProfile) return
     try {
-      await updatePermissionProfile.call(operation.runtime, update)
+      await operation.runtime.updatePermissionProfile(update)
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error

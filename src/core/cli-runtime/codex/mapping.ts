@@ -12,8 +12,8 @@ import {
   type ToolEditSummary,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
-import type { CliCompactionBoundary } from '../types'
 import { createCliToolCallRequest } from '../tool-call'
+import type { CliCompactionBoundary } from '../types'
 
 import {
   decodeCodexExecEnvelope,

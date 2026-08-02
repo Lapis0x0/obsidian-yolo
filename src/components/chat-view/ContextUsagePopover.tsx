@@ -1,8 +1,8 @@
 import * as Popover from '@radix-ui/react-popover'
 import { type RefObject, useCallback, useMemo, useState } from 'react'
 
-import type { CliContextUsageCategory } from '../../core/cli-runtime/types'
 import { useLanguage } from '../../contexts/language-context'
+import type { CliContextUsageCategory } from '../../core/cli-runtime/types'
 import type { PromptSectionBucket } from '../../utils/chat/requestContextBuilder'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { YoloPopoverContent } from '../common/popover'

@@ -412,9 +412,10 @@ function getLengthHandleHorizontalAnchor(
     direction === Direction.RTL
       ? Math.min(...lastLine.map((rect) => rect.left))
       : Math.max(...lastLine.map((rect) => rect.left + rect.width))
-  const edgeAnchor = direction === Direction.RTL
-    ? Math.max(selectionEdge, contentCenter)
-    : Math.min(selectionEdge, contentCenter)
+  const edgeAnchor =
+    direction === Direction.RTL
+      ? Math.max(selectionEdge, contentCenter)
+      : Math.min(selectionEdge, contentCenter)
   return (
     edgeAnchor +
     (direction === Direction.RTL

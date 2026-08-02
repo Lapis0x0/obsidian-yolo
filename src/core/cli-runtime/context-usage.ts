@@ -1,9 +1,10 @@
+import type { ResponseUsage } from '../../types/llm/response'
+
 import type {
   CliContextUsage,
   CliContextUsageBucket,
   CliContextUsageCategory,
 } from './types'
-import type { ResponseUsage } from '../../types/llm/response'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)

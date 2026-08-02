@@ -1360,7 +1360,8 @@ describe('local fs tool action helpers', () => {
   it('reads allowed hidden-directory skills through the skill registry', async () => {
     // eslint-disable-next-line obsidianmd/hardcoded-config-path -- mock Vault#configDir for adapter paths
     const configDir = '.obsidian'
-    const hiddenPath = `${configDir}/skills/hidden-open.md`
+    const hiddenSkillDir = `${configDir}/skills/hidden-open`
+    const hiddenPath = `${hiddenSkillDir}/SKILL.md`
     const content = [
       '---',
       'name: hidden-open',
@@ -1373,13 +1374,18 @@ describe('local fs tool action helpers', () => {
         configDir,
         adapter: {
           exists: jest.fn(
-            async (path: string) => path === `${configDir}/skills`,
+            async (path: string) =>
+              path === `${configDir}/skills` || path === hiddenPath,
           ),
-          list: jest.fn(async (path: string) =>
-            path === `${configDir}/skills`
-              ? { files: [hiddenPath], folders: [] }
-              : { files: [], folders: [] },
-          ),
+          list: jest.fn(async (path: string) => {
+            if (path === `${configDir}/skills`) {
+              return { files: [], folders: [hiddenSkillDir] }
+            }
+            if (path === hiddenSkillDir) {
+              return { files: [hiddenPath], folders: [] }
+            }
+            return { files: [], folders: [] }
+          }),
           read: jest.fn(async (path: string) => {
             if (path !== hiddenPath) {
               throw new Error(`Unexpected read: ${path}`)

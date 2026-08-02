@@ -1,4 +1,3 @@
-/* eslint-disable import/no-extraneous-dependencies -- Parser dependencies are supplied by the first-party module build workspace. */
 import { parseFragment } from 'parse5'
 
 import type { AnkiMediaReference } from './types'

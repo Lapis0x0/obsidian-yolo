@@ -33,12 +33,12 @@ import type {
   CliTurnInput,
 } from '../types'
 
+import type { CodexSessionTranscript } from './history'
 import {
   CodexAppServerHost,
   type CodexAppServerHostOptions,
   type CodexHostResolver,
 } from './host'
-import type { CodexSessionTranscript } from './history'
 import {
   buildPendingToolMessages,
   mapCodexItem,
@@ -59,13 +59,13 @@ import type {
   CodexThreadItem,
   CodexUserInput,
   ModelListResponse,
+  SkillsListResponse,
+  ThreadCompactStartResponse,
   ThreadReadResponse,
   ThreadResumeResponse,
   ThreadRollbackResponse,
-  ThreadCompactStartResponse,
   ThreadStartResponse,
   TurnStartResponse,
-  SkillsListResponse,
 } from './protocol'
 
 type PendingServerRequest = {

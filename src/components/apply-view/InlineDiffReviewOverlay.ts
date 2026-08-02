@@ -122,11 +122,13 @@ class InlineReviewWidget extends WidgetType {
 }
 
 function getWidgetTextOffset(root: HTMLElement, event: MouseEvent): number {
+  /* eslint-disable @typescript-eslint/no-deprecated -- Older Obsidian Electron versions expose only this caret hit-test API */
   const caretRangeFromPoint = (
     document as Document & {
       caretRangeFromPoint?: (x: number, y: number) => Range | null
     }
   ).caretRangeFromPoint
+  /* eslint-enable @typescript-eslint/no-deprecated -- End compatibility-only caret API access */
   const caret = caretRangeFromPoint?.call(
     document,
     event.clientX,

@@ -16,9 +16,7 @@ describe('normalizeCliChatMode', () => {
 describe('resolveClaudePermissionMode', () => {
   it('maps Agent / YOLO / Plan to Claude SDK permission modes', () => {
     expect(resolveClaudePermissionMode('agent', false)).toBe('acceptEdits')
-    expect(resolveClaudePermissionMode('agent', true)).toBe(
-      'bypassPermissions',
-    )
+    expect(resolveClaudePermissionMode('agent', true)).toBe('bypassPermissions')
     expect(resolveClaudePermissionMode('plan', false)).toBe('plan')
     expect(resolveClaudePermissionMode('plan', true)).toBe('plan')
   })

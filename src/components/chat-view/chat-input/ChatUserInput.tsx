@@ -48,10 +48,9 @@ import {
   resolveChatInputEditorSeed,
 } from './chatInputDraft'
 import {
-  ChatMode,
+  CHAT_MODES,
   ChatModeSelect,
   type ChatModeSelectValue,
-  CHAT_MODES,
 } from './ChatModeSelect'
 import { ChatQuickAccess } from './ChatQuickAccess'
 import ChatSkillBadge from './ChatSkillBadge'

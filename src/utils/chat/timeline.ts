@@ -343,8 +343,8 @@ export const buildChatTimelineItems = ({
     else compactionDividersByAnchor.set(divider.anchorMessageId, [divider])
   }
   const insertCompactionDividers = (anchorMessageId: string | null) => {
-    for (const divider of
-      compactionDividersByAnchor.get(anchorMessageId) ?? []) {
+    for (const divider of compactionDividersByAnchor.get(anchorMessageId) ??
+      []) {
       items.push({
         kind: 'compaction-divider',
         id: divider.id,

@@ -75,9 +75,11 @@ describe('CliSessionService', () => {
       lastCacheHitRate: 0.75,
     })
 
-    await expect(service.restoreSessionOverlay(ref, [])).resolves.toMatchObject({
-      lastCacheHitRate: 0.75,
-    })
+    await expect(service.restoreSessionOverlay(ref, [])).resolves.toMatchObject(
+      {
+        lastCacheHitRate: 0.75,
+      },
+    )
   })
 
   it('restores YOLO-authored display content without storing the transcript', async () => {

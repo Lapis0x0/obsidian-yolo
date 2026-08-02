@@ -37,9 +37,9 @@ import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
-  type ChatRuntimeId,
-  type ChatRuntimeApprovalAction,
   type ChatRuntimeActions,
+  type ChatRuntimeApprovalAction,
+  type ChatRuntimeId,
   type CliChatMode,
   type CliConversationController,
   type CliConversationSnapshot,
@@ -143,11 +143,11 @@ import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { ChatInputDraftHolder } from './chat-input/chatInputDraft'
 import {
-  type ChatMode,
-  type ChatModeSelectValue,
   CHAT_MODES,
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
+  type ChatMode,
+  type ChatModeSelectValue,
   isAgentChatMode,
   normalizeChatMode,
   normalizeYoloEnabled,

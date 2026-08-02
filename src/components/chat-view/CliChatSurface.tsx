@@ -31,8 +31,8 @@ import type {
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
-
 import DotLoader from '../common/DotLoader'
+
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'

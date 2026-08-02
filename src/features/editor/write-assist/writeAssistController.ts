@@ -3,7 +3,6 @@ import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 
 import { executeSingleTurn } from '../../../core/ai/single-turn'
 import { getChatModelClient } from '../../../core/llm/manager'
-import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'

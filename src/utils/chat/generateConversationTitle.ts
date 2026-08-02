@@ -11,7 +11,11 @@ import {
 import { getChatModelClient } from '../../core/llm/manager'
 import type { AutoPromotedTransportMode } from '../../core/llm/requestTransport'
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { ChatMessage, ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
+import type {
+  ChatMessage,
+  ChatSelectedSkill,
+  ChatUserMessage,
+} from '../../types/chat'
 
 export const AUTO_TITLE_TIMEOUT_MS = 10000
 export const AUTO_TITLE_MAX_RETRIES = 2
@@ -136,7 +140,9 @@ export const generateConversationTitleText = async ({
         DEFAULT_CHAT_TITLE_PROMPT[
           language as keyof typeof DEFAULT_CHAT_TITLE_PROMPT
         ] ?? DEFAULT_CHAT_TITLE_PROMPT.en
-      const customizedPrompt = (settings.chatOptions.chatTitlePrompt ?? '').trim()
+      const customizedPrompt = (
+        settings.chatOptions.chatTitlePrompt ?? ''
+      ).trim()
       const systemPrompt =
         customizedPrompt.length > 0 ? customizedPrompt : defaultTitlePrompt
       const debugTrace = isLLMDebugCaptureEnabled()

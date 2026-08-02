@@ -162,7 +162,7 @@ class FakeCliRuntime implements CliRuntime {
 describe('CliConversationController', () => {
   it('exposes native compaction as pending until its boundary arrives', async () => {
     const runtime = new FakeCliRuntime()
-    const compactGate = deferred<void>()
+    const compactGate = deferred<undefined>()
     runtime.compactImpl = () => compactGate.promise
     const controller = new CliConversationController(runtime)
     await controller.ensureReady()
@@ -190,7 +190,7 @@ describe('CliConversationController', () => {
       },
     ])
 
-    compactGate.resolve()
+    compactGate.resolve(undefined)
     await compactPromise
   })
 

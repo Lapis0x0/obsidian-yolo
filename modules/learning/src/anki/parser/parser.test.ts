@@ -1,9 +1,7 @@
 // eslint-disable-next-line import/no-nodejs-modules -- Tests load the installed WASM fixture from disk.
 import { readFileSync } from 'node:fs'
 
-// eslint-disable-next-line import/no-extraneous-dependencies -- The migrated parser test uses the workspace fixture dependency.
 import * as JSZipModule from 'jszip'
-// eslint-disable-next-line import/no-extraneous-dependencies -- The migrated parser test uses the workspace fixture dependency.
 import initSqlJs, { type SqlJsStatic } from 'sql.js'
 
 import { readAnkiArchive } from './archive'

@@ -18891,7 +18891,9 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
   height: 100%;
   border-radius: 3px;
   background: var(--interactive-accent);
-  transition: width 0.18s ease, background-color 0.18s ease;
+  transition:
+    width 0.18s ease,
+    background-color 0.18s ease;
 }
 
 .yolo-context-breakdown__bar[data-tone='warning']

@@ -64,7 +64,7 @@ describe('buildCliSubagentReadModel', () => {
         {
           request:
             request.role === 'assistant'
-              ? request.toolCallRequests![0]!
+              ? request.toolCallRequests![0]
               : (null as never),
           response: {
             status: ToolCallResponseStatus.Success,
@@ -141,7 +141,7 @@ describe('buildCliSubagentReadModel', () => {
         {
           request:
             requestMessage.role === 'assistant'
-              ? requestMessage.toolCallRequests![0]!
+              ? requestMessage.toolCallRequests![0]
               : (null as never),
           response: {
             status: ToolCallResponseStatus.Success,

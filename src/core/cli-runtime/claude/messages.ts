@@ -10,8 +10,8 @@ import {
   type ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
-import type { CliCompactionBoundary } from '../types'
 import { createCliToolCallRequest } from '../tool-call'
+import type { CliCompactionBoundary } from '../types'
 
 import {
   CLAUDE_ASK_USER_QUESTION_TOOL,

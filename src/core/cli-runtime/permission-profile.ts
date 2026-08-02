@@ -8,7 +8,11 @@ export type ClaudeSdkPermissionMode =
   | 'dontAsk'
   | 'auto'
 
-export type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never'
+export type CodexApprovalPolicy =
+  | 'untrusted'
+  | 'on-failure'
+  | 'on-request'
+  | 'never'
 
 export type CodexSandboxMode =
   | 'read-only'
