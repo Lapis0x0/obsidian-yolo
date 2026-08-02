@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -157,10 +157,12 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
             />
           )}
         </span>
-        {isToggleable && isExpanded ? (
-          <ChevronUp className="yolo-assistant-message-metadata-toggle-icon" />
-        ) : isToggleable ? (
-          <ChevronDown className="yolo-assistant-message-metadata-toggle-icon" />
+        {isToggleable ? (
+          isExpanded ? (
+            <ChevronDown className="yolo-assistant-message-metadata-toggle-icon" />
+          ) : (
+            <ChevronRight className="yolo-assistant-message-metadata-toggle-icon" />
+          )
         ) : null}
       </button>
       <div className="yolo-assistant-message-metadata-preview" aria-hidden>

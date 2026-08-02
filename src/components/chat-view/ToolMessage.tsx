@@ -13,13 +13,17 @@ import { Notice } from 'obsidian'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import {
   BUILTIN_TOOL_UI_META,
   getBuiltinToolUiMeta,
 } from '../../core/agent/builtinToolUiMeta'
-import { subagentTaskRegistry } from '../../core/agent/subagent/task-registry'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
+import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
+import {
+  getCliToolCallDisplayName,
+  getCliToolPresentationArguments,
+  isCliToolCallCapability,
+} from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -38,13 +42,22 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
   type ToolFsReadOperationSummary,
+  createCompleteToolCallArguments,
   getToolCallArgumentsObject,
   getToolCallArgumentsText,
 } from '../../types/tool-call.types'
 import { SplitButton } from '../common/SplitButton'
 
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
+import { useChatRuntimeActions } from './chat-runtime-actions-context'
+import { useCliSubagent } from './cli-subagent-context'
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
+import {
+  handleRuntimeToolAbort,
+  handleRuntimeToolApproval,
+  handleRuntimeToolRejection,
+} from './runtime-action-handlers'
+import { CliSubagentCard } from './tool-cards/CliSubagentCard'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'
 import { SubagentCard } from './tool-cards/SubagentCard'
 import {
@@ -76,6 +89,8 @@ export type ToolLabels = {
   reject: string
   abort: string
   allowForThisChat: string
+  approvePlan: string
+  stayInPlan: string
   todoWriteCleared: string
   todoWriteAllCompleted: (count: number) => string
   todoWriteCreated: (count: number) => string
@@ -101,6 +116,7 @@ const DEFAULT_STATUS_LABELS: Record<ToolCallResponseStatus, string> = {
 type ToolRequestLike = {
   name: string
   arguments?: ToolCallRequest['arguments']
+  metadata?: ToolCallRequest['metadata']
 }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -261,6 +277,8 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'chat.toolCall.allowForThisChat',
       'Allow for this chat',
     ),
+    approvePlan: translate('chat.toolCall.approvePlan', 'Approve plan'),
+    stayInPlan: translate('chat.toolCall.stayInPlan', 'Stay in plan'),
     todoWriteCleared: translate(
       'chat.toolSummary.todoWrite.cleared',
       'Cleared list',
@@ -323,6 +341,7 @@ const isDelegateSubagentRequest = (request: ToolRequestLike): boolean => {
 }
 
 const isTerminalCommandRequest = (request: ToolRequestLike): boolean => {
+  if (isCliToolCallCapability(request, 'command_execution')) return true
   try {
     const { toolName } = parseToolName(request.name)
     return toolName === 'terminal_command'
@@ -377,20 +396,6 @@ const extractSyntheticLiveTaskOutput = (
   return {
     stdout: typeof parsed.stdout === 'string' ? parsed.stdout : undefined,
     stderr: typeof parsed.stderr === 'string' ? parsed.stderr : undefined,
-  }
-}
-
-const extractAcceptedTaskId = (
-  response: ToolCallResponse,
-): string | undefined => {
-  if (response.status !== ToolCallResponseStatus.Success) return undefined
-  try {
-    const parsed = JSON.parse(response.data.text) as unknown
-    if (!parsed || typeof parsed !== 'object') return undefined
-    const taskId = (parsed as Record<string, unknown>).taskId
-    return typeof taskId === 'string' ? taskId : undefined
-  } catch {
-    return undefined
   }
 }
 
@@ -799,6 +804,9 @@ export const getToolSuccessIconKind = ({
   request: ToolRequestLike
   response?: ToolCallResponse
 }): ToolSuccessIconKind => {
+  if (isCliToolCallCapability(request, 'command_execution')) {
+    return 'terminal'
+  }
   let toolName: string
   try {
     const parsed = parseToolName(request.name)
@@ -1044,6 +1052,20 @@ export const getToolDisplayInfo = (
 ): ToolDisplayInfo => {
   const localServerName = getLocalFileToolServerName()
   const argumentsObject = parseToolArguments(request.arguments)
+  const cliToolCall = request.metadata?.cliToolCall
+  if (cliToolCall) {
+    const isCommandExecution = cliToolCall.capability === 'command_execution'
+    const summaryText =
+      isCommandExecution && typeof argumentsObject?.command === 'string'
+        ? summarizeShellCommand(argumentsObject.command, { streaming: false })
+        : undefined
+    return {
+      displayName: isCommandExecution
+        ? (labels.displayNames.terminal_command ?? 'Terminal command')
+        : getCliToolCallDisplayName(cliToolCall),
+      ...(summaryText ? { summaryText } : {}),
+    }
+  }
   try {
     const { serverName, toolName } = parseToolName(request.name)
 
@@ -1250,9 +1272,15 @@ function ToolCallItem({
   onRecoverAnswerUserQuestion,
   onResponseUpdate,
 }: ToolCallItemProps) {
+  const cliSubagent = useCliSubagent(request.id)
+  const isNestedCliToolCall = Boolean(
+    request.metadata?.cliToolCall?.parentCallId,
+  )
   const isAskUserQuestion = useMemo(
-    () => isAskUserQuestionToolName(request.name),
-    [request.name],
+    () =>
+      isCliToolCallCapability(request, 'user_question') ||
+      isAskUserQuestionToolName(request.name),
+    [request],
   )
   if (isAskUserQuestion) {
     // The tool has no execute path: the gateway either parks it in
@@ -1274,9 +1302,18 @@ function ToolCallItem({
         'ask_user_question: hosting surface must pass onRecoverAnswerUserQuestion. The parent chat surface forgot to wire the recovery handler.',
       )
     }
+    const presentationArguments = getCliToolPresentationArguments(request)
+    const presentationRequest = presentationArguments
+      ? {
+          ...request,
+          arguments: createCompleteToolCallArguments({
+            value: presentationArguments,
+          }),
+        }
+      : request
     return (
       <AskUserQuestionPanel
-        request={request}
+        request={presentationRequest}
         response={response}
         conversationId={conversationId}
         onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
@@ -1342,14 +1379,22 @@ function ToolCallItem({
     [request, response],
   )
   // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
+  const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
   const isAlwaysAllowDisabled = useMemo(() => {
+    if (isExitPlanMode) return true
     try {
       const { toolName } = parseToolName(request.name)
       return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
     } catch {
       return false
     }
-  }, [request.name])
+  }, [isExitPlanMode, request.name])
+  const pendingAllowLabel = isExitPlanMode
+    ? toolLabels.approvePlan
+    : toolLabels.allow
+  const pendingRejectLabel = isExitPlanMode
+    ? toolLabels.stayInPlan
+    : toolLabels.reject
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
     useState(
@@ -1435,16 +1480,32 @@ function ToolCallItem({
         initialStdout={syntheticLiveTaskOutput.stdout}
         initialStderr={syntheticLiveTaskOutput.stderr}
         onAbort={() => {
-          const taskId = extractAcceptedTaskId(response)
-          if (taskId) subagentTaskRegistry.abort(taskId)
           void handleAbort()
         }}
       />
     )
   }
 
+  if (
+    cliSubagent.presentation &&
+    cliSubagent.actions &&
+    cliSubagent.sessionRef
+  ) {
+    return (
+      <CliSubagentCard
+        presentation={cliSubagent.presentation}
+        actions={cliSubagent.actions}
+        sessionRef={cliSubagent.sessionRef}
+      />
+    )
+  }
+
   return (
-    <div className="yolo-toolcall">
+    <div
+      className={cx('yolo-toolcall', {
+        'yolo-toolcall--nested': isNestedCliToolCall,
+      })}
+    >
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -1654,11 +1715,11 @@ function ToolCallItem({
                       setIsOpen(false)
                     }}
                   >
-                    {toolLabels.allow}
+                    {pendingAllowLabel}
                   </button>
                 ) : (
                   <SplitButton
-                    primaryText={toolLabels.allow}
+                    primaryText={pendingAllowLabel}
                     onPrimaryClick={() => {
                       void handleToolCall()
                       setIsOpen(false)
@@ -1681,7 +1742,7 @@ function ToolCallItem({
                     setIsOpen(false)
                   }}
                 >
-                  {toolLabels.reject}
+                  {pendingRejectLabel}
                 </button>
               </div>
             )}
@@ -1734,7 +1795,7 @@ function useToolCall(
     allowForConversation?: boolean
   }) => Promise<boolean>,
 ) {
-  const plugin = usePlugin()
+  const { actions, conversation } = useChatRuntimeActions(conversationId)
   const suppressReloadNotice = isDelegateSubagentRequest(request)
   const showReloadNotice = useCallback(() => {
     new Notice(
@@ -1759,19 +1820,16 @@ function useToolCall(
   )
 
   const handleToolCall = useCallback(async () => {
-    const approved = await plugin.getAgentService().approveToolCall({
-      conversationId,
+    await handleRuntimeToolApproval({
+      actions,
+      conversation,
       toolCallId: request.id,
+      recover: tryRecoverToolCall,
+      onStale: suppressReloadNotice ? undefined : showReloadNotice,
     })
-    if (!approved) {
-      const recovered = await tryRecoverToolCall()
-      if (!recovered && !suppressReloadNotice) {
-        showReloadNotice()
-      }
-    }
   }, [
-    conversationId,
-    plugin,
+    actions,
+    conversation,
     request.id,
     showReloadNotice,
     suppressReloadNotice,
@@ -1779,20 +1837,17 @@ function useToolCall(
   ])
 
   const handleAllowForConversation = useCallback(async () => {
-    const approved = await plugin.getAgentService().approveToolCall({
-      conversationId,
+    await handleRuntimeToolApproval({
+      actions,
+      conversation,
       toolCallId: request.id,
       allowForConversation: true,
+      recover: () => tryRecoverToolCall(true),
+      onStale: suppressReloadNotice ? undefined : showReloadNotice,
     })
-    if (!approved) {
-      const recovered = await tryRecoverToolCall(true)
-      if (!recovered && !suppressReloadNotice) {
-        showReloadNotice()
-      }
-    }
   }, [
-    conversationId,
-    plugin,
+    actions,
+    conversation,
     request.id,
     showReloadNotice,
     suppressReloadNotice,
@@ -1800,28 +1855,28 @@ function useToolCall(
   ])
 
   const handleReject = useCallback(() => {
-    const rejected = plugin.getAgentService().rejectToolCall({
-      conversationId,
+    void handleRuntimeToolRejection({
+      actions,
+      conversation,
       toolCallId: request.id,
+      onStale: () =>
+        onResponseUpdate({
+          status: ToolCallResponseStatus.Rejected,
+        }),
     })
-    if (!rejected) {
-      onResponseUpdate({
-        status: ToolCallResponseStatus.Rejected,
-      })
-    }
-  }, [conversationId, onResponseUpdate, plugin, request.id])
+  }, [actions, conversation, onResponseUpdate, request.id])
 
   const handleAbort = useCallback(async () => {
-    const aborted = plugin.getAgentService().abortToolCall({
-      conversationId,
+    await handleRuntimeToolAbort({
+      actions,
+      conversation,
       toolCallId: request.id,
+      onStale: () =>
+        onResponseUpdate({
+          status: ToolCallResponseStatus.Aborted,
+        }),
     })
-    if (!aborted) {
-      onResponseUpdate({
-        status: ToolCallResponseStatus.Aborted,
-      })
-    }
-  }, [conversationId, onResponseUpdate, plugin, request.id])
+  }, [actions, conversation, onResponseUpdate, request.id])
 
   return {
     handleToolCall,

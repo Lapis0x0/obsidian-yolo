@@ -8,10 +8,14 @@
 const import_meta_url =
   typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope
     ? 'https://pglite-worker.local/worker.js'
-    : typeof document !== 'undefined'
-      ? (document.currentScript && document.currentScript.src) ||
-        new URL('main.js', document.baseURI).href
-      : require('url').pathToFileURL(__filename).href
+    : typeof process !== 'undefined' &&
+        Boolean(process.versions && process.versions.electron) &&
+        typeof __filename === 'string'
+      ? require('url').pathToFileURL(__filename).href
+      : typeof document !== 'undefined'
+        ? (document.currentScript && document.currentScript.src) ||
+          new URL('main.js', document.baseURI).href
+        : require('url').pathToFileURL(__filename).href
 
 var _scriptName = import_meta_url
 

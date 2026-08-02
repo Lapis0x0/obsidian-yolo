@@ -2,6 +2,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { type RefObject, useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import type { CliContextUsageCategory } from '../../core/cli-runtime/types'
 import type { PromptSectionBucket } from '../../utils/chat/requestContextBuilder'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { YoloPopoverContent } from '../common/popover'
@@ -41,31 +42,40 @@ const MIN_BAR_PERCENT = 0.6
 export type ContextUsagePopoverProps = {
   promptTokens: number
   maxContextTokens: number | null
+  cacheHitRate?: number
   label: string
   /** Anchor ref pointing at the input-container so the popover lines up with
    * the input box (not just the ring). */
   anchorRef: RefObject<HTMLElement | null>
-  /** Returns the inputs required to compute the breakdown, or null when the
-   * estimator can't run (e.g. mcpManager not ready yet). Called lazily on open.
-   * May be async — the popover shows a skeleton until resolution + tokenize
-   * both finish. */
-  buildInputs: () =>
+  /** When provided, opens the native per-bucket local estimate breakdown. */
+  buildInputs?: () =>
     | ContextBreakdownInputs
     | null
     | Promise<ContextBreakdownInputs | null>
+  /** Provider-reported categories (Claude getContextUsage). Shown instead of
+   * the local estimate when `buildInputs` is absent. */
+  categories?: readonly CliContextUsageCategory[]
 }
 
 export default function ContextUsagePopover({
   promptTokens,
   maxContextTokens,
+  cacheHitRate,
   label,
   anchorRef,
   buildInputs,
+  categories,
 }: ContextUsagePopoverProps) {
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
+  const showLocalBreakdown = typeof buildInputs === 'function'
+  const remoteCategories = !showLocalBreakdown ? (categories ?? []) : []
+  const showRemoteBreakdown = remoteCategories.length > 0
 
-  const breakdown = useContextBreakdown(open, buildInputs)
+  const breakdown = useContextBreakdown(
+    open && showLocalBreakdown,
+    buildInputs ?? (() => null),
+  )
 
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next)
@@ -95,6 +105,18 @@ export default function ContextUsagePopover({
     ? Math.min(1, Math.max(0, promptTokens / maxContextTokens))
     : null
   const percentLabel = ratio === null ? null : `${Math.round(ratio * 100)}%`
+  const cacheHitPercentLabel =
+    typeof cacheHitRate === 'number' && Number.isFinite(cacheHitRate)
+      ? `${Math.round(Math.min(1, Math.max(0, cacheHitRate)) * 100)}%`
+      : null
+  const breakdownBarAriaLabel = t(
+    'chat.contextBreakdown.breakdownBarAriaLabel',
+    'Context breakdown',
+  )
+  const usageBarAriaLabel = t(
+    'chat.contextBreakdown.usageBarAriaLabel',
+    'Context usage',
+  )
 
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
@@ -134,24 +156,36 @@ export default function ContextUsagePopover({
               <div className="yolo-context-breakdown__title">
                 {t('chat.contextBreakdown.title', 'Context')}
               </div>
-              <div className="yolo-context-breakdown__caption">
-                {t(
-                  'chat.contextBreakdown.localEstimateCaption',
-                  '本地估算，可能与服务端计费存在偏差',
-                )}
-              </div>
+              {showLocalBreakdown ? (
+                <div className="yolo-context-breakdown__caption">
+                  {t(
+                    'chat.contextBreakdown.localEstimateCaption',
+                    '本地估算，可能与服务端计费存在偏差',
+                  )}
+                </div>
+              ) : null}
             </div>
             <div className="yolo-context-breakdown__summary">
-              {percentLabel ? (
-                <span className="yolo-context-breakdown__percent">
-                  {t(
-                    'chat.contextBreakdown.fullLabel',
-                    '{{percent}} Full',
-                  ).replace('{{percent}}', percentLabel)}
-                </span>
-              ) : null}
+              <div className="yolo-context-breakdown__metrics">
+                {percentLabel ? (
+                  <span className="yolo-context-breakdown__percent">
+                    {t(
+                      'chat.contextBreakdown.fullLabel',
+                      '{{percent}} Full',
+                    ).replace('{{percent}}', percentLabel)}
+                  </span>
+                ) : null}
+                {cacheHitPercentLabel ? (
+                  <span className="yolo-context-breakdown__cache-hit">
+                    {t(
+                      'chat.contextBreakdown.cacheHitLabel',
+                      'Previous turn cache hit {{percent}}',
+                    ).replace('{{percent}}', cacheHitPercentLabel)}
+                  </span>
+                ) : null}
+              </div>
               <span className="yolo-context-breakdown__totals">
-                {breakdown.status === 'ready'
+                {showLocalBreakdown && breakdown.status === 'ready'
                   ? hasMax
                     ? `~${formatTokenCount(breakdown.data.total)} / ${formatTokenCount(maxContextTokens)}`
                     : `~${formatTokenCount(breakdown.data.total)}`
@@ -164,16 +198,40 @@ export default function ContextUsagePopover({
               </span>
             </div>
           </div>
-          <BreakdownBar
-            breakdown={breakdown}
-            maxContextTokens={maxContextTokens}
-          />
-          <BreakdownList
-            breakdown={breakdown}
-            bucketLabels={bucketLabels}
-            errorLabel={t('chat.contextBreakdown.error', 'Estimation failed')}
-          />
-          {!hasMax ? (
+          {showLocalBreakdown ? (
+            <>
+              <BreakdownBar
+                breakdown={breakdown}
+                maxContextTokens={maxContextTokens}
+                ariaLabel={breakdownBarAriaLabel}
+              />
+              <BreakdownList
+                breakdown={breakdown}
+                bucketLabels={bucketLabels}
+                errorLabel={t(
+                  'chat.contextBreakdown.error',
+                  'Estimation failed',
+                )}
+              />
+            </>
+          ) : showRemoteBreakdown ? (
+            <>
+              <RemoteCategoriesBar
+                categories={remoteCategories}
+                maxContextTokens={maxContextTokens}
+                promptTokens={promptTokens}
+                ariaLabel={breakdownBarAriaLabel}
+              />
+              <RemoteCategoriesList categories={remoteCategories} />
+            </>
+          ) : (
+            <UsageBar
+              promptTokens={promptTokens}
+              ratio={ratio}
+              ariaLabel={usageBarAriaLabel}
+            />
+          )}
+          {showLocalBreakdown && !hasMax ? (
             <p className="yolo-context-breakdown__unknown-max-hint">
               {t(
                 'chat.contextBreakdown.unknownMaxHint',
@@ -187,12 +245,131 @@ export default function ContextUsagePopover({
   )
 }
 
+function RemoteCategoriesBar({
+  categories,
+  maxContextTokens,
+  promptTokens,
+  ariaLabel,
+}: {
+  categories: readonly CliContextUsageCategory[]
+  maxContextTokens: number | null
+  promptTokens: number
+  ariaLabel: string
+}) {
+  const hasMax =
+    typeof maxContextTokens === 'number' &&
+    maxContextTokens > 0 &&
+    Number.isFinite(maxContextTokens)
+  const max = hasMax
+    ? maxContextTokens
+    : Math.max(
+        1,
+        promptTokens,
+        categories.reduce((sum, category) => sum + category.tokens, 0),
+      )
+  const segments = categories.filter((category) => category.tokens > 0)
+
+  return (
+    <div
+      className="yolo-context-breakdown__bar"
+      role="img"
+      aria-label={ariaLabel}
+    >
+      {segments.map((segment, index) => {
+        const pct = (segment.tokens / max) * 100
+        const widthPct = Math.max(pct, MIN_BAR_PERCENT)
+        return (
+          <span
+            key={`${segment.name}-${index}`}
+            className={`yolo-context-breakdown__bar-segment ${BUCKET_CLASS[segment.bucket]}`}
+            style={{ width: `${widthPct}%` }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function RemoteCategoriesList({
+  categories,
+}: {
+  categories: readonly CliContextUsageCategory[]
+}) {
+  return (
+    <ul className="yolo-context-breakdown__list">
+      {categories.map((category, index) => (
+        <li
+          key={`${category.name}-${index}`}
+          className="yolo-context-breakdown__list-item"
+          data-bucket={category.bucket}
+        >
+          <span
+            className={`yolo-context-breakdown__swatch ${BUCKET_CLASS[category.bucket]}`}
+            aria-hidden="true"
+          />
+          <span className="yolo-context-breakdown__list-label">
+            {category.name}
+          </span>
+          <span className="yolo-context-breakdown__list-tokens">
+            {formatTokenCount(category.tokens)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function UsageBar({
+  promptTokens,
+  ratio,
+  ariaLabel,
+}: {
+  promptTokens: number
+  ratio: number | null
+  ariaLabel: string
+}) {
+  const tone =
+    ratio === null
+      ? 'normal'
+      : ratio >= 0.9
+        ? 'danger'
+        : ratio >= 0.7
+          ? 'warning'
+          : 'normal'
+  // Without a known max, show a modest filled stub so the track still reads
+  // as a usage bar rather than an empty strip.
+  const widthPct =
+    ratio === null
+      ? promptTokens > 0
+        ? 8
+        : 0
+      : Math.min(100, Math.max(ratio > 0 ? MIN_BAR_PERCENT : 0, ratio * 100))
+
+  return (
+    <div
+      className="yolo-context-breakdown__bar"
+      role="img"
+      aria-label={ariaLabel}
+      data-tone={tone}
+    >
+      {widthPct > 0 ? (
+        <span
+          className="yolo-context-breakdown__bar-fill"
+          style={{ width: `${widthPct}%` }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
 function BreakdownBar({
   breakdown,
   maxContextTokens,
+  ariaLabel,
 }: {
   breakdown: ReturnType<typeof useContextBreakdown>
   maxContextTokens: number | null
+  ariaLabel: string
 }) {
   if (breakdown.status !== 'ready') {
     return (
@@ -219,7 +396,7 @@ function BreakdownBar({
     <div
       className="yolo-context-breakdown__bar"
       role="img"
-      aria-label="context breakdown"
+      aria-label={ariaLabel}
     >
       {segments.map((seg) => {
         const pct = (seg.tokens / max) * 100

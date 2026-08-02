@@ -24,9 +24,8 @@
 }
 
 .yolo-toolcall {
-  --yolo-toolcall-header-padding-x: var(--size-2-3);
   --yolo-toolcall-status-icon-size: 16px;
-  --yolo-toolcall-rail-x: calc(var(--yolo-toolcall-header-padding-x) + 8px);
+  --yolo-toolcall-rail-x: calc(var(--yolo-toolcall-status-icon-size) / 2);
   --yolo-toolcall-content-gap: 14px;
 
   display: flex;
@@ -46,7 +45,7 @@
   border: 0 !important;
   box-shadow: none !important;
   outline: none;
-  padding: 2px var(--yolo-toolcall-header-padding-x);
+  padding: 2px 0;
   display: flex;
   align-items: center;
   gap: var(--size-2-2);
@@ -73,7 +72,7 @@
 
 .yolo-toolcall-header-content {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 
 .yolo-toolcall-header-icon {
@@ -91,9 +90,20 @@
 }
 
 .yolo-toolcall-header-icon--expand {
-  margin-left: auto;
   color: var(--text-faint);
   opacity: 0.9;
+  transition: opacity 120ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yolo-toolcall-header-icon--expand {
+    opacity: 0;
+  }
+
+  .yolo-toolcall-header:hover .yolo-toolcall-header-icon--expand,
+  .yolo-toolcall-header:focus-visible .yolo-toolcall-header-icon--expand {
+    opacity: 0.9;
+  }
 }
 
 .yolo-toolcall-header-tool-name {
@@ -1863,6 +1873,12 @@ button.yolo-llm-debug-modal-button:focus-visible {
   margin-right: auto;
 }
 
+.yolo-chat-header .yolo-chat-header-left .yolo-view-toggle {
+  min-width: 0;
+  flex: 0 1 auto;
+  margin-right: 0;
+}
+
 .yolo-chat-header--workspace .yolo-view-toggle {
   background: transparent;
   border-color: transparent;
@@ -1883,6 +1899,14 @@ button.yolo-llm-debug-modal-button:focus-visible {
 .yolo-view-toggle--single {
   width: calc(var(--yolo-expanded-width) + 8px);
   min-width: calc(var(--yolo-expanded-width) + 8px);
+}
+
+/* Workspace chat uses the single-button form. Keep its declared width as the
+   preferred size, but allow split panes to compress it down to the icon-only
+   form. The toggle's own container query hides its label/caret below 130px. */
+.yolo-chat-header--workspace .yolo-chat-header-left .yolo-view-toggle--single {
+  min-width: 50px;
+  flex: 0 1 calc(var(--yolo-expanded-width) + 8px);
 }
 
 .yolo-view-toggle--single .yolo-view-toggle-button {

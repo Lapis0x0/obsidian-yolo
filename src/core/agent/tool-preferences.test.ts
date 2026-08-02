@@ -1,7 +1,7 @@
 import {
   buildServerToolTokenBudgets,
-  getAssistantToolDisclosureMode,
   getAssistantToolApprovalMode,
+  getAssistantToolDisclosureMode,
   getDefaultEnabledForTool,
   getEnabledAssistantToolNames,
   getExplicitlyEnabledAssistantToolNames,

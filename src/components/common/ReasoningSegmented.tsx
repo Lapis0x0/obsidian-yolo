@@ -80,6 +80,7 @@ type ReasoningSegmentedProps = {
   onPreviewChange?: (level: ReasoningLevel) => void
   onPreviewCancel?: () => void
   ariaLabel?: string
+  levels?: readonly ReasoningLevel[]
   /**
    * Optional refs map populated with each segment button. Lets parent (e.g.
    * `ReasoningSelect`'s popover) drive focus management when used inside a
@@ -101,8 +102,12 @@ export function ReasoningSegmented({
   onPreviewCancel,
   ariaLabel,
   segmentRefs,
+  levels,
 }: ReasoningSegmentedProps) {
   const { t } = useLanguage()
+  const options = levels
+    ? REASONING_OPTIONS.filter((option) => levels.includes(option.value))
+    : REASONING_OPTIONS
   const labelId = useId()
   const [isDragging, setIsDragging] = useState(false)
   const [dragPosition, setDragPosition] = useState<number | null>(null)
@@ -117,7 +122,7 @@ export function ReasoningSegmented({
 
   const focusByDelta = useCallback(
     (currentValue: ReasoningLevel, delta: number) => {
-      const values = REASONING_OPTIONS.map((option) => option.value)
+      const values = options.map((option) => option.value)
       const ownerDoc = getNodeDocument(refs.current[currentValue])
       const focusedValue = values.find(
         (v) =>
@@ -132,20 +137,26 @@ export function ReasoningSegmented({
       const target = refs.current[values[nextIndex]]
       if (target) target.focus({ preventScroll: true })
     },
-    [refs],
+    [options, refs],
   )
 
-  const resolvePointerFromClientX = useCallback((clientX: number) => {
-    const rect = sliderRef.current?.getBoundingClientRect()
-    if (!rect || rect.width <= 0) return null
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    const maxIndex = REASONING_OPTIONS.length - 1
-    const index = Math.min(maxIndex, Math.max(0, Math.round(ratio * maxIndex)))
-    return {
-      level: REASONING_OPTIONS[index].value,
-      position: ratio * 100,
-    }
-  }, [])
+  const resolvePointerFromClientX = useCallback(
+    (clientX: number) => {
+      const rect = sliderRef.current?.getBoundingClientRect()
+      if (!rect || rect.width <= 0) return null
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+      const maxIndex = options.length - 1
+      const index = Math.min(
+        maxIndex,
+        Math.max(0, Math.round(ratio * maxIndex)),
+      )
+      return {
+        level: options[index].value,
+        position: ratio * 100,
+      }
+    },
+    [options],
+  )
 
   const previewFromPointer = useCallback(
     (clientX: number) => {
@@ -163,14 +174,12 @@ export function ReasoningSegmented({
     [onChange, onPreviewChange, resolvePointerFromClientX, value],
   )
 
-  const safeValue = REASONING_OPTIONS.some((opt) => opt.value === value)
+  const safeValue = options.some((opt) => opt.value === value)
     ? value
-    : 'auto'
-  const selectedIndex = REASONING_OPTIONS.findIndex(
-    (opt) => opt.value === safeValue,
-  )
+    : (options[0]?.value ?? 'auto')
+  const selectedIndex = options.findIndex((opt) => opt.value === safeValue)
   const getSliderPosition = (index: number) =>
-    (index / (REASONING_OPTIONS.length - 1)) * 100
+    options.length <= 1 ? 0 : (index / (options.length - 1)) * 100
   const selectedPosition = `${dragPosition ?? getSliderPosition(selectedIndex)}`
   const isMax = safeValue === 'max'
 
@@ -184,24 +193,19 @@ export function ReasoningSegmented({
       aria-labelledby={labelId}
       style={
         {
-          '--yolo-segment-count': REASONING_OPTIONS.length,
+          '--yolo-segment-count': options.length,
         } as React.CSSProperties
       }
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
           event.preventDefault()
-          onChange(
-            REASONING_OPTIONS[(selectedIndex + 1) % REASONING_OPTIONS.length]
-              .value,
-          )
+          onChange(options[(selectedIndex + 1) % options.length].value)
           focusByDelta(safeValue, 1)
         } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
           event.preventDefault()
           onChange(
-            REASONING_OPTIONS[
-              (selectedIndex - 1 + REASONING_OPTIONS.length) %
-                REASONING_OPTIONS.length
-            ].value,
+            options[(selectedIndex - 1 + options.length) % options.length]
+              .value,
           )
           focusByDelta(safeValue, -1)
         }
@@ -255,7 +259,7 @@ export function ReasoningSegmented({
             } as React.CSSProperties
           }
         />
-        {REASONING_OPTIONS.map((option, index) => (
+        {options.map((option, index) => (
           <div
             key={option.value}
             className={`yolo-reasoning-slider__dot${
@@ -271,7 +275,7 @@ export function ReasoningSegmented({
           />
         ))}
       </div>
-      {REASONING_OPTIONS.map((option) => {
+      {options.map((option) => {
         const selected = option.value === safeValue
         return (
           <button

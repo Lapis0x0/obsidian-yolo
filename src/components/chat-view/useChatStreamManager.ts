@@ -79,6 +79,7 @@ type UseChatStreamManagerParams = {
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
+  cancelRuntimeRun: (conversationId: string) => void
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
@@ -278,6 +279,7 @@ export function useChatStreamManager({
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
+  cancelRuntimeRun,
   conversationOverrides,
   modelId,
   chatMode,
@@ -483,9 +485,9 @@ export function useChatStreamManager({
     (conversationId: string) => {
       activeStreamAbortControllersRef.current.get(conversationId)?.abort()
       activeStreamAbortControllersRef.current.delete(conversationId)
-      plugin.getAgentService().abortConversation(conversationId)
+      cancelRuntimeRun(conversationId)
     },
-    [plugin],
+    [cancelRuntimeRun],
   )
 
   const compactConversation = useCallback(

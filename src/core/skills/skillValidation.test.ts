@@ -5,6 +5,7 @@ import {
   validateDirectoryPackage,
   validateSingleFileSkill,
   validateSkillName,
+  wrapMarkdownAsSkillPackage,
 } from './skillValidation'
 
 // ---------------------------------------------------------------------------
@@ -422,7 +423,7 @@ describe('validateSingleFileSkill', () => {
   it('passes for valid single file skill', () => {
     const content = [
       '---',
-      'name: My Custom Skill',
+      'name: my-custom-skill',
       'description: Does something useful.',
       '---',
       '',
@@ -449,17 +450,21 @@ describe('validateSingleFileSkill', () => {
     })
   })
 
-  it('passes with name only (legacy format allows free-form names)', () => {
+  it('requires a standards-valid name and description before wrapping', () => {
     const content = ['---', 'name: Any Name With Spaces', '---'].join('\n')
-    // Legacy 格式不强制 name 命名规范
-    expect(validateSingleFileSkill(content)).toEqual([])
+    expect(validateSingleFileSkill(content)).toEqual(
+      expect.arrayContaining([
+        { field: 'name', message: 'uppercase not allowed' },
+        { field: 'description', message: 'missing' },
+      ]),
+    )
   })
 
   it('passes with all frontmatter fields', () => {
     const content = [
       '---',
       'id: custom-id',
-      'name: My Skill',
+      'name: my-skill',
       'description: Detailed description here.',
       'mode: always',
       '---',
@@ -467,5 +472,32 @@ describe('validateSingleFileSkill', () => {
       'Body content.',
     ].join('\n')
     expect(validateSingleFileSkill(content)).toEqual([])
+  })
+
+  it('wraps a single Markdown input as <frontmatter.name>/SKILL.md', () => {
+    const content = [
+      '---',
+      'name: imported-skill',
+      'description: Imported from one Markdown file.',
+      '---',
+      '# Instructions',
+    ].join('\n')
+
+    expect(wrapMarkdownAsSkillPackage(content)).toEqual({
+      package: {
+        name: 'imported-skill',
+        description: 'Imported from one Markdown file.',
+        files: [{ relativePath: 'SKILL.md', content }],
+      },
+      errors: [],
+    })
+  })
+
+  it('does not derive package identity from an invalid input filename', () => {
+    const content = ['---', 'description: Missing name.', '---'].join('\n')
+    const result = wrapMarkdownAsSkillPackage(content)
+
+    expect(result.package).toBeNull()
+    expect(result.errors).toContainEqual({ field: 'name', message: 'missing' })
   })
 })

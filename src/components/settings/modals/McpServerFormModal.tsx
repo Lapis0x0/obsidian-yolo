@@ -342,12 +342,13 @@ function McpServerFormComponent({
     } catch (error) {
       console.error('Failed to cancel MCP OAuth authorization', error)
     } finally {
-      if (oauthAbortRef.current !== controller) return
-      oauthAbortRef.current = null
-      setHasOAuthDraft(false)
-      setOAuthConnectedUrl(null)
-      setOAuthError(null)
-      setOAuthStatus('idle')
+      if (oauthAbortRef.current === controller) {
+        oauthAbortRef.current = null
+        setHasOAuthDraft(false)
+        setOAuthConnectedUrl(null)
+        setOAuthError(null)
+        setOAuthStatus('idle')
+      }
     }
   }
 

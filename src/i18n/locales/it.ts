@@ -82,6 +82,20 @@ export const it: DeepPartial<TranslationKeys> = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      modeAccessibleLabel: 'Modalità chat',
+      chatLabel: 'Agent',
+      cliLabel: 'CLI',
+      chatDescription: 'Chat integrata di YOLO',
+      cliDescription: 'Usa CLI per attività',
+      accessibleLabel: 'Provider CLI: {runtime}',
+      menuLabel: 'Provider CLI',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
+      claudeCodeDescription: 'Claude Code su questo dispositivo',
+      codexLabel: 'Codex',
+      codexDescription: 'Codex su questo dispositivo',
+    },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
@@ -494,7 +508,7 @@ export const it: DeepPartial<TranslationKeys> = {
       skillsCount: '{count} competenze',
       skillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillsGlobalDesc:
-        'Le skill vengono rilevate dalle skill integrate e da {path}/**/*.md (escludendo Skills.md quando applicabile). Disabilitale qui per bloccarle su tutti gli agent.',
+        'Le skill vengono rilevate dalle skill integrate e dai pacchetti {path}/<name>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
@@ -514,16 +528,15 @@ export const it: DeepPartial<TranslationKeys> = {
       yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
-      skillsSourcePath:
-        'Origine: skill integrate + {path}/*.md + {path}/**/SKILL.md',
+      skillsSourcePath: 'Origine: skill integrate + {path}/<name>/SKILL.md',
       refreshSkills: 'Aggiorna',
       skillsEmptyHint:
-        'Nessuna skill trovata. Crea file markdown skill sotto {path}.',
+        'Nessuna skill trovata. Crea un pacchetto {path}/<name>/SKILL.md.',
       createSkillTemplates: 'Inizializza sistema Skills',
       skillsTemplateCreated: 'Sistema Skills inizializzato in {path}.',
       importSkill: 'Importa Skill',
       importSkillDesc:
-        'Importa pacchetti skill in {path}. Supporta file .md singoli o cartelle standard Agent Skills.',
+        'Importa pacchetti skill in {path}. I singoli file Markdown vengono inseriti in <name>/SKILL.md; le cartelle conservano SKILL.md e tutte le risorse.',
       importSkillDropzoneText: 'Trascina file o cartelle skill qui',
       importSkillBrowseFiles: 'Sfoglia File',
       importSkillBrowseFolder: 'Sfoglia Cartella',
@@ -534,6 +547,8 @@ export const it: DeepPartial<TranslationKeys> = {
       importSkillSuccess: 'Importate con successo {count} skill.',
       importSkillInvalidFile: 'Nessun file o pacchetto skill valido trovato.',
       importSkillReadError: 'Impossibile leggere i file.',
+      importSkillErrTooDeep:
+        'Il pacchetto skill supera la profondità massima di importazione di {depth}. Non è stato importato nulla.',
       importSkillWriteError: 'Impossibile importare {name}: {error}',
       importSkillErrHeader: '"{name}" non può essere importato:',
       importSkillErrNoSkillMd: 'file SKILL.md mancante nella cartella',
@@ -568,16 +583,31 @@ export const it: DeepPartial<TranslationKeys> = {
         'Nome skill duplicato in questo batch: "{name}" (da "{source}"). Viene mantenuta solo la prima occorrenza.',
       deleteSkillTitle: 'Elimina skill',
       deleteSkillMessage:
-        'Sei sicuro di voler eliminare "{name}"? Questa azione non può essere annullata.',
+        'Sei sicuro di voler eliminare il pacchetto skill "{name}", incluse tutte le risorse? Questa azione non può essere annullata.',
       deleteSkillConfirm: 'Elimina',
       deleteSkillSuccess: '"{name}" è stata eliminata.',
       deleteSkillError: 'Impossibile eliminare "{name}": {error}',
+      deleteSkillInvalidPackage: 'Percorso del pacchetto skill non valido',
+      deleteSkillNotFound: 'Pacchetto skill non trovato',
       deleteSkillBatchMessage:
-        'Sei sicuro di voler eliminare {count} skill? Questa azione non può essere annullata.',
+        'Sei sicuro di voler eliminare {count} pacchetti skill, incluse tutte le risorse? Questa azione non può essere annullata.',
       deleteSkillBatchSuccess: 'Eliminate {count} skill.',
       deleteSkillBatchBtn: 'Elimina',
       deleteSkillSelectAll: 'Seleziona tutto',
       deleteSkillCancel: 'Annulla',
+      skillPackageMigrationIssues:
+        '{count} file skill legacy richiedono attenzione. YOLO non li ha sovrascritti o eliminati:',
+      skillPackageMigrationInvalidFrontmatter:
+        '{path}: frontmatter YAML mancante o non valido; il file è stato conservato.',
+      skillPackageMigrationInvalidName:
+        '{path}: il nome nel frontmatter deve contenere 1–64 lettere minuscole, numeri o trattini; il file è stato conservato.',
+      skillPackageMigrationConflict:
+        '{path}: la destinazione {target} esiste già; il file è stato conservato.',
+      skillPackageMigrationFileFailed:
+        '{path}: migrazione non riuscita ({error}); il file è stato conservato.',
+      skillPackageMigrationUnknownError: 'Errore sconosciuto',
+      skillPackageMigrationFailed:
+        "YOLO non ha potuto completare l'aggiornamento dei file skill legacy. I file sorgente sono stati conservati; controlla la console e spostali manualmente.",
       selectSkills: 'Seleziona',
       agents: 'Agent',
       agentsDesc:
@@ -1594,6 +1624,7 @@ export const it: DeepPartial<TranslationKeys> = {
     placeholderCompact: 'Clicca per espandere e modificare...',
     placeholderPrefix: 'Scrivi un messaggio...',
     placeholderMention: 'aggiungere riferimenti o modelli',
+    placeholderMentionReferences: 'aggiungere riferimenti',
     placeholderSkill: 'scegliere una skill o un comando',
     contextUsage: 'Utilizzo finestra di contesto',
     contextUsageUnknownMaxSuffix:
@@ -1750,6 +1781,24 @@ export const it: DeepPartial<TranslationKeys> = {
       agentFullTitle: "Lascia eseguire all'AI · Modalità YOLO",
       agentFullDescription:
         'Approva automaticamente gli strumenti per ricerca, lettura/scrittura e task multi-step.',
+    },
+    cliSurface: {
+      emptyTitle: 'Usa CLI Agent',
+      emptyDescription:
+        'Collega Claude Code o Codex per eseguire attività complesse su questo dispositivo.',
+      emptyUserMessage: 'Messaggio vuoto',
+      error: 'Errore della sessione CLI: {message}',
+      runtimeError: 'Impossibile avviare il runtime CLI: {message}',
+      submitError: 'Impossibile inviare il messaggio CLI: {message}',
+      cancelError: 'Impossibile interrompere la CLI: {message}',
+      openError: 'Impossibile aprire la sessione CLI: {message}',
+      transitionError:
+        'Impossibile lasciare la sessione CLI corrente: {message}',
+    },
+    cliControls: {
+      loadingModels: 'Caricamento modelli…',
+      loadError: 'Impossibile caricare i modelli CLI: {message}',
+      updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
     },
     quickAccess: {
       manage: 'Gestisci accessi rapidi',
@@ -1988,6 +2037,8 @@ export const it: DeepPartial<TranslationKeys> = {
       abort: 'Interrompi',
       alwaysAllowThisTool: 'Consenti sempre questo strumento',
       allowForThisChat: 'Consenti per questa chat',
+      approvePlan: 'Approva il piano',
+      stayInPlan: 'Resta in modalità piano',
     },
     toolSummary: {
       todoWrite: {
@@ -2016,12 +2067,15 @@ export const it: DeepPartial<TranslationKeys> = {
       truncated: 'Output troncato.',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: 'Visualizza dettagli subagent',
+      loadingActivity: 'Caricamento attività…',
       planningNextMoves: 'Pianificazione prossimi passi',
       noActivity: 'Nessuna attività.',
       statusCompleted: 'Completato',
       statusAborted: 'Interrotto',
       statusFailed: 'Fallito',
+      statusDispatched: 'Inviato',
       toolUseCount: '{count} strumenti',
       tokenCount: '{count} token',
       approval: {

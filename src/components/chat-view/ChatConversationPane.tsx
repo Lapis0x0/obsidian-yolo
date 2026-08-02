@@ -43,6 +43,8 @@ type ChatConversationPaneProps = {
   emptyStateAskDescription: string
   emptyStateAgentDescription: string
   emptyStateAgentFullDescription: string
+  emptyStateIcon?: ReactNode
+  emptyStateIconMode?: string
   footerContent: ReactNode
   onTimelineVirtualizationChange?: (isVirtualized: boolean) => void
   onUserMessageViewportChange?: (state: UserMessageViewportState) => void
@@ -81,6 +83,8 @@ export function ChatConversationPane({
   emptyStateAskDescription,
   emptyStateAgentDescription,
   emptyStateAgentFullDescription,
+  emptyStateIcon,
+  emptyStateIconMode,
   footerContent,
   onTimelineVirtualizationChange,
   onUserMessageViewportChange,
@@ -112,12 +116,23 @@ export function ChatConversationPane({
     : isAgentChatMode(chatMode)
       ? emptyStateAgentDescription
       : emptyStateAskDescription
+  const resolvedEmptyStateIconMode =
+    emptyStateIconMode ?? (isYoloAgent ? 'agent-full' : chatMode)
+  const resolvedEmptyStateIcon =
+    emptyStateIcon ??
+    (isYoloAgent ? (
+      <InfinityIcon size={18} strokeWidth={2} />
+    ) : isAgentChatMode(chatMode) ? (
+      <Bot size={18} strokeWidth={2} />
+    ) : (
+      <MessageCircle size={18} strokeWidth={2} />
+    ))
 
   return (
     <>
       <InstallationIncompleteBanner />
       <SharedConversationSurface
-        key={`${currentConversationId}:${groupedChatMessagesLength > 0 ? 'ready' : 'empty'}`}
+        key={currentConversationId}
         items={chatTimelineItems}
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
@@ -148,17 +163,11 @@ export function ChatConversationPane({
                   <div className="yolo-chat-empty-state-overlay-inner">
                     <div className="yolo-chat-empty-state">
                       <div
-                        key={`${chatMode}-${isYoloAgent ? 'yolo' : 'std'}`}
+                        key={resolvedEmptyStateIconMode}
                         className="yolo-chat-empty-state-icon"
-                        data-mode={isYoloAgent ? 'agent-full' : chatMode}
+                        data-mode={resolvedEmptyStateIconMode}
                       >
-                        {isYoloAgent ? (
-                          <InfinityIcon size={18} strokeWidth={2} />
-                        ) : isAgentChatMode(chatMode) ? (
-                          <Bot size={18} strokeWidth={2} />
-                        ) : (
-                          <MessageCircle size={18} strokeWidth={2} />
-                        )}
+                        {resolvedEmptyStateIcon}
                       </div>
                       <div className="yolo-chat-empty-state-title">
                         {emptyStateTitle}

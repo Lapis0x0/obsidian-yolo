@@ -3,7 +3,6 @@ import { Notice } from 'obsidian'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import type {
   AnswerUserQuestionAnswer,
   AnswerUserQuestionPayload,
@@ -23,6 +22,9 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
+
+import { useChatRuntimeActions } from './chat-runtime-actions-context'
+import { handleRuntimeQuestionResult } from './runtime-action-handlers'
 
 type AskUserQuestionPanelProps = {
   request: ToolCallRequest
@@ -121,8 +123,8 @@ export function AskUserQuestionPanel({
   conversationId,
   onRecoverAnswerUserQuestion,
 }: AskUserQuestionPanelProps) {
-  const plugin = usePlugin()
   const { t } = useLanguage()
+  const { actions, conversation } = useChatRuntimeActions(conversationId)
 
   const parsedQuestions = useMemo<AskUserQuestionItem[] | null>(() => {
     const args = getToolCallArgumentsObject(request.arguments)
@@ -192,36 +194,35 @@ export function AskUserQuestionPanel({
 
     setSubmitting(true)
     try {
-      const outcome = await plugin.getAgentService().answerUserQuestion({
-        conversationId,
+      const result = await actions.answerQuestion({
+        conversation,
         toolCallId: request.id,
         payload,
       })
-      if (outcome.kind === 'needs_recovery') {
-        onRecoverAnswerUserQuestion({
-          resolvedMessages: outcome.resolvedMessages,
-          toolCallId: request.id,
-        })
-      } else if (
-        outcome.kind === 'not_found' ||
-        outcome.kind === 'not_awaiting'
-      ) {
-        new Notice(
-          t(
-            'chat.askUserQuestion.stale',
-            '该提问已过期或已被处理，无法再次提交。',
+      handleRuntimeQuestionResult({
+        result,
+        onRecovery: (resolvedMessages) =>
+          onRecoverAnswerUserQuestion({
+            resolvedMessages,
+            toolCallId: request.id,
+          }),
+        onStale: () =>
+          new Notice(
+            t(
+              'chat.askUserQuestion.stale',
+              '该提问已过期或已被处理，无法再次提交。',
+            ),
           ),
-        )
-      }
+      })
     } finally {
       setSubmitting(false)
     }
   }, [
+    actions,
     answers,
-    conversationId,
+    conversation,
     onRecoverAnswerUserQuestion,
     parsedQuestions,
-    plugin,
     request.id,
     submitting,
     t,
@@ -307,10 +308,7 @@ export function AskUserQuestionPanel({
 
   const handleCancel = () => {
     if (submitting) return
-    plugin.getAgentService().cancelAskUserQuestion({
-      conversationId,
-      toolCallId: request.id,
-    })
+    void actions.cancelQuestion({ conversation, toolCallId: request.id })
   }
 
   // Pending (AwaitingUserInput) — interactive form.

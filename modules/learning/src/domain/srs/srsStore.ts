@@ -1,4 +1,3 @@
-// eslint-disable-next-line import/no-extraneous-dependencies -- First-party modules consume runtime dependencies supplied by the host bundle.
 import { Rating, S_MIN, createEmptyCard, fsrs } from 'ts-fsrs'
 import type { Card, Grade, RecordLog } from 'ts-fsrs'
 

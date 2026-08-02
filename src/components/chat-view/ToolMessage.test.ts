@@ -9,8 +9,18 @@ jest.mock('clsx', () => ({
   default: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }))
 
-jest.mock('../../contexts/plugin-context', () => ({
-  usePlugin: () => ({}),
+jest.mock('./chat-runtime-actions-context', () => ({
+  useChatRuntimeActions: (conversationId = 'conversation-1') => ({
+    actions: {
+      cancelRun: jest.fn(async () => undefined),
+      approveTool: jest.fn(async () => ({ kind: 'handled' })),
+      rejectTool: jest.fn(async () => ({ kind: 'handled' })),
+      abortTool: jest.fn(async () => ({ kind: 'handled' })),
+      answerQuestion: jest.fn(async () => ({ kind: 'handled' })),
+      cancelQuestion: jest.fn(async () => ({ kind: 'handled' })),
+    },
+    conversation: { runtimeId: 'yolo', conversationId },
+  }),
 }))
 
 const mockedObsidianCodeBlock = jest.fn((_: unknown) => null)
@@ -26,6 +36,9 @@ jest.mock('./tool-cards/LiveTaskCard', () => ({
 const mockedSubagentCard = jest.fn((_: unknown) => null)
 jest.mock('./tool-cards/SubagentCard', () => ({
   SubagentCard: (props: unknown) => mockedSubagentCard(props),
+}))
+jest.mock('./tool-cards/CliSubagentCard', () => ({
+  CliSubagentCard: () => null,
 }))
 
 import * as React from 'react'
@@ -43,8 +56,9 @@ import type { ToolLabels } from './ToolMessage'
 import ToolMessage, {
   areToolCallItemPropsEqual,
   getHeadlineDisplayInfo,
-  getToolSuccessIconKind,
+  getToolDisplayInfo,
   getToolResultDisplayText,
+  getToolSuccessIconKind,
 } from './ToolMessage'
 
 describe('ToolMessage rendering', () => {
@@ -52,6 +66,22 @@ describe('ToolMessage rendering', () => {
     mockedObsidianCodeBlock.mockClear()
     mockedLiveTaskCard.mockClear()
     mockedSubagentCard.mockClear()
+  })
+
+  it('renders CLI namespaces from structured identity without parsing names', () => {
+    expect(
+      getToolDisplayInfo({
+        name: 'list_mcp_resources',
+        metadata: {
+          cliToolCall: {
+            runtimeId: 'codex',
+            eventType: 'mcpToolCall',
+            namespace: 'codex',
+            name: 'list_mcp_resources',
+          },
+        },
+      }),
+    ).toEqual({ displayName: 'codex:list_mcp_resources' })
   })
 
   it('hydrates original terminal_command card from persisted result output', () => {
@@ -432,6 +462,8 @@ describe('ToolMessage headline helpers', () => {
     reject: 'Reject',
     abort: 'Abort',
     allowForThisChat: 'Allow for this chat',
+    approvePlan: 'Approve plan',
+    stayInPlan: 'Stay in plan',
     todoWriteCleared: 'Cleared list',
     todoWriteAllCompleted: (count: number) => `All completed (${count})`,
     todoWriteCreated: (count: number) => `Planned ${count} tasks`,
@@ -873,6 +905,54 @@ describe('ToolMessage headline helpers', () => {
     ).toEqual({
       displayName: 'Terminal command',
       summaryText: 'git status',
+    })
+  })
+
+  it('uses the shared terminal-command label for CLI command execution', () => {
+    expect(
+      getToolDisplayInfo(
+        {
+          name: 'commandExecution',
+          arguments: createCompleteToolCallArguments({
+            value: { command: '/bin/zsh -lc pwd', cwd: '/vault' },
+          }),
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'codex',
+              eventType: 'commandExecution',
+              name: 'commandExecution',
+              capability: 'command_execution',
+            },
+          },
+        },
+        labels,
+      ),
+    ).toEqual({
+      displayName: 'Terminal command',
+      summaryText: '/bin/zsh -lc pwd',
+    })
+
+    expect(
+      getToolDisplayInfo(
+        {
+          name: 'Bash',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'ls -la' },
+          }),
+          metadata: {
+            cliToolCall: {
+              runtimeId: 'claude-code',
+              eventType: 'tool_use',
+              name: 'Bash',
+              capability: 'command_execution',
+            },
+          },
+        },
+        labels,
+      ),
+    ).toEqual({
+      displayName: 'Terminal command',
+      summaryText: 'ls -la',
     })
   })
 

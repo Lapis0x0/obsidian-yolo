@@ -181,6 +181,14 @@ describe('findPathOutsideScope', () => {
     expect(
       findPathOutsideScope(
         'fs_read',
+        { paths: ['YOLO/skills/demo/references/guide.md'] },
+        scope({ include: ['Notes'] }),
+        { exemptPaths },
+      ),
+    ).toBeNull()
+    expect(
+      findPathOutsideScope(
+        'fs_read',
         { paths: ['YOLO/skills/other/SKILL.md'] },
         scope({ include: ['Notes'] }),
         { exemptPaths },

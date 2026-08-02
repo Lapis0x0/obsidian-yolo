@@ -98,6 +98,7 @@ export type LatestAssistantContextUsage = {
   promptTokens: number
   maxContextTokens: number | null
   ratio: number | null
+  cacheHitRate?: number
 }
 
 export type AutoContextCompactionPromptTrigger = LatestAssistantContextUsage
@@ -115,7 +116,8 @@ export const getLatestAssistantContextUsage = ({
       continue
     }
 
-    const promptTokens = message.metadata?.usage?.prompt_tokens
+    const usage = message.metadata?.usage
+    const promptTokens = usage?.prompt_tokens
     if (typeof promptTokens !== 'number' || !Number.isFinite(promptTokens)) {
       continue
     }
@@ -126,6 +128,14 @@ export const getLatestAssistantContextUsage = ({
       Number.isFinite(maxContextTokens)
         ? maxContextTokens
         : null
+    const cacheReadTokens = usage?.cache_read_input_tokens
+    const cacheHitRate =
+      typeof cacheReadTokens === 'number' &&
+      Number.isFinite(cacheReadTokens) &&
+      cacheReadTokens >= 0 &&
+      promptTokens > 0
+        ? Math.min(1, cacheReadTokens / promptTokens)
+        : null
 
     return {
       assistantMessage: message,
@@ -135,6 +145,7 @@ export const getLatestAssistantContextUsage = ({
         resolvedMaxContextTokens === null
           ? null
           : promptTokens / resolvedMaxContextTokens,
+      ...(cacheHitRate !== null ? { cacheHitRate } : {}),
     }
   }
 

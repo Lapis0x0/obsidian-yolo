@@ -66,6 +66,20 @@ export const en: TranslationKeys = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      modeAccessibleLabel: 'Chat mode',
+      chatLabel: 'Agent',
+      cliLabel: 'CLI',
+      chatDescription: 'Built-in YOLO chat',
+      cliDescription: 'Use CLI for tasks',
+      accessibleLabel: 'CLI provider: {runtime}',
+      menuLabel: 'CLI provider',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
+      claudeCodeDescription: 'Claude Code on this device',
+      codexLabel: 'Codex',
+      codexDescription: 'Codex on this device',
+    },
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
@@ -467,7 +481,7 @@ export const en: TranslationKeys = {
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
-        'Skills are discovered from built-in skills and {path}/**/*.md (excluding Skills.md where applicable). Disable a skill here to block it for all agents.',
+        'Skills are discovered from built-in skills and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
@@ -487,16 +501,15 @@ export const en: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
-      skillsSourcePath:
-        'Source: built-in skills + {path}/*.md + {path}/**/SKILL.md',
+      skillsSourcePath: 'Source: built-in skills + {path}/<name>/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
-        'No skills found. Create skill markdown files under {path}.',
+        'No skills found. Create a {path}/<name>/SKILL.md package.',
       createSkillTemplates: 'Initialize Skills system',
       skillsTemplateCreated: 'Skills system initialized in {path}.',
       importSkill: 'Import Skill',
       importSkillDesc:
-        'Import skill packages into {path}. Supports single .md files or Agent Skills standard folders.',
+        'Import skill packages into {path}. Single Markdown files are wrapped as <name>/SKILL.md; folders keep SKILL.md and all package resources.',
       importSkillDropzoneText: 'Drag & drop skill files or folders here',
       importSkillBrowseFiles: 'Browse Files',
       importSkillBrowseFolder: 'Browse Folder',
@@ -507,6 +520,8 @@ export const en: TranslationKeys = {
       importSkillSuccess: 'Successfully imported {count} skill(s).',
       importSkillInvalidFile: 'No valid skill files or packages found.',
       importSkillReadError: 'Failed to read files.',
+      importSkillErrTooDeep:
+        'Skill package exceeds the maximum import depth of {depth}. Nothing was imported.',
       importSkillWriteError: 'Failed to import {name}: {error}',
       importSkillErrHeader: '"{name}" cannot be imported:',
       importSkillErrNoSkillMd: 'missing SKILL.md file in folder',
@@ -550,16 +565,31 @@ export const en: TranslationKeys = {
       importSkillFromUrlFetchError: 'Failed to fetch from GitHub: {error}',
       deleteSkillTitle: 'Delete skill',
       deleteSkillMessage:
-        'Are you sure you want to delete "{name}"? This cannot be undone.',
+        'Are you sure you want to delete the "{name}" skill package, including all resources? This cannot be undone.',
       deleteSkillConfirm: 'Delete',
       deleteSkillSuccess: '"{name}" has been deleted.',
       deleteSkillError: 'Failed to delete "{name}": {error}',
+      deleteSkillInvalidPackage: 'Invalid skill package path',
+      deleteSkillNotFound: 'Skill package not found',
       deleteSkillBatchMessage:
-        'Are you sure you want to delete {count} skill(s)? This cannot be undone.',
+        'Are you sure you want to delete {count} skill package(s), including all resources? This cannot be undone.',
       deleteSkillBatchSuccess: 'Deleted {count} skill(s).',
       deleteSkillBatchBtn: 'Delete',
       deleteSkillSelectAll: 'Select all',
       deleteSkillCancel: 'Cancel',
+      skillPackageMigrationIssues:
+        '{count} legacy skill file(s) need attention. YOLO did not overwrite or delete them:',
+      skillPackageMigrationInvalidFrontmatter:
+        '{path}: missing or invalid YAML frontmatter; file was kept.',
+      skillPackageMigrationInvalidName:
+        '{path}: frontmatter name must be 1–64 lowercase letters, numbers, or hyphens; file was kept.',
+      skillPackageMigrationConflict:
+        '{path}: target {target} already exists; file was kept.',
+      skillPackageMigrationFileFailed:
+        '{path}: migration failed ({error}); file was kept.',
+      skillPackageMigrationUnknownError: 'Unknown error',
+      skillPackageMigrationFailed:
+        'YOLO could not finish upgrading legacy skill files. The source files were kept; review the console and move them manually.',
       selectSkills: 'Select',
       agents: 'Agents',
       agentsDesc: 'Click Configure to edit each agent profile and prompt.',
@@ -1750,12 +1780,16 @@ export const en: TranslationKeys = {
     placeholderCompact: 'Click to expand and edit...',
     placeholderPrefix: 'Type a message...',
     placeholderMention: 'add references or models',
+    placeholderMentionReferences: 'add references',
     placeholderSkill: 'choose a skill or command',
     contextUsage: 'Context window usage',
     contextUsageUnknownMaxSuffix: ' (context window limit not set)',
     contextBreakdown: {
       title: 'Context',
       fullLabel: '{{percent}} Full',
+      cacheHitLabel: 'Previous turn cache hit {{percent}}',
+      breakdownBarAriaLabel: 'Context breakdown',
+      usageBarAriaLabel: 'Context usage',
       tokensSuffix: 'Tokens',
       localEstimateCaption:
         'Local estimate — may differ from server-side billing.',
@@ -1904,6 +1938,23 @@ export const en: TranslationKeys = {
       agentFullTitle: 'Let AI execute · YOLO Mode',
       agentFullDescription:
         'Auto-approve tool calls for search, read/write operations, and multi-step tasks.',
+    },
+    cliSurface: {
+      emptyTitle: 'Use CLI Agent',
+      emptyDescription:
+        'Connect Claude Code or Codex to run complex tasks on this device.',
+      emptyUserMessage: 'Empty message',
+      error: 'CLI session error: {message}',
+      runtimeError: 'Could not start the CLI runtime: {message}',
+      submitError: 'Could not send the CLI message: {message}',
+      cancelError: 'Could not stop the CLI run: {message}',
+      openError: 'Could not open the CLI session: {message}',
+      transitionError: 'Could not leave the current CLI session: {message}',
+    },
+    cliControls: {
+      loadingModels: 'Loading models…',
+      loadError: 'Could not load CLI models: {message}',
+      updateError: 'Could not update CLI configuration: {message}',
     },
     quickAccess: {
       manage: 'Manage quick access',
@@ -2121,6 +2172,8 @@ export const en: TranslationKeys = {
       abort: 'Abort',
       alwaysAllowThisTool: 'Always allow this tool',
       allowForThisChat: 'Allow for this chat',
+      approvePlan: 'Approve plan',
+      stayInPlan: 'Stay in plan',
     },
     toolSummary: {
       todoWrite: {
@@ -2149,12 +2202,15 @@ export const en: TranslationKeys = {
       truncated: 'Output truncated.',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: 'View subagent details',
+      loadingActivity: 'Loading activity…',
       planningNextMoves: 'Planning next moves',
       noActivity: 'No activity yet.',
       statusCompleted: 'Completed',
       statusAborted: 'Aborted',
       statusFailed: 'Failed',
+      statusDispatched: 'Dispatched',
       toolUseCount: '{count} tools',
       tokenCount: '{count} tokens',
       approval: {
@@ -2339,6 +2395,8 @@ export const en: TranslationKeys = {
     rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
+    plan: 'Plan',
+    planDesc: 'Explore and design before editing',
     agentFull: 'Agent (YOLO)',
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
     yolo: 'YOLO',

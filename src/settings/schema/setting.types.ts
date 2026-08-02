@@ -479,6 +479,31 @@ export const yoloSettingsSchema = z.object({
       lastChatPlacement: z
         .enum(['sidebar', 'tab', 'split', 'window'])
         .optional(),
+      // Last user-selected conversation surface and CLI provider. Kept
+      // separately so returning to Chat does not forget the preferred CLI.
+      lastChatSurface: z.enum(['chat', 'cli']).optional(),
+      lastCliRuntimeId: z.enum(['claude-code', 'codex']).optional(),
+      cliModelIdByRuntime: z
+        .object({
+          'claude-code': z.string().optional(),
+          codex: z.string().optional(),
+        })
+        .optional(),
+      cliReasoningEffortByModel: z.record(z.string(), z.string()).optional(),
+      // Last CLI chat mode (agent/plan) remembered per CLI runtime.
+      cliChatModeByRuntime: z
+        .object({
+          'claude-code': z.enum(['agent', 'plan']).optional(),
+          codex: z.enum(['agent', 'plan']).optional(),
+        })
+        .optional(),
+      // Last CLI YOLO flag remembered per CLI runtime.
+      cliAgentYoloEnabledByRuntime: z
+        .object({
+          'claude-code': z.boolean().optional(),
+          codex: z.boolean().optional(),
+        })
+        .optional(),
       quickAccessEntries: resilientArraySchema(
         z.discriminatedUnion('type', [
           z.object({ type: z.literal('skill'), name: z.string().min(1) }),
@@ -508,6 +533,12 @@ export const yoloSettingsSchema = z.object({
       chatExportIncludeThinking: false,
       chatExportIncludeToolCalls: false,
       ribbonClickAction: 'sidebar',
+      lastChatSurface: 'chat',
+      lastCliRuntimeId: 'claude-code',
+      cliModelIdByRuntime: {},
+      cliReasoningEffortByModel: {},
+      cliChatModeByRuntime: {},
+      cliAgentYoloEnabledByRuntime: {},
       lastChatPlacement: undefined,
       quickAccessEntries: DEFAULT_CHAT_QUICK_ACCESS_ENTRIES,
     }),

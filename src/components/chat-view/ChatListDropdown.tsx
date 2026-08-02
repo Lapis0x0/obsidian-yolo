@@ -77,9 +77,35 @@ function TitleInput({
   )
 }
 
+function ChatRuntimeBadge({
+  runtimeId,
+}: {
+  runtimeId: 'claude-code' | 'codex'
+}) {
+  const { t } = useLanguage()
+  const fullLabel =
+    runtimeId === 'claude-code'
+      ? t('sidebar.runtimeSelector.claudeCodeLabel', 'Claude Code')
+      : t('sidebar.runtimeSelector.codexLabel', 'Codex')
+
+  return (
+    <span
+      className={`yolo-chat-list-dropdown-item-runtime-badge yolo-chat-list-dropdown-item-runtime-badge--${runtimeId}`}
+      data-runtime-id={runtimeId}
+      aria-label={fullLabel}
+      title={fullLabel}
+    >
+      {runtimeId === 'claude-code'
+        ? t('sidebar.runtimeSelector.claudeCodeShortLabel', 'CC')
+        : fullLabel}
+    </span>
+  )
+}
+
 function ChatListItem({
   title,
   displayTitle,
+  cliRuntimeId,
   runSummary,
   isCurrent,
   isFocused,
@@ -88,6 +114,8 @@ function ChatListItem({
   isUpdatingTitle,
   isPinned,
   canPin,
+  canRetryTitle,
+  canExport,
   isRetrying,
   onMouseEnter,
   onMouseLeave,
@@ -108,6 +136,7 @@ function ChatListItem({
 }: {
   title: string
   displayTitle?: string
+  cliRuntimeId?: 'claude-code' | 'codex'
   runSummary?: AgentConversationRunSummary
   isCurrent: boolean
   isFocused: boolean
@@ -116,6 +145,8 @@ function ChatListItem({
   isUpdatingTitle: boolean
   isPinned: boolean
   canPin: boolean
+  canRetryTitle: boolean
+  canExport: boolean
   isRetrying: boolean
   onMouseEnter: () => void
   onMouseLeave: () => void
@@ -296,6 +327,9 @@ function ChatListItem({
             <span className="yolo-chat-list-dropdown-item-title-text">
               {displayTitle ?? title}
             </span>
+            {cliRuntimeId ? (
+              <ChatRuntimeBadge runtimeId={cliRuntimeId} />
+            ) : null}
             {isCurrent ? (
               <span className="yolo-chat-list-dropdown-item-current-badge">
                 {t('sidebar.chatList.current', 'Current')}
@@ -393,41 +427,48 @@ function ChatListItem({
                   >
                     <Pencil size={16} />
                   </button>
-                  <button
-                    type="button"
-                    disabled={isRetrying}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCloseMoreMenu()
-                      onRetryTitle()
-                    }}
-                    className={`clickable-icon yolo-chat-list-dropdown-item-icon${
-                      isRetrying ? ' is-pending' : ''
-                    }`}
-                    aria-label={t('sidebar.chatList.retryTitle', 'Retry title')}
-                    aria-busy={isRetrying ? 'true' : undefined}
-                    tabIndex={isMoreMenuOpen ? undefined : -1}
-                  >
-                    <RotateCcw
-                      className={isRetrying ? 'yolo-spinner' : undefined}
-                    />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCloseMoreMenu()
-                      onExport()
-                    }}
-                    className="clickable-icon yolo-chat-list-dropdown-item-icon"
-                    aria-label={t(
-                      'sidebar.chatList.exportConversation',
-                      'Export conversation to vault',
-                    )}
-                    tabIndex={isMoreMenuOpen ? undefined : -1}
-                  >
-                    <Download size={16} />
-                  </button>
+                  {canRetryTitle ? (
+                    <button
+                      type="button"
+                      disabled={isRetrying}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onCloseMoreMenu()
+                        onRetryTitle()
+                      }}
+                      className={`clickable-icon yolo-chat-list-dropdown-item-icon${
+                        isRetrying ? ' is-pending' : ''
+                      }`}
+                      aria-label={t(
+                        'sidebar.chatList.retryTitle',
+                        'Retry title',
+                      )}
+                      aria-busy={isRetrying ? 'true' : undefined}
+                      tabIndex={isMoreMenuOpen ? undefined : -1}
+                    >
+                      <RotateCcw
+                        className={isRetrying ? 'yolo-spinner' : undefined}
+                      />
+                    </button>
+                  ) : null}
+                  {canExport ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onCloseMoreMenu()
+                        onExport()
+                      }}
+                      className="clickable-icon yolo-chat-list-dropdown-item-icon"
+                      aria-label={t(
+                        'sidebar.chatList.exportConversation',
+                        'Export conversation to vault',
+                      )}
+                      tabIndex={isMoreMenuOpen ? undefined : -1}
+                    >
+                      <Download size={16} />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -1162,6 +1203,7 @@ export function ChatListDropdown({
                   key={chat.id}
                   title={chat.title}
                   displayTitle={getDisplayTitle(chat)}
+                  cliRuntimeId={chat.cliSession?.runtimeId}
                   runSummary={runSummariesByConversationId.get(chat.id)}
                   isCurrent={chat.id === currentConversationId}
                   isFocused={
@@ -1176,6 +1218,8 @@ export function ChatListDropdown({
                   isUpdatingTitle={updatingTitleIds.has(chat.id)}
                   isPinned={Boolean(chat.isPinned)}
                   canPin={activeSection === 'user'}
+                  canRetryTitle={!chat.cliSession}
+                  canExport={!chat.cliSession}
                   isRetrying={retryingConversationIds.has(chat.id)}
                   isMoreMenuOpen={moreMenuConversationId === chat.id}
                   isContextMenuOpen={activeMenuId === chat.id}
@@ -1394,74 +1438,78 @@ export function ChatListDropdown({
               <Pencil size={16} />
               <span>{t('common.edit', 'Edit')}</span>
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-act="retitle"
-              disabled={retryingConversationIds.has(activeMenuChat.id)}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (retryingConversationIds.has(activeMenuChat.id)) {
-                  return
-                }
-                setActiveMenuId(null)
-                setMenuPosition(null)
-                const retryStartedAt = Date.now()
-                setRetryingConversationIds((prev) => {
-                  const next = new Set(prev)
-                  next.add(activeMenuChat.id)
-                  return next
-                })
-                void Promise.resolve(onRetryTitle(activeMenuChat.id))
-                  .catch((error) => {
-                    console.error(
-                      'Failed to retry conversation title generation',
-                      error,
-                    )
+            {!activeMenuChat.cliSession ? (
+              <button
+                type="button"
+                role="menuitem"
+                data-act="retitle"
+                disabled={retryingConversationIds.has(activeMenuChat.id)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (retryingConversationIds.has(activeMenuChat.id)) {
+                    return
+                  }
+                  setActiveMenuId(null)
+                  setMenuPosition(null)
+                  const retryStartedAt = Date.now()
+                  setRetryingConversationIds((prev) => {
+                    const next = new Set(prev)
+                    next.add(activeMenuChat.id)
+                    return next
                   })
-                  .finally(() => {
-                    const elapsed = Date.now() - retryStartedAt
-                    const remaining = Math.max(0, 320 - elapsed)
-                    window.setTimeout(() => {
-                      setRetryingConversationIds((prev) => {
-                        if (!prev.has(activeMenuChat.id)) {
-                          return prev
-                        }
-                        const next = new Set(prev)
-                        next.delete(activeMenuChat.id)
-                        return next
-                      })
-                    }, remaining)
+                  void Promise.resolve(onRetryTitle(activeMenuChat.id))
+                    .catch((error) => {
+                      console.error(
+                        'Failed to retry conversation title generation',
+                        error,
+                      )
+                    })
+                    .finally(() => {
+                      const elapsed = Date.now() - retryStartedAt
+                      const remaining = Math.max(0, 320 - elapsed)
+                      window.setTimeout(() => {
+                        setRetryingConversationIds((prev) => {
+                          if (!prev.has(activeMenuChat.id)) {
+                            return prev
+                          }
+                          const next = new Set(prev)
+                          next.delete(activeMenuChat.id)
+                          return next
+                        })
+                      }, remaining)
+                    })
+                }}
+              >
+                <RotateCcw size={16} />
+                <span>{t('sidebar.chatList.retryTitle', 'Retry title')}</span>
+              </button>
+            ) : null}
+            {!activeMenuChat.cliSession ? (
+              <button
+                type="button"
+                role="menuitem"
+                data-act="export"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setActiveMenuId(null)
+                  setMenuPosition(null)
+                  setMoreMenuConversationId(null)
+                  void Promise.resolve(
+                    onExportConversation(activeMenuChat.id),
+                  ).catch((error) => {
+                    console.error('Failed to export conversation', error)
                   })
-              }}
-            >
-              <RotateCcw size={16} />
-              <span>{t('sidebar.chatList.retryTitle', 'Retry title')}</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              data-act="export"
-              onClick={(e) => {
-                e.stopPropagation()
-                setActiveMenuId(null)
-                setMenuPosition(null)
-                setMoreMenuConversationId(null)
-                void Promise.resolve(
-                  onExportConversation(activeMenuChat.id),
-                ).catch((error) => {
-                  console.error('Failed to export conversation', error)
-                })
-              }}
-            >
-              <Download size={16} />
-              <span>
-                {t(
-                  'sidebar.chatList.exportConversation',
-                  'Export conversation to vault',
-                )}
-              </span>
-            </button>
+                }}
+              >
+                <Download size={16} />
+                <span>
+                  {t(
+                    'sidebar.chatList.exportConversation',
+                    'Export conversation to vault',
+                  )}
+                </span>
+              </button>
+            ) : null}
             <hr />
             <button
               type="button"

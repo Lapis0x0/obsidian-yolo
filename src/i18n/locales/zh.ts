@@ -66,6 +66,20 @@ export const zh: TranslationKeys = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      modeAccessibleLabel: '聊天模式',
+      chatLabel: 'Agent',
+      cliLabel: 'CLI',
+      chatDescription: 'YOLO 内置对话',
+      cliDescription: '使用 CLI 执行复杂任务',
+      accessibleLabel: 'CLI 提供方：{runtime}',
+      menuLabel: 'CLI 提供方',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
+      claudeCodeDescription: '本机 Claude Code 运行时',
+      codexLabel: 'Codex',
+      codexDescription: '本机 Codex 运行时',
+    },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
       empty: '暂无聊天记录',
@@ -422,7 +436,7 @@ export const zh: TranslationKeys = {
       skillsCount: '{count} 个技能',
       skillsCountWithEnabled: '{count} 个技能（已启用 {enabled} 个）',
       skillsGlobalDesc:
-        '技能会从内置技能与 {path}/**/*.md 自动发现（适用时排除 Skills.md）。在这里禁用后，所有 Agent 都无法使用。',
+        '技能会从内置技能与 {path}/<name>/SKILL.md 目录包中自动发现。在这里禁用后，所有 Agent 都无法使用。',
       yoloBaseDir: 'YOLO 根目录',
       yoloBaseDirDesc:
         '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。',
@@ -441,14 +455,14 @@ export const zh: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',
-      skillsSourcePath: '来源：内置技能 + {path}/*.md + {path}/**/SKILL.md',
+      skillsSourcePath: '来源：内置技能 + {path}/<name>/SKILL.md',
       refreshSkills: '刷新',
-      skillsEmptyHint: '未发现技能。请在 {path} 下创建 .md 技能文件。',
+      skillsEmptyHint: '未发现技能。请创建 {path}/<name>/SKILL.md 目录包。',
       createSkillTemplates: '初始化 Skills 系统',
       skillsTemplateCreated: '已在 {path} 完成 Skills 系统初始化。',
       importSkill: '导入技能',
       importSkillDesc:
-        '将技能包导入到 {path}。支持单个 .md 文件或 Agent Skills 标准文件夹。',
+        '将技能包导入到 {path}。单个 Markdown 会包装为 <name>/SKILL.md；文件夹会保留 SKILL.md 与全部包资源。',
       importSkillDropzoneText: '拖拽技能文件或文件夹到此处',
       importSkillBrowseFiles: '选择文件',
       importSkillBrowseFolder: '选择文件夹',
@@ -459,6 +473,8 @@ export const zh: TranslationKeys = {
       importSkillSuccess: '已成功导入 {count} 个技能。',
       importSkillInvalidFile: '未找到有效的技能文件或技能包。',
       importSkillReadError: '读取文件失败。',
+      importSkillErrTooDeep:
+        '技能包超过 {depth} 层导入深度上限，未导入任何内容。',
       importSkillWriteError: '导入 {name} 失败：{error}',
       importSkillErrHeader: '"{name}" 无法导入：',
       importSkillErrNoSkillMd: '文件夹中缺少 SKILL.md 文件',
@@ -494,15 +510,32 @@ export const zh: TranslationKeys = {
       importSkillFromUrlTooLarge: '技能包超过大小限制：{error}',
       importSkillFromUrlFetchError: '从 GitHub 获取失败：{error}',
       deleteSkillTitle: '删除技能',
-      deleteSkillMessage: '确定要删除「{name}」吗？此操作无法撤销。',
+      deleteSkillMessage:
+        '确定要删除「{name}」技能包及其全部资源吗？此操作无法撤销。',
       deleteSkillConfirm: '删除',
       deleteSkillSuccess: '已删除「{name}」。',
       deleteSkillError: '删除「{name}」失败：{error}',
-      deleteSkillBatchMessage: '确定要删除 {count} 个技能吗？此操作无法撤销。',
+      deleteSkillInvalidPackage: '技能包路径无效',
+      deleteSkillNotFound: '未找到技能包',
+      deleteSkillBatchMessage:
+        '确定要删除 {count} 个技能包及其全部资源吗？此操作无法撤销。',
       deleteSkillBatchSuccess: '已删除 {count} 个技能。',
       deleteSkillBatchBtn: '删除',
       deleteSkillSelectAll: '全选',
       deleteSkillCancel: '取消',
+      skillPackageMigrationIssues:
+        '有 {count} 个旧技能文件需要处理。YOLO 未覆盖或删除它们：',
+      skillPackageMigrationInvalidFrontmatter:
+        '{path}：缺少或包含无效的 YAML frontmatter；已保留原文件。',
+      skillPackageMigrationInvalidName:
+        '{path}：frontmatter name 必须为 1–64 位小写字母、数字或连字符；已保留原文件。',
+      skillPackageMigrationConflict:
+        '{path}：目标 {target} 已存在；已保留原文件。',
+      skillPackageMigrationFileFailed:
+        '{path}：迁移失败（{error}）；已保留原文件。',
+      skillPackageMigrationUnknownError: '未知错误',
+      skillPackageMigrationFailed:
+        'YOLO 未能完成旧技能文件升级。原文件已保留，请查看控制台后手动移动。',
       selectSkills: '选择',
       agents: 'Agents',
       agentsDesc: '点击配置以编辑每个 Agent 的资料与提示词。',
@@ -1643,12 +1676,16 @@ export const zh: TranslationKeys = {
     placeholderCompact: '点击展开编辑...',
     placeholderPrefix: '输入消息...',
     placeholderMention: '添加引用或模型',
+    placeholderMentionReferences: '添加引用',
     placeholderSkill: '选择技能或命令',
     contextUsage: '上下文窗口占用',
     contextUsageUnknownMaxSuffix: '（未设置上下文窗口上限）',
     contextBreakdown: {
       title: '上下文',
       fullLabel: '已占用 {{percent}}',
+      cacheHitLabel: '上一轮对话缓存命中 {{percent}}',
+      breakdownBarAriaLabel: '上下文组成',
+      usageBarAriaLabel: '上下文占用',
       tokensSuffix: 'Tokens',
       localEstimateCaption: '本地估算，可能与服务端计费存在偏差',
       unknownMaxHint: '可在模型设置中配置上下文窗口 token，以显示占用比例',
@@ -1787,6 +1824,22 @@ export const zh: TranslationKeys = {
       agentDescription: '启用工具链，处理搜索、读写与多步骤任务',
       agentFullTitle: '让 AI 自主执行 · YOLO 模式',
       agentFullDescription: '自动放行工具调用，处理搜索、读写与多步骤任务',
+    },
+    cliSurface: {
+      emptyTitle: '使用 CLI Agent',
+      emptyDescription: '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+      emptyUserMessage: '空消息',
+      error: 'CLI 会话出错：{message}',
+      runtimeError: '无法启动 CLI 运行时：{message}',
+      submitError: '无法发送 CLI 消息：{message}',
+      cancelError: '无法停止 CLI 运行：{message}',
+      openError: '无法打开 CLI 会话：{message}',
+      transitionError: '无法离开当前 CLI 会话：{message}',
+    },
+    cliControls: {
+      loadingModels: '加载模型…',
+      loadError: '无法加载 CLI 模型：{message}',
+      updateError: '无法更新 CLI 配置：{message}',
     },
     quickAccess: {
       manage: '管理常用入口',
@@ -1986,6 +2039,8 @@ export const zh: TranslationKeys = {
       abort: '停止执行',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '本对话内允许',
+      approvePlan: '批准计划',
+      stayInPlan: '留在计划模式',
     },
     toolSummary: {
       todoWrite: {
@@ -2014,12 +2069,15 @@ export const zh: TranslationKeys = {
       truncated: '输出已截断。',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: '查看 Subagent 详情',
+      loadingActivity: '正在加载活动…',
       planningNextMoves: '正在规划下一步',
       noActivity: '暂无活动。',
       statusCompleted: '已完成',
       statusAborted: '已中止',
       statusFailed: '失败',
+      statusDispatched: '已派遣',
       toolUseCount: '{count} 个工具',
       tokenCount: '{count} tokens',
       approval: {
@@ -2192,6 +2250,8 @@ export const zh: TranslationKeys = {
     rewriteDesc: '仅修改当前选区',
     agent: 'Agent',
     agentDesc: '启用工具链，处理多步骤任务',
+    plan: 'Plan',
+    planDesc: '先探索设计，确认后再改动',
     agentFull: 'Agent（YOLO）',
     agentFullDesc: '自动放行工具调用，适合复杂任务',
     yolo: 'YOLO',

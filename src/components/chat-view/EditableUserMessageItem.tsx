@@ -1,5 +1,5 @@
 import { SerializedEditorState } from 'lexical'
-import { memo, useRef } from 'react'
+import { type ReactNode, memo, useRef } from 'react'
 
 import { ChatSelectedSkill, ChatUserMessage } from '../../types/chat'
 import { Mentionable } from '../../types/mentionable'
@@ -22,6 +22,8 @@ export type EditableUserMessageItemProps = {
   reasoningLevel?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel) => void
   showReasoningSelect?: boolean
+  showModelControl?: boolean
+  runtimeControls?: ReactNode
   showPlaceholder?: boolean
   currentAssistantId?: string
   currentChatMode?: import('./chat-input/ChatModeSelect').ChatMode
@@ -47,6 +49,8 @@ function EditableUserMessageItem({
   reasoningLevel,
   onReasoningChange,
   showReasoningSelect,
+  showModelControl,
+  runtimeControls,
   showPlaceholder,
   currentAssistantId,
   currentChatMode,
@@ -79,6 +83,8 @@ function EditableUserMessageItem({
       reasoningLevel={reasoningLevel}
       onReasoningChange={onReasoningChange}
       showReasoningSelect={showReasoningSelect}
+      showModelControl={showModelControl}
+      runtimeControls={runtimeControls}
       showPlaceholder={showPlaceholder}
       controlLayout="inline"
       currentAssistantId={currentAssistantId}

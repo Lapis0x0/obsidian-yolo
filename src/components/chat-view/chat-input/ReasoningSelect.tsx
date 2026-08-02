@@ -33,6 +33,8 @@ export const ReasoningSelect = forwardRef<
     sideOffset?: number
     align?: 'start' | 'center' | 'end'
     alignOffset?: number
+    levels?: readonly ReasoningLevel[]
+    disabled?: boolean
   }
 >(
   (
@@ -46,6 +48,8 @@ export const ReasoningSelect = forwardRef<
       sideOffset = 4,
       align = 'center',
       alignOffset = 0,
+      levels,
+      disabled = false,
     },
     ref,
   ) => {
@@ -73,12 +77,16 @@ export const ReasoningSelect = forwardRef<
       [ref],
     )
 
+    const options = levels
+      ? REASONING_OPTIONS.filter((option) => levels.includes(option.value))
+      : REASONING_OPTIONS
     const fallbackValue = getDefaultReasoningLevel(model)
-    const safeValue = REASONING_OPTIONS.some((opt) => opt.value === value)
+    const safeValue = options.some((opt) => opt.value === value)
       ? value
-      : fallbackValue
+      : (options[0]?.value ?? fallbackValue)
     const currentOption =
-      REASONING_OPTIONS.find((opt) => opt.value === safeValue) ??
+      options.find((opt) => opt.value === safeValue) ??
+      options[0] ??
       REASONING_OPTIONS[0]
 
     const focusSelectedSegment = useCallback(() => {
@@ -143,6 +151,7 @@ export const ReasoningSelect = forwardRef<
           onPointerDown={() => {
             shouldFocusSegmentOnOpenRef.current = false
           }}
+          disabled={disabled}
         >
           <div className="yolo-reasoning-select__icon">
             <Brain size={14} />
@@ -182,6 +191,7 @@ export const ReasoningSelect = forwardRef<
             value={safeValue}
             onChange={onChange}
             segmentRefs={segmentRefs}
+            levels={levels}
           />
         </YoloDropdownContent>
       </DropdownMenu.Root>

@@ -1,4 +1,4 @@
-import { App, Notice, TFile, TFolder, normalizePath } from 'obsidian'
+import { App, Notice } from 'obsidian'
 import { useCallback, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -7,7 +7,10 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
-import { humanizeSkillName } from '../../../core/skills/liteSkills'
+import {
+  getSkillPackageDirPath,
+  humanizeSkillName,
+} from '../../../core/skills/liteSkills'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
@@ -78,7 +81,7 @@ function AgentSkillsModalContent({
   const skills = useLiteSkillEntries(app, { settings, refreshTick })
 
   const deletableSkills = useMemo(
-    () => skills.filter((s) => !s.path.startsWith('builtin://')),
+    () => skills.filter((skill) => !skill.isReadOnly),
     [skills],
   )
 
@@ -137,41 +140,28 @@ function AgentSkillsModalContent({
   }, [deletableSkills])
 
   const deleteSkillPath = async (path: string) => {
-    const normalizedPath = normalizePath(path)
-    const file = app.vault.getAbstractFileByPath(normalizedPath)
-    if (file) {
-      if (file instanceof TFile) {
-        const parent = file.parent
-        if (
-          parent &&
-          parent.path !== skillsDir &&
-          parent instanceof TFolder &&
-          file.name === 'SKILL.md'
-        ) {
-          await app.fileManager.trashFile(parent)
-        } else {
-          await app.fileManager.trashFile(file)
-        }
-      } else if (file instanceof TFolder) {
-        await app.fileManager.trashFile(file)
-      }
-      return
-    }
-
-    if (!(await app.vault.adapter.exists(normalizedPath))) {
-      throw new Error('Skill file not found')
-    }
-
-    if (normalizedPath.endsWith('/SKILL.md')) {
-      const parentPath = normalizedPath.slice(
-        0,
-        normalizedPath.lastIndexOf('/'),
+    const packageDir = getSkillPackageDirPath(path)
+    if (!packageDir) {
+      throw new Error(
+        t(
+          'settings.agent.deleteSkillInvalidPackage',
+          'Invalid skill package path',
+        ),
       )
-      await app.vault.adapter.rmdir(parentPath, true)
+    }
+
+    const folder = app.vault.getAbstractFileByPath(packageDir)
+    if (folder) {
+      await app.fileManager.trashFile(folder)
       return
     }
 
-    await app.vault.adapter.remove(normalizedPath)
+    if (!(await app.vault.adapter.exists(packageDir))) {
+      throw new Error(
+        t('settings.agent.deleteSkillNotFound', 'Skill package not found'),
+      )
+    }
+    await app.vault.adapter.rmdir(packageDir, true)
   }
 
   const handleDeleteSelected = () => {
@@ -184,7 +174,7 @@ function AgentSkillsModalContent({
       title: t('settings.agent.deleteSkillTitle', 'Delete skill'),
       message: t(
         'settings.agent.deleteSkillBatchMessage',
-        'Are you sure you want to delete {count} skill(s)? This cannot be undone.',
+        'Are you sure you want to delete {count} skill package(s), including all resources? This cannot be undone.',
       ).replace('{count}', String(names.length)),
       ctaText: t('settings.agent.deleteSkillConfirm', 'Delete'),
       onConfirm: async () => {
@@ -228,7 +218,7 @@ function AgentSkillsModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.agent.skillsGlobalDesc',
-          'Skills are discovered from built-in skills and {path}/**/*.md (excluding Skills.md where applicable). Disable a skill here to block it for all agents.',
+          'Skills are discovered from built-in skills and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
         ).replace('{path}', skillsDir)}
       </div>
 
@@ -303,9 +293,7 @@ function AgentSkillsModalContent({
         {skills.length > 0 ? (
           <div className="yolo-agent-tool-list">
             {skills
-              .filter((skill) =>
-                isSelectMode ? !skill.path.startsWith('builtin://') : true,
-              )
+              .filter((skill) => (isSelectMode ? !skill.isReadOnly : true))
               .map((skill) => {
                 const enabled = !disabledSkillNameSet.has(skill.name)
                 const isSelected = selectedIds.has(skill.name)
@@ -355,7 +343,7 @@ function AgentSkillsModalContent({
           <div className="yolo-agent-tools-empty">
             {t(
               'settings.agent.skillsEmptyHint',
-              'No skills found. Create skill markdown files under {path}.',
+              'No skills found. Create a {path}/<name>/SKILL.md package.',
             ).replace('{path}', skillsDir)}
           </div>
         )}

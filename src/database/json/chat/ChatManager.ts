@@ -265,7 +265,7 @@ export class ChatManager extends AbstractJsonRepository<
   private toMetadata(
     source: Pick<
       ChatConversation,
-      'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin'
+      'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin' | 'cliSession'
     > & { isPinned?: boolean; pinnedAt?: number },
   ): ChatConversationMetadata {
     return {
@@ -276,6 +276,7 @@ export class ChatManager extends AbstractJsonRepository<
       isPinned: source.isPinned ?? false,
       pinnedAt: source.pinnedAt,
       origin: getChatConversationOrigin(source),
+      cliSession: source.cliSession,
     }
   }
 
@@ -338,6 +339,7 @@ export class ChatManager extends AbstractJsonRepository<
       isPinned: chat.isPinned ?? false,
       pinnedAt: chat.pinnedAt,
       origin: getChatConversationOrigin(chat),
+      cliSession: chat.cliSession,
     }
     if (targetIndex === -1) {
       normalized.push(entry)

@@ -75,6 +75,20 @@ export type TranslationKeys = {
       agent?: string
       composer: string
     }
+    runtimeSelector: {
+      modeAccessibleLabel: string
+      chatLabel: string
+      cliLabel: string
+      chatDescription: string
+      cliDescription: string
+      accessibleLabel: string
+      menuLabel: string
+      claudeCodeLabel: string
+      claudeCodeShortLabel: string
+      claudeCodeDescription: string
+      codexLabel: string
+      codexDescription: string
+    }
     chatList?: {
       searchPlaceholder?: string
       empty?: string
@@ -365,6 +379,7 @@ export type TranslationKeys = {
       importSkillSuccess?: string
       importSkillInvalidFile?: string
       importSkillReadError?: string
+      importSkillErrTooDeep?: string
       importSkillWriteError?: string
       importSkillErrHeader?: string
       importSkillErrNoSkillMd?: string
@@ -400,11 +415,20 @@ export type TranslationKeys = {
       deleteSkillConfirm?: string
       deleteSkillSuccess?: string
       deleteSkillError?: string
+      deleteSkillInvalidPackage?: string
+      deleteSkillNotFound?: string
       deleteSkillBatchMessage?: string
       deleteSkillBatchSuccess?: string
       deleteSkillBatchBtn?: string
       deleteSkillSelectAll?: string
       deleteSkillCancel?: string
+      skillPackageMigrationIssues?: string
+      skillPackageMigrationInvalidFrontmatter?: string
+      skillPackageMigrationInvalidName?: string
+      skillPackageMigrationConflict?: string
+      skillPackageMigrationFileFailed?: string
+      skillPackageMigrationUnknownError?: string
+      skillPackageMigrationFailed?: string
       selectSkills?: string
       agents?: string
       agentsDesc?: string
@@ -1487,6 +1511,7 @@ export type TranslationKeys = {
     placeholderCompact?: string
     placeholderPrefix?: string
     placeholderMention?: string
+    placeholderMentionReferences?: string
     placeholderSkill?: string
     contextUsage?: string
     contextUsageUnknownMaxSuffix?: string
@@ -1494,6 +1519,10 @@ export type TranslationKeys = {
       title?: string
       /** "{{percent}} Full" — interpolated client-side */
       fullLabel?: string
+      /** "Previous turn cache hit {{percent}}" — interpolated client-side */
+      cacheHitLabel?: string
+      breakdownBarAriaLabel?: string
+      usageBarAriaLabel?: string
       tokensSuffix?: string
       localEstimateCaption?: string
       unknownMaxHint?: string
@@ -1628,6 +1657,22 @@ export type TranslationKeys = {
       agentDescription?: string
       agentFullTitle?: string
       agentFullDescription?: string
+    }
+    cliSurface?: {
+      emptyTitle?: string
+      emptyDescription?: string
+      emptyUserMessage?: string
+      error?: string
+      runtimeError?: string
+      submitError?: string
+      cancelError?: string
+      openError?: string
+      transitionError?: string
+    }
+    cliControls?: {
+      loadingModels?: string
+      loadError?: string
+      updateError?: string
     }
     quickAccess?: {
       manage?: string
@@ -1801,6 +1846,8 @@ export type TranslationKeys = {
       abort?: string
       alwaysAllowThisTool?: string
       allowForThisChat?: string
+      approvePlan?: string
+      stayInPlan?: string
     }
     toolSummary?: {
       todoWrite?: {
@@ -1830,12 +1877,15 @@ export type TranslationKeys = {
       truncated?: string
     }
     subagent?: {
+      defaultTitle?: string
       openDetails?: string
+      loadingActivity?: string
       planningNextMoves?: string
       noActivity?: string
       statusCompleted?: string
       statusAborted?: string
       statusFailed?: string
+      statusDispatched?: string
       toolUseCount?: string
       tokenCount?: string
       approval?: {
@@ -2012,6 +2062,8 @@ export type TranslationKeys = {
     rewriteDesc?: string
     agent?: string
     agentDesc?: string
+    plan?: string
+    planDesc?: string
     agentFull?: string
     agentFullDesc?: string
     yolo?: string

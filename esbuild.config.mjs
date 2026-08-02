@@ -47,6 +47,12 @@ const context = await esbuild.context({
     '__PLUGIN_BAKED_VERSION__': JSON.stringify(manifest.version),
   },
   target: 'es2020',
+  // Obsidian loads the plugin as CommonJS. Desktop SDKs use dynamic imports
+  // for Node builtins; leaving those as native `import()` makes Chromium try
+  // to fetch specifiers such as `node:os`. Lower them to async `require()`.
+  supported: {
+    'dynamic-import': false,
+  },
   logLevel: 'info', // 'debug' for more detailed output
   sourcemap: prod ? false : 'inline',
   treeShaking: true,

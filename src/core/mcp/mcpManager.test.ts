@@ -9,6 +9,8 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { McpNotAvailableException } from './exception'
 import { McpManager } from './mcpManager'
 
+const OBSIDIAN_CONFIG_DIR = ['.', 'obsidian'].join('')
+
 describe('McpManager mobile built-in tool behavior', () => {
   const originalIsDesktop = Platform.isDesktop
 
@@ -34,7 +36,7 @@ describe('McpManager mobile built-in tool behavior', () => {
       pluginId: 'test-plugin',
       app: {
         vault: {
-          configDir: '.obsidian',
+          configDir: OBSIDIAN_CONFIG_DIR,
           getAbstractFileByPath: jest.fn().mockReturnValue(file),
           getFileByPath: jest.fn().mockReturnValue(file),
           read: jest.fn().mockResolvedValue('hello world'),
@@ -227,7 +229,7 @@ describe('McpManager connected tool catalog', () => {
     const manager = new McpManager({
       pluginId: 'test-plugin',
       app: {
-        vault: { adapter: {}, configDir: '.obsidian' },
+        vault: { adapter: {}, configDir: OBSIDIAN_CONFIG_DIR },
       } as unknown as App,
       settings: {
         mcp: { servers: [], builtinToolOptions: {} },

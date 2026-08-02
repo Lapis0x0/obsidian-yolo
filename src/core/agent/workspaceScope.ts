@@ -106,6 +106,21 @@ export function buildAllowedSkillPathSet(
   return new Set(paths.map(normalizeSkillPathForExemption))
 }
 
+function isCoveredBySkillPathExemption(
+  path: string,
+  exemptPaths: ReadonlySet<string>,
+): boolean {
+  const normalizedPath = normalizeSkillPathForExemption(path)
+  if (exemptPaths.has(normalizedPath)) return true
+
+  for (const skillPath of exemptPaths) {
+    if (!skillPath.endsWith('/SKILL.md')) continue
+    const packageDir = skillPath.slice(0, -'/SKILL.md'.length)
+    if (normalizedPath.startsWith(`${packageDir}/`)) return true
+  }
+  return false
+}
+
 export function findPathOutsideScope(
   toolName: string,
   args: Record<string, unknown> | undefined,
@@ -122,7 +137,10 @@ export function findPathOutsideScope(
     ) {
       continue
     }
-    if (options?.exemptPaths?.has(normalizeSkillPathForExemption(path))) {
+    if (
+      options?.exemptPaths &&
+      isCoveredBySkillPathExemption(path, options.exemptPaths)
+    ) {
       continue
     }
     if (!isPathAllowedByScope(path, scope)) return path

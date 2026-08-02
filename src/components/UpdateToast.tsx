@@ -195,9 +195,7 @@ function UpdateToast() {
                   : `${moduleOffer!.name} update available`
                 : t('update.toastTitle', 'YOLO update available')}
             </span>
-            <span className="yolo-update-toast-version">
-              {latestVersion}
-            </span>
+            <span className="yolo-update-toast-version">{latestVersion}</span>
           </div>
           {subtitle ? (
             <div className="yolo-update-toast-subtitle">{subtitle}</div>

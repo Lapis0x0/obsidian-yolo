@@ -54,6 +54,8 @@ describe('parseYoloSettings', () => {
       reasoningLevelByModelId: {},
       chatExportIncludeThinking: false,
       chatExportIncludeToolCalls: false,
+      lastChatSurface: 'chat',
+      lastCliRuntimeId: 'claude-code',
     })
 
     expect(result.notificationOptions).toMatchObject({
@@ -97,6 +99,22 @@ describe('parseYoloSettings', () => {
       enabled: false,
       port: DEFAULT_LOCAL_MCP_SERVER_PORT,
       token: '',
+    })
+  })
+
+  it('persists the last Chat surface and CLI provider independently', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      chatOptions: {
+        includeCurrentFileContent: true,
+        lastChatSurface: 'chat',
+        lastCliRuntimeId: 'codex',
+      },
+    })
+
+    expect(result.chatOptions).toMatchObject({
+      lastChatSurface: 'chat',
+      lastCliRuntimeId: 'codex',
     })
   })
 

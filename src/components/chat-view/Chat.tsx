@@ -36,11 +36,30 @@ import {
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
+import {
+  type ChatRuntimeActions,
+  type ChatRuntimeApprovalAction,
+  type ChatRuntimeId,
+  type CliChatMode,
+  type CliConversationController,
+  type CliConversationSnapshot,
+  type CliRuntimeConfiguration,
+  type CliRuntimeId,
+  type CliRuntimeModel,
+  type CliRuntimeScope,
+  type CliSessionRef,
+  type CliTurnConfiguration,
+  type YoloConversationRef,
+  createYoloChatRuntimeActions,
+  isCliRuntimeAvailable,
+} from '../../core/cli-runtime'
+import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import type { LiteSkillEntry } from '../../core/skills/liteSkills'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
@@ -50,6 +69,7 @@ import {
   useChatHistory,
 } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
+import { useLiteSkillEntries } from '../../hooks/useLiteSkillEntries'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type {
   AssistantToolMessageGroup,
@@ -123,7 +143,11 @@ import { AssistantSelector } from './AssistantSelector'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { ChatInputDraftHolder } from './chat-input/chatInputDraft'
 import {
+  CHAT_MODES,
+  CLAUDE_CODE_CHAT_MODES,
+  CODEX_CHAT_MODES,
   type ChatMode,
+  type ChatModeSelectValue,
   isAgentChatMode,
   normalizeChatMode,
   normalizeYoloEnabled,
@@ -133,8 +157,10 @@ import type {
   ChatUserInputProps,
   ChatUserInputRef,
 } from './chat-input/ChatUserInput'
+import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import MentionableBadge from './chat-input/MentionableBadge'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { getChatSurfacePreset } from './chat-surface-presets'
 import { ChatConversationPane } from './ChatConversationPane'
 import { ChatListDropdown } from './ChatListDropdown'
@@ -144,14 +170,41 @@ import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
+import {
+  type CliChatOperationSnapshot,
+  beginChatRuntimeNavigation,
+  getCliChatOperationCoordinator,
+  invalidateChatRuntimeNavigation,
+  isCliConversationActive,
+  openCliSession,
+  openCliSessionForNavigation,
+  prepareCliConversation,
+  resolveActiveCliConversationSnapshot,
+  resolveChatRuntimeId,
+  rewriteCliConversationTurn,
+  shouldClearAcceptedCliDraft,
+  shouldHydrateSeededCliSession,
+  submitCliComposerTurn,
+} from './cliChatIntegration'
+import CliChatSurface from './CliChatSurface'
+import {
+  normalizeCliModeForRuntime,
+  patchConversationCliModeOverrides,
+  rememberCliModePreference,
+  rememberCliRuntimeConfiguration,
+  resolveCliModePreference,
+  resolveCliRuntimePreference,
+} from './cliRuntimePreferences'
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
+import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
 import { syncRenderedLatexSelection } from './latex-copy'
 import MessageNavigator from './MessageNavigator'
 import type { MessageNavigatorAnchor } from './MessageNavigator'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
+import { RuntimeSelector } from './RuntimeSelector'
 import { TodoListPanel } from './TodoListPanel'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
@@ -161,6 +214,7 @@ import {
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
+import { useHistoricalUserMessageDismiss } from './useHistoricalUserMessageDismiss'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
 
@@ -868,8 +922,12 @@ export type ChatRef = {
  * 都塞进来（消息列表会从 DB 自动恢复，无需快照）。
  */
 export type ChatRuntimeSnapshot = {
+  activeRuntimeId: ChatRuntimeId
+  cliSessionRef: CliSessionRef | null
+  cliConversationId: string | null
   currentConversationId: string
   inputMessage: ChatUserMessage
+  inputDraftRevision: number
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
@@ -879,6 +937,7 @@ export type ChatRuntimeSnapshot = {
 }
 
 export type ChatProps = {
+  cliRuntimeScope?: CliRuntimeScope
   selectedBlock?: MentionableBlockData
   activeView?: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
@@ -904,13 +963,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const app = useApp()
   const plugin = usePlugin()
   const agentService = plugin.getAgentService()
-  const { settings, setSettings } = useSettings()
+  const runtimeActions = useMemo(
+    () => createYoloChatRuntimeActions(agentService),
+    [agentService],
+  )
+  const { settings, setSettings, updateSettings } = useSettings()
+  const cliPreferenceSettingsRef = useRef(settings)
+  useEffect(() => {
+    cliPreferenceSettingsRef.current = settings
+  }, [settings])
+  const quickAccessSkillEntries = useLiteSkillEntries(app, { settings })
+  const quickAccessSnippetEntries = useSnippetEntries()
   const { t } = useLanguage()
   const { getMcpManager } = useMcp()
 
   const {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    createOrTouchCliConversation,
     deleteConversation,
     getConversationById,
     updateConversationTitle,
@@ -920,12 +990,314 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } = useChatHistory()
   const chatManager = useChatManager()
   const seededRuntimeSnapshot = props.seededRuntimeSnapshot
+  const cliRuntimeScope = props.cliRuntimeScope
+  const cliRuntimeAvailable = isCliRuntimeAvailable()
+  const preferredCliRuntimeId =
+    settings.chatOptions.lastCliRuntimeId ?? 'claude-code'
+  const preferredRuntimeId: ChatRuntimeId =
+    settings.chatOptions.lastChatSurface === 'cli'
+      ? preferredCliRuntimeId
+      : 'yolo'
+  const initialActiveRuntimeId = resolveChatRuntimeId({
+    requestedRuntimeId:
+      seededRuntimeSnapshot?.activeRuntimeId ??
+      (props.initialConversationId ? 'yolo' : preferredRuntimeId),
+    hasCliRuntimeScope: cliRuntimeScope !== undefined,
+    cliRuntimeAvailable,
+  })
+  const [requestedRuntimeId, setRequestedRuntimeId] = useState<ChatRuntimeId>(
+    initialActiveRuntimeId,
+  )
+  const activeRuntimeId = resolveChatRuntimeId({
+    requestedRuntimeId,
+    hasCliRuntimeScope: cliRuntimeScope !== undefined,
+    cliRuntimeAvailable,
+  })
+  const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
+  const lastCliRuntimeIdRef = useRef<CliRuntimeId>(
+    initialActiveRuntimeId === 'yolo'
+      ? preferredCliRuntimeId
+      : initialActiveRuntimeId,
+  )
+  const initialCliModePreference = resolveCliModePreference(
+    settings,
+    initialActiveRuntimeId === 'yolo'
+      ? preferredCliRuntimeId
+      : initialActiveRuntimeId,
+    seededRuntimeSnapshot?.conversationOverrides ?? null,
+  )
+  const [cliChatMode, setCliChatMode] = useState<CliChatMode>(
+    () => initialCliModePreference.mode,
+  )
+  const [cliYoloEnabled, setCliYoloEnabled] = useState<boolean>(
+    () => initialCliModePreference.yoloEnabled,
+  )
+  const prePlanCliModeByConversationRef = useRef(
+    new Map<string, { mode: 'agent'; yoloEnabled: boolean }>(),
+  )
+  const cliModeRequestGenerationRef = useRef(0)
+  const cliPermissionProfileRef = useLatestRef({
+    mode: cliChatMode,
+    yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
+  })
+  const chatMountedRef = useRef(true)
+  const runtimeNavigationGenerationRef = useRef(0)
+  useEffect(() => {
+    chatMountedRef.current = true
+    return () => {
+      chatMountedRef.current = false
+    }
+  }, [])
+  const [cliConversationController, setCliConversationController] =
+    useState<CliConversationController | null>(() => {
+      const controller =
+        initialActiveRuntimeId !== 'yolo' && cliRuntimeScope
+          ? seededRuntimeSnapshot?.cliSessionRef?.runtimeId ===
+            initialActiveRuntimeId
+            ? cliRuntimeScope.selectConversationSession(
+                seededRuntimeSnapshot.cliSessionRef,
+              )
+            : cliRuntimeScope.selectConversationRuntime(initialActiveRuntimeId)
+          : null
+      if (
+        controller &&
+        !controller.getSnapshot().sessionRef &&
+        !controller.getSnapshot().configuration
+      ) {
+        controller.stageConfiguration(
+          resolveCliRuntimePreference(
+            settings,
+            initialActiveRuntimeId as CliRuntimeId,
+            cliRuntimeScope
+              ?.getModelCatalogSnapshot()
+              .get(initialActiveRuntimeId as CliRuntimeId) ?? [],
+          ),
+        )
+      }
+      return controller
+    })
+  const [cliConversationId, setCliConversationId] = useState<string | null>(
+    () =>
+      seededRuntimeSnapshot?.cliConversationId ??
+      (cliConversationController ? uuidv4() : null),
+  )
+  const [cliConversationSnapshot, setCliConversationSnapshot] =
+    useState<CliConversationSnapshot | null>(
+      () => cliConversationController?.getSnapshot() ?? null,
+    )
+  useEffect(() => {
+    if (!cliConversationController) {
+      setCliConversationSnapshot(null)
+      return
+    }
+    const publishSnapshot = () =>
+      setCliConversationSnapshot(cliConversationController.getSnapshot())
+    publishSnapshot()
+    return cliConversationController.subscribe(publishSnapshot)
+  }, [cliConversationController])
+  const activeCliConversationSnapshot = resolveActiveCliConversationSnapshot(
+    activeRuntimeId,
+    cliConversationSnapshot,
+  )
+  const isCliRunActive = isCliConversationActive(activeCliConversationSnapshot)
+  const cliOperationCoordinator = useMemo(
+    () =>
+      cliConversationController
+        ? getCliChatOperationCoordinator(cliConversationController)
+        : null,
+    [cliConversationController],
+  )
+  const [cliOperationSnapshot, setCliOperationSnapshot] =
+    useState<CliChatOperationSnapshot | null>(
+      () => cliOperationCoordinator?.getSnapshot() ?? null,
+    )
+  useEffect(() => {
+    if (!cliOperationCoordinator) {
+      setCliOperationSnapshot(null)
+      return
+    }
+    const publishSnapshot = () =>
+      setCliOperationSnapshot(cliOperationCoordinator.getSnapshot())
+    publishSnapshot()
+    const unsubscribe = cliOperationCoordinator.subscribe(publishSnapshot)
+    return () => {
+      unsubscribe()
+    }
+  }, [cliOperationCoordinator])
+  const cliSubmissionPending =
+    cliOperationSnapshot?.submissionPhase === 'preparing' ||
+    cliOperationSnapshot?.submissionPhase === 'sending'
+  const cliTransitioning = cliOperationSnapshot?.isTransitioning === true
+  const [cliModelCatalog, setCliModelCatalog] = useState<
+    ReadonlyMap<CliRuntimeId, readonly CliRuntimeModel[]>
+  >(() => cliRuntimeScope?.getModelCatalogSnapshot() ?? new Map())
+  useEffect(() => {
+    if (!cliRuntimeScope) return
+    const publishCatalog = () =>
+      setCliModelCatalog(new Map(cliRuntimeScope.getModelCatalogSnapshot()))
+    publishCatalog()
+    return cliRuntimeScope.subscribeToModelCatalog(publishCatalog)
+  }, [cliRuntimeScope])
+  const [cliSkillEntries, setCliSkillEntries] = useState<LiteSkillEntry[]>([])
+  useEffect(() => {
+    if (
+      activeRuntimeId === 'yolo' ||
+      !cliRuntimeScope ||
+      !cliConversationController
+    ) {
+      setCliSkillEntries([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      await prepareCliConversation({
+        controller: cliConversationController,
+        scope: cliRuntimeScope,
+        runtimeId: activeRuntimeId,
+        settings: cliPreferenceSettingsRef.current,
+        permissionProfile: cliPermissionProfileRef.current,
+      })
+      const skills = await cliConversationController.listSkills()
+      if (cancelled) return
+      setCliSkillEntries(
+        skills.map((skill) => ({
+          ...skill,
+          mode: 'lazy',
+          isReadOnly: true,
+        })),
+      )
+    })().catch((error) => {
+      if (cancelled) return
+      console.warn('[YOLO] Failed to load native CLI skills', error)
+      setCliSkillEntries([])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeRuntimeId, cliConversationController, cliRuntimeScope])
+  useEffect(() => {
+    if (activeRuntimeId === 'yolo' || !cliConversationController) return
+    const snapshot = cliConversationController.getSnapshot()
+    // After reload, hydrate may bind sessionRef before the model catalog is
+    // warm enough for stageConfiguration. Keep retrying until configuration
+    // exists so the model/reasoning controls are not stuck disabled.
+    if (snapshot.configuration) return
+    cliConversationController.stageConfiguration(
+      resolveCliRuntimePreference(
+        cliPreferenceSettingsRef.current,
+        activeRuntimeId,
+        cliModelCatalog.get(activeRuntimeId) ?? [],
+      ),
+    )
+  }, [
+    activeRuntimeId,
+    cliConversationController,
+    cliModelCatalog,
+    settings.chatOptions.cliModelIdByRuntime,
+    settings.chatOptions.cliReasoningEffortByModel,
+  ])
+  useEffect(() => {
+    if (!cliRuntimeScope || activeRuntimeId === 'yolo') return
+    void cliRuntimeScope
+      .warmModelCatalog(activeRuntimeId)
+      .catch(() => undefined)
+  }, [activeRuntimeId, cliRuntimeScope])
   const [conversationAssistantId, setConversationAssistantId] =
     useState<string>(
       seededRuntimeSnapshot?.conversationAssistantId ??
         settings.currentAssistantId ??
         DEFAULT_ASSISTANT_ID,
     )
+  useEffect(() => {
+    if (!cliRuntimeScope || activeRuntimeId !== 'codex') return
+    void cliRuntimeScope.warmConversationRuntime('codex').catch(() => undefined)
+  }, [activeRuntimeId, cliRuntimeScope])
+  const cliSessionRestoreGenerationRef = useRef(0)
+  useEffect(() => {
+    const seededRef = seededRuntimeSnapshot?.cliSessionRef
+    if (
+      !seededRef ||
+      activeRuntimeId === 'yolo' ||
+      !cliRuntimeScope ||
+      !cliConversationController ||
+      !cliOperationCoordinator
+    ) {
+      return
+    }
+    const controllerSnapshot = cliConversationController.getSnapshot()
+    // A surviving scope/controller is authoritative on ordinary rebuilds.
+    // Only a fresh, unbound controller needs one native hydration from seed.
+    if (!shouldHydrateSeededCliSession(seededRef, controllerSnapshot)) return
+
+    const generation = ++cliSessionRestoreGenerationRef.current
+    void cliOperationCoordinator
+      .transition(cliConversationController, async (isCurrent) => {
+        const isCurrentRestore = () =>
+          isCurrent() &&
+          generation === cliSessionRestoreGenerationRef.current &&
+          chatMountedRef.current
+        const result = await openCliSession({
+          scope: cliRuntimeScope,
+          ref: seededRef,
+          isCurrent: isCurrentRestore,
+        })
+        if (!result.hydration || !isCurrentRestore()) {
+          return
+        }
+        await prepareCliConversation({
+          controller: result.controller,
+          scope: cliRuntimeScope,
+          runtimeId: seededRef.runtimeId,
+          settings,
+          permissionProfile: cliPermissionProfileRef.current,
+        })
+        if (!isCurrentRestore()) return
+        setCliConversationController(result.controller)
+        setCliConversationId(
+          seededRuntimeSnapshot?.cliConversationId ?? uuidv4(),
+        )
+        lastCliRuntimeIdRef.current = seededRef.runtimeId
+        setRequestedRuntimeId(seededRef.runtimeId)
+        activeRuntimeIdRef.current = seededRef.runtimeId
+        if (result.overlayError) {
+          console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+            conversationId: seededRuntimeSnapshot?.cliConversationId,
+            error: result.overlayError.message,
+          })
+        }
+      })
+      .catch((error) => {
+        if (
+          generation !== cliSessionRestoreGenerationRef.current ||
+          !chatMountedRef.current
+        ) {
+          return
+        }
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      })
+    return () => {
+      cliSessionRestoreGenerationRef.current += 1
+    }
+  }, [
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    chatMountedRef,
+    cliConversationController,
+    cliOperationCoordinator,
+    cliRuntimeScope,
+    seededRuntimeSnapshot?.cliConversationId,
+    seededRuntimeSnapshot?.cliSessionRef,
+    settings,
+    t,
+  ])
   const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
   const effectiveSettings = useMemo(
     () => ({
@@ -1003,6 +1375,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     inputDraftHolderRef.current = new ChatInputDraftHolder(inputMessage)
   }
   const inputDraftHolder = inputDraftHolderRef.current
+  const inputDraftRevisionRef = useRef(
+    seededRuntimeSnapshot?.inputDraftRevision ?? 0,
+  )
+  const bumpInputDraftRevision = useCallback(() => {
+    inputDraftRevisionRef.current += 1
+  }, [])
   const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
   const inputMessageRef = useRef(inputMessage)
   const getLatestInputMessage = useCallback(
@@ -1016,19 +1394,31 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const setInputMessage = useCallback(
     (updater: (message: ChatUserMessage) => ChatUserMessage) => {
       const nextMessage = inputDraftHolder.update(updater)
+      bumpInputDraftRevision()
       inputMessageRef.current = nextMessage
       setInputMessageState(nextMessage)
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
+  const previousInputRuntimeIdRef = useRef(activeRuntimeId)
+  useEffect(() => {
+    if (previousInputRuntimeIdRef.current === activeRuntimeId) return
+    previousInputRuntimeIdRef.current = activeRuntimeId
+    setInputMessage((message) =>
+      (message.selectedSkills?.length ?? 0) > 0
+        ? { ...message, selectedSkills: [] }
+        : message,
+    )
+  }, [activeRuntimeId, setInputMessage])
   const replaceInputMessage = useCallback(
     (message: ChatUserMessage) => {
       const nextMessage = inputDraftHolder.replace(message)
+      bumpInputDraftRevision()
       inputMessageRef.current = nextMessage
       setInputMessageState(nextMessage)
       setInputReplacementVersion(inputDraftHolder.getReplacementVersion())
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
   const [queuedMessageEditState, setQueuedMessageEditState] = useState<{
     preservedInputMessage: ChatUserMessage
@@ -1049,14 +1439,32 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setEnteringCompactionDividerAnchorMessageId,
   ] = useState<string | null>(null)
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
-  const suppressNextHistoricalUserMessageOutsidePointerRef = useRef<
-    string | null
-  >(null)
   const [currentConversationId, setCurrentConversationId] = useState<string>(
     () =>
       seededRuntimeSnapshot?.currentConversationId ??
       props.initialConversationId ??
       uuidv4(),
+  )
+  const activeHistoryConversationId =
+    activeRuntimeId === 'yolo'
+      ? currentConversationId
+      : (cliConversationId ?? currentConversationId)
+  const currentConversationRef = useMemo<YoloConversationRef>(
+    () => ({ runtimeId: 'yolo', conversationId: currentConversationId }),
+    [currentConversationId],
+  )
+  const cancelRuntimeRun = useCallback(
+    (conversationId: string) => {
+      void runtimeActions.cancelRun({ runtimeId: 'yolo', conversationId })
+    },
+    [runtimeActions],
+  )
+  const resolveRuntimeActionConversation = useCallback(
+    (conversationId: string): YoloConversationRef => ({
+      runtimeId: 'yolo',
+      conversationId,
+    }),
+    [],
   )
   const [isLoadingConversation, setIsLoadingConversation] = useState(() =>
     Boolean(props.initialConversationId),
@@ -1065,18 +1473,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const currentConversationPersisted = useMemo(
     () =>
       chatList.some(
-        (conversation) => conversation.id === currentConversationId,
+        (conversation) => conversation.id === activeHistoryConversationId,
       ),
-    [chatList, currentConversationId],
+    [activeHistoryConversationId, chatList],
   )
   const currentConversationTitle = useMemo(() => {
-    const rawTitle = currentConversationId
+    const rawTitle = activeHistoryConversationId
       ? chatList.find(
-          (conversation) => conversation.id === currentConversationId,
+          (conversation) => conversation.id === activeHistoryConversationId,
         )?.title
       : undefined
     return getConversationDisplayTitle(rawTitle, untitledFallback)
-  }, [chatList, currentConversationId, untitledFallback])
+  }, [activeHistoryConversationId, chatList, untitledFallback])
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
     seededRuntimeSnapshot?.reasoningLevel ?? initialReasoningLevel,
   )
@@ -1307,7 +1715,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return settings.chatOptions.agentYoloEnabled ?? false
   })
-
   const selectedAssistant = useMemo(() => {
     return (
       settings.assistants.find(
@@ -1358,6 +1765,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return {
       promptTokens: contextUsage.promptTokens,
       maxContextTokens: contextUsage.maxContextTokens,
+      ...(contextUsage.cacheHitRate !== undefined
+        ? { cacheHitRate: contextUsage.cacheHitRate }
+        : {}),
     }
   }, [chatMessages, effectiveMaxContextTokens])
 
@@ -1490,6 +1900,204 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
   )
 
+  const transitionCliSession = useCallback(
+    async (
+      action: (isCurrent: () => boolean) => void | Promise<void>,
+    ): Promise<boolean> => {
+      if (!cliConversationController || !cliOperationCoordinator) return false
+      try {
+        return await cliOperationCoordinator.transition(
+          cliConversationController,
+          action,
+        )
+      } catch (error) {
+        new Notice(
+          t(
+            'chat.cliSurface.transitionError',
+            'Could not leave the current CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+        return false
+      }
+    },
+    [cliConversationController, cliOperationCoordinator, t],
+  )
+
+  const createFreshCliConversation = useCallback(
+    (runtimeId: CliRuntimeId): CliConversationController | null => {
+      if (!cliRuntimeScope) return null
+      conversationOverridesRef.current.set(
+        activeHistoryConversationId,
+        conversationOverrides,
+      )
+      const previousConfiguration =
+        cliConversationController?.getSnapshot().runtimeId === runtimeId
+          ? cliConversationController.getSnapshot().configuration
+          : null
+      const controller = cliRuntimeScope.createConversationRuntime(runtimeId)
+      const preference = previousConfiguration
+        ? {
+            modelId: previousConfiguration.modelId,
+            reasoningEffort: previousConfiguration.reasoningEffort,
+          }
+        : resolveCliRuntimePreference(
+            cliPreferenceSettingsRef.current,
+            runtimeId,
+            cliModelCatalog.get(runtimeId) ?? [],
+          )
+      controller.stageConfiguration(preference)
+      if (previousConfiguration) {
+        cliPreferenceSettingsRef.current = rememberCliRuntimeConfiguration(
+          cliPreferenceSettingsRef.current,
+          runtimeId,
+          previousConfiguration,
+        )
+        void updateSettings((current) =>
+          rememberCliRuntimeConfiguration(
+            current,
+            runtimeId,
+            previousConfiguration,
+          ),
+        )
+      }
+      const nextCliConversationId = uuidv4()
+      setCliConversationController(controller)
+      setCliConversationId(nextCliConversationId)
+      setConversationOverrides(null)
+      conversationOverridesRef.current.set(nextCliConversationId, null)
+      return controller
+    },
+    [
+      activeHistoryConversationId,
+      cliConversationController,
+      cliModelCatalog,
+      cliRuntimeScope,
+      conversationOverrides,
+      updateSettings,
+    ],
+  )
+
+  const persistChatRuntimePreference = useCallback(
+    (runtimeId: ChatRuntimeId) => {
+      const lastChatSurface = runtimeId === 'yolo' ? 'chat' : 'cli'
+      const lastCliRuntimeId =
+        runtimeId === 'yolo'
+          ? (settings.chatOptions.lastCliRuntimeId ?? 'claude-code')
+          : runtimeId
+      if (
+        settings.chatOptions.lastChatSurface === lastChatSurface &&
+        settings.chatOptions.lastCliRuntimeId === lastCliRuntimeId
+      ) {
+        return
+      }
+      void setSettings({
+        ...settings,
+        chatOptions: {
+          ...settings.chatOptions,
+          lastChatSurface,
+          lastCliRuntimeId,
+        },
+      })
+    },
+    [setSettings, settings],
+  )
+
+  const handleRuntimeChange = useCallback(
+    (runtimeId: ChatRuntimeId) => {
+      if (runtimeId === activeRuntimeId) return
+      if (runtimeId !== 'yolo' && (!cliRuntimeScope || !cliRuntimeAvailable)) {
+        return
+      }
+      cliModeRequestGenerationRef.current += 1
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
+
+      const applyRuntimeChange = () => {
+        if (!isLatestNavigation()) return
+        if (runtimeId === 'yolo') {
+          setConversationOverrides(
+            conversationOverridesRef.current.get(currentConversationId) ?? null,
+          )
+          activeRuntimeIdRef.current = 'yolo'
+          setRequestedRuntimeId('yolo')
+          persistChatRuntimePreference('yolo')
+          return
+        }
+        if (!cliRuntimeScope) return
+        conversationOverridesRef.current.set(
+          activeHistoryConversationId,
+          conversationOverrides,
+        )
+        const controller = cliRuntimeScope.selectConversationRuntime(runtimeId)
+        if (!controller.getSnapshot().sessionRef) {
+          controller.stageConfiguration(
+            resolveCliRuntimePreference(
+              cliPreferenceSettingsRef.current,
+              runtimeId,
+              cliModelCatalog.get(runtimeId) ?? [],
+            ),
+          )
+        }
+        const nextCliConversationId = uuidv4()
+        setCliConversationController(controller)
+        setCliConversationId(nextCliConversationId)
+        setConversationOverrides(null)
+        lastCliRuntimeIdRef.current = runtimeId
+        activeRuntimeIdRef.current = runtimeId
+        setRequestedRuntimeId(runtimeId)
+        persistChatRuntimePreference(runtimeId)
+        const modePreference = resolveCliModePreference(
+          cliPreferenceSettingsRef.current,
+          runtimeId,
+          conversationOverridesRef.current.get(nextCliConversationId) ?? null,
+        )
+        setCliChatMode(modePreference.mode)
+        setCliYoloEnabled(modePreference.yoloEnabled)
+      }
+
+      if (activeRuntimeId === 'yolo') {
+        try {
+          applyRuntimeChange()
+        } catch (error) {
+          new Notice(
+            t(
+              'chat.cliSurface.runtimeError',
+              'Could not start the CLI runtime: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        }
+        return
+      }
+
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent() || !isLatestNavigation()) return
+        applyRuntimeChange()
+      })
+    },
+    [
+      activeRuntimeId,
+      activeRuntimeIdRef,
+      activeHistoryConversationId,
+      cliRuntimeAvailable,
+      cliConversationController,
+      cliModelCatalog,
+      cliRuntimeScope,
+      conversationOverrides,
+      currentConversationId,
+      persistChatRuntimePreference,
+      t,
+      transitionCliSession,
+    ],
+  )
+
   const handleConversationAssistantSelect = useCallback(
     (assistantId: string) => {
       setConversationAssistantId(assistantId)
@@ -1498,9 +2106,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const assistant = settings.assistants.find(
         (item) => item.id === assistantId,
       )
-      if (assistant?.modelId) {
-        applyAssistantDefaultModel(assistant.modelId)
-      }
+      if (assistant?.modelId) applyAssistantDefaultModel(assistant.modelId)
     },
     [
       applyAssistantDefaultModel,
@@ -1764,6 +2370,59 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMentionables: inputMessage.mentionables,
       focusedHistoricalMentionables,
     })
+  const consumeAcceptedCliDraft = useCallback(
+    (acceptedDraft: NonNullable<CliChatOperationSnapshot['acceptedDraft']>) => {
+      if (
+        !cliOperationCoordinator ||
+        cliOperationCoordinator.getSnapshot().acceptedDraft?.token !==
+          acceptedDraft.token
+      ) {
+        return
+      }
+      cliOperationCoordinator.acknowledgeAcceptedDraft(acceptedDraft.token)
+    },
+    [cliOperationCoordinator],
+  )
+  const consumePresentedCliDraft = useCallback(
+    (
+      presentedDraft: NonNullable<CliChatOperationSnapshot['presentedDraft']>,
+    ) => {
+      if (
+        !cliOperationCoordinator ||
+        cliOperationCoordinator.getSnapshot().presentedDraft?.token !==
+          presentedDraft.token
+      ) {
+        return
+      }
+      cliOperationCoordinator.acknowledgePresentedDraft(presentedDraft.token)
+      commitSentSelectionHighlights(presentedDraft.userMessage.mentionables)
+      const latestDraft = getLatestInputMessage()
+      if (
+        shouldClearAcceptedCliDraft({
+          acceptedDraft: presentedDraft,
+          currentDraft: latestDraft,
+          currentDraftRevision: inputDraftRevisionRef.current,
+        })
+      ) {
+        replaceInputMessage(getNewInputMessage(reasoningLevel))
+      }
+    },
+    [
+      cliOperationCoordinator,
+      commitSentSelectionHighlights,
+      getLatestInputMessage,
+      reasoningLevel,
+      replaceInputMessage,
+    ],
+  )
+  useEffect(() => {
+    const presentedDraft = cliOperationSnapshot?.presentedDraft
+    if (presentedDraft) consumePresentedCliDraft(presentedDraft)
+  }, [cliOperationSnapshot?.presentedDraft, consumePresentedCliDraft])
+  useEffect(() => {
+    const acceptedDraft = cliOperationSnapshot?.acceptedDraft
+    if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
+  }, [cliOperationSnapshot?.acceptedDraft, consumeAcceptedCliDraft])
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -1992,6 +2651,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     autoScrollToBottom,
     requestContextBuilder,
     currentConversationId,
+    cancelRuntimeRun,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
@@ -2727,56 +3387,36 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     [],
   )
 
-  useEffect(() => {
-    if (!focusedMessageId || focusedMessageId === inputMessage.id) {
-      suppressNextHistoricalUserMessageOutsidePointerRef.current = null
-      return
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement)) {
-        return
-      }
-
-      if (target.closest('.yolo-popover-surface')) {
-        return
-      }
-
-      const activeMessageElement = chatMessagesRef.current?.querySelector(
-        `[data-user-message-id="${focusedMessageId}"]`,
-      )
-      if (activeMessageElement?.contains(target)) {
-        return
-      }
-
-      if (
-        suppressNextHistoricalUserMessageOutsidePointerRef.current ===
-        focusedMessageId
-      ) {
-        suppressNextHistoricalUserMessageOutsidePointerRef.current = null
-        return
-      }
-
-      finalizeHistoricalUserMessageEdit(focusedMessageId)
+  const dismissHistoricalUserMessage = useCallback(
+    (messageId: string) => {
+      finalizeHistoricalUserMessageEdit(messageId)
       setFocusedMessageId(inputMessage.id)
-    }
+    },
+    [finalizeHistoricalUserMessageEdit, inputMessage.id],
+  )
+  const {
+    onControlPopoverOpenChange: onHistoricalUserMessageControlPopoverOpenChange,
+  } = useHistoricalUserMessageDismiss({
+    activeMessageId:
+      focusedMessageId && focusedMessageId !== inputMessage.id
+        ? focusedMessageId
+        : null,
+    containerRef: chatMessagesRef,
+    onDismiss: dismissHistoricalUserMessage,
+  })
 
-    const doc = chatMessagesRef.current?.ownerDocument ?? document
-    doc.addEventListener('pointerdown', handlePointerDown, true)
-    return () => {
-      doc.removeEventListener('pointerdown', handlePointerDown, true)
-    }
-  }, [finalizeHistoricalUserMessageEdit, focusedMessageId, inputMessage.id])
-
-  const handleLoadConversation = useCallback(
-    async (conversationId: string) => {
+  const loadYoloConversation = useCallback(
+    async (conversationId: string, isCurrent: () => boolean = () => true) => {
       setIsLoadingConversation(true)
       try {
         const conversation = await getConversationById(conversationId)
+        if (!isCurrent()) return
         if (!conversation) {
           throw new Error('Conversation not found')
         }
+        activeRuntimeIdRef.current = 'yolo'
+        setRequestedRuntimeId('yolo')
+        persistChatRuntimePreference('yolo')
         const normalizedConversation = normalizeHydratedConversationMessages(
           conversation.messages,
         )
@@ -2829,11 +3469,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             settings.chatOptions.agentYoloEnabled ?? false,
           ),
         )
-        if (conversation.overrides) {
-          conversationOverridesRef.current.set(
-            conversationId,
-            conversation.overrides,
-          )
+        conversationOverridesRef.current.set(
+          conversationId,
+          conversation.overrides ?? null,
+        )
+        const cliRuntimeForPrefs: CliRuntimeId =
+          activeRuntimeIdRef.current === 'yolo'
+            ? lastCliRuntimeIdRef.current
+            : activeRuntimeIdRef.current
+        const loadedCliMode = resolveCliModePreference(
+          settings,
+          cliRuntimeForPrefs,
+          conversation.overrides ?? null,
+        )
+        setCliChatMode(loadedCliMode.mode)
+        setCliYoloEnabled(loadedCliMode.yoloEnabled)
+        if (
+          cliRuntimeForPrefs === 'claude-code' &&
+          loadedCliMode.mode !== 'plan'
+        ) {
+          prePlanCliModeByConversationRef.current.delete(conversationId)
         }
         const modelFromRef =
           conversation.conversationModelId ??
@@ -2932,9 +3587,143 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       normalizeAssistantGroupBoundaryMessageIds,
       normalizeReasoningLevel,
       props.onConversationContextChange,
+      persistChatRuntimePreference,
       getLatestInputMessage,
       replaceInputMessage,
       untitledFallback,
+    ],
+  )
+
+  const loadCliConversation = useCallback(
+    async (
+      conversationId: string,
+      ref: CliSessionRef,
+      overrides: ConversationOverrideSettings | null | undefined,
+      isLatestNavigation: () => boolean,
+    ) => {
+      if (!cliRuntimeScope || !cliRuntimeAvailable) {
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace('{message}', 'CLI runtime unavailable.'),
+        )
+        return
+      }
+
+      const openSelectedSession = async (isCurrent: () => boolean) => {
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        const result = await openCliSessionForNavigation({
+          scope: cliRuntimeScope,
+          ref,
+          isCurrent: isCurrentNavigation,
+        })
+        if (!result) return
+        const modePreference = resolveCliModePreference(
+          settings,
+          ref.runtimeId,
+          overrides,
+        )
+        await prepareCliConversation({
+          controller: result.controller,
+          scope: cliRuntimeScope,
+          runtimeId: ref.runtimeId,
+          settings,
+          permissionProfile: modePreference,
+        })
+        if (!isCurrentNavigation()) return
+        lastCliRuntimeIdRef.current = ref.runtimeId
+        activeRuntimeIdRef.current = ref.runtimeId
+        setRequestedRuntimeId(ref.runtimeId)
+        persistChatRuntimePreference(ref.runtimeId)
+        setCliConversationController(result.controller)
+        setCliConversationId(conversationId)
+        const restoredOverrides = overrides ?? null
+        setConversationOverrides(restoredOverrides)
+        conversationOverridesRef.current.set(conversationId, restoredOverrides)
+        setCliChatMode(modePreference.mode)
+        setCliYoloEnabled(modePreference.yoloEnabled)
+        if (ref.runtimeId === 'claude-code' && modePreference.mode !== 'plan') {
+          prePlanCliModeByConversationRef.current.delete(conversationId)
+        }
+        if (result.overlayError) {
+          console.warn('[YOLO] Failed to restore CLI conversation metadata', {
+            conversationId,
+            error: result.overlayError.message,
+          })
+        }
+      }
+
+      try {
+        if (activeRuntimeIdRef.current === 'yolo') {
+          await openSelectedSession(isLatestNavigation)
+        } else {
+          await transitionCliSession((isCurrent) =>
+            openSelectedSession(() => isCurrent() && isLatestNavigation()),
+          )
+        }
+      } catch (error) {
+        if (!isLatestNavigation()) return
+        new Notice(
+          t(
+            'chat.cliSurface.openError',
+            'Could not open the CLI session: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      }
+    },
+    [
+      activeRuntimeIdRef,
+      cliRuntimeAvailable,
+      cliRuntimeScope,
+      persistChatRuntimePreference,
+      settings,
+      t,
+      transitionCliSession,
+    ],
+  )
+
+  const handleLoadConversation = useCallback(
+    async (conversationId: string) => {
+      cliModeRequestGenerationRef.current += 1
+      const isLatestNavigation = beginChatRuntimeNavigation(
+        runtimeNavigationGenerationRef,
+        () => chatMountedRef.current,
+      )
+      const conversation = await getConversationById(conversationId)
+      if (!isLatestNavigation()) return
+      if (!conversation) {
+        new Notice('Failed to load conversation')
+        return
+      }
+      if (conversation.cliSession) {
+        await loadCliConversation(
+          conversationId,
+          conversation.cliSession,
+          conversation.overrides,
+          isLatestNavigation,
+        )
+        return
+      }
+      if (activeRuntimeIdRef.current === 'yolo') {
+        await loadYoloConversation(conversationId, isLatestNavigation)
+        return
+      }
+      await transitionCliSession(async (isCurrent) => {
+        const isCurrentNavigation = () => isCurrent() && isLatestNavigation()
+        if (!isCurrentNavigation()) return
+        await loadYoloConversation(conversationId, isCurrentNavigation)
+      })
+    },
+    [
+      activeRuntimeIdRef,
+      getConversationById,
+      loadCliConversation,
+      loadYoloConversation,
+      transitionCliSession,
     ],
   )
 
@@ -2946,7 +3735,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   useEffect(() => {
     props.onConversationContextChange?.({
-      currentConversationId,
+      currentConversationId: activeHistoryConversationId,
       currentConversationPersisted,
       currentConversationTitle,
       currentModelId:
@@ -2967,7 +3756,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentConversationPersisted,
     conversationModelId,
     conversationOverrides,
-    currentConversationId,
+    activeHistoryConversationId,
     props.onConversationContextChange,
   ])
 
@@ -2977,8 +3766,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   useEffect(() => {
     if (!onRuntimeSnapshotChange) return
     onRuntimeSnapshotChange({
+      activeRuntimeId,
+      cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliConversationId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
+      inputDraftRevision: inputDraftRevisionRef.current,
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -2988,6 +3781,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     })
   }, [
     onRuntimeSnapshotChange,
+    activeRuntimeId,
+    activeCliConversationSnapshot?.sessionRef,
+    cliConversationId,
     currentConversationId,
     inputMessage,
     conversationModelId,
@@ -3027,6 +3823,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   const handleNewChat = (selectedBlock?: MentionableBlockData) => {
+    cliModeRequestGenerationRef.current += 1
+    const isLatestNavigation = beginChatRuntimeNavigation(
+      runtimeNavigationGenerationRef,
+      () => chatMountedRef.current,
+    )
+    if (activeRuntimeId !== 'yolo') {
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent() || !isLatestNavigation()) return
+        createFreshCliConversation(activeRuntimeId)
+        if (selectedBlock) {
+          const mentionableBlock =
+            createSelectionBlockMentionable(selectedBlock)
+          setInputMessage((message) => ({
+            ...message,
+            mentionables: [...message.mentionables, mentionableBlock],
+          }))
+        }
+      })
+      return
+    }
     const newId = uuidv4()
     setCurrentConversationId(newId)
     conversationAssistantIdRef.current.set(newId, conversationAssistantId)
@@ -3707,6 +4523,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       persistedMessageModelMap?: Map<string, string>
     }) => {
+      invalidateChatRuntimeNavigation(runtimeNavigationGenerationRef)
       abortConversationRun(currentConversationId)
       setQueryProgress({
         type: 'idle',
@@ -5100,31 +5917,33 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             (assistant) => assistant.id === overrideAssistantId,
           ) ?? null)
         : null
-      flushSync(() => {
-        if (overrideAssistant) {
-          setConversationAssistantId(overrideAssistant.id)
-          conversationAssistantIdRef.current.set(
-            currentConversationId,
-            overrideAssistant.id,
-          )
-          if (overrideAssistant.modelId) {
-            applyAssistantDefaultModel(overrideAssistant.modelId)
+      const applySelection = () => {
+        flushSync(() => {
+          if (overrideAssistant) {
+            if (activeRuntimeIdRef.current === 'yolo') {
+              setConversationAssistantId(overrideAssistant.id)
+              conversationAssistantIdRef.current.set(
+                currentConversationId,
+                overrideAssistant.id,
+              )
+              if (overrideAssistant.modelId) {
+                applyAssistantDefaultModel(overrideAssistant.modelId)
+              }
+            }
           }
+          upsertSelectionMentionableInMainInput(mentionable)
+        })
+
+        const inputRef = chatUserInputRefs.current.get(inputMessage.id)
+        if (text) inputRef?.appendText(text)
+        if (options?.submit) {
+          inputRef?.submit()
+        } else {
+          inputRef?.focus()
         }
-        upsertSelectionMentionableInMainInput(mentionable)
-      })
-
-      const inputRef = chatUserInputRefs.current.get(inputMessage.id)
-      if (text) {
-        inputRef?.appendText(text)
       }
 
-      if (options?.submit) {
-        inputRef?.submit()
-        return
-      }
-
-      inputRef?.focus()
+      applySelection()
     },
     syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
       syncSelectionMentionable(selectedBlock)
@@ -5293,8 +6112,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return conversationModelIdRef.current.get(currentConversationId)
     },
     getRuntimeSnapshot: () => ({
+      activeRuntimeId,
+      cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
+      cliConversationId,
       currentConversationId,
       inputMessage: getLatestInputMessage(),
+      inputDraftRevision: inputDraftRevisionRef.current,
       conversationModelId,
       conversationAssistantId,
       chatMode,
@@ -5425,6 +6248,317 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const applyCliModePreference = useCallback(
+    async (
+      runtimeId: CliRuntimeId,
+      preference: { mode: CliChatMode; yoloEnabled: boolean },
+      options?: { rememberPrePlan?: boolean },
+    ): Promise<void> => {
+      const mode = normalizeCliModeForRuntime(runtimeId, preference.mode)
+      const yoloEnabled = mode === 'plan' ? false : preference.yoloEnabled
+      const generation = ++cliModeRequestGenerationRef.current
+      const controller =
+        cliConversationController?.getSnapshot().runtimeId === runtimeId
+          ? cliConversationController
+          : null
+      try {
+        if (controller) {
+          await controller.updatePermissionProfile({
+            mode,
+            yoloEnabled,
+          })
+        }
+      } catch (error) {
+        if (generation !== cliModeRequestGenerationRef.current) return
+        new Notice(
+          t(
+            'chat.cliControls.updateError',
+            '无法更新 CLI 配置：{message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+        return
+      }
+      if (generation !== cliModeRequestGenerationRef.current) return
+
+      const preferenceConversationId =
+        activeRuntimeId === 'yolo'
+          ? currentConversationId
+          : (cliConversationId ?? activeHistoryConversationId)
+      if (
+        options?.rememberPrePlan &&
+        mode === 'plan' &&
+        cliChatMode !== 'plan'
+      ) {
+        prePlanCliModeByConversationRef.current.set(preferenceConversationId, {
+          mode: 'agent',
+          yoloEnabled: cliYoloEnabled,
+        })
+      }
+      if (runtimeId === 'claude-code' && mode !== 'plan') {
+        prePlanCliModeByConversationRef.current.delete(preferenceConversationId)
+      }
+      setCliChatMode(mode)
+      setCliYoloEnabled(yoloEnabled)
+      const nextOverrides = patchConversationCliModeOverrides(
+        conversationOverridesRef.current.get(preferenceConversationId) ??
+          conversationOverrides,
+        runtimeId,
+        { mode, yoloEnabled },
+      )
+      setConversationOverrides(nextOverrides)
+      conversationOverridesRef.current.set(
+        preferenceConversationId,
+        nextOverrides,
+      )
+      void updateSettings((current) =>
+        rememberCliModePreference(current, runtimeId, {
+          mode,
+          yoloEnabled,
+        }),
+      ).catch((error: unknown) => {
+        console.error('Failed to persist CLI mode preference', error)
+      })
+      const sessionRef = controller?.getSnapshot().sessionRef
+      if (sessionRef && activeRuntimeId !== 'yolo') {
+        void createOrTouchCliConversation(
+          preferenceConversationId,
+          sessionRef,
+          nextOverrides,
+        ).catch((error: unknown) => {
+          console.error('Failed to persist CLI conversation preference', error)
+        })
+      }
+    },
+    [
+      activeHistoryConversationId,
+      activeRuntimeId,
+      cliChatMode,
+      cliConversationController,
+      cliConversationId,
+      cliYoloEnabled,
+      conversationOverrides,
+      createOrTouchCliConversation,
+      currentConversationId,
+      t,
+      updateSettings,
+    ],
+  )
+
+  const restoreClaudeAgentMode = useCallback(() => {
+    void applyCliModePreference(
+      'claude-code',
+      prePlanCliModeByConversationRef.current.get(
+        activeHistoryConversationId,
+      ) ?? {
+        mode: 'agent',
+        yoloEnabled: false,
+      },
+    )
+  }, [activeHistoryConversationId, applyCliModePreference])
+
+  const handleCliModeSelectChange = useCallback(
+    (nextMode: ChatModeSelectValue) => {
+      if (activeRuntimeId === 'yolo') return
+      if (nextMode === 'ask') return
+      if (
+        activeRuntimeId === 'claude-code' &&
+        cliChatMode === 'plan' &&
+        nextMode === 'agent'
+      ) {
+        restoreClaudeAgentMode()
+        return
+      }
+      void applyCliModePreference(
+        activeRuntimeId,
+        {
+          mode: nextMode,
+          yoloEnabled: nextMode === 'plan' ? false : cliYoloEnabled,
+        },
+        { rememberPrePlan: nextMode === 'plan' },
+      )
+    },
+    [
+      activeRuntimeId,
+      applyCliModePreference,
+      cliChatMode,
+      cliYoloEnabled,
+      restoreClaudeAgentMode,
+    ],
+  )
+
+  const handleCliYoloChange = useCallback(
+    (enabled: boolean) => {
+      if (activeRuntimeId === 'yolo' || cliChatMode === 'plan') return
+      if (enabled && !settings.chatOptions.fullAccessWarningConfirmed) {
+        new AcknowledgementModal(app, {
+          title: t(
+            'chatMode.fullAccessWarning.title',
+            'Please confirm before enabling YOLO Mode',
+          ),
+          messages: [
+            t(
+              'chatMode.fullAccessWarning.description',
+              'YOLO Mode auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
+            ),
+          ],
+          items: [
+            t(
+              'chatMode.fullAccessWarning.permission',
+              'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
+            ),
+            t(
+              'chatMode.fullAccessWarning.cost',
+              'Autonomous runs may consume significant model resources and incur higher costs.',
+            ),
+            t(
+              'chatMode.fullAccessWarning.backup',
+              'Back up important content in advance to avoid unintended changes.',
+            ),
+          ],
+          checkboxLabel: t(
+            'chatMode.fullAccessWarning.checkbox',
+            'I understand the risks above and accept responsibility for proceeding',
+          ),
+          cancelText: t('chatMode.fullAccessWarning.cancel', 'Cancel'),
+          confirmText: t(
+            'chatMode.fullAccessWarning.confirm',
+            'Continue with YOLO Mode',
+          ),
+          confirmTone: 'warning',
+          onConfirm: () => {
+            void applyCliModePreference(activeRuntimeId, {
+              mode: 'agent',
+              yoloEnabled: true,
+            })
+            void updateSettings((current) => ({
+              ...current,
+              chatOptions: {
+                ...current.chatOptions,
+                fullAccessWarningConfirmed: true,
+              },
+            })).catch((error: unknown) => {
+              console.error(
+                'Failed to persist YOLO warning confirmation',
+                error,
+              )
+            })
+          },
+        }).open()
+        return
+      }
+      void applyCliModePreference(activeRuntimeId, {
+        mode: cliChatMode,
+        yoloEnabled: enabled,
+      })
+    },
+    [
+      activeRuntimeId,
+      app,
+      applyCliModePreference,
+      cliChatMode,
+      settings.chatOptions.fullAccessWarningConfirmed,
+      t,
+      updateSettings,
+    ],
+  )
+
+  const handleClaudePlanShortcut = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (activeRuntimeId !== 'claude-code') return
+      if (
+        event.key !== 'Tab' ||
+        !event.shiftKey ||
+        event.nativeEvent.isComposing
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (cliChatMode === 'plan') {
+        restoreClaudeAgentMode()
+        return
+      }
+      void applyCliModePreference(
+        'claude-code',
+        { mode: 'plan', yoloEnabled: false },
+        { rememberPrePlan: true },
+      )
+    },
+    [
+      activeRuntimeId,
+      applyCliModePreference,
+      cliChatMode,
+      restoreClaudeAgentMode,
+    ],
+  )
+
+  useEffect(() => {
+    if (activeRuntimeId === 'yolo' || !cliConversationController) return
+    void cliConversationController
+      .updatePermissionProfile({
+        mode: cliChatMode,
+        yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
+      })
+      .catch((error) => {
+        new Notice(
+          t(
+            'chat.cliControls.updateError',
+            '无法更新 CLI 配置：{message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+      })
+  }, [
+    activeRuntimeId,
+    cliChatMode,
+    cliConversationController,
+    cliYoloEnabled,
+    t,
+  ])
+
+  const cliChatRuntimeActions = useMemo((): ChatRuntimeActions | null => {
+    if (!cliRuntimeScope) return null
+    const base = cliRuntimeScope.chatRuntimeActions
+    return {
+      ...base,
+      approveTool: async (action: ChatRuntimeApprovalAction) => {
+        const result = await base.approveTool(action)
+        if (
+          result.kind === 'handled' &&
+          activeRuntimeId === 'claude-code' &&
+          cliChatMode === 'plan'
+        ) {
+          const messages =
+            cliConversationController?.getSnapshot().messages ?? []
+          const approvedExitPlan = messages.some(
+            (message) =>
+              message.role === 'tool' &&
+              message.toolCalls?.some(
+                (toolCall) =>
+                  toolCall.request.id === action.toolCallId &&
+                  toolCall.request.name === CLAUDE_EXIT_PLAN_MODE_TOOL,
+              ),
+          )
+          if (approvedExitPlan) {
+            restoreClaudeAgentMode()
+          }
+        }
+        return result
+      },
+    }
+  }, [
+    activeRuntimeId,
+    applyCliModePreference,
+    cliChatMode,
+    cliConversationController,
+    cliRuntimeScope,
+    restoreClaudeAgentMode,
+  ])
+
   const header = (
     <div
       ref={headerRef}
@@ -5432,36 +6566,52 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         isSidebarPlacement ? '' : ' yolo-chat-header--workspace'
       }`}
     >
-      {onChangeView ? (
-        <ViewToggle
-          activeView={activeView}
-          onChangeView={onChangeView}
-          showComposer={isSidebarPlacement}
-          disabled={false}
-        />
-      ) : (
-        <h1 className="yolo-chat-header-title">
-          {t('sidebar.tabs.chat', 'Chat')}
-        </h1>
-      )}
+      <div className="yolo-chat-header-left">
+        {onChangeView ? (
+          <ViewToggle
+            activeView={activeView}
+            onChangeView={onChangeView}
+            activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
+            onChangeChatSurface={(surface) => {
+              handleRuntimeChange(
+                surface === 'chat' ? 'yolo' : lastCliRuntimeIdRef.current,
+              )
+            }}
+            showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
+            showComposer={isSidebarPlacement}
+          />
+        ) : (
+          <h1 className="yolo-chat-header-title">
+            {t('sidebar.tabs.chat', 'Chat')}
+          </h1>
+        )}
+        {activeView === 'chat' && activeRuntimeId !== 'yolo' ? (
+          <RuntimeSelector
+            currentRuntimeId={activeRuntimeId}
+            onRuntimeChange={handleRuntimeChange}
+          />
+        ) : null}
+      </div>
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          <AssistantSelector
-            currentAssistantId={conversationAssistantId}
-            triggerClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-button--workspace-floating'
-                : undefined
-            }
-            contentClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-content--workspace-floating'
-                : undefined
-            }
-            onAssistantChange={(assistant) => {
-              handleConversationAssistantSelect(assistant.id)
-            }}
-          />
+          {activeRuntimeId === 'yolo' ? (
+            <AssistantSelector
+              currentAssistantId={conversationAssistantId}
+              triggerClassName={
+                !isSidebarPlacement && isWorkspaceWideHeader
+                  ? 'yolo-assistant-selector-button--workspace-floating'
+                  : undefined
+              }
+              contentClassName={
+                !isSidebarPlacement && isWorkspaceWideHeader
+                  ? 'yolo-assistant-selector-content--workspace-floating'
+                  : undefined
+              }
+              onAssistantChange={(assistant) => {
+                handleConversationAssistantSelect(assistant.id)
+              }}
+            />
+          ) : null}
           <div className="yolo-chat-header-buttons">
             <button
               type="button"
@@ -5471,29 +6621,41 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             >
               <Plus size={18} />
             </button>
-            <button
-              type="button"
-              onClick={() => handleExportChatToVault(currentConversationId)}
-              className="clickable-icon"
-              aria-label={t(
-                'sidebar.chatList.exportConversation',
-                'Export conversation to vault',
-              )}
-            >
-              <Download size={18} />
-            </button>
+            {activeRuntimeId === 'yolo' ? (
+              <button
+                type="button"
+                onClick={() => handleExportChatToVault(currentConversationId)}
+                className="clickable-icon"
+                aria-label={t(
+                  'sidebar.chatList.exportConversation',
+                  'Export conversation to vault',
+                )}
+              >
+                <Download size={18} />
+              </button>
+            ) : null}
             <ChatListDropdown
               chatList={chatList}
-              currentConversationId={currentConversationId}
+              currentConversationId={activeHistoryConversationId}
               runSummariesByConversationId={runSummariesByConversationId}
               onSelect={(conversationId) => {
-                if (conversationId === currentConversationId) return
+                if (conversationId === activeHistoryConversationId) return
                 void handleLoadConversation(conversationId)
               }}
               onDelete={(conversationId) => {
                 void (async () => {
+                  const conversation = await getConversationById(conversationId)
                   await deleteConversation(conversationId)
-                  if (conversationId === currentConversationId) {
+                  if (conversation?.cliSession && cliRuntimeScope) {
+                    await cliRuntimeScope.sessionService.removeOverlay(
+                      conversation.cliSession,
+                    )
+                  }
+                  if (conversationId === activeHistoryConversationId) {
+                    if (activeRuntimeId !== 'yolo') {
+                      handleNewChat()
+                      return
+                    }
                     const nextConversation = chatList.find(
                       (chat) => chat.id !== conversationId,
                     )
@@ -5557,15 +6719,25 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     buildContextBreakdownInputs,
   )
   const mainInputSubmitStateRef = useLatestRef({
+    activeRuntimeId,
     agentService,
+    app,
     buildInputMessageForSubmit,
     chatMessages,
+    cliChatMode,
+    cliConversationId,
     commitSentSelectionHighlights,
     conversationModelId,
+    conversationOverrides,
+    cliConversationController,
+    cliOperationCoordinator,
+    cliRuntimeScope,
     currentConversationId,
     currentConversationRunSummary,
+    createOrTouchCliConversation,
     displayedChatMessages,
     handleUserMessageSubmit,
+    generateConversationTitle,
     inputMessage,
     messageModelMap,
     queuedMessageEditState,
@@ -5573,6 +6745,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     selectedAssistant,
     settings,
     t,
+    cliYoloEnabled,
   })
 
   const handleMainInputRef = useCallback(
@@ -5585,9 +6758,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const handleMainInputChange = useCallback<ChatUserInputProps['onChange']>(
     (content) => {
       inputDraftHolder.updateContent(content)
+      bumpInputDraftRevision()
       inputMessageRef.current = inputDraftHolder.get()
     },
-    [inputDraftHolder],
+    [bumpInputDraftRevision, inputDraftHolder],
   )
 
   const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
@@ -5598,6 +6772,114 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         state.inputMessage.mentionables.length === 0 &&
         (state.inputMessage.selectedSkills?.length ?? 0) === 0
       ) {
+        return
+      }
+
+      if (state.activeRuntimeId !== 'yolo') {
+        const runtimeId = state.activeRuntimeId
+        const controller = state.cliConversationController
+        const coordinator = state.cliOperationCoordinator
+        const scope = state.cliRuntimeScope
+        if (
+          !controller ||
+          !coordinator ||
+          !scope ||
+          isCliConversationActive(controller.getSnapshot())
+        ) {
+          return
+        }
+
+        const draftRevision = inputDraftRevisionRef.current
+        const messageForSubmit = state.buildInputMessageForSubmit(content)
+        const submission = coordinator.beginSubmission(draftRevision)
+        if (!submission) return
+
+        void (async () => {
+          try {
+            const result = await submitCliComposerTurn({
+              settings: state.settings,
+              scope,
+              controller,
+              runtimeId,
+              userMessage: messageForSubmit,
+              timeContextEnabled: false,
+              permissionProfile: {
+                mode: state.cliChatMode,
+                yoloEnabled:
+                  state.cliChatMode === 'plan' ? false : state.cliYoloEnabled,
+              },
+              signal: submission.signal,
+              onSendStarted: () => coordinator.markSending(submission.token),
+              onPresented: (presentedMessage) => {
+                if (
+                  coordinator.markPresented(
+                    submission.token,
+                    presentedMessage,
+                  ) &&
+                  chatMountedRef.current
+                ) {
+                  const presentedDraft =
+                    coordinator.getSnapshot().presentedDraft
+                  if (presentedDraft) consumePresentedCliDraft(presentedDraft)
+                }
+              },
+              onAccepted: (acceptedMessage) => {
+                if (
+                  coordinator.markAccepted(submission.token, acceptedMessage) &&
+                  chatMountedRef.current
+                ) {
+                  const acceptedDraft = coordinator.getSnapshot().acceptedDraft
+                  if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
+                }
+              },
+            })
+            const historyConversationId = state.cliConversationId ?? uuidv4()
+            await state.createOrTouchCliConversation(
+              historyConversationId,
+              {
+                runtimeId: result.sessionRef.runtimeId,
+                nativeSessionId: result.sessionRef.nativeSessionId,
+                ...(result.sessionRef.sessionPathHint
+                  ? { sessionPathHint: result.sessionRef.sessionPathHint }
+                  : {}),
+              },
+              state.conversationOverrides,
+            )
+            if (state.cliConversationId === null && chatMountedRef.current) {
+              setCliConversationId(historyConversationId)
+            }
+            void state.generateConversationTitle(historyConversationId, [
+              result.userMessage,
+            ])
+            if (chatMountedRef.current) {
+              if (result.overlayError) {
+                console.warn('[YOLO] Failed to save CLI display metadata', {
+                  conversationId: historyConversationId,
+                  error: result.overlayError.message,
+                })
+              }
+            }
+          } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+              return
+            }
+            if (chatMountedRef.current) {
+              new Notice(
+                state
+                  .t(
+                    'chat.cliSurface.submitError',
+                    'Could not send the CLI message: {message}',
+                  )
+                  .replace(
+                    '{message}',
+                    error instanceof Error ? error.message : String(error),
+                  ),
+              )
+            }
+          } finally {
+            coordinator.finishSubmission(submission.token)
+          }
+        })()
         return
       }
 
@@ -5713,7 +6995,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         replaceInputMessage(getNewInputMessage(state.reasoningLevel))
       }
     },
-    [mainInputSubmitStateRef, replaceInputMessage],
+    [
+      consumeAcceptedCliDraft,
+      consumePresentedCliDraft,
+      mainInputSubmitStateRef,
+      replaceInputMessage,
+    ],
   )
 
   const handleMainInputFocus = useCallback(() => {
@@ -5748,6 +7035,40 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       snapshotRef: undefined,
     }))
   }, [])
+  const handleMainInputRuntimeSkillsChange = useCallback<
+    NonNullable<ChatUserInputProps['setSelectedSkills']>
+  >(
+    (selectedSkills) => {
+      handleMainInputSelectedSkillsChange(
+        activeRuntimeId === 'yolo' ? selectedSkills : selectedSkills.slice(-1),
+      )
+    },
+    [activeRuntimeId, handleMainInputSelectedSkillsChange],
+  )
+
+  const handleMainInputMentionableDelete = useCallback(
+    (mentionable: Mentionable) => {
+      if (activeRuntimeId === 'yolo') {
+        handleMentionableDeleteFromAll(mentionable)
+        return
+      }
+      const mentionableKey = getMentionableKey(
+        serializeMentionable(mentionable),
+      )
+      handleMainInputMentionablesChange(
+        inputMessageRef.current.mentionables.filter(
+          (candidate) =>
+            getMentionableKey(serializeMentionable(candidate)) !==
+            mentionableKey,
+        ),
+      )
+    },
+    [
+      activeRuntimeId,
+      handleMainInputMentionablesChange,
+      handleMentionableDeleteFromAll,
+    ],
+  )
 
   const handleMainInputModelChange = useCallback<
     NonNullable<ChatUserInputProps['onModelChange']>
@@ -5791,20 +7112,277 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const persistCliConfiguration = useCallback(
+    (configuration: CliRuntimeConfiguration) => {
+      if (!cliConversationController || activeRuntimeId === 'yolo') return
+      const ref = cliConversationController.getSnapshot().sessionRef
+      if (ref && cliRuntimeScope) {
+        void cliRuntimeScope.sessionService.rememberConfiguration(ref, {
+          modelId: configuration.modelId,
+          reasoningEffort: configuration.reasoningEffort,
+        })
+      }
+      cliPreferenceSettingsRef.current = rememberCliRuntimeConfiguration(
+        cliPreferenceSettingsRef.current,
+        activeRuntimeId,
+        configuration,
+      )
+      void updateSettings((current) =>
+        rememberCliRuntimeConfiguration(
+          current,
+          activeRuntimeId,
+          configuration,
+        ),
+      )
+    },
+    [
+      activeRuntimeId,
+      cliConversationController,
+      cliRuntimeScope,
+      updateSettings,
+    ],
+  )
+
+  const handleCliModelChange = useCallback(
+    (modelId: string | null) => {
+      if (!cliConversationController || activeRuntimeId === 'yolo') return
+      const rememberedEffort = modelId
+        ? cliPreferenceSettingsRef.current.chatOptions
+            .cliReasoningEffortByModel?.[`${activeRuntimeId}:${modelId}`]
+        : undefined
+      void cliConversationController
+        .updateConfiguration({
+          modelId,
+          reasoningEffort: rememberedEffort ?? null,
+        })
+        .then((configuration) => {
+          if (!configuration) return
+          persistCliConfiguration(configuration)
+        })
+        .catch((error) => {
+          new Notice(
+            t(
+              'chat.cliControls.updateError',
+              '无法更新 CLI 配置：{message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+    },
+    [activeRuntimeId, cliConversationController, persistCliConfiguration, t],
+  )
+
+  const handleCliReasoningEffortChange = useCallback(
+    (reasoningEffort: string | null) => {
+      if (!cliConversationController || activeRuntimeId === 'yolo') return
+      void cliConversationController
+        .updateConfiguration({ reasoningEffort })
+        .then((configuration) => {
+          if (!configuration) return
+          persistCliConfiguration(configuration)
+        })
+        .catch((error) => {
+          new Notice(
+            t(
+              'chat.cliControls.updateError',
+              '无法更新 CLI 配置：{message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+    },
+    [activeRuntimeId, cliConversationController, persistCliConfiguration, t],
+  )
+
+  const handleCliUserMessageRewrite = useCallback(
+    async (
+      sourceMessage: ChatUserMessage,
+      editedMessage: ChatUserMessage,
+      turnConfiguration?: CliTurnConfiguration,
+    ) => {
+      if (
+        activeRuntimeId === 'yolo' ||
+        !cliConversationController ||
+        !cliOperationCoordinator ||
+        !cliRuntimeScope ||
+        !cliConversationId
+      ) {
+        throw new Error('CLI conversation is not ready for editing.')
+      }
+      try {
+        let rewriteResult: Awaited<
+          ReturnType<typeof rewriteCliConversationTurn>
+        > | null = null
+        const completed = await cliOperationCoordinator.transition(
+          cliConversationController,
+          async (isCurrent) => {
+            rewriteResult = await rewriteCliConversationTurn({
+              settings,
+              scope: cliRuntimeScope,
+              controller: cliConversationController,
+              runtimeId: activeRuntimeId,
+              sourceUserMessageId: sourceMessage.id,
+              permissionProfile: cliPermissionProfileRef.current,
+              configuration: turnConfiguration,
+              userMessage: {
+                ...editedMessage,
+                id: sourceMessage.id,
+              },
+            })
+            if (!isCurrent() || !rewriteResult) return
+            if (turnConfiguration) {
+              const appliedConfiguration =
+                cliConversationController.getSnapshot().configuration
+              if (appliedConfiguration) {
+                persistCliConfiguration(appliedConfiguration)
+              }
+            }
+            await createOrTouchCliConversation(
+              cliConversationId,
+              {
+                runtimeId: rewriteResult.sessionRef.runtimeId,
+                nativeSessionId: rewriteResult.sessionRef.nativeSessionId,
+                ...(rewriteResult.sessionRef.sessionPathHint
+                  ? {
+                      sessionPathHint: rewriteResult.sessionRef.sessionPathHint,
+                    }
+                  : {}),
+              },
+              conversationOverridesRef.current.get(cliConversationId) ??
+                conversationOverrides,
+            )
+            if (rewriteResult.overlayError) {
+              console.warn('[YOLO] Failed to save rewritten CLI metadata', {
+                conversationId: cliConversationId,
+                error: rewriteResult.overlayError.message,
+              })
+            }
+          },
+        )
+        if (!completed) return
+      } catch (error) {
+        new Notice(
+          t(
+            'chat.cliSurface.submitError',
+            'Could not send the CLI message: {message}',
+          ).replace(
+            '{message}',
+            error instanceof Error ? error.message : String(error),
+          ),
+        )
+        throw error
+      }
+    },
+    [
+      activeRuntimeId,
+      cliConversationController,
+      cliConversationId,
+      cliOperationCoordinator,
+      cliRuntimeScope,
+      createOrTouchCliConversation,
+      conversationOverrides,
+      persistCliConfiguration,
+      settings,
+      t,
+    ],
+  )
+
   const handleMainInputRunSlashCommand = useCallback<
     NonNullable<ChatUserInputProps['onRunSlashCommand']>
   >(
     (command) => {
       if (command.id === 'compact-context') {
-        void handleManualContextCompactionRef.current()
+        if (
+          activeRuntimeId === 'yolo' ||
+          !cliConversationController ||
+          !cliOperationCoordinator ||
+          !cliRuntimeScope
+        ) {
+          void handleManualContextCompactionRef.current()
+          return
+        }
+        if (isCliConversationActive(cliConversationController.getSnapshot())) {
+          new Notice(
+            t(
+              'chat.compaction.runActive',
+              '请等待当前回复完成后再压缩上下文。',
+            ),
+          )
+          return
+        }
+        if (cliConversationController.getSnapshot().messages.length === 0) {
+          new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
+          return
+        }
+        void cliOperationCoordinator
+          .transition(cliConversationController, async (isCurrent) => {
+            await prepareCliConversation({
+              controller: cliConversationController,
+              scope: cliRuntimeScope,
+              runtimeId: activeRuntimeId,
+              settings: cliPreferenceSettingsRef.current,
+              permissionProfile: {
+                mode: cliChatMode,
+                yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
+              },
+            })
+            if (!isCurrent()) return
+            await cliConversationController.compact()
+          })
+          .catch((error) => {
+            new Notice(
+              t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'),
+            )
+            console.error('Failed to compact native CLI context', error)
+          })
       }
     },
-    [handleManualContextCompactionRef],
+    [
+      activeRuntimeId,
+      cliChatMode,
+      cliConversationController,
+      cliOperationCoordinator,
+      cliRuntimeScope,
+      cliYoloEnabled,
+      handleManualContextCompactionRef,
+      t,
+    ],
   )
 
   const handleMainInputAbort = useCallback(() => {
+    if (
+      activeRuntimeId !== 'yolo' &&
+      cliConversationController &&
+      cliOperationCoordinator
+    ) {
+      void cliOperationCoordinator
+        .cancelCurrentOperation(cliConversationController)
+        .catch((error) => {
+          new Notice(
+            t(
+              'chat.cliSurface.cancelError',
+              'Could not stop the CLI run: {message}',
+            ).replace(
+              '{message}',
+              error instanceof Error ? error.message : String(error),
+            ),
+          )
+        })
+      return
+    }
     abortConversationRunRef.current(currentConversationIdValueRef.current)
-  }, [abortConversationRunRef, currentConversationIdValueRef])
+  }, [
+    abortConversationRunRef,
+    activeRuntimeId,
+    cliConversationController,
+    cliOperationCoordinator,
+    currentConversationIdValueRef,
+    t,
+  ])
 
   const buildMainInputContextBreakdownInputs = useCallback(() => {
     return buildContextBreakdownInputsRef.current(chatMessagesStateRef.current)
@@ -5816,12 +7394,32 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ? {
             promptTokens: headerContextUsage.promptTokens,
             maxContextTokens: headerContextUsage.maxContextTokens,
+            ...(headerContextUsage.cacheHitRate !== undefined
+              ? { cacheHitRate: headerContextUsage.cacheHitRate }
+              : {}),
             label: t('chat.contextUsage', '上下文窗口占用'),
             buildBreakdownInputs: buildMainInputContextBreakdownInputs,
           }
         : undefined,
     [headerContextUsage, buildMainInputContextBreakdownInputs, t],
   )
+  const cliInputContextUsage = useMemo<
+    ChatUserInputProps['contextUsage']
+  >(() => {
+    const usage = activeCliConversationSnapshot?.contextUsage
+    if (!usage) return undefined
+    return {
+      promptTokens: usage.promptTokens,
+      maxContextTokens: usage.maxContextTokens,
+      ...(usage.cacheHitRate !== undefined
+        ? { cacheHitRate: usage.cacheHitRate }
+        : {}),
+      label: t('chat.contextUsage', '上下文窗口占用'),
+      ...(usage.categories && usage.categories.length > 0
+        ? { categories: usage.categories }
+        : {}),
+    }
+  }, [activeCliConversationSnapshot?.contextUsage, t])
   const mainInputSelectedSkills =
     inputMessage.selectedSkills ?? EMPTY_SELECTED_SKILLS
 
@@ -6092,11 +7690,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               registerChatUserInputRef(messageOrGroup.id, ref)
             }
             onControlPopoverOpenChange={(isOpen) => {
-              if (!isOpen) {
-                return
-              }
-              suppressNextHistoricalUserMessageOutsidePointerRef.current =
-                messageOrGroup.id
+              onHistoricalUserMessageControlPopoverOpenChange(isOpen)
             }}
             onInputChange={(content) => {
               timelineHandlersRef.current.updateHistoricalUserMessage(
@@ -6386,6 +7980,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const renderRuntimeAwareChatTimelineItem = useCallback(
+    (timelineItem: ChatTimelineItem) => (
+      <ChatRuntimeActionsProvider
+        actions={runtimeActions}
+        conversation={currentConversationRef}
+        resolveConversationScope={resolveRuntimeActionConversation}
+      >
+        {renderChatTimelineItem(timelineItem)}
+      </ChatRuntimeActionsProvider>
+    ),
+    [
+      currentConversationRef,
+      renderChatTimelineItem,
+      resolveRuntimeActionConversation,
+      runtimeActions,
+    ],
+  )
+
   const chatTimelineRenderVersion = useCallback(
     (timelineItem: ChatTimelineItem): string => {
       if (timelineItem.kind === 'compaction-pending') {
@@ -6576,12 +8188,220 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       {workspaceTitleParts.slice(1).join('{vaultName}')}
     </>
   ) : undefined
+  const isCliRuntimeActive = activeRuntimeId !== 'yolo'
+  const activeSurfaceEmpty = isCliRuntimeActive
+    ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
+      !isCliRunActive
+    : showEmptyState
+  const mainInputFooter = (
+    <div className="yolo-chat-input-wrapper">
+      <div ref={setInputOverlayElement} className="yolo-chat-input-overlay">
+        {!isCliRuntimeActive && queuedUserMessages.length > 0 ? (
+          <div className="yolo-chat-queued-messages">
+            <div className="yolo-chat-queued-messages__hint">
+              {t('chat.queueMessage.hint', '等待 Agent 完成当前步骤...')}
+            </div>
+            {queuedUserMessages.map((queued) => {
+              const preview = queued.content
+                ? editorStateToPlainText(queued.content).trim()
+                : ''
+              return (
+                <div
+                  key={queued.id}
+                  className="yolo-chat-queued-messages__item"
+                  title={preview}
+                >
+                  <span className="yolo-chat-queued-messages__preview">
+                    {preview || ' '}
+                  </span>
+                  <span className="yolo-chat-queued-messages__actions">
+                    <button
+                      type="button"
+                      className="yolo-chat-queued-messages__action"
+                      aria-label={t('common.edit', '编辑')}
+                      title={t('common.edit', '编辑')}
+                      disabled={queuedMessageEditState !== null}
+                      onClick={() => {
+                        const removed = agentService.removePendingUserMessage(
+                          currentConversationId,
+                          queued.id,
+                        )
+                        if (!removed) return
+
+                        const preservedReasoningLevel = reasoningLevel
+                        const editingReasoningLevel =
+                          normalizeReasoningLevel(removed.reasoningLevel) ??
+                          reasoningLevel
+                        setQueuedMessageEditState({
+                          preservedInputMessage: getLatestInputMessage(),
+                          preservedReasoningLevel,
+                        })
+                        setReasoningLevel(editingReasoningLevel)
+                        replaceInputMessage({
+                          ...removed,
+                          timeContext: undefined,
+                        })
+                        requestAnimationFrame(() => {
+                          chatUserInputRefs.current.get(removed.id)?.focus()
+                        })
+                      }}
+                    >
+                      <Pencil size={13} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      type="button"
+                      className="yolo-chat-queued-messages__action is-delete"
+                      aria-label={t('common.delete', '删除')}
+                      title={t('common.delete', '删除')}
+                      onClick={() => {
+                        const removed = agentService.removePendingUserMessage(
+                          currentConversationId,
+                          queued.id,
+                        )
+                        if (!removed) return
+                        releaseHighlightIds(
+                          collectSelectionHighlightIds(removed.mentionables),
+                        )
+                        setMessageReasoningMap((prev) => {
+                          if (!prev.has(removed.id)) return prev
+                          const next = new Map(prev)
+                          next.delete(removed.id)
+                          return next
+                        })
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+        {!isCliRuntimeActive ? (
+          <TodoListPanel
+            key={currentConversationId}
+            messages={displayedChatMessages}
+            queuedMessageCount={queuedUserMessages.length}
+          />
+        ) : null}
+      </div>
+      {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
+      displayMentionablesForInput.length > 0 ? (
+        <div className="yolo-chat-user-input-files">
+          {displayMentionablesForInput.map((mentionable) => {
+            const mentionableKey = getMentionableKey(
+              serializeMentionable(mentionable),
+            )
+            return (
+              <MentionableBadge
+                key={mentionableKey}
+                mentionable={mentionable}
+                onDelete={() => handleMainInputMentionableDelete(mentionable)}
+                onClick={() => {}}
+              />
+            )
+          })}
+        </div>
+      ) : null}
+      <ChatUserInput
+        key={inputMessage.id}
+        ref={handleMainInputRef}
+        initialSerializedEditorState={null}
+        getInitialSerializedEditorState={getLatestInputContent}
+        replacementVersion={inputReplacementVersion}
+        onChange={handleMainInputChange}
+        onSubmit={handleMainInputSubmit}
+        onFocus={handleMainInputFocus}
+        mentionables={inputMessage.mentionables}
+        setMentionables={handleMainInputMentionablesChange}
+        selectedSkills={mainInputSelectedSkills}
+        setSelectedSkills={handleMainInputRuntimeSkillsChange}
+        enableSkills
+        skillEntries={isCliRuntimeActive ? cliSkillEntries : undefined}
+        modelId={conversationModelId}
+        onModelChange={handleMainInputModelChange}
+        showModelControl={!isCliRuntimeActive}
+        allowModelMentions={!isCliRuntimeActive}
+        reasoningLevel={reasoningLevel}
+        onReasoningChange={handleMainInputReasoningChange}
+        showReasoningSelect={!isCliRuntimeActive}
+        runtimeControls={
+          isCliRuntimeActive ? (
+            <CliRuntimeControls
+              configuration={
+                activeCliConversationSnapshot?.configuration ?? null
+              }
+              cachedModels={cliModelCatalog.get(activeRuntimeId)}
+              runtimeId={activeRuntimeId}
+              disabled={
+                cliSubmissionPending || isCliRunActive || cliTransitioning
+              }
+              onModelChange={handleCliModelChange}
+              onReasoningEffortChange={handleCliReasoningEffortChange}
+            />
+          ) : undefined
+        }
+        autoFocus
+        addedBlockKey={addedBlockKey}
+        hideBadgeMentionables
+        displayMentionables={displayMentionablesForInput}
+        onDeleteFromAll={handleMainInputMentionableDelete}
+        currentAssistantId={
+          isCliRuntimeActive ? undefined : conversationAssistantId
+        }
+        onSelectAssistantForConversation={
+          isCliRuntimeActive ? undefined : handleConversationAssistantSelect
+        }
+        currentChatMode={isCliRuntimeActive ? cliChatMode : chatMode}
+        onSelectChatModeForConversation={
+          isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
+        }
+        chatMode={isCliRuntimeActive ? cliChatMode : chatMode}
+        onChatModeChange={
+          isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
+        }
+        chatModeOptions={
+          activeRuntimeId === 'claude-code'
+            ? CLAUDE_CODE_CHAT_MODES
+            : activeRuntimeId === 'codex'
+              ? CODEX_CHAT_MODES
+              : CHAT_MODES
+        }
+        yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}
+        onYoloChange={
+          isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
+        }
+        onEditorKeyDown={handleClaudePlanShortcut}
+        allowAgentModeOption
+        enableResize
+        onRunSlashCommand={handleMainInputRunSlashCommand}
+        isGenerating={
+          isCliRuntimeActive
+            ? cliSubmissionPending || isCliRunActive || cliTransitioning
+            : currentConversationRunSummary.isAbortable
+        }
+        canQueueWhileGenerating={
+          isCliRuntimeActive ? false : currentConversationRunSummary.isQueueable
+        }
+        onAbort={handleMainInputAbort}
+        contextUsage={
+          isCliRuntimeActive ? cliInputContextUsage : mainInputContextUsage
+        }
+        showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
+        quickAccessSkillEntries={
+          isCliRuntimeActive ? [] : quickAccessSkillEntries
+        }
+        quickAccessSnippetEntries={quickAccessSnippetEntries}
+      />
+    </div>
+  )
 
   return (
     <div
       ref={handleContainerRef}
       className={`${containerClassName}${
-        showEmptyState ? ' yolo-chat-container--empty-state' : ''
+        activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
       }`}
       style={containerStyle}
     >
@@ -6590,6 +8410,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <div className="yolo-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
         </div>
+      ) : isCliRuntimeActive &&
+        cliConversationController &&
+        activeCliConversationSnapshot &&
+        cliRuntimeScope ? (
+        <CliChatSurface
+          key={activeCliConversationSnapshot.surfaceId}
+          snapshot={activeCliConversationSnapshot}
+          showEmptyState={activeSurfaceEmpty}
+          actions={cliChatRuntimeActions ?? cliRuntimeScope.chatRuntimeActions}
+          footerContent={mainInputFooter}
+          emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+          onRewriteUserMessage={handleCliUserMessageRewrite}
+          cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
+        />
       ) : (
         <ChatConversationPane
           chatMode={chatMode}
@@ -6603,7 +8437,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           chatMessagesRef={chatMessagesRef}
           onScrollContainerChange={setChatMessagesElement}
           onBottomSentinelChange={setChatBottomSentinelElement}
-          renderChatTimelineItem={renderChatTimelineItem}
+          renderChatTimelineItem={renderRuntimeAwareChatTimelineItem}
           editingAssistantMessageId={editingAssistantMessageId}
           hasEarlierMessages={hasEarlierMessages}
           hasNewerMessages={hasNewerMessages}
@@ -6640,179 +8474,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           windowNavigationTargetMessageId={windowNavigationTargetMessageId}
           messageNavigatorContent={messageNavigatorContent}
           bottomSpacerHeight={inputOverlayHeight}
-          footerContent={
-            <>
-              <div className="yolo-chat-input-wrapper">
-                <div
-                  ref={setInputOverlayElement}
-                  className="yolo-chat-input-overlay"
-                >
-                  {queuedUserMessages.length > 0 && (
-                    <div className="yolo-chat-queued-messages">
-                      <div className="yolo-chat-queued-messages__hint">
-                        {t(
-                          'chat.queueMessage.hint',
-                          '等待 Agent 完成当前步骤...',
-                        )}
-                      </div>
-                      {queuedUserMessages.map((queued) => {
-                        const preview = queued.content
-                          ? editorStateToPlainText(queued.content).trim()
-                          : ''
-                        return (
-                          <div
-                            key={queued.id}
-                            className="yolo-chat-queued-messages__item"
-                            title={preview}
-                          >
-                            <span className="yolo-chat-queued-messages__preview">
-                              {preview || ' '}
-                            </span>
-                            <span className="yolo-chat-queued-messages__actions">
-                              <button
-                                type="button"
-                                className="yolo-chat-queued-messages__action"
-                                aria-label={t('common.edit', '编辑')}
-                                title={t('common.edit', '编辑')}
-                                disabled={queuedMessageEditState !== null}
-                                onClick={() => {
-                                  const removed =
-                                    agentService.removePendingUserMessage(
-                                      currentConversationId,
-                                      queued.id,
-                                    )
-                                  if (!removed) return
-
-                                  const preservedReasoningLevel = reasoningLevel
-                                  const editingReasoningLevel =
-                                    normalizeReasoningLevel(
-                                      removed.reasoningLevel,
-                                    ) ?? reasoningLevel
-                                  setQueuedMessageEditState({
-                                    preservedInputMessage:
-                                      getLatestInputMessage(),
-                                    preservedReasoningLevel,
-                                  })
-                                  setReasoningLevel(editingReasoningLevel)
-                                  replaceInputMessage({
-                                    ...removed,
-                                    timeContext: undefined,
-                                  })
-                                  requestAnimationFrame(() => {
-                                    chatUserInputRefs.current
-                                      .get(removed.id)
-                                      ?.focus()
-                                  })
-                                }}
-                              >
-                                <Pencil size={13} strokeWidth={2.5} />
-                              </button>
-                              <button
-                                type="button"
-                                className="yolo-chat-queued-messages__action is-delete"
-                                aria-label={t('common.delete', '删除')}
-                                title={t('common.delete', '删除')}
-                                onClick={() => {
-                                  const removed =
-                                    agentService.removePendingUserMessage(
-                                      currentConversationId,
-                                      queued.id,
-                                    )
-                                  if (!removed) return
-                                  releaseHighlightIds(
-                                    collectSelectionHighlightIds(
-                                      removed.mentionables,
-                                    ),
-                                  )
-                                  setMessageReasoningMap((prev) => {
-                                    if (!prev.has(removed.id)) return prev
-                                    const next = new Map(prev)
-                                    next.delete(removed.id)
-                                    return next
-                                  })
-                                }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  <TodoListPanel
-                    key={currentConversationId}
-                    messages={displayedChatMessages}
-                    queuedMessageCount={queuedUserMessages.length}
-                  />
-                </div>
-                {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===
-                  'badge' &&
-                  displayMentionablesForInput.length > 0 && (
-                    <div className="yolo-chat-user-input-files">
-                      {displayMentionablesForInput.map((mentionable) => {
-                        const mentionableKey = getMentionableKey(
-                          serializeMentionable(mentionable),
-                        )
-                        return (
-                          <MentionableBadge
-                            key={mentionableKey}
-                            mentionable={mentionable}
-                            onDelete={() =>
-                              handleMentionableDeleteFromAll(mentionable)
-                            }
-                            onClick={() => {}}
-                          />
-                        )
-                      })}
-                    </div>
-                  )}
-                <ChatUserInput
-                  key={inputMessage.id}
-                  ref={handleMainInputRef}
-                  initialSerializedEditorState={null}
-                  getInitialSerializedEditorState={getLatestInputContent}
-                  replacementVersion={inputReplacementVersion}
-                  onChange={handleMainInputChange}
-                  onSubmit={handleMainInputSubmit}
-                  onFocus={handleMainInputFocus}
-                  mentionables={inputMessage.mentionables}
-                  setMentionables={handleMainInputMentionablesChange}
-                  selectedSkills={mainInputSelectedSkills}
-                  setSelectedSkills={handleMainInputSelectedSkillsChange}
-                  modelId={conversationModelId}
-                  onModelChange={handleMainInputModelChange}
-                  reasoningLevel={reasoningLevel}
-                  onReasoningChange={handleMainInputReasoningChange}
-                  autoFocus
-                  addedBlockKey={addedBlockKey}
-                  hideBadgeMentionables
-                  displayMentionables={displayMentionablesForInput}
-                  onDeleteFromAll={handleMentionableDeleteFromAll}
-                  currentAssistantId={conversationAssistantId}
-                  onSelectAssistantForConversation={
-                    handleConversationAssistantSelect
-                  }
-                  currentChatMode={chatMode}
-                  onSelectChatModeForConversation={handleChatModeChange}
-                  chatMode={chatMode}
-                  onChatModeChange={handleChatModeChange}
-                  yoloEnabled={yoloEnabled}
-                  onYoloChange={handleYoloChange}
-                  allowAgentModeOption={true}
-                  enableResize
-                  onRunSlashCommand={handleMainInputRunSlashCommand}
-                  isGenerating={currentConversationRunSummary.isAbortable}
-                  canQueueWhileGenerating={
-                    currentConversationRunSummary.isQueueable
-                  }
-                  onAbort={handleMainInputAbort}
-                  contextUsage={mainInputContextUsage}
-                  showQuickAccess={showEmptyState && !isSidebarPlacement}
-                />
-              </div>
-            </>
-          }
+          footerContent={mainInputFooter}
         />
       )}
     </div>
