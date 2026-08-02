@@ -58,6 +58,7 @@
 
 button.yolo-runtime-selector {
   display: inline-flex;
+  position: relative;
   align-items: center;
   gap: 6px;
   min-width: 43px;
@@ -77,6 +78,15 @@ button.yolo-runtime-selector {
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
+  container-type: inline-size;
+}
+
+button.yolo-runtime-selector[data-runtime-id='codex'] {
+  contain-intrinsic-inline-size: 74px;
+}
+
+button.yolo-runtime-selector[data-runtime-id='claude-code'] {
+  contain-intrinsic-inline-size: 112px;
 }
 
 button.yolo-runtime-selector:hover,
@@ -144,6 +154,40 @@ body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='openai'] {
 button.yolo-runtime-selector[data-state='open']
   .yolo-runtime-selector__chevron {
   transform: rotate(180deg);
+}
+
+/* Match the Chat / CLI toggle's icon-only form when this selector itself no
+   longer has room for its complete runtime name. The label and caret retain
+   their layout slots while transparent, so the selector can grow back and
+   restore its full affordance as soon as the header has room again. */
+@container (max-width: 73px) {
+  button.yolo-runtime-selector[data-runtime-id='codex']
+    .yolo-runtime-selector__label,
+  button.yolo-runtime-selector[data-runtime-id='codex']
+    .yolo-runtime-selector__chevron {
+    opacity: 0;
+  }
+
+  button.yolo-runtime-selector[data-runtime-id='codex']
+    .yolo-runtime-selector__icon {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+@container (max-width: 111px) {
+  button.yolo-runtime-selector[data-runtime-id='claude-code']
+    .yolo-runtime-selector__label,
+  button.yolo-runtime-selector[data-runtime-id='claude-code']
+    .yolo-runtime-selector__chevron {
+    opacity: 0;
+  }
+
+  button.yolo-runtime-selector[data-runtime-id='claude-code']
+    .yolo-runtime-selector__icon {
+    position: absolute;
+    inset: 0;
+  }
 }
 
 .yolo-runtime-selector__content {

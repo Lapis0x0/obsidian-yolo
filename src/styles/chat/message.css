@@ -1956,7 +1956,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
      label when the button is `--expanded`. We need to overpower that
      rule's specificity (0,3,0) so the caret really disappears in compact
      mode — otherwise the icon-only form still has a hanging chevron. */
-  .yolo-view-toggle-button--roller.yolo-view-toggle-button--expanded
+  .yolo-view-toggle
+    .yolo-view-toggle-button--roller.yolo-view-toggle-button--expanded
     .yolo-roller-select-caret {
     width: 0;
     margin-left: 0;
