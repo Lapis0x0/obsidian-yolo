@@ -935,4 +935,115 @@ describe('CodexCliRuntime', () => {
     )
     await runtime.dispose()
   })
+
+  it('applies Agent sandbox defaults on thread/start and turn/start', async () => {
+    const process = new RpcFakeProcess()
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ content: 'hello' })
+
+    expect(
+      process.requests.find((request) => request.method === 'thread/start')
+        ?.params,
+    ).toMatchObject({
+      cwd: '/vault',
+      approvalPolicy: 'on-request',
+      sandbox: 'workspace-write',
+    })
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params,
+    ).toMatchObject({
+      approvalPolicy: 'on-request',
+      sandboxPolicy: {
+        type: 'workspaceWrite',
+        writableRoots: ['/vault'],
+      },
+    })
+    await runtime.dispose()
+  })
+
+  it('applies YOLO sandbox on start and hot-updates the next turn/start', async () => {
+    const process = new RpcFakeProcess()
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+      yoloEnabled: true,
+    })
+
+    await runtime.ensureReady({})
+    expect(
+      process.requests.find((request) => request.method === 'thread/start')
+        ?.params,
+    ).toMatchObject({
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+    })
+
+    await runtime.sendTurn({ content: 'with yolo' })
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params,
+    ).toMatchObject({
+      approvalPolicy: 'never',
+      sandboxPolicy: { type: 'dangerFullAccess' },
+    })
+
+    process.requests = process.requests.filter(
+      (request) => request.method !== 'turn/start',
+    )
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: false })
+    await runtime.sendTurn({ content: 'without yolo' })
+
+    expect(
+      process.requests.find((request) => request.method === 'turn/start')
+        ?.params,
+    ).toMatchObject({
+      approvalPolicy: 'on-request',
+      sandboxPolicy: {
+        type: 'workspaceWrite',
+        writableRoots: ['/vault'],
+      },
+    })
+    await runtime.dispose()
+  })
+
+  it('reasserts current sandbox on thread/resume', async () => {
+    const process = new RpcFakeProcess()
+    const host = new CodexAppServerHost({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: true })
+    await runtime.ensureReady({
+      sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
+    })
+
+    expect(
+      process.requests.find((request) => request.method === 'thread/resume')
+        ?.params,
+    ).toMatchObject({
+      threadId: 'thread-1',
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+    })
+    await runtime.dispose()
+  })
 })

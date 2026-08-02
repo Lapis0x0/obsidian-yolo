@@ -38,6 +38,9 @@ import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
   type ChatRuntimeId,
+  type ChatRuntimeApprovalAction,
+  type ChatRuntimeActions,
+  type CliChatMode,
   type CliConversationController,
   type CliConversationSnapshot,
   type CliRuntimeConfiguration,
@@ -50,6 +53,7 @@ import {
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
+import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
@@ -139,6 +143,10 @@ import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { ChatInputDraftHolder } from './chat-input/chatInputDraft'
 import {
   type ChatMode,
+  type ChatModeSelectValue,
+  CHAT_MODES,
+  CLAUDE_CODE_CHAT_MODES,
+  CODEX_CHAT_MODES,
   isAgentChatMode,
   normalizeChatMode,
   normalizeYoloEnabled,
@@ -178,7 +186,11 @@ import {
 } from './cliChatIntegration'
 import CliChatSurface from './CliChatSurface'
 import {
+  normalizeCliModeForRuntime,
+  patchConversationCliModeOverrides,
+  rememberCliModePreference,
   rememberCliRuntimeConfiguration,
+  resolveCliModePreference,
   resolveCliRuntimePreference,
 } from './cliRuntimePreferences'
 import Composer from './Composer'
@@ -1621,6 +1633,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return settings.chatOptions.agentYoloEnabled ?? false
   })
+  const initialCliModePreference = resolveCliModePreference(
+    settings,
+    initialActiveRuntimeId === 'yolo'
+      ? preferredCliRuntimeId
+      : initialActiveRuntimeId,
+    seededRuntimeSnapshot?.conversationOverrides ?? null,
+  )
+  const [cliChatMode, setCliChatMode] = useState<CliChatMode>(
+    () => initialCliModePreference.mode,
+  )
+  const [cliYoloEnabled, setCliYoloEnabled] = useState<boolean>(
+    () => initialCliModePreference.yoloEnabled,
+  )
+  const prePlanCliModeRef = useRef<{
+    mode: 'agent'
+    yoloEnabled: boolean
+  } | null>(null)
 
   const selectedAssistant = useMemo(() => {
     return (
@@ -1936,6 +1965,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         activeRuntimeIdRef.current = runtimeId
         setRequestedRuntimeId(runtimeId)
         persistChatRuntimePreference(runtimeId)
+        const modePreference = resolveCliModePreference(
+          cliPreferenceSettingsRef.current,
+          runtimeId,
+          conversationOverridesRef.current.get(currentConversationId) ??
+            conversationOverrides,
+        )
+        setCliChatMode(modePreference.mode)
+        setCliYoloEnabled(modePreference.yoloEnabled)
+        if (modePreference.mode !== 'plan') {
+          prePlanCliModeRef.current = null
+        }
       }
 
       if (activeRuntimeId === 'yolo') {
@@ -1967,6 +2007,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliConversationController,
       cliModelCatalog,
       cliRuntimeScope,
+      conversationOverrides,
+      currentConversationId,
       persistChatRuntimePreference,
       t,
       transitionCliSession,
@@ -3350,6 +3392,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             conversationId,
             conversation.overrides,
           )
+        }
+        const cliRuntimeForPrefs: CliRuntimeId =
+          activeRuntimeIdRef.current === 'yolo'
+            ? lastCliRuntimeIdRef.current
+            : activeRuntimeIdRef.current
+        const loadedCliMode = resolveCliModePreference(
+          settings,
+          cliRuntimeForPrefs,
+          conversation.overrides ?? null,
+        )
+        setCliChatMode(loadedCliMode.mode)
+        setCliYoloEnabled(loadedCliMode.yoloEnabled)
+        if (loadedCliMode.mode !== 'plan') {
+          prePlanCliModeRef.current = null
         }
         const modelFromRef =
           conversation.conversationModelId ??
@@ -6083,6 +6139,238 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
+  const applyCliModePreference = useCallback(
+    (
+      runtimeId: CliRuntimeId,
+      preference: { mode: CliChatMode; yoloEnabled: boolean },
+      options?: { rememberPrePlan?: boolean },
+    ) => {
+      const mode = normalizeCliModeForRuntime(runtimeId, preference.mode)
+      const yoloEnabled = mode === 'plan' ? false : preference.yoloEnabled
+      if (
+        options?.rememberPrePlan &&
+        mode === 'plan' &&
+        cliChatMode !== 'plan'
+      ) {
+        prePlanCliModeRef.current = {
+          mode: 'agent',
+          yoloEnabled: cliYoloEnabled,
+        }
+      }
+      if (mode !== 'plan') {
+        prePlanCliModeRef.current = null
+      }
+      setCliChatMode(mode)
+      setCliYoloEnabled(yoloEnabled)
+      const nextOverrides = patchConversationCliModeOverrides(
+        conversationOverridesRef.current.get(currentConversationId) ??
+          conversationOverrides,
+        runtimeId,
+        { mode, yoloEnabled },
+      )
+      setConversationOverrides(nextOverrides)
+      conversationOverridesRef.current.set(currentConversationId, nextOverrides)
+      void updateSettings((current) =>
+        rememberCliModePreference(current, runtimeId, {
+          mode,
+          yoloEnabled,
+        }),
+      ).catch((error: unknown) => {
+        console.error('Failed to persist CLI mode preference', error)
+      })
+      void cliConversationController
+        ?.updatePermissionProfile({ mode, yoloEnabled })
+        .catch((error: unknown) => {
+          console.error('Failed to update CLI permission profile', error)
+        })
+    },
+    [
+      cliChatMode,
+      cliConversationController,
+      cliYoloEnabled,
+      conversationOverrides,
+      currentConversationId,
+      updateSettings,
+    ],
+  )
+
+  const handleCliModeSelectChange = useCallback(
+    (nextMode: ChatModeSelectValue) => {
+      if (activeRuntimeId === 'yolo') return
+      if (nextMode === 'ask') return
+      applyCliModePreference(
+        activeRuntimeId,
+        {
+          mode: nextMode,
+          yoloEnabled: nextMode === 'plan' ? false : cliYoloEnabled,
+        },
+        { rememberPrePlan: nextMode === 'plan' },
+      )
+    },
+    [activeRuntimeId, applyCliModePreference, cliYoloEnabled],
+  )
+
+  const handleCliYoloChange = useCallback(
+    (enabled: boolean) => {
+      if (activeRuntimeId === 'yolo' || cliChatMode === 'plan') return
+      if (enabled && !settings.chatOptions.fullAccessWarningConfirmed) {
+        new AcknowledgementModal(app, {
+          title: t(
+            'chatMode.fullAccessWarning.title',
+            'Please confirm before enabling YOLO Mode',
+          ),
+          messages: [
+            t(
+              'chatMode.fullAccessWarning.description',
+              'YOLO Mode auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
+            ),
+          ],
+          items: [
+            t(
+              'chatMode.fullAccessWarning.permission',
+              'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
+            ),
+            t(
+              'chatMode.fullAccessWarning.cost',
+              'Autonomous runs may consume significant model resources and incur higher costs.',
+            ),
+            t(
+              'chatMode.fullAccessWarning.backup',
+              'Back up important content in advance to avoid unintended changes.',
+            ),
+          ],
+          checkboxLabel: t(
+            'chatMode.fullAccessWarning.checkbox',
+            'I understand the risks above and accept responsibility for proceeding',
+          ),
+          cancelText: t('chatMode.fullAccessWarning.cancel', 'Cancel'),
+          confirmText: t(
+            'chatMode.fullAccessWarning.confirm',
+            'Continue with YOLO Mode',
+          ),
+          confirmTone: 'warning',
+          onConfirm: () => {
+            applyCliModePreference(activeRuntimeId, {
+              mode: 'agent',
+              yoloEnabled: true,
+            })
+            void updateSettings((current) => ({
+              ...current,
+              chatOptions: {
+                ...current.chatOptions,
+                fullAccessWarningConfirmed: true,
+              },
+            })).catch((error: unknown) => {
+              console.error(
+                'Failed to persist YOLO warning confirmation',
+                error,
+              )
+            })
+          },
+        }).open()
+        return
+      }
+      applyCliModePreference(activeRuntimeId, {
+        mode: cliChatMode,
+        yoloEnabled: enabled,
+      })
+    },
+    [
+      activeRuntimeId,
+      app,
+      applyCliModePreference,
+      cliChatMode,
+      settings.chatOptions.fullAccessWarningConfirmed,
+      t,
+      updateSettings,
+    ],
+  )
+
+  const handleClaudePlanShortcut = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (activeRuntimeId !== 'claude-code') return
+      if (
+        event.key !== 'Tab' ||
+        !event.shiftKey ||
+        event.nativeEvent.isComposing
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (cliChatMode === 'plan') {
+        const restore = prePlanCliModeRef.current ?? {
+          mode: 'agent' as const,
+          yoloEnabled: false,
+        }
+        applyCliModePreference('claude-code', restore)
+        return
+      }
+      applyCliModePreference(
+        'claude-code',
+        { mode: 'plan', yoloEnabled: false },
+        { rememberPrePlan: true },
+      )
+    },
+    [activeRuntimeId, applyCliModePreference, cliChatMode],
+  )
+
+  useEffect(() => {
+    if (activeRuntimeId === 'yolo' || !cliConversationController) return
+    void cliConversationController
+      .updatePermissionProfile({
+        mode: cliChatMode,
+        yoloEnabled: cliChatMode === 'plan' ? false : cliYoloEnabled,
+      })
+      .catch(() => undefined)
+  }, [
+    activeRuntimeId,
+    cliChatMode,
+    cliConversationController,
+    cliYoloEnabled,
+  ])
+
+  const cliChatRuntimeActions = useMemo((): ChatRuntimeActions | null => {
+    if (!cliRuntimeScope) return null
+    const base = cliRuntimeScope.chatRuntimeActions
+    return {
+      ...base,
+      approveTool: async (action: ChatRuntimeApprovalAction) => {
+        const result = await base.approveTool(action)
+        if (
+          result.kind === 'handled' &&
+          activeRuntimeId === 'claude-code' &&
+          cliChatMode === 'plan'
+        ) {
+          const messages =
+            cliConversationController?.getSnapshot().messages ?? []
+          const approvedExitPlan = messages.some(
+            (message) =>
+              message.role === 'tool' &&
+              message.toolCalls?.some(
+                (toolCall) =>
+                  toolCall.request.id === action.toolCallId &&
+                  toolCall.request.name === CLAUDE_EXIT_PLAN_MODE_TOOL,
+              ),
+          )
+          if (approvedExitPlan) {
+            const restore = prePlanCliModeRef.current ?? {
+              mode: 'agent' as const,
+              yoloEnabled: false,
+            }
+            applyCliModePreference('claude-code', restore)
+          }
+        }
+        return result
+      },
+    }
+  }, [
+    activeRuntimeId,
+    applyCliModePreference,
+    cliChatMode,
+    cliConversationController,
+    cliRuntimeScope,
+  ])
+
   const header = (
     <div
       ref={headerRef}
@@ -7779,15 +8067,33 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onSelectAssistantForConversation={
           isCliRuntimeActive ? undefined : handleConversationAssistantSelect
         }
-        currentChatMode={isCliRuntimeActive ? undefined : chatMode}
+        currentChatMode={isCliRuntimeActive ? cliChatMode : chatMode}
         onSelectChatModeForConversation={
-          isCliRuntimeActive ? undefined : handleChatModeChange
+          isCliRuntimeActive
+            ? handleCliModeSelectChange
+            : handleChatModeChange
         }
-        chatMode={isCliRuntimeActive ? undefined : chatMode}
-        onChatModeChange={isCliRuntimeActive ? undefined : handleChatModeChange}
-        yoloEnabled={isCliRuntimeActive ? undefined : yoloEnabled}
-        onYoloChange={isCliRuntimeActive ? undefined : handleYoloChange}
-        allowAgentModeOption={!isCliRuntimeActive}
+        chatMode={isCliRuntimeActive ? cliChatMode : chatMode}
+        onChatModeChange={
+          isCliRuntimeActive
+            ? handleCliModeSelectChange
+            : handleChatModeChange
+        }
+        chatModeOptions={
+          activeRuntimeId === 'claude-code'
+            ? CLAUDE_CODE_CHAT_MODES
+            : activeRuntimeId === 'codex'
+              ? CODEX_CHAT_MODES
+              : CHAT_MODES
+        }
+        yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}
+        onYoloChange={
+          isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
+        }
+        onChatModeSelectKeyDown={(event) => {
+          handleClaudePlanShortcut(event)
+        }}
+        allowAgentModeOption
         enableResize
         onRunSlashCommand={
           isCliRuntimeActive ? undefined : handleMainInputRunSlashCommand
@@ -7818,6 +8124,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
       }`}
       style={containerStyle}
+      onKeyDown={handleClaudePlanShortcut}
     >
       {header}
       {activeView === 'composer' ? (
@@ -7832,7 +8139,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           key={activeCliConversationSnapshot.surfaceId}
           snapshot={activeCliConversationSnapshot}
           showEmptyState={activeSurfaceEmpty}
-          actions={cliRuntimeScope.chatRuntimeActions}
+          actions={cliChatRuntimeActions ?? cliRuntimeScope.chatRuntimeActions}
           footerContent={mainInputFooter}
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
           onRewriteUserMessage={handleCliUserMessageRewrite}

@@ -5,6 +5,7 @@ import type { ToolEditSummary } from '../../types/tool-call.types'
 
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
+  CliPermissionProfileUpdate,
   CliRewriteTurnInput,
   CliRuntime,
   CliRuntimeConfiguration,
@@ -457,6 +458,26 @@ export class CliConversationController {
       if (!this.isCurrent(operation)) return undefined
       this.publish({ ...this.snapshot, configuration, error: null })
       return configuration
+    } catch (error) {
+      if (this.isCurrent(operation)) this.publishError(error)
+      throw error
+    }
+  }
+
+  /**
+   * Hot-update Agent/Plan + YOLO for the bound CLI runtime.
+   * Claude applies immediately via setPermissionMode; Codex applies on the next
+   * turn/start. Safe to call before ensureReady. No-ops when unsupported.
+   */
+  async updatePermissionProfile(
+    update: CliPermissionProfileUpdate,
+  ): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    const updatePermissionProfile = operation.runtime.updatePermissionProfile
+    if (!updatePermissionProfile) return
+    try {
+      await updatePermissionProfile.call(operation.runtime, update)
     } catch (error) {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error

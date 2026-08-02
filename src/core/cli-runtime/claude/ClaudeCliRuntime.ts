@@ -16,9 +16,14 @@ import {
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { assertCliRuntimeAvailable } from '../desktop'
+import {
+  type CliChatMode,
+  resolveClaudePermissionMode,
+} from '../permission-profile'
 import { createCliToolCallRequest } from '../tool-call'
 import type {
   CliApprovalResponse,
+  CliPermissionProfileUpdate,
   CliQuestionResponse,
   CliRewriteTurnInput,
   CliRuntime,
@@ -85,6 +90,10 @@ export type ClaudeCliRuntimeOptions = {
   configuredCliPath?: string
   loadSdk?: ClaudeSdkLoader
   resolveProcessSupport?: ClaudeProcessSupportResolver
+  /** Product chat mode mapped into Claude SDK permissionMode at session start. */
+  cliChatMode?: CliChatMode
+  /** When true with agent mode, maps to bypassPermissions. */
+  yoloEnabled?: boolean
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -237,6 +246,8 @@ export class ClaudeCliRuntime implements CliRuntime {
   private models: CliRuntimeConfiguration['models'] = []
   private modelId: string | null = null
   private reasoningEffort: string | null = null
+  private cliChatMode: CliChatMode
+  private yoloEnabled: boolean
   private activeAssistant?: ChatAssistantMessage
   private activeAssistantKey?: string
   private activeUserMessageId?: string
@@ -254,6 +265,8 @@ export class ClaudeCliRuntime implements CliRuntime {
         resolveClaudeProcessSupport({
           configuredCliPath: this.configuredCliPath,
         }))
+    this.cliChatMode = options.cliChatMode ?? 'agent'
+    this.yoloEnabled = options.yoloEnabled ?? false
   }
 
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
@@ -336,6 +349,10 @@ export class ClaudeCliRuntime implements CliRuntime {
       // signal. Keep the substitution scoped to SDK construction.
       globalThis.AbortController =
         NodeRealmAbortController as unknown as typeof AbortController
+      const permissionMode = resolveClaudePermissionMode(
+        this.cliChatMode,
+        this.yoloEnabled,
+      )
       this.query = sdk.query({
         prompt: this.inputQueue,
         options: {
@@ -346,7 +363,10 @@ export class ClaudeCliRuntime implements CliRuntime {
           spawnClaudeCodeProcess: processSupport.spawnClaudeCodeProcess,
           includePartialMessages: true,
           enableFileCheckpointing: true,
-          permissionMode: 'default',
+          permissionMode,
+          // Always allow so mid-session YOLO hot-updates can call
+          // setPermissionMode('bypassPermissions') without restarting.
+          allowDangerouslySkipPermissions: true,
           canUseTool: this.createCanUseTool(),
           systemPrompt: {
             type: 'preset',
@@ -451,6 +471,19 @@ export class ClaudeCliRuntime implements CliRuntime {
       this.reasoningEffort = reasoningEffort
     }
     return this.getConfiguration()
+  }
+
+  async updatePermissionProfile(
+    update: CliPermissionProfileUpdate,
+  ): Promise<void> {
+    this.assertUsable()
+    this.cliChatMode = update.mode
+    this.yoloEnabled = update.yoloEnabled
+    const query = this.query
+    if (!query) return
+    await query.setPermissionMode(
+      resolveClaudePermissionMode(update.mode, update.yoloEnabled),
+    )
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {

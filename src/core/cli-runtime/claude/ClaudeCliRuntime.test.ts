@@ -113,6 +113,7 @@ class FakeQuery implements ClaudeSdkQuery {
   }))
   readonly supportedModels = jest.fn(async () => [])
   readonly setModel = jest.fn(async () => undefined)
+  readonly setPermissionMode = jest.fn(async () => undefined)
   readonly applyFlagSettings = jest.fn(async () => undefined)
   readonly rewindFiles = jest.fn<
     ReturnType<ClaudeSdkQuery['rewindFiles']>,
@@ -1184,5 +1185,94 @@ describe('ClaudeCliRuntime', () => {
 
     expect(queryInstance.interrupt).toHaveBeenCalledTimes(1)
     expect(query).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts sessions with acceptEdits by default', async () => {
+    const { sdk, queryInputs } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+
+    expect(queryInputs[0].options).toMatchObject({
+      permissionMode: 'acceptEdits',
+      allowDangerouslySkipPermissions: true,
+    })
+  })
+
+  it('maps plan and yolo options into Claude permissionMode at start', async () => {
+    const planSdk = createSdk()
+    const planRuntime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => planSdk.sdk,
+      resolveProcessSupport: async () => processSupport,
+      cliChatMode: 'plan',
+    })
+    await planRuntime.ensureReady({})
+    expect(planSdk.queryInputs[0].options?.permissionMode).toBe('plan')
+
+    const yoloSdk = createSdk()
+    const yoloRuntime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => yoloSdk.sdk,
+      resolveProcessSupport: async () => processSupport,
+      cliChatMode: 'agent',
+      yoloEnabled: true,
+    })
+    await yoloRuntime.ensureReady({})
+    expect(yoloSdk.queryInputs[0].options?.permissionMode).toBe(
+      'bypassPermissions',
+    )
+  })
+
+  it('hot-updates permission mode via setPermissionMode', async () => {
+    const { sdk, queryInputs, queryInstance } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    await runtime.ensureReady({})
+    expect(queryInputs[0].options?.permissionMode).toBe('acceptEdits')
+
+    await runtime.updatePermissionProfile({
+      mode: 'plan',
+      yoloEnabled: false,
+    })
+    expect(queryInstance.setPermissionMode).toHaveBeenCalledWith('plan')
+
+    await runtime.updatePermissionProfile({
+      mode: 'agent',
+      yoloEnabled: true,
+    })
+    expect(queryInstance.setPermissionMode).toHaveBeenCalledWith(
+      'bypassPermissions',
+    )
+
+    await runtime.updatePermissionProfile({
+      mode: 'agent',
+      yoloEnabled: false,
+    })
+    expect(queryInstance.setPermissionMode).toHaveBeenCalledWith('acceptEdits')
+  })
+
+  it('stores permission profile before ready and applies it on startSession', async () => {
+    const { sdk, queryInputs } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.updatePermissionProfile({
+      mode: 'plan',
+      yoloEnabled: true,
+    })
+    await runtime.ensureReady({})
+
+    expect(queryInputs[0].options?.permissionMode).toBe('plan')
   })
 })

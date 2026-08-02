@@ -2,6 +2,8 @@ import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 import type { ToolEditSummary } from '../../types/tool-call.types'
 
+import type { CliChatMode } from './permission-profile'
+
 export type CliRuntimeId = 'claude-code' | 'codex'
 export type ChatRuntimeId = 'yolo' | CliRuntimeId
 
@@ -61,6 +63,11 @@ export type CliRuntimeConfiguration = {
 export type CliRuntimeConfigurationUpdate = {
   modelId?: string | null
   reasoningEffort?: string | null
+}
+
+export type CliPermissionProfileUpdate = {
+  mode: CliChatMode
+  yoloEnabled: boolean
 }
 
 export type CliTurnConfiguration = Readonly<
@@ -150,6 +157,15 @@ export type CliRuntime = {
   updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration>
+  /**
+   * Hot-update the live session permission profile.
+   * Claude applies immediately via setPermissionMode; Codex stores the profile
+   * and reasserts it on the next turn/start (and on subsequent thread
+   * start/resume).
+   */
+  updatePermissionProfile?(
+    update: CliPermissionProfileUpdate,
+  ): Promise<void>
   sendTurn(input: CliTurnInput): Promise<void>
   rewriteTurn(input: CliRewriteTurnInput): Promise<void>
   cancel(): Promise<void>

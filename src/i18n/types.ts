@@ -1842,6 +1842,8 @@ export type TranslationKeys = {
       abort?: string
       alwaysAllowThisTool?: string
       allowForThisChat?: string
+      approvePlan?: string
+      stayInPlan?: string
     }
     toolSummary?: {
       todoWrite?: {
@@ -2053,6 +2055,8 @@ export type TranslationKeys = {
     rewriteDesc?: string
     agent?: string
     agentDesc?: string
+    plan?: string
+    planDesc?: string
     agentFull?: string
     agentFullDesc?: string
     yolo?: string

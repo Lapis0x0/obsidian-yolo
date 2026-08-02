@@ -459,6 +459,8 @@ describe('ToolMessage headline helpers', () => {
     reject: 'Reject',
     abort: 'Abort',
     allowForThisChat: 'Allow for this chat',
+    approvePlan: 'Approve plan',
+    stayInPlan: 'Stay in plan',
     todoWriteCleared: 'Cleared list',
     todoWriteAllCompleted: (count: number) => `All completed (${count})`,
     todoWriteCreated: (count: number) => `Planned ${count} tasks`,

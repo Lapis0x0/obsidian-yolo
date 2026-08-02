@@ -490,6 +490,20 @@ export const yoloSettingsSchema = z.object({
         })
         .optional(),
       cliReasoningEffortByModel: z.record(z.string(), z.string()).optional(),
+      // Last CLI chat mode (agent/plan) remembered per CLI runtime.
+      cliChatModeByRuntime: z
+        .object({
+          'claude-code': z.enum(['agent', 'plan']).optional(),
+          codex: z.enum(['agent', 'plan']).optional(),
+        })
+        .optional(),
+      // Last CLI YOLO flag remembered per CLI runtime.
+      cliAgentYoloEnabledByRuntime: z
+        .object({
+          'claude-code': z.boolean().optional(),
+          codex: z.boolean().optional(),
+        })
+        .optional(),
       quickAccessEntries: resilientArraySchema(
         z.discriminatedUnion('type', [
           z.object({ type: z.literal('skill'), name: z.string().min(1) }),
@@ -523,6 +537,8 @@ export const yoloSettingsSchema = z.object({
       lastCliRuntimeId: 'claude-code',
       cliModelIdByRuntime: {},
       cliReasoningEffortByModel: {},
+      cliChatModeByRuntime: {},
+      cliAgentYoloEnabledByRuntime: {},
       lastChatPlacement: undefined,
       quickAccessEntries: DEFAULT_CHAT_QUICK_ACCESS_ENTRIES,
     }),

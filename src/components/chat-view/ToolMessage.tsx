@@ -18,6 +18,7 @@ import {
   getBuiltinToolUiMeta,
 } from '../../core/agent/builtinToolUiMeta'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
+import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import {
   getCliToolCallDisplayName,
   getCliToolPresentationArguments,
@@ -86,6 +87,8 @@ export type ToolLabels = {
   reject: string
   abort: string
   allowForThisChat: string
+  approvePlan: string
+  stayInPlan: string
   todoWriteCleared: string
   todoWriteAllCompleted: (count: number) => string
   todoWriteCreated: (count: number) => string
@@ -272,6 +275,8 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'chat.toolCall.allowForThisChat',
       'Allow for this chat',
     ),
+    approvePlan: translate('chat.toolCall.approvePlan', 'Approve plan'),
+    stayInPlan: translate('chat.toolCall.stayInPlan', 'Stay in plan'),
     todoWriteCleared: translate(
       'chat.toolSummary.todoWrite.cleared',
       'Cleared list',
@@ -1371,14 +1376,22 @@ function ToolCallItem({
     [request, response],
   )
   // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
+  const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
   const isAlwaysAllowDisabled = useMemo(() => {
+    if (isExitPlanMode) return true
     try {
       const { toolName } = parseToolName(request.name)
       return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
     } catch {
       return false
     }
-  }, [request.name])
+  }, [isExitPlanMode, request.name])
+  const pendingAllowLabel = isExitPlanMode
+    ? toolLabels.approvePlan
+    : toolLabels.allow
+  const pendingRejectLabel = isExitPlanMode
+    ? toolLabels.stayInPlan
+    : toolLabels.reject
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
     useState(
@@ -1685,11 +1698,11 @@ function ToolCallItem({
                       setIsOpen(false)
                     }}
                   >
-                    {toolLabels.allow}
+                    {pendingAllowLabel}
                   </button>
                 ) : (
                   <SplitButton
-                    primaryText={toolLabels.allow}
+                    primaryText={pendingAllowLabel}
                     onPrimaryClick={() => {
                       void handleToolCall()
                       setIsOpen(false)
@@ -1712,7 +1725,7 @@ function ToolCallItem({
                     setIsOpen(false)
                   }}
                 >
-                  {toolLabels.reject}
+                  {pendingRejectLabel}
                 </button>
               </div>
             )}

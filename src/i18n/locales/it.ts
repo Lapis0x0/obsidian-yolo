@@ -2037,6 +2037,8 @@ export const it: DeepPartial<TranslationKeys> = {
       abort: 'Interrompi',
       alwaysAllowThisTool: 'Consenti sempre questo strumento',
       allowForThisChat: 'Consenti per questa chat',
+      approvePlan: 'Approva il piano',
+      stayInPlan: 'Resta in modalità piano',
     },
     toolSummary: {
       todoWrite: {

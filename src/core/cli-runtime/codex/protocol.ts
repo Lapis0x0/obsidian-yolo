@@ -137,6 +137,22 @@ export type ThreadResumeResponse = {
   model?: string
   reasoningEffort?: string | null
 }
+export type CodexSandboxPolicy =
+  | { type: 'dangerFullAccess' }
+  | {
+      type: 'workspaceWrite'
+      writableRoots: string[]
+      readOnlyAccess: { type: string }
+      networkAccess: boolean
+      excludeTmpdirEnvVar: boolean
+      excludeSlashTmp: boolean
+    }
+  | {
+      type: 'readOnly'
+      access: { type: string }
+      networkAccess: boolean
+    }
+
 export type TurnStartResponse = { turn: CodexTurn }
 
 export type CodexModel = {

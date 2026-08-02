@@ -2169,6 +2169,8 @@ export const en: TranslationKeys = {
       abort: 'Abort',
       alwaysAllowThisTool: 'Always allow this tool',
       allowForThisChat: 'Allow for this chat',
+      approvePlan: 'Approve plan',
+      stayInPlan: 'Stay in plan',
     },
     toolSummary: {
       todoWrite: {
@@ -2387,6 +2389,8 @@ export const en: TranslationKeys = {
     rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
+    plan: 'Plan',
+    planDesc: 'Explore and design before editing',
     agentFull: 'Agent (YOLO)',
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
     yolo: 'YOLO',

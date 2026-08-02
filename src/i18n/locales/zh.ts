@@ -2036,6 +2036,8 @@ export const zh: TranslationKeys = {
       abort: '停止执行',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '本对话内允许',
+      approvePlan: '批准计划',
+      stayInPlan: '留在计划模式',
     },
     toolSummary: {
       todoWrite: {
@@ -2242,6 +2244,8 @@ export const zh: TranslationKeys = {
     rewriteDesc: '仅修改当前选区',
     agent: 'Agent',
     agentDesc: '启用工具链，处理多步骤任务',
+    plan: 'Plan',
+    planDesc: '先探索设计，确认后再改动',
     agentFull: 'Agent（YOLO）',
     agentFullDesc: '自动放行工具调用，适合复杂任务',
     yolo: 'YOLO',

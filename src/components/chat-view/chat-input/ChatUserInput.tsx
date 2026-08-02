@@ -47,7 +47,12 @@ import {
   isChatInputEmpty,
   resolveChatInputEditorSeed,
 } from './chatInputDraft'
-import { ChatMode, ChatModeSelect } from './ChatModeSelect'
+import {
+  ChatMode,
+  ChatModeSelect,
+  type ChatModeSelectValue,
+  CHAT_MODES,
+} from './ChatModeSelect'
 import { ChatQuickAccess } from './ChatQuickAccess'
 import ChatSkillBadge from './ChatSkillBadge'
 import { FileUploadButton } from './FileUploadButton'
@@ -103,15 +108,20 @@ export type ChatUserInputProps = {
   onToggleCompact?: () => void
   currentAssistantId?: string
   onSelectAssistantForConversation?: (assistantId: string) => void
-  currentChatMode?: ChatMode
-  onSelectChatModeForConversation?: (mode: ChatMode) => void
-  chatMode?: ChatMode
-  onChatModeChange?: (mode: ChatMode) => void
+  currentChatMode?: ChatModeSelectValue
+  onSelectChatModeForConversation?: (mode: ChatModeSelectValue) => void
+  chatMode?: ChatModeSelectValue
+  onChatModeChange?: (mode: ChatModeSelectValue) => void
+  chatModeOptions?: readonly ChatModeSelectValue[]
   yoloEnabled?: boolean
   onYoloChange?: (enabled: boolean) => void
   controlLayout?: ChatUserInputControlLayout
   onControlPopoverOpenChange?: (isOpen: boolean) => void
   allowAgentModeOption?: boolean
+  onChatModeSelectKeyDown?: (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    isMenuOpen: boolean,
+  ) => void
   enableResize?: boolean
   onRunSlashCommand?: (command: SlashCommand) => void
   // 当父级正在执行 conversation run 时，发送按钮切换为停止按钮（圆形 + 方块）
@@ -181,11 +191,13 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onSelectChatModeForConversation,
       chatMode,
       onChatModeChange,
+      chatModeOptions = CHAT_MODES,
       yoloEnabled = false,
       onYoloChange,
       controlLayout = 'composer-toolbar',
       onControlPopoverOpenChange,
       allowAgentModeOption = true,
+      onChatModeSelectKeyDown,
       enableResize = false,
       onRunSlashCommand,
       isGenerating = false,
@@ -643,8 +655,10 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
         <ChatModeSelect
           mode={chatMode}
           onChange={onChatModeChange}
+          availableModes={chatModeOptions}
           yoloEnabled={yoloEnabled}
           onYoloChange={onYoloChange ?? (() => {})}
+          onKeyDown={onChatModeSelectKeyDown}
           side="top"
           sideOffset={8}
         />
@@ -878,8 +892,16 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               assistants={availableAssistants}
               currentAssistantId={currentAssistantId}
               onSelectAssistant={onSelectAssistantForConversation}
-              currentChatMode={currentChatMode}
-              onSelectChatMode={onSelectChatModeForConversation}
+              currentChatMode={
+                currentChatMode === 'ask' || currentChatMode === 'agent'
+                  ? currentChatMode
+                  : undefined
+              }
+              onSelectChatMode={
+                onSelectChatModeForConversation
+                  ? (mode) => onSelectChatModeForConversation(mode)
+                  : undefined
+              }
               allowAgentModeOption={allowAgentModeOption}
               models={mentionableModels}
               skills={availableSkills}

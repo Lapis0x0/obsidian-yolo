@@ -1,6 +1,7 @@
 import type {
   ModelInfo,
   Options,
+  PermissionMode,
   SDKControlInitializeResponse,
   SDKMessage,
   SDKUserMessage,
@@ -14,6 +15,7 @@ export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   initializationResult(): Promise<SDKControlInitializeResponse>
   supportedModels(): Promise<ModelInfo[]>
   setModel(model?: string): Promise<void>
+  setPermissionMode(mode: PermissionMode): Promise<void>
   applyFlagSettings(settings: {
     effortLevel?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
   }): Promise<void>

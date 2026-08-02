@@ -4,8 +4,14 @@ import {
   type ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
+import {
+  type CliChatMode,
+  type CodexSandboxMode,
+  resolveCodexSandboxConfig,
+} from '../permission-profile'
 import type {
   CliApprovalResponse,
+  CliPermissionProfileUpdate,
   CliQuestionResponse,
   CliRewriteTurnInput,
   CliRuntime,
@@ -38,6 +44,7 @@ import {
 import type { CodexProcessOptions } from './process'
 import type {
   CodexRawResponseItem,
+  CodexSandboxPolicy,
   CodexServerRequest,
   CodexThread,
   CodexThreadItem,
@@ -60,6 +67,34 @@ export type CodexCliRuntimeOptions = CodexProcessOptions & {
   resolveHost?: CodexHostResolver
   createProcess?: CodexAppServerHostOptions['createProcess']
   loadSessionMessages?: (sessionPath: string) => Promise<ChatMessage[] | null>
+  /** Product chat mode mapped into Codex approval/sandbox at start/resume/turn. */
+  cliChatMode?: CliChatMode
+  /** When true with agent mode, maps to never + danger-full-access. */
+  yoloEnabled?: boolean
+}
+
+const toCodexTurnSandboxPolicy = (
+  sandbox: CodexSandboxMode,
+  cwd: string,
+): CodexSandboxPolicy => {
+  if (sandbox === 'danger-full-access') {
+    return { type: 'dangerFullAccess' }
+  }
+  if (sandbox === 'read-only') {
+    return {
+      type: 'readOnly',
+      access: { type: 'fullAccess' },
+      networkAccess: false,
+    }
+  }
+  return {
+    type: 'workspaceWrite',
+    writableRoots: [cwd],
+    readOnlyAccess: { type: 'fullAccess' },
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  }
 }
 
 const toSessionRef = (thread: CodexThread): CliSessionRef => ({
@@ -147,9 +182,31 @@ export class CodexCliRuntime implements CliRuntime {
   private models: CliRuntimeConfiguration['models'] | null = null
   private modelId: string | null = null
   private reasoningEffort: string | null = null
+  private cliChatMode: CliChatMode
+  private yoloEnabled: boolean
   private disposed = false
 
-  constructor(private readonly options: CodexCliRuntimeOptions) {}
+  constructor(private readonly options: CodexCliRuntimeOptions) {
+    this.cliChatMode = options.cliChatMode ?? 'agent'
+    this.yoloEnabled = options.yoloEnabled ?? false
+  }
+
+  private resolveSandboxConfig() {
+    return resolveCodexSandboxConfig(this.cliChatMode, this.yoloEnabled)
+  }
+
+  private threadPermissionParams() {
+    const { approvalPolicy, sandbox } = this.resolveSandboxConfig()
+    return { approvalPolicy, sandbox }
+  }
+
+  private turnPermissionParams() {
+    const { approvalPolicy, sandbox } = this.resolveSandboxConfig()
+    return {
+      approvalPolicy,
+      sandboxPolicy: toCodexTurnSandboxPolicy(sandbox, this.options.cwd),
+    }
+  }
 
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     if (ref.runtimeId !== 'codex')
@@ -191,8 +248,7 @@ export class CodexCliRuntime implements CliRuntime {
 
     const params = {
       cwd: this.options.cwd,
-      approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
+      ...this.threadPermissionParams(),
       experimentalRawEvents: true,
     }
     const response = input.sessionRef
@@ -235,6 +291,14 @@ export class CodexCliRuntime implements CliRuntime {
     return this.getConfiguration()
   }
 
+  async updatePermissionProfile(
+    update: CliPermissionProfileUpdate,
+  ): Promise<void> {
+    if (this.disposed) throw new Error('Codex CLI runtime has been disposed.')
+    this.cliChatMode = update.mode
+    this.yoloEnabled = update.yoloEnabled
+  }
+
   async sendTurn(input: CliTurnInput): Promise<void> {
     if (input.sessionRef) {
       if (
@@ -265,6 +329,7 @@ export class CodexCliRuntime implements CliRuntime {
         model: this.modelId,
         effort: this.reasoningEffort,
         summary: 'auto',
+        ...this.turnPermissionParams(),
       },
       0,
     )

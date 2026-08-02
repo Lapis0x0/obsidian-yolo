@@ -55,6 +55,10 @@ class FakeCliRuntime implements CliRuntime {
     modelId?: string | null
     reasoningEffort?: string | null
   }> = []
+  readonly permissionProfileUpdates: Array<{
+    mode: 'agent' | 'plan'
+    yoloEnabled: boolean
+  }> = []
   openSessionImpl: (ref: CliSessionRef) => Promise<CliSessionHydration> =
     async (ref) => ({ ref, messages: [] })
   ensureReadyImpl: (input: CliRuntimeReadyInput) => Promise<void> = async (
@@ -106,6 +110,13 @@ class FakeCliRuntime implements CliRuntime {
     this.configurationUpdates.push(update)
     this.configuration = { ...this.configuration, ...update }
     return this.getConfiguration()
+  }
+
+  async updatePermissionProfile(update: {
+    mode: 'agent' | 'plan'
+    yoloEnabled: boolean
+  }) {
+    this.permissionProfileUpdates.push(update)
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {
@@ -631,5 +642,19 @@ describe('CliConversationController', () => {
       error: 'cancel failed',
       messages: [{ id: 'keep-me' }],
     })
+  })
+
+  it('forwards permission profile updates to the runtime', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    const controller = new CliConversationController(runtime)
+
+    await controller.updatePermissionProfile({
+      mode: 'agent',
+      yoloEnabled: true,
+    })
+
+    expect(runtime.permissionProfileUpdates).toEqual([
+      { mode: 'agent', yoloEnabled: true },
+    ])
   })
 })
