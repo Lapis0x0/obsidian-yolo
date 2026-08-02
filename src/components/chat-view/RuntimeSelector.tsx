@@ -109,16 +109,19 @@ export function RuntimeSelector({
 
       const style = getComputedStyle(trigger)
       const gap = Number.parseFloat(style.gap) || 0
-      const requiredWidth =
+      const requiredContentWidth =
         icon.getBoundingClientRect().width +
         label.scrollWidth +
         chevron.getBoundingClientRect().width +
         gap * 2 +
         (Number.parseFloat(style.paddingInlineStart) || 0) +
         (Number.parseFloat(style.paddingInlineEnd) || 0)
-      expandedWidthRef.current = requiredWidth
+      expandedWidthRef.current =
+        requiredContentWidth +
+        (Number.parseFloat(style.borderInlineStartWidth) || 0) +
+        (Number.parseFloat(style.borderInlineEndWidth) || 0)
 
-      if (trigger.clientWidth < requiredWidth) {
+      if (trigger.clientWidth < requiredContentWidth) {
         setIsCompact(true)
       }
     }
