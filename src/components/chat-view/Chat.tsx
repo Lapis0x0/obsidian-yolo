@@ -33,6 +33,7 @@ import {
   resolveAssistantIncludeCurrentFileContent,
   resolveAssistantTimeContextEnabled,
 } from '../../core/agent/assistant-capabilities'
+import { resolveAssistantModelId } from '../../core/agent/assistant-model'
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
@@ -2106,13 +2107,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       const assistant = settings.assistants.find(
         (item) => item.id === assistantId,
       )
-      if (assistant?.modelId) applyAssistantDefaultModel(assistant.modelId)
+      applyAssistantDefaultModel(
+        resolveAssistantModelId(assistant?.modelId, settings.chatModelId),
+      )
     },
     [
       applyAssistantDefaultModel,
       currentConversationId,
       persistPreferredAssistantId,
       settings.assistants,
+      settings.chatModelId,
     ],
   )
 
@@ -5926,9 +5930,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                 currentConversationId,
                 overrideAssistant.id,
               )
-              if (overrideAssistant.modelId) {
-                applyAssistantDefaultModel(overrideAssistant.modelId)
-              }
+              applyAssistantDefaultModel(
+                resolveAssistantModelId(
+                  overrideAssistant.modelId,
+                  settings.chatModelId,
+                ),
+              )
             }
           }
           upsertSelectionMentionableInMainInput(mentionable)

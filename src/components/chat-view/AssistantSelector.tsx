@@ -14,6 +14,7 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import { getAssistantModelDisplayLabel } from '../../core/agent/assistant-model'
 import {
   DEFAULT_ASSISTANT_ID,
   isDefaultAssistantId,
@@ -168,13 +169,20 @@ export function AssistantSelector({
   const customAssistants = assistants.filter(
     (assistant) => !isDefaultAssistantId(assistant.id),
   )
-  const fallbackModelId = settings.chatModelId
 
   const renderMetaRow = (assistant: Assistant) => {
-    const rawModelId = assistant.modelId || fallbackModelId || ''
-    const modelLabel = rawModelId.includes('/')
-      ? rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
-      : rawModelId
+    const followDefaultLabel = t(
+      'settings.agent.followDefaultModel',
+      'Follow default model',
+    )
+    const rawModelId = getAssistantModelDisplayLabel(
+      assistant.modelId,
+      followDefaultLabel,
+    )
+    const modelLabel =
+      rawModelId === followDefaultLabel || !rawModelId.includes('/')
+        ? rawModelId
+        : rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
     const toolCount = assistant.enableTools
       ? countEnabledVisibleAssistantTools(assistant, availableTools)
       : 0

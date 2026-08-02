@@ -16,12 +16,12 @@ const DEFAULT_ASSISTANT_SYSTEM_PROMPT = ''
 export const isDefaultAssistantId = (assistantId?: string | null): boolean =>
   assistantId === DEFAULT_ASSISTANT_ID
 
-export const createDefaultAssistant = (fallbackModelId: string): Assistant => ({
+export const createDefaultAssistant = (): Assistant => ({
   id: DEFAULT_ASSISTANT_ID,
   name: DEFAULT_ASSISTANT_NAME,
   description: DEFAULT_ASSISTANT_DESCRIPTION,
   systemPrompt: DEFAULT_ASSISTANT_SYSTEM_PROMPT,
-  modelId: fallbackModelId,
+  // Omit modelId so new Default agents follow the global chat model.
   persona: 'balanced',
   enableTools: true,
   includeBuiltinTools: true,
@@ -65,10 +65,7 @@ const hasDefaultAssistantChanged = (
   )
 }
 
-const normalizeDefaultAssistant = (
-  assistant: Assistant,
-  fallbackModelId: string,
-): Assistant => {
+const normalizeDefaultAssistant = (assistant: Assistant): Assistant => {
   const createdAt = assistant.createdAt ?? Date.now()
   const toolPreferences = getAssistantToolPreferences(assistant)
   const normalizedBase: Assistant = {
@@ -80,7 +77,8 @@ const normalizeDefaultAssistant = (
       typeof assistant.systemPrompt === 'string'
         ? assistant.systemPrompt
         : DEFAULT_ASSISTANT_SYSTEM_PROMPT,
-    modelId: assistant.modelId || fallbackModelId,
+    // Keep empty/undefined modelId as "follow global default"; never rewrite it.
+    modelId: assistant.modelId || undefined,
     enableTools: assistant.enableTools ?? true,
     includeBuiltinTools: assistant.includeBuiltinTools ?? true,
     enabledToolNames: assistant.enabledToolNames ?? [],
@@ -113,13 +111,12 @@ export const ensureDefaultAssistantInSettings = (
   settings: YoloSettings,
 ): YoloSettings => {
   const assistants = settings.assistants || []
-  const fallbackModelId = settings.chatModelId
   const existingDefault = assistants.find((assistant) =>
     isDefaultAssistantId(assistant.id),
   )
   const normalizedDefault = existingDefault
-    ? normalizeDefaultAssistant(existingDefault, fallbackModelId)
-    : createDefaultAssistant(fallbackModelId)
+    ? normalizeDefaultAssistant(existingDefault)
+    : createDefaultAssistant()
 
   const nextAssistants: Assistant[] = [
     normalizedDefault,

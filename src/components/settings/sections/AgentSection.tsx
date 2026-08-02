@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { getAssistantModelDisplayLabel } from '../../../core/agent/assistant-model'
 import {
   FILE_EDIT_GROUP_TOOL_NAME,
   FILE_OPS_GROUP_TOOL_NAME,
@@ -622,7 +623,13 @@ export function AgentSection({ app }: AgentSectionProps) {
               <div className="yolo-agent-meta-row">
                 <span className="yolo-agent-meta-item">
                   <Cpu size={12} />
-                  {assistant.modelId || settings.chatModelId}
+                  {getAssistantModelDisplayLabel(
+                    assistant.modelId,
+                    t(
+                      'settings.agent.followDefaultModel',
+                      'Follow default model',
+                    ),
+                  )}
                 </span>
                 <span className="yolo-agent-meta-item">
                   <Wrench size={12} />

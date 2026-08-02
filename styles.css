@@ -10990,6 +10990,10 @@ button.yolo-chat-quick-access-picker-row > svg {
   text-overflow: ellipsis;
 }
 
+.yolo-simple-select__item--leading .yolo-simple-select__item-label {
+  font-weight: var(--font-normal);
+}
+
 .yolo-simple-select__item-desc {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);

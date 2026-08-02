@@ -24,6 +24,11 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  ASSISTANT_FOLLOW_DEFAULT_MODEL_OPTION_VALUE,
+  getAssistantModelSelectValue,
+  modelIdFromAssistantModelSelectValue,
+} from '../../../core/agent/assistant-model'
+import {
   BUILTIN_TOOL_CATEGORY_I18N,
   BUILTIN_TOOL_CATEGORY_ORDER,
   type BuiltinToolCategory,
@@ -291,14 +296,14 @@ async function estimateSkillDefaultContextTokens({
   return count
 }
 
-function createNewAgent(defaultModelId: string): Assistant {
+function createNewAgent(): Assistant {
   return {
     id: crypto.randomUUID(),
     name: '',
     description: '',
     systemPrompt: '',
     persona: DEFAULT_PERSONA,
-    modelId: defaultModelId,
+    // Omit modelId so new agents follow the global chat model.
     enableTools: true,
     includeBuiltinTools: true,
     enabledToolNames: [],
@@ -313,14 +318,12 @@ function createNewAgent(defaultModelId: string): Assistant {
   }
 }
 
-function toDraftAgent(
-  assistant: Assistant,
-  fallbackModelId: string,
-): Assistant {
+function toDraftAgent(assistant: Assistant): Assistant {
   return {
     ...assistant,
     persona: assistant.persona ?? DEFAULT_PERSONA,
-    modelId: assistant.modelId ?? fallbackModelId,
+    // Preserve empty/undefined modelId as "follow default".
+    modelId: assistant.modelId || undefined,
     enabledToolNames: getExplicitlyEnabledAssistantToolNames(assistant),
     toolPreferences: getAssistantToolPreferences(assistant),
     toolServerPreferences: assistant.toolServerPreferences ?? {},
@@ -372,7 +375,7 @@ export function AgentsSectionContent({
   const isDirectEntry = isDirectEditEntry || isDirectCreateEntry
   const [draftAgent, setDraftAgent] = useState<Assistant | null>(() => {
     if (initialCreate) {
-      const draft = createNewAgent(settings.chatModelId)
+      const draft = createNewAgent()
       draft.name = t('settings.agent.editorDefaultName', 'New agent')
       return draft
     }
@@ -385,7 +388,7 @@ export function AgentsSectionContent({
     if (!initialAssistant) {
       return null
     }
-    return toDraftAgent(initialAssistant, settings.chatModelId)
+    return toDraftAgent(initialAssistant)
   })
   const [activeTab, setActiveTab] = useState<AgentEditorTab>('profile')
   const [isSystemPromptExpanded, setIsSystemPromptExpanded] = useState(false)
@@ -484,6 +487,14 @@ export function AgentsSectionContent({
     }
   }, [plugin])
 
+  const agentFollowDefaultModelOption = useMemo(
+    () => ({
+      value: ASSISTANT_FOLLOW_DEFAULT_MODEL_OPTION_VALUE,
+      label: t('settings.agent.followDefaultModel', 'Follow default model'),
+    }),
+    [t],
+  )
+
   const agentModelOptionGroups = useMemo(() => {
     const providerOrder = settings.providers.map((provider) => provider.id)
     const providerIdsInModels = Array.from(
@@ -532,9 +543,9 @@ export function AgentsSectionContent({
     if (!target) {
       return
     }
-    setDraftAgent(toDraftAgent(target, settings.chatModelId))
+    setDraftAgent(toDraftAgent(target))
     setActiveTab('profile')
-  }, [assistants, draftAgent, initialAssistantId, settings.chatModelId])
+  }, [assistants, draftAgent, initialAssistantId])
 
   const upsertDraft = async () => {
     if (!draftAgent || !draftAgent.name.trim()) {
@@ -545,6 +556,7 @@ export function AgentsSectionContent({
       ...draftAgent,
       name: draftAgent.name.trim(),
       description: draftAgent.description?.trim(),
+      modelId: draftAgent.modelId || undefined,
       toolPreferences: normalizeToolPreferencesForPersistence(
         draftAgent.toolPreferences,
         availableTools,
@@ -1364,7 +1376,8 @@ export function AgentsSectionContent({
                 </div>
                 <div className="yolo-agent-model-select-wrap">
                   <SimpleSelect
-                    value={draftAgent.modelId || settings.chatModelId}
+                    value={getAssistantModelSelectValue(draftAgent.modelId)}
+                    leadingOptions={[agentFollowDefaultModelOption]}
                     groupedOptions={agentModelOptionGroups}
                     align="end"
                     side="bottom"
@@ -1374,7 +1387,7 @@ export function AgentsSectionContent({
                     onChange={(value: string) =>
                       setDraftAgent({
                         ...draftAgent,
-                        modelId: value,
+                        modelId: modelIdFromAssistantModelSelectValue(value),
                       })
                     }
                   />

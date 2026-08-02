@@ -733,6 +733,7 @@ export const en: TranslationKeys = {
       editorDisabled: 'Disabled',
       editorModel: 'Model',
       editorModelDesc: 'Select the model used by this agent',
+      followDefaultModel: 'Follow default model',
       editorModelCurrent: 'Current: {model}',
       editorModelSampling: 'Sampling parameters',
       editorModelResetDefaults: 'Restore defaults',

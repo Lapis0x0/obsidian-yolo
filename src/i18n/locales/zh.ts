@@ -670,6 +670,7 @@ export const zh: TranslationKeys = {
       editorDisabled: '已禁用',
       editorModel: '模型',
       editorModelDesc: '选择此 Agent 使用的模型',
+      followDefaultModel: '跟随默认模型',
       editorModelCurrent: '当前：{model}',
       editorModelSampling: '采样参数',
       editorModelResetDefaults: '恢复默认值',

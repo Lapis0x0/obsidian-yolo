@@ -555,6 +555,7 @@ export type TranslationKeys = {
       editorDisabled?: string
       editorModel?: string
       editorModelDesc?: string
+      followDefaultModel?: string
       editorModelCurrent?: string
       editorModelSampling?: string
       editorModelResetDefaults?: string

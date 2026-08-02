@@ -750,6 +750,8 @@ export const it: DeepPartial<TranslationKeys> = {
       editorEnabled: 'Abilitato',
       editorDisabled: 'Disabilitato',
       editorModel: 'Modello',
+      editorModelDesc: 'Seleziona il modello usato da questo agent',
+      followDefaultModel: 'Segui modello predefinito',
       editorModelCurrent: 'Corrente: {model}',
       editorTemperature: 'Temperatura',
       editorTemperatureDesc: '0.0 - 2.0',
