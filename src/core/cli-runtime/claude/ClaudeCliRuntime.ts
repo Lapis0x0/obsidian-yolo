@@ -15,6 +15,7 @@ import {
   ToolCallResponseStatus,
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
+import { mapClaudeGetContextUsage, mapClaudeResultContextUsage } from '../context-usage'
 import { assertCliRuntimeAvailable } from '../desktop'
 import {
   type CliChatMode,
@@ -1027,6 +1028,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   ): Promise<void> {
     await this.publishActiveTurnEditSummary()
     this.activeUserMessageId = undefined
+    await this.emitContextUsageFromResult(message)
     if (message.subtype === 'success') {
       if (message.result) {
         const assistant =
@@ -1058,6 +1060,34 @@ export class ClaudeCliRuntime implements CliRuntime {
       this.emitAssistant()
     }
     this.emit({ type: 'run_state', state: 'error', error })
+  }
+
+  private async emitContextUsageFromResult(
+    message: Extract<SDKMessage, { type: 'result' }>,
+  ): Promise<void> {
+    const fromResult = mapClaudeResultContextUsage(message)
+    let usage = fromResult
+    const query = this.query
+    if (query && typeof query.getContextUsage === 'function') {
+      try {
+        const detailed = mapClaudeGetContextUsage(await query.getContextUsage())
+        if (detailed) {
+          usage = {
+            ...detailed,
+            // Keep result-derived max if getContextUsage omitted it.
+            maxContextTokens:
+              detailed.maxContextTokens ?? fromResult?.maxContextTokens ?? null,
+            ...(fromResult?.cacheHitRate !== undefined
+              ? { cacheHitRate: fromResult.cacheHitRate }
+              : {}),
+          }
+        }
+      } catch (error) {
+        console.warn('[YOLO] Claude getContextUsage failed', error)
+      }
+    }
+    if (!usage) return
+    this.emit({ type: 'context_usage', usage })
   }
 
   private async publishActiveTurnEditSummary(): Promise<void> {

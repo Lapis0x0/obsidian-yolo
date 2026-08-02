@@ -5,6 +5,7 @@ import type { ToolEditSummary } from '../../types/tool-call.types'
 
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
+  CliContextUsage,
   CliPermissionProfileUpdate,
   CliRewriteTurnInput,
   CliRuntime,
@@ -36,6 +37,8 @@ export type CliConversationSnapshot = Readonly<{
   turnConfigurationByUserMessageId?: Readonly<
     Record<string, CliTurnConfiguration>
   >
+  /** Latest provider-reported context usage for the input ring; not persisted. */
+  contextUsage?: CliContextUsage | null
 }>
 
 export type CliConversationTurn = Readonly<{
@@ -643,6 +646,7 @@ export class CliConversationController {
       runState: 'idle',
       error: null,
       configuration: this.snapshot.configuration ?? null,
+      contextUsage: null,
     })
   }
 
@@ -663,7 +667,13 @@ export class CliConversationController {
       if (event.ref.runtimeId !== this.runtime.runtimeId) return
       if (this.allowSessionRebind) {
         this.acceptingEvents = true
-        this.publish({ ...this.snapshot, sessionRef: event.ref, error: null })
+        const sameSession = isSameSession(this.snapshot.sessionRef, event.ref)
+        this.publish({
+          ...this.snapshot,
+          sessionRef: event.ref,
+          error: null,
+          ...(sameSession ? {} : { contextUsage: null }),
+        })
         return
       }
       if (this.bindingEpoch === conversationEpoch) {
@@ -683,6 +693,19 @@ export class CliConversationController {
       ) {
         this.publish({ ...this.snapshot, sessionRef: event.ref })
       }
+      return
+    }
+
+    // Accept during ensureReady binding (before acceptingEvents flips) so
+    // Codex resume replay of thread/tokenUsage/updated is not dropped.
+    if (event.type === 'context_usage') {
+      if (
+        !this.acceptingEvents &&
+        this.bindingEpoch !== conversationEpoch
+      ) {
+        return
+      }
+      this.publish({ ...this.snapshot, contextUsage: event.usage })
       return
     }
 
@@ -858,6 +881,7 @@ export class CliConversationController {
       runState: 'idle',
       error: null,
       configuration: null,
+      contextUsage: null,
     })
   }
 

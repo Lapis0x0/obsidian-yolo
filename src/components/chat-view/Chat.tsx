@@ -1118,7 +1118,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   useEffect(() => {
     if (activeRuntimeId === 'yolo' || !cliConversationController) return
     const snapshot = cliConversationController.getSnapshot()
-    if (snapshot.sessionRef) return
+    // After reload, hydrate may bind sessionRef before the model catalog is
+    // warm enough for stageConfiguration. Keep retrying until configuration
+    // exists so the model/reasoning controls are not stuck disabled.
+    if (snapshot.configuration) return
     cliConversationController.stageConfiguration(
       resolveCliRuntimePreference(
         cliPreferenceSettingsRef.current,
@@ -7148,6 +7151,24 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : undefined,
     [headerContextUsage, buildMainInputContextBreakdownInputs, t],
   )
+  const cliInputContextUsage = useMemo<ChatUserInputProps['contextUsage']>(
+    () => {
+      const usage = activeCliConversationSnapshot?.contextUsage
+      if (!usage) return undefined
+      return {
+        promptTokens: usage.promptTokens,
+        maxContextTokens: usage.maxContextTokens,
+        ...(usage.cacheHitRate !== undefined
+          ? { cacheHitRate: usage.cacheHitRate }
+          : {}),
+        label: t('chat.contextUsage', '上下文窗口占用'),
+        ...(usage.categories && usage.categories.length > 0
+          ? { categories: usage.categories }
+          : {}),
+      }
+    },
+    [activeCliConversationSnapshot?.contextUsage, t],
+  )
   const mainInputSelectedSkills =
     inputMessage.selectedSkills ?? EMPTY_SELECTED_SKILLS
 
@@ -8116,7 +8137,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           isCliRuntimeActive ? false : currentConversationRunSummary.isQueueable
         }
         onAbort={handleMainInputAbort}
-        contextUsage={isCliRuntimeActive ? undefined : mainInputContextUsage}
+        contextUsage={
+          isCliRuntimeActive ? cliInputContextUsage : mainInputContextUsage
+        }
         showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
         quickAccessSkillEntries={
           isCliRuntimeActive ? [] : quickAccessSkillEntries

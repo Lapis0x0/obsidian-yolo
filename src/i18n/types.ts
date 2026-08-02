@@ -1519,6 +1519,10 @@ export type TranslationKeys = {
       title?: string
       /** "{{percent}} Full" — interpolated client-side */
       fullLabel?: string
+      /** "Previous turn cache hit {{percent}}" — interpolated client-side */
+      cacheHitLabel?: string
+      breakdownBarAriaLabel?: string
+      usageBarAriaLabel?: string
       tokensSuffix?: string
       localEstimateCaption?: string
       unknownMaxHint?: string

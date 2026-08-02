@@ -19,6 +19,19 @@ export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   applyFlagSettings(settings: {
     effortLevel?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
   }): Promise<void>
+  getContextUsage(): Promise<{
+    categories: Array<{
+      name: string
+      tokens: number
+      color: string
+      isDeferred?: boolean
+    }>
+    totalTokens: number
+    maxTokens: number
+    rawMaxTokens: number
+    percentage: number
+    [key: string]: unknown
+  }>
   rewindFiles(
     userMessageId: string,
     options?: { dryRun?: boolean },

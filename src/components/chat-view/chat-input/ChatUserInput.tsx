@@ -20,6 +20,7 @@ import {
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import type { CliContextUsageCategory } from '../../../core/cli-runtime/types'
 import { getYoloSnippetsPath } from '../../../core/paths/yoloPaths'
 import type { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
@@ -38,7 +39,6 @@ import {
   serializeMentionable,
 } from '../../../utils/chat/mentionable'
 import ContextUsagePopover from '../ContextUsagePopover'
-import ContextUsageRing from '../ContextUsageRing'
 import { useSnippetEntries } from '../hooks/useSnippetEntries'
 import type { ContextBreakdownInputs } from '../useContextBreakdown'
 
@@ -129,15 +129,15 @@ export type ChatUserInputProps = {
   contextUsage?: {
     promptTokens: number
     maxContextTokens: number | null
+    cacheHitRate?: number
     label: string
-    /** When provided, the ring becomes a popover trigger that opens the
-     * per-bucket context breakdown. Builder is called lazily on open and may
-     * be async; resolution to null surfaces as a non-blocking error inside
-     * the popover (the ring still works for hover hint). */
+    /** When provided, the popover includes the native local-estimate breakdown. */
     buildBreakdownInputs?: () =>
       | ContextBreakdownInputs
       | null
       | Promise<ContextBreakdownInputs | null>
+    /** Provider-reported categories (Claude getContextUsage). */
+    categories?: readonly CliContextUsageCategory[]
   }
   showQuickAccess?: boolean
   quickAccessSkillEntries?: LiteSkillEntry[]
@@ -691,21 +691,15 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     const renderContextUsageControl = () =>
       contextUsage ? (
-        contextUsage.buildBreakdownInputs ? (
-          <ContextUsagePopover
-            promptTokens={contextUsage.promptTokens}
-            maxContextTokens={contextUsage.maxContextTokens}
-            label={contextUsage.label}
-            anchorRef={containerRef}
-            buildInputs={contextUsage.buildBreakdownInputs}
-          />
-        ) : (
-          <ContextUsageRing
-            promptTokens={contextUsage.promptTokens}
-            maxContextTokens={contextUsage.maxContextTokens}
-            label={contextUsage.label}
-          />
-        )
+        <ContextUsagePopover
+          promptTokens={contextUsage.promptTokens}
+          maxContextTokens={contextUsage.maxContextTokens}
+          cacheHitRate={contextUsage.cacheHitRate}
+          label={contextUsage.label}
+          anchorRef={containerRef}
+          buildInputs={contextUsage.buildBreakdownInputs}
+          categories={contextUsage.categories}
+        />
       ) : null
 
     const renderSubmitControl = () => (

@@ -1046,4 +1046,51 @@ describe('CodexCliRuntime', () => {
     })
     await runtime.dispose()
   })
+
+  it('emits context_usage from thread/tokenUsage/updated', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        tokenUsage: {
+          last: {
+            cachedInputTokens: 0,
+            inputTokens: 1000,
+            outputTokens: 20,
+            reasoningOutputTokens: 0,
+            totalTokens: 1020,
+          },
+          total: {
+            cachedInputTokens: 0,
+            inputTokens: 1000,
+            outputTokens: 20,
+            reasoningOutputTokens: 0,
+            totalTokens: 1020,
+          },
+          modelContextWindow: 200_000,
+        },
+      },
+    })
+
+    expect(events).toContainEqual({
+      type: 'context_usage',
+      usage: {
+        promptTokens: 1020,
+        maxContextTokens: 200_000,
+        cacheHitRate: 0,
+      },
+    })
+    await runtime.dispose()
+  })
 })

@@ -103,6 +103,35 @@ export type CliRuntimeRunState =
   | 'aborted'
   | 'error'
 
+/**
+ * Ephemeral mirror of provider-reported context-window usage for the ring UI.
+ * Not persisted in YOLO conversation storage; restored via CLI resume/replay.
+ */
+export type CliContextUsageBucket =
+  | 'system'
+  | 'tools'
+  | 'rules'
+  | 'skills'
+  | 'memory'
+  | 'conversation'
+  | 'reasoning'
+
+export type CliContextUsageCategory = Readonly<{
+  name: string
+  tokens: number
+  /** Theme swatch aligned with the native local-estimate breakdown. */
+  bucket: CliContextUsageBucket
+}>
+
+export type CliContextUsage = Readonly<{
+  promptTokens: number
+  maxContextTokens: number | null
+  /** Fraction of the previous provider turn's input served from prompt cache. */
+  cacheHitRate?: number
+  /** Claude `getContextUsage()` categories; Codex has no equivalent. */
+  categories?: readonly CliContextUsageCategory[]
+}>
+
 export type CliRuntimeEvent =
   | {
       type: 'session_bound'
@@ -125,6 +154,10 @@ export type CliRuntimeEvent =
       type: 'turn_edit_summary'
       sourceUserMessageId: string
       summary: ToolEditSummary
+    }
+  | {
+      type: 'context_usage'
+      usage: CliContextUsage
     }
 
 export type CliApprovalDecision =

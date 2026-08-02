@@ -4,6 +4,7 @@ import {
   type ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
+import { mapCodexTokenUsageUpdated } from '../context-usage'
 import {
   type CliChatMode,
   type CodexSandboxMode,
@@ -687,6 +688,14 @@ export class CodexCliRuntime implements CliRuntime {
       this.streamingReasoningSummaryParts.clear()
       this.streamingReasoningContentParts.clear()
       this.streamingAssistantText.clear()
+      return
+    }
+
+    if (method === 'thread/tokenUsage/updated') {
+      const usage = mapCodexTokenUsageUpdated(params)
+      if (usage) {
+        this.emit({ type: 'context_usage', usage })
+      }
     }
   }
 

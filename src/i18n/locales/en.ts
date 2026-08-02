@@ -1787,6 +1787,9 @@ export const en: TranslationKeys = {
     contextBreakdown: {
       title: 'Context',
       fullLabel: '{{percent}} Full',
+      cacheHitLabel: 'Previous turn cache hit {{percent}}',
+      breakdownBarAriaLabel: 'Context breakdown',
+      usageBarAriaLabel: 'Context usage',
       tokensSuffix: 'Tokens',
       localEstimateCaption:
         'Local estimate — may differ from server-side billing.',

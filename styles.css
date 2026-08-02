@@ -18824,9 +18824,21 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
   color: var(--text-muted);
 }
 
+.yolo-context-breakdown__metrics {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
 .yolo-context-breakdown__percent {
   font-weight: var(--font-medium);
   color: var(--text-normal);
+}
+
+.yolo-context-breakdown__cache-hit {
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .yolo-context-breakdown__totals {
@@ -18870,6 +18882,26 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
    * below). Width is layout, so we don't transition it. */
   opacity: 1;
   transition: opacity 0.15s ease;
+}
+
+/* Summary-only usage bar (CLI): single fill, same track as the segmented bar. */
+
+.yolo-context-breakdown__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--interactive-accent);
+  transition: width 0.18s ease, background-color 0.18s ease;
+}
+
+.yolo-context-breakdown__bar[data-tone='warning']
+  .yolo-context-breakdown__bar-fill {
+  background: var(--text-warning);
+}
+
+.yolo-context-breakdown__bar[data-tone='danger']
+  .yolo-context-breakdown__bar-fill {
+  background: var(--text-error);
 }
 
 /* Cursor-style cross-highlight: hovering a row in the list dims every bar

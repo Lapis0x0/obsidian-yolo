@@ -323,6 +323,25 @@ describe('CliConversationController', () => {
     ).toEqual(['user-1', 'assistant-2'])
   })
 
+  it('mirrors context_usage into the conversation snapshot', async () => {
+    const runtime = new FakeCliRuntime()
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    runtime.emit({
+      type: 'context_usage',
+      usage: { promptTokens: 4200, maxContextTokens: 200_000 },
+    })
+
+    expect(controller.getSnapshot().contextUsage).toEqual({
+      promptTokens: 4200,
+      maxContextTokens: 200_000,
+    })
+
+    controller.resetSession()
+    expect(controller.getSnapshot().contextUsage).toBeNull()
+  })
+
   it('deduplicates hydrated message ids in linear order with the last content', async () => {
     const runtime = new FakeCliRuntime()
     const ref = session('duplicate-transcript')

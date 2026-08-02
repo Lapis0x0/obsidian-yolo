@@ -1683,6 +1683,9 @@ export const zh: TranslationKeys = {
     contextBreakdown: {
       title: '上下文',
       fullLabel: '已占用 {{percent}}',
+      cacheHitLabel: '上一轮对话缓存命中 {{percent}}',
+      breakdownBarAriaLabel: '上下文组成',
+      usageBarAriaLabel: '上下文占用',
       tokensSuffix: 'Tokens',
       localEstimateCaption: '本地估算，可能与服务端计费存在偏差',
       unknownMaxHint: '可在模型设置中配置上下文窗口 token，以显示占用比例',
