@@ -3,6 +3,7 @@ import type {
   CliContextUsageBucket,
   CliContextUsageCategory,
 } from './types'
+import type { ResponseUsage } from '../../types/llm/response'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -112,6 +113,28 @@ export const mapClaudeResultContextUsage = (result: {
   }
 }
 
+export const mapClaudeResultResponseUsage = (result: {
+  usage?: unknown
+}): ResponseUsage | null => {
+  if (!isRecord(result.usage)) return null
+  const inputTokens = asNonNegativeInt(result.usage.input_tokens)
+  const outputTokens = asNonNegativeInt(result.usage.output_tokens)
+  if (inputTokens === null || outputTokens === null) return null
+  const cacheRead = asNonNegativeInt(result.usage.cache_read_input_tokens) ?? 0
+  const cacheCreation =
+    asNonNegativeInt(result.usage.cache_creation_input_tokens) ?? 0
+  const promptTokens = inputTokens + cacheRead + cacheCreation
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: outputTokens,
+    total_tokens: promptTokens + outputTokens,
+    ...(cacheRead > 0 ? { cache_read_input_tokens: cacheRead } : {}),
+    ...(cacheCreation > 0
+      ? { cache_creation_input_tokens: cacheCreation }
+      : {}),
+  }
+}
+
 /**
  * Map Claude `query.getContextUsage()` into ring inputs + category breakdown.
  * Prefers server-side totals (`totalTokens` / `maxTokens`) when present.
@@ -163,9 +186,7 @@ export const mapCodexTokenUsageUpdated = (
   const inputTokens = asNonNegativeInt(last.inputTokens)
   const cachedInputTokens = asNonNegativeInt(last.cachedInputTokens)
   const cacheHitRate =
-    inputTokens !== null &&
-    inputTokens > 0 &&
-    cachedInputTokens !== null
+    inputTokens !== null && inputTokens > 0 && cachedInputTokens !== null
       ? Math.min(1, cachedInputTokens / inputTokens)
       : null
   return {
@@ -175,5 +196,25 @@ export const mapCodexTokenUsageUpdated = (
         ? maxContextTokens
         : null,
     ...(cacheHitRate !== null ? { cacheHitRate } : {}),
+  }
+}
+
+export const mapCodexTurnResponseUsage = (
+  params: Record<string, unknown>,
+): ResponseUsage | null => {
+  const tokenUsage = params.tokenUsage
+  if (!isRecord(tokenUsage) || !isRecord(tokenUsage.last)) return null
+  const inputTokens = asNonNegativeInt(tokenUsage.last.inputTokens)
+  const outputTokens = asNonNegativeInt(tokenUsage.last.outputTokens)
+  if (inputTokens === null || outputTokens === null) return null
+  const cachedInputTokens =
+    asNonNegativeInt(tokenUsage.last.cachedInputTokens) ?? 0
+  return {
+    prompt_tokens: inputTokens,
+    completion_tokens: outputTokens,
+    total_tokens: inputTokens + outputTokens,
+    ...(cachedInputTokens > 0
+      ? { cache_read_input_tokens: cachedInputTokens }
+      : {}),
   }
 }

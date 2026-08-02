@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import type { ToolEditSummary } from '../../types/tool-call.types'
+import type { ResponseUsage } from '../../types/llm/response'
 
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
@@ -182,6 +183,58 @@ const appendAssistantError = (
   })
 }
 
+type CliTurnMetrics = Readonly<{
+  usage?: ResponseUsage
+  durationMs?: number
+}>
+
+const applyTurnMetrics = (
+  messages: readonly ChatMessage[],
+  metrics: CliTurnMetrics,
+): readonly ChatMessage[] => {
+  let latestUserIndex = -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      latestUserIndex = index
+      break
+    }
+  }
+  let targetIndex = -1
+  for (let index = messages.length - 1; index > latestUserIndex; index -= 1) {
+    const message = messages[index]
+    if (
+      message?.role === 'assistant' &&
+      message.metadata?.cliSubagentParentCallId === undefined
+    ) {
+      targetIndex = index
+      break
+    }
+  }
+  if (targetIndex < 0) return messages
+  return Object.freeze(
+    messages.map((message, index) => {
+      if (
+        message.role !== 'assistant' ||
+        index <= latestUserIndex ||
+        message.metadata?.cliSubagentParentCallId !== undefined
+      ) {
+        return message
+      }
+      const {
+        usage: _usage,
+        durationMs: _durationMs,
+        ...metadata
+      } = message.metadata ?? {}
+      return index === targetIndex
+        ? {
+            ...message,
+            metadata: { ...metadata, ...metrics },
+          }
+        : { ...message, metadata }
+    }),
+  )
+}
+
 /**
  * Owns the transient timeline for the currently selected CLI runtime/session.
  * The runtime remains owned by the caller; disposing this controller only
@@ -200,6 +253,7 @@ export class CliConversationController {
   private pendingOptimisticUserMessageId: string | null = null
   private allowSessionRebind = false
   private restoredCacheHitRate: number | null = null
+  private currentTurnMetrics: CliTurnMetrics | null = null
   private readonly reconciledNativeUserMessageIds = new Set<string>()
   private readyTail: Promise<void> = Promise.resolve()
   private disposed = false
@@ -317,6 +371,7 @@ export class CliConversationController {
     }
     const sessionRef = this.snapshot.sessionRef
 
+    this.currentTurnMetrics = null
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
@@ -373,6 +428,7 @@ export class CliConversationController {
     }
 
     const sessionRef = this.snapshot.sessionRef
+    this.currentTurnMetrics = null
     this.pendingOptimisticUserMessageId = userMessage.id
     this.publish({
       ...this.snapshot,
@@ -458,6 +514,7 @@ export class CliConversationController {
       userMessageId: userMessage.id,
     })
     this.pendingOptimisticUserMessageId = userMessage.id
+    this.currentTurnMetrics = null
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
@@ -674,6 +731,7 @@ export class CliConversationController {
     this.pendingOptimisticUserMessageId = null
     this.reconciledNativeUserMessageIds.clear()
     this.restoredCacheHitRate = null
+    this.currentTurnMetrics = null
     this.replaceRuntimeSubscription()
     this.publish({
       surfaceId: ref
@@ -773,6 +831,25 @@ export class CliConversationController {
       return
     }
 
+    if (event.type === 'turn_metrics') {
+      if (!this.acceptingEvents) return
+      this.currentTurnMetrics = {
+        ...this.currentTurnMetrics,
+        ...(event.usage ? { usage: event.usage } : {}),
+        ...(event.durationMs !== undefined
+          ? { durationMs: event.durationMs }
+          : {}),
+      }
+      this.publish({
+        ...this.snapshot,
+        messages: applyTurnMetrics(
+          this.snapshot.messages,
+          this.currentTurnMetrics,
+        ),
+      })
+      return
+    }
+
     if (!this.acceptingEvents) return
     if (event.type === 'turn_edit_summary') {
       const messages = attachCliTurnEditSummary(
@@ -816,9 +893,13 @@ export class CliConversationController {
           return
         }
       }
+      const messages = upsertMessage(this.snapshot.messages, event.message)
       this.publish({
         ...this.snapshot,
-        messages: upsertMessage(this.snapshot.messages, event.message),
+        messages:
+          event.message.role === 'assistant' && this.currentTurnMetrics
+            ? applyTurnMetrics(messages, this.currentTurnMetrics)
+            : messages,
         ...(event.message.role === 'assistant' &&
         event.message.metadata?.cliContextCompaction !== undefined
           ? { isCompacting: false }

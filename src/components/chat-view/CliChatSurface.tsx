@@ -44,6 +44,7 @@ import { buildCliSubagentReadModel } from './cliSubagentReadModel'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import {
+  findAssistantGroupIdForRunAnchor,
   useChatTimelineReadModel,
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
@@ -277,14 +278,18 @@ const getLatestUserMessageId = (
   return undefined
 }
 
-const getLatestAssistantGroupId = (
-  groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[],
-): string | null => {
-  for (let index = groupedChatMessages.length - 1; index >= 0; index -= 1) {
-    const messageOrGroup = groupedChatMessages[index]
-    if (Array.isArray(messageOrGroup)) {
-      return messageOrGroup[0]?.id ?? null
-    }
+const getSourceUserMessageForGroup = (
+  messages: readonly ChatMessage[],
+  groupMessageIds: readonly string[],
+): ChatUserMessage | null => {
+  const groupIds = new Set(groupMessageIds)
+  const groupStartIndex = messages.findIndex((message) =>
+    groupIds.has(message.id),
+  )
+  if (groupStartIndex < 0) return null
+  for (let index = groupStartIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === 'user') return message
   }
   return null
 }
@@ -520,9 +525,6 @@ export function CliChatSurface({
         .join('|'),
     [cliSubagentReadModel.presentationsByToolCallId],
   )
-  const latestAssistantGroupId = getLatestAssistantGroupId(
-    readModel.groupedChatMessages,
-  )
   const runSummary = useMemo(
     () =>
       buildRunSummary({
@@ -531,6 +533,14 @@ export function CliChatSurface({
         runState: snapshot.runState,
       }),
     [conversationId, snapshot.messages, snapshot.runState],
+  )
+  const runSummaryAssistantGroupId = useMemo(
+    () =>
+      findAssistantGroupIdForRunAnchor({
+        groupedChatMessages: readModel.groupedChatMessages,
+        anchorMessageId: runSummary.anchorMessageId,
+      }),
+    [readModel.groupedChatMessages, runSummary.anchorMessageId],
   )
   const handleOpenEditSummaryFile = useCallback(
     ({ path }: GroupEditSummary['files'][number]) => {
@@ -694,6 +704,10 @@ export function CliChatSurface({
         )
       }
       const nativeConversationId = getNativeConversationId(snapshot.sessionRef)
+      const sourceUserMessage = getSourceUserMessageForGroup(
+        snapshot.messages,
+        timelineItem.messageIds,
+      )
 
       return (
         <CliSubagentProvider
@@ -712,13 +726,13 @@ export function CliChatSurface({
               messages={messageGroup}
               conversationId={nativeConversationId}
               conversationRunSummary={
-                timelineItem.groupId === latestAssistantGroupId
+                timelineItem.groupId === runSummaryAssistantGroupId
                   ? runSummary
                   : undefined
               }
-              showInlineInfo={false}
-              showRetryAction={false}
-              showInsertAction={false}
+              showInlineInfo
+              showRetryAction={sourceUserMessage !== null}
+              showInsertAction
               showCopyAction
               showBranchAction={false}
               showEditAction={false}
@@ -733,7 +747,16 @@ export function CliChatSurface({
               onEditCancel={noop}
               onEditSave={noop}
               onDeleteGroup={noop}
-              onRetryGroup={noop}
+              onRetryGroup={() => {
+                if (!sourceUserMessage) return
+                void onRewriteUserMessage(
+                  sourceUserMessage,
+                  toEditableUserMessage(sourceUserMessage),
+                  snapshot.turnConfigurationByUserMessageId?.[
+                    sourceUserMessage.id
+                  ],
+                ).catch(() => undefined)
+              }}
               onBranchGroup={noop}
               onQuoteAssistantSelection={noop}
               onOpenEditSummaryFile={handleOpenEditSummaryFile}
@@ -747,15 +770,16 @@ export function CliChatSurface({
       conversationId,
       focusedUserMessageId,
       handleOpenEditSummaryFile,
-      latestAssistantGroupId,
       cachedModels,
       cliSubagentReadModel.presentationsByToolCallId,
       onHistoricalUserMessageControlPopoverOpenChange,
       onRewriteUserMessage,
       readModel.messagesById,
       runSummary,
+      runSummaryAssistantGroupId,
       snapshot.sessionRef,
       snapshot.configuration,
+      snapshot.messages,
       snapshot.runtimeId,
       snapshot.turnConfigurationByUserMessageId,
       t,

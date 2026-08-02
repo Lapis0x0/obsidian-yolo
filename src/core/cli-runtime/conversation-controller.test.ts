@@ -378,6 +378,50 @@ describe('CliConversationController', () => {
     expect(controller.getSnapshot().contextUsage).toBeNull()
   })
 
+  it('attaches turn metrics to the latest top-level assistant message', async () => {
+    const runtime = new FakeCliRuntime()
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    runtime.emit({ type: 'message_upsert', message: userMessage('user-1') })
+    runtime.emit({
+      type: 'message_upsert',
+      message: assistantMessage('assistant-1'),
+    })
+    runtime.emit({
+      type: 'turn_metrics',
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120,
+        cache_read_input_tokens: 40,
+      },
+      durationMs: 500,
+    })
+
+    expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+      id: 'assistant-1',
+      metadata: {
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          cache_read_input_tokens: 40,
+        },
+        durationMs: 500,
+      },
+    })
+
+    runtime.emit({
+      type: 'message_upsert',
+      message: assistantMessage('assistant-2'),
+    })
+    expect(controller.getSnapshot().messages).toMatchObject([
+      { id: 'user-1' },
+      { id: 'assistant-1', metadata: {} },
+      { id: 'assistant-2', metadata: { durationMs: 500 } },
+    ])
+  })
+
   it('merges a restored cache hit rate into fresh provider context usage', async () => {
     const runtime = new FakeCliRuntime('claude-code')
     const ref = session('restored-usage', 'claude-code')

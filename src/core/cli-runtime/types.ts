@@ -1,5 +1,6 @@
 import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
+import type { ResponseUsage } from '../../types/llm/response'
 import type { ToolEditSummary } from '../../types/tool-call.types'
 
 import type { CliChatMode } from './permission-profile'
@@ -169,6 +170,11 @@ export type CliRuntimeEvent =
   | {
       type: 'context_usage'
       usage: CliContextUsage
+    }
+  | {
+      type: 'turn_metrics'
+      usage?: ResponseUsage
+      durationMs?: number
     }
   | {
       type: 'compaction_state'

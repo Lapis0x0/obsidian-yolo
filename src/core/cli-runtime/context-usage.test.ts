@@ -1,7 +1,9 @@
 import {
   mapClaudeGetContextUsage,
   mapClaudeResultContextUsage,
+  mapClaudeResultResponseUsage,
   mapCodexTokenUsageUpdated,
+  mapCodexTurnResponseUsage,
   resolveClaudeContextUsageBucket,
 } from './context-usage'
 
@@ -49,6 +51,46 @@ describe('mapClaudeResultContextUsage', () => {
       promptTokens: 10,
       maxContextTokens: null,
       cacheHitRate: 0,
+    })
+  })
+})
+
+describe('turn response usage', () => {
+  it('maps Claude cache and output tokens', () => {
+    expect(
+      mapClaudeResultResponseUsage({
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          cache_read_input_tokens: 30,
+          cache_creation_input_tokens: 5,
+        },
+      }),
+    ).toEqual({
+      prompt_tokens: 135,
+      completion_tokens: 20,
+      total_tokens: 155,
+      cache_read_input_tokens: 30,
+      cache_creation_input_tokens: 5,
+    })
+  })
+
+  it('maps Codex last-turn usage', () => {
+    expect(
+      mapCodexTurnResponseUsage({
+        tokenUsage: {
+          last: {
+            inputTokens: 5152,
+            outputTokens: 16,
+            cachedInputTokens: 3072,
+          },
+        },
+      }),
+    ).toEqual({
+      prompt_tokens: 5152,
+      completion_tokens: 16,
+      total_tokens: 5168,
+      cache_read_input_tokens: 3072,
     })
   })
 })

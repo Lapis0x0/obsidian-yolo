@@ -22,6 +22,7 @@ import {
 import {
   mapClaudeGetContextUsage,
   mapClaudeResultContextUsage,
+  mapClaudeResultResponseUsage,
 } from '../context-usage'
 import { assertCliRuntimeAvailable } from '../desktop'
 import {
@@ -1171,6 +1172,20 @@ export class ClaudeCliRuntime implements CliRuntime {
     await this.publishActiveTurnEditSummary()
     this.activeUserMessageId = undefined
     await this.emitContextUsageFromResult(message)
+    const usage = mapClaudeResultResponseUsage(message)
+    const durationMs =
+      typeof message.duration_ms === 'number' &&
+      Number.isFinite(message.duration_ms) &&
+      message.duration_ms >= 0
+        ? message.duration_ms
+        : undefined
+    if (usage || durationMs !== undefined) {
+      this.emit({
+        type: 'turn_metrics',
+        ...(usage ? { usage } : {}),
+        ...(durationMs !== undefined ? { durationMs } : {}),
+      })
+    }
     if (message.subtype === 'success') {
       if (message.result) {
         const assistant =

@@ -4,7 +4,10 @@ import {
   type ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
-import { mapCodexTokenUsageUpdated } from '../context-usage'
+import {
+  mapCodexTokenUsageUpdated,
+  mapCodexTurnResponseUsage,
+} from '../context-usage'
 import {
   type CliChatMode,
   type CodexSandboxMode,
@@ -222,6 +225,7 @@ export class CodexCliRuntime implements CliRuntime {
   private readonly subagentWatches = new Map<string, CodexSubagentWatch>()
   private activeSessionRef: CliSessionRef | null = null
   private activeTurnId: string | null = null
+  private activeTurnStartedAt: number | null = null
   private needsSessionRebind = false
   private models: CliRuntimeConfiguration['models'] | null = null
   private modelId: string | null = null
@@ -646,6 +650,7 @@ export class CodexCliRuntime implements CliRuntime {
 
   private handleHostFatal(error: Error): void {
     this.activeTurnId = null
+    this.activeTurnStartedAt = null
     this.needsSessionRebind = true
     this.models = null
     this.modelId = null
@@ -676,6 +681,7 @@ export class CodexCliRuntime implements CliRuntime {
     if (method === 'turn/started') {
       const turn = params.turn as { id?: unknown } | undefined
       this.activeTurnId = typeof turn?.id === 'string' ? turn.id : null
+      this.activeTurnStartedAt = Date.now()
       return
     }
     if (method === 'rawResponseItem/completed') {
@@ -788,6 +794,12 @@ export class CodexCliRuntime implements CliRuntime {
       const status =
         typeof turn?.status === 'string' ? turn.status : 'completed'
       const isError = status === 'failed'
+      if (this.activeTurnStartedAt !== null) {
+        this.emit({
+          type: 'turn_metrics',
+          durationMs: Math.max(0, Date.now() - this.activeTurnStartedAt),
+        })
+      }
       this.emit({
         type: 'run_state',
         state:
@@ -801,6 +813,7 @@ export class CodexCliRuntime implements CliRuntime {
           : {}),
       })
       this.activeTurnId = null
+      this.activeTurnStartedAt = null
       this.streamingReasoningSummaryParts.clear()
       this.streamingReasoningContentParts.clear()
       this.streamingAssistantText.clear()
@@ -808,6 +821,10 @@ export class CodexCliRuntime implements CliRuntime {
     }
 
     if (method === 'thread/tokenUsage/updated') {
+      const turnUsage = mapCodexTurnResponseUsage(params)
+      if (turnUsage) {
+        this.emit({ type: 'turn_metrics', usage: turnUsage })
+      }
       const usage = mapCodexTokenUsageUpdated(params)
       if (usage) {
         this.emit({ type: 'context_usage', usage })

@@ -78,9 +78,12 @@ const mockedAssistantGroup = jest.fn(
     messages: AssistantToolMessageGroup
     conversationId: string
     showRetryAction?: boolean
+    showInsertAction?: boolean
     showCopyAction?: boolean
+    showInlineInfo?: boolean
     showEditAction?: boolean
     showDeleteAction?: boolean
+    conversationRunSummary?: { anchorMessageId?: string }
   }) => {
     const { useChatRuntimeActions } = jest.requireActual(
       './chat-runtime-actions-context',
@@ -93,6 +96,8 @@ const mockedAssistantGroup = jest.fn(
         {props.messages.map((message) => message.role).join(',')}
         {props.showCopyAction ? <button>Copy message</button> : null}
         {props.showRetryAction ? <button>Regenerate</button> : null}
+        {props.showInsertAction ? <button>Insert message</button> : null}
+        {props.showInlineInfo ? <span>Inline info</span> : null}
         {props.showEditAction ? <button>Edit</button> : null}
         {props.showDeleteAction ? <button>Delete</button> : null}
       </div>
@@ -292,7 +297,7 @@ describe('CliChatSurface', () => {
     expect(getCliUserMessageDisplay(message, draft, false)).toBe(message)
   })
 
-  it('groups assistant and tool messages and exposes only the copy action', () => {
+  it('exposes the supported CLI assistant actions and inline metrics', () => {
     const snapshot = makeSnapshot({
       messages: [makeUser('user-1', 'Prompt'), assistant, tool],
     })
@@ -306,9 +311,67 @@ describe('CliChatSurface', () => {
     ])
     expect(html).toContain('assistant,tool')
     expect(html).toContain('Copy message')
-    expect(html).not.toContain('Regenerate')
+    expect(html).toContain('Regenerate')
+    expect(html).toContain('Insert message')
+    expect(html).toContain('Inline info')
     expect(html).not.toContain('Edit')
     expect(html).not.toContain('Delete')
+  })
+
+  it('does not bind a new running turn to the previous assistant footer', () => {
+    const previousAssistant = {
+      ...assistant,
+      id: 'assistant-previous',
+    }
+    const currentUser = makeUser('user-current', 'Current prompt')
+
+    renderSurface(
+      makeSnapshot({
+        messages: [
+          makeUser('user-previous', 'Previous prompt'),
+          previousAssistant,
+          currentUser,
+        ],
+        runState: 'running',
+      }),
+    )
+
+    expect(mockedAssistantGroup).toHaveBeenCalledTimes(1)
+    expect(
+      mockedAssistantGroup.mock.calls[0]?.[0].conversationRunSummary,
+    ).toBeUndefined()
+  })
+
+  it('binds the running turn after its own assistant group appears', () => {
+    const currentAssistant: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-current',
+      content: 'Streaming response',
+      metadata: { generationState: 'streaming' },
+    }
+
+    renderSurface(
+      makeSnapshot({
+        messages: [
+          makeUser('user-previous', 'Previous prompt'),
+          { ...assistant, id: 'assistant-previous' },
+          makeUser('user-current', 'Current prompt'),
+          currentAssistant,
+        ],
+        runState: 'running',
+      }),
+    )
+
+    const previousGroup = mockedAssistantGroup.mock.calls.find(
+      ([props]) => props.messages[0]?.id === 'assistant-previous',
+    )?.[0]
+    const currentGroup = mockedAssistantGroup.mock.calls.find(
+      ([props]) => props.messages[0]?.id === 'assistant-current',
+    )?.[0]
+    expect(previousGroup?.conversationRunSummary).toBeUndefined()
+    expect(currentGroup?.conversationRunSummary).toMatchObject({
+      anchorMessageId: 'user-current',
+    })
   })
 
   it('keeps even empty native user messages editable', () => {
