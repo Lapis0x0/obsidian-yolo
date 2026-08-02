@@ -52,6 +52,7 @@ export const cliSessionIndexEntrySchema = z.object({
     .optional(),
   modelId: z.string().nullable().optional(),
   reasoningEffort: z.string().nullable().optional(),
+  lastCacheHitRate: z.number().min(0).max(1).optional(),
 })
 
 export type CliSessionIndexEntry = z.infer<typeof cliSessionIndexEntrySchema>

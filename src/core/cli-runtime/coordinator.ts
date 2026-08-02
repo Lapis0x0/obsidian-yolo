@@ -218,6 +218,7 @@ class DesktopCliRuntimeWorkspace {
           sourceUserMessageId,
           summary,
         ),
+      (ref, usage) => this.sessionService.rememberContextUsage(ref, usage),
     )
     this.conversations.add({ runtime, controller })
     controller.subscribe(() => {

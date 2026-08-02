@@ -196,6 +196,7 @@ export class CliConversationController {
   private bindingEpoch: number | null = null
   private pendingOptimisticUserMessageId: string | null = null
   private allowSessionRebind = false
+  private restoredCacheHitRate: number | null = null
   private readonly reconciledNativeUserMessageIds = new Set<string>()
   private readyTail: Promise<void> = Promise.resolve()
   private disposed = false
@@ -207,6 +208,10 @@ export class CliConversationController {
       ref: CliSessionRef,
       sourceUserMessageId: string,
       summary: ToolEditSummary,
+    ) => Promise<void>,
+    private readonly onContextUsage?: (
+      ref: CliSessionRef,
+      usage: CliContextUsage,
     ) => Promise<void>,
   ) {
     this.runtime = runtime
@@ -256,6 +261,7 @@ export class CliConversationController {
         ? overlay.messages
         : (restored as readonly ChatMessage[])
       if (!this.isCurrent(operation)) return null
+      this.restoredCacheHitRate = overlay?.lastCacheHitRate ?? null
       this.publish({
         ...this.snapshot,
         messages: normalizeMessages(messages),
@@ -634,6 +640,7 @@ export class CliConversationController {
     this.resetEventGate()
     this.pendingOptimisticUserMessageId = null
     this.reconciledNativeUserMessageIds.clear()
+    this.restoredCacheHitRate = null
     this.replaceRuntimeSubscription()
     this.publish({
       surfaceId: ref
@@ -705,7 +712,21 @@ export class CliConversationController {
       ) {
         return
       }
-      this.publish({ ...this.snapshot, contextUsage: event.usage })
+      const usage =
+        event.usage.cacheHitRate === undefined &&
+        this.restoredCacheHitRate !== null
+          ? { ...event.usage, cacheHitRate: this.restoredCacheHitRate }
+          : event.usage
+      if (event.usage.cacheHitRate !== undefined) {
+        this.restoredCacheHitRate = event.usage.cacheHitRate
+      }
+      this.publish({ ...this.snapshot, contextUsage: usage })
+      const ref = this.snapshot.sessionRef
+      if (ref && this.onContextUsage && event.usage.cacheHitRate !== undefined) {
+        void this.onContextUsage(ref, event.usage).catch((error) => {
+          console.warn('[YOLO] Failed to persist CLI context usage', error)
+        })
+      }
       return
     }
 

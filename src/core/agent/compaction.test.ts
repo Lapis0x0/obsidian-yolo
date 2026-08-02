@@ -297,7 +297,7 @@ const userMsg = (id: string): ChatMessage => ({
 
 const assistantMsg = (
   id: string,
-  usage?: { prompt_tokens: number },
+  usage?: { prompt_tokens: number; cache_read_input_tokens?: number },
   model?: Pick<ChatModel, 'maxContextTokens'>,
 ): ChatMessage => ({
   role: 'assistant',
@@ -309,6 +309,9 @@ const assistantMsg = (
           prompt_tokens: usage.prompt_tokens,
           completion_tokens: 0,
           total_tokens: usage.prompt_tokens,
+          ...(usage.cache_read_input_tokens !== undefined
+            ? { cache_read_input_tokens: usage.cache_read_input_tokens }
+            : {}),
         },
         model: model
           ? ({
@@ -710,7 +713,10 @@ describe('getLatestAssistantContextUsage', () => {
     const contextUsage = getLatestAssistantContextUsage({
       messages: [
         userMsg('u1'),
-        assistantMsg('a1', { prompt_tokens: 100 }),
+        assistantMsg('a1', {
+          prompt_tokens: 100,
+          cache_read_input_tokens: 40,
+        }),
         {
           role: 'tool',
           id: 't1',
@@ -725,6 +731,7 @@ describe('getLatestAssistantContextUsage', () => {
         promptTokens: 100,
         maxContextTokens: 1000,
         ratio: 0.1,
+        cacheHitRate: 0.4,
       }),
     )
   })

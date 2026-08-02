@@ -342,6 +342,29 @@ describe('CliConversationController', () => {
     expect(controller.getSnapshot().contextUsage).toBeNull()
   })
 
+  it('merges a restored cache hit rate into fresh provider context usage', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    const ref = session('restored-usage', 'claude-code')
+    const controller = new CliConversationController(runtime)
+    await controller.hydrateSession(ref, async (messages) => ({
+      messages,
+      turnConfigurationByUserMessageId: {},
+      lastCacheHitRate: 0.6,
+    }))
+    await controller.ensureReady()
+
+    runtime.emit({
+      type: 'context_usage',
+      usage: { promptTokens: 4200, maxContextTokens: 200_000 },
+    })
+
+    expect(controller.getSnapshot().contextUsage).toEqual({
+      promptTokens: 4200,
+      maxContextTokens: 200_000,
+      cacheHitRate: 0.6,
+    })
+  })
+
   it('deduplicates hydrated message ids in linear order with the last content', async () => {
     const runtime = new FakeCliRuntime()
     const ref = session('duplicate-transcript')

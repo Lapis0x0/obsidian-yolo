@@ -851,6 +851,47 @@ describe('ClaudeCliRuntime', () => {
     })
   })
 
+  it('emits current context usage immediately after resuming a session', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.getContextUsage.mockResolvedValue({
+      categories: [
+        { name: 'System prompt', tokens: 4000, color: '#888888' },
+        { name: 'Messages', tokens: 8000, color: '#74C0FC' },
+      ],
+      totalTokens: 12_000,
+      maxTokens: 200_000,
+      rawMaxTokens: 200_000,
+      percentage: 6,
+    })
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+
+    await runtime.ensureReady({
+      sessionRef: {
+        runtimeId: 'claude-code',
+        nativeSessionId: 'restored-session',
+      },
+    })
+    await flushPromises()
+
+    expect(events).toContainEqual({
+      type: 'context_usage',
+      usage: {
+        promptTokens: 12_000,
+        maxContextTokens: 200_000,
+        categories: [
+          { name: 'System prompt', tokens: 4000, bucket: 'system' },
+          { name: 'Messages', tokens: 8000, bucket: 'conversation' },
+        ],
+      },
+    })
+  })
+
   it('binds a generated session after initialization without waiting for an init event', async () => {
     const { sdk, query, queryInputs, queryInstance } = createSdk()
     const runtime = new ClaudeCliRuntime({

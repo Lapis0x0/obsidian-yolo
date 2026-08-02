@@ -416,6 +416,9 @@ export class ClaudeCliRuntime implements CliRuntime {
         null
       this.reasoningEffort = null
       this.publishSessionBound(sessionRef)
+      if (resumeSessionId) {
+        void this.emitRestoredContextUsage(query)
+      }
     } catch (error) {
       await this.resetQuery()
       throw error
@@ -1088,6 +1091,18 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
     if (!usage) return
     this.emit({ type: 'context_usage', usage })
+  }
+
+  private async emitRestoredContextUsage(query: ClaudeSdkQuery): Promise<void> {
+    try {
+      const usage = mapClaudeGetContextUsage(await query.getContextUsage())
+      if (!usage || this.query !== query) return
+      this.emit({ type: 'context_usage', usage })
+    } catch (error) {
+      if (this.query === query) {
+        console.warn('[YOLO] Claude restored context usage failed', error)
+      }
+    }
   }
 
   private async publishActiveTurnEditSummary(): Promise<void> {

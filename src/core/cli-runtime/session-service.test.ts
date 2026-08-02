@@ -56,6 +56,11 @@ describe('CliSessionService', () => {
       modelId: 'sonnet',
       reasoningEffort: 'high',
     })
+    await service.rememberContextUsage(ref, {
+      promptTokens: 12_000,
+      maxContextTokens: 200_000,
+      cacheHitRate: 0.75,
+    })
 
     await expect(index.get(ref)).resolves.toEqual({
       runtimeId: 'claude-code',
@@ -63,6 +68,11 @@ describe('CliSessionService', () => {
       sessionPathHint: '/native/session-1.jsonl',
       modelId: 'sonnet',
       reasoningEffort: 'high',
+      lastCacheHitRate: 0.75,
+    })
+
+    await expect(service.restoreSessionOverlay(ref, [])).resolves.toMatchObject({
+      lastCacheHitRate: 0.75,
     })
   })
 

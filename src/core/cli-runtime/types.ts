@@ -79,6 +79,7 @@ export type CliSessionOverlay = Readonly<{
   turnConfigurationByUserMessageId: Readonly<
     Record<string, CliTurnConfiguration>
   >
+  lastCacheHitRate?: number
 }>
 
 export type CliTurnInput = {

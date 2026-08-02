@@ -177,6 +177,7 @@ import {
   isCliConversationActive,
   openCliSession,
   openCliSessionForNavigation,
+  prepareCliConversation,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
   rewriteCliConversationTurn,
@@ -1184,6 +1185,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         if (!result.hydration || !isCurrentRestore()) {
           return
         }
+        await prepareCliConversation({
+          controller: result.controller,
+          scope: cliRuntimeScope,
+          runtimeId: seededRef.runtimeId,
+          settings,
+        })
+        if (!isCurrentRestore()) return
         setCliConversationController(result.controller)
         setCliConversationId(
           seededRuntimeSnapshot?.cliConversationId ?? uuidv4(),
@@ -1227,6 +1235,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliRuntimeScope,
     seededRuntimeSnapshot?.cliConversationId,
     seededRuntimeSnapshot?.cliSessionRef,
+    settings,
     t,
   ])
   const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
@@ -1703,6 +1712,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return {
       promptTokens: contextUsage.promptTokens,
       maxContextTokens: contextUsage.maxContextTokens,
+      ...(contextUsage.cacheHitRate !== undefined
+        ? { cacheHitRate: contextUsage.cacheHitRate }
+        : {}),
     }
   }, [chatMessages, effectiveMaxContextTokens])
 
@@ -3536,6 +3548,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           isCurrent: isCurrentNavigation,
         })
         if (!result) return
+        await prepareCliConversation({
+          controller: result.controller,
+          scope: cliRuntimeScope,
+          runtimeId: ref.runtimeId,
+          settings,
+        })
+        if (!isCurrentNavigation()) return
         lastCliRuntimeIdRef.current = ref.runtimeId
         activeRuntimeIdRef.current = ref.runtimeId
         setRequestedRuntimeId(ref.runtimeId)
@@ -3576,6 +3595,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       cliRuntimeAvailable,
       cliRuntimeScope,
       persistChatRuntimePreference,
+      settings,
       t,
       transitionCliSession,
     ],
@@ -7145,6 +7165,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ? {
             promptTokens: headerContextUsage.promptTokens,
             maxContextTokens: headerContextUsage.maxContextTokens,
+            ...(headerContextUsage.cacheHitRate !== undefined
+              ? { cacheHitRate: headerContextUsage.cacheHitRate }
+              : {}),
             label: t('chat.contextUsage', '上下文窗口占用'),
             buildBreakdownInputs: buildMainInputContextBreakdownInputs,
           }

@@ -20,6 +20,7 @@ import {
 } from './session-index'
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
+  CliContextUsage,
   CliSessionHydration,
   CliSessionOverlay,
   CliSessionRef,
@@ -184,6 +185,20 @@ export class CliSessionService {
     )
   }
 
+  async rememberContextUsage(
+    ref: CliSessionRef,
+    usage: CliContextUsage,
+  ): Promise<void> {
+    if (usage.cacheHitRate === undefined) return
+    await this.indexStore.update(ref, (existing) =>
+      createCliSessionIndexEntry({
+        ...ref,
+        ...existing,
+        lastCacheHitRate: usage.cacheHitRate,
+      }),
+    )
+  }
+
   async restoreUserDisplays(
     ref: CliSessionRef,
     messages: readonly ChatMessage[],
@@ -249,6 +264,9 @@ export class CliSessionService {
     return {
       messages: [...messagesWithSummaries],
       turnConfigurationByUserMessageId,
+      ...(entry?.lastCacheHitRate !== undefined
+        ? { lastCacheHitRate: entry.lastCacheHitRate }
+        : {}),
     }
   }
 
