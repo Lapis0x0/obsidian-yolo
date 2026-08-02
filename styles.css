@@ -1,4 +1,4 @@
-/* @yolo-version: 1.6.3.1 */
+/* @yolo-version: 1.6.4 */
 
 /* Settings */
 
@@ -9637,6 +9637,7 @@ svg.svg-icon.yolo-orbit {
 
 button.yolo-runtime-selector {
   display: inline-flex;
+  position: relative;
   align-items: center;
   gap: 6px;
   min-width: 43px;
@@ -9723,6 +9724,26 @@ body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='openai'] {
 button.yolo-runtime-selector[data-state='open']
   .yolo-runtime-selector__chevron {
   transform: rotate(180deg);
+}
+
+/* The compact form is a real icon button so it releases space to the header
+   instead of preserving an empty label slot. RuntimeSelector restores the
+   complete trigger when the header grows again. */
+
+button.yolo-runtime-selector[data-compact='true'] {
+  box-sizing: border-box;
+  width: 30px;
+  min-width: 30px;
+  flex: 0 0 30px;
+  justify-content: center;
+  gap: 0;
+  padding: 4px;
+}
+
+button.yolo-runtime-selector[data-compact='true'] .yolo-runtime-selector__label,
+button.yolo-runtime-selector[data-compact='true']
+  .yolo-runtime-selector__chevron {
+  display: none;
 }
 
 .yolo-runtime-selector__content {
@@ -16011,7 +16032,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
      label when the button is `--expanded`. We need to overpower that
      rule's specificity (0,3,0) so the caret really disappears in compact
      mode — otherwise the icon-only form still has a hanging chevron. */
-  .yolo-view-toggle-button--roller.yolo-view-toggle-button--expanded
+  .yolo-view-toggle
+    .yolo-view-toggle-button--roller.yolo-view-toggle-button--expanded
     .yolo-roller-select-caret {
     width: 0;
     margin-left: 0;
