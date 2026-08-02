@@ -62,6 +62,12 @@ export const extractThinkingContent = (value: unknown): string =>
     )
     .join('')
 
+const isLocalCommandTranscriptText = (text: string): boolean =>
+  text.includes('<local-command-caveat>') ||
+  text.includes('<command-name>') ||
+  text.includes('<local-command-stdout>') ||
+  text.includes('<local-command-stderr>')
+
 export const extractToolUses = (value: unknown): ClaudeToolUse[] =>
   getContentBlocks(value).flatMap((block) => {
     if (
@@ -228,7 +234,7 @@ export const hydrateClaudeSessionMessages = (
     }
 
     const promptContent = extractTextContent(nativeMessage.content)
-    if (promptContent) {
+    if (promptContent && !isLocalCommandTranscriptText(promptContent)) {
       hydrated.push(createUserMessage(message, promptContent))
     }
   }

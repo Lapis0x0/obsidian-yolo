@@ -96,6 +96,66 @@ it('hydrates nested Claude tool calls with their native parent relationship', ()
   ])
 })
 
+it('hides Claude local command envelopes from restored chat history', () => {
+  const messages = hydrateClaudeSessionMessages([
+    {
+      type: 'user',
+      uuid: 'command-caveat',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content:
+          '<local-command-caveat>Generated while running a local command.</local-command-caveat>',
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'command-model',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content:
+          '<command-name>/model</command-name><command-message>model</command-message><command-args>haiku</command-args>',
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'command-output',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content:
+          '<local-command-stdout>Set model to haiku</local-command-stdout>',
+      },
+    },
+    {
+      type: 'user',
+      uuid: 'real-user-message',
+      session_id: 'session-1',
+      parent_tool_use_id: null,
+      parent_agent_id: null,
+      message: {
+        role: 'user',
+        content: '你现在是什么模式',
+      },
+    },
+  ] as SessionMessage[])
+
+  expect(messages).toEqual([
+    expect.objectContaining({
+      role: 'user',
+      id: 'real-user-message',
+      promptContent: '你现在是什么模式',
+    }),
+  ])
+})
+
 class FakeQuery implements ClaudeSdkQuery {
   readonly interrupt = jest.fn(async () => undefined)
   readonly initializationResult = jest.fn(async () => ({
