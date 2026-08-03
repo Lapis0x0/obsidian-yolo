@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 9,
+  "revision": 10,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.4.2",
+    "version": "1.6.4.3",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.4.2",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.4.3",
     "releaseNotes": {
-      "en": "## 1.6.4.2 Stability Hotfix 🛠️\n\n- Fixed the chat view going blank when a Codex or Claude Code session fails to initialize. YOLO now shows the underlying error directly, making CLI, authentication, and third-party provider issues easier to diagnose.\n- Fixed ChatGPT OAuth failing to start its local callback server with a permission error on some Windows systems, and improved automatic callback port cleanup.\n- Fixed YOLO failing to load on Android after upgrading to 1.6.4.1.",
-      "zh": "## 1.6.4.2 稳定性热修复 🛠️\n\n- 修复 Codex 或 Claude Code 会话初始化失败时聊天界面黑屏的问题；现在会直接显示真实错误原因，方便排查 CLI、认证或第三方 Provider 配置。\n- 修复部分 Windows 环境下 ChatGPT OAuth 登录因本地回调服务器权限错误而无法启动的问题，并完善回调端口的自动释放。\n- 修复 Android 端升级至 1.6.4.1 后无法启用 YOLO 的问题。"
+      "en": "## 1.6.4.3 CLI & Login Hotfix 🛠️\n\n- Fixed image uploads in CLI Agent conversations for Codex and Claude Code.\n- CLI Agents now automatically receive the current time and your reading position in notes, PDFs, images, or web pages. This internal context stays hidden when conversation history is reloaded.\n- Added device code authentication for ChatGPT OAuth, avoiding conflicts with occupied local callback ports. You can now choose between browser callback and device code login.",
+      "zh": "## 1.6.4.3 CLI 与登录热修复 🛠️\n\n- 修复 Codex 与 Claude Code 的 CLI Agent 对话无法正常上传图片的问题。\n- CLI Agent 现在会自动感知当前时间，以及你正在阅读的笔记、PDF、图片或网页位置；重新加载历史记录时，这些内部上下文不会显示在用户消息中。\n- ChatGPT OAuth 新增设备码登录，不再受本地回调端口占用影响；现在可在浏览器回调登录与设备码登录之间自由选择。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.4.2/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.2/main.js",
-        "byteSize": 9054587,
-        "sha256": "42f0d182686cbe6eef2153b11740333bcd79860eca8b4af9f07ee35b89732ecd"
+        "mirrorPath": "core/1.6.4.3/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.3/main.js",
+        "byteSize": 9064990,
+        "sha256": "39962f8c5720512471c32b7036b3b522ac074c38f0003ea3e4a93684200d31a5"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.4.2/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.2/manifest.json",
+        "mirrorPath": "core/1.6.4.3/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.3/manifest.json",
         "byteSize": 330,
-        "sha256": "18b6347263caffcb77e226569b620f3d080d388ca5f1b1a8acd23fae18e2ad2a"
+        "sha256": "ba6b10610a4b5d3b9fa7674b65f13f3ce65da983ab4ba3017a7116c6cc689f78"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.4.2/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.2/styles.css",
-        "byteSize": 577604,
-        "sha256": "c5bd0e0c2f8655656d443fabb0befa61ba3380aef7ee4003edfee588ef340a90"
+        "mirrorPath": "core/1.6.4.3/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.3/styles.css",
+        "byteSize": 579098,
+        "sha256": "bffd80a0de0c98414cd4baf94254840e28a252e38db4383579a12214315626ad"
       }
     }
   },
