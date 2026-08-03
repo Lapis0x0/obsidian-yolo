@@ -184,6 +184,73 @@ describe('ChatGPTOAuthService', () => {
     })
   })
 
+  it('rejects an invalid device authorization payload', async () => {
+    const service = new ChatGPTOAuthService(createStoreMock())
+
+    mockedRequestUrl.mockResolvedValue({
+      status: 200,
+      json: { interval: '5' },
+    } as never)
+
+    await expect(service.beginDeviceAuthorization()).rejects.toThrow(
+      'Device authorization returned an invalid user code payload',
+    )
+  })
+
+  it('polls device authorization and persists the exchanged credential', async () => {
+    const store = createStoreMock()
+    const service = new ChatGPTOAuthService(store)
+
+    mockedRequestUrl
+      .mockResolvedValueOnce({
+        status: 200,
+        json: {
+          authorization_code: 'authorization-code',
+          code_verifier: 'code-verifier',
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        status: 200,
+        json: {
+          access_token: createJwt({ chatgpt_account_id: 'acc-device' }),
+          refresh_token: 'refresh-device',
+          expires_in: 3600,
+        },
+      } as never)
+
+    await expect(
+      service.pollDeviceAuthorization({
+        deviceAuthId: 'dev-1',
+        userCode: 'ABCD-EFGH',
+        verificationUri: 'https://auth.openai.com/codex/device',
+        intervalMs: 5000,
+      }),
+    ).resolves.toMatchObject({
+      refreshToken: 'refresh-device',
+      accountId: 'acc-device',
+    })
+    expect(store.set).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not poll when device authorization is already cancelled', async () => {
+    const service = new ChatGPTOAuthService(createStoreMock())
+    const abortController = new AbortController()
+    abortController.abort()
+
+    await expect(
+      service.pollDeviceAuthorization(
+        {
+          deviceAuthId: 'dev-1',
+          userCode: 'ABCD-EFGH',
+          verificationUri: 'https://auth.openai.com/codex/device',
+          intervalMs: 5000,
+        },
+        abortController.signal,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+    expect(mockedRequestUrl).not.toHaveBeenCalled()
+  })
+
   it('refreshes and persists credential', async () => {
     const store = createStoreMock()
     const service = new ChatGPTOAuthService(store)

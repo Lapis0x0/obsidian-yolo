@@ -8,6 +8,7 @@ const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
 const DEVICE_VERIFICATION_URI = `${ISSUER}/codex/device`
 const DEVICE_CODE_POLL_MARGIN_MS = 3000
+const DEVICE_AUTH_TIMEOUT_MS = 15 * 60 * 1000
 // Keep in sync with the Codex OAuth redirect URI allow-list.
 const BROWSER_OAUTH_PORTS = [1455, 1457]
 const OAUTH_BIND_HOST = '127.0.0.1'
@@ -73,7 +74,32 @@ type Server = import('node:http').Server
 type ServerResponse = import('node:http').ServerResponse
 type AddressInfo = import('node:net').AddressInfo
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const createAbortError = (): DOMException =>
+  new DOMException('Device authorization was cancelled.', 'AbortError')
+
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (!signal?.aborted) {
+    return
+  }
+
+  throw signal.reason instanceof Error ? signal.reason : createAbortError()
+}
+
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    throwIfAborted(signal)
+
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort)
+      resolve()
+    }, ms)
+    const handleAbort = () => {
+      clearTimeout(timeoutId)
+      signal?.removeEventListener('abort', handleAbort)
+      reject(signal?.reason instanceof Error ? signal.reason : createAbortError())
+    }
+    signal?.addEventListener('abort', handleAbort, { once: true })
+  })
 
 const generateRandomString = (length: number): string => {
   const chars =
@@ -278,7 +304,16 @@ export class ChatGPTOAuthService {
       )
     }
 
-    const data = response.json as DeviceAuthorizationResponse
+    const data = response.json as Partial<DeviceAuthorizationResponse>
+    if (
+      typeof data.device_auth_id !== 'string' ||
+      typeof data.user_code !== 'string'
+    ) {
+      throw new ChatGPTOAuthError(
+        'Device authorization returned an invalid user code payload',
+      )
+    }
+
     return {
       deviceAuthId: data.device_auth_id,
       userCode: data.user_code,
@@ -291,8 +326,16 @@ export class ChatGPTOAuthService {
     authorization: ChatGPTOAuthDeviceAuthorization,
     signal?: AbortSignal,
   ): Promise<ChatGPTOAuthCredential> {
+    const startedAt = Date.now()
+
     while (true) {
-      signal?.throwIfAborted?.()
+      throwIfAborted(signal)
+
+      if (Date.now() - startedAt >= DEVICE_AUTH_TIMEOUT_MS) {
+        throw new ChatGPTOAuthError(
+          'Device authorization timed out after 15 minutes',
+        )
+      }
 
       const response = await requestUrl({
         url: `${ISSUER}/api/accounts/deviceauth/token`,
@@ -311,6 +354,8 @@ export class ChatGPTOAuthService {
       if (response.status >= 200 && response.status < 300) {
         const data = response.json as DeviceTokenResponse
         if (
+          !data ||
+          typeof data !== 'object' ||
           !('authorization_code' in data) ||
           typeof data.authorization_code !== 'string' ||
           typeof data.code_verifier !== 'string'
@@ -335,7 +380,21 @@ export class ChatGPTOAuthService {
         )
       }
 
-      await sleep(authorization.intervalMs + DEVICE_CODE_POLL_MARGIN_MS)
+      const remainingMs =
+        DEVICE_AUTH_TIMEOUT_MS - (Date.now() - startedAt)
+      if (remainingMs <= 0) {
+        throw new ChatGPTOAuthError(
+          'Device authorization timed out after 15 minutes',
+        )
+      }
+
+      await sleep(
+        Math.min(
+          authorization.intervalMs + DEVICE_CODE_POLL_MARGIN_MS,
+          remainingMs,
+        ),
+        signal,
+      )
     }
   }
 

@@ -971,7 +971,27 @@ export const it: DeepPartial<TranslationKeys> = {
       chatgptOAuthExpires: 'scade',
       chatgptOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare i modelli del tuo account ChatGPT Plus / Pro.',
-      chatgptOAuthPendingCode: 'Codice dispositivo corrente:',
+      chatgptOAuthBrowserLogin: 'Accesso dal browser',
+      chatgptOAuthDeviceLogin: 'Accesso con codice dispositivo',
+      chatgptOAuthBrowserConnecting: 'Apertura del browser...',
+      chatgptOAuthDeviceConnecting: 'In attesa di autorizzazione...',
+      chatgptOAuthBrowserDesktopOnly:
+        "L'accesso dal browser è disponibile solo su desktop.",
+      chatgptOAuthBrowserOpened:
+        "La pagina di accesso a ChatGPT è stata aperta nel browser. Completa lì l'autorizzazione.",
+      chatgptOAuthDeviceOpened:
+        'Inserisci il codice dispositivo seguente nella pagina di autorizzazione di ChatGPT.',
+      chatgptOAuthConnectedNotice: 'ChatGPT OAuth connesso.',
+      chatgptOAuthDisconnectedNotice: 'ChatGPT OAuth disconnesso.',
+      chatgptOAuthPortFallback:
+        "Usa l'accesso con codice dispositivo: non richiede una porta locale.",
+      chatgptOAuthPendingCode: 'Codice dispositivo',
+      chatgptOAuthDeviceHelp:
+        "Inserisci questo codice nella pagina di autorizzazione entro 15 minuti. Continua solo se hai avviato tu l'accesso.",
+      chatgptOAuthCopyCode: 'Copia codice',
+      chatgptOAuthCodeCopied: 'Codice dispositivo copiato.',
+      chatgptOAuthOpenDevicePage: 'Apri pagina di autorizzazione',
+      chatgptOAuthCancelDevice: 'Annulla',
       oauthDesktopOnly:
         'Il login OAuth è disponibile solo su desktop. Collegati prima da desktop.',
       geminiOAuthTitle: 'Gemini OAuth',

@@ -1052,7 +1052,27 @@ export const en: TranslationKeys = {
       chatgptOAuthExpires: 'expires',
       chatgptOAuthDisconnectedHelp:
         'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
-      chatgptOAuthPendingCode: 'Current device code:',
+      chatgptOAuthBrowserLogin: 'Browser login',
+      chatgptOAuthDeviceLogin: 'Device code login',
+      chatgptOAuthBrowserConnecting: 'Opening browser...',
+      chatgptOAuthDeviceConnecting: 'Waiting for authorization...',
+      chatgptOAuthBrowserDesktopOnly:
+        'Browser login is only available on desktop.',
+      chatgptOAuthBrowserOpened:
+        'ChatGPT login opened in your browser. Complete authorization there.',
+      chatgptOAuthDeviceOpened:
+        'Enter the device code below on the ChatGPT authorization page.',
+      chatgptOAuthConnectedNotice: 'ChatGPT OAuth connected.',
+      chatgptOAuthDisconnectedNotice: 'ChatGPT OAuth disconnected.',
+      chatgptOAuthPortFallback:
+        'Use device code login instead; it does not require a local port.',
+      chatgptOAuthPendingCode: 'Device code',
+      chatgptOAuthDeviceHelp:
+        'Enter this code on the authorization page within 15 minutes. Continue only if you started this login.',
+      chatgptOAuthCopyCode: 'Copy code',
+      chatgptOAuthCodeCopied: 'Device code copied.',
+      chatgptOAuthOpenDevicePage: 'Open authorization page',
+      chatgptOAuthCancelDevice: 'Cancel',
       oauthDesktopOnly:
         'OAuth login is only available on desktop. Please connect on desktop first.',
       geminiOAuthTitle: 'Gemini OAuth',
