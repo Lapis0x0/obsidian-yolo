@@ -110,7 +110,13 @@ describe('ChatGPTOAuthService', () => {
     const service = new ChatGPTOAuthService(store)
     let notifyListening: (() => void) | undefined
     let handleRequest: jest.Mock | undefined
-    const server = {
+    const server: {
+      once: jest.Mock
+      removeListener: jest.Mock
+      listen: jest.Mock
+      address: jest.Mock
+      close: jest.Mock
+    } = {
       once: jest.fn((event: string, listener: () => void) => {
         if (event === 'listening') {
           notifyListening = listener
