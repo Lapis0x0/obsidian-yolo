@@ -143,6 +143,7 @@ export type ChatUserInputProps = {
   skillEntries?: LiteSkillEntry[]
   quickAccessSkillEntries?: LiteSkillEntry[]
   quickAccessSnippetEntries?: SnippetEntry[]
+  skipImageModelCapabilityCheck?: boolean
 }
 
 const DEFAULT_INPUT_HEIGHT = 80
@@ -206,6 +207,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       skillEntries,
       quickAccessSkillEntries,
       quickAccessSnippetEntries,
+      skipImageModelCapabilityCheck = false,
     },
     ref,
   ) => {
@@ -875,6 +877,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               displayMentionablesForDelete={effectiveMentionables}
               enableSkills={enableSkills}
               enableAttachments
+              skipImageModelCapabilityCheck={skipImageModelCapabilityCheck}
               selectedSkills={effectiveSelectedSkills}
               setSelectedSkills={enableSkills ? setSelectedSkills : undefined}
               currentModel={currentModel}

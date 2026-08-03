@@ -94,7 +94,7 @@ export const buildCliTurnContent = ({
       binaryParts.push({
         type: 'image_url',
         image_url: {
-          url: `data:${mentionable.mimeType};base64,${mentionable.data}`,
+          url: mentionable.data,
         },
       })
       continue

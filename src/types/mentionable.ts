@@ -73,7 +73,7 @@ export type MentionableImage = {
   type: 'image'
   name: string
   mimeType: string
-  data: string // base64
+  data: string // base64 data URL
 }
 export type MentionablePDF = {
   type: 'pdf'

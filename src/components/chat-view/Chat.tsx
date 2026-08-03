@@ -8325,6 +8325,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         selectedSkills={mainInputSelectedSkills}
         setSelectedSkills={handleMainInputRuntimeSkillsChange}
         enableSkills
+        skipImageModelCapabilityCheck={isCliRuntimeActive}
         skillEntries={isCliRuntimeActive ? cliSkillEntries : undefined}
         modelId={conversationModelId}
         onModelChange={handleMainInputModelChange}

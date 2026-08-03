@@ -109,6 +109,7 @@ export type MessageInputCoreProps = {
 
   enableAttachments?: boolean
   currentModel?: ChatModel | null
+  skipImageModelCapabilityCheck?: boolean
 
   mentionMenuMode?: 'direct-search' | 'entry'
   assistants?: Assistant[]
@@ -165,6 +166,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
 
       enableAttachments = true,
       currentModel = null,
+      skipImageModelCapabilityCheck = false,
 
       mentionMenuMode,
       assistants,
@@ -265,6 +267,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
       (mentionableImages: MentionableImage[]) => {
         if (
           mentionableImages.length > 0 &&
+          !skipImageModelCapabilityCheck &&
           !chatModelSupportsVision(currentModel)
         ) {
           const modelLabel =
@@ -321,7 +324,14 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         }
         setMentionables([...mentionables, ...newMentionableImages])
       },
-      [currentModel, mentionableUnitLabels, mentionables, setMentionables, t],
+      [
+        currentModel,
+        mentionableUnitLabels,
+        mentionables,
+        setMentionables,
+        skipImageModelCapabilityCheck,
+        t,
+      ],
     )
 
     const handleCreatePdfMentionables = useCallback(

@@ -69,6 +69,7 @@ jest.mock('./MessageInputCore', () => ({
         models: unknown[]
         enableSkills: boolean
         enableAttachments: boolean
+        skipImageModelCapabilityCheck: boolean
         mentionables: unknown[]
         selectedSkills: unknown[]
       },
@@ -79,6 +80,9 @@ jest.mock('./MessageInputCore', () => ({
         data-model-count={props.models.length}
         data-skills-enabled={String(props.enableSkills)}
         data-attachments-enabled={String(props.enableAttachments)}
+        data-skip-image-model-check={String(
+          props.skipImageModelCapabilityCheck,
+        )}
         data-mentionable-count={props.mentionables.length}
         data-selected-skill-count={props.selectedSkills.length}
       />
@@ -132,6 +136,7 @@ const baseProps = {
   showModelControl: false,
   allowModelMentions: false,
   showReasoningSelect: false,
+  skipImageModelCapabilityCheck: true,
 }
 
 describe('ChatUserInput CLI capabilities', () => {
@@ -156,6 +161,7 @@ describe('ChatUserInput CLI capabilities', () => {
     expect(html).toContain('data-model-count="0"')
     expect(html).toContain('data-skills-enabled="true"')
     expect(html).toContain('data-attachments-enabled="true"')
+    expect(html).toContain('data-skip-image-model-check="true"')
     expect(html).toContain('data-mentionable-count="1"')
     expect(html).toContain('data-selected-skill-count="1"')
     expect(html).toContain('data-control="attachment"')

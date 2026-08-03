@@ -56,7 +56,12 @@ describe('buildCliTurnContent', () => {
       runtimeId: 'claude-code',
       text: 'Inspect attachments.',
       mentionables: [
-        { type: 'image', name: 'shot.png', mimeType: 'image/png', data: 'AAA' },
+        {
+          type: 'image',
+          name: 'shot.png',
+          mimeType: 'image/png',
+          data: 'data:image/png;base64,AAA',
+        },
         {
           type: 'pdf',
           name: 'paper.pdf',
