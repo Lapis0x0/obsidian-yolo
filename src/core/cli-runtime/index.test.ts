@@ -1,4 +1,6 @@
+/* eslint-disable import/no-nodejs-modules -- test inspects the source boundary without loading desktop runtime modules */
 import { readFileSync } from 'node:fs'
+/* eslint-enable import/no-nodejs-modules */
 
 describe('CLI runtime entry point', () => {
   it('does not statically re-export desktop-only runtime implementations', () => {
