@@ -9,6 +9,8 @@ import type YoloPlugin from '../../../main'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { SerializedMentionable } from '../../../types/mentionable'
 
+import { isStandaloneSmartSpaceSlash } from './smartSpaceTrigger'
+
 export type SmartSpaceDraftState = {
   instructionText?: string
   mentionables?: SerializedMentionable[]
@@ -203,6 +205,15 @@ export class SmartSpaceController {
           }
 
           if (isSlash) {
+            const precedingCharacter = view.state.doc.sliceString(
+              Math.max(0, selection.head - 1),
+              selection.head,
+            )
+            if (!isStandaloneSmartSpaceSlash(precedingCharacter)) {
+              this.lastSmartSpaceSlash = null
+              this.lastSmartSpaceSpace = null
+              return false
+            }
             this.lastSmartSpaceSlash = {
               view,
               pos: selection.head,

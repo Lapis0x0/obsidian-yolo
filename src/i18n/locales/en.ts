@@ -1546,7 +1546,7 @@ export const en: TranslationKeys = {
       continuationModelDesc:
         'Select the model used for continuation in Sparkle.',
       smartSpaceDescription:
-        'Smart space offers a lightweight floating composer while you write; by default it appears when you press the space key on an empty line or type “/” followed by space anywhere. You can switch below to double-space on empty lines or disable space-triggering. Press enter twice to submit and press escape to close.',
+        'Smart space offers a lightweight floating composer while you write; by default it appears when you press the space key on an empty line or type “/” followed by space at the start of a line or after whitespace. You can switch below to double-space on empty lines or disable space-triggering. Press enter twice to submit and press escape to close.',
       smartSpaceToggle: 'Enable smart space',
       smartSpaceToggleDesc:
         'When disabled, the space bar or "/"+space will no longer summon the smart space floating composer.',
