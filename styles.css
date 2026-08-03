@@ -10431,6 +10431,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   top: var(--yolo-chat-workspace-header-top);
   left: var(--yolo-chat-workspace-header-side);
   right: var(--yolo-chat-workspace-header-side);
+  width: auto;
   margin-bottom: 0;
   padding: 0;
   border-bottom: none;
