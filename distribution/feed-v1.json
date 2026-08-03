@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 7,
+  "revision": 8,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.4",
+    "version": "1.6.4.1",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.4",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.4.1",
     "releaseNotes": {
-      "en": "## 1.6.4 Claude Code & Codex Native Sessions 🚀\n\n### 🖥️ Native CLI Sessions\n\n- Use Claude Code and Codex native sessions directly inside YOLO on desktop, with shared chat history, mode switching, and session management.\n\n### ⚡ Faster Agent Responses\n\n- Sending a message no longer re-fetches MCP tools, recalculates tool tokens, or rescans historical attachments and skills every turn. Request status appears immediately while preparing, with clearer timing diagnostics. Refs #524\n\n### 🧩 Project Skills Discovery\n\n- YOLO Agent can now discover project-level Skills in your Vault that are managed by Claude Code, Codex, and similar tools.\n\n### 🤖 Assistant Models\n\n- Assistant models can follow the global default chat model. Newly created assistants use this setting by default.\n\n### 🪟 Settings Window Fix\n\n- Fixed the module settings page being clipped or incomplete in Obsidian’s dedicated settings window.",
-      "zh": "## 1.6.4 Claude Code 与 Codex 原生会话 🚀\n\n### 🖥️ 原生 CLI 会话\n\n- 桌面端可在 YOLO 中直接使用 Claude Code 与 Codex 原生会话，并共享聊天历史、模式切换与会话管理。\n\n### ⚡ 更快的 Agent 响应\n\n- 发送消息后不再每轮重复拉取 MCP 工具、计算工具 token，以及扫描历史附件与技能。请求准备期间会立即显示状态，并提供更准确的耗时诊断。Refs #524\n\n### 🧩 项目级 Skills 发现\n\n- YOLO Agent 现在可以直接识别 Vault 中由 Claude Code、Codex 等工具管理的项目级 Skills。\n\n### 🤖 助手模型\n\n- 助手模型可选择「跟随默认模型」；新建助手默认跟随全局对话模型。\n\n### 🪟 设置窗口修复\n\n- 修复新版 Obsidian 独立设置窗口中模块设置页显示不全的问题。"
+      "en": "## 1.6.4.1 Polish & Sparkle Writing ✨\n\n### 🪟 Narrow Chat Header\n\n- Improved the chat top bar layout when the sidebar is compressed on narrow screens.\n\n### 🧭 CLI Runtime Menus\n\n- Codex and Claude Code selection menus now expand on hover, matching the CLI/Agent interaction pattern.\n\n### 🤖 CLI Model Selection\n\n- Fixed third-party provider models not being recognized in CLI Agent, which left the model list loading forever. YOLO now uses the models actually available to Codex or Claude Code.\n\n### 🪟 Windows Codex Launch\n\n- Fixed Codex CLI Agent failing to start for some Windows users, and improved auto-detection of common Codex and Claude Code install paths.\n\n### 🔐 ChatGPT OAuth Errors\n\n- When the local ChatGPT OAuth callback server fails to start, YOLO now shows the specific port and underlying error so port conflicts and environment issues are easier to diagnose.\n\n### 🪟 Floating Chat Toolbar\n\n- Fixed the right capsule toolbar in the standalone chat window getting clipped against the window edge on wide screens.\n\n### ✨ Sparkle Writing\n\n- Writing assistance is now branded as Sparkle (灵光写作). The sidebar entry and settings section are aligned, and less useful options have been trimmed to reduce noise.",
+      "zh": "## 1.6.4.1 体验打磨与灵光写作 ✨\n\n### 🪟 窄屏对话顶栏\n\n- 优化对话顶部栏在窄屏压缩时的样式表现。\n\n### 🧭 CLI 运行时菜单\n\n- Codex 与 Claude Code 的选择菜单现可在悬停时直接展开，交互方式与 CLI/Agent 保持一致。\n\n### 🤖 CLI 模型选择\n\n- 修复第三方 Provider 模型在 CLI Agent 中无法识别、模型列表持续加载的问题。现在 YOLO 会自动使用 Codex 或 Claude Code 实际可用的模型。\n\n### 🪟 Windows Codex 启动\n\n- 修复部分 Windows 用户无法启动 Codex CLI Agent 的问题，并完善 Codex、Claude Code 常见安装路径的自动识别。\n\n### 🔐 ChatGPT OAuth 报错\n\n- ChatGPT OAuth 本地回调服务启动失败时，现在会显示具体端口及底层错误原因，帮助快速定位端口占用或运行环境问题。\n\n### 🪟 独立聊天工具栏\n\n- 修复独立聊天窗口在宽屏状态下，右侧胶囊工具栏紧贴窗口边缘并被裁切的问题。\n\n### ✨ 灵光写作\n\n- 写作辅助能力统一命名为「灵光写作」（Sparkle），侧边栏入口与设置分区同步更新，并精简设置项以降低认知成本。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.4/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4/main.js",
-        "byteSize": 9058859,
-        "sha256": "1924f08cd63c2cde67f88047eb558fc3ef253a03fdaa50a326ba893e85aea19c"
+        "mirrorPath": "core/1.6.4.1/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.1/main.js",
+        "byteSize": 9053982,
+        "sha256": "2458bd8cf031bb4c512d408ae7bb9bb7459c66ca7ab85962a39e9b9dccc90b4b"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.4/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4/manifest.json",
-        "byteSize": 328,
-        "sha256": "a075ce17eb4bc98f87c8c9cc874876acf966c1ee94c4515e35fd52f4d55668b2"
+        "mirrorPath": "core/1.6.4.1/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.1/manifest.json",
+        "byteSize": 330,
+        "sha256": "7695c3303fd7dce04543c9b6c65a0fc90fe69dd34e01cbaba24011bc66b2cdac"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.4/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4/styles.css",
-        "byteSize": 576886,
-        "sha256": "9d6c2bd0c47fed797a3d0f139a2f556d8a71710cce4323ba06cbedde64f6b9e8"
+        "mirrorPath": "core/1.6.4.1/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.4.1/styles.css",
+        "byteSize": 577604,
+        "sha256": "23d297b550ad7a7141fb6fd947b5c8f6211019f7cb129b8b381df1ec767adf29"
       }
     }
   },
