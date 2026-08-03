@@ -1,9 +1,9 @@
 /* eslint-disable import/no-nodejs-modules -- loaded only inside the desktop CLI runtime boundary */
+import { execFile } from 'node:child_process'
 import { access, constants } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
-import { execFile } from 'node:child_process'
 /* eslint-enable import/no-nodejs-modules */
 
 export type ResolvedCodexLaunch = {

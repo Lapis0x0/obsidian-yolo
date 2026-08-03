@@ -1,4 +1,6 @@
+/* eslint-disable import/no-nodejs-modules -- exercises the desktop-only Codex executable discovery boundary */
 import { access } from 'node:fs/promises'
+/* eslint-enable import/no-nodejs-modules */
 
 import {
   findCodexExecutable,
