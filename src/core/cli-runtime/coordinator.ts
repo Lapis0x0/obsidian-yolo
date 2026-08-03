@@ -6,6 +6,7 @@ import type { ClaudeCliRuntimeOptions } from './claude'
 import { createCliChatRuntimeActions } from './cli-actions'
 import type { CodexCliRuntimeOptions } from './codex'
 import { CodexAppServerHostPool } from './codex/host'
+import { resolveCodexLaunch } from './codex/launch'
 import { CliConversationController } from './conversation-controller'
 import {
   CliModelCatalogService,
@@ -26,7 +27,12 @@ import type {
 import { VaultCliSessionIndexStore } from './vault-session-index-store'
 
 type ClaudeRuntimeOptions = Omit<ClaudeCliRuntimeOptions, 'vaultPath'>
-type CodexRuntimeOptions = Omit<CodexCliRuntimeOptions, 'cwd' | 'resolveHost'>
+type CodexRuntimeOptions = Omit<
+  CodexCliRuntimeOptions,
+  'cwd' | 'resolveHost'
+> & {
+  cwd?: string
+}
 
 export type CliRuntimeFactories = Readonly<{
   createClaudeRuntime(options: ClaudeCliRuntimeOptions): CliRuntime
@@ -183,7 +189,7 @@ class DesktopCliRuntimeWorkspace {
     this.codexRuntimeOptions = this.options.getCodexRuntimeOptions?.() ?? {}
     this.codexHostPool = new CodexAppServerHostPool({
       ...this.codexRuntimeOptions,
-      cwd: this.adapter.getBasePath(),
+      cwd: this.codexRuntimeOptions.cwd ?? this.adapter.getBasePath(),
     })
   }
 
@@ -210,7 +216,7 @@ class DesktopCliRuntimeWorkspace {
           })
         : this.factories.createCodexRuntime({
             ...this.codexRuntimeOptions,
-            cwd: vaultPath,
+            cwd: this.codexRuntimeOptions.cwd ?? vaultPath,
             resolveHost: this.codexHostPool.acquire,
           })
     this.ownedRuntimes.add(runtime)
@@ -405,7 +411,7 @@ class DesktopCliRuntimeWorkspace {
           })
         : this.factories.createCodexRuntime({
             ...this.codexRuntimeOptions,
-            cwd: vaultPath,
+            cwd: this.codexRuntimeOptions.cwd ?? vaultPath,
             resolveHost: this.codexHostPool.acquire,
           })
     this.ownedRuntimes.add(runtime)
@@ -600,5 +606,21 @@ export const createDesktopCliRuntimeCoordinator = async (
   const factories = await (
     options.loadRuntimeFactories ?? defaultLoadRuntimeFactories
   )()
-  return new DesktopCliRuntimeCoordinator(adapter, options, factories)
+  const vaultPath = adapter.getBasePath()
+  const resolvedLaunch = options.getCodexRuntimeOptions
+    ? null
+    : await resolveCodexLaunch(vaultPath, process.env)
+  const resolvedOptions = resolvedLaunch
+    ? {
+        ...options,
+        getCodexRuntimeOptions: () => ({
+          command: resolvedLaunch.command,
+          cwd: resolvedLaunch.runtimeCwd,
+          spawnCwd: resolvedLaunch.spawnCwd,
+          launchArgs: resolvedLaunch.launchArgs,
+          mapRuntimePathToHost: resolvedLaunch.mapRuntimePathToHost,
+        }),
+      }
+    : options
+  return new DesktopCliRuntimeCoordinator(adapter, resolvedOptions, factories)
 }

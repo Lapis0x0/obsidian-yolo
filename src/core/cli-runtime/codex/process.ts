@@ -19,6 +19,8 @@ export type CodexProcessLike = {
 export type CodexProcessOptions = {
   command?: string
   cwd: string
+  spawnCwd?: string
+  launchArgs?: string[]
   env?: Record<string, string>
 }
 
@@ -35,8 +37,11 @@ const quoteWindowsShellArgument = (value: string): string => {
   return `"${value.replace(/"/g, '""')}"`
 }
 
-const resolveSpawnSpec = (command: string): SpawnSpec => {
-  const args = ['app-server', '--listen', 'stdio://']
+const resolveSpawnSpec = (
+  command: string,
+  launchArgs: string[] = [],
+): SpawnSpec => {
+  const args = [...launchArgs, 'app-server', '--listen', 'stdio://']
   if (process.platform !== 'win32' || !command.toLowerCase().endsWith('.cmd')) {
     return {
       command,
@@ -128,9 +133,15 @@ export class CodexAppServerProcess implements CodexProcessLike {
       await loadDesktopNodeModule<typeof import('node:child_process')>(
         'node:child_process',
       )
-    const spec = resolveSpawnSpec(options.command?.trim() || 'codex')
+    const command = options.command?.trim()
+    if (!command) {
+      throw new Error(
+        'Codex CLI was not found. Install Codex for Windows or in the default WSL distribution, then restart Obsidian.',
+      )
+    }
+    const spec = resolveSpawnSpec(command, options.launchArgs)
     const child = spawn(spec.command, spec.args, {
-      cwd: options.cwd,
+      cwd: options.spawnCwd ?? options.cwd,
       env: await getProcessEnv(options.env),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,

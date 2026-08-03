@@ -167,16 +167,45 @@ const getClaudeCandidates = ({
   }
 
   if (platform === 'win32') {
+    const appData =
+      env.APPDATA ?? joinPath(platform, homedir, 'AppData', 'Roaming')
+    const localAppData =
+      env.LOCALAPPDATA ?? joinPath(platform, homedir, 'AppData', 'Local')
+    const programFiles = env.ProgramFiles ?? 'C:\\Program Files'
+    const programFilesX86 =
+      env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
     candidates.push(
       joinPath(platform, homedir, '.claude', 'local', 'claude.exe'),
       joinPath(platform, homedir, '.local', 'bin', 'claude.exe'),
-      joinPath(platform, homedir, 'AppData', 'Local', 'Claude', 'claude.exe'),
+      joinPath(platform, localAppData, 'Claude', 'claude.exe'),
+      joinPath(platform, programFiles, 'Claude', 'claude.exe'),
+      joinPath(platform, programFilesX86, 'Claude', 'claude.exe'),
+      joinPath(
+        platform,
+        appData,
+        'npm',
+        'node_modules',
+        '@anthropic-ai',
+        'claude-code',
+        'cli-wrapper.cjs',
+      ),
+      joinPath(
+        platform,
+        appData,
+        'npm',
+        'node_modules',
+        '@anthropic-ai',
+        'claude-code',
+        'cli.js',
+      ),
     )
   } else {
     candidates.push(
       joinPath(platform, homedir, '.claude', 'local', 'claude'),
       joinPath(platform, homedir, '.local', 'bin', 'claude'),
       joinPath(platform, homedir, '.volta', 'bin', 'claude'),
+      joinPath(platform, homedir, '.asdf', 'shims', 'claude'),
+      joinPath(platform, homedir, '.npm-global', 'bin', 'claude'),
       '/usr/local/bin/claude',
       '/opt/homebrew/bin/claude',
     )

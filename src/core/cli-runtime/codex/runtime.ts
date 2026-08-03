@@ -103,6 +103,7 @@ export type CodexCliRuntimeOptions = CodexProcessOptions & {
   cliChatMode?: CliChatMode
   /** When true with agent mode, maps to never + danger-full-access. */
   yoloEnabled?: boolean
+  mapRuntimePathToHost?: (runtimePath: string) => string
 }
 
 const toCodexTurnSandboxPolicy = (
@@ -129,10 +130,15 @@ const toCodexTurnSandboxPolicy = (
   }
 }
 
-const toSessionRef = (thread: CodexThread): CliSessionRef => ({
+const toSessionRef = (
+  thread: CodexThread,
+  mapRuntimePathToHost?: (runtimePath: string) => string,
+): CliSessionRef => ({
   runtimeId: 'codex',
   nativeSessionId: thread.id,
-  ...(thread.path ? { sessionPathHint: thread.path } : {}),
+  ...(thread.path
+    ? { sessionPathHint: mapRuntimePathToHost?.(thread.path) ?? thread.path }
+    : {}),
 })
 
 const toCodexInput = (
@@ -270,7 +276,10 @@ export class CodexCliRuntime implements CliRuntime {
       threadId: ref.nativeSessionId,
       includeTurns: true,
     })
-    const sessionRef = toSessionRef(response.thread)
+    const sessionRef = toSessionRef(
+      response.thread,
+      this.options.mapRuntimePathToHost,
+    )
     const sessionPath = sessionRef.sessionPathHint ?? ref.sessionPathHint
     const transcript = sessionPath
       ? await (
@@ -352,7 +361,10 @@ export class CodexCliRuntime implements CliRuntime {
           ...params,
         })
       : await host.request<ThreadStartResponse>('thread/start', params)
-    this.activeSessionRef = toSessionRef(response.thread)
+    this.activeSessionRef = toSessionRef(
+      response.thread,
+      this.options.mapRuntimePathToHost,
+    )
     this.modelId = response.model ?? null
     this.reasoningEffort = response.reasoningEffort ?? null
     this.needsSessionRebind = false
@@ -503,7 +515,10 @@ export class CodexCliRuntime implements CliRuntime {
     if (rollback.thread.id !== threadId) {
       throw new Error('Codex rollback returned a different thread.')
     }
-    this.activeSessionRef = toSessionRef(rollback.thread)
+    this.activeSessionRef = toSessionRef(
+      rollback.thread,
+      this.options.mapRuntimePathToHost,
+    )
     this.pendingRequests.clear()
     this.rawCustomToolRequests.clear()
     this.subagentWatches.clear()
@@ -653,11 +668,14 @@ export class CodexCliRuntime implements CliRuntime {
     const models: CliRuntimeConfiguration['models'] = []
     let cursor: string | null = null
     do {
-      const response = await host.request<ModelListResponse>('model/list', {
-        cursor,
-        limit: 100,
-        includeHidden: false,
-      })
+      const response: ModelListResponse = await host.request<ModelListResponse>(
+        'model/list',
+        {
+          cursor,
+          limit: 100,
+          includeHidden: false,
+        },
+      )
       models.push(
         ...response.data
           .filter((model) => !model.hidden)
