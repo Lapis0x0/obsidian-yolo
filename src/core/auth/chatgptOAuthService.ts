@@ -435,16 +435,21 @@ export class ChatGPTOAuthService {
       return `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`
     }
 
+    const failures: string[] = []
     for (const port of BROWSER_OAUTH_PORTS) {
       try {
         const redirectUri = await this.startOAuthServer(port)
         return redirectUri
-      } catch {
-        continue
+      } catch (error) {
+        failures.push(
+          `${OAUTH_CALLBACK_HOST}:${port} — ${toErrorMessage(error)}`,
+        )
       }
     }
 
-    throw new ChatGPTOAuthError('Failed to start local OAuth callback server.')
+    throw new ChatGPTOAuthError(
+      `Failed to start local OAuth callback server: ${failures.join('; ')}`,
+    )
   }
 
   private startOAuthServer(port: number): Promise<string> {

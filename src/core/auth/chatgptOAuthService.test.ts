@@ -2,8 +2,13 @@ jest.mock('obsidian', () => ({
   requestUrl: jest.fn(),
   normalizePath: (value: string) => value,
 }))
+jest.mock('../../utils/platform/desktopNodeModule', () => ({
+  loadDesktopNodeModule: jest.fn(),
+}))
 
 import { requestUrl } from 'obsidian'
+
+import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 import {
   ChatGPTOAuthService,
@@ -16,6 +21,8 @@ import {
 import { ChatGPTOAuthCredential, ChatGPTOAuthStore } from './chatgptOAuthStore'
 
 const mockedRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>
+const mockedLoadDesktopNodeModule =
+  loadDesktopNodeModule as jest.MockedFunction<typeof loadDesktopNodeModule>
 
 function createJwt(payload: object): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString(
@@ -81,6 +88,21 @@ describe('chatgptOAuthService helpers', () => {
 describe('ChatGPTOAuthService', () => {
   beforeEach(() => {
     mockedRequestUrl.mockReset()
+    mockedLoadDesktopNodeModule.mockReset()
+  })
+
+  it('reports the underlying error for every unavailable callback port', async () => {
+    const store = createStoreMock()
+    const service = new ChatGPTOAuthService(store)
+
+    mockedLoadDesktopNodeModule.mockRejectedValue(
+      new Error('Node.js modules are unavailable in this Obsidian runtime.'),
+    )
+
+    await expect(service.beginBrowserAuthorization()).rejects.toThrow(
+      'Failed to start local OAuth callback server: localhost:1455 — Node.js modules are unavailable in this Obsidian runtime.; localhost:1456 — Node.js modules are unavailable in this Obsidian runtime.; localhost:1457 — Node.js modules are unavailable in this Obsidian runtime.',
+    )
+    expect(mockedLoadDesktopNodeModule).toHaveBeenCalledTimes(3)
   })
 
   it('starts device authorization', async () => {
