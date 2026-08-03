@@ -87,6 +87,32 @@ describe('buildCliTurnContent', () => {
     ])
   })
 
+  it('appends the captured environment context to the submitted CLI turn', () => {
+    const content = buildCliTurnContent({
+      runtimeId: 'codex',
+      text: 'Continue from here.',
+      mentionables: [],
+      timeContext: '2026-08-03 10:15 (Monday)',
+      environmentContext: [
+        {
+          type: 'text',
+          text: '# Current Context\nFile: Notes/plan.md\nCursor: line 42',
+        },
+      ],
+    })
+
+    expect(content).toEqual([
+      {
+        type: 'text',
+        text: '<current_time>2026-08-03 10:15 (Monday)</current_time>\n\nContinue from here.',
+      },
+      {
+        type: 'text',
+        text: '# Current Context\nFile: Notes/plan.md\nCursor: line 42',
+      },
+    ])
+  })
+
   it('uses extracted PDF text for Codex and rejects an unreadable PDF', () => {
     expect(
       buildCliTurnContent({

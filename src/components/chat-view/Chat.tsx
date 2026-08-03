@@ -51,6 +51,7 @@ import {
   type CliSessionRef,
   type CliTurnConfiguration,
   type YoloConversationRef,
+  buildCliEnvironmentContext,
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
@@ -6727,6 +6728,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
   const mainInputSubmitStateRef = useLatestRef({
     activeRuntimeId,
+    activeFile,
+    activeViewState,
     agentService,
     app,
     buildInputMessageForSubmit,
@@ -6803,13 +6806,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
         void (async () => {
           try {
+            const environmentContext = await buildCliEnvironmentContext({
+              app: state.app,
+              settings: state.settings,
+              currentFile: state.activeFile,
+              currentFileViewState: state.activeViewState,
+            })
             const result = await submitCliComposerTurn({
               settings: state.settings,
               scope,
               controller,
               runtimeId,
               userMessage: messageForSubmit,
-              timeContextEnabled: false,
+              environmentContext,
               permissionProfile: {
                 mode: state.cliChatMode,
                 yoloEnabled:
@@ -7227,12 +7236,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         const completed = await cliOperationCoordinator.transition(
           cliConversationController,
           async (isCurrent) => {
+            const environmentContext = await buildCliEnvironmentContext({
+              app,
+              settings,
+              currentFile: activeFile,
+              currentFileViewState: activeViewState,
+            })
             rewriteResult = await rewriteCliConversationTurn({
               settings,
               scope: cliRuntimeScope,
               controller: cliConversationController,
               runtimeId: activeRuntimeId,
               sourceUserMessageId: sourceMessage.id,
+              environmentContext,
               permissionProfile: cliPermissionProfileRef.current,
               configuration: turnConfiguration,
               userMessage: {
@@ -7286,6 +7302,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     [
       activeRuntimeId,
+      activeFile,
+      activeViewState,
+      app,
       cliConversationController,
       cliConversationId,
       cliOperationCoordinator,

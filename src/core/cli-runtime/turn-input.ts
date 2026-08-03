@@ -10,6 +10,7 @@ export type BuildCliTurnContentInput = {
   mentionables: readonly Mentionable[]
   selectedSkills?: readonly ChatSelectedSkill[]
   timeContext?: string
+  environmentContext?: readonly ContentPart[]
 }
 
 const section = (label: string, body: string): string =>
@@ -82,6 +83,7 @@ export const buildCliTurnContent = ({
   mentionables,
   selectedSkills = [],
   timeContext,
+  environmentContext = [],
 }: BuildCliTurnContentInput): string | ContentPart[] => {
   const references: string[] = []
   const binaryParts: ContentPart[] = []
@@ -140,11 +142,14 @@ export const buildCliTurnContent = ({
   const nativeTextPart = selectedClaudeSkill
     ? `/${selectedClaudeSkill.name}${textPart ? ` ${textPart}` : ''}`
     : textPart
-  if (binaryParts.length === 0) return nativeTextPart
+  if (binaryParts.length === 0 && environmentContext.length === 0) {
+    return nativeTextPart
+  }
   return [
     ...(nativeTextPart
       ? [{ type: 'text' as const, text: nativeTextPart }]
       : []),
+    ...environmentContext,
     ...binaryParts,
   ]
 }

@@ -59,6 +59,10 @@ const userMessage = (): ChatUserMessage => ({
   ],
 })
 
+const environmentContext = [
+  { type: 'text' as const, text: '<focused_context>spec.md</focused_context>' },
+]
+
 const deferred = <T>() => {
   let resolve!: (value: T | PromiseLike<T>) => void
   let reject!: (reason?: unknown) => void
@@ -270,7 +274,7 @@ describe('CLI chat integration', () => {
       controller,
       runtimeId: 'codex',
       userMessage: userMessage(),
-      timeContextEnabled: true,
+      environmentContext,
       encodeTurnContent,
     })
 
@@ -281,6 +285,7 @@ describe('CLI chat integration', () => {
         mentionables: expect.any(Array),
         selectedSkills: expect.any(Array),
         timeContext: '2026-07-30 14:53 (Thursday)',
+        environmentContext,
       }),
     )
     expect(ensureReady).toHaveBeenCalledWith({})
@@ -350,12 +355,15 @@ describe('CLI chat integration', () => {
         controller,
         runtimeId: 'codex',
         userMessage: userMessage(),
-        timeContextEnabled: false,
+        environmentContext,
         encodeTurnContent: () => 'accepted',
       }),
     ).resolves.toEqual({
       sessionRef: ref,
-      userMessage: userMessage(),
+      userMessage: expect.objectContaining({
+        id: 'draft-1',
+        timeContext: expect.any(String),
+      }),
       overlayError,
     })
   })
@@ -391,7 +399,7 @@ describe('CLI chat integration', () => {
       controller,
       runtimeId: 'codex',
       userMessage: userMessage(),
-      timeContextEnabled: false,
+      environmentContext,
       signal: operation!.signal,
       onSendStarted: () => coordinator.markSending(operation!.token),
       encodeTurnContent: () => 'pending',
@@ -568,7 +576,7 @@ describe('CLI chat integration', () => {
       controller,
       runtimeId: 'codex',
       userMessage: userMessage(),
-      timeContextEnabled: false,
+      environmentContext,
       signal: operation.signal,
       onSendStarted: () => coordinator.markSending(operation.token),
       onAccepted: (acceptedMessage) => {
@@ -806,6 +814,7 @@ describe('CLI chat integration', () => {
       runtimeId: 'claude-code',
       sourceUserMessageId: 'user-2',
       userMessage: target,
+      environmentContext,
       configuration: {
         modelId: 'claude-sonnet',
         reasoningEffort: 'high',
@@ -829,7 +838,10 @@ describe('CLI chat integration', () => {
     expect(recordUserDisplay).toHaveBeenCalledWith(
       nextRef,
       'edited transport',
-      target,
+      expect.objectContaining({
+        id: target.id,
+        timeContext: expect.any(String),
+      }),
       { modelId: 'claude-sonnet', reasoningEffort: 'high' },
     )
   })

@@ -13,6 +13,7 @@ import type {
 import { buildCliTurnContent } from '../../core/cli-runtime'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
+import type { ContentPart } from '../../types/llm/request'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
@@ -42,7 +43,7 @@ const getLatestUserMessage = (
 ): ChatUserMessage => {
   for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
     const message = snapshot.messages[index]
-    if (message?.role === 'user') return message
+    if (message?.role === 'user') return { ...fallback, id: message.id }
   }
   return fallback
 }
@@ -489,7 +490,7 @@ export type SubmitCliComposerTurnInput = {
   controller: CliConversationController
   runtimeId: CliRuntimeId
   userMessage: ChatUserMessage
-  timeContextEnabled: boolean
+  environmentContext: readonly ContentPart[]
   permissionProfile?: CliPermissionProfileUpdate
   signal?: AbortSignal
   onSendStarted?: () => boolean | undefined
@@ -504,7 +505,7 @@ export const submitCliComposerTurn = async ({
   controller,
   runtimeId,
   userMessage,
-  timeContextEnabled,
+  environmentContext,
   permissionProfile,
   signal,
   onSendStarted,
@@ -522,10 +523,7 @@ export const submitCliComposerTurn = async ({
     }
   }
   throwIfAborted()
-  const stampedUserMessage = stampUserMessageTimeContext(
-    userMessage,
-    timeContextEnabled,
-  )
+  const stampedUserMessage = stampUserMessageTimeContext(userMessage, true)
   const content = encodeTurnContent({
     runtimeId,
     text: stampedUserMessage.content
@@ -534,6 +532,7 @@ export const submitCliComposerTurn = async ({
     mentionables: stampedUserMessage.mentionables,
     selectedSkills: stampedUserMessage.selectedSkills,
     timeContext: stampedUserMessage.timeContext,
+    environmentContext,
   })
   const stagedTurn = controller.stageTurn(stampedUserMessage)
   onPresented?.(stampedUserMessage)
@@ -597,6 +596,7 @@ export type RewriteCliConversationTurnInput = {
   runtimeId: CliRuntimeId
   sourceUserMessageId: string
   userMessage: ChatUserMessage
+  environmentContext: readonly ContentPart[]
   configuration?: CliTurnConfiguration
   permissionProfile?: CliPermissionProfileUpdate
   encodeTurnContent?: typeof buildCliTurnContent
@@ -609,6 +609,7 @@ export const rewriteCliConversationTurn = async ({
   runtimeId,
   sourceUserMessageId,
   userMessage,
+  environmentContext,
   configuration,
   permissionProfile,
   encodeTurnContent = buildCliTurnContent,
@@ -644,20 +645,22 @@ export const rewriteCliConversationTurn = async ({
       )
     }
   }
+  const stampedUserMessage = stampUserMessageTimeContext(userMessage, true)
   const content = encodeTurnContent({
     runtimeId,
-    text: userMessage.content
-      ? editorStateToPlainText(userMessage.content)
+    text: stampedUserMessage.content
+      ? editorStateToPlainText(stampedUserMessage.content)
       : '',
-    mentionables: userMessage.mentionables,
-    selectedSkills: userMessage.selectedSkills,
-    timeContext: userMessage.timeContext,
+    mentionables: stampedUserMessage.mentionables,
+    selectedSkills: stampedUserMessage.selectedSkills,
+    timeContext: stampedUserMessage.timeContext,
+    environmentContext,
   })
   await controller.rewriteTurn({
     sourceUserMessageId,
-    userMessage,
+    userMessage: stampedUserMessage,
     content,
-    selectedSkills: userMessage.selectedSkills,
+    selectedSkills: stampedUserMessage.selectedSkills,
   })
   const sessionRef = controller.getSnapshot().sessionRef
   if (!sessionRef) {
@@ -675,7 +678,7 @@ export const rewriteCliConversationTurn = async ({
     await scope.sessionService.recordUserDisplay(
       sessionRef,
       content,
-      getLatestUserMessage(rewriteSnapshot, userMessage),
+      getLatestUserMessage(rewriteSnapshot, stampedUserMessage),
       getTurnConfiguration(rewriteSnapshot),
     )
     await scope.sessionService.recordOpenedSession({
@@ -688,5 +691,5 @@ export const rewriteCliConversationTurn = async ({
   } catch (error) {
     overlayError = toError(error)
   }
-  return { sessionRef, userMessage, overlayError }
+  return { sessionRef, userMessage: stampedUserMessage, overlayError }
 }
