@@ -36,7 +36,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   const composerRef = useRef<HTMLDivElement>(null)
 
   const [activeTab, setActiveTab] = useState<SparkleTab>('tab-completion')
-  const [showTabAdvanced, setShowTabAdvanced] = useState(false)
 
   const orderedEnabledModels = useMemo(() => {
     const enabledModels = settings.chatModels.filter(
@@ -111,22 +110,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     return parseInt(trimmed, 10)
   }
 
-  const parseFloatInput = (value: string) => {
-    const trimmed = value.trim()
-    if (trimmed.length === 0) return null
-    if (!/^-?\d*(?:\.\d*)?$/.test(trimmed)) return null
-    if (
-      trimmed === '-' ||
-      trimmed === '.' ||
-      trimmed === '-.' ||
-      trimmed.endsWith('.')
-    ) {
-      return null
-    }
-    const parsed = Number(trimmed)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-
   const enableSmartSpace = settings.continuationOptions.enableSmartSpace ?? true
   const smartSpaceTriggerMode =
     settings.continuationOptions.smartSpaceTriggerMode ?? 'single-space'
@@ -159,14 +142,15 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     DEFAULT_TAB_COMPLETION_TRIGGERS
 
   const [tabNumberInputs, setTabNumberInputs] = useState<NumberInputState>({
-    maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
     autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
     autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
-    contextRange: String(tabCompletionOptions.contextRange),
-    minContextLength: String(tabCompletionOptions.minContextLength),
-    temperature: String(tabCompletionOptions.temperature),
-    requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+    requestTimeoutSeconds: String(
+      Math.max(
+        1,
+        Math.round(tabCompletionOptions.requestTimeoutMs / 1000) || 12,
+      ),
+    ),
   })
   const [quickAskNumberInputs, setQuickAskNumberInputs] =
     useState<NumberInputState>({
@@ -176,23 +160,20 @@ const Composer: React.FC<ComposerProps> = (_props) => {
 
   useEffect(() => {
     setTabNumberInputs({
-      maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
       triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
       autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
       autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
-      contextRange: String(tabCompletionOptions.contextRange),
-      minContextLength: String(tabCompletionOptions.minContextLength),
-      temperature: String(tabCompletionOptions.temperature),
-      requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+      requestTimeoutSeconds: String(
+        Math.max(
+          1,
+          Math.round(tabCompletionOptions.requestTimeoutMs / 1000) || 12,
+        ),
+      ),
     })
   }, [
-    tabCompletionOptions.maxSuggestionLength,
     tabCompletionOptions.triggerDelayMs,
     tabCompletionOptions.autoTriggerDelayMs,
     tabCompletionOptions.autoTriggerCooldownMs,
-    tabCompletionOptions.contextRange,
-    tabCompletionOptions.minContextLength,
-    tabCompletionOptions.temperature,
     tabCompletionOptions.requestTimeoutMs,
   ])
   useEffect(() => {
@@ -740,33 +721,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                     <div className="yolo-composer-option-info">
                       <div className="yolo-composer-option-title">
                         {t(
-                          'settings.continuation.tabCompletionMultipleCandidates',
-                          '生成多条候选',
-                        )}
-                      </div>
-                      <div className="yolo-composer-option-desc">
-                        {t(
-                          'settings.continuation.tabCompletionMultipleCandidatesDesc',
-                          '开启后将会生成三条补全建议。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="yolo-composer-option-control">
-                      <ObsidianToggle
-                        value={tabCompletionOptions.multipleCandidatesEnabled}
-                        onChange={(value) => {
-                          updateTabCompletionOptions({
-                            multipleCandidatesEnabled: value,
-                          })
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="yolo-composer-option">
-                    <div className="yolo-composer-option-info">
-                      <div className="yolo-composer-option-title">
-                        {t(
                           'settings.continuation.tabCompletionModel',
                           '补全模型',
                         )}
@@ -804,52 +758,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                       updateTabCompletionOptions({ reasoningLevel: level })
                     }}
                   />
-
-                  <div className="yolo-composer-option">
-                    <div className="yolo-composer-option-info">
-                      <div className="yolo-composer-option-title">
-                        {t(
-                          'settings.continuation.tabCompletionMaxSuggestionLength',
-                          '最大补全长度',
-                        )}
-                      </div>
-                      <div className="yolo-composer-option-desc">
-                        {t(
-                          'settings.continuation.tabCompletionMaxSuggestionLengthDesc',
-                          '控制单次建议的最大长度。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="yolo-composer-option-control">
-                      <ObsidianTextInput
-                        type="number"
-                        value={tabNumberInputs.maxSuggestionLength}
-                        onChange={(value) => {
-                          setTabNumberInputs((prev) => ({
-                            ...prev,
-                            maxSuggestionLength: value,
-                          }))
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) return
-                          const next = Math.max(20, parsed)
-                          updateTabCompletionOptions({
-                            maxSuggestionLength: next,
-                          })
-                        }}
-                        onBlur={(value) => {
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              maxSuggestionLength: String(
-                                tabCompletionOptions.maxSuggestionLength,
-                              ),
-                            }))
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
 
                   <div className="yolo-composer-option">
                     <div className="yolo-composer-option-info">
@@ -928,6 +836,82 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                           )}
                         </button>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="yolo-composer-option">
+                    <div className="yolo-composer-option-info">
+                      <div className="yolo-composer-option-title">
+                        {t(
+                          'settings.continuation.tabCompletionRequestTimeout',
+                          '请求超时（秒）',
+                        )}
+                      </div>
+                    </div>
+                    <div className="yolo-composer-option-control">
+                      <ObsidianTextInput
+                        type="number"
+                        value={tabNumberInputs.requestTimeoutSeconds}
+                        onChange={(value) => {
+                          setTabNumberInputs((prev) => ({
+                            ...prev,
+                            requestTimeoutSeconds: value,
+                          }))
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) return
+                          const seconds = Math.min(120, Math.max(1, parsed))
+                          updateTabCompletionOptions({
+                            requestTimeoutMs: seconds * 1000,
+                          })
+                        }}
+                        onBlur={(value) => {
+                          const parsed = parseIntegerInput(value)
+                          if (parsed === null) {
+                            setTabNumberInputs((prev) => ({
+                              ...prev,
+                              requestTimeoutSeconds: String(
+                                Math.max(
+                                  1,
+                                  Math.round(
+                                    tabCompletionOptions.requestTimeoutMs /
+                                      1000,
+                                  ) || 12,
+                                ),
+                              ),
+                            }))
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="yolo-composer-option">
+                    <div className="yolo-composer-option-info">
+                      <div className="yolo-composer-option-title">
+                        {t(
+                          'settings.continuation.tabCompletionConstraints',
+                          '补全约束',
+                        )}
+                      </div>
+                      <div className="yolo-composer-option-desc">
+                        {t(
+                          'settings.continuation.tabCompletionConstraintsDesc',
+                          '插入到补全提示词中的附加规则。',
+                        )}
+                      </div>
+                    </div>
+                    <div className="yolo-composer-option-control yolo-composer-option-control--full">
+                      <ObsidianTextArea
+                        value={
+                          settings.continuationOptions
+                            .tabCompletionConstraints ?? ''
+                        }
+                        onChange={(value: string) => {
+                          updateContinuationOptions({
+                            tabCompletionConstraints: value,
+                          })
+                        }}
+                      />
                     </div>
                   </div>
                 </>
@@ -1267,257 +1251,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               </section>
             )}
 
-            {enableTabCompletion && (
-              <section className="yolo-composer-section yolo-composer-section--advanced">
-                <header className="yolo-composer-heading">
-                  <div className="yolo-composer-heading-title">
-                    {t(
-                      'settings.continuation.tabCompletionAdvanced',
-                      '高级设置',
-                    )}
-                  </div>
-                  <div className="yolo-composer-heading-desc">
-                    {t(
-                      'settings.continuation.tabCompletionAdvancedSectionDesc',
-                      '配置 Tab 补全的高级参数。',
-                    )}
-                  </div>
-                </header>
-
-                <div
-                  className={`yolo-settings-advanced-toggle yolo-clickable${
-                    showTabAdvanced ? ' is-expanded' : ''
-                  }`}
-                  onClick={() => setShowTabAdvanced((prev) => !prev)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setShowTabAdvanced((prev) => !prev)
-                    }
-                  }}
-                >
-                  <span className="yolo-settings-advanced-toggle-icon">▶</span>
-                  {t('settings.continuation.tabCompletionAdvanced', '高级设置')}
-                </div>
-
-                {showTabAdvanced && (
-                  <>
-                    <div className="yolo-composer-option">
-                      <div className="yolo-composer-option-info">
-                        <div className="yolo-composer-option-title">
-                          {t(
-                            'settings.continuation.tabCompletionContextRange',
-                            '上下文范围',
-                          )}
-                        </div>
-                        <div className="yolo-composer-option-desc">
-                          {t(
-                            'settings.continuation.tabCompletionContextRangeDesc',
-                            '控制上下文范围大小。',
-                          )}
-                        </div>
-                      </div>
-                      <div className="yolo-composer-option-control">
-                        <ObsidianTextInput
-                          type="number"
-                          value={tabNumberInputs.contextRange}
-                          onChange={(value) => {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              contextRange: value,
-                            }))
-                            const parsed = parseIntegerInput(value)
-                            if (parsed === null) return
-                            const next = Math.max(500, parsed)
-                            updateTabCompletionOptions({ contextRange: next })
-                          }}
-                          onBlur={(value) => {
-                            const parsed = parseIntegerInput(value)
-                            if (parsed === null) {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                contextRange: String(
-                                  tabCompletionOptions.contextRange,
-                                ),
-                              }))
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="yolo-composer-option">
-                      <div className="yolo-composer-option-info">
-                        <div className="yolo-composer-option-title">
-                          {t(
-                            'settings.continuation.tabCompletionMinContextLength',
-                            '最小上下文长度',
-                          )}
-                        </div>
-                        <div className="yolo-composer-option-desc">
-                          {t(
-                            'settings.continuation.tabCompletionMinContextLengthDesc',
-                            '低于该长度不会触发补全。',
-                          )}
-                        </div>
-                      </div>
-                      <div className="yolo-composer-option-control">
-                        <ObsidianTextInput
-                          type="number"
-                          value={tabNumberInputs.minContextLength}
-                          onChange={(value) => {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              minContextLength: value,
-                            }))
-                            const parsed = parseIntegerInput(value)
-                            if (parsed === null) return
-                            const next = Math.max(0, parsed)
-                            updateTabCompletionOptions({
-                              minContextLength: next,
-                            })
-                          }}
-                          onBlur={(value) => {
-                            const parsed = parseIntegerInput(value)
-                            if (parsed === null) {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                minContextLength: String(
-                                  tabCompletionOptions.minContextLength,
-                                ),
-                              }))
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="yolo-composer-option">
-                      <div className="yolo-composer-option-info">
-                        <div className="yolo-composer-option-title">
-                          {t(
-                            'settings.continuation.tabCompletionTemperature',
-                            '温度',
-                          )}
-                        </div>
-                        <div className="yolo-composer-option-desc">
-                          {t(
-                            'settings.continuation.tabCompletionTemperatureDesc',
-                            '控制生成的发散程度。',
-                          )}
-                        </div>
-                      </div>
-                      <div className="yolo-composer-option-control">
-                        <ObsidianTextInput
-                          type="number"
-                          value={tabNumberInputs.temperature}
-                          onChange={(value) => {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              temperature: value,
-                            }))
-                            const parsed = parseFloatInput(value)
-                            if (parsed === null) return
-                            updateTabCompletionOptions({
-                              temperature: Math.min(Math.max(parsed, 0), 2),
-                            })
-                          }}
-                          onBlur={(value) => {
-                            const parsed = parseFloatInput(value)
-                            if (parsed === null) {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                temperature: String(
-                                  tabCompletionOptions.temperature,
-                                ),
-                              }))
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="yolo-composer-option">
-                      <div className="yolo-composer-option-info">
-                        <div className="yolo-composer-option-title">
-                          {t(
-                            'settings.continuation.tabCompletionRequestTimeout',
-                            '请求超时',
-                          )}
-                        </div>
-                        <div className="yolo-composer-option-desc">
-                          {t(
-                            'settings.continuation.tabCompletionRequestTimeoutDesc',
-                            '超过该时间将取消请求。',
-                          )}
-                        </div>
-                      </div>
-                      <div className="yolo-composer-option-control">
-                        <ObsidianTextInput
-                          type="number"
-                          value={tabNumberInputs.requestTimeoutMs}
-                          onChange={(value) => {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              requestTimeoutMs: value,
-                            }))
-                            const parsed = parseIntegerInput(value)
-                            if (parsed === null) return
-                            const next = Math.max(1000, parsed)
-                            updateTabCompletionOptions({
-                              requestTimeoutMs: next,
-                            })
-                          }}
-                          onBlur={(value) => {
-                            const parsed = parseIntegerInput(value)
-                            if (parsed === null) {
-                              setTabNumberInputs((prev) => ({
-                                ...prev,
-                                requestTimeoutMs: String(
-                                  tabCompletionOptions.requestTimeoutMs,
-                                ),
-                              }))
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="yolo-composer-option">
-                      <div className="yolo-composer-option-info">
-                        <div className="yolo-composer-option-title">
-                          {t(
-                            'settings.continuation.tabCompletionConstraints',
-                            '补全约束',
-                          )}
-                        </div>
-                        <div className="yolo-composer-option-desc">
-                          {t(
-                            'settings.continuation.tabCompletionConstraintsDesc',
-                            '插入到补全提示词中的附加规则。',
-                          )}
-                        </div>
-                      </div>
-                      <div className="yolo-composer-option-control yolo-composer-option-control--full">
-                        <ObsidianTextArea
-                          value={
-                            settings.continuationOptions
-                              .tabCompletionConstraints ?? ''
-                          }
-                          onChange={(value: string) => {
-                            updateContinuationOptions({
-                              tabCompletionConstraints: value,
-                            })
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-              </section>
-            )}
           </>
         )}
       </div>

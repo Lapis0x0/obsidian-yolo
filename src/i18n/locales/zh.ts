@@ -1497,9 +1497,9 @@ export const zh: TranslationKeys = {
       tabCompletionTemperature: '采样温度',
       tabCompletionTemperatureDesc:
         '控制补全的创造性（0 为确定性，值越大越发散）。',
-      tabCompletionRequestTimeout: '请求超时（毫秒）',
+      tabCompletionRequestTimeout: '请求超时（秒）',
       tabCompletionRequestTimeoutDesc:
-        '若补全请求超过该时间仍未返回则强制中止。',
+        '若补全请求超过该秒数仍未返回则强制中止。适合较慢或需要较长推理的模型。',
       tabCompletionConstraints: '补全约束',
       tabCompletionConstraintsDesc:
         '可选规则，会插入到 Tab 补全提示词中（例如“使用中文”或“匹配某种写作风格”）。',

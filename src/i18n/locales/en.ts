@@ -1618,9 +1618,9 @@ export const en: TranslationKeys = {
       tabCompletionTemperature: 'Sampling temperature',
       tabCompletionTemperatureDesc:
         'Controls creativity for prefix suggestions (0 = deterministic, higher = more diverse).',
-      tabCompletionRequestTimeout: 'Request timeout (ms)',
+      tabCompletionRequestTimeout: 'Request timeout (seconds)',
       tabCompletionRequestTimeoutDesc:
-        'Abort a prefix completion request if it takes longer than this time.',
+        'Abort a tab completion request if it takes longer than this many seconds. Raise it for slower or long-reasoning models.',
       tabCompletionConstraints: 'Tab completion constraints',
       tabCompletionConstraintsDesc:
         'Optional rules inserted into the tab completion prompt (for example, "write in another language" or "match a specific style").',

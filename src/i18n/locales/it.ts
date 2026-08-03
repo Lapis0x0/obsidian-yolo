@@ -1472,9 +1472,9 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletionTemperature: 'Temperatura',
       tabCompletionTemperatureDesc:
         'Controlla la casualità dei suggerimenti (0 = deterministico, 1 = creativo).',
-      tabCompletionRequestTimeout: 'Timeout richiesta (ms)',
+      tabCompletionRequestTimeout: 'Timeout richiesta (secondi)',
       tabCompletionRequestTimeoutDesc:
-        'Quanto tempo attendere una risposta dal modello prima del timeout.',
+        'Interrompe la richiesta di completamento se supera questo numero di secondi. Aumentalo per modelli più lenti o con ragionamento lungo.',
       tabCompletionConstraints: 'Vincoli completamento tab',
       tabCompletionConstraintsDesc:
         'Regole opzionali inserite nel prompt di completamento tab (ad esempio "scrivi in italiano" o "segui uno stile specifico").',

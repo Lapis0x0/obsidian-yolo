@@ -15,7 +15,6 @@ import {
   type TabCompletionLengthPreset,
   type TabCompletionTrigger,
   type YoloSettings,
-  computeMaxTokens,
   splitContextRange,
 } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
@@ -26,6 +25,8 @@ import type {
   TabCompletionCandidateStatus,
   TabCompletionDisplayPayload,
 } from '../inline-suggestion/inlineSuggestion'
+
+const TAB_COMPLETION_MIN_CONTEXT_LENGTH = 5
 
 type TabCompletionSuggestion = {
   editor: Editor
@@ -217,14 +218,10 @@ export class TabCompletionController {
       merged.contextRange,
     )
 
-    // Compute maxTokens from maxSuggestionLength
-    const maxTokens = computeMaxTokens(merged.maxSuggestionLength)
-
     return {
       ...merged,
       maxBeforeChars,
       maxAfterChars,
-      maxTokens,
       maxRetries: 1, // Fixed retry count
     }
   }
@@ -384,11 +381,11 @@ export class TabCompletionController {
     }, delay)
   }
 
-  private cleanCandidateText(text: string, maxLength: number): string {
+  private cleanCandidateText(text: string): string {
     let cleaned = text.replace(/\r\n/g, '\n').replace(/\s+$/, '')
     if (!cleaned.trim() || /^[\s\n\t]+$/.test(cleaned)) return ''
     cleaned = cleaned.replace(/^[\s\n\t]+/, '')
-    return cleaned.length > maxLength ? cleaned.slice(0, maxLength) : cleaned
+    return cleaned
   }
 
   private renderSuggestion(suggestion: TabCompletionSuggestion) {
@@ -439,7 +436,6 @@ export class TabCompletionController {
   private updateCandidatesFromRawText(
     suggestion: TabCompletionSuggestion,
     rawText: string,
-    maxSuggestionLength: number,
   ) {
     const rawCandidates = rawText
       .split(TAB_COMPLETION_CANDIDATE_SEPARATOR)
@@ -460,7 +456,7 @@ export class TabCompletionController {
         index === rawCandidates.length - 1
           ? trimPartialSeparator(rawCandidate)
           : rawCandidate
-      candidate.text = this.cleanCandidateText(displayText, maxSuggestionLength)
+      candidate.text = this.cleanCandidateText(displayText)
       candidate.status = index < completedCount ? 'complete' : 'generating'
     })
 
@@ -551,7 +547,7 @@ export class TabCompletionController {
       )
       const beforeLength = before.trim().length
       if (!before || beforeLength === 0) return
-      if (beforeWindowLength < options.minContextLength) return
+      if (beforeWindowLength < TAB_COMPLETION_MIN_CONTEXT_LENGTH) return
 
       let modelId = settings.continuationOptions?.tabCompletionModelId
       if (!modelId || modelId.length === 0) {
@@ -560,8 +556,7 @@ export class TabCompletionController {
       if (!modelId) return
 
       const sidebarOverrides = this.deps.getActiveConversationOverrides()
-      const { temperature, topP } =
-        this.deps.resolveContinuationParams(sidebarOverrides)
+      const { topP } = this.deps.resolveContinuationParams(sidebarOverrides)
 
       const { providerClient, model } = getChatModelClient({
         settings,
@@ -593,7 +588,7 @@ export class TabCompletionController {
         baseSystemPrompt,
         combinedConstraints,
       )
-      const multipleCandidatesEnabled = options.multipleCandidatesEnabled
+      const multipleCandidatesEnabled = true
       const systemPrompt = multipleCandidatesEnabled
         ? `${basePrompt}\n\n${TAB_COMPLETION_MULTIPLE_CANDIDATES_CONSTRAINT}`
         : basePrompt
@@ -638,19 +633,8 @@ export class TabCompletionController {
       const baseRequest: LLMRequestBase = {
         model: model.model,
         messages: requestMessages,
-        max_tokens: Math.max(
-          multipleCandidatesEnabled ? 48 : 16,
-          Math.min(options.maxTokens * suggestion.candidates.length, 6000),
-        ),
         // Tab 补全是延迟敏感场景，默认 'off'；用户可在设置中改为 'low'/'auto' 以适配强制推理的模型
         reasoningLevel: options.reasoningLevel,
-      }
-      if (typeof options.temperature === 'number') {
-        baseRequest.temperature = Math.min(Math.max(options.temperature, 0), 2)
-      } else if (typeof temperature === 'number') {
-        baseRequest.temperature = Math.min(Math.max(temperature, 0), 2)
-      } else {
-        baseRequest.temperature = DEFAULT_TAB_COMPLETION_OPTIONS.temperature
       }
       if (typeof topP === 'number') {
         baseRequest.top_p = topP
@@ -697,11 +681,7 @@ export class TabCompletionController {
                 }
 
                 if (!rawText.trim()) return
-                this.updateCandidatesFromRawText(
-                  suggestion,
-                  rawText,
-                  options.maxSuggestionLength,
-                )
+                this.updateCandidatesFromRawText(suggestion, rawText)
                 hasShownValidSuggestion = suggestion.candidates.some(
                   (candidate) => candidate.text.length > 0,
                 )
@@ -723,11 +703,7 @@ export class TabCompletionController {
               return
             if (editor.getSelection()?.length) return
 
-            this.updateCandidatesFromRawText(
-              suggestion,
-              finalText,
-              options.maxSuggestionLength,
-            )
+            this.updateCandidatesFromRawText(suggestion, finalText)
             this.finishCandidateGeneration(suggestion, false)
             if (timeoutHandle) clearTimeout(timeoutHandle)
             return

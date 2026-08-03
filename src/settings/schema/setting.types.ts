@@ -112,10 +112,10 @@ export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
   autoTriggerDelayMs: 3000,
   autoTriggerCooldownMs: 15000,
   triggerDelayMs: 3000,
-  minContextLength: 20,
+  minContextLength: 5,
   contextRange: 4000, // Total context chars, split 4:1 (3200 before, 800 after)
-  maxSuggestionLength: 2000,
-  temperature: 0.5,
+  maxSuggestionLength: 2000, // Legacy; no longer applied at request/render time
+  temperature: 0.5, // Legacy; tab completion no longer sends temperature
   requestTimeoutMs: 12000,
   // Tab 补全是延迟敏感场景，默认关闭推理；用户可在设置中改为 low / auto 以适配强制推理的模型（如 gpt-oss）
   reasoningLevel: 'off',
