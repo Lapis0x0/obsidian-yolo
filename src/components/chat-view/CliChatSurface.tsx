@@ -33,6 +33,7 @@ import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import DotLoader from '../common/DotLoader'
 
+import AssistantErrorCard from './AssistantErrorCard'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
@@ -693,8 +694,28 @@ export function CliChatSurface({
         )
       if (messageGroup.length === 0) return null
       if (!snapshot.sessionRef) {
-        throw new Error(
-          'CLI assistant/tool groups require a bound provider session.',
+        const errorMessage = messageGroup
+          .flatMap((message) =>
+            message.role === 'assistant' &&
+            message.metadata?.generationState === 'error' &&
+            message.metadata.errorMessage
+              ? [message.metadata.errorMessage]
+              : [],
+          )
+          .at(0)
+        return (
+          <div className="yolo-chat-messages-assistant">
+            <AssistantErrorCard
+              errorMessage={
+                errorMessage ??
+                snapshot.error ??
+                t(
+                  'chat.cliSurface.unboundMessageError',
+                  'CLI 会话尚未建立，无法显示这条 Provider 消息。',
+                )
+              }
+            />
+          </div>
         )
       }
       const nativeConversationId = getNativeConversationId(snapshot.sessionRef)
