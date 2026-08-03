@@ -1,43 +1,13 @@
-## 1.6.4.1 Polish & Sparkle Writing ✨
+## 1.6.4.2 Stability Hotfix 🛠️
 
-### 🧭 CLI Agent
-
-- Codex and Claude Code menus now expand on hover, matching the CLI/Agent interaction pattern.
-- Third-party provider models no longer break CLI Agent model picking or leave the list loading forever; YOLO uses the models Codex or Claude Code actually expose.
-- Fixed Codex failing to start for some Windows users, and improved auto-detection of common Codex and Claude Code install paths.
-
-### 🪟 Chat UI
-
-- Improved the chat header when the sidebar is compressed on narrow screens.
-- Fixed the standalone chat window’s right capsule toolbar getting clipped on wide screens.
-
-### 🔐 Auth Diagnostics
-
-- When the local ChatGPT OAuth callback server fails to start, YOLO now shows the port and underlying error so conflicts are easier to diagnose.
-
-### ✨ Sparkle Writing
-
-- Writing assistance is now branded as Sparkle (灵光写作). The sidebar entry and settings section stay in sync, with fewer low-value options in the way.
+- Fixed the chat view going blank when a Codex or Claude Code session fails to initialize. YOLO now shows the underlying error directly, making CLI, authentication, and third-party provider issues easier to diagnose.
+- Fixed ChatGPT OAuth failing to start its local callback server with a permission error on some Windows systems, and improved automatic callback port cleanup.
+- Fixed YOLO failing to load on Android after upgrading to 1.6.4.1.
 
 ---
 
-## 1.6.4.1 体验打磨与灵光写作 ✨
+## 1.6.4.2 稳定性热修复 🛠️
 
-### 🧭 CLI Agent
-
-- Codex 与 Claude Code 选择菜单支持悬停展开，交互与 CLI/Agent 一致。
-- 修复第三方 Provider 模型导致 CLI Agent 无法识别、模型列表一直加载的问题；现在会使用 Codex / Claude Code 实际可用的模型。
-- 修复部分 Windows 用户无法启动 Codex，并完善 Codex、Claude Code 常见安装路径识别。
-
-### 🪟 聊天界面
-
-- 优化窄屏下对话顶栏的压缩表现。
-- 修复独立聊天窗口宽屏时右侧胶囊工具栏贴边被裁切。
-
-### 🔐 登录诊断
-
-- ChatGPT OAuth 本地回调启动失败时，会给出具体端口和底层错误，方便排查占用与环境问题。
-
-### ✨ 灵光写作
-
-- 写作辅助统一为「灵光写作」（Sparkle）；侧边栏入口与设置分区对齐，并精简低价值设置项。
+- 修复 Codex 或 Claude Code 会话初始化失败时聊天界面黑屏的问题；现在会直接显示真实错误原因，方便排查 CLI、认证或第三方 Provider 配置。
+- 修复部分 Windows 环境下 ChatGPT OAuth 登录因本地回调服务器权限错误而无法启动的问题，并完善回调端口的自动释放。
+- 修复 Android 端升级至 1.6.4.1 后无法启用 YOLO 的问题。
