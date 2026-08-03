@@ -394,15 +394,24 @@ describe('CliChatSurface', () => {
     expect(capturedRuntimeConversation).toBe(sessionRef)
   })
 
-  it('fails fast when an assistant/tool group has no bound provider session', () => {
+  it('shows the original error without provider actions when session binding fails', () => {
+    const initializationError: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-initialization-error',
+      content: '',
+      metadata: {
+        generationState: 'error',
+        errorMessage: 'Provider initialization failed',
+      },
+    }
     const snapshot = makeSnapshot({
-      messages: [assistant, tool],
+      messages: [initializationError],
       sessionRef: null,
+      error: 'Provider initialization failed',
     })
 
-    expect(() => renderSurface(snapshot)).toThrow(
-      'CLI assistant/tool groups require a bound provider session.',
-    )
+    expect(renderSurface(snapshot)).toContain('Provider initialization failed')
+    expect(capturedRuntimeConversation).toBeUndefined()
   })
 
   it('renders the snapshot supplied by the single surface owner', () => {
