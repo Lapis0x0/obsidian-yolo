@@ -1,16 +1,16 @@
 export * from './actions'
-export * from './claude'
 export * from './cli-actions'
-export * from './codex'
 export * from './context-usage'
-export * from './conversation-controller'
-export * from './coordinator'
 export * from './desktop'
-export * from './model-catalog'
 export * from './permission-profile'
-export * from './session-index'
-export * from './session-service'
 export * from './turn-input'
 export * from './types'
-export * from './vault-session-index-store'
 export * from './yolo-actions'
+
+// This entry point is imported by the host chat surface, including mobile.
+// Keep desktop runtime implementations out of its static module graph.
+export type {
+  CliConversationController,
+  CliConversationSnapshot,
+} from './conversation-controller'
+export type { CliRuntimeScope } from './coordinator'
