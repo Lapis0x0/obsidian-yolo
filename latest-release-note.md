@@ -1,45 +1,61 @@
-## 1.6.4 Claude Code & Codex Native Sessions 🚀
+## 1.6.4.1 Polish & Sparkle Writing ✨
 
-### 🖥️ Native CLI Sessions
+### 🪟 Narrow Chat Header
 
-- Use Claude Code and Codex native sessions directly inside YOLO on desktop, with shared chat history, mode switching, and session management.
+- Improved the chat top bar layout when the sidebar is compressed on narrow screens.
 
-### ⚡ Faster Agent Responses
+### 🧭 CLI Runtime Menus
 
-- Sending a message no longer re-fetches MCP tools, recalculates tool tokens, or rescans historical attachments and skills every turn. Request status appears immediately while preparing, with clearer timing diagnostics. Refs #524
+- Codex and Claude Code selection menus now expand on hover, matching the CLI/Agent interaction pattern.
 
-### 🧩 Project Skills Discovery
+### 🤖 CLI Model Selection
 
-- YOLO Agent can now discover project-level Skills in your Vault that are managed by Claude Code, Codex, and similar tools.
+- Fixed third-party provider models not being recognized in CLI Agent, which left the model list loading forever. YOLO now uses the models actually available to Codex or Claude Code.
 
-### 🤖 Assistant Models
+### 🪟 Windows Codex Launch
 
-- Assistant models can follow the global default chat model. Newly created assistants use this setting by default.
+- Fixed Codex CLI Agent failing to start for some Windows users, and improved auto-detection of common Codex and Claude Code install paths.
 
-### 🪟 Settings Window Fix
+### 🔐 ChatGPT OAuth Errors
 
-- Fixed the module settings page being clipped or incomplete in Obsidian’s dedicated settings window.
+- When the local ChatGPT OAuth callback server fails to start, YOLO now shows the specific port and underlying error so port conflicts and environment issues are easier to diagnose.
+
+### 🪟 Floating Chat Toolbar
+
+- Fixed the right capsule toolbar in the standalone chat window getting clipped against the window edge on wide screens.
+
+### ✨ Sparkle Writing
+
+- Writing assistance is now branded as Sparkle (灵光写作). The sidebar entry and settings section are aligned, and less useful options have been trimmed to reduce noise.
 
 ---
 
-## 1.6.4 Claude Code 与 Codex 原生会话 🚀
+## 1.6.4.1 体验打磨与灵光写作 ✨
 
-### 🖥️ 原生 CLI 会话
+### 🪟 窄屏对话顶栏
 
-- 桌面端可在 YOLO 中直接使用 Claude Code 与 Codex 原生会话，并共享聊天历史、模式切换与会话管理。
+- 优化对话顶部栏在窄屏压缩时的样式表现。
 
-### ⚡ 更快的 Agent 响应
+### 🧭 CLI 运行时菜单
 
-- 发送消息后不再每轮重复拉取 MCP 工具、计算工具 token，以及扫描历史附件与技能。请求准备期间会立即显示状态，并提供更准确的耗时诊断。Refs #524
+- Codex 与 Claude Code 的选择菜单现可在悬停时直接展开，交互方式与 CLI/Agent 保持一致。
 
-### 🧩 项目级 Skills 发现
+### 🤖 CLI 模型选择
 
-- YOLO Agent 现在可以直接识别 Vault 中由 Claude Code、Codex 等工具管理的项目级 Skills。
+- 修复第三方 Provider 模型在 CLI Agent 中无法识别、模型列表持续加载的问题。现在 YOLO 会自动使用 Codex 或 Claude Code 实际可用的模型。
 
-### 🤖 助手模型
+### 🪟 Windows Codex 启动
 
-- 助手模型可选择「跟随默认模型」；新建助手默认跟随全局对话模型。
+- 修复部分 Windows 用户无法启动 Codex CLI Agent 的问题，并完善 Codex、Claude Code 常见安装路径的自动识别。
 
-### 🪟 设置窗口修复
+### 🔐 ChatGPT OAuth 报错
 
-- 修复新版 Obsidian 独立设置窗口中模块设置页显示不全的问题。
+- ChatGPT OAuth 本地回调服务启动失败时，现在会显示具体端口及底层错误原因，帮助快速定位端口占用或运行环境问题。
+
+### 🪟 独立聊天工具栏
+
+- 修复独立聊天窗口在宽屏状态下，右侧胶囊工具栏紧贴窗口边缘并被裁切的问题。
+
+### ✨ 灵光写作
+
+- 写作辅助能力统一命名为「灵光写作」（Sparkle），侧边栏入口与设置分区同步更新，并精简设置项以降低认知成本。
