@@ -528,9 +528,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                 </ObsidianSetting>
 
                 <ObsidianSetting
-                  name={t(
-                    'settings.continuation.tabCompletionRequestTimeout',
-                  )}
+                  name={t('settings.continuation.tabCompletionRequestTimeout')}
                   className="yolo-settings-card"
                 >
                   <ObsidianTextInput
@@ -571,9 +569,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
 
                 <div className="yolo-models-textarea-card">
                   <ObsidianSetting
-                    name={t(
-                      'settings.continuation.tabCompletionConstraints',
-                    )}
+                    name={t('settings.continuation.tabCompletionConstraints')}
                     desc={t(
                       'settings.continuation.tabCompletionConstraintsDesc',
                     )}
@@ -829,7 +825,6 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                     </ObsidianSetting>
                   </>
                 )}
-
               </>
             )}
           </div>

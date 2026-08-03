@@ -1250,7 +1250,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                 )}
               </section>
             )}
-
           </>
         )}
       </div>
