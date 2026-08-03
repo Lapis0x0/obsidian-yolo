@@ -971,8 +971,6 @@ export const it: DeepPartial<TranslationKeys> = {
       chatgptOAuthExpires: 'scade',
       chatgptOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare i modelli del tuo account ChatGPT Plus / Pro.',
-      chatgptOAuthStreamingNotice:
-        'ChatGPT OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
       chatgptOAuthPendingCode: 'Codice dispositivo corrente:',
       oauthDesktopOnly:
         'Il login OAuth è disponibile solo su desktop. Collegati prima da desktop.',
@@ -986,8 +984,6 @@ export const it: DeepPartial<TranslationKeys> = {
       geminiOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare la quota Gemini del tuo account Google.',
       geminiOAuthProject: 'progetto',
-      geminiOAuthStreamingNotice:
-        'Gemini OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
     },
     models: {
       title: 'Modelli',

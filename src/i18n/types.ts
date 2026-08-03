@@ -815,7 +815,6 @@ export type TranslationKeys = {
       chatgptOAuthConnected: string
       chatgptOAuthExpires: string
       chatgptOAuthDisconnectedHelp: string
-      chatgptOAuthStreamingNotice: string
       chatgptOAuthPendingCode?: string
       oauthDesktopOnly?: string
       geminiOAuthTitle?: string
@@ -827,7 +826,6 @@ export type TranslationKeys = {
       geminiOAuthExpires?: string
       geminiOAuthDisconnectedHelp?: string
       geminiOAuthProject?: string
-      geminiOAuthStreamingNotice?: string
     }
     models: {
       title: string

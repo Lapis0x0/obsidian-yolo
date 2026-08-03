@@ -222,12 +222,6 @@ function ChatGPTOAuthPanel({
           ? ` ${t('settings.providers.chatgptOAuthPendingCode', 'Current device code:')} ${pendingCode}`
           : ''}
       </div>
-      <div className="yolo-chatgpt-oauth-note">
-        {t(
-          'settings.providers.chatgptOAuthStreamingNotice',
-          'Due to Obsidian environment limitations, ChatGPT OAuth currently does not support streaming responses.',
-        )}
-      </div>
     </div>
   )
 }
@@ -359,12 +353,6 @@ function GeminiOAuthPanel({
                   'settings.providers.geminiOAuthDisconnectedHelp',
                   'Not connected. Connect to use Gemini quota from your Google account.',
                 )}
-      </div>
-      <div className="yolo-chatgpt-oauth-note">
-        {t(
-          'settings.providers.geminiOAuthStreamingNotice',
-          'Gemini OAuth will try streaming by default and automatically fall back to buffered responses when needed.',
-        )}
       </div>
     </div>
   )
