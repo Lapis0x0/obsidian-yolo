@@ -311,7 +311,10 @@ it('restores native compaction boundaries and hides their synthetic summaries', 
 
 class FakeQuery implements ClaudeSdkQuery {
   readonly interrupt = jest.fn(async () => undefined)
-  readonly initializationResult = jest.fn(async () => ({
+  readonly initializationResult = jest.fn<
+    ReturnType<ClaudeSdkQuery['initializationResult']>,
+    Parameters<ClaudeSdkQuery['initializationResult']>
+  >(async () => ({
     commands: [],
     agents: [],
     output_style: '',
