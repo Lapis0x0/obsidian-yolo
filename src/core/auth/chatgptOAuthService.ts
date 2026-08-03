@@ -445,9 +445,7 @@ export class ChatGPTOAuthService {
         const redirectUri = await this.startOAuthServer(port)
         return redirectUri
       } catch (error) {
-        failures.push(
-          `${OAUTH_BIND_HOST}:${port} — ${toErrorMessage(error)}`,
-        )
+        failures.push(`${OAUTH_BIND_HOST}:${port} — ${toErrorMessage(error)}`)
       }
     }
 
