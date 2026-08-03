@@ -8,8 +8,10 @@ const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
 const DEVICE_VERIFICATION_URI = `${ISSUER}/codex/device`
 const DEVICE_CODE_POLL_MARGIN_MS = 3000
-const BROWSER_OAUTH_PORTS = [1455, 1456, 1457]
-const OAUTH_CALLBACK_HOST = 'localhost'
+// Keep in sync with the Codex OAuth redirect URI allow-list.
+const BROWSER_OAUTH_PORTS = [1455, 1457]
+const OAUTH_BIND_HOST = '127.0.0.1'
+const OAUTH_REDIRECT_HOST = 'localhost'
 
 type PkceCodes = {
   verifier: string
@@ -213,6 +215,7 @@ export class ChatGPTOAuthService {
             return
           }
           this.pendingBrowserAuthorization = null
+          this.closeOAuthServer()
           reject(
             new ChatGPTOAuthError(
               'OAuth callback timeout - authorization took too long',
@@ -248,12 +251,13 @@ export class ChatGPTOAuthService {
   cancelPendingBrowserAuthorization(
     message = 'ChatGPT OAuth login was cancelled.',
   ) {
-    if (!this.pendingBrowserAuthorization) {
-      return
-    }
-
-    this.pendingBrowserAuthorization.reject(new ChatGPTOAuthError(message))
+    this.pendingBrowserAuthorization?.reject(new ChatGPTOAuthError(message))
     this.pendingBrowserAuthorization = null
+    this.closeOAuthServer()
+  }
+
+  dispose(): void {
+    this.cancelPendingBrowserAuthorization()
   }
 
   async beginDeviceAuthorization(): Promise<ChatGPTOAuthDeviceAuthorization> {
@@ -432,7 +436,7 @@ export class ChatGPTOAuthService {
 
   private async ensureOAuthServer(): Promise<string> {
     if (this.oauthServer && this.oauthPort) {
-      return `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`
+      return `http://${OAUTH_REDIRECT_HOST}:${this.oauthPort}/auth/callback`
     }
 
     const failures: string[] = []
@@ -442,7 +446,7 @@ export class ChatGPTOAuthService {
         return redirectUri
       } catch (error) {
         failures.push(
-          `${OAUTH_CALLBACK_HOST}:${port} — ${toErrorMessage(error)}`,
+          `${OAUTH_BIND_HOST}:${port} — ${toErrorMessage(error)}`,
         )
       }
     }
@@ -482,22 +486,29 @@ export class ChatGPTOAuthService {
           this.oauthServer = server
           this.oauthPort = (server.address() as AddressInfo).port
           resolve(
-            `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`,
+            `http://${OAUTH_REDIRECT_HOST}:${this.oauthPort}/auth/callback`,
           )
         }
 
         server.once('error', onError)
         server.once('listening', onListening)
-        server.listen(port, OAUTH_CALLBACK_HOST)
+        server.listen(port, OAUTH_BIND_HOST)
       })()
     })
+  }
+
+  private closeOAuthServer(): void {
+    const server = this.oauthServer
+    this.oauthServer = null
+    this.oauthPort = null
+    server?.close()
   }
 
   private async handleOAuthRequest(
     rawUrl: string,
     res: ServerResponse,
   ): Promise<void> {
-    const url = new URL(rawUrl, `http://${OAUTH_CALLBACK_HOST}`)
+    const url = new URL(rawUrl, `http://${OAUTH_REDIRECT_HOST}`)
 
     if (url.pathname === '/cancel') {
       this.cancelPendingBrowserAuthorization(
@@ -519,6 +530,7 @@ export class ChatGPTOAuthService {
       this.pendingBrowserAuthorization?.reject(new ChatGPTOAuthError(message))
       this.pendingBrowserAuthorization = null
       this.respondHtml(res, 400, `Authorization failed: ${message}`)
+      this.closeOAuthServer()
       return
     }
 
@@ -535,6 +547,7 @@ export class ChatGPTOAuthService {
       )
       this.pendingBrowserAuthorization = null
       this.respondHtml(res, 400, 'Invalid state')
+      this.closeOAuthServer()
       return
     }
 
@@ -543,7 +556,7 @@ export class ChatGPTOAuthService {
       const credential = await this.exchangeAuthorizationCode({
         code,
         codeVerifier: pending.pkce.verifier,
-        redirectUri: `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`,
+        redirectUri: `http://${OAUTH_REDIRECT_HOST}:${this.oauthPort}/auth/callback`,
       })
       await this.store.set(credential)
       pending.resolve(credential)
@@ -563,6 +576,8 @@ export class ChatGPTOAuthService {
         500,
         `Authorization failed: ${toErrorMessage(oauthError)}`,
       )
+    } finally {
+      this.closeOAuthServer()
     }
   }
 
@@ -573,6 +588,7 @@ export class ChatGPTOAuthService {
   ) {
     res.writeHead(statusCode, {
       'Content-Type': 'text/html; charset=utf-8',
+      Connection: 'close',
     })
     res.end(
       `<!doctype html><html><body><p>${message}</p><script>setTimeout(() => window.close(), 1500)</script></body></html>`,

@@ -31,6 +31,7 @@ import type {
   AgentService,
 } from './core/agent/service'
 import {
+  clearAllChatGPTOAuthServices,
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
@@ -2579,6 +2580,7 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    clearAllChatGPTOAuthServices()
     this.disposeCliRuntimeCoordinator()
     this.liteSkillRegistryDispose?.()
     this.liteSkillRegistryDispose = null

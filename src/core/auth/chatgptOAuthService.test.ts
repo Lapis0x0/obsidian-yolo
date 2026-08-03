@@ -46,7 +46,7 @@ describe('chatgptOAuthService helpers', () => {
   it('builds browser authorization url', async () => {
     const pkce = await generatePKCE()
     const url = new URL(
-      buildAuthorizeUrl('http://127.0.0.1:1455/auth/callback', pkce, 'state-1'),
+      buildAuthorizeUrl('http://localhost:1455/auth/callback', pkce, 'state-1'),
     )
 
     expect(url.origin).toBe('https://auth.openai.com')
@@ -56,7 +56,7 @@ describe('chatgptOAuthService helpers', () => {
     )
     expect(url.searchParams.get('state')).toBe('state-1')
     expect(url.searchParams.get('redirect_uri')).toBe(
-      'http://127.0.0.1:1455/auth/callback',
+      'http://localhost:1455/auth/callback',
     )
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('originator')).toBe('opencode')
@@ -100,9 +100,61 @@ describe('ChatGPTOAuthService', () => {
     )
 
     await expect(service.beginBrowserAuthorization()).rejects.toThrow(
-      'Failed to start local OAuth callback server: localhost:1455 — Node.js modules are unavailable in this Obsidian runtime.; localhost:1456 — Node.js modules are unavailable in this Obsidian runtime.; localhost:1457 — Node.js modules are unavailable in this Obsidian runtime.',
+      'Failed to start local OAuth callback server: 127.0.0.1:1455 — Node.js modules are unavailable in this Obsidian runtime.; 127.0.0.1:1457 — Node.js modules are unavailable in this Obsidian runtime.',
     )
-    expect(mockedLoadDesktopNodeModule).toHaveBeenCalledTimes(3)
+    expect(mockedLoadDesktopNodeModule).toHaveBeenCalledTimes(2)
+  })
+
+  it('binds the callback server to IPv4 while keeping localhost in the redirect URI', async () => {
+    const store = createStoreMock()
+    const service = new ChatGPTOAuthService(store)
+    let notifyListening: (() => void) | undefined
+    let handleRequest: jest.Mock | undefined
+    const server = {
+      once: jest.fn((event: string, listener: () => void) => {
+        if (event === 'listening') {
+          notifyListening = listener
+        }
+        return server
+      }),
+      removeListener: jest.fn(() => server),
+      listen: jest.fn(() => {
+        notifyListening?.()
+        return server
+      }),
+      address: jest.fn(() => ({ port: 1455 })),
+      close: jest.fn(),
+    }
+    const createServer = jest.fn((listener: unknown) => {
+      handleRequest = listener as jest.Mock
+      return server
+    })
+    mockedLoadDesktopNodeModule.mockResolvedValue({ createServer } as never)
+
+    const authorization = await service.beginBrowserAuthorization()
+
+    expect(server.listen).toHaveBeenCalledWith(1455, '127.0.0.1')
+    expect(authorization.redirectUri).toBe(
+      'http://localhost:1455/auth/callback',
+    )
+    expect(
+      new URL(authorization.authorizationUrl).searchParams.get('redirect_uri'),
+    ).toBe('http://localhost:1455/auth/callback')
+
+    const response = {
+      writeHead: jest.fn(),
+      end: jest.fn(),
+    }
+    const completion = expect(authorization.complete).rejects.toThrow(
+      'ChatGPT OAuth login was cancelled.',
+    )
+    handleRequest?.({ url: '/cancel' }, response)
+    await completion
+    expect(response.writeHead).toHaveBeenCalledWith(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      Connection: 'close',
+    })
+    expect(server.close).toHaveBeenCalledTimes(1)
   })
 
   it('starts device authorization', async () => {
