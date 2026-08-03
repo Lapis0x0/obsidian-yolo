@@ -19,6 +19,75 @@ const section = (label: string, body: string): string =>
 const namedContent = (name: string, content: string): string =>
   `${JSON.stringify(name)}\n${content}`
 
+export const CLI_ENVIRONMENT_CONTEXT_OPEN = '<yolo_environment_context>'
+export const CLI_ENVIRONMENT_CONTEXT_CLOSE = '</yolo_environment_context>'
+
+const locateCliEnvironmentContext = (
+  text: string,
+): { start: number; visiblePrefix: string } | null => {
+  const start = text.search(/\S/u)
+  if (start < 0) return null
+  if (text.startsWith(CLI_ENVIRONMENT_CONTEXT_OPEN, start)) {
+    return { start, visiblePrefix: '' }
+  }
+  const command = text.slice(start).match(/^\/[^\s]+\s+/u)?.[0]
+  if (!command) return null
+  const environmentStart = start + command.length
+  return text.startsWith(CLI_ENVIRONMENT_CONTEXT_OPEN, environmentStart)
+    ? { start: environmentStart, visiblePrefix: command.trimEnd() }
+    : null
+}
+
+const joinVisiblePrefix = (prefix: string, text: string): string =>
+  prefix ? `${prefix}${text ? ` ${text}` : ''}` : text
+
+export const stripCliEnvironmentContextFromText = (text: string): string => {
+  const located = locateCliEnvironmentContext(text)
+  if (!located) return text
+  const closeIndex = text.indexOf(
+    CLI_ENVIRONMENT_CONTEXT_CLOSE,
+    located.start + CLI_ENVIRONMENT_CONTEXT_OPEN.length,
+  )
+  if (closeIndex < 0) return text
+  const visibleText = text
+    .slice(closeIndex + CLI_ENVIRONMENT_CONTEXT_CLOSE.length)
+    .replace(/^(?:[\t ]*\r?\n){0,2}/u, '')
+  return joinVisiblePrefix(located.visiblePrefix, visibleText)
+}
+
+export const stripCliEnvironmentContext = (
+  content: string | ContentPart[],
+): string | ContentPart[] => {
+  if (typeof content === 'string') {
+    return stripCliEnvironmentContextFromText(content)
+  }
+  const first = content[0]
+  if (first?.type !== 'text') return content
+  const located = locateCliEnvironmentContext(first.text)
+  if (!located) return content
+
+  for (let index = 0; index < content.length; index += 1) {
+    const part = content[index]
+    if (part?.type !== 'text') continue
+    const closeIndex = part.text.indexOf(CLI_ENVIRONMENT_CONTEXT_CLOSE)
+    if (closeIndex < 0) continue
+    const visibleText = part.text
+      .slice(closeIndex + CLI_ENVIRONMENT_CONTEXT_CLOSE.length)
+      .replace(/^(?:[\t ]*\r?\n){0,2}/u, '')
+    const prefixedVisibleText = joinVisiblePrefix(
+      located.visiblePrefix,
+      visibleText,
+    )
+    return [
+      ...(prefixedVisibleText
+        ? [{ type: 'text' as const, text: prefixedVisibleText }]
+        : []),
+      ...content.slice(index + 1),
+    ]
+  }
+  return content
+}
+
 const describeMentionable = (
   mentionable: Exclude<Mentionable, { type: 'image' | 'pdf' | 'model' }>,
 ): string => {
@@ -57,19 +126,43 @@ const describeMentionable = (
 const buildText = ({
   text,
   references,
-  timeContext,
 }: {
   text: string
   references: string[]
-  timeContext?: string
 }): string => {
   const parts: string[] = []
-  if (timeContext) parts.push(`<current_time>${timeContext}</current_time>`)
   if (references.length > 0) {
     parts.push(section('references', references.join('\n\n')))
   }
   if (text.trim()) parts.push(text)
   return parts.join('\n\n')
+}
+
+const buildEnvironmentParts = (
+  timeContext: string | undefined,
+  environmentContext: readonly ContentPart[],
+): ContentPart[] => {
+  if (!timeContext && environmentContext.length === 0) return []
+
+  const parts: ContentPart[] = []
+  let text = CLI_ENVIRONMENT_CONTEXT_OPEN
+  if (timeContext) {
+    text += `\n<current_time>${timeContext}</current_time>`
+  }
+
+  for (const part of environmentContext) {
+    if (part.type === 'text') {
+      text += `\n\n${part.text}`
+      continue
+    }
+    if (text) parts.push({ type: 'text', text })
+    parts.push(part)
+    text = ''
+  }
+
+  text += `${text ? '\n' : ''}${CLI_ENVIRONMENT_CONTEXT_CLOSE}`
+  parts.push({ type: 'text', text })
+  return parts
 }
 
 /**
@@ -135,21 +228,36 @@ export const buildCliTurnContent = ({
   const textPart = buildText({
     text,
     references,
-    timeContext,
   })
   const selectedClaudeSkill =
     runtimeId === 'claude-code' ? selectedSkills.at(-1) : undefined
-  const nativeTextPart = selectedClaudeSkill
-    ? `/${selectedClaudeSkill.name}${textPart ? ` ${textPart}` : ''}`
-    : textPart
-  if (binaryParts.length === 0 && environmentContext.length === 0) {
-    return nativeTextPart
+  const environmentParts = buildEnvironmentParts(
+    timeContext,
+    environmentContext,
+  )
+  if (binaryParts.length === 0 && environmentParts.length === 0) {
+    return selectedClaudeSkill
+      ? `/${selectedClaudeSkill.name}${textPart ? ` ${textPart}` : ''}`
+      : textPart
   }
-  return [
-    ...(nativeTextPart
-      ? [{ type: 'text' as const, text: nativeTextPart }]
-      : []),
-    ...environmentContext,
+  const contentParts: ContentPart[] = [
+    ...environmentParts,
+    ...(textPart ? [{ type: 'text' as const, text: textPart }] : []),
     ...binaryParts,
   ]
+  if (selectedClaudeSkill) {
+    const command = `/${selectedClaudeSkill.name}`
+    const firstPart = contentParts[0]
+    if (firstPart?.type === 'text') {
+      contentParts[0] = {
+        type: 'text',
+        text: `${command}${firstPart.text ? ` ${firstPart.text}` : ''}`,
+      }
+    } else {
+      contentParts.unshift({ type: 'text', text: command })
+    }
+  }
+  return contentParts.every((part) => part.type === 'text')
+    ? contentParts.map((part) => part.text).join('\n\n')
+    : contentParts
 }

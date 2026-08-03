@@ -61,7 +61,7 @@ describe('Codex JSONL history', () => {
     expect(messages).toMatchObject([
       {
         role: 'user',
-        id: 'codex-user-turn-turn-1',
+        id: 'codex-user-client-client-user-1',
         promptContent: 'inspect the vault',
       },
       { role: 'assistant', reasoning: 'I should inspect it.' },

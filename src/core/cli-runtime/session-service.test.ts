@@ -142,6 +142,69 @@ describe('CliSessionService', () => {
     })
   })
 
+  it('restores Codex display content by client id when native history rewrites the transport text', async () => {
+    const index = new MemoryIndex()
+    const service = new CliSessionService({ app, indexStore: index })
+    const ref = { runtimeId: 'codex' as const, nativeSessionId: 'thread-1' }
+    const content = {
+      root: { children: [], type: 'root', version: 1 },
+    } as never
+
+    await service.recordUserDisplay(
+      ref,
+      'transport before provider normalization',
+      {
+        role: 'user',
+        id: 'local-user-id',
+        content,
+        promptContent: null,
+        mentionables: [],
+      },
+    )
+
+    await expect(
+      service.restoreUserDisplays(ref, [
+        {
+          role: 'user',
+          id: 'codex-user-client-local-user-id',
+          content: null,
+          promptContent: 'different native history representation',
+          mentionables: [],
+        },
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: 'codex-user-client-local-user-id',
+        content,
+        promptContent: null,
+      }),
+    ])
+  })
+
+  it('hides YOLO environment context when no display overlay is available', async () => {
+    const service = new CliSessionService({
+      app,
+      indexStore: new MemoryIndex(),
+    })
+    const ref = { runtimeId: 'codex' as const, nativeSessionId: 'thread-1' }
+
+    await expect(
+      service.restoreUserDisplays(ref, [
+        {
+          role: 'user',
+          id: 'codex-user-client-missing-overlay',
+          content: null,
+          promptContent:
+            '<yolo_environment_context>\n<context>hidden</context>\n' +
+            '</yolo_environment_context>\n\nVisible message',
+          mentionables: [],
+        },
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({ promptContent: 'Visible message' }),
+    ])
+  })
+
   it('keeps repeated identical prompts bound to their own turn configuration', async () => {
     const index = new MemoryIndex()
     const service = new CliSessionService({ app, indexStore: index })

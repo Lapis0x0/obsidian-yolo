@@ -13,12 +13,14 @@ import {
 } from '../../utils/chat/mentionable'
 import { sha256HexPrefix16 } from '../../utils/common/content-hash'
 
+import { parseCodexUserMessageId } from './codex/mapping'
 import {
   type CliSessionIndexEntry,
   type CliSessionIndexStore,
   createCliSessionIndexEntry,
 } from './session-index'
 import { attachCliTurnEditSummary } from './turn-edit-summary'
+import { stripCliEnvironmentContext } from './turn-input'
 import type {
   CliContextUsage,
   CliSessionHydration,
@@ -26,6 +28,48 @@ import type {
   CliSessionRef,
   CliTurnConfiguration,
 } from './types'
+
+type CliTurnOverlay = NonNullable<CliSessionIndexEntry['turnOverlays']>[number]
+
+const getOverlayClientUserMessageId = (
+  ref: CliSessionRef,
+  messageId: string,
+): string => {
+  if (ref.runtimeId === 'claude-code') return messageId
+  const locator = parseCodexUserMessageId(messageId)
+  return locator.kind === 'client' ? locator.id : messageId
+}
+
+const getHydratedClientUserMessageId = (
+  ref: CliSessionRef,
+  messageId: string,
+): string | null => {
+  if (ref.runtimeId === 'claude-code') return messageId
+  const locator = parseCodexUserMessageId(messageId)
+  return locator.kind === 'client' ? locator.id : null
+}
+
+const getStoredOverlayClientUserMessageId = (
+  ref: CliSessionRef,
+  overlay: CliTurnOverlay,
+): string | null => {
+  if (overlay.clientUserMessageId) return overlay.clientUserMessageId
+  if (ref.runtimeId === 'claude-code') return overlay.userMessage.id
+  const messageId = overlay.userMessage.id
+  if (!messageId.startsWith('codex-user-')) return messageId
+  const locator = parseCodexUserMessageId(messageId)
+  return locator.kind === 'client' ? locator.id : null
+}
+
+const stripHydratedCliEnvironmentContext = (
+  message: ChatUserMessage,
+): ChatUserMessage =>
+  message.promptContent !== null
+    ? {
+        ...message,
+        promptContent: stripCliEnvironmentContext(message.promptContent),
+      }
+    : message
 
 export class CliSessionService {
   constructor({
@@ -76,6 +120,7 @@ export class CliSessionService {
         turnOverlays: [
           ...(existing?.turnOverlays ?? []),
           {
+            clientUserMessageId: getOverlayClientUserMessageId(ref, message.id),
             transportHash,
             userMessage: serialized,
             ...(configuration ? { configuration } : {}),
@@ -230,17 +275,30 @@ export class CliSessionService {
         restoredMessages.push(message)
         continue
       }
-      const transportHash = await hashTransportContent(
+      const hydratedClientUserMessageId = getHydratedClientUserMessageId(
         ref,
-        message.promptContent,
+        message.id,
       )
-      const overlayIndex = turnOverlays.findIndex(
+      let overlayIndex = turnOverlays.findIndex(
         (overlay, index) =>
           !consumedOverlayIndexes.has(index) &&
-          overlay.transportHash === transportHash,
+          hydratedClientUserMessageId !== null &&
+          getStoredOverlayClientUserMessageId(ref, overlay) ===
+            hydratedClientUserMessageId,
       )
       if (overlayIndex < 0) {
-        restoredMessages.push(message)
+        const transportHash = await hashTransportContent(
+          ref,
+          message.promptContent,
+        )
+        overlayIndex = turnOverlays.findIndex(
+          (overlay, index) =>
+            !consumedOverlayIndexes.has(index) &&
+            overlay.transportHash === transportHash,
+        )
+      }
+      if (overlayIndex < 0) {
+        restoredMessages.push(stripHydratedCliEnvironmentContext(message))
         continue
       }
       consumedOverlayIndexes.add(overlayIndex)

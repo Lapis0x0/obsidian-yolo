@@ -38,6 +38,7 @@ const cliTurnConfigurationSchema = z.object({
 })
 
 const cliTurnOverlaySchema = z.object({
+  clientUserMessageId: z.string().min(1).optional(),
   transportHash: z.string(),
   userMessage: serializedUserMessageSchema,
   configuration: cliTurnConfigurationSchema.optional(),

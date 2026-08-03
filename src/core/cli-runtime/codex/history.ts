@@ -107,10 +107,10 @@ const createUserMessage = (
   const clientId = readString(payload, 'client_id')
   return {
     role: 'user',
-    id: currentTurnId
-      ? `codex-user-turn-${currentTurnId}`
-      : clientId
-        ? `codex-user-client-${clientId}`
+    id: clientId
+      ? `codex-user-client-${clientId}`
+      : currentTurnId
+        ? `codex-user-turn-${currentTurnId}`
         : `codex-history-user-${lineIndex}`,
     content: null,
     promptContent: visibleText,

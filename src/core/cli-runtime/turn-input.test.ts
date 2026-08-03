@@ -2,7 +2,11 @@ import { TFile, TFolder } from 'obsidian'
 
 import type { Mentionable } from '../../types/mentionable'
 
-import { buildCliTurnContent } from './turn-input'
+import {
+  buildCliTurnContent,
+  stripCliEnvironmentContext,
+  stripCliEnvironmentContextFromText,
+} from './turn-input'
 
 describe('buildCliTurnContent', () => {
   it('encodes vault references, selected skills, and time without YOLO context compilation', () => {
@@ -87,7 +91,7 @@ describe('buildCliTurnContent', () => {
     ])
   })
 
-  it('appends the captured environment context to the submitted CLI turn', () => {
+  it('places time and focus context together before the user-authored text', () => {
     const content = buildCliTurnContent({
       runtimeId: 'codex',
       text: 'Continue from here.',
@@ -101,15 +105,62 @@ describe('buildCliTurnContent', () => {
       ],
     })
 
+    expect(content).toBe(
+      '<yolo_environment_context>\n' +
+        '<current_time>2026-08-03 10:15 (Monday)</current_time>\n\n' +
+        '# Current Context\nFile: Notes/plan.md\nCursor: line 42\n' +
+        '</yolo_environment_context>\n\n' +
+        'Continue from here.',
+    )
+  })
+
+  it('strips only a leading, complete YOLO environment block', () => {
+    expect(
+      stripCliEnvironmentContextFromText(
+        '<yolo_environment_context>\n<context>hidden</context>\n' +
+          '</yolo_environment_context>\n\nVisible message',
+      ),
+    ).toBe('Visible message')
+    expect(
+      stripCliEnvironmentContextFromText(
+        'Keep <yolo_environment_context>literal user text</yolo_environment_context>',
+      ),
+    ).toBe(
+      'Keep <yolo_environment_context>literal user text</yolo_environment_context>',
+    )
+  })
+
+  it('keeps an auto-attached focus image inside the environment block before user text', () => {
+    const content = buildCliTurnContent({
+      runtimeId: 'codex',
+      text: 'What am I viewing?',
+      mentionables: [],
+      timeContext: '2026-08-03 17:45 (Monday)',
+      environmentContext: [
+        { type: 'text', text: 'The user is viewing this image.' },
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,AAA' },
+        },
+      ],
+    })
     expect(content).toEqual([
       {
         type: 'text',
-        text: '<current_time>2026-08-03 10:15 (Monday)</current_time>\n\nContinue from here.',
+        text:
+          '<yolo_environment_context>\n' +
+          '<current_time>2026-08-03 17:45 (Monday)</current_time>\n\n' +
+          'The user is viewing this image.',
       },
       {
-        type: 'text',
-        text: '# Current Context\nFile: Notes/plan.md\nCursor: line 42',
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,AAA' },
       },
+      { type: 'text', text: '</yolo_environment_context>' },
+      { type: 'text', text: 'What am I viewing?' },
+    ])
+    expect(stripCliEnvironmentContext(content)).toEqual([
+      { type: 'text', text: 'What am I viewing?' },
     ])
   })
 
@@ -192,5 +243,35 @@ describe('buildCliTurnContent', () => {
         ],
       }),
     ).toBe('/review Review this change.')
+  })
+
+  it('keeps a Claude skill command first while placing environment context above user text', () => {
+    const content = buildCliTurnContent({
+      runtimeId: 'claude-code',
+      text: 'Review this change.',
+      mentionables: [],
+      selectedSkills: [
+        {
+          name: 'review',
+          description: 'Review code',
+          path: 'claude-code://skills/review',
+        },
+      ],
+      timeContext: '2026-08-03 18:00 (Monday)',
+      environmentContext: [
+        { type: 'text', text: '# Current Context\nFile: Notes/plan.md' },
+      ],
+    })
+
+    expect(content).toBe(
+      '/review <yolo_environment_context>\n' +
+        '<current_time>2026-08-03 18:00 (Monday)</current_time>\n\n' +
+        '# Current Context\nFile: Notes/plan.md\n' +
+        '</yolo_environment_context>\n\n' +
+        'Review this change.',
+    )
+    expect(stripCliEnvironmentContext(content)).toBe(
+      '/review Review this change.',
+    )
   })
 })
