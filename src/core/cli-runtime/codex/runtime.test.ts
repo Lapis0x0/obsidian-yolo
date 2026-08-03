@@ -18,6 +18,10 @@ class RpcFakeProcess implements CodexProcessLike {
   requests: Array<{ method: string; params: Record<string, unknown> }> = []
   threadPages: Array<Array<typeof this.thread>> = []
   threadTurns: CodexTurn[] = []
+  modelListData?: unknown[]
+  modelListError?: string
+  configuredModel?: string
+  threadModel?: string
   threadIdForStart?: (params: Record<string, unknown>) => string
   stderr = ''
   private lineListener: ((line: string) => void) | null = null
@@ -57,6 +61,16 @@ class RpcFakeProcess implements CodexProcessLike {
     }
     if (request.id === undefined || !request.method) return
     this.requests.push({ method: request.method, params: request.params ?? {} })
+    if (request.method === 'model/list' && this.modelListError) {
+      queueMicrotask(() =>
+        this.emit({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: { code: -32603, message: this.modelListError },
+        }),
+      )
+      return
+    }
     const pageIndex =
       typeof request.params?.cursor === 'string'
         ? Number(request.params.cursor)
@@ -72,7 +86,7 @@ class RpcFakeProcess implements CodexProcessLike {
           }
         : request.method === 'model/list'
           ? {
-              data: [
+              data: this.modelListData ?? [
                 {
                   id: 'luna',
                   model: 'luna',
@@ -88,64 +102,67 @@ class RpcFakeProcess implements CodexProcessLike {
               ],
               nextCursor: null,
             }
-          : request.method === 'thread/read'
-            ? { thread: { ...this.thread, turns: this.threadTurns } }
-            : request.method === 'skills/list'
-              ? {
-                  data: [
-                    {
-                      cwd: '/vault',
-                      skills: [
-                        {
-                          name: 'review',
-                          description: 'Review changes',
-                          path: '/skills/review/SKILL.md',
-                          enabled: true,
-                        },
-                        {
-                          name: 'disabled',
-                          description: 'Disabled skill',
-                          path: '/skills/disabled/SKILL.md',
-                          enabled: false,
-                        },
-                      ],
-                    },
-                  ],
-                }
-              : request.method === 'thread/start' ||
-                  request.method === 'thread/resume'
+          : request.method === 'config/read'
+            ? { config: { model: this.configuredModel } }
+            : request.method === 'thread/read'
+              ? { thread: { ...this.thread, turns: this.threadTurns } }
+              : request.method === 'skills/list'
                 ? {
-                    thread: {
-                      ...this.thread,
-                      id:
-                        this.threadIdForStart?.(request.params ?? {}) ??
-                        this.thread.id,
-                    },
+                    data: [
+                      {
+                        cwd: '/vault',
+                        skills: [
+                          {
+                            name: 'review',
+                            description: 'Review changes',
+                            path: '/skills/review/SKILL.md',
+                            enabled: true,
+                          },
+                          {
+                            name: 'disabled',
+                            description: 'Disabled skill',
+                            path: '/skills/disabled/SKILL.md',
+                            enabled: false,
+                          },
+                        ],
+                      },
+                    ],
                   }
-                : request.method === 'thread/rollback'
+                : request.method === 'thread/start' ||
+                    request.method === 'thread/resume'
                   ? {
                       thread: {
                         ...this.thread,
-                        turns: this.threadTurns.slice(
-                          0,
-                          Math.max(
-                            0,
-                            this.threadTurns.length -
-                              Number(request.params?.numTurns ?? 0),
-                          ),
-                        ),
+                        id:
+                          this.threadIdForStart?.(request.params ?? {}) ??
+                          this.thread.id,
                       },
+                      ...(this.threadModel ? { model: this.threadModel } : {}),
                     }
-                  : request.method === 'turn/start'
+                  : request.method === 'thread/rollback'
                     ? {
-                        turn: {
-                          id: 'turn-1',
-                          items: [],
-                          status: 'inProgress',
-                          error: null,
+                        thread: {
+                          ...this.thread,
+                          turns: this.threadTurns.slice(
+                            0,
+                            Math.max(
+                              0,
+                              this.threadTurns.length -
+                                Number(request.params?.numTurns ?? 0),
+                            ),
+                          ),
                         },
                       }
-                    : {}
+                    : request.method === 'turn/start'
+                      ? {
+                          turn: {
+                            id: 'turn-1',
+                            items: [],
+                            status: 'inProgress',
+                            error: null,
+                          },
+                        }
+                      : {}
     queueMicrotask(() => this.emit({ jsonrpc: '2.0', id: request.id, result }))
   }
   onLine(listener: (line: string) => void): () => void {
@@ -173,6 +190,86 @@ class RpcFakeProcess implements CodexProcessLike {
 }
 
 describe('CodexCliRuntime', () => {
+  it('keeps the effective configured model when the native picker omits it', async () => {
+    const process = new RpcFakeProcess()
+    process.configuredModel = 'deepseek-v4-flash'
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await expect(runtime.listModels()).resolves.toEqual([
+      expect.objectContaining({ id: 'luna', label: 'Luna' }),
+      {
+        id: 'deepseek-v4-flash',
+        label: 'deepseek-v4-flash',
+        reasoningEfforts: [],
+      },
+    ])
+    await runtime.dispose()
+  })
+
+  it('uses the effective configured model when Codex has no picker catalog', async () => {
+    const process = new RpcFakeProcess()
+    process.modelListData = []
+    process.configuredModel = 'deepseek-v4-flash'
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await expect(runtime.listModels()).resolves.toEqual([
+      {
+        id: 'deepseek-v4-flash',
+        label: 'deepseek-v4-flash',
+        reasoningEfforts: [],
+      },
+    ])
+    await runtime.dispose()
+  })
+
+  it('uses the effective configured model when the native picker fails', async () => {
+    const process = new RpcFakeProcess()
+    process.modelListError = 'catalog unavailable'
+    process.configuredModel = 'deepseek-v4-flash'
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await expect(runtime.listModels()).resolves.toEqual([
+      {
+        id: 'deepseek-v4-flash',
+        label: 'deepseek-v4-flash',
+        reasoningEfforts: [],
+      },
+    ])
+    await runtime.dispose()
+  })
+
+  it('keeps the model actually bound by a thread when cached models are stale', async () => {
+    const process = new RpcFakeProcess()
+    process.threadModel = 'deepseek-v4-flash'
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    await runtime.ensureReady({})
+
+    await expect(
+      runtime.getConfiguration([
+        { id: 'luna', label: 'Luna', reasoningEfforts: [] },
+      ]),
+    ).resolves.toMatchObject({
+      modelId: 'deepseek-v4-flash',
+      models: [
+        { id: 'luna' },
+        { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash' },
+      ],
+    })
+    await runtime.dispose()
+  })
+
   it('hydrates from the durable JSONL transcript when one is available', async () => {
     const process = new RpcFakeProcess()
     process.threadTurns = [

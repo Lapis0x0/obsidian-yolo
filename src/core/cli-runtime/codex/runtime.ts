@@ -8,6 +8,7 @@ import {
   mapCodexTokenUsageUpdated,
   mapCodexTurnResponseUsage,
 } from '../context-usage'
+import { includeActiveCliModel } from '../model-catalog'
 import {
   type CliChatMode,
   type CodexSandboxMode,
@@ -52,6 +53,7 @@ import {
 } from './mapping'
 import type { CodexProcessOptions } from './process'
 import type {
+  ConfigReadResponse,
   CodexRawResponseItem,
   CodexSandboxPolicy,
   CodexServerRequest,
@@ -361,9 +363,10 @@ export class CodexCliRuntime implements CliRuntime {
     cachedModels?: readonly CliRuntimeModel[],
   ): Promise<CliRuntimeConfiguration> {
     if (!this.activeSessionRef) throw new Error('Codex runtime is not ready.')
-    const models = cachedModels?.length
-      ? cachedModels.map((model) => ({ ...model }))
-      : await this.listModels()
+    const models = includeActiveCliModel(
+      cachedModels?.length ? cachedModels : await this.listModels(),
+      this.modelId,
+    )
     this.modelId ??=
       models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null
     return {
@@ -619,17 +622,42 @@ export class CodexCliRuntime implements CliRuntime {
   async listModels(): Promise<CliRuntimeConfiguration['models']> {
     if (this.models) return this.models
     const host = await this.getHost()
+    const [catalogResult, configResult] = await Promise.allSettled([
+      this.fetchModelCatalog(host),
+      host.request<ConfigReadResponse>('config/read', {
+        cwd: this.options.cwd,
+        includeLayers: false,
+      }),
+    ])
+    const configuredModel =
+      configResult.status === 'fulfilled'
+        ? configResult.value.config.model
+        : undefined
+    this.modelId ??= configuredModel ?? null
+    if (
+      catalogResult.status === 'rejected' &&
+      configResult.status === 'rejected'
+    ) {
+      throw catalogResult.reason
+    }
+    this.models = includeActiveCliModel(
+      catalogResult.status === 'fulfilled' ? catalogResult.value : [],
+      configuredModel,
+    )
+    return this.models
+  }
+
+  private async fetchModelCatalog(
+    host: CodexAppServerHost,
+  ): Promise<CliRuntimeConfiguration['models']> {
     const models: CliRuntimeConfiguration['models'] = []
     let cursor: string | null = null
     do {
-      const response: ModelListResponse = await host.request<ModelListResponse>(
-        'model/list',
-        {
-          cursor,
-          limit: 100,
-          includeHidden: false,
-        },
-      )
+      const response = await host.request<ModelListResponse>('model/list', {
+        cursor,
+        limit: 100,
+        includeHidden: false,
+      })
       models.push(
         ...response.data
           .filter((model) => !model.hidden)
@@ -649,7 +677,6 @@ export class CodexCliRuntime implements CliRuntime {
       )
       cursor = response.nextCursor
     } while (cursor)
-    this.models = models
     return models
   }
 

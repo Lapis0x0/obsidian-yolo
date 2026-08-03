@@ -1671,7 +1671,7 @@ export type TranslationKeys = {
       transitionError?: string
     }
     cliControls?: {
-      loadingModels?: string
+      defaultModel?: string
       loadError?: string
       updateError?: string
     }

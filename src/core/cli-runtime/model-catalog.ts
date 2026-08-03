@@ -22,6 +22,23 @@ const sameModels = (
   right: readonly CliRuntimeModel[],
 ): boolean => JSON.stringify(left) === JSON.stringify(right)
 
+/** Keeps a provider-reported active model usable even when its picker omits it. */
+export const includeActiveCliModel = (
+  models: readonly CliRuntimeModel[],
+  modelId: string | null | undefined,
+  matches: (model: CliRuntimeModel, modelId: string) => boolean = (
+    model,
+    candidateId,
+  ) => model.id === candidateId,
+): CliRuntimeModel[] => {
+  const copied = models.map((model) => ({
+    ...model,
+    reasoningEfforts: model.reasoningEfforts.map((effort) => ({ ...effort })),
+  }))
+  if (!modelId || copied.some((model) => matches(model, modelId))) return copied
+  return [...copied, { id: modelId, label: modelId, reasoningEfforts: [] }]
+}
+
 export class CliModelCatalogService {
   private readonly models = new Map<CliRuntimeId, readonly CliRuntimeModel[]>()
   private readonly listeners = new Set<() => void>()

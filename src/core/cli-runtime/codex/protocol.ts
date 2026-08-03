@@ -188,6 +188,13 @@ export type ModelListResponse = {
   nextCursor: string | null
 }
 
+export type ConfigReadResponse = {
+  config: {
+    model?: string | null
+    model_provider?: string | null
+  }
+}
+
 export type CodexNotification = {
   method: string
   params: Record<string, unknown>

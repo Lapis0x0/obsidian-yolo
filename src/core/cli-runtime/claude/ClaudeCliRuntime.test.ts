@@ -1208,6 +1208,83 @@ describe('ClaudeCliRuntime', () => {
     ])
   })
 
+  it('uses the native default alias when it resolves to the active model', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.initializationResult.mockResolvedValueOnce({
+      commands: [],
+      agents: [],
+      output_style: '',
+      available_output_styles: [],
+      models: [
+        {
+          value: 'default',
+          resolvedModel: 'claude-custom-sonnet',
+          displayName: 'Default',
+          description: '',
+        },
+      ],
+      account: {
+        email: '',
+        organization: '',
+        subscriptionType: '',
+        tokenSource: 'none' as const,
+      },
+    })
+    queryInstance.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'claude-session',
+      model: 'claude-custom-sonnet',
+    } as SDKMessage)
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+    await expect(runtime.getConfiguration()).resolves.toMatchObject({
+      modelId: 'default',
+      models: [
+        {
+          id: 'default',
+          label: 'claude-custom-sonnet',
+          isDefault: true,
+        },
+      ],
+    })
+    await runtime.dispose()
+  })
+
+  it('keeps the active Claude model when the native picker omits it', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.push({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'claude-session',
+      model: 'claude-third-party-model',
+    } as SDKMessage)
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+    await expect(runtime.getConfiguration()).resolves.toEqual({
+      modelId: 'claude-third-party-model',
+      reasoningEffort: null,
+      models: [
+        {
+          id: 'claude-third-party-model',
+          label: 'claude-third-party-model',
+          reasoningEfforts: [],
+        },
+      ],
+    })
+    await runtime.dispose()
+  })
+
   it('does not inject YOLO plugins into the native Claude query', async () => {
     const { sdk, queryInputs } = createSdk()
     const runtime = new ClaudeCliRuntime({

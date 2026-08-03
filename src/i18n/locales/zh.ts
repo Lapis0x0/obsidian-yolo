@@ -1838,7 +1838,7 @@ export const zh: TranslationKeys = {
       transitionError: '无法离开当前 CLI 会话：{message}',
     },
     cliControls: {
-      loadingModels: '加载模型…',
+      defaultModel: '{provider} 默认模型',
       loadError: '无法加载 CLI 模型：{message}',
       updateError: '无法更新 CLI 配置：{message}',
     },

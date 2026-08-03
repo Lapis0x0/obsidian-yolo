@@ -37,6 +37,10 @@ export function CliRuntimeControls({
     ? configuration.models
     : cachedModels
   const providerLabel = runtimeId === 'codex' ? 'CODEX' : 'CLAUDE CODE'
+  const defaultModelLabel = t(
+    'chat.cliControls.defaultModel',
+    '{provider} default model',
+  ).replace('{provider}', runtimeId === 'codex' ? 'Codex' : 'Claude Code')
   const selectedModel =
     models.find((model) => model.id === configuration?.modelId) ??
     models.find((model) => model.isDefault) ??
@@ -70,7 +74,7 @@ export function CliRuntimeControls({
     <div className="yolo-cli-runtime-controls">
       <ModelSelect
         modelId={selectedModel?.id ?? LOADING_VALUE}
-        disabled={disabled || !configuration}
+        disabled={disabled || !configuration || models.length === 0}
         options={
           models.length > 0
             ? models.map((model) => ({
@@ -81,7 +85,7 @@ export function CliRuntimeControls({
             : [
                 {
                   id: LOADING_VALUE,
-                  label: t('chat.cliControls.loadingModels', '加载模型…'),
+                  label: defaultModelLabel,
                   group: providerLabel,
                 },
               ]

@@ -1798,7 +1798,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Impossibile lasciare la sessione CLI corrente: {message}',
     },
     cliControls: {
-      loadingModels: 'Caricamento modelli…',
+      defaultModel: 'Modello predefinito di {provider}',
       loadError: 'Impossibile caricare i modelli CLI: {message}',
       updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
     },

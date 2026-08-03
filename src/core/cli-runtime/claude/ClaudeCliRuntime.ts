@@ -25,6 +25,7 @@ import {
   mapClaudeResultResponseUsage,
 } from '../context-usage'
 import { assertCliRuntimeAvailable } from '../desktop'
+import { includeActiveCliModel } from '../model-catalog'
 import {
   type CliChatMode,
   resolveClaudePermissionMode,
@@ -258,6 +259,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   private publishedSessionRef?: CliSessionRef
   private models: CliRuntimeConfiguration['models'] = []
   private modelId: string | null = null
+  private reportedModelId: string | null = null
   private reasoningEffort: string | null = null
   private cliChatMode: CliChatMode
   private yoloEnabled: boolean
@@ -421,19 +423,37 @@ export class ClaudeCliRuntime implements CliRuntime {
         initialization.models.length > 0
           ? initialization.models
           : await query.supportedModels()
-      this.models = supportedModels.map((model) => ({
-        id: model.value,
-        label:
-          model.value === 'default' && model.resolvedModel
-            ? model.resolvedModel
-            : model.displayName,
-        ...(model.description ? { description: model.description } : {}),
-        reasoningEfforts: (model.supportedEffortLevels ?? []).map((id) => ({
-          id,
+      const matchedActiveModel = this.reportedModelId
+        ? supportedModels.find(
+            (model) =>
+              model.value === this.reportedModelId ||
+              model.resolvedModel === this.reportedModelId,
+          )
+        : undefined
+      this.models = includeActiveCliModel(
+        supportedModels.map((model) => ({
+          id: model.value,
+          label:
+            model.value === 'default' && model.resolvedModel
+              ? model.resolvedModel
+              : model.displayName,
+          ...(model.description ? { description: model.description } : {}),
+          reasoningEfforts: (model.supportedEffortLevels ?? []).map((id) => ({
+            id,
+          })),
+          isDefault: model.value === 'default',
         })),
-        isDefault: model.value === 'default',
-      }))
+        this.reportedModelId,
+        (model, modelId) =>
+          model.id === modelId ||
+          supportedModels.some(
+            (reported) =>
+              reported.value === model.id && reported.resolvedModel === modelId,
+          ),
+      )
       this.modelId =
+        matchedActiveModel?.value ??
+        this.reportedModelId ??
         this.models.find((model) => model.isDefault)?.id ??
         this.models[0]?.id ??
         null
@@ -923,6 +943,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       return
     }
     if (message.type === 'system' && message.subtype === 'init') {
+      this.reportedModelId = message.model
       this.publishSessionBound({
         runtimeId: 'claude-code',
         nativeSessionId: message.session_id,
@@ -1503,6 +1524,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.publishedSessionRef = undefined
     this.models = []
     this.modelId = null
+    this.reportedModelId = null
     this.reasoningEffort = null
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined

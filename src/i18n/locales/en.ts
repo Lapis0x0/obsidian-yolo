@@ -1953,7 +1953,7 @@ export const en: TranslationKeys = {
       transitionError: 'Could not leave the current CLI session: {message}',
     },
     cliControls: {
-      loadingModels: 'Loading models…',
+      defaultModel: '{provider} default model',
       loadError: 'Could not load CLI models: {message}',
       updateError: 'Could not update CLI configuration: {message}',
     },
