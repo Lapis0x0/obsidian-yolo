@@ -64,7 +64,7 @@ export const zh: TranslationKeys = {
     tabs: {
       chat: 'Chat',
       agent: 'Agent',
-      composer: 'Sparkle',
+      composer: '灵光写作',
     },
     runtimeSelector: {
       modeAccessibleLabel: '聊天模式',
@@ -104,12 +104,12 @@ export const zh: TranslationKeys = {
       exportError: '导出失败',
     },
     composer: {
-      title: 'Sparkle 模式',
+      title: '灵光写作',
       subtitle: '在续写之前先配置模型、上下文与规则',
       backToChat: '返回 Chat',
       modelSectionTitle: '模型设置',
       continuationModel: '续写模型',
-      continuationModelDesc: '在开启超级续写时，Sparkle 将使用该模型处理续写。',
+      continuationModelDesc: '在开启超级续写时，灵光写作将使用该模型处理续写。',
       contextSectionTitle: '上下文来源',
       ragToggle: '启用 RAG 检索',
       ragToggleDesc: '续写前通过 embedding 召回相似的笔记片段。',
@@ -119,15 +119,15 @@ export const zh: TranslationKeys = {
         },
         model: {
           title: '模型选择',
-          desc: '选择用于 Sparkle 任务的模型。',
+          desc: '选择用于灵光写作任务的模型。',
         },
         parameters: {
           title: '参数设置',
-          desc: '修改 Sparkle 所用模型的参数。',
+          desc: '修改灵光写作所用模型的参数。',
         },
         context: {
           title: '上下文管理',
-          desc: '设定 Sparkly 任务执行时优先参考的内容来源。',
+          desc: '设定灵光写作任务执行时优先参考的内容来源。',
         },
       },
       continuationPrompt: '续写系统提示词',
@@ -145,7 +145,7 @@ export const zh: TranslationKeys = {
     title: 'YOLO 设置',
     tabs: {
       models: '模型',
-      editor: '编辑器',
+      editor: '灵光写作',
       knowledge: '知识库',
       tools: '工具',
       agent: 'Agent',
@@ -1409,15 +1409,15 @@ export const zh: TranslationKeys = {
       },
     },
     continuation: {
-      title: 'Sparkle 模式',
+      title: '灵光写作',
       aiSubsectionTitle: '超级续写',
       customSubsectionTitle: 'Smart Space',
       tabSubsectionTitle: 'Tab 补全',
-      superContinuation: '启用 Sparkle 视图',
+      superContinuation: '启用灵光写作视图',
       superContinuationDesc:
-        '开启后，侧边栏将提供 Sparkle 视图，可为续写配置专用模型、参数、规则与参考范围。关闭后，仅保留 Chat 视图。',
-      continuationModel: 'Sparkle 续写模型',
-      continuationModelDesc: '指定在 Sparkle 模式下用于续写的模型。',
+        '开启后，侧边栏将提供灵光写作视图，可为续写配置专用模型、参数、规则与参考范围。关闭后，仅保留 Chat 视图。',
+      continuationModel: '续写模型',
+      continuationModelDesc: '指定在灵光写作中用于续写的模型。',
       smartSpaceDescription:
         'Smart Space 会在写作时提供一个轻量的悬浮输入框。默认在空白行按下空格，或任意位置输入 “/” 后紧接空格即可唤出；支持在下方调整为空行双空格触发或关闭空格触发。输入后连续按两次 Enter 提交，Esc 关闭。',
       smartSpaceToggle: '启用 Smart Space',

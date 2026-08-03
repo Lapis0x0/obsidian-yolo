@@ -1,4 +1,4 @@
-import { PenLine, SquareTerminal } from 'lucide-react'
+import { Sparkles, SquareTerminal } from 'lucide-react'
 import React, { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -40,7 +40,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
 
   const chatLabel = t('sidebar.runtimeSelector.chatLabel', 'Agent')
   const cliLabel = t('sidebar.runtimeSelector.cliLabel', 'CLI')
-  const composerLabel = t('sidebar.tabs.composer', 'Composer')
+  const composerLabel = t('sidebar.tabs.composer', 'Sparkle')
   const modeOptions = [
     {
       value: 'chat',
@@ -264,7 +264,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
           aria-pressed={activeView === 'composer'}
         >
           <span className="yolo-view-toggle-button-icon" aria-hidden="true">
-            <PenLine size={16} strokeWidth={2} />
+            <Sparkles size={16} strokeWidth={2} />
           </span>
           <span className="yolo-view-toggle-button-label">{composerLabel}</span>
         </button>

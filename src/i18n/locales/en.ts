@@ -180,7 +180,7 @@ export const en: TranslationKeys = {
     title: 'Yolo settings',
     tabs: {
       models: 'Models',
-      editor: 'Editor',
+      editor: 'Sparkle',
       knowledge: 'Knowledge',
       tools: 'Tools',
       agent: 'Agent',
@@ -1515,16 +1515,16 @@ export const en: TranslationKeys = {
       },
     },
     continuation: {
-      title: 'Sparkle mode',
+      title: 'Sparkle',
       aiSubsectionTitle: 'Super continuation',
       customSubsectionTitle: 'Smart space',
       tabSubsectionTitle: 'Tab completion',
-      superContinuation: 'Enable sparkle view',
+      superContinuation: 'Enable Sparkle view',
       superContinuationDesc:
-        'Enable the sparkle sidebar view where you can configure dedicated continuation models, parameters, rules, and reference sources; when disabled, only the chat view is available.',
-      continuationModel: 'Sparkle continuation model',
+        'Enable the Sparkle sidebar view where you can configure dedicated continuation models, parameters, rules, and reference sources; when disabled, only the chat view is available.',
+      continuationModel: 'Continuation model',
       continuationModelDesc:
-        'Select the model used for continuation while sparkle mode is enabled.',
+        'Select the model used for continuation in Sparkle.',
       smartSpaceDescription:
         'Smart space offers a lightweight floating composer while you write; by default it appears when you press the space key on an empty line or type “/” followed by space anywhere. You can switch below to double-space on empty lines or disable space-triggering. Press enter twice to submit and press escape to close.',
       smartSpaceToggle: 'Enable smart space',

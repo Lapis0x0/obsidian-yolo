@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
@@ -33,13 +31,11 @@ type NumberInputState = {
 }
 
 const Composer: React.FC<ComposerProps> = (_props) => {
-  const app = useApp()
-  const plugin = usePlugin()
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
   const composerRef = useRef<HTMLDivElement>(null)
 
-  const [activeTab, setActiveTab] = useState<SparkleTab>('smart-space')
+  const [activeTab, setActiveTab] = useState<SparkleTab>('tab-completion')
   const [showTabAdvanced, setShowTabAdvanced] = useState(false)
 
   const orderedEnabledModels = useMemo(() => {
@@ -274,9 +270,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
           {
             '--yolo-tab-count': 3,
             '--yolo-tab-index': [
-              'smart-space',
-              'quick-ask',
               'tab-completion',
+              'quick-ask',
+              'smart-space',
             ].indexOf(activeTab),
           } as React.CSSProperties
         }
@@ -284,14 +280,14 @@ const Composer: React.FC<ComposerProps> = (_props) => {
         <div className="yolo-composer-tabs-glider" aria-hidden="true" />
         <button
           className={`yolo-composer-tab${
-            activeTab === 'smart-space' ? ' is-active' : ''
+            activeTab === 'tab-completion' ? ' is-active' : ''
           }`}
-          onClick={() => setActiveTab('smart-space')}
+          onClick={() => setActiveTab('tab-completion')}
           role="tab"
-          aria-selected={activeTab === 'smart-space'}
+          aria-selected={activeTab === 'tab-completion'}
         >
           <span className="yolo-composer-tab-label">
-            {t('settings.continuation.customSubsectionTitle', 'Smart Space')}
+            {t('settings.continuation.tabSubsectionTitle', 'Tab completion')}
           </span>
         </button>
         <button
@@ -308,14 +304,14 @@ const Composer: React.FC<ComposerProps> = (_props) => {
         </button>
         <button
           className={`yolo-composer-tab${
-            activeTab === 'tab-completion' ? ' is-active' : ''
+            activeTab === 'smart-space' ? ' is-active' : ''
           }`}
-          onClick={() => setActiveTab('tab-completion')}
+          onClick={() => setActiveTab('smart-space')}
           role="tab"
-          aria-selected={activeTab === 'tab-completion'}
+          aria-selected={activeTab === 'smart-space'}
         >
           <span className="yolo-composer-tab-label">
-            {t('settings.continuation.tabSubsectionTitle', 'Tab completion')}
+            {t('settings.continuation.customSubsectionTitle', 'Smart Space')}
           </span>
         </button>
       </div>
@@ -444,48 +440,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                 <SmartSpaceQuickActionsSettings variant="composer" />
               </section>
             )}
-
-            <section className="yolo-composer-section">
-              <header className="yolo-composer-heading">
-                <div className="yolo-composer-heading-title">
-                  {t('settings.rag.title', '知识库')}
-                </div>
-                <div className="yolo-composer-heading-desc">
-                  {t(
-                    'settings.rag.composerEntryDesc',
-                    '知识库索引已经迁移到设置页统一管理，这里提供快捷入口。',
-                  )}
-                </div>
-              </header>
-
-              <div className="yolo-composer-option">
-                <div className="yolo-composer-option-info">
-                  <div className="yolo-composer-option-title">
-                    {t('settings.rag.openKnowledgeSettings', '打开知识库设置')}
-                  </div>
-                  <div className="yolo-composer-option-desc">
-                    {t(
-                      'settings.rag.openKnowledgeSettingsDesc',
-                      '前往设置页配置知识库索引、范围、状态与高级参数。',
-                    )}
-                  </div>
-                </div>
-                <div className="yolo-composer-option-control">
-                  <ObsidianButton
-                    text={t(
-                      'settings.rag.openKnowledgeSettings',
-                      '打开知识库设置',
-                    )}
-                    onClick={() => {
-                      // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-                      app.setting.open()
-                      // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-                      app.setting.openTabById(plugin.manifest.id)
-                    }}
-                  />
-                </div>
-              </div>
-            </section>
           </>
         )}
 

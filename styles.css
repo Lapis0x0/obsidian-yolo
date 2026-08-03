@@ -9580,6 +9580,12 @@ svg.svg-icon.yolo-orbit {
   padding: var(--size-2-1) 0;
 }
 
+/* Keep the view toggle and Sparkle tabs as one chrome block (~8px). */
+
+.yolo-chat-header:has(+ .yolo-chat-composer-wrapper) {
+  margin-bottom: var(--size-4-2);
+}
+
 .yolo-chat-header-left {
   display: flex;
   min-width: 0;
@@ -10426,6 +10432,10 @@ button.yolo-chat-quick-access-picker-row > svg {
   --yolo-chat-workspace-header-height: 0px;
 }
 
+.yolo-chat-container--workspace-wide-header:has(> .yolo-chat-composer-wrapper) {
+  --yolo-chat-workspace-header-gap: var(--size-4-2);
+}
+
 .yolo-chat-container--workspace-wide-header > .yolo-chat-header--workspace {
   position: absolute;
   top: var(--yolo-chat-workspace-header-top);
@@ -10591,7 +10601,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   height: 100%;
   flex: 1 1 auto;
   min-height: 0;
-  padding: var(--size-4-3) var(--size-4-3) var(--size-4-2);
+  padding: 0 var(--size-4-3) var(--size-4-2);
 }
 
 .yolo-composer-tabs {

@@ -196,7 +196,7 @@ export const it: DeepPartial<TranslationKeys> = {
     title: 'Impostazioni Yolo',
     tabs: {
       models: 'Modelli',
-      editor: 'Editor',
+      editor: 'Sparkle',
       knowledge: 'Conoscenza',
       tools: 'Strumenti',
       agent: 'Agent',
@@ -1368,16 +1368,16 @@ export const it: DeepPartial<TranslationKeys> = {
       },
     },
     continuation: {
-      title: 'Continuazione',
+      title: 'Sparkle',
       aiSubsectionTitle: 'Continuazione AI',
       customSubsectionTitle: 'Continuazione personalizzata',
       tabSubsectionTitle: 'Completamento Tab',
-      superContinuation: 'Super continuazione',
+      superContinuation: 'Abilita vista Sparkle',
       superContinuationDesc:
-        'Abilita la vista Sparkle nella barra laterale per la configurazione avanzata della continuazione.',
+        'Abilita la vista Sparkle nella barra laterale per configurare modelli, parametri, regole e fonti di riferimento dedicati alla continuazione. Se disabilitata, resta disponibile solo la vista Chat.',
       continuationModel: 'Modello di continuazione',
       continuationModelDesc:
-        'Modello usato per generare testo di continuazione.',
+        'Seleziona il modello usato per la continuazione in Sparkle.',
       smartSpaceDescription:
         'Smart Space ti aiuta a continuare a scrivere con azioni rapide personalizzabili. Di default si apre con spazio su riga vuota o "/" + spazio; qui sotto puoi passare al doppio spazio o disattivare il trigger con spazio.',
       smartSpaceToggle: 'Abilita smart space',
