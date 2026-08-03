@@ -198,11 +198,10 @@ describe('ChatGPTOAuthService', () => {
   })
 
   it('polls device authorization and persists the exchanged credential', async () => {
-    const setCredentials = jest.fn()
-    const store = {
-      ...createStoreMock(),
-      set: setCredentials,
-    } as jest.Mocked<ChatGPTOAuthStore>
+    const setCredentials: jest.MockedFunction<ChatGPTOAuthStore['set']> =
+      jest.fn()
+    const store = createStoreMock()
+    store.set = setCredentials
     const service = new ChatGPTOAuthService(store)
 
     mockedRequestUrl
