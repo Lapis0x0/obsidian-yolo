@@ -67,6 +67,9 @@ const collectErrorMessages = (
   }
 
   if (isRecord(error)) {
+    if (error.suppressCauseInUserMessage === true) {
+      return messages
+    }
     const nestedCandidates = [error.cause, error.rawError, error.error]
     for (const nested of nestedCandidates) {
       messages.push(...collectErrorMessages(nested, seen, depth + 1))

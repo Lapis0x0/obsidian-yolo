@@ -30,6 +30,7 @@ import {
   geminiStreamViaBufferedFetch,
   geminiStreamViaFetch,
 } from './geminiFetchTransport'
+import { createProviderErrorFetch } from './providerErrors'
 import { ModelRequestPolicy } from './requestPolicy'
 import {
   createRequestTransportMemoryKey,
@@ -69,9 +70,9 @@ const unwrapCodeAssistResponse: GeminiUnwrap = (raw) => {
 }
 
 export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
-  private readonly browserFetch = createBrowserFetch()
-  private readonly obsidianFetch = createObsidianFetch()
-  private readonly nodeFetch = createDesktopNodeFetch()
+  private readonly browserFetch: typeof fetch
+  private readonly obsidianFetch: typeof fetch
+  private readonly nodeFetch: typeof fetch
   private readonly requestTransportMemoryKey: string
   private readonly requestTransportMode: RequestTransportMode
   private readonly requestPolicy?: ModelRequestPolicy
@@ -84,6 +85,21 @@ export class GeminiOAuthProvider extends BaseLLMProvider<LLMProvider> {
     },
   ) {
     super(provider)
+    this.browserFetch = createProviderErrorFetch(createBrowserFetch(), {
+      providerId: provider.id,
+      protocol: 'passthrough',
+      transportMode: 'browser',
+    })
+    this.obsidianFetch = createProviderErrorFetch(createObsidianFetch(), {
+      providerId: provider.id,
+      protocol: 'passthrough',
+      transportMode: 'obsidian',
+    })
+    this.nodeFetch = createProviderErrorFetch(createDesktopNodeFetch(), {
+      providerId: provider.id,
+      protocol: 'passthrough',
+      transportMode: 'node',
+    })
     this.requestPolicy = options?.requestPolicy
     this.requestTransportMemoryKey = createRequestTransportMemoryKey({
       providerType: provider.presetType,

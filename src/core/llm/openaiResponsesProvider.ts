@@ -125,6 +125,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
           ...clientOptions,
           fetch: transportFetch,
         }),
+      { providerId: provider.id, protocol: 'openai' },
     )
     this.browserClient = clients.browserClient
     this.obsidianClient = clients.obsidianClient

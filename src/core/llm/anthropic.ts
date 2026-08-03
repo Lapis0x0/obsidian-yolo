@@ -135,6 +135,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
           ...clientOptions,
           fetch: transportFetch,
         }),
+      { providerId: provider.id, protocol: 'passthrough' },
     )
     this.browserClient = clients.browserClient
     this.obsidianClient = clients.obsidianClient

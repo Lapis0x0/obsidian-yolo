@@ -23,6 +23,7 @@ import { OpenAICompatibleProvider } from './openaiCompatibleProvider'
 import { OpenAIResponsesProvider } from './openaiResponsesProvider'
 import { OpenRouterProvider } from './openRouterProvider'
 import { PerplexityProvider } from './perplexityProvider'
+import { withProviderErrorReporting } from './providerErrors'
 import { resolveModelRequestPolicy } from './requestPolicy'
 import { AutoPromotedTransportMode } from './requestTransport'
 import { XiaomimimoProvider } from './xiaomimimoProvider'
@@ -33,7 +34,7 @@ import { XiaomimimoProvider } from './xiaomimimoProvider'
  * Groq and Ollama currently do not support usage statistics for streaming responses.
  */
 
-export function getProviderClient({
+function createProviderClient({
   settings,
   providerId,
   onAutoPromoteTransportMode,
@@ -178,6 +179,17 @@ export function getProviderClient({
       }
     }
   }
+}
+
+export function getProviderClient(args: {
+  settings: YoloSettings
+  providerId: string
+  onAutoPromoteTransportMode?: (
+    providerId: string,
+    mode: AutoPromotedTransportMode,
+  ) => void
+}): BaseLLMProvider<LLMProvider> {
+  return withProviderErrorReporting(createProviderClient(args), args.providerId)
 }
 
 export function getChatModelClient({

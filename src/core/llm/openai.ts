@@ -27,6 +27,7 @@ import {
   LLMRateLimitExceededException,
 } from './exception'
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
+import { createProviderErrorFetch } from './providerErrors'
 import { createBrowserFetch } from './sdkFetch'
 
 export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
@@ -41,7 +42,11 @@ export class OpenAIAuthenticatedProvider extends BaseLLMProvider<LLMProvider> {
       baseURL: resolveProviderBaseUrl(provider),
       dangerouslyAllowBrowser: true,
       defaultHeaders,
-      fetch: createBrowserFetch(),
+      fetch: createProviderErrorFetch(createBrowserFetch(), {
+        providerId: provider.id,
+        protocol: 'openai',
+        transportMode: 'browser',
+      }),
     })
     this.adapter = new OpenAIMessageAdapter()
   }

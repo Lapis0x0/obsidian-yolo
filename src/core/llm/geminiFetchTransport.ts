@@ -7,6 +7,10 @@ import {
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 
 import { LLMRateLimitExceededException } from './exception'
+import {
+  ProviderRequestError,
+  extractProviderErrorMessage,
+} from './providerErrors'
 import { ModelRequestPolicy, runWithModelRequestPolicy } from './requestPolicy'
 
 type NodeReadable = import('node:stream').Readable
@@ -214,15 +218,36 @@ async function throwForBadResponse(
   providerLabel: string,
 ): Promise<never> {
   const text = await response.text().catch(() => '')
+  let parsed: unknown
+  try {
+    parsed = text ? JSON.parse(text) : undefined
+  } catch {
+    parsed = undefined
+  }
+  const providerMessage =
+    extractProviderErrorMessage(parsed) ?? (text.trim() || null)
+  const responseHeaders: Record<string, string> = {}
+  response.headers.forEach((value, key) => {
+    responseHeaders[key] = value
+  })
+  const rawError = Object.assign(
+    new Error(providerMessage ?? response.statusText),
+    {
+      status: response.status,
+      headers: responseHeaders,
+    },
+  )
   if (response.status === 429) {
     throw new LLMRateLimitExceededException(
-      `${providerLabel} rate limit exceeded: ${text || response.statusText}`,
+      `${providerLabel} rate limit exceeded: ${providerMessage ?? response.statusText}`,
+      rawError,
     )
   }
-  throw new Error(
-    `${providerLabel} request failed (${response.status} ${response.statusText})${
-      text ? `: ${text}` : ''
-    }`,
+  throw new ProviderRequestError(
+    providerLabel,
+    response.status,
+    providerMessage,
+    rawError,
   )
 }
 
