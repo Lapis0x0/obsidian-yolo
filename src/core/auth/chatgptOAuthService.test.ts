@@ -198,7 +198,11 @@ describe('ChatGPTOAuthService', () => {
   })
 
   it('polls device authorization and persists the exchanged credential', async () => {
-    const store = createStoreMock()
+    const setCredentials = jest.fn()
+    const store = {
+      ...createStoreMock(),
+      set: setCredentials,
+    } as jest.Mocked<ChatGPTOAuthStore>
     const service = new ChatGPTOAuthService(store)
 
     mockedRequestUrl
@@ -229,7 +233,7 @@ describe('ChatGPTOAuthService', () => {
       refreshToken: 'refresh-device',
       accountId: 'acc-device',
     })
-    expect(store.set).toHaveBeenCalledTimes(1)
+    expect(setCredentials).toHaveBeenCalledTimes(1)
   })
 
   it('does not poll when device authorization is already cancelled', async () => {

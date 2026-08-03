@@ -981,7 +981,8 @@ export const zh: TranslationKeys = {
       chatgptOAuthBrowserConnecting: '正在打开浏览器...',
       chatgptOAuthDeviceConnecting: '等待授权...',
       chatgptOAuthBrowserDesktopOnly: '浏览器登录仅在桌面端可用。',
-      chatgptOAuthBrowserOpened: '已打开 ChatGPT 登录页面，请在浏览器中完成授权。',
+      chatgptOAuthBrowserOpened:
+        '已打开 ChatGPT 登录页面，请在浏览器中完成授权。',
       chatgptOAuthDeviceOpened: '请在打开的 ChatGPT 授权页面中输入下方设备码。',
       chatgptOAuthConnectedNotice: 'ChatGPT OAuth 连接成功。',
       chatgptOAuthDisconnectedNotice: 'ChatGPT OAuth 已断开。',

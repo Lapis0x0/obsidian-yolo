@@ -96,7 +96,9 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
     const handleAbort = () => {
       clearTimeout(timeoutId)
       signal?.removeEventListener('abort', handleAbort)
-      reject(signal?.reason instanceof Error ? signal.reason : createAbortError())
+      reject(
+        signal?.reason instanceof Error ? signal.reason : createAbortError(),
+      )
     }
     signal?.addEventListener('abort', handleAbort, { once: true })
   })
@@ -380,8 +382,7 @@ export class ChatGPTOAuthService {
         )
       }
 
-      const remainingMs =
-        DEVICE_AUTH_TIMEOUT_MS - (Date.now() - startedAt)
+      const remainingMs = DEVICE_AUTH_TIMEOUT_MS - (Date.now() - startedAt)
       if (remainingMs <= 0) {
         throw new ChatGPTOAuthError(
           'Device authorization timed out after 15 minutes',

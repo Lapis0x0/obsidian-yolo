@@ -271,10 +271,7 @@ function ChatGPTOAuthPanel({
       .writeText(deviceAuthorization.userCode)
       .then(() => {
         new Notice(
-          t(
-            'settings.providers.chatgptOAuthCodeCopied',
-            'Device code copied.',
-          ),
+          t('settings.providers.chatgptOAuthCodeCopied', 'Device code copied.'),
         )
       })
       .catch((error: unknown) => {
@@ -384,10 +381,7 @@ function ChatGPTOAuthPanel({
         <div className="yolo-chatgpt-oauth-device-card">
           <div className="yolo-chatgpt-oauth-device-code-row">
             <span>
-              {t(
-                'settings.providers.chatgptOAuthPendingCode',
-                'Device code',
-              )}
+              {t('settings.providers.chatgptOAuthPendingCode', 'Device code')}
             </span>
             <code>{deviceAuthorization.userCode}</code>
           </div>

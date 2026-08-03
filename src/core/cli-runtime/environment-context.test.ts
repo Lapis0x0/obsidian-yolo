@@ -1,4 +1,4 @@
-import type { App, TFile } from 'obsidian'
+import { type App, TFile } from 'obsidian'
 
 import { parseYoloSettings } from '../../settings/schema/settings'
 import {
@@ -38,7 +38,9 @@ describe('buildCliEnvironmentContext', () => {
     })
     const settings = parseYoloSettings({})
     const app = {} as App
-    const currentFile = { path: 'Notes/plan.md' } as TFile
+    const currentFile = Object.assign(new TFile(), {
+      path: 'Notes/plan.md',
+    })
 
     await expect(
       buildCliEnvironmentContext({

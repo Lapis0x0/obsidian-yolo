@@ -1,13 +1,13 @@
-## 1.6.4.2 Stability Hotfix 🛠️
+## 1.6.4.3 CLI & Login Hotfix 🛠️
 
-- Fixed the chat view going blank when a Codex or Claude Code session fails to initialize. YOLO now shows the underlying error directly, making CLI, authentication, and third-party provider issues easier to diagnose.
-- Fixed ChatGPT OAuth failing to start its local callback server with a permission error on some Windows systems, and improved automatic callback port cleanup.
-- Fixed YOLO failing to load on Android after upgrading to 1.6.4.1.
+- Fixed image uploads in CLI Agent conversations for Codex and Claude Code.
+- CLI Agents now automatically receive the current time and your reading position in notes, PDFs, images, or web pages. This internal context stays hidden when conversation history is reloaded.
+- Added device code authentication for ChatGPT OAuth, avoiding conflicts with occupied local callback ports. You can now choose between browser callback and device code login.
 
 ---
 
-## 1.6.4.2 稳定性热修复 🛠️
+## 1.6.4.3 CLI 与登录热修复 🛠️
 
-- 修复 Codex 或 Claude Code 会话初始化失败时聊天界面黑屏的问题；现在会直接显示真实错误原因，方便排查 CLI、认证或第三方 Provider 配置。
-- 修复部分 Windows 环境下 ChatGPT OAuth 登录因本地回调服务器权限错误而无法启动的问题，并完善回调端口的自动释放。
-- 修复 Android 端升级至 1.6.4.1 后无法启用 YOLO 的问题。
+- 修复 Codex 与 Claude Code 的 CLI Agent 对话无法正常上传图片的问题。
+- CLI Agent 现在会自动感知当前时间，以及你正在阅读的笔记、PDF、图片或网页位置；重新加载历史记录时，这些内部上下文不会显示在用户消息中。
+- ChatGPT OAuth 新增设备码登录，不再受本地回调端口占用影响；现在可在浏览器回调登录与设备码登录之间自由选择。
