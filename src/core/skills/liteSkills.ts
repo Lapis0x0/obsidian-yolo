@@ -185,28 +185,21 @@ const listSkillPathsInDir = async (
       paths.push(skillPath)
     }
   }
-  return paths.sort((a, b) => a.localeCompare(b))
-}
-
-const listLegacyRootSkillPaths = async (
-  adapter: App['vault']['adapter'],
-  skillsDir: string,
-): Promise<string[]> => {
-  const normalizedDir = normalizePath(skillsDir)
-  if (!(await adapter.exists(normalizedDir))) {
-    return []
-  }
-
-  const listing = await adapter.list(normalizedDir)
-  return listing.files
-    .map((path) => normalizePath(path))
-    .filter((path) => {
-      const fileName = path.slice(path.lastIndexOf('/') + 1)
-      return (
-        fileName !== YOLO_SKILLS_INDEX_FILE_NAME && fileName.endsWith('.md')
-      )
-    })
-    .sort((a, b) => a.localeCompare(b))
+  // Directory packages take precedence over legacy single-file skills with
+  // the same frontmatter name. This preserves package resources when both
+  // formats are present without moving or renaming either user file.
+  return [
+    ...paths.sort((a, b) => a.localeCompare(b)),
+    ...listing.files
+      .map((path) => normalizePath(path))
+      .filter((path) => {
+        const fileName = path.slice(path.lastIndexOf('/') + 1)
+        return (
+          fileName !== YOLO_SKILLS_INDEX_FILE_NAME && fileName.endsWith('.md')
+        )
+      })
+      .sort((a, b) => a.localeCompare(b)),
+  ]
 }
 
 const getSkillPackageDirName = (skillPath: string): string | null => {
@@ -329,10 +322,11 @@ const buildSkillRegistry = async ({
         frontmatter,
         isReadOnly: !managedSkillDirs.has(skillsDir),
       })
+      const packageDirName = getSkillPackageDirName(path)
       if (
         !entry ||
         validateSkillName(entry.name).length > 0 ||
-        getSkillPackageDirName(path) !== entry.name
+        (packageDirName !== null && packageDirName !== entry.name)
       ) {
         continue
       }
@@ -676,7 +670,16 @@ export async function getLiteSkillPackageSource({
 
   const packageDir = getSkillPackageDirPath(document.entry.path)
   if (!packageDir) {
-    return null
+    return {
+      entry: document.entry,
+      resources: [
+        {
+          kind: 'vault',
+          path: document.entry.path,
+          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
+        },
+      ],
+    }
   }
   const prefix = `${packageDir}/`
   const resources = (
@@ -831,12 +834,7 @@ export async function migrateVaultSkillFrontmatter(
     settings,
     configDir: app.vault.configDir,
   })) {
-    const paths = [
-      ...new Set([
-        ...(await listLegacyRootSkillPaths(app.vault.adapter, skillsDir)),
-        ...(await listSkillPathsInDir(app.vault.adapter, skillsDir)),
-      ]),
-    ].sort((a, b) => a.localeCompare(b))
+    const paths = await listSkillPathsInDir(app.vault.adapter, skillsDir)
     for (const path of paths) {
       try {
         const file = app.vault.getFileByPath(path)
@@ -876,149 +874,4 @@ export async function migrateVaultSkillFrontmatter(
       }
     }
   }
-}
-
-export type LegacySkillPackageMigrationIssueReason =
-  | 'invalid_frontmatter'
-  | 'invalid_name'
-  | 'target_exists'
-  | 'migration_failed'
-
-export type LegacySkillPackageMigrationIssue = {
-  sourcePath: string
-  targetPath?: string
-  reason: LegacySkillPackageMigrationIssueReason
-  error?: string
-}
-
-export type LegacySkillPackageMigrationReport = {
-  migrated: Array<{
-    name: string
-    sourcePath: string
-    targetPath: string
-  }>
-  issues: LegacySkillPackageMigrationIssue[]
-}
-
-const removeEmptyDirIfPresent = async (
-  adapter: App['vault']['adapter'],
-  path: string,
-): Promise<void> => {
-  if (!(await adapter.exists(path))) {
-    return
-  }
-  const listing = await adapter.list(path)
-  if (listing.files.length === 0 && listing.folders.length === 0) {
-    await adapter.rmdir(path, false)
-  }
-}
-
-/**
- * Move root-level legacy Markdown skills into standard directory packages.
- *
- * The migration is intentionally conservative and idempotent: identity comes
- * only from a standards-valid frontmatter `name`; an existing target path is
- * always treated as a conflict; and failed/invalid sources are never removed.
- */
-export async function migrateLegacySkillFilesToPackages(
-  app: App,
-  settings?: SkillSettings,
-): Promise<LegacySkillPackageMigrationReport> {
-  const report: LegacySkillPackageMigrationReport = {
-    migrated: [],
-    issues: [],
-  }
-
-  for (const skillsDir of getManagedSkillScanDirs({
-    settings,
-    configDir: app.vault.configDir,
-  })) {
-    const sourcePaths = await listLegacyRootSkillPaths(
-      app.vault.adapter,
-      skillsDir,
-    )
-    for (const sourcePath of sourcePaths) {
-      let targetDir: string | null = null
-      let createdTargetDir = false
-      try {
-        const content = await app.vault.adapter.read(sourcePath)
-        const frontmatter = parseFrontmatterFromContent(content)
-        if (!frontmatter) {
-          report.issues.push({
-            sourcePath,
-            reason: 'invalid_frontmatter',
-          })
-          continue
-        }
-
-        const nameErrors = validateSkillName(frontmatter.name)
-        if (nameErrors.length > 0 || typeof frontmatter.name !== 'string') {
-          report.issues.push({ sourcePath, reason: 'invalid_name' })
-          continue
-        }
-
-        const name = frontmatter.name.trim()
-        targetDir = normalizePath(`${skillsDir}/${name}`)
-        const targetPath = normalizePath(
-          `${targetDir}/${SKILL_PACKAGE_ENTRY_FILE_NAME}`,
-        )
-        if (await app.vault.adapter.exists(targetDir)) {
-          report.issues.push({
-            sourcePath,
-            targetPath,
-            reason: 'target_exists',
-          })
-          continue
-        }
-
-        await app.vault.adapter.mkdir(targetDir)
-        createdTargetDir = true
-        if (await app.vault.adapter.exists(targetPath)) {
-          await removeEmptyDirIfPresent(app.vault.adapter, targetDir)
-          report.issues.push({
-            sourcePath,
-            targetPath,
-            reason: 'target_exists',
-          })
-          continue
-        }
-        await app.vault.adapter.rename(sourcePath, targetPath)
-        report.migrated.push({ name, sourcePath, targetPath })
-      } catch (error) {
-        if (targetDir && createdTargetDir) {
-          try {
-            await removeEmptyDirIfPresent(app.vault.adapter, targetDir)
-          } catch (cleanupError) {
-            console.warn(
-              `[YOLO] Failed to clean up skill migration target ${targetDir}.`,
-              cleanupError,
-            )
-          }
-        }
-        report.issues.push({
-          sourcePath,
-          ...(targetDir
-            ? {
-                targetPath: normalizePath(
-                  `${targetDir}/${SKILL_PACKAGE_ENTRY_FILE_NAME}`,
-                ),
-              }
-            : {}),
-          reason: 'migration_failed',
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-  }
-
-  return report
-}
-
-/** Run all vault-skill upgrades in dependency order at startup. */
-export async function migrateVaultSkillsToDirectoryPackages(
-  app: App,
-  settings?: SkillSettings,
-): Promise<LegacySkillPackageMigrationReport> {
-  await migrateVaultSkillFrontmatter(app, settings)
-  return migrateLegacySkillFilesToPackages(app, settings)
 }

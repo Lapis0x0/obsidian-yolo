@@ -508,7 +508,7 @@ export const it: DeepPartial<TranslationKeys> = {
       skillsCount: '{count} competenze',
       skillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillsGlobalDesc:
-        'Le skill vengono rilevate dalle skill integrate e dai pacchetti {path}/<name>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
+        'Le skill vengono rilevate dalle skill integrate, dai file {path}/*.md e dai pacchetti {path}/<name>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
@@ -528,7 +528,8 @@ export const it: DeepPartial<TranslationKeys> = {
       yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
-      skillsSourcePath: 'Origine: skill integrate + {path}/<name>/SKILL.md',
+      skillsSourcePath:
+        'Origine: skill integrate + {path}/*.md + {path}/<name>/SKILL.md',
       refreshSkills: 'Aggiorna',
       skillsEmptyHint:
         'Nessuna skill trovata. Crea un pacchetto {path}/<name>/SKILL.md.',
@@ -587,27 +588,13 @@ export const it: DeepPartial<TranslationKeys> = {
       deleteSkillConfirm: 'Elimina',
       deleteSkillSuccess: '"{name}" è stata eliminata.',
       deleteSkillError: 'Impossibile eliminare "{name}": {error}',
-      deleteSkillInvalidPackage: 'Percorso del pacchetto skill non valido',
-      deleteSkillNotFound: 'Pacchetto skill non trovato',
+      deleteSkillNotFound: 'Skill non trovata',
       deleteSkillBatchMessage:
-        'Sei sicuro di voler eliminare {count} pacchetti skill, incluse tutte le risorse? Questa azione non può essere annullata.',
+        'Sei sicuro di voler eliminare {count} skill, incluse le risorse dei pacchetti? Questa azione non può essere annullata.',
       deleteSkillBatchSuccess: 'Eliminate {count} skill.',
       deleteSkillBatchBtn: 'Elimina',
       deleteSkillSelectAll: 'Seleziona tutto',
       deleteSkillCancel: 'Annulla',
-      skillPackageMigrationIssues:
-        '{count} file skill legacy richiedono attenzione. YOLO non li ha sovrascritti o eliminati:',
-      skillPackageMigrationInvalidFrontmatter:
-        '{path}: frontmatter YAML mancante o non valido; il file è stato conservato.',
-      skillPackageMigrationInvalidName:
-        '{path}: il nome nel frontmatter deve contenere 1–64 lettere minuscole, numeri o trattini; il file è stato conservato.',
-      skillPackageMigrationConflict:
-        '{path}: la destinazione {target} esiste già; il file è stato conservato.',
-      skillPackageMigrationFileFailed:
-        '{path}: migrazione non riuscita ({error}); il file è stato conservato.',
-      skillPackageMigrationUnknownError: 'Errore sconosciuto',
-      skillPackageMigrationFailed:
-        "YOLO non ha potuto completare l'aggiornamento dei file skill legacy. I file sorgente sono stati conservati; controlla la console e spostali manualmente.",
       selectSkills: 'Seleziona',
       agents: 'Agent',
       agentsDesc:

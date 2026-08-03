@@ -481,7 +481,7 @@ export const en: TranslationKeys = {
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
-        'Skills are discovered from built-in skills and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
+        'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
@@ -501,7 +501,8 @@ export const en: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
-      skillsSourcePath: 'Source: built-in skills + {path}/<name>/SKILL.md',
+      skillsSourcePath:
+        'Source: built-in skills + {path}/*.md + {path}/<name>/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
         'No skills found. Create a {path}/<name>/SKILL.md package.',
@@ -569,27 +570,13 @@ export const en: TranslationKeys = {
       deleteSkillConfirm: 'Delete',
       deleteSkillSuccess: '"{name}" has been deleted.',
       deleteSkillError: 'Failed to delete "{name}": {error}',
-      deleteSkillInvalidPackage: 'Invalid skill package path',
-      deleteSkillNotFound: 'Skill package not found',
+      deleteSkillNotFound: 'Skill not found',
       deleteSkillBatchMessage:
-        'Are you sure you want to delete {count} skill package(s), including all resources? This cannot be undone.',
+        'Are you sure you want to delete {count} skill(s), including package resources? This cannot be undone.',
       deleteSkillBatchSuccess: 'Deleted {count} skill(s).',
       deleteSkillBatchBtn: 'Delete',
       deleteSkillSelectAll: 'Select all',
       deleteSkillCancel: 'Cancel',
-      skillPackageMigrationIssues:
-        '{count} legacy skill file(s) need attention. YOLO did not overwrite or delete them:',
-      skillPackageMigrationInvalidFrontmatter:
-        '{path}: missing or invalid YAML frontmatter; file was kept.',
-      skillPackageMigrationInvalidName:
-        '{path}: frontmatter name must be 1–64 lowercase letters, numbers, or hyphens; file was kept.',
-      skillPackageMigrationConflict:
-        '{path}: target {target} already exists; file was kept.',
-      skillPackageMigrationFileFailed:
-        '{path}: migration failed ({error}); file was kept.',
-      skillPackageMigrationUnknownError: 'Unknown error',
-      skillPackageMigrationFailed:
-        'YOLO could not finish upgrading legacy skill files. The source files were kept; review the console and move them manually.',
       selectSkills: 'Select',
       agents: 'Agents',
       agentsDesc: 'Click Configure to edit each agent profile and prompt.',

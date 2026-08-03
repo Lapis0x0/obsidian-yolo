@@ -142,12 +142,18 @@ function AgentSkillsModalContent({
   const deleteSkillPath = async (path: string) => {
     const packageDir = getSkillPackageDirPath(path)
     if (!packageDir) {
-      throw new Error(
-        t(
-          'settings.agent.deleteSkillInvalidPackage',
-          'Invalid skill package path',
-        ),
-      )
+      const file = app.vault.getFileByPath(path)
+      if (file) {
+        await app.fileManager.trashFile(file)
+        return
+      }
+      if (!(await app.vault.adapter.exists(path))) {
+        throw new Error(
+          t('settings.agent.deleteSkillNotFound', 'Skill not found'),
+        )
+      }
+      await app.vault.adapter.remove(path)
+      return
     }
 
     const folder = app.vault.getAbstractFileByPath(packageDir)
@@ -174,7 +180,7 @@ function AgentSkillsModalContent({
       title: t('settings.agent.deleteSkillTitle', 'Delete skill'),
       message: t(
         'settings.agent.deleteSkillBatchMessage',
-        'Are you sure you want to delete {count} skill package(s), including all resources? This cannot be undone.',
+        'Are you sure you want to delete {count} skill(s), including package resources? This cannot be undone.',
       ).replace('{count}', String(names.length)),
       ctaText: t('settings.agent.deleteSkillConfirm', 'Delete'),
       onConfirm: async () => {
@@ -218,7 +224,7 @@ function AgentSkillsModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.agent.skillsGlobalDesc',
-          'Skills are discovered from built-in skills and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
+          'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
         ).replace('{path}', skillsDir)}
       </div>
 
