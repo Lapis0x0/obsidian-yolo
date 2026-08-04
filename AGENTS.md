@@ -5,6 +5,8 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 ## Commands
 
 - `npm run dev` - Build first-party modules, then watch the host app, host styles, and dev-vault artifacts
+- `npm run ob:agent` / `npm run ob:agent:status` / `npm run ob:agent:reveal` / `npm run ob:agent:stop` - Manage the transparent background Agent Obsidian on CDP port `9233`
+- `npm run dev:agent-sync` - Watch and sync build artifacts into the isolated Agent vault at `/Users/shizhiyun/Documents/Git/obsidiandev-agent`
 - `npm run build` - Production build with host and module type checking
 - `npm run type:check` / `npm run module:typecheck` - Type-check the host or first-party modules
 - `npm run module:build` - Rebuild first-party module artifacts and the bundled module catalog
