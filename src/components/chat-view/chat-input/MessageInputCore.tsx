@@ -57,6 +57,10 @@ import { fileToMentionableTextAttachment } from '../../../utils/llm/text-attachm
 import { ChatMode } from './ChatModeSelect'
 import LexicalContentEditable from './LexicalContentEditable'
 import {
+  setLexicalStateFromExternalState,
+  updateLexicalFromExternalState,
+} from './lexicalExternalState'
+import {
   $createMentionNode,
   $isMentionNode,
   MentionNode,
@@ -969,7 +973,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         contentEditableRef.current ===
         (contentEditableRef.current?.ownerDocument ?? document).activeElement
 
-      editor.update(() => {
+      updateLexicalFromExternalState(editor, contentEditableRef.current, () => {
         const mirrorTypeSet = new Set(INLINE_MENTIONABLE_TYPES)
         $nodesOfType(MentionNode).forEach((node) => {
           const mentionable = node.getMentionable()
@@ -1099,7 +1103,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         contentEditableRef.current ===
         (contentEditableRef.current?.ownerDocument ?? document).activeElement
 
-      editor.update(() => {
+      updateLexicalFromExternalState(editor, contentEditableRef.current, () => {
         $nodesOfType(SkillNode).forEach((node) => {
           const skill = node.getSkill()
           if (skillsByName.has(skill.name)) return
@@ -1293,7 +1297,9 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
 
       try {
         if (!initialSerializedEditorState) {
-          editor.update(
+          updateLexicalFromExternalState(
+            editor,
+            contentEditableRef.current,
             () => {
               const root = $getRoot()
               root.clear()
@@ -1303,7 +1309,9 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
           )
           return
         }
-        editor.setEditorState(
+        setLexicalStateFromExternalState(
+          editor,
+          contentEditableRef.current,
           editor.parseEditorState(initialSerializedEditorState),
         )
       } catch (error) {
