@@ -6,9 +6,11 @@ import { useEffect } from 'react'
 export default function OnEnterPlugin({
   onEnter,
   onVaultChat,
+  enterKeyCreatesNewline = false,
 }: {
   onEnter: (evt: KeyboardEvent) => void
   onVaultChat?: () => void
+  enterKeyCreatesNewline?: boolean
 }) {
   const [editor] = useLexicalComposerContext()
 
@@ -29,6 +31,9 @@ export default function OnEnterPlugin({
         if (Platform.isMobile || evt.shiftKey) {
           return false
         }
+        if (enterKeyCreatesNewline && !evt.metaKey && !evt.ctrlKey) {
+          return false
+        }
         evt.preventDefault()
         evt.stopPropagation()
         onEnter(evt)
@@ -40,7 +45,7 @@ export default function OnEnterPlugin({
     return () => {
       removeListener()
     }
-  }, [editor, onEnter, onVaultChat])
+  }, [editor, enterKeyCreatesNewline, onEnter, onVaultChat])
 
   return null
 }

@@ -81,6 +81,22 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
     })()
   }
 
+  const handleEnterKeyCreatesNewlineChange = (value: boolean) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          chatOptions: {
+            ...settings.chatOptions,
+            enterKeyCreatesNewline: value,
+          },
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update Enter key behavior', error)
+      }
+    })()
+  }
+
   const handleChatApplyModeChange = (value: string) => {
     if (value !== 'review-required' && value !== 'direct-apply') return
     void (async () => {
@@ -243,6 +259,22 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
                   last: t('settings.etc.ribbonClickActionLast', '上次的位置'),
                 }}
                 onChange={handleRibbonClickActionChange}
+              />
+            </ObsidianSetting>
+            <ObsidianSetting
+              name={t(
+                'settings.etc.enterKeyCreatesNewline',
+                '使用 Enter 键换行',
+              )}
+              desc={t(
+                'settings.etc.enterKeyCreatesNewlineDesc',
+                '适用于 Chat 与 Quick Ask 输入框。开启后，按 Cmd/Ctrl + Enter 发送。',
+              )}
+              className="yolo-settings-card"
+            >
+              <ObsidianToggle
+                value={settings.chatOptions.enterKeyCreatesNewline ?? false}
+                onChange={handleEnterKeyCreatesNewlineChange}
               />
             </ObsidianSetting>
             <ObsidianSetting

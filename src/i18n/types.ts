@@ -1356,6 +1356,8 @@ export type TranslationKeys = {
       ribbonClickActionSplit?: string
       ribbonClickActionWindow?: string
       ribbonClickActionLast?: string
+      enterKeyCreatesNewline?: string
+      enterKeyCreatesNewlineDesc?: string
       mentionDisplayMode?: string
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string

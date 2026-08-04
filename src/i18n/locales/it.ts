@@ -1560,6 +1560,9 @@ export const it: DeepPartial<TranslationKeys> = {
       ribbonClickActionSplit: 'Split destro',
       ribbonClickActionWindow: 'Nuova finestra',
       ribbonClickActionLast: 'Ultima posizione usata',
+      enterKeyCreatesNewline: 'Usa Invio per andare a capo',
+      enterKeyCreatesNewlineDesc:
+        'Si applica ai campi di Chat e Quick Ask. Premi Cmd/Ctrl + Invio per inviare.',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",

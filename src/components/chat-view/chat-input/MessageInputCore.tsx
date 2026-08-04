@@ -1283,6 +1283,9 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
           onChange={onChange}
           onTextContentChange={onTextContentChange}
           onEnter={handleSubmit}
+          enterKeyCreatesNewline={
+            settings.chatOptions.enterKeyCreatesNewline ?? false
+          }
           onFocus={onFocus}
           onKeyDown={onKeyDown}
           onMentionNodeMutation={handleMentionNodeMutation}

@@ -1585,6 +1585,9 @@ export const zh: TranslationKeys = {
       ribbonClickActionSplit: '右侧分屏',
       ribbonClickActionWindow: '独立窗口',
       ribbonClickActionLast: '上次的位置',
+      enterKeyCreatesNewline: '使用 Enter 键换行',
+      enterKeyCreatesNewlineDesc:
+        '适用于 Chat 与 Quick Ask 输入框。开启后，按 Cmd/Ctrl + Enter 发送。',
       mentionDisplayMode: '引用内容显示位置',
       mentionDisplayModeDesc:
         '选择 @ 文件引用和 / 技能选择是在输入框内显示，还是在输入框顶部以徽章显示。',

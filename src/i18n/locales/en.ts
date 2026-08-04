@@ -1713,6 +1713,9 @@ export const en: TranslationKeys = {
       ribbonClickActionSplit: 'Right split',
       ribbonClickActionWindow: 'New window',
       ribbonClickActionLast: 'Last used location',
+      enterKeyCreatesNewline: 'Use Enter to start a new line',
+      enterKeyCreatesNewlineDesc:
+        'Applies to Chat and Quick Ask inputs. Press Cmd/Ctrl + Enter to send.',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
         'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',

@@ -20,9 +20,11 @@ type EnterHandler = (event: KeyboardEvent) => boolean
 function getEnterHandler({
   onEnter = jest.fn(),
   onVaultChat,
+  enterKeyCreatesNewline,
 }: {
   onEnter?: jest.Mock
   onVaultChat?: jest.Mock
+  enterKeyCreatesNewline?: boolean
 } = {}): EnterHandler {
   let handler: EnterHandler | undefined
   const editor = {
@@ -33,7 +35,7 @@ function getEnterHandler({
   }
 
   ;(useLexicalComposerContext as jest.Mock).mockReturnValue([editor])
-  OnEnterPlugin({ onEnter, onVaultChat })
+  OnEnterPlugin({ onEnter, onVaultChat, enterKeyCreatesNewline })
 
   if (!handler) {
     throw new Error('Enter handler was not registered')
@@ -42,7 +44,11 @@ function getEnterHandler({
   return handler
 }
 
-function createEnterEvent({ shiftKey = false } = {}): {
+function createEnterEvent({
+  shiftKey = false,
+  ctrlKey = false,
+  metaKey = false,
+} = {}): {
   event: KeyboardEvent
   preventDefault: jest.Mock
 } {
@@ -51,8 +57,8 @@ function createEnterEvent({ shiftKey = false } = {}): {
   return {
     event: {
       shiftKey,
-      ctrlKey: false,
-      metaKey: false,
+      ctrlKey,
+      metaKey,
       preventDefault,
       stopPropagation: jest.fn(),
     } as unknown as KeyboardEvent,
@@ -85,5 +91,31 @@ describe('OnEnterPlugin', () => {
     expect(handler(event)).toBe(false)
     expect(onEnter).not.toHaveBeenCalled()
     expect(preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('lets a plain Enter create a newline when configured', () => {
+    const onEnter = jest.fn()
+    const handler = getEnterHandler({
+      onEnter,
+      enterKeyCreatesNewline: true,
+    })
+    const { event, preventDefault } = createEnterEvent()
+
+    expect(handler(event)).toBe(false)
+    expect(onEnter).not.toHaveBeenCalled()
+    expect(preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('submits Cmd/Ctrl + Enter when plain Enter creates a newline', () => {
+    const onEnter = jest.fn()
+    const handler = getEnterHandler({
+      onEnter,
+      enterKeyCreatesNewline: true,
+    })
+    const { event, preventDefault } = createEnterEvent({ ctrlKey: true })
+
+    expect(handler(event)).toBe(true)
+    expect(onEnter).toHaveBeenCalledWith(event)
+    expect(preventDefault).toHaveBeenCalled()
   })
 })

@@ -52,6 +52,7 @@ export type LexicalContentEditableProps = {
   onChange?: (content: SerializedEditorState) => void
   onTextContentChange?: (textContent: string) => void
   onEnter?: (evt: KeyboardEvent) => void
+  enterKeyCreatesNewline?: boolean
   onKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void
   onFocus?: () => void
   onMentionNodeMutation?: (mutations: NodeMutations<MentionNode>) => void
@@ -162,6 +163,7 @@ function LexicalContentEditable({
   onChange,
   onTextContentChange,
   onEnter,
+  enterKeyCreatesNewline = false,
   onKeyDown,
   onFocus,
   onMentionNodeMutation,
@@ -345,6 +347,7 @@ function LexicalContentEditable({
         <OnEnterPlugin
           onEnter={onEnter}
           onVaultChat={plugins?.onEnter?.onVaultChat}
+          enterKeyCreatesNewline={enterKeyCreatesNewline}
         />
       )}
       <OnMutationPlugin
