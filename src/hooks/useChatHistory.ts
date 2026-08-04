@@ -26,6 +26,7 @@ import { Mentionable } from '../types/mentionable'
 import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
   getConversationDisplayTitle,
+  getGeneratedTitleToApply,
   isUntitledConversationTitle,
 } from '../utils/chat/conversationTitle'
 import {
@@ -589,21 +590,25 @@ export function useChatHistory(): UseChatHistory {
 
         // 再次检查标题是否仍为默认标题，避免竞态条件
         const currentConversation = await chatManager.findById(id)
-        if (
-          currentConversation &&
-          (force || isUntitledConversationTitle(currentConversation.title))
-        ) {
-          await chatManager.updateChat(
-            id,
-            { title: result.title },
-            {
-              touchUpdatedAt: false,
-            },
-          )
-          emitChatHistoryUpdated()
-          await fetchChatList()
-        }
-        return result.title
+        const titleToApply = currentConversation
+          ? getGeneratedTitleToApply({
+              currentTitle: currentConversation.title,
+              generatedTitle: result.title,
+              force,
+            })
+          : null
+        if (!titleToApply) return null
+
+        await chatManager.updateChat(
+          id,
+          { title: titleToApply },
+          {
+            touchUpdatedAt: false,
+          },
+        )
+        emitChatHistoryUpdated()
+        await fetchChatList()
+        return titleToApply
       } finally {
         titleGenerationInFlightRef.current.delete(id)
       }

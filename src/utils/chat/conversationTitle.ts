@@ -15,3 +15,19 @@ export const getConversationDisplayTitle = (
   title: string | null | undefined,
   fallback: string,
 ): string => (isUntitledConversationTitle(title) ? fallback : title!.trim())
+
+/**
+ * Return a generated title only when it is still allowed to replace the
+ * current local title. A manual title always wins unless generation was
+ * explicitly retried by the user.
+ */
+export const getGeneratedTitleToApply = ({
+  currentTitle,
+  generatedTitle,
+  force = false,
+}: {
+  currentTitle: string | null | undefined
+  generatedTitle: string
+  force?: boolean
+}): string | null =>
+  force || isUntitledConversationTitle(currentTitle) ? generatedTitle : null
