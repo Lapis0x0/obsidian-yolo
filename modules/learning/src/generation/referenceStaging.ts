@@ -38,9 +38,13 @@ export async function writeReferenceToStaging(
   fileName: string,
   content: ArrayBuffer,
 ): Promise<StagedReference> {
-  const vaultPath = joinVaultPath(stagingDir, fileName)
+  const safeName = fileName.split('/').at(-1) ?? fileName
+  if (safeName.includes('..')) {
+    throw new Error('Invalid file name')
+  }
+  const vaultPath = joinVaultPath(stagingDir, safeName)
   await writer.createBinary(vaultPath, content)
-  return { name: fileName, vaultPath }
+  return { name: safeName, vaultPath }
 }
 
 export async function moveStagingToProject(
