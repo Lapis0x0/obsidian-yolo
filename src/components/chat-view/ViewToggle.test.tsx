@@ -4,6 +4,9 @@ type CapturedRollerProps = {
   value: string
   options: Array<{ value: string; label: string }>
   onChange: (value: string) => void
+  onValueClick: () => void
+  onActivate: () => void
+  valueAriaLabel: string
 }
 
 let mockRollerProps: CapturedRollerProps | null = null
@@ -51,6 +54,68 @@ describe('ViewToggle chat surface hierarchy', () => {
 
     mockRollerProps?.onChange('cli')
     expect(onChangeChatSurface).toHaveBeenCalledWith('cli')
+    expect(onChangeView).toHaveBeenCalledWith('chat')
+  })
+
+  it('switches from Agent to CLI when the visible mode is clicked', () => {
+    const onChangeChatSurface = jest.fn()
+    const onChangeView = jest.fn()
+
+    renderToStaticMarkup(
+      <ViewToggle
+        activeView="chat"
+        onChangeView={onChangeView}
+        activeChatSurface="chat"
+        onChangeChatSurface={onChangeChatSurface}
+        showCliMode
+      />,
+    )
+
+    mockRollerProps?.onValueClick()
+
+    expect(onChangeChatSurface).toHaveBeenCalledWith('cli')
+    expect(onChangeView).toHaveBeenCalledWith('chat')
+    expect(mockRollerProps?.valueAriaLabel).toBe('Switch to CLI')
+  })
+
+  it('switches from CLI to Agent when the visible mode is clicked', () => {
+    const onChangeChatSurface = jest.fn()
+    const onChangeView = jest.fn()
+
+    renderToStaticMarkup(
+      <ViewToggle
+        activeView="chat"
+        onChangeView={onChangeView}
+        activeChatSurface="cli"
+        onChangeChatSurface={onChangeChatSurface}
+        showCliMode
+      />,
+    )
+
+    mockRollerProps?.onValueClick()
+
+    expect(onChangeChatSurface).toHaveBeenCalledWith('chat')
+    expect(onChangeView).toHaveBeenCalledWith('chat')
+    expect(mockRollerProps?.valueAriaLabel).toBe('Switch to Agent')
+  })
+
+  it('keeps the caret activation separate from the shortcut switch', () => {
+    const onChangeChatSurface = jest.fn()
+    const onChangeView = jest.fn()
+
+    renderToStaticMarkup(
+      <ViewToggle
+        activeView="chat"
+        onChangeView={onChangeView}
+        activeChatSurface="chat"
+        onChangeChatSurface={onChangeChatSurface}
+        showCliMode
+      />,
+    )
+
+    mockRollerProps?.onActivate()
+
+    expect(onChangeChatSurface).not.toHaveBeenCalled()
     expect(onChangeView).toHaveBeenCalledWith('chat')
   })
 

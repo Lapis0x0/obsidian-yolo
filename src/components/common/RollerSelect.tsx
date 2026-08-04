@@ -27,10 +27,16 @@ type RollerSelectProps = {
   value: string
   options: RollerOption[]
   onChange: (value: string) => void
+  /** Activates the currently visible value without opening the menu. */
+  onValueClick?: () => void
+  /** Accessible name for the visible-value action. */
+  valueAriaLabel?: string
   onActivate?: () => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
   disabled?: boolean
+  /** Layout class for the selector container. */
+  containerClassName?: string
   triggerClassName?: string
   /** Popover surface variant + sizing. */
   popover?: RollerSelectPopoverProps
@@ -38,6 +44,7 @@ type RollerSelectProps = {
   contentStyle?: CSSProperties
   ariaLabel?: string
   sideOffset?: number
+  align?: 'start' | 'center' | 'end'
   onTriggerMouseEnter?: () => void
   onTriggerMouseLeave?: () => void
   onContentMouseEnter?: () => void
@@ -46,19 +53,33 @@ type RollerSelectProps = {
 
 const ROLL_DURATION_MS = 260
 
+export function createRollerSelectHandlers({
+  onValueClick,
+  onActivate,
+}: Pick<RollerSelectProps, 'onValueClick' | 'onActivate'>) {
+  return {
+    onValueClick: () => onValueClick?.(),
+    onMenuActivate: () => onActivate?.(),
+  }
+}
+
 const RollerSelect: React.FC<RollerSelectProps> = ({
   value,
   options,
   onChange,
+  onValueClick,
+  valueAriaLabel,
   onActivate,
   open,
   onOpenChange,
   disabled = false,
+  containerClassName,
   triggerClassName,
   popover,
   contentStyle,
   ariaLabel,
   sideOffset = 8,
+  align = 'start',
   onTriggerMouseEnter,
   onTriggerMouseLeave,
   onContentMouseEnter,
@@ -75,7 +96,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
   )
   const [incomingValue, setIncomingValue] = useState<string | null>(null)
   const timeoutRef = useRef<number | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [contextBg, setContextBg] = useState<string | null>(null)
 
   /** popover 通过 Radix Portal 挂到 body 上，CSS 级联无法从 trigger 所在容器
@@ -84,7 +105,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
    * 所在容器（侧栏面板 / 独立窗口编辑区 / etc.）的底色。 */
   useEffect(() => {
     if (!isOpen) return
-    const node = triggerRef.current
+    const node = containerRef.current
     if (!node) return
     const win = getNodeWindow(node)
     let el: Element | null = node.parentElement
@@ -100,7 +121,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
   }, [isOpen])
 
   useEffect(() => {
-    const ownerWindow = getNodeWindow(triggerRef.current)
+    const ownerWindow = getNodeWindow(containerRef.current)
     return () => {
       if (timeoutRef.current !== null) {
         ownerWindow.clearTimeout(timeoutRef.current)
@@ -117,7 +138,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
     }
 
     setIncomingValue(currentOption.value)
-    const ownerWindow = getNodeWindow(triggerRef.current)
+    const ownerWindow = getNodeWindow(containerRef.current)
     if (timeoutRef.current !== null) {
       ownerWindow.clearTimeout(timeoutRef.current)
       timeoutRef.current = null
@@ -137,6 +158,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
     ? (options.find((option) => option.value === incomingValue) ?? null)
     : null
   const isRolling = incomingOption !== null
+  const handlers = createRollerSelectHandlers({ onValueClick, onActivate })
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (open === undefined) {
@@ -151,56 +173,70 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
       open={isOpen}
       onOpenChange={handleOpenChange}
     >
-      <DropdownMenu.Trigger
-        ref={triggerRef}
+      <div
+        ref={containerRef}
         className={
-          triggerClassName
-            ? `yolo-roller-select-trigger ${triggerClassName}${isOpen ? ' is-open' : ''}`
-            : `yolo-roller-select-trigger${isOpen ? ' is-open' : ''}`
+          containerClassName
+            ? `yolo-roller-select ${containerClassName}`
+            : 'yolo-roller-select'
         }
-        aria-label={ariaLabel}
-        onClick={() => {
-          onActivate?.()
-        }}
         onMouseEnter={onTriggerMouseEnter}
         onMouseLeave={onTriggerMouseLeave}
-        disabled={disabled}
       >
-        <div className="yolo-roller-select-window" aria-hidden="true">
-          <div
-            className={`yolo-roller-select-track ${isRolling ? 'is-rolling' : ''}`}
-          >
-            <div className="yolo-roller-select-item">
-              {visibleOption?.icon ? (
-                <span className="yolo-view-toggle-button-icon">
-                  {visibleOption.icon}
-                </span>
-              ) : null}
-              <span className="yolo-view-toggle-button-label yolo-roller-select-item-label">
-                {visibleOption?.label}
-              </span>
-            </div>
-            {incomingOption ? (
+        <button
+          type="button"
+          className={
+            triggerClassName
+              ? `yolo-roller-select-value-button ${triggerClassName}`
+              : 'yolo-roller-select-value-button'
+          }
+          onClick={handlers.onValueClick}
+          aria-label={valueAriaLabel}
+          disabled={disabled}
+        >
+          <div className="yolo-roller-select-window" aria-hidden="true">
+            <div
+              className={`yolo-roller-select-track ${isRolling ? 'is-rolling' : ''}`}
+            >
               <div className="yolo-roller-select-item">
-                {incomingOption.icon ? (
+                {visibleOption?.icon ? (
                   <span className="yolo-view-toggle-button-icon">
-                    {incomingOption.icon}
+                    {visibleOption.icon}
                   </span>
                 ) : null}
                 <span className="yolo-view-toggle-button-label yolo-roller-select-item-label">
-                  {incomingOption.label}
+                  {visibleOption?.label}
                 </span>
               </div>
-            ) : null}
+              {incomingOption ? (
+                <div className="yolo-roller-select-item">
+                  {incomingOption.icon ? (
+                    <span className="yolo-view-toggle-button-icon">
+                      {incomingOption.icon}
+                    </span>
+                  ) : null}
+                  <span className="yolo-view-toggle-button-label yolo-roller-select-item-label">
+                    {incomingOption.label}
+                  </span>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <span className="yolo-roller-select-caret" aria-hidden="true">
-          <ChevronDown size={14} strokeWidth={2.4} />
-        </span>
-      </DropdownMenu.Trigger>
+        </button>
+        <DropdownMenu.Trigger
+          className={`yolo-roller-select-trigger yolo-roller-select-caret-button${isOpen ? ' is-open' : ''}`}
+          aria-label={ariaLabel}
+          onClick={handlers.onMenuActivate}
+          disabled={disabled}
+        >
+          <span className="yolo-roller-select-caret" aria-hidden="true">
+            <ChevronDown size={14} strokeWidth={2.4} />
+          </span>
+        </DropdownMenu.Trigger>
+      </div>
 
       <YoloDropdownContent
-        anchorRef={triggerRef}
+        anchorRef={containerRef}
         variant={popover?.variant ?? 'default'}
         minWidth={popover?.minWidth}
         maxWidth={popover?.maxWidth}
@@ -212,7 +248,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
         }}
         side="bottom"
         sideOffset={sideOffset}
-        align="start"
+        align={align}
         collisionPadding={8}
         onMouseEnter={onContentMouseEnter}
         onMouseLeave={onContentMouseLeave}

@@ -40,6 +40,8 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
 
   const chatLabel = t('sidebar.runtimeSelector.chatLabel', 'Agent')
   const cliLabel = t('sidebar.runtimeSelector.cliLabel', 'CLI')
+  const shortcutTargetLabel =
+    activeChatSurface === 'chat' ? cliLabel : chatLabel
   const composerLabel = t('sidebar.tabs.composer', 'Sparkle')
   const modeOptions = [
     {
@@ -152,6 +154,9 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
   }${activeView === 'chat' ? 'yolo-view-toggle-button--active' : ''} ${
     expandedView === 'chat' ? 'yolo-view-toggle-button--expanded' : ''
   }`
+  const chatRollerClassName = `yolo-view-toggle-roller${
+    expandedView === 'chat' ? ' yolo-view-toggle-roller--expanded' : ''
+  }${activeView === 'chat' ? ' yolo-view-toggle-roller--active' : ''}`
 
   return (
     <div
@@ -189,11 +194,23 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
             clearHoverCloseTimeout()
             setIsModeMenuOpen(false)
           }}
+          onValueClick={() => {
+            const nextSurface = activeChatSurface === 'chat' ? 'cli' : 'chat'
+            onChangeChatSurface(nextSurface)
+            onChangeView('chat')
+            clearHoverCloseTimeout()
+            setIsModeMenuOpen(false)
+          }}
+          valueAriaLabel={t(
+            'sidebar.runtimeSelector.switchToMode',
+            'Switch to {mode}',
+          ).replace('{mode}', shortcutTargetLabel)}
           disabled={disabled}
           ariaLabel={t(
-            'sidebar.runtimeSelector.modeAccessibleLabel',
-            'Chat mode',
+            'sidebar.runtimeSelector.modeMenuAccessibleLabel',
+            'Choose chat mode',
           )}
+          containerClassName={chatRollerClassName}
           triggerClassName={chatTriggerClassName}
           contentStyle={
             (showComposer ? toggleWidth : popoverWidth)
@@ -201,11 +218,11 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
                   width: `${showComposer ? toggleWidth : popoverWidth}px`,
                   minWidth: `${showComposer ? toggleWidth : popoverWidth}px`,
                   maxWidth: `${showComposer ? toggleWidth : popoverWidth}px`,
-                  marginLeft: '-4px',
                 }
               : undefined
           }
           sideOffset={2}
+          align="end"
           onTriggerMouseEnter={() => {
             if (disabled) return
             setHoveredView('chat')

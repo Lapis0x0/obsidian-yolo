@@ -67,7 +67,8 @@ export const en: TranslationKeys = {
       composer: 'Sparkle',
     },
     runtimeSelector: {
-      modeAccessibleLabel: 'Chat mode',
+      modeMenuAccessibleLabel: 'Choose chat mode',
+      switchToMode: 'Switch to {mode}',
       chatLabel: 'Agent',
       cliLabel: 'CLI',
       chatDescription: 'Built-in YOLO chat',

@@ -67,7 +67,8 @@ export const zh: TranslationKeys = {
       composer: '灵光写作',
     },
     runtimeSelector: {
-      modeAccessibleLabel: '聊天模式',
+      modeMenuAccessibleLabel: '选择聊天模式',
+      switchToMode: '切换到{mode}',
       chatLabel: 'Agent',
       cliLabel: 'CLI',
       chatDescription: 'YOLO 内置对话',
