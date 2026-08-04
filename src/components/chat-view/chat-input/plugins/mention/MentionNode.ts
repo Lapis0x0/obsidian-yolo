@@ -228,6 +228,14 @@ export class MentionNode extends TextNode {
   getMentionable(): SerializedMentionable {
     return this.__mentionable
   }
+
+  updateMentionName(mentionName: string): void {
+    if (this.__mentionName === mentionName) return
+
+    const writable = this.getWritable()
+    writable.__mentionName = mentionName
+    writable.setTextContent(getDisplayMentionName(mentionName))
+  }
 }
 
 function compactInlineMentionable(

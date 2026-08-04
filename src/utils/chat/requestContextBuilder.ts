@@ -1595,8 +1595,11 @@ ${selections
     return `## Referenced assistant reply snippets
 ${quotes
   .map(
-    ({ conversationId, messageId, content }) =>
-      `<assistant_quote conversationId="${conversationId}" messageId="${messageId}">\n${content}\n</assistant_quote>`,
+    (
+      { annotationNumber, conversationId, messageId, content, comment },
+      index,
+    ) =>
+      `<assistant_quote index="${annotationNumber ?? index + 1}" conversationId="${conversationId}" messageId="${messageId}">\n<quote>\n${content}\n</quote>${comment?.trim() ? `\n<comment>\n${comment.trim()}\n</comment>` : ''}\n</assistant_quote>`,
   )
   .join('\n\n')}\n\n`
   }

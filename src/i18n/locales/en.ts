@@ -1895,6 +1895,10 @@ export const en: TranslationKeys = {
     assistantQuote: {
       add: 'Quote',
       badge: 'Reply quote',
+      commentPlaceholder: 'Add a comment…',
+      save: 'Save comment',
+      delete: 'Delete comment',
+      inputLabel: 'Annotation {index}',
     },
     mentionMenu: {
       back: 'Back',

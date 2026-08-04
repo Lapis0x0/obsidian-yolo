@@ -785,25 +785,65 @@ const createSelectionBlockMentionable = (
 }
 
 const createAssistantQuoteMentionable = ({
+  id,
+  annotationNumber,
   conversationId,
   messageId,
   content,
+  comment,
+  selector,
 }: {
+  id?: string
+  annotationNumber?: number
   conversationId: string
   messageId: string
   content: string
+  comment?: string
+  selector?: MentionableAssistantQuote['selector']
 }): MentionableAssistantQuote => {
   const trimmedContent = content.trim()
   const { count, unit } = getBlockMentionableCountInfo(trimmedContent)
   return {
     type: 'assistant-quote',
+    id,
+    annotationNumber,
     conversationId,
     messageId,
     content: trimmedContent,
+    comment,
+    selector,
     contentHash: getBlockContentHash(trimmedContent),
     contentCount: count,
     contentUnit: unit,
   }
+}
+
+const getMaxAssistantQuoteNumber = (mentionables: Mentionable[]): number => {
+  const quotes = mentionables.filter(
+    (mentionable): mentionable is MentionableAssistantQuote =>
+      mentionable.type === 'assistant-quote',
+  )
+  return quotes.reduce(
+    (highest, quote) => Math.max(highest, quote.annotationNumber ?? 0),
+    quotes.length,
+  )
+}
+
+const addOrUpdateMentionable = (
+  mentionables: Mentionable[],
+  mentionable: Mentionable,
+): Mentionable[] => {
+  const mentionableKey = getMentionableKey(serializeMentionable(mentionable))
+  const existingIndex = mentionables.findIndex(
+    (item) => getMentionableKey(serializeMentionable(item)) === mentionableKey,
+  )
+  if (existingIndex < 0) return [...mentionables, mentionable]
+  if (mentionable.type !== 'assistant-quote' || !mentionable.id) {
+    return mentionables
+  }
+  const next = [...mentionables]
+  next[existingIndex] = mentionable
+  return next
 }
 
 const normalizeSelectionSource = (
@@ -1385,6 +1425,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [])
   const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
   const inputMessageRef = useRef(inputMessage)
+  const assistantQuoteSequenceRef = useRef(new Map<string, number>())
   const getLatestInputMessage = useCallback(
     () => inputDraftHolder.get(),
     [inputDraftHolder],
@@ -1532,22 +1573,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     (mentionable: Mentionable) => {
       setAddedBlockKey(null)
 
-      if (focusedMessageId === inputMessage.id) {
+      if (!focusedMessageId || focusedMessageId === inputMessage.id) {
         setInputMessage((prevInputMessage) => {
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
+          const mentionables = addOrUpdateMentionable(
+            prevInputMessage.mentionables,
+            mentionable,
           )
-          if (
-            prevInputMessage.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
+          if (mentionables === prevInputMessage.mentionables)
             return prevInputMessage
-          }
           return {
             ...prevInputMessage,
-            mentionables: [...prevInputMessage.mentionables, mentionable],
+            mentionables,
             promptContent: null,
           }
         })
@@ -1560,21 +1596,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             return message
           }
 
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
+          const mentionables = addOrUpdateMentionable(
+            message.mentionables,
+            mentionable,
           )
-          if (
-            message.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
-            return message
-          }
+          if (mentionables === message.mentionables) return message
 
           return {
             ...message,
-            mentionables: [...message.mentionables, mentionable],
+            mentionables,
             promptContent: null,
           }
         }),
@@ -1585,27 +1615,116 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
 
   const handleQuoteAssistantSelection = useCallback(
     ({
+      id,
+      annotationNumber,
       conversationId,
       messageId,
       content,
+      comment,
+      selector,
     }: {
+      id?: string
+      annotationNumber?: number
       messageId: string
       conversationId: string
       content: string
+      comment?: string
+      selector?: MentionableAssistantQuote['selector']
     }) => {
-      const targetMessageId = focusedMessageId || inputMessage.id
+      const targetsInput =
+        !focusedMessageId || focusedMessageId === inputMessage.id
+      const targetMessageId = targetsInput ? inputMessage.id : focusedMessageId
+      const targetMentionables = targetsInput
+        ? inputMessageRef.current.mentionables
+        : (chatMessagesStateRef.current.find(
+            (message): message is ChatUserMessage =>
+              message.role === 'user' && message.id === targetMessageId,
+          )?.mentionables ?? [])
+      const existingQuote = targetMentionables.find(
+        (mentionable): mentionable is MentionableAssistantQuote =>
+          mentionable.type === 'assistant-quote' && mentionable.id === id,
+      )
+      const existingQuoteFallbackNumber = targetMentionables
+        .filter(
+          (mentionable): mentionable is MentionableAssistantQuote =>
+            mentionable.type === 'assistant-quote',
+        )
+        .findIndex((mentionable) => mentionable.id === id)
+      const knownSequence = Math.max(
+        assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
+        getMaxAssistantQuoteNumber(targetMentionables),
+      )
+      const resolvedAnnotationNumber =
+        existingQuote?.annotationNumber ??
+        (existingQuoteFallbackNumber >= 0
+          ? existingQuoteFallbackNumber + 1
+          : Math.max(annotationNumber ?? 0, knownSequence + 1))
+      assistantQuoteSequenceRef.current.set(
+        targetMessageId,
+        Math.max(knownSequence, resolvedAnnotationNumber),
+      )
       addMentionableToFocusedMessage(
         createAssistantQuoteMentionable({
+          id,
+          annotationNumber: resolvedAnnotationNumber,
           conversationId,
           messageId,
           content,
+          comment,
+          selector,
         }),
       )
-      window.requestAnimationFrame(() => {
-        chatUserInputRefs.current.get(targetMessageId)?.focus()
-      })
+      if (!id) {
+        window.requestAnimationFrame(() => {
+          chatUserInputRefs.current.get(targetMessageId)?.focus()
+        })
+      }
     },
     [addMentionableToFocusedMessage, focusedMessageId, inputMessage.id],
+  )
+
+  const handleDeleteAssistantQuote = useCallback(
+    (id: string) => {
+      const removeQuote = (mentionables: Mentionable[]) =>
+        mentionables.filter(
+          (mentionable) =>
+            mentionable.type !== 'assistant-quote' || mentionable.id !== id,
+        )
+
+      const targetsInput =
+        !focusedMessageId || focusedMessageId === inputMessage.id
+      const targetMessageId = targetsInput ? inputMessage.id : focusedMessageId
+      const targetMentionables = targetsInput
+        ? inputMessageRef.current.mentionables
+        : (chatMessagesStateRef.current.find(
+            (message): message is ChatUserMessage =>
+              message.role === 'user' && message.id === targetMessageId,
+          )?.mentionables ?? [])
+      assistantQuoteSequenceRef.current.set(
+        targetMessageId,
+        Math.max(
+          assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
+          getMaxAssistantQuoteNumber(targetMentionables),
+        ),
+      )
+
+      if (targetsInput) {
+        setInputMessage((message) => ({
+          ...message,
+          mentionables: removeQuote(message.mentionables),
+        }))
+        return
+      }
+
+      setChatMessages((messages) =>
+        messages.map((message) =>
+          message.role === 'user' && message.id === focusedMessageId
+            ? { ...message, mentionables: removeQuote(message.mentionables) }
+            : message,
+        ),
+      )
+    },
+    [focusedMessageId, inputMessage.id],
   )
 
   const isSidebarPlacement = props.placement === 'sidebar'
@@ -2367,6 +2486,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     )
     return focused?.role === 'user' ? focused.mentionables : null
   }, [chatMessages, focusedMessageId, inputMessage.id])
+  const activeAssistantQuotes = useMemo(
+    () =>
+      (focusedHistoricalMentionables ?? inputMessage.mentionables).filter(
+        (mentionable): mentionable is MentionableAssistantQuote =>
+          mentionable.type === 'assistant-quote',
+      ),
+    [focusedHistoricalMentionables, inputMessage.mentionables],
+  )
 
   const { commitSentSelectionHighlights, releaseHighlightIds } =
     useChatHighlightSession({
@@ -7464,6 +7591,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     handleContinueResponse,
     handleHistoricalUserMessageDelete,
     handleOpenEditSummaryFile,
+    handleDeleteAssistantQuote,
     handleQuoteAssistantSelection,
     handleRecoverAnswerUserQuestion,
     handleRecoverPendingToolCall,
@@ -7653,6 +7781,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             }
             onQuoteAssistantSelection={(...args) =>
               timelineHandlersRef.current.handleQuoteAssistantSelection(...args)
+            }
+            assistantQuotes={activeAssistantQuotes}
+            onDeleteAssistantQuote={(...args) =>
+              timelineHandlersRef.current.handleDeleteAssistantQuote(...args)
             }
             onOpenEditSummaryFile={(...args) =>
               timelineHandlersRef.current.handleOpenEditSummaryFile(...args)
@@ -7930,6 +8062,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return <div className="yolo-chat-bottom-anchor" aria-hidden="true" />
     },
     [
+      activeAssistantQuotes,
       activeApplyRequestKey,
       activeBranchByUserMessageId,
       applyMutation.isPending,
@@ -8065,6 +8198,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           chatSurfacePreset.assistantActions.showEditAction,
           chatSurfacePreset.assistantActions.showDeleteAction,
           chatSurfacePreset.assistantActions.showQuoteAction,
+          activeAssistantQuotes
+            .filter((quote) =>
+              timelineItem.messageIds.includes(quote.messageId),
+            )
+            .map(
+              (quote) =>
+                `${quote.id ?? ''}:${quote.selector?.start ?? ''}:${quote.selector?.end ?? ''}:${quote.comment ?? ''}`,
+            )
+            .join(','),
           applyMutation.isPending,
           activeApplyRequestKey ?? '',
           getRenderVersionObjectId(terminalCommandResultsByToolCallId),
@@ -8123,6 +8265,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return timelineItem.renderKey
     },
     [
+      activeAssistantQuotes,
       activeApplyRequestKey,
       activeBranchByUserMessageId,
       applyMutation.isPending,
@@ -8433,6 +8576,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           onRewriteUserMessage={handleCliUserMessageRewrite}
           onPresentedDraftHandled={consumePresentedCliDraft}
           cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
+          assistantQuotes={inputMessage.mentionables.filter(
+            (mentionable): mentionable is MentionableAssistantQuote =>
+              mentionable.type === 'assistant-quote',
+          )}
+          onQuoteAssistantSelection={handleQuoteAssistantSelection}
+          onDeleteAssistantQuote={handleDeleteAssistantQuote}
         />
       ) : (
         <ChatConversationPane

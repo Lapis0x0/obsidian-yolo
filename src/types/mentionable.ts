@@ -47,9 +47,19 @@ export type MentionableBlock = MentionableBlockData & {
 }
 export type MentionableAssistantQuote = {
   type: 'assistant-quote'
+  id?: string
+  annotationNumber?: number
   conversationId: string
   messageId: string
   content: string
+  comment?: string
+  selector?: {
+    start: number
+    end: number
+    exact: string
+    prefix?: string
+    suffix?: string
+  }
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
@@ -154,9 +164,19 @@ export type SerializedMentionableBlock = {
 }
 export type SerializedMentionableAssistantQuote = {
   type: 'assistant-quote'
+  id?: string
+  annotationNumber?: number
   conversationId: string
   messageId: string
   content?: string
+  comment?: string
+  selector?: {
+    start: number
+    end: number
+    exact: string
+    prefix?: string
+    suffix?: string
+  }
   contentHash?: string
   contentCount?: number
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'

@@ -277,6 +277,42 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     )
   })
 
+  it('keeps assistant reply quotes paired with their comments', async () => {
+    const app = createMockApp({
+      files: [],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compilePlainUserMessagePrompt({
+      prompt: '',
+      mentionables: [
+        {
+          type: 'assistant-quote',
+          id: 'annotation-1',
+          annotationNumber: 4,
+          conversationId: 'conversation-1',
+          messageId: 'assistant-1',
+          content: 'Quoted answer',
+          comment: 'Make this more concrete.',
+        },
+      ],
+    })
+
+    expect(getTextContent(result.promptContent)).toContain(
+      [
+        '<assistant_quote index="4" conversationId="conversation-1" messageId="assistant-1">',
+        '<quote>',
+        'Quoted answer',
+        '</quote>',
+        '<comment>',
+        'Make this more concrete.',
+        '</comment>',
+        '</assistant_quote>',
+      ].join('\n'),
+    )
+  })
+
   it('marks PDF and table selections with source-specific metadata', async () => {
     const pdf = createMockFile('docs/paper.pdf')
     const table = createMockFile('notes/table.md')

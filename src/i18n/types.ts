@@ -1624,6 +1624,10 @@ export type TranslationKeys = {
     assistantQuote?: {
       add?: string
       badge?: string
+      commentPlaceholder?: string
+      save?: string
+      delete?: string
+      inputLabel?: string
     }
     mentionMenu?: {
       back?: string

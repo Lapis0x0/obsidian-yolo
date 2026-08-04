@@ -4,6 +4,7 @@ import React, { useCallback, useMemo } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
 import { ChatAssistantMessage } from '../../types/chat'
+import type { MentionableAssistantQuote } from '../../types/mentionable'
 import { injectAnnotationMarkers } from '../../utils/chat/inject-annotation-markers'
 import {
   ParsedTagContent,
@@ -40,6 +41,8 @@ export default function AssistantMessageContent({
   messageId,
   conversationId,
   onQuote,
+  assistantQuotes = [],
+  onDeleteQuote,
   enableSelectionQuote = true,
 }: {
   content: ChatAssistantMessage['content']
@@ -58,10 +61,16 @@ export default function AssistantMessageContent({
   messageId: string
   conversationId: string
   onQuote: (payload: {
+    id?: string
+    annotationNumber?: number
     messageId: string
     conversationId: string
     content: string
+    comment?: string
+    selector?: MentionableAssistantQuote['selector']
   }) => void
+  assistantQuotes?: readonly MentionableAssistantQuote[]
+  onDeleteQuote?: (id: string) => void
   enableSelectionQuote?: boolean
 }) {
   const onApply = useCallback(
@@ -91,6 +100,8 @@ export default function AssistantMessageContent({
       messageId={messageId}
       conversationId={conversationId}
       onQuote={onQuote}
+      assistantQuotes={assistantQuotes}
+      onDeleteQuote={onDeleteQuote}
       enableSelectionQuote={enableSelectionQuote}
       sources={sources}
     >
@@ -109,6 +120,8 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   messageId,
   conversationId,
   onQuote,
+  assistantQuotes,
+  onDeleteQuote,
   enableSelectionQuote,
   sources,
   children,
@@ -127,10 +140,16 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   messageId: string
   conversationId: string
   onQuote: (payload: {
+    id?: string
+    annotationNumber?: number
     messageId: string
     conversationId: string
     content: string
+    comment?: string
+    selector?: MentionableAssistantQuote['selector']
   }) => void
+  assistantQuotes: readonly MentionableAssistantQuote[]
+  onDeleteQuote?: (id: string) => void
   enableSelectionQuote: boolean
   sources?: CitationSource[]
 }) {
@@ -238,7 +257,9 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
       messageId={messageId}
       conversationId={conversationId}
       disabled={generationState === 'streaming'}
+      quotes={assistantQuotes}
       onQuote={onQuote}
+      onDeleteQuote={onDeleteQuote}
     >
       {renderedContent}
     </AssistantSelectionQuoteButton>

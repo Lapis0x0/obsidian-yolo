@@ -29,6 +29,7 @@ import type {
   ChatUserMessage,
 } from '../../types/chat'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
+import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import DotLoader from '../common/DotLoader'
@@ -77,6 +78,17 @@ export type CliChatSurfaceProps = {
   ) => Promise<void>
   onPresentedDraftHandled: (draft: AcceptedCliDraft) => void
   cachedModels?: readonly CliRuntimeModel[]
+  assistantQuotes?: readonly MentionableAssistantQuote[]
+  onQuoteAssistantSelection?: (payload: {
+    id?: string
+    annotationNumber?: number
+    messageId: string
+    conversationId: string
+    content: string
+    comment?: string
+    selector?: MentionableAssistantQuote['selector']
+  }) => void
+  onDeleteAssistantQuote?: (id: string) => void
 }
 
 export const handleVisiblePresentedCliDraft = ({
@@ -449,6 +461,9 @@ export function CliChatSurface({
   onRewriteUserMessage,
   onPresentedDraftHandled,
   cachedModels,
+  assistantQuotes = [],
+  onQuoteAssistantSelection = noop,
+  onDeleteAssistantQuote = noop,
 }: CliChatSurfaceProps) {
   const app = useApp()
   const { t } = useLanguage()
@@ -804,7 +819,7 @@ export function CliChatSurface({
               showBranchAction={false}
               showEditAction={false}
               showDeleteAction={false}
-              showQuoteAction={false}
+              showQuoteAction
               isApplying={false}
               activeApplyRequestKey={null}
               onApply={noop}
@@ -825,7 +840,9 @@ export function CliChatSurface({
                 ).catch(() => undefined)
               }}
               onBranchGroup={noop}
-              onQuoteAssistantSelection={noop}
+              onQuoteAssistantSelection={onQuoteAssistantSelection}
+              assistantQuotes={assistantQuotes}
+              onDeleteAssistantQuote={onDeleteAssistantQuote}
               onOpenEditSummaryFile={handleOpenEditSummaryFile}
             />
           </ChatRuntimeActionsProvider>
@@ -834,6 +851,7 @@ export function CliChatSurface({
     },
     [
       actions,
+      assistantQuotes,
       conversationId,
       focusedUserMessageId,
       handleOpenEditSummaryFile,
@@ -841,6 +859,8 @@ export function CliChatSurface({
       cliSubagentReadModel.presentationsByToolCallId,
       isConversationBusy,
       onHistoricalUserMessageControlPopoverOpenChange,
+      onDeleteAssistantQuote,
+      onQuoteAssistantSelection,
       onRewriteUserMessage,
       readModel.messagesById,
       runSummary,
@@ -861,11 +881,22 @@ export function CliChatSurface({
         snapshot.runState,
         focusedUserMessageId,
       )
-      return timelineItem.kind === 'assistant-group'
-        ? `${baseVersion}:${cliSubagentRenderVersion}`
-        : baseVersion
+      if (timelineItem.kind !== 'assistant-group') return baseVersion
+      const quoteVersion = assistantQuotes
+        .filter((quote) => timelineItem.messageIds.includes(quote.messageId))
+        .map(
+          (quote) =>
+            `${quote.id ?? ''}:${quote.selector?.start ?? ''}:${quote.selector?.end ?? ''}:${quote.comment ?? ''}`,
+        )
+        .join(',')
+      return `${baseVersion}:${cliSubagentRenderVersion}:${quoteVersion}`
     },
-    [cliSubagentRenderVersion, focusedUserMessageId, snapshot.runState],
+    [
+      assistantQuotes,
+      cliSubagentRenderVersion,
+      focusedUserMessageId,
+      snapshot.runState,
+    ],
   )
 
   return (

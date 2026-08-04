@@ -1789,6 +1789,10 @@ export const zh: TranslationKeys = {
     assistantQuote: {
       add: '引用',
       badge: '回复引用',
+      commentPlaceholder: '添加批注…',
+      save: '保存批注',
+      delete: '删除批注',
+      inputLabel: '批注{index}',
     },
     mentionMenu: {
       back: '返回上一级',

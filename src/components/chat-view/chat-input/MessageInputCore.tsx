@@ -199,6 +199,23 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
       }),
       [t],
     )
+    const getInlineMentionName = useCallback(
+      (mentionable: Mentionable, assistantQuoteNumber?: number) => {
+        if (
+          mentionable.type === 'assistant-quote' &&
+          assistantQuoteNumber !== undefined
+        ) {
+          return t('chat.assistantQuote.inputLabel', '批注{index}').replace(
+            '{index}',
+            String(assistantQuoteNumber),
+          )
+        }
+        return getMentionableName(mentionable, {
+          unitLabels: mentionableUnitLabels,
+        })
+      },
+      [mentionableUnitLabels, t],
+    )
 
     const editorRef = useRef<LexicalEditor | null>(null)
     const contentEditableRef = useRef<HTMLDivElement>(null)
@@ -913,13 +930,38 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
 
       const mirrorTypes =
         mentionDisplayMode === 'inline' ? INLINE_MENTIONABLE_TYPES : []
-      const mentionablesToMirror = inlineMentionables.filter((m) =>
-        mirrorTypes.includes(m.type),
+      const reservedAssistantQuoteNumbers = new Set(
+        inlineMentionables.flatMap((mentionable) =>
+          mentionable.type === 'assistant-quote' &&
+          mentionable.annotationNumber !== undefined
+            ? [mentionable.annotationNumber]
+            : [],
+        ),
       )
-      const mentionablesByKey = new Map(
-        mentionablesToMirror.map((mentionable) => [
-          getMentionableKey(serializeMentionable(mentionable)),
+      let fallbackAssistantQuoteNumber = 0
+      const getFallbackAssistantQuoteNumber = () => {
+        do {
+          fallbackAssistantQuoteNumber += 1
+        } while (
+          reservedAssistantQuoteNumbers.has(fallbackAssistantQuoteNumber)
+        )
+        reservedAssistantQuoteNumbers.add(fallbackAssistantQuoteNumber)
+        return fallbackAssistantQuoteNumber
+      }
+      const mentionablesToMirror = inlineMentionables
+        .filter((mentionable) => mirrorTypes.includes(mentionable.type))
+        .map((mentionable) => ({
           mentionable,
+          assistantQuoteNumber:
+            mentionable.type === 'assistant-quote'
+              ? (mentionable.annotationNumber ??
+                getFallbackAssistantQuoteNumber())
+              : undefined,
+        }))
+      const mentionablesByKey = new Map(
+        mentionablesToMirror.map((entry) => [
+          getMentionableKey(serializeMentionable(entry.mentionable)),
+          entry,
         ]),
       )
 
@@ -933,8 +975,8 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
           const mentionable = node.getMentionable()
           if (!mirrorTypeSet.has(mentionable.type)) return
           const mentionableKey = getMentionableKey(mentionable)
-          const desiredMentionable = mentionablesByKey.get(mentionableKey)
-          if (!desiredMentionable) {
+          const desiredEntry = mentionablesByKey.get(mentionableKey)
+          if (!desiredEntry) {
             suppressedDestroyedMentionableKeysRef.current.add(mentionableKey)
             const prevSibling = node.getPreviousSibling()
             if (
@@ -956,6 +998,13 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
             node.remove()
             return
           }
+
+          node.updateMentionName(
+            getInlineMentionName(
+              desiredEntry.mentionable,
+              desiredEntry.assistantQuoteNumber,
+            ),
+          )
         })
 
         if (mentionablesToMirror.length === 0) return
@@ -978,26 +1027,26 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
           $isRangeSelection(cursorSelection) && cursorSelection.isCollapsed()
 
         let didInsert = false
-        mentionablesToMirror.forEach((mentionable) => {
-          const serialized = serializeMentionable(mentionable)
-          const mentionableKey = getMentionableKey(serialized)
-          if (existingKeys.has(mentionableKey)) return
+        mentionablesToMirror.forEach(
+          ({ mentionable, assistantQuoteNumber: quoteNumber }) => {
+            const serialized = serializeMentionable(mentionable)
+            const mentionableKey = getMentionableKey(serialized)
+            if (existingKeys.has(mentionableKey)) return
 
-          const mentionNode = $createMentionNode(
-            getMentionableName(mentionable, {
-              unitLabels: mentionableUnitLabels,
-            }),
-            serialized,
-          )
-          const spacer = $createTextNode(' ')
-          if (canInsertAtCursor) {
-            cursorSelection.insertNodes([mentionNode, spacer])
-          } else {
-            paragraph.append(mentionNode)
-            paragraph.append(spacer)
-          }
-          didInsert = true
-        })
+            const mentionNode = $createMentionNode(
+              getInlineMentionName(mentionable, quoteNumber),
+              serialized,
+            )
+            const spacer = $createTextNode(' ')
+            if (canInsertAtCursor) {
+              cursorSelection.insertNodes([mentionNode, spacer])
+            } else {
+              paragraph.append(mentionNode)
+              paragraph.append(spacer)
+            }
+            didInsert = true
+          },
+        )
 
         if (!shouldMoveCursor) return
         const selection = $getSelection()
@@ -1030,8 +1079,8 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
     }, [
       inlineMentionables,
       isEditorReady,
+      getInlineMentionName,
       mentionDisplayMode,
-      mentionableUnitLabels,
     ])
 
     useEffect(() => {

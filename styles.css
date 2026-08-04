@@ -11665,7 +11665,199 @@ button.yolo-chat-quick-access-picker-row > svg {
   position: relative;
 }
 
-.yolo-assistant-selection-quote-button {
+.yolo-assistant-message-selectable-content {
+  position: relative;
+  z-index: 1;
+}
+
+.yolo-assistant-annotation-active-range {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+}
+
+button.yolo-assistant-annotation-marker {
+  position: absolute;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--interactive-accent);
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  line-height: 1;
+  transform: translate(-12%, -70%);
+  animation: yolo-assistant-annotation-marker-in 160ms
+    cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
+}
+
+@keyframes yolo-assistant-annotation-marker-in {
+  from {
+    opacity: 0;
+    transform: translate(-12%, -55%) scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-12%, -70%) scale(1);
+  }
+}
+
+.yolo-assistant-annotation-marker-shape {
+  position: absolute;
+  inset: 0;
+  width: 30px;
+  height: 30px;
+  fill: var(--interactive-accent);
+  stroke: var(--background-primary);
+  filter: drop-shadow(
+    0 2px 3px
+      color-mix(in srgb, var(--background-modifier-box-shadow) 24%, transparent)
+  );
+}
+
+.yolo-assistant-annotation-marker-index {
+  position: relative;
+  z-index: 1;
+  color: var(--text-on-accent);
+  transform: translateY(-1px);
+}
+
+.yolo-assistant-annotation-marker-preview {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 10;
+  display: -webkit-box;
+  width: max-content;
+  max-width: min(240px, 60vw);
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  line-height: var(--line-height-tight);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 3px) scale(0.98);
+  transform-origin: bottom center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  transition:
+    opacity 100ms ease,
+    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+button.yolo-assistant-annotation-marker:hover
+  .yolo-assistant-annotation-marker-preview,
+button.yolo-assistant-annotation-marker:focus-visible
+  .yolo-assistant-annotation-marker-preview {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+button.yolo-assistant-annotation-marker:hover,
+button.yolo-assistant-annotation-marker:focus-visible,
+button.yolo-assistant-annotation-marker.is-active {
+  filter: brightness(1.06);
+  transform: translate(-12%, -70%) scale(1.06);
+}
+
+.yolo-assistant-annotation-editor {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(320px, calc(100% - 16px));
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  animation: yolo-assistant-annotation-editor-in 150ms
+    cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes yolo-assistant-annotation-editor-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.yolo-assistant-annotation-editor.is-new {
+  width: min(300px, calc(100% - 16px));
+}
+
+.yolo-assistant-annotation-editor input {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-normal);
+  font: inherit;
+  line-height: var(--line-height-tight);
+  box-shadow: none;
+}
+
+.yolo-assistant-annotation-editor input:focus {
+  box-shadow: none;
+}
+
+.yolo-assistant-annotation-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.yolo-assistant-annotation-marker,
+  .yolo-assistant-annotation-editor {
+    animation: none;
+  }
+
+  .yolo-assistant-annotation-marker-preview {
+    transition: none;
+  }
+}
+
+.yolo-assistant-message-selectable
+  > button.yolo-assistant-selection-quote-button {
+  appearance: none;
   position: absolute;
   display: inline-flex;
   align-items: center;
@@ -11674,31 +11866,40 @@ button.yolo-chat-quick-access-picker-row > svg {
   padding: 6px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--background-primary) 92%,
+    transparent
+  );
+  background-image: none;
   color: var(--text-normal);
   box-shadow: 0 10px 24px
     color-mix(in srgb, var(--background-modifier-box-shadow) 16%, transparent);
   backdrop-filter: blur(8px);
   z-index: 8;
   opacity: 0;
-  transform: translateY(-4px) scale(0.96);
+  transform: translateY(-2px) scale(0.98);
   transition:
-    opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 120ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 120ms cubic-bezier(0.16, 1, 0.3, 1),
     border-color 0.15s ease,
     background 0.15s ease;
 }
 
-.yolo-assistant-selection-quote-button.visible {
+.yolo-assistant-message-selectable
+  > button.yolo-assistant-selection-quote-button.visible {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
 
-.yolo-assistant-selection-quote-button:hover,
-.yolo-assistant-selection-quote-button:focus,
-.yolo-assistant-selection-quote-button:focus-visible {
+.yolo-assistant-message-selectable
+  > button.yolo-assistant-selection-quote-button:hover,
+.yolo-assistant-message-selectable
+  > button.yolo-assistant-selection-quote-button:focus,
+.yolo-assistant-message-selectable
+  > button.yolo-assistant-selection-quote-button:focus-visible {
   border-color: var(--background-modifier-border-hover);
-  background: color-mix(
+  background-color: color-mix(
     in srgb,
     var(--background-primary-alt) 94%,
     transparent

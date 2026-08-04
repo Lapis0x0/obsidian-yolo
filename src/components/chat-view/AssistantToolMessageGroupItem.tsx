@@ -22,6 +22,7 @@ import {
   ChatTerminalCommandResultMessage,
   ChatToolMessage,
 } from '../../types/chat'
+import type { MentionableAssistantQuote } from '../../types/mentionable'
 import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import {
@@ -239,10 +240,16 @@ export type AssistantToolMessageGroupItemProps = {
     branchKey: string | null,
   ) => void
   onQuoteAssistantSelection: (payload: {
+    id?: string
+    annotationNumber?: number
     messageId: string
     conversationId: string
     content: string
+    comment?: string
+    selector?: MentionableAssistantQuote['selector']
   }) => void
+  assistantQuotes?: readonly MentionableAssistantQuote[]
+  onDeleteAssistantQuote?: (id: string) => void
   onOpenEditSummaryFile: (file: GroupEditSummary['files'][number]) => void
   onUndoEditSummary?: (summary: GroupEditSummary) => void
   undoingEditSummaryTarget?: string | null
@@ -287,6 +294,8 @@ function AssistantToolMessageGroupItem({
   onBranchGroup,
   onActiveBranchChange,
   onQuoteAssistantSelection,
+  assistantQuotes,
+  onDeleteAssistantQuote,
   onOpenEditSummaryFile,
   onUndoEditSummary,
   undoingEditSummaryTarget,
@@ -773,6 +782,8 @@ function AssistantToolMessageGroupItem({
                     toolCallRequests={message.toolCallRequests}
                     showToolCallPreview={shouldShowAssistantToolPreview}
                     onQuote={onQuoteAssistantSelection}
+                    assistantQuotes={assistantQuotes}
+                    onDeleteQuote={onDeleteAssistantQuote}
                     enableSelectionQuote={showQuoteAction}
                   />
                   {message.annotations && (

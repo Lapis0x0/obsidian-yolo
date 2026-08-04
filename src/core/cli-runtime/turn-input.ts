@@ -102,7 +102,10 @@ const describeMentionable = (
         `path=${JSON.stringify(mentionable.file.path)} lines=${mentionable.startLine}-${mentionable.endLine}\n${mentionable.content}`,
       )
     case 'assistant-quote':
-      return section('assistant_quote', mentionable.content)
+      return section(
+        'assistant_quote',
+        `${mentionable.annotationNumber !== undefined ? `<annotation_number>${mentionable.annotationNumber}</annotation_number>\n` : ''}<quote>\n${mentionable.content}\n</quote>${mentionable.comment?.trim() ? `\n<comment>\n${mentionable.comment.trim()}\n</comment>` : ''}`,
+      )
     case 'url':
       return `<url>${mentionable.url}</url>`
     case 'web-selection':

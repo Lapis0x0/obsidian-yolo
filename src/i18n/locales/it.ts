@@ -1737,6 +1737,10 @@ export const it: DeepPartial<TranslationKeys> = {
     assistantQuote: {
       add: 'Cita',
       badge: 'Citazione risposta',
+      commentPlaceholder: 'Aggiungi un commento…',
+      save: 'Salva commento',
+      delete: 'Elimina commento',
+      inputLabel: 'Annotazione {index}',
     },
     mentionMenu: {
       back: 'Torna indietro',

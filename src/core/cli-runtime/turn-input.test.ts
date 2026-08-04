@@ -91,6 +91,40 @@ describe('buildCliTurnContent', () => {
     ])
   })
 
+  it('keeps each assistant quote paired with its optional comment', () => {
+    const content = buildCliTurnContent({
+      runtimeId: 'codex',
+      text: '',
+      mentionables: [
+        {
+          type: 'assistant-quote',
+          id: 'annotation-1',
+          annotationNumber: 2,
+          conversationId: 'conversation-1',
+          messageId: 'assistant-1',
+          content: 'First quoted passage',
+          comment: 'Change this conclusion.',
+        },
+        {
+          type: 'assistant-quote',
+          id: 'annotation-2',
+          annotationNumber: 4,
+          conversationId: 'conversation-1',
+          messageId: 'assistant-1',
+          content: 'Second quoted passage',
+          comment: '',
+        },
+      ],
+    })
+
+    expect(content).toEqual(expect.any(String))
+    expect(content).toContain('<quote>\nFirst quoted passage\n</quote>')
+    expect(content).toContain('<annotation_number>2</annotation_number>')
+    expect(content).toContain('<annotation_number>4</annotation_number>')
+    expect(content).toContain('<comment>\nChange this conclusion.\n</comment>')
+    expect(content).toContain('<quote>\nSecond quoted passage\n</quote>')
+  })
+
   it('places time and focus context together before the user-authored text', () => {
     const content = buildCliTurnContent({
       runtimeId: 'codex',
