@@ -1,5 +1,12 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import DotLoader from '../common/DotLoader'
@@ -7,6 +14,89 @@ import DotLoader from '../common/DotLoader'
 import TransitioningMarkdown from './TransitioningMarkdown'
 
 type ReasoningStage = 'requesting' | 'thinking' | 'settled'
+
+const REASONING_PREVIEW_MAX_BUFFER_LENGTH = 4000
+const REASONING_PREVIEW_TRIM_CHUNK_LENGTH = 2000
+const REASONING_PREVIEW_UPDATE_INTERVAL_MS = 64
+const REASONING_PREVIEW_TRANSITION_MS = 220
+const useSafeLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect
+
+export const getReasoningRollText = (reasoning: string): string => {
+  let start = 0
+  if (reasoning.length > REASONING_PREVIEW_MAX_BUFFER_LENGTH) {
+    start =
+      Math.ceil(
+        (reasoning.length - REASONING_PREVIEW_MAX_BUFFER_LENGTH) /
+          REASONING_PREVIEW_TRIM_CHUNK_LENGTH,
+      ) * REASONING_PREVIEW_TRIM_CHUNK_LENGTH
+    const nearbyBoundary = reasoning.slice(start, start + 160).search(/\s/)
+    if (nearbyBoundary >= 0) start += nearbyBoundary + 1
+  }
+
+  return reasoning
+    .slice(start)
+    .replace(/\r\n?/g, '\n')
+    .replace(/^[\t ]*(?:[-*#>`]+|\d+[.)])[\t ]*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export const getReasoningPreviewHoldOffset = (
+  contentHeight: number,
+  lineHeight: number,
+): number =>
+  lineHeight > 0 && contentHeight > lineHeight + 0.5 ? lineHeight : 0
+
+const useThrottledReasoningRollText = (value: string, enabled: boolean) => {
+  const [displayed, setDisplayed] = useState(value)
+  const latestRef = useRef(value)
+  const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wasEnabledRef = useRef(enabled)
+  const lastUpdateRef = useRef(0)
+
+  useEffect(() => {
+    latestRef.current = value
+
+    if (!enabled) {
+      wasEnabledRef.current = false
+      if (updateTimerRef.current) {
+        clearTimeout(updateTimerRef.current)
+        updateTimerRef.current = null
+      }
+      return
+    }
+
+    if (!wasEnabledRef.current) {
+      wasEnabledRef.current = true
+      setDisplayed(value)
+      lastUpdateRef.current = Date.now()
+      return
+    }
+
+    if (displayed === value || updateTimerRef.current) return
+
+    const now = Date.now()
+    const delay = Math.max(
+      0,
+      REASONING_PREVIEW_UPDATE_INTERVAL_MS - (now - lastUpdateRef.current),
+    )
+    updateTimerRef.current = setTimeout(() => {
+      updateTimerRef.current = null
+      setDisplayed(latestRef.current)
+      lastUpdateRef.current = Date.now()
+    }, delay)
+  }, [displayed, enabled, value])
+
+  useEffect(
+    () => () => {
+      if (updateTimerRef.current) clearTimeout(updateTimerRef.current)
+    },
+    [],
+  )
+
+  return displayed
+}
 
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoning,
@@ -67,20 +157,116 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
 
     return stageLabel.replace(/\.\.\.$/, '')
   }, [showDots, stageLabel])
-  const reasoningPreview = useMemo(() => {
-    const previewLine = reasoning
-      .split('\n')
-      .map((line) => line.trim())
-      .find((line) => line.length > 0)
-
-    if (!previewLine) {
-      return ''
-    }
-
-    return previewLine.replace(/^[-*#>\s`]+/, '').slice(0, 120)
-  }, [reasoning])
+  const reasoningRollText = useMemo(
+    () => getReasoningRollText(reasoning),
+    [reasoning],
+  )
+  const reasoningPreview = useThrottledReasoningRollText(
+    reasoningRollText,
+    stage === 'thinking' && !showBody,
+  )
   const showPreview =
     reasoningPreview.length > 0 && !showBody && stage === 'thinking'
+  const previewViewportRef = useRef<HTMLDivElement | null>(null)
+  const previewTrackRef = useRef<HTMLDivElement | null>(null)
+  const previewHeightRef = useRef(0)
+  const previewWidthRef = useRef(0)
+  const previewHoldOffsetRef = useRef(0)
+  const previewAnimationRef = useRef<Animation | null>(null)
+
+  useSafeLayoutEffect(() => {
+    const viewport = previewViewportRef.current
+    const track = previewTrackRef.current
+    if (!viewport || !track) return
+
+    if (!showPreview) {
+      previewAnimationRef.current?.cancel()
+      previewAnimationRef.current = null
+      previewHeightRef.current = 0
+      previewWidthRef.current = 0
+      previewHoldOffsetRef.current = 0
+      track.style.setProperty(
+        '--yolo-assistant-metadata-preview-hold-offset',
+        '0px',
+      )
+      return
+    }
+
+    const width = viewport.clientWidth
+    const height = track.scrollHeight
+    const previousHeight = previewHeightRef.current
+    const previousHoldOffset = previewHoldOffsetRef.current
+    const widthChanged = Math.abs(width - previewWidthRef.current) > 0.5
+    const lineHeight = Number.parseFloat(
+      window.getComputedStyle(track).lineHeight,
+    )
+    const holdOffset = getReasoningPreviewHoldOffset(height, lineHeight)
+    previewHeightRef.current = height
+    previewWidthRef.current = width
+    previewHoldOffsetRef.current = holdOffset
+    track.style.setProperty(
+      '--yolo-assistant-metadata-preview-hold-offset',
+      `${holdOffset}px`,
+    )
+
+    if (widthChanged || previousHeight === 0 || height < previousHeight) {
+      previewAnimationRef.current?.cancel()
+      previewAnimationRef.current = null
+      return
+    }
+
+    if (height === previousHeight) return
+
+    const startOffset = height - previousHeight + previousHoldOffset
+    if (Math.abs(startOffset - holdOffset) <= 0.5) return
+
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReducedMotion || typeof track.animate !== 'function') {
+      previewAnimationRef.current?.cancel()
+      previewAnimationRef.current = null
+      return
+    }
+
+    previewAnimationRef.current?.cancel()
+    const animation = track.animate(
+      [
+        {
+          opacity: 1,
+          transform: `translateY(${startOffset}px)`,
+        },
+        {
+          offset: 0.48,
+          opacity: 0.4,
+          transform: `translateY(${startOffset * 0.55 + holdOffset * 0.45}px)`,
+        },
+        {
+          offset: 0.52,
+          opacity: 0.4,
+          transform: `translateY(${startOffset * 0.45 + holdOffset * 0.55}px)`,
+        },
+        { opacity: 1, transform: `translateY(${holdOffset}px)` },
+      ],
+      {
+        duration: REASONING_PREVIEW_TRANSITION_MS,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
+    )
+    previewAnimationRef.current = animation
+    animation.onfinish = () => {
+      if (previewAnimationRef.current === animation) {
+        previewAnimationRef.current = null
+      }
+    }
+  }, [reasoningPreview, showPreview])
+
+  useEffect(
+    () => () => {
+      previewAnimationRef.current?.cancel()
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!isStreaming) {
@@ -165,8 +351,17 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
           )
         ) : null}
       </button>
-      <div className="yolo-assistant-message-metadata-preview" aria-hidden>
-        <span>{reasoningPreview}</span>
+      <div
+        ref={previewViewportRef}
+        className="yolo-assistant-message-metadata-preview"
+        aria-hidden
+      >
+        <div
+          ref={previewTrackRef}
+          className="yolo-assistant-message-metadata-preview-track"
+        >
+          {reasoningPreview}
+        </div>
       </div>
       <div className="yolo-assistant-message-metadata-body">
         <div className="yolo-assistant-message-metadata-content">
