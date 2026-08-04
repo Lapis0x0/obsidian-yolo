@@ -2042,10 +2042,19 @@ button.yolo-roller-select-caret-button {
   box-shadow: none !important;
 }
 
-.yolo-roller-select-value-button:focus-visible,
+button.yolo-roller-select-value-button:focus-visible,
 button.yolo-roller-select-caret-button:focus-visible {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: -2px;
+  outline: none;
+}
+
+.yolo-view-toggle-roller:has(
+    > button.yolo-roller-select-value-button:focus-visible
+  ),
+.yolo-view-toggle-roller:has(
+    > button.yolo-roller-select-caret-button:focus-visible
+  ) {
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
 
 .yolo-roller-select-track {
