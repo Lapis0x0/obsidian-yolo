@@ -6,7 +6,6 @@ type CapturedRollerProps = {
   onChange: (value: string) => void
   onValueClick: () => void
   onActivate: () => void
-  valueAriaLabel: string
 }
 
 let mockRollerProps: CapturedRollerProps | null = null
@@ -75,7 +74,6 @@ describe('ViewToggle chat surface hierarchy', () => {
 
     expect(onChangeChatSurface).toHaveBeenCalledWith('cli')
     expect(onChangeView).toHaveBeenCalledWith('chat')
-    expect(mockRollerProps?.valueAriaLabel).toBe('Switch to CLI')
   })
 
   it('switches from CLI to Agent when the visible mode is clicked', () => {
@@ -96,7 +94,6 @@ describe('ViewToggle chat surface hierarchy', () => {
 
     expect(onChangeChatSurface).toHaveBeenCalledWith('chat')
     expect(onChangeView).toHaveBeenCalledWith('chat')
-    expect(mockRollerProps?.valueAriaLabel).toBe('Switch to Agent')
   })
 
   it('keeps the caret activation separate from the shortcut switch', () => {

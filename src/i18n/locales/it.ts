@@ -83,8 +83,7 @@ export const it: DeepPartial<TranslationKeys> = {
       composer: 'Sparkle',
     },
     runtimeSelector: {
-      modeMenuAccessibleLabel: 'Scegli modalità chat',
-      switchToMode: 'Passa a {mode}',
+      modeAccessibleLabel: 'Modalità chat',
       chatLabel: 'Agent',
       cliLabel: 'CLI',
       chatDescription: 'Chat integrata di YOLO',

@@ -1751,7 +1751,6 @@ button.yolo-llm-debug-modal-button:focus-visible {
    indicator computes — the literal cause of the visual misalignment we
    were chasing. `min-width: 0` lets the box honour its outer constraint. */
 .yolo-view-toggle .yolo-view-toggle-button,
-.yolo-view-toggle .yolo-roller-select,
 .yolo-view-toggle .yolo-roller-select-window,
 .yolo-view-toggle .yolo-roller-select-track,
 .yolo-view-toggle .yolo-roller-select-item {
@@ -1910,7 +1909,7 @@ button.yolo-llm-debug-modal-button:focus-visible {
   flex: 0 1 calc(var(--yolo-expanded-width) + 8px);
 }
 
-.yolo-view-toggle--single > .yolo-view-toggle-button {
+.yolo-view-toggle--single .yolo-view-toggle-button {
   /* Override the base `flex: 0 0 collapsed`. Single mode has only one
      button, so let it fill the toggle content box directly instead of
      reusing the two-button expanded-slot math. */
@@ -1919,17 +1918,6 @@ button.yolo-llm-debug-modal-button:focus-visible {
   width: 100%;
   justify-content: center;
   gap: 6px;
-}
-
-.yolo-view-toggle--single .yolo-view-toggle-roller {
-  box-sizing: border-box;
-  flex: 1 1 100%;
-  width: 100%;
-}
-
-.yolo-view-toggle--single .yolo-roller-select-value-button {
-  flex: 1 1 auto;
-  width: auto;
 }
 
 .yolo-view-toggle--single .yolo-view-toggle-button-label {
@@ -1969,16 +1957,7 @@ button.yolo-llm-debug-modal-button:focus-visible {
      rule's specificity (0,3,0) so the caret really disappears in compact
      mode — otherwise the icon-only form still has a hanging chevron. */
   .yolo-view-toggle
-    .yolo-view-toggle-roller--expanded
-    .yolo-roller-select-caret-button
-    .yolo-roller-select-caret {
-    width: 0;
-    margin-left: 0;
-    opacity: 0;
-  }
-
-  .yolo-view-toggle.yolo-view-toggle--single
-    .yolo-roller-select-caret-button
+    .yolo-view-toggle-button--roller.yolo-view-toggle-button--expanded
     .yolo-roller-select-caret {
     width: 0;
     margin-left: 0;
@@ -1999,62 +1978,6 @@ button.yolo-llm-debug-modal-button:focus-visible {
   display: flex;
   align-items: flex-start;
   pointer-events: none;
-}
-
-.yolo-roller-select {
-  display: inline-flex;
-  align-items: center;
-}
-
-.yolo-view-toggle-roller {
-  position: relative;
-  z-index: 2;
-  display: inline-flex;
-  flex: 0 0 var(--yolo-collapsed-width);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.yolo-view-toggle:not(.yolo-view-toggle--single)
-  .yolo-view-toggle-roller--expanded {
-  flex: 0 1 var(--yolo-live-expanded-width);
-  min-width: var(--yolo-collapsed-width);
-}
-
-.yolo-view-toggle:not(.yolo-view-toggle--single)
-  .yolo-roller-select-value-button {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 0;
-}
-
-button.yolo-roller-select-caret-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 18px;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-button.yolo-roller-select-value-button:focus-visible,
-button.yolo-roller-select-caret-button:focus-visible {
-  outline: none;
-}
-
-.yolo-view-toggle-roller:has(
-    > button.yolo-roller-select-value-button:focus-visible
-  ),
-.yolo-view-toggle-roller:has(
-    > button.yolo-roller-select-caret-button:focus-visible
-  ) {
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
 
 .yolo-roller-select-track {
@@ -2096,11 +2019,7 @@ button.yolo-roller-select-caret-button:focus-visible {
     color 0.18s ease;
 }
 
-.yolo-view-toggle-roller--expanded
-  .yolo-roller-select-caret-button
-  .yolo-roller-select-caret,
-.yolo-view-toggle--single
-  .yolo-roller-select-caret-button
+.yolo-view-toggle-button--roller.yolo-view-toggle-button--expanded
   .yolo-roller-select-caret {
   width: 14px;
   margin-left: 4px;
@@ -2108,8 +2027,7 @@ button.yolo-roller-select-caret-button:focus-visible {
   color: var(--text-normal);
 }
 
-.yolo-view-toggle-roller--active
-  .yolo-roller-select-caret-button
+.yolo-view-toggle-button--roller.yolo-view-toggle-button--active
   .yolo-roller-select-caret {
   color: var(--h1-color, var(--interactive-accent));
 }

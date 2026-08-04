@@ -76,8 +76,7 @@ export type TranslationKeys = {
       composer: string
     }
     runtimeSelector: {
-      modeMenuAccessibleLabel: string
-      switchToMode: string
+      modeAccessibleLabel: string
       chatLabel: string
       cliLabel: string
       chatDescription: string
