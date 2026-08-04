@@ -168,12 +168,14 @@ jest.mock('./useAutoScroll', () => ({
   }),
 }))
 
+import type { AcceptedCliDraft } from './cliChatIntegration'
 import {
   CliChatSurface,
   getActiveStreamingMessageId,
   getCliTimelineRenderVersion,
   getCliUserMessageDisplay,
   getPendingResponseUserMessageId,
+  handleVisiblePresentedCliDraft,
   hasCliTurnResponseFeedback,
 } from './CliChatSurface'
 
@@ -235,6 +237,7 @@ const renderSurface = (
   renderToStaticMarkup(
     <CliChatSurface
       snapshot={snapshot}
+      presentedDraft={null}
       showEmptyState={
         snapshot.messages.length === 0 && snapshot.runState !== 'running'
       }
@@ -242,6 +245,7 @@ const renderSurface = (
       footerContent={<div>Composer footer</div>}
       emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
       onRewriteUserMessage={async () => undefined}
+      onPresentedDraftHandled={() => undefined}
     />,
   )
 
@@ -249,6 +253,52 @@ describe('CliChatSurface', () => {
   beforeEach(() => {
     mockedAssistantGroup.mockClear()
     capturedRuntimeConversation = undefined
+  })
+
+  it('forces the live edge before consuming a newly presented local turn', () => {
+    const userMessage = makeUser('user-presented', 'Presented prompt')
+    const presentedDraft: AcceptedCliDraft = {
+      token: 1,
+      draftRevision: 2,
+      userMessage,
+    }
+    const forceScrollToBottom = jest.fn()
+    const onHandled = jest.fn()
+
+    expect(
+      handleVisiblePresentedCliDraft({
+        presentedDraft,
+        messages: [userMessage],
+        forceScrollToBottom,
+        onHandled,
+      }),
+    ).toBe(true)
+    expect(forceScrollToBottom).toHaveBeenCalledTimes(1)
+    expect(onHandled).toHaveBeenCalledWith(presentedDraft)
+    expect(forceScrollToBottom.mock.invocationCallOrder[0]).toBeLessThan(
+      onHandled.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('does not consume a presented turn before it reaches the snapshot', () => {
+    const presentedDraft: AcceptedCliDraft = {
+      token: 1,
+      draftRevision: 2,
+      userMessage: makeUser('user-presented', 'Presented prompt'),
+    }
+    const forceScrollToBottom = jest.fn()
+    const onHandled = jest.fn()
+
+    expect(
+      handleVisiblePresentedCliDraft({
+        presentedDraft,
+        messages: [makeUser('user-existing', 'Existing prompt')],
+        forceScrollToBottom,
+        onHandled,
+      }),
+    ).toBe(false)
+    expect(forceScrollToBottom).not.toHaveBeenCalled()
+    expect(onHandled).not.toHaveBeenCalled()
   })
 
   it('renders provider-hydrated promptContent, including flattened text parts', () => {

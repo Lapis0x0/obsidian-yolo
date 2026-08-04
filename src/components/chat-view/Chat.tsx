@@ -2421,10 +2421,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
   useEffect(() => {
-    const presentedDraft = cliOperationSnapshot?.presentedDraft
-    if (presentedDraft) consumePresentedCliDraft(presentedDraft)
-  }, [cliOperationSnapshot?.presentedDraft, consumePresentedCliDraft])
-  useEffect(() => {
     const acceptedDraft = cliOperationSnapshot?.acceptedDraft
     if (acceptedDraft) consumeAcceptedCliDraft(acceptedDraft)
   }, [cliOperationSnapshot?.acceptedDraft, consumeAcceptedCliDraft])
@@ -6827,17 +6823,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               signal: submission.signal,
               onSendStarted: () => coordinator.markSending(submission.token),
               onPresented: (presentedMessage) => {
-                if (
-                  coordinator.markPresented(
-                    submission.token,
-                    presentedMessage,
-                  ) &&
-                  chatMountedRef.current
-                ) {
-                  const presentedDraft =
-                    coordinator.getSnapshot().presentedDraft
-                  if (presentedDraft) consumePresentedCliDraft(presentedDraft)
-                }
+                coordinator.markPresented(submission.token, presentedMessage)
               },
               onAccepted: (acceptedMessage) => {
                 if (
@@ -7011,12 +6997,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         replaceInputMessage(getNewInputMessage(state.reasoningLevel))
       }
     },
-    [
-      consumeAcceptedCliDraft,
-      consumePresentedCliDraft,
-      mainInputSubmitStateRef,
-      replaceInputMessage,
-    ],
+    [consumeAcceptedCliDraft, mainInputSubmitStateRef, replaceInputMessage],
   )
 
   const handleMainInputFocus = useCallback(() => {
@@ -8444,11 +8425,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <CliChatSurface
           key={activeCliConversationSnapshot.surfaceId}
           snapshot={activeCliConversationSnapshot}
+          presentedDraft={cliOperationSnapshot?.presentedDraft ?? null}
           showEmptyState={activeSurfaceEmpty}
           actions={cliChatRuntimeActions ?? cliRuntimeScope.chatRuntimeActions}
           footerContent={mainInputFooter}
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
           onRewriteUserMessage={handleCliUserMessageRewrite}
+          onPresentedDraftHandled={consumePresentedCliDraft}
           cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
         />
       ) : (

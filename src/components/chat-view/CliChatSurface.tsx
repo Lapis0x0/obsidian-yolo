@@ -41,6 +41,7 @@ import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { ChatConversationPane } from './ChatConversationPane'
 import { CliSubagentProvider } from './cli-subagent-context'
+import type { AcceptedCliDraft } from './cliChatIntegration'
 import { buildCliSubagentReadModel } from './cliSubagentReadModel'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
@@ -64,6 +65,7 @@ const PENDING_RESPONSE_ESTIMATED_HEIGHT = 56
 
 export type CliChatSurfaceProps = {
   snapshot: CliConversationSnapshot
+  presentedDraft: AcceptedCliDraft | null
   showEmptyState: boolean
   actions: ChatRuntimeActions
   footerContent: ReactNode
@@ -73,7 +75,31 @@ export type CliChatSurfaceProps = {
     editedMessage: ChatUserMessage,
     configuration?: CliTurnConfiguration,
   ) => Promise<void>
+  onPresentedDraftHandled: (draft: AcceptedCliDraft) => void
   cachedModels?: readonly CliRuntimeModel[]
+}
+
+export const handleVisiblePresentedCliDraft = ({
+  presentedDraft,
+  messages,
+  forceScrollToBottom,
+  onHandled,
+}: {
+  presentedDraft: AcceptedCliDraft | null
+  messages: readonly ChatMessage[]
+  forceScrollToBottom: () => void
+  onHandled: (draft: AcceptedCliDraft) => void
+}): boolean => {
+  if (
+    !presentedDraft ||
+    !messages.some((message) => message.id === presentedDraft.userMessage.id)
+  ) {
+    return false
+  }
+
+  forceScrollToBottom()
+  onHandled(presentedDraft)
+  return true
 }
 
 const plainTextToEditorState = (text: string): SerializedEditorState =>
@@ -415,11 +441,13 @@ const buildRunSummary = ({
 
 export function CliChatSurface({
   snapshot,
+  presentedDraft,
   showEmptyState,
   actions,
   footerContent,
   emptyStateWorkspaceTitle,
   onRewriteUserMessage,
+  onPresentedDraftHandled,
   cachedModels,
 }: CliChatSurfaceProps) {
   const app = useApp()
@@ -582,6 +610,30 @@ export function CliChatSurface({
     resetToLatest()
     requestAnimationFrame(() => forceScrollToBottom())
   }, [forceScrollToBottom, resetToLatest])
+  const handledPresentedMessageIdRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (
+      !presentedDraft ||
+      handledPresentedMessageIdRef.current === presentedDraft.userMessage.id
+    ) {
+      return
+    }
+
+    const handled = handleVisiblePresentedCliDraft({
+      presentedDraft,
+      messages: snapshot.messages,
+      forceScrollToBottom: handleForceScrollToBottom,
+      onHandled: onPresentedDraftHandled,
+    })
+    if (handled) {
+      handledPresentedMessageIdRef.current = presentedDraft.userMessage.id
+    }
+  }, [
+    handleForceScrollToBottom,
+    onPresentedDraftHandled,
+    presentedDraft,
+    snapshot.messages,
+  ])
 
   const renderTimelineItem = useCallback(
     (timelineItem: ChatTimelineItem): ReactNode => {
