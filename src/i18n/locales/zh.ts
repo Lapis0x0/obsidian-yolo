@@ -1416,7 +1416,7 @@ export const zh: TranslationKeys = {
       continuationModel: '续写模型',
       continuationModelDesc: '指定在灵光写作中用于续写的模型。',
       smartSpaceDescription:
-        'Smart Space 会在写作时提供一个轻量的悬浮输入框。默认在空白行按下空格，或任意位置输入 “/” 后紧接空格即可唤出；支持在下方调整为空行双空格触发或关闭空格触发。输入后连续按两次 Enter 提交，Esc 关闭。',
+        'Smart Space 会在写作时提供一个轻量的悬浮输入框。默认在空白行按下空格，或在行首或空白符后输入 “/” 后紧接空格即可唤出；支持在下方调整为空行双空格触发或关闭空格触发。输入后连续按两次 Enter 提交，Esc 关闭。',
       smartSpaceToggle: '启用 Smart Space',
       smartSpaceToggleDesc:
         '当关闭时，空格或 "/"+空格 将不再唤出 Smart Space 悬浮输入框。',

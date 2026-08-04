@@ -1371,7 +1371,7 @@ export const it: DeepPartial<TranslationKeys> = {
       continuationModelDesc:
         'Seleziona il modello usato per la continuazione in Sparkle.',
       smartSpaceDescription:
-        'Smart Space ti aiuta a continuare a scrivere con azioni rapide personalizzabili. Di default si apre con spazio su riga vuota o "/" + spazio; qui sotto puoi passare al doppio spazio o disattivare il trigger con spazio.',
+        'Smart Space ti aiuta a continuare a scrivere con azioni rapide personalizzabili. Di default si apre con spazio su riga vuota o con "/" + spazio a inizio riga o dopo uno spazio; qui sotto puoi passare al doppio spazio o disattivare il trigger con spazio.',
       smartSpaceToggle: 'Abilita smart space',
       smartSpaceToggleDesc:
         'Mostra il menu smart space quando il cursore è su una riga vuota.',
