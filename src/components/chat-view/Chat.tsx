@@ -1043,7 +1043,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           syncNativeConversationTitle({
             sessionRef: conversation.cliSession,
             title,
-            resolveRuntime: cliRuntimeScope.resolveRuntime,
+            resolveRuntime: (runtimeId) =>
+              cliRuntimeScope.resolveRuntime(runtimeId),
           })
         })
         .catch((error: unknown) => {

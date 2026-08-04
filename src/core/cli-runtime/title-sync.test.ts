@@ -1,6 +1,5 @@
-import type { CliRuntime, CliSessionRef } from './types'
-
 import { syncNativeConversationTitle } from './title-sync'
+import type { CliRuntime, CliSessionRef } from './types'
 
 const codexSession: CliSessionRef = {
   runtimeId: 'codex',
