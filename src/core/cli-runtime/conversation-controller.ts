@@ -17,6 +17,7 @@ import type {
   CliRuntimeModel,
   CliRuntimeRunState,
   CliRuntimeSkill,
+  CliSessionTitleInput,
   CliSessionHydration,
   CliSessionOverlay,
   CliSessionRef,
@@ -401,6 +402,22 @@ export class CliConversationController {
       })
     this.readyTail = task.catch(() => undefined)
     return task
+  }
+
+  async setNativeSessionTitle(
+    input: CliSessionTitleInput,
+  ): Promise<boolean> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (
+      this.snapshot.sessionRef?.runtimeId !== input.sessionRef.runtimeId ||
+      this.snapshot.sessionRef?.nativeSessionId !== input.sessionRef.nativeSessionId
+    ) {
+      return false
+    }
+    if (!operation.runtime.setSessionTitle) return false
+    await operation.runtime.setSessionTitle(input)
+    return this.isCurrent(operation)
   }
 
   async sendTurn({

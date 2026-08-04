@@ -1063,6 +1063,28 @@ describe('CodexCliRuntime', () => {
     )
   })
 
+  it('sets the active Codex thread name through the app-server', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    await runtime.ensureReady({})
+
+    await runtime.setSessionTitle({
+      sessionRef: { runtimeId: 'codex', nativeSessionId: 'thread-1' },
+      title: 'Review the title synchronization',
+    })
+
+    expect(process.requests).toContainEqual({
+      method: 'thread/name/set',
+      params: {
+        threadId: 'thread-1',
+        name: 'Review the title synchronization',
+      },
+    })
+  })
+
   it('maps Codex user input requests to the shared Ask User card contract', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({

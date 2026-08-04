@@ -210,6 +210,11 @@ export type CliQuestionResponse = {
   answer: unknown
 }
 
+export type CliSessionTitleInput = {
+  sessionRef: CliSessionRef
+  title: string
+}
+
 export type CliRuntimeEventListener = (event: CliRuntimeEvent) => void
 
 export type CliRuntime = {
@@ -239,6 +244,8 @@ export type CliRuntime = {
    * start/resume).
    */
   updatePermissionProfile?(update: CliPermissionProfileUpdate): Promise<void>
+  /** Update the provider-native session title when the runtime supports it. */
+  setSessionTitle?(input: CliSessionTitleInput): Promise<void>
   sendTurn(input: CliTurnInput): Promise<void>
   rewriteTurn(input: CliRewriteTurnInput): Promise<void>
   cancel(): Promise<void>

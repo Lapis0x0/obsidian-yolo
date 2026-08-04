@@ -59,6 +59,10 @@ class FakeCliRuntime implements CliRuntime {
     mode: 'agent' | 'plan'
     yoloEnabled: boolean
   }> = []
+  readonly sessionTitleUpdates: Array<{
+    sessionRef: CliSessionRef
+    title: string
+  }> = []
   openSessionImpl: (ref: CliSessionRef) => Promise<CliSessionHydration> =
     async (ref) => ({ ref, messages: [], compactionBoundaries: [] })
   ensureReadyImpl: (input: CliRuntimeReadyInput) => Promise<void> = async (
@@ -120,6 +124,13 @@ class FakeCliRuntime implements CliRuntime {
     this.permissionProfileUpdates.push(update)
   }
 
+  async setSessionTitle(input: {
+    sessionRef: CliSessionRef
+    title: string
+  }): Promise<void> {
+    this.sessionTitleUpdates.push(input)
+  }
+
   async sendTurn(input: CliTurnInput): Promise<void> {
     this.turnInputs.push(input)
     await this.sendTurnImpl(input)
@@ -160,6 +171,30 @@ class FakeCliRuntime implements CliRuntime {
 }
 
 describe('CliConversationController', () => {
+  it('updates the active provider-native session title only', async () => {
+    const runtime = new FakeCliRuntime()
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    const activeSession = controller.getSnapshot().sessionRef!
+
+    await expect(
+      controller.setNativeSessionTitle({
+        sessionRef: activeSession,
+        title: 'Meaningful title',
+      }),
+    ).resolves.toBe(true)
+    await expect(
+      controller.setNativeSessionTitle({
+        sessionRef: { runtimeId: 'codex', nativeSessionId: 'other' },
+        title: 'Stale title',
+      }),
+    ).resolves.toBe(false)
+
+    expect(runtime.sessionTitleUpdates).toEqual([
+      { sessionRef: activeSession, title: 'Meaningful title' },
+    ])
+  })
+
   it('exposes native compaction as pending until its boundary arrives', async () => {
     const runtime = new FakeCliRuntime()
     const compactGate = deferred<undefined>()

@@ -27,6 +27,7 @@ import type {
   CliRuntimeModel,
   CliRuntimeReadyInput,
   CliRuntimeSkill,
+  CliSessionTitleInput,
   CliSessionHydration,
   CliSessionRef,
   CliSubagentRef,
@@ -431,6 +432,23 @@ export class CodexCliRuntime implements CliRuntime {
     if (this.disposed) throw new Error('Codex CLI runtime has been disposed.')
     this.cliChatMode = update.mode
     this.yoloEnabled = update.yoloEnabled
+  }
+
+  async setSessionTitle({
+    sessionRef,
+    title,
+  }: CliSessionTitleInput): Promise<void> {
+    if (
+      !this.activeSessionRef ||
+      this.activeSessionRef.nativeSessionId !== sessionRef.nativeSessionId
+    ) {
+      throw new Error('Codex session must be active before setting its title.')
+    }
+    const host = await this.getHost()
+    await host.request('thread/name/set', {
+      threadId: sessionRef.nativeSessionId,
+      name: title,
+    })
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {

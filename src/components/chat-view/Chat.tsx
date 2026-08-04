@@ -6977,9 +6977,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             if (state.cliConversationId === null && chatMountedRef.current) {
               setCliConversationId(historyConversationId)
             }
-            void state.generateConversationTitle(historyConversationId, [
-              result.userMessage,
-            ])
+            const generatedTitle = await state.generateConversationTitle(
+              historyConversationId,
+              [result.userMessage],
+            )
+            if (generatedTitle && runtimeId === 'codex') {
+              try {
+                await controller.setNativeSessionTitle({
+                  sessionRef: result.sessionRef,
+                  title: generatedTitle,
+                })
+              } catch (error) {
+                console.warn('[YOLO] Failed to synchronize Codex session title', {
+                  conversationId: historyConversationId,
+                  error,
+                })
+              }
+            }
             if (chatMountedRef.current) {
               if (result.overlayError) {
                 console.warn('[YOLO] Failed to save CLI display metadata', {
