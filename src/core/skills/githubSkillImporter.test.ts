@@ -206,7 +206,7 @@ describe('fetchGitHubSkill package resources', () => {
   it('keeps non-entry package resources as exact bytes', async () => {
     const skillContent = [
       '---',
-      'name: binary-assets',
+      'name: different-frontmatter-name',
       'description: Keeps binary assets unchanged.',
       '---',
     ].join('\n')
@@ -254,5 +254,20 @@ describe('fetchGitHubSkill package resources', () => {
     expect(new Uint8Array(asset?.data ?? new ArrayBuffer(0))).toEqual(
       new Uint8Array([0, 255, 1, 2]),
     )
+  })
+
+  it('preserves a blob filename instead of replacing it with frontmatter name', async () => {
+    const content = ['---', 'name: different-name', '---'].join('\n')
+    mockedRequestUrl.mockResolvedValueOnce(makeResponse({ text: content }))
+
+    const [result] = await fetchGitHubSkill(
+      'https://github.com/user/repo/blob/main/readable-file.md',
+    )
+
+    expect(result).toMatchObject({
+      sourceName: 'readable-file.md',
+      targetName: 'readable-file.md',
+      isDirectory: false,
+    })
   })
 })

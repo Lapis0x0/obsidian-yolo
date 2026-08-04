@@ -481,7 +481,7 @@ export const en: TranslationKeys = {
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
-        'Skills are discovered from built-in skills and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
+        'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<folder>/SKILL.md packages. Disable a skill here to block it for all agents.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
@@ -501,15 +501,16 @@ export const en: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
-      skillsSourcePath: 'Source: built-in skills + {path}/<name>/SKILL.md',
+      skillsSourcePath:
+        'Source: built-in skills + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
-        'No skills found. Create a {path}/<name>/SKILL.md package.',
+        'No skills found. Create a Markdown file or a folder containing SKILL.md under {path}.',
       createSkillTemplates: 'Initialize Skills system',
       skillsTemplateCreated: 'Skills system initialized in {path}.',
       importSkill: 'Import Skill',
       importSkillDesc:
-        'Import skill packages into {path}. Single Markdown files are wrapped as <name>/SKILL.md; folders keep SKILL.md and all package resources.',
+        'Import skills into {path}. Markdown files keep their filenames; folders keep their names, SKILL.md, and all package resources.',
       importSkillDropzoneText: 'Drag & drop skill files or folders here',
       importSkillBrowseFiles: 'Browse Files',
       importSkillBrowseFolder: 'Browse Folder',
@@ -528,19 +529,6 @@ export const en: TranslationKeys = {
       importSkillErrNoFrontmatter:
         'missing metadata header (---) at the top of the file',
       importSkillErrNoName: 'missing "name" field in metadata',
-      importSkillErrNameTooLong: '"name" is too long (max 64 characters)',
-      importSkillErrNameUppercase: '"name" must be all lowercase',
-      importSkillErrNameHyphenEdge: '"name" cannot start or end with a hyphen',
-      importSkillErrNameDoubleHyphen:
-        '"name" cannot contain consecutive hyphens (--)',
-      importSkillErrNameInvalidChars:
-        '"name" can only contain lowercase letters, numbers, and hyphens',
-      importSkillErrNameMismatch: '"name" must match the folder name',
-      importSkillErrNoDescription: 'missing "description" field in metadata',
-      importSkillErrDescTooLong:
-        '"description" is too long (max 1024 characters)',
-      importSkillErrCompatTooLong:
-        '"compatibility" is too long (max 500 characters)',
       importSkillConflictTitle: 'Skill already exists',
       importSkillConflictMessage:
         'A skill with the same name already exists. Do you want to overwrite it?',
@@ -550,7 +538,7 @@ export const en: TranslationKeys = {
       importSkillConflictSkip: 'Skip conflicts',
       importSkillUnsafePath: 'Refused unsafe path in "{name}": {path}',
       importSkillDuplicateInBatch:
-        'Duplicate skill name in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
+        'Duplicate import destination in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
       importSkillFromUrlPlaceholder: 'Paste a GitHub URL (repo / blob / tree)',
       importSkillFromUrlFetch: 'Fetch',
       importSkillFromUrlFetching: 'Fetching...',
@@ -569,27 +557,13 @@ export const en: TranslationKeys = {
       deleteSkillConfirm: 'Delete',
       deleteSkillSuccess: '"{name}" has been deleted.',
       deleteSkillError: 'Failed to delete "{name}": {error}',
-      deleteSkillInvalidPackage: 'Invalid skill package path',
-      deleteSkillNotFound: 'Skill package not found',
+      deleteSkillNotFound: 'Skill not found',
       deleteSkillBatchMessage:
-        'Are you sure you want to delete {count} skill package(s), including all resources? This cannot be undone.',
+        'Are you sure you want to delete {count} skill(s), including package resources? This cannot be undone.',
       deleteSkillBatchSuccess: 'Deleted {count} skill(s).',
       deleteSkillBatchBtn: 'Delete',
       deleteSkillSelectAll: 'Select all',
       deleteSkillCancel: 'Cancel',
-      skillPackageMigrationIssues:
-        '{count} legacy skill file(s) need attention. YOLO did not overwrite or delete them:',
-      skillPackageMigrationInvalidFrontmatter:
-        '{path}: missing or invalid YAML frontmatter; file was kept.',
-      skillPackageMigrationInvalidName:
-        '{path}: frontmatter name must be 1–64 lowercase letters, numbers, or hyphens; file was kept.',
-      skillPackageMigrationConflict:
-        '{path}: target {target} already exists; file was kept.',
-      skillPackageMigrationFileFailed:
-        '{path}: migration failed ({error}); file was kept.',
-      skillPackageMigrationUnknownError: 'Unknown error',
-      skillPackageMigrationFailed:
-        'YOLO could not finish upgrading legacy skill files. The source files were kept; review the console and move them manually.',
       selectSkills: 'Select',
       agents: 'Agents',
       agentsDesc: 'Click Configure to edit each agent profile and prompt.',

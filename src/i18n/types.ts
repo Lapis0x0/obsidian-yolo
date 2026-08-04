@@ -385,15 +385,6 @@ export type TranslationKeys = {
       importSkillErrNoSkillMd?: string
       importSkillErrNoFrontmatter?: string
       importSkillErrNoName?: string
-      importSkillErrNameTooLong?: string
-      importSkillErrNameUppercase?: string
-      importSkillErrNameHyphenEdge?: string
-      importSkillErrNameDoubleHyphen?: string
-      importSkillErrNameInvalidChars?: string
-      importSkillErrNameMismatch?: string
-      importSkillErrNoDescription?: string
-      importSkillErrDescTooLong?: string
-      importSkillErrCompatTooLong?: string
       importSkillConflictTitle?: string
       importSkillConflictMessage?: string
       importSkillConflictMessageList?: string
@@ -415,20 +406,12 @@ export type TranslationKeys = {
       deleteSkillConfirm?: string
       deleteSkillSuccess?: string
       deleteSkillError?: string
-      deleteSkillInvalidPackage?: string
       deleteSkillNotFound?: string
       deleteSkillBatchMessage?: string
       deleteSkillBatchSuccess?: string
       deleteSkillBatchBtn?: string
       deleteSkillSelectAll?: string
       deleteSkillCancel?: string
-      skillPackageMigrationIssues?: string
-      skillPackageMigrationInvalidFrontmatter?: string
-      skillPackageMigrationInvalidName?: string
-      skillPackageMigrationConflict?: string
-      skillPackageMigrationFileFailed?: string
-      skillPackageMigrationUnknownError?: string
-      skillPackageMigrationFailed?: string
       selectSkills?: string
       agents?: string
       agentsDesc?: string

@@ -11,12 +11,13 @@ export const getSkillsPathAwareTemplate = (
 
 export const YOLO_SKILLS_INDEX_TEMPLATE = `# YOLO Skills
 
-Store standard Agent Skills directory packages here.
+Store YOLO skills here in either supported form.
 
-- Required layout: \`YOLO/skills/<name>/SKILL.md\`
-- The directory name must exactly match frontmatter \`name\`.
-- Required frontmatter: \`name\` (kebab-case unique identifier) and \`description\`; \`mode\` (\`lazy\` | \`always\`) is optional.
-- Keep supporting \`scripts/\`, \`references/\`, \`assets/\`, and other resources inside the same \`<name>/\` package.
+- Simple skill: \`YOLO/skills/<readable-name>.md\`
+- Skill package with resources: \`YOLO/skills/<folder>/SKILL.md\`
+- Required frontmatter: a non-empty \`name\`; \`description\` and \`mode\` (\`lazy\` | \`always\`) are optional.
+- Keep supporting \`scripts/\`, \`references/\`, \`assets/\`, and other resources inside the package folder.
+- Preserve existing filenames and package folder names when editing skills.
 `
 
 export const YOLO_OBSIDIAN_OUTPUT_FORMAT_TEMPLATE = `---
@@ -110,20 +111,18 @@ Obsidian vaults contain the user's real data. Prefer minimal edits, explicit ver
 
 ## Anatomy of a Skill
 
-Every YOLO skill is a self-contained directory package stored in the vault's \`YOLO/skills/\` folder:
+YOLO supports simple Markdown skills and directory packages. Use a single Markdown file by default; use a package only when the skill needs supporting resources:
 
 ~~~
 YOLO/skills/
-├── meeting-notes/
-│   ├── SKILL.md
-│   └── references/
+├── meeting-notes.md
 ├── pdf-editor/
 │   ├── SKILL.md
 │   └── scripts/
 └── ...
 ~~~
 
-Each package has a required \`SKILL.md\` entry file with two parts, plus optional resources used by its workflow:
+The Markdown entry file—either \`<readable-name>.md\` or a package's \`SKILL.md\`—has two parts. Packages may also contain supporting resources:
 
 ### Frontmatter (YAML, required)
 
@@ -182,12 +181,12 @@ Key principle: When a skill supports multiple variations or domains, split into 
 ~~~
 # Instead of one monolithic "data-analysis" skill:
 YOLO/skills/
-├── bigquery-finance/SKILL.md
-├── bigquery-sales/SKILL.md
-└── bigquery-product/SKILL.md
+├── bigquery-finance.md
+├── bigquery-sales.md
+└── bigquery-product.md
 ~~~
 
-This way, when the user asks about sales metrics, only \`bigquery-sales/SKILL.md\` activates and loads.
+This way, when the user asks about sales metrics, only \`bigquery-sales.md\` activates and loads.
 
 ## Available Tools
 
@@ -243,7 +242,7 @@ Before creating something new, check what already exists:
 ~~~
 fs_list YOLO/skills/          -> see current inventory
 fs_search <topic keywords>    -> find related skills
-fs_read <similar-skill>/SKILL.md -> study patterns that work (prefer line ranges when a section is known)
+fs_read <similar-skill-path>    -> study patterns that work (prefer line ranges when a section is known)
 ~~~
 
 This avoids duplication and helps maintain consistency across the vault's skill collection.
@@ -261,7 +260,7 @@ Analyze each concrete example by considering:
 Write the frontmatter first, then the body.
 
 Frontmatter checklist:
-- \`name\` is kebab-case, unique, and exactly matches the package directory name
+- \`name\` is stable and unique
 - \`description\` clearly states what the skill does and when to trigger it
 
 Body guidelines:
@@ -272,12 +271,20 @@ Body guidelines:
 
 ### Step 5: Write to Vault
 
+For a simple skill, keep the user-facing filename readable:
+
 ~~~
-fs_create_dir { path: "YOLO/skills/<skill-name>" }
-fs_write { path: "YOLO/skills/<skill-name>/SKILL.md", content: "..." }
+fs_write { path: "YOLO/skills/<readable-name>.md", content: "..." }
 ~~~
 
-Put scripts, references, assets, and other supporting files under the same package directory. For updates to existing skills, prefer \`fs_edit\` to make minimal, targeted changes rather than rewriting the entire entry file.
+Only create a directory package when the skill needs scripts, references, assets, or other supporting files:
+
+~~~
+fs_create_dir { path: "YOLO/skills/<folder>" }
+fs_write { path: "YOLO/skills/<folder>/SKILL.md", content: "..." }
+~~~
+
+For updates, preserve the skill's existing filename or package folder and prefer \`fs_edit\` for minimal, targeted changes.
 
 ### Step 6: Verify and Iterate
 
@@ -301,8 +308,8 @@ Before finalizing any skill, verify:
 
 - [ ] Frontmatter includes \`name\` and \`description\`
 - [ ] Description states clear trigger conditions (not buried in body)
-- [ ] \`name\` is kebab-case and matches the package directory name
-- [ ] The entry file is exactly \`<name>/SKILL.md\`, with all supporting resources kept inside \`<name>/\`
+- [ ] \`name\` is stable and unique
+- [ ] A simple skill remains a readable Markdown file; supporting resources stay inside a package folder with \`SKILL.md\`
 - [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_write\`, \`fs_delete\`, \`fs_create_dir\`, \`fs_move\`)
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters
