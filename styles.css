@@ -10467,7 +10467,8 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-container--sidebar .yolo-chat-messages .yolo-chat-timeline-row {
-  margin-inline: var(--yolo-chat-sidebar-inline-padding);
+  margin-inline-start: calc(var(--yolo-chat-sidebar-inline-padding) + 8px);
+  margin-inline-end: var(--yolo-chat-sidebar-inline-padding);
 }
 
 .yolo-chat-container--sidebar > .yolo-chat-messages {
@@ -11344,6 +11345,10 @@ button.yolo-chat-quick-access-picker-row > svg {
   align-items: center;
   pointer-events: none;
   --yolo-message-navigator-preview-top: 50%;
+}
+
+.yolo-chat-container--centered .yolo-message-navigator {
+  left: var(--yolo-chat-host-inline-padding);
 }
 
 .yolo-message-navigator__rail {
