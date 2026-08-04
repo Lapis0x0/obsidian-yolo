@@ -10,7 +10,7 @@ import {
   getBuiltinLiteSkillByName,
   listBuiltinLiteSkills,
 } from './builtinSkills'
-import { parseFrontmatter, validateSkillName } from './skillValidation'
+import { parseFrontmatter } from './skillValidation'
 
 export type LiteSkillMode = 'lazy' | 'always'
 
@@ -185,7 +185,7 @@ const listSkillPathsInDir = async (
       paths.push(skillPath)
     }
   }
-  // Directory packages take precedence over legacy single-file skills with
+  // Directory packages take precedence over single-file skills with
   // the same frontmatter name. This preserves package resources when both
   // formats are present without moving or renaming either user file.
   return [
@@ -195,21 +195,12 @@ const listSkillPathsInDir = async (
       .filter((path) => {
         const fileName = path.slice(path.lastIndexOf('/') + 1)
         return (
-          fileName !== YOLO_SKILLS_INDEX_FILE_NAME && fileName.endsWith('.md')
+          fileName !== YOLO_SKILLS_INDEX_FILE_NAME &&
+          (fileName.endsWith('.md') || fileName.endsWith('.markdown'))
         )
       })
       .sort((a, b) => a.localeCompare(b)),
   ]
-}
-
-const getSkillPackageDirName = (skillPath: string): string | null => {
-  const suffix = `/${SKILL_PACKAGE_ENTRY_FILE_NAME}`
-  if (!skillPath.endsWith(suffix)) {
-    return null
-  }
-  const packageDir = skillPath.slice(0, -suffix.length)
-  const slashIndex = packageDir.lastIndexOf('/')
-  return packageDir.slice(slashIndex + 1) || null
 }
 
 export const getSkillPackageDirPath = (skillPath: string): string | null => {
@@ -322,12 +313,7 @@ const buildSkillRegistry = async ({
         frontmatter,
         isReadOnly: !managedSkillDirs.has(skillsDir),
       })
-      const packageDirName = getSkillPackageDirName(path)
-      if (
-        !entry ||
-        validateSkillName(entry.name).length > 0 ||
-        (packageDirName !== null && packageDirName !== entry.name)
-      ) {
+      if (!entry) {
         continue
       }
       if (vaultClaimed.has(entry.name)) {
@@ -815,7 +801,7 @@ export function rewriteSkillFrontmatterIdToName(
 /**
  * One-time, idempotent migration of vault skill files from the legacy
  * `id + name` frontmatter to the converged `name`-only form. Scans standard
- * directory packages plus root-level legacy Markdown sources and, when a file
+ * directory packages plus root-level Markdown sources and, when a file
  * carries a valid `id`, promotes `id` -> `name` and removes the `id` line.
  * Files without a valid `id` are skipped. Per-file failures are logged and
  * skipped without aborting the batch.

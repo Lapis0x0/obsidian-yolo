@@ -2084,7 +2084,7 @@ export function AgentsSectionContent({
                   <div className="yolo-agent-tools-empty">
                     {t(
                       'settings.agent.skillsEmptyHint',
-                      'No skills found. Create a {path}/<name>/SKILL.md package.',
+                      'No skills found. Create a Markdown file or a folder containing SKILL.md under {path}.',
                     ).replace('{path}', skillsDir)}
                   </div>
                 )}

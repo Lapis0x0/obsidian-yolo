@@ -508,7 +508,7 @@ export const it: DeepPartial<TranslationKeys> = {
       skillsCount: '{count} competenze',
       skillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillsGlobalDesc:
-        'Le skill vengono rilevate dalle skill integrate, dai file {path}/*.md e dai pacchetti {path}/<name>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
+        'Le skill vengono rilevate dalle skill integrate, dai file {path}/*.md e dai pacchetti {path}/<folder>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
@@ -529,15 +529,15 @@ export const it: DeepPartial<TranslationKeys> = {
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
       skillsSourcePath:
-        'Origine: skill integrate + {path}/*.md + {path}/<name>/SKILL.md',
+        'Origine: skill integrate + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: 'Aggiorna',
       skillsEmptyHint:
-        'Nessuna skill trovata. Crea un pacchetto {path}/<name>/SKILL.md.',
+        'Nessuna skill trovata. Crea un file Markdown o una cartella contenente SKILL.md in {path}.',
       createSkillTemplates: 'Inizializza sistema Skills',
       skillsTemplateCreated: 'Sistema Skills inizializzato in {path}.',
       importSkill: 'Importa Skill',
       importSkillDesc:
-        'Importa pacchetti skill in {path}. I singoli file Markdown vengono inseriti in <name>/SKILL.md; le cartelle conservano SKILL.md e tutte le risorse.',
+        'Importa skill in {path}. I file Markdown mantengono il nome; le cartelle mantengono il nome, SKILL.md e tutte le risorse.',
       importSkillDropzoneText: 'Trascina file o cartelle skill qui',
       importSkillBrowseFiles: 'Sfoglia File',
       importSkillBrowseFolder: 'Sfoglia Cartella',
@@ -556,21 +556,6 @@ export const it: DeepPartial<TranslationKeys> = {
       importSkillErrNoFrontmatter:
         'intestazione metadati (---) mancante in cima al file',
       importSkillErrNoName: 'campo "name" mancante nei metadati',
-      importSkillErrNameTooLong: '"name" troppo lungo (massimo 64 caratteri)',
-      importSkillErrNameUppercase: '"name" deve essere tutto minuscolo',
-      importSkillErrNameHyphenEdge:
-        '"name" non può iniziare o terminare con un trattino',
-      importSkillErrNameDoubleHyphen:
-        '"name" non può contenere trattini consecutivi (--)',
-      importSkillErrNameInvalidChars:
-        '"name" può contenere solo lettere minuscole, numeri e trattini',
-      importSkillErrNameMismatch:
-        '"name" deve corrispondere al nome della cartella',
-      importSkillErrNoDescription: 'campo "description" mancante nei metadati',
-      importSkillErrDescTooLong:
-        '"description" troppo lungo (massimo 1024 caratteri)',
-      importSkillErrCompatTooLong:
-        '"compatibility" troppo lungo (massimo 500 caratteri)',
       importSkillConflictTitle: 'Skill già esistente',
       importSkillConflictMessage:
         'Esiste già una skill con lo stesso nome. Vuoi sovrascriverla?',
@@ -581,7 +566,7 @@ export const it: DeepPartial<TranslationKeys> = {
       importSkillUnsafePath:
         'Percorso non sicuro rifiutato in "{name}": {path}',
       importSkillDuplicateInBatch:
-        'Nome skill duplicato in questo batch: "{name}" (da "{source}"). Viene mantenuta solo la prima occorrenza.',
+        'Destinazione di importazione duplicata in questo batch: "{name}" (da "{source}"). Viene mantenuta solo la prima occorrenza.',
       deleteSkillTitle: 'Elimina skill',
       deleteSkillMessage:
         'Sei sicuro di voler eliminare il pacchetto skill "{name}", incluse tutte le risorse? Questa azione non può essere annullata.',

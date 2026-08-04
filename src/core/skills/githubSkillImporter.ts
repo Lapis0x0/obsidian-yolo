@@ -1,6 +1,6 @@
 import { requestUrl } from 'obsidian'
 
-import { type FileEntry, parseFrontmatter } from './skillValidation'
+import { type FileEntry } from './skillValidation'
 
 // ---------------------------------------------------------------------------
 // 唯一保留的边界:单文件大小。其它(深度 / 文件数 / 目录数)由 GitHub 自身的
@@ -335,7 +335,7 @@ export type GitHubFetchResult = {
   files: FileEntry[]
   /** 显示用源名 */
   sourceName: string
-  /** 标准包目录名：优先 frontmatter.name，仅在无法解析时使用源名供校验报错 */
+  /** 保留远端来源的文件名或目录名 */
   targetName: string
   isDirectory: boolean
 }
@@ -388,32 +388,24 @@ async function buildSkillPackage(
   )
 
   const files: FileEntry[] = []
-  let skillMdContent = ''
   for (const { blob, data } of downloaded) {
     const relativePath = skillDir
       ? blob.path.slice(subtreePrefix.length)
       : blob.path
     if (blob.path === skillMdPath) {
-      skillMdContent = new TextDecoder().decode(data)
-      files.push({ relativePath, content: skillMdContent })
+      files.push({ relativePath, content: new TextDecoder().decode(data) })
     } else {
       files.push({ relativePath, data })
     }
   }
 
-  const fm = parseFrontmatter(skillMdContent)
-  const fmName =
-    typeof fm?.name === 'string' && fm.name.trim().length > 0
-      ? fm.name.trim()
-      : null
   const dirLastSeg = skillDir ? (skillDir.split('/').pop() ?? skillDir) : ''
   const fallbackName = dirLastSeg || fallbackRepoName
-  const targetName = fmName ?? fallbackName
 
   return {
     files,
     sourceName: dirLastSeg || fallbackRepoName,
-    targetName,
+    targetName: fallbackName,
     isDirectory: true,
   }
 }
@@ -438,16 +430,11 @@ export async function fetchGitHubSkill(
     const filePath = info.path!
     const content = await fetchRawText(buildRawUrl(info, filePath))
     const fileName = filePath.split('/').pop() ?? filePath
-    const frontmatter = parseFrontmatter(content)
-    const targetName =
-      typeof frontmatter?.name === 'string' && frontmatter.name.trim()
-        ? frontmatter.name.trim()
-        : fileName
     return [
       {
         files: [{ relativePath: fileName, content }],
         sourceName: fileName,
-        targetName,
+        targetName: fileName,
         isDirectory: false,
       },
     ]

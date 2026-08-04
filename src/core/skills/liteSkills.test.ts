@@ -682,7 +682,7 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     expect(after.map((entry) => entry.name)).not.toContain('old-base')
   })
 
-  it('lists directory packages and legacy root Markdown skills in default and hidden roots', async () => {
+  it('lists directory packages and root Markdown skills in default and hidden roots', async () => {
     const app = makeAdapterApp({
       listings: {
         'YOLO/skills': {
@@ -694,7 +694,7 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
           folders: [],
         },
         [`${OBSIDIAN_CONFIG_DIR}/skills`]: {
-          files: [`${OBSIDIAN_CONFIG_DIR}/skills/legacy-hidden.md`],
+          files: [`${OBSIDIAN_CONFIG_DIR}/skills/legacy-hidden.markdown`],
           folders: [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill`],
         },
         [`${OBSIDIAN_CONFIG_DIR}/skills/hidden-skill`]: {
@@ -723,7 +723,7 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
           'description: from default root',
           '---',
         ].join('\n'),
-        [`${OBSIDIAN_CONFIG_DIR}/skills/legacy-hidden.md`]: [
+        [`${OBSIDIAN_CONFIG_DIR}/skills/legacy-hidden.markdown`]: [
           '---',
           'name: legacy-hidden',
           'description: from hidden root',
@@ -942,7 +942,7 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     expect(document?.content).toBe(content)
   })
 
-  it('ignores nested and folder-name-mismatched packages', async () => {
+  it('ignores nested packages but accepts a folder-name mismatch', async () => {
     const app = makeAdapterApp({
       listings: {
         'YOLO/skills': {
@@ -971,8 +971,7 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
         ].join('\n'),
         'YOLO/skills/wrong-folder/SKILL.md': [
           '---',
-          'name: other-name',
-          'description: folder mismatch',
+          'name: Other Name',
           '---',
         ].join('\n'),
       },
@@ -982,7 +981,7 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
       (entry) => entry.name,
     )
     expect(names).not.toContain('nested-skill')
-    expect(names).not.toContain('other-name')
+    expect(names).toContain('Other Name')
   })
 
   it('exposes every package resource without flattening its paths', async () => {

@@ -25,7 +25,7 @@ import {
   type ValidationError,
   parseFrontmatter,
   validateDirectoryPackage,
-  wrapMarkdownAsSkillPackage,
+  validateSingleFileSkill,
 } from '../../../core/skills/skillValidation'
 import YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
@@ -79,17 +79,18 @@ function ImportSkillModalWrapper({
 // ---------------------------------------------------------------------------
 
 /**
- * 一个准备导入的 skill 包(已经识别出根目录 / 单文件)。
+ * 一个准备导入的 skill(已经识别出目录包 / 单文件)。
  */
 type SkillPackage = {
   /** 用作错误信息显示的源名称(原文件夹名 / 文件名) */
   sourceName: string
-  /** 目标目录名，始终取自 frontmatter.name */
+  /** 保留来源形态的目标文件名或目录名 */
   targetName: string
   /** 用于列表显示 */
   displayName: string
   description: string
   files: FileEntry[]
+  isDirectory: boolean
 }
 
 const SKILL_MD = 'SKILL.md'
@@ -122,51 +123,6 @@ function formatValidationErrors(
         return t(
           'settings.agent.importSkillErrNoName',
           'missing "name" field in metadata',
-        )
-      case 'name:exceeds 64 characters':
-        return t(
-          'settings.agent.importSkillErrNameTooLong',
-          '"name" is too long (max 64 characters)',
-        )
-      case 'name:uppercase not allowed':
-        return t(
-          'settings.agent.importSkillErrNameUppercase',
-          '"name" must be all lowercase',
-        )
-      case 'name:cannot start or end with hyphen':
-        return t(
-          'settings.agent.importSkillErrNameHyphenEdge',
-          '"name" cannot start or end with a hyphen',
-        )
-      case 'name:consecutive hyphens not allowed':
-        return t(
-          'settings.agent.importSkillErrNameDoubleHyphen',
-          '"name" cannot contain consecutive hyphens (--)',
-        )
-      case 'name:only lowercase letters, numbers, and hyphens allowed':
-        return t(
-          'settings.agent.importSkillErrNameInvalidChars',
-          '"name" can only contain lowercase letters, numbers, and hyphens',
-        )
-      case 'name:must match folder name':
-        return t(
-          'settings.agent.importSkillErrNameMismatch',
-          '"name" must match the folder name',
-        )
-      case 'description:missing':
-        return t(
-          'settings.agent.importSkillErrNoDescription',
-          'missing "description" field in metadata',
-        )
-      case 'description:exceeds 1024 characters':
-        return t(
-          'settings.agent.importSkillErrDescTooLong',
-          '"description" is too long (max 1024 characters)',
-        )
-      case 'compatibility:exceeds 500 characters':
-        return t(
-          'settings.agent.importSkillErrCompatTooLong',
-          '"compatibility" is too long (max 500 characters)',
         )
       default:
         return `${err.field}: ${err.message}`
@@ -491,7 +447,7 @@ function ImportSkillModalContent({
           errors.push(
             t(
               'settings.agent.importSkillDuplicateInBatch',
-              'Duplicate skill name in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
+              'Duplicate import destination in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
             )
               .replace('{name}', pkg.targetName)
               .replace('{source}', pkg.sourceName),
@@ -503,6 +459,17 @@ function ImportSkillModalContent({
       }
 
       for (const candidate of candidates) {
+        if (!isSafeRelativePath(candidate.rootName)) {
+          errors.push(
+            t(
+              'settings.agent.importSkillUnsafePath',
+              'Refused unsafe path in "{name}": {path}',
+            )
+              .replace('{name}', candidate.rootName)
+              .replace('{path}', candidate.rootName),
+          )
+          continue
+        }
         // 路径安全校验(整批候选,提前拦截 — 任意一个文件不安全就丢弃整包)
         const unsafe = candidate.files.find(
           (f) => !isSafeRelativePath(f.relativePath),
@@ -521,19 +488,25 @@ function ImportSkillModalContent({
 
         if (candidate.isSingleFile) {
           const content = candidate.files[0]?.content ?? ''
-          const wrapped = wrapMarkdownAsSkillPackage(content)
-          if (!wrapped.package) {
+          const validationErrors = validateSingleFileSkill(content)
+          if (validationErrors.length > 0) {
             errors.push(
-              formatValidationErrors(wrapped.errors, candidate.rootName, t),
+              formatValidationErrors(validationErrors, candidate.rootName, t),
             )
             continue
           }
+          const fm = parseFrontmatter(content)
+          const fmName =
+            typeof fm?.name === 'string' ? fm.name.trim() : candidate.rootName
+          const description =
+            typeof fm?.description === 'string' ? fm.description.trim() : ''
           pushValid({
             sourceName: candidate.rootName,
-            targetName: wrapped.package.name,
-            displayName: wrapped.package.name,
-            description: wrapped.package.description,
-            files: wrapped.package.files,
+            targetName: candidate.rootName,
+            displayName: fmName,
+            description,
+            files: candidate.files,
+            isDirectory: false,
           })
           continue
         }
@@ -561,10 +534,11 @@ function ImportSkillModalContent({
             (typeof fm?.description === 'string' && fm.description.trim()) || ''
           pushValid({
             sourceName: skill.sourceName,
-            targetName: fmName,
+            targetName: skill.sourceName,
             displayName: fmName,
             description,
             files: skill.files,
+            isDirectory: true,
           })
         }
       }
@@ -719,7 +693,7 @@ function ImportSkillModalContent({
     try {
       const results = await fetchGitHubSkill(trimmed)
       if (!isMountedRef.current) return
-      // 把 GitHub 抓取结果适配成 RawCandidate;rootName 对齐 targetName 以通过目录校验
+      // GitHub 结果保留远端文件名或目录名，不按 frontmatter name 改写路径。
       const candidates: RawCandidate[] = results.map((result) => ({
         rootName: result.targetName,
         files: result.files,
@@ -792,34 +766,40 @@ function ImportSkillModalContent({
 
       for (const pkg of skillPackages) {
         try {
-          const pkgDir = normalizePath(`${skillsDir}/${pkg.targetName}`)
-          // 覆盖时:无论已存在的是文件还是目录,先 trash 再写新,避免遗留旧资源 / 类型冲突
-          const existing = app.vault.getAbstractFileByPath(pkgDir)
+          const targetRoot = normalizePath(`${skillsDir}/${pkg.targetName}`)
+          // 覆盖时先 trash，避免目录遗留旧资源或文件/目录类型冲突。
+          const existing = app.vault.getAbstractFileByPath(targetRoot)
           if (existing) {
             await app.fileManager.trashFile(existing)
           }
-          await app.vault.createFolder(pkgDir)
 
-          for (const file of pkg.files) {
-            if (!isSafeRelativePath(file.relativePath)) {
-              throw new Error(`unsafe path: ${file.relativePath}`)
+          if (pkg.isDirectory) {
+            await app.vault.createFolder(targetRoot)
+            for (const file of pkg.files) {
+              if (!isSafeRelativePath(file.relativePath)) {
+                throw new Error(`unsafe path: ${file.relativePath}`)
+              }
+              const targetPath = normalizePath(
+                `${targetRoot}/${file.relativePath}`,
+              )
+              if (!targetPath.startsWith(`${targetRoot}/`)) {
+                throw new Error(`path escaped target: ${file.relativePath}`)
+              }
+              const parentDir = targetPath.substring(
+                0,
+                targetPath.lastIndexOf('/'),
+              )
+              if (parentDir) {
+                await ensureFolder(parentDir)
+              }
+              if (file.data) {
+                await app.vault.createBinary(targetPath, file.data)
+              } else {
+                await app.vault.create(targetPath, file.content ?? '')
+              }
             }
-            const targetPath = normalizePath(`${pkgDir}/${file.relativePath}`)
-            if (!targetPath.startsWith(`${pkgDir}/`)) {
-              throw new Error(`path escaped target: ${file.relativePath}`)
-            }
-            const parentDir = targetPath.substring(
-              0,
-              targetPath.lastIndexOf('/'),
-            )
-            if (parentDir) {
-              await ensureFolder(parentDir)
-            }
-            if (file.data) {
-              await app.vault.createBinary(targetPath, file.data)
-            } else {
-              await app.vault.create(targetPath, file.content ?? '')
-            }
+          } else {
+            await app.vault.create(targetRoot, pkg.files[0]?.content ?? '')
           }
           successCount++
         } catch (err) {
@@ -883,7 +863,7 @@ function ImportSkillModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.agent.importSkillDesc',
-          'Import skill packages into {path}. Single Markdown files are wrapped as <name>/SKILL.md; folders keep SKILL.md and all package resources.',
+          'Import skills into {path}. Markdown files keep their filenames; folders keep their names, SKILL.md, and all package resources.',
         ).replace('{path}', skillsDir)}
       </div>
 

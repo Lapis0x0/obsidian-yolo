@@ -224,7 +224,7 @@ function AgentSkillsModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.agent.skillsGlobalDesc',
-          'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<name>/SKILL.md packages. Disable a skill here to block it for all agents.',
+          'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<folder>/SKILL.md packages. Disable a skill here to block it for all agents.',
         ).replace('{path}', skillsDir)}
       </div>
 
@@ -349,7 +349,7 @@ function AgentSkillsModalContent({
           <div className="yolo-agent-tools-empty">
             {t(
               'settings.agent.skillsEmptyHint',
-              'No skills found. Create a {path}/<name>/SKILL.md package.',
+              'No skills found. Create a Markdown file or a folder containing SKILL.md under {path}.',
             ).replace('{path}', skillsDir)}
           </div>
         )}

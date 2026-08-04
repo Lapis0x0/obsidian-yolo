@@ -385,15 +385,6 @@ export type TranslationKeys = {
       importSkillErrNoSkillMd?: string
       importSkillErrNoFrontmatter?: string
       importSkillErrNoName?: string
-      importSkillErrNameTooLong?: string
-      importSkillErrNameUppercase?: string
-      importSkillErrNameHyphenEdge?: string
-      importSkillErrNameDoubleHyphen?: string
-      importSkillErrNameInvalidChars?: string
-      importSkillErrNameMismatch?: string
-      importSkillErrNoDescription?: string
-      importSkillErrDescTooLong?: string
-      importSkillErrCompatTooLong?: string
       importSkillConflictTitle?: string
       importSkillConflictMessage?: string
       importSkillConflictMessageList?: string
