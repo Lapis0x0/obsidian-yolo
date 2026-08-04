@@ -298,6 +298,18 @@ export class CodexCliRuntime implements CliRuntime {
     }
   }
 
+  async setSessionTitle(ref: CliSessionRef, title: string): Promise<void> {
+    if (ref.runtimeId !== 'codex') {
+      throw new Error('Cannot rename a non-Codex session.')
+    }
+    await (
+      await this.getHost()
+    ).request('thread/name/set', {
+      threadId: ref.nativeSessionId,
+      name: title,
+    })
+  }
+
   async readSubagent(ref: CliSubagentRef): Promise<readonly ChatMessage[]> {
     if (ref.parentSessionRef.runtimeId !== 'codex') {
       throw new Error('Cannot read a non-Codex subagent.')

@@ -96,7 +96,7 @@ type UseChatHistory = {
     options?: {
       force?: boolean
     },
-  ) => Promise<void>
+  ) => Promise<string | null>
   chatList: ChatConversationMetadata[]
 }
 
@@ -490,7 +490,7 @@ export function useChatHistory(): UseChatHistory {
       options?: {
         force?: boolean
       },
-    ): Promise<void> => {
+    ): Promise<string | null> => {
       const force = options?.force === true
       const logTitleEvent = (
         reason:
@@ -511,12 +511,12 @@ export function useChatHistory(): UseChatHistory {
       const cooldownUntil = titleGenerationCooldownUntilRef.current.get(id) ?? 0
       if (!force && cooldownUntil > Date.now()) {
         logTitleEvent('cooldown_active')
-        return
+        return null
       }
 
       if (titleGenerationInFlightRef.current.has(id)) {
         logTitleEvent('in_flight')
-        return
+        return null
       }
       titleGenerationInFlightRef.current.add(id)
 
@@ -534,13 +534,13 @@ export function useChatHistory(): UseChatHistory {
 
         if (!conversation) {
           logTitleEvent('conversation_missing')
-          return
+          return null
         }
 
         // 如果标题已经命名过了，不需要再次命名
         if (!force && !isUntitledConversationTitle(conversation.title)) {
           logTitleEvent('already_titled')
-          return
+          return null
         }
 
         const firstUserMessage = messages.find(
@@ -548,7 +548,7 @@ export function useChatHistory(): UseChatHistory {
         )
         if (!firstUserMessage) {
           logTitleEvent('no_user_signal')
-          return
+          return null
         }
 
         const result = await generateConversationTitleText({
@@ -583,7 +583,7 @@ export function useChatHistory(): UseChatHistory {
               Date.now() + AUTO_TITLE_FAILURE_COOLDOWN_MS,
             )
           }
-          return
+          return null
         }
         titleGenerationCooldownUntilRef.current.delete(id)
 
@@ -602,7 +602,9 @@ export function useChatHistory(): UseChatHistory {
           )
           emitChatHistoryUpdated()
           await fetchChatList()
+          return result.title
         }
+        return null
       } finally {
         titleGenerationInFlightRef.current.delete(id)
       }

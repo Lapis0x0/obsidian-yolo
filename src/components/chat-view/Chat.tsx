@@ -54,6 +54,7 @@ import {
   buildCliEnvironmentContext,
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
+  syncNativeConversationTitle,
 } from '../../core/cli-runtime'
 import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
@@ -1033,6 +1034,27 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const chatManager = useChatManager()
   const seededRuntimeSnapshot = props.seededRuntimeSnapshot
   const cliRuntimeScope = props.cliRuntimeScope
+  const syncCliConversationTitle = useCallback(
+    (conversationId: string, title: string) => {
+      if (!cliRuntimeScope) return
+      void getConversationById(conversationId)
+        .then((conversation) => {
+          if (!conversation?.cliSession) return
+          syncNativeConversationTitle({
+            sessionRef: conversation.cliSession,
+            title,
+            resolveRuntime: cliRuntimeScope.resolveRuntime,
+          })
+        })
+        .catch((error: unknown) => {
+          console.warn('[YOLO] Failed to resolve CLI conversation title sync', {
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+    },
+    [cliRuntimeScope, getConversationById],
+  )
   const cliRuntimeAvailable = isCliRuntimeAvailable()
   const preferredCliRuntimeId =
     settings.chatOptions.lastCliRuntimeId ?? 'claude-code'
@@ -6800,6 +6822,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               }}
               onUpdateTitle={async (conversationId, newTitle) => {
                 await updateConversationTitle(conversationId, newTitle)
+                syncCliConversationTitle(conversationId, newTitle)
               }}
               onTogglePinned={(conversationId) => {
                 void toggleConversationPinned(conversationId)
@@ -6815,13 +6838,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
                   )
                   return
                 }
-                await generateConversationTitle(
+                const title = await generateConversationTitle(
                   conversationId,
                   conversation.messages,
                   {
                     force: true,
                   },
                 )
+                if (title) syncCliConversationTitle(conversationId, title)
               }}
               onExportConversation={handleExportChatToVault}
             >
@@ -6871,6 +6895,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     displayedChatMessages,
     handleUserMessageSubmit,
     generateConversationTitle,
+    syncCliConversationTitle,
     inputMessage,
     messageModelMap,
     queuedMessageEditState,
@@ -6977,9 +7002,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             if (state.cliConversationId === null && chatMountedRef.current) {
               setCliConversationId(historyConversationId)
             }
-            void state.generateConversationTitle(historyConversationId, [
-              result.userMessage,
-            ])
+            void state
+              .generateConversationTitle(historyConversationId, [
+                result.userMessage,
+              ])
+              .then((title) => {
+                if (title) {
+                  state.syncCliConversationTitle(historyConversationId, title)
+                }
+              })
             if (chatMountedRef.current) {
               if (result.overlayError) {
                 console.warn('[YOLO] Failed to save CLI display metadata', {

@@ -239,6 +239,8 @@ export type CliRuntime = {
    * start/resume).
    */
   updatePermissionProfile?(update: CliPermissionProfileUpdate): Promise<void>
+  /** Best-effort update of the provider-native conversation title. */
+  setSessionTitle?(ref: CliSessionRef, title: string): Promise<void>
   sendTurn(input: CliTurnInput): Promise<void>
   rewriteTurn(input: CliRewriteTurnInput): Promise<void>
   cancel(): Promise<void>

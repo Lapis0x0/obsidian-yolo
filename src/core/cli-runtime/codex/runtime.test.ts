@@ -190,6 +190,25 @@ class RpcFakeProcess implements CodexProcessLike {
 }
 
 describe('CodexCliRuntime', () => {
+  it('updates a native thread name through the app-server', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await runtime.setSessionTitle(
+      { runtimeId: 'codex', nativeSessionId: 'thread-1' },
+      'Renamed locally',
+    )
+
+    expect(process.requests).toContainEqual({
+      method: 'thread/name/set',
+      params: { threadId: 'thread-1', name: 'Renamed locally' },
+    })
+    await runtime.dispose()
+  })
+
   it('keeps the effective configured model when the native picker omits it', async () => {
     const process = new RpcFakeProcess()
     process.configuredModel = 'deepseek-v4-flash'
