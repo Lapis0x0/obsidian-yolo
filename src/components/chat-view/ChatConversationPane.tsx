@@ -18,7 +18,7 @@ import type {
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
 import { SharedConversationSurface } from './SharedConversationSurface'
 
-type ChatConversationPaneProps = {
+export type ChatConversationPaneProps = {
   chatMode: ChatMode
   yoloEnabled: boolean
   showEmptyState: boolean

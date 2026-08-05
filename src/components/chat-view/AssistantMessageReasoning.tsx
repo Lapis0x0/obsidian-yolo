@@ -185,10 +185,9 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       previewHeightRef.current = 0
       previewWidthRef.current = 0
       previewHoldOffsetRef.current = 0
-      track.style.setProperty(
-        '--yolo-assistant-metadata-preview-hold-offset',
-        '0px',
-      )
+      track.setCssProps({
+        '--yolo-assistant-metadata-preview-hold-offset': '0px',
+      })
       return
     }
 

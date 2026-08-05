@@ -23,7 +23,6 @@ import type {
   CliTurnConfiguration,
 } from '../../core/cli-runtime'
 import type {
-  AssistantToolMessageGroup,
   ChatMessage,
   ChatToolMessage,
   ChatUserMessage,
@@ -32,18 +31,19 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
-import DotLoader from '../common/DotLoader'
 
 import AssistantErrorCard from './AssistantErrorCard'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
-import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
-import { ChatConversationPane } from './ChatConversationPane'
+import { getChatSurfacePreset } from './chat-surface-presets'
+import type { ChatSurfacePreset } from './chat-surface-presets'
 import { CliSubagentProvider } from './cli-subagent-context'
 import type { AcceptedCliDraft } from './cliChatIntegration'
 import { buildCliSubagentReadModel } from './cliSubagentReadModel'
+import type { ConversationTimelineRendererContract } from './conversation-surface-contract'
+import { ConversationSurface } from './ConversationSurface'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import {
@@ -193,6 +193,7 @@ function CliUserMessage({
   turnConfiguration,
   cachedModels,
   onControlPopoverOpenChange,
+  preset,
 }: {
   message: ChatUserMessage
   isFocused: boolean
@@ -207,6 +208,7 @@ function CliUserMessage({
   turnConfiguration?: CliTurnConfiguration
   cachedModels?: readonly CliRuntimeModel[]
   onControlPopoverOpenChange?: (isOpen: boolean) => void
+  preset: ChatSurfacePreset
 }) {
   const canonicalMessage = useMemo(
     () => toEditableUserMessage(message),
@@ -276,8 +278,8 @@ function CliUserMessage({
       onSelectedSkillsChange={(selectedSkills) =>
         setDraft((current) => ({ ...current, selectedSkills }))
       }
-      showReasoningSelect={false}
-      showModelControl={false}
+      showReasoningSelect={preset.userMessage.showReasoningSelect}
+      showModelControl={preset.userMessage.showModelControl}
       runtimeControls={
         <CliRuntimeControls
           configuration={editorConfiguration}
@@ -298,8 +300,8 @@ function CliUserMessage({
           }}
         />
       }
-      showPlaceholder={false}
-      allowAgentModeOption={false}
+      showPlaceholder={preset.userMessage.showPlaceholder}
+      allowAgentModeOption={preset.userMessage.allowAgentModeOption}
     />
   )
 }
@@ -650,16 +652,25 @@ export function CliChatSurface({
     snapshot.messages,
   ])
 
-  const renderTimelineItem = useCallback(
-    (timelineItem: ChatTimelineItem): ReactNode => {
-      if (timelineItem.kind === 'bottom-anchor') {
-        return <div className="yolo-cli-chat-surface__bottom-anchor" />
-      }
-
-      if (timelineItem.kind === 'user-message') {
-        const message = readModel.messagesById.get(timelineItem.messageId)
-        if (message?.role !== 'user') return null
-        return (
+  const surfacePreset = getChatSurfacePreset('cli')
+  const timelineRendererContract =
+    useMemo<ConversationTimelineRendererContract>(
+      () => ({
+        messagesById: readModel.messagesById,
+        preset: surfacePreset,
+        compaction: {
+          pendingTitle: t('chat.compaction.pendingTitle', '正在压缩上下文'),
+          pendingDescription: t(
+            'chat.compaction.pendingStatus',
+            '正在整理上下文，稍后将从新的上下文继续。',
+          ),
+          dividerTitle: t('chat.compaction.dividerTitle', '从这里继续当前任务'),
+          dividerDescription: t(
+            'chat.compaction.dividerDescription',
+            '以上对话已压缩为摘要，以下回复基于摘要继续',
+          ),
+        },
+        renderUserMessage: (message) => (
           <CliUserMessage
             key={message.id}
             message={message}
@@ -695,12 +706,100 @@ export function CliChatSurface({
             onControlPopoverOpenChange={
               onHistoricalUserMessageControlPopoverOpenChange
             }
+            preset={surfacePreset}
           />
-        )
-      }
-
-      if (timelineItem.kind === 'pending-response') {
-        return (
+        ),
+        getAssistantGroupProps: (messageGroup, timelineItem) => {
+          if (!snapshot.sessionRef) return null
+          const sourceUserMessage = getSourceUserMessageForGroup(
+            snapshot.messages,
+            timelineItem.messageIds,
+          )
+          return {
+            conversationId: getNativeConversationId(snapshot.sessionRef),
+            conversationRunSummary:
+              timelineItem.groupId === runSummaryAssistantGroupId
+                ? runSummary
+                : undefined,
+            isApplying: false,
+            activeApplyRequestKey: null,
+            onApply: noop,
+            onToolMessageUpdate: noopToolMessageUpdate,
+            onRecoverAnswerUserQuestion: noop,
+            onEditStart: noop,
+            onEditCancel: noop,
+            onEditSave: noop,
+            onDeleteGroup: noop,
+            onRetryGroup: () => {
+              if (!sourceUserMessage) return
+              void onRewriteUserMessage(
+                sourceUserMessage,
+                toEditableUserMessage(sourceUserMessage),
+                snapshot.turnConfigurationByUserMessageId?.[
+                  sourceUserMessage.id
+                ],
+              ).catch(() => undefined)
+            },
+            onBranchGroup: noop,
+            onQuoteAssistantSelection,
+            assistantQuotes,
+            onDeleteAssistantQuote,
+            onOpenEditSummaryFile: handleOpenEditSummaryFile,
+          }
+        },
+        getAssistantActionOverrides: (_messageGroup, timelineItem) => ({
+          showRetryAction:
+            getSourceUserMessageForGroup(
+              snapshot.messages,
+              timelineItem.messageIds,
+            ) !== null,
+        }),
+        wrapAssistantGroup: (content) => {
+          if (!snapshot.sessionRef) return content
+          return (
+            <CliSubagentProvider
+              value={{
+                actions,
+                sessionRef: snapshot.sessionRef,
+                presentationsByToolCallId:
+                  cliSubagentReadModel.presentationsByToolCallId,
+              }}
+            >
+              <ChatRuntimeActionsProvider
+                actions={actions}
+                conversation={snapshot.sessionRef}
+              >
+                {content}
+              </ChatRuntimeActionsProvider>
+            </CliSubagentProvider>
+          )
+        },
+        renderUnboundAssistantGroup: (messageGroup) => {
+          const errorMessage = messageGroup
+            .flatMap((message) =>
+              message.role === 'assistant' &&
+              message.metadata?.generationState === 'error' &&
+              message.metadata.errorMessage
+                ? [message.metadata.errorMessage]
+                : [],
+            )
+            .at(0)
+          return (
+            <div className="yolo-chat-messages-assistant">
+              <AssistantErrorCard
+                errorMessage={
+                  errorMessage ??
+                  snapshot.error ??
+                  t(
+                    'chat.cliSurface.unboundMessageError',
+                    'CLI 会话尚未建立，无法显示这条 Provider 消息。',
+                  )
+                }
+              />
+            </div>
+          )
+        },
+        renderPendingResponse: () => (
           <div className="yolo-chat-messages-assistant">
             <AssistantMessageReasoning
               reasoning=""
@@ -708,172 +807,32 @@ export function CliChatSurface({
               generationState="streaming"
             />
           </div>
-        )
-      }
-
-      if (timelineItem.kind === 'compaction-pending') {
-        return (
-          <div
-            className="yolo-chat-compaction-pending"
-            data-anchor-message-id={timelineItem.anchorMessageId}
-          >
-            <div className="yolo-chat-compaction-pending__loader">
-              <DotLoader
-                text={t('chat.compaction.pendingTitle', '正在压缩上下文')}
-              />
-            </div>
-            <div className="yolo-chat-compaction-pending__description">
-              {t(
-                'chat.compaction.pendingStatus',
-                '正在整理上下文，稍后将从新的上下文继续。',
-              )}
-            </div>
-          </div>
-        )
-      }
-
-      if (timelineItem.kind === 'compaction-divider') {
-        return (
-          <div className="yolo-chat-compaction-divider">
-            <div className="yolo-chat-compaction-divider__title">
-              {t('chat.compaction.dividerTitle', '从这里继续当前任务')}
-            </div>
-            <div className="yolo-chat-compaction-divider__line" />
-            <div className="yolo-chat-compaction-divider__content">
-              <div className="yolo-chat-compaction-divider__description">
-                {t(
-                  'chat.compaction.dividerDescription',
-                  '以上对话已压缩为摘要，以下回复基于摘要继续',
-                )}
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      if (timelineItem.kind !== 'assistant-group') return null
-
-      const messageGroup = timelineItem.messageIds
-        .map((messageId) => readModel.messagesById.get(messageId))
-        .filter(
-          (message): message is AssistantToolMessageGroup[number] =>
-            message !== undefined && message.role !== 'user',
-        )
-      if (messageGroup.length === 0) return null
-      if (!snapshot.sessionRef) {
-        const errorMessage = messageGroup
-          .flatMap((message) =>
-            message.role === 'assistant' &&
-            message.metadata?.generationState === 'error' &&
-            message.metadata.errorMessage
-              ? [message.metadata.errorMessage]
-              : [],
-          )
-          .at(0)
-        return (
-          <div className="yolo-chat-messages-assistant">
-            <AssistantErrorCard
-              errorMessage={
-                errorMessage ??
-                snapshot.error ??
-                t(
-                  'chat.cliSurface.unboundMessageError',
-                  'CLI 会话尚未建立，无法显示这条 Provider 消息。',
-                )
-              }
-            />
-          </div>
-        )
-      }
-      const nativeConversationId = getNativeConversationId(snapshot.sessionRef)
-      const sourceUserMessage = getSourceUserMessageForGroup(
+        ),
+        bottomAnchorClassName: 'yolo-cli-chat-surface__bottom-anchor',
+      }),
+      [
+        actions,
+        assistantQuotes,
+        focusedUserMessageId,
+        handleOpenEditSummaryFile,
+        cachedModels,
+        cliSubagentReadModel.presentationsByToolCallId,
+        isConversationBusy,
+        onHistoricalUserMessageControlPopoverOpenChange,
+        onDeleteAssistantQuote,
+        onQuoteAssistantSelection,
+        onRewriteUserMessage,
+        readModel.messagesById,
+        runSummary,
+        runSummaryAssistantGroupId,
+        snapshot.sessionRef,
+        snapshot.configuration,
         snapshot.messages,
-        timelineItem.messageIds,
-      )
-
-      return (
-        <CliSubagentProvider
-          value={{
-            actions,
-            sessionRef: snapshot.sessionRef,
-            presentationsByToolCallId:
-              cliSubagentReadModel.presentationsByToolCallId,
-          }}
-        >
-          <ChatRuntimeActionsProvider
-            actions={actions}
-            conversation={snapshot.sessionRef}
-          >
-            <AssistantToolMessageGroupItem
-              messages={messageGroup}
-              conversationId={nativeConversationId}
-              conversationRunSummary={
-                timelineItem.groupId === runSummaryAssistantGroupId
-                  ? runSummary
-                  : undefined
-              }
-              showInlineInfo
-              showRetryAction={sourceUserMessage !== null}
-              showInsertAction
-              showCopyAction
-              showBranchAction={false}
-              showEditAction={false}
-              showDeleteAction={false}
-              showQuoteAction
-              isApplying={false}
-              activeApplyRequestKey={null}
-              onApply={noop}
-              onToolMessageUpdate={noopToolMessageUpdate}
-              onRecoverAnswerUserQuestion={noop}
-              onEditStart={noop}
-              onEditCancel={noop}
-              onEditSave={noop}
-              onDeleteGroup={noop}
-              onRetryGroup={() => {
-                if (!sourceUserMessage) return
-                void onRewriteUserMessage(
-                  sourceUserMessage,
-                  toEditableUserMessage(sourceUserMessage),
-                  snapshot.turnConfigurationByUserMessageId?.[
-                    sourceUserMessage.id
-                  ],
-                ).catch(() => undefined)
-              }}
-              onBranchGroup={noop}
-              onQuoteAssistantSelection={onQuoteAssistantSelection}
-              assistantQuotes={assistantQuotes}
-              onDeleteAssistantQuote={onDeleteAssistantQuote}
-              onOpenEditSummaryFile={handleOpenEditSummaryFile}
-            />
-          </ChatRuntimeActionsProvider>
-        </CliSubagentProvider>
-      )
-    },
-    [
-      actions,
-      assistantQuotes,
-      conversationId,
-      focusedUserMessageId,
-      handleOpenEditSummaryFile,
-      cachedModels,
-      cliSubagentReadModel.presentationsByToolCallId,
-      isConversationBusy,
-      onHistoricalUserMessageControlPopoverOpenChange,
-      onDeleteAssistantQuote,
-      onQuoteAssistantSelection,
-      onRewriteUserMessage,
-      readModel.messagesById,
-      runSummary,
-      runSummaryAssistantGroupId,
-      snapshot.sessionRef,
-      snapshot.configuration,
-      snapshot.messages,
-      snapshot.runtimeId,
-      snapshot.turnConfigurationByUserMessageId,
-      t,
-    ],
-  )
-
+        snapshot.runtimeId,
+        snapshot.turnConfigurationByUserMessageId,
+        t,
+      ],
+    )
   const renderVersion = useCallback(
     (timelineItem: ChatTimelineItem): string => {
       const baseVersion = getCliTimelineRenderVersion(
@@ -900,7 +859,7 @@ export function CliChatSurface({
   )
 
   return (
-    <ChatConversationPane
+    <ConversationSurface
       chatMode="agent"
       yoloEnabled={false}
       showEmptyState={showEmptyState}
@@ -912,7 +871,7 @@ export function CliChatSurface({
       chatMessagesRef={chatMessagesRef}
       onScrollContainerChange={setChatMessagesElement}
       onBottomSentinelChange={setBottomSentinelElement}
-      renderChatTimelineItem={renderTimelineItem}
+      timelineRendererContract={timelineRendererContract}
       editingAssistantMessageId={null}
       hasEarlierMessages={hasEarlierMessages}
       hasNewerMessages={hasNewerMessages}

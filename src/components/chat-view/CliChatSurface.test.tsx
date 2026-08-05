@@ -58,15 +58,29 @@ jest.mock('./UserMessageItem', () => ({
   default: ({
     message,
     isActionDisabled,
+    showReasoningSelect,
+    showModelControl,
+    showPlaceholder,
+    allowAgentModeOption,
   }: {
     message: ChatUserMessage
     isActionDisabled?: boolean
+    showReasoningSelect?: boolean
+    showModelControl?: boolean
+    showPlaceholder?: boolean
+    allowAgentModeOption?: boolean
   }) => {
     const { editorStateToPlainText } = jest.requireActual(
       './chat-input/utils/editor-state-to-plain-text',
     )
     return (
-      <div data-action-disabled={String(isActionDisabled)}>
+      <div
+        data-action-disabled={String(isActionDisabled)}
+        data-reasoning-select={String(showReasoningSelect)}
+        data-model-control={String(showModelControl)}
+        data-placeholder={String(showPlaceholder)}
+        data-agent-mode={String(allowAgentModeOption)}
+      >
         {editorStateToPlainText(message.content)}
       </div>
     )
@@ -83,6 +97,8 @@ const mockedAssistantGroup = jest.fn(
     showInlineInfo?: boolean
     showEditAction?: boolean
     showDeleteAction?: boolean
+    showBranchAction?: boolean
+    showQuoteAction?: boolean
     conversationRunSummary?: { anchorMessageId?: string }
   }) => {
     const { useChatRuntimeActions } = jest.requireActual(
@@ -100,6 +116,8 @@ const mockedAssistantGroup = jest.fn(
         {props.showInlineInfo ? <span>Inline info</span> : null}
         {props.showEditAction ? <button>Edit</button> : null}
         {props.showDeleteAction ? <button>Delete</button> : null}
+        {props.showBranchAction ? <button>Branch</button> : null}
+        {props.showQuoteAction ? <button>Quote</button> : null}
       </div>
     )
   },
@@ -368,6 +386,19 @@ describe('CliChatSurface', () => {
     expect(html).toContain('Inline info')
     expect(html).not.toContain('Edit')
     expect(html).not.toContain('Delete')
+    expect(html).not.toContain('Branch')
+    expect(html).toContain('Quote')
+  })
+
+  it('assembles the CLI user-message preset without host-only controls', () => {
+    const html = renderSurface(
+      makeSnapshot({ messages: [makeUser('user-1', 'Prompt')] }),
+    )
+
+    expect(html).toContain('data-reasoning-select="false"')
+    expect(html).toContain('data-model-control="false"')
+    expect(html).toContain('data-placeholder="false"')
+    expect(html).toContain('data-agent-mode="false"')
   })
 
   it('does not bind a new running turn to the previous assistant footer', () => {
