@@ -3,7 +3,7 @@ name: Auto Triage
 # Codex replacement for the old Claude routine:
 # - schedule / workflow_dispatch: scan recent activity
 # - owner mention: handle only the mentioned issue or PR
-# - new external issue / PR: handle only that item as untrusted intake
+# - new external issue / completed PR CI: handle only that item as untrusted intake
 
 on:
   schedule:
@@ -12,8 +12,11 @@ on:
   workflow_dispatch:
   issues:
     types: [opened, reopened]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   pull_request_target:
-    types: [opened, reopened, ready_for_review, review_requested]
+    types: [ready_for_review, review_requested]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -29,6 +32,10 @@ jobs:
       (
         github.event_name == 'issues' &&
         github.event.issue.user.login != 'Lapis0x0'
+      ) ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request'
       ) ||
       (
         github.event_name == 'pull_request_target' &&
@@ -61,21 +68,57 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.YOLO_BOT_GH_TOKEN }}
 
-      - name: Check auto-triage skip label
+      - name: Check auto-triage skip rules
         id: skip-label
         env:
           GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
-          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          NUMBER: ${{ github.event.workflow_run.pull_requests[0].number || github.event.issue.number || github.event.pull_request.number || '' }}
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          CI_HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login || '' }}
+          CI_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
           SKIP_LABEL: no-auto-triage
         run: |
           set -euo pipefail
 
+          if [[ "$EVENT_NAME" == "workflow_run" && -z "$NUMBER" ]]; then
+            prs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+              -f state=open \
+              -f head="$CI_HEAD_OWNER:$CI_HEAD_BRANCH")
+            NUMBER=$(jq -r --arg sha "$CI_HEAD_SHA" \
+              'map(select(.head.sha == $sha)) | .[0].number // empty' <<< "$prs")
+          fi
+
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
           if [[ -z "$NUMBER" ]]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 
           skip=false
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            pr_json=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER")
+            title=$(jq -r '.title' <<< "$pr_json")
+            head_ref=$(jq -r '.head.ref' <<< "$pr_json")
+            head_sha=$(jq -r '.head.sha' <<< "$pr_json")
+            body=$(jq -r '.body // ""' <<< "$pr_json")
+            state=$(jq -r '.state' <<< "$pr_json")
+            draft=$(jq -r '.draft' <<< "$pr_json")
+
+            if [[ "$head_sha" != "$CI_HEAD_SHA" ||
+                  "$state" != "open" ||
+                  "$draft" == "true" ||
+                  "$title" == "[auto-triage]"* ||
+                  "$head_ref" == auto-triage/* ||
+                  "$body" == *"auto-triage: skip"* ]]; then
+              skip=true
+            fi
+          fi
+
           while IFS= read -r label; do
             if [[ "$label" == "$SKIP_LABEL" ]]; then
               skip=true
@@ -85,7 +128,7 @@ jobs:
 
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
           if [[ "$skip" == "true" ]]; then
-            echo "Skipping auto triage because #$NUMBER has the '$SKIP_LABEL' label."
+            echo "Skipping auto triage for #$NUMBER."
           fi
 
       - name: Use Node.js
@@ -151,23 +194,34 @@ jobs:
       - name: Build prompt
         if: steps.skip-label.outputs.skip != 'true'
         env:
+          GH_TOKEN: ${{ secrets.YOLO_BOT_GH_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
-          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
+          NUMBER: ${{ steps.skip-label.outputs.number }}
           AUTHOR: ${{ github.event.sender.login || '' }}
           BODY: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body || github.event.pull_request.body || '' }}
           URL: ${{ github.event.comment.html_url || github.event.review.html_url || github.event.issue.html_url || github.event.pull_request.html_url || '' }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          CI_URL: ${{ github.event.workflow_run.html_url || '' }}
         run: |
           set -euo pipefail
           TRIGGER_KIND="routine_scan"
           if [[ "$EVENT_NAME" == "issues" ]]; then
             TRIGGER_KIND="intake_issue"
-          elif [[ "$EVENT_NAME" == "pull_request_target" ]]; then
+          elif [[ "$EVENT_NAME" == "pull_request_target" || "$EVENT_NAME" == "workflow_run" ]]; then
             TRIGGER_KIND="intake_pr"
           elif [[ "$AUTHOR" == "Lapis0x0" ]]; then
             TRIGGER_KIND="owner_command"
           elif [[ "$EVENT_NAME" != "schedule" && "$EVENT_NAME" != "workflow_dispatch" ]]; then
             TRIGGER_KIND="user_mention"
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            pr_json=$(gh api "repos/$REPO/pulls/$NUMBER")
+            AUTHOR=$(jq -r '.user.login' <<< "$pr_json")
+            BODY=$(jq -r '.body // ""' <<< "$pr_json")
+            URL=$(jq -r '.html_url' <<< "$pr_json")
           fi
 
           cp .github/prompts/obsidian-yolo-auto-triage.md /tmp/auto-triage-prompt.md
@@ -181,6 +235,9 @@ jobs:
               --arg author "$AUTHOR" \
               --arg body "$BODY" \
               --arg url "$URL" \
+              --arg ci_conclusion "$CI_CONCLUSION" \
+              --arg ci_head_sha "$CI_HEAD_SHA" \
+              --arg ci_url "$CI_URL" \
               '{
                 trigger_kind: $trigger_kind,
                 event_name: $event_name,
@@ -188,7 +245,12 @@ jobs:
                 number: $number,
                 url: $url,
                 author: $author,
-                body: $body
+                body: $body,
+                ci: {
+                  conclusion: $ci_conclusion,
+                  head_sha: $ci_head_sha,
+                  url: $ci_url
+                }
               }'
             printf '\n</routine-fire-payload>\n'
           } >> /tmp/auto-triage-prompt.md
