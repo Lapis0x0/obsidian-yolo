@@ -375,6 +375,13 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
         </>
       )}
 
+      {form.type === 'exa' && (
+        <ApiKeyField
+          value={form.apiKey}
+          onChange={(value) => update('apiKey', value)}
+        />
+      )}
+
       <ObsidianSetting>
         <ObsidianButton
           text={t('common.save', 'Save')}

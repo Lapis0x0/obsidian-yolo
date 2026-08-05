@@ -806,9 +806,6 @@ export const it: DeepPartial<TranslationKeys> = {
       colType: 'Tipo',
       colDefault: 'Predefinito',
       colActions: 'Azioni',
-      deleteConfirmTitle: 'Elimina provider',
-      deleteConfirmMessage:
-        'Sei sicuro di voler eliminare questo provider di ricerca web?',
       deleteFailed: 'Impossibile eliminare il provider.',
       commonHeader: 'Comuni',
       resultSize: 'Numero risultati',
@@ -835,6 +832,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'gemini-grounding': 'Gemini (Grounding)',
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
+        exa: 'Exa',
       },
       fieldName: 'Nome visualizzato',
       fieldApiKey: 'API key',

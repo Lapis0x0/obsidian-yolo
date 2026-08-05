@@ -27,6 +27,7 @@ export const WEB_SEARCH_PROVIDER_TYPES = [
   'gemini-grounding',
   'grok',
   'zhipu',
+  'exa',
 ] as const
 export type WebSearchProviderType = (typeof WEB_SEARCH_PROVIDER_TYPES)[number]
 
@@ -119,6 +120,12 @@ export const grokSearchOptionsSchema = z.object({
   enableX: z.boolean().default(false),
 })
 
+export const exaOptionsSchema = z.object({
+  ...baseFields,
+  type: z.literal('exa'),
+  apiKey: z.string().default(''),
+})
+
 export const webSearchProviderOptionsSchema = z.discriminatedUnion('type', [
   tavilyOptionsSchema,
   jinaOptionsSchema,
@@ -127,6 +134,7 @@ export const webSearchProviderOptionsSchema = z.discriminatedUnion('type', [
   geminiGroundingOptionsSchema,
   grokSearchOptionsSchema,
   zhipuOptionsSchema,
+  exaOptionsSchema,
 ])
 export type WebSearchProviderOptions = z.infer<
   typeof webSearchProviderOptionsSchema
@@ -270,5 +278,7 @@ export function createDefaultProviderOptions(
         searchRecencyFilter: 'noLimit',
         searchDomainFilter: '',
       }
+    case 'exa':
+      return { id, name: 'Exa', type: 'exa', apiKey: '' }
   }
 }
