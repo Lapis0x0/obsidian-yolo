@@ -1,9 +1,6 @@
 import type { ReactNode } from 'react'
 
-import type {
-  AssistantToolMessageGroup,
-  ChatUserMessage,
-} from '../../types/chat'
+import type { AssistantToolMessageGroup } from '../../types/chat'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 import DotLoader from '../common/DotLoader'
 
@@ -52,7 +49,7 @@ export function renderConversationTimelineItem(
   if (item.kind === 'user-message') {
     const message = contract.messagesById.get(item.messageId)
     return message?.role === 'user'
-      ? contract.renderUserMessage(message as ChatUserMessage, item)
+      ? contract.renderUserMessage(message, item)
       : null
   }
 

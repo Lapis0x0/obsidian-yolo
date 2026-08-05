@@ -165,10 +165,6 @@ import MentionableBadge from './chat-input/MentionableBadge'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'
 import { getChatSurfacePreset } from './chat-surface-presets'
-import type {
-  ConversationAssistantGroupProps,
-  ConversationTimelineRendererContract,
-} from './conversation-surface-contract'
 import { ChatListDropdown } from './ChatListDropdown'
 import {
   buildAssistantErrorContinuation,
@@ -202,6 +198,10 @@ import {
   resolveCliRuntimePreference,
 } from './cliRuntimePreferences'
 import Composer from './Composer'
+import type {
+  ConversationAssistantGroupProps,
+  ConversationTimelineRendererContract,
+} from './conversation-surface-contract'
 import { useActiveViewState } from './hooks/useActiveViewState'
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
@@ -221,9 +221,9 @@ import {
   useStableChatTimelineItems,
 } from './useChatTimelineReadModel'
 import { useHistoricalUserMessageDismiss } from './useHistoricalUserMessageDismiss'
-import { YoloChatSurface } from './YoloChatSurface'
 import UserMessageItem from './UserMessageItem'
 import ViewToggle from './ViewToggle'
+import { YoloChatSurface } from './YoloChatSurface'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 const MESSAGE_NAVIGATOR_MIN_ANCHORS = 3
@@ -2477,10 +2477,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       )
     })
   }, [activeBranchByUserMessageId, groupedChatMessages])
-
-  const firstUserMessageId = useMemo(() => {
-    return chatMessages.find((message) => message.role === 'user')?.id
-  }, [chatMessages])
 
   const effectiveCompactionState = useMemo(
     () =>

@@ -23,7 +23,6 @@ import type {
   CliTurnConfiguration,
 } from '../../core/cli-runtime'
 import type {
-  AssistantToolMessageGroup,
   ChatMessage,
   ChatToolMessage,
   ChatUserMessage,
