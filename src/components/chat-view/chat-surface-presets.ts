@@ -11,11 +11,13 @@ export type AssistantActionSurfacePreset = {
 
 export type UserMessageSurfacePreset = {
   showReasoningSelect: boolean
+  showModelControl: boolean
+  showPlaceholder: boolean
   allowAgentModeOption: boolean
 }
 
 export type ChatSurfacePreset = {
-  id: 'chat' | 'quick-ask'
+  id: 'chat' | 'cli' | 'quick-ask'
   assistantActions: AssistantActionSurfacePreset
   userMessage: UserMessageSurfacePreset
 }
@@ -38,7 +40,28 @@ export const CHAT_SURFACE_PRESETS: Record<
     },
     userMessage: {
       showReasoningSelect: true,
+      showModelControl: true,
+      showPlaceholder: true,
       allowAgentModeOption: true,
+    },
+  },
+  cli: {
+    id: 'cli',
+    assistantActions: {
+      showInlineInfo: true,
+      showRetryAction: true,
+      showInsertAction: true,
+      showCopyAction: true,
+      showBranchAction: false,
+      showEditAction: false,
+      showDeleteAction: false,
+      showQuoteAction: true,
+    },
+    userMessage: {
+      showReasoningSelect: false,
+      showModelControl: false,
+      showPlaceholder: false,
+      allowAgentModeOption: false,
     },
   },
   'quick-ask': {
@@ -55,6 +78,8 @@ export const CHAT_SURFACE_PRESETS: Record<
     },
     userMessage: {
       showReasoningSelect: false,
+      showModelControl: false,
+      showPlaceholder: false,
       allowAgentModeOption: false,
     },
   },
