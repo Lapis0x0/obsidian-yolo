@@ -678,8 +678,6 @@ export type TranslationKeys = {
       colType?: string
       colDefault?: string
       colActions?: string
-      deleteConfirmTitle?: string
-      deleteConfirmMessage?: string
       deleteFailed?: string
       commonHeader?: string
       resultSize?: string
@@ -702,6 +700,7 @@ export type TranslationKeys = {
         'gemini-grounding'?: string
         grok?: string
         zhipu?: string
+        exa?: string
       }
       fieldName?: string
       fieldApiKey?: string

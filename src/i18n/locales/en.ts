@@ -873,9 +873,6 @@ export const en: TranslationKeys = {
       colType: 'Type',
       colDefault: 'Default',
       colActions: 'Actions',
-      deleteConfirmTitle: 'Delete provider',
-      deleteConfirmMessage:
-        'Are you sure you want to delete this web search provider?',
       deleteFailed: 'Failed to delete provider.',
       commonHeader: 'Common',
       resultSize: 'Result size',
@@ -900,6 +897,7 @@ export const en: TranslationKeys = {
         'gemini-grounding': 'Gemini (Grounding)',
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
+        exa: 'Exa',
       },
       fieldName: 'Display name',
       fieldApiKey: 'API key',

@@ -182,6 +182,9 @@
 .yolo-ws-monogram--zhipu {
   background: var(--color-red, #c8553d);
 }
+.yolo-ws-monogram--exa {
+  background: var(--color-pink, #d84a8f);
+}
 
 .yolo-ws-provider-name-row {
   display: flex;
