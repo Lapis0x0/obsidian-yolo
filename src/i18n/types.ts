@@ -1294,6 +1294,9 @@ export type TranslationKeys = {
       tabCompletionTriggerTypeString: string
       tabCompletionTriggerTypeRegex: string
       tabCompletionTriggerPattern: string
+      tabCompletionTriggerAcceptMode: string
+      tabCompletionTriggerAcceptModeInsert: string
+      tabCompletionTriggerAcceptModeReplace: string
       tabCompletionTriggerDescription: string
       tabCompletionTriggerRemove: string
     }

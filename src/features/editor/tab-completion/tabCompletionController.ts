@@ -32,6 +32,7 @@ type TabCompletionSuggestion = {
   editor: Editor
   view: EditorView
   cursorOffset: number
+  replaceFromOffset: number | null
   candidates: Array<{
     text: string
     status: TabCompletionCandidateStatus
@@ -164,8 +165,19 @@ const buildTabCompletionUserMessage = (
   fileTitle: string,
   before: string,
   after: string,
+  textToReplace: string | null,
 ): string => {
   const titleSection = fileTitle ? `File title:\n${fileTitle}\n\n` : ''
+  if (textToReplace !== null) {
+    return (
+      titleSection +
+      'This is an inline replacement request. The content inside <text_to_replace> will be replaced by your output. Return only the replacement text.\n\n' +
+      'The final document text will be <text_before_cursor> with <text_to_replace> replaced by your output, followed by <text_after_cursor>.\n\n' +
+      `<text_before_cursor>\n${before}\n</text_before_cursor>\n` +
+      `<text_to_replace>\n${textToReplace}\n</text_to_replace>\n` +
+      `<text_after_cursor>\n${after}\n</text_after_cursor>`
+    )
+  }
   return (
     titleSection +
     'This is an inline completion request. The <mask/> is the cursor position between <text_before_cursor> and <text_after_cursor>.\n' +
@@ -184,6 +196,7 @@ export class TabCompletionController {
   private tabCompletionPending: {
     editor: Editor
     cursorOffset: number
+    replaceFromOffset: number | null
   } | null = null
   private tabLoadingView: EditorView | null = null
   private lastAutoTriggerAt = 0
@@ -234,21 +247,22 @@ export class TabCompletionController {
     )
   }
 
-  private shouldTrigger(view: EditorView, cursorOffset: number): boolean {
+  private getTriggerMatch(
+    view: EditorView,
+    cursorOffset: number,
+  ): { replaceFromOffset: number | null } | null {
     const triggers = this.getTabCompletionTriggers().filter(
       (trigger) => trigger.enabled,
     )
-    if (triggers.length === 0) return false
+    if (triggers.length === 0) return null
 
     const doc = view.state.doc
     const windowSize = Math.min(
       this.getTabCompletionOptions().contextRange,
       2000,
     )
-    const beforeWindow = doc.sliceString(
-      Math.max(0, cursorOffset - windowSize),
-      cursorOffset,
-    )
+    const beforeWindowStart = Math.max(0, cursorOffset - windowSize)
+    const beforeWindow = doc.sliceString(beforeWindowStart, cursorOffset)
     const beforeWindowTrimmed = beforeWindow.replace(/\s+$/, '')
 
     for (const trigger of triggers) {
@@ -256,24 +270,49 @@ export class TabCompletionController {
         continue
       }
       if (trigger.type === 'string') {
+        if (beforeWindow.endsWith(trigger.pattern)) {
+          return {
+            replaceFromOffset:
+              trigger.acceptMode === 'replace'
+                ? cursorOffset - trigger.pattern.length
+                : null,
+          }
+        }
         if (
-          beforeWindow.endsWith(trigger.pattern) ||
+          trigger.acceptMode !== 'replace' &&
           beforeWindowTrimmed.endsWith(trigger.pattern)
         ) {
-          return true
+          return { replaceFromOffset: null }
         }
         continue
       }
       try {
         const regex = new RegExp(trigger.pattern)
-        if (regex.test(beforeWindow) || regex.test(beforeWindowTrimmed)) {
-          return true
+        const match = regex.exec(beforeWindow)
+        if (match) {
+          const matchEndsAtCursor =
+            match.index + match[0].length === beforeWindow.length
+          if (trigger.acceptMode === 'replace' && !matchEndsAtCursor) {
+            continue
+          }
+          return {
+            replaceFromOffset:
+              trigger.acceptMode === 'replace'
+                ? beforeWindowStart + match.index
+                : null,
+          }
+        }
+        if (
+          trigger.acceptMode !== 'replace' &&
+          regex.test(beforeWindowTrimmed)
+        ) {
+          return { replaceFromOffset: null }
         }
       } catch {
         // Ignore invalid regex patterns.
       }
     }
-    return false
+    return null
   }
 
   private showLoadingDots(view: EditorView, from: number) {
@@ -344,9 +383,9 @@ export class TabCompletionController {
     if (selection && selection.length > 0) return
     const cursorOffset = view.state.selection.main.head
     const options = this.getTabCompletionOptions()
-    const shouldTrigger = this.shouldTrigger(view, cursorOffset)
-    if (!shouldTrigger && !options.idleTriggerEnabled) return
-    const isAutoTrigger = !shouldTrigger && options.idleTriggerEnabled
+    const triggerMatch = this.getTriggerMatch(view, cursorOffset)
+    if (!triggerMatch && !options.idleTriggerEnabled) return
+    const isAutoTrigger = !triggerMatch && options.idleTriggerEnabled
     const delay = Math.max(
       0,
       isAutoTrigger ? options.autoTriggerDelayMs : options.triggerDelayMs,
@@ -357,7 +396,11 @@ export class TabCompletionController {
         return
       }
     }
-    this.tabCompletionPending = { editor, cursorOffset }
+    this.tabCompletionPending = {
+      editor,
+      cursorOffset,
+      replaceFromOffset: triggerMatch?.replaceFromOffset ?? null,
+    }
     this.tabCompletionTimer = setTimeout(() => {
       if (!this.tabCompletionPending) return
       if (this.tabCompletionPending.editor !== editor) return
@@ -377,7 +420,11 @@ export class TabCompletionController {
         }
         this.lastAutoTriggerAt = Date.now()
       }
-      void this.run(editor, cursorOffset)
+      void this.run(
+        editor,
+        cursorOffset,
+        this.tabCompletionPending.replaceFromOffset,
+      )
     }, delay)
   }
 
@@ -518,7 +565,11 @@ export class TabCompletionController {
     this.deps.clearInlineSuggestion()
   }
 
-  async run(editor: Editor, scheduledCursorOffset: number) {
+  async run(
+    editor: Editor,
+    scheduledCursorOffset: number,
+    replaceFromOffset?: number | null,
+  ) {
     let hasShownValidSuggestion = false
     try {
       const settings = this.deps.getSettings()
@@ -530,6 +581,11 @@ export class TabCompletionController {
       if (view.state.selection.main.head !== scheduledCursorOffset) return
       const selection = editor.getSelection()
       if (selection && selection.length > 0) return
+      const effectiveReplaceFromOffset =
+        replaceFromOffset === undefined
+          ? (this.getTriggerMatch(view, scheduledCursorOffset)
+              ?.replaceFromOffset ?? null)
+          : replaceFromOffset
 
       const options = this.getTabCompletionOptions()
 
@@ -545,6 +601,10 @@ export class TabCompletionController {
         options.maxBeforeChars,
         options.maxAfterChars,
       )
+      const textToReplace =
+        effectiveReplaceFromOffset !== null
+          ? doc.sliceString(effectiveReplaceFromOffset, scheduledCursorOffset)
+          : null
       const beforeLength = before.trim().length
       if (!before || beforeLength === 0) return
       if (beforeWindowLength < TAB_COMPLETION_MIN_CONTEXT_LENGTH) return
@@ -600,7 +660,12 @@ export class TabCompletionController {
         },
         {
           role: 'user' as const,
-          content: buildTabCompletionUserMessage(fileTitle, before, after),
+          content: buildTabCompletionUserMessage(
+            fileTitle,
+            before,
+            after,
+            textToReplace,
+          ),
         },
       ]
 
@@ -612,6 +677,7 @@ export class TabCompletionController {
         editor,
         view,
         cursorOffset: scheduledCursorOffset,
+        replaceFromOffset: effectiveReplaceFromOffset,
         candidates: Array.from(
           {
             length: multipleCandidatesEnabled
@@ -781,20 +847,24 @@ export class TabCompletionController {
     if (!selectedCandidate?.text) return false
 
     const cursor = editor.getCursor()
+    const replaceFrom =
+      suggestion.replaceFromOffset !== null
+        ? editor.offsetToPos(suggestion.replaceFromOffset)
+        : cursor
     const suggestionText = escapeMarkdownSpecialChars(selectedCandidate.text, {
       escapeAngleBrackets: true,
       preserveCodeBlocks: true,
     })
     this.cancelRequest()
     this.deps.clearInlineSuggestion()
-    editor.replaceRange(suggestionText, cursor, cursor)
+    editor.replaceRange(suggestionText, replaceFrom, cursor)
 
     const parts = suggestionText.split('\n')
     const endCursor =
       parts.length === 1
-        ? { line: cursor.line, ch: cursor.ch + parts[0].length }
+        ? { line: replaceFrom.line, ch: replaceFrom.ch + parts[0].length }
         : {
-            line: cursor.line + parts.length - 1,
+            line: replaceFrom.line + parts.length - 1,
             ch: parts[parts.length - 1].length,
           }
     editor.setCursor(endCursor)

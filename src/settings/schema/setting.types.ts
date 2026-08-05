@@ -86,6 +86,7 @@ export type TabCompletionTrigger = {
   type: 'string' | 'regex'
   pattern: string
   enabled: boolean
+  acceptMode: 'insert' | 'replace'
   description?: string
 }
 
@@ -146,36 +147,42 @@ export const DEFAULT_TAB_COMPLETION_TRIGGERS: TabCompletionTrigger[] = [
     type: 'string',
     pattern: ', ',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'sentence-end-chinese-comma',
     type: 'string',
     pattern: '，',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'sentence-end-colon',
     type: 'string',
     pattern: ': ',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'sentence-end-chinese-colon',
     type: 'string',
     pattern: '：',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'newline',
     type: 'regex',
     pattern: '\\n$',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'list-item',
     type: 'regex',
     pattern: '(?:^|\\n)[-*+]\\s$',
     enabled: true,
+    acceptMode: 'insert',
   },
 ]
 
@@ -289,6 +296,7 @@ const tabCompletionTriggerSchema = z
     type: z.enum(['string', 'regex']),
     pattern: z.string(),
     enabled: z.boolean().catch(true),
+    acceptMode: z.enum(['insert', 'replace']).catch('insert'),
     description: z.string().optional(),
   })
   .catch({
@@ -296,6 +304,7 @@ const tabCompletionTriggerSchema = z
     type: 'string',
     pattern: '',
     enabled: true,
+    acceptMode: 'insert',
   })
 
 /**

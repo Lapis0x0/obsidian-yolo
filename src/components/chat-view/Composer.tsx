@@ -221,6 +221,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
       type: 'string',
       pattern: '',
       enabled: true,
+      acceptMode: 'insert',
       description: '',
     }
     updateTabCompletionTriggers([...tabCompletionTriggers, nextTrigger])
@@ -1016,6 +1017,11 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                             </th>
                             <th>
                               {t(
+                                'settings.continuation.tabCompletionTriggerAcceptMode',
+                              )}
+                            </th>
+                            <th>
+                              {t(
                                 'settings.continuation.tabCompletionTriggerDescription',
                               )}
                             </th>
@@ -1063,6 +1069,24 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                                   onChange={(value) => {
                                     handleTriggerChange(trigger.id, {
                                       pattern: value,
+                                    })
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <ObsidianDropdown
+                                  value={trigger.acceptMode ?? 'insert'}
+                                  options={{
+                                    insert: t(
+                                      'settings.continuation.tabCompletionTriggerAcceptModeInsert',
+                                    ),
+                                    replace: t(
+                                      'settings.continuation.tabCompletionTriggerAcceptModeReplace',
+                                    ),
+                                  }}
+                                  onChange={(value) => {
+                                    handleTriggerChange(trigger.id, {
+                                      acceptMode: value as 'insert' | 'replace',
                                     })
                                   }}
                                 />
