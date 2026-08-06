@@ -1278,6 +1278,12 @@ button.yolo-chat-quick-access-picker-row > svg {
   width: 100% !important;
 }
 
+/* 侧栏宽度有限且触发器表格可横向滚动，右对齐的表尾按钮容易滚出视野，
+   因此在 Composer 内让它靠左。设置页表格保持全局的右对齐。 */
+.yolo-composer-option-control--full .yolo-settings-table tfoot td {
+  text-align: left;
+}
+
 .yolo-composer-option-control select {
   width: 100%;
   max-width: 100%;

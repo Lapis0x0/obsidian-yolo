@@ -1116,7 +1116,7 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                         </tbody>
                         <tfoot>
                           <tr>
-                            <td colSpan={5}>
+                            <td colSpan={6}>
                               <ObsidianButton
                                 text={t(
                                   'settings.continuation.tabCompletionTriggerAdd',
