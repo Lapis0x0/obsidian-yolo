@@ -1,27 +1,21 @@
-## 0.1.2 More Consistent Learning Content & Cards 📚
+## 0.1.3 Reliable Project Creation & Clearer Card Failures 📚
 
-### 🌐 Language & Presentation
+### 🗂️ Project Creation
 
-- Learning content now stays in the language selected when the project is created. Missing interface translations and Chinese fallback text have been completed for a more consistent experience.
-- Fixed the knowledge map appearing blank with certain themes.
+- Fixed project creation failing and leaving the reference staging folder behind when Obsidian is configured to delete files permanently instead of moving them to trash. (Refs #545)
 
-### 🗂️ Card Experience
+### 🃏 Card Generation
 
-- Card generation now tolerates minor formatting variations more reliably, and the review screen no longer displays a non-functional placeholder timer.
-
-Refs #480, #482
+- When a chapter produces no cards, the failure now reports why — how many drafts were streamed, how many were discarded, and which validation rule rejected them — instead of only reporting that generation failed. The diagnostic contains no note or model content; raw model output is written only when the host's LLM debug capture is enabled. (Refs #494, #495)
 
 ---
 
-## 0.1.2 更一致的学习内容与卡片体验 📚
+## 0.1.3 更可靠的项目创建与更清晰的卡片失败原因 📚
 
-### 🌐 语言与展示
+### 🗂️ 项目创建
 
-- 学习内容现在会始终使用创建项目时选择的语言，并补齐缺失的界面翻译与中文回退文案，让生成和展示体验更加一致。
-- 修复特定主题下知识地图显示为空白的问题。
+- 修复 Obsidian 设置为「永久删除」而非移入回收站时，创建学习项目会失败并残留参考资料临时目录的问题。（Refs #545）
 
-### 🗂️ 卡片体验
+### 🃏 卡片生成
 
-- 卡片生成现在能更可靠地兼容轻微的格式变化，同时移除了复习界面中没有实际功能的占位计时。
-
-Refs #480, #482
+- 章节生成零卡片时，现在会说明失败原因：流式产出的草稿数量、被丢弃的数量，以及具体是哪条校验规则拒绝了它们，而不再只提示生成失败。该诊断不包含笔记与模型正文内容；模型原始输出仅在开启宿主的 LLM 调试记录后才会输出。（Refs #494、#495）
