@@ -18079,7 +18079,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   min-width: 0;
 }
 
-.yolo-agent-status-panel,
 .yolo-background-activity-status-panel {
   position: absolute;
   right: 0;
@@ -18106,21 +18105,18 @@ button.yolo-chat-list-origin-filter:focus-visible {
   pointer-events: none;
 }
 
-.yolo-agent-status-panel.is-open,
 .yolo-background-activity-status-panel.is-open {
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
 }
 
-.yolo-agent-status-panel-header,
 .yolo-background-activity-status-panel-header {
   font-size: var(--font-ui-small);
   font-weight: 600;
   color: var(--text-muted);
 }
 
-.yolo-agent-status-panel-list,
 .yolo-background-activity-status-panel-list {
   display: flex;
   flex-direction: column;
@@ -18128,13 +18124,11 @@ button.yolo-chat-list-origin-filter:focus-visible {
   overflow-y: auto;
 }
 
-.yolo-agent-status-panel-empty,
 .yolo-background-activity-status-panel-empty {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
 }
 
-.yolo-agent-status-panel-item,
 .yolo-background-activity-status-panel-item {
   padding: 8px 10px;
   border-radius: 8px;
@@ -18145,8 +18139,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
     background-color 140ms ease;
 }
 
-.yolo-agent-status-panel-item:hover,
-.yolo-agent-status-panel-item:focus-visible,
 .yolo-background-activity-status-panel-item:hover,
 .yolo-background-activity-status-panel-item:focus-visible {
   outline: none;
@@ -18154,7 +18146,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   background: var(--background-modifier-hover);
 }
 
-.yolo-agent-status-panel-item-row,
 .yolo-background-activity-status-panel-item-row {
   display: flex;
   align-items: center;
@@ -18175,17 +18166,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-
-.yolo-agent-status-panel-item-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: var(--font-ui-small);
-  font-weight: 400;
-  color: var(--text-normal);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /*
@@ -18213,13 +18193,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   text-overflow: ellipsis;
 }
 
-.yolo-agent-status-panel-item-meta {
-  flex-shrink: 0;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-}
-
-.yolo-agent-status-panel-item-indicator,
 .yolo-background-activity-status-panel-item-indicator {
   flex-shrink: 0;
   width: 12px;
@@ -18233,7 +18206,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   animation: yolo-chat-list-run-spin 0.9s linear infinite;
 }
 
-.yolo-agent-status-panel-item-indicator.is-waiting-approval,
 .yolo-background-activity-status-panel-item-indicator.is-waiting {
   border-color: color-mix(in srgb, var(--color-orange) 20%, transparent);
   border-top-color: color-mix(in srgb, var(--color-orange) 82%, white 8%);
