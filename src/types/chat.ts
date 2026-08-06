@@ -90,6 +90,17 @@ export type ChatUserMessage = {
    */
   timeContext?: string
 }
+/**
+ * Structured provider failure kept alongside `errorMessage` so the error card
+ * can classify the failure and show the raw body on demand. `responseBody` is
+ * truncated at capture time because it is persisted with the conversation.
+ */
+export type ChatErrorDetail = {
+  providerId?: string
+  status?: number
+  responseBody?: string
+}
+
 export type ChatAssistantMessage = {
   role: 'assistant'
   content: string
@@ -104,6 +115,7 @@ export type ChatAssistantMessage = {
     reasoningDurationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
+    errorDetail?: ChatErrorDetail
     llmDebugTraceId?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string
@@ -255,6 +267,7 @@ export type SerializedChatAssistantMessage = {
     reasoningDurationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
+    errorDetail?: ChatErrorDetail
     llmDebugTraceId?: string
     providerMetadata?: ProviderMetadata
     sourceUserMessageId?: string

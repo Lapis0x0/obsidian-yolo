@@ -11,6 +11,12 @@ jest.mock('../../contexts/app-context', () => ({
   useApp: () => ({}),
 }))
 
+// The real module imports YoloPlugin, which pulls the whole plugin entry point
+// into the test module graph.
+jest.mock('../../contexts/plugin-context', () => ({
+  usePlugin: () => ({ manifest: { id: 'yolo' } }),
+}))
+
 jest.mock('../../contexts/language-context', () => ({
   useLanguage: () => ({
     t: (_key: string, fallback?: string) => fallback ?? '',
@@ -153,7 +159,7 @@ describe('AssistantToolMessageGroupItem', () => {
     expect(html).not.toContain('Premature close')
   })
 
-  it('renders a friendly connection error when the response cannot continue', () => {
+  it('explains a dropped connection in the headline when it cannot continue', () => {
     const assistantMessage: ChatAssistantMessage = {
       role: 'assistant',
       id: 'assistant-disconnected',
@@ -183,10 +189,12 @@ describe('AssistantToolMessageGroupItem', () => {
       />,
     )
 
+    // The headline explains the failure; the provider's own wording stays as
+    // the description instead of being replaced by ours.
     expect(html).toContain(
-      'The connection to the model service was interrupted. Please try again. If this keeps happening, check your network or model service.',
+      'The response stream was interrupted. Check your network stability or retry.',
     )
-    expect(html).not.toContain('socket hang up')
+    expect(html).toContain('socket hang up')
   })
 
   it('renders structured LLM response format errors as user-facing text', () => {

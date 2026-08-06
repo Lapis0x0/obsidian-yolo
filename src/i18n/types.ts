@@ -1774,8 +1774,28 @@ export type TranslationKeys = {
     }
     errorCard?: {
       title?: string
-      connectionInterrupted?: string
       connectionInterruptedContinuable?: string
+      viewDetails?: string
+      hideDetails?: string
+      goToSettings?: string
+      diagnosis?: {
+        auth?: string
+        region?: string
+        model?: string
+        quota?: string
+        rateLimit?: string
+        contextLength?: string
+        payload?: string
+        content?: string
+        mcp?: string
+        stream?: string
+        network?: string
+        proxy?: string
+        server?: string
+        deprecated?: string
+        knowledge?: string
+        parse?: string
+      }
       responseFormat?: {
         responseNotObject?: string
         missingChoices?: string

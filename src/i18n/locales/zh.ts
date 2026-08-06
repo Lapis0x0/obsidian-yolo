@@ -1963,10 +1963,29 @@ export const zh: TranslationKeys = {
     },
     errorCard: {
       title: '本次回复生成失败',
-      connectionInterrupted:
-        '与模型服务的连接意外中断，请重试。如果反复出现，请检查网络或模型服务。',
       connectionInterruptedContinuable:
         '与模型服务的连接意外中断，已生成的内容仍然保留。点击“继续回复”即可接着生成。',
+      viewDetails: '查看错误详情',
+      hideDetails: '隐藏错误详情',
+      goToSettings: '前往设置',
+      diagnosis: {
+        auth: 'API Key 无效，请检查并重新配置',
+        region: '服务在你所在的地区不可用，请配置代理或更换为可用的服务商',
+        model: '模型不存在或你没有访问权限',
+        quota: '账户额度已用完，请充值或更换服务商',
+        rateLimit: '请求过于频繁，请稍等片刻再试，或更换为速率更高的模型',
+        contextLength: '对话上下文过长，请清理历史消息或开启新对话',
+        payload: '请求内容过大，请减少发送的文件或文本量',
+        content: '消息内容被安全系统拦截，请修改后重试',
+        mcp: 'MCP 服务器连接失败，请检查服务是否已启动',
+        stream: '响应传输中断，请检查网络稳定性或重试',
+        network: '无法连接到服务器，请检查网络或代理设置',
+        proxy: '代理或 SSL 证书错误，请检查代理和网络设置',
+        server: '模型服务异常，建议稍后重试',
+        deprecated: '该模型已下线或弃用，请更换其他模型',
+        knowledge: '知识库向量化失败',
+        parse: '模型返回的格式异常，请重试或更换模型',
+      },
       responseFormat: {
         responseNotObject: '模型服务返回的响应不是对象（实际为 {{actual}}）。',
         missingChoices: '模型服务返回了无法解析的响应格式：缺少 choices 数组。',

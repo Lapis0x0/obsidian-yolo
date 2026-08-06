@@ -10,6 +10,7 @@ import React, {
 
 import { useLanguage } from '../../contexts/language-context'
 import YoloPlugin from '../../main'
+import { SETTINGS_ACTIVE_TAB_STORAGE_KEY } from '../../utils/openPluginSettingsTab'
 
 import { AgentTab } from './tabs/AgentTab'
 import { EditorTab } from './tabs/EditorTab'
@@ -69,7 +70,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   },
 ]
 
-const STORAGE_KEY = 'yolo_settings_active_tab'
+const STORAGE_KEY = SETTINGS_ACTIVE_TAB_STORAGE_KEY
 
 export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const { t } = useLanguage()

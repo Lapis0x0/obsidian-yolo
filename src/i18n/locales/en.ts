@@ -2090,10 +2090,39 @@ export const en: TranslationKeys = {
     },
     errorCard: {
       title: 'This response failed to generate',
-      connectionInterrupted:
-        'The connection to the model service was interrupted. Please try again. If this keeps happening, check your network or model service.',
       connectionInterruptedContinuable:
         'The connection to the model service was interrupted. Your partial response is still here—click Continue response to resume.',
+      viewDetails: 'View error details',
+      hideDetails: 'Hide error details',
+      goToSettings: 'Go to settings',
+      diagnosis: {
+        auth: 'The API key is invalid. Check it and reconfigure the provider.',
+        region:
+          'The service is unavailable in your region. Configure a proxy or switch to an available provider.',
+        model: 'The model does not exist, or you do not have access to it.',
+        quota:
+          'Your account balance is exhausted. Top up or switch to another provider.',
+        rateLimit:
+          'Too many requests in a short time. Wait a moment and retry, or switch to a model with a higher rate limit.',
+        contextLength:
+          'The conversation context is too long. Clear older messages or start a new chat.',
+        payload: 'The request is too large. Send fewer files or less text.',
+        content:
+          'The content was blocked by a safety system. Revise it and try again.',
+        mcp: 'The MCP server could not be reached. Check whether it is running.',
+        stream:
+          'The response stream was interrupted. Check your network stability or retry.',
+        network:
+          'Could not reach the server. Check your network or proxy settings.',
+        proxy:
+          'Proxy or SSL certificate error. Check your proxy and network settings.',
+        server: 'The model service is having problems. Try again later.',
+        deprecated:
+          'This model has been retired or deprecated. Switch to another model.',
+        knowledge: 'Knowledge base vectorization failed.',
+        parse:
+          'The model returned a malformed response. Retry or switch to another model.',
+      },
       responseFormat: {
         responseNotObject:
           'The model service returned a response that is not an object (actual: {{actual}}).',

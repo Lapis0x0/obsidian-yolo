@@ -7,6 +7,7 @@ import type {
 import {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
+  ChatErrorDetail,
   ChatMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
@@ -29,6 +30,7 @@ import {
   registerLLMDebugTraceForTurn,
   updateLLMDebugTrace,
 } from '../llm/debugCapture'
+import { ProviderRequestError } from '../llm/providerErrors'
 import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import {
   LOCAL_FILE_TOOL_SHORT_NAMES,
@@ -342,6 +344,16 @@ export class AgentLlmTurnExecutor {
       const errorMessage = isAborted
         ? undefined
         : formatErrorMessageWithCauses(error)
+      const errorDetail: ChatErrorDetail | undefined =
+        !isAborted && error instanceof ProviderRequestError
+          ? {
+              providerId: error.providerId,
+              status: error.status,
+              ...(error.responseBody
+                ? { responseBody: error.responseBody }
+                : {}),
+            }
+          : undefined
 
       assistantMessage.metadata = {
         ...assistantMessage.metadata,
@@ -351,6 +363,7 @@ export class AgentLlmTurnExecutor {
         durationMs: Date.now() - responseStart,
         generationState: isAborted ? 'aborted' : 'error',
         errorMessage,
+        ...(errorDetail ? { errorDetail } : {}),
       }
       updateLLMDebugTrace(debugTrace?.id, {
         completedAt: Date.now(),

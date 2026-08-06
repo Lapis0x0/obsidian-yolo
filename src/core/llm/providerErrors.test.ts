@@ -6,6 +6,7 @@ import { BaseLLMProvider } from './base'
 import {
   ProviderRequestError,
   createProviderErrorFetch,
+  extractProviderErrorMessage,
   withProviderErrorReporting,
 } from './providerErrors'
 
@@ -24,6 +25,41 @@ describe('provider errors', () => {
 
   afterEach(() => {
     consoleError.mockRestore()
+  })
+
+  it('extracts a human-readable message from nested provider envelopes', () => {
+    expect(
+      extractProviderErrorMessage({
+        code: 400,
+        detail: { reason: { message: 'unsupported parameter' } },
+      }),
+    ).toBe('unsupported parameter')
+  })
+
+  it('never mistakes an unrelated scalar field for the message', () => {
+    // `request_id` precedes `detail` in key order, so a fallback that accepts
+    // any nested string would surface the request id as the explanation.
+    expect(
+      extractProviderErrorMessage({
+        request_id: 'req_abc',
+        detail: { reason: { message: 'unsupported parameter' } },
+      }),
+    ).toBe('unsupported parameter')
+    expect(
+      extractProviderErrorMessage({
+        error: { type: 'invalid_request_error', code: 'invalid_value' },
+      }),
+    ).toBeNull()
+  })
+
+  it('rejects an SDK message that is only a serialized body', () => {
+    expect(extractProviderErrorMessage('400 [object Object]')).toBeNull()
+    expect(
+      extractProviderErrorMessage('400 {"detail":{"reason":"nope"}}'),
+    ).toBeNull()
+    expect(extractProviderErrorMessage('429 rate limit reached')).toBe(
+      '429 rate limit reached',
+    )
   })
 
   it('normalizes a non-standard OpenAI-compatible error and logs its raw response', async () => {
@@ -57,6 +93,39 @@ describe('provider errors', () => {
         responseBody: { code: 401, msg: 'invalid token' },
       }),
     )
+  })
+
+  it('adds a message to a nested provider envelope without discarding it', async () => {
+    const fetch = createProviderErrorFetch(
+      jest.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              request_id: 'req_abc',
+              error: {
+                detail: { reason: { message: 'unsupported parameter' } },
+              },
+            }),
+            {
+              status: 400,
+              headers: { 'content-type': 'application/json' },
+            },
+          ),
+      ) as typeof globalThis.fetch,
+      createContext(),
+    )
+
+    const response = await fetch('https://api.example.com/v1/chat/completions')
+
+    // The SDKs carry only `body.error` onto the thrown error, so everything the
+    // detail view needs has to survive inside it.
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        message: 'unsupported parameter',
+        request_id: 'req_abc',
+        detail: { reason: { message: 'unsupported parameter' } },
+      },
+    })
   })
 
   it('prevents the OpenAI SDK from replacing a non-standard body with no body', async () => {
@@ -181,6 +250,66 @@ describe('provider errors', () => {
       'Atlas request failed (401): invalid token',
     )
     expect(consoleError).not.toHaveBeenCalled()
+  })
+
+  it('carries the provider body so the error card can classify and show it', async () => {
+    // Shaped like what the OpenAI SDK throws after reading a normalized body:
+    // only `error` survives onto the thrown object.
+    const sdkError = Object.assign(new Error('402 [object Object]'), {
+      status: 402,
+      headers: { 'x-yolo-error-reported': '1' },
+      error: {
+        request_id: 'req_abc',
+        detail: { reason: { code: 'insufficient_balance' } },
+      },
+    })
+    const client = withProviderErrorReporting(
+      {
+        generateResponse: jest.fn(async () => {
+          throw sdkError
+        }),
+      } as unknown as BaseLLMProvider<never>,
+      'Atlas',
+    )
+
+    let thrown: unknown
+    try {
+      await client.generateResponse({ model: 'test' } as never, {} as never)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(ProviderRequestError)
+    const error = thrown as ProviderRequestError
+    expect(error.status).toBe(402)
+    expect(error.providerMessage).toBeNull()
+    expect(error.responseBody).toContain('insufficient_balance')
+    expect(error.responseBody).toContain('req_abc')
+  })
+
+  it('bounds the response body it keeps for the conversation', async () => {
+    const sdkError = Object.assign(new Error('500 upstream failure'), {
+      status: 500,
+      headers: { 'x-yolo-error-reported': '1' },
+      responseBody: 'x'.repeat(100_000),
+    })
+    const client = withProviderErrorReporting(
+      {
+        generateResponse: jest.fn(async () => {
+          throw sdkError
+        }),
+      } as unknown as BaseLLMProvider<never>,
+      'Atlas',
+    )
+
+    let thrown: unknown
+    try {
+      await client.generateResponse({ model: 'test' } as never, {} as never)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect((thrown as ProviderRequestError).responseBody).toHaveLength(4_001)
   })
 
   it('does not report an intentional abort', async () => {

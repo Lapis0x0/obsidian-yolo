@@ -36,6 +36,12 @@ jest.mock('../../contexts/app-context', () => ({
   }),
 }))
 
+// The real module imports YoloPlugin, which pulls the whole plugin entry point
+// into the test module graph.
+jest.mock('../../contexts/plugin-context', () => ({
+  usePlugin: () => ({ manifest: { id: 'yolo' } }),
+}))
+
 jest.mock('./UserMessageCard', () => ({
   __esModule: true,
   default: ({

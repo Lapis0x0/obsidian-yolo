@@ -775,26 +775,28 @@ export function CliChatSurface({
           )
         },
         renderUnboundAssistantGroup: (messageGroup) => {
-          const errorMessage = messageGroup
-            .flatMap((message) =>
+          const failedMessage = messageGroup.find(
+            (message) =>
               message.role === 'assistant' &&
               message.metadata?.generationState === 'error' &&
-              message.metadata.errorMessage
-                ? [message.metadata.errorMessage]
-                : [],
-            )
-            .at(0)
+              message.metadata.errorMessage,
+          )
+          const failedMetadata =
+            failedMessage?.role === 'assistant'
+              ? failedMessage.metadata
+              : undefined
           return (
             <div className="yolo-chat-messages-assistant">
               <AssistantErrorCard
                 errorMessage={
-                  errorMessage ??
+                  failedMetadata?.errorMessage ??
                   snapshot.error ??
                   t(
                     'chat.cliSurface.unboundMessageError',
                     'CLI 会话尚未建立，无法显示这条 Provider 消息。',
                   )
                 }
+                errorDetail={failedMetadata?.errorDetail}
               />
             </div>
           )

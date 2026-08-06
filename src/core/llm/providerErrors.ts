@@ -8,6 +8,9 @@ import type { BaseLLMProvider } from './base'
 
 const MAX_ERROR_RESPONSE_BYTES = 64 * 1024
 const MAX_USER_ERROR_MESSAGE_CHARS = 2_000
+// The response body is persisted with the conversation, so it is bounded well
+// below the 64KB we are willing to read for the console log.
+const MAX_PERSISTED_ERROR_BODY_CHARS = 4_000
 const ERROR_REPORTED_HEADER = 'x-yolo-error-reported'
 const reportedErrors = new WeakSet<object>()
 
@@ -35,24 +38,40 @@ const parseJson = (text: string): unknown => {
   }
 }
 
+// The OpenAI and Anthropic SDKs compose their thrown message as
+// `${status} ${JSON.stringify(body.error)}` whenever the body carries no
+// `message` of its own. That is a serialized object, not something to show a
+// user as an explanation.
+const isUsableProviderMessage = (value: string): boolean => {
+  const message = value.trim().replace(/^\d{3}\s+/, '')
+  if (!message) return false
+  return message !== '[object Object]' && !/^[[{]/.test(message)
+}
+
 export const extractProviderErrorMessage = (
   value: unknown,
   depth = 0,
 ): string | null => {
   if (depth > 5 || value == null) return null
-  if (typeof value === 'string') return value.trim() || null
+  if (typeof value === 'string') {
+    const message = value.trim()
+    if (!isUsableProviderMessage(message)) {
+      return null
+    }
+    return message
+  }
   if (!isRecord(value)) return null
 
   const directKeys = ['message', 'msg', 'detail', 'error_description'] as const
   for (const key of directKeys) {
     const candidate = value[key]
-    if (typeof candidate === 'string' && candidate.trim()) {
+    if (typeof candidate === 'string' && isUsableProviderMessage(candidate)) {
       return candidate.trim()
     }
   }
 
   const nestedError = value.error
-  if (typeof nestedError === 'string' && nestedError.trim()) {
+  if (typeof nestedError === 'string' && isUsableProviderMessage(nestedError)) {
     return nestedError.trim()
   }
   const nestedMessage = extractProviderErrorMessage(nestedError, depth + 1)
@@ -63,6 +82,26 @@ export const extractProviderErrorMessage = (
       const itemMessage = extractProviderErrorMessage(item, depth + 1)
       if (itemMessage) return itemMessage
     }
+  }
+
+  // Providers do not agree on one error envelope. After checking the known
+  // fields above, descend into nested containers so a response such as
+  // `{ detail: { reason: { message: '...' } } }` still reaches the user. Only
+  // containers — accepting a bare string here would return whichever unrelated
+  // field (`request_id`, `type`, …) happens to come first in key order.
+  for (const [key, nested] of Object.entries(value)) {
+    if (
+      key === 'message' ||
+      key === 'msg' ||
+      key === 'error_description' ||
+      key === 'error' ||
+      key === 'errors'
+    ) {
+      continue
+    }
+    if (typeof nested !== 'object' || nested === null) continue
+    const nestedMessage = extractProviderErrorMessage(nested, depth + 1)
+    if (nestedMessage) return nestedMessage
   }
 
   return null
@@ -200,16 +239,26 @@ const normalizeOpenAIErrorBody = (
   const existingError = parsedBody.error
   if (
     typeof existingError === 'string' ||
-    extractProviderErrorMessage(existingError)
+    (isRecord(existingError) &&
+      typeof existingError.message === 'string' &&
+      existingError.message.trim())
   ) {
     return null
   }
 
+  // The SDKs carry only `body.error` onto the error they throw, so fold the
+  // rest of the body into it. Replacing `error` outright would strip exactly
+  // the fields the detail view exists to show — a `{ code, msg, data }`
+  // envelope would survive as nothing but the message we just extracted.
+  const bodyWithoutError: Record<string, unknown> = { ...parsedBody }
+  delete bodyWithoutError.error
+
   return JSON.stringify({
     ...parsedBody,
     error: {
+      ...bodyWithoutError,
+      ...(isRecord(existingError) ? existingError : {}),
       message,
-      ...(parsedBody.code !== undefined ? { code: parsedBody.code } : {}),
     },
   })
 }
@@ -281,6 +330,40 @@ const readNumericStatus = (value: unknown, depth = 0): number | undefined => {
   return undefined
 }
 
+const truncateErrorBody = (text: string): string =>
+  text.length <= MAX_PERSISTED_ERROR_BODY_CHARS
+    ? text
+    : `${text.slice(0, MAX_PERSISTED_ERROR_BODY_CHARS)}…`
+
+const stringifyErrorBody = (value: unknown): string | undefined => {
+  try {
+    const text = JSON.stringify(value, null, 2)
+    return text ? truncateErrorBody(text) : undefined
+  } catch {
+    // Circular or otherwise unserializable; keep looking at nested SDK fields.
+    return undefined
+  }
+}
+
+const readErrorResponseBody = (
+  value: unknown,
+  depth = 0,
+): string | undefined => {
+  if (depth > 5 || !isRecord(value)) return undefined
+  if (typeof value.responseBody === 'string' && value.responseBody.trim()) {
+    return truncateErrorBody(value.responseBody)
+  }
+  if (isRecord(value.error)) {
+    const body = stringifyErrorBody(value.error)
+    if (body) return body
+  }
+  for (const nested of [value.rawError, value.cause]) {
+    const body = readErrorResponseBody(nested, depth + 1)
+    if (body) return body
+  }
+  return undefined
+}
+
 const wasReported = (value: unknown, depth = 0): boolean => {
   if (depth > 5 || !isRecord(value)) return false
   if (reportedErrors.has(value)) return true
@@ -331,6 +414,7 @@ export class ProviderRequestError extends Error {
     readonly status: number,
     readonly providerMessage: string | null,
     readonly rawError: unknown,
+    readonly responseBody?: string,
   ) {
     const visibleMessage =
       providerMessage && providerMessage.length <= MAX_USER_ERROR_MESSAGE_CHARS
@@ -353,6 +437,7 @@ const normalizeThrownProviderError = (
     status,
     extractThrownErrorDetail(error),
     error,
+    readErrorResponseBody(error),
   )
 }
 

@@ -1208,6 +1208,77 @@
   word-break: break-word;
 }
 
+.yolo-assistant-error-card-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+button.yolo-assistant-error-card-settings,
+button.yolo-assistant-error-card-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: auto;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+button.yolo-assistant-error-card-settings:hover,
+button.yolo-assistant-error-card-details-toggle:hover {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+button.yolo-assistant-error-card-settings:focus-visible,
+button.yolo-assistant-error-card-details-toggle:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+button.yolo-assistant-error-card-settings {
+  color: var(--text-muted);
+}
+
+button.yolo-assistant-error-card-details-toggle {
+  margin-inline-start: auto;
+  color: var(--text-faint);
+}
+
+.yolo-assistant-error-card-details-toggle svg {
+  transition: transform 120ms ease;
+}
+
+.yolo-assistant-error-card-details-toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+pre.yolo-assistant-error-card-details {
+  grid-column: 1 / -1;
+  max-height: 240px;
+  min-width: 0;
+  margin: 2px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 button.yolo-assistant-error-card-continue {
   grid-area: action;
   display: inline-flex;

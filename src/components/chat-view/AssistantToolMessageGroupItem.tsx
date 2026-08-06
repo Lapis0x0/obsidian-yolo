@@ -805,6 +805,7 @@ function AssistantToolMessageGroupItem({
                     message.metadata.errorMessage && (
                       <AssistantErrorCard
                         errorMessage={message.metadata.errorMessage}
+                        errorDetail={message.metadata.errorDetail}
                         onContinue={
                           continuableErrorMessageIds?.has(message.id) &&
                           onContinueError &&

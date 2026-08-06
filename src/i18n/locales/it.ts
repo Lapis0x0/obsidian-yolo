@@ -1954,10 +1954,39 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     errorCard: {
       title: 'Questa risposta non e stata generata',
-      connectionInterrupted:
-        'La connessione al servizio del modello si e interrotta. Riprova. Se il problema persiste, controlla la rete o il servizio del modello.',
       connectionInterruptedContinuable:
         'La connessione al servizio del modello si e interrotta. La risposta parziale e ancora disponibile: fai clic su Continua risposta per riprendere.',
+      viewDetails: 'Mostra dettagli errore',
+      hideDetails: 'Nascondi dettagli errore',
+      goToSettings: 'Vai alle impostazioni',
+      diagnosis: {
+        auth: 'La chiave API non e valida. Controllala e riconfigura il provider.',
+        region:
+          'Il servizio non e disponibile nella tua area. Configura un proxy o passa a un provider disponibile.',
+        model: 'Il modello non esiste o non hai i permessi per accedervi.',
+        quota:
+          'Il credito dell account e esaurito. Ricarica o passa a un altro provider.',
+        rateLimit:
+          'Troppe richieste in poco tempo. Attendi un momento e riprova, oppure passa a un modello con limiti piu alti.',
+        contextLength:
+          'Il contesto della conversazione e troppo lungo. Elimina i messaggi precedenti o avvia una nuova chat.',
+        payload: 'La richiesta e troppo grande. Invia meno file o meno testo.',
+        content:
+          'Il contenuto e stato bloccato da un sistema di sicurezza. Modificalo e riprova.',
+        mcp: 'Impossibile raggiungere il server MCP. Verifica che sia in esecuzione.',
+        stream:
+          'La trasmissione della risposta si e interrotta. Controlla la stabilita della rete o riprova.',
+        network:
+          'Impossibile raggiungere il server. Controlla la rete o le impostazioni del proxy.',
+        proxy:
+          'Errore di proxy o certificato SSL. Controlla le impostazioni di proxy e rete.',
+        server: 'Il servizio del modello ha un problema. Riprova piu tardi.',
+        deprecated:
+          'Questo modello e stato ritirato o deprecato. Passa a un altro modello.',
+        knowledge: 'Vettorizzazione della base di conoscenza non riuscita.',
+        parse:
+          'Il modello ha restituito una risposta non valida. Riprova o cambia modello.',
+      },
       responseFormat: {
         responseNotObject:
           'Il servizio modello ha restituito una risposta che non e un oggetto (valore effettivo: {{actual}}).',
