@@ -17657,9 +17657,12 @@ button.yolo-mermaid-modal-control:disabled {
   opacity: 0;
   transform: translateX(5px) scale(0.96);
   pointer-events: none;
+  /* L2 显隐（opacity/transform）＋ 常规状态色；顺序被下面的错峰延迟按位引用 */
   transition:
-    opacity 140ms ease,
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
+    transform var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
     color 120ms ease,
     background-color 120ms ease;
 }
@@ -17689,7 +17692,28 @@ button.yolo-mermaid-modal-control:disabled {
   color: var(--text-faint);
 }
 
+/*
+ * 会话历史面板的动效语汇，三层各司其职，改动效只改这里的令牌：
+ *
+ * L1 回执 —— 用户直接操作的即时反馈（删除按钮变红、按下态）。0ms，禁止过渡；
+ *            它回答的是「我收到这一下了」，任何渐变都会被读成迟滞。
+ * L2 显隐 —— 元素进出（条目退场、⋯ 展开）。
+ * L3 跟随 —— 因他人进出而产生的位移（补位）。与 L2 同起，但不必同止：退场快速
+ *            收场、补位从容落位，注意力才会从「没了的那条」转到现在的列表。
+ *            条目位移在 JS 侧用 spring，插值加速度而非数值；不错峰。
+ *
+ * 贯穿三层的硬规则：动画只碰 opacity 与 transform，永不碰 height/padding/margin。
+ * 后者会逐帧触发整个列表 reflow，在几十条会话的面板上必然掉帧。
+ * 退场因此走 FLIP：条目 absolute 脱离文档流当帧让出空间，其余条目 translateY 补位。
+ *
+ * JS 侧的对应常量在 ChatListDropdown.tsx 的 CHAT_LIST_MOTION，两处需保持一致。
+ */
+
 .yolo-chat-list-dropdown-content {
+  --yolo-chat-list-response-duration: 0s;
+  --yolo-chat-list-presence-duration: 160ms;
+  --yolo-chat-list-presence-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
   display: inline-flex;
   flex-direction: column;
   width: 100%;
@@ -17895,6 +17919,22 @@ button.yolo-chat-list-origin-filter:focus-visible {
   flex: 1 1 auto;
   min-height: 0;
   padding: 0;
+  /* 退场条目会切到 absolute 当帧让出空间，需要这里做定位参照 */
+  position: relative;
+}
+
+/*
+ * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
+ * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
+ * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing 关掉。
+ */
+
+.yolo-chat-list-dropdown-item {
+  transition: transform 260ms var(--yolo-chat-list-presence-ease);
+}
+
+.yolo-model-select-list.is-collapsing .yolo-chat-list-dropdown-item {
+  transition: none;
 }
 
 .yolo-chat-list-dropdown-content li,
@@ -18382,10 +18422,17 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   transform: translateX(6px);
   transform-origin: right center;
   pointer-events: none;
+  /*
+   * grid-template-columns 用 0fr→1fr 撑开宽度，是这里唯一的例外：它承担的是
+   * 「腾出横向空间」而非位移，且只影响这一个容器内部，不会带动整列 reflow。
+   */
   transition:
-    grid-template-columns 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 150ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    grid-template-columns var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
+    opacity var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
+    transform var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease);
 }
 
 .yolo-chat-list-inline-actions.is-open {
@@ -18407,8 +18454,10 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   opacity: 0;
   transform: translateX(5px) scale(0.96);
   transition:
-    opacity 140ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease),
+    transform var(--yolo-chat-list-presence-duration)
+      var(--yolo-chat-list-presence-ease);
 }
 
 .yolo-chat-list-inline-actions.is-open
@@ -18479,16 +18528,19 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 
 .yolo-popover-surface li .yolo-chat-list-delete-button.is-confirming {
   color: var(--color-red);
-  transition-duration: 140ms, 180ms, 0s, 120ms;
+  /* L1 回执：只把 color 一项压成 0s，其余按位保留 L2 的显隐时长 */
+  transition-duration: var(--yolo-chat-list-presence-duration),
+    var(--yolo-chat-list-presence-duration),
+    var(--yolo-chat-list-response-duration), 120ms;
 }
 
 .yolo-popover-surface li .yolo-chat-list-delete-button svg {
-  transition: stroke-width 120ms ease;
+  transition: stroke-width var(--yolo-chat-list-presence-duration) ease;
 }
 
 .yolo-popover-surface li .yolo-chat-list-delete-button.is-confirming svg {
   stroke-width: 2.5;
-  transition-duration: 0s;
+  transition-duration: var(--yolo-chat-list-response-duration);
 }
 
 .yolo-chat-list-pin-button {
