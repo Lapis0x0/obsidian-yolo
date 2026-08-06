@@ -17956,26 +17956,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   background: color-mix(in srgb, var(--color-green) 15%, transparent);
 }
 
-.yolo-chat-list-dropdown-item-runtime-badge {
-  flex-shrink: 0;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: var(--font-semibold);
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.yolo-chat-list-dropdown-item-runtime-badge--claude-code {
-  background: color-mix(in srgb, var(--color-orange) 15%, transparent);
-  color: color-mix(in srgb, var(--color-orange) 82%, var(--text-normal));
-}
-
-.yolo-chat-list-dropdown-item-runtime-badge--codex {
-  background: color-mix(in srgb, var(--color-cyan) 14%, transparent);
-  color: color-mix(in srgb, var(--color-cyan) 82%, var(--text-normal));
-}
-
 .yolo-chat-list-dropdown-item-title-skeleton {
   position: absolute;
   left: 0;
@@ -18190,9 +18170,31 @@ button.yolo-chat-list-origin-filter:focus-visible {
   gap: 2px;
 }
 
-.yolo-agent-status-panel-item-title,
-.yolo-background-activity-status-panel-item-title {
+.yolo-background-activity-status-panel-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.yolo-agent-status-panel-item-title {
   flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--font-ui-small);
+  font-weight: 400;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Sized to its text so the runtime badge sits right next to the title instead
+ * of being pushed to the far edge; it still shrinks first when space runs out.
+ */
+
+.yolo-background-activity-status-panel-item-title {
+  flex: 0 1 auto;
   min-width: 0;
   font-size: var(--font-ui-small);
   font-weight: 400;
@@ -20821,6 +20823,34 @@ button.yolo-todo-panel__icon-button svg {
   margin-left: var(--size-4-4);
   border-left: 1px solid var(--background-modifier-border);
   border-radius: 0;
+}
+
+/*
+ * Short CLI runtime marker (CC / Codex).
+ *
+ * Shared by every surface that attributes a conversation or a live run to its
+ * runtime — the chat list popover and the background activity status panel.
+ * Keep it free of positioning: each consumer owns the layout around it.
+ */
+
+.yolo-runtime-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.yolo-runtime-badge--claude-code {
+  background: color-mix(in srgb, var(--color-orange) 15%, transparent);
+  color: color-mix(in srgb, var(--color-orange) 82%, var(--text-normal));
+}
+
+.yolo-runtime-badge--codex {
+  background: color-mix(in srgb, var(--color-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--color-cyan) 82%, var(--text-normal));
 }
 
 /* Custom continue inline panel */

@@ -2188,6 +2188,9 @@ export const it: DeepPartial<TranslationKeys> = {
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
+    cliStatusRunning: 'In esecuzione',
+    cliStatusWaitingApproval: 'In attesa di approvazione',
+    cliStatusWaitingUser: 'In attesa di input',
     backgroundStatusPanelTitle: 'Attivita e promemoria',
     backgroundStatusPanelEmpty: 'Non ci sono attivita o promemoria',
     backgroundTasksRunning:

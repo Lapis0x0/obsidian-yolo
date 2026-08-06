@@ -126,6 +126,15 @@ export type CliRuntimeRunState =
   | 'error'
 
 /**
+ * Run states in which a CLI conversation still owns a live provider process,
+ * so it must outlive its view and stay visible to background monitoring.
+ */
+export type CliActiveRunState = Extract<
+  CliRuntimeRunState,
+  'running' | 'waiting_for_approval' | 'waiting_for_user'
+>
+
+/**
  * Ephemeral mirror of provider-reported context-window usage for the ring UI.
  * Not persisted in YOLO conversation storage; restored via CLI resume/replay.
  */

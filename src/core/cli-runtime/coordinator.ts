@@ -19,6 +19,7 @@ import type {
 } from './session-index'
 import { CliSessionService } from './session-service'
 import type {
+  CliActiveRunState,
   CliRuntime,
   CliRuntimeId,
   CliRuntimeRunState,
@@ -68,8 +69,30 @@ export type CliRuntimeScope = {
   dispose(): Promise<void>
 }
 
+/**
+ * Process-level view of a CLI conversation that still owns a live provider
+ * run. Only conversations bound to a host conversation are reported, so every
+ * summary can be located from background monitoring.
+ */
+export type CliConversationRunSummary = Readonly<{
+  conversationId: string
+  runtimeId: CliRuntimeId
+  runState: CliActiveRunState
+}>
+
+export type CliConversationRunSummarySubscriber = (
+  summaries: Map<string, CliConversationRunSummary>,
+) => void
+
 export type CliRuntimeCoordinator = {
   createScope(): CliRuntimeScope
+  /**
+   * Feeds live CLI runs to process monitoring. Scoped to the coordinator
+   * rather than a scope because a run outlives the view that started it.
+   */
+  subscribeToRunSummaries(
+    callback: CliConversationRunSummarySubscriber,
+  ): () => void
   dispose(): Promise<void>
 }
 
@@ -146,11 +169,24 @@ type ConversationRuntimeRecord = {
   disposePromise: Promise<void> | null
 }
 
-const ACTIVE_CONVERSATION_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
-  'running',
-  'waiting_for_approval',
-  'waiting_for_user',
-])
+const ACTIVE_CONVERSATION_STATES: ReadonlySet<CliRuntimeRunState> =
+  new Set<CliActiveRunState>([
+    'running',
+    'waiting_for_approval',
+    'waiting_for_user',
+  ])
+
+const isActiveRunState = (
+  state: CliRuntimeRunState,
+): state is CliActiveRunState => ACTIVE_CONVERSATION_STATES.has(state)
+
+const fingerprintRunSummaries = (
+  summaries: ReadonlyMap<string, CliConversationRunSummary>,
+): string =>
+  [...summaries.values()]
+    .map((summary) => `${summary.conversationId}:${summary.runState}`)
+    .sort()
+    .join('|')
 
 const isSameSession = (left: CliSessionRef, right: CliSessionRef): boolean =>
   left.runtimeId === right.runtimeId &&
@@ -165,6 +201,9 @@ class DesktopCliRuntimeWorkspace {
     ConversationRuntimeRecord
   >()
   private readonly conversationDisposals = new Set<Promise<void>>()
+  private readonly runSummarySubscribers =
+    new Set<CliConversationRunSummarySubscriber>()
+  private lastRunSummaryFingerprint = ''
   private readonly modelCatalog: CliModelCatalogService
   private readonly codexHostPool: CodexAppServerHostPool
   private readonly codexRuntimeOptions: CodexRuntimeOptions
@@ -259,6 +298,7 @@ class DesktopCliRuntimeWorkspace {
       if (models && models.length > 0) {
         void this.modelCatalog.record(runtimeId, models)
       }
+      this.emitRunSummaries()
       if (record.scopeReferences === 0) {
         void this.disposeConversationIfInactive(record).catch((error) => {
           console.error('[YOLO] Failed to release inactive CLI runtime', error)
@@ -266,6 +306,52 @@ class DesktopCliRuntimeWorkspace {
       }
     })
     return controller
+  }
+
+  getActiveRunSummaries(): Map<string, CliConversationRunSummary> {
+    const summaries = new Map<string, CliConversationRunSummary>()
+    for (const record of this.conversations) {
+      if (record.disposePromise) continue
+      const conversationId = record.controller.getConversationId()
+      if (!conversationId) continue
+      const { runState, runtimeId } = record.controller.getSnapshot()
+      if (!isActiveRunState(runState)) continue
+      summaries.set(conversationId, { conversationId, runtimeId, runState })
+    }
+    return summaries
+  }
+
+  subscribeToRunSummaries(
+    callback: CliConversationRunSummarySubscriber,
+  ): () => void {
+    this.runSummarySubscribers.add(callback)
+    const summaries = this.getActiveRunSummaries()
+    // The subscriber now knows this state, so later diffs must compare
+    // against it rather than against whatever was last broadcast.
+    this.lastRunSummaryFingerprint = fingerprintRunSummaries(summaries)
+    callback(summaries)
+    return () => {
+      this.runSummarySubscribers.delete(callback)
+    }
+  }
+
+  /**
+   * Controllers publish on every streamed chunk, so only a change in the set of
+   * live runs is forwarded to monitoring.
+   */
+  private emitRunSummaries(): void {
+    if (this.runSummarySubscribers.size === 0) return
+    const summaries = this.getActiveRunSummaries()
+    const fingerprint = fingerprintRunSummaries(summaries)
+    if (fingerprint === this.lastRunSummaryFingerprint) return
+    this.lastRunSummaryFingerprint = fingerprint
+    for (const subscriber of this.runSummarySubscribers) {
+      try {
+        subscriber(new Map(summaries))
+      } catch (error) {
+        console.error('[YOLO] CLI run summary subscriber failed', error)
+      }
+    }
   }
 
   retainConversation(controller: CliConversationController): void {
@@ -386,6 +472,7 @@ class DesktopCliRuntimeWorkspace {
       () => this.conversationDisposals.delete(disposePromise),
       () => this.conversationDisposals.delete(disposePromise),
     )
+    this.emitRunSummaries()
     return disposePromise
   }
 
@@ -569,6 +656,12 @@ class DesktopCliRuntimeCoordinator implements CliRuntimeCoordinator {
     )
     this.scopes.add(scope)
     return scope
+  }
+
+  subscribeToRunSummaries(
+    callback: CliConversationRunSummarySubscriber,
+  ): () => void {
+    return this.workspace.subscribeToRunSummaries(callback)
   }
 
   dispose(): Promise<void> {

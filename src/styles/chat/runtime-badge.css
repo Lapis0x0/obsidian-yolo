@@ -1,0 +1,27 @@
+/*
+ * Short CLI runtime marker (CC / Codex).
+ *
+ * Shared by every surface that attributes a conversation or a live run to its
+ * runtime — the chat list popover and the background activity status panel.
+ * Keep it free of positioning: each consumer owns the layout around it.
+ */
+
+.yolo-runtime-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.yolo-runtime-badge--claude-code {
+  background: color-mix(in srgb, var(--color-orange) 15%, transparent);
+  color: color-mix(in srgb, var(--color-orange) 82%, var(--text-normal));
+}
+
+.yolo-runtime-badge--codex {
+  background: color-mix(in srgb, var(--color-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--color-cyan) 82%, var(--text-normal));
+}

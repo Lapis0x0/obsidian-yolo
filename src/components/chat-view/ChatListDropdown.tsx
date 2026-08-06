@@ -90,7 +90,7 @@ function ChatRuntimeBadge({
 
   return (
     <span
-      className={`yolo-chat-list-dropdown-item-runtime-badge yolo-chat-list-dropdown-item-runtime-badge--${runtimeId}`}
+      className={`yolo-runtime-badge yolo-runtime-badge--${runtimeId}`}
       data-runtime-id={runtimeId}
       aria-label={fullLabel}
       title={fullLabel}

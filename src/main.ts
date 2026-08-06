@@ -51,9 +51,11 @@ import { buildBackgroundStatusModel } from './core/background/backgroundStatusMo
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
 import type {
+  CliConversationRunSummary,
   CliRuntimeCoordinator,
   CliRuntimeScope,
 } from './core/cli-runtime/coordinator'
+import type { CliActiveRunState } from './core/cli-runtime/types'
 import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
 import {
@@ -327,6 +329,7 @@ export default class YoloPlugin extends Plugin {
   private cliRuntimeCoordinatorPromise: Promise<CliRuntimeCoordinator | null> | null =
     null
   private cliRuntimeCapabilityError: unknown = null
+  private cliRunSummaryUnsubscribe: (() => void) | null = null
   private agentService: AgentService | null = null
   private agentServiceReady: Promise<AgentService> | null = null
   private agentApiService: YoloAgentApiService | null = null
@@ -347,6 +350,7 @@ export default class YoloPlugin extends Plugin {
     {
       item: HTMLElement
       title: HTMLElement
+      badge: HTMLElement
       detail: HTMLElement
       indicator: HTMLElement
       action?: BackgroundStatusPanelAction
@@ -451,6 +455,16 @@ export default class YoloPlugin extends Plugin {
         return null
       }
 
+      const unsubscribe = coordinator.subscribeToRunSummaries((summaries) => {
+        if (this.isUnloaded) return
+        this.syncCliBackgroundActivities(summaries)
+      })
+      this.cliRunSummaryUnsubscribe = () => {
+        unsubscribe()
+        if (this.isUnloaded) return
+        this.syncCliBackgroundActivities(new Map())
+      }
+
       return coordinator
     } catch (error) {
       if (!this.isUnloaded) {
@@ -468,6 +482,8 @@ export default class YoloPlugin extends Plugin {
   private disposeCliRuntimeCoordinator(): void {
     const coordinatorPromise = this.cliRuntimeCoordinatorPromise
     this.cliRuntimeCoordinatorPromise = null
+    this.cliRunSummaryUnsubscribe?.()
+    this.cliRunSummaryUnsubscribe = null
     if (!coordinatorPromise) return
     void coordinatorPromise
       .then((coordinator) => coordinator?.dispose())
@@ -1452,7 +1468,7 @@ export default class YoloPlugin extends Plugin {
         action: summary.activity?.kind.startsWith('module:')
           ? undefined
           : {
-              type: 'open-agent-conversation',
+              type: 'open-conversation',
               conversationId: summary.conversationId,
             },
       })
@@ -1467,6 +1483,54 @@ export default class YoloPlugin extends Plugin {
       }
       registry.remove(activityId)
     }
+  }
+
+  private syncCliBackgroundActivities(
+    summaries: Map<string, CliConversationRunSummary>,
+  ): void {
+    const registry = this.getBackgroundActivityRegistry()
+    const nextActivityIds = new Set<string>()
+
+    for (const summary of summaries.values()) {
+      const id = `cli:${summary.conversationId}`
+      nextActivityIds.add(id)
+      registry.upsert({
+        id,
+        kind: 'cli',
+        title: this.t(
+          'statusBar.agentStatusFallbackConversationTitle',
+          '运行中的对话',
+        ),
+        detail: this.resolveCliActivityDetail(summary.runState),
+        cliRuntimeId: summary.runtimeId,
+        status: summary.runState === 'running' ? 'running' : 'waiting',
+        updatedAt: Date.now(),
+        action: {
+          type: 'open-conversation',
+          conversationId: summary.conversationId,
+        },
+      })
+    }
+
+    for (const activityId of this.latestBackgroundActivities.keys()) {
+      if (!activityId.startsWith('cli:')) {
+        continue
+      }
+      if (nextActivityIds.has(activityId)) {
+        continue
+      }
+      registry.remove(activityId)
+    }
+  }
+
+  private resolveCliActivityDetail(runState: CliActiveRunState): string {
+    if (runState === 'waiting_for_approval') {
+      return this.t('statusBar.cliStatusWaitingApproval', '待审批')
+    }
+    if (runState === 'waiting_for_user') {
+      return this.t('statusBar.cliStatusWaitingUser', '等待输入')
+    }
+    return this.t('statusBar.cliStatusRunning', '运行中')
   }
 
   private updateBackgroundStatusBar(): void {
@@ -1534,7 +1598,7 @@ export default class YoloPlugin extends Plugin {
       (activity) => activity.status === 'reminder',
     )
     const agentActivities = runningActivities.filter(
-      (activity) => activity.kind === 'agent',
+      (activity) => activity.kind === 'agent' || activity.kind === 'cli',
     )
     const waitingApprovalCount = runningActivities.filter(
       (activity) => activity.status === 'waiting',
@@ -1650,7 +1714,7 @@ export default class YoloPlugin extends Plugin {
     let metadataList: { id: string; title?: string }[] = []
     if (
       activities.some(
-        (activity) => activity.action?.type === 'open-agent-conversation',
+        (activity) => activity.action?.type === 'open-conversation',
       )
     ) {
       try {
@@ -1697,6 +1761,7 @@ export default class YoloPlugin extends Plugin {
       if (itemRecord.title.getAttribute('title') !== title) {
         itemRecord.title.setAttribute('title', title)
       }
+      this.renderBackgroundActivityBadge(itemRecord.badge, activity)
       if (itemRecord.detail.getText() !== detail) {
         itemRecord.detail.setText(detail)
       }
@@ -1740,6 +1805,7 @@ export default class YoloPlugin extends Plugin {
   ): {
     item: HTMLElement
     title: HTMLElement
+    badge: HTMLElement
     detail: HTMLElement
     indicator: HTMLElement
     action?: BackgroundStatusPanelAction
@@ -1756,9 +1822,16 @@ export default class YoloPlugin extends Plugin {
     const copy = row.createDiv({
       cls: 'yolo-background-activity-status-panel-item-copy',
     })
-    const title = copy.createDiv({
+    const titleRow = copy.createDiv({
+      cls: 'yolo-background-activity-status-panel-item-title-row',
+    })
+    const title = titleRow.createDiv({
       cls: 'yolo-background-activity-status-panel-item-title',
     })
+    const badge = titleRow.createSpan({
+      cls: 'yolo-runtime-badge',
+    })
+    badge.hidden = true
     const detail = copy.createDiv({
       cls: 'yolo-background-activity-status-panel-item-detail',
     })
@@ -1768,12 +1841,14 @@ export default class YoloPlugin extends Plugin {
     const record: {
       item: HTMLElement
       title: HTMLElement
+      badge: HTMLElement
       detail: HTMLElement
       indicator: HTMLElement
       action?: BackgroundStatusPanelAction
     } = {
       item,
       title,
+      badge,
       detail,
       indicator,
       action,
@@ -1787,7 +1862,7 @@ export default class YoloPlugin extends Plugin {
         currentAction.run()
         return
       }
-      if (currentAction.type === 'open-agent-conversation') {
+      if (currentAction.type === 'open-conversation') {
         void this.openChatView({
           placement: 'split',
           initialConversationId: currentAction.conversationId,
@@ -1828,7 +1903,7 @@ export default class YoloPlugin extends Plugin {
     metadataById: Map<string, { title?: string }>,
   ): string {
     if (
-      activity.action?.type === 'open-agent-conversation' &&
+      activity.action?.type === 'open-conversation' &&
       activity.action.conversationId
     ) {
       const metadata = metadataById.get(activity.action.conversationId)
@@ -1841,6 +1916,40 @@ export default class YoloPlugin extends Plugin {
     activity: BackgroundActivity,
   ): string {
     return activity.detail?.trim() ?? ''
+  }
+
+  private renderBackgroundActivityBadge(
+    badge: HTMLElement,
+    activity: BackgroundActivity,
+  ): void {
+    const runtimeId = activity.cliRuntimeId
+    badge.classList.remove(
+      'yolo-runtime-badge--claude-code',
+      'yolo-runtime-badge--codex',
+    )
+    if (!runtimeId) {
+      badge.hidden = true
+      badge.setText('')
+      badge.removeAttribute('data-runtime-id')
+      badge.removeAttribute('aria-label')
+      badge.removeAttribute('title')
+      return
+    }
+
+    const fullLabel =
+      runtimeId === 'claude-code'
+        ? this.t('sidebar.runtimeSelector.claudeCodeLabel', 'Claude Code')
+        : this.t('sidebar.runtimeSelector.codexLabel', 'Codex')
+    badge.classList.add(`yolo-runtime-badge--${runtimeId}`)
+    badge.setText(
+      runtimeId === 'claude-code'
+        ? this.t('sidebar.runtimeSelector.claudeCodeShortLabel', 'CC')
+        : fullLabel,
+    )
+    badge.setAttribute('data-runtime-id', runtimeId)
+    badge.setAttribute('aria-label', fullLabel)
+    badge.setAttribute('title', fullLabel)
+    badge.hidden = false
   }
 
   private openKnowledgeSettings(): void {

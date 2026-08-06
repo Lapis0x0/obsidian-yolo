@@ -2323,6 +2323,9 @@ export const en: TranslationKeys = {
     agentStatusRunning: 'Running',
     agentStatusWaitingApproval: 'Awaiting approval',
     agentStatusFallbackConversationTitle: 'Running conversation',
+    cliStatusRunning: 'Running',
+    cliStatusWaitingApproval: 'Awaiting approval',
+    cliStatusWaitingUser: 'Awaiting input',
     backgroundStatusPanelTitle: 'Activity and reminders',
     backgroundStatusPanelEmpty: 'There is no activity or reminder',
     backgroundTasksRunning:

@@ -346,6 +346,97 @@ describe('CLI runtime coordinator', () => {
     expect(runtime.dispose).toHaveBeenCalledTimes(1)
   })
 
+  it('reports live runs to monitoring until they leave an active state', async () => {
+    const { coordinator, harness } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const controller = scope.selectConversationRuntime('claude-code')
+    const runtime = harness.claudeRuntimes[0]
+    controller.bindConversation('conversation-a')
+    const summaries: Map<string, unknown>[] = []
+    const unsubscribe = coordinator.subscribeToRunSummaries((next) => {
+      summaries.push(next)
+    })
+
+    expect(summaries).toHaveLength(1)
+    expect([...summaries[0].keys()]).toEqual([])
+
+    await controller.ensureReady()
+    runtime.emit({ type: 'run_state', state: 'running' })
+    expect(summaries[summaries.length - 1].get('conversation-a')).toEqual({
+      conversationId: 'conversation-a',
+      runtimeId: 'claude-code',
+      runState: 'running',
+    })
+
+    runtime.emit({ type: 'run_state', state: 'waiting_for_approval' })
+    expect(summaries[summaries.length - 1].get('conversation-a')).toEqual({
+      conversationId: 'conversation-a',
+      runtimeId: 'claude-code',
+      runState: 'waiting_for_approval',
+    })
+
+    // The view can close while the run continues; monitoring must not drop it.
+    await scope.dispose()
+    expect(summaries[summaries.length - 1].has('conversation-a')).toBe(true)
+
+    runtime.emit({ type: 'run_state', state: 'completed' })
+    expect(summaries[summaries.length - 1].has('conversation-a')).toBe(false)
+
+    const settled = summaries.length
+    runtime.emit({ type: 'run_state', state: 'completed' })
+    expect(summaries).toHaveLength(settled)
+
+    unsubscribe()
+    await coordinator.dispose()
+  })
+
+  it('diffs against what a late subscriber was given, not the last broadcast', async () => {
+    const { coordinator, harness } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const controller = scope.selectConversationRuntime('claude-code')
+    const runtime = harness.claudeRuntimes[0]
+    controller.bindConversation('conversation-c')
+
+    await controller.ensureReady()
+    runtime.emit({ type: 'run_state', state: 'running' })
+    runtime.emit({ type: 'run_state', state: 'completed' })
+
+    const summaries: Map<string, unknown>[] = []
+    coordinator.subscribeToRunSummaries((next) => {
+      summaries.push(next)
+    })
+    expect(summaries[0].size).toBe(0)
+
+    runtime.emit({ type: 'run_state', state: 'running' })
+    expect(summaries).toHaveLength(2)
+    expect([...summaries[1].keys()]).toEqual(['conversation-c'])
+
+    await scope.dispose()
+    await coordinator.dispose()
+  })
+
+  it('omits a conversation that no view has bound yet', async () => {
+    const { coordinator, harness } = await createCoordinator()
+    const scope = coordinator.createScope()
+    const controller = scope.selectConversationRuntime('claude-code')
+    const summaries: Map<string, unknown>[] = []
+    coordinator.subscribeToRunSummaries((next) => {
+      summaries.push(next)
+    })
+
+    await controller.ensureReady()
+    harness.claudeRuntimes[0].emit({ type: 'run_state', state: 'running' })
+    expect(summaries[summaries.length - 1].size).toBe(0)
+
+    controller.bindConversation('conversation-b')
+    expect([...summaries[summaries.length - 1].keys()]).toEqual([
+      'conversation-b',
+    ])
+
+    await scope.dispose()
+    await coordinator.dispose()
+  })
+
   it('releases a shared session after the final view scope closes', async () => {
     const { coordinator, harness } = await createCoordinator()
     const first = coordinator.createScope()

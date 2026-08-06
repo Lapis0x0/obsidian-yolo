@@ -224,6 +224,12 @@ export function useCliRuntimeOrchestration({
     useState<CliConversationSnapshot | null>(
       () => cliConversationController?.getSnapshot() ?? null,
     )
+  // A CLI run outlives the view that started it, so the controller must know
+  // which conversation presents it before background monitoring can locate it.
+  useEffect(() => {
+    if (!cliConversationController || !cliConversationId) return
+    cliConversationController.bindConversation(cliConversationId)
+  }, [cliConversationController, cliConversationId])
   useEffect(() => {
     if (!cliConversationController) {
       setCliConversationSnapshot(null)

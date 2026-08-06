@@ -289,6 +289,13 @@ export class CliConversationController {
   private restoredCacheHitRate: number | null = null
   private currentTurnMetrics: CliTurnMetrics | null = null
   private readonly reconciledNativeUserMessageIds = new Set<string>()
+  /**
+   * Host conversation this surface belongs to. Kept outside the snapshot
+   * because it survives provider-native session transitions, and because it is
+   * the only way background monitoring can locate a still-running CLI process
+   * after its view is gone.
+   */
+  private conversationId: string | null = null
   private readyTail: Promise<void> = Promise.resolve()
   private permissionUpdateTail: Promise<void> = Promise.resolve()
   private appliedPermissionProfile: CliPermissionProfileUpdate | null = null
@@ -313,6 +320,15 @@ export class CliConversationController {
   }
 
   getSnapshot = (): CliConversationSnapshot => this.snapshot
+
+  getConversationId = (): string | null => this.conversationId
+
+  /** Binds this surface to the host conversation that presents it. */
+  bindConversation(conversationId: string): void {
+    if (this.disposed || this.conversationId === conversationId) return
+    this.conversationId = conversationId
+    this.notify()
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     if (this.disposed) return () => undefined

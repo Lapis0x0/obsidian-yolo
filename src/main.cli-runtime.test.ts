@@ -113,6 +113,7 @@ describe('YoloPlugin CLI runtime lifecycle', () => {
         >()
         .mockReturnValueOnce(firstScope)
         .mockReturnValueOnce(secondScope),
+      subscribeToRunSummaries: jest.fn(() => () => undefined),
       dispose: jest.fn(async () => undefined),
     }
     createDesktopCliRuntimeCoordinator.mockResolvedValue(coordinator)
@@ -143,6 +144,7 @@ describe('YoloPlugin CLI runtime lifecycle', () => {
     const disposeCoordinator = jest.fn(async () => undefined)
     const coordinator: CliRuntimeCoordinator = {
       createScope: jest.fn(),
+      subscribeToRunSummaries: jest.fn(() => () => undefined),
       dispose: disposeCoordinator,
     }
     const plugin = createPlugin()

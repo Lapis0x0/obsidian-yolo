@@ -1988,6 +1988,9 @@ export type TranslationKeys = {
     agentStatusRunning?: string
     agentStatusWaitingApproval?: string
     agentStatusFallbackConversationTitle?: string
+    cliStatusRunning?: string
+    cliStatusWaitingApproval?: string
+    cliStatusWaitingUser?: string
     backgroundStatusPanelTitle?: string
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
