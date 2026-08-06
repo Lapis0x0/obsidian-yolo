@@ -1,6 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import { Download, History, Pencil, Plus, Trash2 } from 'lucide-react'
-import { MarkdownView, Notice, TFile, TFolder } from 'obsidian'
+import { MarkdownView, TFile, TFolder } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -28,7 +28,6 @@ import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import {
   type ChatRuntimeId,
-  type CliRuntimeId,
   type CliRuntimeScope,
   type CliSessionRef,
   type YoloConversationRef,
@@ -95,7 +94,6 @@ import {
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
-import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
 // removed Prompt Templates feature
 
@@ -105,7 +103,6 @@ import {
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
   type ChatMode,
-  isAgentChatMode,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputProps } from './chat-input/ChatUserInput'
@@ -120,15 +117,7 @@ import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
-import {
-  beginChatRuntimeNavigation,
-  resolveChatRuntimeId,
-} from './cliChatIntegration'
 import CliChatSurface from './CliChatSurface'
-import {
-  resolveCliModePreference,
-  resolveCliRuntimePreference,
-} from './cliRuntimePreferences'
 import Composer from './Composer'
 import type {
   ConversationAssistantGroupProps,
@@ -157,6 +146,8 @@ import { useAutoScroll } from './useAutoScroll'
 import { useChatDomainActions } from './useChatDomainActions'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import { useChatInputController } from './useChatInputController'
+import { useChatRuntimePreferences } from './useChatRuntimePreferences'
+import { useChatRuntimeSnapshot } from './useChatRuntimeSnapshot'
 import { useChatStreamManager } from './useChatStreamManager'
 import {
   findAssistantGroupIdForRunAnchor,
@@ -357,46 +348,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const seededRuntimeSnapshot = props.seededRuntimeSnapshot
   const cliRuntimeScope = props.cliRuntimeScope
   const cliRuntimeAvailable = isCliRuntimeAvailable()
-  const preferredCliRuntimeId =
-    settings.chatOptions.lastCliRuntimeId ?? 'claude-code'
-  const preferredRuntimeId: ChatRuntimeId =
-    settings.chatOptions.lastChatSurface === 'cli'
-      ? preferredCliRuntimeId
-      : 'yolo'
-  const initialActiveRuntimeId = resolveChatRuntimeId({
-    requestedRuntimeId:
-      seededRuntimeSnapshot?.activeRuntimeId ??
-      (props.initialConversationId ? 'yolo' : preferredRuntimeId),
-    hasCliRuntimeScope: cliRuntimeScope !== undefined,
-    cliRuntimeAvailable,
-  })
-  const [requestedRuntimeId, setRequestedRuntimeId] = useState<ChatRuntimeId>(
-    initialActiveRuntimeId,
-  )
-  const activeRuntimeId = resolveChatRuntimeId({
-    requestedRuntimeId,
-    hasCliRuntimeScope: cliRuntimeScope !== undefined,
-    cliRuntimeAvailable,
-  })
-  const activeRuntimeIdRef = useLatestRef(activeRuntimeId)
-  const lastCliRuntimeIdRef = useRef<CliRuntimeId>(
-    initialActiveRuntimeId === 'yolo'
-      ? preferredCliRuntimeId
-      : initialActiveRuntimeId,
-  )
-  const initialCliModePreference = resolveCliModePreference(
-    settings,
-    initialActiveRuntimeId === 'yolo'
-      ? preferredCliRuntimeId
-      : initialActiveRuntimeId,
-    seededRuntimeSnapshot?.conversationOverrides ?? null,
-  )
-  const prePlanCliModeByConversationRef = useRef(
-    new Map<string, { mode: 'agent'; yoloEnabled: boolean }>(),
-  )
-  const cliModeRequestGenerationRef = useRef(0)
   const chatMountedRef = useRef(true)
-  const runtimeNavigationGenerationRef = useRef(0)
   useEffect(() => {
     chatMountedRef.current = true
     return () => {
@@ -409,7 +361,50 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         settings.currentAssistantId ??
         DEFAULT_ASSISTANT_ID,
     )
-  const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
+  // seed 早于 useChatInputController：activeRuntimeId 直接消费本 state。
+  const [currentConversationId, setCurrentConversationId] = useState<string>(
+    () =>
+      seededRuntimeSnapshot?.currentConversationId ??
+      props.initialConversationId ??
+      uuidv4(),
+  )
+  const {
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    setRequestedRuntimeId,
+    lastCliRuntimeIdRef,
+    initialActiveRuntimeId,
+    initialCliModePreference,
+    cliModeRequestGenerationRef,
+    prePlanCliModeByConversationRef,
+    runtimeNavigationGenerationRef,
+    handleRuntimeChange,
+    conversationModelIdRef,
+    conversationReasoningLevelRef,
+    conversationAssistantIdRef,
+    conversationOverridesRef,
+    persistReasoningLevelForModel,
+    persistChatRuntimePreference,
+    applyAssistantDefaultModel,
+    handleConversationAssistantSelect,
+    handleChatModeChange,
+    handleYoloChange,
+    lateStateRef: runtimePreferencesLateStateRef,
+  } = useChatRuntimePreferences({
+    app,
+    t,
+    settings,
+    setSettings,
+    cliRuntimeScope,
+    cliRuntimeAvailable,
+    chatMountedRef,
+    seededActiveRuntimeId: seededRuntimeSnapshot?.activeRuntimeId,
+    seededConversationOverrides: seededRuntimeSnapshot?.conversationOverrides,
+    hasInitialConversationId: props.initialConversationId !== undefined,
+    currentConversationId,
+    conversationAssistantId,
+    setConversationAssistantId,
+  })
   const effectiveSettings = useMemo(
     () => ({
       ...settings,
@@ -538,12 +533,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     focusMainInput,
     submitMainInput,
   } = inputController
-  const [currentConversationId, setCurrentConversationId] = useState<string>(
-    () =>
-      seededRuntimeSnapshot?.currentConversationId ??
-      props.initialConversationId ??
-      uuidv4(),
-  )
   const currentConversationRef = useMemo<YoloConversationRef>(
     () => ({ runtimeId: 'yolo', conversationId: currentConversationId }),
     [currentConversationId],
@@ -567,9 +556,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const untitledFallback = t('chat.untitledConversation', 'New chat')
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
     seededRuntimeSnapshot?.reasoningLevel ?? initialReasoningLevel,
-  )
-  const conversationReasoningLevelRef = useRef<Map<string, ReasoningLevel>>(
-    new Map(),
   )
   const [messageReasoningMap, setMessageReasoningMap] = useState<
     Map<string, ReasoningLevel>
@@ -695,9 +681,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } as CSSProperties
 
   // Per-conversation override settings (temperature, top_p, context, stream)
-  const conversationOverridesRef = useRef<
-    Map<string, ConversationOverrideSettings | null>
-  >(new Map())
   const [conversationOverrides, setConversationOverrides] =
     useState<ConversationOverrideSettings | null>(
       seededRuntimeSnapshot?.conversationOverrides ?? null,
@@ -728,7 +711,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   // Per-conversation model id (do NOT write back to global settings)
-  const conversationModelIdRef = useRef<Map<string, string>>(new Map())
   const [conversationModelId, setConversationModelId] = useState<string>(() => {
     if (seededRuntimeSnapshot) {
       return seededRuntimeSnapshot.conversationModelId
@@ -786,189 +768,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       settings.chatOptions.reasoningLevelByModelId,
     ],
   )
-
-  const persistReasoningLevelForModel = useCallback(
-    async (modelId: string, level: ReasoningLevel) => {
-      if (!modelId) return
-      const currentMap = settings.chatOptions.reasoningLevelByModelId ?? {}
-      if (currentMap[modelId] === level) return
-      try {
-        await setSettings({
-          ...settings,
-          chatOptions: {
-            ...settings.chatOptions,
-            reasoningLevelByModelId: {
-              ...currentMap,
-              [modelId]: level,
-            },
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist reasoning level preference', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const persistPreferredChatMode = useCallback(
-    async (mode: ChatMode) => {
-      if (settings.chatOptions.chatMode === mode) {
-        return
-      }
-
-      try {
-        await setSettings({
-          ...settings,
-          chatOptions: {
-            ...settings.chatOptions,
-            chatMode: mode,
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist preferred chat mode', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const persistPreferredYolo = useCallback(
-    async (enabled: boolean) => {
-      if ((settings.chatOptions.agentYoloEnabled ?? false) === enabled) {
-        return
-      }
-
-      try {
-        await setSettings({
-          ...settings,
-          chatOptions: {
-            ...settings.chatOptions,
-            agentYoloEnabled: enabled,
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist preferred YOLO state', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const persistPreferredAssistantId = useCallback(
-    async (assistantId: string) => {
-      if (settings.currentAssistantId === assistantId) {
-        return
-      }
-
-      try {
-        await setSettings({
-          ...settings,
-          currentAssistantId: assistantId,
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist preferred assistant', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const applyAssistantDefaultModel = useCallback(
-    (assistantModelId?: string | null) => {
-      if (!assistantModelId) {
-        return
-      }
-      const matchedModel = settings.chatModels.find(
-        (model) => model.id === assistantModelId,
-      )
-      if (!matchedModel) {
-        return
-      }
-      setConversationModelId(assistantModelId)
-      conversationModelIdRef.current.set(
-        currentConversationId,
-        assistantModelId,
-      )
-      const nextReasoningLevel = getReasoningLevelForModelId(assistantModelId)
-      setReasoningLevel(nextReasoningLevel)
-      conversationReasoningLevelRef.current.set(
-        currentConversationId,
-        nextReasoningLevel,
-      )
-      setInputMessage((prev) => ({
-        ...prev,
-        reasoningLevel: nextReasoningLevel,
-      }))
-    },
-    [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
-  )
-
-  const persistChatRuntimePreference = useCallback(
-    (runtimeId: ChatRuntimeId) => {
-      const lastChatSurface = runtimeId === 'yolo' ? 'chat' : 'cli'
-      const lastCliRuntimeId =
-        runtimeId === 'yolo'
-          ? (settings.chatOptions.lastCliRuntimeId ?? 'claude-code')
-          : runtimeId
-      if (
-        settings.chatOptions.lastChatSurface === lastChatSurface &&
-        settings.chatOptions.lastCliRuntimeId === lastCliRuntimeId
-      ) {
-        return
-      }
-      void setSettings({
-        ...settings,
-        chatOptions: {
-          ...settings.chatOptions,
-          lastChatSurface,
-          lastCliRuntimeId,
-        },
-      })
-    },
-    [setSettings, settings],
-  )
-
-  const handleConversationAssistantSelect = useCallback(
-    (assistantId: string) => {
-      setConversationAssistantId(assistantId)
-      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
-      void persistPreferredAssistantId(assistantId)
-      const assistant = settings.assistants.find(
-        (item) => item.id === assistantId,
-      )
-      applyAssistantDefaultModel(
-        resolveAssistantModelId(assistant?.modelId, settings.chatModelId),
-      )
-    },
-    [
-      applyAssistantDefaultModel,
-      currentConversationId,
-      persistPreferredAssistantId,
-      settings.assistants,
-      settings.chatModelId,
-    ],
-  )
-
-  useEffect(() => {
-    if (
-      settings.assistants.some(
-        (assistant) => assistant.id === conversationAssistantId,
-      )
-    ) {
-      return
-    }
-    const fallbackAssistantId =
-      settings.currentAssistantId ??
-      settings.assistants[0]?.id ??
-      DEFAULT_ASSISTANT_ID
-    setConversationAssistantId(fallbackAssistantId)
-    conversationAssistantIdRef.current.set(
-      currentConversationId,
-      fallbackAssistantId,
-    )
-  }, [
-    conversationAssistantId,
-    currentConversationId,
-    settings.assistants,
-    settings.currentAssistantId,
-  ])
 
   // Per-message model mapping for historical user messages
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
@@ -1266,6 +1065,32 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     activeViewState,
   })
 
+  // useChatRuntimePreferences 的处理器（applyAssistantDefaultModel/
+  // handleConversationAssistantSelect/handleChatModeChange/handleYoloChange/
+  // handleRuntimeChange）依赖输入控制器与 CLI 编排 hook 都已就绪之后才产生
+  // 的值,一律经 lateStateRef 注入——与 inputController.lateStateRef 完全
+  // 相同的惯例,只是本对象在两者都就绪后立即写入。
+  runtimePreferencesLateStateRef.current = {
+    setInputMessage,
+    conversationModelId,
+    setConversationModelId,
+    setReasoningLevel,
+    setChatMode,
+    setYoloEnabled,
+    conversationOverrides,
+    setConversationOverrides,
+    selectedAssistant,
+    getReasoningLevelForModelId,
+    cliPreferenceSettingsRef,
+    cliModelCatalog,
+    setCliConversationController,
+    setCliConversationId,
+    setCliChatMode,
+    setCliYoloEnabled,
+    transitionCliSession,
+    activeHistoryConversationId,
+  }
+
   const currentConversationPersisted = useMemo(
     () =>
       chatList.some(
@@ -1308,134 +1133,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     activeHistoryConversationId,
     props.onConversationContextChange,
   ])
-
-  // 把当前可重建态实时上报给 ChatView，供 host DOM 被替换（pop-out / dock back）
-  // 时无缝重建 React tree。仅副作用：上报快照；不要在这里改 state。
-  const onRuntimeSnapshotChange = props.onRuntimeSnapshotChange
-  useEffect(() => {
-    if (!onRuntimeSnapshotChange) return
-    onRuntimeSnapshotChange({
-      activeRuntimeId,
-      cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
-      cliConversationId,
-      currentConversationId,
-      inputMessage: getLatestInputMessage(),
-      inputDraftRevision: inputDraftRevisionRef.current,
-      conversationModelId,
-      conversationAssistantId,
-      chatMode,
-      yoloEnabled,
-      reasoningLevel,
-      conversationOverrides,
-    })
-  }, [
-    onRuntimeSnapshotChange,
-    activeRuntimeId,
-    activeCliConversationSnapshot?.sessionRef,
-    cliConversationId,
-    currentConversationId,
-    inputMessage,
-    conversationModelId,
-    conversationAssistantId,
-    chatMode,
-    yoloEnabled,
-    reasoningLevel,
-    conversationOverrides,
-    getLatestInputMessage,
-  ])
-
-  const handleRuntimeChange = useCallback(
-    (runtimeId: ChatRuntimeId) => {
-      if (runtimeId === activeRuntimeId) return
-      if (runtimeId !== 'yolo' && (!cliRuntimeScope || !cliRuntimeAvailable)) {
-        return
-      }
-      cliModeRequestGenerationRef.current += 1
-      const isLatestNavigation = beginChatRuntimeNavigation(
-        runtimeNavigationGenerationRef,
-        () => chatMountedRef.current,
-      )
-
-      const applyRuntimeChange = () => {
-        if (!isLatestNavigation()) return
-        if (runtimeId === 'yolo') {
-          setConversationOverrides(
-            conversationOverridesRef.current.get(currentConversationId) ?? null,
-          )
-          activeRuntimeIdRef.current = 'yolo'
-          setRequestedRuntimeId('yolo')
-          persistChatRuntimePreference('yolo')
-          return
-        }
-        if (!cliRuntimeScope) return
-        conversationOverridesRef.current.set(
-          activeHistoryConversationId,
-          conversationOverrides,
-        )
-        const controller = cliRuntimeScope.selectConversationRuntime(runtimeId)
-        if (!controller.getSnapshot().sessionRef) {
-          controller.stageConfiguration(
-            resolveCliRuntimePreference(
-              cliPreferenceSettingsRef.current,
-              runtimeId,
-              cliModelCatalog.get(runtimeId) ?? [],
-            ),
-          )
-        }
-        const nextCliConversationId = uuidv4()
-        setCliConversationController(controller)
-        setCliConversationId(nextCliConversationId)
-        setConversationOverrides(null)
-        lastCliRuntimeIdRef.current = runtimeId
-        activeRuntimeIdRef.current = runtimeId
-        setRequestedRuntimeId(runtimeId)
-        persistChatRuntimePreference(runtimeId)
-        const modePreference = resolveCliModePreference(
-          cliPreferenceSettingsRef.current,
-          runtimeId,
-          conversationOverridesRef.current.get(nextCliConversationId) ?? null,
-        )
-        setCliChatMode(modePreference.mode)
-        setCliYoloEnabled(modePreference.yoloEnabled)
-      }
-
-      if (activeRuntimeId === 'yolo') {
-        try {
-          applyRuntimeChange()
-        } catch (error) {
-          new Notice(
-            t(
-              'chat.cliSurface.runtimeError',
-              'Could not start the CLI runtime: {message}',
-            ).replace(
-              '{message}',
-              error instanceof Error ? error.message : String(error),
-            ),
-          )
-        }
-        return
-      }
-
-      void transitionCliSession((isCurrent) => {
-        if (!isCurrent() || !isLatestNavigation()) return
-        applyRuntimeChange()
-      })
-    },
-    [
-      activeRuntimeId,
-      activeRuntimeIdRef,
-      activeHistoryConversationId,
-      cliRuntimeAvailable,
-      cliConversationController,
-      cliModelCatalog,
-      cliRuntimeScope,
-      conversationOverrides,
-      currentConversationId,
-      persistChatRuntimePreference,
-      t,
-      transitionCliSession,
-    ],
-  )
 
   const compactionDividerAnchorMessageIds = useMemo(
     () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
@@ -1829,6 +1526,23 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     normalizeReasoningLevel,
   })
 
+  const { buildRuntimeSnapshot } = useChatRuntimeSnapshot({
+    onRuntimeSnapshotChange: props.onRuntimeSnapshotChange,
+    activeRuntimeId,
+    cliSessionRef: activeCliConversationSnapshot?.sessionRef,
+    cliConversationId,
+    currentConversationId,
+    inputMessage,
+    getLatestInputMessage,
+    inputDraftRevisionRef,
+    conversationModelId,
+    conversationAssistantId,
+    chatMode,
+    yoloEnabled,
+    reasoningLevel,
+    conversationOverrides,
+  })
+
   const {
     onControlPopoverOpenChange: onHistoricalUserMessageControlPopoverOpenChange,
   } = useHistoricalUserMessageDismiss({
@@ -2014,7 +1728,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setFocusedMessageId(inputMessage.id)
   }, [inputMessage.id])
 
-
   useImperativeHandle(ref, () => ({
     openNewChat: (selectedBlock?: MentionableBlockData) =>
       handleNewChat(selectedBlock),
@@ -2126,142 +1839,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       return conversationModelIdRef.current.get(currentConversationId)
     },
-    getRuntimeSnapshot: () => ({
-      activeRuntimeId,
-      cliSessionRef: activeCliConversationSnapshot?.sessionRef ?? null,
-      cliConversationId,
-      currentConversationId,
-      inputMessage: getLatestInputMessage(),
-      inputDraftRevision: inputDraftRevisionRef.current,
-      conversationModelId,
-      conversationAssistantId,
-      chatMode,
-      yoloEnabled,
-      reasoningLevel,
-      conversationOverrides,
-    }),
+    getRuntimeSnapshot: () => buildRuntimeSnapshot(),
   }))
-
-  const applyChatModeChange = useCallback(
-    (nextMode: ChatMode) => {
-      setChatMode(nextMode)
-      setConversationOverrides((prev) => ({
-        ...(prev ?? {}),
-        chatMode: nextMode,
-      }))
-      conversationOverridesRef.current.set(currentConversationId, {
-        ...(conversationOverridesRef.current.get(currentConversationId) ?? {}),
-        chatMode: nextMode,
-      })
-    },
-    [currentConversationId],
-  )
-
-  const applyYoloChange = useCallback(
-    (enabled: boolean) => {
-      setYoloEnabled(enabled)
-      setConversationOverrides((prev) => ({
-        ...(prev ?? {}),
-        agentYoloEnabled: enabled,
-      }))
-      conversationOverridesRef.current.set(currentConversationId, {
-        ...(conversationOverridesRef.current.get(currentConversationId) ?? {}),
-        agentYoloEnabled: enabled,
-      })
-    },
-    [currentConversationId],
-  )
-
-  const handleYoloChange = useCallback(
-    (enabled: boolean) => {
-      if (enabled && !settings.chatOptions.fullAccessWarningConfirmed) {
-        new AcknowledgementModal(app, {
-          title: t(
-            'chatMode.fullAccessWarning.title',
-            'Please confirm before enabling YOLO Mode',
-          ),
-          messages: [
-            t(
-              'chatMode.fullAccessWarning.description',
-              'YOLO Mode auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
-            ),
-          ],
-          items: [
-            t(
-              'chatMode.fullAccessWarning.permission',
-              'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
-            ),
-            t(
-              'chatMode.fullAccessWarning.cost',
-              'Autonomous runs may consume significant model resources and incur higher costs.',
-            ),
-            t(
-              'chatMode.fullAccessWarning.backup',
-              'Back up important content in advance to avoid unintended changes.',
-            ),
-          ],
-          checkboxLabel: t(
-            'chatMode.fullAccessWarning.checkbox',
-            'I understand the risks above and accept responsibility for proceeding',
-          ),
-          cancelText: t('chatMode.fullAccessWarning.cancel', 'Cancel'),
-          confirmText: t(
-            'chatMode.fullAccessWarning.confirm',
-            'Continue with YOLO Mode',
-          ),
-          confirmTone: 'warning',
-          onConfirm: () => {
-            applyYoloChange(true)
-            void (async () => {
-              try {
-                await setSettings({
-                  ...settings,
-                  chatOptions: {
-                    ...settings.chatOptions,
-                    agentYoloEnabled: true,
-                    fullAccessWarningConfirmed: true,
-                  },
-                })
-              } catch (error: unknown) {
-                console.error(
-                  'Failed to persist YOLO preference and warning confirmation',
-                  error,
-                )
-              }
-            })()
-          },
-        }).open()
-        return
-      }
-
-      applyYoloChange(enabled)
-      void persistPreferredYolo(enabled)
-    },
-    [app, applyYoloChange, persistPreferredYolo, setSettings, settings, t],
-  )
-
-  const handleChatModeChange = useCallback(
-    (nextMode: ChatMode) => {
-      applyChatModeChange(nextMode)
-      void persistPreferredChatMode(nextMode)
-
-      if (
-        isAgentChatMode(nextMode) &&
-        selectedAssistant?.modelId &&
-        conversationModelId === settings.chatModelId
-      ) {
-        applyAssistantDefaultModel(selectedAssistant.modelId)
-      }
-    },
-    [
-      applyAssistantDefaultModel,
-      applyChatModeChange,
-      conversationModelId,
-      selectedAssistant?.modelId,
-      persistPreferredChatMode,
-      settings,
-    ],
-  )
 
   const header = (
     <div
