@@ -185,9 +185,7 @@ export type UseChatDomainActionsParams = {
   assistantGroupBoundaryMessageIds: string[]
   setAssistantGroupBoundaryMessageIds: Dispatch<SetStateAction<string[]>>
   activeBranchByUserMessageIdRef: MutableRefObject<Map<string, string>>
-  setActiveBranchByUserMessageId: Dispatch<
-    SetStateAction<Map<string, string>>
-  >
+  setActiveBranchByUserMessageId: Dispatch<SetStateAction<Map<string, string>>>
   messageModelMap: Map<string, string>
   reasoningLevel: ReasoningLevel
   conversationReasoningLevelRef: MutableRefObject<Map<string, ReasoningLevel>>
@@ -230,7 +228,9 @@ export type UseChatDomainActionsParams = {
   >['generateConversationTitle']
 
   // Stream manager (single instance owned by Chat.tsx)
-  submitChatMutation: ReturnType<typeof useChatStreamManager>['submitChatMutation']
+  submitChatMutation: ReturnType<
+    typeof useChatStreamManager
+  >['submitChatMutation']
   abortConversationRun: ReturnType<
     typeof useChatStreamManager
   >['abortConversationRun']
@@ -1127,7 +1127,12 @@ export function useChatDomainActions({
         abortSignal: abortController.signal,
       })
     },
-    [activeApplyRequestKey, applyMutation, applyAbortControllerRef, setActiveApplyRequestKey],
+    [
+      activeApplyRequestKey,
+      applyMutation,
+      applyAbortControllerRef,
+      setActiveApplyRequestKey,
+    ],
   )
 
   const handleUndoEditSummary = useCallback(

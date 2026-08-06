@@ -903,7 +903,12 @@ export function useCliRuntimeOrchestration({
         ),
       )
     },
-    [activeRuntimeId, cliConversationController, cliRuntimeScope, updateSettings],
+    [
+      activeRuntimeId,
+      cliConversationController,
+      cliRuntimeScope,
+      updateSettings,
+    ],
   )
 
   const handleCliModelChange = useCallback(

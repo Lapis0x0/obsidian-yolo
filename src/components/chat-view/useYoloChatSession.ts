@@ -111,7 +111,9 @@ export type UseYoloChatSessionParams = {
   chatList: ReturnType<typeof useChatHistory>['chatList']
 
   // Stream manager (single instance owned by Chat.tsx)
-  submitChatMutation: ReturnType<typeof useChatStreamManager>['submitChatMutation']
+  submitChatMutation: ReturnType<
+    typeof useChatStreamManager
+  >['submitChatMutation']
 
   // Message/session identity — raw state stays declared in Chat.tsx (shared
   // with useChatInputController and useCliRuntimeOrchestration), threaded in
@@ -539,7 +541,9 @@ export function useYoloChatSession({
       chatMessagesStateRef.current = nextMessages
       setChatMessages(nextMessages)
       setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-      setFocusedMessageId((prev) => (prev === messageId ? inputMessageId : prev))
+      setFocusedMessageId((prev) =>
+        prev === messageId ? inputMessageId : prev,
+      )
       setMessageModelMap((prev) => {
         if (!prev.has(messageId)) return prev
         const next = new Map(prev)
@@ -641,7 +645,11 @@ export function useYoloChatSession({
 
       removeHistoricalUserMessage(messageId)
     },
-    [isUserMessageEffectivelyEmpty, removeHistoricalUserMessage, chatMessagesStateRef],
+    [
+      isUserMessageEffectivelyEmpty,
+      removeHistoricalUserMessage,
+      chatMessagesStateRef,
+    ],
   )
 
   const dismissHistoricalUserMessage = useCallback(
@@ -700,7 +708,10 @@ export function useYoloChatSession({
             (assistant) => assistant.id === loadedAssistantId,
           )?.modelId ?? null
         setConversationAssistantId(loadedAssistantId)
-        conversationAssistantIdRef.current.set(conversationId, loadedAssistantId)
+        conversationAssistantIdRef.current.set(
+          conversationId,
+          loadedAssistantId,
+        )
         const loadedChatMode = normalizeChatMode(
           conversation.overrides?.chatMode,
           settings.chatOptions.chatMode ?? 'agent',
@@ -1627,7 +1638,11 @@ export function useYoloChatSession({
         console.error('Failed to persist conversation after run', error)
       })
     }
-  }, [chatMessages, isCurrentConversationRunActive, persistConversationImmediately])
+  }, [
+    chatMessages,
+    isCurrentConversationRunActive,
+    persistConversationImmediately,
+  ])
 
   return {
     runSummariesByConversationId,
