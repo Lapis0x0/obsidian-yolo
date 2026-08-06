@@ -845,7 +845,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   }
 }
 
-.yolo-agent-status-bar,
 .yolo-background-activity-status-bar {
   position: relative;
   display: inline-flex;
@@ -853,7 +852,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   gap: 8px;
 }
 
-.yolo-agent-status-bar-ring,
 .yolo-background-activity-status-bar-ring {
   flex-shrink: 0;
   width: 14px;
@@ -891,7 +889,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   stroke-width: 2;
 }
 
-.yolo-agent-status-bar-label,
 .yolo-background-activity-status-bar-label {
   min-width: 0;
 }
